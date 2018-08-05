@@ -4,7 +4,9 @@
  * any of Pfds.heaps), but we want to provide a custom comparison
  * function.
  * This does not collapse duplicate entries (= entries for which the
- * comparison function returns 0) *)
+ * comparison function returns 0).
+ * Smallest elements are nearest to the root.
+ * When two elements compare equal the relative order is not specified. *)
 type 'a t = E | T of (* rank *) int * 'a * 'a t * 'a t
 
 let empty = E
@@ -24,7 +26,7 @@ let rec merge cmp a b = match a with
                 let rank_l, rank_r = rank l, rank r in
                 if rank_l >= rank_r then T (rank_l + 1, v, l, r)
                 else T (rank_r + 1, v, r, l) in
-            if cmp x y <= 0 then makeT x a_l (merge cmp a_r b)
+            if cmp x y < 0 then makeT x a_l (merge cmp a_r b)
             else makeT y b_l (merge cmp a b_r))
 
 let add cmp x a = merge cmp a (singleton x)

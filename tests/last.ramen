@@ -14,6 +14,7 @@ DEFINE win2 AS
   WHERE model starts with "A3"
   SELECT
     -- LAST does not work with nullable values:
+    -- FIXME: of course it does!
     LAST 3 COALESCE(CO, 0) AS _lst,
     GET(0, _lst) AS third_to_last,
     GET(1, _lst) AS second_to_last,

@@ -88,11 +88,7 @@ let replace_typ_in_operation =
       key = List.map replace_typ key ;
       commit_cond = replace_typ commit_cond ;
       commit_before = commit_before ;
-      flush_how = (match flush_how with
-        | Reset | Never | Slide _ -> flush_how
-        | RemoveAll e -> RemoveAll (replace_typ e)
-        | KeepOnly e -> KeepOnly (replace_typ e)) ;
-      every ; factors }
+      flush_how ; every ; factors }
 
   | ReadCSVFile ({ preprocessor ; _ } as csv) ->
       ReadCSVFile { csv with

@@ -11,4 +11,4 @@ DEFINE f AS
     -- We can use out fields in stateful functions:
     90th percentile (group _co2_per_hp) as co2_per_hp_90th,
     99th percentile (group globally _co2_per_hp) as co2_per_hp_99th
-  COMMIT AFTER group.#count >= 4539;
+  COMMIT AFTER sum 1 >= 4539;

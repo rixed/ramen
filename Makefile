@@ -466,7 +466,6 @@ tests/merge.success: tests/merge.x
 tests/from.success: tests/from.x
 tests/previous_and_null.success: tests/previous_and_null.x tests/fixtures/n123.x
 tests/fun_with_funcs.success: tests/fun_with_funcs.x tests/fixtures/cars.x
-tests/sliding_window.success: tests/sliding_window.x
 tests/case.success: tests/case.x tests/fixtures/n123.x
 tests/commit_before.success: tests/commit_before.x tests/fixtures/n123.x tests/fixtures/cars.x
 tests/word_count.success: tests/word_count.x

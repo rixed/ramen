@@ -44,9 +44,6 @@ let print_selected_field oc f =
 (* Represents what happens to a group after its value is output: *)
 type flush_method =
   | Reset (* it can be deleted (tumbling windows) *)
-  | Slide of int (* or entries can be shifted (sliding windows) *)
-  | KeepOnly of E.t (* or only some matching entries can be kept *)
-  | RemoveAll of E.t (* or inversely, expunged from the group *)
   | Never (* or we may just keep the group as it is *)
 
 let print_flush_method oc = function
@@ -54,12 +51,6 @@ let print_flush_method oc = function
     Printf.fprintf oc "FLUSH"
   | Never ->
     Printf.fprintf oc "KEEP ALL"
-  | Slide n ->
-    Printf.fprintf oc "SLIDE %d" n
-  | KeepOnly e ->
-    Printf.fprintf oc "KEEP (%a)" (E.print false) e
-  | RemoveAll e ->
-    Printf.fprintf oc "REMOVE (%a)" (E.print false) e
 
 (* Represents an input CSV format specifications: *)
 type file_spec = { fname : E.t ; unlink : bool }
@@ -310,10 +301,7 @@ let fold_top_level_expr init f = function
             List.fold_left (fun prev e ->
               f prev e
             ) x b in
-      match flush_how with
-      | Slide _ | Never | Reset -> x
-      | RemoveAll e | KeepOnly e ->
-        f x e
+      x
 
 let fold_expr init f =
   fold_top_level_expr init (E.fold_by_depth f)
@@ -399,9 +387,7 @@ let check params op =
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function
-      | Field (_, { contents = (TupleIn|TupleLastIn|TupleSelected|
-                                TupleLastSelected|TupleUnselected|
-                                TupleLastUnselected) }, alias) ->
+      | Field (_, { contents = TupleIn }, alias) ->
           fields_from_in := Set.add alias !fields_from_in
       | _ -> ()) op ;
     let is_selected_fields ?i alias = (* Tells if a field is in _out_ *)
@@ -438,9 +424,6 @@ let check params op =
       List.iter (fun (_n, v) -> prefix_smart v) notif.parameters
     ) notifications ;
     prefix_smart commit_cond ;
-    (match flush_how with
-    | KeepOnly e | RemoveAll e -> prefix_def TupleGroup e
-    | _ -> ()) ;
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (function
       | Field (_, { contents = TupleGroup }, alias) ->
@@ -451,11 +434,9 @@ let check params op =
     (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
         check_fields_from
-          [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleGroup;
-            TupleSelected; TupleLastSelected; TupleUnselected;
-            TupleLastUnselected; TupleGroupFirst; TupleGroupLast;
+          [ TupleParam; TupleEnv; TupleIn; TupleGroup;
             TupleOut (* FIXME: only if defined earlier *);
-            TupleGroupPrevious; TupleOutPrevious ] "SELECT clause" sf.expr ;
+            TupleOutPrevious ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           raise (SyntaxError (AliasNotUnique sf.alias)) ;
@@ -469,9 +450,8 @@ let check params op =
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group (no_group "WHERE") where ;
     check_fields_from
-      [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected;
-        TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleGroup;
-        TupleGroupFirst; TupleGroupLast; TupleOutPrevious ]
+      [ TupleParam; TupleEnv; TupleIn;
+        TupleGroup; TupleOutPrevious ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure pure_in_key k ;
@@ -487,18 +467,10 @@ let check params op =
       ) notif.parameters
     ) notifications ;
     check_fields_from
-      [ TupleParam; TupleEnv; TupleLastIn; TupleIn; TupleSelected;
-        TupleLastSelected; TupleUnselected; TupleLastUnselected; TupleOut;
-        TupleGroupPrevious; TupleOutPrevious; TupleGroupFirst; TupleGroupLast;
-        TupleGroup; TupleSelected; TupleLastSelected ]
+      [ TupleParam; TupleEnv; TupleIn;
+        TupleOut; TupleOutPrevious;
+        TupleGroup ]
       "COMMIT WHEN clause" commit_cond ;
-    (match flush_how with
-    | Reset | Never | Slide _ -> ()
-    | RemoveAll e | KeepOnly e ->
-      let m = StatefulNotAllowed { clause = "KEEP/REMOVE" } in
-      check_pure m e ;
-      check_fields_from
-        [ TupleParam; TupleEnv; TupleGroup ] "REMOVE clause" e) ;
     if every > 0. && from <> [] then
       raise (SyntaxError (EveryWithFrom)) ;
     (* Check that we do not use any fields from out that is generated: *)
@@ -507,8 +479,7 @@ let check params op =
       ) fields in
     iter_expr (function
         | Field (_, tuple_ref, alias)
-          when !tuple_ref = TupleOutPrevious ||
-               !tuple_ref = TupleGroupPrevious ->
+          when !tuple_ref = TupleOutPrevious ->
             if List.mem alias generators then
               let e = NoAccessToGeneratedFields { alias } in
               raise (SyntaxError e)
@@ -672,14 +643,7 @@ struct
   let flush m =
     let m = "flush clause" :: m in
     ((strinG "flush" >>: fun () -> Reset) |||
-     (strinG "slide" -- blanks -+ (pos_decimal_integer "Sliding amount" >>:
-        fun n -> Slide n)) |||
-     (strinG "keep" -- blanks -- strinG "all" >>: fun () ->
-       Never) |||
-     (strinG "keep" -- blanks -+ E.Parser.p >>: fun e ->
-       KeepOnly e) |||
-     (strinG "remove" -- blanks -+ E.Parser.p >>: fun e ->
-       RemoveAll e) >>:
+     (strinG "keep" -- blanks -- strinG "all" >>: fun () -> Never) >>:
      fun s -> FlushSpec s) m
 
   let dummy_commit m =
@@ -1155,19 +1119,19 @@ struct
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, true, AggrMax (\
-                Field (typ, ref TupleGroupFirst, "start"))),\
+                Field (typ, ref TupleIn, "start"))),\
               Const (typ, VU32 (Uint32.of_int 3600))),\
             Field (typ, ref TupleOut, "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
         from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
-        (199, [])))\
+        (190, [])))\
         (test_op p "select min start as start, \\
                            max stop as max_stop, \\
                            (sum packets)/avg_window as packets_per_sec \\
                    from foo \\
                    group by start / (1_000_000 * avg_window) \\
-                   commit after out.start < (max group.first.start) + 3600" |>\
+                   commit after out.start < (max in.start) + 3600" |>\
          replace_typ_in_op)
 
     (Ok (\

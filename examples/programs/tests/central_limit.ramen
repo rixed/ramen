@@ -7,11 +7,11 @@ PARAMETER n DEFAULTS TO 6;
 
 DEFINE averaged_noise AS
   SELECT avg rand FROM noise
-  COMMIT AFTER group.#count >= n;
+  COMMIT AFTER sum 1 >= n;
 
 DEFINE distrib AS
   SELECT histogram(avg_rand, 0, 1, 79) FROM averaged_noise
-  COMMIT AFTER group.#count >= 1000;
+  COMMIT AFTER sum 1 >= 1000;
 
 DEFINE display AS
   SELECT sparkline(avg_rand_histogram) AS avg_random_distrib FROM distrib;

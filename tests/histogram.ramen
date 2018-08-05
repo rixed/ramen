@@ -6,7 +6,7 @@ DEFINE t AS
          HISTOGRAM(COALESCE(CO, 0.), 0, 10, 10) AS CO_histogram,
          -- keep this one nullable for tests:
          HISTOGRAM(CO2, 0, 1000, 10)
-  COMMIT AFTER group.#count >= 4539;
+  COMMIT AFTER sum 1 >= 4539;
 
 DEFINE t2 AS
   FROM t

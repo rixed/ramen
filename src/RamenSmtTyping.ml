@@ -343,9 +343,7 @@ let emit_constraints tuple_sizes out_fields oc e =
              * or of group). Workers access those fields via a special
              * functions, and all fields are forced nullable during typing.
              *)
-            if !tupref = TupleGroupPrevious ||
-               !tupref = TupleOutPrevious
-            then
+            if !tupref = TupleOutPrevious then
               let name = make_name e "PREVNULL" in
               emit_assert_is_true ~name oc nid
             else
@@ -940,12 +938,7 @@ let emit_operation declare tuple_sizes fi oc func =
           let name = name ^"NULL" in
           emit_assert_is_false ~name oc (n_of_expr v)
         ) notif.parameters
-      ) notifications ;
-      (match flush_how with
-      | Reset | Never | Slide _ -> ()
-      | RemoveAll e | KeepOnly e ->
-          let name = "F"^ string_of_int fi ^"_FLUSH" in
-          emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool)
+      ) notifications
 
   | ReadCSVFile { preprocessor ; where = { fname ; _ } ; _ } ->
       RamenOperation.iter_expr (emit_constraints tuple_sizes [] oc) op ;

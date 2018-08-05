@@ -8,4 +8,4 @@ DEFINE m AS
   FROM s1, s2, s3
   MERGE ON n TIMEOUT AFTER 0.1 SECOND
   SELECT n
-  WHERE in.#count < 7;
+  WHERE sum globally 1 < 7;

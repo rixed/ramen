@@ -38,7 +38,6 @@ let id_of_prefix tuple =
 (* Tuple deconstruction as a function parameter: *)
 let id_of_field_name ?(tuple=TupleIn) = function
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
-  | "#successive" -> "virtual_"^ id_of_prefix tuple ^"_successive_"
   | field -> id_of_prefix tuple ^"_"^ field ^"_"
 
 let id_of_field_typ ?tuple field_typ =
@@ -515,18 +514,15 @@ and finalize_state ?state ~opc ~nullable skip my_state func_name fin_args
     emit_functionN ?state ~opc ~nullable ?impl_return_nullable ?args_as
                    func_name (None::to_typ) oc (my_state::fin_args)
 
-(* The vectors Tuple{Group,Out}Previous are optional: the commit when and
+(* The vectors TupleOutPrevious is optional: the commit when and
  * select clauses of aggregate operations either have it or not.
  * Each time they need access to a field they call a function "maybe_XXX_"
  * with that optional tuple, which avoids propagating out_typ down to
  * emit_expr - but hopefully the compiler will inline this.
- * (TODO: have a context in a single place and inline it directly?)
- * Also, since TupleOutPrevious is of type generator_out and
- * TupleGroupPrevious of type minimal_out, we need two functions for each
- * field: *)
-and emit_maybe_fields out_typ oc tup_name =
+ * (TODO: have a context in a single place and inline it directly?) *)
+and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
-    Printf.fprintf oc "let maybe_%s_%s_ = function\n" tup_name ft.typ_name ;
+    Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
     Printf.fprintf oc "  | None -> Null\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
@@ -616,10 +612,8 @@ and emit_expr ?state ~context ~opc oc expr =
 
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
-    | TupleGroupPrevious ->
-      Printf.fprintf oc "(maybe_minimal_%s_ group_previous_opt_)" field
     | TupleOutPrevious ->
-      Printf.fprintf oc "(maybe_out_%s_ out_previous_opt_)" field
+      Printf.fprintf oc "(maybe_%s_ out_previous_opt_)" field
     | TupleEnv ->
       Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)" field
     | _ ->
@@ -1156,6 +1150,11 @@ and emit_expr ?state ~context ~opc oc expr =
       (Printf.sprintf2 "CodeGenLib.Last.init (%a %a)"
         (conv_from_to ~nullable:false) (structure_of_expr c, TU32)
         (emit_expr ?state ~context:Finalize ~opc) c)
+  (* Special updater that use the internal count when no `by` expressions
+   * are present: *)
+  | UpdateState, StatefulFun (_, g, n, Last (_, e, [])), _ ->
+    update_state ?state ~opc ~nullable n (my_state g) [ e ]
+      "CodeGenLib.Last.add_on_count" oc [ None ]
   | UpdateState, StatefulFun (_, g, n, Last (_, e, es)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) (e :: es)
       ~args_as:(Tuple 2) "CodeGenLib.Last.add" oc
@@ -1844,19 +1843,10 @@ let emit_state_update_for_expr ~opc oc expr =
 let emit_where
       ?(with_group=false) ?(always_true=false)
       name in_typ mentioned ~opc oc expr =
-  Printf.fprintf oc "let %s global_ virtual_in_count_ %a %a \
-                       virtual_selected_count_ virtual_selected_successive_ %a \
-                       virtual_unselected_count_ virtual_unselected_successive_ %a \
-                       virtual_out_count_ out_previous_opt_ "
+  Printf.fprintf oc "let %s global_ %a out_previous_opt_ "
     name
-    (emit_in_tuple mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ ;
-  if with_group then
-    Printf.fprintf oc "virtual_group_count_ virtual_group_successive_ group_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ ;
+    (emit_in_tuple mentioned) in_typ ;
+  if with_group then Printf.fprintf oc "group_ " ;
   if always_true then
     Printf.fprintf oc "= true\n"
   else (
@@ -1876,7 +1866,6 @@ let emit_field_selection
        * fields already computed in minimal_typ). And no need to update
        * states. *)
       ~build_minimal
-      ?(with_selected=false) (* and unselected *)
       ?(with_group=false) (* including previous, of type tuple_out option *)
       name in_typ mentioned
       out_typ minimal_typ ~opc oc selected_fields =
@@ -1886,20 +1875,11 @@ let emit_field_selection
     ) minimal_typ in
   let must_output_field field_name =
     not build_minimal || field_in_minimal field_name in
-  Printf.fprintf oc "let %s virtual_in_count_ %a %a "
+  Printf.fprintf oc "let %s %a "
     name
-    (emit_in_tuple mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ ;
-  if with_selected then
-    Printf.fprintf oc "virtual_selected_count_ virtual_selected_successive_ %a \
-                       virtual_unselected_count_ virtual_unselected_successive_ %a "
-      (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
-      (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ ;
+    (emit_in_tuple mentioned) in_typ ;
   if with_group then
-    Printf.fprintf oc "virtual_out_count out_previous_opt_ group_previous_opt_ \
-                       virtual_group_count_ virtual_group_successive_ group_ global_ %a %a "
-      (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
-      (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ ;
+    Printf.fprintf oc "out_previous_opt_ group_ global_ " ;
   if not build_minimal then
     Printf.fprintf oc "%a " (emit_tuple TupleOut) minimal_typ ;
   Printf.fprintf oc "=\n" ;
@@ -2011,7 +1991,8 @@ let otype_of_state e =
       nullable
   | StatefulFun (_, _, _, Last (_, e, es)) ->
     if es = [] then
-      Printf.sprintf2 "(%a, unit) CodeGenLib.Last.state%s"
+      (* In that case we use a special internal counter as the order: *)
+      Printf.sprintf2 "(%a, int) CodeGenLib.Last.state%s"
         print_expr_typ e
         nullable
     else
@@ -2082,41 +2063,14 @@ let emit_state_init name state_lifespan other_state_vars
  * might have its own stateful functions going on *)
 let emit_when name in_typ mentioned minimal_typ ~opc
               oc when_expr =
-  Printf.fprintf oc "let %s virtual_in_count_ %a %a \
-                       virtual_selected_count_ virtual_selected_successive_ %a \
-                       virtual_unselected_count_ virtual_unselected_successive_ %a \
-                       virtual_out_count out_previous_opt_ group_previous_opt_ \
-                       virtual_group_count_ virtual_group_successive_ group_ global_ \
-                       %a %a \
-                       %a =\n"
+  Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
     (emit_in_tuple mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastIn mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastSelected mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleLastUnselected mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleGroupFirst mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleGroupLast mentioned) in_typ
     (emit_tuple TupleOut) minimal_typ ;
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~opc oc when_expr ;
   Printf.fprintf oc "\t%a\n"
     (emit_expr ?state:None ~context:Finalize ~opc) when_expr
-
-let emit_should_resubmit name in_typ mentioned ~opc
-                         oc flush_how =
-  let open RamenOperation in
-  Printf.fprintf oc "let %s group_ %a =\n"
-    name
-    (emit_in_tuple mentioned) in_typ ;
-  match flush_how with
-  | Reset | Never ->
-    Printf.fprintf oc "\tfalse\n"
-  | Slide n ->
-    Printf.fprintf oc "\tgroup_.CodeGenLib.num_entries > %d\n" n
-  | KeepOnly e ->
-    Printf.fprintf oc "\t%a\n" (emit_expr ?state:None ~context:Finalize ~opc) e
-  | RemoveAll e ->
-    Printf.fprintf oc "\tnot (%a)\n" (emit_expr ?state:None ~context:Finalize ~opc) e
 
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
@@ -2126,23 +2080,13 @@ let emit_should_resubmit name in_typ mentioned ~opc
 let when_to_check_group_for_expr expr =
   (* Tells whether the commit condition needs the all or the selected tuple *)
   let open RamenExpr in
-  (* FIXME: for TOP, since we flush all when a single group matches, we
-   * should relax this a bit: if we need_all (because, say, we use in.#count
-   * in the condition) but the condition uses no field specific to group
-   * then it's safe to check only ForInGroup. *)
-  let need_all, need_selected =
-    fold_by_depth (fun (need_all, need_selected) -> function
-        | Field (_, tuple, _) ->
-          (need_all || !tuple = TupleIn || !tuple = TupleLastIn),
-          (need_selected || !tuple = TupleLastSelected || !tuple = TupleSelected
-                         || !tuple = TupleLastUnselected || !tuple = TupleUnselected)
-        | _ ->
-          need_all, need_selected
-      ) (false, false) expr
+  let need_all =
+    fold_by_depth (fun need_all -> function
+        | Field (_, tuple, _) -> need_all || !tuple = TupleIn
+        | _ -> need_all
+      ) false expr
   in
-  if need_all then "CodeGenLib.ForAll" else
-  if need_selected then "CodeGenLib.ForAllSelected" else
-  "CodeGenLib.ForInGroup"
+  if need_all then "CodeGenLib.ForAll" else "CodeGenLib.ForInGroup"
 
 let emit_sort_expr name in_typ mentioned ~opc oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
@@ -2221,11 +2165,6 @@ let emit_aggregate opc oc name in_typ out_typ =
     then failwith "Cannot build minimal_out set?!" ;
     !s in
   let minimal_fields =
-    let from_group_previous =
-      RamenOperation.fold_expr Set.String.empty (fun s -> function
-        | Field (_, { contents = TupleGroupPrevious }, fn) ->
-            Set.String.add fn s
-        | _ -> s) op in
     let from_commit_cond =
       RamenExpr.fold_by_depth (fun s -> function
         | Field (_, { contents = TupleOut }, fn) ->
@@ -2249,8 +2188,7 @@ let emit_aggregate opc oc name in_typ out_typ =
       ) Set.String.empty fields |>
       fetch_recursively in
     (* Now combine all three sets: *)
-    Set.String.union from_group_previous from_commit_cond |>
-    Set.String.union for_updates
+    Set.String.union from_commit_cond for_updates
   in
   !logger.debug "minimal fields: %a"
     (Set.String.print String.print) minimal_fields ;
@@ -2267,10 +2205,9 @@ let emit_aggregate opc oc name in_typ out_typ =
    * uses the group tuple or build a group-wise aggregation on its own,
    * despite this is forbidden in RamenOperation.check): *)
   and where_need_group = expr_needs_group where
-  (* Good to know when performing a TOP: *)
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond in
   Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_tuple_" mentioned) in_typ
@@ -2283,16 +2220,14 @@ let emit_aggregate opc oc name in_typ out_typ =
     else
       emit_where "where_slow_" ~with_group:true in_typ mentioned ~opc) where
     (emit_key_of_input "key_of_input_" in_typ mentioned ~opc) key
-    (emit_maybe_fields out_typ) "out"
-    (emit_maybe_fields minimal_typ) "minimal"
+    emit_maybe_fields out_typ
     (emit_when "commit_cond_" in_typ mentioned minimal_typ ~opc) commit_cond
-    (emit_field_selection ~build_minimal:true ~with_selected:true ~with_group:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
-    (emit_field_selection ~build_minimal:false ~with_selected:true ~with_group:true "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:true ~with_group:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:false ~with_group:true "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_group_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ mentioned out_typ ~opc) fields
-    (emit_should_resubmit "should_resubmit_" in_typ mentioned ~opc) flush_how
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
     (emit_merge_on "merge_on_" in_typ mentioned ~opc) (fst merge)
@@ -2306,7 +2241,7 @@ let emit_aggregate opc oc name in_typ out_typ =
       \t\tminimal_tuple_of_group_ out_tuple_of_minimal_tuple_\n\
       \t\tmerge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
-      \t\tcommit_cond_ %b %b %s should_resubmit_\n\
+      \t\tcommit_cond_ %b %b %s\n\
       \t\tglobal_init_ group_init_\n\
       \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_\n\
       \t\tget_notifications_ %f\n"

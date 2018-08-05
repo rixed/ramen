@@ -4,12 +4,10 @@ open RamenLog
 open Stdint
 open Batteries
 
-let tuple_count = ref Uint64.zero
 let now = ref (Unix.gettimeofday ())
 
 let on_each_input_pre () =
-  now := Unix.gettimeofday ();
-  tuple_count := Uint64.succ !tuple_count
+  now := Unix.gettimeofday ()
 
 let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
                     filename preprocessor watchdog k =

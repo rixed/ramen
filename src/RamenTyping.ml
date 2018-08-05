@@ -576,8 +576,7 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        * each time they are undefined (beginning of worker or of group).
        * Workers access those fields via a special functions, and all fields
        * are forced nullable during typing. *)
-      let tuple_is_optional =
-        !tuple = TupleGroupPrevious || !tuple = TupleOutPrevious in
+      let tuple_is_optional = !tuple = TupleOutPrevious in
       (* In those cases, as only the generators are passed rather than
        * the actual tuples, access to generated fields is forbidden (see
        * RamenOperation.check) *)
@@ -1299,15 +1298,6 @@ let check_aggregate ~parents ~in_type ~out_type ~params
                     exp_type TBool |||
     check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params
                commit_cond
-  ) ||| (
-    match flush_how with
-    | Reset | Never | Slide _ -> false
-    | RemoveAll e | KeepOnly e ->
-      let exp_type = Expr.typ_of e in
-      set_nullable exp_type false |||
-      set_scalar_type ~ok_if_larger:false ~expr_name:"flush-clause"
-                      exp_type TBool |||
-      check_expr ~depth:1 ~parents ~in_type ~out_type ~exp_type ~params e
   ) ||| (
     check_where ~parents ~in_type ~out_type ~params where
   ) ||| (

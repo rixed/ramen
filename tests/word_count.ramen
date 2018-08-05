@@ -10,7 +10,7 @@ DEFINE splitter AS
 
 DEFINE counter1 AS
   FROM splitter WHERE word <> ""
-  SELECT group.#count AS count, lower(word) AS word
+  SELECT sum 1 AS count, lower(word) AS word
   GROUP BY word
   COMMIT AND KEEP ALL AFTER true;
 
@@ -18,6 +18,6 @@ DEFINE counter1 AS
 
 DEFINE counter2 AS
   FROM splitter WHERE word <> ""
-  SELECT group.#count AS count, lower(word) AS word
+  SELECT sum 1 AS count, lower(word) AS word
   GROUP BY word
   COMMIT AFTER in.word = "END";

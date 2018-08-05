@@ -6,18 +6,8 @@ open RamenLog
 
 type tuple_prefix =
   | TupleUnknown (* Either In, Out or Param*)
-  | TupleIn | TupleLastIn
-  | TupleSelected | TupleLastSelected
-  | TupleUnselected | TupleLastUnselected
+  | TupleIn
   | TupleGroup
-  (* first input tuple aggregated into that group *)
-  | TupleGroupFirst
-  (* last input tuple aggregated into that group *)
-  | TupleGroupLast
-  (* last output tuple computed for that group. Cannot be used in a SELECT
-   * clause because we would have no tuple to init the group *)
-  | TupleGroupPrevious
-  (* last output tuple committed by any group *)
   | TupleOutPrevious
   | TupleOut
   (* Tuple usable in sort expressions *)
@@ -32,15 +22,7 @@ type tuple_prefix =
 
 let string_of_prefix = function
   | TupleIn -> "in"
-  | TupleLastIn -> "in.last"
-  | TupleSelected -> "selected"
-  | TupleLastSelected -> "selected.last"
-  | TupleUnselected -> "unselected"
-  | TupleLastUnselected -> "unselected.last"
   | TupleGroup -> "group"
-  | TupleGroupFirst -> "group.first"
-  | TupleGroupLast -> "group.last"
-  | TupleGroupPrevious -> "group.previous"
   | TupleOutPrevious -> "out.previous"
   | TupleOut -> "out"
   | TupleUnknown -> "unknown"
@@ -178,17 +160,7 @@ let parse_prefix ~def m =
   let prefix s = strinG (s ^ ".") in
   (optional ~def (
     (prefix "in" >>: fun () -> TupleIn) |||
-    (prefix "in.last" >>: fun () -> TupleLastIn) |||
-    (prefix "selected" >>: fun () -> TupleSelected) |||
-    (prefix "selected.last" >>: fun () -> TupleLastSelected) |||
-    (prefix "unselected" >>: fun () -> TupleUnselected) |||
-    (prefix "unselected.last" >>: fun () -> TupleLastUnselected) |||
     (prefix "group" >>: fun () -> TupleGroup) |||
-    (prefix "group.first" >>: fun () -> TupleGroupFirst) |||
-    (prefix "first" >>: fun () -> TupleGroupFirst) |||
-    (prefix "group.last" >>: fun () -> TupleGroupLast) |||
-    (prefix "last" >>: fun () -> TupleGroupLast) |||
-    (prefix "group.previous" >>: fun () -> TupleGroupPrevious) |||
     (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
     (prefix "previous" >>: fun () -> TupleOutPrevious) |||
     (prefix "out" >>: fun () -> TupleOut) |||
@@ -201,27 +173,18 @@ let parse_prefix ~def m =
     (prefix "env" >>: fun () -> TupleEnv))
   ) m
 
-let tuple_has_count = function
-  | TupleIn | TupleSelected | TupleUnselected | TupleGroup | TupleOut -> true
-  | _ -> false
-
-let tuple_has_successive = function
-  | TupleSelected | TupleUnselected | TupleGroup -> true
-  | _ -> false
-
 (* Tuple that has the fields of this func input type *)
 let tuple_has_type_input = function
-  | TupleIn | TupleLastIn | TupleLastSelected | TupleLastUnselected
-  | TupleGroupFirst | TupleGroupLast -> true
+  | TupleIn -> true
   | _ -> false
 
 (* Tuple that has the fields of this func output type *)
 let tuple_has_type_output = function
-  | TupleGroupPrevious | TupleOutPrevious | TupleOut -> true
+  | TupleOutPrevious | TupleOut -> true
   | _ -> false
 
 let tuple_need_state = function
-  | TupleGroup | TupleGroupFirst | TupleGroupLast | TupleGroupPrevious -> true
+  | TupleGroup -> true
   | _ -> false
 
 open RamenParsing

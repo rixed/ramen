@@ -261,7 +261,7 @@ and stateful_fun =
   | AggrAnd of t
   | AggrOr  of t
   | AggrFirst of t
-  | AggrLast of t
+  | AggrLast of t (* FIXME: Should be stateless *)
   | AggrHistogram of t * float * float * int
   (* value retarded by k steps. If we have had less than k past values
    * then return the first we've had. *)(* FIXME: then return NULL *)
@@ -942,22 +942,15 @@ struct
 
   let field m =
     let m = "field" :: m in
-    ((parse_prefix ~def:TupleUnknown ++ non_keyword >>:
+    (
+      parse_prefix ~def:TupleUnknown ++ non_keyword >>:
       fun (tuple, field) ->
         (* This is important here that the type name is the raw field name,
          * because we use the tuple field type name as their identifier (unless
          * it's a virtual field (starting with #) of course since those are
          * computed on the fly and have no corresponding variable in the
          * tuple) *)
-        Field (make_typ field, ref tuple, field)) |||
-     (parse_prefix ~def:TupleIn ++ that_string "#count" >>:
-      fun (tuple, field) ->
-        if not (tuple_has_count tuple) then raise (Reject "This tuple has no #count") ;
-        Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field)) |||
-     (parse_prefix ~def:TupleIn ++ that_string "#successive" >>:
-      fun (tuple, field) ->
-        if not (tuple_has_successive tuple) then raise (Reject "This tuple has no #successive") ;
-        Field (make_typ ~nullable:false ~typ:TU64 field, ref tuple, field))
+        Field (make_typ field, ref tuple, field)
     ) m
 
   (*$= field & ~printer:(test_printer (print false))
@@ -981,17 +974,6 @@ struct
         Some { where = ParsersMisc.Item ((1,8), '.');\
                what=["eof"]})))\
       (test_p field "pasglop.bytes" |> replace_typ_in_expr)
-
-    (Ok (\
-      Field (typ, ref TupleIn, "#count"),\
-      (6, [])))\
-      (test_p field "#count" |> replace_typ_in_expr)
-
-    (Bad (\
-      NoSolution (\
-        Some { where = ParsersMisc.Item ((1,8), 'c') ;\
-               what = ["\"#successive\"";"field"]})))\
-      (test_p field "first.#count" |> replace_typ_in_expr)
   *)
 
   let param m =
@@ -1409,17 +1391,13 @@ struct
          g, n,
          Top { want_rank ; c ; what ; by ; duration ; time })) m
 
-  and in_count_field =
-    (* Have a single one of them to increase the field id by only one: *)
-    Field (make_typ ~nullable:false ~typ:TU64 "#count", ref TupleIn, "#count")
-
   and last m =
     let m = "last expression" :: m in
     (
       (* The quantity N disambiguates from the "last" aggregate. *)
       strinG "last" -- blanks -+ p ++
       state_and_nulls +- opt_blanks ++ p ++
-      optional ~def:[ in_count_field ] (
+      optional ~def:[] (
         blanks -- strinG "by" -- blanks -+
         several ~sep:list_sep p) >>: fun (((c, (g, n)), e), es) ->
       (* We cannot check that c is_constant yet since fields have not
@@ -1580,7 +1558,7 @@ struct
     (Ok (\
       StatelessFun2 (typ, Gt, \
         StatefulFun (typ, LocalState, true, AggrMax (\
-          Field (typ, ref TupleLastSelected, "start"))),\
+          Field (typ, ref TupleIn, "start"))),\
         StatelessFun2 (typ, Add, \
           Field (typ, ref TupleOut, "start"),\
           StatelessFun2 (typ, Mul, \
@@ -1588,8 +1566,8 @@ struct
               Field (typ, ref TupleUnknown, "obs_window"),\
               Const (typ, VFloat 1.15)),\
             Const (typ, VU32 (Uint32.of_int 1_000_000))))),\
-      (69, [])))\
-      (test_p p "max selected.last.start > \\
+      (58, [])))\
+      (test_p p "max in.start > \\
                  out.start + (obs_window * 1.15) * 1_000_000" |> replace_typ_in_expr)
 
     (Ok (\
