@@ -190,8 +190,6 @@ let emit_assert_id_le_smt2 ?name id oc smt2 =
 
 let emit_assert_id_le_id = emit_assert_id_le_smt2
 
-(* TODO: emit_assert_notnull... *)
-
 let emit_assert_id_eq_any_of_typ ?name tuple_sizes id oc lst =
   emit_assert ?name oc (fun oc ->
     Printf.fprintf oc "(or %a)"
@@ -208,21 +206,26 @@ let make_name =
     incr seq ;
     Printf.sprintf "E%d_%s_%d" (typ_of e).uniq_num tag !seq
 
+let emit_assert_not_null oc e =
+  let name = make_name e "NOTNULL" in
+  emit_assert_is_false ~name oc (n_of_expr e)
+
+let emit_sortable oc id =
+  Printf.fprintf oc
+    "(or (= string %s) \
+         (= bool %s) \
+         (= float %s) \
+         (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+    id
+    id
+    id
+    id id id id id
+    id id id id id
+
 let emit_assert_sortable oc e =
   let name = make_name e "SORTABLE" in
-  let id = e_of_expr e in
-  emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc
-      "(or (= string %s) \
-           (= bool %s) \
-           (= float %s) \
-           (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-           (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
-      id
-      id
-      id
-      id id id id id
-      id id id id id)
+  emit_assert ~name oc (fun oc -> emit_sortable oc (e_of_expr e))
 
 let emit_assert_unsigned oc e =
   let name = make_name e "UNSIGNED" in
@@ -257,17 +260,19 @@ let emit_assert_integer oc e =
       id id id id id
       id id id id id)
 
+let emit_numeric oc id =
+  Printf.fprintf oc
+    "(or (= float %s) \
+         (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+    id
+    id id id id id
+    id id id id id
+
 let emit_assert_numeric oc e =
   let name = make_name e "NUMERIC" in
-  let id = e_of_expr e in
   emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc
-      "(or (= float %s) \
-           (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-           (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
-      id
-      id id id id id
-      id id id id id)
+    emit_numeric oc (e_of_expr e))
 
 (* "same" types are either actually the same or at least of the same sort
  * (both numbers/floats, both ip, or both cidr) *)
@@ -686,10 +691,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_unsigned oc e1 ;
       emit_assert_unsigned oc e2 ;
       emit_assert_numeric oc e3 ;
-      let name = make_name e1 "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr e1) ;
-      let name = make_name e2 "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr e2) ;
+      emit_assert_not_null oc e1 ;
+      emit_assert_not_null oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid
 
   | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
@@ -699,15 +702,12 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_unsigned oc e1 ;
       emit_assert_unsigned oc e2 ;
       emit_assert_numeric oc e3 ;
-      let name = make_name e1 "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr e1) ;
-      let name = make_name e2 "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr e2) ;
+      emit_assert_not_null oc e1 ;
+      emit_assert_not_null oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid ;
       List.iter (fun e ->
         emit_assert_numeric oc e ;
-        let name = make_name e "NOTNULL" in
-        emit_assert_is_false ~name oc (n_of_expr e)
+        emit_assert_not_null oc e ;
       ) e4s
 
   | StatefulFun (_, _, _, ExpSmooth (e1, e2)) ->
@@ -718,8 +718,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - e2 must be numeric *)
       emit_assert_float oc e1 ;
       emit_assert_numeric oc e2 ;
-      let name = make_name e1 "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr e1) ;
+      emit_assert_not_null oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
   | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), e') ->
@@ -759,8 +758,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_numeric oc fpr ;
       emit_assert_numeric oc tim ;
       emit_assert_numeric oc dur ;
-      let name = make_name fpr "NOTNULL" in
-      emit_assert_is_false ~name oc (n_of_expr fpr) ;
+      emit_assert_not_null oc fpr ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s%a)"
           (n_of_expr tim) (n_of_expr dur)
@@ -823,8 +821,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(vector %d %s %s)" n (e_of_expr e) (n_of_expr e)) ;
       List.iter (fun e ->
-        let name = make_name e "NOTNULL" in
-        emit_assert_is_false ~name oc (n_of_expr e)
+        emit_assert_not_null oc e ;
       ) es ;
       let name = make_name e "NULL" in
       emit_assert_is_true ~name oc nid
