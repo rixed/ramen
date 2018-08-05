@@ -303,6 +303,8 @@ and stateful_fun =
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
   | Last of int * t * t list
+  (* Build a list with all values from the group *)
+  | Group of t
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
@@ -667,6 +669,12 @@ let rec print with_types oc =
       (print with_types) e
       print_by es ;
     add_types t
+  | StatefulFun (t, g, n, Group e) ->
+    Printf.fprintf oc "GROUP%s%s %a"
+      (sl g) (sn n)
+      (print with_types) e ;
+    add_types t
+
   | GeneratorFun (t, Split (e1, e2)) ->
     Printf.fprintf oc "split(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
@@ -695,7 +703,8 @@ let fold_subexpressions f i expr =
   | StatefulFun (_, _, _, AggrAnd e) | StatefulFun (_, _, _, AggrOr e)
   | StatefulFun (_, _, _, AggrFirst e) | StatefulFun (_, _, _, AggrLast e)
   | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _))
-  | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) ->
+  | StatefulFun (_, _, _, AggrHistogram (e, _, _, _))
+  | StatefulFun (_, _, _, Group e) ->
       f i e
 
   | StatefulFun (_, _, _, AggrPercentile (e1, e2))
@@ -1121,6 +1130,10 @@ struct
         StatefulFun (make_typ "first aggregation", g, n, AggrFirst e)) |||
      (afun1_sf ~def_state:LocalState "last" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "last aggregation", g, n, AggrLast e)) |||
+     (afun1_sf ~def_state:LocalState "group" >>: fun ((g, n), e) ->
+        StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
+     (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
+        StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
      ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
       afun1_sf ~def_state:LocalState "percentile" >>: fun (p, ((g, n), e)) ->
         StatefulFun (make_num_typ "percentile aggregation",

@@ -1043,6 +1043,16 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        * https://github.com/rixed/ramen/issues/305 *)
       ((None, Some false, e) ::
        List.map (fun e -> None, Some false, e) es)
+  | StatefulFun (op_typ, _, _, Group e) ->
+    let ret_typ lst =
+      let typ_e = List.hd lst in
+      (* FIXME: element nullability should be the same as [typ_e],
+       * unless we skill nulls in case it is false, but then the nullability
+       * of the list itself is true. Fixed in SMT typer. *)
+      TList { structure = typ_e ; nullable = Some false } in
+    (* FIXME: nullability should depend on skip_nulls, fixed in SMT *)
+    check_op op_typ ret_typ ~propagate_null:true
+      [ None, None, e ]
   | StatefulFun (op_typ, _, _, AggrHistogram (a, _, _, _)) ->
     (* We already know the type since parsing: *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ)

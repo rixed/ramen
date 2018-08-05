@@ -826,6 +826,21 @@ let emit_constraints tuple_sizes out_fields oc e =
       let name = make_name e "NULL" in
       emit_assert_is_true ~name oc nid
 
+  | StatefulFun (_, _, skip_nulls, Group g) ->
+      (* - The result is a list which elements have the exact same type as g;
+       * - The result is nullable if we skip nulls and g is nullable.
+       * Note: It is possible to build as an immediate value a vector of
+       * zero length (although, actually it's not), but it is not possible
+       * to build an empty list. So Group will, under any circumstance,
+       * never return an empty list. The only possible way to build an
+       * empty list is by skipping nulls, but then is we skip all nulls
+       * it will be null. *)
+      emit_assert_id_eq_smt2 eid oc
+        (Printf.sprintf "(list %s %s)"
+          (e_of_expr g) (if skip_nulls then "false" else n_of_expr g)) ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(and %b %s)" skip_nulls (n_of_expr g))
+
   | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) ->
       (* e must be numeric *)
       emit_assert_numeric oc e ;

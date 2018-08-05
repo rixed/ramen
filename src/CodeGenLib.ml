@@ -231,6 +231,11 @@ let last_finalize state =
       Array.of_list in
     Some values
 
+let group_add lst x = x :: lst
+let group_finalize = function
+  | [] -> None
+  | lst -> Some (Array.of_list lst)
+
 let strftime ?(gmt=false) str tim =
   let open Unix in
   let tm = (if gmt then gmtime else localtime) tim in

@@ -1098,6 +1098,23 @@ and emit_expr ?state ~context ~opc oc expr =
     emit_functionN ~impl_return_nullable:true ?state ~opc
       "CodeGenLib.last_finalize" [None] oc [my_state ~nullable:false g]
 
+  (* Grouping operation: accumulate all values in a list, that we initialize
+   * empty. At finalization, an empty list means we skipped all values ;
+   * and we return Null in that case. Note that since this is an aggregate
+   * function, there is no way ever to commit or use (finalize) a function
+   * before it's been sent at least one value. *)
+  | InitState, StatefulFun (_, _, _, Group e), _ ->
+    Printf.fprintf oc "[]"
+  | UpdateState, StatefulFun (_, g, n, Group e), _ ->
+    maybe_skip_nulls ?state ~opc expr n g [ e ] oc
+      (emit_functionN ?state ~opc ~impl_return_nullable:true
+        "CodeGenLib.group_add" [None; None]) [my_state g; e]
+  | Finalize, StatefulFun (_, g, _, Group _), _ ->
+    Printf.fprintf oc "%s(%a)"
+      (if is_nullable expr then "" else "Option.get")
+      (emit_functionN ?state ~opc ~impl_return_nullable:true
+        "CodeGenLib.group_finalize" [None]) [my_state g]
+
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name t).
    * In normal expressions we merely refer to that free variable. *)
@@ -1938,6 +1955,8 @@ let otype_of_state e =
         print_expr_typ e
         print_expr_typ (List.hd es)
     (* Not optional as null is handled by last_finalize directly *)
+  | StatefulFun (_, _, _, Group e) ->
+    Printf.sprintf2 "%a list" print_expr_typ e
   | StatefulFun (_, _, _, AggrHistogram _) -> "CodeGenLib.histogram"^ optional
   | _ -> t ^ optional
 
