@@ -613,9 +613,15 @@ and emit_expr ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc (omod_of_type t ^".div") [Some t; Some t] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Reldiff, e1, e2), Some TFloat ->
     emit_functionN ?state ~opc "CodeGenLib.reldiff" [Some TFloat; Some TFloat] oc [e1; e2]
-  | Finalize, StatelessFun2 (_, Pow, e1, e2),
-    Some (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+  | Finalize, StatelessFun2 (_, Pow, e1, e2), Some (TFloat|TI32|TI64 as t) ->
     emit_functionN ?state ~opc (omod_of_type t ^".( ** )") [Some t; Some t] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, Pow, e1, e2), Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI128 as t) ->
+    (* For all others we exponentiate via floats: *)
+    Printf.fprintf oc "(%a %a)"
+      (conv_from_to ~nullable:(Option.get nullable)) (TFloat, t)
+      (emit_functionN ?state ~opc "( ** )"
+        [Some TFloat; Some TFloat])  [e1; e2]
+
   | Finalize, StatelessFun2 (_, Mod, e1, e2),
     Some (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN ?state ~opc (omod_of_type t ^".rem") [Some t; Some t] oc [e1; e2]
