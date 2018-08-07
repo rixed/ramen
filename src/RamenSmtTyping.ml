@@ -624,36 +624,45 @@ let emit_constraints tuple_sizes out_fields oc e =
                 sz n eid' nid))
             tuple_sizes)
 
-  | StatelessFun2 (_, VecGet, n, e) ->
-      (* TODO: replaces NTH entirely? NTH(n) == Get(n-1) *)
+  | StatelessFun2 (_, VecGet, i, x) ->
+      (* TODO: replaces NTH entirely? NTH(i) == Get(i-1) *)
       (* Typing rules:
-       * - e must be a vector or a list;
-       * - n must be an unsigned;
-       * - if e is a vector and n is a constant, then n must
+       * - x must be a vector or a list;
+       * - i must be an unsigned;
+       * - if x is a vector and i is a constant, then i must
        *   be less than its length;
-       * - the resulting type is the same as the selected type. *)
-      emit_assert_numeric oc n ;
-      let name = make_name e "GETTABLE" in
-      (match int_of_const n with
+       * - the resulting type is the same as the selected type;
+       * - if x is a vector and i a constant, then the result has the
+       *   same nullability of x or x's elements; in all other cases, the
+       *   result is nullable. *)
+      emit_assert_numeric oc i ;
+      let name = make_name x "GETTABLE" in
+      (match int_of_const i with
       | None ->
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(let ((tmp %s)) \
                                  (or (and ((_ is vector) tmp) \
-                                          (= (vector-type tmp) %s))\n\
+                                          (= (vector-type tmp) %s))\
                                      (and ((_ is list) tmp) \
                                           (= (list-type tmp) %s))))"
-              (e_of_expr e) eid eid)
-      | Some n ->
+              (e_of_expr x) eid eid) ;
+          emit_assert_nullable oc e
+      | Some i ->
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(let ((tmp %s)) \
                                  (or (and ((_ is vector) tmp) \
-                                          (> (vector-dim tmp) %d)
-                                          (= (vector-type tmp) %s))
+                                          (> (vector-dim tmp) %d) \
+                                          (= (vector-type tmp) %s) \
+                                          (= (or %s (vector-nullable tmp)) %s)) \
                                      (and ((_ is list) tmp) \
-                                          (= (list-type tmp) %s))))"
-              (e_of_expr e) n eid eid)) ;
-      emit_assert_id_eq_smt2 nid oc
-        (Printf.sprintf "(or %s %s)" (n_of_expr n) (n_of_expr e))
+                                          (= (list-type tmp) %s) \
+                                          %s)))"
+              (e_of_expr x)
+              i
+              eid
+              (n_of_expr x) nid
+              eid
+              nid))
 
   | StatelessFun1 (_, (BeginOfRange|EndOfRange), e) ->
       (* e is any kind of cidr *)
