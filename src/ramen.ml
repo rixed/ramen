@@ -4,6 +4,7 @@
  *)
 open Cmdliner
 open Batteries
+open RamenHelpers
 
 (*
  * Common options
@@ -644,6 +645,15 @@ let variants =
     info ~doc:RamenConsts.CliInfo.variants "variants")
 
 (*
+ * Display internal instrumentation. Also an option of various subsystems.
+ *)
+
+let stats =
+  Term.(
+    (const RamenCliCmd.stats $ copts),
+    info ~doc:RamenConsts.CliInfo.stats "stats")
+
+(*
  * Autocompletion
  *)
 
@@ -670,19 +680,20 @@ let default =
         info "Ramen" ~version ~doc ~sdocs)
 
 let () =
+  mkdir_all RamenConsts.binocle_save_dir ;
   Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
     supervisor ; gc ; httpd ; notifier ;
     notify ; compile ; run ; kill ;
     tail ; timeseries ; timerange ; ps ;
     test ; dequeue ; summary ; repair ; links ;
-    variants ; autocomplete ; expand
+    variants ; stats ; autocomplete ; expand
   ] with `Error _ -> exit 1
        | `Version | `Help -> exit 0
        | `Ok f -> (
           try f ()
           with Exit -> exit 0
-             | RamenHelpers.Timeout ->
+             | Timeout ->
                  Printf.eprintf "%s\n" (RamenLog.red "Timed out") ;
                  exit 1
              | Failure msg ->

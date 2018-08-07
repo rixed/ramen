@@ -75,6 +75,7 @@ struct
   let variants = "Display the experimenter identifier and variants"
   let autocomplete = "Autocomplete the given command"
   let gc = "Delete old or unused files"
+  let stats = "Display internal statistics"
 
   (* Options *)
   let help = "Show manual page"
@@ -193,3 +194,5 @@ let worker_argv0 = "ramen worker:"
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)
 let cache_factors_ttl = 30.
+
+let binocle_save_dir = "/tmp/binocle"

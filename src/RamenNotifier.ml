@@ -41,20 +41,24 @@ open Binocle
 (* Number of notifications of each types: *)
 
 let stats_count =
-  IntCounter.make RamenConsts.MetricNames.notifs_count
+  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
+    RamenConsts.MetricNames.notifs_count
     "Number of notifications sent, per channel."
 
 let stats_send_fails =
-  IntCounter.make RamenConsts.MetricNames.notifs_send_fails
+  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
+    RamenConsts.MetricNames.notifs_send_fails
     "Number of messages that could not be sent due to error."
 
 let stats_team_fallbacks =
-  IntCounter.make RamenConsts.MetricNames.team_fallbacks
-    "Number of times the default time was selected because the \
+  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
+    RamenConsts.MetricNames.team_fallbacks
+    "Number of times the default team was selected because the \
     configuration was not specific enough"
 
 let stats_notifs_cancelled =
-  IntCounter.make RamenConsts.MetricNames.notifs_cancelled
+  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
+    RamenConsts.MetricNames.notifs_cancelled
     "Number of notifications not send, per reason"
 
 type http_cmd_method = HttpCmdGet | HttpCmdPost

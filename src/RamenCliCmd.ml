@@ -687,6 +687,10 @@ let graphite_expand conf query () =
   display "" te ;
   Printf.printf "\n"
 
+(*
+ * Display various internal informations
+ *)
+
 let variants conf () =
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
@@ -706,3 +710,6 @@ let variants conf () =
     done ;
     Printf.printf "\n"
   ) all_experiments
+
+let stats conf () =
+  Binocle.display_console ()
