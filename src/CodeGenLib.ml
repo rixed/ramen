@@ -23,8 +23,9 @@ let parameter_value ~def scalar_parser name =
   | s ->
       try scalar_parser s
       with e ->
-        let what = Printf.sprintf "Cannot parse value %s for parameter %s: %s"
-                     s name (Printexc.to_string e) in
+        let what =
+          Printf.sprintf "Cannot parse value %s for parameter %s: %s"
+                         s name (Printexc.to_string e) in
         print_exception ~what e ;
         exit RamenConsts.ExitCodes.cannot_parse_param
 

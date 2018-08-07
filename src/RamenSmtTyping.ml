@@ -457,10 +457,11 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, _, (AggrMin e|AggrMax e)) ->
       (* - e must be sortable;
-       * - the result has its type *)
+       * - The result has its type;
+       * - The result nullability is set by propagation from e. *)
       emit_assert_sortable oc e ;
       emit_assert_id_eq_id (e_of_expr e) oc eid ;
-      emit_assert_id_eq_id (n_of_expr e) oc nid
+      emit_assert_id_eq_id nid oc (n_of_expr e)
 
   | StatefulFun (_, _, _, (AggrFirst e|AggrLast e)) ->
       (* e has the same type as that of the result: *)
@@ -468,7 +469,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
   | StatefulFun (_, _, _, (AggrSum e|AggrAvg e)) ->
-      (* The result must not be smaller than e *)
+      (* - The result must not be smaller than e;
+       * - The result nullability is the same as that of e. *)
       emit_assert_id_le_id (e_of_expr e) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
@@ -490,7 +492,8 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, _, (AggrAnd e | AggrOr e))
   | StatelessFun1 (_, Not, e) ->
-      (* The only argument must be boolean: *)
+      (* - The only argument must be boolean;
+       * - The resulting nullability depends solely on that of e. *)
       let name = make_name e "BOOL" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool ;
       emit_assert_id_eq_id nid oc (n_of_expr e)
@@ -687,9 +690,9 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
-       * - The result is only nullable by propagation - if the lag goes
-       *   beyond the start of the window then lag merely returns the oldest
-       *   value. *)
+       * - The result is only nullable by skip or propagation, for if the
+       *   lag goes beyond the start of the window then lag merely returns
+       *   the oldest value. (FIXME: should return NULL in that case) *)
       emit_assert_integer oc e1 ;
       emit_assert_id_eq_id (e_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
@@ -700,7 +703,9 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
        * - e3 must be numeric;
-       * - Neither e1 or e2 can be NULL. *)
+       * - Neither e1 or e2 can be NULL;
+       * - The result type is known from parsing to be float;
+       * - The result nullability propagates from e3. *)
       emit_assert_unsigned oc e1 ;
       emit_assert_unsigned oc e2 ;
       emit_assert_numeric oc e3 ;
@@ -1254,7 +1259,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
      ; Children-Parent relationships:\n\
      %s\n\
      ; Closing words: solve and prints the answer:\n\
-     (check-sat)\n\
+     (check-sat) ; also experiment with: (check-sat-using smt)\n\
      (get-unsat-core)\n\
      (get-model)\n"
     (if optimize then "true" else "false")

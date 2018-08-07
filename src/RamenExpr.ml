@@ -131,12 +131,13 @@ type t =
    * an internal state are aggregate functions. There is actually little
    * need to distinguish.
    *
-   * skip_nulls is a flag (default: true) controlling whether the operator
-   * should not update its state on NULL values. This is valid regardless of
-   * the nullability of that parameters (or we would need a None default).
-   * This does not change the nullability of the result of the operator,
-   * as even when NULLs are skipped the result can still be NULL, when all
-   * inputs were NULLs.
+   * skip_nulls is a flag (default: true to ressemble SQL) controlling whether
+   * the operator should not update its state on NULL values. This is valid
+   * regardless of the nullability of that parameters (or we would need a None
+   * default).  This does not change the nullability of the result of the
+   * operator (so has no effect on typing), as even when NULLs are skipped the
+   * result can still be NULL, when all inputs were NULLs. And if no input are
+   * nullable, then skip null does nothing
    *
    * When a parameter to a function with state is another function with state
    * then this second function must deliver a value at every step. This is OK
@@ -362,8 +363,7 @@ let rec print with_types oc =
   and sl =
     (* TODO: do not display the default *)
     function LocalState -> " locally " | GlobalState -> " globally "
-  and sn =
-    function true -> " skip nulls " | false -> " no skip nulls "
+  and sn n = if n then " skip nulls " else " no skip nulls "
   and print_args =
     List.print ~first:"(" ~last:")" ~sep:", " (print with_types)
   in
@@ -1108,7 +1108,8 @@ struct
   and higher_prec_right_assoc m =
     let m = "arithmetic operator" :: m in
     let op = char '^'
-    and reduce e1 _ e2 = StatelessFun2 (make_num_typ "exponentiation", Pow, e1, e2) in
+    and reduce e1 _ e2 =
+      StatelessFun2 (make_num_typ "exponentiation", Pow, e1, e2) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
