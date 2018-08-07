@@ -4,6 +4,7 @@ open Stdint
 open RamenLog
 open Lwt
 open RamenHelpers
+open RamenNullable
 
 let () =
   async_exception_hook := (fun exn ->
@@ -42,47 +43,36 @@ let age_i64 = Int64.of_float % age_float
 let age_i128 = Int128.of_float % age_float
 (* FIXME: typecheck age_eth, age_ipv4 etc out of existence *)
 
-let aggr_min x = function
+let aggr_min s x =
+  match s with
   | None -> Some x
   | Some y -> Some (min x y)
 
-let aggr_max x = function
+let aggr_max s x =
+  match s with
   | None -> Some x
   | Some y -> Some (max x y)
 
-let aggr_first x = function
+let aggr_first s x =
+  match s with
   | None -> Some x
   | y -> y
 
-let aggr_last x _ = Some x
+let aggr_last _ x = Some x
 
-(* State is count * sum, inited with 0, 0. *)
+(* State is count * sum *)
+let avg_init = 0, 0.
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
-(* Initialized with an empty list *)
-let percentile_add prev x = x::prev
-let percentile_finalize pct lst =
-  let arr = Array.of_list lst in
+(* Compute the p percentile of an array of anything: *)
+let percentile p arr =
+  assert (p >= 0.0 && p <= 100.0) ;
   Array.fast_sort Pervasives.compare arr ;
-  assert (pct >= 0.0 && pct <= 100.0) ;
-  let pct = pct *. 0.01 in
-  let idx = round_to_int (pct *. float_of_int (Array.length arr - 1)) in
+  let p = p *. 0.01 in
+  let idx =
+    round_to_int (p *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
-(* Specialized version for floats that deal with NaNs: *)
-let float_percentile_add prev x =
-  (* Inf values we can deal with but nan have only two possible outcome:
-   * either we decide to make the whole percentile go nan, or we ignore them.
-   * I believe that most of the time we got a nan is because a measurement
-   * was actually missing, so let's skip them: *)
-  if Float.is_nan x then prev else x::prev
-let float_percentile_finalize pct lst =
-  if lst = [] then
-    (* This is annoying, we've skipped all the values! In this case it
-     * would make sense to have the percentile function return NULL.
-     * For now, just returns 0 and see. *)
-    0.
-  else percentile_finalize pct lst
 
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
@@ -90,151 +80,167 @@ let split by what k =
   if what = "" then k what else
   String.nsplit ~by what |> Lwt_list.iter_s k
 
+module Remember = struct
 (* Remember values *)
-type remember_state =
-  { mutable filter : RamenBloomFilter.sliced_filter option ;
-    false_positive_ratio : float ;
-    duration : float ;
-    mutable last_remembered : bool }
+  type state =
+    { mutable filter : RamenBloomFilter.sliced_filter option ;
+      false_positive_ratio : float ;
+      duration : float ;
+      mutable last_remembered : bool }
 
-let remember_init false_positive_ratio duration =
-  (* We cannot init the bloom filter before we receive the first tuple
-   * since we need starting time: *)
-  { filter = None ;
-    false_positive_ratio ;
-    duration ;
-    last_remembered = false }
+  let init false_positive_ratio duration =
+    (* We cannot init the bloom filter before we receive the first tuple
+     * since we need starting time: *)
+    { filter = None ;
+      false_positive_ratio ;
+      duration ;
+      last_remembered = false }
 
-let remember_really_init st tim =
-  let num_slices = 10 in
-  let start_time = tim -. st.duration
-  and slice_width = st.duration /. float_of_int num_slices in
-  let filter = RamenBloomFilter.make_sliced start_time num_slices slice_width
-                                st.false_positive_ratio in
-  st.filter <- Some filter ;
-  filter
+  let really_init st tim =
+    let num_slices = 10 in
+    let start_time = tim -. st.duration
+    and slice_width = st.duration /. float_of_int num_slices in
+    let filter =
+      RamenBloomFilter.make_sliced start_time num_slices slice_width
+                                   st.false_positive_ratio in
+    st.filter <- Some filter ;
+    filter
 
-let remember_add st tim es =
-  let filter =
-    match st.filter with
-    | None -> remember_really_init st tim
-    | Some f -> f in
-  st.last_remembered <- RamenBloomFilter.remember filter tim es ;
-  st
+  let add st tim es =
+    let filter =
+      match st.filter with
+      | None -> really_init st tim
+      | Some f -> f in
+    st.last_remembered <- RamenBloomFilter.remember filter tim es ;
+    st
 
-let remember_finalize st = st.last_remembered
+  let finalize st = st.last_remembered
+end
 
-(* Distinct op values *)
-type 'a distinct_state =
-  { distinct_values : ('a, unit) Hashtbl.t ;
-    mutable last_was_distinct : bool }
+module Distinct = struct
+  (* Distinct op values *)
+  type 'a state =
+    { distinct_values : ('a, unit) Hashtbl.t ;
+      mutable last_was_distinct : bool }
 
-let distinct_init () =
-  { distinct_values = Hashtbl.create 31 ; last_was_distinct = false }
+  let init () =
+    { distinct_values = Hashtbl.create 31 ; last_was_distinct = false }
 
-let distinct_add st x =
-  (* TODO: a Hashtbl.modify which callback also returns the return value *)
-  st.last_was_distinct <- not (Hashtbl.mem st.distinct_values x) ;
-  Hashtbl.add st.distinct_values x () ;
-  st
+  let add st x =
+    (* TODO: a Hashtbl.modify which callback also returns the return value *)
+    st.last_was_distinct <- not (Hashtbl.mem st.distinct_values x) ;
+    Hashtbl.add st.distinct_values x () ;
+    st
 
-let distinct_finalize st = st.last_was_distinct
+  let finalize st = st.last_was_distinct
+end
 
-(* Heavy Hitters wrappers: *)
+module Top = struct
+  (* Heavy Hitters wrappers: *)
 
-let heavy_hitters_init n duration =
-  let n = Uint32.to_int n in
-  assert (duration > 0.) ;
-  let max_size = 10 * n in (* TODO? *)
-  (* We want an entry weight to be halved after [duration]: *)
-  let decay = -. log 0.5 /. duration in
-  HeavyHitters.make ~max_size ~decay
+  let init n duration =
+    let n = Uint32.to_int n in
+    assert (duration > 0.) ;
+    let max_size = 10 * n in (* TODO? *)
+    (* We want an entry weight to be halved after [duration]: *)
+    let decay = -. log 0.5 /. duration in
+    HeavyHitters.make ~max_size ~decay
 
-let heavy_hitters_add s t w x =
-  HeavyHitters.add s t w x ;
-  s
+  let add s t w x =
+    HeavyHitters.add s t w x ;
+    s
 
-let heavy_hitters_rank s n x =
-  HeavyHitters.rank (Uint32.to_int n) x s
+  let rank s n x =
+    HeavyHitters.rank (Uint32.to_int n) x s
 
-let heavy_hitters_is_in_top s n x =
-  HeavyHitters.is_in_top (Uint32.to_int n) x s
+  let is_in_top s n x =
+    HeavyHitters.is_in_top (Uint32.to_int n) x s
+end
 
 let hash x = Hashtbl.hash x |> Int64.of_int
 
 (* An operator used only for debugging: *)
 let print strs =
+  let open RamenNullable in
   !logger.info "PRINT: %a"
     (List.print ~first:"" ~last:"" ~sep:", "
-       (fun oc s -> String.print oc (s |? "<NULL>"))) strs
+       (fun oc s -> String.print oc (s |! "<NULL>"))) strs
 
-let hysteresis_update was_ok v accept max =
-  let extr =
-    if was_ok then max else accept in
-  if max >= accept then v <= extr else v >= extr
+module Hysteresis = struct
+  let add was_ok v accept max =
+    let extr =
+      if was_ok then max else accept in
+    if max >= accept then v <= extr else v >= extr
 
-let hysteresis_finalize is_ok = is_ok
+  let finalize is_ok = is_ok
+end
 
-type histogram =
-  { min : float ; span : float ; sw : float ; num_buckets : int ;
-    histo : Uint32.t array }
+module Histogram = struct
+  type state =
+    { min : float ; span : float ; sw : float ; num_buckets : int ;
+      histo : Uint32.t array }
 
-let histogram_init min max num_buckets =
-  let histo = Array.create (num_buckets + 2) Uint32.zero in
-  let span = max -. min in
-  let sw = float_of_int num_buckets /. span in
-  { min ; span ; sw ; num_buckets ; histo }
+  let init min max num_buckets =
+    let histo = Array.create (num_buckets + 2) Uint32.zero in
+    let span = max -. min in
+    let sw = float_of_int num_buckets /. span in
+    { min ; span ; sw ; num_buckets ; histo }
 
-let histogram_add h x =
-  let x = x -. h.min in
-  let bucket =
-    if x < 0. then 0 else
-    if x >= h.span then h.num_buckets + 1 else
-    let b = int_of_float (x *. h.sw) in
-    assert (b >= 0 && b < h.num_buckets) ;
-    b + 1 in
-  h.histo.(bucket) <- Uint32.succ h.histo.(bucket) ;
-  h
+  let add h x =
+    let x = x -. h.min in
+    let bucket =
+      if x < 0. then 0 else
+      if x >= h.span then h.num_buckets + 1 else
+      let b = int_of_float (x *. h.sw) in
+      assert (b >= 0 && b < h.num_buckets) ;
+      b + 1 in
+    h.histo.(bucket) <- Uint32.succ h.histo.(bucket) ;
+    h
 
-let histogram_finalize h = h.histo
+  let finalize h = h.histo
+end
 
-type ('a, 'b) last_state =
-  { (* Ordered according to some generic value, smaller first, and we
-       will keep only the N bigger values: *)
-    values : ('a * 'b) RamenHeap.t ;
-    max_length : int (* The number of values we want to return *) ;
-    length : int (* how many values are there already *) }
+module Last = struct
+  type ('a, 'b) state =
+    { (* Ordered according to some generic value, smaller first, and we
+         will keep only the N bigger values: *)
+      values : ('a * 'b) RamenHeap.t ;
+      max_length : int (* The number of values we want to return *) ;
+      length : int (* how many values are there already *) }
 
-let last_init n =
-  { values = RamenHeap.empty ; max_length = n ; length = 0 }
+  let init n =
+    let n = Uint32.to_int n in
+    { values = RamenHeap.empty ; max_length = n ; length = 0 }
 
-let last_cmp (_, by1) (_, by2) = compare by1 by2
+  let cmp (_, by1) (_, by2) = compare by1 by2
 
-let last_add state x by =
-  let values = RamenHeap.add last_cmp (x, by) state.values in
-  assert (state.length <= state.max_length) ;
-  if state.length < state.max_length then
-    { state with values ; length = state.length + 1 }
-  else
-    { state with values = RamenHeap.del_min last_cmp values }
+  let add state x by =
+    let values = RamenHeap.add cmp (x, by) state.values in
+    assert (state.length <= state.max_length) ;
+    if state.length < state.max_length then
+      { state with values ; length = state.length + 1 }
+    else
+      { state with values = RamenHeap.del_min cmp values }
 
-(* Must return an optional vector of max_length values: *)
-let last_finalize state =
-  if state.length < state.max_length then None
-  else
-    (* FIXME: faster conversion from heap to array: *)
-    let values =
-      RamenHeap.fold_left last_cmp (fun lst (x, _) ->
-        x :: lst
-      ) [] state.values |>
-      List.rev |>
-      Array.of_list in
-    Some values
+  (* Must return an optional vector of max_length values: *)
+  let finalize state =
+    if state.length < state.max_length then None
+    else
+      (* FIXME: faster conversion from heap to array: *)
+      let values =
+        RamenHeap.fold_left cmp (fun lst (x, _) ->
+          x :: lst
+        ) [] state.values |>
+        List.rev |>
+        Array.of_list in
+      Some values
+end
 
-let group_add lst x = x :: lst
-let group_finalize = function
-  | [] -> None
-  | lst -> Some (Array.of_list lst)
+module Group = struct
+  type 'a state = 'a list
+  let add lst x = x :: lst
+  let finalize = Array.of_list
+end
 
 let strftime ?(gmt=false) str tim =
   let open Unix in
@@ -323,11 +329,11 @@ struct
       else count mod Array.length prevs in
     prevs.(idx)
 
-  let avg p n t =
+  let avg t p n =
     let p = Uint32.to_int p and n = Uint32.to_int n in
     (fold p n t 0. (+.)) /. float_of_int n
 
-  let linreg p n t =
+  let linreg t p n =
     let p = Uint32.to_int p and n = Uint32.to_int n in
     let b1n, b1d, last =
       let x_avg = float_of_int (n - 1) /. 2. in
@@ -346,7 +352,7 @@ struct
    * the predicted value and an array of all predictors value. *)
   let init_multi_linreg p n x preds = init p n (x, preds)
   let add_multi_linreg t x preds = add t (x, preds)
-  let multi_linreg p n t =
+  let multi_linreg t p n =
     let p = Uint32.to_int p and n = Uint32.to_int n in
     let open Lacaml.D in
     (* We first want to know how many observations and predictors we have: *)

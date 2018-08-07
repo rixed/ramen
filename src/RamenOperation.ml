@@ -560,7 +560,7 @@ struct
     | StatefulFun (_, _, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
     | StatefulFun (_, _, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
     | StatefulFun (_, _, _, AggrHistogram (Field (_, _, field), _, _, _)) -> force_public field ^"_histogram"
-    | StatefulFun (_, _, _, AggrPercentile (Const (_, p), Field (_, _, field)))
+    | StatelessFun2 (_, Percentile, Const (_, p), Field (_, _, field))
       when RamenTypes.is_round_integer p ->
       Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenTypes.print p)
     | StatelessFunMisc (_, Print es) when es <> [] ->

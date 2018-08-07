@@ -232,6 +232,8 @@ and stateless_fun2 =
   | In
   (* Takes format then time: *)
   | Strftime
+  (* TODO: several percentiles. Requires multi values returns. *)
+  | Percentile
 
 and case_alternative =
   { case_cond : t (* Must be bool *) ;
@@ -259,11 +261,9 @@ and stateful_fun =
   | AggrOr  of t
   | AggrFirst of t
   | AggrLast of t
-  (* TODO: several percentiles. Requires multi values returns. *)
-  | AggrPercentile of t * t
   | AggrHistogram of t * float * float * int
   (* value retarded by k steps. If we have had less than k past values
-   * then return the first we've had. *)
+   * then return the first we've had. *)(* FIXME: then return NULL *)
   | Lag of t * t
   (* If the current time is t, the seasonal, moving average of period p on k
    * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
@@ -297,12 +297,12 @@ and stateful_fun =
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
   (* Top-k operation *)
-  | Top of { want_rank : bool ; n : t ; what : t list ; by : t ;
+  | Top of { want_rank : bool ; c : t ; what : t list ; by : t ;
              time : t ; duration : t }
   (* Last N e1 [BY e2, e3...] - or by arrival.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
-  | Last of int * t * t list
+  | Last of t * t * t list
   (* Build a list with all values from the group *)
   | Group of t
 
@@ -546,6 +546,10 @@ let rec print with_types oc =
 		Printf.fprintf oc "get(%a, %a)"
       (print with_types) e1 (print with_types) e2 ;
     add_types t
+  | StatelessFun2 (t, Percentile, e1, e2) ->
+    Printf.fprintf oc "%ath percentile(%a)"
+      (print with_types) e1 (print with_types) e2 ;
+    add_types t
   | StatelessFunMisc (t, Like (e, p)) ->
 		Printf.fprintf oc "(%a) LIKE %S"
       (print with_types) e p ;
@@ -590,10 +594,6 @@ let rec print with_types oc =
   | StatefulFun (t, g, n, AggrLast e) ->
     Printf.fprintf oc "last%s%s(%a)"
       (sl g) (sn n) (print with_types) e ;
-    add_types t
-  | StatefulFun (t, g, n, AggrPercentile (p, e)) ->
-    Printf.fprintf oc "%ath percentile%s%s(%a)"
-      (print with_types) p (sl g) (sn n) (print with_types) e ;
     add_types t
   | StatefulFun (t, g, n, AggrHistogram (what, min, max, num_buckets)) ->
     Printf.fprintf oc "histogram%s%s(%a, %g, %g, %d)"
@@ -648,7 +648,7 @@ let rec print with_types oc =
       (print with_types) accept
       (print with_types) max ;
     add_types t
-  | StatefulFun (t, g, n, Top { want_rank ; n = c ; what ; by ; time ;
+  | StatefulFun (t, g, n, Top { want_rank ; c ; what ; by ; time ;
                                 duration }) ->
     Printf.fprintf oc "%s %a in top %a %s%sby %a in the last %a at time %a"
       (if want_rank then "rank of" else "is")
@@ -659,13 +659,14 @@ let rec print with_types oc =
       (print with_types) duration
       (print with_types) time ;
     add_types t
-  | StatefulFun (t, g, n, Last (c, e, es) ) ->
+  | StatefulFun (t, g, n, Last (c, e, es)) ->
     let print_by oc es =
       if es <> [] then
         Printf.fprintf oc " BY %a"
           (List.print ~first:"" ~last:"" ~sep:", " (print with_types)) es in
-    Printf.fprintf oc "LAST %d %s%s%a%a"
-      c (sl g) (sn n)
+    Printf.fprintf oc "LAST %a %s%s%a%a"
+      (print with_types) c
+      (sl g) (sn n)
       (print with_types) e
       print_by es ;
     add_types t
@@ -707,7 +708,6 @@ let fold_subexpressions f i expr =
   | StatefulFun (_, _, _, Group e) ->
       f i e
 
-  | StatefulFun (_, _, _, AggrPercentile (e1, e2))
   | StatelessFun2 (_, _, e1, e2)
   | StatefulFun (_, _, _, Lag (e1, e2))
   | StatefulFun (_, _, _, ExpSmooth (e1, e2))
@@ -724,11 +724,11 @@ let fold_subexpressions f i expr =
       List.fold_left f i (e1::e2::e3::e4s)
 
   | StatefulFun (_, _, _,
-      Top { n = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s }) ->
+      Top { c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s }) ->
       List.fold_left f i (e1::e2::e3::e4::e5s)
 
-  | StatefulFun (_, _, _, Last (_, e, es)) ->
-      List.fold_left f i (e::es)
+  | StatefulFun (_, _, _, Last (c, e, es)) ->
+      List.fold_left f i (c::e::es)
 
   | Case (_, alts, else_) ->
       let i =
@@ -765,6 +765,145 @@ let unpure_fold u f e =
 let is_generator =
   fold_by_depth (fun is e ->
     is || match e with GeneratorFun _ -> true | _ -> false) false
+
+(* Unlike is_const, which merely compare the given expression with Const,
+ * this looks recursively for values that can change from input to input. *)
+let is_constant e =
+  try
+    iter (function
+      | Field (_, tuple, _) when RamenLang.tuple_has_type_input !tuple ->
+          raise Exit
+      | StatelessFun0 (_, (Now | Random | EventStart | EventStop))
+      | StatelessFun1 (_, Age, _)
+      | StatefulFun _
+      | GeneratorFun _ ->
+          raise Exit
+      | _ -> ()) e ;
+    true
+  with Exit -> false
+
+(* FIXME: store the type and the expression separately! *)
+
+let rec map_type ?(recurs=true) f = function
+  | Const (t, a) -> Const (f t, a)
+  | Tuple (t, es) ->
+    Tuple (f t,
+           if recurs then List.map (map_type ~recurs f) es else es)
+  | Vector (t, es) ->
+    Vector (f t,
+            if recurs then List.map (map_type ~recurs f) es else es)
+  | Field (t, a, b) -> Field (f t, a, b)
+  | StateField _ as e -> e
+
+  | Case (t, alts, else_) ->
+    Case (f t,
+          (if recurs then List.map (fun alt ->
+             { case_cond = map_type ~recurs f alt.case_cond ;
+               case_cons = map_type ~recurs f alt.case_cons }) alts
+           else alts),
+          if recurs then Option.map (map_type ~recurs f) else_ else else_)
+  | Coalesce (t, es) ->
+    Coalesce (f t,
+              if recurs then List.map (map_type ~recurs f) es else es)
+
+  | StatefulFun (t, g, n, AggrMin a) ->
+    StatefulFun (f t, g, n, AggrMin (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrMax a) ->
+    StatefulFun (f t, g, n, AggrMax (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrSum a) ->
+    StatefulFun (f t, g, n, AggrSum (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrAvg a) ->
+    StatefulFun (f t, g, n, AggrAvg (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrAnd a) ->
+    StatefulFun (f t, g, n, AggrAnd (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrOr a) ->
+    StatefulFun (f t, g, n, AggrOr (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrFirst a) ->
+    StatefulFun (f t, g, n, AggrFirst (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrLast a) ->
+    StatefulFun (f t, g, n, AggrLast (if recurs then map_type ~recurs f a else a))
+  | StatefulFun (t, g, n, AggrHistogram (a, min, max, num_buckets)) ->
+    StatefulFun (f t, g, n, AggrHistogram (
+        (if recurs then map_type ~recurs f a else a), min, max, num_buckets))
+  | StatefulFun (t, g, n, Lag (a, b)) ->
+    StatefulFun (f t, g, n, Lag (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b)))
+  | StatefulFun (t, g, n, MovingAvg (a, b, c)) ->
+    StatefulFun (f t, g, n, MovingAvg (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b),
+        (if recurs then map_type ~recurs f c else c)))
+  | StatefulFun (t, g, n, LinReg (a, b, c)) ->
+    StatefulFun (f t, g, n, LinReg (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b),
+        (if recurs then map_type ~recurs f c else c)))
+  | StatefulFun (t, g, n, MultiLinReg (a, b, c, d)) ->
+    StatefulFun (f t, g, n, MultiLinReg (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b),
+        (if recurs then map_type ~recurs f c else c),
+        (if recurs then List.map (map_type ~recurs f) d else d)))
+  | StatefulFun (t, g, n, Remember (fpr, tim, dur, es)) ->
+    StatefulFun (f t, g, n, Remember (
+        (if recurs then map_type ~recurs f fpr else fpr),
+        (if recurs then map_type ~recurs f tim else tim),
+        (if recurs then map_type ~recurs f dur else dur),
+        (if recurs then List.map (map_type ~recurs f) es else es)))
+  | StatefulFun (t, g, n, Distinct es) ->
+    StatefulFun (f t, g, n, Distinct
+        (if recurs then List.map (map_type ~recurs f) es else es))
+  | StatefulFun (t, g, n, ExpSmooth (a, b)) ->
+    StatefulFun (f t, g, n, ExpSmooth (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b)))
+  | StatefulFun (t, g, n, Hysteresis (a, b, c)) ->
+    StatefulFun (f t, g, n, Hysteresis (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b),
+        (if recurs then map_type ~recurs f c else c)))
+  | StatefulFun (t, g, n, Top { want_rank ; c ; what ; by ; duration ; time }) ->
+    StatefulFun (f t, g, n, Top {
+      want_rank ;
+      c = (if recurs then map_type ~recurs f c else c) ;
+      duration = (if recurs then map_type ~recurs f duration else duration) ;
+      what = (if recurs then List.map (map_type ~recurs f) what else what) ;
+      by = (if recurs then map_type ~recurs f by else by) ;
+      time = (if recurs then map_type ~recurs f time else time) })
+  | StatefulFun (t, g, n, Last (c, e, es)) ->
+    StatefulFun (f t, g, n, Last (c,
+      (if recurs then map_type ~recurs f e else e),
+      (if recurs then List.map (map_type ~recurs f) es else es)))
+  | StatefulFun (t, g, n, Group e) ->
+    StatefulFun (f t, g, n, Group (if recurs then map_type ~recurs f e else e))
+
+  | StatelessFun0 (t, cst) ->
+    StatelessFun0 (f t, cst)
+
+  | StatelessFun1 (t, cst, a) ->
+    StatelessFun1 (f t, cst, (if recurs then map_type ~recurs f a else a))
+  | StatelessFun2 (t, cst, a, b) ->
+    StatelessFun2 (f t, cst,
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b))
+  | StatelessFunMisc (t, Like (e, p)) ->
+    StatelessFunMisc (f t, Like (
+        (if recurs then map_type ~recurs f e else e), p))
+  | StatelessFunMisc (t, Max es) ->
+    StatelessFunMisc (f t, Max
+      (if recurs then List.map (map_type ~recurs f) es else es))
+  | StatelessFunMisc (t, Min es) ->
+    StatelessFunMisc (f t, Min
+      (if recurs then List.map (map_type ~recurs f) es else es))
+  | StatelessFunMisc (t, Print es) ->
+    StatelessFunMisc (f t, Print
+      (if recurs then List.map (map_type ~recurs f) es else es))
+
+  | GeneratorFun (t, Split (a, b)) ->
+    GeneratorFun (f t, Split (
+        (if recurs then map_type ~recurs f a else a),
+        (if recurs then map_type ~recurs f b else b)))
 
 module Parser =
 struct
@@ -1135,9 +1274,8 @@ struct
      (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
      ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
-      afun1_sf ~def_state:LocalState "percentile" >>: fun (p, ((g, n), e)) ->
-        StatefulFun (make_num_typ "percentile aggregation",
-                      g, n, AggrPercentile (p, e))) |||
+      afun1 "percentile" >>: fun (p, e) ->
+        StatelessFun2 (make_num_typ "percentile", Percentile, p, e)) |||
      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
         StatefulFun (make_typ "lag", g, n, Lag (e1, e2))) |||
      (afun1_sf "lag" >>: fun ((g, n), e) ->
@@ -1268,7 +1406,7 @@ struct
                        (* same nullability as what+by+time: *)
                        else make_bool_typ "is in top"),
          g, n,
-         Top { want_rank ; n = c ; what ; by ; duration ; time })) m
+         Top { want_rank ; c ; what ; by ; duration ; time })) m
 
   and in_count_field =
     (* Have a single one of them to increase the field id by only one: *)
@@ -1277,15 +1415,15 @@ struct
   and last m =
     let m = "last expression" :: m in
     (
-      strinG "last" -- blanks -+
-      pos_decimal_integer "how many last elements" ++
+      (* The quantity N disambiguates from the "last" aggregate. *)
+      strinG "last" -- blanks -+ p ++
       state_and_nulls +- opt_blanks ++ p ++
       optional ~def:[ in_count_field ] (
         blanks -- strinG "by" -- blanks -+
         several ~sep:list_sep p) >>: fun (((c, (g, n)), e), es) ->
-      if c < 0 then
-        raise (Reject "LAST number of elements must be greater than zero") ;
-      (* The result is null when the number of input is less than n: *)
+      (* We cannot check that c is_constant yet since fields have not
+       * been assigned yet. *)
+      (* The result is null when the number of input is less than c: *)
       StatefulFun (make_typ ~nullable:true "last", g, n, Last (c, e, es))
     ) m
 
@@ -1432,9 +1570,9 @@ struct
       (test_p p "start // (1_000_000 * avg_window)" |> replace_typ_in_expr)
 
     (Ok (\
-      StatefulFun (typ, LocalState, true, AggrPercentile (\
+      StatelessFun2 (typ, Percentile, \
         Field (typ, ref TupleParam, "p"),\
-        Field (typ, ref TupleUnknown, "bytes_per_sec"))),\
+        Field (typ, ref TupleUnknown, "bytes_per_sec")),\
       (26, [])))\
       (test_p p "p percentile bytes_per_sec" |> replace_typ_in_expr)
 

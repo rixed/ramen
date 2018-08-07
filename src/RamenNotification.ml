@@ -4,6 +4,7 @@ open Batteries
 open Stdint
 open RamenLog
 open RamenTuple
+open RamenNullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * the (un)serialization functions. *)
@@ -50,9 +51,9 @@ let fix_sz =
 let unserialize tx =
   let read_nullable_thing r sz tx null_i offs =
     if RingBuf.get_bit tx null_i then
-      Some (r tx offs), offs + sz
+      NotNull (r tx offs), offs + sz
     else
-      None, offs in
+      Null, offs in
   let read_nullable_float =
     let sz = sersize_of_float in
     read_nullable_thing RingBuf.read_float sz in

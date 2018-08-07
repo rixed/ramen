@@ -813,9 +813,19 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
      * types at some point, for instance strings... *)
     check_op op_typ (fun _ -> Option.get op_typ.scalar_typ) [None, None, e]
   | StatelessFun1 (op_typ, Defined, e) ->
-    check_op op_typ return_bool  ~propagate_null:false [None, Some true, e]
-  | StatefulFun (op_typ, _, _, AggrPercentile (e1, e2)) ->
-    check_op op_typ List.last [Some TFloat, None, e1 ; Some TFloat, None, e2]
+    check_op op_typ return_bool ~propagate_null:false [None, Some true, e]
+  | StatelessFun2 (op_typ, Percentile, e1, e2) ->
+    (try
+      check_op op_typ List.hd
+        [ Some TFloat, None, e1 ;
+          Some (TVec (0, { structure = TFloat ; nullable = None })), None, e2 ]
+    with SyntaxError _ as e ->
+      !logger.debug "%sPercentile not of a vector, failed with %S"
+        indent (Printexc.to_string e) ;
+      check_op op_typ List.hd
+        [ Some TFloat, None, e1 ;
+          Some (TList ({ structure = TFloat ; nullable = None })), None, e2 ])
+
   | StatelessFun2 (op_typ, (Add|Sub|Mul), e1, e2) ->
     check_op op_typ largest_structure [Some TFloat, None, e1 ; Some TFloat, None, e2]
   | StatelessFun2 (op_typ, Concat, e1, e2) ->
@@ -904,12 +914,25 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
         [ Some (TVec (0, { structure = TAny ; nullable = None })),
           None, es ])
   | StatelessFun2 (op_typ, VecGet, n, es) ->
-    check_op op_typ
+    (* Try first on a vector, then on a list: *)
+    (try check_op op_typ
       (function
         | [ _; TVec (dim, t) ] -> t.structure
         | _ -> assert false)
       [ Some TU32, None, n ;
         Some (TVec (0, { structure = TAny ; nullable = None })), None, es ]
+    with SyntaxError _ as e ->
+      !logger.debug "%sGET failed on vector with %S"
+        indent (Printexc.to_string e) ;
+      (* Try then on a list, but then the result is nullable (no more
+       * bound checks) *)
+      set_nullable exp_type true |||
+      check_op op_typ ~propagate_null:false
+        (function
+          | [ TList t ] -> t.structure
+          | _ -> assert false)
+        [ Some TU32, None, n ;
+          Some (TList { structure = TAny ; nullable = None }), None, es ])
 
   | StatelessFun1 (op_typ, (BeginOfRange|EndOfRange), e) ->
     (* Not really bullet-proof in theory since check_op may update the
@@ -1005,27 +1028,27 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
       [Some TFloat, None, meas ;
        Some TFloat, None, accept ;
        Some TFloat, None, max]
-  | StatefulFun (op_typ, _, _, Top { want_rank ; what ; by ; n ; duration ; time }) ->
+  | StatefulFun (op_typ, _, _, Top { want_rank ; what ; by ; c ; duration ; time }) ->
     (* We already know the type returned by the top operation, but maybe
      * for the nullability. But we want to ensure the top-by expression
      * can be cast to a float: *)
     let ret_type, propagate_null =
       if want_rank then
-        List.hd (* same type as n *),
+        List.hd (* same type as c *),
         false (* "RANK OF X" is always nullable *)
       else
         return_bool,
         true (* "IS IN TOP" has same nullability than [what] or [by] *)
     in
     check_op op_typ ret_type ~propagate_null
-      ((Some TNum, Some false, n) ::
+      ((Some TNum, Some false, c) ::
        (Some TFloat, None, by) ::
        (Some TFloat, Some false, duration) ::
        (Some TFloat, None, time) ::
        List.map (fun e -> None, None, e) what)
-  | StatefulFun (op_typ, _, _, Last (n, e, es)) ->
-    if n <= 0 then (
-      let e = "LAST number of elements must be greater than zero" in
+  | StatefulFun (op_typ, _, _, Last (c, e, es)) ->
+    if not (is_constant c) then (
+      let e = "LAST number of elements must be constant" in
       raise (SyntaxError (BadConstant e))) ;
     let ret_typ lst =
       let typ_e = List.hd lst in
@@ -1033,15 +1056,16 @@ let rec check_expr ?(depth=0) ~parents ~in_type ~out_type ~exp_type ~params =
        * nullability as e. Which we don't know because check_op does not
        * tell us. TODO: change check_op so that it gives us full type and
        * we return also the full type. *)
-      TVec (n, { structure = typ_e ; nullable = Some false }) in
-    (* In theory, 'Last n e1 by es` should be nullable iff any of the es
+      TList { structure = typ_e ; nullable = Some false } in
+    (* In theory, 'Last c e1 by es` should be nullable iff any of the es
      * is nullable, and become and stays null forever as soon as one es
      * is actually NULL. This is kind of useless, so we just disallow
      * ordering by a nullable field. *)
     check_op op_typ ret_typ ~propagate_null:false
       (* FIXME: No support for nullable values, see
        * https://github.com/rixed/ramen/issues/305 *)
-      ((None, Some false, e) ::
+      ((Some TU32, Some false, c) ::
+       (None, Some false, e) ::
        List.map (fun e -> None, Some false, e) es)
   | StatefulFun (op_typ, _, _, Group e) ->
     let ret_typ lst =

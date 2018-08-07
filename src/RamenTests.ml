@@ -2,6 +2,7 @@ open Batteries
 open Lwt
 open RamenHelpers
 open RamenLog
+open RamenNullable
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -171,6 +172,7 @@ let test_notifications notify_rb notif_spec =
     RamenSerialization.read_notifs ~while_ notify_rb
     (fun (worker, sent_time, event_time, notif_name, firing, certainty,
           parameters) ->
+      let firing = option_of_nullable firing in
       !logger.debug "Got %snotification from %s: %S"
         (if firing = Some false then "stopping " else "firing ")
         worker notif_name ;

@@ -74,6 +74,7 @@ RAMEN_SOURCES = \
 	src/RamenVersions.ml \
 	src/RamenConsts.ml \
 	src/RamenLog.ml \
+	src/RamenNullable.ml \
 	src/RamenHelpers.ml \
 	src/RamenHelpers.ml \
 	src/RamenExperiments.ml \
@@ -138,6 +139,7 @@ RAMEN_SOURCES = \
 CODEGENLIB_SOURCES = \
 	src/RamenConsts.ml \
 	src/RamenLog.ml \
+	src/RamenNullable.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenRWLock.ml \

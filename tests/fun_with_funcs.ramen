@@ -9,6 +9,6 @@ DEFINE f AS
     -- Private field:
     COALESCE(CO2, 300) / horsepower as _co2_per_hp,
     -- We can use out fields in stateful functions:
-    90th percentile _co2_per_hp,
-    99th percentile globally _co2_per_hp
+    90th percentile (group _co2_per_hp) as co2_per_hp_90th,
+    99th percentile (group globally _co2_per_hp) as co2_per_hp_99th
   COMMIT AFTER group.#count >= 4539;

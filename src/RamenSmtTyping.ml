@@ -206,7 +206,11 @@ let make_name =
     incr seq ;
     Printf.sprintf "E%d_%s_%d" (typ_of e).uniq_num tag !seq
 
-let emit_assert_not_null oc e =
+let emit_assert_nullable oc e =
+  let name = make_name e "NULL" in
+  emit_assert_is_true ~name oc (n_of_expr e)
+
+let emit_assert_not_nullable oc e =
   let name = make_name e "NOTNULL" in
   emit_assert_is_false ~name oc (n_of_expr e)
 
@@ -497,12 +501,21 @@ let emit_constraints tuple_sizes out_fields oc e =
        * actually not implemented so would fail when generating code. *)
       emit_assert_id_eq_id nid oc (n_of_expr e)
 
-  | StatefulFun (_, _, _, AggrPercentile (e1, e2)) ->
-      (* - e1 and e2 must be numeric;
-       * - The result has same type as e2. *)
+  | StatelessFun2 (_, Percentile, e1, e2) ->
+      (* - e1 must be numeric;
+       * - e2 must be a vector or list of sortables, then the result is not
+       *   smaller than that type;
+       * - the result is nullable if either e1 or e2 is. *)
       emit_assert_numeric oc e1 ;
-      emit_assert_numeric oc e2 ;
-      emit_assert_id_eq_id eid oc (e_of_expr e2) ;
+      emit_assert oc (fun oc ->
+        let eid2 = e_of_expr e2 in
+        let lst_type = "(list-type "^ eid2 ^")"
+        and vec_type = "(vector-type "^ eid2 ^")" in
+        Printf.fprintf oc
+          "(or (and ((_ is list) %s) %a %a (or (not (list-nullable %s)) %s))
+               (and ((_ is vector) %s) %a %a (or (not (vector-nullable %s)) %s)))"
+          eid2 emit_sortable lst_type (emit_id_le_smt2 lst_type) eid eid2 nid
+          eid2 emit_sortable vec_type (emit_id_le_smt2 vec_type) eid eid2 nid) ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
@@ -691,8 +704,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_unsigned oc e1 ;
       emit_assert_unsigned oc e2 ;
       emit_assert_numeric oc e3 ;
-      emit_assert_not_null oc e1 ;
-      emit_assert_not_null oc e2 ;
+      emit_assert_not_nullable oc e1 ;
+      emit_assert_not_nullable oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid
 
   | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
@@ -702,12 +715,12 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_unsigned oc e1 ;
       emit_assert_unsigned oc e2 ;
       emit_assert_numeric oc e3 ;
-      emit_assert_not_null oc e1 ;
-      emit_assert_not_null oc e2 ;
+      emit_assert_not_nullable oc e1 ;
+      emit_assert_not_nullable oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid ;
       List.iter (fun e ->
         emit_assert_numeric oc e ;
-        emit_assert_not_null oc e ;
+        emit_assert_not_nullable oc e ;
       ) e4s
 
   | StatefulFun (_, _, _, ExpSmooth (e1, e2)) ->
@@ -718,7 +731,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - e2 must be numeric *)
       emit_assert_float oc e1 ;
       emit_assert_numeric oc e2 ;
-      emit_assert_not_null oc e1 ;
+      emit_assert_not_nullable oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
   | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), e') ->
@@ -758,7 +771,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_numeric oc fpr ;
       emit_assert_numeric oc tim ;
       emit_assert_numeric oc dur ;
-      emit_assert_not_null oc fpr ;
+      emit_assert_not_nullable oc fpr ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s%a)"
           (n_of_expr tim) (n_of_expr dur)
@@ -782,26 +795,26 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | StatefulFun (_, _, _, Top { want_rank ; n ; what ; by ; duration ; time }) ->
+  | StatefulFun (_, _, _, Top { want_rank ; c ; what ; by ; duration ; time }) ->
       (* Typing rules:
-       * - n must be numeric and not null;
+       * - c must be numeric and not null;
        * - what can be anything;
        * - by must be numeric;
        * - duration must be a numeric and non null;
        * - time must be a time (numeric);
-       * - If we want the rank then the result type is the same as n,
+       * - If we want the rank then the result type is the same as c,
        *   otherwise it's a bool (known at parsing time);
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
        *   and by. *)
-      emit_assert_numeric oc n ;
-      emit_assert_is_false oc (n_of_expr n) ;
+      emit_assert_numeric oc c ;
+      emit_assert_is_false oc (n_of_expr c) ;
       emit_assert_numeric oc by ;
       emit_assert_numeric oc duration ;
       emit_assert_is_false oc (n_of_expr duration) ;
       emit_assert_numeric oc time ;
       if want_rank then
-        emit_id_eq_id (e_of_expr n) oc eid ;
+        emit_id_eq_id (e_of_expr c) oc eid ;
       if not want_rank then
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or%a %s)"
@@ -809,24 +822,25 @@ let emit_constraints tuple_sizes out_fields oc e =
               String.print oc (n_of_expr w))) what
             (n_of_expr by))
 
-  | StatefulFun (_, _, _, Last (n, e, es)) ->
-      (* - The type of the return is a vector of the specified length,
-       *   with items of the type and nullability of e, and is nullable;
-       * - In theory, 'Last n e1 by es` should be nullable iff any of the es
-       *   is nullable, and become and stays null forever as soon as one es
-       *   is actually NULL. This is kind of useless, so we just disallow
+  | StatefulFun (_, _, _, Last (c, x, es)) ->
+      (* - c must be a constant (TODO) integer;
+       * - The type of the return is a list of items of the same type and
+       *   nullability than those of x;
+       * - In theory, 'Last c e1 by es` should
+       *   itself be nullable if c is nullable or any of the es is nullable. And
+       *   then  become and stays null forever as soon as one es is actually
+       *   NULL. This is kind of useless, so we just disallow sizing with and
        *   ordering by a nullable field;
        * - The Last itself is null whenever the number of received item is
-       *   less than n. *)
+       *   less than c, and so is always nullable. *)
+      emit_assert_integer oc c ;
+      emit_assert_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(vector %d %s %s)" n (e_of_expr e) (n_of_expr e)) ;
-      List.iter (fun e ->
-        emit_assert_not_null oc e ;
-      ) es ;
-      let name = make_name e "NULL" in
-      emit_assert_is_true ~name oc nid
+        (Printf.sprintf "(list %s %s)" (e_of_expr x) (n_of_expr x)) ;
+      List.iter (emit_assert_not_nullable oc) es ;
+      emit_assert_nullable oc e
 
-  | StatefulFun (_, _, skip_nulls, Group g) ->
+  | StatefulFun (_, _, _, Group g) ->
       (* - The result is a list which elements have the exact same type as g;
        * - The result is nullable if we skip nulls and g is nullable.
        * Note: It is possible to build as an immediate value a vector of
@@ -836,10 +850,8 @@ let emit_constraints tuple_sizes out_fields oc e =
        * empty list is by skipping nulls, but then is we skip all nulls
        * it will be null. *)
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)"
-          (e_of_expr g) (if skip_nulls then "false" else n_of_expr g)) ;
-      emit_assert_id_eq_smt2 nid oc
-        (Printf.sprintf "(and %b %s)" skip_nulls (n_of_expr g))
+        (Printf.sprintf "(list %s %s)" (e_of_expr g) (n_of_expr g)) ;
+      emit_assert_id_eq_id (n_of_expr g) oc nid
 
   | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) ->
       (* e must be numeric *)

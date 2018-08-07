@@ -9,8 +9,8 @@ DEFINE f1 AS
     avg horsepower,
     first ((horsepower)),
     last horsepower,
-    10th percentile horsepower,
-    95th percentile horsepower,
+    10th percentile (group horsepower) as horsepower_10th,
+    95th percentile (group horsepower) as horsepower_95th,
     sum u16(distinct manufacturer) as manufacturers,
     round(sum CO) AS sum_CO,
     sum no skip null CO as sum_CO_null

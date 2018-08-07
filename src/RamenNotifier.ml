@@ -13,11 +13,12 @@
  * - Workers are easier to distribute.
  *)
 open Batteries
+open Stdint
 open Lwt
 open RamenLog
 open RamenHelpers
+open RamenNullable
 module C = RamenConf
-open Stdint
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
@@ -665,7 +666,9 @@ let start conf notif_conf rb max_fpr =
   RamenSerialization.read_notifs ~while_ rb
     (fun (worker, sent_time, event_time, notif_name,
           firing, certainty, parameters) ->
-    let parameters = Array.to_list parameters in
+    let event_time = option_of_nullable event_time in
+    let firing = option_of_nullable firing
+    and parameters = Array.to_list parameters in
     let now = Unix.gettimeofday () in
     let notif =
       { worker ; sent_time ; rcvd_time = now ; event_time ;
