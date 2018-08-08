@@ -65,7 +65,7 @@ type func_status =
   | Running of F.t
   | NotRunning of RamenName.program * RamenName.func
 
-let links conf no_abbrev only_errors with_header sort_col top pattern () =
+let links conf no_abbrev show_all with_header sort_col top pattern () =
   logger := make_logger conf.C.debug ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
@@ -132,7 +132,7 @@ let links conf no_abbrev only_errors with_header sort_col top pattern () =
       let ap s = if no_abbrev then s else
                    abbrev_path ~known_prefix:conf.persist_dir s in
       let out_ref = ap out_ref and ringbuf = ap ringbuf in
-      if only_errors && not is_err then Lwt.return_none else
+      if not show_all && not is_err then Lwt.return_none else
         Some TermTable.[|
           ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
           ValStr ringbuf ; ValStr fill_ratio ;

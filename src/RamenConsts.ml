@@ -158,7 +158,7 @@ struct
   let max_fpr = "max global false-positive rate"
   let program_name = "resulting program name"
   let no_abbrev = "do not abbreviate path names"
-  let only_errors = "display only links with errors"
+  let show_all = "display information on all links"
   let graphite = "Impersonate graphite for Grafana"
   let api = "Implement ramen API over http"
   let fault_injection_rate = "Rate at which to generate fake errors"
