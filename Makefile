@@ -121,7 +121,6 @@ RAMEN_SOURCES = \
 	src/RamenTypingHelpers.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmtTyping.ml \
-	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenRun.ml \
 	src/RamenGraphite.ml \
@@ -322,7 +321,6 @@ TESTABLE_SOURCES = \
 	src/RamenOperation.ml \
 	src/RamenProgram.ml \
 	src/RamenTypingHelpers.ml \
-	src/RamenTyping.ml \
 	src/HeavyHitters.ml \
 	src/RamenHelpers.ml \
 	src/RamenBloomFilter.ml \
@@ -384,7 +382,6 @@ LINKED_FOR_TESTS = \
 	src/RamenHttpHelpers.ml \
 	src/RamenProcesses.ml \
 	src/RamenTypingHelpers.ml \
-	src/RamenTyping.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \

@@ -3,7 +3,7 @@
  *
  * 1. The parsing, which is done in RamenProgram, RamenOperation, RamenExpr
  *    and RamenTypes modules;
- * 2. The typing, happening in RamenTyping;
+ * 2. The typing, happening in RamenSmtTyping;
  * 3. The code generation, taking place in CodeGen_Ocaml;
  * 4. And finally generating an executable (takes place in RamenOCamlCompiler).
  *)
@@ -79,9 +79,9 @@ let compile conf root_path get_parent program_name program_code =
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
-     * parents to be a hash from child name to a list of RamenTyping.Func.t
-     * (the parents), and it takes the functions as a hash of names to
-     * RamenTyping.Func.c.
+     * parents to be a hash from child name to a list of
+     * RamenTypingHelper.Func.t (the parents), and it takes the functions as a
+     * hash of names to RamenTypingHelper.Func.c.
      *
      * The resulting types will be stored in compiler_funcs.
      *)
@@ -159,39 +159,13 @@ let compile conf root_path get_parent program_name program_code =
           raise exn)
         (log_and_ignore_exceptions
           (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
-    RamenExperiments.(specialize conf.persist_dir typer_choice [|
-      (fun () ->
-        (* Type with the handcrafted typer: *)
-        call_typer "internal" (fun () ->
-          RamenTyping.get_types conf compiler_parents
-                                compiler_funcs parsed_params) |> ignore) ;
-      (fun () ->
-        (* TEST: try the SMT-based typer and compare with handcrafted one: *)
-        let res_smt =
-          try
-            call_typer !RamenSmtTyping.smt_solver (fun () ->
-              RamenSmtTyping.get_types conf compiler_parents compiler_funcs
-                                       parsed_params)
-          with exn ->
-            !logger.error "Cannot test the external typer: %s\n%s"
-              (Printexc.to_string exn)
-              (Printexc.get_backtrace ()) ;
-            Hashtbl.create 0 in
-        let res =
-          call_typer "internal" (fun () ->
-            RamenTyping.get_types conf compiler_parents
-                                  compiler_funcs parsed_params) in
-        (* Compare results: *)
-        compare_typers compiler_funcs res res_smt
-      ) ;
-      (fun () ->
-        (* Type using the external solver: *)
-        let open RamenSmtTyping in
-        let types =
-          call_typer !RamenSmtTyping.smt_solver (fun () ->
-            get_types conf compiler_parents compiler_funcs
-                                     parsed_params) in
-        apply_types compiler_parents compiler_funcs types) |]) ;
+    (* Type using the external solver: *)
+    let open RamenSmtTyping in
+    let types =
+      call_typer !RamenSmtTyping.smt_solver (fun () ->
+        get_types conf compiler_parents compiler_funcs
+                                 parsed_params) in
+    apply_types compiler_parents compiler_funcs types ;
     Hashtbl.iter (fun _ func ->
       RamenTypingHelpers.finalize_func conf compiler_parents parsed_params func
     ) compiler_funcs ;
