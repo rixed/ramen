@@ -148,7 +148,7 @@ struct
                         raise (Reject e)
                     | value -> typ, value
             in
-            RamenTuple.{ ptyp = { typ_name ; typ } ; value }
+            RamenTuple.{ ptyp = { typ_name ; typ ; units = None } ; value }
         )
     ) m
 
@@ -206,9 +206,9 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = Some false } } ;\
+   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = Some false } ; units = None } ;\
                         value = VU32 Uint32.zero } ;\
-           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = Some false } } ;\
+           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = Some false } ; units = None } ;\
                         value = VU32 Uint32.zero } ], [\
     { name = RamenName.func_of_string "add" ;\
       operation = \

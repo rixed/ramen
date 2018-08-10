@@ -42,4 +42,13 @@ val string_of_fq : fq -> string
 val fq : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
 
+(* Base units for composing values units.
+ * For dimensional analysis to work, all defined base units must be independent
+ * (not reducible to others) *)
+type base_unit = [`BaseUnit] t
+val base_unit_ppp_ocaml : base_unit PPP.t
+val base_unit_of_string : string -> base_unit
+val string_of_base_unit : base_unit -> string
+val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
+
 (* TODO: field names, bin names, notif names... *)

@@ -16,19 +16,19 @@ open RamenNullable
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
 let tuple_typ =
-  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false }} ;
-    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "tuples_selected" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "tuples_out" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "groups" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "cpu" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "ram" ; typ = { structure = TU64 ; nullable = Some false }} ;
-    { typ_name = "wait_in" ; typ = { structure = TFloat ; nullable = Some true }} ;
-    { typ_name = "wait_out" ; typ = { structure = TFloat ; nullable = Some true }} ;
-    { typ_name = "bytes_in" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "bytes_out" ; typ = { structure = TU64 ; nullable = Some true }} ;
-    { typ_name = "last_out" ; typ = { structure = TFloat ; nullable = Some true }} ]
+  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
+    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.tuples } ;
+    { typ_name = "tuples_selected" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.tuples } ;
+    { typ_name = "tuples_out" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.tuples } ;
+    { typ_name = "groups" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.groups } ;
+    { typ_name = "cpu" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds } ;
+    { typ_name = "ram" ; typ = { structure = TU64 ; nullable = Some false } ; units = Some RamenUnits.bytes } ;
+    { typ_name = "wait_in" ; typ = { structure = TFloat ; nullable = Some true } ; units = Some RamenUnits.seconds } ;
+    { typ_name = "wait_out" ; typ = { structure = TFloat ; nullable = Some true } ; units = Some RamenUnits.seconds } ;
+    { typ_name = "bytes_in" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.bytes } ;
+    { typ_name = "bytes_out" ; typ = { structure = TU64 ; nullable = Some true } ; units = Some RamenUnits.bytes } ;
+    { typ_name = "last_out" ; typ = { structure = TFloat ; nullable = Some true } ; units = Some RamenUnits.seconds_since_epoch } ]
 
 let event_time =
   let open RamenEventTime in

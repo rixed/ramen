@@ -10,12 +10,12 @@ open RamenNullable
  * the (un)serialization functions. *)
 let tuple_typ =
   let open RamenTypes in
-  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false }} ;
-    { typ_name = "sent_time" ; typ = { structure = TFloat ; nullable = Some false } } ;
-    { typ_name = "event_time" ; typ = { structure = TFloat ; nullable = Some true } } ;
-    { typ_name = "name" ; typ = { structure = TString ; nullable = Some false } } ;
-    { typ_name = "firing" ; typ = { structure = TBool ; nullable = Some true } } ;
-    { typ_name = "certainty" ; typ = { structure = TFloat ; nullable = Some false } } ;
+  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
+    { typ_name = "sent_time" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "event_time" ; typ = { structure = TFloat ; nullable = Some true } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "name" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
+    { typ_name = "firing" ; typ = { structure = TBool ; nullable = Some true } ; units = None } ;
+    { typ_name = "certainty" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.dimensionless } ;
     { typ_name = "parameters" ;
       typ = { structure = TList { structure = TTuple [|
                                     { structure = TString ;
@@ -23,7 +23,7 @@ let tuple_typ =
                                     { structure = TString ;
                                       nullable = Some false } |] ;
                                   nullable = Some false } ;
-              nullable = Some false } } ]
+              nullable = Some false } ; units = None } ]
 
 (* Should the event time of a notification event the time it's been sent, or
  * the event time it refers to? It seems more logical to have it the time it's

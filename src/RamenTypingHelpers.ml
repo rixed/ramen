@@ -99,7 +99,8 @@ let tup_typ_of_untyped_tuple ttt =
     RamenTuple.{
       typ_name = name ;
       typ = { structure = Option.get typ.Expr.scalar_typ ;
-              nullable = typ.Expr.nullable } }
+              nullable = typ.Expr.nullable } ;
+      units = None }
   ) ttt.fields
 
 module Func =

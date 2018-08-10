@@ -9,7 +9,7 @@ open Batteries
 open RamenHelpers
 
 type field_typ =
-  { typ_name : string ; typ : RamenTypes.t }
+  { typ_name : string ; typ : RamenTypes.t ; units : RamenUnits.t option }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -55,7 +55,8 @@ let print_field_typ oc field =
   (* TODO: check that name is a valid identifier *)
   Printf.fprintf oc "%s %a"
     field.typ_name
-    RamenTypes.print_typ field.typ
+    RamenTypes.print_typ field.typ ;
+  Option.may (RamenUnits.print oc) field.units
 
 let print_typ oc t =
   (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) oc t
@@ -111,7 +112,8 @@ struct
   let field m =
     let m = "field declaration" :: m in
     (
-      non_keyword +- blanks ++ RamenTypes.Parser.typ >>:
-      fun (typ_name, typ) -> { typ_name ; typ }
+      non_keyword +- blanks ++ RamenTypes.Parser.typ ++
+      optional ~def:None (some RamenUnits.Parser.p) >>:
+      fun ((typ_name, typ), units) -> { typ_name ; typ ; units }
     ) m
 end

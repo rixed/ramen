@@ -1187,8 +1187,8 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } ; units = None } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } ; units = None } ] } ;\
                     factors = [] },\
       (44, [])))\
       (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1200,8 +1200,8 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } ; units = None } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } ; units = None } ] } ;\
                     factors = [] },\
       (55, [])))\
       (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1213,8 +1213,8 @@ struct
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = Some true } ; units = None } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = Some false } ; units = None } ] } ;\
                     factors = [] },\
       (73, [])))\
       (test_op p "read file \"/tmp/toto.csv\" \\

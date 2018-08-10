@@ -16,30 +16,30 @@ type netflow_metric =
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
 
 let tuple_typ =
-  [ { typ_name = "source" ; typ = { structure = TString ; nullable = Some false }} ;
-    { typ_name = "first" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "last" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "seqnum" ; typ = { structure = TU32 ; nullable = Some false }} ;
-    { typ_name = "engine_type" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "engine_id" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "sampling_type" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "sampling_rate" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "src" ; typ = { structure = TIpv4 ; nullable = Some false }} ;
-    { typ_name = "dst" ; typ = { structure = TIpv4 ; nullable = Some false }} ;
-    { typ_name = "next_hop" ; typ = { structure = TIpv4 ; nullable = Some false }} ;
-    { typ_name = "src_port" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "dst_port" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "in_iface" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "out_iface" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "packets" ; typ = { structure = TU32 ; nullable = Some false }} ;
-    { typ_name = "bytes" ; typ = { structure = TU32 ; nullable = Some false }} ;
-    { typ_name = "tcp_flags" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "ip_proto" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "ip_tos" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "src_as" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "dst_as" ; typ = { structure = TU16 ; nullable = Some false }} ;
-    { typ_name = "src_mask" ; typ = { structure = TU8 ; nullable = Some false }} ;
-    { typ_name = "dst_mask" ; typ = { structure = TU8 ; nullable = Some false }} ]
+  [ { typ_name = "source" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
+    { typ_name = "first" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "last" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "seqnum" ; typ = { structure = TU32 ; nullable = Some false } ; units = None } ;
+    { typ_name = "engine_type" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "engine_id" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "sampling_type" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "sampling_rate" ; typ = { structure = TU16 ; nullable = Some false } ; units = Some RamenUnits.dimensionless } ;
+    { typ_name = "src" ; typ = { structure = TIpv4 ; nullable = Some false } ; units = None } ;
+    { typ_name = "dst" ; typ = { structure = TIpv4 ; nullable = Some false } ; units = None } ;
+    { typ_name = "next_hop" ; typ = { structure = TIpv4 ; nullable = Some false } ; units = None } ;
+    { typ_name = "src_port" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "dst_port" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "in_iface" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "out_iface" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "packets" ; typ = { structure = TU32 ; nullable = Some false } ; units = Some RamenUnits.packets } ;
+    { typ_name = "bytes" ; typ = { structure = TU32 ; nullable = Some false } ; units = Some RamenUnits.bytes } ;
+    { typ_name = "tcp_flags" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "ip_proto" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "ip_tos" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "src_as" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "dst_as" ; typ = { structure = TU16 ; nullable = Some false } ; units = None } ;
+    { typ_name = "src_mask" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ;
+    { typ_name = "dst_mask" ; typ = { structure = TU8 ; nullable = Some false } ; units = None } ]
 
 let event_time =
   let open RamenEventTime in

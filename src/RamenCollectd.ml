@@ -28,17 +28,17 @@ type collectd_metric =
   float * float option * float option * float option * float option
 
 let tuple_typ =
-  [ { typ_name = "host" ; typ = { structure = TString ; nullable = Some false }} ;
-    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "plugin" ; typ = { structure = TString ; nullable = Some true }} ;
-    { typ_name = "instance" ; typ = { structure = TString ; nullable = Some true }} ;
-    { typ_name = "type_name" ; typ = { structure = TString ; nullable = Some true }} ;
-    { typ_name = "type_instance" ; typ = { structure = TString ; nullable = Some true }} ;
-    { typ_name = "value" ; typ = { structure = TFloat ; nullable = Some false }} ;
-    { typ_name = "value2" ; typ = { structure = TFloat ; nullable = Some true }} ;
-    { typ_name = "value3" ; typ = { structure = TFloat ; nullable = Some true }} ;
-    { typ_name = "value4" ; typ = { structure = TFloat ; nullable = Some true }} ;
-    { typ_name = "value5" ; typ = { structure = TFloat ; nullable = Some true }} ]
+  [ { typ_name = "host" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
+    { typ_name = "time" ; typ = { structure = TFloat ; nullable = Some false } ; units = Some RamenUnits.seconds_since_epoch } ;
+    { typ_name = "plugin" ; typ = { structure = TString ; nullable = Some true } ; units = None } ;
+    { typ_name = "instance" ; typ = { structure = TString ; nullable = Some true } ; units = None } ;
+    { typ_name = "type_name" ; typ = { structure = TString ; nullable = Some true } ; units = None } ;
+    { typ_name = "type_instance" ; typ = { structure = TString ; nullable = Some true } ; units = None } ;
+    { typ_name = "value" ; typ = { structure = TFloat ; nullable = Some false } ; units = None } ;
+    { typ_name = "value2" ; typ = { structure = TFloat ; nullable = Some true } ; units = None } ;
+    { typ_name = "value3" ; typ = { structure = TFloat ; nullable = Some true } ; units = None } ;
+    { typ_name = "value4" ; typ = { structure = TFloat ; nullable = Some true } ; units = None } ;
+    { typ_name = "value5" ; typ = { structure = TFloat ; nullable = Some true } ; units = None } ]
 
 let event_time =
   let open RamenEventTime in

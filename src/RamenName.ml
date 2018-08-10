@@ -126,4 +126,14 @@ external string_of_fq : fq -> string = "%identity"
 let fq prog func =
   string_of_program prog ^"/"^ func
 
-let fq_print oc = String.print oc % string_of_fq
+let fq_print = String.print
+
+(* Base units *)
+
+type base_unit = [`BaseUnit] t
+
+let base_unit_ppp_ocaml = t_ppp_ocaml
+
+external base_unit_of_string : string -> base_unit = "%identity"
+external string_of_base_unit : base_unit -> string = "%identity"
+let base_unit_print = String.print
