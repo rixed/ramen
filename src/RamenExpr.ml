@@ -21,7 +21,8 @@ open RamenHelpers
  * solver. *)
 type typ =
   { mutable expr_name : string ;
-    uniq_num : int ; (* to build var names, record field names or identify SAT variables *)
+    (* To build var names, record field names or identify SAT variables: *)
+    uniq_num : int ;
     mutable nullable : bool option ;
     (* TODO: rename scalar_typ to structure: *)
     mutable scalar_typ : RamenTypes.structure option }

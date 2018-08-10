@@ -76,7 +76,6 @@ RAMEN_SOURCES = \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
 	src/RamenHelpers.ml \
-	src/RamenHelpers.ml \
 	src/RamenExperiments.ml \
 	src/RamenBitmask.ml \
 	src/RamenRWLock.ml \
