@@ -16,16 +16,17 @@ open Lwt
 open RamenHelpers
 open RamenTypes
 open RamenTuple
+open RamenNullable
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
 type collectd_metric =
   string (* host *) * float (* time *) *
-  string option (* plugin name *) * string option (* plugin instance *) *
-  string option (* type name (whatever that means) *) *
-  string option (* type instance *) *
+  string nullable (* plugin name *) * string nullable (* plugin instance *) *
+  string nullable (* type name (whatever that means) *) *
+  string nullable (* type instance *) *
   (* And the values (up to 5: *)
-  float * float option * float option * float option * float option
+  float * float nullable * float nullable * float nullable * float nullable
 
 let tuple_typ =
   [ { typ_name = "host" ; typ = { structure = TString ; nullable = Some false } ; units = None } ;
