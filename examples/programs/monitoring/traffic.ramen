@@ -31,7 +31,7 @@ DEFINE out_of_range_alert AS
     source, iface,
     (last - first) / 2 AS time,
     bytes_per_secs,
-    5-ma locally (bytes_per_secs < 100 OR bytes_per_secs > 8e3) >= 4 AS firing
+    5-ma locally (float(bytes_per_secs < 100 OR bytes_per_secs > 8e3)) >= 4 AS firing
   GROUP BY source, iface
   COMMIT, KEEP ALL AND
     NOTIFY "Traffic" WITH
