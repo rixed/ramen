@@ -206,11 +206,12 @@ let make_name =
     incr seq ;
     Printf.sprintf "E%d_%s_%d" (typ_of e).uniq_num tag !seq
 
-let emit_assert_nullable oc e =
+(* Named constraint used when an argument type is constrained: *)
+let arg_is_nullable oc e =
   let name = make_name e "NULL" in
   emit_assert_is_true ~name oc (n_of_expr e)
 
-let emit_assert_not_nullable oc e =
+let arg_is_not_nullable oc e =
   let name = make_name e "NOTNULL" in
   emit_assert_is_false ~name oc (n_of_expr e)
 
@@ -227,11 +228,11 @@ let emit_sortable oc id =
     id id id id id
     id id id id id
 
-let emit_assert_sortable oc e =
+let arg_is_sortable oc e =
   let name = make_name e "SORTABLE" in
   emit_assert ~name oc (fun oc -> emit_sortable oc (e_of_expr e))
 
-let emit_assert_unsigned oc e =
+let arg_is_unsigned oc e =
   let name = make_name e "UNSIGNED" in
   let id = e_of_expr e in
   emit_assert ~name oc (fun oc ->
@@ -239,7 +240,7 @@ let emit_assert_unsigned oc e =
       "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s))"
       id id id id id)
 
-let emit_assert_signed_or_float oc e =
+let arg_is_signed oc e =
   let name = make_name e "SIGNED" in
   let id = e_of_expr e in
   emit_assert ~name oc (fun oc ->
@@ -249,12 +250,7 @@ let emit_assert_signed_or_float oc e =
       id
       id id id id id)
 
-let emit_assert_float oc e =
-  let name = make_name e "FLOAT" in
-  emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc "(= float %s)" (e_of_expr e))
-
-let emit_assert_integer oc e =
+let arg_is_integer oc e =
   let name = make_name e "INTEGER" in
   let id = e_of_expr e in
   emit_assert ~name oc (fun oc ->
@@ -273,10 +269,20 @@ let emit_numeric oc id =
     id id id id id
     id id id id id
 
-let emit_assert_numeric oc e =
+let arg_is_numeric oc e =
   let name = make_name e "NUMERIC" in
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (e_of_expr e))
+
+let arg_has_type typ oc e =
+  let typ_name = IO.to_string RamenTypes.print_structure typ in
+  let name = make_name e typ_name in
+  emit_assert ~name oc (fun oc ->
+    emit_id_eq_typ [] (e_of_expr e) oc typ)
+
+let arg_is_float = arg_has_type TFloat
+let arg_is_bool = arg_has_type TBool
+let arg_is_string = arg_has_type TString
 
 (* "same" types are either actually the same or at least of the same sort
  * (both numbers/floats, both ip, or both cidr) *)
@@ -310,16 +316,6 @@ let emit_assert_same e oc id1 id2 =
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes out_fields oc e =
   let eid = e_of_expr e and nid = n_of_expr e in
-  (* We may already know the type of this expression from parsing.
-   * Those are hard constraints and are not named: *)
-  Option.may (fun t ->
-    let name = make_name e "KNOWNTYPE" in
-    emit_assert_id_eq_typ ~name tuple_sizes eid oc t
-  ) (typ_of e).scalar_typ ;
-  Option.may (fun n ->
-    let name = make_name e "KNOWNNULL" in
-    emit_assert_id_is_bool ~name nid oc n
-  ) (typ_of e).nullable ;
   emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e with
@@ -349,17 +345,33 @@ let emit_constraints tuple_sizes out_fields oc e =
             else
               emit_assert_id_eq_id nid oc (n_of_expr expr))
 
-  | Const (_, _) | StateField _ -> ()
+  | Const (t, VNull) ->
+      (* - "NULL" is nullable. *)
+      arg_is_nullable oc e
+
+  | Const (t, x) ->
+      (* TODO: do not remove the type from constant (like for Cast) *)
+      (* - A const cannot be null, unless it's VNull;
+       * - The type is the type of the constant. *)
+      emit_assert_id_eq_typ tuple_sizes eid oc (Option.get t.scalar_typ) ;
+      arg_is_not_nullable oc e
+
+  | StateField _ -> assert false (* Not supposed to appear here *)
 
   | Tuple (_, es) ->
-      (* Identify each element to identifier used for it: *)
+      (* - The resulting type is a tuple which length, items type and
+       *   nullability are given by es;
+       * - The result is not nullable since it has a literal value. *)
       let d = List.length es in
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc "((_ is tuple%d) %s)" d eid) ;
       List.iteri (fun i e ->
         emit_assert_id_eq_smt2 (e_of_expr e) oc
           (Printf.sprintf "(tuple%d-e%d %s)" d i eid) ;
         emit_assert_id_eq_smt2 (n_of_expr e) oc
           (Printf.sprintf "(tuple%d-n%d %s)" d i eid)
-      ) es
+      ) es ;
+      emit_assert_is_false oc nid
 
   | Vector (_, es) ->
       (* Typing rules:
@@ -368,38 +380,33 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   couldn't we "promote" non nullable to nullable?);
        * - The resulting type is a vector of that size with a type not
        *   smaller then any of the elements;
-       * - The resulting type is *not* nullable since it has a literal value
-       *   (known since parsing);
+       * - The resulting type is not nullable since it has a literal
+       *   value.
        * - FIXME: If the vector is of length 0, it can have any type *)
       (match es with
       | [] ->
         (* Empty vector literal are not accepted by the parser yet... *)
         emit_assert oc (fun oc ->
-          Printf.fprintf oc
-            "(or ((_ is vector) %s) ((_ is list) %s))"
-            eid eid)
+          Printf.fprintf oc "((_ is vector) %s)" eid)
       | fst :: rest ->
         let d = List.length es in
-        List.iter (fun e ->
-          let name = make_name e "VECSAME" in
+        List.iter (fun x ->
+          let name = make_name x "VECSAME" in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and %a %a)"
-              (emit_id_eq_id (n_of_expr e)) (n_of_expr fst)
-              (emit_id_le_smt2 (e_of_expr e))
+              (emit_id_eq_id (n_of_expr x)) (n_of_expr fst)
+              (emit_id_le_smt2 (e_of_expr x))
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc
-            "(or (and ((_ is vector) %s) \
-                      (= %d (vector-dim %s)) \
-                      (= %s (vector-nullable %s))) \
-                 (and ((_ is list) %s) \
-                      (= %s (list-nullable %s))))"
-                      eid
-                      d eid
-                      (n_of_expr fst) eid
-                      eid
-                      (n_of_expr fst) eid))
+            "(and ((_ is vector) %s) \
+                  (= %d (vector-dim %s)) \
+                  (= %s (vector-nullable %s)))"
+                  eid
+                  d eid
+                  (n_of_expr fst) eid)) ;
+      emit_assert_is_false oc nid
 
   | Case (_, cases, else_) ->
       (* Typing rules:
@@ -439,75 +446,109 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* Typing rules:
        * - Every alternative must be of the same sort and the result must
        *   not be smaller;
+       * - The result is not null;
        * - All elements of the list but the last must be nullable ;
        * - The last element of the list must not be nullable. *)
       let len = List.length es in
-      List.iteri (fun i e ->
-        let name = make_name e ("COALESCE_ALTERNATIVE_"^ string_of_int i) in
-        emit_assert_id_le_id ~name (e_of_expr e) oc eid ;
-        let name = make_name e ("COALESCE_NULL_IFF_LAST_"^ string_of_int i) in
+      arg_is_not_nullable oc e ;
+      List.iteri (fun i x ->
+        let name = make_name x ("COALESCE_ALTERNATIVE_"^ string_of_int i) in
+        emit_assert_id_le_id ~name (e_of_expr x) oc eid ;
+        let name = make_name x ("COALESCE_NULL_IFF_LAST_"^ string_of_int i) in
         let is_last = i = len - 1 in
-        emit_assert_id_is_bool ~name (n_of_expr e) oc (not is_last)
+        emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
       ) es ;
 
-  | StatelessFun0 (_, (Now|Random|EventStart|EventStop))
-  | StatelessFun1 (_, Defined, _) -> ()
+  | StatelessFun0 (_, (Now|Random|EventStart|EventStop)) ->
+      (* - The result is a non nullable float *)
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      arg_is_not_nullable oc e
 
-  | StatefulFun (_, _, _, (AggrMin e|AggrMax e)) ->
-      (* - e must be sortable;
+  | StatelessFun1 (_, Defined, x) ->
+      (* - x must be nullable;
+       * - The result is a non nullable bool. *)
+      arg_is_nullable oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
+      arg_is_not_nullable oc e
+
+  | StatefulFun (_, _, _, (AggrMin x|AggrMax x)) ->
+      (* - x must be sortable;
        * - The result has its type;
-       * - The result nullability is set by propagation from e. *)
-      emit_assert_sortable oc e ;
-      emit_assert_id_eq_id (e_of_expr e) oc eid ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+       * - The result nullability is set by propagation from x. *)
+      arg_is_sortable oc x ;
+      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatefulFun (_, _, _, (AggrFirst e|AggrLast e)) ->
-      (* e has the same type as that of the result: *)
-      emit_assert_id_eq_id (e_of_expr e) oc eid ;
-      emit_assert_id_eq_id (n_of_expr e) oc nid
+  | StatefulFun (_, _, _, (AggrFirst x|AggrLast x)) ->
+      (* - The result has the same type than that of x;
+       * - The result has same nullability than that of x. *)
+      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatefulFun (_, _, _, (AggrSum e|AggrAvg e)) ->
-      (* - The result must not be smaller than e;
-       * - The result nullability is the same as that of e. *)
-      emit_assert_id_le_id (e_of_expr e) oc eid ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+  | StatefulFun (_, _, _, AggrSum x) ->
+      (* - x must be numeric;
+       * - The result has the same type than x;
+       * - The result has same nullability than x. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Minus, e') ->
+  | StatefulFun (_, _, _, AggrAvg x) ->
+      (* - x must be numeric;
+       * - The result is a float;
+       * - The result has same nullability than that of x. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
+
+  | StatelessFun1 (_, Minus, x) ->
       (* - The only argument must be numeric;
-       * - The result must not be smaller than e;
+       * - The result must not be smaller than x;
+       * - The result has same nullability than x;
        * - The result is signed or float. *)
-      emit_assert_numeric oc e' ;
-      emit_assert_id_le_id (e_of_expr e') oc eid ;
-      emit_assert_signed_or_float oc e ;
-      emit_assert_id_eq_id nid oc (n_of_expr e')
+      arg_is_numeric oc x ;
+      emit_assert_id_le_id (e_of_expr x) oc eid ;
+      arg_is_signed oc e ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, (Age|Abs), e) ->
+  | StatelessFun1 (_, Age, x) ->
       (* - The only argument must be numeric;
-       * - The result must not be smaller than e. *)
-      emit_assert_numeric oc e ;
-      emit_assert_id_le_smt2 (e_of_expr e) oc eid ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+       * - The result is a float;
+       * - The result has same nullability than x. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatefulFun (_, _, _, (AggrAnd e | AggrOr e))
-  | StatelessFun1 (_, Not, e) ->
+  | StatelessFun1 (_, Abs, x) ->
+      (* - The only argument must be numeric;
+       * - The result has same type than x;
+       * - The result has same nullability than x. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_le_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
+
+  | StatefulFun (_, _, _, (AggrAnd x | AggrOr x))
+  | StatelessFun1 (_, Not, x) ->
       (* - The only argument must be boolean;
-       * - The resulting nullability depends solely on that of e. *)
-      let name = make_name e "BOOL" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TBool ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+       * - The result type is a boolean;
+       * - The resulting nullability depends solely on that of x. *)
+      arg_is_bool oc x ;
+      emit_assert_id_eq_id nid oc (n_of_expr x) ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool
 
-  | StatelessFun1 (_, Cast, e) ->
+  | StatelessFun1 (t, Cast, x) ->
       (* No type restriction on the operand: we might want to forbid some
        * types at some point, for instance strings... Some cast are
        * actually not implemented so would fail when generating code. *)
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+      emit_assert_id_eq_id nid oc (n_of_expr x) ;
+      emit_assert_id_eq_typ tuple_sizes eid oc (Option.get t.scalar_typ)
 
   | StatelessFun2 (_, Percentile, e1, e2) ->
       (* - e1 must be numeric;
        * - e2 must be a vector or list of sortables, then the result is not
        *   smaller than that type;
        * - the result is nullable if either e1 or e2 is. *)
-      emit_assert_numeric oc e1 ;
+      arg_is_numeric oc e1 ;
       emit_assert oc (fun oc ->
         let eid2 = e_of_expr e2 in
         let lst_type = "(list-type "^ eid2 ^")"
@@ -523,8 +564,8 @@ let emit_constraints tuple_sizes out_fields oc e =
   | StatelessFun2 (_, (Add|Sub|Mul|Div|IDiv|Pow), e1, e2) ->
       (* - e1 and e2 must be numeric;
        * - The result is not smaller than e1 or e2. *)
-      emit_assert_numeric oc e1 ;
-      emit_assert_numeric oc e2 ;
+      arg_is_numeric oc e1 ;
+      arg_is_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
       emit_assert_id_le_id (e_of_expr e1) oc eid ;
@@ -533,83 +574,127 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatelessFun2 (_, Reldiff, e1, e2) ->
       (* - e1 and e2 must be numeric;
-       * - The result is a float (known from parsing). *)
-      emit_assert_numeric oc e1 ;
-      emit_assert_numeric oc e2 ;
+       * - The result is a float. *)
+      arg_is_numeric oc e1 ;
+      arg_is_numeric oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, (Concat|StartsWith|EndsWith), e1, e2)
+  | StatelessFun2 (_, (StartsWith|EndsWith), e1, e2) ->
+      (* - e1 and e2 must be strings;
+       * - The result is a bool;
+       * - Result nullability propagates from arguments. *)
+      arg_is_string oc e1 ;
+      arg_is_string oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
+
+  | StatelessFun2 (_, Concat, e1, e2)
   | GeneratorFun (_, Split (e1, e2)) ->
-      (* e1 and e2 must be strings: *)
-      let name = make_name e1 "STRING" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TString ;
-      let name = make_name e2 "STRING" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e2) oc TString ;
+      (* - e1 and e2 must be strings;
+       * - The result is also a string;
+       * - Result nullability propagates from arguments. *)
+      arg_is_string oc e1 ;
+      arg_is_string oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TString ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun2 (_, Strftime, e1, e2) ->
-      (* e1 must be a string and e2 a float (ideally, a time): *)
-      let name = make_name e1 "STRING" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TString ;
-      emit_assert_float oc e2 ;
+      (* - e1 must be a string and e2 a float (ideally, a time);
+       * - Then result will be a string;
+       * - Its nullability propagates from arguments. *)
+      arg_is_string oc e1 ;
+      arg_is_float oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TString ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun1 (_, (Length|Lower|Upper), e)
-  | StatelessFunMisc (_, Like (e, _)) ->
-      (* e must be a string: *)
-      let name = make_name e "STRING" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TString ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+  | StatelessFun1 (_, Length, x) ->
+      (* - x must be a string;
+       * - The result type is a U32;
+       * - The result nullability is the same as that of x. *)
+      arg_is_string oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TU32 ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatelessFun1 (_, Strptime, e) ->
-      (* - e must be a string;
-       * - Result is always nullable (known from the parse). *)
-      let name = make_name e "STRING" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc TString
+  | StatelessFun1 (_, (Lower|Upper), x) ->
+      (* - x must be a string;
+       * - The result type is also a string;
+       * - The result nullability is the same as that of x. *)
+      arg_is_string oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TString ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
+
+  | StatelessFunMisc (_, Like (x, _)) ->
+      (* - x must be a string;
+       * - The result is a bool;
+       * - Nullability propagates from x to e. *)
+      arg_is_string oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
+
+  | StatelessFun1 (_, Strptime, x) ->
+      (* - x must be a string;
+       * - The Result is a float (a time);
+       * - The result is always nullable (known from the parse). *)
+      arg_is_string oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      emit_assert_is_true oc nid
 
   | StatelessFun2 (_, Mod, e1, e2)
   | StatelessFun2 (_, (BitAnd|BitOr|BitXor), e1, e2) ->
       (* - e1 and e2 must be any integer;
-       * - The result must not be smaller that e1 nor e2. *)
-      emit_assert_integer oc e1 ;
-      emit_assert_integer oc e2 ;
-      emit_assert_id_eq_smt2 nid oc
-        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
+       * - The result must not be smaller that e1 nor e2;
+       * - Nullability propagates. *)
+      arg_is_integer oc e1 ;
+      arg_is_integer oc e2 ;
       emit_assert_id_le_id (e_of_expr e1) oc eid ;
-      emit_assert_id_le_id (e_of_expr e2) oc eid
+      emit_assert_id_le_id (e_of_expr e2) oc eid ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun2 (_, (Ge|Gt), e1, e2) ->
-      (* e1 and e2 must have the same sort, and be either strings, numeric,
-       * IP or CIDR (aka a sortable): *)
+      (* - e1 and e2 must have the same sort, and be either strings,
+       *   numeric, IP or CIDR (aka a sortable);
+       * - The result is a bool;
+       * - Nullability propagates. *)
       emit_assert_same e oc (e_of_expr e1) (e_of_expr e2) ;
-      emit_assert_sortable oc e1 ;
+      arg_is_sortable oc e1 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun2 (_, Eq, e1, e2) ->
-      (* e1 and e2 must be of the same sort *)
+      (* - e1 and e2 must be of the same sort;
+       * - The result is a bool;
+       * - Nullability propagates from arguments. *)
       emit_assert_same e oc (e_of_expr e1) (e_of_expr e2) ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun2 (_, (And|Or), e1, e2) ->
-      (* e1 and e2 must be booleans. *)
-      let name = make_name e1 "BOOL" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e1) oc TBool ;
-      let name = make_name e2 "BOOL" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e2) oc TBool ;
+      (* - e1 and e2 must be booleans;
+       * - The result is also a boolean;
+       * - Nullability propagates. *)
+      arg_is_bool oc e1 ;
+      arg_is_bool oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun1 (_, Nth n, e) ->
-      (* Typing rules:
-       * - e must be a tuple of at least n elements;
-       * - the resulting type is that if the n-th element. *)
-      let eid' = e_of_expr e in
-      let name = make_name e "TUPLE" in
+  | StatelessFun1 (_, Nth n, x) ->
+      (* Note: here n starts at 0 (what the user wrote, minus 1),
+       *       and tuple_sizes gives the length.
+       * Typing rules:
+       * - x must be a tuple of at least n elements;
+       * - the resulting type is that if the n-th element;
+       * - the result nullability is also that of the n-th elements. *)
+      let eid' = e_of_expr x in
+      let name = make_name x "TUPLE" in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc "(or %a)"
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
@@ -631,9 +716,9 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   be less than its length;
        * - the resulting type is the same as the selected type;
        * - if x is a vector and i a constant, then the result has the
-       *   same nullability of x or x's elements; in all other cases, the
+       *   same nullability than x or x's elements; in all other cases, the
        *   result is nullable. *)
-      emit_assert_numeric oc i ;
+      arg_is_numeric oc i ;
       let name = make_name x "GETTABLE" in
       (match int_of_const i with
       | None ->
@@ -644,7 +729,7 @@ let emit_constraints tuple_sizes out_fields oc e =
                                      (and ((_ is list) tmp) \
                                           (= (list-type tmp) %s))))"
               (e_of_expr x) eid eid) ;
-          emit_assert_nullable oc e
+          arg_is_nullable oc e
       | Some i ->
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(let ((tmp %s)) \
@@ -662,15 +747,21 @@ let emit_constraints tuple_sizes out_fields oc e =
               eid
               nid))
 
-  | StatelessFun1 (_, (BeginOfRange|EndOfRange), e) ->
-      (* e is any kind of cidr *)
-      let name = make_name e "CIDR" in
-      let eid' = e_of_expr e in
+  | StatelessFun1 (_, (BeginOfRange|EndOfRange), x) ->
+      (* - x is any kind of cidr;
+       * - The result is a bool;
+       * - Nullability propagates from x. *)
+      let name = make_name x "CIDR" in
+      let xid = e_of_expr x in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
-          "(or (= cidr %s) (= cidr4 %s) (= cidr6 %s))"
-          eid' eid' eid') ;
-      emit_assert_id_eq_id nid oc (n_of_expr e)
+          "(or (and (= cidr %s) (= ip %s)) \
+               (and (= cidr4 %s) (= ip4 %s)) \
+               (and (= cidr6 %s) (= ip6 %s)))"
+          xid eid
+          xid eid
+          xid eid) ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
 
   | StatelessFunMisc (_, (Min es | Max es)) ->
       (* Typing rules:
@@ -681,7 +772,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       List.iter (fun e ->
         emit_assert_id_le_id (e_of_expr e) oc eid
       ) es ;
-      emit_assert_sortable oc e ;
+      arg_is_sortable oc e ;
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or %a)"
@@ -700,7 +791,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result is only nullable by skip or propagation, for if the
        *   lag goes beyond the start of the window then lag merely returns
        *   the oldest value. (FIXME: should return NULL in that case) *)
-      emit_assert_integer oc e1 ;
+      arg_is_integer oc e1 ;
       emit_assert_id_eq_id (e_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
@@ -713,26 +804,28 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - Neither e1 or e2 can be NULL;
        * - The result type is known from parsing to be float;
        * - The result nullability propagates from e3. *)
-      emit_assert_unsigned oc e1 ;
-      emit_assert_unsigned oc e2 ;
-      emit_assert_numeric oc e3 ;
-      emit_assert_not_nullable oc e1 ;
-      emit_assert_not_nullable oc e2 ;
+      arg_is_unsigned oc e1 ;
+      arg_is_unsigned oc e2 ;
+      arg_is_numeric oc e3 ;
+      arg_is_not_nullable oc e1 ;
+      arg_is_not_nullable oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid
 
   | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic
        * and probably get rid of this limitation. *)
-      emit_assert_unsigned oc e1 ;
-      emit_assert_unsigned oc e2 ;
-      emit_assert_numeric oc e3 ;
-      emit_assert_not_nullable oc e1 ;
-      emit_assert_not_nullable oc e2 ;
+      arg_is_unsigned oc e1 ;
+      arg_is_unsigned oc e2 ;
+      arg_is_numeric oc e3 ;
+      arg_is_not_nullable oc e1 ;
+      arg_is_not_nullable oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
       List.iter (fun e ->
-        emit_assert_numeric oc e ;
-        emit_assert_not_nullable oc e ;
+        arg_is_numeric oc e ;
+        arg_is_not_nullable oc e ;
       ) e4s
 
   | StatefulFun (_, _, _, ExpSmooth (e1, e2)) ->
@@ -741,35 +834,44 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   we just ask for a numeric in order to also accept immediate
        *   values parsed as integers, and integer fields;
        * - e2 must be numeric *)
-      emit_assert_float oc e1 ;
-      emit_assert_numeric oc e2 ;
-      emit_assert_not_nullable oc e1 ;
+      arg_is_float oc e1 ;
+      arg_is_numeric oc e2 ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      arg_is_not_nullable oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), e') ->
-      (* - e must be numeric;
-       * - the result is a float. *)
-      emit_assert_numeric oc e' ;
-      emit_assert_float oc e ;
-      emit_assert_id_eq_id (n_of_expr e') oc nid
+  | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), x) ->
+      (* - x must be numeric;
+       * - The result is a float;
+       * - The result nullability is inherited from arguments *)
+      arg_is_numeric oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, (Floor|Ceil|Round), e) ->
-      (* - e must be numeric;
-       * - the result is not smaller than e. *)
-      emit_assert_numeric oc e ;
-      emit_assert_id_le_smt2 (e_of_expr e) oc eid ;
+  | StatelessFun1 (_, (Floor|Ceil|Round), x) ->
+      (* - x must be numeric;
+       * - The result is not smaller than x;
+       * - Nullability propagates from argument. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_le_smt2 (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
+
+  | StatelessFun1 (_, Hash, x) ->
+      (* - x can be anything. Notice that hash(NULL) is NULL;
+       * - The result is an I64.
+       * - Nullability propagates. *)
+      emit_assert_id_eq_typ tuple_sizes eid oc TI64 ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
-  | StatelessFun1 (_, Hash, e) ->
-      (* e can be anything. Notice that hash(NULL) is NULL. *)
-      emit_assert_id_eq_id (n_of_expr e) oc nid
-
-  | StatelessFun1 (_, Sparkline, e) ->
-      (* e must be a vector of numerics *)
-      let name = make_name e "NUMERIC_VEC" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr e) oc
+  | StatelessFun1 (_, Sparkline, x) ->
+      (* - x must be a vector of non-null numerics;
+       * - The result is a string;
+       * - The result nullability itself propagates from x itself. *)
+      let name = make_name x "NUMERIC_VEC" in
+      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr x) oc
         (TVec (0, { structure = TNum ; nullable = Some false })) ;
-      emit_assert_id_eq_id (n_of_expr e) oc nid
+      emit_assert_id_eq_typ tuple_sizes eid oc TString ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatefulFun (_, _, _, Remember (fpr, tim, dur, es)) ->
       (* Typing rules:
@@ -778,12 +880,14 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - time must be a time, so ideally a float, but again we accept any
        *   integer (so that a int field is OK);
        * - dur must be a duration, so a numeric again;
-       * - expressions in es can be anything at all;
-       * - the result is as nullable as any of tim, dur and the es. *)
-      emit_assert_numeric oc fpr ;
-      emit_assert_numeric oc tim ;
-      emit_assert_numeric oc dur ;
-      emit_assert_not_nullable oc fpr ;
+       * - Expressions in es can be anything at all;
+       * - The result is a boolean;
+       * - The result is as nullable as any of tim, dur and the es. *)
+      arg_is_numeric oc fpr ;
+      arg_is_numeric oc tim ;
+      arg_is_numeric oc dur ;
+      arg_is_not_nullable oc fpr ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s%a)"
           (n_of_expr tim) (n_of_expr dur)
@@ -791,7 +895,10 @@ let emit_constraints tuple_sizes out_fields oc e =
             String.print oc (n_of_expr e))) es)
 
   | StatefulFun (_, _, _, Distinct es) ->
-      (* the es can be anything *)
+      (* - The es can be anything;
+       * - The result is a boolean;
+       * - The result is nullable if any of the es is nullable. *)
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or %a)"
@@ -799,10 +906,14 @@ let emit_constraints tuple_sizes out_fields oc e =
               String.print oc (n_of_expr e))) es)
 
   | StatefulFun (_, _, _, Hysteresis (meas, accept, max)) ->
-      (* meas, accept and max must be numeric. *)
-      emit_assert_numeric oc meas ;
-      emit_assert_numeric oc accept ;
-      emit_assert_numeric oc max ;
+      (* - meas, accept and max must be numeric;
+       * - The result is a boolean;
+       * - The result is nullable if and only if any of meas, accept and
+       *   max is. *)
+      arg_is_numeric oc meas ;
+      arg_is_numeric oc accept ;
+      arg_is_numeric oc max ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
@@ -819,38 +930,40 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
        *   and by. *)
-      emit_assert_numeric oc c ;
+      arg_is_numeric oc c ;
       emit_assert_is_false oc (n_of_expr c) ;
-      emit_assert_numeric oc by ;
-      emit_assert_numeric oc duration ;
+      arg_is_numeric oc by ;
+      arg_is_numeric oc duration ;
       emit_assert_is_false oc (n_of_expr duration) ;
-      emit_assert_numeric oc time ;
-      if want_rank then
-        emit_id_eq_id (e_of_expr c) oc eid ;
-      if not want_rank then
+      arg_is_numeric oc time ;
+      if want_rank then (
+        emit_assert_id_eq_id (e_of_expr c) oc eid ;
+        arg_is_nullable oc e
+      ) else (
+        emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or%a %s)"
             (List.print ~first:" " ~last:"" ~sep:" " (fun oc w ->
               String.print oc (n_of_expr w))) what
-            (n_of_expr by))
+            (n_of_expr by)))
 
   | StatefulFun (_, _, _, Last (c, x, es)) ->
       (* - c must be a constant (TODO) integer;
-       * - The type of the return is a list of items of the same type and
+       * - The type of the result is a list of items of the same type and
        *   nullability than those of x;
-       * - In theory, 'Last c e1 by es` should
-       *   itself be nullable if c is nullable or any of the es is nullable. And
-       *   then  become and stays null forever as soon as one es is actually
-       *   NULL. This is kind of useless, so we just disallow sizing with and
-       *   ordering by a nullable field;
+       * - In theory, 'Last c e1 by es` should itself be nullable if c is
+       *   nullable or any of the es is nullable. And then become and stays
+       *   null forever as soon as one es is actually NULL. This is kind
+       *   of useless, so we just disallow sizing with and ordering by a
+       *   nullable value;
        * - The Last itself is null whenever the number of received item is
        *   less than c, and so is always nullable. *)
-      emit_assert_integer oc c ;
-      emit_assert_not_nullable oc c ;
+      arg_is_integer oc c ;
+      arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)" (e_of_expr x) (n_of_expr x)) ;
-      List.iter (emit_assert_not_nullable oc) es ;
-      emit_assert_nullable oc e
+      List.iter (arg_is_not_nullable oc) es ;
+      arg_is_nullable oc e
 
   | StatefulFun (_, _, _, Group g) ->
       (* - The result is a list which elements have the exact same type as g;
@@ -865,20 +978,24 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(list %s %s)" (e_of_expr g) (n_of_expr g)) ;
       emit_assert_id_eq_id (n_of_expr g) oc nid
 
-  | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) ->
-      (* e must be numeric *)
-      emit_assert_numeric oc e ;
-      emit_assert_id_eq_id (n_of_expr e) oc nid
+  | StatefulFun (_, _, _, AggrHistogram (x, _, _, n)) ->
+      (* - x must be numeric;
+       * - The result is a vector of size n+2, of non nullable U32;
+       * - The result itself is as nullable as x. *)
+      arg_is_numeric oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc
+        (TVec (n+2, { structure = TU32 ; nullable = Some false })) ;
+      emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatelessFun2 (_, In, e1, e2) ->
       (* Typing rule:
        * - e2 can be a string, a cidr, a list or a vector;
        * - if e2 is a string, then e1 must be a string;
        * - if e2 is a cidr, then e1 must be an ip (TODO: either of the same
-       *   version or either the cidr or the ip must have version 2
-       *   (generic));
+       *   version or both the cidr or the ip must be generic);
        * - if e2 is either a list of a vector, then e1 must have the sort
        *   of the elements of this list or vector;
+       * - The result is a boolean;
        * - Result is as nullable as e1, e2 and the content of e2 if e2
        *   is a vector or a list. *)
       let name = make_name e2 "IN_TYPE" in
@@ -894,6 +1011,7 @@ let emit_constraints tuple_sizes out_fields oc e =
           id2 id2 id2 id1 id1 id1
           id2 (emit_same id1) (Printf.sprintf "(list-type %s)" id2)
           id2 (emit_same id1) (Printf.sprintf "(vector-type %s)" id2)) ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2
           "(or %s %s (and ((_ is list) %s) (list-nullable %s)) \
@@ -1020,12 +1138,14 @@ let id_or_type_of_field op name =
       FieldType (find_field_type RamenNotification.tuple_typ)
 
 (* Reading already compiled parents, set the type of fields originating from
- * external parents, parameters and environment, once and for all: *)
-let type_const_input_fields conf parents params funcs =
+ * external parents, parameters and environment, once and for all.
+ * Equals the input type of fields originating from internal parents to
+ * those output fields. *)
+let emit_input_fields oc tuple_sizes parents params funcs =
   List.iter (fun func ->
     let parents = Hashtbl.find_default parents func.Func.name [] in
     RamenOperation.iter_expr (function
-      | Field (field_typ, tupref, field_name) ->
+      | Field (field_typ, tupref, field_name) as expr ->
           if is_virtual_field field_name then (
             (* Type set during parsing *)
           ) else if !tupref = TupleParam then (
@@ -1036,11 +1156,11 @@ let type_const_input_fields conf parents params funcs =
                   (RamenName.string_of_func func.Func.name) field_name |>
                 failwith
             | param ->
-                field_typ.nullable <- param.ptyp.typ.nullable ;
-                field_typ.scalar_typ <- Some param.ptyp.typ.structure
+                emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc param.ptyp.typ.structure ;
+                emit_assert_id_is_bool (n_of_expr expr) oc (Option.get param.ptyp.typ.nullable)
           ) else if !tupref = TupleEnv then (
-            field_typ.nullable <- Some true ;
-            field_typ.scalar_typ <- Some TString
+            emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc TString ;
+            arg_is_nullable oc expr
           ) else if RamenLang.tuple_has_type_input !tupref then (
             let no_such_field pfunc =
               Printf.sprintf "Parent %s of %s does not output a field \
@@ -1059,17 +1179,16 @@ let type_const_input_fields conf parents params funcs =
                       field_name |>
                     failwith ;
                   prev_typ in
-            (* Check that every parents have this field with the same type,
-             * and set this field type to that: *)
-            let typ =
-              List.fold_left (fun prev_typ pfunc ->
+            (* Return either the type or a set of id to set this field
+             * type to: *)
+            let typ, same_as_ids =
+              List.fold_left (fun (prev_typ, same_as_ids) pfunc ->
                 if typing_is_finished pfunc.Func.out_type then (
                   match List.find (fun fld ->
                           fld.RamenTuple.typ_name = field_name
                         ) (typed_tuple_type (pfunc.Func.out_type)).ser with
                   | exception Not_found -> no_such_field pfunc
-                  | t ->
-                      aggr_types t prev_typ
+                  | t -> aggr_types t prev_typ, same_as_ids
                 ) else (
                   (* Typing not finished? This parent is in this very program
                    * then. Output the constraint to bind the input type to
@@ -1078,50 +1197,14 @@ let type_const_input_fields conf parents params funcs =
                   match id_or_type_of_field
                           (Option.get pfunc.Func.operation) field_name with
                   | exception Not_found -> no_such_field pfunc
-                  | Id p_id -> prev_typ
-                  | FieldType t -> aggr_types t prev_typ
+                  | Id p_id -> prev_typ, p_id::same_as_ids
+                  | FieldType t -> aggr_types t prev_typ, same_as_ids
                 )
-              ) None parents in
+              ) (None, []) parents in
             Option.may (fun t ->
-              field_typ.nullable <- t.RamenTuple.typ.nullable ;
-              field_typ.scalar_typ <- Some t.RamenTuple.typ.structure) typ ;
-          )
-      | _ -> ()
-    ) (Option.get func.Func.operation)
-  ) funcs
-
-(* Equals the input type of fields originating from internal parents to
- * those output fields. *)
-let emit_input_fields oc parents funcs =
-  List.iter (fun func ->
-    let parents = Hashtbl.find_default parents func.Func.name [] in
-    RamenOperation.iter_expr (function
-      | Field (field_typ, tupref, field_name) as expr ->
-          if is_virtual_field field_name then (
-            (* Type set during parsing *)
-          ) else if RamenLang.tuple_has_type_input !tupref then (
-            let no_such_field pfunc =
-              Printf.sprintf "Parent %s of %s does not output a field \
-                              named %s"
-                (RamenName.string_of_func pfunc.Func.name)
-                (RamenName.string_of_func func.Func.name)
-                field_name |>
-              failwith in
-            let same_as_ids =
-              List.fold_left (fun same_as_ids pfunc ->
-                if typing_is_finished pfunc.Func.out_type then same_as_ids
-                else (
-                  (* Typing not finished? This parent is in this very program
-                   * then. Output the constraint to bind the input type to
-                   * the output type: *)
-                  (* Retrieve the id for the parent output fields: *)
-                  match id_or_type_of_field
-                          (Option.get pfunc.Func.operation) field_name with
-                  | exception Not_found -> no_such_field pfunc
-                  | Id p_id -> p_id::same_as_ids
-                  | FieldType t -> same_as_ids
-                )
-              ) [] parents in
+              emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc t.RamenTuple.typ.structure ;
+              Option.may (emit_assert_id_is_bool (n_of_expr expr) oc) t.RamenTuple.typ.nullable
+            ) typ ;
             List.iter (fun id ->
               emit_assert_id_eq_id (e_of_expr expr) oc (e_of_num id) ;
               emit_assert_id_eq_id (n_of_expr expr) oc (n_of_num id) ;
@@ -1211,7 +1294,7 @@ let rec structure_of_term =
       !logger.warning "TODO: exploit define-fun with funny term" ;
       TEmpty
 
-let emit_smt2 oc ~optimize parents tuple_sizes funcs =
+let emit_smt2 oc ~optimize parents tuple_sizes funcs params =
   (* We have to start the SMT2 file with declarations before we can
    * produce any assertion: *)
   let decls = IO.output_string () in
@@ -1235,7 +1318,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs =
         eid)
   in
   (* Set the types for all fields from parents: *)
-  emit_input_fields parent_types parents funcs ;
+  emit_input_fields parent_types tuple_sizes parents params funcs ;
   emit_program declare tuple_sizes expr_types funcs ;
   if optimize then emit_minimize expr_types funcs ;
   Printf.fprintf oc
@@ -1363,10 +1446,15 @@ let set_io_tuples parents funcs h =
     | Aggregate { fields ; _ } ->
         out_type.fields <- List.map (fun sf ->
           let id = (typ_of sf.RamenOperation.expr).uniq_num in
-          let t = Hashtbl.find h id in
-          !logger.debug "Set output field %s.%s"
-            (RamenName.string_of_func func.name) sf.alias ;
-          sf.alias, make_typ ?nullable:t.nullable ~typ:t.structure sf.alias
+          match Hashtbl.find h id with
+          | exception Not_found ->
+              Printf.sprintf2 "Cannot find type for id %d, expr=%a"
+                id (RamenExpr.print false) sf.expr |>
+              failwith
+          | t ->
+              !logger.debug "Set output field %s.%s"
+                (RamenName.string_of_func func.name) sf.alias ;
+              sf.alias, make_typ ?nullable:t.nullable ~typ:t.structure sf.alias
         ) fields
     | ReadCSVFile { what = { fields ; _ } ; _ } ->
         set_type out_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
@@ -1446,10 +1534,9 @@ let get_types conf parents funcs params =
       Printf.sprintf "/tmp/%s.smt2"
         (RamenName.path_of_program program_name) in
     mkdir_all ~is_file:true smt2_file ;
-    type_const_input_fields conf parents params funcs ;
     !logger.debug "Writing SMT2 program into %S" smt2_file ;
     File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
-      emit_smt2 oc ~optimize:true parents tuple_sizes funcs) ;
+      emit_smt2 oc ~optimize:true parents tuple_sizes funcs params) ;
     match run_solver smt2_file with
     | RamenSmtParser.Solved (model, sure), output ->
         if not sure then
@@ -1487,7 +1574,7 @@ let get_types conf parents funcs params =
          * core: *)
         let smt2_file' = smt2_file ^".no_opt" in
         File.with_file_out ~mode:[`create; `text; `trunc] smt2_file' (fun oc ->
-          emit_smt2 oc ~optimize:false parents tuple_sizes funcs) ;
+          emit_smt2 oc ~optimize:false parents tuple_sizes funcs params) ;
         (match run_solver smt2_file' with
         | RamenSmtParser.Unsolved syms, output -> unsat syms output
         | RamenSmtParser.Solved _, _ ->
