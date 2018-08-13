@@ -13,10 +13,11 @@ type field_typ =
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
+  [@@ppp PPP_OCaml]
 
 type typed_tuple =
-  { user : field_typ list ; (* All the fields as declared in the code *)
-    ser : field_typ list } (* Only public fields *)
+  { user : typ ; (* All the fields as declared in the code *)
+    ser : typ } (* Only public fields *)
   [@@ppp PPP_OCaml]
 
 type param =

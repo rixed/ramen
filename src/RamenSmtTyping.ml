@@ -156,7 +156,7 @@ let emit_assert_id_eq_id = emit_assert_id_eq_smt2
 
 (* Check that types are either the same (for those we cannot compare)
  * or that e1 is <= e2.
- * For IP/CIDR, it means version is either the same or 2.
+ * For IP/CIDR, it means version is either the same or generic.
  * For integers, it means that width is <= and sign is also <=. *)
 let emit_id_le_smt2 id oc smt2 =
   Printf.fprintf oc
@@ -1204,7 +1204,8 @@ let rec structure_of_term =
         TTuple ts
       )
     with e ->
-      print_exception e ;
+      let what = "While scanning "^ id in
+      print_exception ~what e ;
       TEmpty)
   | _ ->
       !logger.warning "TODO: exploit define-fun with funny term" ;

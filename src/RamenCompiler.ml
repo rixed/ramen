@@ -133,8 +133,7 @@ let compile conf root_path get_parent program_name program_code =
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
           (* Or the parent must have been in compiler_funcs: *)
-          if parent_prog_name = program_name then
-            raise (RamenLang.SyntaxError (UnknownFunc parent_name)) ;
+          assert (parent_prog_name <> program_name) ;
           let parent_func =
             let par_rc = get_parent parent_prog_name in
             List.find (fun f ->

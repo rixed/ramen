@@ -10,6 +10,8 @@ open RamenParsing
   open TestHelpers
 *)
 
+let print_a_la_sexpr p = List.print ~first:"(" ~last:")" ~sep:" " p
+
 let comment =
   char ';' -- repeat_greedy ~sep:none ~what:"comment" all_but_newline
 
@@ -190,6 +192,11 @@ type spec_constant =
   | Numeral of int | Decimal of float | Hexadecimal of int | Binary of int
   | String of string
 
+let print_spec_constant oc = function
+  | Numeral i | Hexadecimal i | Binary i -> Int.print oc i
+  | Decimal f -> Float.print oc f
+  | String s -> String.print oc s
+
 let int_of_constant = function
   | Numeral n | Hexadecimal n | Binary n -> n
   | _ -> invalid_arg "int_of_constant"
@@ -207,6 +214,12 @@ let spec_constant m =
 type s_expr =
   | Constant of spec_constant | Symbol of string | Keyword of string
   | Group of s_expr list
+
+let rec print_s_expr oc = function
+  | Constant s -> print_spec_constant oc s
+  | Symbol s | Keyword s -> String.print oc s
+  | Group ses ->
+      print_a_la_sexpr print_s_expr oc ses
 
 let blanks =
   several ~sep:none ~what:"blanks"
@@ -287,6 +300,11 @@ type attribute_value =
   | SymbolicValue of string
   | SExprValue of s_expr list
 
+let print_attribute_value oc = function
+  | ConstantValue c -> print_spec_constant oc c
+  | SymbolicValue s -> String.print oc s
+  | SExprValue ses -> print_a_la_sexpr print_s_expr oc ses
+
 let attribute_value m =
   let m = "attribute value" :: m in
   (
@@ -303,7 +321,7 @@ let attribute m =
 
 let print_attribute oc (s, v) =
   Printf.fprintf oc ":%s" s ;
-  Option.may (fun _ -> String.print oc "some value (TODO)") v
+  Option.may (print_attribute_value oc) v
 
 (*$= attribute & ~printer:(IO.to_string print_attribute)
   ("left-assoc", None) (test_exn attribute ":left-assoc")
@@ -365,6 +383,12 @@ let pattern m =
 
 type qual_identifier = identifier * (* as... *) sort option
 
+let print_qual_identifier oc (id, sort) =
+  print_identifier oc id ;
+  Option.may (fun sort ->
+    Printf.fprintf oc " as %a" print_sort sort
+  ) sort
+
 let qual_identifier m =
   let m = "qual-identifier" :: m in
   (
@@ -395,7 +419,26 @@ and term =
   | Match of term * match_case list
   | Tagged of term * attribute list
 
-let rec print_term oc _x = Printf.fprintf oc "some_term(TODO)"
+let rec print_var_binding oc (s, t) =
+  Printf.fprintf oc "(%a <- %a)"
+    print_symbol s
+    print_term t
+
+and print_term oc = function
+  | ConstantTerm c -> print_spec_constant oc c
+  | QualIdentifier (id, ts) ->
+      print_qual_identifier oc id ;
+      print_a_la_sexpr print_term oc ts
+  | Let (bs, t) ->
+      Printf.fprintf oc "(let %a %a)"
+        (print_a_la_sexpr print_var_binding) bs
+        print_term t
+  | Tagged (t, ats) ->
+      Printf.fprintf oc "(! %a %a)"
+        print_term t
+        (print_a_la_sexpr print_attribute) ats
+  | _ ->
+      Printf.fprintf oc "some other term (TODO)"
 
 let rec match_case m =
   let m = "match case" :: m in

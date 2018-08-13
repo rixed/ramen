@@ -374,9 +374,10 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
               (conv_from_to ~nullable:(Option.get t.nullable)) (t.structure, TString) !i ;
             incr i)) ts
     | _ ->
-      failwith (Printf.sprintf "Cannot find converter from type %s to type %s"
-                  (IO.to_string print_structure from_typ)
-                  (IO.to_string print_structure to_typ))
+      Printf.sprintf2 "Cannot find converter from type %a to type %a"
+        print_structure from_typ
+        print_structure to_typ |>
+      failwith
   in
   if from_typ = to_typ then Printf.fprintf oc "identity"
   else
@@ -588,7 +589,6 @@ and emit_event_time oc opc =
  * initializing the group state or nothing (empty string) if we are not initializing
  * anything and state fields must be accessed via the actual state record.
  * It is used by stateful functions when they need to access their state. *)
-(* FIXME: return a list of type * arg instead of two lists *)
 and emit_expr_ ?state ~context ~opc oc expr =
   let open RamenExpr in
   let out_typ = typ_of expr in
