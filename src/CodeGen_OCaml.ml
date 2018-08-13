@@ -407,6 +407,20 @@ let emit_tuple tuple oc tuple_typ =
  * before starting the array/tuple.*)
 type args_as = Arg | Array of int | Tuple of int
 
+exception Error of RamenExpr.t * context * string
+let () =
+  Printexc.register_printer (function
+    | Error (expr, context, msg) ->
+        Some (Printf.sprintf2 "While generating code for %s %a: %s"
+          (match context with
+          | InitState -> "initialization of"
+          | UpdateState -> "updating state of"
+          | Finalize -> "finalization of"
+          | Generator -> "value generation for")
+          (RamenExpr.print true) expr
+          msg)
+    | _ -> None)
+
 (* This printer wrap expression [e] into a converter according to its current
  * type. to_typ is an option type: if None, no conversion is required
  * (useful for states). If e is nullable then so will be the result. *)
@@ -575,7 +589,7 @@ and emit_event_time oc opc =
  * anything and state fields must be accessed via the actual state record.
  * It is used by stateful functions when they need to access their state. *)
 (* FIXME: return a list of type * arg instead of two lists *)
-and emit_expr ?state ~context ~opc oc expr =
+and emit_expr_ ?state ~context ~opc oc expr =
   let open RamenExpr in
   let out_typ = typ_of expr in
   let nullable = Option.get out_typ.nullable in
@@ -1192,6 +1206,11 @@ and emit_expr ?state ~context ~opc oc expr =
         (IO.to_string (print true) expr)
         (string_of_context context) in
     failwith m
+
+and emit_expr ?state ~context ~opc oc expr =
+  try emit_expr_ ?state ~context ~opc oc expr
+  with Error _ as e -> raise e
+     | e -> raise (Error (expr, context, Printexc.to_string e))
 
 and add_missing_types arg_typs es =
   let open RamenExpr in
