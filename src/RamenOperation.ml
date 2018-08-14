@@ -650,7 +650,7 @@ struct
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
 
-  let default_commit_cond = E.expr_true
+  let default_commit_cond = E.expr_true ()
 
   let commit_clause m =
     let m = "commit clause" :: m in
@@ -827,7 +827,7 @@ struct
       and default_star = true
       and default_merge = [], 0.
       and default_sort = None
-      and default_where = E.expr_true
+      and default_where = E.expr_true ()
       and default_event_time = None
       and default_key = []
       and default_commit = ([], (false, default_commit_cond))
@@ -997,7 +997,7 @@ struct
         where = E.Const (typ, VBool true) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
@@ -1018,7 +1018,7 @@ struct
             Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
@@ -1038,7 +1038,7 @@ struct
         event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (65, [])))\
@@ -1061,7 +1061,7 @@ struct
         event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
                            StopField ("t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
@@ -1080,7 +1080,7 @@ struct
           { notif_name = E.Const (typ, VString "ouch") ;\
             parameters = [] } ] ;\
         key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
@@ -1174,7 +1174,7 @@ struct
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         from = [NamedOperation (Some (RamenName.rel_program_of_string "foo"), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
@@ -1230,7 +1230,7 @@ struct
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = E.Const (typ, VBool true) ;\
         notifications = [] ; key = [] ;\
-        commit_cond = replace_typ E.expr_true ;\
+        commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ; flush_how = Reset ; from = [] ;\
         factors = [] },\
         (29, [])))\

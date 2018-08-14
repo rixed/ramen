@@ -289,13 +289,10 @@ and generator_fun =
    * from 0 to N such values. *)
   | Split of t * t
 
-(* Those constant expressions are never typed so we type them here once and for
- * all: *)
-let expr_true =
+(* Constant expressions must be typed independently and therefore have
+ * a distinct uniq_num for each occurrence: *)
+let expr_true () =
   Const (make_typ ~nullable:false ~scalar_typ:TBool "true", VBool true)
-
-let expr_false =
-  Const (make_typ ~nullable:false ~scalar_typ:TBool "false", VBool false)
 
 let expr_u8 name n =
   Const (make_typ ~nullable:false ~scalar_typ:TU8 name, VU8 (Uint8.of_int n))
@@ -303,11 +300,9 @@ let expr_u8 name n =
 let expr_float name n =
   Const (make_typ ~nullable:false ~scalar_typ:TFloat name, VFloat n)
 
-let expr_zero = expr_u8 "zero" 0
-let expr_one = expr_u8 "one" 1
-let expr_two = expr_u8 "two" 2
-let expr_three = expr_u8 "three" 3
-let expr_1hour = expr_float "1hour" 3600.
+let expr_zero () = expr_u8 "zero" 0
+let expr_one () = expr_u8 "one" 1
+let expr_1hour () = expr_float "1hour" 3600.
 
 let of_float v =
   Const (make_typ ~nullable:false ~scalar_typ:TFloat (string_of_float v), VFloat v)
@@ -1241,21 +1236,21 @@ struct
      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
         StatefulFun (make_typ "lag", g, n, Lag (e1, e2))) |||
      (afun1_sf "lag" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "lag", g, n, Lag (expr_one, e))) |||
+        StatefulFun (make_typ "lag", g, n, Lag (expr_one (), e))) |||
 
      (* avg perform a division thus the float type *)
      (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
         StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (e1, e2, e3))) |||
      (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (expr_one, e1, e2))) |||
+        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (expr_one (), e1, e2))) |||
      (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
         StatefulFun (make_typ "season_fit", g, n, LinReg (e1, e2, e3))) |||
      (afun2_sf "fit" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "season_fit", g, n, LinReg (expr_one, e1, e2))) |||
+        StatefulFun (make_typ "season_fit", g, n, LinReg (expr_one (), e1, e2))) |||
      (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
         StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (e1, e2, e3, e4s))) |||
      (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
-        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (expr_one, e1, e2, e3s))) |||
+        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (expr_one (), e1, e2, e3s))) |||
      (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
         StatefulFun (make_typ "smooth", g, n, ExpSmooth (e1, e2))) |||
      (afun1_sf "smooth" >>: fun ((g, n), e) ->
@@ -1334,7 +1329,7 @@ struct
      sep ++ highestest_prec >>: fun ((k, (g, n)), e) ->
        if k = VNull then raise (Reject "Cannot use NULL here") ;
        let k = Const (make_typ "moving average order", k) in
-       StatefulFun (make_typ "moveavg", g, n, MovingAvg (expr_one, k, e))) m
+       StatefulFun (make_typ "moveavg", g, n, MovingAvg (expr_one (), k, e))) m
 
   and top_expr m =
     let m = "top expression" :: m in
@@ -1346,12 +1341,12 @@ struct
      strinG "in" +- blanks +- strinG "top" +- blanks ++
      (const ||| param) ++
      state_and_nulls ++
-     optional ~def:expr_one (
+     optional ~def:(expr_one ()) (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:expr_1hour (
+     optional ~def:(expr_1hour ()) (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
        strinG "last" -- blanks -+ (const ||| param)) ++
-     optional ~def:expr_zero (
+     optional ~def:(expr_zero ()) (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), c), (g, n)), by), duration), time) ->
        StatefulFun (

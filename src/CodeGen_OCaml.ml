@@ -1060,7 +1060,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | InitState, StatefulFun (_, g, _, Lag (k,e)), _ ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
-      [k; expr_one; any_constant_of_expr_type (typ_of e)]
+      [k; expr_one (); any_constant_of_expr_type (typ_of e)]
   | UpdateState, StatefulFun (_, g, n, Lag (_k,e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.Seasonal.add" oc [ None ]
@@ -1071,7 +1071,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
   (* We force the inputs to be float since we are going to return a float anyway. *)
   | InitState, StatefulFun (_, g, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), TFloat ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Seasonal.init"
-      [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero]
+      [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero ()]
   | UpdateState, StatefulFun (_, g, n, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.Seasonal.add" oc [ Some TFloat ]
@@ -1088,8 +1088,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | InitState, StatefulFun (_, g, _, MultiLinReg (p, m, _, es)), TFloat ->
     emit_functionNv ?state ~opc ~nullable "CodeGenLib.Seasonal.init_multi_linreg"
       [Some TU32; Some TU32; Some TFloat]
-      [p; m; expr_zero]
-      (Some TFloat) oc (List.map (fun _ -> expr_zero) es)
+      [p; m; expr_zero ()]
+      (Some TFloat) oc (List.map (fun _ -> expr_zero ()) es)
   | UpdateState, StatefulFun (_, g, n, MultiLinReg (_p , _m, e, es)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       ~vars:es ~vars_to_typ:(Some TFloat)
