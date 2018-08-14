@@ -349,11 +349,10 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - "NULL" is nullable. *)
       arg_is_nullable oc e
 
-  | Const (t, x) ->
-      (* TODO: do not remove the type from constant (like for Cast) *)
+  | Const (_, x) ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      emit_assert_id_eq_typ tuple_sizes eid oc (Option.get t.scalar_typ) ;
+      emit_assert_id_eq_typ tuple_sizes eid oc (RamenTypes.structure_of x) ;
       arg_is_not_nullable oc e
 
   | StateField _ -> assert false (* Not supposed to appear here *)
@@ -536,12 +535,12 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TBool
 
-  | StatelessFun1 (t, Cast, x) ->
+  | StatelessFun1 (_, Cast t, x) ->
       (* No type restriction on the operand: we might want to forbid some
        * types at some point, for instance strings... Some cast are
        * actually not implemented so would fail when generating code. *)
       emit_assert_id_eq_id nid oc (n_of_expr x) ;
-      emit_assert_id_eq_typ tuple_sizes eid oc (Option.get t.scalar_typ)
+      emit_assert_id_eq_typ tuple_sizes eid oc t.structure
 
   | StatelessFun2 (_, Percentile, e1, e2) ->
       (* - e1 must be numeric;
@@ -1436,8 +1435,8 @@ let set_io_tuples parents funcs h =
     tuple.RamenTypingHelpers.fields <-
       List.map (fun ft ->
         ft.RamenTuple.typ_name,
-        make_typ ?nullable:ft.typ.nullable ~typ:ft.typ.structure
-                 ft.typ_name
+        make_typ ?nullable:ft.RamenTuple.typ.nullable
+                 ~scalar_typ:ft.typ.structure ft.RamenTuple.typ_name
       ) typ in
   (* Set i/o types of func: *)
   let set_non_star_outputs func =
@@ -1454,7 +1453,8 @@ let set_io_tuples parents funcs h =
           | t ->
               !logger.debug "Set output field %s.%s"
                 (RamenName.string_of_func func.name) sf.alias ;
-              sf.alias, make_typ ?nullable:t.nullable ~typ:t.structure sf.alias
+              sf.alias,
+              make_typ ?nullable:t.nullable ~scalar_typ:t.structure sf.alias
         ) fields
     | ReadCSVFile { what = { fields ; _ } ; _ } ->
         set_type out_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
@@ -1489,8 +1489,8 @@ let set_io_tuples parents funcs h =
                   failwith ;
                 let t =
                   type_of_parents_field (List.hd parents) name in
-                let t =
-                  make_typ ?nullable:t.nullable ~typ:t.structure name in
+                let t = make_typ ?nullable:t.nullable
+                                 ~scalar_typ:t.structure name in
                 !logger.debug "Set input field %s.%s"
                   (RamenName.string_of_func func.name) name ;
                 in_type.fields <- (name, t) :: in_type.fields)

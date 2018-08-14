@@ -43,39 +43,14 @@ let print_typ oc typ =
 
 let uniq_num_seq = ref 0
 
-let make_typ ?nullable ?typ expr_name =
+let make_typ ?nullable ?scalar_typ expr_name =
   incr uniq_num_seq ;
-  { expr_name ; nullable ; scalar_typ = typ ; uniq_num = !uniq_num_seq }
-
-let make_bool_typ ?nullable name =
-  make_typ ?nullable ~typ:TBool name
-
-let make_float_typ ?nullable name =
-  make_typ ?nullable ~typ:TFloat name
-
-let make_string_typ ?nullable name =
-  make_typ ?nullable ~typ:TString name
-
-let make_num_typ ?nullable name =
-  make_typ ?nullable ~typ:TNum name (* will be enlarged as required *)
-
-let make_int_typ ?nullable name =
-  make_typ ?nullable ~typ:TNum name (* TODO: we should have a TInt *)
+  { expr_name ; nullable ; scalar_typ ; uniq_num = !uniq_num_seq }
 
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
   incr uniq_num_seq ;
   { typ with expr_name ; uniq_num = !uniq_num_seq }
-
-let is_an_ip t =
-  match t.scalar_typ with
-  | Some x -> RamenTypes.is_an_ip x
-  | _ -> false
-
-let is_an_int t =
-  match t.scalar_typ with
-  | Some x -> RamenTypes.is_an_int x
-  | _ -> false
 
 (* Stateful function can have either a unique global state a one state per
  * aggregation group (local). Each function has its own default (functions
@@ -176,7 +151,7 @@ and stateless_fun0 =
 and stateless_fun1 =
   (* TODO: Other functions: date_part... *)
   | Age
-  | Cast
+  | Cast of RamenTypes.t
   (* String functions *)
   | Length
   | Lower
@@ -314,17 +289,19 @@ and generator_fun =
    * from 0 to N such values. *)
   | Split of t * t
 
+(* Those constant expressions are never typed so we type them here once and for
+ * all: *)
 let expr_true =
-  Const (make_bool_typ ~nullable:false "true", VBool true)
+  Const (make_typ ~nullable:false ~scalar_typ:TBool "true", VBool true)
 
 let expr_false =
-  Const (make_bool_typ ~nullable:false "false", VBool false)
+  Const (make_typ ~nullable:false ~scalar_typ:TBool "false", VBool false)
 
 let expr_u8 name n =
-  Const (make_typ ~typ:TU8 ~nullable:false name, VU8 (Uint8.of_int n))
+  Const (make_typ ~nullable:false ~scalar_typ:TU8 name, VU8 (Uint8.of_int n))
 
 let expr_float name n =
-  Const (make_typ ~typ:TFloat ~nullable:false name, VFloat n)
+  Const (make_typ ~nullable:false ~scalar_typ:TFloat name, VFloat n)
 
 let expr_zero = expr_u8 "zero" 0
 let expr_one = expr_u8 "one" 1
@@ -333,7 +310,7 @@ let expr_three = expr_u8 "three" 3
 let expr_1hour = expr_float "1hour" 3600.
 
 let of_float v =
-  Const (make_typ ~nullable:false (string_of_float v), VFloat v)
+  Const (make_typ ~nullable:false ~scalar_typ:TFloat (string_of_float v), VFloat v)
 
 let is_true = function
   | Const (_ , VBool true) -> true
@@ -408,9 +385,9 @@ let rec print with_types oc =
     Printf.fprintf oc "#start" ; add_types t
   | StatelessFun0 (t, EventStop) ->
     Printf.fprintf oc "#stop" ; add_types t
-  | StatelessFun1 (t, Cast, e) ->
+  | StatelessFun1 (t, Cast typ, e) ->
     Printf.fprintf oc "cast(%a, %a)"
-      RamenTypes.print_structure (Option.get t.scalar_typ)
+      RamenTypes.print_typ typ
       (print with_types) e ;
     add_types t
   | StatelessFun1 (t, Length, e) ->
@@ -920,8 +897,7 @@ struct
        optional ~def:false (
          char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
        fun (c, nullable) ->
-         Const (make_typ ~nullable ~typ:(RamenTypes.structure_of c)
-          "constant", c)
+         Const (make_typ "constant", c)
     ) m
 
   (*$= const & ~printer:(test_printer (print false))
@@ -931,14 +907,14 @@ struct
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
 
-    (Ok (Const (typn, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
+    (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
       (test_p const "15i8n" |> replace_typ_in_expr)
   *)
 
   let null m =
     (RamenTypes.Parser.null >>: fun v ->
       (* Type of "NULL" is unknown yet *)
-      Const (make_typ ~nullable:true "NULL", v)
+      Const (make_typ "NULL", v)
     ) m
 
   let field m =
@@ -1014,8 +990,8 @@ struct
     let m = "logical operator" :: m in
     let op = that_string "and" ||| that_string "or"
     and reduce e1 op e2 = match op with
-      | "and" -> StatelessFun2 (make_bool_typ "and", And, e1, e2)
-      | "or" -> StatelessFun2 (make_bool_typ "or", Or, e1, e2)
+      | "and" -> StatelessFun2 (make_typ "and", And, e1, e2)
+      | "or" -> StatelessFun2 (make_typ "or", Or, e1, e2)
       | _ -> assert false in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
     binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
@@ -1031,22 +1007,22 @@ struct
              that_string "in" ||| that_string "like" |||
              ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
     and reduce e1 op e2 = match op with
-      | ">" -> StatelessFun2 (make_bool_typ "comparison (>)", Gt, e1, e2)
-      | "<" -> StatelessFun2 (make_bool_typ "comparison (<)", Gt, e2, e1)
-      | ">=" -> StatelessFun2 (make_bool_typ "comparison (>=)", Ge, e1, e2)
-      | "<=" -> StatelessFun2 (make_bool_typ "comparison (<=)", Ge, e2, e1)
-      | "=" -> StatelessFun2 (make_bool_typ "equality", Eq, e1, e2)
+      | ">" -> StatelessFun2 (make_typ "comparison (>)", Gt, e1, e2)
+      | "<" -> StatelessFun2 (make_typ "comparison (<)", Gt, e2, e1)
+      | ">=" -> StatelessFun2 (make_typ "comparison (>=)", Ge, e1, e2)
+      | "<=" -> StatelessFun2 (make_typ "comparison (<=)", Ge, e2, e1)
+      | "=" -> StatelessFun2 (make_typ "equality", Eq, e1, e2)
       | "!=" | "<>" ->
-        StatelessFun1 (make_bool_typ "not", Not,
-          StatelessFun2 (make_bool_typ "equality", Eq, e1, e2))
-      | "in" -> StatelessFun2 (make_bool_typ "in", In, e1, e2)
+        StatelessFun1 (make_typ "not", Not,
+          StatelessFun2 (make_typ "equality", Eq, e1, e2))
+      | "in" -> StatelessFun2 (make_typ "in", In, e1, e2)
       | "like" ->
         (match string_of_const e2 with
         | None -> raise (Reject "LIKE pattern must be a string constant")
         | Some p ->
-          StatelessFunMisc (make_bool_typ "like", Like (e1, p)))
-      | "starts" -> StatelessFun2 (make_bool_typ "starts with", StartsWith, e1, e2)
-      | "ends" -> StatelessFun2 (make_bool_typ "ends with", EndsWith, e1, e2)
+          StatelessFunMisc (make_typ "like", Like (e1, p)))
+      | "starts" -> StatelessFun2 (make_typ "starts with", StartsWith, e1, e2)
+      | "ends" -> StatelessFun2 (make_typ "ends with", EndsWith, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1054,9 +1030,9 @@ struct
     let m = "arithmetic operator" :: m in
     let op = that_string "+" ||| that_string "-" ||| that_string "||"
     and reduce e1 op e2 = match op with
-      | "+" -> StatelessFun2 (make_num_typ "addition", Add, e1, e2)
-      | "-" -> StatelessFun2 (make_num_typ "subtraction", Sub, e1, e2)
-      | "||" -> StatelessFun2 (make_string_typ "concatenation", Concat, e1, e2)
+      | "+" -> StatelessFun2 (make_typ "addition", Add, e1, e2)
+      | "-" -> StatelessFun2 (make_typ "subtraction", Sub, e1, e2)
+      | "||" -> StatelessFun2 (make_typ "concatenation", Concat, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1064,17 +1040,19 @@ struct
     let m = "arithmetic operator" :: m in
     let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
     and reduce e1 op e2 = match op with
-      | "*" -> StatelessFun2 (make_num_typ "multiplication", Mul, e1, e2)
+      | "*" -> StatelessFun2 (make_typ "multiplication", Mul, e1, e2)
       (* Note: We want the default division to output floats by default *)
       (* Note: We reject IP/INT because that's a CIDR *)
-      | "//" -> StatelessFun2 (make_num_typ "integer-division", IDiv, e1, e2)
-      | "%" -> StatelessFun2 (make_num_typ "modulo", Mod, e1, e2)
+      | "//" -> StatelessFun2 (make_typ "integer-division", IDiv, e1, e2)
+      | "%" -> StatelessFun2 (make_typ "modulo", Mod, e1, e2)
       | "/" ->
           (match e1, e2 with
-          | Const (t1, _), Const (t2, _) when is_an_ip t1 && is_an_int t2 ->
+          | Const (_, c1), Const (_, c2) when
+              RamenTypes.(structure_of c1 |> is_an_ip) &&
+              RamenTypes.(structure_of c2 |> is_an_int) ->
               raise (Reject "That's a CIDR")
           | _ ->
-              StatelessFun2 (make_float_typ "division", Div, e1, e2))
+              StatelessFun2 (make_typ "division", Div, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1082,9 +1060,9 @@ struct
     let m = "bitwise logical operator" :: m in
     let op = that_string "&" ||| that_string "|" ||| that_string "^"
     and reduce e1 op e2 = match op with
-      | "&" -> StatelessFun2 (make_int_typ "bitwise and", BitAnd, e1, e2)
-      | "|" -> StatelessFun2 (make_int_typ "bitwise or", BitOr, e1, e2)
-      | "^" -> StatelessFun2 (make_int_typ "bitwise xor", BitXor, e1, e2)
+      | "&" -> StatelessFun2 (make_typ "bitwise and", BitAnd, e1, e2)
+      | "|" -> StatelessFun2 (make_typ "bitwise or", BitOr, e1, e2)
+      | "^" -> StatelessFun2 (make_typ "bitwise xor", BitXor, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
@@ -1092,7 +1070,7 @@ struct
     let m = "arithmetic operator" :: m in
     let op = char '^'
     and reduce e1 _ e2 =
-      StatelessFun2 (make_num_typ "exponentiation", Pow, e1, e2) in
+      StatelessFun2 (make_typ "exponentiation", Pow, e1, e2) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1194,10 +1172,10 @@ struct
   and highest_prec_left_assoc m =
     (
       (afun1 "not" >>: fun e ->
-        StatelessFun1 (make_bool_typ "not", Not, e)) |||
+        StatelessFun1 (make_typ "not", Not, e)) |||
       (strinG "-" -- opt_blanks --
         check (nay decimal_digit) -+ highestest_prec >>: fun e ->
-          StatelessFun1 (make_num_typ "unary minus", Minus, e)) |||
+          StatelessFun1 (make_typ "unary minus", Minus, e)) |||
       (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
@@ -1206,10 +1184,10 @@ struct
           strinG "null") >>: function
             | e, None -> e
             | e, Some false ->
-              StatelessFun1 (make_bool_typ ~nullable:false "not", Not,
-                StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e))
+              StatelessFun1 (make_typ "not", Not,
+                StatelessFun1 (make_typ "is_not_null", Defined, e))
             | e, Some true ->
-              StatelessFun1 (make_bool_typ ~nullable:false "is_not_null", Defined, e)) |||
+              StatelessFun1 (make_typ "is_not_null", Defined, e)) |||
       (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
         fun e -> StatelessFun1 (make_typ "begin of", BeginOfRange, e)) |||
       (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
@@ -1219,36 +1197,36 @@ struct
   and func m =
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
-    ((afun1 "age" >>: fun e -> StatelessFun1 (make_num_typ "age function", Age, e)) |||
-     (afun1 "abs" >>: fun e -> StatelessFun1 (make_num_typ "absolute value", Abs, e)) |||
-     (afun1 "length" >>: fun e -> StatelessFun1 (make_typ ~typ:TU16 "length", Length, e)) |||
-     (afun1 "lower" >>: fun e -> StatelessFun1 (make_string_typ "lower", Lower, e)) |||
-     (afun1 "upper" >>: fun e -> StatelessFun1 (make_string_typ "upper", Upper, e)) |||
-     (strinG "now" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "now", Now)) |||
-     (strinG "random" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "random", Random)) |||
-     (strinG "#start" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "#start", EventStart)) |||
-     (strinG "#stop" >>: fun () -> StatelessFun0 (make_float_typ ~nullable:false "#stop", EventStop)) |||
-     (afun1 "exp" >>: fun e -> StatelessFun1 (make_float_typ "exponential", Exp, e)) |||
-     (afun1 "log" >>: fun e -> StatelessFun1 (make_float_typ "natural logarithm", Log, e)) |||
-     (afun1 "log10" >>: fun e -> StatelessFun1 (make_float_typ "common logarithm", Log10, e)) |||
-     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_float_typ "square root", Sqrt, e)) |||
-     (afun1 "ceil" >>: fun e -> StatelessFun1 (make_num_typ "ceil", Ceil, e)) |||
-     (afun1 "floor" >>: fun e -> StatelessFun1 (make_num_typ "floor", Floor, e)) |||
-     (afun1 "round" >>: fun e -> StatelessFun1 (make_num_typ "round", Round, e)) |||
-     (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ ~typ:TI64 "hash", Hash, e)) |||
-     (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ ~typ:TString "sparkline", Sparkline, e)) |||
+    ((afun1 "age" >>: fun e -> StatelessFun1 (make_typ "age function", Age, e)) |||
+     (afun1 "abs" >>: fun e -> StatelessFun1 (make_typ "absolute value", Abs, e)) |||
+     (afun1 "length" >>: fun e -> StatelessFun1 (make_typ "length", Length, e)) |||
+     (afun1 "lower" >>: fun e -> StatelessFun1 (make_typ "lower", Lower, e)) |||
+     (afun1 "upper" >>: fun e -> StatelessFun1 (make_typ "upper", Upper, e)) |||
+     (strinG "now" >>: fun () -> StatelessFun0 (make_typ "now", Now)) |||
+     (strinG "random" >>: fun () -> StatelessFun0 (make_typ "random", Random)) |||
+     (strinG "#start" >>: fun () -> StatelessFun0 (make_typ "#start", EventStart)) |||
+     (strinG "#stop" >>: fun () -> StatelessFun0 (make_typ "#stop", EventStop)) |||
+     (afun1 "exp" >>: fun e -> StatelessFun1 (make_typ "exponential", Exp, e)) |||
+     (afun1 "log" >>: fun e -> StatelessFun1 (make_typ "natural logarithm", Log, e)) |||
+     (afun1 "log10" >>: fun e -> StatelessFun1 (make_typ "common logarithm", Log10, e)) |||
+     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_typ "square root", Sqrt, e)) |||
+     (afun1 "ceil" >>: fun e -> StatelessFun1 (make_typ "ceil", Ceil, e)) |||
+     (afun1 "floor" >>: fun e -> StatelessFun1 (make_typ "floor", Floor, e)) |||
+     (afun1 "round" >>: fun e -> StatelessFun1 (make_typ "round", Round, e)) |||
+     (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ "hash", Hash, e)) |||
+     (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ "sparkline", Sparkline, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "min aggregation", g, n, AggrMin e)) |||
      (afun1_sf ~def_state:LocalState "max" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "max aggregation", g, n, AggrMax e)) |||
      (afun1_sf ~def_state:LocalState "sum" >>: fun ((g, n), e) ->
-        StatefulFun (make_num_typ "sum aggregation", g, n, AggrSum e)) |||
+        StatefulFun (make_typ "sum aggregation", g, n, AggrSum e)) |||
      (afun1_sf ~def_state:LocalState "avg" >>: fun ((g, n), e) ->
-        StatefulFun (make_float_typ "average", g, n, AggrAvg e)) |||
+        StatefulFun (make_typ "average", g, n, AggrAvg e)) |||
      (afun1_sf ~def_state:LocalState "and" >>: fun ((g, n), e) ->
-        StatefulFun (make_bool_typ "and aggregation", g, n, AggrAnd e)) |||
+        StatefulFun (make_typ "and aggregation", g, n, AggrAnd e)) |||
      (afun1_sf ~def_state:LocalState "or" >>: fun ((g, n), e) ->
-        StatefulFun (make_bool_typ "or aggregation", g, n, AggrOr e)) |||
+        StatefulFun (make_typ "or aggregation", g, n, AggrOr e)) |||
      (afun1_sf ~def_state:LocalState "first" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "first aggregation", g, n, AggrFirst e)) |||
      (afun1_sf ~def_state:LocalState "last" >>: fun ((g, n), e) ->
@@ -1259,7 +1237,7 @@ struct
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
      ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
       afun1 "percentile" >>: fun (p, e) ->
-        StatelessFun2 (make_num_typ "percentile", Percentile, p, e)) |||
+        StatelessFun2 (make_typ "percentile", Percentile, p, e)) |||
      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
         StatefulFun (make_typ "lag", g, n, Lag (e1, e2))) |||
      (afun1_sf "lag" >>: fun ((g, n), e) ->
@@ -1267,36 +1245,36 @@ struct
 
      (* avg perform a division thus the float type *)
      (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
-        StatefulFun (make_float_typ "season_moveavg", g, n, MovingAvg (e1, e2, e3))) |||
+        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (e1, e2, e3))) |||
      (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_float_typ "season_moveavg", g, n, MovingAvg (expr_one, e1, e2))) |||
+        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (expr_one, e1, e2))) |||
      (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
-        StatefulFun (make_float_typ "season_fit", g, n, LinReg (e1, e2, e3))) |||
+        StatefulFun (make_typ "season_fit", g, n, LinReg (e1, e2, e3))) |||
      (afun2_sf "fit" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_float_typ "season_fit", g, n, LinReg (expr_one, e1, e2))) |||
+        StatefulFun (make_typ "season_fit", g, n, LinReg (expr_one, e1, e2))) |||
      (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
-        StatefulFun (make_float_typ "season_fit_multi", g, n, MultiLinReg (e1, e2, e3, e4s))) |||
+        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (e1, e2, e3, e4s))) |||
      (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
-        StatefulFun (make_float_typ "season_fit_multi", g, n, MultiLinReg (expr_one, e1, e2, e3s))) |||
+        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (expr_one, e1, e2, e3s))) |||
      (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_float_typ "smooth", g, n, ExpSmooth (e1, e2))) |||
+        StatefulFun (make_typ "smooth", g, n, ExpSmooth (e1, e2))) |||
      (afun1_sf "smooth" >>: fun ((g, n), e) ->
         let alpha =
-          Const (make_float_typ ~nullable:false "alpha", VFloat 0.5) in
-        StatefulFun (make_float_typ "smooth", g, n, ExpSmooth (alpha, e))) |||
+          Const (make_typ "alpha", VFloat 0.5) in
+        StatefulFun (make_typ "smooth", g, n, ExpSmooth (alpha, e))) |||
      (afun3_sf "remember" >>: fun ((g, n), tim, dur, e) ->
         (* If we allowed a list of expressions here then it would be ambiguous
          * with the following "3+v" signature: *)
         let fpr = of_float 0.015 in
-        StatefulFun (make_bool_typ "remember", g, n,
+        StatefulFun (make_typ "remember", g, n,
                      Remember (fpr, tim, dur, [e]))) |||
      (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
-        StatefulFun (make_bool_typ "remember", g, n,
+        StatefulFun (make_typ "remember", g, n,
                      Remember (fpr, tim, dur, es))) |||
      (afun0v_sf ~def_state:LocalState "distinct" >>: fun ((g, n), es) ->
-         StatefulFun (make_bool_typ "distinct", g, n, Distinct es)) |||
+         StatefulFun (make_typ "distinct", g, n, Distinct es)) |||
      (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
-        StatefulFun (make_bool_typ "hysteresis", g, n,
+        StatefulFun (make_typ "hysteresis", g, n,
                      Hysteresis (value, accept, max))) |||
      (afun4_sf ~def_state:LocalState "histogram" >>:
       fun ((g, n), what, min, max, num_buckets) ->
@@ -1306,21 +1284,15 @@ struct
         | Some min, Some max, Some num_buckets ->
             if num_buckets <= 0 then
               raise (Reject "Histogram size must be positive") ;
-            let typ =
-              (* If a value is null, the whole histogram will be null. If we
-               * have an histogram at all then each bucket is a non-null
-               * u32: *)
-              RamenTypes.(TVec (num_buckets+2, { structure = TU32 ;
-                                                nullable = Some false })) in
-            StatefulFun (make_typ "histogram" ~typ,
+            StatefulFun (make_typ "histogram",
                          g, n, AggrHistogram (what, min, max, num_buckets))
         | _ -> raise (Reject "histogram dimensions must be constants")) |||
      (afun2 "split" >>: fun (e1, e2) ->
-        GeneratorFun (make_typ ~typ:TString "split", Split (e1, e2))) |||
+        GeneratorFun (make_typ "split", Split (e1, e2))) |||
      (afun2 "format_time" >>: fun (e1, e2) ->
-        StatelessFun2 (make_typ ~typ:TString "format_time", Strftime, e1, e2)) |||
+        StatelessFun2 (make_typ "format_time", Strftime, e1, e2)) |||
      (afun1 "parse_time" >>: fun e ->
-        StatelessFun1 (make_float_typ ~nullable:true "parse_time", Strptime, e)) |||
+        StatelessFun1 (make_typ "parse_time", Strptime, e)) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
         StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||
@@ -1339,7 +1311,7 @@ struct
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
      (afun2 "reldiff" >>: fun (e1, e2) ->
-       StatelessFun2 (make_typ ~typ:TFloat "reldiff", Reldiff, e1, e2)) |||
+       StatelessFun2 (make_typ "reldiff", Reldiff, e1, e2)) |||
      k_moveavg ||| cast ||| top_expr ||| nth ||| last) m
 
   and cast m =
@@ -1349,9 +1321,8 @@ struct
      highestest_prec >>: fun (t, e) ->
        (* The nullability of [value] should propagate to [type(value)],
         * while [type?(value)] should be nullable no matter what. *)
-       let nullable = if t.nullable = Some true then Some true else None in
-       StatelessFun1 (make_typ ~typ:t.structure ?nullable
-        ("cast to "^ IO.to_string RamenTypes.print_typ t), Cast, e)
+       let name = "cast to "^ IO.to_string RamenTypes.print_typ t in
+       StatelessFun1 (make_typ name, Cast t, e)
     ) m
 
   and k_moveavg m =
@@ -1362,10 +1333,8 @@ struct
      state_and_nulls +-
      sep ++ highestest_prec >>: fun ((k, (g, n)), e) ->
        if k = VNull then raise (Reject "Cannot use NULL here") ;
-       let k = Const (make_typ ~nullable:false
-                               ~typ:(RamenTypes.structure_of k)
-                               "moving average order", k) in
-       StatefulFun (make_float_typ "moveavg", g, n, MovingAvg (expr_one, k, e))) m
+       let k = Const (make_typ "moving average order", k) in
+       StatefulFun (make_typ "moveavg", g, n, MovingAvg (expr_one, k, e))) m
 
   and top_expr m =
     let m = "top expression" :: m in
@@ -1386,9 +1355,9 @@ struct
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), c), (g, n)), by), duration), time) ->
        StatefulFun (
-         (if want_rank then make_int_typ ~nullable:true "rank in top"
+         (if want_rank then make_typ "rank in top"
                        (* same nullability as what+by+time: *)
-                       else make_bool_typ "is in top"),
+                       else make_typ "is in top"),
          g, n,
          Top { want_rank ; c ; what ; by ; duration ; time })) m
 
@@ -1404,7 +1373,7 @@ struct
       (* We cannot check that c is_constant yet since fields have not
        * been assigned yet. *)
       (* The result is null when the number of input is less than c: *)
-      StatefulFun (make_typ ~nullable:true "last", g, n, Last (c, e, es))
+      StatefulFun (make_typ "last", g, n, Last (c, e, es))
     ) m
 
   and nth m =
@@ -1457,7 +1426,7 @@ struct
       | [] -> raise (Reject "empty COALESCE")
       | [_] -> raise (Reject "COALESCE must have at least 2 arguments")
       | r ->
-          Coalesce (make_typ ~nullable:false "coalesce", r)
+          Coalesce (make_typ "coalesce", r)
     ) m
 
   and highestest_prec_no_parenthesis m =
@@ -1479,12 +1448,9 @@ struct
       opt_blanks +- char ')' >>: fun es ->
         let num_items = List.length es in
         assert (num_items >= 2) ;
-        let typ =
-          RamenTypes.(TTuple (Array.init num_items (fun i ->
-            { structure = TAny ; nullable = None }))) in
         (* Even if all the fields are null the tuple is not null.
          * No immediate tuple can be null. *)
-        Tuple (make_typ ~nullable:false ~typ "tuple", es)
+        Tuple (make_typ "tuple", es)
     ) m
 
   (* Empty vectors are disallowed so we cannot ignore the element type: *)
@@ -1496,10 +1462,7 @@ struct
       opt_blanks +- char ']' >>: fun es ->
         let num_items = List.length es in
         assert (num_items >= 1) ;
-        let typ =
-          RamenTypes.(TVec (num_items, { structure = TAny ;
-                                         nullable = None })) in
-        Vector (make_typ ~nullable:false ~typ "vector", es)
+        Vector (make_typ "vector", es)
     ) m
 
   and p m = lowest_prec_left_assoc m

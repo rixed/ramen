@@ -80,10 +80,9 @@ let finish_typing t =
 let untyped_tuple_of_tup_typ tup_typ =
   let t = make_untyped_tuple () in
   List.iter (fun f ->
-      let expr_typ =
-        Expr.make_typ ?nullable:f.RamenTuple.typ.nullable
-                           ~typ:f.typ.structure f.typ_name in
-      t.fields <- t.fields @ [f.typ_name, expr_typ]
+      let typ = Expr.make_typ ?nullable:f.RamenTuple.typ.nullable
+                              ~scalar_typ:f.typ.structure f.RamenTuple.typ_name in
+      t.fields <- t.fields @ [f.typ_name, typ]
     ) tup_typ ;
   finish_typing t ;
   t

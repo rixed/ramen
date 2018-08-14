@@ -391,11 +391,14 @@ let wrap_nullable ~nullable oc s =
 
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
+(* FIXME: change lag so that this is no longer needed: *)
 let rec any_constant_of_expr_type t =
   let open RamenExpr in
   let open Stdint in
   let c v =
-    Const (make_typ ?typ:t.scalar_typ ?nullable:t.nullable "init", v)
+    let typ = make_typ "init" in
+    Const ({ typ with scalar_typ = t.scalar_typ ;
+                      nullable = t.nullable }, v)
   in
   c (any_value_of_type (Option.get t.scalar_typ))
 
@@ -836,17 +839,17 @@ and emit_expr_ ?state ~context ~opc oc expr =
     Printf.fprintf oc "((%a) |> fst)" emit_event_time opc
   | Finalize, StatelessFun0 (_, EventStop), TFloat ->
     Printf.fprintf oc "((%a) |> snd)" emit_event_time opc
-  | Finalize, StatelessFun1 (_, Cast, Const (_, VNull)), _ ->
+  | Finalize, StatelessFun1 (_, Cast _, Const (_, VNull)), _ ->
     (* Special case when casting NULL to anything: that must work whatever the
      * destination type, even if we have no converter from the type of NULL.
      * This is important because literal NULL type is random. *)
     Printf.fprintf oc "Null"
-  | Finalize, StatelessFun1 (_, Cast, e), to_typ ->
+  | Finalize, StatelessFun1 (_, Cast to_typ, e), _ ->
     let from = typ_of e in
     let from_typ = Option.get from.scalar_typ
     and nullable = Option.get from.nullable in
     Printf.fprintf oc "(%a) (%a)"
-      (conv_from_to ~nullable) (from_typ, to_typ)
+      (conv_from_to ~nullable) (from_typ, to_typ.structure)
       (emit_expr ?state ~context ~opc) e
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
@@ -1252,7 +1255,10 @@ and add_missing_types arg_typs es =
   open Batteries
   open Stdint
   open RamenTypes
-  let const typ v = RamenLang.(RamenExpr.(Const (make_typ ~typ "test", v)))
+  let const typ v =
+    let t = RamenExpr.make_typ "test" in
+    let t = { t with scalar_typ = Some typ } in
+    RamenLang.(RamenExpr.(Const (t, v)))
  *)
 (*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print print_structure)))
   [Some TFloat] \

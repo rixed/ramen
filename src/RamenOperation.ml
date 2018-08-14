@@ -625,8 +625,9 @@ struct
       (
         E.Parser.p +- blanks +- strinG "as" +- blanks ++ non_keyword >>:
         fun (v, n) ->
-          n, E.(StatelessFun1
-                  (make_typ ~typ:TString ~nullable:false "cast", Cast,  v))
+          let typ =
+            RamenTypes.{ structure = TString ; nullable = Some false } in
+          n, E.(StatelessFun1 (make_typ "cast", Cast typ,  v))
       ) m in
     let notify_cmd m =
       let m = "notification" :: m in
