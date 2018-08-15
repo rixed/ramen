@@ -520,20 +520,20 @@ struct
       else String.lchop field in
     function
     | Field (_, _, field)
-        when not (is_virtual_field field) -> field
+        when not (is_virtual_field field) -> force_public field
     (* Provide some default name for common aggregate functions: *)
-    | StatefulFun (_, _, _, AggrMin (Field (_, _, field))) -> "min_"^ force_public field
-    | StatefulFun (_, _, _, AggrMax (Field (_, _, field))) -> "max_"^ force_public field
-    | StatefulFun (_, _, _, AggrSum (Field (_, _, field))) -> "sum_"^ force_public field
-    | StatefulFun (_, _, _, AggrAvg (Field (_, _, field))) -> "avg_"^ force_public field
-    | StatefulFun (_, _, _, AggrAnd (Field (_, _, field))) -> "and_"^ force_public field
-    | StatefulFun (_, _, _, AggrOr (Field (_, _, field))) -> "or_"^ force_public field
-    | StatefulFun (_, _, _, AggrFirst (Field (_, _, field))) -> "first_"^ force_public field
-    | StatefulFun (_, _, _, AggrLast (Field (_, _, field))) -> "last_"^ force_public field
-    | StatefulFun (_, _, _, AggrHistogram (Field (_, _, field), _, _, _)) -> force_public field ^"_histogram"
-    | StatelessFun2 (_, Percentile, Const (_, p), Field (_, _, field))
+    | StatefulFun (_, _, _, AggrMin e) -> "min_"^ default_alias e
+    | StatefulFun (_, _, _, AggrMax e) -> "max_"^ default_alias e
+    | StatefulFun (_, _, _, AggrSum e) -> "sum_"^ default_alias e
+    | StatefulFun (_, _, _, AggrAvg e) -> "avg_"^ default_alias e
+    | StatefulFun (_, _, _, AggrAnd e) -> "and_"^ default_alias e
+    | StatefulFun (_, _, _, AggrOr e) -> "or_"^ default_alias e
+    | StatefulFun (_, _, _, AggrFirst e) -> "first_"^ default_alias e
+    | StatefulFun (_, _, _, AggrLast e) -> "last_"^ default_alias e
+    | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) -> default_alias e ^"_histogram"
+    | StatelessFun2 (_, Percentile, Const (_, p), e)
       when RamenTypes.is_round_integer p ->
-      Printf.sprintf "%s_%sth" (force_public field) (IO.to_string RamenTypes.print p)
+      Printf.sprintf "%s_%sth" (default_alias e) (IO.to_string RamenTypes.print p)
     | StatelessFunMisc (_, Print es) when es <> [] ->
       default_alias (List.hd es)
     | _ -> raise (Reject "must set alias")
