@@ -331,3 +331,7 @@ let pending_notifications_file conf =
 (* For custom API, where to store alerting thresholds: *)
 let api_alerts_root conf =
   conf.persist_dir ^"/api/set_alerts"
+
+(* Where SMT files (used for type-checking) are written temporarily *)
+let smt_file root_path program_name =
+  root_path ^"/"^ RamenName.path_of_program program_name ^".smt2"

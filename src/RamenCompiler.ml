@@ -53,13 +53,13 @@ let compile conf root_path get_parent program_name program_code =
    * we collect all their name so we delete them at the end:
    *)
   let temp_files = ref Set.empty in
-  let add_temp_file f = temp_files := Set.add f !temp_files in
+  let add_single_temp_file f = temp_files := Set.add f !temp_files in
   let add_temp_file f =
-    add_temp_file (change_ext ".ml" f) ;
-    add_temp_file (change_ext ".cmx" f) ;
-    add_temp_file (change_ext ".cmi" f) ;
-    add_temp_file (change_ext ".o" f) ;
-    add_temp_file (change_ext ".annot" f) in
+    add_single_temp_file (change_ext ".ml" f) ;
+    add_single_temp_file (change_ext ".cmx" f) ;
+    add_single_temp_file (change_ext ".cmi" f) ;
+    add_single_temp_file (change_ext ".o" f) ;
+    add_single_temp_file (change_ext ".annot" f) in
   let del_temp_files () =
     if not conf.C.keep_temp_files then
       Set.iter (fun fname ->
@@ -160,10 +160,12 @@ let compile conf root_path get_parent program_name program_code =
           (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
     (* Type using the external solver: *)
     let open RamenSmtTyping in
+    let smt2_file = C.smt_file root_path program_name in
+    add_single_temp_file smt2_file ;
     let types =
       call_typer !RamenSmtTyping.smt_solver (fun () ->
         get_types conf compiler_parents compiler_funcs
-                                 parsed_params) in
+                  parsed_params smt2_file) in
     apply_types compiler_parents compiler_funcs types ;
     Hashtbl.iter (fun _ func ->
       RamenTypingHelpers.finalize_func conf compiler_parents parsed_params func

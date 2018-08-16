@@ -1523,16 +1523,11 @@ let apply_types parents funcs h =
     ) (Option.get func.Func.operation)
   ) funcs
 
-let get_types conf parents funcs params =
+let get_types conf parents funcs params smt2_file =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
     let tuple_sizes = [ 1; 2; 3; 4; 5; 6; 7; 8; 9 ] (* TODO *) in
-    (* So that we can now produce the smt2 script: *)
-    let program_name = (List.hd funcs).Func.program_name in
-    let smt2_file =
-      Printf.sprintf "/tmp/%s.smt2"
-        (RamenName.path_of_program program_name) in
     mkdir_all ~is_file:true smt2_file ;
     !logger.debug "Writing SMT2 program into %S" smt2_file ;
     File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
