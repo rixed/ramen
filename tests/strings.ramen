@@ -4,5 +4,7 @@ DEFINE f1 AS
   YIELD
     "glop" IN "pas glop!" AS t1,
     "pas glop" ends with "glop" as t2,
-    not ("pas glop" starts with "glop") as t3
+    not ("pas glop" starts with "glop") as t3,
+    "multi
+line" as t4
   EVERY 1 SECOND;

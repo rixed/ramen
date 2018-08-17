@@ -2,7 +2,9 @@
   programs = [ ("strings.x", []) ];
   outputs = {
     "tests/strings/f1" => {
-      present = [ { "t1" => "true"; "t2" => "true"; "t3" => "true" } ];
+      present = [
+				{ "t1" => "true"; "t2" => "true"; "t3" => "true" ;
+				  "t4" => "\"multi\\nline\"" } ];
       absent = [
         { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
       ]
