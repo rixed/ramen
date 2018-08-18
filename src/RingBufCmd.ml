@@ -64,6 +64,7 @@ let repair conf files () =
 type func_status =
   | Running of F.t
   | NotRunning of RamenName.program * RamenName.func
+  | ProgramError of RamenName.program * string
 
 let links conf no_abbrev show_all with_header sort_col top pattern () =
   logger := make_logger conf.C.debug ;
@@ -81,6 +82,8 @@ let links conf no_abbrev show_all with_header sort_col top pattern () =
     | NotRunning (pn, fn) ->
         red (RamenName.string_of_program pn ^"/"^
              RamenName.string_of_func fn)
+    | ProgramError (pn, e) ->
+        red (RamenName.string_of_program pn ^": "^ e)
     | Running func -> RamenName.string_of_fq (F.fq_name func) in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
@@ -92,7 +95,7 @@ let links conf no_abbrev show_all with_header sort_col top pattern () =
     then
       let ringbuf, fill_ratio, next_seqs, is_err1 =
         match c with
-        | NotRunning (pn, fn) -> "", "0.", "", false
+        | NotRunning _ | ProgramError _ -> "", "0.", "", false
         | Running c ->
             let ringbuf =
               if c.F.merge_inputs then
@@ -118,6 +121,8 @@ let links conf no_abbrev show_all with_header sort_col top pattern () =
         match p with
         | NotRunning (pn, fn) ->
             Lwt.return ("", red "NOT RUNNING", true)
+        | ProgramError (pn, e) ->
+            Lwt.return ("", red e, true)
         | Running p ->
             let out_ref = C.out_ringbuf_names_ref conf p in
             let%lwt outs = RamenOutRef.read out_ref in
@@ -148,30 +153,36 @@ let links conf no_abbrev show_all with_header sort_col top pattern () =
         (* Get rid of Lwt in AdvLock and RamenOutRef! *)
         Hashtbl.enum programs |> List.of_enum |>
         Lwt_list.fold_left_s (fun links (program_name, get_rc) ->
-          let bin, prog = get_rc () in
-          Lwt_list.fold_left_s (fun links func ->
-            let%lwt _, links =
-              Lwt_list.fold_left_s (fun (i, links) (par_rel_prog, par_func) ->
-                (* i is the index in the list of parents for a given child *)
-                let par_prog =
-                  F.program_of_parent_prog func.F.program_name par_rel_prog in
-                let parent =
-                  match Hashtbl.find programs par_prog with
-                  | exception Not_found ->
-                      NotRunning (par_prog, par_func)
-                  | get_rc ->
-                      let _bin, pprog = get_rc () in
-                      (match List.find (fun f ->
-                               f.F.name = par_func
-                             ) pprog.P.funcs with
+          match get_rc () with
+          | exception _ -> Lwt.return_nil (* Errors have been logged already *)
+          | bin, prog ->
+              Lwt_list.fold_left_s (fun links func ->
+                let%lwt _, links =
+                  Lwt_list.fold_left_s (fun (i, links)
+                                            (par_rel_prog, par_func) ->
+                    (* i is the index in the list of parents for a given
+                     * child *)
+                    let par_prog =
+                      F.program_of_parent_prog func.F.program_name
+                                               par_rel_prog in
+                    let parent =
+                      match Hashtbl.find programs par_prog () with
                       | exception Not_found ->
                           NotRunning (par_prog, par_func)
-                      | pfunc -> Running pfunc) in
-                match%lwt line_of_link i parent (Running func) with
-                | Some line -> Lwt.return (i + 1, line :: links)
-                | None -> Lwt.return (i + 1, links)
-              ) (0, links) func.parents in
-            Lwt.return links
-          ) links prog.P.funcs
+                      | exception e ->
+                          ProgramError (par_prog, Printexc.to_string e)
+                      | _bin, pprog ->
+                          (match List.find (fun f ->
+                                   f.F.name = par_func
+                                 ) pprog.P.funcs with
+                          | exception Not_found ->
+                              NotRunning (par_prog, par_func)
+                          | pfunc -> Running pfunc) in
+                    match%lwt line_of_link i parent (Running func) with
+                    | Some line -> Lwt.return (i + 1, line :: links)
+                    | None -> Lwt.return (i + 1, links)
+                  ) (0, links) func.parents in
+                Lwt.return links
+              ) links prog.P.funcs
         ) [])) in
   TermTable.print_table ~sort_col ~with_header ?top head links

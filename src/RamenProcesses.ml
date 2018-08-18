@@ -684,14 +684,19 @@ let synchronize_running conf autoreload_delay =
               Hashtbl.clear must_run ;
               let%lwt () = Lwt.wrap (fun () ->
                 Hashtbl.iter (fun program_name get_rc ->
-                  let bin, prog = get_rc () in
-                  let params = prog.P.params in
-                  List.iter (fun f ->
-                    (* Use the mount point + signature + params as the key. *)
-                    let k =
-                      program_name, f.F.signature, params in
-                    Hashtbl.add must_run k (bin, f)
-                  ) prog.P.funcs
+                  match get_rc () with
+                  | exception _ ->
+                      (* Errors have been logged already, nothing more can
+                       * be done about this. *)
+                      ()
+                  | bin, prog ->
+                      let params = prog.P.params in
+                      List.iter (fun f ->
+                        (* Use the mount point + signature + params as the key. *)
+                        let k =
+                          program_name, f.F.signature, params in
+                        Hashtbl.add must_run k (bin, f)
+                      ) prog.P.funcs
                 ) must_run_programs) in
               return now
             ) else return last_read) in

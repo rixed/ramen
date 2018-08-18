@@ -159,8 +159,7 @@ let rec tree_enum_of_factors func = function
          ) fact_values)
 
 (* Given a program, returns the tree_enum of its functions: *)
-let tree_enum_of_program (program_name, get_rc) =
-  let _bin, prog = get_rc () in
+let tree_enum_of_program prog =
   E (List.filter_map (fun func ->
        if func.F.event_time <> None then
          Some ((RamenName.string_of_func func.F.name, OpName),
@@ -207,10 +206,15 @@ let tree_enum_of_programs programs =
     h in
   let h = hash_for_prefix "" in
   let rec tree_enum_of_h h =
-    E (Hashtbl.enum h /@
-       (function (_, name), Prog p -> (name, ProgPath), tree_enum_of_program p
-               | (_, name), Hash h -> (name, ProgPath), tree_enum_of_h h) |>
-       List.of_enum) in
+    E (Hashtbl.enum h //@ (function
+      | (_, name), Prog (program_name, get_rc) ->
+        (match get_rc () with
+        | exception _ -> None
+        | _bin, prog ->
+            Some ((name, ProgPath), tree_enum_of_program prog))
+      | (_, name), Hash h ->
+        Some ((name, ProgPath), tree_enum_of_h h)) |>
+     List.of_enum) in
   tree_enum_of_h h
 
 let filters_of_query query =
@@ -476,13 +480,13 @@ let render_graphite conf headers body =
       Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
         let fq = RamenName.string_of_program prog_name ^"/"^
                  RamenName.string_of_func func_name in
-        match Hashtbl.find programs prog_name with
+        match Hashtbl.find programs prog_name () with
         | exception Not_found ->
             !logger.error "Program %s just disappeared?"
               (RamenName.string_of_program prog_name) ;
             return_none
-        | get_rc ->
-            let _bin, prog = get_rc () in
+        | exception e -> return_none
+        | _bin, prog ->
             (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
             | exception Not_found ->
                 !logger.error "Function %s just disappeared?" fq ;

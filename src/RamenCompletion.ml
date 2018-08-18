@@ -100,8 +100,10 @@ let empty_help s = s, ""
 let complete_running_function persist_dir str =
   let conf = C.make_conf persist_dir in
   (
-    (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) /@
-    (fun get_rc -> snd (get_rc ())) /@
+    (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) //@
+    (fun get_rc ->
+      try Some (get_rc () |> snd)
+      with _ -> None) /@
     (fun prog ->
       List.enum prog.P.funcs |>
       Enum.map (fun func ->

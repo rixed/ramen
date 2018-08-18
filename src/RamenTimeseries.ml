@@ -260,18 +260,20 @@ let cache_possible_values conf programs =
   Hashtbl.values programs |>
   List.of_enum |> (* FIXME *)
   Lwt_list.iter_p (fun get_rc ->
-    let _bin, prog = get_rc () in
-    Lwt_list.iter_p (fun func ->
-      let h = Hashtbl.create (List.length func.F.factors) in
-      let%lwt () =
-        Lwt_list.iter_p (fun factor ->
-          let%lwt pvs = get_possible_values conf func factor in
-          Hashtbl.add h factor pvs ;
+    match get_rc () with
+    | exception _ -> return_unit
+    | _bin, prog ->
+        Lwt_list.iter_p (fun func ->
+          let h = Hashtbl.create (List.length func.F.factors) in
+          let%lwt () =
+            Lwt_list.iter_p (fun factor ->
+              let%lwt pvs = get_possible_values conf func factor in
+              Hashtbl.add h factor pvs ;
+              return_unit
+            ) func.F.factors in
+          Hashtbl.replace possible_values_cache (F.fq_name func) h ;
           return_unit
-        ) func.F.factors in
-      Hashtbl.replace possible_values_cache (F.fq_name func) h ;
-      return_unit
-    ) prog.P.funcs)
+        ) prog.P.funcs)
 
 (* Enumerate the possible values of a factor: *)
 let possible_values func factor =

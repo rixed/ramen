@@ -89,13 +89,15 @@ let get_tables conf msg =
   let%lwt tables =
     C.with_rlock conf (fun programs ->
       Hashtbl.fold (fun _prog_name get_rc lst ->
-        let _bin, prog = get_rc () in
-        List.fold_left (fun lst f ->
-          let fqn = RamenName.string_of_fq (F.fq_name f) in
-          if f.F.event_time <> None && String.starts_with fqn req.prefix
-          then fqn :: lst
-          else lst
-        ) lst prog.P.funcs
+        match get_rc () with
+        | exception e -> lst
+        | _bin, prog ->
+            List.fold_left (fun lst f ->
+              let fqn = RamenName.string_of_fq (F.fq_name f) in
+              if f.F.event_time <> None && String.starts_with fqn req.prefix
+              then fqn :: lst
+              else lst
+            ) lst prog.P.funcs
       ) programs [] |> Lwt.return) in
   return (PPP.to_string get_tables_resp_ppp_json tables)
 
@@ -201,10 +203,9 @@ let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name = C.program_func_of_user_string table in
   C.with_rlock conf (fun programs ->
-    match Hashtbl.find programs prog_name with
-    | exception Not_found -> return_none
-    | get_rc ->
-        let _bin, prog = get_rc () in
+    match Hashtbl.find programs prog_name () with
+    | exception _ -> return_none
+    | _bin, prog ->
         (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
         | exception Not_found -> return_none
         | func -> return_some (columns_of_func conf programs func)))
@@ -380,13 +381,12 @@ let stop_alert conf program_name =
 
 let field_typ_of_column programs table column =
   let pn, fn = C.program_func_of_user_string table in
-  match Hashtbl.find programs pn with
+  match Hashtbl.find programs pn () with
   | exception Not_found ->
       Printf.sprintf "Program %s does not exist"
         (RamenName.string_of_program pn) |>
       failwith
-  | get_rc ->
-      let _bin, prog = get_rc () in
+  | _bin, prog ->
       (match List.find (fun f -> f.F.name = fn) prog.P.funcs with
       | exception Not_found ->
           Printf.sprintf "No function %s in program %s"
