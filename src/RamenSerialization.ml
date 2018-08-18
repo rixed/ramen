@@ -19,7 +19,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
     List.fold_lefti (fun (offs, b) i typ ->
         assert (not (is_private_field typ.RamenTuple.typ_name)) ;
         let value, offs', b' =
-          if Option.get typ.typ.nullable && not (get_bit tx b) then (
+          if typ.typ.nullable && not (get_bit tx b) then (
             None, offs, b+1
           ) else (
             let value = RingBufLib.read_value tx offs typ.typ.structure in
@@ -28,7 +28,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
                 RamenTuple.print_field_typ typ
                 offs RamenTypes.print value ;
             let offs' = offs + RingBufLib.sersize_of_value value in
-            Some value, offs', if Option.get typ.typ.nullable then b+1 else b
+            Some value, offs', if typ.typ.nullable then b+1 else b
           ) in
         Option.may (Array.set tuple i) value ;
         offs', b'
@@ -59,7 +59,7 @@ let value_of_string t s =
           s (print_bad_result print) e in
       failwith msg
   | Ok (v, _s (* no rest since we ends with eof *)) ->
-      if v = VNull && Option.get t.nullable then v else
+      if v = VNull && t.nullable then v else
       let vt = structure_of v in
       if vt = t.structure then v else
       let msg =
@@ -91,25 +91,25 @@ let value_of_string t s =
 (*$inject open Stdint *)
 (*$= value_of_string & ~printer:(RamenTypes.to_string)
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = Some false } "\"glop\"")
+    (value_of_string { structure = TString ; nullable = false } "\"glop\"")
   (VString "glop") \
-    (value_of_string { structure = TString ; nullable = Some false } " \"glop\"  ")
+    (value_of_string { structure = TString ; nullable = false } " \"glop\"  ")
   (VU16 (Uint16.of_int 15042)) \
-    (value_of_string { structure = TU16 ; nullable = Some false }    "15042")
+    (value_of_string { structure = TU16 ; nullable = false }    "15042")
   (VU32 (Uint32.of_int 15042)) \
-    (value_of_string { structure = TU32 ; nullable = Some false }    "15042")
+    (value_of_string { structure = TU32 ; nullable = false }    "15042")
   (VI64 (Int64.of_int  15042)) \
-    (value_of_string { structure = TI64 ; nullable = Some false }    "15042")
+    (value_of_string { structure = TI64 ; nullable = false }    "15042")
   (VFloat 15042.) \
-    (value_of_string { structure = TFloat ; nullable = Some false }  "15042")
+    (value_of_string { structure = TFloat ; nullable = false }  "15042")
   VNull \
-    (value_of_string { structure = TFloat ; nullable = Some true }   "null")
+    (value_of_string { structure = TFloat ; nullable = true }   "null")
  *)
 
 let write_record conf ser_in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
-      if Option.get ftyp.RamenTuple.typ.nullable then
+      if ftyp.RamenTuple.typ.nullable then
         match Hashtbl.find tuple ftyp.typ_name with
         | exception Not_found ->
             (* Unspecified nullable fields are just null. *)

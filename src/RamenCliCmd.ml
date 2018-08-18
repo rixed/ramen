@@ -571,7 +571,8 @@ let timerange conf func_name () =
       let mi_ma =
         Lwt_main.run (
           C.with_rlock conf (fun programs ->
-            (* We need the func to know its buffer location *)
+            (* We need the func to know its buffer location.
+             * Nothing better to do in case of error than to exit. *)
             let prog, func = C.find_func programs program_name func_name in
             let bname = C.archive_buf_name conf func in
             let typ = func.F.out_type.ser in

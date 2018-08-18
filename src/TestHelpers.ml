@@ -44,18 +44,17 @@ let test_op p s =
       [ RamenTuple.{
           ptyp = { typ_name = "avg_window" ;
                    typ = { structure = RamenTypes.TI32 ;
-                           nullable = Some false } ;
+                           nullable = false } ;
                    units = None } ;
           value = RamenTypes.VI32 10l }] in
     RamenOperation.check params res ; ok_res
   | x -> x
 
-let typ = RamenExpr.make_typ "replaced for tests"
-let typn = RamenExpr.make_typ ~nullable:true "replaced for tests"
+let typ =
+  RamenExpr.make_typ "replaced for tests"
 
 let replace_typ e =
-  RamenExpr.map_type (fun t -> if t.nullable = Some true then typn
-                               else typ) e
+  RamenExpr.map_type (fun t -> typ) e
 
 let replace_typ_in_expr = function
   | Ok (expr, rest) -> Ok (replace_typ expr, rest)

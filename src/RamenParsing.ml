@@ -20,7 +20,7 @@ let that_string s =
 let strinGs s = strinG s ||| strinG (s ^"s")
 
 (* Given we frequently encode strings with "%S", we need to parse them back
- * with numerical escape sequence of base 10: *)
+ * with numerical escape sequence in base 10: *)
 let quoted_string = quoted_string ~base_num:10
 
 (*$= quoted_string & ~printer:(test_printer BatString.print)

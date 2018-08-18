@@ -868,7 +868,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result nullability itself propagates from x itself. *)
       let name = make_name x "NUMERIC_VEC" in
       emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr x) oc
-        (TVec (0, { structure = TNum ; nullable = Some false })) ;
+        (TVec (0, { structure = TNum ; nullable = false })) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TString ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -983,7 +983,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result itself is as nullable as x. *)
       arg_is_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes eid oc
-        (TVec (n+2, { structure = TU32 ; nullable = Some false })) ;
+        (TVec (n+2, { structure = TU32 ; nullable = false })) ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatelessFun2 (_, In, e1, e2) ->
@@ -1096,8 +1096,8 @@ let emit_minimize oc funcs =
   List.iter (fun func ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
-      match (typ_of e).scalar_typ with
-      | None | Some (TAny | TNum) ->
+      match (typ_of e).typ with
+      | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_number %s)" eid
       | _ -> ()
     ) (Option.get func.Func.operation)
@@ -1111,8 +1111,8 @@ let emit_minimize oc funcs =
   List.iter (fun func ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
-      match (typ_of e).scalar_typ with
-      | None | Some (TAny | TNum) ->
+      match (typ_of e).typ with
+      | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_sign %s)" eid
       | _ -> ()
     ) (Option.get func.Func.operation)
@@ -1156,7 +1156,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                 failwith
             | param ->
                 emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc param.ptyp.typ.structure ;
-                emit_assert_id_is_bool (n_of_expr expr) oc (Option.get param.ptyp.typ.nullable)
+                emit_assert_id_is_bool (n_of_expr expr) oc param.ptyp.typ.nullable
           ) else if !tupref = TupleEnv then (
             emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc TString ;
             arg_is_nullable oc expr
@@ -1202,7 +1202,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
               ) (None, []) parents in
             Option.may (fun t ->
               emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc t.RamenTuple.typ.structure ;
-              Option.may (emit_assert_id_is_bool (n_of_expr expr) oc) t.RamenTuple.typ.nullable
+              emit_assert_id_is_bool (n_of_expr expr) oc t.RamenTuple.typ.nullable
             ) typ ;
             List.iter (fun id ->
               emit_assert_id_eq_id (e_of_expr expr) oc (e_of_num id) ;
@@ -1242,13 +1242,13 @@ let bool_of_term =
   let open RamenSmtParser in
   function
   | QualIdentifier ((Identifier "true", None), []) ->
-      Some true
+      true
   | QualIdentifier ((Identifier "false", None), []) ->
-      Some false
+      false
   | x ->
-      !logger.error "Bad term when expecting boolean: %a"
-        print_term x ;
-      None
+      Printf.sprintf2 "Bad term when expecting boolean: %a"
+        print_term x |>
+      failwith
 
 let rec structure_of_term =
   let open RamenSmtParser in
@@ -1407,10 +1407,8 @@ let type_of_parents_field parent name =
         name
         (List.print (fun oc (n,_) -> String.print oc n))
           untyped_tuple.fields ;
-      let etyp = List.assoc name untyped_tuple.fields in
-      (* Output types have been set already: *)
-      { structure = Option.get etyp.scalar_typ ;
-        nullable = etyp.nullable }
+      (List.assoc name untyped_tuple.fields).typ |>
+      Option.get
     | TypedTuple { user ; _ } ->
       !logger.debug "Look for %s in %a"
         name
@@ -1435,8 +1433,7 @@ let set_io_tuples parents funcs h =
     tuple.RamenTypingHelpers.fields <-
       List.map (fun ft ->
         ft.RamenTuple.typ_name,
-        make_typ ?nullable:ft.RamenTuple.typ.nullable
-                 ~scalar_typ:ft.typ.structure ft.RamenTuple.typ_name
+        make_typ ~typ:ft.RamenTuple.typ ft.RamenTuple.typ_name
       ) typ in
   (* Set i/o types of func: *)
   let set_non_star_outputs func =
@@ -1450,11 +1447,11 @@ let set_io_tuples parents funcs h =
               Printf.sprintf2 "Cannot find type for id %d, expr=%a"
                 id (RamenExpr.print false) sf.expr |>
               failwith
-          | t ->
+          | typ ->
               !logger.debug "Set output field %s.%s"
                 (RamenName.string_of_func func.name) sf.alias ;
               sf.alias,
-              make_typ ?nullable:t.nullable ~scalar_typ:t.structure sf.alias
+              make_typ ~typ sf.alias
         ) fields
     | ReadCSVFile { what = { fields ; _ } ; _ } ->
         set_type out_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
@@ -1487,10 +1484,9 @@ let set_io_tuples parents funcs h =
                   Printf.sprintf "Cannot use input field %s without any \
                                   parent" name |>
                   failwith ;
-                let t =
+                let typ =
                   type_of_parents_field (List.hd parents) name in
-                let t = make_typ ?nullable:t.nullable
-                                 ~scalar_typ:t.structure name in
+                let t = make_typ ~typ name in
                 !logger.debug "Set input field %s.%s"
                   (RamenName.string_of_func func.name) name ;
                 in_type.fields <- (name, t) :: in_type.fields)
@@ -1517,9 +1513,7 @@ let apply_types parents funcs h =
       | exception Not_found ->
           !logger.warning "No type for expression %a"
             (RamenExpr.print true) e
-      | typ ->
-          t.scalar_typ <- Some typ.structure ;
-          t.nullable <- typ.nullable
+      | typ -> t.typ <- Some typ
     ) (Option.get func.Func.operation)
   ) funcs
 
@@ -1544,13 +1538,13 @@ let get_types conf parents funcs params smt2_file =
             | [], NonParametricSort (Identifier "Type"), "e" ->
                 let structure = structure_of_term term in
                 Hashtbl.modify_opt id (function
-                  | None -> Some { structure ; nullable = None }
+                  | None -> Some { structure ; nullable = false (* by default *) }
                   | Some prev -> Some { prev with structure }
                 ) h
             | [], NonParametricSort (Identifier "Bool"), "n" ->
                 let nullable = bool_of_term term in
                 Hashtbl.modify_opt id (function
-                  | None -> Some { structure = TAny ; nullable }
+                  | None -> Some { structure = TAny (* by default *) ; nullable }
                   | Some prev -> Some { prev with nullable }
                 ) h
             | [], NonParametricSort (Identifier sort), _ ->

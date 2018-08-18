@@ -16,36 +16,25 @@ open RamenHelpers
 *)
 
 (* Each expression come with a type attached. Starting at None, types are
- * progressively set at compilation. *)
-(* TODO: remove all type from there and do all the typing from the external
- * solver. *)
+ * set during compilation. *)
 type typ =
   { mutable expr_name : string ;
     (* To build var names, record field names or identify SAT variables: *)
     uniq_num : int ;
-    mutable nullable : bool option ;
-    (* TODO: rename scalar_typ to structure: *)
-    mutable scalar_typ : RamenTypes.structure option }
-
-let same_type t1 t2 =
-  t1.nullable = t2.nullable && t1.scalar_typ = t2.scalar_typ
+    mutable typ : RamenTypes.t option }
 
 let print_typ oc typ =
-  Printf.fprintf oc "%s of %s%s"
+  Printf.fprintf oc "%s of %s"
     typ.expr_name
-    (match typ.scalar_typ with
+    (match typ.typ with
     | None -> "unknown type"
-    | Some s -> "type "^ IO.to_string RamenTypes.print_structure s)
-    (match typ.nullable with
-    | None -> ", maybe nullable"
-    | Some true -> ", nullable"
-    | Some false -> ", not nullable")
+    | Some t -> "type "^ IO.to_string RamenTypes.print_typ t)
 
 let uniq_num_seq = ref 0
 
-let make_typ ?nullable ?scalar_typ expr_name =
+let make_typ ?typ expr_name =
   incr uniq_num_seq ;
-  { expr_name ; nullable ; scalar_typ ; uniq_num = !uniq_num_seq }
+  { expr_name ; typ ; uniq_num = !uniq_num_seq }
 
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
@@ -292,20 +281,24 @@ and generator_fun =
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)
 let expr_true () =
-  Const (make_typ ~nullable:false ~scalar_typ:TBool "true", VBool true)
+  let typ = RamenTypes.{ nullable = false ; structure = TBool } in
+  Const (make_typ ~typ "true", VBool true)
 
 let expr_u8 name n =
-  Const (make_typ ~nullable:false ~scalar_typ:TU8 name, VU8 (Uint8.of_int n))
+  let typ = RamenTypes.{ nullable = false ; structure = TU8 } in
+  Const (make_typ ~typ name, VU8 (Uint8.of_int n))
 
 let expr_float name n =
-  Const (make_typ ~nullable:false ~scalar_typ:TFloat name, VFloat n)
+  let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
+  Const (make_typ ~typ name, VFloat n)
 
 let expr_zero () = expr_u8 "zero" 0
 let expr_one () = expr_u8 "one" 1
 let expr_1hour () = expr_float "1hour" 3600.
 
 let of_float v =
-  Const (make_typ ~nullable:false ~scalar_typ:TFloat (string_of_float v), VFloat v)
+  let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
+  Const (make_typ ~typ (string_of_float v), VFloat v)
 
 let is_true = function
   | Const (_ , VBool true) -> true
@@ -663,7 +656,7 @@ let typ_of = function
 
 let is_nullable e =
   let t = typ_of e in
-  t.nullable = Some true
+  (Option.get t.typ).RamenTypes.nullable = true
 
 (* Propagate values up the tree only, depth first. *)
 let fold_subexpressions f i expr =
@@ -888,10 +881,8 @@ struct
   let const m =
     let m = "constant" :: m in
     (
-      RamenTypes.Parser.scalar ~min_int_width:32 ++
-       optional ~def:false (
-         char ~case_sensitive:false 'n' >>: fun _ -> true) >>:
-       fun (c, nullable) ->
+      RamenTypes.Parser.scalar ~min_int_width:32 >>:
+       fun c ->
          Const (make_typ "constant", c)
     ) m
 
@@ -901,9 +892,6 @@ struct
 
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
-
-    (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (5, []))) \
-      (test_p const "15i8n" |> replace_typ_in_expr)
   *)
 
   let null m =

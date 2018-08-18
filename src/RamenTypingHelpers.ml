@@ -80,8 +80,7 @@ let finish_typing t =
 let untyped_tuple_of_tup_typ tup_typ =
   let t = make_untyped_tuple () in
   List.iter (fun f ->
-      let typ = Expr.make_typ ?nullable:f.RamenTuple.typ.nullable
-                              ~scalar_typ:f.typ.structure f.RamenTuple.typ_name in
+      let typ = Expr.make_typ ~typ:f.RamenTuple.typ f.RamenTuple.typ_name in
       t.fields <- t.fields @ [f.typ_name, typ]
     ) tup_typ ;
   finish_typing t ;
@@ -94,11 +93,9 @@ let untyped_tuple_of_tuple_type = function
 let tup_typ_of_untyped_tuple ttt =
   assert ttt.finished_typing ;
   List.map (fun (name, typ) ->
-    assert (typ.Expr.nullable <> None) ;
     RamenTuple.{
       typ_name = name ;
-      typ = { structure = Option.get typ.Expr.scalar_typ ;
-              nullable = typ.Expr.nullable } ;
+      typ = Option.get typ.Expr.typ ;
       units = None }
   ) ttt.fields
 
@@ -183,96 +180,6 @@ let make_typed_func program_name rcf =
     factors = rcf.F.factors ;
     envvars = rcf.F.envvars }
 
-let rec structure_finished_typing = function
-  | TNum | TAny | TTuple [||] | TVec (0, _) ->
-      false
-  | TTuple ts ->
-      Array.for_all typ_finished_typing ts
-  | TVec (_, t) | TList t ->
-      typ_finished_typing t
-  | _ ->
-      true
-
-and typ_finished_typing t =
-  t.nullable <> None && structure_finished_typing t.structure
-
-(* Check that we have typed all that need to be typed, and set finished_typing *)
-let check_finished_tuple_type tuple_prefix tuple_type =
-  List.iter (fun (field_name, typ) ->
-    let open RamenExpr in
-    (* If we couldn't determine nullability for an out field, it means
-     * we can pick freely: *)
-    let type_is_known =
-      match typ.scalar_typ with
-      | None -> false
-      | Some t -> structure_finished_typing t in
-    if tuple_prefix = TupleOut &&
-       type_is_known && typ.nullable = None
-    then (
-      !logger.debug "Field %s has no constraint on nullability. \
-                     Let's make it non-null." field_name ;
-      typ.nullable <- Some false) ;
-    if typ.nullable = None || not type_is_known then (
-      let e = CannotTypeField {
-        field = field_name ;
-        typ = IO.to_string print_typ typ ;
-        tuple = tuple_prefix } in
-      raise (SyntaxError e))
-  ) tuple_type.fields ;
-  finish_typing tuple_type
-
-let compare_typers funcs res res_smt =
-  let expr_of_id id =
-    let res = ref None in (* I wish we had an exception Return of 'a *)
-    try
-      Hashtbl.iter (fun _ func ->
-        RamenOperation.iter_expr (fun e ->
-          if RamenExpr.(typ_of e).uniq_num = id then (
-            res := Some e ; raise Exit)
-        ) (Option.get func.Func.operation)
-      ) funcs ;
-      raise Not_found
-    with Exit -> Option.get !res in
-  let expr_is_null id =
-    let e = expr_of_id id in
-    RamenExpr.(typ_of e).expr_name = "NULL"
-  in
-  let num_nosol = ref 0 in
-  Hashtbl.iter (fun id (structure, nullable) ->
-    match Hashtbl.find res_smt id with
-    | exception Not_found ->
-        (* If it's a literal "null", SMT is actually right: *)
-        if not (expr_is_null id) then (
-          (if !num_nosol < 20 then
-            !logger.warning
-              "SMT have no solution for expression %d (%a)"
-              id (RamenExpr.print true) (expr_of_id id)
-          else if !num_nosol = 20 then
-            !logger.warning "SMT is lacking more solutions...") ;
-          incr num_nosol)
-    | smt ->
-        let open RamenTypes in
-        if structure <> smt.structure &&
-            (* Once again, for NULL the handcrafted parser pick a type at
-             * random, while the SMT is more clever: *)
-           not (expr_is_null id)
-        then
-          !logger.warning "SMT resolves expression %d into a %a \
-                           instead of a %a!"
-            id
-            print_structure smt.structure
-            print_structure structure ;
-        match smt.nullable with
-        | None ->
-            !logger.warning "SMT cannot find out the nullability of \
-                             expression %d!" id
-        | Some n when n <> nullable ->
-            !logger.warning "SMT erroneously thinks expression %d is \
-                             %snullable!"
-              id (if n then "" else "not ")
-        | _ -> ()
-  ) res
-
 let iter_fun_expr func f =
   RamenOperation.iter_expr (fun e ->
     let open RamenExpr in
@@ -354,13 +261,14 @@ let finalize_func conf parents params func =
   | _ -> ()) ;
   (* Check that all expressions have indeed be typed: *)
   iter_fun_expr func (fun what typ ->
-    if typ.nullable = None || typ.scalar_typ = None ||
-       typ.scalar_typ = Some TNum || typ.scalar_typ = Some TAny then
-      Printf.sprintf2 "Cannot complete typing of %s, still of type %a, \
-                       in function %s"
-        what RamenExpr.print_typ typ
-        (RamenName.string_of_func func.Func.name) |>
-      failwith) ;
+    match typ.typ with
+    | None | Some { structure = (TNum | TAny) ; _ } ->
+       Printf.sprintf2 "Cannot complete typing of %s, still of type %a, \
+                        in function %s"
+         what RamenExpr.print_typ typ
+         (RamenName.string_of_func func.Func.name) |>
+      failwith
+    | _ -> ()) ;
   (* Not quite home and dry yet: *)
   Func.dump_io func ;
   func.Func.in_type <- typed_of_untyped_tuple func.Func.in_type ;

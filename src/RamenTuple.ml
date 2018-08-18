@@ -90,7 +90,7 @@ let overwrite_params ps1 ps2 =
     | _, p2_val ->
         let open RamenTypes in
         if p2_val = VNull then
-          if not (Option.get p1.ptyp.typ.nullable) then
+          if not p1.ptyp.typ.nullable then
             Printf.sprintf2 "Parameter %s is not nullable so cannot \
                              be set to NULL" p1.ptyp.typ_name |>
             failwith

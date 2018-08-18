@@ -20,7 +20,7 @@ open RamenHelpers
  * large enough to accommodate all the values at hand *)
 type t =
   { structure : structure ;
-    nullable : bool option } [@@ppp PPP_OCaml]
+    nullable : bool } [@@ppp PPP_OCaml]
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)
   | TFloat | TString | TBool | TNum | TAny
@@ -75,10 +75,7 @@ let rec print_structure oc = function
 
 and print_typ oc t =
   print_structure oc t.structure ;
-  match t.nullable with
-  | Some true -> Char.print oc '?'
-  | Some false -> ()
-  | None -> String.print oc "??"
+  if t.nullable then Char.print oc '?'
 
 let string_of_typ t = IO.to_string print_typ t
 let string_of_structure t = IO.to_string print_structure t
@@ -150,7 +147,7 @@ let rec structure_of =
    * values, unless one of the value is actually null. *)
   | VTuple vs ->
       TTuple (Array.map (fun v ->
-        { structure = structure_of v ; nullable = Some (v = VNull) }) vs)
+        { structure = structure_of v ; nullable = v = VNull }) vs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
@@ -159,7 +156,7 @@ let rec structure_of =
   | VVec vs ->
       let sub_structure, sub_nullable = sub_types_of_array vs in
       TVec (Array.length vs, { structure = sub_structure ;
-                               nullable = Some sub_nullable })
+                               nullable = sub_nullable })
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
@@ -167,7 +164,7 @@ let rec structure_of =
    * be assigned any type. *)
   | VList vs ->
       let sub_structure, sub_nullable = sub_types_of_array vs in
-      TList { structure = sub_structure ; nullable = Some sub_nullable }
+      TList { structure = sub_structure ; nullable = sub_nullable }
 
 (*
  * Printers
@@ -652,9 +649,9 @@ struct
     let m = "scalar type" :: m in
     let st n structure =
       (strinG (n ^"?") >>: fun () ->
-        { structure ; nullable = Some true }) |||
+        { structure ; nullable = true }) |||
       (strinG n >>: fun () ->
-        { structure ; nullable = Some false })
+        { structure ; nullable = false })
     in
     (
       (st "float" TFloat) |||
@@ -690,7 +687,7 @@ struct
         several ~sep:tup_sep typ
       +- opt_blanks +- char ')' ++
       opt_question_mark >>: fun (ts, n) ->
-        { structure = TTuple (Array.of_list ts) ; nullable = Some n }
+        { structure = TTuple (Array.of_list ts) ; nullable = n }
     ) m
 
   and vector_typ m =
@@ -704,7 +701,7 @@ struct
       opt_blanks +- char ']' ++
       opt_question_mark >>: fun ((t, d), n) ->
         if d <= 0 then raise (Reject "Vector must have dimension > 0") ;
-        { structure = TVec (d, t) ; nullable = Some n }
+        { structure = TVec (d, t) ; nullable = n }
     ) m
 
   and list_typ m =
@@ -715,7 +712,7 @@ struct
        * then use [typ] without deadlooping. *)
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks +- char ']' ++
       opt_question_mark >>: fun (t, n) ->
-        { structure = TList t ; nullable = Some n }
+        { structure = TList t ; nullable = n }
     ) m
 
   (*$>*)

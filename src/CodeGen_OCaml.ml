@@ -58,10 +58,6 @@ let print_tuple_deconstruct tuple =
   in
   list_print_as_tuple print_field
 
-let structure_of_expr e =
-  let t = RamenExpr.typ_of e in
-  Option.get t.scalar_typ
-
 (* Emit the code that return the sersize of a fixed size type *)
 let emit_sersize_of_fixsz_typ oc typ =
   let sz = RingBufLib.sersize_of_fixsz_typ typ in
@@ -101,7 +97,7 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
         i
         offs_var offs_var
         (emit_sersize_of_field_tx tx_var (offs_var^"_") "bi_"
-          (Option.get t.nullable))
+          t.nullable)
           t.structure
     ) ts ;
     Printf.fprintf oc "%s_ - %s"
@@ -352,7 +348,7 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
       (* Note: vector items cannot be NULL: *)
       Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
-        (conv_from_to ~nullable:(Option.get t_from.nullable)) (t_from.structure, t_to.structure)
+        (conv_from_to ~nullable:t_from.nullable) (t_from.structure, t_to.structure)
     | TVec (d, t_from), TList t_to ->
       print_non_null oc (from_typ, TVec (d, t_to))
     | (TVec (_, t) | TList t), TString ->
@@ -362,7 +358,7 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
             Array.enum v_ /@ (%a) |> \
             Enum.reduce (fun s1_ s2_ -> s1_^\";\"^s2_)
            ) ^\"]\")"
-        (conv_from_to ~nullable:(Option.get t.nullable)) (t.structure, TString)
+        (conv_from_to ~nullable:t.nullable) (t.structure, TString)
     | TTuple ts, TString ->
       let i = ref 0 in
       Printf.fprintf oc
@@ -371,7 +367,7 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
             Printf.fprintf oc "x%d_" i)) ts
           (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
             Printf.fprintf oc "(%a) x%d_"
-              (conv_from_to ~nullable:(Option.get t.nullable)) (t.structure, TString) !i ;
+              (conv_from_to ~nullable:t.nullable) (t.structure, TString) !i ;
             incr i)) ts
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
@@ -392,15 +388,14 @@ let wrap_nullable ~nullable oc s =
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
 (* FIXME: change lag so that this is no longer needed: *)
-let rec any_constant_of_expr_type t =
+let any_constant_of_expr_type typ =
   let open RamenExpr in
   let open Stdint in
   let c v =
-    let typ = make_typ "init" in
-    Const ({ typ with scalar_typ = t.scalar_typ ;
-                      nullable = t.nullable }, v)
+    let t = make_typ ~typ "init" in
+    Const (t, v)
   in
-  c (any_value_of_type (Option.get t.scalar_typ))
+  c (any_value_of_type typ.structure)
 
 let emit_tuple tuple oc tuple_typ =
   print_tuple_deconstruct tuple oc tuple_typ
@@ -430,23 +425,14 @@ let () =
  * (useful for states). If e is nullable then so will be the result. *)
 let rec conv_to ?state ~context ~opc to_typ oc e =
   let open RamenExpr in
-  let t = typ_of e in
-  if t.nullable = None then (
-    !logger.error "Problem: Have to convert expression %a into %a"
-      (print true) e
-      print_structure (Option.get to_typ)
-  ) ;
-  let nullable = Option.get t.nullable in
-  match t.scalar_typ, to_typ with
-  | Some a, Some b ->
+  let t = Option.get (typ_of e).typ in
+  match t.structure, to_typ with
+  | a, Some b ->
     Printf.fprintf oc "(%a) (%a)"
-      (conv_from_to ~nullable) (a, b)
+      (conv_from_to ~nullable:t.nullable) (a, b)
       (emit_expr ~context ~opc ?state) e
   | _, None -> (* No conversion required *)
     (emit_expr ~context ~opc ?state) oc e
-  | None, Some b ->
-    failwith (Printf.sprintf "Cannot convert from unknown type into %s"
-                (IO.to_string print_structure b))
 
 (* Apply the given function to the given args (and varargs), after
  * converting them, obeying skip_nulls. It is assumed that nullable
@@ -485,7 +471,10 @@ and update_state ?state ~opc ~nullable skip my_state
         Printf.fprintf oc "(match %a with Null -> () | NotNull %s -> "
           (emit_expr ~context:Finalize ~opc ?state) e
           state_var_name ;
-        StateField ({ t with nullable = Some false }, state_var_name)
+        StateField ({ t with typ = Some {
+                        structure = (Option.get t.typ).structure ;
+                        nullable = false } },
+                    state_var_name)
       ) else e in
     let func_args = List.map denullify es
     and func_varargs = List.map denullify vars in
@@ -544,7 +533,7 @@ and emit_maybe_fields oc out_typ =
     Printf.fprintf oc "  | None -> Null\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
-      (if Option.get ft.typ.nullable then "" else "NotNull ")
+      (if ft.typ.nullable then "" else "NotNull ")
       (id_of_field_name ~tuple:TupleOut ft.typ_name)
   ) out_typ
 
@@ -558,8 +547,8 @@ and emit_event_time oc opc =
         (* This must not fail if RamenOperation.check did its job *)
         let f = List.find (fun t -> t.typ_name = field_name) opc.tuple_typ in
         Printf.fprintf oc
-          (if Option.get f.typ.nullable then "((%a) %s |! 0.)" else "(%a) %s")
-          (conv_from_to ~nullable:(Option.get f.typ.nullable))
+          (if f.typ.nullable then "((%a) %s |! 0.)" else "(%a) %s")
+          (conv_from_to ~nullable:f.typ.nullable)
           (f.typ.structure, TFloat)
           (id_of_field_name ~tuple:TupleOut field_name)
     | Parameter ->
@@ -595,7 +584,7 @@ and emit_event_time oc opc =
 and emit_expr_ ?state ~context ~opc oc expr =
   let open RamenExpr in
   let out_typ = typ_of expr in
-  let nullable = Option.get out_typ.nullable in
+  let nullable = (Option.get out_typ.typ).nullable in
   (* my_state will represent the state of a stateful function with a special
    * field (StateField), which type will match that of the finalized value.
    * With this additional awful hack that we sometime want a different
@@ -605,11 +594,14 @@ and emit_expr_ ?state ~context ~opc oc expr =
       match lifespan with LocalState -> "group_"
                         | GlobalState -> "global_" in
     StateField ((match nullable with None -> out_typ
-                | Some n -> { out_typ with nullable }),
+                | Some n ->
+                    { out_typ with typ = Some {
+                        structure = (Option.get out_typ.typ).structure ;
+                        nullable = n } }),
                 (if state = Some lifespan then "" else state_name ^".") ^
                 name_of_state expr)
   in
-  match context, expr, Option.get out_typ.scalar_typ with
+  match context, expr, (Option.get out_typ.typ).structure with
   (* Non-functions *)
   | Finalize, StateField (_, s), _ ->
     Printf.fprintf oc "%s" s
@@ -620,7 +612,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     Printf.fprintf oc "%s(%a %a)"
       (if nullable then "NotNull " else "")
       (conv_from_to ~nullable:false) (structure_of c,
-                                      Option.get t.scalar_typ)
+                                      (Option.get t.typ).structure)
       emit_type c
   | Finalize, Tuple (_, es), _ ->
     list_print_as_tuple (emit_expr ?state ~context ~opc) oc es
@@ -742,7 +734,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable "CodeGenLib.hash" [None] oc [e]
   | Finalize, StatelessFun1 (_, Sparkline, e), TString ->
     emit_functionN ?state ~opc ~nullable "RamenHelpers.sparkline"
-      [Some (TVec (0, { structure = TFloat ; nullable = Some false }))] oc [e]
+      [Some (TVec (0, { structure = TFloat ; nullable = false }))] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), TIpv4 ->
     emit_functionN ?state ~opc ~nullable "RamenIpv4.Cidr.first" [Some TCidrv4] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), TIpv6 ->
@@ -758,8 +750,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
 
   (* Stateless functions manipulating constructed types: *)
   | Finalize, StatelessFun1 (_, Nth n, es), _ ->
-    (match (typ_of es).scalar_typ with
-    | Some (TTuple ts) ->
+    (match (Option.get (typ_of es).typ).structure with
+    | TTuple ts ->
         let num_items = Array.length ts in
         let rec loop_t str i =
           if i >= num_items then str else
@@ -769,7 +761,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
         let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
         (* emit_funcN will take care of nullability of es: *)
         emit_functionN ?state ~opc ~nullable nth_func [None] oc [es]
-    | Some (TVec (dim, t)) ->
+    | TVec (dim, t) ->
         assert (n < dim) ;
         let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
         emit_functionN ?state ~opc ~nullable nth_func [None] oc [es]
@@ -845,11 +837,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
      * This is important because literal NULL type is random. *)
     Printf.fprintf oc "Null"
   | Finalize, StatelessFun1 (_, Cast to_typ, e), _ ->
-    let from = typ_of e in
-    let from_typ = Option.get from.scalar_typ
-    and nullable = Option.get from.nullable in
+    let from = Option.get (typ_of e).typ in
     Printf.fprintf oc "(%a) (%a)"
-      (conv_from_to ~nullable) (from_typ, to_typ.structure)
+      (conv_from_to ~nullable:from.nullable)
+        (from.structure, to_typ.structure)
       (emit_expr ?state ~context ~opc) e
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
@@ -870,8 +861,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (emit_expr ?state ~context ~opc) (List.hd es)
   (* IN can have many meanings: *)
   | Finalize, StatelessFun2 (_, In, e1, e2), TBool ->
-    (match (typ_of e1).scalar_typ |> Option.get,
-           (typ_of e2).scalar_typ |> Option.get with
+    (match (Option.get (typ_of e1).typ).structure,
+           (Option.get (typ_of e2).typ).structure with
     | TIpv4, TCidrv4 ->
       emit_functionN ?state ~opc ~nullable "RamenIpv4.Cidr.is_in"
         [Some TIpv4; Some TCidrv4] oc [e1; e2]
@@ -965,14 +956,14 @@ and emit_expr_ ?state ~context ~opc oc expr =
             Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
               (conv_to ?state ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | Field ({ scalar_typ = Some ((TVec (_, telem) | TList telem)) ; _ }, _, _) ->
+      | Field ({ typ = Some { structure = (TVec (_, telem) | TList telem) ; _ } ; _ }, _, _) ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
             (emit_expr ?state ~context ~opc) e2
         and csts_hash_init larger_t =
           Printf.sprintf2
             "Array.iter (fun e_ -> Hashtbl.replace h_ ((%a) e_) ()) (%a)"
-            (conv_from_to ~nullable:(Option.get telem.nullable))
+            (conv_from_to ~nullable:telem.nullable)
               (telem.structure, larger_t)
             (emit_expr ?state ~context ~opc) e2 in
         emit_in csts_len csts_hash_init []
@@ -1057,10 +1048,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Histogram.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Lag (k,e)), _ ->
+  | InitState, StatefulFun (_, g, _, Lag (k, e)), _ ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
-      [k; expr_one (); any_constant_of_expr_type (typ_of e)]
+      [k; expr_one (); any_constant_of_expr_type (Option.get (typ_of e).typ)]
   | UpdateState, StatefulFun (_, g, n, Lag (_k,e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.Seasonal.add" oc [ None ]
@@ -1131,9 +1122,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (Printf.sprintf2 "%a true" (* Initially within bounds *)
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, Hysteresis (meas, accept, max)), TBool ->
-    let t = (typ_of meas).scalar_typ in (* TODO: shouldn't we promote everything to the most accurate of those types? *)
+    (* TODO: shouldn't we promote everything to the most accurate of those types? *)
+    let t = (Option.get (typ_of meas).typ).structure in
     update_state ?state ~opc ~nullable n (my_state g) [ meas ; accept ; max ]
-      "CodeGenLib.Hysteresis.add " oc [t; t; t]
+      "CodeGenLib.Hysteresis.add " oc [Some t; Some t; Some t]
   | Finalize, StatefulFun (_, g, n, Hysteresis _), TBool ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Hysteresis.finalize" [] oc []
@@ -1163,9 +1155,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (c :: what) oc (Some TU32 :: List.map (fun _ -> None) what)
 
   | InitState, StatefulFun (_, g, _, Last (c, e, _)), _ ->
+    let t = (Option.get (typ_of c).typ).structure in
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "CodeGenLib.Last.init (%a %a)"
-        (conv_from_to ~nullable:false) (structure_of_expr c, TU32)
+        (conv_from_to ~nullable:false) (t, TU32)
         (emit_expr ?state ~context:Finalize ~opc) c)
   (* Special updater that use the internal count when no `by` expressions
    * are present: *)
@@ -1240,10 +1233,10 @@ and add_missing_types arg_typs es =
   | e::es, t::ts ->
     let any_type =
       if t <> Some TAny then any_type else
-      merge_types any_type (typ_of e).scalar_typ in
+      merge_types any_type (Some (Option.get (typ_of e).typ).structure) in
     loop (t::ht) t any_type n (es, ts)
   | e::es, [] -> (* Missing some types: update rt *)
-    let te = (typ_of e).scalar_typ in
+    let te = Some (Option.get (typ_of e).typ).structure in
     if rt = Some TAny then
       loop ht rt (merge_types any_type te) (n+1) (es, [])
     else
@@ -1255,9 +1248,9 @@ and add_missing_types arg_typs es =
   open Batteries
   open Stdint
   open RamenTypes
-  let const typ v =
-    let t = RamenExpr.make_typ "test" in
-    let t = { t with scalar_typ = Some typ } in
+  let const structure v =
+    let typ = RamenTypes.{ nullable = false ; structure } in
+    let t = RamenExpr.make_typ ~typ "test" in
     RamenLang.(RamenExpr.(Const (t, v)))
  *)
 (*$= add_missing_types & ~printer:(IO.to_string (List.print (Option.print print_structure)))
@@ -1362,7 +1355,7 @@ let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
   Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
   Printf.fprintf oc "\t\t\t%a\n"
-    (List.print (fun oc field -> Bool.print oc (Option.get field.typ.nullable)))
+    (List.print (fun oc field -> Bool.print oc field.typ.nullable))
       ser_typ ;
   Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
   Printf.fprintf oc "\t\tRingBuf.bytes_for_bits |>\n" ;
@@ -1386,7 +1379,7 @@ let rec emit_sersize_of_var typ nullable oc var =
       Array.iteri (fun i t ->
         let item_var = var ^"_"^ string_of_int i in
         Printf.fprintf oc "%a + "
-          (emit_sersize_of_var t.structure (Option.get t.nullable)) item_var
+          (emit_sersize_of_var t.structure t.nullable) item_var
       ) ts ;
       Printf.fprintf oc "%d)" nullmask_sz
   | TVec (d, t) ->
@@ -1395,7 +1388,7 @@ let rec emit_sersize_of_var typ nullable oc var =
         let item_var = var ^"_"^ string_of_int i in
         Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
           item_var var i
-          (emit_sersize_of_var t.structure (Option.get t.nullable)) item_var
+          (emit_sersize_of_var t.structure t.nullable) item_var
       done ;
       Int.print oc nullmask_sz
   | TString ->
@@ -1413,7 +1406,7 @@ let rec emit_sersize_of_var typ nullable oc var =
      * could generate much faster code of course: *)
     Printf.fprintf oc "(Array.fold_left (fun s_ v_ -> \
       s_ + %a) 0 %s)"
-      (emit_sersize_of_var t.structure (Option.get t.nullable)) "v_"
+      (emit_sersize_of_var t.structure t.nullable) "v_"
       var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
@@ -1431,7 +1424,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
       let id = id_of_field_typ ~tuple:TupleOut field in
       Printf.fprintf oc "\t\t(* %s *)\n" id ;
       Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
-      emit_sersize_of_var field.typ.structure (Option.get field.typ.nullable) oc id ;
+      emit_sersize_of_var field.typ.structure field.typ.nullable oc id ;
       (* Note: disable warning 26 because emit_sersize_of_var might
        * have generated tons of unused bindings: *)
       Printf.fprintf oc "\n\t\t) else 0 [@@ocaml.warning \"-26\"] in\n" ;
@@ -1492,7 +1485,7 @@ let emit_serialize_tuple name oc tuple_typ =
           let item_var = val_var ^"_"^ string_of_int i in
           Printf.fprintf oc "\t\t\t\tlet %s, %s = %a in\n"
             offs_var nulli_var
-            (emit_write_scalar tx_var offs_var nulli_var item_var (Option.get t.nullable)) t.structure
+            (emit_write_scalar tx_var offs_var nulli_var item_var t.nullable) t.structure
         ) ts ;
         Printf.fprintf oc "\t\t\t\t%s, %s" offs_var nulli_var
     | TVec (d, t) ->
@@ -1505,7 +1498,7 @@ let emit_serialize_tuple name oc tuple_typ =
                              \t\t\t\t\tlet %s = %s.(%d) in %a in\n"
             offs_var nulli_var
             item_var val_var i
-            (emit_write_scalar tx_var offs_var nulli_var item_var (Option.get t.nullable)) t.structure
+            (emit_write_scalar tx_var offs_var nulli_var item_var t.nullable) t.structure
         done ;
         Printf.fprintf oc "\t\t\t\t%s, %s" offs_var nulli_var
     (* Scalar types (maybe nullable): *)
@@ -1522,7 +1515,7 @@ let emit_serialize_tuple name oc tuple_typ =
       Printf.fprintf oc "\t\tlet offs_, nulli_ =\n\
                          \t\t\tif List.hd skiplist_ then (\n" ;
       let id = id_of_field_typ ~tuple:TupleOut field in
-      emit_write_scalar "tx_" "offs_" "nulli_" id (Option.get field.typ.nullable) oc field.typ.structure ;
+      emit_write_scalar "tx_" "offs_" "nulli_" id field.typ.nullable oc field.typ.structure ;
       Printf.fprintf oc "\n\t\t\t) else offs_, nulli_ in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n"
     ) ser_typ ;
@@ -1545,7 +1538,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   List.iteri (fun i field_typ ->
     let sep = if i < num_fields - 1 then "," else "" in
     Printf.fprintf oc "\t\t(try (\n" ;
-    if Option.get field_typ.typ.nullable then (
+    if field_typ.typ.nullable then (
       Printf.fprintf oc "\t\t\t(let s_ = strs_.(%d) in\n" i ;
       Printf.fprintf oc "\t\t\tif s_ = %S then Null else NotNull (%a))\n"
         csv_null
@@ -1683,7 +1676,7 @@ let emit_read_tuple name mentioned oc in_typ =
                              \t\tlet %s, %s = %a in\n"
             i
             item_var offs_var
-            (emit_read_scalar tx_var offs_var item_var (Option.get t.nullable) "bi_") t.structure
+            (emit_read_scalar tx_var offs_var item_var t.nullable "bi_") t.structure
         ) ts ;
         Printf.fprintf oc "\t%a, %s"
           (array_print_as_tuple_i (fun oc i _ ->
@@ -1700,7 +1693,7 @@ let emit_read_tuple name mentioned oc in_typ =
                              \t\tlet %s, %s = %a in\n"
             i
             item_var offs_var
-            (emit_read_scalar tx_var offs_var item_var (Option.get t.nullable) "bi_") t.structure
+            (emit_read_scalar tx_var offs_var item_var t.nullable "bi_") t.structure
         done ;
         Printf.fprintf oc "\t[| " ;
         for i = 0 to d-1 do
@@ -1723,16 +1716,16 @@ let emit_read_tuple name mentioned oc in_typ =
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \tlet %s, offs_ =\n%a in\n"
           nulli
-          id (emit_read_scalar "tx_" "offs_" id (Option.get field.typ.nullable) "bi_") field.typ.structure
+          id (emit_read_scalar "tx_" "offs_" id field.typ.nullable "bi_") field.typ.structure
       ) else (
         Printf.printf "Non mentionned field: %s\n%!" field.typ_name ;
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \nlet offs_ = offs_ + (%a)\n"
           nulli
-          (emit_sersize_of_field_tx "tx_" "offs_" "bi_" (Option.get field.typ.nullable))
+          (emit_sersize_of_field_tx "tx_" "offs_" "bi_" field.typ.nullable)
             field.typ.structure
       ) ;
-      nulli + (if Option.get field.typ.nullable then 1 else 0)
+      nulli + (if field.typ.nullable then 1 else 0)
     ) 0 ser_typ in
   Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
   (* We want to output the tuple with fields ordered according to the
@@ -1845,7 +1838,7 @@ let emit_field_of_tuple name oc tuple_typ =
   List.iter (fun field_typ ->
       Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
       let id = id_of_field_name ~tuple:TupleOut field_typ.typ_name in
-      if Option.get field_typ.typ.nullable then (
+      if field_typ.typ.nullable then (
         Printf.fprintf oc "(match %s with Null -> \"?null?\" \
                             | NotNull v_ -> (%a) v_)\n"
           id
@@ -1984,15 +1977,15 @@ let for_each_unpure_fun_my_lifespan lifespan selected_fields
 
 let otype_of_state e =
   let open RamenExpr in
-  let typ = typ_of e in
-  let t = Option.get typ.scalar_typ |>
+  let typ = Option.get (typ_of e).typ in
+  let t = typ.structure |>
           IO.to_string otype_of_type in
   let print_expr_typ oc e =
-    let typ = typ_of e in
-    Option.get typ.scalar_typ |> (* nullable taken care of below *)
+    let typ = Option.get (typ_of e).typ in
+    typ.structure |> (* nullable taken care of below *)
     IO.to_string otype_of_type |>
     String.print oc in
-  let nullable = if Option.get typ.nullable then " nullable" else "" in
+  let nullable = if typ.nullable then " nullable" else "" in
   match e with
   (* previous tuples and count ; Note: we could get rid of this count if we
    * provided some context to those functions, such as the event count in
@@ -2303,10 +2296,10 @@ let emit_operation name func_name in_typ out_typ params op oc =
        \tlet parser_ x_ = %s(%a) in\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
       (id_of_prefix TupleParam) p.ptyp.typ_name
-      (if Option.get p.ptyp.typ.nullable then
+      (if p.ptyp.typ.nullable then
         "if RamenHelpers.looks_like_null x_ then Null else NotNull "
        else "") (emit_value_of_string p.ptyp.typ.structure) "x_"
-      (if Option.get p.ptyp.typ.nullable && p.value <> VNull
+      (if p.ptyp.typ.nullable && p.value <> VNull
        then "NotNull " else "")
       emit_type p.value p.ptyp.typ_name
   ) params ;
@@ -2321,9 +2314,9 @@ let emit_operation name func_name in_typ out_typ params op oc =
           p.ptyp.typ_name in
       Printf.fprintf oc "\t| %S -> (%a) %s%s\n"
         p.ptyp.typ_name
-        (conv_from_to ~nullable:(Option.get p.ptyp.typ.nullable)) (p.ptyp.typ.structure, TString)
+        (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
         glob_name
-        (if Option.get p.ptyp.typ.nullable then " |! \"?null?\""
+        (if p.ptyp.typ.nullable then " |! \"?null?\""
          else ""))) params ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
@@ -2363,6 +2356,7 @@ let compile conf entry_point func_name obj_name in_typ out_typ params op =
   let%lwt src_file =
     Lwt.wrap (fun () ->
       RamenOCamlCompiler.with_code_file_for obj_name conf
-        (emit_operation entry_point func_name in_typ out_typ params op)) in
+        (emit_operation entry_point func_name in_typ out_typ params
+         op)) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file obj_name

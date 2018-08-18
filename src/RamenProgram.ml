@@ -116,18 +116,18 @@ struct
                   else
                     (* As usual, promote integers to 32 bits, preferably non
                      * signed, by default: *)
-                    (try { structure = TU32 ; nullable = Some false },
+                    (try { structure = TU32 ; nullable = false },
                         enlarge_value TU32 value
                     with Invalid_argument _ ->
-                      try { structure = TI32 ; nullable = Some false },
+                      try { structure = TI32 ; nullable = false },
                           enlarge_value TI32 value
                       with Invalid_argument _ ->
                         { structure = structure_of value ;
-                          nullable = Some false },
+                          nullable = false },
                         value)
               | Some typ ->
                   if value = VNull then
-                    if Option.get typ.nullable then
+                    if typ.nullable then
                       typ, value
                     else
                       let e =
@@ -206,9 +206,9 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = Some false } ; units = None } ;\
+   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = false } ; units = None } ;\
                         value = VU32 Uint32.zero } ;\
-           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = Some false } ; units = None } ;\
+           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = false } ; units = None } ;\
                         value = VU32 Uint32.zero } ], [\
     { name = RamenName.func_of_string "add" ;\
       operation = \
