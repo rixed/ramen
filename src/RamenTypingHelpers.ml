@@ -99,6 +99,8 @@ let tup_typ_of_untyped_tuple ttt =
       units = None }
   ) ttt.fields
 
+(* FIXME: this and the above typed/untyped tuple dance should not be needed
+ * any more. *)
 module Func =
 struct
   type t =

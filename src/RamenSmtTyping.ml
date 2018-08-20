@@ -3,7 +3,7 @@
  * Principles:
  *
  * - Typing and nullability are resolved simultaneously in case nullability
- *   depends on the chosen types in some contexts..
+ *   depends on the chosen types in some contexts.
  *
  * - For nullability, each expression is associated with a single boolean
  *   variable "nXY" where XY is the expression uniq_num. Some constraints on
@@ -1436,7 +1436,7 @@ let set_io_tuples parents funcs h =
         make_typ ~typ:ft.RamenTuple.typ ft.RamenTuple.typ_name
       ) typ in
   (* Set i/o types of func: *)
-  let set_non_star_outputs func =
+  let set_outputs func =
     let out_type = untyped_tuple_type func.Func.out_type in
     match Option.get func.Func.operation with
     | Aggregate { fields ; _ } ->
@@ -1462,7 +1462,7 @@ let set_io_tuples parents funcs h =
     | Notifications _ ->
         set_type out_type RamenNotification.tuple_typ
   in
-  let set_non_star_inputs func =
+  let set_inputs func =
     let in_type = untyped_tuple_type func.Func.in_type in
     let parents = Hashtbl.find_default parents func.Func.name [] in
     match Option.get func.Func.operation with
@@ -1497,8 +1497,8 @@ let set_io_tuples parents funcs h =
     | Notifications _ -> set_type in_type []
   in
   (* We must set outputs before inputs: *)
-  Hashtbl.iter (fun _ -> set_non_star_outputs) funcs ;
-  Hashtbl.iter (fun _ -> set_non_star_inputs) funcs ;
+  Hashtbl.iter (fun _ -> set_outputs) funcs ;
+  Hashtbl.iter (fun _ -> set_inputs) funcs ;
   Hashtbl.iter (fun _ func ->
     (untyped_tuple_type func.Func.in_type).finished_typing <- true ;
     (untyped_tuple_type func.Func.out_type).finished_typing <- true

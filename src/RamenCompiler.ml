@@ -143,7 +143,10 @@ let compile conf root_path get_parent program_name program_code =
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
-    (* Finally, call the typer: *)
+
+    (*
+     * Finally, call the typer:
+     *)
     let call_typer typer_name typer =
       with_time (fun () ->
         try let res = typer () in
@@ -167,7 +170,7 @@ let compile conf root_path get_parent program_name program_code =
                   parsed_params smt2_file) in
     apply_types compiler_parents compiler_funcs types ;
     Hashtbl.iter (fun _ func ->
-      RamenTypingHelpers.finalize_func conf compiler_parents parsed_params func
+      finalize_func conf compiler_parents parsed_params func
     ) compiler_funcs ;
 
     (*

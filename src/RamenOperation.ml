@@ -303,6 +303,8 @@ let fold_top_level_expr init f = function
             ) x b in
       x
 
+let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
+
 let fold_expr init f =
   fold_top_level_expr init (E.fold_by_depth f)
 
