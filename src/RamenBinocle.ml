@@ -13,6 +13,9 @@ open RamenLog
 open RamenTuple
 open RamenNullable
 
+let () =
+  RamenHelpers.mkdir_all RamenConsts.binocle_save_dir
+
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
 let tuple_typ =
