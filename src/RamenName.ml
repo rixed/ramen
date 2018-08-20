@@ -123,8 +123,7 @@ external fq_of_string : string -> fq = "%identity"
 
 external string_of_fq : fq -> string = "%identity"
 
-let fq prog func =
-  string_of_program prog ^"/"^ func
+let fq prog func = prog ^"/"^ func
 
 let fq_print = String.print
 

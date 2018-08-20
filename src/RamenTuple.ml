@@ -8,6 +8,7 @@
 open Batteries
 open RamenHelpers
 
+(* TODO: turn this into a pair name * rest so we can use assoc functions *)
 type field_typ =
   { typ_name : string ; typ : RamenTypes.t ; units : RamenUnits.t option }
   [@@ppp PPP_OCaml]

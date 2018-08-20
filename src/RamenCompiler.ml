@@ -160,7 +160,6 @@ let compile conf root_path get_parent program_name program_code =
           raise exn)
         (log_and_ignore_exceptions
           (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
-    (* Type using the external solver: *)
     let open RamenSmtTyping in
     let smt2_file = C.smt_file root_path program_name in
     add_single_temp_file smt2_file ;
