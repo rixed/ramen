@@ -114,7 +114,7 @@ struct
     let m = "field declaration" :: m in
     (
       non_keyword +- blanks ++ RamenTypes.Parser.typ ++
-      optional ~def:None (some RamenUnits.Parser.p) >>:
+      optional ~def:None (blanks -+ some RamenUnits.Parser.p) >>:
       fun ((typ_name, typ), units) -> { typ_name ; typ ; units }
     ) m
 end

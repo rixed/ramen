@@ -172,10 +172,12 @@ struct
     (
       several ~sep u >>:
         List.fold_left (fun us ((n, r), u) ->
-          MapUnit.modify_def (u, r) n (fun (u', r') ->
-            if r <> r' then
-              raise (Reject "Cannot multiply absolute and relative unit") ;
-            u' +. u, r
+          MapUnit.modify_opt n (function
+          | None -> Some (u, r)
+          | Some (u', r') ->
+              if r <> r' then
+                raise (Reject "Cannot multiply absolute and relative unit") ;
+              Some (u' +. u, r)
           ) us
         ) MapUnit.empty
     ) m
