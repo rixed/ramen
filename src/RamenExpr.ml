@@ -883,15 +883,20 @@ struct
   open RamenParsing
 
   (* Single things *)
+  let const_dimensionless m =
+    let m = "constant" :: m in
+    (
+      RamenTypes.Parser.scalar ~min_int_width:32 >>: fun c ->
+        Const (make_typ ~units:RamenUnits.dimensionless "constant", c)
+    ) m
+
   let const m =
     let m = "constant" :: m in
     (
       RamenTypes.Parser.scalar ~min_int_width:32 ++
-      optional ~def:None (
-        opt_blanks -+ some RamenUnits.Parser.p
-      ) >>:
-       fun (c, units) ->
-         Const (make_typ ?units "constant", c)
+      optional ~def:None (some RamenUnits.Parser.p) >>:
+      fun (c, units) ->
+        Const (make_typ ?units "constant", c)
     ) m
 
   (*$= const & ~printer:(test_printer (print false))
@@ -901,8 +906,8 @@ struct
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
 
-    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (12, []))) \
-      (test_p const "13i32 secs^2" |> replace_typ_in_expr)
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (11, []))) \
+      (test_p const "13i32secs^2" |> replace_typ_in_expr)
   *)
 
   let null m =
@@ -1229,7 +1234,8 @@ struct
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
      (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
-     ((const ||| param) +- (optional ~def:() (strinG "th")) +- blanks ++
+     ((const_dimensionless ||| param) +-
+      (optional ~def:() (strinG "th")) +- blanks ++
       afun1 "percentile" >>: fun (p, e) ->
         StatelessFun2 (make_typ "percentile", Percentile, p, e)) |||
      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
@@ -1338,13 +1344,13 @@ struct
       * keywords that follow: *)
      several ~sep:list_sep p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
-     (const ||| param) ++
+     (const_dimensionless ||| param) ++
      state_and_nulls ++
      optional ~def:(expr_one ()) (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
      optional ~def:(expr_1hour ()) (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
-       strinG "last" -- blanks -+ (const ||| param)) ++
+       strinG "last" -- blanks -+ (const_dimensionless ||| param)) ++
      optional ~def:(expr_zero ()) (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), c), (g, n)), by), duration), time) ->

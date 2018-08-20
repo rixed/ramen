@@ -161,15 +161,14 @@ struct
         else raise (Reject "not a valid unit")) ++
       optional ~def:false
         (opt_blanks -+ strinG "(rel)" >>: fun () -> true) ++
-      optional ~def:1.
-        (opt_blanks -- char '^' -- opt_blanks -+ number)
+      optional ~def:1. (char '^' -+ number)
     ) m
 
   let p m =
     let m = "units" :: m in
     let sep =
       (* TODO: also '/' *)
-      (opt_blanks -- (char '*' ||| char '.') -- opt_blanks) in
+      (char '*' ||| char '.') in
     (
       several ~sep u >>:
         List.fold_left (fun us ((n, r), u) ->
