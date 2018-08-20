@@ -1173,7 +1173,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                 (RamenName.string_of_func pfunc.F.name)
                 (RamenName.string_of_func func.F.name)
                 field_name
-                RamenTuple.print_typ pfunc.F.out_type.ser |>
+                RamenTuple.print_typ pfunc.F.out_type |>
               failwith
             and aggr_types t = function
               | None -> Some t
@@ -1205,9 +1205,11 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                   | FieldType ft -> aggr_types ft prev_typ, same_as_ids
                 ) else (
                   (* External parent: look for the exact type: *)
+                  let pser =
+                    RingBufLib.ser_tuple_typ_of_tuple_typ pfunc.F.out_type in
                   match List.find (fun fld ->
                           fld.RamenTuple.typ_name = field_name
-                        ) pfunc.F.out_type.ser with
+                        ) pser with
                     | exception Not_found -> no_such_field pfunc
                     | ft ->
                         assert (RamenTypes.is_typed ft.typ.structure) ;
@@ -1490,7 +1492,7 @@ let set_io_tuples parents funcs h =
                   RamenTypes.print_typ typ ;
                 ft.typ <- typ)
         | _ -> assert false)
-    ) func.out_type.user
+    ) func.out_type
   and set_input (func, _op) =
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun ft ->
@@ -1504,10 +1506,12 @@ let set_io_tuples parents funcs h =
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
         let parent = List.hd parents in
+        let pser =
+          RingBufLib.ser_tuple_typ_of_tuple_typ parent.F.out_type in
         match List.find_map (fun pft ->
                 if pft.RamenTuple.typ_name = ft.typ_name then
                   Some pft.typ
-                else None) parent.F.out_type.ser with
+                else None) pser with
         | exception Not_found ->
             Printf.sprintf "Cannot find field %s in %s"
               ft.typ_name

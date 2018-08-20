@@ -24,11 +24,11 @@ let () =
  * constructed type. Maybe we should do the same for the whole output
  * tuple BTW. *)
 
-let nullmask_bytes_of_tuple_type tuple_typ =
+let nullmask_bytes_of_tuple_type ser =
   List.fold_left (fun s field_typ ->
     if is_private_field field_typ.RamenTuple.typ_name then s
     else s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
-  ) 0 tuple_typ |>
+  ) 0 ser |>
   bytes_for_bits |>
   round_up_to_rb_word
 

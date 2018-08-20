@@ -18,12 +18,6 @@ type field_typ =
 type typ = field_typ list
   [@@ppp PPP_OCaml]
 
-type typed_tuple =
-  { user : typ ; (* All the fields as declared in the code *)
-    (* FIXME: compute ser as needed *)
-    ser : typ } (* Only public fields *)
-  [@@ppp PPP_OCaml]
-
 type param =
   { ptyp : field_typ ; value : RamenTypes.value } [@@ppp PPP_OCaml]
 
@@ -37,9 +31,9 @@ let params_sort params =
 let params_find n = List.find (fun p -> p.ptyp.typ_name = n)
 let params_mem n = List.exists (fun p -> p.ptyp.typ_name = n)
 
-(* Given a typed tuple type, return a function that reorder a ser tuple (as
- * an array) into the same column order as in the user version: *)
-let reorder_tuple_to_user typed_tuple =
+(* Given a tuple type, return a function that reorder a tuple (as
+ * an array) into the same column order as in the tuple type: *)
+let reorder_tuple_to_user typ =
   (* Start by building the array of indices in the ser tuple of fields of
    * the user (minus private) tuple. *)
   let indices =
@@ -48,8 +42,8 @@ let reorder_tuple_to_user typed_tuple =
       else
         Some (List.findi (fun _ f' ->
           f'.typ_name = f.typ_name
-        ) typed_tuple.ser |> fst)
-    ) typed_tuple.user |>
+        ) typ |> fst)
+    ) typ |>
     Array.of_list in
   (* Now reorder a list of scalar values in ser order into user order: *)
   (* TODO: an inplace version *)
@@ -67,10 +61,12 @@ let print_typ oc t =
   (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) oc t
 
 let type_signature =
-  List.fold_left (fun s field ->
-    (if s = "" then "" else s ^ "_") ^
-    field.typ_name ^ ":" ^
-    RamenTypes.string_of_typ field.typ
+  List.fold_left (fun s ft ->
+    if is_private_field ft.typ_name then s
+    else
+      (if s = "" then "" else s ^ "_") ^
+      ft.typ_name ^ ":" ^
+      RamenTypes.string_of_typ ft.typ
   ) ""
 
 (* Different signature for different instances of the same program: *)

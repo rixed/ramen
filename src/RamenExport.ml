@@ -19,11 +19,12 @@ let make_temp_export ?duration conf func =
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
-  let typ = func.C.Func.out_type.ser in
+  let ser =
+    RingBufLib.ser_tuple_typ_of_tuple_typ func.C.Func.out_type in
   let file_spec =
     RamenOutRef.{
       field_mask =
-        RingBufLib.skip_list ~out_type:typ ~in_type:typ ;
+        RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
       timeout = match duration with
                 | None -> 0.
                 | Some d -> Unix.gettimeofday () +. d } in

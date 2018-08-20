@@ -433,7 +433,7 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  let bname, filter, typ =
+  let bname, filter, typ, ser =
     [ (* Read directly from the instrumentation ringbuf when func_name ends
        * with "#stats" *)
       RamenTimeseries.read_well_known func_name where "stats"
@@ -448,8 +448,9 @@ let tail conf func_name with_header sep null raw
         let%lwt _prog, func, bname =
           RamenExport.make_temp_export_by_name conf ~duration func_name in
         let typ = func.F.out_type in
-        let filter = RamenSerialization.filter_tuple_by typ.ser where in
-        return_some (bname, filter, typ))
+        let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
+        let filter = RamenSerialization.filter_tuple_by ser where in
+        return_some (bname, filter, typ, ser))
       ] |> List.find_map (fun f -> f ())
   in
   (* Find out which seqnums we want to scan: *)
@@ -472,12 +473,12 @@ let tail conf func_name with_header sep null raw
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
   let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type typ.ser in
+    RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* I failed the polymorphism dance on that one: *)
   let reorder_column1 = RamenTuple.reorder_tuple_to_user typ in
   let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
   if with_header then (
-    let header = typ.ser |> Array.of_list |> reorder_column1 in
+    let header = ser |> Array.of_list |> reorder_column1 in
     let first = if with_seqnums then "#Seq"^ sep else "#" in
     Array.print ~first ~last:"\n" ~sep
       (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
@@ -498,8 +499,7 @@ let tail conf func_name with_header sep null raw
         reset_export_timeout ()) ;
     let open RamenSerialization in
     fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
-      let tuple =
-        read_tuple typ.ser nullmask_size tx in
+      let tuple = read_tuple ser nullmask_size tx in
       if filter tuple then (
         if with_seqnums then (
           Int.print stdout m ; String.print stdout sep) ;
@@ -575,9 +575,10 @@ let timerange conf func_name () =
              * Nothing better to do in case of error than to exit. *)
             let prog, func = C.find_func programs program_name func_name in
             let bname = C.archive_buf_name conf func in
-            let typ = func.F.out_type.ser in
+            let typ = func.F.out_type in
+            let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
             let params = prog.P.params in
-            RamenSerialization.time_range bname typ params func.F.event_time))
+            RamenSerialization.time_range bname ser params func.F.event_time))
       in
       match mi_ma with
         | None -> Printf.printf "No time info or no output yet.\n"

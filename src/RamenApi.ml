@@ -190,13 +190,14 @@ let alerts_of_column conf programs func column =
 let columns_of_func conf programs func =
   let h = Hashtbl.create 11 in
   List.iter (fun ft ->
-    let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
-    if type_ <> Other then
-      let type_ = string_of_ext_type type_
-      and factor = List.mem ft.typ_name func.F.factors
-      and alerts = alerts_of_column conf programs func ft.typ_name in
-      Hashtbl.add h ft.typ_name { type_ ; factor ; alerts }
-  ) func.F.out_type.ser ;
+    if not (is_private_field ft.RamenTuple.typ_name) then
+      let type_ = ext_type_of_typ ft.typ.structure in
+      if type_ <> Other then
+        let type_ = string_of_ext_type type_
+        and factor = List.mem ft.typ_name func.F.factors
+        and alerts = alerts_of_column conf programs func ft.typ_name in
+        Hashtbl.add h ft.typ_name { type_ ; factor ; alerts }
+  ) func.F.out_type ;
   h
 
 let columns_of_table conf table =
@@ -260,9 +261,11 @@ let get_timeseries conf msg =
           let _bin, prog = Hashtbl.find programs prog_name () in
           let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
           List.fold_left (fun filters where ->
+            if is_private_field where.lhs then
+              failwith ("Cannot filter through private field "^ where.lhs) ;
             if where.op = "=" then
               let open RamenSerialization in
-              let _, ftyp = find_field func.F.out_type.ser where.lhs in
+              let _, ftyp = find_field func.F.out_type where.lhs in
               let v = value_of_string ftyp.typ where.rhs in
               (where.lhs, v) :: filters
             else filters
@@ -396,7 +399,7 @@ let field_typ_of_column programs table column =
       | func ->
           let open RamenTuple in
           try
-            List.find (fun t -> t.typ_name = column) func.F.out_type.ser
+            List.find (fun t -> t.typ_name = column) func.F.out_type
           with Not_found ->
             Printf.sprintf "No column %s in table %s" column table |>
             failwith)

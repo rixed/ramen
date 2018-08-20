@@ -136,7 +136,7 @@ let input_spec conf parent child =
     | i, _ ->
         C.in_ringbuf_name_merging conf child i
   else C.in_ringbuf_name_single conf child),
-  let out_type = parent.out_type.ser
+  let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.out_type
   and in_type = child.in_type in
   let field_mask = RingBufLib.skip_list ~out_type ~in_type in
   RamenOutRef.{ field_mask ; timeout = 0. }
@@ -150,6 +150,8 @@ let check_is_subtype t1 t2 =
     | exception Not_found ->
         failwith ("Field "^ f1.typ_name ^" is missing")
     | f2 ->
+        if is_private_field f2.typ_name then
+          failwith ("Field "^ f2.typ_name ^" is private") ;
         if f1.typ <> f2.typ then
           failwith ("Fields "^ f1.typ_name ^" have not the same type")
   ) t1
@@ -441,7 +443,7 @@ let really_try_start conf must_run proc =
         false)
     ) true proc.func.parents in
   let check_linkage p c =
-    try check_is_subtype c.F.in_type p.F.out_type.ser ;
+    try check_is_subtype c.F.in_type p.F.out_type ;
         true
     with Failure msg ->
       !logger.error "Input type of %s (%a) is not compatible with \
@@ -449,7 +451,7 @@ let really_try_start conf must_run proc =
         (RamenName.string_of_fq (F.fq_name c))
         RamenTuple.print_typ c.in_type
         (RamenName.string_of_fq (F.fq_name p))
-        RamenTuple.print_typ p.out_type.ser
+        RamenTuple.print_typ p.out_type
         msg ;
       false in
   let linkage_ok =

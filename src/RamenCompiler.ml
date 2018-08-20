@@ -164,11 +164,11 @@ let compile conf root_path get_parent program_name program_code =
         name (RamenName.string_of_func func.F.name) ;
       match List.find (fun ft ->
               ft.RamenTuple.typ_name = name
-            ) func.F.out_type.ser with
+            ) func.F.out_type with
         | exception Not_found ->
             !logger.error "No such input field %S (have %a)"
               name
-              RamenTuple.print_typ func.F.out_type.ser ;
+              RamenTuple.print_typ func.F.out_type ;
             None
         | ft ->
             !logger.debug "found typed units: %a"
@@ -216,10 +216,7 @@ let compile conf root_path get_parent program_name program_code =
             List.fold_left (fun changed sf ->
               let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
               if units = None then changed
-              else (
-                patch_typ sf.alias units func.F.out_type.ser |||
-                patch_typ sf.alias units func.F.out_type.user
-              ) || changed
+              else patch_typ sf.alias units func.F.out_type || changed
             ) changed fields
         | _ -> changed
       else changed
@@ -294,7 +291,7 @@ let compile conf root_path get_parent program_name program_code =
         mkdir_all ~is_file:true obj_name ;
         Lwt.catch (fun () ->
           let in_typ = func.F.in_type
-          and out_typ = func.F.out_type.user in
+          and out_typ = func.F.out_type in
           CodeGen_OCaml.compile
             conf entry_point_name func.F.name obj_name
             in_typ out_typ parsed_params op)

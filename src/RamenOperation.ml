@@ -314,14 +314,7 @@ let factors_of_operation = function
   | Notifications _ -> RamenNotification.factors
 
 (* Return the _untyped_ output tuple *)
-let out_type_of_operation =
-  let typed_tuple_of_typ user =
-    RamenTuple.{
-      (* Ordered in user specified order: *)
-      user ;
-      (* Ordered in serialization order: *)
-      ser = RingBufLib.ser_tuple_typ_of_tuple_typ user } in
-  function
+let out_type_of_operation = function
   | Aggregate { fields ; _ } ->
       let user =
         List.map (fun sf ->
@@ -342,16 +335,15 @@ let out_type_of_operation =
         fun f1 f2 ->
           compare (sf_index f1.RamenTuple.typ_name)
                   (sf_index f2.RamenTuple.typ_name) in
-      List.fast_sort cmp user |>
-      typed_tuple_of_typ
+      List.fast_sort cmp user
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      typed_tuple_of_typ (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
+      RingBufLib.ser_tuple_typ_of_tuple_typ fields
   | ListenFor { proto ; _ } ->
-      typed_tuple_of_typ (RamenProtocols.tuple_typ_of_proto proto)
+      RamenProtocols.tuple_typ_of_proto proto
   | Instrumentation _ ->
-      typed_tuple_of_typ RamenBinocle.tuple_typ
+      RamenBinocle.tuple_typ
   | Notifications _ ->
-      typed_tuple_of_typ RamenNotification.tuple_typ
+      RamenNotification.tuple_typ
 
 (* Return the untyped in_type of the given operation: *)
 let in_type_of_operation = function

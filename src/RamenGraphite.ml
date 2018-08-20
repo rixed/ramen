@@ -102,6 +102,7 @@ type string_with_scalar = string * tree_enum_section
 (* Given a func, returns the tree_enum of fields that are not factors and
  * numeric *)
 let tree_enum_of_fields func =
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   E (List.filter_map (fun ft ->
        let n = ft.RamenTuple.typ_name in
        if RamenTypes.is_a_num ft.RamenTuple.typ.structure &&
@@ -110,7 +111,7 @@ let tree_enum_of_fields func =
          Some ((n, DataField), E [])
        else
          None
-     ) func.F.out_type.ser)
+     ) ser)
 
 (* When building target names we may use scalar values in place of factor
  * fields. When those values are strings they are always quoted. But we'd
@@ -501,7 +502,7 @@ let render_graphite conf headers body =
                   return_none
                 ) else if not (List.exists (fun ft ->
                                ft.RamenTuple.typ_name = data_field
-                             ) func.out_type.ser) then (
+                             ) func.out_type) then (
                   !logger.error "Function %s just lost field %s?"
                     fq data_field ;
                   return_none

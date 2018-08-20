@@ -15,7 +15,7 @@ type conf =
 
 let tmp_input_of_func persist_dir program_name func_name in_type =
   persist_dir ^"/workers/inputs/"^ program_name ^"/"^ func_name ^"/"
-              ^ RamenTuple.type_signature in_type.RamenTuple.ser
+              ^ RamenTuple.type_signature in_type
 
 let upload_dir_of_func persist_dir program_name func_name in_type =
   tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
@@ -31,7 +31,7 @@ struct
     { program_name : RamenName.program ;
       name : RamenName.func ;
       in_type : RamenTuple.typ ;
-      out_type : RamenTuple.typed_tuple ;
+      out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
@@ -77,8 +77,8 @@ struct
      * types and encode input/output types explicitly below: *)
     "OP="^ op_str ^
     ";IN="^ RamenTuple.type_signature func.in_type ^
-    (* No need to look at private fields: *)
-    ";OUT="^ RamenTuple.type_signature func.out_type.ser ^
+    (* type_signature does not look at private fields: *)
+    ";OUT="^ RamenTuple.type_signature func.out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
     ";PRM="^ RamenTuple.param_types_signature params |>
     md5
@@ -87,7 +87,7 @@ struct
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
       (RamenName.string_of_func func.name)
       RamenTuple.print_typ func.in_type
-      RamenTuple.print_typ func.out_type.user
+      RamenTuple.print_typ func.out_type
 end
 
 module Program =
@@ -306,7 +306,7 @@ let in_ringbuf_names conf func =
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
 let archive_buf_name conf func =
-  let sign = type_signature_hash func.Func.out_type.RamenTuple.ser in
+  let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func
@@ -323,7 +323,7 @@ let factors_of_ringbuf fname factor =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = type_signature_hash func.Func.out_type.ser in
+  let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
                    ^"/"^ Func.path func

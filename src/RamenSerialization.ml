@@ -167,11 +167,11 @@ let find_param params n =
     failwith err_msg
 
 (* Build a filter function for tuples of the given type: *)
-let filter_tuple_by typ where =
+let filter_tuple_by ser where =
   (* Find the indices of all the involved fields, and parse the values: *)
   let where =
     List.map (fun (n, v) ->
-      let idx, t = find_field typ n in
+      let idx, t = find_field ser n in
       let v =
         if v = VNull then VNull else
         RamenTypes.enlarge_value t.typ.structure v in

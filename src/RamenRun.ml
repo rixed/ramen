@@ -49,7 +49,7 @@ let check_links ?(force=false) program_name prog running_programs =
           | par ->
             (* We want to err if a parent is incompatible (unless --force). *)
             try RamenProcesses.check_is_subtype func.F.in_type
-                                                par.F.out_type.ser
+                                                par.F.out_type
             with Failure m when force -> (* or let it fail *)
               !logger.error "%s" m))
     ) func.parents
@@ -74,7 +74,7 @@ let check_links ?(force=false) program_name prog running_programs =
               (RamenName.string_of_fq (F.fq_name func)) F.print_parent parent
           | f -> (* so func is depending on f, let's see: *)
             try RamenProcesses.check_is_subtype func.F.in_type
-                                                f.F.out_type.ser
+                                                f.F.out_type
             with Failure m when force -> (* or let it fail *)
               !logger.error "%s" m
       ) func.F.parents

@@ -57,23 +57,22 @@ let compare_miss bad1 bad2 =
   Int.compare (List.length bad1) (List.length bad2)
 
 let test_output func bname output_spec =
-  let ser_type = func.F.out_type.ser in
-  let nullmask_sz =
-    RingBufLib.nullmask_bytes_of_tuple_type ser_type in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
   let field_index_of_name field =
     match List.findi (fun _ ftyp ->
             ftyp.RamenTuple.typ_name = field
-          ) ser_type with
+          ) ser with
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
-                    (IO.to_string RamenTuple.print_typ ser_type) in
+                    (IO.to_string RamenTuple.print_typ ser) in
         fail_and_quit msg
     | idx, _ -> idx in
   (* The other way around to print the results: *)
   let field_name_of_index idx =
-    (List.nth ser_type idx).RamenTuple.typ_name in
+    (List.nth ser idx).RamenTuple.typ_name in
   let field_indices_of_tuples =
     List.map (fun spec ->
       Hashtbl.enum spec /@
@@ -96,7 +95,7 @@ let test_output func bname output_spec =
       !tuples_to_not_find = [] &&
       !RamenProcesses.quit = None &&
       Unix.gettimeofday () -. start < output_spec.timeout) in
-  let unserialize = RamenSerialization.read_tuple ser_type nullmask_sz in
+  let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
   let%lwt num_tuples =
     RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->

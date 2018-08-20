@@ -44,16 +44,18 @@ let bucket_max b =
  * instrumentation, notifications. *)
 let read_well_known func_name where suffix bname typ () =
   if func_name = suffix || String.ends_with func_name ("#"^suffix) then
-    let typ = RamenTuple.{ user = typ ; ser = typ } in
-    let where_filter = RamenSerialization.filter_tuple_by typ.ser where in
-    let wi = RamenSerialization.find_field_index typ.ser "worker" in
+    (* For well-known tuple types, serialized tuple is as given (no
+     * private fields, no reordering of fields): *)
+    let ser = typ in
+    let where_filter = RamenSerialization.filter_tuple_by ser where in
+    let wi = RamenSerialization.find_field_index typ "worker" in
     let filter =
       if func_name = suffix then where_filter else
       let func_name, _ = String.rsplit func_name ~by:"#" in
       fun tuple ->
         tuple.(wi) = RamenTypes.VString func_name &&
         where_filter tuple in
-    Some (bname, filter, typ)
+    Some (bname, filter, typ, ser)
   else None
 
 (* Enumerates all the time*values.
@@ -83,38 +85,40 @@ let get conf ?duration max_data_points since until where factors
       Printf.fprintf oc "%s=%a" field RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
-  let%lwt bname, filter, typ, params, event_time =
+  let%lwt bname, filter, typ, ser, params, event_time =
     (* Read directly from the instrumentation ringbuf when func_name ends
      * with "#stats": *)
     match read_well_known func_name where "stats"
             (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
-    | Some (bname, filter, typ) ->
-        return (bname, filter, typ, [], RamenBinocle.event_time)
+    | Some (bname, filter, typ, ser) ->
+        return (bname, filter, typ, ser, [], RamenBinocle.event_time)
     | None ->
         (* Or from the notifications ringbuf when func_name ends with
          * "#notifs": *)
         (match read_well_known func_name where "notifs"
                  (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
-        | Some (bname, filter, typ) ->
-            return (bname, filter, typ, [], RamenNotification.event_time)
+        | Some (bname, filter, typ, ser) ->
+            return (bname, filter, typ, ser, [], RamenNotification.event_time)
         | None ->
             (* Normal case: Create the non-wrapping RingBuf (under a standard
              * name given by RamenConf *)
             let%lwt prog, func, bname =
               RamenExport.make_temp_export_by_name conf ?duration func_name
             in
-            let typ = func.F.out_type in
-            let filter = RamenSerialization.filter_tuple_by typ.ser where in
-            return (bname, filter, typ, prog.P.params, func.F.event_time))
+            let ser =
+              RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+            let filter = RamenSerialization.filter_tuple_by ser where in
+            return (bname, filter, func.F.out_type, ser, prog.P.params,
+                    func.F.event_time))
   in
   let open RamenSerialization in
   let fis =
-    List.map (find_field_index typ.ser) factors in
+    List.map (find_field_index ser) factors in
   let key_of_factors tuple =
     List.fold_left (fun k fi -> tuple.(fi) :: k) [] fis in
   let%lwt vis =
     Lwt_list.map_s (fun data_field ->
-      Lwt.wrap (fun () -> find_field_index typ.ser data_field)
+      Lwt.wrap (fun () -> find_field_index ser data_field)
     ) data_fields in
   let dt = (until -. since) /. float_of_int max_data_points in
   let per_factor_buckets = Hashtbl.create 11 in
@@ -124,7 +128,7 @@ let get conf ?duration max_data_points since until where factors
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | _ -> bucket_avg in
   let%lwt () =
-    fold_time_range bname typ.ser params event_time since until ()
+    fold_time_range bname ser params event_time since until ()
       (fun () tuple t1 t2 ->
       if filter tuple then (
         let k = key_of_factors tuple in
@@ -172,7 +176,7 @@ let get conf ?duration max_data_points since until where factors
 
 (* Scan the given file for all possible values for each of the factors *)
 let scan_possible_values factors bname typ =
-  let ser = typ.RamenTuple.ser in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
   let fis =
     List.map (RamenSerialization.find_field_index ser) factors in
   let possible_values =
