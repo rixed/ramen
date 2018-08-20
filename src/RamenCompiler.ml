@@ -322,6 +322,13 @@ let compile conf root_path get_parent program_name program_code =
       RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (RamenName.string_of_program program_name) ;
+        (* Suppress private fields from function output type, purely for
+         * aesthetic reasons. Won't change anything since
+         * RingBufLib.ser_tuple_typ_of_tuple_typ will ignore them anyway: *)
+        Hashtbl.iter (fun _ (func, _op) ->
+          func.F.out_type <- List.filter (fun ft ->
+            not (is_private_field ft.RamenTuple.typ_name)) func.F.out_type
+        ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. *)

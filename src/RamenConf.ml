@@ -31,7 +31,7 @@ struct
     { program_name : RamenName.program ;
       name : RamenName.func ;
       in_type : RamenTuple.typ ;
-      out_type : RamenTuple.typ ;
+      mutable out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
