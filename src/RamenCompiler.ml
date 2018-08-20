@@ -174,6 +174,73 @@ let compile conf root_path get_parent program_name program_code =
     ) compiler_funcs ;
 
     (*
+     * Now that we know the input/output fields of each function
+     * we are ready to set the units for all inputs and outputs.
+     *)
+    let units_of_input func name =
+      !logger.debug "Looking for units of output field %S in %s"
+        name (RamenName.string_of_func func.Func.name) ;
+      match func.Func.out_type with
+      | UntypedTuple t ->
+        (match List.assoc name t.fields with
+        | exception Not_found ->
+            !logger.error "No such (untyped) input field %S (have %a)"
+              name
+              print_untyped_tuple_fields t.fields ;
+            None
+        | typ ->
+            (* When the units are still unknown, either compute them
+             * or get them from well-known types. *)
+            !logger.debug "found untyped units: %a"
+              (Option.print RamenUnits.print) typ.RamenExpr.units ;
+            typ.RamenExpr.units)
+      | TypedTuple t ->
+        (match List.find (fun ft ->
+                 ft.RamenTuple.typ_name = name
+               ) t.RamenTuple.ser with
+        | exception Not_found ->
+            !logger.error "No such (typed) input field %S (have %a)"
+              name
+              RamenTuple.print_typ t.ser ;
+            None
+        | ft ->
+            !logger.debug "found typed units: %a"
+              (Option.print RamenUnits.print) ft.units ;
+            ft.units) in
+    (* Same as above, but look for the units in all funcs (and check they
+     * use the same): *)
+    let units_of_input func_name funcs name =
+      let what =
+        Printf.sprintf "Field %S in parents of %s"
+          name
+          (RamenName.string_of_func func_name) in
+      (List.enum funcs /@
+       (fun func -> units_of_input func name)) |>
+      RamenUnits.check_same_units ~what None in
+    let set_units func =
+      let parents =
+        Hashtbl.find_default compiler_parents func.Func.name [] in
+      let uoi = units_of_input func.Func.name parents in
+      RamenOperation.fold_top_level_expr false (fun changed e ->
+        let t = RamenExpr.typ_of e in
+        if t.RamenExpr.units = None then (
+          let u = RamenExpr.units_of_expr uoi e in
+          if u <> None then (
+            !logger.debug "Set units of %a to %a"
+              (RamenExpr.print false) e
+              RamenUnits.print (Option.get u) ;
+            t.units <- u ;
+            true
+          ) else changed
+        ) else changed
+      ) (Option.get func.Func.operation) in
+    if not (reach_fixed_point (fun () ->
+        Hashtbl.fold (fun _ e changed ->
+          set_units e || changed
+        ) compiler_funcs false)) then
+      failwith "Cannot perform dimensional analysis" ;
+
+    (*
      * Now the (OCaml) code can be generated and compiled.
      *
      * Each functions is compiled into an object file (an OCaml  module) with a

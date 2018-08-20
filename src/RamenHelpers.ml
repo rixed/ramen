@@ -1252,3 +1252,9 @@ let ctime () =
   Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02d"
     (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
+
+(* TODO: should go in batteries *)
+let option_map2 f o1 o2 =
+  match o1, o2 with
+  | None, _ | _, None -> None
+  | Some a, Some b -> Some (f a b)

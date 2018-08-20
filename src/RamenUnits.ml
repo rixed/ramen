@@ -49,6 +49,12 @@ end
 type t = (float * bool) MapUnit.t
   [@@ppp PPP_OCaml]
 
+let compare =
+  MapUnit.compare (Tuple2.compare ~cmp1:Float.compare ~cmp2:Bool.compare)
+
+let eq =
+  MapUnit.equal (Tuple2.eq Float.equal Bool.equal)
+
 let empty = MapUnit.empty
 
 let make ?(rel=false) n = MapUnit.singleton n (1., rel)
@@ -59,6 +65,10 @@ let bytes = make "bytes"
 let packets = make "packets"
 let tuples = make "tuples"
 let groups = make "groups"
+let chars = make "chars"
+
+let is_relative u =
+  MapUnit.exists (fun _ (e, rel) -> rel) u
 
 let print oc =
   let p oc (e, rel) =
@@ -109,6 +119,9 @@ let mul ?what u1 u2 =
     if e = 0. then None else Some (e, false)
   ) u1 u2
 
+let pow u n =
+  MapUnit.map (fun (e, r) -> e *. n, r) u
+
 let div u1 u2 =
   let u2' = MapUnit.map (fun (e, r) -> ~-.e, r) u2 in
   mul ~what:(binop u1 '/' u2) u1 u2'
@@ -121,6 +134,17 @@ let check_unitless u =
   if u <> MapUnit.empty then
     Printf.sprintf2 "%a must be dimensionless" print u |>
     failwith
+
+let check_same_units ~what =
+  Enum.fold (fun units_opt u ->
+    match units_opt, u with
+    | None, b -> b
+    | a, None -> a
+    | Some a, Some b ->
+        if eq a b then units_opt
+        else Printf.sprintf2 "%s have units %a and %a"
+               what print a print b |>
+             failwith)
 
 module Parser =
 struct

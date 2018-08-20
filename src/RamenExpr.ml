@@ -21,20 +21,25 @@ type typ =
   { mutable expr_name : string ;
     (* To build var names, record field names or identify SAT variables: *)
     uniq_num : int ;
-    mutable typ : RamenTypes.t option }
+    mutable typ : RamenTypes.t option ;
+    mutable units : RamenUnits.t option }
 
 let print_typ oc typ =
   Printf.fprintf oc "%s of %s"
     typ.expr_name
     (match typ.typ with
     | None -> "unknown type"
-    | Some t -> "type "^ IO.to_string RamenTypes.print_typ t)
+    | Some t -> "type "^ IO.to_string RamenTypes.print_typ t) ;
+    (match typ.units with
+    | None -> ()
+    | Some units ->
+        Printf.fprintf oc " %a" RamenUnits.print units)
 
 let uniq_num_seq = ref 0
 
-let make_typ ?typ expr_name =
+let make_typ ?typ ?units expr_name =
   incr uniq_num_seq ;
-  { expr_name ; typ ; uniq_num = !uniq_num_seq }
+  { expr_name ; typ ; units ; uniq_num = !uniq_num_seq }
 
 let copy_typ ?name typ =
   let expr_name = name |? typ.expr_name in
@@ -284,21 +289,21 @@ let expr_true () =
   let typ = RamenTypes.{ nullable = false ; structure = TBool } in
   Const (make_typ ~typ "true", VBool true)
 
-let expr_u8 name n =
+let expr_u8 ?units name n =
   let typ = RamenTypes.{ nullable = false ; structure = TU8 } in
-  Const (make_typ ~typ name, VU8 (Uint8.of_int n))
+  Const (make_typ ~typ ?units name, VU8 (Uint8.of_int n))
 
-let expr_float name n =
+let expr_float ?units name n =
   let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
-  Const (make_typ ~typ name, VFloat n)
+  Const (make_typ ~typ ?units name, VFloat n)
 
 let expr_zero () = expr_u8 "zero" 0
 let expr_one () = expr_u8 "one" 1
-let expr_1hour () = expr_float "1hour" 3600.
+let expr_1hour () = expr_float ~units:RamenUnits.seconds "1hour" 3600.
 
-let of_float v =
+let of_float ?units v =
   let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
-  Const (make_typ ~typ (string_of_float v), VFloat v)
+  Const (make_typ ~typ ?units (string_of_float v), VFloat v)
 
 let is_true = function
   | Const (_ , VBool true) -> true
@@ -881,9 +886,12 @@ struct
   let const m =
     let m = "constant" :: m in
     (
-      RamenTypes.Parser.scalar ~min_int_width:32 >>:
-       fun c ->
-         Const (make_typ "constant", c)
+      RamenTypes.Parser.scalar ~min_int_width:32 ++
+      optional ~def:None (
+        opt_blanks -+ some RamenUnits.Parser.p
+      ) >>:
+       fun (c, units) ->
+         Const (make_typ ?units "constant", c)
     ) m
 
   (*$= const & ~printer:(test_printer (print false))
@@ -892,6 +900,9 @@ struct
 
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
+
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (12, []))) \
+      (test_p const "13i32 secs^2" |> replace_typ_in_expr)
   *)
 
   let null m =
@@ -1554,3 +1565,121 @@ struct
 
   (*$>*)
 end
+
+(* Return the expected units for a given expression.
+ * Fail if the operation does not accept the arguments units.
+ * Returns None if the unit is unknown or if the value cannot have a unit
+ * (non-numeric).
+ * This is best-effort:
+ * - units are not propagated from one conditional consequent to another;
+ * - units of a Nth/VecGet is not inferred but in the simplest cases;
+ * - units of x**y is not inferred unless y is constant.
+ *)
+let units_of_expr units_of_input =
+  let rec uoe e =
+    let t = typ_of e in
+    if t.units <> None then t.units else
+    match e with
+    | Const (_, v) ->
+        if RamenTypes.(is_a_num (structure_of v)) then t.units
+        else None
+    | Field (_, tupref, name) when tuple_has_type_input !tupref ->
+        units_of_input name
+    | Case (_, cas, else_opt) ->
+        (* We merely check that the units of the alternatives are either
+         * the same of unknown. *)
+        List.iter (fun ca -> check_no_units ca.case_cond) cas ;
+        let units_opt = Option.bind else_opt uoe in
+        List.map (fun ca -> ca.case_cons) cas |>
+        same_units "Conditional alternatives" units_opt
+    | Coalesce (_, es) ->
+        same_units "Coalesce alternatives" None es
+    | StatelessFun0 (_, (Now|EventStart|EventStop)) ->
+        Some RamenUnits.seconds_since_epoch
+    | StatelessFun1 (_, Age, e) ->
+        check e RamenUnits.seconds_since_epoch ;
+        Some RamenUnits.seconds
+    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e) -> uoe e
+    | StatelessFun1 (_, Length, e) ->
+        check_no_units e ;
+        Some RamenUnits.chars
+    | StatelessFun1 (_, Nth n, Tuple (_, es)) ->
+        (* Not super useful. FIXME: use the solver. *)
+        (try List.at es n |> uoe
+        with Invalid_argument _ -> None)
+    | StatelessFun2 (_, Add, e1, e2) ->
+        option_map2 RamenUnits.add (uoe e1) (uoe e2)
+    | StatelessFun2 (_, Sub, e1, e2) ->
+        option_map2 RamenUnits.sub (uoe e1) (uoe e2)
+    | StatelessFun2 (_, (Mul|Mod), e1, e2) ->
+        option_map2 RamenUnits.mul (uoe e1) (uoe e2)
+    | StatelessFun2 (_, (Div|IDiv), e1, e2) ->
+        option_map2 RamenUnits.div (uoe e1) (uoe e2)
+    | StatelessFun2 (_, Pow, e1, e2) ->
+        (* Best effort in case the exponent is a constant, otherwise we
+         * just don't know what the unit is. *)
+        option_map2 RamenUnits.pow (uoe e1) (float_of_const e2)
+    | StatelessFun2 (_, (And|Or|Concat|StartsWith|EndsWith|
+                         BitAnd|BitOr|BitXor), e1, e2) ->
+        check_no_units e1 ;
+        check_no_units e2 ;
+        None
+    | StatelessFun2 (_, VecGet, e1, Vector (_, es)) ->
+        Option.bind (float_of_const e1) (fun n ->
+          let n = int_of_float n in
+          List.at es n |> uoe)
+    | StatelessFun2 (_, Percentile, _, e) -> uoe e
+    | StatelessFunMisc (_, Like (e, _)) ->
+        check_no_units e ;
+        None
+    | StatelessFunMisc (_, (Max es|Min es)) ->
+        same_units "Min/Max alternatives" None es
+    | StatelessFunMisc (_, Print es) when es <> [] -> uoe (List.hd es)
+    | StatefulFun (_, _, _, (AggrMin e|AggrMax e|AggrAvg e|AggrFirst e|
+                             AggrLast e|Lag (_, e)|MovingAvg (_, _, e)|
+                             LinReg (_, _, e)|MultiLinReg (_, _, e, _)|
+                             ExpSmooth (_, e))) -> uoe e
+    | StatefulFun (_, _, _, AggrSum e) ->
+        let u = uoe e in
+        check_not_rel e u ;
+        u
+    | GeneratorFun (_, Split (e1, e2)) ->
+        check_no_units e1 ;
+        check_no_units e2 ;
+        None
+    | _ -> None
+
+  and check e u =
+    match uoe e with
+    | None -> ()
+    | Some u' ->
+        if not (RamenUnits.eq u u') then
+          Printf.sprintf2 "%a must have units %a not %a"
+            (print false) e
+            RamenUnits.print u
+            RamenUnits.print u' |>
+          failwith
+
+  and check_no_units e =
+    match uoe e with
+    | None -> ()
+    | Some u ->
+        Printf.sprintf2 "%a must have no units but has unit %a"
+          (print false) e
+          RamenUnits.print u |>
+        failwith
+
+  and check_not_rel e u =
+    Option.may (fun u ->
+      if RamenUnits.is_relative u then
+        Printf.sprintf2 "%a must not have relative unit but has unit %a"
+          (print false) e
+          RamenUnits.print u |>
+        failwith
+    ) u
+
+  and same_units what i es =
+    List.enum es /@ uoe |>
+    RamenUnits.check_same_units ~what i
+
+  in uoe
