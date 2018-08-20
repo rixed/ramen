@@ -10,7 +10,9 @@ open RamenHelpers
 
 (* TODO: turn this into a pair name * rest so we can use assoc functions *)
 type field_typ =
-  { typ_name : string ; typ : RamenTypes.t ; units : RamenUnits.t option }
+  { typ_name : string ;
+    mutable typ : RamenTypes.t ;
+    mutable units : RamenUnits.t option }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -18,6 +20,7 @@ type typ = field_typ list
 
 type typed_tuple =
   { user : typ ; (* All the fields as declared in the code *)
+    (* FIXME: compute ser as needed *)
     ser : typ } (* Only public fields *)
   [@@ppp PPP_OCaml]
 

@@ -44,6 +44,9 @@ open RamenTypingHelpers
 open RamenExpr
 open RamenTypes
 open RamenLog
+module C = RamenConf
+module F = C.Func
+module P = C.Program
 
 let smt_solver = ref "z3 -t:20000 -smt2 %s"
 
@@ -1019,9 +1022,8 @@ let emit_constraints tuple_sizes out_fields oc e =
           (e_of_expr e2) (e_of_expr e2)
           (e_of_expr e2) (e_of_expr e2))
 
-let emit_operation declare tuple_sizes fi oc func =
+let emit_operation declare tuple_sizes fi oc func op =
   let open RamenOperation in
-  let op = Option.get func.Func.operation in
   (* Declare all variables: *)
   RamenOperation.iter_expr declare op ;
   (* Now add specific constraints depending on the clauses: *)
@@ -1075,10 +1077,10 @@ let emit_operation declare tuple_sizes fi oc func =
 
 let emit_program declare tuple_sizes oc funcs =
   (* Output all the constraints for all the operations: *)
-  List.iteri (fun i func ->
+  List.iteri (fun i (func, op) ->
     Printf.fprintf oc "\n; Constraints for function %s\n"
-      (RamenName.string_of_func func.Func.name) ;
-    emit_operation declare tuple_sizes i oc func
+      (RamenName.string_of_func func.F.name) ;
+    emit_operation declare tuple_sizes i oc func op
   ) funcs
 
 let emit_minimize oc funcs =
@@ -1093,14 +1095,14 @@ let emit_minimize oc funcs =
                        (ite (or (= i128 n) (= u128 n)) 6\n\
                        0)))))))\n" ;
   Printf.fprintf oc "(minimize (+ 0" ;
-  List.iter (fun func ->
+  List.iter (fun (func, op) ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
       match (typ_of e).typ with
       | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_number %s)" eid
       | _ -> ()
-    ) (Option.get func.Func.operation)
+    ) op
   ) funcs ;
   Printf.fprintf oc "))\n" ;
   (* And, separately, number of signed values: *)
@@ -1108,21 +1110,26 @@ let emit_minimize oc funcs =
                      (define-fun cost_of_sign ((n Type)) Int\n\
                        (ite (or (= i8 n) (= i16 n) (= i32 n) (= i64 n) (= i128 n)) 1 0))\n" ;
   Printf.fprintf oc "(minimize (+ 0" ;
-  List.iter (fun func ->
+  List.iter (fun (func, op) ->
     RamenOperation.iter_expr (fun e ->
       let eid = e_of_expr e in
       match (typ_of e).typ with
       | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_sign %s)" eid
       | _ -> ()
-    ) (Option.get func.Func.operation)
+    ) op
   ) funcs ;
   Printf.fprintf oc "))\n"
 
+(* When a function refers to an input field from a parent, we need to either
+ * equates its type to the type of the expression computing the output
+ * field (in case of Aggregates) or directly to the type of the output
+ * field if it is a well known field (which has no expression). *)
 type id_or_type = Id of int | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op name =
   let open RamenOperation in
-  let find_field_type = List.find (fun ft -> ft.RamenTuple.typ_name = name) in
+  let find_field_type =
+    List.find (fun ft -> ft.RamenTuple.typ_name = name) in
   match op with
   | Aggregate { fields ; _ } ->
       let sf = List.find (fun sf -> sf.alias = name) fields in
@@ -1141,8 +1148,7 @@ let id_or_type_of_field op name =
  * Equals the input type of fields originating from internal parents to
  * those output fields. *)
 let emit_input_fields oc tuple_sizes parents params funcs =
-  List.iter (fun func ->
-    let parents = Hashtbl.find_default parents func.Func.name [] in
+  List.iter (fun (func, op) ->
     RamenOperation.iter_expr (function
       | Field (field_typ, tupref, field_name) as expr ->
           if is_virtual_field field_name then (
@@ -1152,7 +1158,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             match RamenTuple.params_find field_name params with
             | exception Not_found ->
                 Printf.sprintf "Function %s is using unknown parameter %s"
-                  (RamenName.string_of_func func.Func.name) field_name |>
+                  (RamenName.string_of_func func.F.name) field_name |>
                 failwith
             | param ->
                 emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc param.ptyp.typ.structure ;
@@ -1162,11 +1168,12 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             arg_is_nullable oc expr
           ) else if RamenLang.tuple_has_type_input !tupref then (
             let no_such_field pfunc =
-              Printf.sprintf "Parent %s of %s does not output a field \
-                              named %s"
-                (RamenName.string_of_func pfunc.Func.name)
-                (RamenName.string_of_func func.Func.name)
-                field_name |>
+              Printf.sprintf2 "Parent %s of %s does not output a field \
+                               named %s (only: %a)"
+                (RamenName.string_of_func pfunc.F.name)
+                (RamenName.string_of_func func.F.name)
+                field_name
+                RamenTuple.print_typ pfunc.F.out_type.ser |>
               failwith
             and aggr_types t = function
               | None -> Some t
@@ -1174,31 +1181,37 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                   if t <> prev_t then
                     Printf.sprintf "All parents of %s must agree on \
                                     the type of field %s"
-                      (RamenName.string_of_func func.Func.name)
+                      (RamenName.string_of_func func.F.name)
                       field_name |>
                     failwith ;
                   prev_typ in
             (* Return either the type or a set of id to set this field
              * type to: *)
             let typ, same_as_ids =
+              let parents = Hashtbl.find_default parents func.F.name [] in
               List.fold_left (fun (prev_typ, same_as_ids) pfunc ->
-                if typing_is_finished pfunc.Func.out_type then (
-                  match List.find (fun fld ->
-                          fld.RamenTuple.typ_name = field_name
-                        ) (typed_tuple_type (pfunc.Func.out_type)).ser with
-                  | exception Not_found -> no_such_field pfunc
-                  | t -> aggr_types t prev_typ, same_as_ids
-                ) else (
-                  (* Typing not finished? This parent is in this very program
-                   * then. Output the constraint to bind the input type to
-                   * the output type: *)
+                (* Is this parent part of local functions? *)
+                if pfunc.F.program_name = func.F.program_name then (
+                  (* Typing not finished? This parent is in this very
+                   * program then. Output the constraint to bind the
+                   * input type to the output type: *)
                   (* Retrieve the id for the parent output fields: *)
-                  match id_or_type_of_field
-                          (Option.get pfunc.Func.operation) field_name with
+                  let _, pop =
+                    List.find (fun (f, _op) ->
+                      f.F.name = pfunc.F.name) funcs in
+                  match id_or_type_of_field pop field_name with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id -> prev_typ, p_id::same_as_ids
-                  | FieldType t -> aggr_types t prev_typ, same_as_ids
-                )
+                  | FieldType ft -> aggr_types ft prev_typ, same_as_ids
+                ) else (
+                  (* External parent: look for the exact type: *)
+                  match List.find (fun fld ->
+                          fld.RamenTuple.typ_name = field_name
+                        ) pfunc.F.out_type.ser with
+                    | exception Not_found -> no_such_field pfunc
+                    | ft ->
+                        assert (RamenTypes.is_typed ft.typ.structure) ;
+                        aggr_types ft prev_typ, same_as_ids)
               ) (None, []) parents in
             Option.may (fun t ->
               emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc t.RamenTuple.typ.structure ;
@@ -1210,7 +1223,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             ) same_as_ids
           )
       | _ -> ()
-    ) (Option.get func.Func.operation)
+    ) op
   ) funcs
 
 let structure_of_sort_identifier = function
@@ -1453,119 +1466,67 @@ let get_types conf parents funcs params smt2_file =
 
 (* From here: belongs to RamenTypingHelpers. *)
 
-(* Return the type of the given output field.
- * We already know (from the solver) that all parents export the same
- * type. *)
-let type_of_parents_field parent name =
-  let find_field () =
-    match parent.Func.out_type with
-    | UntypedTuple untyped_tuple ->
-      !logger.debug "Look for %s in %a"
-        name
-        (List.print (fun oc (n,_) -> String.print oc n))
-          untyped_tuple.fields ;
-      (List.assoc name untyped_tuple.fields).typ |>
-      Option.get
-    | TypedTuple { user ; _ } ->
-      !logger.debug "Look for %s in %a"
-        name
-        (List.print (fun oc f -> String.print oc f.RamenTuple.typ_name))
-          user ;
-      List.find_map (fun f ->
-        if f.RamenTuple.typ_name = name
-        then Some f.typ
-        else None
-      ) user in
-  try find_field ()
-  with Not_found ->
-    Printf.sprintf "Cannot find field %s in parent %s"
-      name (RamenName.string_of_func parent.name) |>
-    failwith
-
-(* All expressions have been typed and we are now going to set the
- * in_type and out_type of each functions: *)
+(* Copy the types of all input and output fields from their source
+ * expression. *)
 let set_io_tuples parents funcs h =
-  (* Sometime we just know the types (CSV, Instrumentation, Protocols...): *)
-  let set_type tuple typ =
-    tuple.RamenTypingHelpers.fields <-
-      List.map (fun ft ->
-        ft.RamenTuple.typ_name,
-        make_typ ~typ:ft.RamenTuple.typ ?units:ft.RamenTuple.units
-                 ft.RamenTuple.typ_name
-      ) typ in
-  (* Set i/o types of func: *)
-  let set_outputs func =
-    let out_type = untyped_tuple_type func.Func.out_type in
-    match Option.get func.Func.operation with
-    | Aggregate { fields ; _ } ->
-        out_type.fields <-
-          List.map (fun sf ->
-            let id = (typ_of sf.RamenOperation.expr).uniq_num in
-            match Hashtbl.find h id with
+  let set_output (func, op) =
+    List.iter (fun ft ->
+      if not (RamenTypes.is_typed ft.RamenTuple.typ.structure) then (
+        match op with
+        | RamenOperation.Aggregate { fields ; _ } ->
+            let id =
+              List.find_map (fun sf ->
+                if sf.RamenOperation.alias = ft.typ_name then
+                  Some (typ_of sf.expr).uniq_num
+                else None) fields in
+            (match Hashtbl.find h id with
             | exception Not_found ->
-                Printf.sprintf2 "Cannot find type for id %d, expr=%a"
-                  id (RamenExpr.print false) sf.expr |>
+                Printf.sprintf2 "Cannot find type for id %d, field %s"
+                  id ft.typ_name |>
                 failwith
             | typ ->
-                !logger.debug "Set output field %s.%s"
-                  (RamenName.string_of_func func.name) sf.alias ;
-                sf.alias,
-                make_typ ~typ sf.alias
-          ) fields
-    | ReadCSVFile { what = { fields ; _ } ; _ } ->
-        set_type out_type (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
-    | ListenFor { proto ; _ } ->
-        set_type out_type (RamenProtocols.tuple_typ_of_proto proto)
-    | Instrumentation _ ->
-        set_type out_type RamenBinocle.tuple_typ
-    | Notifications _ ->
-        set_type out_type RamenNotification.tuple_typ
+                !logger.debug "Set output field %s.%s to %a"
+                  (RamenName.string_of_func func.F.name) ft.typ_name
+                  RamenTypes.print_typ typ ;
+                ft.typ <- typ)
+        | _ -> assert false)
+    ) func.out_type.user
+  and set_input (func, _op) =
+    let parents = Hashtbl.find_default parents func.F.name [] in
+    List.iter (fun ft ->
+      (* For the in_type we have to check that all parents do export each
+       * of the mentioned input fields: *)
+      if parents = [] then
+        Printf.sprintf "Cannot use input field %s without any parent"
+          ft.RamenTuple.typ_name |>
+        failwith ;
+      if not (RamenTypes.is_typed ft.typ.structure) then (
+        (* We already know (from the solver) that all parents export the
+         * same type. Copy from the first parent: *)
+        let parent = List.hd parents in
+        match List.find_map (fun pft ->
+                if pft.RamenTuple.typ_name = ft.typ_name then
+                  Some pft.typ
+                else None) parent.F.out_type.ser with
+        | exception Not_found ->
+            Printf.sprintf "Cannot find field %s in %s"
+              ft.typ_name
+              (RamenName.string_of_func parent.F.name) |>
+            failwith
+        | typ ->
+            !logger.debug "Set input field %s.%s to %a"
+              (RamenName.string_of_func func.F.name) ft.typ_name
+              RamenTypes.print_typ typ ;
+            ft.typ <- typ)
+    ) func.in_type
   in
-  let set_inputs func =
-    let in_type = untyped_tuple_type func.Func.in_type in
-    let parents = Hashtbl.find_default parents func.Func.name [] in
-    match Option.get func.Func.operation with
-    | Aggregate { fields ; _ } as op ->
-        (* For the in_type we have to check that all parents do export each
-         * of the mentioned input fields: *)
-        RamenOperation.iter_expr (function
-          | Field (expr_typ, tuple, name)
-            when RamenLang.tuple_has_type_input !tuple &&
-                 not (is_virtual_field name) ->
-              if is_private_field name then
-                Printf.sprintf "In function %s, can not use input field %s, \
-                                which is private."
-                  (RamenName.string_of_func func.Func.name)
-                  name |>
-                failwith ;
-              if not (List.mem_assoc name in_type.fields) then (
-                if parents = [] then
-                  Printf.sprintf "Cannot use input field %s without any \
-                                  parent" name |>
-                  failwith ;
-                let typ =
-                  type_of_parents_field (List.hd parents) name in
-                let t = make_typ ~typ name in
-                !logger.debug "Set input field %s.%s"
-                  (RamenName.string_of_func func.name) name ;
-                in_type.fields <- (name, t) :: in_type.fields)
-          | _ -> ()) op
-    | ReadCSVFile _ -> set_type in_type []
-    | ListenFor _ -> set_type in_type []
-    | Instrumentation _ -> set_type in_type []
-    | Notifications _ -> set_type in_type []
-  in
-  (* We must set outputs before inputs: *)
-  Hashtbl.iter (fun _ -> set_outputs) funcs ;
-  Hashtbl.iter (fun _ -> set_inputs) funcs ;
-  Hashtbl.iter (fun _ func ->
-    (untyped_tuple_type func.Func.in_type).finished_typing <- true ;
-    (untyped_tuple_type func.Func.out_type).finished_typing <- true
-  ) funcs
+  (* Start by setting the output types so that it's then easy to copy
+   * from there to the input types: *)
+  Hashtbl.iter (fun _ -> set_output) funcs ;
+  Hashtbl.iter (fun _ -> set_input) funcs
 
 let apply_types parents funcs h =
-  set_io_tuples parents funcs h ;
-  Hashtbl.iter (fun _ func ->
+  Hashtbl.iter (fun _ (func, op) ->
     RamenOperation.iter_expr (fun e ->
       let t = typ_of e in
       match Hashtbl.find h t.uniq_num with
@@ -1573,5 +1534,6 @@ let apply_types parents funcs h =
           !logger.warning "No type for expression %a"
             (RamenExpr.print true) e
       | typ -> t.typ <- Some typ
-    ) (Option.get func.Func.operation)
-  ) funcs
+    ) op
+  ) funcs ;
+  set_io_tuples parents funcs h

@@ -79,24 +79,29 @@ let compile conf root_path get_parent program_name program_code =
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
      * parents to be a hash from child name to a list of
-     * RamenTypingHelper.Func.t (the parents), and it takes the functions as a
-     * hash of names to RamenTypingHelper.Func.c.
-     *
-     * The resulting types will be stored in compiler_funcs.
+     * Func.t, either taken from disk (for the external parents) or new
+     * mostly non-initialized ones (for internal parents), and it takes
+     * the functions as a hash of FQ-names to operation and new Func.t.
      *)
     !logger.info "Typing program %s"
       (RamenName.string_of_program program_name) ;
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
-      let fq_name = RamenName.string_of_program program_name ^"/"^
-                    RamenName.string_of_func parsed_func.RamenProgram.name in
-      (* During compilation we do not care about actual values of params: *)
-      let params = [] in
+      let op = parsed_func.RamenProgram.operation in
       let me_func =
-        make_untyped_func program_name
-          parsed_func.name params parsed_func.operation in
-      !logger.debug "Found function %s" fq_name ;
-      Hashtbl.add compiler_funcs fq_name me_func
+        let open RamenOperation in
+        F.{ program_name ;
+            name = parsed_func.name ;
+            in_type = in_type_of_operation op ;
+            out_type = out_type_of_operation op ;
+            signature = "" ;
+            parents = parents_of_operation op ;
+            merge_inputs = is_merging op ;
+            event_time = event_time_of_operation op ;
+            factors = factors_of_operation op ;
+            envvars = envvars_of_operation op } in
+      let fq_name = RamenName.fq program_name parsed_func.name in
+      Hashtbl.add compiler_funcs fq_name (me_func, op)
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
@@ -104,8 +109,8 @@ let compile conf root_path get_parent program_name program_code =
      * $RAMEN_ROOT. Note that we do not look at the running configuration,
      * as we want to compile a program against a RAMEN_ROOT not against a
      * currently running instance.
-     * This forces the user to compile programs in a given order. *)
-    (* Has from function name to RamenTyping.Func.t list of parents: *)
+     * This constraint programs to be compiled in a given order. *)
+    (* Hash from function name to Func.t list of parents: *)
     let compiler_parents = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       RamenOperation.parents_of_operation
@@ -123,26 +128,107 @@ let compile conf root_path get_parent program_name program_code =
           | Some rel_prog, func_name ->
               RamenName.program_of_rel_program program_name rel_prog,
               func_name in
-        let parent_name =
-          RamenName.string_of_program parent_prog_name ^"/"^
-          RamenName.string_of_func parent_func_name
-        in
-        try Hashtbl.find compiler_funcs parent_name
+        let parent_name = RamenName.fq parent_prog_name parent_func_name in
+        try Hashtbl.find compiler_funcs parent_name |> fst
         with Not_found ->
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
           (* Or the parent must have been in compiler_funcs: *)
           assert (parent_prog_name <> program_name) ;
-          let parent_func =
-            let par_rc = get_parent parent_prog_name in
-            List.find (fun f ->
-              f.F.name = parent_func_name
-            ) par_rc.P.funcs in
-          (* Build a typed F.t from this Fun.t: *)
-          make_typed_func parent_prog_name parent_func
+          let par_rc = get_parent parent_prog_name in
+          List.find (fun f ->
+            f.F.name = parent_func_name
+          ) par_rc.P.funcs
       ) |>
       Hashtbl.add compiler_parents parsed_func.RamenProgram.name
     ) parsed_funcs ;
+
+    (*
+     * Now that we know the input/output fields of each function
+     * we are ready to set the units for all inputs and outputs.
+     *)
+    (* Find this field in this tuple and patch it: *)
+    let patch_typ field units typ =
+      match List.find (fun ft ->
+              ft.RamenTuple.typ_name = field
+            ) typ with
+      | exception Not_found ->
+          assert (is_private_field field) ;
+          false
+      | ft ->
+          if ft.units = None then (
+            ft.units <- units ; true
+          ) else false in
+    let units_of_input func name =
+      !logger.debug "Looking for units of output field %S in %s"
+        name (RamenName.string_of_func func.F.name) ;
+      match List.find (fun ft ->
+              ft.RamenTuple.typ_name = name
+            ) func.F.out_type.ser with
+        | exception Not_found ->
+            !logger.error "No such input field %S (have %a)"
+              name
+              RamenTuple.print_typ func.F.out_type.ser ;
+            None
+        | ft ->
+            !logger.debug "found typed units: %a"
+              (Option.print RamenUnits.print) ft.units ;
+            ft.units in
+    (* Same as above, but look for the units in all funcs (and check they
+     * use the same): *)
+    let units_of_input func parents field =
+      let what =
+        Printf.sprintf "Field %S in parents of %s"
+          field
+          (RamenName.string_of_func func.F.name) in
+      let units =
+        (List.enum parents /@
+         (fun f -> units_of_input f field)) |>
+        RamenUnits.check_same_units ~what None in
+      (* Patch the input type: *)
+      if units <> None then
+        patch_typ field units func.F.in_type |> ignore ;
+      units in
+    let set_units func op =
+      let parents =
+        Hashtbl.find_default compiler_parents func.F.name [] in
+      let uoi = units_of_input func parents in
+      let changed =
+        RamenOperation.fold_top_level_expr false (fun changed e ->
+          let t = RamenExpr.typ_of e in
+          if t.RamenExpr.units = None then (
+            let u = RamenExpr.units_of_expr uoi e in
+            if u <> None then (
+              !logger.debug "Set units of %a to %a"
+                (RamenExpr.print false) e
+                RamenUnits.print (Option.get u) ;
+              t.units <- u ;
+              true
+            ) else changed
+          ) else changed
+        ) op in
+      (* Now that we have found the units of each expressions, patch the
+       * units in the out_type. This is made uglier than necessary because
+       * out_types fields are reordered. *)
+      if changed then
+        match op with
+        | RamenOperation.Aggregate { fields ; _ } ->
+            List.fold_left (fun changed sf ->
+              let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
+              if units = None then changed
+              else (
+                patch_typ sf.alias units func.F.out_type.ser |||
+                patch_typ sf.alias units func.F.out_type.user
+              ) || changed
+            ) changed fields
+        | _ -> changed
+      else changed
+    in
+    if not (reach_fixed_point (fun () ->
+        Hashtbl.fold (fun _ (func, op) changed ->
+          set_units func op || changed
+        ) compiler_funcs false)) then
+      failwith "Cannot perform dimensional analysis" ;
 
     (*
      * Finally, call the typer:
@@ -168,76 +254,9 @@ let compile conf root_path get_parent program_name program_code =
         get_types conf compiler_parents compiler_funcs
                   parsed_params smt2_file) in
     apply_types compiler_parents compiler_funcs types ;
-    Hashtbl.iter (fun _ func ->
-      finalize_func conf compiler_parents parsed_params func
+    Hashtbl.iter (fun _ (func, op) ->
+      finalize_func conf compiler_parents parsed_params func op
     ) compiler_funcs ;
-
-    (*
-     * Now that we know the input/output fields of each function
-     * we are ready to set the units for all inputs and outputs.
-     *)
-    let units_of_input func name =
-      !logger.debug "Looking for units of output field %S in %s"
-        name (RamenName.string_of_func func.Func.name) ;
-      match func.Func.out_type with
-      | UntypedTuple t ->
-        (match List.assoc name t.fields with
-        | exception Not_found ->
-            !logger.error "No such (untyped) input field %S (have %a)"
-              name
-              print_untyped_tuple_fields t.fields ;
-            None
-        | typ ->
-            (* When the units are still unknown, either compute them
-             * or get them from well-known types. *)
-            !logger.debug "found untyped units: %a"
-              (Option.print RamenUnits.print) typ.RamenExpr.units ;
-            typ.RamenExpr.units)
-      | TypedTuple t ->
-        (match List.find (fun ft ->
-                 ft.RamenTuple.typ_name = name
-               ) t.RamenTuple.ser with
-        | exception Not_found ->
-            !logger.error "No such (typed) input field %S (have %a)"
-              name
-              RamenTuple.print_typ t.ser ;
-            None
-        | ft ->
-            !logger.debug "found typed units: %a"
-              (Option.print RamenUnits.print) ft.units ;
-            ft.units) in
-    (* Same as above, but look for the units in all funcs (and check they
-     * use the same): *)
-    let units_of_input func_name funcs name =
-      let what =
-        Printf.sprintf "Field %S in parents of %s"
-          name
-          (RamenName.string_of_func func_name) in
-      (List.enum funcs /@
-       (fun func -> units_of_input func name)) |>
-      RamenUnits.check_same_units ~what None in
-    let set_units func =
-      let parents =
-        Hashtbl.find_default compiler_parents func.Func.name [] in
-      let uoi = units_of_input func.Func.name parents in
-      RamenOperation.fold_top_level_expr false (fun changed e ->
-        let t = RamenExpr.typ_of e in
-        if t.RamenExpr.units = None then (
-          let u = RamenExpr.units_of_expr uoi e in
-          if u <> None then (
-            !logger.debug "Set units of %a to %a"
-              (RamenExpr.print false) e
-              RamenUnits.print (Option.get u) ;
-            t.units <- u ;
-            true
-          ) else changed
-        ) else changed
-      ) (Option.get func.Func.operation) in
-    if not (reach_fixed_point (fun () ->
-        Hashtbl.fold (fun _ e changed ->
-          set_units e || changed
-        ) compiler_funcs false)) then
-      failwith "Cannot perform dimensional analysis" ;
 
     (*
      * Now the (OCaml) code can be generated and compiled.
@@ -267,19 +286,18 @@ let compile conf root_path get_parent program_name program_code =
     in
     let obj_files = Lwt_main.run (
       Hashtbl.values compiler_funcs |> List.of_enum |>
-      Lwt_list.map_p (fun func ->
+      Lwt_list.map_p (fun (func, op) ->
         let obj_name =
           root_path ^"/"^ path_of_module program_name ^
-          "_"^ func.Func.signature ^
+          "_"^ func.F.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         Lwt.catch (fun () ->
-          let in_typ = tuple_user_type func.Func.in_type
-          and out_typ = tuple_user_type func.Func.out_type
-          and operation = Option.get func.Func.operation in
+          let in_typ = func.F.in_type
+          and out_typ = func.F.out_type.user in
           CodeGen_OCaml.compile
-            conf entry_point_name func.Func.name obj_name
-            in_typ out_typ parsed_params operation)
+            conf entry_point_name func.F.name obj_name
+            in_typ out_typ parsed_params op)
           (fun e ->
             !logger.error "Cannot generate code for %s: %s"
               (RamenName.string_of_func func.name)
@@ -310,24 +328,7 @@ let compile conf root_path get_parent program_name program_code =
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. *)
-        let funcs =
-          Hashtbl.values compiler_funcs |>
-          Enum.map (fun func ->
-            let operation =
-              Option.get func.Func.operation in
-            F.{ (* program_name will be overwritten at load time: *)
-                program_name ;
-                name = func.name ;
-                in_type = typed_tuple_type func.in_type ;
-                out_type = typed_tuple_type func.out_type ;
-                signature = func.signature ;
-                parents = func.parents ;
-                merge_inputs = RamenOperation.is_merging operation ;
-                event_time = func.event_time ;
-                factors = func.factors ;
-                envvars = func.envvars }
-          ) |>
-          List.of_enum
+        let funcs = Hashtbl.values compiler_funcs /@ fst |> List.of_enum
         and params = parsed_params in
         let runconf = P.{ default_name = program_name ; funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
@@ -339,14 +340,14 @@ let compile conf root_path get_parent program_name program_code =
         Printf.fprintf oc
           "let () = CodeGenLib.casing %S rc_str_ rc_marsh_ [\n"
             RamenVersions.codegen ;
-        Hashtbl.iter (fun _ func ->
+        Hashtbl.iter (fun _ (func, _op) ->
           assert (pname.[String.length pname-1] <> '/') ;
           Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
-            (RamenName.string_of_func func.Func.name)
+            (RamenName.string_of_func func.F.name)
             (String.capitalize_ascii
               (Filename.basename pname |>
                RamenOCamlCompiler.to_module_name))
-            func.Func.signature
+            func.F.signature
             RamenVersions.codegen
             entry_point_name
         ) compiler_funcs ;

@@ -226,45 +226,6 @@ and print oc =
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         print_data_source) from
 
-let is_merging = function
-  | Aggregate { merge ; _ } when fst merge <> [] -> true
-  | _ -> false
-
-let event_time_of_operation = function
-  | Aggregate { event_time ; _ } -> event_time
-  | ReadCSVFile { event_time ; _ } -> event_time
-  | ListenFor { proto ; _ } ->
-      RamenProtocols.event_time_of_proto proto
-  | Instrumentation _ ->
-      RamenBinocle.event_time
-  | Notifications _ ->
-      RamenNotification.event_time
-
-let func_id_of_data_source = function
-  | NamedOperation id -> id
-  | SubQuery _
-      (* Should have been replaced by a hidden function
-       * by the time this is called *)
-  | GlobPattern _ ->
-      (* Should not be called on instrumentation operation *)
-      assert false
-
-let parents_of_operation = function
-  | ListenFor _ | ReadCSVFile _
-  (* Note that those have a from clause but no actual parents: *)
-  | Instrumentation _ | Notifications _ -> []
-  | Aggregate { from ; _ } ->
-      List.map func_id_of_data_source from
-
-let factors_of_operation = function
-  | ReadCSVFile { factors ; _ }
-  | Aggregate { factors ; _ } -> factors
-  | ListenFor { factors ; proto ; _ } ->
-      if factors <> [] then factors
-      else RamenProtocols.factors_of_proto proto
-  | Instrumentation _ -> RamenBinocle.factors
-  | Notifications _ -> RamenNotification.factors
-
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
 
@@ -310,6 +271,113 @@ let fold_expr init f =
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
+
+(* Various functions to inspect an operation: *)
+
+let is_merging = function
+  | Aggregate { merge ; _ } when fst merge <> [] -> true
+  | _ -> false
+
+let event_time_of_operation = function
+  | Aggregate { event_time ; _ } -> event_time
+  | ReadCSVFile { event_time ; _ } -> event_time
+  | ListenFor { proto ; _ } ->
+      RamenProtocols.event_time_of_proto proto
+  | Instrumentation _ ->
+      RamenBinocle.event_time
+  | Notifications _ ->
+      RamenNotification.event_time
+
+let func_id_of_data_source = function
+  | NamedOperation id -> id
+  | SubQuery _
+      (* Should have been replaced by a hidden function
+       * by the time this is called *)
+  | GlobPattern _ ->
+      (* Should not be called on instrumentation operation *)
+      assert false
+
+let parents_of_operation = function
+  | ListenFor _ | ReadCSVFile _
+  (* Note that those have a from clause but no actual parents: *)
+  | Instrumentation _ | Notifications _ -> []
+  | Aggregate { from ; _ } ->
+      List.map func_id_of_data_source from
+
+let factors_of_operation = function
+  | ReadCSVFile { factors ; _ }
+  | Aggregate { factors ; _ } -> factors
+  | ListenFor { factors ; proto ; _ } ->
+      if factors <> [] then factors
+      else RamenProtocols.factors_of_proto proto
+  | Instrumentation _ -> RamenBinocle.factors
+  | Notifications _ -> RamenNotification.factors
+
+(* Return the _untyped_ output tuple *)
+let out_type_of_operation =
+  let typed_tuple_of_typ user =
+    RamenTuple.{
+      (* Ordered in user specified order: *)
+      user ;
+      (* Ordered in serialization order: *)
+      ser = RingBufLib.ser_tuple_typ_of_tuple_typ user } in
+  function
+  | Aggregate { fields ; _ } ->
+      let user =
+        List.map (fun sf ->
+          RamenTuple.{
+            typ_name = sf.alias ;
+            (* Types and units will need to be copied from the expression: *)
+            typ = { structure = TAny ; nullable = true } ;
+            units = None }
+        ) fields in
+      (* Ordering according to the operation order: *)
+      let cmp =
+        let sf_index name =
+          try List.findi (fun _ sf -> sf.alias = name) fields |> fst
+          with Not_found ->
+            (* star-imported fields - throw them all at the end in no
+             * specific order. TODO: in parent order? *)
+            max_int in
+        fun f1 f2 ->
+          compare (sf_index f1.RamenTuple.typ_name)
+                  (sf_index f2.RamenTuple.typ_name) in
+      List.fast_sort cmp user |>
+      typed_tuple_of_typ
+  | ReadCSVFile { what = { fields ; _ } ; _ } ->
+      typed_tuple_of_typ (RingBufLib.ser_tuple_typ_of_tuple_typ fields)
+  | ListenFor { proto ; _ } ->
+      typed_tuple_of_typ (RamenProtocols.tuple_typ_of_proto proto)
+  | Instrumentation _ ->
+      typed_tuple_of_typ RamenBinocle.tuple_typ
+  | Notifications _ ->
+      typed_tuple_of_typ RamenNotification.tuple_typ
+
+(* Return the untyped in_type of the given operation: *)
+let in_type_of_operation = function
+  | Aggregate { fields ; _ } as op ->
+      let input = ref [] in
+      iter_expr (function
+        | Field (expr_typ, tuple, name)
+          when RamenLang.tuple_has_type_input !tuple &&
+               not (is_virtual_field name) ->
+            if is_private_field name then
+              Printf.sprintf "Can not use input field %s, which is private."
+                name |>
+              failwith ;
+            if not (List.exists (fun ft ->
+                      ft.RamenTuple.typ_name = name) !input) then (
+              let t = RamenTuple.{
+                (* Actual types/units will be copied from parents after
+                 * typing: *)
+                typ_name = name ;
+                typ = { structure = TAny ; nullable = true } ;
+                units = None } in
+              input := t :: !input)
+        | _ -> ()
+      ) op ;
+      !input
+    | _ -> [] (* No inputs *)
 
 let envvars_of_operation =
   fold_expr [] (fun lst -> function

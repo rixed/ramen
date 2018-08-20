@@ -30,18 +30,18 @@ struct
   type t =
     { program_name : RamenName.program ;
       name : RamenName.func ;
-      in_type : RamenTuple.typed_tuple ;
+      in_type : RamenTuple.typ ;
       out_type : RamenTuple.typed_tuple ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
        * change when the code change, without a need to also change the
        * name of the operation. *)
-      signature : string ;
+      mutable signature : string ;
       parents : parent list ;
       merge_inputs : bool ;
-      event_time : RamenEventTime.t option ;
-      factors : string list ;
+      mutable event_time : RamenEventTime.t option ;
+      mutable factors : string list ;
       (* List of envvar used in that function: *)
       envvars : string list }
     [@@ppp PPP_OCaml]
@@ -66,6 +66,28 @@ struct
   let path f =
     RamenName.path_of_program f.program_name
     ^"/"^ RamenName.string_of_func f.name
+
+  let signature conf func op_str params =
+    (* We'd like to be formatting independent so that operation text can be
+     * reformatted without ramen recompiling it. For this it is not OK to
+     * strip redundant white spaces as some of those might be part of literal
+     * string values. So we print it, trusting the printer to be exhaustive.
+     * This is not enough to print the expression with types, as those do not
+     * contain relevant info such as field rank. We therefore print without
+     * types and encode input/output types explicitly below: *)
+    "OP="^ op_str ^
+    ";IN="^ RamenTuple.type_signature func.in_type ^
+    (* No need to look at private fields: *)
+    ";OUT="^ RamenTuple.type_signature func.out_type.ser ^
+    (* Similarly to input type, also depends on the parameters type: *)
+    ";PRM="^ RamenTuple.param_types_signature params |>
+    md5
+
+  let dump_io func =
+    !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
+      (RamenName.string_of_func func.name)
+      RamenTuple.print_typ func.in_type
+      RamenTuple.print_typ func.out_type.user
 end
 
 module Program =
@@ -256,7 +278,7 @@ let worker_state conf func params =
  * FROM clause): *)
 
 let in_ringbuf_name_base conf func =
-  let sign = type_signature_hash func.Func.in_type.RamenTuple.ser in
+  let sign = type_signature_hash func.Func.in_type in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func

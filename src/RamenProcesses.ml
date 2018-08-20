@@ -137,7 +137,7 @@ let input_spec conf parent child =
         C.in_ringbuf_name_merging conf child i
   else C.in_ringbuf_name_single conf child),
   let out_type = parent.out_type.ser
-  and in_type = child.in_type.ser in
+  and in_type = child.in_type in
   let field_mask = RingBufLib.skip_list ~out_type ~in_type in
   RamenOutRef.{ field_mask ; timeout = 0. }
 
@@ -441,13 +441,13 @@ let really_try_start conf must_run proc =
         false)
     ) true proc.func.parents in
   let check_linkage p c =
-    try check_is_subtype c.F.in_type.RamenTuple.ser p.F.out_type.ser ;
+    try check_is_subtype c.F.in_type p.F.out_type.ser ;
         true
     with Failure msg ->
       !logger.error "Input type of %s (%a) is not compatible with \
                      output type of %s (%a): %s"
         (RamenName.string_of_fq (F.fq_name c))
-        RamenTuple.print_typ c.in_type.ser
+        RamenTuple.print_typ c.in_type
         (RamenName.string_of_fq (F.fq_name p))
         RamenTuple.print_typ p.out_type.ser
         msg ;

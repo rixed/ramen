@@ -44,6 +44,8 @@ let is_an_ip = function
   | TIpv4|TIpv6|TIp -> true
   | _ -> false
 
+let is_typed t = t <> TNum && t <> TAny
+
 let rec print_structure oc = function
   | TEmpty  -> String.print oc "INVALID"
   | TFloat  -> String.print oc "FLOAT"

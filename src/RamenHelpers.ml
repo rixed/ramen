@@ -1258,3 +1258,6 @@ let option_map2 f o1 o2 =
   match o1, o2 with
   | None, _ | _, None -> None
   | Some a, Some b -> Some (f a b)
+
+(* To circumvent short-cuts *)
+let (|||) = (||)
