@@ -32,6 +32,7 @@
  * Those rules are checked but not enforced so that ultimately the user is
  * in control. *)
 open Batteries
+open RamenHelpers
 
 module MapUnit = struct
   include Map.String
@@ -125,10 +126,15 @@ module Parser =
 struct
   open RamenParsing
 
+  let is_valid_unit s =
+    String.length s > 0 && String.length s < 10 && is_alpha s
+
   let u m =
     let m = "unit" :: m in
     (
-      non_keyword ++
+      (non_keyword >>: fun s ->
+        if is_valid_unit s then s
+        else raise (Reject "not a valid unit")) ++
       optional ~def:false
         (opt_blanks -+ strinG "(rel)" >>: fun () -> true) ++
       optional ~def:1.
@@ -138,8 +144,8 @@ struct
   let p m =
     let m = "units" :: m in
     let sep =
-      (opt_blanks -- (char '*' ||| char '.') -- opt_blanks) |||
-      opt_blanks in
+      (* TODO: also '/' *)
+      (opt_blanks -- (char '*' ||| char '.') -- opt_blanks) in
     (
       several ~sep u >>:
         List.fold_left (fun us ((n, r), u) ->

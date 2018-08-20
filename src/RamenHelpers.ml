@@ -148,6 +148,15 @@ let looks_like_true s =
 let looks_like_null s =
   String.lowercase_ascii s = "null"
 
+let is_alpha s =
+  try
+    for i = 0 to String.length s - 1 do
+      if (s.[i] < 'a' || s.[i] > 'z') &&
+         (s.[i] < 'A' || s.[i] > 'Z') then raise Exit
+    done ;
+    true
+  with Exit -> false
+
 let with_time f k =
   let start = Unix.gettimeofday () in
   let res = f () in
