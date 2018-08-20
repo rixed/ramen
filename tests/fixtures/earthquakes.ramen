@@ -3,4 +3,4 @@
 DEFINE csv AS
   READ FILE "earthquakes.csv" SEPARATOR "\t" (
     -- number of earthquakes per year
-    year u16, n u16);
+    year u16 years (rel), n u16);

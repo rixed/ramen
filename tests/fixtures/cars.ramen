@@ -2,9 +2,9 @@
 
 DEFINE csv AS
   READ FILE "cars.csv" (
-    year u16,
+    year u16 years (rel),
     manufacturer string,
     model string,
     horsepower u16,
-    CO float?,
-    CO2 float?);
+    CO float? g*km^-1,
+    CO2 float? g*km^-1);

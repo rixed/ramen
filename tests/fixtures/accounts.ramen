@@ -2,4 +2,4 @@
 
 DEFINE csv AS
   READ FILE "accounts.csv" (
-    name string, amount float);
+    name string, amount float usd);

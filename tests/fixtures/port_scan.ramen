@@ -18,7 +18,7 @@ DEFINE csv AS
     in_iface u16,
     out_iface u16,
     packets u32,
-    bytes u32,
+    bytes u32 bytes,
     tcp_flags u8,
     ip_proto u8,
     ip_tos u8,
