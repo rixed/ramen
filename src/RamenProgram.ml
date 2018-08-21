@@ -101,7 +101,8 @@ struct
             blanks -+ some RamenTypes.Parser.typ) ++
           optional ~def:RamenTypes.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            RamenTypes.Parser.(p_ ~min_int_width:0 ||| null)) >>:
+            (RamenTypes.Parser.(p_ ~min_int_width:0 ||| null) |||
+            (duration >>: fun x -> RamenTypes.VFloat x))) >>:
           fun ((typ_name, typ_decl), value) ->
             let typ, value =
               let open RamenTypes in
