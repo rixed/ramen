@@ -1168,16 +1168,23 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                 field_name
                 RamenTuple.print_typ pfunc.F.out_type |>
               failwith
-            and aggr_types t = function
-              | None -> Some t
-              | (Some prev_t) as prev_typ->
+            and aggr_types pfunc t prev =
+              let fn = RamenName.string_of_func pfunc.F.name in
+              match prev with
+              | None -> Some ([fn], t)
+              | Some (prev_fns, prev_t) ->
                   if t <> prev_t then
-                    Printf.sprintf "All parents of %s must agree on \
-                                    the type of field %s"
+                    Printf.sprintf2
+                      "All parents of %s must agree on the type of field \
+                       %s (%a have %a but %s has %a)"
                       (RamenName.string_of_func func.F.name)
-                      field_name |>
+                      field_name
+                      (pretty_list_print String.print) prev_fns
+                      RamenTypes.print_typ prev_t
+                      fn
+                      RamenTypes.print_typ t |>
                     failwith ;
-                  prev_typ in
+                  Some ((fn::prev_fns), prev_t) in
             (* Return either the type or a set of id to set this field
              * type to: *)
             let typ, same_as_ids =
@@ -1195,7 +1202,8 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                   match id_or_type_of_field pop field_name with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id -> prev_typ, p_id::same_as_ids
-                  | FieldType ft -> aggr_types ft prev_typ, same_as_ids
+                  | FieldType ft ->
+                      aggr_types pfunc ft.typ prev_typ, same_as_ids
                 ) else (
                   (* External parent: look for the exact type: *)
                   let pser =
@@ -1206,11 +1214,11 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                     | exception Not_found -> no_such_field pfunc
                     | ft ->
                         assert (RamenTypes.is_typed ft.typ.structure) ;
-                        aggr_types ft prev_typ, same_as_ids)
+                        aggr_types pfunc ft.typ prev_typ, same_as_ids)
               ) (None, []) parents in
-            Option.may (fun t ->
-              emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc t.RamenTuple.typ.structure ;
-              emit_assert_id_is_bool (n_of_expr expr) oc t.RamenTuple.typ.nullable
+            Option.may (fun (_funcs, t) ->
+              emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc t.structure ;
+              emit_assert_id_is_bool (n_of_expr expr) oc t.nullable
             ) typ ;
             List.iter (fun id ->
               emit_assert_id_eq_id (t_of_expr expr) oc (t_of_num id) ;

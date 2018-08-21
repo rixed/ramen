@@ -1261,3 +1261,14 @@ let option_map2 f o1 o2 =
 
 (* To circumvent short-cuts *)
 let (|||) = (||)
+
+let pretty_list_print p oc =
+  let rec loop first = function
+  | [] ->
+      String.print oc "<empty>"
+  | [x] ->
+      Printf.fprintf oc "%s%a" (if first then "" else " and ") p x
+  | x::lst ->
+      Printf.fprintf oc "%s%a" (if first then "" else ", ") p x ;
+      loop false lst
+  in loop true
