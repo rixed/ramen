@@ -532,10 +532,16 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes eid oc TBool
 
   | StatelessFun1 (_, Cast t, x) ->
-      (* No type restriction on the operand: we might want to forbid some
-       * types at some point, for instance strings... Some cast are
-       * actually not implemented so would fail when generating code. *)
-      emit_assert_id_eq_id nid oc (n_of_expr x) ;
+      (* - The only argument (x) can be anything;
+       * - The result type is as described by the chosen type;
+       * - The result is nullable if we specifically choose to cast
+       *   toward a nullable type, or merely propagates.
+       * Note that some cast are actually not implemented so would fail
+       * when generating code. *)
+      if t.RamenTypes.nullable then
+        emit_assert_is_true oc nid
+      else
+        emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes eid oc t.structure
 
   | StatelessFun2 (_, Percentile, e1, e2) ->

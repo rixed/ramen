@@ -838,10 +838,15 @@ and emit_expr_ ?state ~context ~opc oc expr =
     Printf.fprintf oc "Null"
   | Finalize, StatelessFun1 (_, Cast to_typ, e), _ ->
     let from = Option.get (typ_of e).typ in
+    (* Shall we force a non-nullable argument to become nullable, or
+     * propagates nullability from the argument? *)
+    let add_nullable = not from.nullable && to_typ.nullable in
+    if add_nullable then Printf.fprintf oc "NotNull (" ;
     Printf.fprintf oc "(%a) (%a)"
       (conv_from_to ~nullable:from.nullable)
         (from.structure, to_typ.structure)
-      (emit_expr ?state ~context ~opc) e
+      (emit_expr ?state ~context ~opc) e ;
+    if add_nullable then Printf.fprintf oc ")"
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
     emit_functionN ~opc ~args_as:(Array 0) ?state ~nullable
