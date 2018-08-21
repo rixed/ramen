@@ -893,10 +893,15 @@ struct
   let const m =
     let m = "constant" :: m in
     (
-      RamenTypes.Parser.scalar ~min_int_width:32 ++
-      optional ~def:None (some RamenUnits.Parser.p) >>:
-      fun (c, units) ->
-        Const (make_typ ?units "constant", c)
+      (
+        RamenTypes.Parser.scalar ~min_int_width:32 ++
+        optional ~def:None (some RamenUnits.Parser.p) >>:
+        fun (c, units) ->
+          Const (make_typ ?units "constant", c)
+      ) ||| (
+        duration >>: fun x ->
+          Const (make_typ ~units:RamenUnits.seconds "constant", VFloat x)
+      )
     ) m
 
   (*$= const & ~printer:(test_printer (print false))

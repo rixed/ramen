@@ -124,6 +124,10 @@ let rec duration m =
     (test_p duration "2 minutes, 3 seconds and 400 milliseconds")
   (Ok (62., (4, []))) \
     (test_p duration "1m2s")
+  (Ok (1.234, (26,[]))) \
+    (test_p duration "1 second, 234 milliseconds")
+  (Ok (121.5, (6,[]))) \
+    (test_p duration "2m1.5s")
  *)
 
 (* TODO: use more appropriate units *)

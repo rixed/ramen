@@ -552,7 +552,7 @@ struct
   let scalar ?min_int_width =
     (if min_int_width <> None then narrowest_int ?min_int_width ()
      else all_possible_ints) |||
-    ((floating_point ||| duration) >>: fun f -> VFloat f) |||
+    (floating_point >>: fun f -> VFloat f) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
     (quoted_string >>: fun s -> VString s) |||
@@ -628,8 +628,6 @@ struct
                                   (test_p p "61000")
     (Ok (VFloat 3.14, (4,[])))    (test_p p "3.14")
     (Ok (VFloat ~-.3.14, (5,[]))) (test_p p "-3.14")
-    (Ok (VFloat 1.234, (26,[])))  (test_p p "1 second, 234 milliseconds")
-    (Ok (VFloat 121.5, (6,[])))   (test_p p "2m1.5s")
     (Ok (VBool false, (5,[])))    (test_p p "false")
     (Ok (VBool true, (4,[])))     (test_p p "true")
     (Ok (VString "glop", (6,[]))) (test_p p "\"glop\"")
