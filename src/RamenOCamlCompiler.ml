@@ -60,6 +60,11 @@ let ppf () =
         RamenLog.do_output output tm true in
   BatFormat.formatter_of_output oc
 
+let cannot_compile compiler func_name status =
+  Printf.sprintf "Cannot generate code for function %s: %s"
+    func_name status |>
+  fail_with
+
 (* Takes a source file and produce an object file: *)
 
 let compile_internal conf func_name src_file obj_file =
@@ -99,10 +104,8 @@ let compile_internal conf func_name src_file obj_file =
     return_unit
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    let e = RamenLang.CannotGenerateCode {
-      func = RamenName.string_of_func func_name ; cmd = "embedded compiler" ;
-      status = Printexc.to_string exn } in
-    fail (RamenLang.SyntaxError e)
+    cannot_compile "internal compiler"
+      (RamenName.string_of_func func_name) (Printexc.to_string exn)
 
 let compile_external conf func_name src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -129,14 +132,11 @@ let compile_external conf func_name src_file obj_file =
     !logger.debug "Compiled %s with: %s"
       (RamenName.string_of_func func_name) comp_cmd ;
     return_unit
-  ) else (
+  ) else
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
-    let e = RamenLang.CannotGenerateCode {
-      func = RamenName.string_of_func func_name ; cmd = comp_cmd ;
-      status = string_of_process_status status } in
-    fail (RamenLang.SyntaxError e)
-  )
+    cannot_compile comp_cmd
+      (RamenName.string_of_func func_name) (string_of_process_status status)
 
 let compile conf func_name src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
@@ -194,11 +194,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     return_unit
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    let e = RamenLang.CannotGenerateCode {
-      func = RamenName.string_of_program program_name ;
-      cmd = "embedded compiler" ;
-      status = Printexc.to_string exn } in
-    fail (RamenLang.SyntaxError e)
+    cannot_compile "embedded compiler"
+      (RamenName.string_of_program program_name) (Printexc.to_string exn)
 
 let link_external conf program_name inc_dirs obj_files src_file bin_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -231,15 +228,11 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
     !logger.debug "Compiled %s with: %s"
       (RamenName.string_of_program program_name) comp_cmd ;
     return_unit
-  ) else (
+  ) else
     (* As this might well be an installation problem, makes this error
      * report to the GUI: *)
-    let e = RamenLang.CannotGenerateCode {
-      func = RamenName.string_of_program program_name ;
-      cmd = comp_cmd ;
-      status = string_of_process_status status } in
-    fail (RamenLang.SyntaxError e)
-  )
+    cannot_compile comp_cmd
+      (RamenName.string_of_program program_name) (string_of_process_status status)
 
 let link conf program_name obj_files src_file bin_file =
   mkdir_all ~is_file:true bin_file ;

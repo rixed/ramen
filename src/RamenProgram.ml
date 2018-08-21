@@ -70,15 +70,17 @@ let print oc (params, funcs) =
 (* Check that a syntactically valid program is actually valid: *)
 
 let check (params, funcs) =
+  let name_not_unique name =
+    Printf.sprintf "Name %S not unique" name |> failwith in
   List.fold_left (fun s p ->
     if Set.mem p.RamenTuple.ptyp.typ_name s then
-      raise (SyntaxError (NameNotUnique p.ptyp.typ_name)) ;
+      name_not_unique p.ptyp.typ_name ;
     Set.add p.ptyp.typ_name s
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
     RamenOperation.check params n.operation ;
     if Set.mem n.name s then
-      raise (SyntaxError (NameNotUnique (RamenName.string_of_func n.name))) ;
+      name_not_unique (RamenName.string_of_func n.name) ;
     Set.add n.name s
   ) Set.empty funcs |> ignore
 
@@ -383,9 +385,9 @@ let parse get_parent program_name program =
   match p ["program"] None Parsers.no_error_correction stream |>
         RamenParsing.to_result with
   | Bad e ->
-    let error =
-      IO.to_string (RamenParsing.print_bad_result print) e in
-    raise (SyntaxError (ParseError { error ; text = program }))
+    Printf.sprintf2 "Parse error: %a"
+      (RamenParsing.print_bad_result print) e |>
+    failwith
   | Ok ((params, funcs), _) ->
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in

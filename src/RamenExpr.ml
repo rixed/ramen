@@ -324,10 +324,6 @@ let int_of_const = function
 let is_const = function
   | Const _ -> true | _ -> false
 
-let check_const what e =
-  if not (is_const e) then
-    raise (SyntaxError (NotConstant what))
-
 let rec print with_types oc =
   let add_types t =
     if with_types then Printf.fprintf oc " [%a]" print_typ t

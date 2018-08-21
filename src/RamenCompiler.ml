@@ -234,15 +234,14 @@ let compile conf root_path get_parent program_name program_code =
      *)
     let call_typer typer_name typer =
       with_time (fun () ->
-        try let res = typer () in
+        finally (fun () ->
+          IntCounter.add ~labels:["typer", typer_name ;
+                                  "status", "ko"] stats_typing_count 1)
+          (fun () ->
+            let res = typer () in
             IntCounter.add ~labels:["typer", typer_name ;
                                     "status", "ok"] stats_typing_count 1 ;
-            res
-        with exn ->
-          print_exception ~what:"Error while typing" exn ;
-          IntCounter.add ~labels:["typer", typer_name ;
-                                  "status", "ko"] stats_typing_count 1 ;
-          raise exn)
+            res) ())
         (log_and_ignore_exceptions
           (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
     let open RamenSmtTyping in

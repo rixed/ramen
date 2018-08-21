@@ -41,6 +41,7 @@ bundle
 debtmp/
 *.x
 *.smt2
+*.smt2.no_opt
 examples/**/*.ml
 tests/**/*.ml
 tests/*.ml

@@ -382,32 +382,29 @@ let envvars_of_operation =
  * result for better error messages, and also because we need the
  * list of available parameters. *)
 let check params op =
-  let pure_in clause = StatefulNotAllowed { clause }
-  and no_group clause = StateNotAllowed { state = "local" ; clause }
-  and fields_must_be_from tuple where allowed =
-    TupleNotAllowed { tuple ; where ; allowed } in
-  let pure_in_key = pure_in "GROUP-BY"
-  and check_pure e =
-    E.unpure_iter (fun _ -> raise (SyntaxError e))
-  and check_no_state state e =
+  let check_pure clause =
+    E.unpure_iter (fun _ ->
+      failwith ("Stateful function not allowed in "^ clause))
+  and check_no_state state clause =
     E.unpure_iter (function
-      | StatefulFun (_, s, _, _) when s = state -> raise (SyntaxError e)
+      | StatefulFun (_, s, _, _) when s = state ->
+          failwith ("Steful function not allowed in "^ clause)
       | _ -> ())
   and check_fields_from lst where =
     E.iter (function
       | E.Field (_, tuple, _) ->
         if not (List.mem !tuple lst) then (
-          let m = fields_must_be_from !tuple where lst in
-          raise (SyntaxError m)
+          Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
+            (RamenLang.string_of_prefix !tuple)
+            where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
+          failwith
         )
       | _ -> ())
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
-      let m =
-        let tuple_type =
-          IO.to_string (List.print String.print) field_names in
-        FieldNotInTuple { field = f ; tuple = TupleOut ; tuple_type } in
-      raise (SyntaxError m) in
+      Printf.sprintf2 "Field %s is not in output tuple (only %a)"
+        f (pretty_list_print String.print) field_names |>
+      failwith in
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
       if RamenTuple.params_mem f params then
@@ -490,8 +487,9 @@ let check params op =
     iter_expr (function
       | Field (_, { contents = TupleGroup }, alias) ->
         if not (is_virtual_field alias) then
-          raise (SyntaxError (TupleHasOnlyVirtuals { tuple = TupleGroup ;
-                                                     alias }))
+          Printf.sprintf "Tuple group has only virtual fields (no %s)"
+            alias |>
+          failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
@@ -501,7 +499,8 @@ let check params op =
             TupleOutPrevious ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
-          raise (SyntaxError (AliasNotUnique sf.alias)) ;
+          Printf.sprintf "Alias %S is not unique" sf.alias |>
+          failwith ;
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
     if not and_all_others then (
@@ -510,13 +509,13 @@ let check params op =
       check_factors field_names factors
     ) ;
     (* Disallow group state in WHERE because it makes no sense: *)
-    check_no_group (no_group "WHERE") where ;
+    check_no_group "WHERE clause" where ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
         TupleGroup; TupleOutPrevious ]
       "WHERE clause" where ;
     List.iter (fun k ->
-      check_pure pure_in_key k ;
+      check_pure "GROUP-BY clause" k ;
       check_fields_from
         [ TupleParam; TupleEnv; TupleIn ] "Group-By KEY" k
     ) key ;
@@ -534,7 +533,7 @@ let check params op =
         TupleGroup ]
       "COMMIT WHEN clause" commit_cond ;
     if every > 0. && from <> [] then
-      raise (SyntaxError (EveryWithFrom)) ;
+      failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
     let generators = List.filter_map (fun sf ->
         if E.is_generator sf.expr then Some sf.alias else None
@@ -543,8 +542,7 @@ let check params op =
         | Field (_, tuple_ref, alias)
           when !tuple_ref = TupleOutPrevious ->
             if List.mem alias generators then
-              let e = NoAccessToGeneratedFields { alias } in
-              raise (SyntaxError e)
+              failwith ("Cannot use a generated output field ("^ alias ^")")
         | _ -> ()) op
 
     (* TODO: notifications: check field names from text templates *)

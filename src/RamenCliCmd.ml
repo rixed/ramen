@@ -184,9 +184,13 @@ let compile conf root_path use_external_compiler bundle_dir
   List.iter (fun source_file ->
     try
       compile_file source_file
-    with e ->
-      print_exception e ;
-      all_ok := false
+    with
+    | Failure msg ->
+        !logger.error "Error: %s" msg ;
+        all_ok := false
+    | e ->
+        print_exception e ;
+        all_ok := false
   ) source_files ;
   if not !all_ok then exit 1
 
