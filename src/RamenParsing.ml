@@ -117,6 +117,7 @@ let rec duration m =
     let sep = optional ~def:() sep in
     several ~sep single_duration >>: List.reduce (+.)
   ) m
+
 (*$= duration & ~printer:(test_printer BatFloat.print)
   (Ok (42., (3, []))) \
     (test_p duration "42s")

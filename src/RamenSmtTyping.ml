@@ -50,11 +50,11 @@ module P = C.Program
 
 let smt_solver = ref "z3 -t:20000 -smt2 %s"
 
-let e_of_num num =
-  Printf.sprintf "e%d" num
+let t_of_num num =
+  Printf.sprintf "t%d" num
 
-let e_of_expr e =
-  e_of_num ((typ_of e).uniq_num)
+let t_of_expr e =
+  t_of_num ((typ_of e).uniq_num)
 
 let n_of_num num =
   Printf.sprintf "n%d" num
@@ -233,11 +233,11 @@ let emit_sortable oc id =
 
 let arg_is_sortable oc e =
   let name = make_name e "SORTABLE" in
-  emit_assert ~name oc (fun oc -> emit_sortable oc (e_of_expr e))
+  emit_assert ~name oc (fun oc -> emit_sortable oc (t_of_expr e))
 
 let arg_is_unsigned oc e =
   let name = make_name e "UNSIGNED" in
-  let id = e_of_expr e in
+  let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
       "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s))"
@@ -245,7 +245,7 @@ let arg_is_unsigned oc e =
 
 let arg_is_signed oc e =
   let name = make_name e "SIGNED" in
-  let id = e_of_expr e in
+  let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
       "(or (= float %s) \
@@ -255,7 +255,7 @@ let arg_is_signed oc e =
 
 let arg_is_integer oc e =
   let name = make_name e "INTEGER" in
-  let id = e_of_expr e in
+  let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
       "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
@@ -275,13 +275,13 @@ let emit_numeric oc id =
 let arg_is_numeric oc e =
   let name = make_name e "NUMERIC" in
   emit_assert ~name oc (fun oc ->
-    emit_numeric oc (e_of_expr e))
+    emit_numeric oc (t_of_expr e))
 
 let arg_has_type typ oc e =
   let typ_name = IO.to_string RamenTypes.print_structure typ in
   let name = make_name e typ_name in
   emit_assert ~name oc (fun oc ->
-    emit_id_eq_typ [] (e_of_expr e) oc typ)
+    emit_id_eq_typ [] (t_of_expr e) oc typ)
 
 let arg_is_float = arg_has_type TFloat
 let arg_is_bool = arg_has_type TBool
@@ -318,7 +318,7 @@ let emit_assert_same e oc id1 id2 =
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes out_fields oc e =
-  let eid = e_of_expr e and nid = n_of_expr e in
+  let eid = t_of_expr e and nid = n_of_expr e in
   emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e with
@@ -336,7 +336,7 @@ let emit_constraints tuple_sizes out_fields oc e =
                 String.print oc sf.alias)) out_fields |>
             failwith
         | { expr ; _ } ->
-            emit_assert_id_eq_id eid oc (e_of_expr expr) ;
+            emit_assert_id_eq_id eid oc (t_of_expr expr) ;
             (* Some tuples are passed to callback via an option type, and
              * are None each time they are undefined (beginning of worker
              * or of group). Workers access those fields via a special
@@ -368,7 +368,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert oc (fun oc ->
         Printf.fprintf oc "((_ is tuple%d) %s)" d eid) ;
       List.iteri (fun i e ->
-        emit_assert_id_eq_smt2 (e_of_expr e) oc
+        emit_assert_id_eq_smt2 (t_of_expr e) oc
           (Printf.sprintf "(tuple%d-e%d %s)" d i eid) ;
         emit_assert_id_eq_smt2 (n_of_expr e) oc
           (Printf.sprintf "(tuple%d-n%d %s)" d i eid)
@@ -397,7 +397,7 @@ let emit_constraints tuple_sizes out_fields oc e =
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and %a %a)"
               (emit_id_eq_id (n_of_expr x)) (n_of_expr fst)
-              (emit_id_le_smt2 (e_of_expr x))
+              (emit_id_le_smt2 (t_of_expr x))
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
         emit_assert oc (fun oc ->
@@ -424,13 +424,13 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - If there are no else branch then the case is nullable. *)
       List.iteri (fun i { case_cond = cond ; case_cons = cons } ->
         let name = make_name e ("CASE_COND_"^ string_of_int i ^"_BOOL") in
-        emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr cond) oc TBool ;
+        emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr cond) oc TBool ;
         let name = make_name e ("CASE_CONS_"^ string_of_int i) in
-        emit_assert_id_le_id ~name (e_of_expr cons) oc eid
+        emit_assert_id_le_id ~name (t_of_expr cons) oc eid
       ) cases ;
       Option.may (fun else_ ->
         let name = make_name e "CASE_ELSE" in
-        emit_assert_id_le_id ~name (e_of_expr else_) oc eid
+        emit_assert_id_le_id ~name (t_of_expr else_) oc eid
       ) else_ ;
       if cases <> [] then (
         let name = make_name e "CASE_NULL_PROPAGATION" in
@@ -455,7 +455,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_not_nullable oc e ;
       List.iteri (fun i x ->
         let name = make_name x ("COALESCE_ALTERNATIVE_"^ string_of_int i) in
-        emit_assert_id_le_id ~name (e_of_expr x) oc eid ;
+        emit_assert_id_le_id ~name (t_of_expr x) oc eid ;
         let name = make_name x ("COALESCE_NULL_IFF_LAST_"^ string_of_int i) in
         let is_last = i = len - 1 in
         emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
@@ -478,13 +478,13 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result has its type;
        * - The result nullability is set by propagation from x. *)
       arg_is_sortable oc x ;
-      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
   | StatefulFun (_, _, _, (AggrFirst x|AggrLast x)) ->
       (* - The result has the same type than that of x;
        * - The result has same nullability than that of x. *)
-      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatefulFun (_, _, _, AggrSum x) ->
@@ -492,7 +492,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result has the same type than x;
        * - The result has same nullability than x. *)
       arg_is_numeric oc x ;
-      emit_assert_id_eq_id (e_of_expr x) oc eid ;
+      emit_assert_id_eq_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatefulFun (_, _, _, AggrAvg x) ->
@@ -509,7 +509,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result has same nullability than x;
        * - The result is signed or float. *)
       arg_is_numeric oc x ;
-      emit_assert_id_le_id (e_of_expr x) oc eid ;
+      emit_assert_id_le_id (t_of_expr x) oc eid ;
       arg_is_signed oc e ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -526,7 +526,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result has same type than x;
        * - The result has same nullability than x. *)
       arg_is_numeric oc x ;
-      emit_assert_id_le_id (e_of_expr x) oc eid ;
+      emit_assert_id_le_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatefulFun (_, _, _, (AggrAnd x | AggrOr x))
@@ -552,7 +552,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - the result is nullable if either e1 or e2 is. *)
       arg_is_numeric oc e1 ;
       emit_assert oc (fun oc ->
-        let eid2 = e_of_expr e2 in
+        let eid2 = t_of_expr e2 in
         let lst_type = "(list-type "^ eid2 ^")"
         and vec_type = "(vector-type "^ eid2 ^")" in
         Printf.fprintf oc
@@ -570,8 +570,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
-      emit_assert_id_le_id (e_of_expr e1) oc eid ;
-      emit_assert_id_le_id (e_of_expr e2) oc eid
+      emit_assert_id_le_id (t_of_expr e1) oc eid ;
+      emit_assert_id_le_id (t_of_expr e2) oc eid
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
 
   | StatelessFun2 (_, (Reldiff|Div), e1, e2) ->
@@ -653,8 +653,8 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - Nullability propagates. *)
       arg_is_integer oc e1 ;
       arg_is_integer oc e2 ;
-      emit_assert_id_le_id (e_of_expr e1) oc eid ;
-      emit_assert_id_le_id (e_of_expr e2) oc eid ;
+      emit_assert_id_le_id (t_of_expr e1) oc eid ;
+      emit_assert_id_le_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
@@ -663,7 +663,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   numeric, IP or CIDR (aka a sortable);
        * - The result is a bool;
        * - Nullability propagates. *)
-      emit_assert_same e oc (e_of_expr e1) (e_of_expr e2) ;
+      emit_assert_same e oc (t_of_expr e1) (t_of_expr e2) ;
       arg_is_sortable oc e1 ;
       emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
@@ -673,7 +673,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - e1 and e2 must be of the same sort;
        * - The result is a bool;
        * - Nullability propagates from arguments. *)
-      emit_assert_same e oc (e_of_expr e1) (e_of_expr e2) ;
+      emit_assert_same e oc (t_of_expr e1) (t_of_expr e2) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -695,7 +695,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - x must be a tuple of at least n elements;
        * - the resulting type is that if the n-th element;
        * - the result nullability is also that of the n-th elements. *)
-      let eid' = e_of_expr x in
+      let eid' = t_of_expr x in
       let name = make_name x "TUPLE" in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc "(or %a)"
@@ -730,7 +730,7 @@ let emit_constraints tuple_sizes out_fields oc e =
                                           (= (vector-type tmp) %s))\
                                      (and ((_ is list) tmp) \
                                           (= (list-type tmp) %s))))"
-              (e_of_expr x) eid eid) ;
+              (t_of_expr x) eid eid) ;
           arg_is_nullable oc e
       | Some i ->
           emit_assert ~name oc (fun oc ->
@@ -742,7 +742,7 @@ let emit_constraints tuple_sizes out_fields oc e =
                                      (and ((_ is list) tmp) \
                                           (= (list-type tmp) %s) \
                                           %s)))"
-              (e_of_expr x)
+              (t_of_expr x)
               i
               eid
               (n_of_expr x) nid
@@ -753,8 +753,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - x is any kind of cidr;
        * - The result is a bool;
        * - Nullability propagates from x. *)
-      let name = make_name x "CIDR" in
-      let xid = e_of_expr x in
+      let name = make_name x "ANYCIDR" in
+      let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
           "(or (and (= cidr %s) (= ip %s)) \
@@ -772,7 +772,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result type must be a sortable;
        * - If any of the es is nullable then so is the result. *)
       List.iter (fun e ->
-        emit_assert_id_le_id (e_of_expr e) oc eid
+        emit_assert_id_le_id (t_of_expr e) oc eid
       ) es ;
       arg_is_sortable oc e ;
       if es <> [] then
@@ -783,7 +783,7 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatelessFunMisc (_, Print es) ->
       (* The result must have the same type as the first parameter *)
-      emit_assert_id_eq_id (e_of_expr (List.hd es)) oc eid ;
+      emit_assert_id_eq_id (t_of_expr (List.hd es)) oc eid ;
       emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
 
   | StatefulFun (_, _, _, Lag (e1, e2)) ->
@@ -794,7 +794,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   lag goes beyond the start of the window then lag merely returns
        *   the oldest value. (FIXME: should return NULL in that case) *)
       arg_is_integer oc e1 ;
-      emit_assert_id_eq_id (e_of_expr e2) oc eid ;
+      emit_assert_id_eq_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
   | StatefulFun (_, _, _, MovingAvg (e1, e2, e3))
@@ -855,7 +855,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result is not smaller than x;
        * - Nullability propagates from argument. *)
       arg_is_numeric oc x ;
-      emit_assert_id_le_smt2 (e_of_expr x) oc eid ;
+      emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | StatelessFun1 (_, Hash, x) ->
@@ -870,7 +870,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result is a string;
        * - The result nullability itself propagates from x itself. *)
       let name = make_name x "NUMERIC_VEC" in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr x) oc
+      emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr x) oc
         (TVec (0, { structure = TNum ; nullable = false })) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TString ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
@@ -939,7 +939,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_is_false oc (n_of_expr duration) ;
       arg_is_numeric oc time ;
       if want_rank then (
-        emit_assert_id_eq_id (e_of_expr c) oc eid ;
+        emit_assert_id_eq_id (t_of_expr c) oc eid ;
         arg_is_nullable oc e
       ) else (
         emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
@@ -963,7 +963,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_integer oc c ;
       arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)" (e_of_expr x) (n_of_expr x)) ;
+        (Printf.sprintf "(list %s %s)" (t_of_expr x) (n_of_expr x)) ;
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
 
@@ -977,7 +977,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * empty list is by skipping nulls, but then is we skip all nulls
        * it will be null. *)
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)" (e_of_expr g) (n_of_expr g)) ;
+        (Printf.sprintf "(list %s %s)" (t_of_expr g) (n_of_expr g)) ;
       emit_assert_id_eq_id (n_of_expr g) oc nid
 
   | StatefulFun (_, _, _, AggrHistogram (x, _, _, n)) ->
@@ -1002,7 +1002,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   is a vector or a list. *)
       let name = make_name e2 "IN_TYPE" in
       emit_assert ~name oc (fun oc ->
-        let id1 = e_of_expr e1 and id2 = e_of_expr e2 in
+        let id1 = t_of_expr e1 and id2 = t_of_expr e2 in
         Printf.fprintf oc
           "(or (and (= string %s) (= string %s)) \
                (and (or (= cidr %s) (= cidr4 %s) (= cidr6 %s)) \
@@ -1019,8 +1019,8 @@ let emit_constraints tuple_sizes out_fields oc e =
           "(or %s %s (and ((_ is list) %s) (list-nullable %s)) \
                      (and ((_ is vector) %s) (vector-nullable %s)))"
           (n_of_expr e1) (n_of_expr e2)
-          (e_of_expr e2) (e_of_expr e2)
-          (e_of_expr e2) (e_of_expr e2))
+          (t_of_expr e2) (t_of_expr e2)
+          (t_of_expr e2) (t_of_expr e2))
 
 let emit_operation declare tuple_sizes fi oc func op =
   let open RamenOperation in
@@ -1038,23 +1038,23 @@ let emit_operation declare tuple_sizes fi oc func op =
        * - Notification names and parameter values must be non-nullable
        *   strings. *)
       let name = Printf.sprintf "F%d_WHERE" fi in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr where) oc TBool ;
-      let name = name ^"NULL" in
+      emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr where) oc TBool ;
+      let name = name ^"_NOTNULL" in
       emit_assert_is_false ~name oc (n_of_expr where) ;
       let name = Printf.sprintf "F%d_COMMIT" fi in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr commit_cond) oc TBool ;
-      let name = name ^"NULL" in
+      emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr commit_cond) oc TBool ;
+      let name = name ^"_NOTNULL" in
       emit_assert_is_false ~name oc (n_of_expr commit_cond) ;
       List.iteri (fun i notif ->
         let name = Printf.sprintf "F%d_NOTIF_%d" fi i in
         emit_assert_id_eq_typ ~name tuple_sizes
-          (e_of_expr notif.notif_name) oc TString ;
-        let name = name ^"NULL" in
+          (t_of_expr notif.notif_name) oc TString ;
+        let name = name ^"_NOTNULL" in
         emit_assert_is_false ~name oc (n_of_expr notif.notif_name) ;
         List.iteri (fun j (_n, v) ->
           let name = Printf.sprintf "F%d_NOTIF_%d_%d" fi i j in
-          emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr v) oc TString ;
-          let name = name ^"NULL" in
+          emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr v) oc TString ;
+          let name = name ^"_NOTNULL" in
           emit_assert_is_false ~name oc (n_of_expr v)
         ) notif.parameters
       ) notifications
@@ -1064,13 +1064,13 @@ let emit_operation declare tuple_sizes fi oc func op =
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
         let name = Printf.sprintf "F%d_PREPROCESSOR" fi in
-        emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr p) oc TString ;
-        let name = name ^"NULL" in
+        emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr p) oc TString ;
+        let name = name ^"_NOTNULL" in
         emit_assert_is_false ~name oc (n_of_expr p)
       ) preprocessor ;
       let name = Printf.sprintf "F%d_FILENAME" fi in
-      emit_assert_id_eq_typ ~name tuple_sizes (e_of_expr fname) oc TString ;
-      let name = name ^"NULL" in
+      emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr fname) oc TString ;
+      let name = name ^"_NOTNULL" in
       emit_assert_is_false ~name oc (n_of_expr fname)
 
   | _ -> ())
@@ -1097,7 +1097,7 @@ let emit_minimize oc funcs =
   Printf.fprintf oc "(minimize (+ 0" ;
   List.iter (fun (func, op) ->
     RamenOperation.iter_expr (fun e ->
-      let eid = e_of_expr e in
+      let eid = t_of_expr e in
       match (typ_of e).typ with
       | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_number %s)" eid
@@ -1112,7 +1112,7 @@ let emit_minimize oc funcs =
   Printf.fprintf oc "(minimize (+ 0" ;
   List.iter (fun (func, op) ->
     RamenOperation.iter_expr (fun e ->
-      let eid = e_of_expr e in
+      let eid = t_of_expr e in
       match (typ_of e).typ with
       | None | Some { structure = (TAny | TNum) ; _ } ->
           Printf.fprintf oc " (cost_of_sign %s)" eid
@@ -1161,10 +1161,10 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                   (RamenName.string_of_func func.F.name) field_name |>
                 failwith
             | param ->
-                emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc param.ptyp.typ.structure ;
+                emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc param.ptyp.typ.structure ;
                 emit_assert_id_is_bool (n_of_expr expr) oc param.ptyp.typ.nullable
           ) else if !tupref = TupleEnv then (
-            emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc TString ;
+            emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc TString ;
             arg_is_nullable oc expr
           ) else if RamenLang.tuple_has_type_input !tupref then (
             let no_such_field pfunc =
@@ -1216,11 +1216,11 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                         aggr_types ft prev_typ, same_as_ids)
               ) (None, []) parents in
             Option.may (fun t ->
-              emit_assert_id_eq_typ tuple_sizes (e_of_expr expr) oc t.RamenTuple.typ.structure ;
+              emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc t.RamenTuple.typ.structure ;
               emit_assert_id_is_bool (n_of_expr expr) oc t.RamenTuple.typ.nullable
             ) typ ;
             List.iter (fun id ->
-              emit_assert_id_eq_id (e_of_expr expr) oc (e_of_num id) ;
+              emit_assert_id_eq_id (t_of_expr expr) oc (t_of_num id) ;
               emit_assert_id_eq_id (n_of_expr expr) oc (n_of_num id) ;
             ) same_as_ids
           )
@@ -1322,7 +1322,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs params =
     let id = (typ_of e).uniq_num in
     if not (Set.Int.mem id !ids) then (
       ids := Set.Int.add id !ids ;
-      let eid = e_of_expr e in
+      let eid = t_of_expr e in
       Printf.fprintf decls
         "; %a\n\
          (declare-fun %s () Bool)\n\
@@ -1427,9 +1427,9 @@ let get_types conf parents funcs params smt2_file =
         (* Output a hash of structure*nullability per expression id: *)
         let open RamenSmtParser in
         List.iter (fun ((sym, vars, sort, term), _recurs) ->
-          try Scanf.sscanf sym "%[en]%d%!" (fun en id ->
-            match vars, sort, en with
-            | [], NonParametricSort (Identifier "Type"), "e" ->
+          try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
+            match vars, sort, tn with
+            | [], NonParametricSort (Identifier "Type"), "t" ->
                 let structure = structure_of_term term in
                 Hashtbl.modify_opt id (function
                   | None -> Some { structure ; nullable = false (* by default *) }

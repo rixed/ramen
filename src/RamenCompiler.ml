@@ -207,6 +207,8 @@ let compile conf root_path get_parent program_name program_code =
             ) else changed
           ) else changed
         ) op in
+      (* TODO: check that various operations supposed to accept times or
+       * durations come with either no units or the expected one. *)
       (* Now that we have found the units of each expressions, patch the
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)

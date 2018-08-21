@@ -64,8 +64,8 @@ let print_func oc n =
     RamenOperation.print n.operation
 
 let print oc (params, funcs) =
-  List.print ~sep:"\n" print_param oc params ;
-  List.print ~sep:"\n" print_func oc funcs
+  List.print ~first:"" ~last:"" ~sep:"\n" print_param oc params ;
+  List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
 (* Check that a syntactically valid program is actually valid: *)
 

@@ -778,7 +778,8 @@ struct
      optional ~def:() (strinG "for" -- blanks) -+
      (that_string "instrumentation" ||| that_string "notifications")) m
 
-  (* FIXME: It should be possible to enter separator, null, preprocessor in any order *)
+  (* FIXME: It should be possible to enter separator, null, preprocessor in
+   * any order *)
   let read_file_specs m =
     let m = "read file operation" :: m in
     (strinG "read" -- blanks -+
