@@ -106,6 +106,8 @@ let get_tables conf msg =
  * Schema being: list of columns and of threshold-based alerts.
  *)
 
+let empty_units = Hashtbl.create 0
+
 type get_columns_req = string list [@@ppp PPP_JSON]
 
 type get_columns_resp = (string, columns_info) Hashtbl.t [@@ppp PPP_JSON]
@@ -114,6 +116,7 @@ and columns_info = (string, column_info) Hashtbl.t [@@ppp PPP_JSON]
 
 and column_info =
   { type_ : string [@ppp_rename "type"] ;
+    units : (string, float) Hashtbl.t [@ppp_default empty_units] ;
     factor : bool [@ppp_default false] ;
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
@@ -187,6 +190,20 @@ let alerts_of_column conf programs func column =
     ) []
   else []
 
+let units_of_column ft =
+  match ft.RamenTuple.units with
+  | None ->
+      (* For simplicity, there is currently no way to distinguish no
+       * units from dimensionless: *)
+      empty_units
+  | Some units ->
+      let h = Hashtbl.create 3 in
+      RamenUnits.MapUnit.iter (fun n (e, r) ->
+        let n = if r then n ^"(rel)" else n in
+        Hashtbl.add h n e
+      ) units ;
+      h
+
 let columns_of_func conf programs func =
   let h = Hashtbl.create 11 in
   List.iter (fun ft ->
@@ -195,8 +212,9 @@ let columns_of_func conf programs func =
       if type_ <> Other then
         let type_ = string_of_ext_type type_
         and factor = List.mem ft.typ_name func.F.factors
-        and alerts = alerts_of_column conf programs func ft.typ_name in
-        Hashtbl.add h ft.typ_name { type_ ; factor ; alerts }
+        and alerts = alerts_of_column conf programs func ft.typ_name
+        and units = units_of_column ft in
+        Hashtbl.add h ft.typ_name { type_ ; units ; factor ; alerts }
   ) func.F.out_type ;
   h
 
