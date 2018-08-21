@@ -895,7 +895,7 @@ struct
     (
       (
         RamenTypes.Parser.scalar ~min_int_width:32 ++
-        optional ~def:None (some RamenUnits.Parser.p) >>:
+        optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
         fun (c, units) ->
           Const (make_typ ?units "constant", c)
       ) ||| (
@@ -911,8 +911,11 @@ struct
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
 
-    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (11, []))) \
-      (test_p const "13i32secs^2" |> replace_typ_in_expr)
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (13, []))) \
+      (test_p const "13i32{secs^2}" |> replace_typ_in_expr)
+
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (16, []))) \
+      (test_p const "13i32 {secs ^ 2}" |> replace_typ_in_expr)
   *)
 
   let null m =
