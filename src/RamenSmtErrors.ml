@@ -1,0 +1,134 @@
+(* Module to print/parse the names of SMT named assertions, and to build
+ * a user error message out of the core kernel (that is: the almost
+ * minimal set of un-satisfiable named assertions).
+ *
+ * We rely on actual types for each error case, that we convert to and
+ * from strings automatically using the PPP library to avoid laborious and
+ * error prone manual conversions.
+ *)
+open Batteries
+open RamenHelpers
+module C = RamenConf
+module F = C.Func
+
+type expr =
+  | Nullability of bool
+  | Sortable
+  | Same
+  | VecSame
+  | CaseCond of int
+  | CaseCons of int
+  | CaseElse
+  | CaseNullProp
+  | CoalesceAlt of int
+  | CoalesceNullLast of int
+  | Tuple
+  | Gettable
+  | AnyCidr
+  | NumericVec
+  | InType
+  | PrevNull
+  | Integer
+  | Signed
+  | Unsigned
+  | Numeric
+  | ActualType of string
+    [@@ppp PPP_OCaml]
+
+let print_expr oc =
+  let p fmt = Printf.fprintf oc fmt in
+  function
+  | Nullability false -> p "must not be nullable"
+  | Nullability true -> p "must be nullable"
+  | Sortable -> p "must be sortable"
+  | Same -> p "arguments must have the same type"
+  | VecSame -> p "vector elements must have the same type"
+  | CaseCond c -> p "condition #%d of case expression must be a boolean" c
+  | CaseCons c -> p "consequent #%d of case expression must have a type \
+                     compatible with others" c
+  | CaseElse -> p "else clause of case expression must have a type \
+                  compatible with other consequents"
+  | CaseNullProp -> p "case expression is as nullable as conditions and \
+                       consequents"
+  | CoalesceAlt a -> p "alternative #%d of coalesce expression must have a \
+                        type compatible with others" a
+  | CoalesceNullLast a -> p "alternative #%d of coalesce expression must not \
+                             be nullable, unless it's the last one" a
+  | Tuple -> p "must be a tuple"
+  | Gettable -> p "must be a vector or a list"
+  | AnyCidr -> p "must be a CIDR"
+  | NumericVec -> p "must be a vector of numeric elements"
+  | InType -> p "arguments must be compatible with the IN operator"
+  | PrevNull -> p "must be null as it is drawn from the previous tuple"
+  | Integer -> p "must be an integer"
+  | Signed -> p "must be a signed integer"
+  | Unsigned -> p "must be an unsigned integer"
+  | Numeric -> p "must be numeric"
+  | ActualType t -> p "must be of type %s" t
+
+type func =
+  | Clause of string * expr
+  | Notif of int * expr
+  | NotifParam of int * int * expr
+  | Preprocessor of expr
+  | Filename of expr
+    [@@ppp PPP_OCaml]
+
+let print_func oc =
+  let p fmt = Printf.fprintf oc fmt in
+  function
+  | Clause (c, e) -> p "clause %s %a" c print_expr e
+  | Notif (i, e) -> p "notification #%d %a" i print_expr e
+  | NotifParam (i, j, e) -> p "notification #%d, parameter #%d %a"
+                              i j print_expr e
+  | Preprocessor e -> p "CSV preprocessor %a" print_expr e
+  | Filename e -> p "CSV filename %a" print_expr e
+
+type t = Expr of int * expr
+       | Func of int * func
+         [@@ppp PPP_OCaml]
+
+exception ReturnExpr of RamenExpr.t
+let print funcs oc =
+  let expr_of_id i =
+    try
+      List.iter (fun (_func, op) ->
+        RamenOperation.iter_expr (fun expr ->
+          if (RamenExpr.typ_of expr).uniq_num = i then
+            raise (ReturnExpr expr)) op
+      ) funcs ;
+      assert false
+    with ReturnExpr e -> e
+  and func_of_id i = List.at funcs i |> fst
+  and p fmt = Printf.fprintf oc fmt in
+  function
+  | Expr (i, e) ->
+      let expr = expr_of_id i in
+      p "expression \"%a\" %a" (RamenExpr.print false) expr print_expr e
+  | Func (i, e) ->
+      let func_name = (func_of_id i).F.name in
+      p "function %S %a" (RamenName.string_of_func func_name) print_func e
+
+(* When annotating an assertion we must always use a unique name, even if we
+ * annotate several times the very same expression. It is important to
+ * name all those expression though, as otherwise there is no guaranty the
+ * solver would choose to fail at the annotated one. Thus this sequence that
+ * we use to uniquify annotations: *)
+let uniquify =
+  let seq = ref 0 in
+  fun s ->
+    incr seq ;
+    s ^"_"^ string_of_int !seq
+
+let deuniquify s =
+  String.rsplit ~by:"_" s |> fst
+
+let to_assert_name e =
+  PPP.to_string t_ppp_ocaml e |> Base64.str_encode |> uniquify
+
+let of_assert_name n =
+  deuniquify n |> Base64.str_decode |> PPP.of_string_exc t_ppp_ocaml
+
+let print_core funcs oc lst =
+  List.map of_assert_name lst |>
+  List.print (print funcs) oc

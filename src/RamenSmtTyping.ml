@@ -47,6 +47,7 @@ open RamenLog
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module Err = RamenSmtErrors
 
 let smt_solver = ref "z3 -t:20000 -smt2 %s"
 
@@ -131,9 +132,9 @@ let emit_assert ?name oc p =
   match name with
   | None ->
       Printf.fprintf oc "(assert %t)\n" p
-  | Some name ->
-      Printf.fprintf oc "(assert (! %t :named %s))\n"
-        p name
+  | Some err ->
+      let s = Err.to_assert_name err in
+      Printf.fprintf oc "(assert (! %t :named %s))\n" p s
 
 let emit_assert_is_true ?name oc id =
   emit_assert ?name oc (emit_is_true id)
@@ -198,24 +199,16 @@ let emit_assert_id_eq_any_of_typ ?name tuple_sizes id oc lst =
     Printf.fprintf oc "(or %a)"
       (List.print ~first:"" ~last:"" ~sep:" " (emit_id_eq_typ tuple_sizes id)) lst)
 
-(* When annotating an assertion we must always use a unique name, even if we
- * annotate several times the very same expression. It is important to
- * name all those expression though, as otherwise there is no guaranty the
- * solver would choose to fail at the annotated one. Thus this sequence that
- * we use to uniquify annotations: *)
-let make_name =
-  let seq = ref 0 in
-  fun e tag ->
-    incr seq ;
-    Printf.sprintf "E%d_%s_%d" (typ_of e).uniq_num tag !seq
+let expr_err e err = Err.Expr ((typ_of e).uniq_num, err)
+let func_err fi err = Err.Func (fi, err)
 
 (* Named constraint used when an argument type is constrained: *)
 let arg_is_nullable oc e =
-  let name = make_name e "NULL" in
+  let name = expr_err e (Err.Nullability true) in
   emit_assert_is_true ~name oc (n_of_expr e)
 
 let arg_is_not_nullable oc e =
-  let name = make_name e "NOTNULL" in
+  let name = expr_err e (Err.Nullability false) in
   emit_assert_is_false ~name oc (n_of_expr e)
 
 let emit_sortable oc id =
@@ -232,11 +225,11 @@ let emit_sortable oc id =
     id id id id id
 
 let arg_is_sortable oc e =
-  let name = make_name e "SORTABLE" in
+  let name = expr_err e Err.Sortable in
   emit_assert ~name oc (fun oc -> emit_sortable oc (t_of_expr e))
 
 let arg_is_unsigned oc e =
-  let name = make_name e "UNSIGNED" in
+  let name = expr_err e Err.Unsigned in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
@@ -244,7 +237,7 @@ let arg_is_unsigned oc e =
       id id id id id)
 
 let arg_is_signed oc e =
-  let name = make_name e "SIGNED" in
+  let name = expr_err e Err.Signed in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
@@ -254,7 +247,7 @@ let arg_is_signed oc e =
       id id id id id)
 
 let arg_is_integer oc e =
-  let name = make_name e "INTEGER" in
+  let name = expr_err e Err.Integer in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
     Printf.fprintf oc
@@ -273,13 +266,13 @@ let emit_numeric oc id =
     id id id id id
 
 let arg_is_numeric oc e =
-  let name = make_name e "NUMERIC" in
+  let name = expr_err e Err.Numeric in
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (t_of_expr e))
 
 let arg_has_type typ oc e =
   let typ_name = IO.to_string RamenTypes.print_structure typ in
-  let name = make_name e typ_name in
+  let name = expr_err e (Err.ActualType typ_name) in
   emit_assert ~name oc (fun oc ->
     emit_id_eq_typ [] (t_of_expr e) oc typ)
 
@@ -312,7 +305,7 @@ let emit_same id1 oc id2 =
      id2 id2 id2
 
 let emit_assert_same e oc id1 id2 =
-  let name = make_name e "SAME" in
+  let name = expr_err e Err.Same in
   emit_assert ~name oc (fun oc -> emit_same id1 oc id2)
 
 (* Assuming all input/output/constants have been declared already, emit the
@@ -343,7 +336,7 @@ let emit_constraints tuple_sizes out_fields oc e =
              * functions, and all fields are forced nullable during typing.
              *)
             if !tupref = TupleOutPrevious then
-              let name = make_name e "PREVNULL" in
+              let name = expr_err e Err.PrevNull in
               emit_assert_is_true ~name oc nid
             else
               emit_assert_id_eq_id nid oc (n_of_expr expr))
@@ -393,7 +386,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       | fst :: rest ->
         let d = List.length es in
         List.iter (fun x ->
-          let name = make_name x "VECSAME" in
+          let name = expr_err x Err.VecSame in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and %a %a)"
               (emit_id_eq_id (n_of_expr x)) (n_of_expr fst)
@@ -423,17 +416,17 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   is not;
        * - If there are no else branch then the case is nullable. *)
       List.iteri (fun i { case_cond = cond ; case_cons = cons } ->
-        let name = make_name e ("CASE_COND_"^ string_of_int i ^"_BOOL") in
+        let name = expr_err e (Err.CaseCond i) in
         emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr cond) oc TBool ;
-        let name = make_name e ("CASE_CONS_"^ string_of_int i) in
+        let name = expr_err e (Err.CaseCons i) in
         emit_assert_id_le_id ~name (t_of_expr cons) oc eid
       ) cases ;
       Option.may (fun else_ ->
-        let name = make_name e "CASE_ELSE" in
+        let name = expr_err e Err.CaseElse in
         emit_assert_id_le_id ~name (t_of_expr else_) oc eid
       ) else_ ;
       if cases <> [] then (
-        let name = make_name e "CASE_NULL_PROPAGATION" in
+        let name = expr_err e Err.CaseNullProp in
         emit_assert_id_eq_smt2 ~name nid oc
           (Printf.sprintf2 "(or %a %s)"
             (List.print ~first:"" ~last:"" ~sep:" " (fun oc case ->
@@ -454,9 +447,9 @@ let emit_constraints tuple_sizes out_fields oc e =
       let len = List.length es in
       arg_is_not_nullable oc e ;
       List.iteri (fun i x ->
-        let name = make_name x ("COALESCE_ALTERNATIVE_"^ string_of_int i) in
+        let name = expr_err x (Err.CoalesceAlt i) in
         emit_assert_id_le_id ~name (t_of_expr x) oc eid ;
-        let name = make_name x ("COALESCE_NULL_IFF_LAST_"^ string_of_int i) in
+        let name = expr_err x (Err.CoalesceNullLast i) in
         let is_last = i = len - 1 in
         emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
       ) es ;
@@ -696,7 +689,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - the resulting type is that if the n-th element;
        * - the result nullability is also that of the n-th elements. *)
       let eid' = t_of_expr x in
-      let name = make_name x "TUPLE" in
+      let name = expr_err x Err.Tuple in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc "(or %a)"
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
@@ -721,7 +714,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   same nullability than x or x's elements; in all other cases, the
        *   result is nullable. *)
       arg_is_numeric oc i ;
-      let name = make_name x "GETTABLE" in
+      let name = expr_err x Err.Gettable in
       (match int_of_const i with
       | None ->
           emit_assert ~name oc (fun oc ->
@@ -753,7 +746,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - x is any kind of cidr;
        * - The result is a bool;
        * - Nullability propagates from x. *)
-      let name = make_name x "ANYCIDR" in
+      let name = expr_err x Err.AnyCidr in
       let xid = t_of_expr x in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc
@@ -869,7 +862,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - x must be a vector of non-null numerics;
        * - The result is a string;
        * - The result nullability itself propagates from x itself. *)
-      let name = make_name x "NUMERIC_VEC" in
+      let name = expr_err x Err.NumericVec in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr x) oc
         (TVec (0, { structure = TNum ; nullable = false })) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TString ;
@@ -1000,7 +993,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        * - The result is a boolean;
        * - Result is as nullable as e1, e2 and the content of e2 if e2
        *   is a vector or a list. *)
-      let name = make_name e2 "IN_TYPE" in
+      let name = expr_err e2 Err.InType in
       emit_assert ~name oc (fun oc ->
         let id1 = t_of_expr e1 and id2 = t_of_expr e2 in
         Printf.fprintf oc
@@ -1025,52 +1018,52 @@ let emit_constraints tuple_sizes out_fields oc e =
 let emit_operation declare tuple_sizes fi oc func op =
   let open RamenOperation in
   (* Declare all variables: *)
-  RamenOperation.iter_expr declare op ;
+  iter_expr declare op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
   | Aggregate { fields ; where ; event_time ; notifications ;
                 commit_cond ; flush_how ; _ } ->
-      RamenOperation.iter_expr (emit_constraints tuple_sizes fields oc) op ;
+      iter_expr (emit_constraints tuple_sizes fields oc) op ;
       (* Typing rules:
        * - Where must be a bool;
        * - Commit-when must also be a bool;
        * - Flush_how conditions must also be bools;
        * - Notification names and parameter values must be non-nullable
        *   strings. *)
-      let name = Printf.sprintf "F%d_WHERE" fi in
+      let name = func_err fi Err.(Clause ("where", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr where) oc TBool ;
-      let name = name ^"_NOTNULL" in
+      let name = func_err fi Err.(Clause ("where", Nullability false)) in
       emit_assert_is_false ~name oc (n_of_expr where) ;
-      let name = Printf.sprintf "F%d_COMMIT" fi in
+      let name = func_err fi Err.(Clause ("commit", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr commit_cond) oc TBool ;
-      let name = name ^"_NOTNULL" in
+      let name = func_err fi Err.(Clause ("commit", Nullability false)) in
       emit_assert_is_false ~name oc (n_of_expr commit_cond) ;
       List.iteri (fun i notif ->
-        let name = Printf.sprintf "F%d_NOTIF_%d" fi i in
+        let name = func_err fi Err.(Notif (i, ActualType "string")) in
         emit_assert_id_eq_typ ~name tuple_sizes
           (t_of_expr notif.notif_name) oc TString ;
-        let name = name ^"_NOTNULL" in
+        let name = func_err fi Err.(Notif (i, Nullability false)) in
         emit_assert_is_false ~name oc (n_of_expr notif.notif_name) ;
         List.iteri (fun j (_n, v) ->
-          let name = Printf.sprintf "F%d_NOTIF_%d_%d" fi i j in
+          let name = func_err fi Err.(NotifParam (i, j, ActualType "string")) in
           emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr v) oc TString ;
-          let name = name ^"_NOTNULL" in
+          let name = func_err fi Err.(NotifParam (i, j, Nullability false)) in
           emit_assert_is_false ~name oc (n_of_expr v)
         ) notif.parameters
       ) notifications
 
   | ReadCSVFile { preprocessor ; where = { fname ; _ } ; _ } ->
-      RamenOperation.iter_expr (emit_constraints tuple_sizes [] oc) op ;
+      iter_expr (emit_constraints tuple_sizes [] oc) op ;
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
-        let name = Printf.sprintf "F%d_PREPROCESSOR" fi in
+        let name = func_err fi Err.(Preprocessor (ActualType "string")) in
         emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr p) oc TString ;
-        let name = name ^"_NOTNULL" in
+        let name = func_err fi Err.(Preprocessor (Nullability false)) in
         emit_assert_is_false ~name oc (n_of_expr p)
       ) preprocessor ;
-      let name = Printf.sprintf "F%d_FILENAME" fi in
+      let name = func_err fi Err.(Filename (ActualType "string")) in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr fname) oc TString ;
-      let name = name ^"_NOTNULL" in
+      let name = func_err fi Err.(Filename (Nullability false)) in
       emit_assert_is_false ~name oc (n_of_expr fname)
 
   | _ -> ())
@@ -1404,11 +1397,11 @@ let run_solver smt2_file =
                         RamenSmtParser.print_response) e |>
         failwith)
 
-let unsat syms output =
+let unsat funcs syms output =
   !logger.error "Solver output:\n%s" output ;
   (* TODO: a better error message *)
-  Printf.sprintf2 "Cannot solve typing constraints %a"
-    (List.print String.print) syms |>
+  Printf.sprintf2 "Cannot solve typing constraints: %a"
+    (Err.print_core funcs) syms |>
   failwith
 
 let get_types conf parents funcs params smt2_file =
@@ -1459,10 +1452,10 @@ let get_types conf parents funcs params smt2_file =
         File.with_file_out ~mode:[`create; `text; `trunc] smt2_file' (fun oc ->
           emit_smt2 oc ~optimize:false parents tuple_sizes funcs params) ;
         (match run_solver smt2_file' with
-        | RamenSmtParser.Unsolved syms, output -> unsat syms output
+        | RamenSmtParser.Unsolved syms, output -> unsat funcs syms output
         | RamenSmtParser.Solved _, _ ->
             failwith "Unsat with optimization but sat without?!")
-    | RamenSmtParser.Unsolved syms, output -> unsat syms output
+    | RamenSmtParser.Unsolved syms, output -> unsat funcs syms output
   ) ;
   h
 

@@ -120,6 +120,7 @@ RAMEN_SOURCES = \
 	src/CodeGen_OCaml.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenSmtParser.ml \
+	src/RamenSmtErrors.ml \
 	src/RamenSmtTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenRun.ml \
