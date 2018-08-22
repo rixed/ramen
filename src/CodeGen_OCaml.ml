@@ -791,8 +791,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
     emit_functionN ?state ~opc ~nullable "Globs.matches pattern_ " [Some TString] oc [e];
     Printf.fprintf oc ")"
-  | Finalize, StatelessFun1 (_, Length, e), TU16 (* The only possible output type *) ->
-    emit_functionN ?state ~opc ~nullable "String.length" [Some TString] oc [e]
+  | Finalize, StatelessFun1 (_, Length, e), TU32 when is_a_string e ->
+    emit_functionN ?state ~opc ~nullable "(Uint32.of_int % String.length)" [Some TString] oc [e]
+  | Finalize, StatelessFun1 (_, Length, e), TU32 when is_a_list e ->
+    emit_functionN ?state ~opc ~nullable "(Uint32.of_int % Array.length)" [None] oc [e]
   (* lowercase and uppercase assume latin1 and will gladly destroy UTF-8
    * encoded char, therefore we use the ascii variants: *)
   | Finalize, StatelessFun1 (_, Lower, e), TString ->

@@ -27,6 +27,7 @@ type expr =
   | AnyCidr
   | NumericVec
   | InType
+  | LengthType
   | PrevNull
   | Integer
   | Signed
@@ -59,6 +60,7 @@ let print_expr oc =
   | AnyCidr -> p "must be a CIDR"
   | NumericVec -> p "must be a vector of numeric elements"
   | InType -> p "arguments must be compatible with the IN operator"
+  | LengthType -> p "arguments must be compatible with the LENGTH operator"
   | PrevNull -> p "must be null as it is drawn from the previous tuple"
   | Integer -> p "must be an integer"
   | Signed -> p "must be a signed integer"

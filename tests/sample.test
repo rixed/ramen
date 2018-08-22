@@ -1,0 +1,7 @@
+{
+  programs = [
+    ("sample.x", []);
+    ("fixtures/n123.x", []) ];
+  outputs = {
+    "tests/sample/f" => { present = [ { "two" => "2" } ] } }
+}

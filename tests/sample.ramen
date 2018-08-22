@@ -1,0 +1,7 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM tests/fixtures/n123/csv
+  SELECT
+    length sample(2, b) AS two
+  COMMIT AFTER n = 3;

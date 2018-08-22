@@ -147,7 +147,7 @@ and stateless_fun1 =
   | Age
   | Cast of RamenTypes.t
   (* String functions *)
-  | Length
+  | Length (* Also for lists *)
   | Lower
   | Upper
   (* Unary Ops on scalars *)
@@ -323,9 +323,6 @@ let float_of_const = function
 let int_of_const = function
   | Const (_, v) -> Some (RamenTypes.int_of_scalar v)
   | _ -> None
-
-let is_const = function
-  | Const _ -> true | _ -> false
 
 let rec print with_types oc =
   let add_types t =
@@ -667,6 +664,17 @@ let typ_of = function
 let is_nullable e =
   let t = typ_of e in
   (Option.get t.typ).RamenTypes.nullable = true
+
+let is_const = function
+  | Const _ -> true | _ -> false
+
+let is_a_string e =
+  (Option.get (typ_of e).typ).structure = TString
+
+let is_a_list e =
+  match (Option.get (typ_of e).typ).structure with
+  | TList _ -> true
+  | _ -> false
 
 (* Propagate values up the tree only, depth first. *)
 let fold_subexpressions f i expr =

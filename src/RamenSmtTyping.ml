@@ -614,10 +614,13 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun1 (_, Length, x) ->
-      (* - x must be a string;
-       * - The result type is a U32;
+      (* - x must be a string or a list;
+       * - The result type is an U32;
        * - The result nullability is the same as that of x. *)
-      arg_is_string oc x ;
+      let name = expr_err e Err.LengthType in
+      let xid = t_of_expr x in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc "(or (= string %s) ((_ is list) %s))" xid xid) ;
       emit_assert_id_eq_typ tuple_sizes eid oc TU32 ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 

@@ -6,5 +6,6 @@ DEFINE f1 AS
     "pas glop" ends with "glop" as t2,
     not ("pas glop" starts with "glop") as t3,
     "multi
-line" as t4
+line" as t4,
+    length t4 as t5
   EVERY 1 SECOND;

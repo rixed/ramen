@@ -456,6 +456,7 @@ tests/port_scan.x: tests/fixtures/port_scan.x
 tests/ip.x: tests/fixtures/mixture.x
 tests/histogram.x: tests/fixtures/cars.x
 tests/last.x: tests/fixtures/earthquakes.x tests/fixtures/cars.x
+tests/sample.x: tests/fixtures/n123.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -484,6 +485,7 @@ tests/in.success: tests/in.x
 tests/time.success: tests/time.x
 tests/last.success: tests/last.x tests/fixtures/earthquakes.x tests/fixtures/cars.x
 tests/event_time.success: tests/event_time.x
+tests/sample.success: tests/sample.x tests/fixtures/n123.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
