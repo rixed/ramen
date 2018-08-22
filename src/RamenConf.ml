@@ -30,6 +30,7 @@ struct
   type t =
     { program_name : RamenName.program ;
       name : RamenName.func ;
+      doc : string ;
       in_type : RamenTuple.typ ;
       mutable out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.

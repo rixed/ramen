@@ -34,6 +34,7 @@ module P = C.Program
 
 type func =
   { name : RamenName.func ;
+    doc : string ;
     operation : RamenOperation.t }
 
 type t = RamenTuple.param list * func list
@@ -47,9 +48,9 @@ let make_name =
     incr seq ;
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
-let make_func ?name operation =
+let make_func ?name ?(doc="") operation =
   { name = (match name with Some n -> n | None -> make_name ()) ;
-    operation }
+    doc ; operation }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -158,9 +159,11 @@ struct
   let named_func m =
     let m = "function" :: m in
     (
-      strinG "define" -- blanks -+ function_name +-
+      strinG "define" -- blanks -+ function_name ++
+      optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
-      RamenOperation.Parser.p >>: fun (name, op) -> make_func ~name op
+      RamenOperation.Parser.p >>:
+      fun ((name, doc), op) -> make_func ~name ~doc op
     ) m
 
   let func m =
@@ -189,6 +192,7 @@ struct
   (*$= p & ~printer:(test_printer print)
    (Ok (([], [\
     { name = RamenName.func_of_string "bar" ;\
+      doc = "" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -214,6 +218,7 @@ struct
            RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = false } ; units = None } ;\
                         value = VU32 Uint32.zero } ], [\
     { name = RamenName.func_of_string "add" ;\
+      doc = "" ;\
       operation = \
         Aggregate {\
           fields = [\

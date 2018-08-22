@@ -92,6 +92,7 @@ let compile conf root_path get_parent program_name program_code =
         let open RamenOperation in
         F.{ program_name ;
             name = parsed_func.name ;
+            doc = parsed_func.doc ;
             in_type = in_type_of_operation op ;
             out_type = out_type_of_operation op ;
             signature = "" ;
