@@ -80,25 +80,24 @@ let version () =
 
 type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 
-type get_tables_resp = string list [@@ppp PPP_JSON]
+type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
 let get_tables conf msg =
   let req =
     fail_with_context "parsing get-tables request" (fun () ->
       PPP.of_string_exc get_tables_req_ppp_json msg) in
-  let%lwt tables =
-    C.with_rlock conf (fun programs ->
-      Hashtbl.fold (fun _prog_name get_rc lst ->
-        match get_rc () with
-        | exception e -> lst
-        | _bin, prog ->
-            List.fold_left (fun lst f ->
-              let fqn = RamenName.string_of_fq (F.fq_name f) in
-              if f.F.event_time <> None && String.starts_with fqn req.prefix
-              then fqn :: lst
-              else lst
-            ) lst prog.P.funcs
-      ) programs [] |> Lwt.return) in
+  let tables = Hashtbl.create 31 in
+  C.with_rlock conf (fun programs ->
+    Hashtbl.iter (fun _prog_name get_rc ->
+      match get_rc () with
+      | exception e -> ()
+      | _bin, prog ->
+          List.iter (fun f ->
+            let fqn = RamenName.string_of_fq (F.fq_name f) in
+            if f.F.event_time <> None && String.starts_with fqn req.prefix
+            then Hashtbl.add tables fqn f.F.doc
+          ) prog.P.funcs
+    ) programs |> Lwt.return) ;%lwt
   return (PPP.to_string get_tables_resp_ppp_json tables)
 
 (*
