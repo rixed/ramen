@@ -29,11 +29,6 @@ type program = [`Program] t
 let program_ppp_ocaml = t_ppp_ocaml
 
 let program_of_string s =
-  (* Curly braces are reserved to enclose parameter expansion, which can
-   * have any character (in between the first '{' of the program name and
-   * the last '}' of the program name: *)
-  if String.contains s '{' || String.contains s '}' then
-    failwith "Program names cannot use curly braces" ;
   let rec remove_heading_slashes s =
     if String.length s > 0 && s.[0] = '/' then
       remove_heading_slashes (String.lchop s)
