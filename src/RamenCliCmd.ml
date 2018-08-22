@@ -110,12 +110,13 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
     failwith "Options --syslog and --stdout are incompatible." ;
   if max_fpr < 0. || max_fpr > 1. then
     failwith "False-positive rate is a rate is a rate." ;
-  let notif_conf =
-    Option.map_default
-      (ppp_of_file RamenNotifier.notify_config_ppp_ocaml)
-      RamenNotifier.default_notify_conf notif_conf_file in
-  (* Check the config is ok: *)
-  RamenNotifier.check_conf_is_valid notif_conf ;
+  (* The configuration file better exists, unless it's the default one in
+   * which case it will be created with the default configuration: *)
+  if notif_conf_file = RamenConsts.Default.notif_conf_file then (
+    RamenNotifier.ensure_conf_file_exists notif_conf_file
+  ) else if not (file_exists ~maybe_empty:false notif_conf_file) ||
+            is_failing RamenNotifier.load_config notif_conf_file then
+    failwith ("Configuration file "^ notif_conf_file ^" does not exist.") ;
   if to_syslog then
     logger := make_syslog conf.C.debug
   else (
@@ -135,7 +136,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
         dummy_nop ;
         (fun () ->
-          RamenNotifier.start conf notif_conf notify_rb max_fpr) |]) ;
+          RamenNotifier.start conf notif_conf_file notify_rb max_fpr) |]) ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =

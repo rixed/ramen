@@ -219,11 +219,11 @@ let file_is_older_than age fname =
     mtime > now -. age
   with _ -> false
 
-let rec ensure_file_exists ?(contents="") fname =
+let rec ensure_file_exists ?(contents="") ?min_size fname =
   mkdir_all ~is_file:true fname ;
   (* If needed, create the file with the initial content, atomically: *)
   let open Unix in
-  let min_size = String.length contents in
+  let min_size = min_size |? String.length contents in
   let file_is_ok () =
     file_exists ~min_size fname in
   (* But first, check if the file is already there with the proper size
@@ -1272,3 +1272,7 @@ let pretty_list_print p oc =
       Printf.fprintf oc "%s%a" (if first then "" else ", ") p x ;
       loop false lst
   in loop true
+
+let is_failing f x =
+  try ignore (f x) ; false
+  with _ -> true

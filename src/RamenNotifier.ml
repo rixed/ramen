@@ -200,22 +200,6 @@ type notify_config =
     default_init_schedule_delay_after_startup : float [@ppp_default 120.] }
   [@@ppp PPP_OCaml]
 
-let default_notify_conf =
-  let send_to_prometheus =
-    Contact.ViaHttp {
-      method_ = HttpCmdPost ;
-      url = "http://localhost:9093/api/v1/alerts" ;
-      headers = [ "Content-Type", "application/json" ] ;
-      body =
-        {|[{"labels":{"alertname":"${name}","summary":"${text}","severity":"critical"}}]|} }
-  in
-  { teams =
-      Team.[
-        { name = "" ;
-          contacts = [ send_to_prometheus ] } ] ;
-    default_init_schedule_delay = 90. ;
-    default_init_schedule_delay_after_startup = 120. }
-
 (* Generic notifications are also reliably sent, de-duplicated,
  * de-bounced and the ongoing incident is identified with an "alert-id"
  * that's usable in the notification template.
@@ -382,7 +366,8 @@ let set_alight conf notif_conf notif wait_for_stop contact =
      * the send by at least what remains to be past startup.
      * If we are already past startup then we schedule the send for
      * init_schedule_delay: *)
-    let init_delay_after_startup = notif_conf.default_init_schedule_delay_after_startup
+    let init_delay_after_startup =
+      notif_conf.default_init_schedule_delay_after_startup
     and init_delay = notif_conf.default_init_schedule_delay in
     let until_end_of_statup =
       init_delay_after_startup -. (notif.rcvd_time -. !startup_time) in
@@ -657,8 +642,44 @@ let send_notifications max_fpr conf =
   RamenWatchdog.run watchdog ;
   loop ()
 
-let start conf notif_conf rb max_fpr =
-  !logger.info "Starting notifier" ;
+let check_conf_is_valid notif_conf =
+  if notif_conf.teams = [] then
+    failwith "Notification configuration must have at least one team."
+
+let ensure_conf_file_exists notif_conf_file =
+  (* Default content in case the configuration file is absent: *)
+  let default_conf =
+    let send_to_prometheus =
+      Contact.ViaHttp {
+        method_ = HttpCmdPost ;
+        url = "http://localhost:9093/api/v1/alerts" ;
+        headers = [ "Content-Type", "application/json" ] ;
+        body =
+          "[{\"labels\":{\
+               \"alertname\":\"${name}\",\
+               \"summary\":\"${text}\",\
+               \"severity\":\"critical\"}}]" } in
+    { teams =
+        Team.[
+          { name = "" ;
+            contacts = [ send_to_prometheus ] } ] ;
+      default_init_schedule_delay = 90. ;
+      default_init_schedule_delay_after_startup = 120. } in
+  let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
+  ensure_file_exists ~min_size:0 ~contents notif_conf_file
+
+let load_config notif_conf_file =
+  let notif_conf = ppp_of_file notify_config_ppp_ocaml notif_conf_file in
+  check_conf_is_valid notif_conf ;
+  notif_conf
+
+let start conf notif_conf_file rb max_fpr =
+  !logger.info "Starting notifier, using configuration file %s"
+    notif_conf_file ;
+  (* Check the configuration file is OK before waiting for the first
+   * notification. Also, we will reload this ref, keeping the last
+   * good version: *)
+  let notif_conf = ref (load_config notif_conf_file) in
   restore_pendings conf ;
   (* Better check if we can draw a new alert_id before we need it: *)
   let _alert_id = next_alert_id conf () in
@@ -679,20 +700,23 @@ let start conf notif_conf rb max_fpr =
         notif_name ; firing ; certainty ; parameters } in
     !logger.info "Received notification from %s: %S %s"
       worker notif_name (if firing = Some false then "ended" else "started") ;
-    (* Find the team in charge of that alert name: *)
-    let team = Team.find_in_charge notif_conf.teams notif_name in
+    (* Each time we receive a notification we have to assign it to a team,
+     * and then use the configured channel to notify it. We load the
+     * configuration anew each time, relying on ppp_of_file caching
+     * mechanism to cut down the work: *)
+    (try notif_conf := load_config notif_conf_file
+    with exn ->
+      !logger.error "Cannot read notifier configuration file %s: %s"
+        notif_conf_file (Printexc.to_string exn)) ;
+    let team = Team.find_in_charge !notif_conf.teams notif_name in
     let action =
       match notif.firing with
       | None ->
-          set_alight conf notif_conf notif false
+          set_alight conf !notif_conf notif false
       | Some true ->
-          set_alight conf notif_conf notif true
+          set_alight conf !notif_conf notif true
       | Some false ->
-          extinguish_pending notif_conf notif.notif_name notif.event_time now
+          extinguish_pending !notif_conf notif.notif_name notif.event_time now
     in
     List.iter action team.Team.contacts ;
     return_unit)
-
-let check_conf_is_valid notif_conf =
-  if notif_conf.teams = [] then
-    failwith "Notification configuration must have at least one team."

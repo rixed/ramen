@@ -177,6 +177,9 @@ struct
   (* Where to store all of daemons+workers state and logs: *)
   let persist_dir = "/tmp/ramen"
 
+  (* The default notifier configuration: *)
+  let notif_conf_file = "/tmp/ramen/notifier.conf"
+
   (* How frequently shall workers emit their instrumentation (seconds): *)
   let report_period = 30.
 
