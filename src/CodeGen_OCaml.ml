@@ -1179,6 +1179,21 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~impl_return_nullable:true
       "CodeGenLib.Last.finalize" [] oc []
 
+  | InitState, StatefulFun (_, g, _, Sample (c, e)), _ ->
+    let t = (Option.get (typ_of c).typ).structure in
+    wrap_nullable ~nullable oc
+      (Printf.sprintf2 "RamenSampling.init (%a %a) %a"
+        (conv_from_to ~nullable:false) (t, TU32)
+        (emit_expr ?state ~context:Finalize ~opc) c
+        (emit_expr ?state ~context:Finalize ~opc)
+          (any_constant_of_expr_type (Option.get (typ_of e).typ)))
+  | UpdateState, StatefulFun (_, g, n, Sample (_, e)), _ ->
+    update_state ?state ~opc ~nullable n (my_state g) [ e ]
+      "RamenSampling.add" oc [ None ]
+  | Finalize, StatefulFun (_, g, n, Sample (_, _)), _ ->
+    finalize_state ?state ~opc ~nullable n (my_state g)
+      "RamenSampling.finalize" [] oc []
+
   (* Grouping operation: accumulate all values in a list, that we initialize
    * empty. At finalization, an empty list means we skipped all values ;
    * and we return Null in that case. Note that since this is an aggregate
@@ -2022,6 +2037,10 @@ let otype_of_state e =
       Printf.sprintf2 "(%a, %a) CodeGenLib.Last.state%s"
         print_expr_typ e
         print_expr_typ (List.hd es)
+        nullable
+  | StatefulFun (_, _, _, Sample (_, e)) ->
+      Printf.sprintf2 "%a RamenSampling.reservoir%s"
+        print_expr_typ e
         nullable
   | StatefulFun (_, _, _, Group e) ->
     Printf.sprintf2 "%a list%s" print_expr_typ e nullable

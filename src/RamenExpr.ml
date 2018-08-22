@@ -230,6 +230,7 @@ and stateful_fun =
   | AggrAvg of t
   | AggrAnd of t
   | AggrOr  of t
+  (* Returns the first/last value in the aggregation: *)
   | AggrFirst of t
   | AggrLast of t (* FIXME: Should be stateless *)
   | AggrHistogram of t * float * float * int
@@ -274,6 +275,8 @@ and stateful_fun =
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
   | Last of t * t * t list
+  (* Sample(n, e) -> Keep only n values of e and return them as a list. *)
+  | Sample of t * t
   (* Build a list with all values from the group *)
   | Group of t
 
@@ -637,6 +640,12 @@ let rec print with_types oc =
       (print with_types) e
       print_by es ;
     add_types t
+  | StatefulFun (t, g, n, Sample (c, e)) ->
+    Printf.fprintf oc "SAMPLE%s%s(%a, %a)"
+      (sl g) (sn n)
+      (print with_types) c
+      (print with_types) e ;
+    add_types t
   | StatefulFun (t, g, n, Group e) ->
     Printf.fprintf oc "GROUP%s%s %a"
       (sl g) (sn n)
@@ -678,6 +687,7 @@ let fold_subexpressions f i expr =
   | StatelessFun2 (_, _, e1, e2)
   | StatefulFun (_, _, _, Lag (e1, e2))
   | StatefulFun (_, _, _, ExpSmooth (e1, e2))
+  | StatefulFun (_, _, _, Sample (e1, e2))
   | GeneratorFun (_, Split (e1, e2)) ->
       f (f i e1) e2
 
@@ -842,6 +852,9 @@ let rec map_type ?(recurs=true) f = function
     StatefulFun (f t, g, n, Last (c,
       (if recurs then map_type ~recurs f e else e),
       (if recurs then List.map (map_type ~recurs f) es else es)))
+  | StatefulFun (t, g, n, Sample (c, e)) ->
+    StatefulFun (f t, g, n, Sample (c,
+      (if recurs then map_type ~recurs f e else e)))
   | StatefulFun (t, g, n, Group e) ->
     StatefulFun (f t, g, n, Group (if recurs then map_type ~recurs f e else e))
 
@@ -1316,6 +1329,8 @@ struct
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
      (afun2 "reldiff" >>: fun (e1, e2) ->
        StatelessFun2 (make_typ "reldiff", Reldiff, e1, e2)) |||
+     (afun2_sf "sample" >>: fun ((g, n), c, e) ->
+        StatefulFun (make_typ "sample", g, n, Sample (c, e))) |||
      k_moveavg ||| cast ||| top_expr ||| nth ||| last) m
 
   and cast m =

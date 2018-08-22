@@ -161,6 +161,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenBloomFilter.ml \
+	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \

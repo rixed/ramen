@@ -966,6 +966,19 @@ let emit_constraints tuple_sizes out_fields oc e =
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
 
+  | StatefulFun (_, _, _, Sample (c, x)) ->
+      (* - c must be a constant (TODO) integer, not nullable;
+       * - The type of the result is a list of items of the same type and
+       *   nullability than x ;
+       * - 'sample c x` is itself nullable whenever x is nullable (if not
+       *   skip null and we encounter a null x, or if skip null and we
+       *   encounter only nulls). *)
+      arg_is_integer oc c ;
+      arg_is_not_nullable oc c ;
+      emit_assert_id_eq_smt2 eid oc
+        (Printf.sprintf "(list %s %s)" (t_of_expr x) (n_of_expr x)) ;
+      emit_assert_id_eq_id nid oc (n_of_expr x)
+
   | StatefulFun (_, _, _, Group g) ->
       (* - The result is a list which elements have the exact same type as g;
        * - The result is nullable if we skip nulls and g is nullable.
