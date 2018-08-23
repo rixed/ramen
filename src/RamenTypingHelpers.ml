@@ -7,7 +7,8 @@ module Expr = RamenExpr
 open RamenLang
 open RamenTypes
 
-let forwarded_field func operation field =
+(* Return the field alias in operation corresponding to the given input field: *)
+let forwarded_field operation field =
   match operation with
   | RamenOperation.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
@@ -27,7 +28,7 @@ let forwarded_field_or_param parent func operation field = function
       if func.F.program_name = parent.F.program_name then field
       else raise Not_found
   | RamenEventTime.OutputField ->
-      forwarded_field func operation field
+      forwarded_field operation field
 
 let infer_event_time func operation parent =
   let open RamenEventTime in
@@ -46,10 +47,10 @@ let infer_event_time func operation parent =
     ) parent.event_time
   with Not_found -> None
 
-let infer_factors func operation =
+let infer_factors operation =
   (* All fields that we take without modifications are also our factors *)
   List.filter_map (fun factor ->
-    try Some (forwarded_field func operation factor)
+    try Some (forwarded_field operation factor)
     with Not_found -> None)
 
 let infer_field_doc func operation parents params =
@@ -119,7 +120,7 @@ let finalize_func conf parents params func operation =
   ) ;
   if parents <> [] && func.factors = [] then (
     func.factors <-
-      infer_factors func operation (List.hd parents).factors ;
+      infer_factors operation (List.hd parents).factors ;
     if func.factors <> [] then
       !logger.debug "Function %s can reuse factors %a from parents"
         (RamenName.string_of_func func.name)

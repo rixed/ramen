@@ -20,7 +20,8 @@ type typ = field_typ list
   [@@ppp PPP_OCaml]
 
 type param =
-  { ptyp : field_typ ; value : RamenTypes.value } [@@ppp PPP_OCaml]
+  { ptyp : field_typ ; value : RamenTypes.value }
+  [@@ppp PPP_OCaml]
 
 type params = param list [@@ppp PPP_OCaml]
 
