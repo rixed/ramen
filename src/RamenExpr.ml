@@ -904,10 +904,9 @@ struct
     let m = "constant" :: m in
     (
       (
-        RamenTypes.Parser.scalar ~min_int_width:32 ++
-        optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
-        fun (c, units) ->
-          Const (make_typ ?units "constant", c)
+        RamenTypes.Parser.scalar ~min_int_width:32 >>:
+        fun c ->
+          Const (make_typ "constant", c)
       ) ||| (
         duration >>: fun x ->
           Const (make_typ ~units:RamenUnits.seconds "constant", VFloat x)
@@ -920,12 +919,6 @@ struct
 
     (Ok (Const (typ, VI8 (Stdint.Int8.of_int 15)), (4, []))) \
       (test_p const "15i8" |> replace_typ_in_expr)
-
-    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (13, []))) \
-      (test_p const "13i32{secs^2}" |> replace_typ_in_expr)
-
-    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (16, []))) \
-      (test_p const "13i32 {secs ^ 2}" |> replace_typ_in_expr)
   *)
 
   let null m =
@@ -1485,9 +1478,21 @@ struct
         Vector (make_typ "vector", es)
     ) m
 
-  and p m = lowest_prec_left_assoc m
+  and p m =
+    (
+      lowest_prec_left_assoc ++
+      optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
+      fun (e, units) ->
+        (typ_of e).units <- units ; e
+    ) m
 
   (*$= p & ~printer:(test_printer (print false))
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (13, []))) \
+      (test_p p "13i32{secs^2}" |> replace_typ_in_expr)
+
+    (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (16, []))) \
+      (test_p p "13i32 {secs ^ 2}" |> replace_typ_in_expr)
+
     (Ok (\
       Const (typ, VBool true),\
       (4, [])))\
