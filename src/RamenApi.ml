@@ -116,6 +116,7 @@ and columns_info = (string, column_info) Hashtbl.t [@@ppp PPP_JSON]
 and column_info =
   { type_ : string [@ppp_rename "type"] ;
     units : (string, float) Hashtbl.t [@ppp_default empty_units] ;
+    doc : string [@ppp_default ""] ;
     factor : bool [@ppp_default false] ;
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
@@ -209,11 +210,12 @@ let columns_of_func conf programs func =
     if not (is_private_field ft.RamenTuple.typ_name) then
       let type_ = ext_type_of_typ ft.typ.structure in
       if type_ <> Other then
-        let type_ = string_of_ext_type type_
-        and factor = List.mem ft.typ_name func.F.factors
-        and alerts = alerts_of_column conf programs func ft.typ_name
-        and units = units_of_column ft in
-        Hashtbl.add h ft.typ_name { type_ ; units ; factor ; alerts }
+        Hashtbl.add h ft.typ_name {
+          type_ = string_of_ext_type type_ ;
+          units = units_of_column ft ;
+          doc = ft.doc ;
+          factor = List.mem ft.typ_name func.F.factors ;
+          alerts = alerts_of_column conf programs func ft.typ_name }
   ) func.F.out_type ;
   h
 
