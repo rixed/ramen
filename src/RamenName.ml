@@ -74,22 +74,14 @@ let program_of_rel_program start rel_program =
 
 (* Program parameters
  *
- * String representation is either:
- * - The value of the parameter uniq_name if present, a string, and unique;
- * - The printed out values of all parameters ("{p1=n1;p2=v2;...}"), if short
- *   enough;
- * - The MD5 hash of the above, otherwise.
- *
- * How do we know if uniq_name is indeed unique? We do not, that's the
- * supervisor responsibility to make this variable unique (by appending a
- * sequence number).
- * *)
+ * String representation is the printed out values of all parameters
+ * ("{p1=n1;p2=v2;...}"), if short enough;
+ * - The MD5 hash of the above, otherwise.  *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
 type params = param list [@@ppp PPP_OCaml]
 
-(* FIXME: make those params a Map so names are unique and it's faster to look
- * for uniq_name. *)
+(* FIXME: make those params a Map so names are unique. *)
 let param_compare (a, _) (b, _) = String.compare a b
 
 let params_sort = List.fast_sort param_compare
@@ -98,15 +90,11 @@ let print_param oc (n, v) =
   Printf.fprintf oc "%s=%a" n RamenTypes.print v
 
 let string_of_params params =
-  try
-    List.find_map (function
-      | "uniq_name", RamenTypes.VString s -> Some s
-      | _ -> None
-    ) params
-  with Not_found ->
-    params_sort params |>
-    IO.to_string (List.print ~first:"" ~last:"" ~sep:"," print_param) |>
-    abbrev
+  params_sort params |>
+  IO.to_string (List.print ~first:"" ~last:"" ~sep:";" print_param) |>
+  abbrev
+
+let signature_of_params = md5 % string_of_params
 
 (* Fully Qualified function names *)
 

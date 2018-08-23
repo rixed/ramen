@@ -44,7 +44,7 @@ let parent_from_root_path root_path pn =
   P.bin_of_program_name root_path pn |> P.of_bin []
 
 let parent_from_programs programs pn =
-  Hashtbl.find programs pn () |> snd
+  (Hashtbl.find programs pn |> snd) ()
 
 let compile conf root_path get_parent program_name program_code =
   (*

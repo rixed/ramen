@@ -351,17 +351,19 @@ let ps conf short with_header sort_col top pattern () =
           | Some (time', stats') -> Some (time, add_stats stats' stats)
         ) h
       ) stats ;
-      [| "program" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "CPU" ;
-         "wait in" ; "wait out" ; "heap" ; "volume in" ; "volume out" |],
+      [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+         "CPU" ; "wait in" ; "wait out" ; "heap" ; "volume in" ;
+         "volume out" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
-          Hashtbl.fold (fun program_name _get_rc lines ->
+          Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
             if Globs.matches pattern
                  (RamenName.string_of_program program_name) then
               let _, (in_count, selected_count, out_count, group_count,
                       cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
                 Hashtbl.find_default h program_name (0., no_stats) in
               [| ValStr (RamenName.string_of_program program_name) ;
+                 ValStr (RamenName.string_of_params mre.C.params) ;
                  int_or_na in_count ;
                  int_or_na selected_count ;
                  int_or_na out_count ;
@@ -381,13 +383,13 @@ let ps conf short with_header sort_col top pattern () =
          "volume in" ; "volume out" ; "#parents" ; "signature" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
-          Hashtbl.fold (fun program_name get_rc lines ->
+          Hashtbl.fold (fun program_name (_mre, get_rc) lines ->
             match get_rc () with
             | exception e ->
               let fq_name =
                 red (RamenName.string_of_program program_name ^"/*") in
               [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
-            | bin, prog ->
+            | prog ->
               List.fold_left (fun lines func ->
                 let fq_name = RamenName.string_of_program program_name
                               ^"/"^ RamenName.string_of_func func.F.name in

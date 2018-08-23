@@ -263,10 +263,10 @@ let possible_values_cache = Hashtbl.create 31
 let cache_possible_values conf programs =
   Hashtbl.values programs |>
   List.of_enum |> (* FIXME *)
-  Lwt_list.iter_p (fun get_rc ->
+  Lwt_list.iter_p (fun (_mre, get_rc) ->
     match get_rc () with
     | exception _ -> return_unit
-    | _bin, prog ->
+    | prog ->
         Lwt_list.iter_p (fun func ->
           let h = Hashtbl.create (List.length func.F.factors) in
           let%lwt () =

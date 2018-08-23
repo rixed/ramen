@@ -71,13 +71,6 @@ let type_signature =
       RamenTypes.string_of_typ ft.typ
   ) ""
 
-(* Different signature for different instances of the same program: *)
-let param_values_signature params =
-  params_sort params |>
-  IO.to_string (List.print (fun oc p ->
-    Printf.fprintf oc "%s=%a" p.ptyp.typ_name RamenTypes.print p.value)) |>
-  md5
-
 (* Same signature for different instances of the same program but changes
  * whenever the type of parameters change: *)
 let param_types_signature =

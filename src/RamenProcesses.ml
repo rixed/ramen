@@ -96,7 +96,7 @@ let run_background ?cwd cmd args env =
 (* Description of a running worker.
  * Not persisted on disk. *)
 type running_process =
-  { params : RamenTuple.params ;
+  { params : RamenName.params ;
     bin : string ;
     func : C.Func.t ;
     mutable pid : int option ;
@@ -389,8 +389,8 @@ let really_start conf must_run proc parents children =
     List.enum proc.params /@
     (fun p ->
       Printf.sprintf2 "param_%s=%a"
-        p.ptyp.typ_name
-        RamenTypes.print p.value) |>
+        (fst p)
+        RamenTypes.print (snd p)) |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
@@ -685,19 +685,18 @@ let synchronize_running conf autoreload_delay =
                * worker change but not its name we see a different worker. *)
               Hashtbl.clear must_run ;
               let%lwt () = Lwt.wrap (fun () ->
-                Hashtbl.iter (fun program_name get_rc ->
+                Hashtbl.iter (fun program_name (mre, get_rc) ->
                   match get_rc () with
                   | exception _ ->
                       (* Errors have been logged already, nothing more can
                        * be done about this. *)
                       ()
-                  | bin, prog ->
-                      let params = prog.P.params in
+                  | prog ->
                       List.iter (fun f ->
                         (* Use the mount point + signature + params as the key. *)
                         let k =
-                          program_name, f.F.signature, params in
-                        Hashtbl.add must_run k (bin, f)
+                          program_name, f.F.signature, mre.C.params in
+                        Hashtbl.add must_run k (mre.C.bin, f)
                       ) prog.P.funcs
                 ) must_run_programs) in
               return now

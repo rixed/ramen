@@ -31,6 +31,7 @@ type params = param list
 val params_ppp_ocaml : params PPP.t
 val params_sort : params -> params
 val string_of_params : params -> string
+val signature_of_params : params -> string
 
 val path_of_program : program -> string
 

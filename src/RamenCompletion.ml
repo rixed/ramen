@@ -101,8 +101,8 @@ let complete_running_function persist_dir str =
   let conf = C.make_conf persist_dir in
   (
     (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) //@
-    (fun get_rc ->
-      try Some (get_rc () |> snd)
+    (fun (_mre, get_rc) ->
+      try Some (get_rc ())
       with _ -> None) /@
     (fun prog ->
       List.enum prog.P.funcs |>

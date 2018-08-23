@@ -212,8 +212,8 @@ let with_rlock conf f =
           (* TODO: cache reading the rc file *)
           read_rc_file conf.do_persist rc_file |>
           Hashtbl.map (fun pn mre ->
-            memoize (fun () ->
-                       mre.bin, program_of_running_entry ~as_:pn mre)) in
+            mre,
+            memoize (fun () -> program_of_running_entry ~as_:pn mre)) in
         f programs)
     with RetryLater s ->
       Lwt_unix.sleep s >>= loop
@@ -241,8 +241,9 @@ let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.
 
 let find_func programs program_name func_name =
-  let _bin, prog =
-    Hashtbl.find programs program_name () in
+  let _mre, get_rc =
+    Hashtbl.find programs program_name in
+  let prog = get_rc () in
   prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
@@ -263,7 +264,7 @@ let worker_state conf func params =
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    ^"/"^ func.signature
-                   ^"/"^ RamenTuple.param_values_signature params
+                   ^"/"^ RamenName.signature_of_params params
                    ^"/snapshot"
 
 (* The "in" ring-buffers are used to store tuple received by an operation.

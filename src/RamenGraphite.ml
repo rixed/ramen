@@ -173,7 +173,7 @@ let tree_enum_of_program prog =
  * The hash has a boolean alongside the prefix, indicating if the value is a
  * Prog or a Hash, so that we can have both under the same name. *)
 type program_tree_item =
-  | Prog of (RamenName.program * (unit -> string * P.t))
+  | Prog of (RamenName.program * (unit -> P.t))
   | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
 let tree_enum_of_programs programs =
@@ -186,7 +186,7 @@ let tree_enum_of_programs programs =
   let rec hash_for_prefix pref =
     let h = Hashtbl.create 11 in
     let pl = String.length pref in
-    Array.iter (fun (program_name, get_rc as p) ->
+    Array.iter (fun (program_name, (_mre, get_rc)) ->
       if String.starts_with
            (RamenName.string_of_program program_name) pref
       then
@@ -196,7 +196,7 @@ let tree_enum_of_programs programs =
         (* Get the next prefix *)
         match String.split suf ~by:"/" with
         | exception Not_found ->
-            Hashtbl.add h (false, suf) (Prog p)
+            Hashtbl.add h (false, suf) (Prog (program_name, get_rc))
         | suf, rest ->
             (* If we've done it already, continue: *)
             if not (Hashtbl.mem h (true, suf)) then
@@ -211,7 +211,7 @@ let tree_enum_of_programs programs =
       | (_, name), Prog (program_name, get_rc) ->
         (match get_rc () with
         | exception _ -> None
-        | _bin, prog ->
+        | prog ->
             Some ((name, ProgPath), tree_enum_of_program prog))
       | (_, name), Hash h ->
         Some ((name, ProgPath), tree_enum_of_h h)) |>
@@ -481,34 +481,37 @@ let render_graphite conf headers body =
       Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
         let fq = RamenName.string_of_program prog_name ^"/"^
                  RamenName.string_of_func func_name in
-        match Hashtbl.find programs prog_name () with
+        match Hashtbl.find programs prog_name with
         | exception Not_found ->
             !logger.error "Program %s just disappeared?"
               (RamenName.string_of_program prog_name) ;
             return_none
-        | exception e -> return_none
-        | _bin, prog ->
-            (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
-            | exception Not_found ->
-                !logger.error "Function %s just disappeared?" fq ;
-                return_none
-            | func ->
-                if List.length fvals <> List.length func.factors then (
-                  !logger.error "Function %s just changed factors?" fq ;
-                  return_none
-                ) else if List.mem data_field func.factors then (
-                  !logger.error "Function %s just got %s as factor?"
-                    fq data_field ;
-                  return_none
-                ) else if not (List.exists (fun ft ->
-                               ft.RamenTuple.typ_name = data_field
-                             ) func.out_type) then (
-                  !logger.error "Function %s just lost field %s?"
-                    fq data_field ;
-                  return_none
-                ) else (
-                  return (Some (func, fq, List.map snd fvals, data_field))
-                ))
+        | _mre, get_rc ->
+            (match get_rc () with
+            | exception e -> return_none
+            | prog ->
+                (match List.find (fun f ->
+                         f.F.name = func_name) prog.P.funcs with
+                | exception Not_found ->
+                    !logger.error "Function %s just disappeared?" fq ;
+                    return_none
+                | func ->
+                    if List.length fvals <> List.length func.factors then (
+                      !logger.error "Function %s just changed factors?" fq ;
+                      return_none
+                    ) else if List.mem data_field func.factors then (
+                      !logger.error "Function %s just got %s as factor?"
+                        fq data_field ;
+                      return_none
+                    ) else if not (List.exists (fun ft ->
+                                   ft.RamenTuple.typ_name = data_field
+                                 ) func.out_type) then (
+                      !logger.error "Function %s just lost field %s?"
+                        fq data_field ;
+                      return_none
+                    ) else (
+                      return (Some (func, fq, List.map snd fvals, data_field))
+                    )))
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where
    * filter (it's the only value we want for this factor) or if we want to

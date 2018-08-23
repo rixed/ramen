@@ -88,10 +88,10 @@ let get_tables conf msg =
       PPP.of_string_exc get_tables_req_ppp_json msg) in
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
-    Hashtbl.iter (fun _prog_name get_rc ->
+    Hashtbl.iter (fun _prog_name (_mre, get_rc) ->
       match get_rc () with
       | exception e -> ()
-      | _bin, prog ->
+      | prog ->
           List.iter (fun f ->
             let fqn = RamenName.string_of_fq (F.fq_name f) in
             if f.F.event_time <> None && String.starts_with fqn req.prefix
@@ -223,12 +223,15 @@ let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name = C.program_func_of_user_string table in
   C.with_rlock conf (fun programs ->
-    match Hashtbl.find programs prog_name () with
+    match Hashtbl.find programs prog_name with
     | exception _ -> return_none
-    | _bin, prog ->
-        (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
-        | exception Not_found -> return_none
-        | func -> return_some (columns_of_func conf programs func)))
+    | _mre, get_rc ->
+      (match get_rc () with
+      | exception _ -> return_none
+      | prog ->
+          (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
+          | exception Not_found -> return_none
+          | func -> return_some (columns_of_func conf programs func))))
 
 let get_columns conf msg =
   let req = fail_with_context "parsing get-columns request" (fun () ->
@@ -277,7 +280,8 @@ let get_timeseries conf msg =
       let prog_name, func_name = C.program_func_of_user_string table in
       let%lwt filters =
         C.with_rlock conf (fun programs ->
-          let _bin, prog = Hashtbl.find programs prog_name () in
+          let _mre, get_rc = Hashtbl.find programs prog_name in
+          let prog = get_rc () in
           let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
           List.fold_left (fun filters where ->
             if is_private_field where.lhs then
@@ -403,12 +407,13 @@ let stop_alert conf program_name =
 
 let field_typ_of_column programs table column =
   let pn, fn = C.program_func_of_user_string table in
-  match Hashtbl.find programs pn () with
+  match Hashtbl.find programs pn with
   | exception Not_found ->
       Printf.sprintf "Program %s does not exist"
         (RamenName.string_of_program pn) |>
       failwith
-  | _bin, prog ->
+  | _mre, get_rc ->
+      let prog = get_rc () in
       (match List.find (fun f -> f.F.name = fn) prog.P.funcs with
       | exception Not_found ->
           Printf.sprintf "No function %s in program %s"
