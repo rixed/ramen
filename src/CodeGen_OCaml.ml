@@ -1181,14 +1181,17 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~impl_return_nullable:true
       "CodeGenLib.Last.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Sample (c, e)), _ ->
+  | InitState, StatefulFun (_, g, n, Sample (c, e)), _ ->
     let t = (Option.get (typ_of c).typ).structure in
+    let init_c =
+      let c_typ = Option.get (typ_of e).typ in
+      let c_typ = if n then { c_typ with nullable = false } else c_typ in
+      any_constant_of_expr_type c_typ in
     wrap_nullable ~nullable oc
-      (Printf.sprintf2 "RamenSampling.init (%a %a) %a"
+      (Printf.sprintf2 "RamenSampling.init (%a %a) (%a)"
         (conv_from_to ~nullable:false) (t, TU32)
         (emit_expr ?state ~context:Finalize ~opc) c
-        (emit_expr ?state ~context:Finalize ~opc)
-          (any_constant_of_expr_type (Option.get (typ_of e).typ)))
+        (emit_expr ?state ~context:Finalize ~opc) init_c)
   | UpdateState, StatefulFun (_, g, n, Sample (_, e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "RamenSampling.add" oc [ None ]
