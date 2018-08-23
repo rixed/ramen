@@ -45,7 +45,7 @@ let test_op p s =
           ptyp = { typ_name = "avg_window" ;
                    typ = { structure = RamenTypes.TI32 ;
                            nullable = false } ;
-                   units = None } ;
+                   units = None ; doc = "" } ;
           value = RamenTypes.VI32 10l }] in
     RamenOperation.check params res ; ok_res
   | x -> x

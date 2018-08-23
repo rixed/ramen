@@ -12,7 +12,8 @@ open RamenHelpers
 type field_typ =
   { typ_name : string ;
     mutable typ : RamenTypes.t ;
-    mutable units : RamenUnits.t option }
+    mutable units : RamenUnits.t option ;
+    mutable doc : string }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -114,7 +115,9 @@ struct
     let m = "field declaration" :: m in
     (
       non_keyword +- blanks ++ RamenTypes.Parser.typ ++
-      optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
-      fun ((typ_name, typ), units) -> { typ_name ; typ ; units }
+      optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) ++
+      optional ~def:"" quoted_string >>:
+      fun (((typ_name, typ), units), doc) ->
+        { typ_name ; typ ; units ; doc }
     ) m
 end

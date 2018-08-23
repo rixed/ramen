@@ -52,6 +52,40 @@ let infer_factors func operation =
     try Some (forwarded_field func operation factor)
     with Not_found -> None)
 
+let infer_field_doc func operation parents params =
+  let set_doc alias doc =
+    if doc <> "" then (
+      !logger.debug "Function %s can reuse parent doc for %s"
+        (RamenName.string_of_func func.F.name) alias ;
+      let ft =
+        List.find (fun ft ->
+          ft.RamenTuple.typ_name = alias
+        ) func.F.out_type in
+      ft.doc <- doc) in
+  match operation with
+    | RamenOperation.Aggregate { fields ; _ } ->
+        List.iter (function
+        | RamenOperation.{
+            doc = "" ; alias ;
+            expr = Expr.Field (_, { contents = TupleIn }, fn) } ->
+            (* Look for this field fn in parent: *)
+            (match List.find (fun ft ->
+                     ft.RamenTuple.typ_name = fn
+                   ) (List.hd parents).F.out_type with
+            | exception Not_found -> ()
+            | psf -> set_doc alias psf.doc)
+        | RamenOperation.{
+            doc = "" ; alias ;
+            expr = Expr.Field (_, { contents = TupleParam }, fn) } ->
+            (match List.find (fun param ->
+                     param.RamenTuple.ptyp.typ_name = fn
+                   ) params with
+            | exception Not_found -> ()
+            | param -> set_doc alias param.RamenTuple.ptyp.doc)
+        | _ -> ()
+      ) fields
+  | _ -> ()
+
 let finalize_func conf parents params func operation =
   F.dump_io func ;
   (* Check that no parents => no input *)
@@ -90,6 +124,9 @@ let finalize_func conf parents params func operation =
       !logger.debug "Function %s can reuse factors %a from parents"
         (RamenName.string_of_func func.name)
         (List.print String.print) func.factors
+  ) ;
+  if parents <> [] then (
+    infer_field_doc func operation parents params
   ) ;
   (* Seal everything: *)
   let op_str = IO.to_string RamenOperation.print operation in

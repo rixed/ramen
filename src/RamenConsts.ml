@@ -52,6 +52,36 @@ struct
   let compiler_typing_count = "compiler_typing_count"
 end
 
+(* Only required when the doc is used in more than one place: *)
+module MetricDocs =
+struct
+  let in_tuple_count =
+    "Number of received tuples that have been processed since the \
+     operation started."
+  let selected_tuple_count =
+    "Number of received tuples that have passed the WHERE filter since the \
+     operation started."
+  let out_tuple_count =
+    "Number of emitted tuples to each child of this operation since it \
+     started."
+  let group_count =
+    "Number of groups currently maintained."
+  let cpu_time =
+    "Total CPU time spent in this operation so far."
+  let ram_usage =
+    "Number of bytes currently allocated in the heap."
+  let rb_read_bytes =
+    "Number of bytes read from the input ring buffers so far."
+  let rb_write_bytes =
+    "Number of bytes written in output ring buffers so far."
+  let rb_wait_read =
+    "Total number of seconds spent waiting for input to refill."
+  let rb_wait_write =
+    "Total number of seconds spent waiting for output to empty."
+  let last_out =
+    "When was the last output emitted."
+end
+
 module CliInfo =
 struct
   (* Commands *)

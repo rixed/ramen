@@ -26,7 +26,7 @@ module F = C.Func
 
 (* Represents an output field from the select clause
  * 'SELECT expr AS alias' *)
-type selected_field = { expr : E.t ; alias : string }
+type selected_field = { expr : E.t ; alias : string ; doc : string }
 
 let print_selected_field oc f =
   let need_alias =
@@ -320,7 +320,9 @@ let out_type_of_operation = function
         List.map (fun sf ->
           RamenTuple.{
             typ_name = sf.alias ;
-            (* Types and units will need to be copied from the expression: *)
+            doc = sf.doc ;
+            (* Types and units will need to be copied from the expression
+             * after typing and star-expansion: *)
             typ = { structure = TAny ; nullable = true } ;
             units = None }
         ) fields in
@@ -360,11 +362,13 @@ let in_type_of_operation = function
             if not (List.exists (fun ft ->
                       ft.RamenTuple.typ_name = name) !input) then (
               let t = RamenTuple.{
+                typ_name = name ;
                 (* Actual types/units will be copied from parents after
                  * typing: *)
-                typ_name = name ;
                 typ = { structure = TAny ; nullable = true } ;
-                units = None } in
+                units = None ;
+                (* We don't mind the doc of an input field: *)
+                doc = "" } in
               input := t :: !input)
         | _ -> ()
       ) op ;
@@ -598,14 +602,22 @@ struct
       default_alias (List.hd es)
     | _ -> raise (Reject "must set alias")
 
+  (* Either `expr` or `expr AS alias` or `expr AS alias "doc"`, or
+   * `expr doc "doc"`: *)
   let selected_field m =
     let m = "selected field" :: m in
-    (E.Parser.p ++ optional ~def:None (
-       blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
-     fun (expr, alias) ->
-      let alias =
-        Option.default_delayed (fun () -> default_alias expr) alias in
-      { expr ; alias }) m
+    (
+      E.Parser.p ++ (
+        optional ~def:(None, "") (
+          blanks -- strinG "as" -- blanks -+ some non_keyword ++
+          optional ~def:"" (blanks -+ quoted_string)) |||
+        (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
+         fun doc -> None, doc)) >>:
+      fun (expr, (alias, doc)) ->
+        let alias =
+          Option.default_delayed (fun () -> default_alias expr) alias in
+        { expr ; alias ; doc }
+    ) m
 
   let event_time_clause m =
     let m = "event time clause" :: m in
@@ -1045,13 +1057,13 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "start")) ;\
-            alias = "start" } ;\
+            alias = "start" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "stop")) ;\
-            alias = "stop" } ;\
+            alias = "stop" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "itf_clt")) ;\
-            alias = "itf_src" } ;\
+            alias = "itf_src" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "itf_srv")) ;\
-            alias = "itf_dst" } ] ;\
+            alias = "itf_dst" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1089,9 +1101,9 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "t")) ;\
-            alias = "t" } ;\
+            alias = "t" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" } ] ;\
+            alias = "value" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1110,11 +1122,11 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "t1")) ;\
-            alias = "t1" } ;\
+            alias = "t1" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "t2")) ;\
-            alias = "t2" } ;\
+            alias = "t2" ; doc = "" } ;\
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" } ] ;\
+            alias = "value" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1154,17 +1166,17 @@ struct
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMin (\
                 Field (typ, ref TupleIn, "start")))) ;\
-            alias = "start" } ;\
+            alias = "start" ; doc = "" } ;\
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMax (\
                 Field (typ, ref TupleIn, "stop")))) ;\
-            alias = "max_stop" } ;\
+            alias = "max_stop" ; doc = "" } ;\
           { expr = E.(\
               StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, true, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
                 Field (typ, ref TupleParam, "avg_window"))) ;\
-            alias = "packets_per_sec" } ] ;\
+            alias = "packets_per_sec" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1200,7 +1212,7 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.Const (typ, VU32 Uint32.one) ;\
-            alias = "one" } ] ;\
+            alias = "one" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1222,12 +1234,12 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.Field (typ, ref TupleIn, "n") ; alias = "n" } ;\
+          { expr = E.Field (typ, ref TupleIn, "n") ; alias = "n" ; doc = "" } ;\
           { expr = E.(\
               StatefulFun (typ, GlobalState, true, E.Lag (\
               E.Const (typ, VU32 (Uint32.of_int 2)), \
               E.Field (typ, ref TupleIn, "n")))) ;\
-            alias = "l" } ] ;\
+            alias = "l" ; doc = "" } ] ;\
         and_all_others = false ;\
         merge = [], 0. ;\
         sort = None ;\
@@ -1249,8 +1261,8 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
                     factors = [] },\
       (44, [])))\
       (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1262,8 +1274,8 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
                     factors = [] },\
       (55, [])))\
       (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1275,8 +1287,8 @@ struct
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None } ] } ;\
+                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
+                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
                     factors = [] },\
       (73, [])))\
       (test_op p "read file \"/tmp/toto.csv\" \\
@@ -1286,7 +1298,7 @@ struct
 
     (Ok (\
       Aggregate {\
-        fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; alias = "one" } ] ;\
+        fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; alias = "one" ; doc = "" } ] ;\
         every = 1. ; event_time = None ;\
         and_all_others = false ; merge = [], 0. ; sort = None ;\
         where = E.Const (typ, VBool true) ;\
