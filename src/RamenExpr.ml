@@ -900,13 +900,6 @@ struct
   open RamenParsing
 
   (* Single things *)
-  let const_dimensionless m =
-    let m = "constant" :: m in
-    (
-      RamenTypes.Parser.scalar ~min_int_width:32 >>: fun c ->
-        Const (make_typ ~units:RamenUnits.dimensionless "constant", c)
-    ) m
-
   let const m =
     let m = "constant" :: m in
     (
@@ -1259,7 +1252,7 @@ struct
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
      (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
         StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
-     ((const_dimensionless ||| param) +-
+     ((const ||| param) +-
       (optional ~def:() (strinG "th")) +- blanks ++
       afun1 "percentile" >>: fun (p, e) ->
         StatelessFun2 (make_typ "percentile", Percentile, p, e)) |||
@@ -1371,13 +1364,13 @@ struct
       * keywords that follow: *)
      several ~sep:list_sep p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++
-     (const_dimensionless ||| param) ++
+     (const ||| param) ++
      state_and_nulls ++
      optional ~def:(expr_one ()) (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
      optional ~def:(expr_1hour ()) (
        blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
-       strinG "last" -- blanks -+ (const_dimensionless ||| param)) ++
+       strinG "last" -- blanks -+ (const ||| param)) ++
      optional ~def:(expr_zero ()) (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
      fun ((((((want_rank, what), c), (g, n)), by), duration), time) ->
