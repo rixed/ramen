@@ -555,6 +555,11 @@ let file_print oc fname =
   String.print oc content
 
 let rec simplified_path =
+  let strip_final_slash s =
+    let l = String.length s in
+    if l > 1 && s.[l-1] = '/' then
+      String.rchop s
+    else s in
   let res =
     [ Str.regexp "/[^/]+/\\.\\./", "/" ;
       Str.regexp "/[^/]+/\\.\\.$", "" ;
@@ -567,7 +572,8 @@ let rec simplified_path =
       List.fold_left (fun s (re, repl) ->
         Str.global_replace re repl s
       ) path res in
-    if s = path then s else simplified_path s
+    if s = path then strip_final_slash s
+    else simplified_path s
 (*$= simplified_path & ~printer:identity
   "/glop/glop" (simplified_path "/glop/glop/")
   "/glop/glop" (simplified_path "/glop/glop")

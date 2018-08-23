@@ -249,6 +249,7 @@ let find_func programs program_name func_name =
 let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
               ?(forced_variants=[]) ?(initial_export_duration=900.)
               persist_dir =
+  let persist_dir = simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; debug ; persist_dir ; keep_temp_files ;
     initial_export_duration }
