@@ -34,6 +34,13 @@
 open Batteries
 open RamenHelpers
 
+(*$inject
+  open Batteries
+  open TestHelpers
+
+  let p2s = test_printer RamenUnits.print
+*)
+
 module MapUnit = struct
   include Map.String
 
@@ -72,9 +79,9 @@ let is_relative u =
 
 let print oc =
   let p oc (e, rel) =
-    Printf.fprintf oc "%s^%f"
+    Printf.fprintf oc "%s^%g"
       (if rel then "(rel)" else "") e in
-  MapUnit.print ~first:"" ~last:"" ~sep:"." ~kvsep:""
+  MapUnit.print ~first:"{" ~last:"}" ~sep:"." ~kvsep:""
     String.print p oc
 
 let binop u1 c u2 =
@@ -148,6 +155,7 @@ let check_same_units ~what =
 
 module Parser =
 struct
+  (*$< Parser *)
   open RamenParsing
 
   let is_valid_unit s =
@@ -170,7 +178,7 @@ struct
       (* TODO: also '/' *)
       opt_blanks -- (char '*' ||| char '.') -- opt_blanks in
     (
-      char '{' -+ several ~sep u +- char '}' >>:
+      char '{' -+ repeat ~sep u +- char '}' >>:
         List.fold_left (fun us ((n, r), u) ->
           MapUnit.modify_opt n (function
           | None -> Some (u, r)
@@ -181,4 +189,10 @@ struct
           ) us
         ) MapUnit.empty
     ) m
+
+  (*$= p & ~printer:identity
+    "{seconds^1}" (test_p p "{seconds}" |> p2s)
+    "{}"          (test_p p "{}" |> p2s)
+  *)
+  (*$>*)
 end

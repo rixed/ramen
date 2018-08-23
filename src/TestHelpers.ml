@@ -2,6 +2,8 @@ open Batteries
 open RamenParsing
 
 let test_printer res_printer = function
+  | Ok (res, (len, [])) ->
+    Printf.sprintf "%s" (IO.to_string res_printer res)
   | Ok (res, (len, rest)) ->
     Printf.sprintf "%S, parsed_len=%d, rest=%s"
       (IO.to_string res_printer res) len

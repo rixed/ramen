@@ -333,7 +333,8 @@ TESTABLE_SOURCES = \
 	src/RamenGraphite.ml \
 	src/RingBufLib.ml \
 	src/RamenSerialization.ml \
-	src/RamenSmtParser.ml
+	src/RamenSmtParser.ml \
+	src/RamenUnits.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
