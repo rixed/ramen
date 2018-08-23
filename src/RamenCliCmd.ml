@@ -428,7 +428,8 @@ let ps conf short with_header sort_col top pattern () =
  *)
 
 let tail conf func_name with_header sep null raw
-         last min_seq max_seq continuous where with_seqnums duration () =
+         last min_seq max_seq continuous where with_seqnums with_event_time
+         duration () =
   logger := make_logger conf.C.debug ;
   if last <> None && (min_seq <> None || max_seq <> None) then
     failwith "Options --last  and --{min,max}-seq are incompatible." ;
@@ -440,58 +441,43 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  let bname, filter, typ, ser =
-    [ (* Read directly from the instrumentation ringbuf when func_name ends
-       * with "#stats" *)
-      RamenTimeseries.read_well_known func_name where "stats"
-        (C.report_ringbuf conf) RamenBinocle.tuple_typ ;
-      (* Similarly, reads from the notification ringbuf when func_name ends
-       * with "#notifs" *)
-      RamenTimeseries.read_well_known func_name where "notifs"
-        (C.notify_ringbuf conf) RamenNotification.tuple_typ ;
-      (* Normal worker output: Create the non-wrapping RingBuf under a
-       * standard name given by RamenConf *)
-      fun () -> Lwt_main.run (
-        let%lwt _prog, func, bname =
-          RamenExport.make_temp_export_by_name conf ~duration func_name in
-        let typ = func.F.out_type in
-        let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
-        let filter = RamenSerialization.filter_tuple_by ser where in
-        return_some (bname, filter, typ, ser))
-      ] |> List.find_map (fun f -> f ())
-  in
-  (* Find out which seqnums we want to scan: *)
-  let mi, ma = match last with
-    | None ->
-        min_seq,
-        Option.map succ max_seq (* max_seqnum is in *)
-    | Some l when l >= 0 ->
-        let mi, ma = RingBufLib.seq_range bname in
-        Some (cap_add ma ~-l),
-        Some (if continuous then max_int else ma)
-    | Some l ->
-        assert (l < 0) ;
-        let mi, ma = RingBufLib.seq_range bname in
-        Some ma, Some (cap_add ma (cap_neg l)) in
-  !logger.debug "Will display tuples from %a (incl) to %a (excl)"
-    (Option.print Int.print) mi
-    (Option.print Int.print) ma ;
-  (* Then, scan all present ringbufs in the requested range (either
-   * the last N tuples or, TBD, since ts1 [until ts2]) and display
-   * them *)
-  let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type ser in
-  (* I failed the polymorphism dance on that one: *)
-  let reorder_column1 = RamenTuple.reorder_tuple_to_user typ in
-  let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
-  if with_header then (
-    let header = ser |> Array.of_list |> reorder_column1 in
-    let first = if with_seqnums then "#Seq"^ sep else "#" in
-    Array.print ~first ~last:"\n" ~sep
-      (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
-      stdout header ;
-    BatIO.flush stdout) ;
   Lwt_main.run (
+    let%lwt bname, filter, typ, ser, params, event_time =
+      RamenTimeseries.read_well_known_extra conf ~duration func_name where
+    in
+    (* Find out which seqnums we want to scan: *)
+    let mi, ma = match last with
+      | None ->
+          min_seq,
+          Option.map succ max_seq (* max_seqnum is in *)
+      | Some l when l >= 0 ->
+          let mi, ma = RingBufLib.seq_range bname in
+          Some (cap_add ma ~-l),
+          Some (if continuous then max_int else ma)
+      | Some l ->
+          assert (l < 0) ;
+          let mi, ma = RingBufLib.seq_range bname in
+          Some ma, Some (cap_add ma (cap_neg l)) in
+    !logger.debug "Will display tuples from %a (incl) to %a (excl)"
+      (Option.print Int.print) mi
+      (Option.print Int.print) ma ;
+    (* Then, scan all present ringbufs in the requested range (either
+     * the last N tuples or, TBD, since ts1 [until ts2]) and display
+     * them *)
+    let nullmask_size =
+      RingBufLib.nullmask_bytes_of_tuple_type ser in
+    (* I failed the polymorphism dance on that one: *)
+    let reorder_column1 = RamenTuple.reorder_tuple_to_user typ in
+    let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
+    if with_header then (
+      let header = ser |> Array.of_list |> reorder_column1 in
+      let first = if with_seqnums then "Seq"^ sep else "" in
+      let first = if with_event_time then "Event time"^ sep else first in
+      let first = "#"^ first in
+      Array.print ~first ~last:"\n" ~sep
+        (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
+        stdout header ;
+      BatIO.flush stdout) ;
     async (fun () ->
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
@@ -505,9 +491,18 @@ let tail conf func_name with_header sep null raw
       restart_on_failure "reset_export_timeout"
         reset_export_timeout ()) ;
     let open RamenSerialization in
+    let%lwt event_time_of_tuple = match event_time with
+      | None ->
+        if with_event_time then
+          fail_with "Function has no event time information"
+        else return (fun _ -> 0., 0.)
+      | Some et -> return (event_time_of_tuple typ params et) in
     fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
       let tuple = read_tuple ser nullmask_size tx in
       if filter tuple then (
+        if with_event_time then (
+          let t1, t2 = event_time_of_tuple tuple in
+          Printf.printf "%f..%f%s" t1 t2 sep) ;
         if with_seqnums then (
           Int.print stdout m ; String.print stdout sep) ;
         reorder_column2 tuple |>

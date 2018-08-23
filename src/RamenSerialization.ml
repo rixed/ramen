@@ -272,6 +272,42 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   in
   fold_buffer ~wait_for_more:false ?while_ bname init f
 
+let event_time_of_tuple typ params
+      ((start_field, start_field_src, start_scale), duration_info) =
+  let open RamenEventTime in
+  let float_of_field i s tup = float_of_scalar tup.(i) *. s
+  and float_of_param n =
+    let pv = find_param params n in
+    float_of_scalar pv in
+  let get_t1 = match !start_field_src with
+    | OutputField ->
+        let i = find_field_index typ start_field in
+        float_of_field i start_scale
+    | Parameter ->
+        let c = float_of_param start_field in
+        fun _tup -> c in
+  let get_t2 = match duration_info with
+    | DurationConst k ->
+        fun _tup t1 -> t1 +. k
+    | DurationField (n, { contents = OutputField }, s) ->
+        let i = find_field_index typ n in
+        fun tup t1 -> t1 +. float_of_field i s tup
+    | StopField (n, { contents = OutputField }, s) ->
+        let i = find_field_index typ n in
+        fun tup _t1 -> float_of_field i s tup
+    | DurationField (n, { contents = Parameter }, s) ->
+        let c = float_of_param n in
+        fun tup t1 -> t1 +. c
+    | StopField (n, { contents = Parameter }, s) ->
+        let c = float_of_param n in
+        fun _tup _t1 -> c
+  in
+  fun tup ->
+    let t1 = get_t1 tup in
+    let t2 = get_t2 tup t1 in
+    (* Allow duration to be < 0 *)
+    if t2 >= t1 then t1, t2 else t2, t1
+
 (* As tuples are not necessarily ordered by time we want the possibility
  * to override the more_to_come decision.
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
@@ -284,40 +320,8 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ params
     match event_time with
     | None ->
         fail_with "Function has no time information"
-    | Some ((start_field, start_field_src, start_scale), duration_info) ->
-        let open RamenEventTime in
-        let float_of_field i s tup = float_of_scalar tup.(i) *. s
-        and float_of_param n =
-          let pv = find_param params n in
-          float_of_scalar pv in
-        let get_t1 = match !start_field_src with
-          | OutputField ->
-              let i = find_field_index typ start_field in
-              float_of_field i start_scale
-          | Parameter ->
-              let c = float_of_param start_field in
-              fun _tup -> c in
-        let get_t2 = match duration_info with
-          | DurationConst k ->
-              fun _tup t1 -> t1 +. k
-          | DurationField (n, { contents = OutputField }, s) ->
-              let i = find_field_index typ n in
-              fun tup t1 -> t1 +. float_of_field i s tup
-          | StopField (n, { contents = OutputField }, s) ->
-              let i = find_field_index typ n in
-              fun tup _t1 -> float_of_field i s tup
-          | DurationField (n, { contents = Parameter }, s) ->
-              let c = float_of_param n in
-              fun tup t1 -> t1 +. c
-          | StopField (n, { contents = Parameter }, s) ->
-              let c = float_of_param n in
-              fun _tup _t1 -> c
-        in
-        return (fun tup ->
-          let t1 = get_t1 tup in
-          let t2 = get_t2 tup t1 in
-          (* Allow duration to be < 0 *)
-          if t2 >= t1 then t1, t2 else t2, t1) in
+    | Some event_time  ->
+        return (event_time_of_tuple typ params event_time) in
   let f usr tuple =
     (* Get the times from tuple: *)
     let t1, t2 = event_time_of_tuple tuple in

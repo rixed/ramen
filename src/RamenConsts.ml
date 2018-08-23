@@ -165,6 +165,7 @@ struct
   let factors =
     "specify which fields to use as factors/categorical variables"
   let with_seqnums = "Prepend tuples with their sequence number"
+  let with_event_time = "Prepend tuples with their event time"
   let func_name = "Operation unique name"
   let duration =
     "Operation will stop archiving its output after that duration if \

@@ -450,6 +450,11 @@ let with_seqnums =
                    ["with-seqnums"; "seq"; "s"] in
   Arg.(value (flag i))
 
+let with_event_time =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.with_event_time
+                   ["with-event-time"; "event-time"; "t"] in
+  Arg.(value (flag i))
+
 (* TODO: returns directly the program and function names to spare some
  * calls to C.program_func_of_user_string *)
 let func_name p =
@@ -477,6 +482,7 @@ let tail =
       $ continuous
       $ where
       $ with_seqnums
+      $ with_event_time
       $ duration),
     info ~doc:RamenConsts.CliInfo.tail "tail")
 
