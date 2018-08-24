@@ -158,15 +158,10 @@ struct
   (*$< Parser *)
   open RamenParsing
 
-  let is_valid_unit s =
-    String.length s > 0 && String.length s < 10 && is_alpha s
-
   let u m =
     let m = "unit" :: m in
     (
-      (non_keyword >>: fun s ->
-        if is_valid_unit s then s
-        else raise (Reject "not a valid unit")) ++
+      identifier ++
       optional ~def:false
         (opt_blanks -+ strinG "(rel)" >>: fun () -> true) ++
       optional ~def:1. (opt_blanks -- char '^' -- opt_blanks -+ number)
