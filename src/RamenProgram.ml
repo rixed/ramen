@@ -363,10 +363,10 @@ let reify_star_fields get_parent program_name funcs =
               | common_fields ->
                   let fields =
                     Set.String.fold (fun name lst ->
-                      if List.exists (fun sf -> sf.alias = name) fields then
-                        lst
-                      else
-                        input_field name :: lst
+                      if is_private_field name ||
+                         List.exists (fun sf -> sf.alias = name) fields
+                      then lst
+                      else input_field name :: lst
                     ) common_fields fields in
                   true, { func with
                     operation = Aggregate {
