@@ -1429,8 +1429,7 @@ let run_solver smt2_file =
         failwith)
 
 let unsat funcs syms output =
-  !logger.error "Solver output:\n%s" output ;
-  (* TODO: a better error message *)
+  !logger.debug "Solver output:\n%s" output ;
   Printf.sprintf2 "Cannot solve typing constraints: %a"
     (Err.print_core funcs) syms |>
   failwith
