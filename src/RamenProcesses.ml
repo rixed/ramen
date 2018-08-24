@@ -449,9 +449,9 @@ let really_try_start conf must_run proc =
       !logger.error "Input type of %s (%a) is not compatible with \
                      output type of %s (%a): %s"
         (RamenName.string_of_fq (F.fq_name c))
-        RamenTuple.print_typ c.in_type
+        RamenTuple.print_typ_names c.in_type
         (RamenName.string_of_fq (F.fq_name p))
-        RamenTuple.print_typ p.out_type
+        RamenTuple.print_typ_names p.out_type
         msg ;
       false in
   let linkage_ok =

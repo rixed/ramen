@@ -167,9 +167,10 @@ let compile conf root_path get_parent program_name program_code =
               ft.RamenTuple.typ_name = name
             ) func.F.out_type with
         | exception Not_found ->
-            !logger.error "No such input field %S (have %a)"
+            !logger.error "in function %S: no such input field %S (have %a)"
+              (RamenName.string_of_func func.F.name)
               name
-              RamenTuple.print_typ func.F.out_type ;
+              RamenTuple.print_typ_names func.F.out_type ;
             None
         | ft ->
             !logger.debug "found typed units: %a"

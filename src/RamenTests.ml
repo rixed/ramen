@@ -67,7 +67,7 @@ let test_output func bname output_spec =
           ) ser with
     | exception Not_found ->
         let msg = Printf.sprintf "Unknown field %s in %s" field
-                    (IO.to_string RamenTuple.print_typ ser) in
+                    (IO.to_string RamenTuple.print_typ_names ser) in
         fail_and_quit msg
     | idx, _ -> idx in
   (* The other way around to print the results: *)

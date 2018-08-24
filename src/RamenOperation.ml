@@ -60,7 +60,7 @@ type csv_specs =
 let print_csv_specs oc specs =
   Printf.fprintf oc "SEPARATOR %S NULL %S %a"
     specs.separator specs.null
-    RamenTuple.print_typ specs.fields
+    RamenTuple.print_typ_names specs.fields
 
 let print_file_spec oc specs =
   Printf.fprintf oc "READ%s FILES %a"

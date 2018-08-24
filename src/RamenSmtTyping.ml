@@ -1166,7 +1166,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                 (RamenName.string_of_func pfunc.F.name)
                 (RamenName.string_of_func func.F.name)
                 field_name
-                RamenTuple.print_typ pfunc.F.out_type |>
+                RamenTuple.print_typ_names pfunc.F.out_type |>
               failwith
             and aggr_types pfunc t prev =
               let fn = RamenName.string_of_func pfunc.F.name in

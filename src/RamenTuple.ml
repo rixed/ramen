@@ -53,14 +53,17 @@ let reorder_tuple_to_user typ =
     Array.map (fun idx -> vs.(idx)) indices
 
 let print_field_typ oc field =
-  (* TODO: check that name is a valid identifier *)
   Printf.fprintf oc "%s %a"
     field.typ_name
     RamenTypes.print_typ field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
 let print_typ oc t =
-  (List.print ~first:"(" ~last:")" ~sep:", " print_field_typ) oc t
+  (List.print ~first:"(" ~last:")" ~sep:", "
+    print_field_typ) oc t
+
+let print_typ_names oc =
+  pretty_list_print (fun oc ft -> String.print oc ft.typ_name) oc
 
 let type_signature =
   List.fold_left (fun s ft ->

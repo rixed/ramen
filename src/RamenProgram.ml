@@ -56,7 +56,8 @@ let make_func ?name ?(doc="") operation =
 
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;"
-    RamenTuple.print_field_typ p.RamenTuple.ptyp RamenTypes.print p.value
+    RamenTuple.print_field_typ p.RamenTuple.ptyp
+    RamenTypes.print p.value
 
 let print_func oc n =
   (* TODO: keep the info that func was anonymous? *)

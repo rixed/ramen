@@ -139,4 +139,5 @@ let of_assert_name n =
 
 let print_core funcs oc lst =
   List.map of_assert_name lst |>
-  List.print (print funcs) oc
+  Set.of_list |>
+  Set.print ~first:"\n  " ~sep:"\n  " ~last:"" (print funcs) oc
