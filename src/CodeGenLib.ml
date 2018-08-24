@@ -655,6 +655,11 @@ let worker_start worker_name get_binocle_tuple k =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := Some RamenConsts.ExitCodes.terminated)) ;
+  (* Dump stats on sigusr1 (also on sigusr2 out of security): *)
+  set_signals Sys.[sigusr1; sigusr2] (Signal_handle (fun s ->
+    (* This log also useful to rotate the logfile. *)
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    Binocle.display_console ())) ;
   Lwt_unix.set_pool_size 1 ;
   Lwt_main.run (
     catch

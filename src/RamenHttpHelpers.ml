@@ -212,6 +212,11 @@ let http_service port url_prefix router fault_injection_rate =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     stop_http_servers ())) ;
+  (* Dump stats on sigusr1 (also on sigusr2 out of security): *)
+  set_signals Sys.[sigusr1; sigusr2] (Signal_handle (fun s ->
+    (* This log also useful to rotate the logfile. *)
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    Binocle.display_console ())) ;
   let callback = service_response url_prefix router fault_injection_rate in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in

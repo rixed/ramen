@@ -55,7 +55,12 @@ let prepare_reports conf =
 let prepare_signal_handlers () =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
-    quit := Some RamenConsts.ExitCodes.terminated))
+    quit := Some RamenConsts.ExitCodes.terminated)) ;
+  (* Dump stats on sigusr1 (also on sigusr2 out of security): *)
+  set_signals Sys.[sigusr1; sigusr2] (Signal_handle (fun s ->
+    (* This log also useful to rotate the logfile. *)
+    !logger.info "Received signal %s" (name_of_signal s) ;
+    Binocle.display_console ()))
 
 (*
  * Machinery to spawn other programs.
