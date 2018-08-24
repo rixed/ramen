@@ -112,7 +112,7 @@ let print funcs oc =
       let func_name, expr = expr_of_id i in
       p "in function %S: expression \"%a\" %a"
         (RamenName.string_of_func func_name)
-        (RamenExpr.print false) expr print_expr e
+        (RamenExpr.print ~max_depth:3 false) expr print_expr e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
       p "function %S %a" (RamenName.string_of_func func_name) print_func e
