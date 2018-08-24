@@ -211,23 +211,6 @@ let arg_is_not_nullable oc e =
   let name = expr_err e (Err.Nullability false) in
   emit_assert_is_false ~name oc (n_of_expr e)
 
-let emit_sortable oc id =
-  Printf.fprintf oc
-    "(or (= string %s) \
-         (= bool %s) \
-         (= float %s) \
-         (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
-    id
-    id
-    id
-    id id id id id
-    id id id id id
-
-let arg_is_sortable oc e =
-  let name = expr_err e Err.Sortable in
-  emit_assert ~name oc (fun oc -> emit_sortable oc (t_of_expr e))
-
 let arg_is_unsigned oc e =
   let name = expr_err e Err.Unsigned in
   let id = t_of_expr e in
@@ -467,10 +450,9 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_not_nullable oc e
 
   | StatefulFun (_, _, _, (AggrMin x|AggrMax x)) ->
-      (* - x must be sortable;
+      (* - x can be of any type;
        * - The result has its type;
        * - The result nullability is set by propagation from x. *)
-      arg_is_sortable oc x ;
       emit_assert_id_eq_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
@@ -546,8 +528,8 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatelessFun2 (_, Percentile, e1, e2) ->
       (* - e1 must be numeric;
-       * - e2 must be a vector or list of sortables, then the result is not
-       *   smaller than that type;
+       * - e2 must be a vector or list of anything, then the result is not
+       *   smaller than the element type;
        * - the result is nullable if either e1 or e2 is. *)
       arg_is_numeric oc e1 ;
       emit_assert oc (fun oc ->
@@ -555,10 +537,10 @@ let emit_constraints tuple_sizes out_fields oc e =
         let lst_type = "(list-type "^ eid2 ^")"
         and vec_type = "(vector-type "^ eid2 ^")" in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) %a %a (or (not (list-nullable %s)) %s))
-               (and ((_ is vector) %s) %a %a (or (not (vector-nullable %s)) %s)))"
-          eid2 emit_sortable lst_type (emit_id_le_smt2 lst_type) eid eid2 nid
-          eid2 emit_sortable vec_type (emit_id_le_smt2 vec_type) eid eid2 nid) ;
+          "(or (and ((_ is list) %s) %a (or (not (list-nullable %s)) %s))
+               (and ((_ is vector) %s) %a (or (not (vector-nullable %s)) %s)))"
+          eid2 (emit_id_le_smt2 lst_type) eid eid2 nid
+          eid2 (emit_id_le_smt2 vec_type) eid eid2 nid) ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
@@ -661,12 +643,10 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | StatelessFun2 (_, (Ge|Gt), e1, e2) ->
-      (* - e1 and e2 must have the same sort, and be either strings,
-       *   numeric, IP or CIDR (aka a sortable);
+      (* - e1 and e2 must have the same sort;
        * - The result is a bool;
        * - Nullability propagates. *)
       emit_assert_same e oc (t_of_expr e1) (t_of_expr e2) ;
-      arg_is_sortable oc e1 ;
       emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -771,12 +751,10 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* Typing rules:
        * - es must be a list of expressions of compatible types;
        * - the result type is the largest of them all;
-       * - The result type must be a sortable;
        * - If any of the es is nullable then so is the result. *)
       List.iter (fun e ->
         emit_assert_id_le_id (t_of_expr e) oc eid
       ) es ;
-      arg_is_sortable oc e ;
       if es <> [] then
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf2 "(or %a)"
@@ -1245,6 +1223,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             List.iter (fun id ->
               let name = expr_err expr Err.InheritType in
               emit_assert_id_eq_id ~name (t_of_expr expr) oc (t_of_num id) ;
+              let name = expr_err expr Err.InheritNull in
               emit_assert_id_eq_id ~name (n_of_expr expr) oc (n_of_num id) ;
             ) same_as_ids
           )
