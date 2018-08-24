@@ -1243,8 +1243,9 @@ let emit_input_fields oc tuple_sizes parents params funcs =
               emit_assert_id_is_bool (n_of_expr expr) oc t.nullable
             ) typ ;
             List.iter (fun id ->
-              emit_assert_id_eq_id (t_of_expr expr) oc (t_of_num id) ;
-              emit_assert_id_eq_id (n_of_expr expr) oc (n_of_num id) ;
+              let name = expr_err expr Err.InheritType in
+              emit_assert_id_eq_id ~name (t_of_expr expr) oc (t_of_num id) ;
+              emit_assert_id_eq_id ~name (n_of_expr expr) oc (n_of_num id) ;
             ) same_as_ids
           )
       | _ -> ()

@@ -34,6 +34,8 @@ type expr =
   | Unsigned
   | Numeric
   | ActualType of string
+  | InheritType
+  | InheritNull
     [@@ppp PPP_OCaml]
 
 let print_expr oc =
@@ -67,6 +69,8 @@ let print_expr oc =
   | Unsigned -> p "must be an unsigned integer"
   | Numeric -> p "must be numeric"
   | ActualType t -> p "must be of type %s" t
+  | InheritType -> p "must match parent output"
+  | InheritNull -> p "must match parent nullability"
 
 type func =
   | Clause of string * expr
