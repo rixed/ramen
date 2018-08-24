@@ -102,12 +102,14 @@ struct
           non_keyword ++
           optional ~def:None (
             blanks -+ some RamenTypes.Parser.typ) ++
+          optional ~def:None (
+            blanks -+ some RamenUnits.Parser.p) ++
           optional ~def:RamenTypes.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
             (RamenTypes.Parser.(p_ ~min_int_width:0 ||| null) |||
-            (duration >>: fun x -> RamenTypes.VFloat x))) ++
+             (duration >>: fun x -> RamenTypes.VFloat x))) ++
           optional ~def:"" quoted_string >>:
-          fun (((typ_name, typ_decl), value), doc) ->
+          fun ((((typ_name, typ_decl), units), value), doc) ->
             let typ, value =
               let open RamenTypes in
               match typ_decl with
@@ -153,8 +155,7 @@ struct
                         raise (Reject e)
                     | value -> typ, value
             in
-            RamenTuple.{ ptyp = { typ_name ; typ ; units = None ; doc } ;
-                         value }
+            RamenTuple.{ ptyp = { typ_name ; typ ; units ; doc } ; value }
         )
     ) m
 
