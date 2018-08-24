@@ -94,23 +94,25 @@ type t = Expr of int * expr
        | Func of int * func
          [@@ppp PPP_OCaml]
 
-exception ReturnExpr of RamenExpr.t
+exception ReturnExpr of RamenName.func * RamenExpr.t
 let print funcs oc =
   let expr_of_id i =
     try
-      List.iter (fun (_func, op) ->
+      List.iter (fun (func, op) ->
         RamenOperation.iter_expr (fun expr ->
           if (RamenExpr.typ_of expr).uniq_num = i then
-            raise (ReturnExpr expr)) op
+            raise (ReturnExpr (func.F.name, expr))) op
       ) funcs ;
       assert false
-    with ReturnExpr e -> e
+    with ReturnExpr (f, e) -> f, e
   and func_of_id i = List.at funcs i |> fst
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->
-      let expr = expr_of_id i in
-      p "expression \"%a\" %a" (RamenExpr.print false) expr print_expr e
+      let func_name, expr = expr_of_id i in
+      p "in function %S: expression \"%a\" %a"
+        (RamenName.string_of_func func_name)
+        (RamenExpr.print false) expr print_expr e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
       p "function %S %a" (RamenName.string_of_func func_name) print_func e
