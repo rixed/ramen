@@ -341,6 +341,7 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | TCidrv6, TCidr -> Printf.fprintf oc "(fun x_ -> RamenIp.Cidr.V6 x_)"
     | TIpv4, TU32 | TU32, TIpv4 -> Printf.fprintf oc "identity"
     | TIpv6, TU128 | TU128, TIpv6 -> Printf.fprintf oc "identity"
+    | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
     | TVec (d_from, t_from), TVec (d_to, t_to)
       when (d_from = d_to || d_to = 0) &&
            (* TODO: We could implement other combinations as well *)
