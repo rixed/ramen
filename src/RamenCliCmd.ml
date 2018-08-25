@@ -662,7 +662,7 @@ let graphite_expand conf query () =
   logger := make_logger conf.C.debug ;
   let query = String.nsplit ~by:"." query in
   let te = Lwt_main.run (
-    RamenGraphite.enum_tree_of_query conf query) in
+    RamenGraphite.full_enum_tree_of_query conf query) in
   let rec display indent te =
     let e = RamenGraphite.get te in
     let len = List.length e in

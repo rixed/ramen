@@ -103,11 +103,12 @@ type string_with_scalar = string * tree_enum_section
 
 (* Given a func, returns the tree_enum of fields that are not factors and
  * numeric *)
-let tree_enum_of_fields func =
+let tree_enum_of_fields only_num_fields func =
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   E (List.filter_map (fun ft ->
        let n = ft.RamenTuple.typ_name in
-       if RamenTypes.is_a_num ft.RamenTuple.typ.structure &&
+       if (not only_num_fields ||
+           RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
           not (List.mem n func.F.factors)
        then
          Some ((n, DataField), E [])
@@ -142,8 +143,8 @@ let fix_quote s =
 (* Given a functions and a list of factors (any part of func.F.factors),
  * return the tree_enum of the factors (only the branches going as far as
  * an actual non-factor fields tree) : *)
-let rec tree_enum_of_factors func = function
-  | [] -> tree_enum_of_fields func
+let rec tree_enum_of_factors only_num_fields func = function
+  | [] -> tree_enum_of_fields only_num_fields func
   | factor :: factors' ->
       (* If there is no possible value, output an empty string that will
        * allow us to keep iterating and have a chance to see the fields.
@@ -160,16 +161,17 @@ let rec tree_enum_of_factors func = function
           Set.to_list in
       E (List.filter_map (fun pv ->
            (* Skip over empty branches *)
-           let sub_tree = tree_enum_of_factors func factors' in
+           let sub_tree = tree_enum_of_factors only_num_fields func factors' in
            if tree_enum_is_empty sub_tree then None
            else Some (pv, sub_tree)
          ) fact_values)
 
 (* Given a program, returns the tree_enum of its functions: *)
-let tree_enum_of_program prog =
+let tree_enum_of_program ~only_with_event_time ~only_num_fields prog =
   E (List.filter_map (fun func ->
-       if func.F.event_time = None then None else
-         let sub_tree = tree_enum_of_factors func func.F.factors in
+       if only_with_event_time && func.F.event_time = None then None else
+         let sub_tree =
+          tree_enum_of_factors only_num_fields func func.F.factors in
          if tree_enum_is_empty sub_tree then None else
            Some ((RamenName.string_of_func func.F.name, OpName), sub_tree)
      ) prog.P.funcs)
@@ -182,7 +184,7 @@ type program_tree_item =
   | Prog of (RamenName.program * (unit -> P.t))
   | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
-let tree_enum_of_programs programs =
+let tree_enum_of_programs ~only_with_event_time ~only_num_fields programs =
   let programs =
     Hashtbl.enum programs |>
     Array.of_enum in
@@ -218,7 +220,8 @@ let tree_enum_of_programs programs =
         (match get_rc () with
         | exception _ -> None
         | prog ->
-            let sub_tree = tree_enum_of_program prog in
+            let sub_tree =
+              tree_enum_of_program ~only_with_event_time ~only_num_fields prog in
             if tree_enum_is_empty sub_tree then None else
               Some ((name, ProgPath), sub_tree))
       | (_, name), Hash h ->
@@ -233,14 +236,25 @@ let filters_of_query query =
     let glob = Globs.compile q in
     Globs.matches glob % fst) query
 
+let full_enum_tree_of_query conf query =
+    let%lwt programs = C.with_rlock conf return in
+    RamenTimeseries.cache_possible_values conf programs ;%lwt
+    let te = tree_enum_of_programs ~only_with_event_time:false
+                                   ~only_num_fields:false programs in
+    let filters = filters_of_query query in
+    return (filter_tree te filters)
+
+(* Specialized version for graphite, skipping functions with no time info
+ * and cached: *)
 let enum_tree_of_query =
   let reread () conf =
     !logger.debug "Recomputing enum_tree for query expansion" ;
     let%lwt programs = C.with_rlock conf return in
     !logger.debug "Caching factors possible values..." ;
-    let%lwt () = RamenTimeseries.cache_possible_values conf programs in
+    RamenTimeseries.cache_possible_values conf programs ;%lwt
     !logger.debug "Building tree..." ;
-    return (tree_enum_of_programs programs)
+    return (tree_enum_of_programs ~only_with_event_time:true
+                                  ~only_num_fields:true programs)
   and time () conf =
     C.last_conf_mtime conf
   in
@@ -251,6 +265,7 @@ let enum_tree_of_query =
     let%lwt te = get_tree () conf in
     let filters = filters_of_query query in
     return (filter_tree te filters)
+
 
 let rec find_quote_from s i =
   if i >= String.length s then raise Not_found ;
