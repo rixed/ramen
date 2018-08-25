@@ -73,6 +73,8 @@ let comp_matches globs comps =
 type 'a tree_enum = E of ('a * 'a tree_enum) List.t
 let get (E x) = x
 
+let tree_enum_is_empty = function E [] -> true | _ -> false
+
 (* Fold over the tree. [node_init] will be carried from node to node while
  * [stack_init] will be popped when the iterator go forward in the tree.
  * Only return the value that's carried from node to node. *)
@@ -138,7 +140,8 @@ let fix_quote s =
  *)
 
 (* Given a functions and a list of factors (any part of func.F.factors),
- * return the tree_enum of the factors: *)
+ * return the tree_enum of the factors (only the branches going as far as
+ * an actual non-factor fields tree) : *)
 let rec tree_enum_of_factors func = function
   | [] -> tree_enum_of_fields func
   | factor :: factors' ->
@@ -155,17 +158,20 @@ let rec tree_enum_of_factors func = function
             FactorField (Some v)
           ) fact_values |>
           Set.to_list in
-      E (List.map (fun pv ->
-           pv, tree_enum_of_factors func factors'
+      E (List.filter_map (fun pv ->
+           (* Skip over empty branches *)
+           let sub_tree = tree_enum_of_factors func factors' in
+           if tree_enum_is_empty sub_tree then None
+           else Some (pv, sub_tree)
          ) fact_values)
 
 (* Given a program, returns the tree_enum of its functions: *)
 let tree_enum_of_program prog =
   E (List.filter_map (fun func ->
-       if func.F.event_time <> None then
-         Some ((RamenName.string_of_func func.F.name, OpName),
-               tree_enum_of_factors func func.F.factors)
-       else None
+       if func.F.event_time = None then None else
+         let sub_tree = tree_enum_of_factors func func.F.factors in
+         if tree_enum_is_empty sub_tree then None else
+           Some ((RamenName.string_of_func func.F.name, OpName), sub_tree)
      ) prog.P.funcs)
 
 (* Given the programs hashtable, return a tree_enum of the path components and
@@ -212,9 +218,13 @@ let tree_enum_of_programs programs =
         (match get_rc () with
         | exception _ -> None
         | prog ->
-            Some ((name, ProgPath), tree_enum_of_program prog))
+            let sub_tree = tree_enum_of_program prog in
+            if tree_enum_is_empty sub_tree then None else
+              Some ((name, ProgPath), sub_tree))
       | (_, name), Hash h ->
-        Some ((name, ProgPath), tree_enum_of_h h)) |>
+        let sub_tree = tree_enum_of_h h in
+        if tree_enum_is_empty sub_tree then None else
+          Some ((name, ProgPath), sub_tree)) |>
      List.of_enum) in
   tree_enum_of_h h
 
