@@ -233,6 +233,7 @@ and stateful_fun =
   (* Returns the first/last value in the aggregation: *)
   | AggrFirst of t
   | AggrLast of t (* FIXME: Should be stateless *)
+  (* FIXME: those float should be expressions so we could use params *)
   | AggrHistogram of t * float * float * int
   (* value retarded by k steps. If we have had less than k past values
    * then return the first we've had. *)(* FIXME: then return NULL *)

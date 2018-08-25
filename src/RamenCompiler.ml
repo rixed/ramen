@@ -180,7 +180,7 @@ let compile conf root_path get_parent program_name program_code =
      * use the same): *)
     let units_of_input func parents field =
       let what =
-        Printf.sprintf "Field %S in parents of %s"
+        Printf.sprintf "Field %S in parents of %S"
           field
           (RamenName.string_of_func func.F.name) in
       let units =
