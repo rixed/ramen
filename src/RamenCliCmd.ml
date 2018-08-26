@@ -467,8 +467,8 @@ let tail conf func_name with_header sep null raw
     let nullmask_size =
       RingBufLib.nullmask_bytes_of_tuple_type ser in
     (* I failed the polymorphism dance on that one: *)
-    let reorder_column1 = RamenTuple.reorder_tuple_to_user typ in
-    let reorder_column2 = RamenTuple.reorder_tuple_to_user typ in
+    let reorder_column1 = RingBufLib.reorder_tuple_to_user typ in
+    let reorder_column2 = RingBufLib.reorder_tuple_to_user typ in
     if with_header then (
       let header = ser |> Array.of_list |> reorder_column1 in
       let first = if with_seqnums then "Seq"^ sep else "" in

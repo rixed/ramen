@@ -33,25 +33,6 @@ let params_sort params =
 let params_find n = List.find (fun p -> p.ptyp.typ_name = n)
 let params_mem n = List.exists (fun p -> p.ptyp.typ_name = n)
 
-(* Given a tuple type, return a function that reorder a tuple (as
- * an array) into the same column order as in the tuple type: *)
-let reorder_tuple_to_user typ =
-  (* Start by building the array of indices in the ser tuple of fields of
-   * the user (minus private) tuple. *)
-  let indices =
-    List.filter_map (fun f ->
-      if is_private_field f.typ_name then None
-      else
-        Some (List.findi (fun _ f' ->
-          f'.typ_name = f.typ_name
-        ) typ |> fst)
-    ) typ |>
-    Array.of_list in
-  (* Now reorder a list of scalar values in ser order into user order: *)
-  (* TODO: an inplace version *)
-  fun vs ->
-    Array.map (fun idx -> vs.(idx)) indices
-
 let print_field_typ oc field =
   Printf.fprintf oc "%s %a"
     field.typ_name
