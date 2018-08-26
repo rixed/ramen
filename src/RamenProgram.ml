@@ -80,7 +80,11 @@ let check (params, funcs) =
     Set.add p.ptyp.typ_name s
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
-    RamenOperation.check params n.operation ;
+    (try RamenOperation.check params n.operation
+    with Failure msg ->
+      Printf.sprintf "In function %s: %s"
+        (RamenName.string_of_func n.name) msg |>
+      failwith) ;
     if Set.mem n.name s then
       name_not_unique (RamenName.string_of_func n.name) ;
     Set.add n.name s
