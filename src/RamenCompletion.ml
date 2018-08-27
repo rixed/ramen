@@ -31,7 +31,9 @@ let complete_commands s =
       "links", RamenConsts.CliInfo.links ;
       "test", RamenConsts.CliInfo.test ;
       "httpd", RamenConsts.CliInfo.httpd ;
-      "variants", RamenConsts.CliInfo.variants ] in
+      "variants", RamenConsts.CliInfo.variants ;
+      "gc", RamenConsts.CliInfo.gc ;
+      "stats", RamenConsts.CliInfo.stats ] in
   complete commands s
 
 let complete_global_options s =
@@ -258,6 +260,13 @@ let complete str () =
             "--graphite", RamenConsts.CliInfo.graphite ] @
           copts
       | "variants" ->
+          copts
+      | "gc" ->
+          [ "--max-archives", RamenConsts.CliInfo.max_archives ;
+            "--loop", RamenConsts.CliInfo.loop ;
+            "--dry-run", RamenConsts.CliInfo.dry_run ] @
+          copts
+      | "stats" ->
           copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))
