@@ -69,16 +69,18 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
       %d + RingBuf.round_up_to_rb_word(RingBuf.read_word %s %s)"
       RingBuf.rb_word_bytes tx_var offs_var
   | TIp ->
-    Printf.fprintf oc "RingBuf.round_up_to_rb_word(1 + \
-                       match RingBuf.read_word %s %s with \
-                       | 0 -> %a | 1 -> %a | _ -> assert false)"
+    Printf.fprintf oc "RingBuf.(rb_word_bytes + \
+                         round_up_to_rb_word(\
+                           match RingBuf.read_word %s %s with \
+                            0 -> %a | 1 -> %a | _ -> assert false))"
       tx_var offs_var
       emit_sersize_of_fixsz_typ TIpv4
       emit_sersize_of_fixsz_typ TIpv6
   | TCidr ->
-    Printf.fprintf oc "RingBuf.round_up_to_rb_word(1 + \
-                       match RingBuf.read_u8 %s %s |> Uint8.to_int with \
-                       | 4 -> %a | 6 -> %a | _ -> assert false)"
+    Printf.fprintf oc "RingBuf.(rb_word_bytes + \
+                         round_up_to_rb_word(\
+                           match RingBuf.read_u8 %s %s |> Uint8.to_int with \
+                            4 -> %a | 6 -> %a | _ -> assert false))"
       tx_var offs_var
       emit_sersize_of_fixsz_typ TCidrv4
       emit_sersize_of_fixsz_typ TCidrv6
