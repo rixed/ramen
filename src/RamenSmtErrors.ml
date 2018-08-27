@@ -44,7 +44,7 @@ let print_expr oc =
   | Nullability false -> p "must not be nullable"
   | Nullability true -> p "must be nullable"
   | Sortable -> p "must be sortable"
-  | Same -> p "arguments must have the same type"
+  | Same -> p ": both arguments must have the same type"
   | VecSame -> p "vector elements must have the same type"
   | CaseCond c -> p "condition #%d of case expression must be a boolean" c
   | CaseCons c -> p "consequent #%d of case expression must have a type \
