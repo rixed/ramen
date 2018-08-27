@@ -389,9 +389,7 @@ let complete_graphite_find conf headers params =
 
 type graphite_render_metric =
   { target : string ;
-    datapoints : (float option * int) array ;
-    (* weight is only used when computing the top: *)
-    mutable weight : float [@ppp_ignore 0.] } [@@ppp PPP_JSON]
+    datapoints : (float option * int) array } [@@ppp PPP_JSON]
 type graphite_render_resp = graphite_render_metric list [@@ppp PPP_JSON]
 
 let time_of_graphite_time s =
@@ -400,36 +398,24 @@ let time_of_graphite_time s =
   else if s.[0] = '-' then time_of_reltime s
   else time_of_abstime s
 
-(* Return the target name of that function, given the where filter and
- * used factors. [fvals] are the scalar values to use for the factored
- * fields (fields present in [factors], in same order): *)
-let target_name_of func_name func_factors where used_factors fvals data_field =
-  (* Return the name of field for the [i]th factor of the function,
-   * ie the fvals if this field has been used as factor, or the
-   * value from the where filter otherwise: *)
-  let print_factor oc factor =
-    (match List.findi (fun i f -> factor = f) used_factors with
-    | exception Not_found -> (* take the value from the where filter *)
-        List.assoc factor where
-    | i, _ -> (* take the [i]th value *)
-        List.nth fvals i) |>
-    RamenTypes.to_string |> fix_quote |> String.print oc
-  in
-  Printf.sprintf2 "%s%s%a%s"
-    (String.nreplace ~str:func_name ~sub:"/" ~by:".")
-    (if func_factors = [] then "" else ".")
-    (List.print ~first:"" ~last:"." ~sep:"." print_factor) func_factors
-    data_field
-(*$= target_name_of & ~printer:identity
-  "a.df" (target_name_of "a" [] [] [] [] "df")
-  "a.b.df" (target_name_of "a/b" [] [] [] [] "df")
-  "a.b.v1.df" (target_name_of "a/b" ["f1"] ["f1", VString "v1"] [] [] "df")
-  "a.b.v1.v2.df" \
-    (target_name_of "a/b" ["f1";"f2"] ["f1", VString "v1"] \
-                    ["f2"] [VString "v2"] "df")
-  "a.\"3.14\".df" \
-    (target_name_of "a" ["f1"] ["f1", VFloat 3.14] [] [] "df")
- *)
+(* We output the field name and then a list of factor=value, to be simplified
+ * later to remove all common values: *)
+let target_name_of used_factors fvals =
+  List.fold_left2 (fun res f v -> (f, v) :: res
+  ) [] used_factors fvals
+
+(* Used to cound number of occurrences of names in labels: *)
+module SimpleSet =
+struct
+  type 'a t = Empty | Single of 'a | Many
+  let add t x =
+    match t with
+    | Empty -> Single x
+    | Single y when x = y -> t
+    | _ -> Many
+
+  let has_many = function Many -> true | _ -> false
+end
 
 let render_graphite conf headers body =
   let content_type = get_content_type headers in
@@ -569,14 +555,45 @@ let render_graphite conf headers body =
             (if Array.length v > 0 then v.(colnum).(fieldnum) else None),
             int_of_float t
           ) datapoints
-        (* TODO: rebuild the target name from the list of values in column *)
-        and target = target_name_of func_name func.F.factors where factors
-                                    column data_field in
-        { target ; datapoints ; weight = 0. } :: res
+        and target = target_name_of factors column in
+        (data_field, target, datapoints) :: res
       ) res data_fields
     ) res columns |> return
   in
   let%lwt resp = Hashtbl.fold metrics_of_scan scans return_nil in
+  (* Build the graphite_render_metric list out of those values, simplifying
+   * the label:
+   * Map from factor name to values present in the label: *)
+  let factor_values = Hashtbl.create 9 in
+  let data_fields =
+    List.fold_left (fun dfs (data_field, target, _) ->
+      List.iter (fun (fact_name, fact_val) ->
+        Hashtbl.modify_def (SimpleSet.Single fact_val) fact_name (fun vals ->
+          SimpleSet.add vals fact_val
+        ) factor_values ;
+      ) target ;
+      SimpleSet.add dfs data_field
+    ) SimpleSet.Empty resp in
+  let with_data_field = SimpleSet.has_many data_fields
+  and with_factors = (* Set of factor names we want to keep *)
+    Hashtbl.enum factor_values //@ (fun (fact_name, fact_vals) ->
+      if SimpleSet.has_many fact_vals then Some fact_name
+      else None) |>
+    Set.String.of_enum in
+  !logger.debug "kept factors = %a" (Set.String.print String.print) with_factors ;
+  let resp =
+    List.map (fun (data_field, target, datapoints) ->
+      let target =
+        Printf.sprintf2 "%s%a"
+          (if with_data_field then data_field ^" " else "")
+          (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
+            Printf.fprintf oc "%s=%a"
+              n RamenTypes.print v))
+            (List.filter (fun (fact_name, _fact_val) ->
+              Set.String.mem fact_name with_factors
+             ) target) in
+      { target ; datapoints }
+    ) resp in
   let body = PPP.to_string graphite_render_resp_ppp_json resp in
   !logger.debug "%d metrics from %d scans" (List.length resp) (Hashtbl.length scans) ;
   respond_ok body
