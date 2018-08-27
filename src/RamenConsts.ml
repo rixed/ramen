@@ -128,6 +128,7 @@ struct
   let loop =
     "Do not return after the GC is over. Instead, wait for the specified \
      amount of time and restart"
+  let dry_run = "Just display what would be deleted"
   let autoreload =
     "Should workers be automatically reloaded when the \
      binary changes? And if so, how frequently to check"

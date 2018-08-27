@@ -20,9 +20,9 @@ let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
 let v_regexp = regexp "v[0-9]+"
 let v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
 
-let cleanup_dir_old conf (dir, sub_re, current_version) =
+let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
   let dir = conf.C.persist_dir ^"/"^ dir in
-  !logger.debug "Cleaning directory %s" dir ;
+  !logger.debug "Cleaning directory %s..." dir ;
   (* Error in there will be delivered to the stream reader: *)
   match Sys.files_of dir with
   | exception Unix.Unix_error (Unix.ENOENT, _, _) -> ()
@@ -32,18 +32,21 @@ let cleanup_dir_old conf (dir, sub_re, current_version) =
     Enum.iter (fun fname ->
       let full_path = dir ^"/"^ fname in
       if fname = current_version then (
-        touch_file full_path (Unix.gettimeofday ())
+        if not dry_run then
+          touch_file full_path (Unix.gettimeofday ())
       ) else if string_match sub_re fname 0 &&
                 is_directory full_path &&
                 (* TODO: should be a few days *)
                 file_is_older_than (1. *. 86400.) fname
       then (
-        !logger.info "Deleting %s: unused, old version." fname ;
-        delete_directory full_path
+        !logger.info "Deleting %s: unused, old version%s"
+          fname (if dry_run then " (NOPE)" else "") ;
+        if not dry_run then
+          delete_directory full_path
       )
     ) files
 
-let cleanup_once conf max_archives =
+let cleanup_once conf dry_run max_archives =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
    * directories.
@@ -61,7 +64,7 @@ let cleanup_once conf max_archives =
       "workers/states", v_regexp, RamenVersions.worker_state ]
   in
   !logger.info "Cleaning old unused files..." ;
-  List.iter (cleanup_dir_old conf) to_clean ;
+  List.iter (cleanup_dir_old conf dry_run) to_clean ;
   (* Clean old archives *)
   let arcdir =
     conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
@@ -75,8 +78,10 @@ let cleanup_once conf max_archives =
     Array.fast_sort RingBufLib.arc_file_compare files ;
     for i = 0 to Array.length files - 1 - max_archives do
       let _, _, _, _, fname = files.(i) in
-      !logger.info "Deleting %s: old archive" fname ;
-      log_and_ignore_exceptions Unix.unlink fname
+      !logger.info "Deleting %s: old archive%s"
+        fname (if dry_run then " (NOPE)" else "") ;
+      if not dry_run then
+        log_and_ignore_exceptions Unix.unlink fname
     done
   in
   let on_dir fname rel_fname =
@@ -88,7 +93,7 @@ let cleanup_once conf max_archives =
   dir_subtree_iter ~on_dir reportdir ;
   dir_subtree_iter ~on_dir notifdir
 
-let cleanup_loop conf sleep_time max_archives =
+let cleanup_loop conf dry_run sleep_time max_archives =
   if !watchdog = None then
     let timeout = float_of_int sleep_time *. 2. in
     watchdog :=
@@ -96,6 +101,6 @@ let cleanup_loop conf sleep_time max_archives =
   let watchdog = Option.get !watchdog in
   RamenWatchdog.run watchdog ;
   forever (fun () ->
-    cleanup_once conf max_archives ;
+    cleanup_once conf dry_run max_archives ;
     RamenWatchdog.reset watchdog ;
     Unix.sleep sleep_time) ()

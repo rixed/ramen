@@ -112,11 +112,17 @@ let loop =
                    ["loop"] in
   Arg.(value (opt int ~vopt:3600 0 i))
 
+let dry_run =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.dry_run
+                   [ "dry-run" ] in
+  Arg.(value (flag i))
+
 let gc =
   Term.(
     (const RamenCliCmd.gc
       $ copts
       $ max_archives
+      $ dry_run
       $ loop),
     info ~doc:RamenConsts.CliInfo.gc "gc")
 
