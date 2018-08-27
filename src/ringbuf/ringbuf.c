@@ -537,6 +537,9 @@ err0:
  *  tx->record_start will point at word n+1 above. */
 extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t num_words)
 {
+  // It is currently not possible to have an empty record:
+  assert(num_words > 0);
+
   uint32_t cons_tail;
   uint32_t need_eof = 0;  // 0 never needs an EOF
 

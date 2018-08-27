@@ -526,17 +526,18 @@ let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   let tmin, tmax = time_of_tuple tuple |? (0., 0.) in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
-  if IntCounter.get stats_rb_write_bytes < 0 then
-    !logger.error "After adding %d, out vol = %d"
-      sersize (IntCounter.get stats_rb_write_bytes) ;
-  let tx = enqueue_alloc rb sersize in
-  let offs = serialize_tuple tx tuple in
-  if tmin > 2000000000. then
-    !logger.error "wrong tmin (%f) while enqueueing commit" tmin ;
-  if tmax > 2000000000. then
-    !logger.error "wrong tmax (%f) while enqueueing commit" tmax ;
-  enqueue_commit tx tmin tmax ;
-  assert (offs = sersize)
+  (* Nodes with no output (but notifications) have no business writing
+   * a ringbuf. Want a signal when a notification is sent? SELECT some
+   * value! *)
+  if sersize > 0 then
+    let tx = enqueue_alloc rb sersize in
+    let offs = serialize_tuple tx tuple in
+    if tmin > 2000000000. then
+      !logger.error "wrong tmin (%f) while enqueueing commit" tmin ;
+    if tmax > 2000000000. then
+      !logger.error "wrong tmax (%f) while enqueueing commit" tmax ;
+    enqueue_commit tx tmin tmax ;
+    assert (offs = sersize)
 
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)

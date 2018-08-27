@@ -196,6 +196,10 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
     }
 
     num_words = rbf->data[tx->record_start ++];  // which may be wrong already
+    // Note that num_words = 0 would be invalid, but as long as we haven't
+    // successfully written cons_head back to the RB we are not sure this is
+    // an actual record size.
+
     uint32_t dequeued = 1 + num_words;  // How many words we'd like to increment cons_head of
 
     if (num_words == UINT32_MAX) { // A wrap around marker
@@ -218,6 +222,9 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
   /* If the CAS succeeded it means nobody altered the indexes while we were
    * reading, therefore nobody wrote something silly in place of the number
    * of words present, so we are all good. */
+
+  // It is currently not possible to have an empty record:
+  assert(num_words > 0);
 
   return num_words*sizeof(uint32_t);
 }

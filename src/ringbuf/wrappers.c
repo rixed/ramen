@@ -167,6 +167,9 @@ static void check_size(int size)
   if (size > MAX_RINGBUF_MSG_SIZE) {
     caml_invalid_argument("enqueue: size must be less than " STR(MAX_RINGBUF_MSG_SIZE));
   }
+  if (size == 0) {
+    caml_invalid_argument("enqueue: there are no record of 0 words");
+  }
 }
 
 CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value tmin_, value tmax_)
