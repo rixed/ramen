@@ -613,6 +613,11 @@ let httpd =
       $ smt_solver),
     info ~doc:RamenConsts.CliInfo.httpd "httpd")
 
+let for_render =
+  let i = Arg.info ~doc:"exact match as for the render query"
+                   [ "for-render" ] in
+  Arg.(value (flag i))
+
 let query =
   let i = Arg.info ~doc:"test graphite query expansion"
                    ~docv:"QUERY" [] in
@@ -622,6 +627,7 @@ let expand =
   Term.(
     (const RamenCliCmd.graphite_expand
       $ copts
+      $ for_render
       $ query),
     info ~doc:"test graphite query expansion" "_expand")
 

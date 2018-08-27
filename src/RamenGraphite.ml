@@ -86,12 +86,16 @@ let rec tree_enum_fold f node_init stack_init te =
 
 (* Given a tree enumerator and a list of filters, return a tree enumerator
  * of the entries matching the filter: *)
-let rec filter_tree te = function
-  | [] -> te
-  | flt :: flts ->
-      E (List.filter_map (fun (a, te') ->
-        if flt a then Some (a, filter_tree te' flts)
-        else None) (get te))
+let filter_tree ?anchor_right te flts =
+  let rec loop te = function
+    | [] ->
+        if anchor_right = Some true && te <> E [] then None else Some te
+    | flt :: flts ->
+        Some (E (List.filter_map (fun (a, te') ->
+          if flt a then
+            Option.map (fun sub_tree -> a, sub_tree) (loop te' flts)
+          else None) (get te)))
+  in loop te flts |? E []
 
 (* We are going to build mostly a string tree_enum, with the addition that we
  * also want to know in which part of the tree we are and also to keep any
@@ -231,18 +235,21 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields programs =
      List.of_enum) in
   tree_enum_of_h h
 
+(* User pass a filter such as "foo.bar*.*.baz".
+ * We make it a list of 4 filters: "foo", "bar*", "*" and "baz".
+ * (This list is the argument [query] here). *)
 let filters_of_query query =
   List.map (fun q ->
     let glob = Globs.compile q in
     Globs.matches glob % fst) query
 
-let full_enum_tree_of_query conf query =
+let full_enum_tree_of_query conf ?anchor_right query =
     let%lwt programs = C.with_rlock conf return in
     RamenTimeseries.cache_possible_values conf programs ;%lwt
     let te = tree_enum_of_programs ~only_with_event_time:false
                                    ~only_num_fields:false programs in
     let filters = filters_of_query query in
-    return (filter_tree te filters)
+    return (filter_tree ?anchor_right te filters)
 
 (* Specialized version for graphite, skipping functions with no time info
  * and cached: *)
@@ -259,13 +266,12 @@ let enum_tree_of_query =
     C.last_conf_mtime conf
   in
   let get_tree = cached2 "enum_tree" reread time in
-  fun conf query ->
+  fun ?anchor_right conf query ->
     !logger.debug "Expanding query %a..."
       (List.print String.print) query ;
     let%lwt te = get_tree () conf in
     let filters = filters_of_query query in
-    return (filter_tree te filters)
-
+    return (filter_tree ?anchor_right te filters)
 
 let rec find_quote_from s i =
   if i >= String.length s then raise Not_found ;
@@ -283,9 +289,8 @@ let rec find_dot_from s i =
   if s.[i] = '.' then i else find_dot_from s (i + 1)
 
 (* query is composed of:
- * several components separated by a dots. Each non last components
- * can be either a plain word or a star. The last component can also
- * be "*word*".
+ * several components separated by a dots. Each components can be either a
+ * plain word or a star, but the last component can also be "*word*".
  * The answer is a list of graphite_metric which name field must be the
  * completed last component and which id field the query with the last
  * component completed. The idea is that id will then identify the timeseries
@@ -341,10 +346,10 @@ let expand_query_text conf query =
   ) [] (0, "") filtered |>
   return
 
-let expand_query_values conf query =
+let expand_query_values ?anchor_right conf query =
   let query = split_query query in
-  let%lwt filtered = enum_tree_of_query conf query in
   let depth0 = "", "", [], "" in
+  let%lwt filtered = enum_tree_of_query ?anchor_right conf query in
   tree_enum_fold (fun node_res
                       (prog_name, func_name, factors, data_field)
                       (n, section) is_leaf ->
@@ -492,7 +497,7 @@ let render_graphite conf headers body =
   (* We start by expanding the query so that we have also an expansion
    * for field/function names with matches. *)
   let%lwt targets =
-    Lwt_list.map_s (expand_query_values conf) targets in
+    Lwt_list.map_s (expand_query_values ~anchor_right:true conf) targets in
   (* Targets is now a list of enumerations of program + function name + factors
    * values + field name. Regardless of how many original query were sent, the
    * expected answer is a flat array of target name + timeseries.  We can

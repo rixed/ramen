@@ -663,11 +663,12 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
             port url_prefix router fault_injection_rate) |]) ;
   Option.may exit !RamenProcesses.quit
 
-let graphite_expand conf query () =
+let graphite_expand conf for_render query () =
   logger := make_logger conf.C.debug ;
   let query = String.nsplit ~by:"." query in
   let te = Lwt_main.run (
-    RamenGraphite.full_enum_tree_of_query conf query) in
+    RamenGraphite.full_enum_tree_of_query conf ~anchor_right:for_render
+                                               query) in
   let rec display indent te =
     let e = RamenGraphite.get te in
     let len = List.length e in
