@@ -126,10 +126,11 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
     t_stop = tmp;
   }
 
+# define MAX_WAIT_LOOP 10000
   // Update the prod_tail to match the new prod_head.
-  unsigned max_loop = 10000; // Beware of damaged ringbuffers!
+  unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
   while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
-    if (max_loop == 0) {
+    if (max_loop-- == 0) {
       fprintf(stderr, "%s: waited for prod_tail %"PRIu32" to advance to %"PRIu32
                       " for too long, assuming all concurrent writers have died!\n",
         rb->fname, rbf->prod_tail, tx->seen);
@@ -137,7 +138,6 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
       break;
     }
     sched_yield();
-    max_loop --;
   }
 
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
@@ -226,9 +226,9 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  unsigned max_loop = 10000; // Beware of damaged ringbuffers!
+  unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
   while (rbf->cons_tail != tx->seen) {
-    if (max_loop == 0) {
+    if (max_loop-- == 0) {
       fprintf(stderr, "%s: waited for cons_tail %"PRIu32" to advance to %"PRIu32
                       " for too long, assuming all concurrent readers have died!\n",
         rb->fname, rbf->cons_tail, tx->seen);
@@ -236,7 +236,6 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
       break;
     }
     sched_yield();
-    max_loop --;
   }
 
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
@@ -264,32 +263,7 @@ inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_si
   return sz;
 }
 
-/* When one stops/crash with an allocated tx then the ringbuffer will remains
- * unusable (since the next process that tries to commit will wait forever
- * until the cons catch up with the observed head. So whenever it is certain
- * there are no readers and no writers the ringbuffer should be "repaired".
- * In here, it is assumed that what has not been committed was totally lost.
- * Returns true of a fix was indeed necessary. */
-inline bool ringbuf_repair(struct ringbuf *rb)
-{
-  struct ringbuf_file *rbf = rb->rbf;
-  bool needed = false;
-
-  // Avoid writing in this mmaped page for no good reason:
-  if (rbf->prod_head != rbf->prod_tail) {
-    rbf->prod_head = rbf->prod_tail;
-    needed = true;
-  }
-
-  if (rbf->cons_head != rbf->cons_tail) {
-    rbf->cons_head = rbf->cons_tail;
-    needed = true;
-  }
-
-  return needed;
-}
-
-// Initialize the given TX to point at the first record and return its size
+// Initialize the given TX to point to the first record and return its size
 // Returns -1 if the file is empty, -2 on error
 inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)
 {
@@ -337,5 +311,13 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname);
 
 /* Unmap the ringbuffer. */
 extern enum ringbuf_error ringbuf_unload(struct ringbuf *);
+
+/* When one stops/crash with an allocated tx then the ringbuffer will remains
+ * unusable (since the next process that tries to commit will wait forever
+ * until the cons catch up with the observed head. So whenever it is certain
+ * there are no readers and no writers the ringbuffer should be "repaired".
+ * In here, it is assumed that what has not been committed was totally lost.
+ * Returns true if a fix was indeed necessary. */
+bool ringbuf_repair(struct ringbuf *);
 
 #endif

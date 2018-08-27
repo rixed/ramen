@@ -377,6 +377,7 @@ static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *ds
   assert(!(offs & 3));
   if (offs + size > wrtx->alloced) {
     printf("BAD OFFS: offs=%zu, size=%zu but tx->alloced only %zu\n", offs, size, wrtx->alloced);
+    fflush(stdout);
   }
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);

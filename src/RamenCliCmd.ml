@@ -48,7 +48,12 @@ let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
 
 let dummy_nop () =
   !logger.warning "Running in dummy mode" ;
-  RamenProcesses.until_quit (fun () -> Lwt_unix.sleep 3.)
+  let until_quit f =
+    let rec loop () =
+      if !RamenProcesses.quit <> None then return_unit
+      else f () >>= loop in
+    loop () in
+  until_quit (fun () -> Lwt_unix.sleep 3.)
 
 let supervisor conf daemonize to_stdout to_syslog autoreload
                report_period () =
@@ -419,7 +424,7 @@ let ps conf short with_header sort_col top pattern () =
 (*
  * `ramen tail`
  *
- * Display the last tuple output by an operation.
+ * Display the last tuple(s) output by an operation.
  *
  * This first create a non-wrapping buffer file and then asks the operation
  * to write in there for 1 hour (by default).

@@ -511,8 +511,8 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
     ) (sersize_of_u32 + nullmask_sz_of_vector (Array.length parameters))
       parameters
   in
-  notification_nullmask_sz + notification_fixsz + sersize_of_string worker +
-  sersize_of_string name + psz
+  notification_nullmask_sz + notification_fixsz +
+  sersize_of_string worker + sersize_of_string name + psz
 
 let write_notif ?delay_rec rb (_, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->

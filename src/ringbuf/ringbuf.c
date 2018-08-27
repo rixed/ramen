@@ -23,7 +23,6 @@ extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t co
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
-extern inline bool ringbuf_repair(struct ringbuf *rb);
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
 
@@ -578,4 +577,23 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   rbf->data[tx->record_start ++] = num_words;
 
   return RB_OK;
+}
+
+bool ringbuf_repair(struct ringbuf *rb)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+  bool needed = false;
+
+  // Avoid writing in this mmaped page for no good reason:
+  if (rbf->prod_head != rbf->prod_tail) {
+    rbf->prod_head = rbf->prod_tail;
+    needed = true;
+  }
+
+  if (rbf->cons_head != rbf->cons_tail) {
+    rbf->cons_head = rbf->cons_tail;
+    needed = true;
+  }
+
+  return needed;
 }

@@ -797,7 +797,7 @@ let notify conf rb worker event_time
       [ "in" ], field_of_tuple_in tuple_in ;
       [ "param" ], field_of_params ] in
   let name = subst_tuple_fields tuples name
-	and parameters =
+  and parameters =
     List.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in

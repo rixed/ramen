@@ -24,12 +24,6 @@ let rand_seed = ref None
  * Helpers:
  *)
 
-let until_quit f =
-  let rec loop () =
-    if !quit <> None then return_unit
-    else f () >>= loop in
-  loop ()
-
 (* To be called before synchronize_running *)
 let repair_and_warn what rb =
   if RingBuf.repair rb then
@@ -328,10 +322,7 @@ let really_start conf must_run proc parents children =
      * then only assume it's broken. *)
     let rb = RingBuf.load rb_name in
     finally (fun () -> RingBuf.unload rb)
-      (fun () ->
-        if RingBuf.repair rb then (
-          IntCounter.add stats_ringbuf_repairs 1 ;
-          !logger.warning "Ringbuf for %s was damaged" fq_str)) ()
+      (fun () -> repair_and_warn fq_str rb) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
