@@ -448,7 +448,7 @@ let seq_range bname =
  * both RamenSerialization and RamenNotification depends on too many
  * modules for the workers. *)
 
-let notification_nullmask_sz = round_up_to_rb_word 2
+let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
 
 let serialize_notification tx
