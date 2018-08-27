@@ -20,7 +20,7 @@ let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
 let v_regexp = regexp "v[0-9]+"
 let v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
 
-let cleanup_dir conf (dir, sub_re, current_version) =
+let cleanup_dir_old conf (dir, sub_re, current_version) =
   let dir = conf.C.persist_dir ^"/"^ dir in
   !logger.debug "Cleaning directory %s" dir ;
   (* Error in there will be delivered to the stream reader: *)
@@ -38,7 +38,7 @@ let cleanup_dir conf (dir, sub_re, current_version) =
                 (* TODO: should be a few days *)
                 file_is_older_than (1. *. 86400.) fname
       then (
-        !logger.info "Deleting old version %s." fname ;
+        !logger.info "Deleting %s: unused, old version." fname ;
         delete_directory full_path
       )
     ) files
@@ -61,7 +61,7 @@ let cleanup_once conf max_archives =
       "workers/states", v_regexp, RamenVersions.worker_state ]
   in
   !logger.info "Cleaning old unused files..." ;
-  List.iter (cleanup_dir conf) to_clean ;
+  List.iter (cleanup_dir_old conf) to_clean ;
   (* Clean old archives *)
   let arcdir =
     conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
@@ -75,7 +75,7 @@ let cleanup_once conf max_archives =
     Array.fast_sort RingBufLib.arc_file_compare files ;
     for i = 0 to Array.length files - 1 - max_archives do
       let _, _, _, _, fname = files.(i) in
-      !logger.info "Deleting old archive %s" fname ;
+      !logger.info "Deleting %s: old archive" fname ;
       log_and_ignore_exceptions Unix.unlink fname
     done
   in
