@@ -286,12 +286,10 @@ let get_timeseries conf msg =
           List.fold_left (fun filters where ->
             if is_private_field where.lhs then
               failwith ("Cannot filter through private field "^ where.lhs) ;
-            if where.op = "=" then
-              let open RamenSerialization in
-              let _, ftyp = find_field func.F.out_type where.lhs in
-              let v = value_of_string ftyp.typ where.rhs in
-              (where.lhs, v) :: filters
-            else filters
+            let open RamenSerialization in
+            let _, ftyp = find_field func.F.out_type where.lhs in
+            let v = value_of_string ftyp.typ where.rhs in
+            (where.lhs, where.op, v) :: filters
           ) [] data_spec.where |> return) in
       let%lwt columns, datapoints =
         RamenTimeseries.get conf req.num_points req.since req.until

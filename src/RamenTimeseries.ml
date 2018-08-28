@@ -106,8 +106,8 @@ let get conf ?duration max_data_points since until where factors
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     func_name
     (List.print String.print) data_fields
-    (List.print (fun oc (field, value) ->
-      Printf.fprintf oc "%s=%a" field RamenTypes.print value)) where
+    (List.print (fun oc (field, op, value) ->
+      Printf.fprintf oc "%s%s%a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, ser, params, event_time =

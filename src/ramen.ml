@@ -443,13 +443,46 @@ let max_seq =
                    ["max-seqnum"] in
   Arg.(value (opt (some int) None i))
 
+let filter =
+  (* Longer first: *)
+  let operators = [ ">="; "<="; "="; "<"; ">" ] in
+  let parse s =
+    match
+      List.find_map (fun op ->
+        match String.split s ~by:op with
+        | exception Not_found -> None
+        | pname, pval -> Some (String.trim pname, op, String.trim pval)
+      ) operators
+    with
+    | exception Not_found ->
+        Pervasives.Error (
+          `Msg "You must specify the identifier, followed by an equal \
+                sign (=), followed by the value.")
+    | pname, op, pval ->
+        let open RamenParsing in
+        let p = allow_surrounding_blanks RamenTypes.Parser.(
+                  (* Parse the command line as narrowly as possible, values
+                   * will be enlarged later as required: *)
+                  p_ ~min_int_width:0 ||| null) in
+        let stream = stream_of_string pval in
+        let m = [ "value of command line parameter "^ pname ] in
+        (match p m None Parsers.no_error_correction stream |>
+              to_result with
+        | Bad e ->
+            let err =
+              IO.to_string (print_bad_result RamenTypes.print) e in
+            Pervasives.Error (`Msg err)
+        | Ok (v, _) ->
+            Pervasives.Ok (pname, op, v))
+  and print fmt (pname, op, pval) =
+    Format.fprintf fmt "%s%s%s" pname op (RamenTypes.to_string pval)
+  in
+  Arg.conv ~docv:"IDENTIFIER[=|>|<|>=|<=]VALUE" (parse, print)
+
 let where =
   let i = Arg.info ~doc:RamenConsts.CliInfo.where
                    ~docv:"FIELD=VALUE" ["w"; "where"] in
-  (* NOTE: we reuse assignment (introduced for parameters) but one day
-   * we may want to allow arbitrary expressions or at least other
-   * generic operator such as comparisons *)
-  Arg.(value (opt_all assignment [] i))
+  Arg.(value (opt_all filter [] i))
 
 let with_seqnums =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_seqnums

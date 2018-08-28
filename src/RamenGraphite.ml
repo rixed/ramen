@@ -518,7 +518,7 @@ let render_graphite conf headers body =
         | 1 ->
           (* If we are interested in only one value, do not ask for this factor
            * but add a where filter: *)
-          (factor, Set.min_elt wanted) :: where,
+          (factor, "=", Set.min_elt wanted) :: where,
           factors, i + 1
         | _many ->
           (* We want several values for that factor, so we will take it as a

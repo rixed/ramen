@@ -170,16 +170,21 @@ let find_param params n =
 let filter_tuple_by ser where =
   (* Find the indices of all the involved fields, and parse the values: *)
   let where =
-    List.map (fun (n, v) ->
+    List.map (fun (n, op, v) ->
       let idx, t = find_field ser n in
       let v =
         if v = VNull then VNull else
         RamenTypes.enlarge_value t.typ.structure v in
-      idx, v
+      let op =
+        match op with
+        | "=" -> (=) | "<=" -> (<=) | ">=" -> (>=)
+        | "<" -> (<) | ">" -> (>)
+        | _ -> failwith "Invalid operator" in
+      idx, op, v
     ) where in
   fun tuple ->
-    List.for_all (fun (idx, v) ->
-      tuple.(idx) = v
+    List.for_all (fun (idx, op, v) ->
+      op tuple.(idx) v
     ) where
 
 (* By default, this loops until we reach ma and while_ yields true.
