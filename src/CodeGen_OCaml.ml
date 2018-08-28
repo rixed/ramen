@@ -1616,7 +1616,7 @@ let emit_read_csv_file opc oc name csv_fname unlink
   Printf.fprintf oc
      "%a\n%a\n%a\n%a\n\
      let %s () =\n\
-       \tCodeGenLib.read_csv_file %s %b %S sersize_of_tuple_\n\
+       \tCodeGenLib_Skeletons.read_csv_file %s %b %S sersize_of_tuple_\n\
        \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %s\n\
        \t\tfield_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
@@ -1632,7 +1632,7 @@ let emit_listen_on opc oc name net_addr port proto =
   let collector = collector_of_proto proto in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib_Skeletons.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
@@ -1646,7 +1646,7 @@ let emit_well_known opc oc name from
   let open RamenProtocols in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib.read_well_known %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
+      \tCodeGenLib_Skeletons.read_well_known %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
@@ -2136,7 +2136,8 @@ let when_to_check_group_for_expr expr =
         | _ -> need_all
       ) false expr
   in
-  if need_all then "CodeGenLib.ForAll" else "CodeGenLib.ForInGroup"
+  if need_all then "CodeGenLib_Skeletons.ForAll"
+  else "CodeGenLib_Skeletons.ForInGroup"
 
 let emit_sort_expr name in_typ mentioned ~opc oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
@@ -2237,7 +2238,7 @@ let emit_aggregate opc oc name in_typ out_typ =
                    | _ -> s) s e) sf.RamenOperation.expr
       ) Set.String.empty fields |>
       fetch_recursively in
-    (* Now combine all three sets: *)
+    (* Now combine these sets: *)
     Set.String.union from_commit_cond for_updates
   in
   !logger.debug "minimal fields: %a"
@@ -2285,7 +2286,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_sort_expr "sort_by_" in_typ mentioned ~opc) (match sort with Some (_, _, b) -> b | None -> [])
     (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
-      \tCodeGenLib.aggregate\n\
+      \tCodeGenLib_Skeletons.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_ out_tuple_of_minimal_tuple_\n\

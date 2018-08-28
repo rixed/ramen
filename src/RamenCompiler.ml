@@ -343,9 +343,9 @@ let compile conf root_path get_parent program_name program_code =
            PPP_prettify.prettify) ;
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;
-        (* Then call CodeGenLib.casing with all this: *)
+        (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
-          "let () = CodeGenLib.casing %S rc_str_ rc_marsh_ [\n"
+          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ [\n"
             RamenVersions.codegen ;
         Hashtbl.iter (fun _ (func, _op) ->
           assert (pname.[String.length pname-1] <> '/') ;

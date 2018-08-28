@@ -27,4 +27,4 @@ let ringbuf = "v4" (* last: nullable in RamenTypes.t *)
 let out_ref = "v3" (* last: use PPP *)
 
 (* Workers state format *)
-let worker_state = "v9" (* last: removal of virtual fields & co *)
+let worker_state = "v10" (* last: remove dead state member *)

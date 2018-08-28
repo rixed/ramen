@@ -165,8 +165,10 @@ CODEGENLIB_SOURCES = \
 	src/RamenFileNotify.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
+	src/CodeGenLib_Casing.ml \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
+	src/CodeGenLib_Skeletons.ml \
 	src/HeavyHitters.ml \
 	src/CodeGenLib.ml
 
