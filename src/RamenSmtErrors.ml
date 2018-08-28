@@ -41,36 +41,36 @@ type expr =
 let print_expr oc =
   let p fmt = Printf.fprintf oc fmt in
   function
-  | Nullability false -> p "must not be nullable"
-  | Nullability true -> p "must be nullable"
-  | Sortable -> p "must be sortable"
+  | Nullability false -> p " must not be nullable"
+  | Nullability true -> p " must be nullable"
+  | Sortable -> p " must be sortable"
   | Same -> p ": both arguments must have the same type"
-  | VecSame -> p "vector elements must have the same type"
-  | CaseCond c -> p "condition #%d of case expression must be a boolean" c
-  | CaseCons c -> p "consequent #%d of case expression must have a type \
+  | VecSame -> p ": vector elements must have the same type"
+  | CaseCond c -> p ": condition #%d of case expression must be a boolean" c
+  | CaseCons c -> p ": consequent #%d of case expression must have a type \
                      compatible with others" c
-  | CaseElse -> p "else clause of case expression must have a type \
+  | CaseElse -> p ": else clause of case expression must have a type \
                   compatible with other consequents"
-  | CaseNullProp -> p "case expression is as nullable as conditions and \
+  | CaseNullProp -> p ": case expression is as nullable as conditions and \
                        consequents"
-  | CoalesceAlt a -> p "alternative #%d of coalesce expression must have a \
-                        type compatible with others" a
-  | CoalesceNullLast a -> p "alternative #%d of coalesce expression must not \
-                             be nullable, unless it's the last one" a
-  | Tuple -> p "must be a tuple"
-  | Gettable -> p "must be a vector or a list"
-  | AnyCidr -> p "must be a CIDR"
-  | NumericVec -> p "must be a vector of numeric elements"
-  | InType -> p "arguments must be compatible with the IN operator"
-  | LengthType -> p "arguments must be compatible with the LENGTH operator"
-  | PrevNull -> p "must be null as it is drawn from the previous tuple"
-  | Integer -> p "must be an integer"
-  | Signed -> p "must be a signed integer"
-  | Unsigned -> p "must be an unsigned integer"
-  | Numeric -> p "must be numeric"
-  | ActualType t -> p "must be of type %s" t
-  | InheritType -> p "must match all parents output"
-  | InheritNull -> p "must match all parents nullability"
+  | CoalesceAlt a -> p ": alternative #%d of coalesce expression must have \
+                        a type compatible with others" a
+  | CoalesceNullLast a -> p ": alternative #%d of coalesce expression must \
+                             be nullable iff it's the last one" a
+  | Tuple -> p " must be a tuple"
+  | Gettable -> p " must be a vector or a list"
+  | AnyCidr -> p " must be a CIDR"
+  | NumericVec -> p " must be a vector of numeric elements"
+  | InType -> p ": arguments must be compatible with the IN operator"
+  | LengthType -> p ": arguments must be compatible with the LENGTH operator"
+  | PrevNull -> p " must be null as it is drawn from the previous tuple"
+  | Integer -> p " must be an integer"
+  | Signed -> p " must be a signed integer"
+  | Unsigned -> p " must be an unsigned integer"
+  | Numeric -> p " must be numeric"
+  | ActualType t -> p " must be of type %s" t
+  | InheritType -> p " must match all parents output"
+  | InheritNull -> p " must match all parents nullability"
 
 type func =
   | Clause of string * expr
@@ -83,12 +83,12 @@ type func =
 let print_func oc =
   let p fmt = Printf.fprintf oc fmt in
   function
-  | Clause (c, e) -> p "clause %s %a" c print_expr e
-  | Notif (i, e) -> p "notification #%d %a" i print_expr e
-  | NotifParam (i, j, e) -> p "notification #%d, parameter #%d %a"
+  | Clause (c, e) -> p "clause %s%a" c print_expr e
+  | Notif (i, e) -> p "notification #%d%a" i print_expr e
+  | NotifParam (i, j, e) -> p "notification #%d, parameter #%d%a"
                               i j print_expr e
-  | Preprocessor e -> p "CSV preprocessor %a" print_expr e
-  | Filename e -> p "CSV filename %a" print_expr e
+  | Preprocessor e -> p "CSV preprocessor%a" print_expr e
+  | Filename e -> p "CSV filename%a" print_expr e
 
 type t = Expr of int * expr
        | Func of int * func
@@ -110,7 +110,7 @@ let print funcs oc =
   function
   | Expr (i, e) ->
       let func_name, expr = expr_of_id i in
-      p "In function %S: expression \"%a\" %a"
+      p "In function %S: expression \"%a\"%a"
         (RamenName.string_of_func func_name)
         (RamenExpr.print ~max_depth:3 false) expr print_expr e
   | Func (i, e) ->
