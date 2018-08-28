@@ -1910,15 +1910,13 @@ let emit_where
   )
 
 let emit_field_selection
-      (* If true, we update the state but minimize the number of calls to
-       * finalizers by returning a tuple made only of the subset of fields
-       * required by commit_cond, group.previous and state updates.
+      (* If true, we update the state and finalize as few fields as
+       * possible (only those required by commit_cond and update_states).
        * If false, we have the minimal tuple as an extra parameter, and
        * only have to build the final out_tuple (taking advantage of the
        * fields already computed in minimal_typ). And no need to update
-       * states. *)
+       * states at all. *)
       ~build_minimal
-      ?(with_group=false) (* including previous, of type tuple_out option *)
       name in_typ mentioned
       out_typ minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
@@ -1927,11 +1925,9 @@ let emit_field_selection
     ) minimal_typ in
   let must_output_field field_name =
     not build_minimal || field_in_minimal field_name in
-  Printf.fprintf oc "let %s %a "
+  Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ "
     name
     (emit_in_tuple mentioned) in_typ ;
-  if with_group then
-    Printf.fprintf oc "out_previous_opt_ group_ global_ " ;
   if not build_minimal then
     Printf.fprintf oc "%a " (emit_tuple TupleOut) minimal_typ ;
   Printf.fprintf oc "=\n" ;
@@ -2279,8 +2275,8 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_key_of_input "key_of_input_" in_typ mentioned ~opc) key
     emit_maybe_fields out_typ
     (emit_when "commit_cond_" in_typ mentioned minimal_typ ~opc) commit_cond
-    (emit_field_selection ~build_minimal:true ~with_group:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
-    (emit_field_selection ~build_minimal:false ~with_group:true "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:false "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_group_") out_typ
@@ -2295,7 +2291,8 @@ let emit_aggregate opc oc name in_typ out_typ =
       \tCodeGenLib_Skeletons.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
-      \t\tminimal_tuple_of_group_ out_tuple_of_minimal_tuple_\n\
+      \t\tminimal_tuple_of_group_\n\
+      \t\tout_tuple_of_minimal_tuple_\n\
       \t\tmerge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\tcommit_cond_ %b %b %s\n\
