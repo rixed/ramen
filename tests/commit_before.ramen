@@ -8,5 +8,8 @@ DEFINE f AS
 -- Note: we won't have "Volvo" at the end since it will never be commited:
 DEFINE count_cars AS
   FROM tests/fixtures/cars/csv
-  SELECT manufacturer, SUM 1 as num_models
-  COMMIT BEFORE COALESCE(out.manufacturer != group.previous.manufacturer, false);
+  SELECT
+    manufacturer,
+    lag locally manufacturer AS prev_manufacturer,
+    SUM 1 AS num_models
+  COMMIT BEFORE out.manufacturer != out.prev_manufacturer;

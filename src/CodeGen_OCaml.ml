@@ -1928,13 +1928,14 @@ let emit_field_selection
     Printf.fprintf oc "%a " (emit_tuple TupleOut) minimal_typ ;
   Printf.fprintf oc "=\n" ;
   List.iter (fun sf ->
-      if build_minimal then (
-        (* Update the states as required for this field, just before
-         * computing the field actual value. *)
-        Printf.fprintf oc "\t(* State Update for %s: *)\n" sf.RamenOperation.alias ;
-        emit_state_update_for_expr ~opc oc sf.RamenOperation.expr ;
-      ) ;
-      if must_output_field sf.alias then (
+      if must_output_field sf.RamenOperation.alias then (
+        if build_minimal then (
+          (* Update the states as required for this field, just before
+           * computing the field actual value. *)
+          Printf.fprintf oc "\t(* State Update for %s: *)\n"
+            sf.RamenOperation.alias ;
+          emit_state_update_for_expr ~opc oc sf.RamenOperation.expr ;
+        ) ;
         if not build_minimal && field_in_minimal sf.alias then (
           (* We already have this binding *)
         ) else (
@@ -1968,6 +1969,37 @@ let emit_field_selection
       ) else i
     ) 0 out_typ |> ignore ;
   Printf.fprintf oc "\n\t)\n"
+
+let emit_update_states
+      name in_typ mentioned
+      out_typ minimal_typ ~opc oc selected_fields =
+  let field_in_minimal field_name =
+    List.exists (fun ft ->
+      ft.RamenTuple.typ_name = field_name
+    ) minimal_typ in
+  Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a "
+    name
+    (emit_in_tuple mentioned) in_typ
+    (emit_tuple TupleOut) minimal_typ ;
+  Printf.fprintf oc "=\n" ;
+  List.iter (fun sf ->
+    if not (field_in_minimal sf.RamenOperation.alias) then (
+      (* Update the states as required for this field, just before
+       * computing the field actual value. *)
+      Printf.fprintf oc "\t(* State Update for %s: *)\n"
+        sf.RamenOperation.alias ;
+      emit_state_update_for_expr ~opc oc sf.RamenOperation.expr ;
+      if RamenExpr.is_generator sf.RamenOperation.expr then
+        (* So that we have a single out_typ both before and after tuples generation *)
+        Printf.fprintf oc "\tlet %s = () in\n"
+          (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
+      else
+        Printf.fprintf oc "\tlet %s = %a in\n"
+          (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
+          (emit_expr ?state:None ~context:Finalize ~opc)
+            sf.RamenOperation.expr)
+  ) selected_fields ;
+  Printf.fprintf oc "\t()\n"
 
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
@@ -2256,7 +2288,7 @@ let emit_aggregate opc oc name in_typ out_typ =
   and where_need_group = expr_needs_group where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond in
   Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_tuple_" mentioned) in_typ
@@ -2273,6 +2305,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_when "commit_cond_" in_typ mentioned minimal_typ ~opc) commit_cond
     (emit_field_selection ~build_minimal:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
     (emit_field_selection ~build_minimal:false "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_update_states "update_states_" in_typ mentioned out_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_group_") out_typ
@@ -2288,6 +2321,7 @@ let emit_aggregate opc oc name in_typ out_typ =
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
+      \t\tupdate_states_\n\
       \t\tout_tuple_of_minimal_tuple_\n\
       \t\tmerge_on_ %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\

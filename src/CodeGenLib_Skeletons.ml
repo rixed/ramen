@@ -464,7 +464,8 @@ type ('local_state, 'tuple_in, 'minimal_out) group =
      * require the group states and this minimal_out, but then what to do of
      * expressions such as "SELECT in.foo + 95th percentile bar"? *)
     mutable current_out : 'minimal_out ;
-    mutable local_state : 'local_state (* the record of aggregation values aka the group or local state *) ;
+    mutable previous_out : 'minimal_out option ;
+    mutable local_state : 'local_state (* the record of aggregation values aka the group or local state *)
   }
 
 (* WARNING: increase RamenVersions.worker_state whenever this record is
@@ -596,6 +597,11 @@ let aggregate
         'tuple_in -> (* current input *)
         'generator_out option -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out)
+      (* Update the states for all other fields. *)
+      (update_states :
+        'tuple_in -> (* current input *)
+        'generator_out option -> (* last_out *)
+        'local_state -> 'global_state -> 'minimal_out -> unit)
       (* Build the generator_out tuple from the minimal_out and all the same
        * inputs as minimal_tuple_of_aggr, all of which must be saved in the
        * group so we can commit other groups as well as the current one. *)
@@ -737,14 +743,38 @@ let aggregate
       in
       let commit_and_flush (k, g) =
         (* Output the tuple *)
-        let out =
-          out_tuple_of_minimal_tuple
-            g.last_in s.last_out_tuple g.local_state s.global_state
-            g.current_out in
-        s.last_out_tuple <- Some out ;
-        outputer in_tuple out ;%lwt
+        (match commit_before, g.previous_out with
+        | false, _ ->
+            let out =
+              out_tuple_of_minimal_tuple
+                g.last_in s.last_out_tuple g.local_state s.global_state
+                g.current_out in
+            s.last_out_tuple <- Some out ;
+            outputer in_tuple out
+        | true, None ->
+            return_unit
+        | true, Some previous_out ->
+            let out =
+              out_tuple_of_minimal_tuple
+                g.last_in s.last_out_tuple g.local_state s.global_state
+                previous_out in
+            s.last_out_tuple <- Some out ;
+            outputer in_tuple out) ;%lwt
         (* Flush/Keep/Slide *)
-        if do_flush then Hashtbl.remove s.groups k ;
+        if do_flush then (
+          if commit_before then (
+            (* Note that when "committing before" groups never disappear. *)
+            (* Restore the group as if this tuple were the first and only
+             * one: *)
+            g.first_in <- g.last_in ;
+            g.previous_out <- None ;
+            (* We cannot rewind the global state, but the local state we
+             * can: for other fields than minimum-out we can reset, and
+             * for the states owned by minimum-out, where_slow and the
+             * commit condition we can replay (TODO): *)
+            g.local_state <- group_init s.global_state
+          ) else Hashtbl.remove s.groups k
+        ) ;
         return_unit
       in
       (* Now that this is all in place, here are the next steps:
@@ -781,8 +811,9 @@ let aggregate
               let g = {
                 first_in = in_tuple ;
                 last_in = in_tuple ;
-                current_out;
-                local_state ;
+                current_out ;
+                previous_out = None ;
+                local_state } in
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
               Some (k, g)
@@ -796,6 +827,7 @@ let aggregate
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving g *)
               g.last_in <- in_tuple ;
+              g.previous_out <- Some g.current_out ;
               g.current_out <-
                 minimal_tuple_of_aggr
                   g.last_in s.last_out_tuple g.local_state s.global_state ;
@@ -806,15 +838,23 @@ let aggregate
       | Some (k, g) ->
         (* 5. Post-condition to commit and flush *)
         IntCounter.add stats_selected_tuple_count 1 ;
+        if not commit_before then
+          update_states g.last_in s.last_out_tuple
+                        g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
           commit_and_flush (k, g)
-        ) else return_unit
+        ) else return_unit ;%lwt
+        if commit_before then
+          update_states g.last_in s.last_out_tuple
+                        g.local_state s.global_state g.current_out ;
+        return_unit
       | None -> (* in_tuple failed filtering *)
         return_unit) ;%lwt
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
       if when_to_check_for_commit = ForAll then (
+        (* FIXME: prevent commit_before in that case *)
         let to_commit =
           (* FIXME: What if commit-when update the global state? We are
            * going to update it several times here. We should prevent this
