@@ -862,13 +862,19 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, StatelessFunMisc (_, Print es), _ ->
     (* We want to print nulls as well, so we make all parameters optional
      * strings: *)
-    assert (es <> []) ;
-    Printf.fprintf oc "(CodeGenLib.print %a ; %a)"
-      (List.print ~first:"[" ~last:"]" ~sep:";" (fun oc e ->
-         Printf.fprintf oc "%s(%a)"
-           (if is_nullable e then "" else "NotNull ")
-           (conv_to ?state ~context ~opc (Some TString)) e)) es
-      (emit_expr ?state ~context ~opc) (List.hd es)
+    (match es with
+    | [] -> ()
+    | e::es ->
+        let e_structure = (Option.get (typ_of e).typ).structure in
+        Printf.fprintf oc
+          "(let x0_ = %a in CodeGenLib.print (%s(%a x0_)::%a) ; x0_)"
+          (emit_expr ?state ~context ~opc) e
+          (if is_nullable e then "" else "NotNull ")
+          (conv_from_to ~nullable:(is_nullable e)) (e_structure, TString)
+          (List.print (fun oc e ->
+             Printf.fprintf oc "%s(%a)"
+               (if is_nullable e then "" else "NotNull ")
+               (conv_to ?state ~context ~opc (Some TString)) e)) es)
   (* IN can have many meanings: *)
   | Finalize, StatelessFun2 (_, In, e1, e2), TBool ->
     (match (Option.get (typ_of e1).typ).structure,
