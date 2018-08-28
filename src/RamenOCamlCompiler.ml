@@ -7,7 +7,7 @@ module C = RamenConf
 let max_simult_compilations = ref 4
 let use_external_compiler = ref false
 let bundle_dir = ref ""
-let warnings = "-58"
+let warnings = "-58-26"
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
 

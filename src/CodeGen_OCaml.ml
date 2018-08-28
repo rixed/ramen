@@ -1459,9 +1459,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
       Printf.fprintf oc "\t\t(* %s *)\n" id ;
       Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
       emit_sersize_of_var field.typ.structure field.typ.nullable oc id ;
-      (* Note: disable warning 26 because emit_sersize_of_var might
-       * have generated tons of unused bindings: *)
-      Printf.fprintf oc "\n\t\t) else 0 [@@ocaml.warning \"-26\"] in\n" ;
+      Printf.fprintf oc "\n\t\t) else 0 in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
     ) ser_typ ;
   Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
@@ -1696,7 +1694,6 @@ let emit_read_tuple name mentioned oc in_typ =
         val_var offs_var
         offs_var
     ) else (
-    Printf.fprintf oc "\t\tignore %s ;\n" nulli_var ; (* avoids a warning: *)
     match typ with
     (* Constructed types are prefixed with a nullmask and then read item by
      * item: *)
@@ -1761,7 +1758,6 @@ let emit_read_tuple name mentioned oc in_typ =
       ) ;
       nulli + (if field.typ.nullable then 1 else 0)
     ) 0 ser_typ in
-  Printf.fprintf oc "\tignore offs_ ;\n" ; (* avoid a warning *)
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
   let in_typ_only_ser =
