@@ -141,17 +141,23 @@ let test_output func bname output_spec =
   let tuple_spec_print oc (spec, best_miss) =
     List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
     List.print (file_spec_print !best_miss) oc in
+  let err_string_of_tuples lst =
+    let len = List.length lst in
+    let pref =
+      if len <= 1 then "this tuple: "
+      else Printf.sprintf "these %d tuples: " len in
+    pref ^
+    IO.to_string (List.print ~first:"\n  " ~last:"\n" ~sep:"\n  "
+                    tuple_spec_print) lst in
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
       (RamenName.string_of_fq (F.fq_name func)))^
     (if !tuples_to_find = [] then "" else
-      " but could not find these tuples: "^
-        IO.to_string (List.print tuple_spec_print) !tuples_to_find) ^
+      " but could not find "^ err_string_of_tuples !tuples_to_find)^
     (if !tuples_to_not_find = [] then "" else
-      " and found these tuples: "^
-        IO.to_string (List.print tuple_spec_print) !tuples_to_not_find)
+      " and found "^ err_string_of_tuples !tuples_to_not_find)
   in
   return (success, msg)
 
