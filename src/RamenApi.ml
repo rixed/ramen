@@ -251,21 +251,25 @@ let get_columns conf msg =
 type get_timeseries_req =
   { since : float ;
     until : float ;
-    num_points : int ;
+    num_points : int [@ppp_default 100] ;
     data : (string, timeseries_data_spec) Hashtbl.t }
   [@@ppp PPP_JSON]
 
 and timeseries_data_spec =
   { select : string list ;
-    where : where_spec list [@ppp_default []] }
+    where : where_spec list [@ppp_default []] ;
+    factors : string list [@ppp_default []] }
   [@@ppp PPP_JSON]
 
 type get_timeseries_resp =
   { times : float array ;
-    values : (string, table_values) Hashtbl.t }
+    values : (string (* table *), table_values) Hashtbl.t }
   [@@ppp PPP_JSON]
 
-and table_values = (string, float option array) Hashtbl.t
+and table_values =
+  { column_labels : string list array ;
+    (* One optional float per selected field, per label, per time: *)
+    column_values : float option array array array }
   [@@ppp PPP_JSON]
 
 let get_timeseries conf msg =
@@ -291,30 +295,23 @@ let get_timeseries conf msg =
             let v = value_of_string ftyp.typ where.rhs in
             (where.lhs, where.op, v) :: filters
           ) [] data_spec.where |> return) in
-      let%lwt columns, datapoints =
+      let%lwt column_labels, datapoints =
         RamenTimeseries.get conf req.num_points req.since req.until
-                            filters [] table data_spec.select in
-      assert (columns = [| |] (* if there was no result *) ||
-              columns = [| [] |] (* As we asked for no factors *)) ;
-      let num_selected = List.length data_spec.select in
-      let table_columns =
-        Array.init num_selected (fun _ ->
-          Array.create req.num_points None
-        ) in
+                            filters data_spec.factors table
+                            data_spec.select in
+      (* [column_labels] is an array of labels (empty if no result).
+       * Each label is a list of factors values. *)
+      let column_labels =
+        Array.map (List.map RamenTypes.to_string) column_labels in
+      let column_values = Array.create req.num_points [||] in
+      Hashtbl.add values table { column_labels ; column_values } ;
       Enum.iteri (fun ti (t, data) ->
-        assert (Array.length data <= 1) ; (* No factors *)
-        for ci = 0 to num_selected - 1 do
-          table_columns.(ci).(ti) <-
-            if Array.length data = 0 then None else data.(0).(ci)
-        done ;
+        (* in data we have one column per column-label: *)
+        assert (Array.length data = Array.length column_labels) ;
+        column_values.(ti) <- data ;
         if not !times_inited then times.(ti) <- t
       ) datapoints ;
       times_inited := true ;
-      let table_values = Hashtbl.create num_selected in
-      List.iteri (fun ci field_name ->
-        Hashtbl.add table_values field_name table_columns.(ci)
-      ) data_spec.select ;
-      Hashtbl.add values table table_values ;
       return_unit
     ) in
   let resp = { times ; values } in
