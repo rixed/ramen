@@ -112,7 +112,7 @@ let rec emit_id_eq_typ tuple_sizes id oc = function
       let d = Array.length ts in
       if d = 0 then
         Printf.fprintf oc "(or %a)"
-          (List.print ~first:"" ~last:"" ~sep:" " (emit_is_tuple id))
+          (Set.Int.print ~first:"" ~last:"" ~sep:" " (emit_is_tuple id))
             tuple_sizes
       else
         emit_is_tuple id oc d
@@ -253,11 +253,13 @@ let arg_is_numeric oc e =
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (t_of_expr e))
 
+let empty_tuple_sizes = Set.Int.empty
+
 let arg_has_type typ oc e =
   let typ_name = IO.to_string RamenTypes.print_structure typ in
   let name = expr_err e (Err.ActualType typ_name) in
   emit_assert ~name oc (fun oc ->
-    emit_id_eq_typ [] (t_of_expr e) oc typ)
+    emit_id_eq_typ empty_tuple_sizes (t_of_expr e) oc typ)
 
 let arg_is_float = arg_has_type TFloat
 let arg_is_bool = arg_has_type TBool
@@ -681,7 +683,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       let name = expr_err x Err.Tuple in
       emit_assert ~name oc (fun oc ->
         Printf.fprintf oc "(or %a)"
-          (List.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
+          (Set.Int.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
             if sz > n then
               Printf.fprintf oc "(and %a \
                                       (= (tuple%d-e%d %s) %s) \
@@ -1368,7 +1370,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs params =
     (if optimize then "true" else "false")
     (if optimize then "false" else "true")
     (if optimize then "false" else "true")
-    (List.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
+    (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do
         Printf.fprintf oc " (tuple%d-e%d Type)" sz i ;
@@ -1413,11 +1415,35 @@ let unsat funcs syms output =
     (Err.print_core funcs) syms |>
   failwith
 
+let used_tuple_sizes funcs parents =
+  let tuple_sizes =
+    List.fold_left (fun s (_, op) ->
+      RamenOperation.fold_expr s (fun s -> function
+        (* The only way to get a tuple in an op is with a Tuple
+         * expression: *)
+        | Tuple (_, ts) -> Set.Int.add (List.length ts) s
+        | _ -> s
+      ) op
+    ) Set.Int.empty funcs in
+  (* We might also got tuples from our parents. We collect all their output
+   * fields even if it's not used anywhere for simplicity.
+   * TODO: only add tuple size if it's actually selected. *)
+  Hashtbl.fold (fun _ fs s ->
+    List.fold_left (fun s f ->
+      List.fold_left (fun s ft ->
+        let open RamenTypes in
+        match ft.RamenTuple.typ.structure with
+        | TTuple ts -> Set.Int.add (Array.length ts) s
+        | _ -> s
+      ) s f.F.out_type
+    ) s fs
+  ) parents tuple_sizes
+
 let get_types conf parents funcs params smt2_file =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
-    let tuple_sizes = [ 1; 2; 3; 4; 5; 6; 7; 8; 9 ] (* TODO *) in
+    let tuple_sizes = used_tuple_sizes funcs parents in
     mkdir_all ~is_file:true smt2_file ;
     !logger.debug "Writing SMT2 program into %S" smt2_file ;
     File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
