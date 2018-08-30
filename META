@@ -1,5 +1,5 @@
 description = "Event processor tailored for small-scale monitoring"
-version = "2.4.0"
+version = "3.0.0"
 archive(native) = "codegen.cmxa"
 # parsercombinator is used by string to IP conversion :(
 requires = "lwt.unix lwt_ppx batteries stdint parsercombinator threads
