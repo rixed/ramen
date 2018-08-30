@@ -8,7 +8,7 @@ module P = C.Program
 (* Dequeue command *)
 
 let dequeue conf file n () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   if file = "" then invalid_arg "dequeue" ;
   let open RingBuf in
   let rb = load file in
@@ -25,7 +25,7 @@ let dequeue conf file n () =
 (* Summary command *)
 
 let summary conf files () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   List.iter (fun file ->
     let open RingBuf in
     let rb = load file in
@@ -50,7 +50,7 @@ let summary conf files () =
 (* Repair Command *)
 
 let repair conf files () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   List.iter (fun file ->
     let open RingBuf in
     let rb = load file in
@@ -67,7 +67,7 @@ type func_status =
   | ProgramError of RamenName.program * string
 
 let links conf no_abbrev show_all with_header sort_col top pattern () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)

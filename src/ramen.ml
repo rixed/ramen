@@ -17,6 +17,11 @@ let copts =
     let i = Arg.info ~doc:RamenConsts.CliInfo.debug
                      ~docs ~env [ "d"; "debug" ] in
     Arg.(value (flag i))
+  and quiet =
+    let env = Term.env_info "RAMEN_QUIET" in
+    let i = Arg.info ~doc:RamenConsts.CliInfo.quiet
+                     ~docs ~env [ "q"; "quiet" ] in
+    Arg.(value (flag i))
   and persist_dir =
     let env = Term.env_info "RAMEN_PERSIST_DIR" in
     let i = Arg.info ~doc:RamenConsts.CliInfo.persist_dir
@@ -45,6 +50,7 @@ let copts =
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
+    $ quiet
     $ persist_dir
     $ rand_seed
     $ keep_temp_files

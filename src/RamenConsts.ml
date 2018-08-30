@@ -110,6 +110,7 @@ struct
   (* Options *)
   let help = "Show manual page"
   let debug = "Increase verbosity"
+  let quiet = "Decrease verbosity"
   let version = "Show version number"
   let persist_dir = "Directory where are stored data persisted on disc"
   let initial_export_duration = "How long to export a node output after \

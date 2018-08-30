@@ -1,5 +1,17 @@
 open Batteries
 
+type log_level = Quiet | Normal | Debug
+
+let string_of_log_level = function
+  | Quiet -> "quiet"
+  | Normal -> "normal"
+  | Debug -> "debug"
+
+let log_level_of_string = function
+  | "quiet" -> Quiet
+  | "debug" -> Debug
+  | _ -> Normal
+
 type 'a printer =
   ('a, unit BatIO.output, unit) format -> 'a
 
@@ -64,7 +76,7 @@ let rate_limit max_rate =
       false
     )
 
-let make_logger ?logdir ?(prefix="") dbg =
+let make_logger ?logdir ?(prefix="") lvl =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
   let rate_limit = rate_limit 100 in
@@ -92,9 +104,11 @@ let make_logger ?logdir ?(prefix="") dbg =
   in
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
-  and info fmt = do_log false green fmt
+  and info fmt =
+    if lvl <> Quiet then do_log false green fmt
+    else Printf.ifprintf stderr fmt
   and debug fmt =
-    if dbg then do_log false identity fmt
+    if lvl = Debug then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
   { error ; warning ; info ; debug ; output ; prefix }
@@ -103,7 +117,7 @@ let syslog =
   try Some (Syslog.openlog ~facility:`LOG_USER "ramen")
   with _ -> None
 
-let make_syslog ?(prefix="") dbg =
+let make_syslog ?(prefix="") lvl =
   let prefix = ref (make_prefix prefix) in
   match syslog with
   | None ->
@@ -114,9 +128,11 @@ let make_syslog ?(prefix="") dbg =
           Syslog.syslog slog lvl str) fmt in
       let error fmt = do_log `LOG_ERR fmt
       and warning fmt = do_log `LOG_WARNING fmt
-      and info fmt = do_log `LOG_INFO fmt
+      and info fmt =
+        if lvl <> Quiet then do_log `LOG_INFO fmt
+        else Printf.ifprintf stderr fmt
       and debug fmt =
-        if dbg then do_log `LOG_DEBUG fmt
+        if lvl = Debug then do_log `LOG_DEBUG fmt
         else Printf.ifprintf stderr fmt
       in
       { error ; warning ; info ; debug ; output = Syslog ; prefix }
@@ -124,4 +140,4 @@ let make_syslog ?(prefix="") dbg =
 let set_prefix logger prefix =
   logger.prefix := make_prefix prefix
 
-let logger = ref (make_logger false)
+let logger = ref (make_logger Normal)

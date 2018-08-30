@@ -60,7 +60,7 @@ let collector ~inet_addr ~port ?while_ k =
   udp_server ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =
-  logger := make_logger true ;
+  logger := make_logger Normal ;
   let display_tuple _t =
     return_unit in
   Lwt_main.run (collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)

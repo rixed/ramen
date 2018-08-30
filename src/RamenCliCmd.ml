@@ -20,8 +20,8 @@ let () =
     | Failure msg -> Some msg
     | _ -> None)
 
-let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
-               initial_export_duration =
+let make_copts debug quiet persist_dir rand_seed keep_temp_files
+               forced_variants initial_export_duration =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -33,7 +33,7 @@ let make_copts debug persist_dir rand_seed keep_temp_files forced_variants
     List.fold_left (fun lst s ->
       List.rev_append (String.split_on_char ',' s) lst
     ) [] forced_variants in
-  C.make_conf ~debug ~keep_temp_files ~forced_variants
+  C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
               ~initial_export_duration persist_dir
 
 (*
@@ -62,13 +62,13 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
   if to_syslog then
-    logger := make_syslog conf.C.debug
+    logger := make_syslog conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/supervisor") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.debug) ;
+    logger := make_logger ?logdir conf.C.log_level) ;
   RamenProcesses.report_period := report_period ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
@@ -123,13 +123,13 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
             is_failing RamenNotifier.load_config notif_conf_file then
     failwith ("Configuration file "^ notif_conf_file ^" does not exist.") ;
   if to_syslog then
-    logger := make_syslog conf.C.debug
+    logger := make_syslog conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/notifier") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.debug) ;
+    logger := make_logger ?logdir conf.C.log_level) ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
@@ -145,7 +145,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   let rb = RamenProcesses.prepare_notifs conf in
   let sent_time = Unix.gettimeofday () in
   let firing, certainty, parameters =
@@ -164,7 +164,7 @@ let notify conf parameters notif_name () =
 
 let compile conf root_path use_external_compiler bundle_dir
             max_simult_compils smt_solver source_files program_name_opt () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
@@ -207,7 +207,7 @@ let compile conf root_path use_external_compiler bundle_dir
  *)
 
 let run conf params replace as_ bin_file () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   Lwt_main.run (RamenRun.run conf params replace ?as_ bin_file)
 
 (*
@@ -218,7 +218,7 @@ let run conf params replace as_ bin_file () =
  *)
 
 let kill conf program_names () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   let program_names =
     List.map Globs.compile program_names in
   let num_kills =
@@ -339,7 +339,7 @@ let time_or_na = function
   | Some f -> TermTable.ValStr (string_of_time f)
 
 let ps conf short with_header sort_col top pattern () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = Lwt_main.run (read_stats conf pattern) in
@@ -435,7 +435,7 @@ let ps conf short with_header sort_col top pattern () =
 let tail conf func_name with_header sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
          duration () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   if last <> None && (min_seq <> None || max_seq <> None) then
     failwith "Options --last  and --{min,max}-seq are incompatible." ;
   if continuous && (min_seq <> None || max_seq <> None) then
@@ -530,7 +530,7 @@ let tail conf func_name with_header sep null raw
 let timeseries conf since until with_header where factors max_data_points
                sep null func_name data_fields consolidation duration
                () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
   if since >= until then failwith "since must come strictly before until" ;
@@ -571,7 +571,7 @@ let timeseries conf since until with_header where factors max_data_points
  *)
 
 let timerange conf func_name () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   match C.program_func_of_user_string func_name with
   | exception _ -> exit 1
   | program_name, func_name ->
@@ -613,7 +613,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if to_syslog then
-    logger := make_syslog conf.C.debug
+    logger := make_syslog conf.C.log_level
   else (
     let logdir =
       (* In case we serve several API from several daemon we will need an
@@ -621,7 +621,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/httpd") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.debug) ;
+    logger := make_logger ?logdir conf.C.log_level) ;
   (* We take the port and URL prefix from the given URL but does not take
    * into account the hostname or the scheme. *)
   let uri = Uri.of_string server_url in
@@ -664,7 +664,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf for_render query () =
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   let query = String.nsplit ~by:"." query in
   let te = Lwt_main.run (
     RamenGraphite.full_enum_tree_of_query conf ~anchor_right:for_render

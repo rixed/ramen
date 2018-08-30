@@ -157,6 +157,7 @@ let complete str () =
     let copts =
       [ "--help", RamenConsts.CliInfo.help ;
         "--debug", RamenConsts.CliInfo.debug ;
+        "--quiet", RamenConsts.CliInfo.quiet ;
         "--rand-seed", RamenConsts.CliInfo.rand_seed ;
         "--persist-dir=", RamenConsts.CliInfo.persist_dir ;
         "--variant", RamenConsts.CliInfo.variant ] in

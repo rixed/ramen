@@ -74,8 +74,8 @@ let compile_internal conf func_name src_file obj_file =
   reset () ;
   native_code := true ;
   annotations := true ;
-  debug := conf.C.debug ;
-  verbose := conf.C.debug ;
+  debug := conf.C.log_level = Debug ;
+  verbose := !debug ;
   no_std_include := true ;
   !logger.debug "Use bundled libraries from %S" !bundle_dir ;
   include_dirs :=
@@ -83,7 +83,7 @@ let compile_internal conf func_name src_file obj_file =
   dlcode := true ;
   keep_asm_file := conf.C.keep_temp_files ;
   (* equivalent to -O2: *)
-  if conf.C.debug then (
+  if conf.C.log_level = Debug then (
     default_simplify_rounds := 1 ;
     use_inlining_arguments_set o1_arguments
   ) else (
@@ -118,7 +118,7 @@ let compile_external conf func_name src_file obj_file =
                      -o %s -package ramen -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -g" else "")
+      (if conf.C.log_level = Debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
       warnings
       (shell_quote obj_file)
@@ -153,8 +153,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   reset () ;
   native_code := true ;
   annotations := true ;
-  debug := conf.C.debug ;
-  verbose := conf.C.debug ;
+  debug := conf.C.log_level = Debug ;
+  verbose := !debug ;
   no_std_include := true ;
   !logger.debug "Use bundled libraries from %S" !bundle_dir ;
   include_dirs :=
@@ -163,7 +163,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   dlcode := true ;
   keep_asm_file := conf.C.keep_temp_files ;
   (* equivalent to -O2: *)
-  if conf.C.debug then (
+  if conf.C.log_level = Debug then (
     default_simplify_rounds := 1 ;
     use_inlining_arguments_set o1_arguments
   ) else (
@@ -208,7 +208,7 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.debug then " -g" else "")
+      (if conf.C.log_level = Debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
       (IO.to_string
         (Set.print ~first:"" ~last:"" ~sep:" " (fun oc f ->

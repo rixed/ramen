@@ -311,7 +311,7 @@ let run conf root_path test () =
     Filename.get_temp_dir_name ()
       ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
     uniquify_filename } in
-  logger := make_logger conf.C.debug ;
+  logger := make_logger conf.C.log_level ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;
   let test_spec = ppp_of_file test_spec_ppp_ocaml test in

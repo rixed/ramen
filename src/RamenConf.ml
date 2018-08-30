@@ -7,7 +7,7 @@ let archive_file dir (block_start, block_stop) =
   dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
 
 type conf =
-  { debug : bool ;
+  { log_level : log_level ;
     persist_dir : string ;
     do_persist : bool ; (* false for tests *)
     keep_temp_files : bool ;
@@ -246,12 +246,16 @@ let find_func programs program_name func_name =
   let prog = get_rc () in
   prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
-let make_conf ?(do_persist=true) ?(debug=false) ?(keep_temp_files=false)
-              ?(forced_variants=[]) ?(initial_export_duration=900.)
-              persist_dir =
+let make_conf ?(do_persist=true) ?(debug=false) ?(quiet=false)
+              ?(keep_temp_files=false) ?(forced_variants=[])
+              ?(initial_export_duration=900.) persist_dir =
+  if debug && quiet then
+    failwith "Options --debug and --quiet are incompatible." ;
+  let log_level =
+    if debug then Debug else if quiet then Quiet else Normal in
   let persist_dir = simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
-  { do_persist ; debug ; persist_dir ; keep_temp_files ;
+  { do_persist ; log_level ; persist_dir ; keep_temp_files ;
     initial_export_duration }
 
 (* Various directory names: *)

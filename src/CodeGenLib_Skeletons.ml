@@ -228,12 +228,12 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     ) !out_l
 
 type worker_conf =
-  { debug : bool ; state_file : string ; ramen_url : string }
+  { log_level : log_level ; state_file : string ; ramen_url : string }
 
 let quit = ref None
 
 let worker_start worker_name get_binocle_tuple k =
-  let debug = getenv ~def:"false" "debug" |> bool_of_string in
+  let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let state_file = getenv ~def:default_persist_dir "state_file" in
@@ -241,13 +241,13 @@ let worker_start worker_name get_binocle_tuple k =
   let prefix = worker_name ^": " in
   (match getenv "log" with
   | exception _ ->
-      logger := make_logger ~prefix debug
+      logger := make_logger ~prefix log_level
   | logdir ->
       if logdir = "syslog" then
-        logger := make_syslog ~prefix debug
+        logger := make_syslog ~prefix log_level
       else (
         mkdir_all logdir ;
-        logger := make_logger ~logdir debug)) ;
+        logger := make_logger ~logdir log_level)) ;
   !logger.info "Starting %s process..." worker_name ;
   let report_period =
     getenv ~def:(string_of_float RamenConsts.Default.report_period)
@@ -257,7 +257,7 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  let conf = { debug ; state_file ; ramen_url } in
+  let conf = { log_level ; state_file ; ramen_url } in
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     quit := Some RamenConsts.ExitCodes.terminated)) ;

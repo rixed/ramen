@@ -350,10 +350,11 @@ let really_start conf must_run proc parents children =
      * but instead to a ringbuffer specific to the test_id. *)
     C.notify_ringbuf conf in
   let ocamlrunparam =
-    getenv ~def:(if conf.C.debug then "b" else "") "OCAMLRUNPARAM" in
+    let def = if conf.C.log_level = Debug then "b" else "" in
+    getenv ~def "OCAMLRUNPARAM" in
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
-    "debug="^ string_of_bool conf.C.debug ;
+    "log_level="^ string_of_log_level conf.C.log_level ;
     (* Used to choose the function to perform: *)
     "name="^ RamenName.string_of_func (proc.func.F.name) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
