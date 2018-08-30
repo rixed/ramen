@@ -8,6 +8,7 @@
  *)
 open Batteries
 open RamenHelpers
+open RamenTypingHelpers
 module C = RamenConf
 module F = C.Func
 
@@ -16,8 +17,8 @@ type expr =
   | Sortable
   | Same
   | VecSame
-  | CaseCond of int
-  | CaseCons of int
+  | CaseCond of int * int (* num over total number of conditions *)
+  | CaseCons of int * int (* num over total number of consequent *)
   | CaseElse
   | CaseNullProp
   | CoalesceAlt of int
@@ -38,6 +39,13 @@ type expr =
   | InheritNull
     [@@ppp PPP_OCaml]
 
+let string_of_index c t =
+  assert (c < t) ;
+  assert (c >= 0) ;
+  if c = 0 && t = 1 then "" else
+  if c = t - 1 then "last " else
+  string_of_int (c + 1) ^ ordinal_suffix (c + 1) ^ " "
+
 let print_expr oc =
   let p fmt = Printf.fprintf oc fmt in
   function
@@ -46,11 +54,14 @@ let print_expr oc =
   | Sortable -> p " must be sortable"
   | Same -> p ": both arguments must have the same type"
   | VecSame -> p ": vector elements must have the same type"
-  | CaseCond c -> p ": condition #%d of case expression must be a boolean" c
-  | CaseCons c -> p ": consequent #%d of case expression must have a type \
-                     compatible with others" c
-  | CaseElse -> p ": else clause of case expression must have a type \
-                  compatible with other consequents"
+  | CaseCond (c, t) ->
+      p ": %scondition must be a boolean"
+        (string_of_index c t)
+  | CaseCons (c, t) ->
+      p ": %sconsequent must have a type compatible with others"
+        (string_of_index c t)
+  | CaseElse -> p ": else clause must have a type compatible with other \
+                   consequents"
   | CaseNullProp -> p ": case expression is as nullable as conditions and \
                        consequents"
   | CoalesceAlt a -> p ": alternative #%d of coalesce expression must have \
@@ -93,9 +104,6 @@ let print_func oc =
 type t = Expr of int * expr
        | Func of int * func
          [@@ppp PPP_OCaml]
-
-let func_color = RamenLog.green
-let expr_color = RamenLog.yellow
 
 exception ReturnExpr of RamenName.func * RamenExpr.t
 let print funcs oc =
@@ -146,4 +154,4 @@ let of_assert_name n =
 let print_core funcs oc lst =
   List.map of_assert_name lst |>
   Set.of_list |>
-  Set.print ~first:"\n  " ~sep:"\n  " ~last:"" (print funcs) oc
+  Set.print ~first:"\n     " ~sep:"\n AND " ~last:"" (print funcs) oc

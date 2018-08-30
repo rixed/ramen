@@ -400,10 +400,11 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   and there is an else branch that is not nullable, then the case
        *   is not;
        * - If there are no else branch then the case is nullable. *)
+      let num_cases = List.length cases in
       List.iteri (fun i { case_cond = cond ; case_cons = cons } ->
-        let name = expr_err e (Err.CaseCond i) in
+        let name = expr_err e (Err.CaseCond (i, num_cases)) in
         emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr cond) oc TBool ;
-        let name = expr_err e (Err.CaseCons i) in
+        let name = expr_err e (Err.CaseCons (i, num_cases)) in
         emit_assert_id_le_id ~name (t_of_expr cons) oc eid
       ) cases ;
       Option.may (fun else_ ->
