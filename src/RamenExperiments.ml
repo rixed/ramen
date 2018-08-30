@@ -50,7 +50,7 @@ let make name variants =
 
 let the_big_one =
   make "TheBigOne" [|
-    Variant.make ~share:0.9 "off"
+    Variant.make ~share:0. "off"
       "Run as little as possible from ramen:\n\
        - no workers ;\n\
        - ...?\n" ;
