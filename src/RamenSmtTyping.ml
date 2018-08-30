@@ -333,7 +333,7 @@ let emit_constraints tuple_sizes out_fields oc e =
   | Const (_, x) ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      emit_assert_id_eq_typ tuple_sizes eid oc (RamenTypes.structure_of x) ;
+      arg_has_type (RamenTypes.structure_of x) oc e ;
       arg_is_not_nullable oc e
 
   | StateField _ -> assert false (* Not supposed to appear here *)
