@@ -18,6 +18,9 @@ jobs:
           name: Unit tests
           command: make unit-check
       - run:
+          name: Parse/Typing tests
+          command: make err-check
+      - run:
           name: Install
           command: make install
       - run:

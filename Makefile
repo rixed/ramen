@@ -52,7 +52,7 @@ all: $(INSTALLED)
 # Generic rules
 
 .SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all check func-check unit-check cli-check \
+.PHONY: clean clean-temp all check func-check unit-check cli-check err-check \
         dep install uninstall reinstall bundle doc deb tarball \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
@@ -415,7 +415,7 @@ ringbuf_test.opt: \
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: unit-check cli-check func-check
+check: unit-check cli-check func-check err-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
@@ -491,6 +491,18 @@ tests/event_time.success: tests/event_time.x
 tests/sample.success: tests/sample.x tests/fixtures/n123.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
+
+err-check: $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
+	@echo 'Running parsing/typing error tests'
+	@for f in $(wildcard tests/errors/*.ramen); do \
+		t=$$(mktemp) ;\
+		src/ramen compile --quiet $$f 2>&1 >/dev/null | sed 1d > $$t ;\
+		if ! diff -q $$f.err $$t ; then \
+			echo "FAILURE: $$f" ;\
+			exit 1 ;\
+		fi ;\
+		$(RM) $$t ;\
+	done
 
 # Documentation
 

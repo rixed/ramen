@@ -1,0 +1,2 @@
+     In function [1;32mf0[0m: expression [1;33m"bla"[0m must be of type STRING
+ AND In function [1;32mf0[0m: expression [1;33mCASE WHEN false THEN 1 WHEN "bla" THEN 2 ELSE 3 END[0m: last condition must be a boolean

@@ -1,0 +1,1 @@
+FROM (YIELD "glop" AS x EVERY 5s) SELECT AVG x;

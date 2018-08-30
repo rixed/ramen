@@ -1,0 +1,3 @@
+     In function [1;32mf0[0m: expression [1;33m"glop"[0m must be of type STRING
+ AND In function [1;32mf0[0m: expression [1;33mCASE WHEN true THEN "glop" ELSE "pas glop" END[0m must be numeric
+ AND In function [1;32mf0[0m: expression [1;33mCASE WHEN true THEN "glop" ELSE "pas glop" END[0m: consequent must have a type compatible with others

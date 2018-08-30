@@ -1,0 +1,1 @@
+SELECT IF true THEN 1 ELSE "glop" AS x;

@@ -1,0 +1,1 @@
+SELECT "glop" IN [ 1;2;3 ] AS x;
