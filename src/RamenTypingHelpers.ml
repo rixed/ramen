@@ -7,6 +7,9 @@ module Expr = RamenExpr
 open RamenLang
 open RamenTypes
 
+let func_color = green
+let expr_color = yellow
+
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation field =
   match operation with

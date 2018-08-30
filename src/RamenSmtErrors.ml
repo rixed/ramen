@@ -94,6 +94,9 @@ type t = Expr of int * expr
        | Func of int * func
          [@@ppp PPP_OCaml]
 
+let func_color = RamenLog.green
+let expr_color = RamenLog.yellow
+
 exception ReturnExpr of RamenName.func * RamenExpr.t
 let print funcs oc =
   let expr_of_id i =
@@ -110,12 +113,15 @@ let print funcs oc =
   function
   | Expr (i, e) ->
       let func_name, expr = expr_of_id i in
-      p "In function %S: expression \"%a\"%a"
-        (RamenName.string_of_func func_name)
-        (RamenExpr.print ~max_depth:3 false) expr print_expr e
+      p "In function %s: expression %s%a"
+        (func_color (RamenName.string_of_func func_name))
+        (expr_color (IO.to_string (RamenExpr.print ~max_depth:3 false) expr))
+        print_expr e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
-      p "In function %S: %a" (RamenName.string_of_func func_name) print_func e
+      p "In function %s: %a"
+        (func_color (RamenName.string_of_func func_name))
+        print_func e
 
 (* When annotating an assertion we must always use a unique name, even if we
  * annotate several times the very same expression. It is important to
