@@ -24,8 +24,8 @@ let check_links ?(force=false) program_name prog running_programs =
     List.iter (function
       | None, _ -> ()
       | Some par_rel_prog, par_func ->
-        let par_prog =
-          RamenName.program_of_rel_program func.F.program_name par_rel_prog in
+        let par_prog = RamenName.program_of_rel_program func.F.program_name
+                                                        par_rel_prog in
         (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
           if not (Set.mem par_prog !already_warned1) then (

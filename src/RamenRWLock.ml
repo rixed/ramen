@@ -19,10 +19,9 @@ let make () =
 
 let r_lock t =
   Lwt_mutex.with_lock t.mutex (fun () ->
-    let%lwt () =
-      while%lwt t.has_writer do
-        Lwt_condition.wait ~mutex:t.mutex t.can_be_read
-      done in
+    while%lwt t.has_writer do
+      Lwt_condition.wait ~mutex:t.mutex t.can_be_read
+    done ;%lwt
     t.num_readers <- t.num_readers + 1 ;
     return_unit)
 
@@ -34,15 +33,14 @@ let r_unlock t =
     return_unit)
 
 let with_r_lock t f =
-  let%lwt () = r_lock t in
+  r_lock t ;%lwt
   finalize f (fun () -> r_unlock t)
 
 let w_lock t =
   Lwt_mutex.with_lock t.mutex (fun () ->
-    let%lwt () =
-      while%lwt t.num_readers > 0 || t.has_writer do
-        Lwt_condition.wait ~mutex:t.mutex t.can_be_written
-      done in
+    while%lwt t.num_readers > 0 || t.has_writer do
+      Lwt_condition.wait ~mutex:t.mutex t.can_be_written
+    done ;%lwt
     t.has_writer <- true ;
     return_unit)
 
@@ -54,5 +52,5 @@ let w_unlock t =
     return_unit)
 
 let with_w_lock t f =
-  let%lwt () = w_lock t in
+  w_lock t ;%lwt
   finalize f (fun () -> w_unlock t)

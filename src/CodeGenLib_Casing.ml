@@ -39,5 +39,3 @@ let run codegen_version rc_str rc_marsh lst =
       let v = getenv ~def:codegen_version "pretend_codegen_version" in
       Printf.printf "%s\n" v
   | _ -> help ()
-
-

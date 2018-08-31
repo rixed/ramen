@@ -484,7 +484,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
   if (free >= needed) {
     if (rbf->data[rbf->prod_head] == UINT32_MAX) {
       // Another writer might have "closed" this ringbuf already, that's OK.
-      // But we still must be close to the actual end, other wise complain:
+      // But we still must be close to the actual end, otherwise complain:
       if (free > 2 * needed) {
         fprintf(stderr,
                 "Enough place for a new record (%"PRIu32" words, "
@@ -574,7 +574,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
       return RB_ERR_NO_MORE_ROOM;
     }
 
-  } while (!  atomic_compare_exchange_strong(&rbf->prod_head, &tx->seen, tx->next));
+  } while (! atomic_compare_exchange_strong(&rbf->prod_head, &tx->seen, tx->next));
 
   if (need_eof) rbf->data[need_eof] = UINT32_MAX;
   rbf->data[tx->record_start ++] = num_words;
