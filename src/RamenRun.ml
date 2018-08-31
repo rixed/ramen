@@ -35,23 +35,31 @@ let check_links ?(force=false) program_name prog running_programs =
               (RamenName.string_of_program par_prog) ;
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
-          let pprog = P.of_bin mre.C.params mre.C.bin in
-          (match List.find (fun p -> p.F.name = par_func) pprog.P.funcs with
-          | exception Not_found ->
-            if not (Set.mem (par_prog, par_func) !already_warned2) then (
-              !logger.error "Operation %s depends on operation %s/%s, \
-                             which is not part of the running program %s."
-                (RamenName.string_of_func func.F.name)
-                (RamenName.string_of_program par_prog)
-                (RamenName.string_of_func par_func)
-                (RamenName.string_of_program par_prog) ;
-              already_warned2 := Set.add (par_prog, par_func) !already_warned2)
-          | par ->
-            (* We want to err if a parent is incompatible (unless --force). *)
-            try RamenProcesses.check_is_subtype func.F.in_type
-                                                par.F.out_type
-            with Failure m when force -> (* or let it fail *)
-              !logger.error "%s" m))
+            (match P.of_bin mre.C.params mre.C.bin with
+            | exception exn ->
+                (* We are going to warn about all these below. *) ()
+            | pprog ->
+                (match List.find (fun p ->
+                         p.F.name = par_func) pprog.P.funcs with
+                | exception Not_found ->
+                  if not (Set.mem (par_prog, par_func) !already_warned2)
+                  then (
+                    !logger.error
+                      "Operation %s depends on operation %s/%s, which is \
+                       not part of the running program %s."
+                      (RamenName.string_of_func func.F.name)
+                      (RamenName.string_of_program par_prog)
+                      (RamenName.string_of_func par_func)
+                      (RamenName.string_of_program par_prog) ;
+                    already_warned2 :=
+                      Set.add (par_prog, par_func) !already_warned2)
+                | par ->
+                  (* We want to err if a parent is incompatible (unless
+                   * --force). *)
+                  try RamenProcesses.check_is_subtype func.F.in_type
+                                                      par.F.out_type
+                  with Failure m when force -> (* or let it fail *)
+                    !logger.error "%s" m)))
     ) func.parents
   ) prog.P.funcs ;
   (* We want to err if a child is incompatible (unless --force).
@@ -60,25 +68,34 @@ let check_links ?(force=false) program_name prog running_programs =
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
   Hashtbl.iter (fun prog_name mre ->
-    let prog' = P.of_bin mre.C.params mre.C.bin in
-    List.iter (fun func ->
-      (* Check that a children that depends on us gets the proper type: *)
-      List.iter (fun (rel_par_prog_opt, par_func as parent) ->
-        let par_prog =
-          F.program_of_parent_prog func.F.program_name rel_par_prog_opt in
-        if par_prog = program_name then
-          match List.find (fun f -> f.F.name = par_func) prog.P.funcs with
-          | exception Not_found ->
-            !logger.warning "Operation %s, currently stalled, will still \
-                             be missing its parent %a"
-              (RamenName.string_of_fq (F.fq_name func)) F.print_parent parent
-          | f -> (* so func is depending on f, let's see: *)
-            try RamenProcesses.check_is_subtype func.F.in_type
-                                                f.F.out_type
-            with Failure m when force -> (* or let it fail *)
-              !logger.error "%s" m
-      ) func.F.parents
-    ) prog'.P.funcs
+    match P.of_bin mre.C.params mre.C.bin with
+    | exception exn ->
+        (* Take advantage of this exhaustive loop to warn about this: *)
+        !logger.error "Cannot read binary %s: %s"
+          mre.C.bin (Printexc.to_string exn)
+    | prog' ->
+        List.iter (fun func ->
+          (* Check that a children that depends on us gets the proper
+           * type: *)
+          List.iter (fun (rel_par_prog_opt, par_func as parent) ->
+            let par_prog = F.program_of_parent_prog func.F.program_name
+                                                    rel_par_prog_opt in
+            if par_prog = program_name then
+              match List.find (fun f ->
+                      f.F.name = par_func) prog.P.funcs with
+              | exception Not_found ->
+                !logger.warning
+                  "Operation %s, currently stalled, will still be missing \
+                   its parent %a"
+                  (RamenName.string_of_fq (F.fq_name func))
+                  F.print_parent parent
+              | f -> (* so func is depending on f, let's see: *)
+                try RamenProcesses.check_is_subtype func.F.in_type
+                                                    f.F.out_type
+                with Failure m when force -> (* or let it fail *)
+                  !logger.error "%s" m
+          ) func.F.parents
+        ) prog'.P.funcs
   ) running_programs
 
 let run conf params replace ?as_ bin_file =
