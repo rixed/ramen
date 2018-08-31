@@ -36,8 +36,7 @@ let check_links ?(force=false) program_name prog running_programs =
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
             (match P.of_bin mre.C.params mre.C.bin with
-            | exception exn ->
-                (* We are going to warn about all these below. *) ()
+            | exception exn -> (* of_bin already logged the error *) ()
             | pprog ->
                 (match List.find (fun p ->
                          p.F.name = par_func) pprog.P.funcs with
@@ -69,10 +68,7 @@ let check_links ?(force=false) program_name prog running_programs =
    * could be run at the expense of the old ones. *)
   Hashtbl.iter (fun prog_name mre ->
     match P.of_bin mre.C.params mre.C.bin with
-    | exception exn ->
-        (* Take advantage of this exhaustive loop to warn about this: *)
-        !logger.error "Cannot read binary %s: %s"
-          mre.C.bin (Printexc.to_string exn)
+    | exception exn -> (* of_bin already logged the error *) ()
     | prog' ->
         List.iter (fun func ->
           (* Check that a children that depends on us gets the proper

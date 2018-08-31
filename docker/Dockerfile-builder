@@ -40,13 +40,13 @@ RUN opam update && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 
-RUN echo "3.0.0~0" && opam update
+RUN echo "3.0.1~0" && opam update
 
 # Install all ramen dependencies using opam
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v3.0.0 && \
+    git checkout v3.0.1 && \
     opam pin --no-action add ramen /root/ramen && \
     opam install inotify && \
     opam install --deps-only ramen

@@ -19,10 +19,10 @@ RUN apt-get --yes update && \
         coreutils
 
 # Rebuild a new image from here
-RUN echo "version 3.0.0~0"
+RUN echo "version 3.0.1~0"
 
 # Install ramen
-COPY ramen.3.0.0.deb /tmp
+COPY ramen.3.0.1.deb /tmp
 RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
 
 # Environment
