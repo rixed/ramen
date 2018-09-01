@@ -78,7 +78,6 @@ RAMEN_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenExperiments.ml \
 	src/RamenBitmask.ml \
-	src/RamenRWLock.ml \
 	src/RamenAdvLock.ml \
 	src/RamenOutRef.ml \
 	src/RamenParsing.ml \
@@ -142,7 +141,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenNullable.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
-	src/RamenRWLock.ml \
 	src/RamenAdvLock.ml \
 	src/RamenWatchdog.ml \
 	src/RamenOutRef.ml \
@@ -346,7 +344,6 @@ LINKED_FOR_TESTS = \
 	src/RamenHelpers.ml \
 	src/HeavyHitters.ml \
 	src/RamenExperiments.ml \
-	src/RamenRWLock.ml \
 	src/RamenAdvLock.ml \
 	src/RamenOutRef.ml \
 	src/RamenParsing.ml \
@@ -406,7 +403,7 @@ all_tests.opt: \
 
 ringbuf_test.opt: \
 	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
-	src/RamenRWLock.cmx src/RamenAdvLock.cmx \
+	src/RamenAdvLock.cmx \
 	src/RamenOutRef.cmx src/RamenParsing.cmx \
 	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
 	src/RamenTypeConverters.cmx src/RamenTypes.cmx \
