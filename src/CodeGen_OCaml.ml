@@ -214,7 +214,7 @@ let rec emit_type oc =
   | VI32    n -> Printf.fprintf oc "(%sl)" (Int32.to_string n)
   | VI64    n -> Printf.fprintf oc "(%sL)" (Int64.to_string n)
   | VI128   n -> Printf.fprintf oc "(Int128.of_string %S)" (Int128.to_string n)
-  | VEth    n -> Printf.fprintf oc "(Uint40.of_int64 (%LdL))" (Uint48.to_int64 n)
+  | VEth    n -> Printf.fprintf oc "(Uint48.of_int64 (%LdL))" (Uint48.to_int64 n)
   | VIpv4   n -> Printf.fprintf oc "(Uint32.of_string %S)" (Uint32.to_string n)
   | VIpv6   n -> Printf.fprintf oc "(Uint128.of_string %S)" (Uint128.to_string n)
   | VIp (RamenIp.V4 n) -> emit_type oc (VIpv4 n)
