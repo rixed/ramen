@@ -1,0 +1,83 @@
+-- vim: ft=sql expandtab
+-- Exercise serialization and the ringbuffers
+
+DEFINE prod1 AS
+  YIELD
+    SUM globally u64(1) AS count,
+    -- Strings are the simplest variable length type:
+    string?("") AS sn0,
+    string?("a") AS sn1,
+    string?("ab") AS sn2,
+    string?("abc") AS sn3,
+    string?("abcd") AS sn4,
+    string?("abcde") AS sn5,
+    string?("abcdef") AS sn6,
+    string?("abcdefg") AS sn7,
+    string?(NULL) AS snn,
+    string("") AS s0,
+    string("a") AS s1,
+    string("ab") AS s2,
+    string("abc") AS s3,
+    string("abcd") AS s4,
+    string("abcde") AS s5,
+    string("abcdef") AS s6,
+    string("abcdefg") AS s7,
+    -- Another variable length types: generic IP and CIDR:
+    ip?(1.2.3.4) AS ipn0,
+    ip4?(1.2.3.4) AS ipn1,
+    ip?(1::2) AS ipn2,
+    ip6?(1::2) AS ipn3,
+    ip?(NuLL) AS ipn4,
+    ip4?(NULL) AS ipn5,
+    ip6?(NULL) AS ipn7,
+    ip(1.2.3.4) AS ip0,
+    ip4(1.2.3.4) AS ip1,
+    ip(1::2) AS ip2,
+    ip6(1::2) AS ip3,
+    IF random >= 0.5 THEN ip(1.2.3.4) ELSE ip(1::2) AS ip4,
+    ip(u128(random * 3.4e38 - 1.7e38)) AS ip5,
+    ip(u32(random * 4294967296 - 2147483648)) AS ip6,
+    eth?(01:02:03:04:05:06) AS ethn0,
+    eth?(NULL) AS ethn1,
+    70:80:90:a0:b0:c0 AS eth0,
+    -- Integers:
+    u8?(42) AS in0,
+    u16?(42) AS in1,
+    u32?(42) AS in2,
+    u64?(42) AS in3,
+    u128?(42) AS in4,
+    i8?(42) AS in5,
+    i16?(42) AS in6,
+    i32?(42) AS in7,
+    i64?(42) AS in8,
+    i128?(42) AS in9,
+    u8?(NULL) AS in10,
+    u32?(NULL) AS in11,
+    i32?(NULL) AS in12,
+    u64?(NULL) AS in13,
+    u128?(NULL) AS in14,
+    i128?(NULL) AS in15,
+    u8(42) AS i0,
+    u16(42) AS i1,
+    u32(42) AS i2,
+    u64(42) AS i3,
+    u128(42) AS i4,
+    i8(42) AS i5,
+    i16(42) AS i6,
+    i32(42) AS i7,
+    i64(42) AS i8,
+    i128(42) AS i9;
+
+DEFINE cons1 AS
+  FROM prod1
+  SELECT
+    -- Select everything, but in a different order:
+    count,
+    sn7, sn6, sn5, sn4, sn3, sn2, snn,
+    s6, s5, s4, s3,
+    ipn1, ipn0, ip3, ip2,
+    ethn1, eth0,
+    in4, in3, in1, in15, in14, in10,
+    i8, i5, i2,
+    *;
+

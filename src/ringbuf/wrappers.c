@@ -395,7 +395,12 @@ static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *ds
   memcpy(dst, addr, size);
 }
 
-#define WRITE_BOXED(bits) \
+/* Integers are serialized in the ringbuffers as they are encoded in
+ * OCaml custom values. In particular, int48s are shifted 16bits higher.
+ * When we move to C workers or allow C programs to write directly in the
+ * ringbuffers then we must revisit this. */
+
+#define WRITE_BOXED(bits, custom_sz) \
 CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
 { \
   CAMLparam3(tx, off_, v_); \
@@ -404,7 +409,7 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   assert(Is_block(v_)); \
   assert(Tag_val(v_) == Custom_tag); \
   char const *src = Data_custom_val(v_); \
-  write_words(wrtx, offs, src, bits / 8); \
+  write_words(wrtx, offs, src, custom_sz); \
   CAMLreturn(Val_unit); \
 }
 
@@ -416,14 +421,15 @@ CAMLprim value write_unboxed_##bits(value tx, value off_, value v_) \
   size_t offs = Long_val(off_); \
   assert(Is_long(v_)); \
   uint##bits##_t v = (uint##bits##_t)Long_val(v_); \
+  /* In little endian only: */ \
   write_words(wrtx, offs, (char const *)&v, bits / 8); \
   CAMLreturn(Val_unit); \
 }
 
-WRITE_BOXED(128);
-WRITE_BOXED(64);
-WRITE_BOXED(48);
-WRITE_BOXED(32);
+WRITE_BOXED(128, 16);
+WRITE_BOXED(64, 8);
+WRITE_BOXED(48, 8);
+WRITE_BOXED(32, 4);
 WRITE_UNBOXED_INT(16);
 WRITE_UNBOXED_INT(8);
 
@@ -453,16 +459,16 @@ extern struct custom_operations int128_ops;
 extern struct custom_operations caml_int64_ops;
 extern struct custom_operations caml_int32_ops;
 
-#define READ_BOXED(int_type, bits, ops) \
+#define READ_BOXED(int_type, bits, ops, custom_sz) \
 CAMLprim value read_##int_type##bits(value tx, value off_) \
 { \
   CAMLparam2(tx, off_); \
   CAMLlocal1(v); \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
   size_t offs = Long_val(off_); \
-  v = caml_alloc_custom(&ops, bits / 8, 0, 1); \
+  v = caml_alloc_custom(&ops, custom_sz, 0, 1); \
   char *dst = Data_custom_val(v); \
-  read_words(wrtx, offs, dst, bits / 8); \
+  read_words(wrtx, offs, dst, custom_sz); \
   CAMLreturn(v); \
 }
 
@@ -477,15 +483,15 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   CAMLreturn(Val_long(v)); \
 }
 
-READ_BOXED(uint, 128, uint128_ops);
-READ_BOXED(uint, 64, uint64_ops);
-READ_BOXED(uint, 48, uint32_ops);
-READ_BOXED(uint, 32, uint32_ops);
+READ_BOXED(uint, 128, uint128_ops, 16);
+READ_BOXED(uint, 64, uint64_ops, 8);
+READ_BOXED(uint, 48, uint64_ops, 8);
+READ_BOXED(uint, 32, uint32_ops, 4);
 READ_UNBOXED_INT(uint, 16);
 READ_UNBOXED_INT(uint, 8);
-READ_BOXED(int, 128, int128_ops);
-READ_BOXED(int, 64, caml_int64_ops);
-READ_BOXED(int, 32, caml_int32_ops);
+READ_BOXED(int, 128, int128_ops, 16);
+READ_BOXED(int, 64, caml_int64_ops, 8);
+READ_BOXED(int, 32, caml_int32_ops, 4);
 READ_UNBOXED_INT(int, 16);
 READ_UNBOXED_INT(int, 8);
 
