@@ -3,7 +3,7 @@
 
 (* Release tag just for information purpose but not actually used to version
  * anything. *)
-let release_tag = "v3.0.1"
+let release_tag = "v3.0.2"
 
 (* Format of the list of running programs: *)
 let graph_config = "v10" (* last: params in RC key *)
