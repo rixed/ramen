@@ -49,7 +49,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
       let on_eof () =
         RamenWatchdog.disable watchdog ;
         !logger.debug "Finished reading %S" filename ;
-        let%lwt () = Lwt_io.close chan in
+        Lwt_io.close chan ;%lwt
         if do_unlink && preprocessor <> "" then
           Lwt_unix.unlink filename else return_unit in
       if while_ () then (
@@ -57,7 +57,7 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
         | exception End_of_file -> on_eof ()
         | line ->
           on_each_input_pre () ;
-          let%lwt () = k line in
+          k line ;%lwt
           RamenWatchdog.reset watchdog ;
           read_next_line ()
       ) else on_eof ()
@@ -105,7 +105,7 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
       !logger.debug "File %S is not interesting." filename ;
       return_unit
     ) in
-  let%lwt () = check_dir_exists dirname in
+  check_dir_exists dirname ;%lwt
   let%lwt handler = RamenFileNotify.make ?while_ dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
   RamenFileNotify.for_each (fun filename ->

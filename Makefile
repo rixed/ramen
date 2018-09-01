@@ -500,7 +500,8 @@ err-check: $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 			exit 1 ;\
 		fi ;\
 		$(RM) $$t ;\
-	done
+	done ;\
+	echo SUCCESS
 
 # Documentation
 
