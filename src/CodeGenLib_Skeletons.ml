@@ -156,9 +156,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
     let%lwt fnames = get_out_fnames () in
     Option.may (fun out_specs ->
-      if Hashtbl.is_empty out_specs then
-        !logger.info "OutRef is now empty!"
-      else (
+      if Hashtbl.is_empty out_specs then (
+        if not (Hashtbl.is_empty out_h) then (
+          !logger.info "OutRef is now empty!" ;
+          Hashtbl.clear out_h)
+      ) else (
         if Hashtbl.is_empty out_h then
           !logger.debug "OutRef is no more empty!" ;
         !logger.debug "Must now output to: %a"
