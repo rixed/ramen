@@ -21,7 +21,6 @@
 #ifndef RINGBUF_H_20170606
 #define RINGBUF_H_20170606
 
-#include <assert.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -92,14 +91,30 @@ struct ringbuf_tx {
     uint32_t seen;
 };
 
-inline void print_rbf(struct ringbuf_file *rbf)
-{
-  printf("rbf@%p: cons=[%"PRIu32";%"PRIu32"] -- (%u words of data) -- prod=[%"PRIu32";%"PRIu32"]\n",
-         rbf,
-         rbf->cons_tail, rbf->cons_head,
-         ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head),
-         rbf->prod_tail, rbf->prod_head);
-}
+#define PRINT_RB(rb, fmt, ...) do { \
+  struct ringbuf_file *rbf = rb->rbf; \
+  fprintf(stderr, \
+          "rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], "\
+          "prod=[%"PRIu32";%"PRIu32"], free=%u words:" \
+          fmt, \
+          rbf, rb->fname, \
+          rbf->cons_tail, rbf->cons_head, \
+          rbf->prod_tail, rbf->prod_head, \
+          ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head), \
+          __VA_ARGS__); \
+  fflush(stderr); \
+} while (0)
+
+#define XSTR(x) STR(x)
+#define STR(x) #x
+#define ASSERT_RB(cond) do { \
+  if (! (cond)) { \
+    PRINT_RB(rb, "Assertion failed: %s, file %s, line %s, function %s.\n", \
+             XSTR(cond), \
+             XSTR(__FILE__), XSTR(__LINE__), __func__); \
+    abort(); \
+  } \
+} while (0)
 
 extern enum ringbuf_error ringbuf_enqueue_alloc(
   struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t num_words);
@@ -131,17 +146,17 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
   unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
   while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
     if (max_loop-- == 0) {
-      fprintf(stderr, "%s: waited for prod_tail %"PRIu32" to advance to %"PRIu32
-                      " for too long, assuming all concurrent writers have died!\n",
-        rb->fname, rbf->prod_tail, tx->seen);
-      fflush(stderr);
+      PRINT_RB(rb,
+        "waited for prod_tail %"PRIu32" to advance to %"PRIu32
+        " for too long, assuming all concurrent writers have died!\n",
+        rbf->prod_tail, tx->seen);
       break;
     }
     sched_yield();
   }
 
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
-  assert(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
+  ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
   // All we need is for the following prod_tail change to always
   // be visible after the changes to num_allocs and min/max observed t:
   uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
@@ -152,7 +167,7 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
   if (0 == prev_num_allocs || t_stop > tmax)
       atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
   atomic_store_explicit(&rbf->prod_tail, tx->next, memory_order_release);
-  //print_rbf(rbf);
+  //print_rb(rb);
 
 # ifdef NEED_DATA_CACHE_FLUSH
   my_cacheflush(rbf->data + tx->record_start, (tx->next - tx->record_start) * sizeof(rbf->data[0]));
@@ -209,9 +224,9 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
     }
 
     if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < dequeued) {
-      fprintf(stderr, "Cannot read complete record (%"PRIu32" words)!?\n",
-              dequeued);
-      fflush(stderr);
+      PRINT_RB(rb,
+        "Cannot read complete record (%"PRIu32" words)!?\n",
+        dequeued);
       return -1;
     }
 
@@ -224,7 +239,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
    * of words present, so we are all good. */
 
   // It is currently not possible to have an empty record:
-  assert(num_words > 0);
+  ASSERT_RB(num_words > 0);
 
   return num_words*sizeof(uint32_t);
 }
@@ -236,10 +251,10 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
   unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
   while (rbf->cons_tail != tx->seen) {
     if (max_loop-- == 0) {
-      fprintf(stderr, "%s: waited for cons_tail %"PRIu32" to advance to %"PRIu32
-                      " for too long, assuming all concurrent readers have died!\n",
-        rb->fname, rbf->cons_tail, tx->seen);
-      fflush(stderr);
+      PRINT_RB(rb,
+        "waited for cons_tail %"PRIu32" to advance to %"PRIu32
+        " for too long, assuming all concurrent readers have died!\n",
+        rbf->cons_tail, tx->seen);
       break;
     }
     sched_yield();
@@ -247,7 +262,7 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
   rbf->cons_tail = tx->next;
-  //print_rbf(rbf);
+  //print_rb(rb);
 }
 
 inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size)
@@ -259,7 +274,8 @@ inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_si
 
   if (sz < 0) return sz;
   if ((size_t)sz > max_size) {
-    printf("Record too big (%zu) to fit in buffer (%zu)\n", sz, max_size);
+    PRINT_RB(rb,
+      "Record too big (%zu) to fit in buffer (%zu)\n", sz, max_size);
     return -1;
   }
 
@@ -294,7 +310,7 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  assert(tx->record_start < tx->next); // Or we have read the whole of it already
+  ASSERT_RB(tx->record_start < tx->next); // Or we have read the whole of it already
   if (tx->next == rbf->num_words) return 0; // Same as EOF
   uint32_t num_words = rbf->data[tx->next];
   if (num_words == 0) return -1; // new file past the prod cursor

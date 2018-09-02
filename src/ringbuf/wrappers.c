@@ -17,9 +17,6 @@
 
 #include "ringbuf.h"
 
-#define STR_(s) STR(s)
-#define STR(s) #s
-
 static value exn_NoMoreRoom, exn_Empty;
 static bool exception_inited = false;
 

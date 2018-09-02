@@ -3,7 +3,6 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <fcntl.h>
-#include <assert.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -538,7 +537,7 @@ err0:
 extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t num_words)
 {
   // It is currently not possible to have an empty record:
-  assert(num_words > 0);
+  ASSERT_RB(num_words > 0);
 
   uint32_t cons_tail;
   uint32_t need_eof = 0;  // 0 never needs an EOF
@@ -561,7 +560,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
       alloced += rbf->num_words - tx->seen;
       tx->record_start = 0;
       tx->next = 1 + num_words;
-      assert(tx->next < rbf->num_words);
+      ASSERT_RB(tx->next < rbf->num_words);
     } else if (tx->next == rbf->num_words) {
       //printf("tx->next == rbf->num_words\n");
       tx->next = 0;
