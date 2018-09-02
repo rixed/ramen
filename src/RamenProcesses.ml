@@ -68,7 +68,7 @@ let close_fd i =
 let run_background ?cwd cmd args env =
   let open Lwt_unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
-  !logger.info "Running %s as: /usr/bin/env %a %S %a"
+  !logger.debug "Running %s as: /usr/bin/env %a %S %a"
     cmd
     (Array.print ~first:"" ~last:"" ~sep:" " quoted) env
     cmd

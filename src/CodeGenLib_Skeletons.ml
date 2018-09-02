@@ -527,9 +527,9 @@ let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
   (* List of tuples for rbs that were timed out but now have data: *)
   and no_longer_timed_out = ref [] in
   let foreground_wait rb =
-    !logger.warning "Timed out a parent" ;
+    !logger.debug "Timed out a parent" ;
     let%lwt tup = read_tup rb in (* no more max_retry_time *)
-    !logger.info "Timed out Parent is back" ;
+    !logger.debug "Timed out Parent is back" ;
     no_longer_timed_out := tup :: !no_longer_timed_out ;
     return_unit
   in

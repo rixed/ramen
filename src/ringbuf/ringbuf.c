@@ -450,8 +450,8 @@ static int rotate_file_locked(struct ringbuf *rb)
   }
 
   // Rename the current rb into the archival name.
-  printf("Rename the current rb (%s) into the archive (%s)\n",
-         rb->fname, arc_fname);
+  //printf("Rename the current rb (%s) into the archive (%s)\n",
+  //       rb->fname, arc_fname);
   if (0 != rename(rb->fname, arc_fname)) {
     fprintf(stderr, "Cannot rename full buffer '%s' into '%s': %s\n",
             rb->fname, arc_fname, strerror(errno));

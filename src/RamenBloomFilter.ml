@@ -110,9 +110,9 @@ let make_sliced start_time num_slices slice_width false_positive_ratio =
    * the number of inserted items: *)
   let num_bits_per_item = ~-.1.44 *. log false_positive_ratio /. log 2. in
   let num_bits = 65536 in (* initial guess *)
-  !logger.info "Rotating bloom-filter: starting at time %f \
-                with %d keys, %f bits per items, %d bits \
-                (%d slices of duration %f)\n"
+  !logger.debug "Rotating bloom-filter: starting at time %f \
+                 with %d keys, %f bits per items, %d bits \
+                 (%d slices of duration %f)\n"
     start_time num_keys num_bits_per_item num_bits num_slices slice_width ;
   { slices = Array.init num_slices (fun i ->
       let start_time = start_time +. float_of_int i *. slice_width in

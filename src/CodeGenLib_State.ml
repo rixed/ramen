@@ -28,7 +28,7 @@ let create_or_read fname v =
   let open Unix in
   RamenHelpers.mkdir_all ~is_file:true fname ;
   let init_restore () =
-    !logger.info "Will have my state in file %s" fname ;
+    !logger.debug "Will have my state in file %s" fname ;
     let fd = openfile fname [O_RDWR] 0o640 in
     fd, marshal_from_fd fd
   and init_create () =

@@ -1213,7 +1213,7 @@ let ppp_of_file ?(error_ok=false) ppp =
             fail_with_context ("parsing file "^ fname)
               (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
-  cached cache_name reread mtime_of_file
+  cached cache_name reread mtime_of_file (* TODO: why not mtime_of_file_def 0. ? *)
 
 let ppp_to_file fname ppp v =
   mkdir_all ~is_file:true fname ;
