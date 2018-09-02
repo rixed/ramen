@@ -21,6 +21,8 @@
 #ifndef RINGBUF_H_20170606
 #define RINGBUF_H_20170606
 
+#include <sys/types.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -95,9 +97,10 @@ struct ringbuf_tx {
 #define PRINT_RB(rb, fmt, ...) do { \
   struct ringbuf_file *rbf = rb->rbf; \
   fprintf(stderr, \
-          "rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], "\
-          "prod=[%"PRIu32";%"PRIu32"], free=%u words:" \
+          "pid=%u, rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], "\
+          "prod=[%"PRIu32";%"PRIu32"], free=%u words: " \
           fmt, \
+          (unsigned)getpid(), \
           rbf, rb->fname, \
           rbf->cons_tail, rbf->cons_head, \
           rbf->prod_tail, rbf->prod_head, \
