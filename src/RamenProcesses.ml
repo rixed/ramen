@@ -553,7 +553,11 @@ let check_out_ref =
       do_check_out_ref conf must_run
     ) else return_unit
 
-let watchdog = RamenWatchdog.make ~timeout:30. "supervisor" quit
+let watchdog =
+  (* In the first run we might have *plenty* of workers to start, thus
+   * the extended grace_period (it's not unheard of >1min to start all
+   * workers on a small VM) *)
+  RamenWatchdog.make ~grace_period:180. ~timeout:30. "supervisor" quit
 
 (*
  * Synchronisation of the rc file of programs we want to run and the
