@@ -431,7 +431,7 @@ enum ringbuf_error ringbuf_unload(struct ringbuf *rb)
 static int rotate_file_locked(struct ringbuf *rb)
 {
   // Signal the EOF
-  rb->rbf->data[rb->rbf->prod_head] = UINT32_MAX;
+  rb->rbf->data[atomic_load(&rb->rbf->prod_head)] = UINT32_MAX;
 
   int ret = -1;
 
@@ -481,7 +481,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
   uint32_t const needed = 1 /* msg size */ + num_words + 1 /* EOF */;
   uint32_t const free = ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head);
   if (free >= needed) {
-    if (rbf->data[rbf->prod_head] == UINT32_MAX) {
+    if (rbf->data[atomic_load(&rbf->prod_head)] == UINT32_MAX) {
       // Another writer might have "closed" this ringbuf already, that's OK.
       // But we still must be close to the actual end, otherwise complain:
       if (free > 2 * needed) {
@@ -505,7 +505,7 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
 
   // Wait, maybe some other process rotated the file already while we were
   // waiting for that lock? In that case it would have written the EOF:
-  if (rbf->data[rbf->prod_head] != UINT32_MAX) {
+  if (rbf->data[atomic_load(&rbf->prod_head)] != UINT32_MAX) {
     if (0 != rotate_file_locked(rb)) goto err1;
   } else {
     //printf("...actually not, someone did already.\n");
@@ -547,7 +547,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   struct ringbuf_file *rbf = rb->rbf;
 
   do {
-    tx->seen = rbf->prod_head;
+    tx->seen = atomic_load(&rbf->prod_head);
     cons_tail = rbf->cons_tail;
     tx->record_start = tx->seen;
     // We will write the size then the data:
@@ -573,7 +573,7 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
       return RB_ERR_NO_MORE_ROOM;
     }
 
-  } while (! atomic_compare_exchange_strong(&rbf->prod_head, &tx->seen, tx->next));
+  } while (! atomic_compare_exchange_weak(&rbf->prod_head, &tx->seen, tx->next));
 
   if (need_eof) rbf->data[need_eof] = UINT32_MAX;
   rbf->data[tx->record_start ++] = num_words;
@@ -587,8 +587,8 @@ bool ringbuf_repair(struct ringbuf *rb)
   bool needed = false;
 
   // Avoid writing in this mmaped page for no good reason:
-  if (rbf->prod_head != rbf->prod_tail) {
-    rbf->prod_head = rbf->prod_tail;
+  if (atomic_load(&rbf->prod_head) != atomic_load(&rbf->prod_tail)) {
+    atomic_store(&rbf->prod_head, atomic_load(&rbf->prod_tail));
     needed = true;
   }
 

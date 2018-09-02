@@ -42,10 +42,11 @@ struct ringbuf_file {
   volatile uint32_t _Atomic prod_tail;
   /* Bytes that are being read by consumers are between cons_tail and
    * cons_head. cons_head points to the next word to be read.
+   * TODO: There is only one reader so we actually don't need atomics here.
    * The ring buffer is empty when prod_tail == cons_head and full whenever
    * prod_head == cons_tail - 1. */
   volatile uint32_t _Atomic cons_head;
-  volatile uint32_t cons_tail;
+  volatile uint32_t _Atomic cons_tail;
   /* We count the number of tuples (actually, of allocations), and keep
    * the range of some observed "t" values: */
   volatile uint32_t _Atomic num_allocs;
@@ -141,19 +142,20 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
     t_stop = tmp;
   }
 
-# define MAX_WAIT_LOOP 10000
+# define MAX_WAIT_LOOP 5000
   // Update the prod_tail to match the new prod_head.
   // First, wait until the prod_tail reach the head we observed (ie.
   // previously allocated records have been committed).
-  unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
+  unsigned num_loops = 0;
   while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
-    if (max_loop-- == 0) {
-      PRINT_RB(rb,
-        "waited for prod_tail %"PRIu32" to advance to %"PRIu32
-        " for very long, has another writer died?\n",
-        rbf->prod_tail, tx->seen);
-    }
+    num_loops ++;
     sched_yield();
+  }
+  if (num_loops > MAX_WAIT_LOOP) {
+    PRINT_RB(rb,
+      "waited for prod_tail %"PRIu32" to advance to %"PRIu32
+      " for %u loops; has another writer died?\n",
+      rbf->prod_tail, tx->seen, num_loops);
   }
 
   // Here our record is the next. In theory, next writers are now all
@@ -206,7 +208,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
    * after it */
   do {
     tx->seen = atomic_load(&rbf->cons_head);
-    seen_prod_tail = rbf->prod_tail;
+    seen_prod_tail = atomic_load(&rbf->prod_tail);
     tx->record_start = tx->seen;
 
     if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < 1) {
@@ -236,7 +238,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
     tx->next = (tx->record_start + num_words) % rbf->num_words;
 
-  } while (! atomic_compare_exchange_strong(&rbf->cons_head, &tx->seen, tx->next));
+  } while (! atomic_compare_exchange_weak(&rbf->cons_head, &tx->seen, tx->next));
 
   /* If the CAS succeeded it means nobody altered the indexes while we were
    * reading, therefore nobody wrote something silly in place of the number
@@ -252,15 +254,16 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 {
   struct ringbuf_file *rbf = rb->rbf;
 
-  unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
+  unsigned num_loops = 0;
   while (rbf->cons_tail != tx->seen) {
-    if (max_loop-- == 0) {
-      PRINT_RB(rb,
-        "waited for cons_tail %"PRIu32" to advance to %"PRIu32
-        " for very long, has another reader died?\n",
-        rbf->cons_tail, tx->seen);
-    }
+    num_loops ++;
     sched_yield();
+  }
+  if (num_loops > MAX_WAIT_LOOP) {
+    PRINT_RB(rb,
+      "waited for cons_tail %"PRIu32" to advance to %"PRIu32
+      " for %u loops; has another reader died?\n",
+      rbf->cons_tail, tx->seen, num_loops);
   }
 
   //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
@@ -319,7 +322,7 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
   if (num_words == 0) return -1; // new file past the prod cursor
   if (num_words == UINT32_MAX) return 0; // EOF
   // Has to be tested *after* EOF:
-  if (tx->next >= rbf->prod_tail) return -1; // Have to wait
+  if (tx->next >= atomic_load(&rbf->prod_tail)) return -1; // Have to wait
   tx->record_start = tx->next + 1;
   tx->next = tx->record_start + num_words;
   /*printf("read_next: record_start=%"PRIu32", next=%"PRIu32"\n",
