@@ -143,17 +143,21 @@ inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *
 
 # define MAX_WAIT_LOOP 10000
   // Update the prod_tail to match the new prod_head.
+  // First, wait until the prod_tail reach the head we observed (ie.
+  // previously allocated records have been committed).
   unsigned max_loop = MAX_WAIT_LOOP; // Beware of damaged ringbuffers!
   while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
     if (max_loop-- == 0) {
       PRINT_RB(rb,
         "waited for prod_tail %"PRIu32" to advance to %"PRIu32
-        " for too long, assuming all concurrent writers have died!\n",
+        " for very long, has another writer died?\n",
         rbf->prod_tail, tx->seen);
-      break;
     }
     sched_yield();
   }
+
+  // Here our record is the next. In theory, next writers are now all
+  // waiting for us.
 
   //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
   ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
@@ -253,9 +257,8 @@ inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *
     if (max_loop-- == 0) {
       PRINT_RB(rb,
         "waited for cons_tail %"PRIu32" to advance to %"PRIu32
-        " for too long, assuming all concurrent readers have died!\n",
+        " for very long, has another reader died?\n",
         rbf->cons_tail, tx->seen);
-      break;
     }
     sched_yield();
   }
