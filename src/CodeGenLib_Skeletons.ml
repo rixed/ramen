@@ -144,6 +144,8 @@ let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
     enqueue_commit tx tmin tmax ;
     assert (offs = sersize)
 
+let quit = ref None
+
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
@@ -205,8 +207,10 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                * retrying to write to the same child. *)
               RingBufLib.retry_for_ringbuf
                 ~while_:(fun () ->
+                  if !quit <> None then return_false else
                   (* Also check from time to time that we are still supposed to
-                   * write in there: *)
+                   * write in there (we check right after the first error to
+                   * quickly detect it when a child disapear): *)
                   if !CodeGenLib_IO.now > !last_retry +. 3. then (
                     last_retry := !CodeGenLib_IO.now ;
                     RamenOutRef.mem rb_ref_out_fname fname
@@ -231,8 +235,6 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
 
 type worker_conf =
   { log_level : log_level ; state_file : string ; ramen_url : string }
-
-let quit = ref None
 
 let worker_start worker_name get_binocle_tuple k =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
