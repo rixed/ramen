@@ -29,6 +29,7 @@
 #include <stdatomic.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 
 struct ringbuf_file {
   uint64_t first_seq;
@@ -96,10 +97,14 @@ struct ringbuf_tx {
 
 #define PRINT_RB(rb, fmt, ...) do { \
   struct ringbuf_file *rbf = rb->rbf; \
+  struct tm const *tm = localtime(NULL); \
   fprintf(stderr, \
-          "pid=%u, rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], "\
+          "%04d-%02d-%02d %02d:%02d:%02d: " \
+          "pid=%u, rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], " \
           "prod=[%"PRIu32";%"PRIu32"], free=%u words: " \
           fmt, \
+          tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, \
+          tm->tm_hour, tm->tm_min, tm->tm_sec, \
           (unsigned)getpid(), \
           rbf, rb->fname, \
           rbf->cons_tail, rbf->cons_head, \
