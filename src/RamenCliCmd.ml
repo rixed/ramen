@@ -232,7 +232,22 @@ let kill conf program_names () =
  * Delete old or unused files.
  *)
 
-let gc conf max_archives dry_run loop () =
+let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
+  if daemonize && loop = 0 then
+    failwith "It makes no sense to --daemonize without --loop." ;
+  if to_syslog then
+    logger := make_syslog conf.C.log_level
+  else (
+    let logdir =
+      if to_stdout then None
+      else Some (conf.C.persist_dir ^"/log/gc") in
+    Option.may mkdir_all logdir ;
+    logger := make_logger ?logdir conf.C.log_level) ;
+  if daemonize then do_daemonize () ;
   if loop = 0 then
     RamenGc.cleanup_once conf dry_run max_archives
   else

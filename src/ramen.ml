@@ -129,7 +129,10 @@ let gc =
       $ copts
       $ max_archives
       $ dry_run
-      $ loop),
+      $ loop
+      $ daemonize
+      $ to_stdout
+      $ to_syslog),
     info ~doc:RamenConsts.CliInfo.gc "gc")
 
 (*
