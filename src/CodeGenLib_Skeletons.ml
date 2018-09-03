@@ -109,8 +109,8 @@ let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
   | tx ->
     let offs = RamenBinocle.serialize tx tuple in
-    assert (offs <= sersize) ;
-    RingBuf.enqueue_commit tx time time
+    RingBuf.enqueue_commit tx time time ;
+    assert (offs <= sersize)
 
 let update_stats_rb period rb_name get_tuple =
   let rb = RingBuf.load rb_name in
@@ -137,10 +137,6 @@ let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   if sersize > 0 then
     let tx = enqueue_alloc rb sersize in
     let offs = serialize_tuple tx tuple in
-    if tmin > 2000000000. then
-      !logger.error "wrong tmin (%f) while enqueueing commit" tmin ;
-    if tmax > 2000000000. then
-      !logger.error "wrong tmax (%f) while enqueueing commit" tmax ;
     enqueue_commit tx tmin tmax ;
     assert (offs = sersize)
 

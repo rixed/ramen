@@ -139,7 +139,7 @@ let write_record conf ser_in_type rb tuple =
     (* Loop over all values: *)
     List.fold_left (fun offs (null_i, v) ->
       Option.may (set_bit tx) null_i ;
-      RingBufLib.write_value  tx offs v ;
+      RingBufLib.write_value tx offs v ;
       offs + RingBufLib.sersize_of_value v
     ) nullmask_sz values |> ignore ;
     (* For tests we won't archive the ringbufs so no need for time info: *)

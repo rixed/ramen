@@ -9,18 +9,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <sched.h>
+#include <time.h>
 
 #include "ringbuf.h"
 
 extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
 extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
 
-extern inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop);
 extern inline enum ringbuf_error ringbuf_enqueue(struct ringbuf *rb, uint32_t const *data, uint32_t num_words, double t_start, double t_stop);
 
 extern inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx);
-extern inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx);
 extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size);
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
@@ -253,9 +251,13 @@ extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t num_word
     if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err3;
 
     rbf.num_words = num_words;
-    rbf.prod_head = rbf.prod_tail = 0;
-    rbf.cons_head = rbf.cons_tail = 0;
-    rbf.num_allocs = 0;
+    atomic_init(&rbf.prod_head, 0);
+    atomic_init(&rbf.prod_tail, 0);
+    atomic_init(&rbf.cons_head, 0);
+    atomic_init(&rbf.cons_tail, 0);
+    atomic_init(&rbf.num_allocs, 0);
+    atomic_init(&rbf.tmin, 0.);
+    atomic_init(&rbf.tmax, 0.);
     rbf.wrap = wrap;
 
     if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
@@ -579,6 +581,81 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   rbf->data[tx->record_start ++] = num_words;
 
   return RB_OK;
+}
+
+static struct timespec const quick = { .tv_sec = 0, .tv_nsec = 666 };
+
+void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+
+  if (t_start > t_stop) {
+    double tmp = t_start;
+    t_start = t_stop;
+    t_stop = tmp;
+  }
+
+  // Update the prod_tail to match the new prod_head.
+  // First, wait until the prod_tail reach the head we observed (ie.
+  // previously allocated records have been committed).
+  unsigned num_loops = 0;
+  uint32_t init_prod_tail = rbf->prod_tail;
+
+  while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
+    num_loops ++;
+    nanosleep(&quick, NULL);
+    //sched_yield();
+  }
+# define MAX_WAIT_LOOP 10000
+  if (num_loops > MAX_WAIT_LOOP) {
+    PRINT_RB(rb,
+      "waited for prod_tail to advance from %"PRIu32" to %"PRIu32
+      " for %u loops; has another writer died?\n",
+      init_prod_tail, tx->seen, num_loops);
+  }
+
+  // Here our record is the next. In theory, next writers are now all
+  // waiting for us.
+
+  //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
+  ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
+  // All we need is for the following prod_tail change to always
+  // be visible after the changes to num_allocs and min/max observed t:
+  uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
+  double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
+  double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
+  if (0 == prev_num_allocs || t_start < tmin)
+      atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
+  if (0 == prev_num_allocs || t_stop > tmax)
+      atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
+  atomic_store_explicit(&rbf->prod_tail, tx->next, memory_order_release);
+  //print_rb(rb);
+
+# ifdef NEED_DATA_CACHE_FLUSH
+  my_cacheflush(rbf->data + tx->record_start, (tx->next - tx->record_start) * sizeof(rbf->data[0]));
+# endif
+}
+
+void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+
+  unsigned num_loops = 0;
+  uint32_t const init_cons_tail = rbf->cons_tail;
+  while (rbf->cons_tail != tx->seen) {
+    num_loops ++;
+    nanosleep(&quick, NULL);
+  }
+  if (num_loops > MAX_WAIT_LOOP) {
+    PRINT_RB(rb,
+      "waited for cons_tail to advance from %"PRIu32" to %"PRIu32
+      " for %u loops; has another reader died?\n",
+      init_cons_tail, tx->seen, num_loops);
+  }
+
+  //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
+  rbf->cons_tail = tx->next;
+  //print_rb(rb);
 }
 
 bool ringbuf_repair(struct ringbuf *rb)

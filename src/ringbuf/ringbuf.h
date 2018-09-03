@@ -28,7 +28,6 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <string.h>
-#include <sched.h>
 #include <limits.h>
 
 struct ringbuf_file {
@@ -40,20 +39,21 @@ struct ringbuf_file {
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
    * prod_head. prod_head points to the next word to be allocated. */
-  volatile uint32_t _Atomic prod_head;
-  volatile uint32_t _Atomic prod_tail;
+  uint32_t _Atomic prod_head;
+  uint32_t _Atomic prod_tail;
+  _Static_assert(ATOMIC_INT_LOCK_FREE,
+                 "uint32_t must be lock-free atomics");
   /* Bytes that are being read by consumers are between cons_tail and
    * cons_head. cons_head points to the next word to be read.
-   * TODO: There is only one reader so we actually don't need atomics here.
    * The ring buffer is empty when prod_tail == cons_head and full whenever
    * prod_head == cons_tail - 1. */
-  volatile uint32_t _Atomic cons_head;
-  volatile uint32_t _Atomic cons_tail;
+  uint32_t _Atomic cons_head;
+  uint32_t _Atomic cons_tail;
   /* We count the number of tuples (actually, of allocations), and keep
    * the range of some observed "t" values: */
-  volatile uint32_t _Atomic num_allocs;
-  volatile double _Atomic tmin;
-  volatile double _Atomic tmax;
+  uint32_t _Atomic num_allocs;
+  double _Atomic tmin;
+  double _Atomic tmax;
   /* The actual tuples start here: */
   uint32_t data[];
 };
@@ -121,7 +121,14 @@ struct ringbuf_tx {
 } while (0)
 
 extern enum ringbuf_error ringbuf_enqueue_alloc(
-  struct ringbuf *rb, struct ringbuf_tx *tx, uint32_t num_words);
+  struct ringbuf *, struct ringbuf_tx *, uint32_t num_words);
+
+extern void ringbuf_enqueue_commit(
+  struct ringbuf *, struct ringbuf_tx const *, double t_start,
+  double t_stop);
+
+extern void ringbuf_dequeue_commit(
+  struct ringbuf *, struct ringbuf_tx const *);
 
 #ifdef NEED_DATA_CACHE_FLUSH
 inline void my_cacheflush(void const *p_, size_t sz)
@@ -134,54 +141,6 @@ inline void my_cacheflush(void const *p_, size_t sz)
   asm volatile("sfence\n\t" : : : "memory");
 }
 #endif
-
-inline void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, double t_start, double t_stop)
-{
-  struct ringbuf_file *rbf = rb->rbf;
-
-  if (t_start > t_stop) {
-    double tmp = t_start;
-    t_start = t_stop;
-    t_stop = tmp;
-  }
-
-# define MAX_WAIT_LOOP 5000
-  // Update the prod_tail to match the new prod_head.
-  // First, wait until the prod_tail reach the head we observed (ie.
-  // previously allocated records have been committed).
-  unsigned num_loops = 0;
-  while (atomic_load_explicit(&rbf->prod_tail, memory_order_acquire) != tx->seen) {
-    num_loops ++;
-    sched_yield();
-  }
-  if (num_loops > MAX_WAIT_LOOP) {
-    PRINT_RB(rb,
-      "waited for prod_tail %"PRIu32" to advance to %"PRIu32
-      " for %u loops; has another writer died?\n",
-      rbf->prod_tail, tx->seen, num_loops);
-  }
-
-  // Here our record is the next. In theory, next writers are now all
-  // waiting for us.
-
-  //printf("enqueue commit, set prod_tail=%"PRIu32" while cons_head=%"PRIu32"\n", tx->next, rbf->cons_head);
-  ASSERT_RB(ringbuf_file_num_entries(rbf, tx->next, rbf->cons_head) > 0);
-  // All we need is for the following prod_tail change to always
-  // be visible after the changes to num_allocs and min/max observed t:
-  uint32_t prev_num_allocs = atomic_fetch_add_explicit(&rbf->num_allocs, 1, memory_order_relaxed);
-  double tmin = atomic_load_explicit(&rbf->tmin, memory_order_relaxed);
-  double tmax = atomic_load_explicit(&rbf->tmax, memory_order_relaxed);
-  if (0 == prev_num_allocs || t_start < tmin)
-      atomic_store_explicit(&rbf->tmin, t_start, memory_order_relaxed);
-  if (0 == prev_num_allocs || t_stop > tmax)
-      atomic_store_explicit(&rbf->tmax, t_stop, memory_order_relaxed);
-  atomic_store_explicit(&rbf->prod_tail, tx->next, memory_order_release);
-  //print_rb(rb);
-
-# ifdef NEED_DATA_CACHE_FLUSH
-  my_cacheflush(rbf->data + tx->record_start, (tx->next - tx->record_start) * sizeof(rbf->data[0]));
-# endif
-}
 
 // Combine all of the above:
 inline enum ringbuf_error ringbuf_enqueue(
@@ -251,27 +210,6 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
   ASSERT_RB(num_words > 0);
 
   return num_words*sizeof(uint32_t);
-}
-
-inline void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
-{
-  struct ringbuf_file *rbf = rb->rbf;
-
-  unsigned num_loops = 0;
-  while (rbf->cons_tail != tx->seen) {
-    num_loops ++;
-    sched_yield();
-  }
-  if (num_loops > MAX_WAIT_LOOP) {
-    PRINT_RB(rb,
-      "waited for cons_tail %"PRIu32" to advance to %"PRIu32
-      " for %u loops; has another reader died?\n",
-      rbf->cons_tail, tx->seen, num_loops);
-  }
-
-  //printf("dequeue commit, set const_taill=%"PRIu32" while prod_head=%"PRIu32"\n", tx->next, rbf->prod_head);
-  rbf->cons_tail = tx->next;
-  //print_rb(rb);
 }
 
 inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t max_size)
