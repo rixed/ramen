@@ -587,7 +587,8 @@ let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
   let rec loop () =
-    if !quit <> None then return_unit else (
+    let%lwt keep_going = while_ () in
+    if keep_going then (
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
       let%lwt () = k 0 in_tuple in
@@ -596,7 +597,7 @@ let yield_every ~while_ read_tuple every k =
         !logger.debug "Sleeping for %f seconds" sleep_time ;
         Lwt_unix.sleep sleep_time >>= loop
       ) else loop ()
-    ) in
+    ) else return_unit in
   loop ()
 
 let aggregate
@@ -890,7 +891,8 @@ let aggregate
       | [rb_in] ->
           read_single_rb ~while_ ~delay_rec:sleep_in read_tuple rb_in
       | rb_ins ->
-          merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_timeout read_tuple rb_ins
+          merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_timeout
+                    read_tuple rb_ins
     in
     tuple_reader (fun tx_size in_tuple ->
       with_state (fun s ->
