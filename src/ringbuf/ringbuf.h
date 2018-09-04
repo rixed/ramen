@@ -42,8 +42,6 @@ struct ringbuf_file {
    * prod_head. prod_head points to the next word to be allocated. */
   uint32_t _Atomic prod_head;
   uint32_t _Atomic prod_tail;
-  _Static_assert(ATOMIC_INT_LOCK_FREE,
-                 "uint32_t must be lock-free atomics");
   /* Bytes that are being read by consumers are between cons_tail and
    * cons_head. cons_head points to the next word to be read.
    * The ring buffer is empty when prod_tail == cons_head and full whenever
@@ -56,7 +54,9 @@ struct ringbuf_file {
   double _Atomic tmin;
   double _Atomic tmax;
   /* The actual tuples start here: */
-  uint32_t data[];
+  _Static_assert(ATOMIC_INT_LOCK_FREE,
+                 "uint32_t must be lock-free atomics");
+  uint32_t _Atomic data[];
 };
 
 struct ringbuf {
@@ -183,7 +183,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
       return -1;
     }
 
-    num_words = rbf->data[tx->record_start ++];  // which may be wrong already
+    num_words = atomic_load(rbf->data + (tx->record_start ++));  // which may be wrong already
     // Note that num_words = 0 would be invalid, but as long as we haven't
     // successfully written cons_head back to the RB we are not sure this is
     // an actual record size.
@@ -192,7 +192,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
 
     if (num_words == UINT32_MAX) { // A wrap around marker
       tx->record_start = 0;
-      num_words = rbf->data[tx->record_start ++];
+      num_words = atomic_load(rbf->data + (tx->record_start ++));
       dequeued = 1 + num_words + rbf->num_words - tx->seen;
     }
 
@@ -246,7 +246,7 @@ inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   tx->seen = 0; // unused
   tx->record_start = 0;
-  uint32_t num_words = rbf->data[tx->record_start ++];
+  uint32_t num_words = atomic_load(rbf->data + (tx->record_start ++));
   if (num_words == 0) return -1;
   tx->next = tx->record_start + num_words;
   /*printf("read_first: num_words=%"PRIu32", record_start=%"PRIu32", next=%"PRIu32"\n",
@@ -264,7 +264,7 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 
   ASSERT_RB(tx->record_start < tx->next); // Or we have read the whole of it already
   if (tx->next == rbf->num_words) return 0; // Same as EOF
-  uint32_t num_words = rbf->data[tx->next];
+  uint32_t num_words = atomic_load(rbf->data + tx->next);
   if (num_words == 0) return -1; // new file past the prod cursor
   if (num_words == UINT32_MAX) return 0; // EOF
   // Has to be tested *after* EOF:
