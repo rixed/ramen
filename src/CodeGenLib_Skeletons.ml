@@ -106,7 +106,7 @@ let get_binocle_tuple worker ic sc gc =
 let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
-  | exception RingBufLib.NoMoreRoom -> () (* Just skip *)
+  | exception RingBuf.NoMoreRoom -> () (* Just skip *)
   | tx ->
     let offs = RamenBinocle.serialize tx tuple in
     RingBuf.enqueue_commit tx time time ;
@@ -219,7 +219,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     Lwt_list.iter_p (fun out ->
       try%lwt out tuple
-      with RingBufLib.NoMoreRoom ->
+      with RingBuf.NoMoreRoom ->
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
         return_unit
@@ -511,63 +511,77 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
     RingBuf.dequeue_commit tx ;
     k tx_size in_tuple)
 
-let merge_rbs ?while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
-  let max_retry_time =
-    if merge_timeout > 0. then Some merge_timeout else None in
-  let read_tup ?max_retry_time rb =
-    let%lwt tx =
-      RingBufLib.dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb in
-    let in_tuple = read_tuple tx in
-    let tx_size = RingBuf.tx_size tx in
-    RingBuf.dequeue_commit tx ;
-    let merge_key = merge_on in_tuple in
-    return (merge_key, rb, tx_size, in_tuple)
-  and cmp_tuples (k1, _, _, _) (k2, _, _, _) =
-    compare k1 k2
-  (* List of tuples for rbs that were timed out but now have data: *)
-  and no_longer_timed_out = ref [] in
-  let foreground_wait rb =
-    !logger.debug "Timed out a parent" ;
-    let%lwt tup = read_tup rb in (* no more max_retry_time *)
-    !logger.debug "Timed out Parent is back" ;
-    no_longer_timed_out := tup :: !no_longer_timed_out ;
-    return_unit
-  in
-  let rec loop heap =
-    (* First, reintegrate timed out ringbuffers, if any: *)
-    let heap =
-      List.fold_left (fun heap tup ->
-        RamenHeap.add cmp_tuples tup heap
-      ) heap !no_longer_timed_out in
-    no_longer_timed_out := [] ;
-    if RamenHeap.is_empty heap then
-      let%lwt () = Lwt_unix.sleep (max 0.1 merge_timeout) in
-      loop heap
-    else
-      (* Selects the smallest tuple, pass it to the continuation, and then
-       * replace it: *)
-      let (_k, rb, tx_size, in_tuple), heap =
-        RamenHeap.pop_min cmp_tuples heap in
-      let%lwt () = k tx_size in_tuple in
-      match%lwt read_tup ?max_retry_time rb with
-      | exception Exit -> return_unit
-      | exception Timeout ->
-          async (fun () -> foreground_wait rb) ;
-          loop heap
-      | tup ->
-          loop (RamenHeap.add cmp_tuples tup heap)
-  in
-  match%lwt
-    Lwt_list.fold_left_s (fun heap rb ->
-      match%lwt read_tup ?max_retry_time rb with
-      | exception Timeout ->
-          async (fun () -> foreground_wait rb) ;
-          return heap
-      | tup ->
-          return (RamenHeap.add cmp_tuples tup heap)
-    ) RamenHeap.empty rbs with
-  | exception Exit -> return_unit
-  | heap -> loop heap
+type ('tuple_in, 'merge_on) to_merge_tuple =
+  | Tuple of ('tuple_in * int * 'merge_on)
+      (* a tuple of that size and key have been read already. *)
+  | NoTupleYet (* No tuple have been read yet, wait for it. *)
+  | TimedOut (* We gave up on that one, meaning we won't wait for it. *)
+type ('tuple_in, 'merge_on) to_merge =
+  { rb : RingBuf.t ; mutable tuple : ('tuple_in, 'merge_on) to_merge_tuple }
+
+let merge_rbs ~while_ ?delay_rec merge_on merge_timeout read_tuple rbs k =
+  let to_merge =
+    Array.of_list rbs |>
+    Array.map (fun rb -> { rb ; tuple = NoTupleYet }) in
+  let read_more () =
+    Array.iteri (fun i to_merge ->
+      match to_merge.tuple with
+      | Tuple _ -> ()
+      | NoTupleYet | TimedOut ->
+          if to_merge.tuple = TimedOut then
+            !logger.debug "Source #%d is back" i;
+          (match RingBuf.dequeue_alloc to_merge.rb with
+          | exception RingBuf.Empty -> ()
+          | tx ->
+              let in_tuple = read_tuple tx in
+              let tx_size = RingBuf.tx_size tx in
+              RingBuf.dequeue_commit tx ;
+              let merge_key = merge_on in_tuple in
+              to_merge.tuple <- Tuple (in_tuple, tx_size, merge_key))
+    ) to_merge in
+  (* Loop until timeout the given max time or we have a tuple for each
+   * non timed out input sources: *)
+  let rec wait_for_tuples until =
+    let now = Unix.gettimeofday () in
+    if now >= until then (
+      (* Timeout all that's left: *)
+      Array.iteri (fun i to_merge ->
+        if to_merge.tuple = NoTupleYet then (
+          !logger.debug "Timing out source #%d" i ;
+          to_merge.tuple <- TimedOut)
+      ) to_merge ;
+      return_unit
+    ) else (
+      read_more () ;
+      if Array.exists (fun to_merge -> to_merge.tuple = NoTupleYet) to_merge
+      then (
+        let dt = 0.01 (* todo *) in
+        Lwt_unix.sleep dt ;%lwt
+        wait_for_tuples until
+      ) else return_unit
+    ) in
+  let rec loop () =
+    let%lwt keep_going = while_ () in
+    if keep_going then
+      let until = Unix.gettimeofday () +. merge_timeout in
+      wait_for_tuples until ;%lwt
+      match
+        Array.fold_lefti (fun mi i to_merge ->
+          match mi, to_merge.tuple with
+          | None, Tuple t -> Some (i, t)
+          | Some (_, (_, _, k1)), Tuple (_, _, k2 as t)
+              when compare k1 k2 > 0 ->
+              Some (i, t)
+          | _ -> mi
+        ) None to_merge with
+      | None -> loop ()
+      | Some (i, (in_tuple, tx_size, key)) ->
+          !logger.info "Min in source #%d with key=%s" i (BatPervasives.dump key) ;
+          to_merge.(i).tuple <- NoTupleYet ;
+          k tx_size in_tuple ;%lwt
+          loop ()
+    else return_unit in
+  loop ()
 
 let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;

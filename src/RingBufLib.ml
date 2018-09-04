@@ -5,12 +5,6 @@ open RamenTypes
 open Stdint
 open RingBuf
 
-exception NoMoreRoom
-exception Empty
-let () =
-  Callback.register_exception "ringbuf full exception" NoMoreRoom ;
-  Callback.register_exception "ringbuf empty exception" Empty
-
 (* Note regarding nullmask and constructed types:
  * For list, we cannot know in advance the number of values so the nullmask
  * size can not be known in advance.

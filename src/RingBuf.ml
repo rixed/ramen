@@ -2,6 +2,12 @@ open Batteries
 open Stdint
 open RamenHelpers
 
+exception NoMoreRoom
+exception Empty
+let () =
+  Callback.register_exception "ringbuf full exception" NoMoreRoom ;
+  Callback.register_exception "ringbuf empty exception" Empty
+
 type t (* abstract, represents a ring buffer mmapped file *)
 
 let prepend_rb_name f fname =
