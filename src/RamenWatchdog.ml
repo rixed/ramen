@@ -76,7 +76,7 @@ let run t =
   if t.is_running then
     !logger.warning "Ignoring request to run %S again" t.name
   else (
-    !logger.info "Starting watchdog %S" t.name ;
+    !logger.debug "Starting watchdog %S" t.name ;
     t.is_running <- true ;
     t.last_reset <- Unix.gettimeofday () ;
     async loop)

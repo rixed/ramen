@@ -154,14 +154,14 @@ let compile conf root_path get_parent program_name program_code =
               ft.RamenTuple.typ_name = field
             ) typ with
       | exception Not_found ->
-          assert (is_private_field field) ;
-          false
+          assert (is_private_field field)
       | ft ->
           if ft.units = None then (
-            ft.units <- units ; true
-          ) else false in
-    let units_of_input func name =
-      !logger.debug "Looking for units of output field %S in %s"
+            !logger.debug "Set type of output field %S to %a"
+              field (Option.print RamenUnits.print) units ;
+            ft.units <- units) in
+    let units_of_output func name =
+      !logger.debug "Looking for units of output field %S in %S"
         name (RamenName.string_of_func func.F.name) ;
       match List.find (fun ft ->
               ft.RamenTuple.typ_name = name
@@ -189,7 +189,7 @@ let compile conf root_path get_parent program_name program_code =
         RamenUnits.check_same_units ~what None in
       (* Patch the input type: *)
       if units <> None then
-        patch_typ field units func.F.in_type |> ignore ;
+        patch_typ field units func.F.in_type ;
       units in
     let set_units func op =
       let parents =
@@ -212,19 +212,19 @@ let compile conf root_path get_parent program_name program_code =
         ) op in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected one. *)
-      (* Now that we have found the units of each expressions, patch the
+      (* Now that we have found the units of some expressions, patch the
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
-      if changed then
+      if changed then (
         match op with
         | RamenOperation.Aggregate { fields ; _ } ->
-            List.fold_left (fun changed sf ->
+            List.iter (fun sf ->
               let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
-              if units = None then changed
-              else patch_typ sf.alias units func.F.out_type || changed
-            ) changed fields
-        | _ -> changed
-      else changed
+              if units <> None then
+                patch_typ sf.alias units func.F.out_type
+            ) fields
+        | _ -> ()) ;
+      changed
     in
     if not (reach_fixed_point (fun () ->
         Hashtbl.fold (fun _ (func, op) changed ->

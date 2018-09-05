@@ -30,10 +30,10 @@ let print_typ oc typ =
     (match typ.typ with
     | None -> "unknown type"
     | Some t -> "type "^ IO.to_string RamenTypes.print_typ t) ;
-    (match typ.units with
-    | None -> ()
-    | Some units ->
-        Printf.fprintf oc "%a" RamenUnits.print units)
+  (match typ.units with
+  | None -> ()
+  | Some units ->
+      Printf.fprintf oc "%a" RamenUnits.print units)
 
 let uniq_num_seq = ref 0
 

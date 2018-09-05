@@ -19,7 +19,7 @@ let () =
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
 let tuple_typ =
-  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" } ;
+  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = Some RamenUnits.processes ; doc = "" } ;
     { typ_name = "time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" } ;
     { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
       doc = RamenConsts.MetricDocs.in_tuple_count } ;

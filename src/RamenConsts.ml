@@ -62,7 +62,7 @@ struct
     "Number of received tuples that have passed the WHERE filter since the \
      operation started."
   let out_tuple_count =
-    "Number of emitted tuples to each child of this operation since it \
+    "Number of tuples sent to each child of this operation since it \
      started."
   let group_count =
     "Number of groups currently maintained."

@@ -903,7 +903,7 @@ let aggregate
         (* Update per in-tuple stats *)
         IntCounter.add stats_in_tuple_count 1 ;
         IntCounter.add stats_rb_read_bytes tx_size ;
-        (* Sort: add in_tupple into the heap of sorted tuples, update
+        (* Sort: add in_tuple into the heap of sorted tuples, update
          * smallest/greatest, and consider extracting the smallest. *)
         (* If we assume sort_last >= 2 then the sort buffer will never
          * be empty but for the very last tuple. In that case pretend
