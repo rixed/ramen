@@ -86,7 +86,7 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
   if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make "read lines" quit_flag) ;
+    watchdog := Some (RamenWatchdog.make ~timeout:120. "read lines" quit_flag) ;
   let watchdog = Option.get !watchdog in
   RamenWatchdog.disable watchdog ;
   RamenWatchdog.run watchdog ;
