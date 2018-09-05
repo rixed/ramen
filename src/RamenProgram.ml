@@ -207,7 +207,7 @@ struct
             { expr = RamenExpr.Const (typ, VU32 (Uint32.of_int 42)) ;\
               alias = "the_answer" ; doc = "" } ] ;\
           and_all_others = false ;\
-          merge = [], 0. ;\
+          merge = { on = [] ; timeout = 0. ; last = 1 } ;\
           sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
           notifications = [] ;\
@@ -236,7 +236,7 @@ struct
                   Field (typ, ref TupleParam, "p2"))) ;\
               alias = "res" ; doc = "" } ] ;\
           every = 0. ; event_time = None ;\
-          and_all_others = false ; merge = [], 0. ; sort = None ;\
+          and_all_others = false ; merge = { on = [] ; timeout = 0. ; last = 1 }; sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
           notifications = [] ; key = [] ;\
           commit_cond = RamenExpr.Const (typ, VBool true) ;\

@@ -1,12 +1,17 @@
 {
-  programs = [ ("merge.x", []) ];
+  programs = [
+    ("merge.x", []);
+    ("fixtures/n123.x", []) ];
   outputs = {
-    "tests/merge/m" =>{
+    "tests/merge/m1" => {
       present = [
         { "n" => "1" };
         { "n" => "2" };
         { "n" => "3" };
         { "n" => "4" };
         { "n" => "5" };
-        { "n" => "7" } ]}}
+        { "n" => "7" } ]};
+    "tests/merge/m2" => { present = [ { "n" => "1" } ] };
+    "tests/merge/s4" => { present = [ { "n" => "1" } ] };
+  }
 }

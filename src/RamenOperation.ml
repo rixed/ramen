@@ -95,8 +95,7 @@ type t =
   | Aggregate of {
       fields : selected_field list ; (* Composition of the output tuple *)
       and_all_others : bool ; (* also "select *" *)
-      (* Expression to merge-sort the parents, and timeout: *)
-      merge : E.t list * float ;
+      merge : merge ;
       (* Optional buffering of N tuples for sorting according to some
        * expression: *)
       sort : (int * E.t option (* until *) * E.t list (* by *)) option ;
@@ -134,6 +133,11 @@ type t =
   | Instrumentation of { from : data_source list }
   | Notifications of { from : data_source list }
 
+and merge =
+  (* Number of entries to buffer (default 1), expression to merge-sort
+   * the parents, and timeout: *)
+  { last : int ; on : E.t list ; timeout : float }
+
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
@@ -156,16 +160,17 @@ let rec print_data_source oc = function
 and print oc =
   let sep = ", " in
   function
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                notifications ; key ; commit_cond ;
+  | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
+                event_time ; notifications ; key ; commit_cond ;
                 commit_before ; flush_how ; from ; every } ->
     if from <> [] then
       List.print ~first:"FROM " ~last:"" ~sep print_data_source oc from ;
-    if fst merge <> [] then (
-      Printf.fprintf oc " MERGE ON %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) (fst merge) ;
-      if snd merge > 0. then
-        Printf.fprintf oc " TIMEOUT AFTER %g SECONDS" (snd merge)) ;
+    if merge.on <> [] then (
+      Printf.fprintf oc " MERGE LAST %d ON %a"
+        merge.last
+        (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) merge.on ;
+      if merge.timeout > 0. then
+        Printf.fprintf oc " TIMEOUT AFTER %g SECONDS" merge.timeout) ;
     Option.may (fun (n, u_opt, b) ->
       Printf.fprintf oc " SORT LAST %d" n ;
       Option.may (fun u ->
@@ -242,7 +247,7 @@ let fold_top_level_expr init f = function
           ) init fields in
       let x = List.fold_left (fun prev me ->
             f prev me
-          ) x (fst merge) in
+          ) x merge.on in
       let x = f x where in
       let x = List.fold_left (fun prev ke ->
             f prev ke
@@ -275,7 +280,7 @@ let iter_expr f op =
 (* Various functions to inspect an operation: *)
 
 let is_merging = function
-  | Aggregate { merge ; _ } when fst merge <> [] -> true
+  | Aggregate { merge ; _ } when merge.on <> [] -> true
   | _ -> false
 
 let event_time_of_operation = function
@@ -476,7 +481,7 @@ let check params op =
               alias (string_of_prefix !pref)
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
-    List.iter (prefix_def TupleIn) (fst merge) ;
+    List.iter (prefix_def TupleIn) merge.on ;
     Option.may (fun (_, u_opt, b) ->
       List.iter (prefix_def TupleIn) b ;
       Option.may (prefix_def TupleIn) u_opt) sort ;
@@ -662,10 +667,18 @@ struct
 
   let merge_clause m =
     let m = "merge clause" :: m in
-    (strinG "merge" -- blanks -- strinG "on" -- blanks -+
-     several ~sep:list_sep E.Parser.p ++ optional ~def:0. (
-       blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
-       duration)) m
+    (
+      strinG "merge" -+
+      optional ~def:1 (
+        blanks -- strinG "last" -- blanks -+
+        pos_decimal_integer "Merge buffer size")
+      +- blanks +- strinG "on" +- blanks ++
+      several ~sep:list_sep E.Parser.p ++
+      optional ~def:0. (
+        blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
+        duration) >>:
+      fun ((last, on), timeout) -> { last ; on ; timeout }
+    ) m
 
   let sort_clause m =
     let m = "sort clause" :: m in
@@ -828,7 +841,7 @@ struct
 
   type select_clauses =
     | SelectClause of selected_field option list
-    | MergeClause of (E.t list * float)
+    | MergeClause of merge
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
@@ -898,7 +911,7 @@ struct
       (* Used for its address: *)
       let default_select_fields = []
       and default_star = true
-      and default_merge = [], 0.
+      and default_merge = { last = 1 ; on = [] ; timeout = 0. }
       and default_sort = None
       and default_where = E.expr_true ()
       and default_event_time = None
@@ -1065,7 +1078,7 @@ struct
           { expr = E.(Field (typ, ref TupleIn, "itf_srv")) ;\
             alias = "itf_dst" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         notifications = [] ;\
@@ -1083,7 +1096,7 @@ struct
       Aggregate {\
         fields = [] ;\
         and_all_others = true ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.(\
           StatelessFun2 (typ, Gt, \
@@ -1105,7 +1118,7 @@ struct
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
@@ -1128,7 +1141,7 @@ struct
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
             alias = "value" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
@@ -1145,7 +1158,7 @@ struct
       Aggregate {\
         fields = [] ;\
         and_all_others = true ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = None ;\
@@ -1178,7 +1191,7 @@ struct
                 Field (typ, ref TupleParam, "avg_window"))) ;\
             alias = "packets_per_sec" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = None ; \
@@ -1214,7 +1227,7 @@ struct
           { expr = E.Const (typ, VU32 Uint32.one) ;\
             alias = "one" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = None ; \
@@ -1241,7 +1254,7 @@ struct
               E.Field (typ, ref TupleIn, "n")))) ;\
             alias = "l" ; doc = "" } ] ;\
         and_all_others = false ;\
-        merge = [], 0. ;\
+        merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = None ; \
@@ -1300,7 +1313,7 @@ struct
       Aggregate {\
         fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; alias = "one" ; doc = "" } ] ;\
         every = 1. ; event_time = None ;\
-        and_all_others = false ; merge = [], 0. ; sort = None ;\
+        and_all_others = false ; merge = { on = []; timeout = 0.; last = 1 } ; sort = None ;\
         where = E.Const (typ, VBool true) ;\
         notifications = [] ; key = [] ;\
         commit_cond = replace_typ (E.expr_true ()) ;\

@@ -33,6 +33,8 @@ let add cmp x a = merge cmp a (singleton x)
 
 let min = function E -> raise Not_found | T (_, x, _, _) -> x
 
+let min_opt t = try Some (min t) with Not_found -> None
+
 let del_min cmp = function
   | E -> raise Not_found
   | T (_, _, l, r) -> merge cmp l r

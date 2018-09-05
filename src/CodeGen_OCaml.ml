@@ -2326,7 +2326,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_generate_tuples "generate_tuples_" in_typ mentioned out_typ ~opc) fields
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
-    (emit_merge_on "merge_on_" in_typ mentioned ~opc) (fst merge)
+    (emit_merge_on "merge_on_" in_typ mentioned ~opc) merge.on
     (emit_sort_expr "sort_until_" in_typ mentioned ~opc) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ mentioned ~opc) (match sort with Some (_, _, b) -> b | None -> [])
     (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~opc) notifications ;
@@ -2337,14 +2337,14 @@ let emit_aggregate opc oc name in_typ out_typ =
       \t\tminimal_tuple_of_group_\n\
       \t\tupdate_states_\n\
       \t\tout_tuple_of_minimal_tuple_\n\
-      \t\tmerge_on_ %F %d sort_until_ sort_by_\n\
+      \t\tmerge_on_ %d %F %d sort_until_ sort_by_\n\
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\tcommit_cond_ %b %b %s\n\
       \t\tglobal_init_ group_init_\n\
       \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_\n\
       \t\tget_notifications_ %f\n"
     name
-    (snd merge)
+    merge.last merge.timeout
     (match sort with None -> 0 | Some (n, _, _) -> n)
     (key = [])
     commit_before

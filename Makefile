@@ -126,6 +126,7 @@ RAMEN_SOURCES = \
 	src/RamenGraphite.ml \
 	src/RamenApi.ml \
 	src/RamenHeap.ml \
+	src/RamenSzHeap.ml \
 	src/SqliteHelpers.ml \
 	src/RamenNotifier.ml \
 	src/TermTable.ml \
@@ -165,6 +166,7 @@ CODEGENLIB_SOURCES = \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \
 	src/RamenHeap.ml \
+	src/RamenSzHeap.ml \
 	src/RamenSortBuf.ml \
 	src/CodeGenLib_Skeletons.ml \
 	src/HeavyHitters.ml \
@@ -457,6 +459,7 @@ tests/ip.x: tests/fixtures/mixture.x
 tests/histogram.x: tests/fixtures/cars.x
 tests/last.x: tests/fixtures/earthquakes.x tests/fixtures/cars.x
 tests/sample.x: tests/fixtures/n123.x
+tests/merge.x: tests/fixtures/n123.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -464,7 +467,7 @@ tests/sort.success: tests/sort.x tests/fixtures/earthquakes.x
 tests/fit_multi.success: tests/fit_multi.x tests/fixtures/cars.x
 tests/top_expr.success: tests/top_expr.x tests/fixtures/cars.x
 tests/season.success: tests/season.x tests/fixtures/earthquakes.x
-tests/merge.success: tests/merge.x
+tests/merge.success: tests/merge.x tests/fixtures/n123.x
 tests/from.success: tests/from.x
 tests/previous_and_null.success: tests/previous_and_null.x tests/fixtures/n123.x
 tests/fun_with_funcs.success: tests/fun_with_funcs.x tests/fixtures/cars.x
