@@ -1131,19 +1131,37 @@ let subst_tuple_fields =
     global_substitute re (fun s ->
       let tuple_name = try matched_group 2 s with Not_found -> "" in
       let field_name = matched_group 3 s in
+      let tot_name =
+        tuple_name ^ (if tuple_name <> "" then "." else "") ^ field_name in
+      let search_all () =
+        try
+          List.find_map (fun (_, finder) ->
+            try Some (finder field_name)
+            with Not_found -> None
+          ) tuples
+        with Not_found ->
+          !logger.error "Field %S used in text substitution is not \
+                         present in any tuple." field_name ;
+          "??"^ field_name ^"??"
+      in
       match List.find (fun (names, _finder) ->
               List.mem tuple_name names
             ) tuples with
       | exception Not_found ->
-        !logger.error "Unknown tuple %S used in text substitution!"
-          tuple_name ;
-        "??"^ tuple_name ^"."^ field_name ^"??"
+        if tuple_name = "" then search_all () else (
+          !logger.error "Unknown tuple %S used in text substitution!"
+            tuple_name ;
+          "??"^ tot_name ^"??")
       | _, finder ->
+        (* We may provide "" explicitely to force order of search but
+         * then if the field is not there we still want to look for it
+         * elsewhere: *)
         try finder field_name
         with Not_found ->
-          !logger.error "Field \"%s.%s\" used in text substitution is not \
-                         present in that tuple!" tuple_name field_name ;
-          "??"^ tuple_name ^"."^ field_name ^"??"
+          if tuple_name = "" then search_all () else (
+            !logger.error "Field %S used in text substitution is not \
+                           present in that tuple!" tot_name ;
+            "??"^ tot_name ^"??")
     ) text
 
 (* Similarly, but for simpler identifiers without tuple prefix: a function
