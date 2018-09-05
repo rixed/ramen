@@ -1609,7 +1609,7 @@ end
  * - units of a Nth/VecGet is not inferred but in the simplest cases;
  * - units of x**y is not inferred unless y is constant.
  *)
-let units_of_expr units_of_input =
+let units_of_expr units_of_input units_of_output =
   let rec uoe e =
     let t = typ_of e in
     if t.units <> None then t.units else
@@ -1619,6 +1619,8 @@ let units_of_expr units_of_input =
         else None
     | Field (_, tupref, name) when tuple_has_type_input !tupref ->
         units_of_input name
+    | Field (_, tupref, name) when tuple_has_type_output !tupref ->
+        units_of_output name
     | Case (_, cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)

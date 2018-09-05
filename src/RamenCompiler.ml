@@ -185,7 +185,7 @@ let compile conf root_path get_parent program_name program_code =
           (RamenName.string_of_func func.F.name) in
       let units =
         (List.enum parents /@
-         (fun f -> units_of_input f field)) |>
+         (fun f -> units_of_output f field)) |>
         RamenUnits.check_same_units ~what None in
       (* Patch the input type: *)
       if units <> None then
@@ -195,11 +195,12 @@ let compile conf root_path get_parent program_name program_code =
       let parents =
         Hashtbl.find_default compiler_parents func.F.name [] in
       let uoi = units_of_input func parents in
+      let uoo = units_of_output func in
       let changed =
         RamenOperation.fold_top_level_expr false (fun changed e ->
           let t = RamenExpr.typ_of e in
           if t.RamenExpr.units = None then (
-            let u = RamenExpr.units_of_expr uoi e in
+            let u = RamenExpr.units_of_expr uoi uoo e in
             if u <> None then (
               !logger.debug "Set units of %a to %a"
                 (RamenExpr.print false) e
