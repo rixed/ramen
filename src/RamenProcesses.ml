@@ -605,7 +605,7 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, params as k) (bin, func) ->
+    Hashtbl.iter (fun (_, _, _, params as k) (bin, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
           let proc = make_running_process bin params func in
@@ -696,7 +696,8 @@ let synchronize_running conf autoreload_delay =
                       List.iter (fun f ->
                         (* Use the mount point + signature + params as the key. *)
                         let k =
-                          program_name, f.F.signature, mre.C.params in
+                          program_name, f.F.name, f.F.signature,
+                          mre.C.params in
                         Hashtbl.add must_run k (mre.C.bin, f)
                       ) prog.P.funcs
                 ) must_run_programs) in
