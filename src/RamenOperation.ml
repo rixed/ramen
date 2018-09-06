@@ -237,42 +237,43 @@ and print oc =
 let fold_top_level_expr init f = function
   | ListenFor _ | Instrumentation _ | Notifications _ -> init
   | ReadCSVFile { where = { fname ; _ } ; preprocessor ; _ } ->
-      let x = Option.map_default (f init) init preprocessor in
-      f x fname
+      let x =
+        Option.map_default (f init "CSV preprocessor") init preprocessor in
+      f x "CSV filename" fname
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            f prev sf.expr
+            f prev ("field "^ sf.alias) sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->
-            f prev me
+            f prev "MERGE-ON clause" me
           ) x merge.on in
-      let x = f x where in
+      let x = f x "WHERE clause" where in
       let x = List.fold_left (fun prev ke ->
-            f prev ke
+            f prev "GROUP-BY clause" ke
           ) x key in
       let x = List.fold_left (fun prev notif ->
-            let prev = f prev notif.notif_name in
+            let prev = f prev "NOTIFY name" notif.notif_name in
             List.fold_left (fun prev (n, v) ->
-              f prev v) prev notif.parameters
+              f prev "NOTIFY parameter" v) prev notif.parameters
           ) x notifications in
-      let x = f x commit_cond in
+      let x = f x "COMMIT clause" commit_cond in
       let x = match sort with
         | None -> x
         | Some (_, u_opt, b) ->
             let x = match u_opt with
               | None -> x
-              | Some u -> f x u in
+              | Some u -> f x "SORT-UNTIL clause" u in
             List.fold_left (fun prev e ->
-              f prev e
+              f prev "SORT-BY clause" e
             ) x b in
       x
 
 let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
 
 let fold_expr init f =
-  fold_top_level_expr init (E.fold_by_depth f)
+  fold_top_level_expr init (fun i _ -> E.fold_by_depth f i)
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op

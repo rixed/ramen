@@ -197,10 +197,16 @@ let compile conf root_path get_parent program_name program_code =
       let uoi = units_of_input func parents in
       let uoo = units_of_output func in
       let changed =
-        RamenOperation.fold_top_level_expr false (fun changed e ->
+        RamenOperation.fold_top_level_expr false (fun changed what e ->
           let t = RamenExpr.typ_of e in
           if t.RamenExpr.units = None then (
-            let u = RamenExpr.units_of_expr uoi uoo e in
+            let u =
+              let ctx =
+                Printf.sprintf "evaluating units of %s in function %s"
+                  what
+                  (func_color (RamenName.string_of_func func.F.name)) in
+              fail_with_context ctx (fun () ->
+                RamenExpr.units_of_expr uoi uoo e) in
             if u <> None then (
               !logger.debug "Set units of %a to %a"
                 (RamenExpr.print false) e
