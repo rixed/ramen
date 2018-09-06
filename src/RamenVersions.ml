@@ -12,7 +12,7 @@ let graph_config = "v10" (* last: params in RC key *)
 let codegen = "v37" (* last: commit before *)
 
 (* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v2" (* last: addition of last_out *)
+let instrumentation_tuple = "v3" (* last: addition of max event time *)
 
 (* Notifications sent from workers to Ramen *)
 let notify_tuple = "v6" (* last: firing is now optional *)

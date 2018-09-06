@@ -1,12 +1,18 @@
 (* Simple tables for the terminal *)
 open Batteries
+open RamenHelpers
 
-type valtype = ValStr of string | ValInt of int | ValFlt of float
+type valtype =
+  | ValStr of string
+  | ValInt of int
+  | ValFlt of float
+  | ValDate of float
 
 let string_of_val = function
   | ValStr s -> s
   | ValInt i -> string_of_int i
   | ValFlt f -> string_of_float f
+  | ValDate t -> ctime t
 
 let sort ~sort_col lines =
   let safe_get l i =
@@ -16,9 +22,12 @@ let sort ~sort_col lines =
     match safe_get l1 sort_col, safe_get l2 sort_col with
     | ValStr s1, ValStr s2 -> String.compare s1 s2
     | ValInt i1, ValInt i2 -> Int.compare i2 i1
-    | ValFlt f1, ValFlt f2 -> Float.compare f2 f1
-    | ValFlt f1, ValInt i2 -> Float.compare (float_of_int i2) f1
-    | ValInt i1, ValFlt f2 -> Float.compare f2 (float_of_int i1)
+    | (ValFlt f1 | ValDate f1), (ValFlt f2 | ValDate f2) ->
+        Float.compare f2 f1
+    | (ValFlt f1 | ValDate f1), ValInt i2 ->
+        Float.compare (float_of_int i2) f1
+    | ValInt i1, (ValFlt f2 | ValDate f2) ->
+        Float.compare f2 (float_of_int i1)
     | ValStr s1, v2 -> String.compare s1 (string_of_val v2)
     | v1, ValStr s2 -> String.compare (string_of_val v1) s2
   in
