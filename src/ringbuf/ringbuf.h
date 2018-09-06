@@ -158,7 +158,7 @@ inline enum ringbuf_error ringbuf_enqueue(
 
   struct ringbuf_file *rbf = rb->rbf;
 
-  memcpy(rbf->data + tx.seen + 1, data, num_words*sizeof(*data));
+  memcpy(rbf->data + tx.record_start, data, num_words*sizeof(*data));
 
   ringbuf_enqueue_commit(rb, &tx, t_start, t_stop);
 
