@@ -207,8 +207,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
           | rb ->
             let tup_serializer = serialize_tuple file_spec.RamenOutRef.field_mask
             and tup_sizer = sersize_of_tuple file_spec.RamenOutRef.field_mask in
+            let last_retry = ref 0. in
             let rb_writer tmin_tmax tuple =
-              let last_retry = ref 0. in
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
                * terminated then we won't deadloop.  Also, if one child is full
