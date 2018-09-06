@@ -103,11 +103,11 @@ let stop_http_servers () =
 open Binocle
 
 let stats_count =
-  IntCounter.make RamenConsts.MetricNames.requests_count
+  IntCounter.make RamenConsts.Metric.Names.requests_count
     "Number of HTTP requests, per response status"
 
 let stats_resp_time =
-  Histogram.make RamenConsts.MetricNames.http_resp_time
+  Histogram.make RamenConsts.Metric.Names.http_resp_time
     "HTTP response time per URL" Histogram.powers_of_two
 
 let requests_since_last_fault_injection = ref 0

@@ -25,27 +25,27 @@ let tuple_typ =
     { typ_name = "max_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "Largest event time encountered so far" } ;
     { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = RamenConsts.MetricDocs.in_tuple_count } ;
+      doc = RamenConsts.Metric.Docs.in_tuple_count } ;
     { typ_name = "tuples_selected" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = RamenConsts.MetricDocs.selected_tuple_count } ;
+      doc = RamenConsts.Metric.Docs.selected_tuple_count } ;
     { typ_name = "tuples_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = RamenConsts.MetricDocs.out_tuple_count } ;
+      doc = RamenConsts.Metric.Docs.out_tuple_count } ;
     { typ_name = "groups" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.groups ;
-      doc = RamenConsts.MetricDocs.group_count } ;
+      doc = RamenConsts.Metric.Docs.group_count } ;
     { typ_name = "cpu" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds ;
-      doc = RamenConsts.MetricDocs.cpu_time } ;
+      doc = RamenConsts.Metric.Docs.cpu_time } ;
     { typ_name = "ram" ; typ = { structure = TU64 ; nullable = false } ; units = Some RamenUnits.bytes ;
-      doc = RamenConsts.MetricDocs.ram_usage } ;
+      doc = RamenConsts.Metric.Docs.ram_usage } ;
     { typ_name = "wait_in" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
-      doc = RamenConsts.MetricDocs.rb_wait_read } ;
+      doc = RamenConsts.Metric.Docs.rb_wait_read } ;
     { typ_name = "wait_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
-      doc = RamenConsts.MetricDocs.rb_wait_write } ;
+      doc = RamenConsts.Metric.Docs.rb_wait_write } ;
     { typ_name = "bytes_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
-      doc = RamenConsts.MetricDocs.rb_read_bytes } ;
+      doc = RamenConsts.Metric.Docs.rb_read_bytes } ;
     { typ_name = "bytes_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
-      doc = RamenConsts.MetricDocs.rb_write_bytes } ;
+      doc = RamenConsts.Metric.Docs.rb_write_bytes } ;
     { typ_name = "last_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = RamenConsts.MetricDocs.last_out } ]
+      doc = RamenConsts.Metric.Docs.last_out } ]
 
 let event_time =
   let open RamenEventTime in

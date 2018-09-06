@@ -202,35 +202,35 @@ open Binocle
 
 let stats_worker_crashes =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.worker_crashes
+    RamenConsts.Metric.Names.worker_crashes
     "Number of workers that have crashed (or exited with non 0 status)."
 
 let stats_worker_deadloopings =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.worker_deadloopings
+    RamenConsts.Metric.Names.worker_deadloopings
     "Number of time a worker has been found to deadloop."
 
 let stats_worker_count =
-  IntGauge.make RamenConsts.MetricNames.worker_count
+  IntGauge.make RamenConsts.Metric.Names.worker_count
     "Number of workers configured to run."
 
 let stats_worker_running =
-  IntGauge.make RamenConsts.MetricNames.worker_running
+  IntGauge.make RamenConsts.Metric.Names.worker_running
     "Number of workers actually running."
 
 let stats_ringbuf_repairs =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.ringbuf_repairs
+    RamenConsts.Metric.Names.ringbuf_repairs
     "Number of times a worker ringbuf had to be repaired."
 
 let stats_outref_repairs =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.outref_repairs
+    RamenConsts.Metric.Names.outref_repairs
     "Number of times a worker outref had to be repaired."
 
 let stats_worker_sigkills =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.worker_sigkills
+    RamenConsts.Metric.Names.worker_sigkills
     "Number of times a worker had to be sigkilled instead of sigtermed."
 
 (* When a worker seems to crashloop, assume it's because of a bad file and

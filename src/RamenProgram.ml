@@ -49,7 +49,7 @@ let make_name =
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
 let make_func ?name ?(doc="") operation =
-  { name = (match name with Some n -> n | None -> make_name ()) ;
+  { name = Option.default_delayed make_name name ;
     doc ; operation }
 
 (* Pretty-print a parsed program back to string: *)

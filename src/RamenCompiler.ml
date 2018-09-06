@@ -21,12 +21,12 @@ open Binocle
 
 let stats_typing_time =
   Histogram.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.compiler_typing_time
+    RamenConsts.Metric.Names.compiler_typing_time
     "Time spent typing ramen programs, per typer" Histogram.powers_of_two
 
 let stats_typing_count =
   IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.MetricNames.compiler_typing_count
+    RamenConsts.Metric.Names.compiler_typing_count
     "How many times a typer have succeeded/failed"
 
 let entry_point_name = "start"

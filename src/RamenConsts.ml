@@ -13,76 +13,79 @@ struct
   let sqlite = "application/x-sqlite3"
 end
 
-module MetricNames =
+module Metric =
 struct
-  (* Metrics reported by workers: *)
-  let in_tuple_count = "in_tuple_count"
-  let selected_tuple_count = "selected_tuple_count"
-  let out_tuple_count = "out_tuple_count"
-  let group_count = "group_count"
-  let cpu_time = "cpu_time"
-  let ram_usage = "ram_usage"
-  let rb_wait_read = "in_sleep"
-  let rb_wait_write = "out_sleep"
-  let rb_read_bytes = "in_bytes"
-  let rb_write_bytes = "out_bytes"
-  let last_out = "last_out"
-  let max_event_time = "max_event_time"
+  module Names =
+  struct
+    (* Metrics reported by workers: *)
+    let in_tuple_count = "in_tuple_count"
+    let selected_tuple_count = "selected_tuple_count"
+    let out_tuple_count = "out_tuple_count"
+    let group_count = "group_count"
+    let cpu_time = "cpu_time"
+    let ram_usage = "ram_usage"
+    let rb_wait_read = "in_sleep"
+    let rb_wait_write = "out_sleep"
+    let rb_read_bytes = "in_bytes"
+    let rb_write_bytes = "out_bytes"
+    let last_out = "last_out"
+    let max_event_time = "max_event_time"
 
-  (* Metrics reported by the supervisor: *)
-  let worker_crashes = "workers_crashes"
-  let worker_deadloopings = "workers_deadloopings"
-  let worker_count = "workers_count"
-  let worker_running = "workers_running"
-  let worker_sigkills = "workers_sigkills"
-  let ringbuf_repairs = "workers_ringbuf_repairs"
-  let outref_repairs = "workers_outref_repairs"
+    (* Metrics reported by the supervisor: *)
+    let worker_crashes = "workers_crashes"
+    let worker_deadloopings = "workers_deadloopings"
+    let worker_count = "workers_count"
+    let worker_running = "workers_running"
+    let worker_sigkills = "workers_sigkills"
+    let ringbuf_repairs = "workers_ringbuf_repairs"
+    let outref_repairs = "workers_outref_repairs"
 
-  (* Metrics reported by the notifier: *)
-  let notifs_count = "notifs_count"
-  let notifs_send_fails = "notifs_send_failures"
-  let team_fallbacks = "notifs_team_fallbacks"
-  let notifs_cancelled = "notifs_cancelled"
+    (* Metrics reported by the notifier: *)
+    let notifs_count = "notifs_count"
+    let notifs_send_fails = "notifs_send_failures"
+    let team_fallbacks = "notifs_team_fallbacks"
+    let notifs_cancelled = "notifs_cancelled"
 
-  (* Metrics reported by the HTTP server: *)
-  let requests_count = "http_requests_count"
-  let http_resp_time = "http_resp_time"
+    (* Metrics reported by the HTTP server: *)
+    let requests_count = "http_requests_count"
+    let http_resp_time = "http_resp_time"
 
-  (* Metrics reported by the compiler: *)
-  let compiler_typing_time = "compiler_typing_time"
-  let compiler_typing_count = "compiler_typing_count"
-end
+    (* Metrics reported by the compiler: *)
+    let compiler_typing_time = "compiler_typing_time"
+    let compiler_typing_count = "compiler_typing_count"
+  end
 
-(* Only required when the doc is used in more than one place: *)
-module MetricDocs =
-struct
-  let in_tuple_count =
-    "Number of received tuples that have been processed since the \
-     operation started."
-  let selected_tuple_count =
-    "Number of received tuples that have passed the WHERE filter since the \
-     operation started."
-  let out_tuple_count =
-    "Number of tuples sent to each child of this operation since it \
-     started."
-  let group_count =
-    "Number of groups currently maintained."
-  let cpu_time =
-    "Total CPU time spent in this operation so far."
-  let ram_usage =
-    "Number of bytes currently allocated in the heap."
-  let rb_read_bytes =
-    "Number of bytes read from the input ring buffers so far."
-  let rb_write_bytes =
-    "Number of bytes written in output ring buffers so far."
-  let rb_wait_read =
-    "Total number of seconds spent waiting for input to refill."
-  let rb_wait_write =
-    "Total number of seconds spent waiting for output to empty."
-  let last_out =
-    "When was the last output emitted."
-  let max_event_time =
-    "Maximum event start time emitted so far."
+  (* Only required when the doc is used in more than one place: *)
+  module Docs =
+  struct
+    let in_tuple_count =
+      "Number of received tuples that have been processed since the \
+       operation started."
+    let selected_tuple_count =
+      "Number of received tuples that have passed the WHERE filter since the \
+       operation started."
+    let out_tuple_count =
+      "Number of tuples sent to each child of this operation since it \
+       started."
+    let group_count =
+      "Number of groups currently maintained."
+    let cpu_time =
+      "Total CPU time spent in this operation so far."
+    let ram_usage =
+      "Number of bytes currently allocated in the heap."
+    let rb_read_bytes =
+      "Number of bytes read from the input ring buffers so far."
+    let rb_write_bytes =
+      "Number of bytes written in output ring buffers so far."
+    let rb_wait_read =
+      "Total number of seconds spent waiting for input to refill."
+    let rb_wait_write =
+      "Total number of seconds spent waiting for output to empty."
+    let last_out =
+      "When was the last output emitted."
+    let max_event_time =
+      "Maximum event start time emitted so far."
+  end
 end
 
 module CliInfo =
