@@ -1449,12 +1449,16 @@ struct
           Coalesce (make_typ "coalesce", r)
     ) m
 
+  and accept_units q =
+    q ++ optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
+      fun (e, units) -> (typ_of e).units <- units ; e
+
   and highestest_prec_no_parenthesis m =
-    (const ||| field ||| func ||| null ||| coalesce) m
+    (accept_units (const ||| field ||| null) ||| func ||| coalesce) m
 
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||
-     char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' |||
+     accept_units (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')') |||
      tuple ||| vector
     ) m
 
@@ -1485,13 +1489,7 @@ struct
         Vector (make_typ "vector", es)
     ) m
 
-  and p m =
-    (
-      lowest_prec_left_assoc ++
-      optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
-      fun (e, units) ->
-        (typ_of e).units <- units ; e
-    ) m
+  and p m = lowest_prec_left_assoc m
 
   (*$= p & ~printer:(test_printer (print false))
     (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (13, []))) \
