@@ -33,7 +33,7 @@ module P = C.Program
  * *)
 
 type func =
-  { name : RamenName.func ;
+  { name : RamenName.func option (* optional during parsing only *) ;
     doc : string ;
     operation : RamenOperation.t }
 
@@ -49,8 +49,7 @@ let make_name =
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
 let make_func ?name ?(doc="") operation =
-  { name = Option.default_delayed make_name name ;
-    doc ; operation }
+  { name ; doc ; operation }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -60,10 +59,14 @@ let print_param oc p =
     RamenTypes.print p.value
 
 let print_func oc n =
-  (* TODO: keep the info that func was anonymous? *)
-  Printf.fprintf oc "DEFINE '%s' AS %a;"
-    (RamenName.string_of_func n.name)
-    RamenOperation.print n.operation
+  match n.name with
+  | None ->
+      Printf.fprintf oc "%a;"
+        RamenOperation.print n.operation
+  | Some name ->
+      Printf.fprintf oc "DEFINE '%s' AS %a;"
+        (RamenName.string_of_func name)
+        RamenOperation.print n.operation
 
 let print oc (params, funcs) =
   List.print ~first:"" ~last:"" ~sep:"\n" print_param oc params ;
@@ -72,6 +75,7 @@ let print oc (params, funcs) =
 (* Check that a syntactically valid program is actually valid: *)
 
 let check (params, funcs) =
+  let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %S not unique" name |> failwith in
   List.fold_left (fun s p ->
@@ -83,11 +87,14 @@ let check (params, funcs) =
     (try RamenOperation.check params n.operation
     with Failure msg ->
       Printf.sprintf "In function %s: %s"
-        (RamenName.string_of_func n.name) msg |>
+        (RamenName.string_of_func (n.name |? anonymous)) msg |>
       failwith) ;
-    if Set.mem n.name s then
-      name_not_unique (RamenName.string_of_func n.name) ;
-    Set.add n.name s
+    match n.name with
+    | Some name ->
+        if Set.mem name s then
+          name_not_unique (RamenName.string_of_func (n.name |? anonymous)) ;
+        Set.add name s
+    | None -> s
   ) Set.empty funcs |> ignore
 
 module Parser =
@@ -199,7 +206,7 @@ struct
 
   (*$= p & ~printer:(test_printer print)
    (Ok (([], [\
-    { name = RamenName.func_of_string "bar" ;\
+    { name = Some (RamenName.func_of_string "bar") ;\
       doc = "" ;\
       operation = \
         Aggregate {\
@@ -225,7 +232,7 @@ struct
                         value = VU32 Uint32.zero } ;\
            RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = false } ; units = None ; doc = "" } ;\
                         value = VU32 Uint32.zero } ], [\
-    { name = RamenName.func_of_string "add" ;\
+    { name = Some (RamenName.func_of_string "add") ;\
       doc = "" ;\
       operation = \
         Aggregate {\
@@ -269,7 +276,8 @@ let expurgate from =
   List.fold_left (fun (new_funcs, from) -> function
     | SubQuery q ->
         let new_func = reify_subquery q in
-        (new_func :: new_funcs), NamedOperation (None, new_func.name) :: from
+        (new_func :: new_funcs),
+        NamedOperation (None, Option.get new_func.name) :: from
     | (GlobPattern _ | NamedOperation _) as f -> new_funcs, f :: from
   ) ([], []) from
 
@@ -292,6 +300,11 @@ let reify_subqueries funcs =
     | _ -> func :: fs
   ) [] funcs
 
+let name_unnamed =
+  List.map (fun func ->
+    if func.name <> None then func else
+    { func with name = Some (make_name ()) })
+
 (* For convenience, it is possible to 'SELECT *' rather than, or in addition
  * to, a set of named fields (see and_all_others flag in RamenOperation). For
  * simplicity, we resolve this STAR into the actual list of fields here right
@@ -310,7 +323,7 @@ let common_fields_of_from get_parent start_name funcs from =
       | GlobPattern _ ->
           List.map (fun f -> f.RamenTuple.typ_name) RamenBinocle.tuple_typ
       | NamedOperation (None, fn) ->
-          (match List.find (fun f -> f.name = fn) funcs with
+          (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
               Printf.sprintf "While expanding STAR, cannot find parent %s"
                 (RamenName.string_of_func fn) |>
@@ -404,6 +417,7 @@ let parse get_parent program_name program =
       (RamenParsing.print_bad_result print) e |>
     failwith
   | Ok ((params, funcs), _) ->
+    let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in
     let t = params, funcs in

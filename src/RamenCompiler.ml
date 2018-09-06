@@ -88,10 +88,11 @@ let compile conf root_path get_parent program_name program_code =
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let op = parsed_func.RamenProgram.operation in
+      let name = Option.get parsed_func.name in
       let me_func =
         let open RamenOperation in
         F.{ program_name ;
-            name = parsed_func.name ;
+            name ;
             doc = parsed_func.doc ;
             in_type = in_type_of_operation op ;
             out_type = out_type_of_operation op ;
@@ -101,7 +102,7 @@ let compile conf root_path get_parent program_name program_code =
             event_time = event_time_of_operation op ;
             factors = factors_of_operation op ;
             envvars = envvars_of_operation op } in
-      let fq_name = RamenName.fq program_name parsed_func.name in
+      let fq_name = RamenName.fq program_name name in
       Hashtbl.add compiler_funcs fq_name (me_func, op)
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
@@ -141,7 +142,8 @@ let compile conf root_path get_parent program_name program_code =
             f.F.name = parent_func_name
           ) par_rc.P.funcs
       ) |>
-      Hashtbl.add compiler_parents parsed_func.RamenProgram.name
+      Hashtbl.add compiler_parents
+                  (Option.get parsed_func.RamenProgram.name)
     ) parsed_funcs ;
 
     (*
