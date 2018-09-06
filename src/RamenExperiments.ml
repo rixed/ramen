@@ -102,11 +102,22 @@ let set_variants persist_dir forced_variants =
     | en, vn ->
         (match List.find (fun e -> e.name = en) all_experiments with
         | exception Not_found ->
-            invalid_arg ("unknown experiment: "^ en) (* TODO: list them *)
+            Printf.sprintf2
+              "unknown experiment %S, only possible experiments are: %a"
+              en
+              (pretty_list_print (fun oc e -> String.print oc e.name))
+                all_experiments |>
+            invalid_arg
         | e ->
             (match Array.findi (fun v -> v.Variant.name = vn) e.variants with
             | exception Not_found ->
-                invalid_arg ("unknown variant: "^ vn) (* TODO: list them *)
+                Printf.sprintf2
+                  "unknown variant %S, only possible variants of \
+                   experiment %S are: %a"
+                  vn e.name
+                  (pretty_array_print (fun oc v ->
+                    String.print oc v.Variant.name)) e.variants |>
+                invalid_arg
             | i ->
                 e.variant <- i ; e.forced <- true))
   ) forced_variants ;

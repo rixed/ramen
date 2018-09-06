@@ -1286,16 +1286,23 @@ let option_map2 f o1 o2 =
 (* To circumvent short-cuts *)
 let (|||) = (||)
 
+let pretty_enum_print p oc e =
+  let rec loop first x =
+    match Enum.get e with
+    | None ->
+        Printf.fprintf oc "%s%a" (if first then "" else " and ") p x
+    | Some next ->
+        Printf.fprintf oc "%s%a" (if first then "" else ", ") p x ;
+        loop false next in
+  match Enum.get e with
+  | None -> String.print oc "<empty>"
+  | Some x -> loop true x
+
 let pretty_list_print p oc =
-  let rec loop first = function
-  | [] ->
-      String.print oc "<empty>"
-  | [x] ->
-      Printf.fprintf oc "%s%a" (if first then "" else " and ") p x
-  | x::lst ->
-      Printf.fprintf oc "%s%a" (if first then "" else ", ") p x ;
-      loop false lst
-  in loop true
+  pretty_enum_print p oc % List.enum
+
+let pretty_array_print p oc =
+  pretty_enum_print p oc % Array.enum
 
 let is_failing f x =
   try ignore (f x) ; false
