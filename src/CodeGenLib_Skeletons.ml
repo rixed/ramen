@@ -557,9 +557,11 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         ) to_merge ;
         return_unit
       ) else (
-        let dt = 0.01 (* todo *) in
-        Lwt_unix.sleep dt ;%lwt
-        wait_for_tuples started)
+        if%lwt while_ () then (
+          let dt = 0.01 (* todo *) in
+          Lwt_unix.sleep dt ;%lwt
+          wait_for_tuples started
+        ) else return_unit)
     ) else return_unit in
   let rec loop () =
     if%lwt while_ () then (
@@ -591,11 +593,19 @@ let yield_every ~while_ read_tuple every k =
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
       let%lwt () = k 0 in_tuple in
-      let sleep_time = every -. Unix.gettimeofday () +. start in
-      if sleep_time > 0. then (
-        !logger.debug "Sleeping for %f seconds" sleep_time ;
-        Lwt_unix.sleep sleep_time >>= loop
-      ) else loop ()
+      let rec sleep () =
+        (* Avoid sleeping longer than a few seconds to check while_ in a
+         * timely fashion. The 1.33 is supposed to help distinguish this sleep
+         * from the many others when using strace: *)
+        let sleep_time =
+          min 1.33
+          ((start +. every) -. Unix.gettimeofday ()) in
+        let%lwt keep_going = while_ () in
+        if sleep_time > 0. && keep_going then (
+          !logger.debug "Sleeping for %f seconds" sleep_time ;
+          Lwt_unix.sleep sleep_time >>= sleep
+        ) else loop () in
+      sleep ()
     ) else return_unit in
   loop ()
 
