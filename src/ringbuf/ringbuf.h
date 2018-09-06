@@ -97,7 +97,8 @@ struct ringbuf_tx {
 
 #define PRINT_RB(rb, fmt, ...) do { \
   struct ringbuf_file *rbf = rb->rbf; \
-  struct tm const *tm = localtime(NULL); \
+  time_t now = time(NULL); \
+  struct tm const *tm = localtime(&now); \
   fprintf(stderr, \
           "%04d-%02d-%02d %02d:%02d:%02d: " \
           "pid=%u, rbf@%p, fname=%s, cons=[%"PRIu32";%"PRIu32"], " \
