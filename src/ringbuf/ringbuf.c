@@ -9,7 +9,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <time.h>
 
 #include "ringbuf.h"
 
@@ -606,7 +605,7 @@ void ringbuf_enqueue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx, dou
     nanosleep(&quick, NULL);
     //sched_yield();
   }
-# define MAX_WAIT_LOOP 10000
+# define MAX_WAIT_LOOP 1000
   if (num_loops > MAX_WAIT_LOOP) {
     PRINT_RB(rb,
       "waited for prod_tail to advance from %"PRIu32" to %"PRIu32
@@ -645,6 +644,7 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
   while (rbf->cons_tail != tx->seen) {
     num_loops ++;
     nanosleep(&quick, NULL);
+    //sched_yield();
   }
   if (num_loops > MAX_WAIT_LOOP) {
     PRINT_RB(rb,

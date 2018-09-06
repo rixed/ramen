@@ -8,12 +8,13 @@ open RamenHelpers
 
 (* Health and Stats
  *
- * Each func has to periodically report to ramen http server its health and some stats.
+ * Each func has to periodically report to ramen http server its health and
+ * some stats.
  * Could have been the other way around, and that would have made the
  * connection establishment easier possibly (since we already must be able to
  * ssh to other machines in order to start a func) but we already have an http
- * server on Ramen and probably want to avoid opening too many ports everywhere, and forcing
- * generated funcs to implement too many things.
+ * server on Ramen and probably want to avoid opening too many ports
+ * everywhere, and forcing generated funcs to implement too many things.
  *
  * Stats must include:
  *
@@ -205,8 +206,10 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             !logger.error "Cannot open ringbuf %s: %s"
               fname (Printexc.to_string e) ;
           | rb ->
-            let tup_serializer = serialize_tuple file_spec.RamenOutRef.field_mask
-            and tup_sizer = sersize_of_tuple file_spec.RamenOutRef.field_mask in
+            let tup_serializer =
+              serialize_tuple file_spec.RamenOutRef.field_mask
+            and tup_sizer =
+              sersize_of_tuple file_spec.RamenOutRef.field_mask in
             let last_retry = ref 0. in
             let rb_writer tmin_tmax tuple =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
