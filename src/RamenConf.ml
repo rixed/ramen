@@ -209,7 +209,6 @@ let with_rlock conf f =
     try%lwt
       RamenAdvLock.with_r_lock rc_file (fun () ->
         let programs =
-          (* TODO: cache reading the rc file *)
           read_rc_file conf.do_persist rc_file |>
           Hashtbl.map (fun pn mre ->
             mre,

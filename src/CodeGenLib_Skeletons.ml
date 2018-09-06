@@ -562,8 +562,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         wait_for_tuples started)
     ) else return_unit in
   let rec loop () =
-    let%lwt keep_going = while_ () in
-    if keep_going then (
+    if%lwt while_ () then (
       wait_for_tuples (Unix.gettimeofday ()) ;%lwt
       match
         Array.fold_lefti (fun mi i to_merge ->
@@ -588,8 +587,7 @@ let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
   let rec loop () =
-    let%lwt keep_going = while_ () in
-    if keep_going then (
+    if%lwt while_ () then (
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
       let%lwt () = k 0 in_tuple in

@@ -1427,8 +1427,7 @@ let used_tuple_sizes funcs parents =
       ) op
     ) Set.Int.empty funcs in
   (* We might also got tuples from our parents. We collect all their output
-   * fields even if it's not used anywhere for simplicity.
-   * TODO: only add tuple size if it's actually selected. *)
+   * fields even if it's not used anywhere for simplicity. *)
   Hashtbl.fold (fun _ fs s ->
     List.fold_left (fun s f ->
       List.fold_left (fun s ft ->
