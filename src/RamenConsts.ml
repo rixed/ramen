@@ -27,6 +27,7 @@ struct
   let rb_read_bytes = "in_bytes"
   let rb_write_bytes = "out_bytes"
   let last_out = "last_out"
+  let max_event_time = "max_event_time"
 
   (* Metrics reported by the supervisor: *)
   let worker_crashes = "workers_crashes"
@@ -80,6 +81,8 @@ struct
     "Total number of seconds spent waiting for output to empty."
   let last_out =
     "When was the last output emitted."
+  let max_event_time =
+    "Maximum event start time emitted so far."
 end
 
 module CliInfo =

@@ -20,7 +20,10 @@ let () =
  * (un)serialization functions! *)
 let tuple_typ =
   [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = Some RamenUnits.processes ; doc = "" } ;
-    { typ_name = "time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" } ;
+    { typ_name = "time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+      doc = "When those statistics have been collected (wall clock time)" } ;
+    { typ_name = "max_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
+      doc = "Largest event time encountered so far" } ;
     { typ_name = "tuples_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
       doc = RamenConsts.MetricDocs.in_tuple_count } ;
     { typ_name = "tuples_selected" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
@@ -56,12 +59,12 @@ let fix_sz = RingBufLib.tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
-let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo,
-                  lo) =
+let serialize tx (worker, time, etime, ic, sc, oc, gc, cpu, ram, wi, wo,
+                  bi, bo, lo) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -83,21 +86,22 @@ let serialize tx (worker, time, ic, sc, oc, gc, cpu, ram, wi, wo, bi, bo,
   let offs =
     RingBuf.write_float tx offs time ;
     offs + RingBufLib.sersize_of_float in
-  let offs = write_nullable_u64 offs 0 ic in
-  let offs = write_nullable_u64 offs 1 sc in
-  let offs = write_nullable_u64 offs 2 oc in
-  let offs = write_nullable_u64 offs 3 gc in
+  let offs = write_nullable_float offs 0 etime in
+  let offs = write_nullable_u64 offs 1 ic in
+  let offs = write_nullable_u64 offs 2 sc in
+  let offs = write_nullable_u64 offs 3 oc in
+  let offs = write_nullable_u64 offs 4 gc in
   let offs =
     RingBuf.write_float tx offs cpu ;
     offs + RingBufLib.sersize_of_float in
   let offs =
     RingBuf.write_u64 tx offs ram ;
     offs + RingBufLib.sersize_of_u64 in
-  let offs = write_nullable_float offs 4 wi in
-  let offs = write_nullable_float offs 5 wo in
-  let offs = write_nullable_u64 offs 6 bi in
-  let offs = write_nullable_u64 offs 7 bo in
-  let offs = write_nullable_float offs 8 lo in
+  let offs = write_nullable_float offs 5 wi in
+  let offs = write_nullable_float offs 6 wo in
+  let offs = write_nullable_u64 offs 7 bi in
+  let offs = write_nullable_u64 offs 8 bo in
+  let offs = write_nullable_float offs 9 lo in
   offs
 
 let unserialize tx =
@@ -116,20 +120,22 @@ let unserialize tx =
   let worker = RingBuf.read_string tx offs in
   let offs = offs + RingBufLib.sersize_of_string worker in
   let time = RingBuf.read_float tx offs in
+  let etime, offs = read_nullable_float tx 0 offs in
   let offs = offs + RingBufLib.sersize_of_float in
-  let ic, offs = read_nullable_u64 tx 0 offs in
-  let sc, offs = read_nullable_u64 tx 1 offs in
-  let oc, offs = read_nullable_u64 tx 2 offs in
-  let gc, offs = read_nullable_u64 tx 3 offs in
+  let ic, offs = read_nullable_u64 tx 1 offs in
+  let sc, offs = read_nullable_u64 tx 2 offs in
+  let oc, offs = read_nullable_u64 tx 3 offs in
+  let gc, offs = read_nullable_u64 tx 4 offs in
   let cpu = RingBuf.read_float tx offs in
   let offs = offs + RingBufLib.sersize_of_float in
   let ram = RingBuf.read_u64 tx offs in
   let offs = offs + RingBufLib.sersize_of_u64 in
-  let wi, offs = read_nullable_float tx 4 offs in
-  let wo, offs = read_nullable_float tx 5 offs in
-  let bi, offs = read_nullable_u64 tx 6 offs in
-  let bo, offs = read_nullable_u64 tx 7 offs in
-  let lo, offs = read_nullable_float tx 8 offs in
-  let t = worker, time, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo, lo in
+  let wi, offs = read_nullable_float tx 5 offs in
+  let wo, offs = read_nullable_float tx 6 offs in
+  let bi, offs = read_nullable_u64 tx 7 offs in
+  let bo, offs = read_nullable_u64 tx 8 offs in
+  let lo, offs = read_nullable_float tx 9 offs in
+  let t =
+    worker, time, etime, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo, lo in
   assert (offs <= max_sersize_of_tuple t) ;
   t

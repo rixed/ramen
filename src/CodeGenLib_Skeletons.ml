@@ -65,6 +65,10 @@ let stats_last_out =
   FloatGauge.make RamenConsts.MetricNames.last_out
     RamenConsts.MetricDocs.last_out
 
+let stats_max_event_time =
+  FloatGauge.make RamenConsts.MetricNames.max_event_time
+    RamenConsts.MetricDocs.max_event_time
+
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
 let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
 
@@ -91,7 +95,9 @@ let get_binocle_tuple worker ic sc gc =
   let s v = Some v in
   let i v = Option.map (fun r -> Uint64.of_int r) v in
   let time = Unix.gettimeofday () in
-  worker, time, ic, sc,
+  worker, time,
+  FloatGauge.get stats_max_event_time,
+  ic, sc,
   IntCounter.get stats_out_tuple_count |> si,
   gc,
   FloatCounter.get stats_cpu,
@@ -103,7 +109,7 @@ let get_binocle_tuple worker ic sc gc =
   IntCounter.get stats_rb_write_bytes |> si,
   FloatGauge.get stats_last_out
 
-let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBuf.NoMoreRoom -> () (* Just skip *)
@@ -126,9 +132,8 @@ let update_stats_rb period rb_name get_tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
+let output rb serialize_tuple sersize_of_tuple tmin_tmax tuple =
   let open RingBuf in
-  let tmin, tmax = time_of_tuple tuple |? (0., 0.) in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
   (* Nodes with no output (but notifications) have no business writing
@@ -137,6 +142,7 @@ let output rb serialize_tuple sersize_of_tuple time_of_tuple tuple =
   if sersize > 0 then
     let tx = enqueue_alloc rb sersize in
     let offs = serialize_tuple tx tuple in
+    let tmin, tmax = tmin_tmax |? (0., 0.) in
     enqueue_commit tx tmin tmax ;
     assert (offs = sersize)
 
@@ -150,8 +156,19 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
   and out_l = ref []  (* list of outputers *) in
   let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
+    let tmin_tmax = time_of_tuple tuple in
     IntCounter.add stats_out_tuple_count 1 ;
     FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+    (* Update stats_max_event_time: *)
+    Option.may (fun (tmin, _) ->
+      (* We'd rather announce the start time of the event, event for
+       * negative durations. *)
+      if FloatGauge.get stats_max_event_time |>
+         Option.map_default (fun t -> tmin > t) true
+      then
+        FloatGauge.set stats_max_event_time tmin
+    ) tmin_tmax ;
+    (* Get fnames if they've changed: *)
     let%lwt fnames = get_out_fnames () in
     Option.may (fun out_specs ->
       if Hashtbl.is_empty out_specs then (
@@ -188,11 +205,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             !logger.error "Cannot open ringbuf %s: %s"
               fname (Printexc.to_string e) ;
           | rb ->
-            let once =
-              output rb (serialize_tuple file_spec.RamenOutRef.field_mask)
-                        (sersize_of_tuple file_spec.RamenOutRef.field_mask)
-                        time_of_tuple in
-            let rb_writer =
+            let tup_serializer = serialize_tuple file_spec.RamenOutRef.field_mask
+            and tup_sizer = sersize_of_tuple file_spec.RamenOutRef.field_mask in
+            let rb_writer tmin_tmax tuple =
               let last_retry = ref 0. in
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
@@ -211,14 +226,15 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                     last_retry := !CodeGenLib_IO.now ;
                     RamenOutRef.mem rb_ref_out_fname fname
                   ) else return_true)
-                ~delay_rec:sleep_out once
+                ~delay_rec:sleep_out (fun () ->
+                  output rb tup_serializer tup_sizer tmin_tmax tuple) ()
             in
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     Lwt_list.iter_p (fun out ->
-      try%lwt out tuple
+      try%lwt out tmin_tmax tuple
       with RingBuf.NoMoreRoom ->
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
