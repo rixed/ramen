@@ -260,12 +260,13 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
  *)
 
 let no_stats =
-  None, None, None, None, None, 0., Uint64.zero, None, None, None, None
+  None, None, None, None, None, 0., Uint64.zero, None, None, None, None, None
 
 let add_stats (etime', in_count', selected_count', out_count', group_count',
-               cpu', ram', wait_in', wait_out', bytes_in', bytes_out')
+               cpu', ram', wait_in', wait_out', bytes_in', bytes_out',
+               last_out')
               (etime, in_count, selected_count, out_count, group_count, cpu,
-               ram, wait_in, wait_out, bytes_in, bytes_out) =
+               ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
   let combine_opt f a b =
     match a, b with None, b -> b | a, None -> a
     | Some a, Some b -> Some (f a b) in
@@ -283,7 +284,8 @@ let add_stats (etime', in_count', selected_count', out_count', group_count',
   add_nfloat wait_in' wait_in,
   add_nfloat wait_out' wait_out,
   add_nu64 bytes_in' bytes_in,
-  add_nu64 bytes_out' bytes_out
+  add_nu64 bytes_out' bytes_out,
+  max_nfloat last_out' last_out
 
 let read_stats conf pattern =
   let h = Hashtbl.create 57 in
@@ -331,9 +333,11 @@ let read_stats conf pattern =
       and wait_out = get_nfloat tuple.(10)
       and bytes_in = get_nu64 tuple.(11)
       and bytes_out = get_nu64 tuple.(12)
+      and last_out = get_nfloat tuple.(13)
       in
       let stats = etime, in_count, selected_count, out_count, group_count, cpu,
-                  ram, wait_in, wait_out, bytes_in, bytes_out in
+                  ram, wait_in, wait_out, bytes_in, bytes_out, last_out in
+      (* Keep only the latest stat line per worker: *)
       Hashtbl.modify_opt worker (function
         | None -> Some (time, stats)
         | Some (time', stats') as prev ->
@@ -384,7 +388,7 @@ let ps conf short with_header sort_col top pattern () =
             if Globs.matches pattern
                  (RamenName.string_of_program program_name) then
               let _, (_etime, in_count, selected_count, out_count, group_count,
-                      cpu, ram, wait_in, wait_out, bytes_in, bytes_out) =
+                      cpu, ram, wait_in, wait_out, bytes_in, bytes_out, _last_out) =
                 Hashtbl.find_default h program_name (0., no_stats) in
               [| ValStr (RamenName.string_of_program program_name) ;
                  ValStr (RamenName.string_of_params mre.C.params) ;
@@ -402,8 +406,7 @@ let ps conf short with_header sort_col top pattern () =
           ) programs [] |> return))
     else
       (* Otherwise we want to display all we can about individual workers *)
-      (* TODO: add last_out *)
-      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
          "max event time" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
          "volume in" ; "volume out" ; "#parents" ; "signature" |],
       Lwt_main.run (
@@ -419,15 +422,16 @@ let ps conf short with_header sort_col top pattern () =
                 let fq_name = RamenName.string_of_program program_name
                               ^"/"^ RamenName.string_of_func func.F.name in
                 if Globs.matches pattern fq_name then
-                  let _, (etime, in_count, selected_count, out_count, group_count,
-                          cpu, ram, wait_in, wait_out, bytes_in,
-                          bytes_out) =
+                  let _, (etime, in_count, selected_count, out_count,
+                          group_count, cpu, ram, wait_in, wait_out,
+                          bytes_in, bytes_out, last_out) =
                     Hashtbl.find_default stats fq_name (0., no_stats) in
                   [| ValStr fq_name ;
                      int_or_na in_count ;
                      int_or_na selected_count ;
                      int_or_na out_count ;
                      int_or_na group_count ;
+                     date_or_na last_out ;
                      date_or_na etime ;
                      ValFlt cpu ;
                      flt_or_na wait_in ;
