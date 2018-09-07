@@ -17,6 +17,11 @@ type 'a printer =
 
 type log_output = Directory of string | Stdout | Syslog
 
+let string_of_log_output = function
+  | Directory s -> "directory "^ s
+  | Stdout -> "stdout"
+  | Syslog -> "syslog"
+
 type logger =
   { error : 'a. 'a printer ;
     warning : 'a. 'a printer ;

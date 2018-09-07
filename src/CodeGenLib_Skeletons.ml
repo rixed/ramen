@@ -267,7 +267,10 @@ let worker_start worker_name get_binocle_tuple k =
       else (
         mkdir_all logdir ;
         logger := make_logger ~logdir log_level)) ;
-  !logger.info "Starting %s process..." worker_name ;
+  !logger.info "Starting %s process. Will log into %s at level %s."
+    worker_name
+    (string_of_log_output !logger.output)
+    (string_of_log_level log_level) ;
   let report_period =
     getenv ~def:(string_of_float RamenConsts.Default.report_period)
            "report_period" |> float_of_string in
