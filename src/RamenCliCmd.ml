@@ -408,9 +408,25 @@ let ps conf short with_header sort_col top pattern () =
       (* Otherwise we want to display all we can about individual workers *)
       [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
          "max event time" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
-         "volume in" ; "volume out" ; "#parents" ; "signature" |],
+         "volume in" ; "volume out" ; "#parents" ; "#children"; "signature" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
+          (* First pass to get the childrens: *)
+          let children_of_func = Hashtbl.create 23 in
+          Hashtbl.iter (fun program_name (_mre, get_rc) ->
+            match get_rc () with
+            | exception e -> ()
+            | prog ->
+                List.iter (fun func ->
+                  List.iter (fun (pp, pf) ->
+                    (* We could use the pattern to filter out uninteresting
+                     * parents but there is not much to save at this point. *)
+                    let k =
+                      F.program_of_parent_prog func.F.program_name pp, pf in
+                    Hashtbl.add children_of_func k func
+                  ) func.F.parents
+                ) prog.P.funcs
+          ) programs ;
           Hashtbl.fold (fun program_name (_mre, get_rc) lines ->
             match get_rc () with
             | exception e ->
@@ -425,7 +441,10 @@ let ps conf short with_header sort_col top pattern () =
                   let _, (etime, in_count, selected_count, out_count,
                           group_count, cpu, ram, wait_in, wait_out,
                           bytes_in, bytes_out, last_out) =
-                    Hashtbl.find_default stats fq_name (0., no_stats) in
+                    Hashtbl.find_default stats fq_name (0., no_stats)
+                  and num_children = Hashtbl.find_all children_of_func
+                                       (func.F.program_name, func.F.name) |>
+                                       List.length in
                   [| ValStr fq_name ;
                      int_or_na in_count ;
                      int_or_na selected_count ;
@@ -440,6 +459,7 @@ let ps conf short with_header sort_col top pattern () =
                      flt_or_na (Option.map Uint64.to_float bytes_in) ;
                      flt_or_na (Option.map Uint64.to_float bytes_out) ;
                      ValInt (List.length func.F.parents) ;
+                     ValInt num_children ;
                      ValStr func.signature |] :: lines
                 else lines
               ) lines prog.P.funcs
