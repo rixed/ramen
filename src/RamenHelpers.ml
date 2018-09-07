@@ -216,7 +216,7 @@ let file_is_older_than age fname =
   try
     let mtime = mtime_of_file fname in
     let now = Unix.gettimeofday () in
-    mtime > now -. age
+    mtime < now -. age
   with _ -> false
 
 let rec ensure_file_exists ?(contents="") ?min_size fname =
