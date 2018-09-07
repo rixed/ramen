@@ -189,14 +189,17 @@ let mkdir_all ?(is_file=false) dir =
     ) in
   ensure_exist dir
 
-let file_exists ?(maybe_empty=true) ?(min_size=0) ?(has_perms=0) fname =
+type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
+let file_check ?(min_size=0) ?(has_perms=0) fname =
   let open Unix in
   match stat fname with
-  | exception _ -> false
+  | exception _ -> FileMissing
   | s ->
-    (maybe_empty || s.st_size > 0) &&
-    s.st_perm land has_perms = has_perms &&
-    s.st_size >= min_size
+    if s.st_perm land has_perms <> has_perms then FileBadPerms else
+    if s.st_size < min_size then FileTooSmall else
+    FileOk
+
+let file_exists fname = file_check fname = FileOk
 
 let is_empty_file fname =
   let open Unix in
@@ -212,53 +215,58 @@ let mtime_of_file_def default fname =
   try mtime_of_file fname
   with Unix.Unix_error (Unix.ENOENT, _, _) -> default
 
-let file_is_older_than age fname =
+let file_is_older_than ~on_err age fname =
   try
     let mtime = mtime_of_file fname in
     let now = Unix.gettimeofday () in
     mtime < now -. age
-  with _ -> false
+  with e ->
+    print_exception e ;
+    on_err
 
 let rec ensure_file_exists ?(contents="") ?min_size fname =
   mkdir_all ~is_file:true fname ;
   (* If needed, create the file with the initial content, atomically: *)
   let open Unix in
   let min_size = min_size |? String.length contents in
-  let file_is_ok () =
-    file_exists ~min_size fname in
   (* But first, check if the file is already there with the proper size
    * (without opening it, or the following O_EXCL dance won't work!): *)
-  if not (file_is_ok ()) then
-    match openfile fname [O_CREAT; O_EXCL; O_WRONLY] 0o644 with
-    | exception Unix_error (EEXIST, _, _) ->
-        (* Not my business, wait until the file length is at least that
-         * of contents, which realistically shouldnot take more than 1s: *)
-        let copy = fname ^".bad" in
-        let redo () =
-          ignore_exceptions Unix.unlink copy ;
-          log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
-            (Unix.rename fname) copy ;
-          ensure_file_exists ~contents fname
-        in
-        if file_is_older_than 2. fname then (
-          !logger.debug "File %s is an old left-over, let's redo it" fname ;
-          redo ()
-        ) else (
+  match file_check ~min_size fname with
+  | FileOk -> ()
+  | FileMissing ->
+      (match openfile fname [O_CREAT; O_EXCL; O_WRONLY] 0o644 with
+      | exception Unix_error (EEXIST, _, _) ->
           (* Wait for some other concurrent process to rebuild it: *)
+          !logger.debug "File %s just appeared, give it time..." fname ;
           Unix.sleep 1 ;
-          if not (file_is_ok ()) then (
-            (* Weird, let's complain. *)
-            !logger.error "File %s is missing or too small to be valid (>%d), \
-              and nobody seems to care. Make a copy in %s and re-create it!"
-                fname min_size copy ;
-            redo ()))
-    | fd ->
-        !logger.debug "Creating file %s with initial content %S"
-          fname contents ;
-        if contents <> "" then
-          single_write_substring fd contents 0 (String.length contents) |>
-            ignore ;
-        close fd
+          ensure_file_exists ~contents ~min_size fname
+      | fd ->
+          !logger.debug "Creating file %s with initial content %S"
+            fname contents ;
+          if contents <> "" then
+            single_write_substring fd contents 0 (String.length contents) |>
+              ignore ;
+          close fd)
+  | FileTooSmall ->
+      (* Not my business, wait until the file length is at least that
+       * of contents, which realistically should not take more than 1s: *)
+      let copy = fname ^".bad" in
+      let redo () =
+        ignore_exceptions Unix.unlink copy ;
+        log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
+          (Unix.rename fname) copy ;
+        ensure_file_exists ~contents fname
+      in
+      if file_is_older_than ~on_err:true 1. fname then (
+        !logger.warning "File %s is an old left-over, let's redo it" fname ;
+        redo ()
+      ) else (
+        (* Wait for some other concurrent process to rebuild it: *)
+        !logger.debug "File %s is being worked on, give it time..." fname ;
+        Unix.sleep 1 ;
+        ensure_file_exists ~contents ~min_size fname)
+  | FileBadPerms ->
+      assert false (* We aren't checking that here *)
 
 let uniquify_filename fname =
   let rec loop n =

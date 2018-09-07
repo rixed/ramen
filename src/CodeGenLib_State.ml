@@ -26,7 +26,7 @@ let marshal_into_fd fd v =
 
 let create_or_read fname v =
   let open Unix in
-  RamenHelpers.mkdir_all ~is_file:true fname ;
+  mkdir_all ~is_file:true fname ;
   let init_restore () =
     !logger.debug "Will have my state in file %s" fname ;
     let fd = openfile fname [O_RDWR] 0o640 in
@@ -36,7 +36,7 @@ let create_or_read fname v =
     marshal_into_fd fd v ;
     fd, v
   in
-  if RamenHelpers.file_exists ~maybe_empty:false ~has_perms:0o400 fname then
+  if file_check ~min_size:1 ~has_perms:0o400 fname = FileOk then
     try init_restore () with _ -> init_create ()
   else
     init_create ()

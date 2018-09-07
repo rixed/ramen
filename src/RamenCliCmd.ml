@@ -119,7 +119,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
    * which case it will be created with the default configuration: *)
   if notif_conf_file = RamenConsts.Default.notif_conf_file then (
     RamenNotifier.ensure_conf_file_exists notif_conf_file
-  ) else if not (file_exists ~maybe_empty:false notif_conf_file) ||
+  ) else if file_check ~min_size:1 notif_conf_file <> FileOk ||
             is_failing RamenNotifier.load_config notif_conf_file then
     failwith ("Configuration file "^ notif_conf_file ^" does not exist.") ;
   if to_syslog then

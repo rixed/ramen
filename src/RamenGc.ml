@@ -37,7 +37,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       ) else if string_match sub_re fname 0 &&
                 is_directory full_path &&
                 (* TODO: should be a few days *)
-                file_is_older_than (1. *. 86400.) fname
+                file_is_older_than ~on_err:false (1. *. 86400.) fname
       then (
         !logger.info "Deleting %s: unused, old version%s"
           fname (if dry_run then " (NOPE)" else "") ;

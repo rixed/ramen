@@ -262,7 +262,7 @@ let with_code_file_for obj_name conf f =
   mkdir_all ~is_file:true fname ;
   (* If keep-temp-file is set, reuse preexisting source code : *)
   if conf.C.keep_temp_files &&
-     file_exists ~maybe_empty:false ~has_perms:0o400 fname
+     file_check ~min_size:1 ~has_perms:0o400 fname = FileOk
   then
     !logger.info "Reusing source file %S" fname
   else

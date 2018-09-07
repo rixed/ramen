@@ -437,7 +437,7 @@ let save_alert conf table column to_keep alert_info =
    * That the program is running would tell us that it exists and is
    * enabled, but that the program is not running wouldn't tell us that
    * the alert does not exist. *)
-  if file_exists ~maybe_empty:false conf_fname then return_unit else (
+  if file_check ~min_size:1 conf_fname = FileOk then return_unit else (
     !logger.info "Saving new alert into %s" conf_fname ;
     (* But do not create this file yet so that we only report that the
      * alert is present unless it's indeed running. *)
