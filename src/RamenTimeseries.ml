@@ -58,7 +58,7 @@ let read_well_known func_name where suffix bname typ () =
     Some (bname, filter, typ, ser)
   else None
 
-let read_well_known_extra conf ?duration func_name where =
+let read_output conf ?duration func_name where =
   (* Read directly from the instrumentation ringbuf when func_name ends
    * with "#stats": *)
   match read_well_known func_name where "stats"
@@ -111,7 +111,7 @@ let get conf ?duration max_data_points since until where factors
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, ser, params, event_time =
-    read_well_known_extra conf ?duration func_name where in
+    read_output conf ?duration func_name where in
   let open RamenSerialization in
   let fis =
     List.map (find_field_index ser) factors in

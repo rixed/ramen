@@ -287,17 +287,17 @@ let ser_tuple_typ_of_tuple_typ tuple_typ =
   List.filter (fun t -> not (is_private_field t.RamenTuple.typ_name)) |>
   List.fast_sort ser_tuple_field_cmp
 
-(* Given a tuple type, return a function that reorder a tuple (as
- * an array) into the same column order as in the tuple type: *)
-let reorder_tuple_to_user typ =
+(* Given a tuple type and its serialized type, return a function that reorder
+ * a tuple (as an array) into the same column order as in the tuple type: *)
+let reorder_tuple_to_user typ ser =
   (* Start by building the array of indices in the ser tuple of fields of
    * the user (minus private) tuple. *)
   let indices =
     List.filter_map (fun f ->
       if is_private_field f.RamenTuple.typ_name then None
       else Some (
-        ser_tuple_typ_of_tuple_typ typ |>
-        List.findi (fun _ f' -> f'.RamenTuple.typ_name = f.typ_name) |> fst)
+        List.findi (fun _ f' ->
+          f'.RamenTuple.typ_name = f.typ_name) ser |> fst)
     ) typ |>
     Array.of_list in
   (* Now reorder a list of scalar values in ser order into user order: *)

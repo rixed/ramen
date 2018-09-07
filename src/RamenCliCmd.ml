@@ -493,7 +493,7 @@ let tail conf func_name with_header sep null raw
     else last in
   Lwt_main.run (
     let%lwt bname, filter, typ, ser, params, event_time =
-      RamenTimeseries.read_well_known_extra conf ~duration func_name where
+      RamenTimeseries.read_output conf ~duration func_name where
     in
     (* Find out which seqnums we want to scan: *)
     let mi, ma = match last with
@@ -516,11 +516,9 @@ let tail conf func_name with_header sep null raw
      * them *)
     let nullmask_size =
       RingBufLib.nullmask_bytes_of_tuple_type ser in
-    (* I failed the polymorphism dance on that one: *)
-    let reorder_column1 = RingBufLib.reorder_tuple_to_user typ in
-    let reorder_column2 = RingBufLib.reorder_tuple_to_user typ in
+    let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
     if with_header then (
-      let header = ser |> Array.of_list |> reorder_column1 in
+      let header = typ |> Array.of_list in
       let first = if with_seqnums then "Seq"^ sep else "" in
       let first = if with_event_time then "Event time"^ sep else first in
       let first = "#"^ first in
@@ -555,7 +553,7 @@ let tail conf func_name with_header sep null raw
           Printf.printf "%f..%f%s" t1 t2 sep) ;
         if with_seqnums then (
           Int.print stdout m ; String.print stdout sep) ;
-        reorder_column2 tuple |>
+        reorder_column tuple |>
         Array.print ~first:"" ~last:"\n" ~sep
           (RamenTypes.print_custom ~null ~quoting:(not raw)) stdout ;
         BatIO.flush stdout) ;
