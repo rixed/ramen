@@ -34,8 +34,12 @@ let colored ansi =
   Printf.sprintf "\027[%sm%s\027[0m" ansi
 
 let red = colored "1;31"
-let yellow = colored "1;33"
 let green = colored "1;32"
+let yellow = colored "1;33"
+let blue = colored "1;34"
+let magenta = colored "1;35"
+let cyan = colored "1;36"
+let white = colored "1;37"
 
 let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"

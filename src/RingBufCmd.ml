@@ -66,7 +66,7 @@ type func_status =
   | NotRunning of RamenName.program * RamenName.func
   | ProgramError of RamenName.program * string
 
-let links conf no_abbrev show_all with_header sort_col top pattern () =
+let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
@@ -187,4 +187,4 @@ let links conf no_abbrev show_all with_header sort_col top pattern () =
                 Lwt.return links
               ) links prog.P.funcs
         ) [])) in
-  TermTable.print_table ~sort_col ~with_header ?top head links
+  TermTable.print_table ~pretty ~sort_col ~with_header ?top head links

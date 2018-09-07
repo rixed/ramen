@@ -233,6 +233,7 @@ let complete str () =
       | "ps" ->
           let persist_dir = persist_dir toks in
           ("--short", RamenConsts.CliInfo.short) ::
+          ("--pretty", RamenConsts.CliInfo.pretty) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::
@@ -242,6 +243,7 @@ let complete str () =
           let persist_dir = persist_dir toks in
           ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
           ("--show-all", RamenConsts.CliInfo.show_all) ::
+          ("--pretty", RamenConsts.CliInfo.pretty) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::

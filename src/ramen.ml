@@ -251,6 +251,11 @@ let show_all =
                    ~env [ "show-all" ; "all" ; "a" ] in
   Arg.(value (flag i))
 
+let pretty =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.pretty
+                   [ "pretty" ] in
+  Arg.(value (flag i))
+
 let with_header =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_header
                    [ "h"; "with-header"; "header" ] in
@@ -272,6 +277,7 @@ let links =
       $ copts
       $ no_abbrev
       $ show_all
+      $ pretty
       $ with_header
       $ sort_col
       $ top
@@ -614,6 +620,7 @@ let ps =
     (const RamenCliCmd.ps
       $ copts
       $ short
+      $ pretty
       $ with_header
       $ sort_col
       $ top

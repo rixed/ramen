@@ -361,7 +361,7 @@ let str_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some s -> TermTable.ValStr s
 
-let ps conf short with_header sort_col top pattern () =
+let ps conf short pretty with_header sort_col top pattern () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
@@ -464,7 +464,7 @@ let ps conf short with_header sort_col top pattern () =
                 else lines
               ) lines prog.P.funcs
           ) programs [] |> return)) in
-  print_table ~sort_col ~with_header ?top head lines
+  print_table ~pretty ~sort_col ~with_header ?top head lines
 
 (*
  * `ramen tail`
