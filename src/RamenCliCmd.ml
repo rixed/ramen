@@ -271,8 +271,9 @@ let add_stats (etime', in_count', selected_count', out_count', group_count',
     | Some a, Some b -> Some (f a b) in
   let add_nu64 = combine_opt Uint64.add
   and add_nfloat = combine_opt (+.)
+  and max_nfloat = combine_opt Float.max
   in
-  add_nfloat etime' etime,
+  max_nfloat etime' etime,
   add_nu64 in_count' in_count,
   add_nu64 selected_count' selected_count,
   add_nu64 out_count' out_count,
