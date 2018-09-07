@@ -187,7 +187,7 @@ let mkdir_all ?(is_file=false) dir =
       try Unix.mkdir d 0o755
       with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
         (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
-        ()
+        !logger.debug "Cannot mkdir as %s already exist" d
     ) in
   ensure_exist dir
 
@@ -236,36 +236,37 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
   match file_check ~min_size fname with
   | FileOk -> ()
   | FileMissing ->
+      !logger.debug "File %s is still missing" fname ;
       (match openfile fname [O_CREAT; O_EXCL; O_WRONLY] 0o644 with
       | exception Unix_error (EEXIST, _, _) ->
           (* Wait for some other concurrent process to rebuild it: *)
           !logger.debug "File %s just appeared, give it time..." fname ;
-          Unix.sleep 1 ;
+          sleep 1 ;
           ensure_file_exists ~contents ~min_size fname
       | fd ->
           !logger.debug "Creating file %s with initial content %S"
             fname contents ;
-          if contents <> "" then
-            single_write_substring fd contents 0 (String.length contents) |>
-              ignore ;
+          if contents <> "" then (
+            let len = String.length contents in
+            single_write_substring fd contents 0 len |> ignore) ;
           close fd)
   | FileTooSmall ->
       (* Not my business, wait until the file length is at least that
        * of contents, which realistically should not take more than 1s: *)
       let copy = fname ^".bad" in
       let redo () =
-        ignore_exceptions Unix.unlink copy ;
+        ignore_exceptions unlink copy ;
         log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
-          (Unix.rename fname) copy ;
+          (rename fname) copy ;
         ensure_file_exists ~contents fname
       in
-      if file_is_older_than ~on_err:true 1. fname then (
+      if file_is_older_than ~on_err:true 3. fname then (
         !logger.warning "File %s is an old left-over, let's redo it" fname ;
         redo ()
       ) else (
         (* Wait for some other concurrent process to rebuild it: *)
         !logger.debug "File %s is being worked on, give it time..." fname ;
-        Unix.sleep 1 ;
+        sleep 1 ;
         ensure_file_exists ~contents ~min_size fname)
   | FileBadPerms ->
       assert false (* We aren't checking that here *)
@@ -1241,7 +1242,7 @@ let ppp_of_file ?(error_ok=false) ppp =
             fail_with_context ("parsing file "^ fname)
               (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
-  cached cache_name reread mtime_of_file (* TODO: why not mtime_of_file_def 0. ? *)
+  cached cache_name reread (mtime_of_file_def 0.)
 
 let ppp_to_file fname ppp v =
   mkdir_all ~is_file:true fname ;

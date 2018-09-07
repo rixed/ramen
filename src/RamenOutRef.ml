@@ -43,12 +43,10 @@ let write_ fname c =
   ppp_to_file fname out_ref_conf_ppp_ocaml c
 
 let read_ =
-  let get = ppp_of_file ~error_ok:false out_ref_conf_ppp_ocaml in
-  fun fname ->
-    ensure_file_exists ~contents:"{}" fname ;
-    get fname
+  ppp_of_file ~error_ok:false out_ref_conf_ppp_ocaml
 
 let read fname =
+  ensure_file_exists ~contents:"{}" fname ;
   Lock.with_r_lock fname (fun () ->
     (*!logger.debug "Got read lock for read on %s" fname ;*)
     wrap (fun () ->
@@ -82,6 +80,7 @@ let add_ fname out_fname file_spec =
     if prev_spec <> file_spec then rewrite ()
 
 let add fname (out_fname, file_spec) =
+  ensure_file_exists ~contents:"{}" fname ;
   Lock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
     wrap (fun () -> add_ fname out_fname file_spec))
@@ -95,6 +94,7 @@ let remove_ fname out_fname =
       out_fname fname)
 
 let remove fname out_fname =
+  ensure_file_exists ~contents:"{}" fname ;
   Lock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
     wrap (fun () -> remove_ fname out_fname))
@@ -105,6 +105,7 @@ let mem_ fname out_fname =
   Hashtbl.mem c out_fname
 
 let mem fname out_fname =
+  ensure_file_exists ~contents:"{}" fname ;
   Lock.with_r_lock fname (fun () ->
     (*!logger.debug "Got read lock for mem on %s" fname ;*)
     wrap (fun () -> mem_ fname out_fname))

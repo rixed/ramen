@@ -54,6 +54,9 @@ Then /^([^ ]*) must print (.*) lines?(?: on (std(?:out|err)))?\.?/ \
 do |executable, quantity, out|
   out = 'stdout' if out.nil?
   filter = Filter.new(quantity)
+  if quantity == 'no' and out == 'stderr' then
+    puts @output[executable][out]
+  end
   filter.check(@output[executable][out].lines.count)
 end
 
