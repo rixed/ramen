@@ -140,6 +140,8 @@ let log_and_ignore_exceptions ?what f x =
   with Exit -> ()
      | e -> print_exception ?what e
 
+let print_dump oc x = dump x |> String.print oc
+
 let looks_like_true s =
   s = "1" || (
     String.length s > 1 &&

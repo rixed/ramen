@@ -2,6 +2,7 @@
  * important entries. *)
 open Batteries
 open RamenLog
+open RamenHelpers
 
 let debug = false
 
@@ -26,7 +27,9 @@ let make ~max_size ~decay =
   { max_size ; decay ; time_origin = None ; cur_size = 0 ;
     w_of_x = Map.empty ; xs_of_w = WMap.empty }
 
-(* downscale all stored weight by decr and reset time_origin: *)
+(* Downscale all stored weight by decr and reset time_origin.
+ * That's OK to modify the map keys because relative ordering is not going
+ * to change: *)
 let downscale s t d =
   !logger.debug "HeavyHitters: downscaling %d entries by %g"
     s.cur_size d ;
@@ -66,7 +69,11 @@ let add s t w x =
     WMap.modify_opt (ref w) (function
       | None -> assert false
       | Some xs ->
-          assert (Map.mem x xs) ;
+          if not (Map.mem x xs) then (
+            !logger.error "xs_of_w for w=%f does not have x=%s (only %a)"
+              w (dump x)
+              (Map.print print_dump Float.print) xs ;
+            assert false) ;
           let xs = Map.remove x xs in
           if Map.is_empty xs then None else Some xs
     ) m
@@ -103,7 +110,11 @@ let add s t w x =
           Some (w, o)
     ) s.w_of_x ;
   Option.may (fun x ->
-    assert (Map.mem x s.w_of_x) ;
+    if not (Map.mem x s.w_of_x) then (
+      !logger.error "w_of_x does not have x=%s, only %a"
+        (dump x)
+        (Enum.print print_dump) (Map.keys s.w_of_x) ;
+      assert false) ;
     s.w_of_x <- Map.remove x s.w_of_x
   ) !victim_x ;
   assert (s.cur_size <= s.max_size) ;
