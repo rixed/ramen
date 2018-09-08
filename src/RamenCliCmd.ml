@@ -55,6 +55,9 @@ let dummy_nop () =
     loop () in
   until_quit (fun () -> Lwt_unix.sleep 3.)
 
+let check_binocle_errors () =
+  Option.may raise !Binocle.last_error
+
 let supervisor conf daemonize to_stdout to_syslog autoreload
                report_period () =
   if to_stdout && daemonize then
@@ -70,6 +73,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.log_level) ;
   RamenProcesses.report_period := report_period ;
+  check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
   (* Also attempt to repair the report/notifs ringbufs.
@@ -130,6 +134,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
       else Some (conf.C.persist_dir ^"/log/notifier") in
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.log_level) ;
+  check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
@@ -247,11 +252,12 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
       else Some (conf.C.persist_dir ^"/log/gc") in
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.log_level) ;
-  if daemonize then do_daemonize () ;
   if loop = 0 then
     RamenGc.cleanup_once conf dry_run max_archives
-  else
-    RamenGc.cleanup_loop conf dry_run loop max_archives
+  else (
+    check_binocle_errors () ;
+    if daemonize then do_daemonize () ;
+    RamenGc.cleanup_loop conf dry_run loop max_archives)
 
 (*
  * `ramen ps`
@@ -678,6 +684,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
       | Some "https" -> 443
       | _ -> 80) in
   let url_prefix = Uri.path uri in
+  check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let (++) rout1 rout2 =
     fun meth path params headers body ->
