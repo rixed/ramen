@@ -684,30 +684,47 @@ struct
              ((star >>: fun _ -> None) |||
               some selected_field)) m
 
+  let event_time_start () =
+    let open RamenExpr in
+    StatelessFun0 (make_typ "#start", EventStart)
+
   let merge_clause m =
     let m = "merge clause" :: m in
     (
       strinG "merge" -+
       optional ~def:1 (
         blanks -- strinG "last" -- blanks -+
-        pos_decimal_integer "Merge buffer size")
-      +- blanks +- strinG "on" +- blanks ++
-      several ~sep:list_sep E.Parser.p ++
+        pos_decimal_integer "Merge buffer size") ++
+      optional ~def:[] (
+        blanks -- strinG "on" -- blanks -+
+        several ~sep:list_sep E.Parser.p) ++
       optional ~def:0. (
         blanks -- strinG "timeout" -- blanks -- strinG "after" -- blanks -+
         duration) >>:
-      fun ((last, on), timeout) -> { last ; on ; timeout }
+      fun ((last, on), timeout) ->
+        (* We do not make it the default to avoid creating a new type at
+         * every parsing attempt: *)
+        let on =
+          if on = [] then [ event_time_start () ] else on in
+        { last ; on ; timeout }
     ) m
 
   let sort_clause m =
     let m = "sort clause" :: m in
-    (strinG "sort" -- blanks -- strinG "last" -- blanks -+
-     pos_decimal_integer "Sort buffer size" ++
-     optional ~def:None (
-       blanks -- strinG "or" -- blanks -- strinG "until" -- blanks -+
-       some E.Parser.p) +- blanks +-
-     strinG "by" +- blanks ++ several ~sep:list_sep E.Parser.p >>:
-      fun ((l, u), b) -> l, u, b) m
+    (
+      strinG "sort" -- blanks -- strinG "last" -- blanks -+
+      pos_decimal_integer "Sort buffer size" ++
+      optional ~def:None (
+        blanks -- strinG "or" -- blanks -- strinG "until" -- blanks -+
+        some E.Parser.p) ++
+      optional ~def:[] (
+        blanks -- strinG "by" -- blanks -+
+        several ~sep:list_sep E.Parser.p) >>:
+      fun ((l, u), b) ->
+        let b =
+          if b = [] then [ event_time_start () ] else b in
+        l, u, b
+    ) m
 
   let where_clause m =
     let m = "where clause" :: m in
