@@ -1891,9 +1891,10 @@ let emit_state_update_for_expr ~opc oc expr =
 let emit_where
       ?(with_group=false) ?(always_true=false)
       name in_typ mentioned ~opc oc expr =
-  Printf.fprintf oc "let %s global_ %a out_previous_opt_ "
+  Printf.fprintf oc "let %s global_ %a %a out_previous_opt_ "
     name
-    (emit_in_tuple mentioned) in_typ ;
+    (emit_in_tuple mentioned) in_typ
+    (emit_in_tuple ~tuple:TupleMergeGreatest mentioned) in_typ ;
   if with_group then Printf.fprintf oc "group_ " ;
   if always_true then
     Printf.fprintf oc "= true\n"

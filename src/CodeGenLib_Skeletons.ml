@@ -531,7 +531,7 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
     let in_tuple = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;
-    k tx_size in_tuple)
+    k tx_size in_tuple in_tuple)
 
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
@@ -589,20 +589,26 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
     if%lwt while_ () then (
       wait_for_tuples (Unix.gettimeofday ()) ;%lwt
       match
-        Array.fold_lefti (fun mi i to_merge ->
-          match mi, RamenSzHeap.min_opt to_merge.tuples with
-          | None, Some t -> Some (i, t)
-          | Some (_, t1), Some t2
-              when tuples_cmp t1 t2 > 0 ->
-              Some (i, t2)
-          | _ -> mi
+        Array.fold_lefti (fun mi_ma i to_merge ->
+          match mi_ma, RamenSzHeap.min_opt to_merge.tuples with
+          | None, Some t ->
+              Some (i, t, t)
+          | Some (j, tmi, tma) as prev, Some t ->
+              (* Try to preserve [prev] as much as possible: *)
+              let repl_tma = tuples_cmp tma t < 0 in
+              if tuples_cmp tmi t > 0 then
+                Some (i, t, if repl_tma then t else tma)
+              else if repl_tma then
+                Some (j, tmi, t)
+              else prev
+          | _ -> mi_ma
         ) None to_merge with
       | None -> loop ()
-      | Some (i, (in_tuple, tx_size, key)) ->
+      | Some (i, (min_tuple, tx_size, key), (max_tuple, _, _)) ->
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          k tx_size in_tuple ;%lwt
+          k tx_size min_tuple max_tuple ;%lwt
           loop ()
     ) else return_unit in
   loop ()
@@ -614,7 +620,7 @@ let yield_every ~while_ read_tuple every k =
     if%lwt while_ () then (
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
-      let%lwt () = k 0 in_tuple in
+      let%lwt () = k 0 in_tuple in_tuple in
       let rec sleep () =
         (* Avoid sleeping longer than a few seconds to check while_ in a
          * timely fashion. The 1.33 is supposed to help distinguish this sleep
@@ -668,11 +674,13 @@ let aggregate
       (where_fast :
         'global_state ->
         'tuple_in -> (* current input *)
+        'tuple_in -> (* merge.greatest (or current input if not merging) *)
         'generator_out option -> (* previous.out *)
         bool)
       (where_slow :
         'global_state ->
         'tuple_in -> (* current input *)
+        'tuple_in -> (* merge.greatest (or current input if not merging) *)
         'generator_out option -> (* previous.out *)
         'local_state ->
         bool)
@@ -775,7 +783,7 @@ let aggregate
       ) rb_in_fnames
     in
     (* The big function that aggregate a single tuple *)
-    let aggregate_one s in_tuple =
+    let aggregate_one s in_tuple merge_greatest =
       (* Define some short-hand values and functions we will keep
        * referring to: *)
       (* When committing other groups, this is used to skip the current
@@ -838,7 +846,7 @@ let aggregate
        * whether the group is a new one or not. *)
       (* 1. Filtering (fast path) *)
       let k_aggr_opt = (* maybe the key and group that has been updated: *)
-        if where_fast s.global_state in_tuple s.last_out_tuple
+        if where_fast s.global_state in_tuple merge_greatest s.last_out_tuple
         then (
           (* 2. Retrieve the group *)
           IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
@@ -849,7 +857,8 @@ let aggregate
             (* The group does not exist for that key. *)
             let local_state = group_init s.global_state in
             (* 3. Filtering (slow path) - for new group *)
-            if where_slow s.global_state in_tuple s.last_out_tuple local_state
+            if where_slow s.global_state in_tuple merge_greatest
+                          s.last_out_tuple local_state
             then (
               (* 4. Compute new minimal_out (and new group) *)
               let current_out =
@@ -868,7 +877,8 @@ let aggregate
           | g ->
             (* The group already exists. *)
             (* 3. Filtering (slow path) - for existing group *)
-            if where_slow s.global_state in_tuple s.last_out_tuple g.local_state
+            if where_slow s.global_state in_tuple merge_greatest
+                          s.last_out_tuple g.local_state
             then (
               (* 4. Compute new current_out (and update the group) *)
               (* current_out and last_in are better updated only after we called the
@@ -926,7 +936,7 @@ let aggregate
           merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
                     merge_timeout read_tuple rb_ins
     in
-    tuple_reader (fun tx_size in_tuple ->
+    tuple_reader (fun tx_size in_tuple merge_greatest ->
       with_state (fun s ->
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
@@ -939,7 +949,7 @@ let aggregate
          * be empty but for the very last tuple. In that case pretend
          * tuple_in is the first (sort.#count will still be 0). *)
         if sort_last <= 1 then
-          aggregate_one s in_tuple
+          aggregate_one s in_tuple merge_greatest
         else
           let sort_n = RamenSortBuf.length s.sort_buf in
           let or_in f =
@@ -957,6 +967,6 @@ let aggregate
           then
             let min_in, sb = RamenSortBuf.pop_min s.sort_buf in
             s.sort_buf <- sb ;
-            aggregate_one s min_in
+            aggregate_one s min_in merge_greatest
           else
             return s)))

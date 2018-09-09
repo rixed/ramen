@@ -555,6 +555,11 @@ let check params op =
           "SORT-BY clause" by
       ) bys
     ) sort ;
+    List.iter (fun e ->
+      check_fields_from
+        [ TupleParam; TupleEnv; TupleIn ]
+        "MERGE-ON clause" e
+    ) merge.on ;
     if every > 0. && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)

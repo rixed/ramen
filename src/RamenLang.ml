@@ -14,6 +14,9 @@ type tuple_prefix =
   | TupleSortFirst
   | TupleSortSmallest
   | TupleSortGreatest
+  (* Largest tuple from the merged streams (smallest being TupleIn),
+   * usable in WHERE clause: *)
+  | TupleMergeGreatest
   (* Parameters *)
   | TupleParam
   (* Environments for nullable string only parameters: *)
@@ -29,6 +32,7 @@ let string_of_prefix = function
   | TupleSortFirst -> "sort.first"
   | TupleSortSmallest -> "sort.smallest"
   | TupleSortGreatest -> "sort.greatest"
+  | TupleMergeGreatest -> "merge.greatest"
   | TupleParam -> "param"
   | TupleEnv -> "env"
 
@@ -48,7 +52,10 @@ let parse_prefix ~def m =
     (prefix "sort.first" >>: fun () -> TupleSortFirst) |||
     (prefix "sort.smallest" >>: fun () -> TupleSortSmallest) |||
     (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
+    (prefix "merge.greatest" >>: fun () -> TupleSortGreatest) |||
     (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
+    (* Note that since sort.greatest and merge.greatest cannot appear in
+     * the same clauses we could convert one into the other (TODO) *)
     (prefix "greatest" >>: fun () -> TupleSortGreatest) |||
     (prefix "param" >>: fun () -> TupleParam) |||
     (prefix "env" >>: fun () -> TupleEnv))
