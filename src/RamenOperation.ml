@@ -686,7 +686,7 @@ struct
 
   let event_time_start () =
     let open RamenExpr in
-    StatelessFun0 (make_typ "#start", EventStart)
+    Field (make_typ "start", ref TupleIn, "start")
 
   let merge_clause m =
     let m = "merge clause" :: m in
