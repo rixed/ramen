@@ -2270,11 +2270,11 @@ let emit_aggregate opc oc name in_typ out_typ =
       (* We also need all the fields from TupleOut that are used in the
        * select expression of those fields that are mentioned in commit_cond,
        * recursively: *)
-      fetch_recursively in
+      fetch_recursively
     (* We also need all the fields from TupleOut that are used in any
      * stateful function for any other fields (for updating its state),
      * recursively: *)
-    let for_updates =
+    and for_updates =
       List.fold_left (fun s sf ->
         RamenExpr.unpure_fold s (fun s -> function
           | e -> RamenExpr.fold_by_depth (fun s -> function
@@ -2282,9 +2282,21 @@ let emit_aggregate opc oc name in_typ out_typ =
                        Set.String.add fn s
                    | _ -> s) s e) sf.RamenOperation.expr
       ) Set.String.empty fields |>
+      fetch_recursively
+    (* As we also want to know the event time of any input tuple even before
+     * committing the output (for instance to report the front-time) we also
+     * need to make those fields accessible in the minimal-out tuple: *)
+    and for_event_time =
+      List.fold_left (fun s sf ->
+        match sf.RamenOperation.alias with
+        | ("start"|"stop"|"duration") as fn ->
+            Set.String.add fn s
+        | _ -> s
+      ) Set.String.empty fields |>
       fetch_recursively in
     (* Now combine these sets: *)
-    Set.String.union from_commit_cond for_updates
+    Set.String.union from_commit_cond for_updates |>
+    Set.String.union for_event_time
   in
   !logger.debug "minimal fields: %a"
     (Set.String.print String.print) minimal_fields ;
