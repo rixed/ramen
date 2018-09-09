@@ -52,7 +52,7 @@ let parse_prefix ~def m =
     (prefix "sort.first" >>: fun () -> TupleSortFirst) |||
     (prefix "sort.smallest" >>: fun () -> TupleSortSmallest) |||
     (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
-    (prefix "merge.greatest" >>: fun () -> TupleSortGreatest) |||
+    (prefix "merge.greatest" >>: fun () -> TupleMergeGreatest) |||
     (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
     (* Note that since sort.greatest and merge.greatest cannot appear in
      * the same clauses we could convert one into the other (TODO) *)
@@ -63,7 +63,9 @@ let parse_prefix ~def m =
 
 (* Tuple that has the fields of this func input type *)
 let tuple_has_type_input = function
-  | TupleIn -> true
+  | TupleIn
+  | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
+  | TupleMergeGreatest -> true
   | _ -> false
 
 (* Tuple that has the fields of this func output type *)

@@ -540,7 +540,7 @@ let check params op =
     check_no_group "WHERE clause" where ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
-        TupleGroup; TupleOutPrevious ]
+        TupleGroup; TupleOutPrevious; TupleMergeGreatest ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure "GROUP-BY clause" k ;
