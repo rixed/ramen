@@ -11,23 +11,6 @@ include ParseUsual
   open TestHelpers
 *)
 
-
-let strinG = ParseUsual.string ~case_sensitive:false
-
-let that_string s =
-  strinG s >>: fun () -> s (* because [string] returns () *)
-
-let strinGs s = strinG s ||| strinG (s ^"s")
-
-(* Given we frequently encode strings with "%S", we need to parse them back
- * with numerical escape sequence in base 10: *)
-let quoted_string = quoted_string ~base_num:10
-
-(*$= quoted_string & ~printer:(test_printer BatString.print)
-  (Ok ("→", (14, []))) \
-    (test_p quoted_string "\"\\226\\134\\146\"")
- *)
-
 let blank = ParseUsual.blank >>: ignore
 let newline = ParseUsual.newline >>: ignore
 
@@ -47,6 +30,33 @@ let opt_blanks =
 
 let allow_surrounding_blanks ppp =
   opt_blanks -+ ppp +- opt_blanks +- eof
+
+(* strinG will match the given string regardless of the case and
+ * regardless of the surrounding (ie even if followed by other letters). *)
+let strinG = ParseUsual.string ~case_sensitive:false
+
+let that_string s =
+  strinG s >>: fun () -> s (* because [string] returns () *)
+
+let strinGs s = strinG s ||| strinG (s ^"s")
+
+(* but word would match only if the string is not followed by other
+ * letters: *)
+let word ?case_sensitive s =
+  ParseUsual.string ?case_sensitive s -- nay letter
+
+let worD = word ~case_sensitive:false
+
+let worDs s = worD s ||| worD (s ^"s")
+
+(* Given we frequently encode strings with "%S", we need to parse them back
+ * with numerical escape sequence in base 10: *)
+let quoted_string = quoted_string ~base_num:10
+
+(*$= quoted_string & ~printer:(test_printer BatString.print)
+  (Ok ("→", (14, []))) \
+    (test_p quoted_string "\"\\226\\134\\146\"")
+ *)
 
 let slash = char ~what:"slash" '/'
 let star = char ~what:"star" '*'
@@ -100,11 +110,11 @@ let rec duration m =
   let m = "duration" :: m in
   let single_duration =
     number +- opt_blanks ++
-    (((strinGs "microsecond" ||| string "μs") >>: fun () -> 0.000_001) |||
-     ((strinGs "millisecond" ||| string "ms") >>: fun () -> 0.001) |||
-     ((strinGs "second" ||| char_ 's') >>: fun () -> 1.) |||
-     ((strinGs "minute" ||| string "min" ||| char_ 'm') >>: fun () -> 60.) |||
-     ((strinGs "hour" ||| char_ 'h') >>: fun () -> 3600.)) >>:
+    (((worDs "microsecond" ||| word "μs") >>: fun () -> 0.000_001) |||
+     ((worDs "millisecond" ||| word "ms") >>: fun () -> 0.001) |||
+     ((worDs "second" ||| word "s") >>: fun () -> 1.) |||
+     ((worDs "minute" ||| word "min" ||| word "m") >>: fun () -> 60.) |||
+     ((worDs "hour" ||| word "h") >>: fun () -> 3600.)) >>:
    fun (dur, scale) ->
      let d = dur *. scale in
      if d < 0. then
