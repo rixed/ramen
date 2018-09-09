@@ -542,6 +542,19 @@ let check params op =
         TupleOut; TupleOutPrevious;
         TupleGroup ]
       "COMMIT WHEN clause" commit_cond ;
+    Option.may (fun (_, until_opt, bys) ->
+      Option.may (fun until ->
+        check_fields_from
+          [ TupleParam; TupleEnv;
+            TupleSortFirst; TupleSortSmallest; TupleSortGreatest ]
+          "SORT-UNTIL clause" until
+      ) until_opt ;
+      List.iter (fun by ->
+        check_fields_from
+          [ TupleParam; TupleEnv; TupleIn ]
+          "SORT-BY clause" by
+      ) bys
+    ) sort ;
     if every > 0. && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
