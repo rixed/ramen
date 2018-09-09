@@ -466,7 +466,7 @@ let check params op =
   if use_event_time &&
      event_time_of_operation op = None
   then
-      failwith "Cannot use #start/#stop without event time" ;
+     failwith "Cannot use #start/#stop without event time" ;
   match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; flush_how ; event_time ; notifications ;
@@ -992,6 +992,9 @@ struct
           fun (select_fields, and_all_others, merge, sort, where,
                event_time, key, commit, from, every, listen,
                instrumentation, ext_data, preprocessor, csv_specs, factors) ->
+            (* FIXME: in what follows, detect and signal cases when a new value
+             * replaces an old one (but the default), such as when two WHERE
+             * clauses are given. *)
             function
             | SelectClause fields_or_stars ->
               let fields, and_all_others =

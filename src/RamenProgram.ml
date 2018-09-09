@@ -86,8 +86,10 @@ let check (params, funcs) =
   List.fold_left (fun s n ->
     (try RamenOperation.check params n.operation
     with Failure msg ->
+      let open RamenTypingHelpers in
       Printf.sprintf "In function %s: %s"
-        (RamenName.string_of_func (n.name |? anonymous)) msg |>
+        (func_color (RamenName.string_of_func (n.name |? anonymous)))
+        msg |>
       failwith) ;
     match n.name with
     | Some name ->
