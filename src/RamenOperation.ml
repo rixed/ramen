@@ -284,15 +284,33 @@ let is_merging = function
   | Aggregate { merge ; _ } when merge.on <> [] -> true
   | _ -> false
 
-let event_time_of_operation = function
-  | Aggregate { event_time ; _ } -> event_time
-  | ReadCSVFile { event_time ; _ } -> event_time
-  | ListenFor { proto ; _ } ->
-      RamenProtocols.event_time_of_proto proto
-  | Instrumentation _ ->
-      RamenBinocle.event_time
-  | Notifications _ ->
-      RamenNotification.event_time
+let event_time_of_operation op =
+  let event_time, fields =
+    match op with
+    | Aggregate { event_time ; fields ; _ } ->
+        event_time, List.map (fun sf -> sf.alias) fields
+    | ReadCSVFile { event_time ; what ; _ } ->
+        event_time, List.map (fun ft -> ft.RamenTuple.typ_name) what.fields
+    | ListenFor { proto ; _ } ->
+        RamenProtocols.event_time_of_proto proto, []
+    | Instrumentation _ ->
+        RamenBinocle.event_time, []
+    | Notifications _ ->
+        RamenNotification.event_time, []
+  and event_time_from_fields fields =
+    if List.mem "start" fields then
+      Some RamenEventTime.(
+        ("start", ref OutputField, 1.),
+        if List.mem "stop" fields then
+          StopField ("stop", ref OutputField, 1.)
+        else if List.mem "duration" fields then
+          DurationField ("duration", ref OutputField, 1.)
+        else
+          DurationConst 0.)
+    else None
+  in
+  if event_time <> None then event_time else
+  event_time_from_fields fields
 
 let func_id_of_data_source = function
   | NamedOperation id -> id
