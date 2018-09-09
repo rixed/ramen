@@ -1003,14 +1003,17 @@ struct
     ) m
 
   (* operators with lowest precedence *)
-  let rec lowest_prec_left_assoc m =
-    let m = "logical operator" :: m in
-    let op = that_string "and" ||| that_string "or"
-    and reduce e1 op e2 = match op with
-      | "and" -> StatelessFun2 (make_typ "and", And, e1, e2)
-      | "or" -> StatelessFun2 (make_typ "or", Or, e1, e2)
-      | _ -> assert false in
-    (* FIXME: we do not need a blanks if we had parentheses ("(x)AND(y)" is OK) *)
+  let rec lowestest_prec_left_assoc m =
+    let m = "logical OR operator" :: m in
+    let op = strinG "or"
+    and reduce e1 _op e2 = StatelessFun2 (make_typ "or", Or, e1, e2) in
+    (* FIXME: we do not need a blanks if we had parentheses ("(x)OR(y)" is OK) *)
+    binary_ops_reducer ~op ~term:lowest_prec_left_assoc ~sep:blanks ~reduce m
+
+  and lowest_prec_left_assoc m =
+    let m = "logical AND operator" :: m in
+    let op = strinG "and"
+    and reduce e1 _op e2 = StatelessFun2 (make_typ "and", And, e1, e2) in
     binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
 
   and conditional m =
@@ -1489,7 +1492,7 @@ struct
         Vector (make_typ "vector", es)
     ) m
 
-  and p m = lowest_prec_left_assoc m
+  and p m = lowestest_prec_left_assoc m
 
   (*$= p & ~printer:(test_printer (print false))
     (Ok (Const (typ, VI32 (Stdint.Int32.of_int 13)), (13, []))) \
