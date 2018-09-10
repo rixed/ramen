@@ -383,11 +383,10 @@ let really_start conf must_run proc parents children =
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let more_env =
-    List.enum proc.params /@
-    (fun p ->
+    Hashtbl.enum proc.params /@
+    (fun (n, v) ->
       Printf.sprintf2 "param_%s=%a"
-        (fst p)
-        RamenTypes.print (snd p)) |>
+        n RamenTypes.print v) |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =

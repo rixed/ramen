@@ -6,7 +6,7 @@
 let release_tag = "v3.0.6"
 
 (* Format of the list of running programs: *)
-let graph_config = "v10" (* last: params in RC key *)
+let graph_config = "v11" (* last: params is now a hash *)
 
 (* Code generation: sources, binaries, marshaled types... *)
 let codegen = "v37" (* last: commit before *)

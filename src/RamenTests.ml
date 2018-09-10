@@ -44,7 +44,7 @@ type test_spec =
     [@@ppp PPP_OCaml]
 
 and program_spec =
-  { bin : string ; params : RamenName.params [@ppp_default []] }
+  { bin : string ; params : RamenName.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields

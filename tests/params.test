@@ -1,6 +1,9 @@
 {
   programs = {
-    "tests/params" => { bin = "params.x"; params = [("sel_years", VVec [| VU16 1976 |])] };
+    "tests/params" => {
+      bin = "params.x";
+      params = { "sel_years" => VVec [| VU16 1976 |] }
+    };
     "tests/fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
   };
   outputs = {

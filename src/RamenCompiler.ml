@@ -41,7 +41,7 @@ let init use_external_compiler bundle_dir max_simult_compils smt_solver =
  * the running configuration: *)
 
 let parent_from_root_path root_path pn =
-  P.bin_of_program_name root_path pn |> P.of_bin []
+  P.bin_of_program_name root_path pn |> P.of_bin (Hashtbl.create 0)
 
 let parent_from_programs programs pn =
   (Hashtbl.find programs pn |> snd) ()

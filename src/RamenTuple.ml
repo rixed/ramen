@@ -64,9 +64,9 @@ let param_types_signature =
  * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =
   List.map (fun p1 ->
-    match List.find (fun (p2_nam, _) -> p2_nam = p1.ptyp.typ_name) ps2 with
+    match Hashtbl.find ps2 p1.ptyp.typ_name with
     | exception Not_found -> p1
-    | _, p2_val ->
+    | p2_val ->
         let open RamenTypes in
         if p2_val = VNull then
           if not p1.ptyp.typ.nullable then

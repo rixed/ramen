@@ -27,9 +27,9 @@ val program_of_rel_program : program -> rel_program -> program
 type param = string * RamenTypes.value
 val param_ppp_ocaml : param PPP.t
 
-type params = param list
+type params = (string, RamenTypes.value) Hashtbl.t
 val params_ppp_ocaml : params PPP.t
-val params_sort : params -> params
+val params_sort : param list -> param list
 val string_of_params : params -> string
 val signature_of_params : params -> string
 

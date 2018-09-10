@@ -79,18 +79,18 @@ let program_of_rel_program start rel_program =
  * - The MD5 hash of the above, otherwise.  *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
-type params = param list [@@ppp PPP_OCaml]
+type params = (string, RamenTypes.value) Hashtbl.t [@@ppp PPP_OCaml]
 
-(* FIXME: make those params a Map so names are unique. *)
-let param_compare (a, _) (b, _) = String.compare a b
-
-let params_sort = List.fast_sort param_compare
-
-let print_param oc (n, v) =
-  Printf.fprintf oc "%s=%a" n RamenTypes.print v
+let params_sort =
+  let param_compare (a, _) (b, _) = String.compare a b in
+  List.fast_sort param_compare
 
 let string_of_params params =
-  params_sort params |>
+  let print_param oc (n, v) =
+    Printf.fprintf oc "%s=%a" n RamenTypes.print v in
+  Hashtbl.enum params |>
+  List.of_enum |>
+  params_sort |>
   IO.to_string (List.print ~first:"" ~last:"" ~sep:";" print_param) |>
   abbrev
 
