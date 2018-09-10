@@ -20,7 +20,7 @@ let () =
  * (un)serialization functions! *)
 let tuple_typ =
   [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = Some RamenUnits.processes ; doc = "" } ;
-    { typ_name = "time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "When those statistics have been collected (wall clock time)" } ;
     { typ_name = "max_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "Largest event time encountered so far" } ;
@@ -49,7 +49,7 @@ let tuple_typ =
 
 let event_time =
   let open RamenEventTime in
-  Some (("time", ref OutputField, 1.), DurationConst 0.)
+  Some (("start", ref OutputField, 1.), DurationConst 0.)
 
 let factors = [ "worker" ]
 
@@ -63,7 +63,7 @@ let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
-let serialize tx (worker, time, etime, ic, sc, oc, gc, cpu, ram, wi, wo,
+let serialize tx (worker, start, etime, ic, sc, oc, gc, cpu, ram, wi, wo,
                   bi, bo, lo) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
@@ -84,7 +84,7 @@ let serialize tx (worker, time, etime, ic, sc, oc, gc, cpu, ram, wi, wo,
     RingBuf.write_string tx offs worker ;
     offs + RingBufLib.sersize_of_string worker in
   let offs =
-    RingBuf.write_float tx offs time ;
+    RingBuf.write_float tx offs start ;
     offs + RingBufLib.sersize_of_float in
   let offs = write_nullable_float offs 0 etime in
   let offs = write_nullable_u64 offs 1 ic in
@@ -119,7 +119,7 @@ let unserialize tx =
   let offs = nullmask_sz in
   let worker = RingBuf.read_string tx offs in
   let offs = offs + RingBufLib.sersize_of_string worker in
-  let time = RingBuf.read_float tx offs in
+  let start = RingBuf.read_float tx offs in
   let etime, offs = read_nullable_float tx 0 offs in
   let offs = offs + RingBufLib.sersize_of_float in
   let ic, offs = read_nullable_u64 tx 1 offs in
@@ -136,6 +136,6 @@ let unserialize tx =
   let bo, offs = read_nullable_u64 tx 8 offs in
   let lo, offs = read_nullable_float tx 9 offs in
   let t =
-    worker, time, etime, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo, lo in
+    worker, start, etime, ic, sc , oc, gc, cpu, ram, wi, wo, bi, bo, lo in
   assert (offs <= max_sersize_of_tuple t) ;
   t

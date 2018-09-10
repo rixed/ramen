@@ -152,13 +152,13 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
 let notify conf parameters notif_name () =
   logger := make_logger conf.C.log_level ;
   let rb = RamenProcesses.prepare_notifs conf in
-  let sent_time = Unix.gettimeofday () in
+  let start = Unix.gettimeofday () in
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   Lwt_main.run (
     RingBufLib.write_notif rb
-      ("CLI", sent_time, None, notif_name, firing, certainty, parameters))
+      ("CLI", start, None, notif_name, firing, certainty, parameters))
 
 (*
  * `ramen compile`

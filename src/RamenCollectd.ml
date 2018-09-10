@@ -21,7 +21,7 @@ open RamenNullable
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
 type collectd_metric =
-  string (* host *) * float (* time *) *
+  string (* host *) * float (* start *) *
   string nullable (* plugin name *) * string nullable (* plugin instance *) *
   string nullable (* type name (whatever that means) *) *
   string nullable (* type instance *) *
@@ -30,7 +30,7 @@ type collectd_metric =
 
 let tuple_typ =
   [ { typ_name = "host" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" } ;
-    { typ_name = "time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" } ;
+    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" } ;
     { typ_name = "plugin" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" } ;
     { typ_name = "instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" } ;
     { typ_name = "type_name" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" } ;
@@ -43,7 +43,7 @@ let tuple_typ =
 
 let event_time =
   let open RamenEventTime in
-  Some (("time", ref OutputField, 1.), DurationConst 0.)
+  Some (("start", ref OutputField, 1.), DurationConst 0.)
 
 let factors = [ "plugin" ; "type_instance" ; "instance" ]
 

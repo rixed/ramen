@@ -18,9 +18,9 @@ type netflow_metric =
 let tuple_typ =
   [ { typ_name = "source" ; typ = { structure = TString ; nullable = false } ; units = None ;
       doc = "IP address of the netflow source." } ;
-    { typ_name = "first" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "SysUptime at start of flow." } ;
-    { typ_name = "last" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { typ_name = "stop" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "SysUptime at the time the last packet of the flow was received." } ;
     { typ_name = "seqnum" ; typ = { structure = TU32 ; nullable = false } ; units = None ;
       doc = "Sequence counter of total flows seen." } ;
@@ -67,8 +67,8 @@ let tuple_typ =
 
 let event_time =
   let open RamenEventTime in
-  Some (("first", ref OutputField, 1.),
-        StopField ("last", ref OutputField, 1.))
+  Some (("start", ref OutputField, 1.),
+        StopField ("stop", ref OutputField, 1.))
 
 let factors = [ "source" ]
 

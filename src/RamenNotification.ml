@@ -11,7 +11,7 @@ open RamenNullable
 let tuple_typ =
   let open RamenTypes in
   [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" } ;
-    { typ_name = "sent_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "Time the notification was sent." } ;
     { typ_name = "event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "Time the event occurred." } ;
@@ -34,7 +34,7 @@ let tuple_typ =
  * sent... *)
 let event_time =
   let open RamenEventTime in
-  Some (("sent_time", ref OutputField, 1.), DurationConst 0.)
+  Some (("start", ref OutputField, 1.), DurationConst 0.)
 
 (* We trust the user not to generate too many distinct names and use instead
  * parameters to store arbitrary values. *)
@@ -67,7 +67,7 @@ let unserialize tx =
   let offs = nullmask_sz in
   let worker = RingBuf.read_string tx offs in
   let offs = offs + sersize_of_string worker in
-  let sent_time = RingBuf.read_float tx offs in
+  let start = RingBuf.read_float tx offs in
   let offs = offs + sersize_of_float in
   let event_time, offs = read_nullable_float tx 0 offs in
   let name = RingBuf.read_string tx offs in
@@ -92,6 +92,6 @@ let unserialize tx =
       n, v
     ) in
   let t =
-    worker, sent_time, event_time, name, firing, certainty, parameters in
+    worker, start, event_time, name, firing, certainty, parameters in
   assert (!offs <= max_sersize_of_notification t) ;
   t

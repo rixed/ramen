@@ -446,7 +446,7 @@ let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
 
 let serialize_notification tx
-      (worker, sent_time, event_time, name, firing, certainty, parameters) =
+      (worker, start, event_time, name, firing, certainty, parameters) =
   RingBuf.zero_bytes tx 0 notification_nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -464,7 +464,7 @@ let serialize_notification tx
     RingBuf.write_string tx offs worker ;
     offs + sersize_of_string worker in
   let offs =
-    RingBuf.write_float tx offs sent_time ;
+    RingBuf.write_float tx offs start ;
     offs + sersize_of_float in
   let offs = write_nullable_float offs 0 event_time in
   let offs =
