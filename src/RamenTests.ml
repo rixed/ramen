@@ -1,5 +1,6 @@
 open Batteries
 open Lwt
+open Stdint
 open RamenHelpers
 open RamenLog
 open RamenNullable
@@ -206,7 +207,7 @@ let test_notifications notify_rb notif_spec =
   in
   return (success, msg)
 
-let test_one conf notify_rb dirname test =
+let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc, bname and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
   (* The only sure way to know when to stop the workers is: when the test
@@ -338,11 +339,24 @@ let run conf test () =
       restart_on_failure "synchronize_running"
         (RamenProcesses.synchronize_running conf) 0. ;
       (
-        let%lwt r = test_one conf notify_rb (Filename.dirname test) test_spec in
+        let%lwt r =
+          run_test conf notify_rb (Filename.dirname test) test_spec in
         res := r ;
         RamenProcesses.quit := Some 0 ;
         return_unit
       ) ]) ;
   RingBuf.unload notify_rb ;
+  (* Show resources consumption: *)
+  let stats =
+    let pattern = Globs.compile "*" in
+    Lwt_main.run (RamenPs.read_stats conf pattern) in
+  !logger.info "Resources:%a"
+    (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
+      String.print
+      (fun oc (_etime, in_count, selected_count, out_count,
+               _group_count, cpu, ram, _wait_in, _wait_out, _bytes_in,
+               _bytes_out, _last_out) ->
+        Printf.fprintf oc "cpu:%fs\tram:%s" cpu (Uint64.to_string ram)))
+      stats ;
   if !res then !logger.info "Test %s: Success" name
   else failwith ("Test "^ name ^": FAILURE")
