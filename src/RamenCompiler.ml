@@ -169,8 +169,8 @@ let compile conf root_path get_parent program_name program_code =
               ft.RamenTuple.typ_name = name
             ) func.F.out_type with
         | exception Not_found ->
-            !logger.error "in function %S: no such input field %S (have %a)"
-              (RamenName.string_of_func func.F.name)
+            !logger.error "In function %s: no such input field %S (have %a)"
+              (func_color (RamenName.string_of_func func.F.name))
               name
               RamenTuple.print_typ_names func.F.out_type ;
             None
@@ -182,9 +182,9 @@ let compile conf root_path get_parent program_name program_code =
      * use the same): *)
     let units_of_input func parents field =
       let what =
-        Printf.sprintf "Field %S in parents of %S"
+        Printf.sprintf "Field %S in parents of %s"
           field
-          (RamenName.string_of_func func.F.name) in
+          (func_color (RamenName.string_of_func func.F.name)) in
       let units =
         (List.enum parents /@
          (fun f -> units_of_output f field)) |>

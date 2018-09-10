@@ -1153,8 +1153,9 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             (* Copy the scalar type from the default value: *)
             match RamenTuple.params_find field_name params with
             | exception Not_found ->
-                Printf.sprintf "Function %s is using unknown parameter %s"
-                  (RamenName.string_of_func func.F.name) field_name |>
+                Printf.sprintf "Function %s is using unknown parameter %S"
+                  (func_color (RamenName.string_of_func func.F.name))
+                  field_name |>
                 failwith
             | param ->
                 emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc param.ptyp.typ.structure ;
@@ -1166,8 +1167,8 @@ let emit_input_fields oc tuple_sizes parents params funcs =
             let no_such_field pfunc =
               Printf.sprintf2 "Parent %s of %s does not output a field \
                                named %s (only: %a)"
-                (RamenName.string_of_func pfunc.F.name)
-                (RamenName.string_of_func func.F.name)
+                (func_color (RamenName.string_of_func pfunc.F.name))
+                (func_color (RamenName.string_of_func func.F.name))
                 field_name
                 RamenTuple.print_typ_names pfunc.F.out_type |>
               failwith
@@ -1180,11 +1181,12 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                     Printf.sprintf2
                       "All parents of %s must agree on the type of field \
                        %s (%a have %a but %s has %a)"
-                      (RamenName.string_of_func func.F.name)
+                      (func_color (RamenName.string_of_func func.F.name))
                       field_name
-                      (pretty_list_print String.print) prev_fns
+                      (pretty_list_print (fun oc f ->
+                        String.print oc (func_color f))) prev_fns
                       RamenTypes.print_typ prev_t
-                      fn
+                      (func_color fn)
                       RamenTypes.print_typ t |>
                     failwith ;
                   Some ((fn::prev_fns), prev_t) in
@@ -1543,7 +1545,7 @@ let set_io_tuples parents funcs h =
         | exception Not_found ->
             Printf.sprintf "Cannot find field %s in %s"
               ft.typ_name
-              (RamenName.string_of_func parent.F.name) |>
+              (func_color (RamenName.string_of_func parent.F.name)) |>
             failwith
         | typ ->
             !logger.debug "Set input field %s.%s to %a"

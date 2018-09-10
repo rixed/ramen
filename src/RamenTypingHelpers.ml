@@ -101,10 +101,10 @@ let finalize_func conf parents params func operation =
     let what = IO.to_string (print true) e in
     match typ.typ with
     | None | Some { structure = (TNum | TAny) ; _ } ->
-       Printf.sprintf2 "Cannot complete typing of %s, still of type %a, \
-                        in function %s"
-         what RamenExpr.print_typ typ
-         (RamenName.string_of_func func.F.name) |>
+       Printf.sprintf2 "In function %s: Cannot complete typing of %s, \
+                        still of type %a"
+         (func_color (RamenName.string_of_func func.F.name))
+         what RamenExpr.print_typ typ |>
       failwith
     | _ -> ()
   ) operation ;

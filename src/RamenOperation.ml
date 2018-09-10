@@ -244,7 +244,8 @@ let fold_top_level_expr init f = function
                 flush_how ; notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            f prev ("field "^ sf.alias) sf.expr
+            let what = Printf.sprintf "field %S" sf.alias in
+            f prev what sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->
             f prev "MERGE-ON clause" me
