@@ -1,8 +1,9 @@
 {
-  programs = [
-    ("basic_aggr.x", []);
-    ("fixtures/n123.x", []);
-    ("fixtures/cars.x", []) ];
+  programs = {
+    "tests/basic_aggr" => { bin = "basic_aggr.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" };
+    "tests/fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
   outputs = {
     "tests/basic_aggr/f1" => {
       timeout = 15;

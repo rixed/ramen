@@ -168,7 +168,11 @@ let notify conf parameters notif_name () =
  *)
 
 let compile conf root_path use_external_compiler bundle_dir
-            max_simult_compils smt_solver source_files program_name_opt () =
+            max_simult_compils smt_solver source_files
+            output_file_opt program_name_opt () =
+  let many_source_files = List.length source_files > 1 in
+  if many_source_files && program_name_opt <> None then
+    failwith "Cannot specify the program name for several source files" ;
   logger := make_logger conf.C.log_level ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
@@ -190,7 +194,9 @@ let compile conf root_path use_external_compiler bundle_dir
           exit 1)
       ) program_name_opt
     and program_code = read_whole_file source_file in
-    RamenCompiler.compile conf root_path get_parent program_name program_code
+    RamenCompiler.compile conf root_path get_parent
+                          ?exec_file:output_file_opt
+                          program_name program_code
   in
   List.iter (fun source_file ->
     try

@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("lag.x", []);
-    ("fixtures/n123.x", []) ];
+  programs = {
+    "tests/lag" => { bin = "lag.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
   outputs = {
     "tests/lag/f" => {
       present = [

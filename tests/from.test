@@ -1,5 +1,5 @@
 {
-  programs = [ ("from.x", []) ];
+  programs = { "tests/from" => { bin = "from.x" } };
   outputs = {
     "tests/from/f" => {
       present = [

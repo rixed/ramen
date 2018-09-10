@@ -1,5 +1,5 @@
 {
-  programs = [("word_split.x", [])];
+  programs = { "tests/word_split" => { bin = "word_split.x" } };
   outputs = {
     "tests/word_split/f1" => {
       present = [

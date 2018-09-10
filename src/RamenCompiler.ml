@@ -46,7 +46,8 @@ let parent_from_root_path root_path pn =
 let parent_from_programs programs pn =
   (Hashtbl.find programs pn |> snd) ()
 
-let compile conf root_path get_parent program_name program_code =
+let compile conf root_path get_parent ?exec_file
+            program_name program_code =
   (*
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
@@ -326,7 +327,10 @@ let compile conf root_path get_parent program_name program_code =
      * run the worker of the designated operation (which has been compiled
      * above).
      *)
-    let exec_file = P.bin_of_program_name root_path program_name
+    let exec_file =
+      Option.default_delayed (fun () ->
+        P.bin_of_program_name root_path program_name
+      ) exec_file
     and pname = RamenName.string_of_program program_name in
     let obj_name = root_path ^"/"^ path_of_module program_name
                    ^"_casing_"^ RamenVersions.codegen ^".cmx" in

@@ -433,7 +433,7 @@ RAMEN_TESTS_SOURCES = \
 
 %.x: %.ramen src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --bundle=bundle --root=./ $<
+	@src/ramen compile --bundle=bundle $< -o $@
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'

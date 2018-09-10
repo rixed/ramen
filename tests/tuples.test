@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("tuples.x", []);
-    ("fixtures/n123.x", []) ];
+  programs = {
+    "tests/tuples" => { bin = "tuples.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
   outputs = {
     "tests/tuples/f1" => {
       present = [ { "max_n" => "3"; "max_n_p1" => "4" } ]};

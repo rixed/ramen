@@ -1,8 +1,9 @@
 {
-  programs = [
-    ("commit_before.x", []);
-    ("fixtures/n123.x", []);
-    ("fixtures/cars.x", []) ];
+  programs = {
+    "tests/commit_before" => { bin = "commit_before.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" };
+    "tests/fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
   outputs = {
     "tests/commit_before/count_cars" => {
       present = [

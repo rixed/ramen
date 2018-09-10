@@ -130,7 +130,7 @@ end
 
 Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
   if prog_name then
-    `ramen compile #{source} -o #{prog_name}`
+    `ramen compile #{source} --as #{prog_name}`
   else
     `ramen compile #{source}`
   end

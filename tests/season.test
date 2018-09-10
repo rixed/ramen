@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("season.x", []);
-    ("fixtures/earthquakes.x", []) ];
+  programs = {
+    "tests/season" => { bin = "season.x" };
+    "tests/fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
+  };
   outputs = {
     "tests/season/f" => {
       present = [

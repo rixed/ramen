@@ -861,6 +861,10 @@ let hash_fold_s h f i =
     f k v prev
   ) h (Lwt.return i)
 
+let hash_iter_p h f =
+  Hashtbl.enum h |> List.of_enum |>
+  Lwt_list.iter_p (fun (k, v) -> f k v)
+
 let age t = Unix.gettimeofday () -. t
 
 let option_get what = function

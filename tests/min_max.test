@@ -1,6 +1,7 @@
 {
-  programs = [
-    ("min_max.x", []) ];
+  programs = {
+    "tests/min_max" => { bin = "min_max.x" }
+  };
   outputs = {
     "tests/min_max/aggr" => {
       present = [

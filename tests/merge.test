@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("merge.x", []);
-    ("fixtures/n123.x", []) ];
+  programs = {
+    "tests/merge" => { bin = "merge.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
   outputs = {
     "tests/merge/m1" => {
       present = [

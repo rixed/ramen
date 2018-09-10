@@ -1,8 +1,9 @@
 {
-  programs = [
-    ("fixtures/earthquakes.x", []);
-    ("fixtures/cars.x", []);
-    ("last.x", []) ];
+  programs = {
+    "tests/fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" };
+    "tests/fixtures/cars" => { bin = "fixtures/cars.x" };
+    "tests/last" => { bin = "last.x" }
+  };
   outputs = {
     "tests/last/win1" => {
       present = [

@@ -34,13 +34,17 @@ module Notifs = struct
 end
 
 type test_spec =
-  { programs : (string * RamenName.params) list ;
+  { programs : (RamenName.program, program_spec) Hashtbl.t ;
     inputs : Input.spec list [@ppp_default []] ;
     outputs : (RamenName.fq, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
     notifications : Notifs.spec
       [@ppp_default Notifs.{ present=[]; absent=[]; timeout=0. }] }
     [@@ppp PPP_OCaml]
+
+and program_spec =
+  { bin : string ; params : RamenName.params [@ppp_default []] }
+  [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields
  * to string values *)
@@ -213,19 +217,18 @@ let test_one conf notify_rb dirname test =
   let%lwt () =
     C.with_wlock conf (fun programs ->
       Hashtbl.clear programs ;
-      Lwt_list.iter_p (fun (bin, params) ->
+      hash_iter_p test.programs (fun program_name p ->
         (* The path to the binary is relative to the test file: *)
-        let bin = absolute_path_of ~rel_to:dirname bin in
-        let prog = P.of_bin params bin in
-        let program_name = (List.hd prog.P.funcs).F.program_name in
-        Hashtbl.add programs program_name C.{ bin ; params } ;
+        let bin = absolute_path_of ~rel_to:dirname p.bin in
+        let prog = P.of_bin p.params bin in
+        Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
         Lwt_list.iter_s (fun func ->
           (* Each function will archive its output: *)
           let%lwt bname = RamenExport.make_temp_export conf func in
           Hashtbl.add workers (F.fq_name func) (func, bname, ref None) ;
           return_unit
         ) prog.P.funcs ;
-      ) test.programs) in
+      )) in
   let worker_feeder =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with

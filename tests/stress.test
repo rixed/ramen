@@ -1,5 +1,5 @@
 {
-  programs = [ ("stress.x", []) ];
+  programs = { "tests/stress" => { bin = "stress.x" } };
   outputs = {
     "tests/stress/cons1" => {
       timeout = 30;

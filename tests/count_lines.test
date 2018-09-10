@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("count_lines.x", []);
-    ("fixtures/n123.x", []) ];
+  programs = {
+    "tests/count_lines" => { bin = "count_lines.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
   outputs = {
     "tests/count_lines/f" => {
       present = [

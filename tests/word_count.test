@@ -1,5 +1,5 @@
 {
-  programs = [ ("word_count.x", []) ];
+  programs = { "tests/word_count" => { bin = "word_count.x" } };
   outputs = {
     "tests/word_count/counter1" => {
       present = [ { "count" => "15"; "word" => "\"nous\"" } ]};

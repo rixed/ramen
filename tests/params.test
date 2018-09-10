@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("params.x", [("sel_years", VVec [| VU16 1976 |])]) ;
-    ("fixtures/earthquakes.x", []) ];
+  programs = {
+    "tests/params" => { bin = "params.x"; params = [("sel_years", VVec [| VU16 1976 |])] };
+    "tests/fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
+  };
   outputs = {
     "tests/params/p" => {
       present = [ { "n" => "14" } ]}}

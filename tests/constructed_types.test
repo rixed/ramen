@@ -1,5 +1,5 @@
 {
-  programs = [ ("constructed_types.x", []) ];
+  programs = { "tests/constructed_types" => { bin = "constructed_types.x" } };
   outputs = {
     "tests/constructed_types/vector_exercise" => {
       present = [ { "eins" => "\"one\"";

@@ -1,5 +1,5 @@
 {
-  programs = [ ("in.x", []) ];
+  programs = { "tests/in" => { bin = "in.x" } };
   outputs = {
     "tests/in/f1" => {
       present = [

@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("fun_with_funcs.x", []);
-    ("fixtures/cars.x", []) ];
+  programs = {
+    "tests/fun_with_funcs" => { bin = "fun_with_funcs.x" };
+    "tests/fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
   outputs = {
     "tests/fun_with_funcs/f" => {
       timeout = 20;

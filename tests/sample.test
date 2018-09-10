@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("sample.x", []);
-    ("fixtures/n123.x", []) ];
+  programs = {
+    "tests/sample" => { bin = "sample.x" };
+    "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
   outputs = {
     "tests/sample/f" => { present = [ { "two" => "2" } ] } }
 }

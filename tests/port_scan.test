@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("port_scan.x", []);
-    ("fixtures/port_scan.x", []) ];
+  programs = {
+    "tests/port_scan" => { bin = "port_scan.x" };
+    "tests/fixtures/port_scan" => { bin = "fixtures/port_scan.x" }
+  };
   outputs = {
     "tests/port_scan/detect" => {
       present = [

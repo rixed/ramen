@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("top_expr.x", []);
-    ("fixtures/cars.x", []) ];
+  programs = {
+    "tests/top_expr" => { bin = "top_expr.x" };
+    "tests/fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
   outputs = {
     "tests/top_expr/f" => {
       present = [

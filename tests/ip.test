@@ -1,7 +1,8 @@
 {
-  programs = [
-    ("ip.x", []);
-    ("fixtures/mixture.x", []) ];
+  programs = {
+    "tests/ip" => { bin = "ip.x" };
+    "tests/fixtures/mixture" => { bin = "fixtures/mixture.x" }
+  };
   outputs = {
     "tests/ip/f1" => {
       present = [ { "cidr" => "192.168.0.0/16" } ];
