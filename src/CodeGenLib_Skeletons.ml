@@ -566,14 +566,17 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
   let rec wait_for_tuples started =
     read_more () ;
     if Array.exists (fun to_merge ->
+         not to_merge.timed_out &&
          RamenSzHeap.is_empty to_merge.tuples) to_merge
     then (
       if timeout > 0. &&
          Unix.gettimeofday () > started +. timeout
       then (
-        (* Timeout all that's left: *)
+        (* Timeout all that's empty: *)
         Array.iteri (fun i to_merge ->
-          if RamenSzHeap.is_empty to_merge.tuples then (
+          if not to_merge.timed_out &&
+             RamenSzHeap.is_empty to_merge.tuples
+          then (
             !logger.debug "Timing out source #%d" i ;
             to_merge.timed_out <- true)
         ) to_merge ;
