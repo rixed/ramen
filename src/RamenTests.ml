@@ -202,7 +202,7 @@ let test_notifications notify_rb notif_spec =
   in
   return (success, msg)
 
-let test_one conf root_path notify_rb dirname test =
+let test_one conf notify_rb dirname test =
   (* Hash from func fq name to its rc, bname and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
   (* The only sure way to know when to stop the workers is: when the test
@@ -306,7 +306,7 @@ let test_one conf root_path notify_rb dirname test =
     join (worker_feeder :: tester_threads) in
   return !all_good
 
-let run conf root_path test () =
+let run conf test () =
   let conf = { conf with C.persist_dir =
     Filename.get_temp_dir_name ()
       ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
@@ -335,7 +335,7 @@ let run conf root_path test () =
       restart_on_failure "synchronize_running"
         (RamenProcesses.synchronize_running conf) 0. ;
       (
-        let%lwt r = test_one conf root_path notify_rb (Filename.dirname test) test_spec in
+        let%lwt r = test_one conf notify_rb (Filename.dirname test) test_spec in
         res := r ;
         RamenProcesses.quit := Some 0 ;
         return_unit

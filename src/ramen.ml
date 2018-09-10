@@ -699,7 +699,6 @@ let test =
   Term.(
     (const RamenTests.run
       $ copts
-      $ root_path
       $ test_file),
     info ~doc:RamenConsts.CliInfo.test "test")
 

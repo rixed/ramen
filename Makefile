@@ -438,7 +438,7 @@ RAMEN_TESTS_SOURCES = \
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@src/ramen test --root=./ $< && touch $@
+	@src/ramen test $< && touch $@
 
 # One day we will have `ramen makedep`:
 tests/lag.x: tests/fixtures/n123.x

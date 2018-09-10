@@ -251,7 +251,6 @@ let complete str () =
           (complete_running_function persist_dir last_tok)
       | "test" ->
           ("--help", RamenConsts.CliInfo.help) ::
-          ("--root-path=", RamenConsts.CliInfo.root_path) ::
           copts @
           (complete_test_file last_tok)
       | "httpd" ->
