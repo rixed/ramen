@@ -119,8 +119,7 @@ let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
     RingBuf.enqueue_commit tx time time ;
     assert (offs <= sersize)
 
-let update_stats_rb period rb_name get_tuple =
-  let rb = RingBuf.load rb_name in
+let update_stats_rb period rb get_tuple =
   while%lwt true do
     update_stats () ;
     let tuple = get_tuple () in
@@ -274,8 +273,9 @@ let worker_start worker_name get_binocle_tuple k =
   let report_period =
     getenv ~def:(string_of_float RamenConsts.Default.report_period)
            "report_period" |> float_of_string in
-  let report_rb =
+  let report_rb_fname =
     getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
+  let report_rb = RingBuf.load report_rb_fname in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
@@ -302,6 +302,7 @@ let worker_start worker_name get_binocle_tuple k =
         print_exception e ;
         !logger.error "Exiting..." ;
         return_unit)) ;
+  ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   exit (!quit |? 1)
 
 (*
