@@ -928,7 +928,7 @@ let aggregate
       return s
     in
     (* The event loop: *)
-    let while_ () = if !quit <> None then return_false else return_true in
+    let while_ () = Lwt.return (!quit = None) in
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)

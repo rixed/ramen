@@ -1206,8 +1206,16 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                    * input type to the output type: *)
                   (* Retrieve the id for the parent output fields: *)
                   let _, pop =
-                    List.find (fun (f, _op) ->
-                      f.F.name = pfunc.F.name) funcs in
+                    try
+                      List.find (fun (f, _op) ->
+                        f.F.name = pfunc.F.name) funcs
+                    with Not_found ->
+                      !logger.error "Cannot find parent %S in any of this \
+                                     program functions (have %a)"
+                        (RamenName.string_of_func pfunc.F.name)
+                        (pretty_list_print (fun oc (f, _op) ->
+                          String.print oc (RamenName.string_of_func f.F.name))) funcs ;
+                      raise Not_found in
                   match id_or_type_of_field pop field_name with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id -> prev_typ, p_id::same_as_ids
