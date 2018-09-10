@@ -20,15 +20,15 @@ Feature: Programs ca  be parameterized
     And ramen supervisor is started
 
   Scenario: A program behavior can depends on parameter and environment.
-    Given I run ramen with arguments run -p 'first_name="Leontine"' test.x -o test/Leontine
+    Given I run ramen with arguments run -p 'first_name="Leontine"' test.x --as test/Leontine
     When I run ramen with arguments ps
     Then ramen must mention "test/Leontine/f"
     When I run ramen with arguments tail --last=-1 'test/Leontine/f' --raw
     Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.
-    Given I run ramen with arguments run -p 'first_name="Romuald"' test.x -o test/Romuald
-    And I run ramen with arguments run -p 'first_name="Raphael"' test.x -o test/Raphael
+    Given I run ramen with arguments run -p 'first_name="Romuald"' test.x --as test/Romuald
+    And I run ramen with arguments run -p 'first_name="Raphael"' test.x --as test/Raphael
     When I run ramen with arguments ps
     Then ramen must mention "test/Romuald/f"
     And ramen must mention "test/Raphael/f".
@@ -37,7 +37,7 @@ Feature: Programs ca  be parameterized
     And ramen must mention "Raphael".
 
   Scenario: But only one under the same name.
-    Given I run ramen with arguments run -p 'first_name="Josephine"' test.x -o test/Josephine
-    And I run ramen with arguments run -p 'first_name="Josephine"' test.x -o test/Josephine
+    Given I run ramen with arguments run -p 'first_name="Josephine"' test.x --as test/Josephine
+    And I run ramen with arguments run -p 'first_name="Josephine"' test.x --as test/Josephine
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.
