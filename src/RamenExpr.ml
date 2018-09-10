@@ -293,6 +293,10 @@ let expr_true () =
   let typ = RamenTypes.{ nullable = false ; structure = TBool } in
   Const (make_typ ~typ "true", VBool true)
 
+let expr_false () =
+  let typ = RamenTypes.{ nullable = false ; structure = TBool } in
+  Const (make_typ ~typ "false", VBool false)
+
 let expr_u8 ?units name n =
   let typ = RamenTypes.{ nullable = false ; structure = TU8 } in
   Const (make_typ ~typ ?units name, VU8 (Uint8.of_int n))

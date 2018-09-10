@@ -1620,15 +1620,17 @@ let emit_read_csv_file opc oc name csv_fname unlink
   Printf.fprintf oc
      "%a\n%a\n%a\n%a\n\
      let %s () =\n\
-       \tCodeGenLib_Skeletons.read_csv_file %s %b %S sersize_of_tuple_\n\
-       \t\ttime_of_tuple_ serialize_tuple_ tuple_of_strings_ %s\n\
-       \t\tfield_of_params_\n"
+       \tlet unlink_ = %a in
+       \tCodeGenLib_Skeletons.read_csv_file %s unlink_ %S\n\
+       \t\tsersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
+       \t\ttuple_of_strings_ %s field_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) opc.tuple_typ
     name
-    csv_fname unlink csv_separator preprocessor
+    (emit_expr ?state:None ~context:Finalize ~opc) unlink
+    csv_fname csv_separator preprocessor
 
 let emit_listen_on opc oc name net_addr port proto =
   let open RamenProtocols in

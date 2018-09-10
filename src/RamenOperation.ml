@@ -53,7 +53,7 @@ let print_flush_method oc = function
     Printf.fprintf oc "KEEP ALL"
 
 (* Represents an input CSV format specifications: *)
-type file_spec = { fname : E.t ; unlink : bool }
+type file_spec = { fname : E.t ; unlink : E.t }
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
 
@@ -63,8 +63,10 @@ let print_csv_specs oc specs =
     RamenTuple.print_typ_names specs.fields
 
 let print_file_spec oc specs =
-  Printf.fprintf oc "READ%s FILES %a"
-    (if specs.unlink then " AND DELETE" else "")
+  Printf.fprintf oc "READ%a FILES %a"
+    (fun oc unlink ->
+      Printf.fprintf oc " AND DELETE IF %a" (E.print false) unlink)
+      specs.unlink
     (E.print false) specs.fname
 
 (* Type of notifications.
@@ -236,10 +238,11 @@ and print oc =
 
 let fold_top_level_expr init f = function
   | ListenFor _ | Instrumentation _ | Notifications _ -> init
-  | ReadCSVFile { where = { fname ; _ } ; preprocessor ; _ } ->
+  | ReadCSVFile { where = { fname ; unlink } ; preprocessor ; _ } ->
       let x =
         Option.map_default (f init "CSV preprocessor") init preprocessor in
-      f x "CSV filename" fname
+      let x = f x "CSV filename" fname in
+      f x "CSV DELETE-IF clause" unlink
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 flush_how ; notifications ; _ } ->
       let x =
@@ -599,18 +602,24 @@ let check params op =
     let field_names = List.map (fun t -> t.RamenTuple.typ_name) tup_typ in
     check_factors field_names factors
 
-  | ReadCSVFile { what ; where = { fname ; _ } ; event_time ; factors ;
+  | ReadCSVFile { what ; where = { fname ; unlink } ; event_time ; factors ;
                   preprocessor ; _ } ->
     let field_names = List.map (fun t -> t.RamenTuple.typ_name) what.fields in
     Option.may (check_event_time field_names) event_time ;
     check_factors field_names factors ;
     (* Default to In if not a param, and then disallow In ):-) *)
     Option.may (fun p ->
-      prefix_def TupleIn p ;
+      (* prefix_def will select Param if it is indeed in param, and only
+       * if not will it assume it's in env; which makes sense as that's the
+       * only two possible tuples here: *)
+      prefix_def TupleEnv p ;
       check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
     ) preprocessor ;
-    prefix_def TupleIn fname ;
-    check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname
+    prefix_def TupleEnv fname ;
+    check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname ;
+    prefix_def TupleEnv unlink ;
+    check_fields_from [ TupleParam; TupleEnv ] "DELETE-IF" unlink ;
+    check_pure "DELETE-IF" unlink
     (* FIXME: check the field type declarations use only scalar types *)
 
   | Instrumentation _ | Notifications _ -> ()
@@ -856,17 +865,20 @@ struct
      optional ~def:() (strinG "for" -- blanks) -+
      (that_string "instrumentation" ||| that_string "notifications")) m
 
-  (* FIXME: It should be possible to enter separator, null, preprocessor in
+  (* FIXME: It should be allowed to enter separator, null, preprocessor in
    * any order *)
   let read_file_specs m =
     let m = "read file operation" :: m in
-    (strinG "read" -- blanks -+
-     optional ~def:false (
-       strinG "and" -- blanks -- strinG "delete" -- blanks >>:
-         fun () -> true) +-
-     (strinG "file" ||| strinG "files") +- blanks ++
-     E.Parser.p >>: fun (unlink, fname) ->
-       { unlink ; fname }) m
+    (
+      strinG "read" -- blanks -+
+      optional ~def:(RamenExpr.expr_false ()) (
+        strinG "and" -- blanks -- strinG "delete" -- blanks -+
+        optional ~def:(RamenExpr.expr_true ()) (
+          strinG "if" -- blanks -+ E.Parser.p +- blanks)) +-
+      strinGs "file" +- blanks ++
+      E.Parser.p >>: fun (unlink, fname) ->
+        { unlink ; fname }
+    ) m
 
   let csv_specs m =
     let m = "CSV format" :: m in
@@ -1327,7 +1339,8 @@ struct
          replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = false } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ;\
+                              unlink = RamenExpr.Const (typ, RamenTypes.VBool false) } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1340,7 +1353,8 @@ struct
        replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = true } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ;\
+                              unlink = RamenExpr.Const (typ, RamenTypes.VBool true) } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "," ; null = "" ; \
@@ -1353,7 +1367,8 @@ struct
        replace_typ_in_op)
 
     (Ok (\
-      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ; unlink = false } ; \
+      ReadCSVFile { where = { fname = RamenExpr.Const (typ, RamenTypes.VString "/tmp/toto.csv") ;\
+                              unlink = RamenExpr.Const (typ, RamenTypes.VBool false) } ; \
                     preprocessor = None ; event_time = None ; \
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \

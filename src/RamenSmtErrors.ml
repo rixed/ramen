@@ -89,6 +89,7 @@ type func =
   | NotifParam of int * int * expr
   | Preprocessor of expr
   | Filename of expr
+  | Unlink of expr
     [@@ppp PPP_OCaml]
 
 let print_func oc =
@@ -100,6 +101,7 @@ let print_func oc =
                               i j print_expr e
   | Preprocessor e -> p "CSV preprocessor%a" print_expr e
   | Filename e -> p "CSV filename%a" print_expr e
+  | Unlink e -> p "CSV unlink clause%a" print_expr e
 
 type t = Expr of int * expr
        | Func of int * func

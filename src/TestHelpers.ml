@@ -95,7 +95,8 @@ let replace_typ_in_operation =
   | ReadCSVFile ({ preprocessor ; _ } as csv) ->
       ReadCSVFile { csv with
         preprocessor = Option.map replace_typ csv.preprocessor ;
-        where = { csv.where with fname = replace_typ csv.where.fname } }
+        where = { fname = replace_typ csv.where.fname ;
+                  unlink = replace_typ csv.where.unlink } }
 
   | x -> x
 

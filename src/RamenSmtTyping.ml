@@ -1055,7 +1055,7 @@ let emit_operation declare tuple_sizes fi oc func op =
         ) notif.parameters
       ) notifications
 
-  | ReadCSVFile { preprocessor ; where = { fname ; _ } ; _ } ->
+  | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
       iter_expr (emit_constraints tuple_sizes [] oc) op ;
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
@@ -1067,7 +1067,11 @@ let emit_operation declare tuple_sizes fi oc func op =
       let name = func_err fi Err.(Filename (ActualType "string")) in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr fname) oc TString ;
       let name = func_err fi Err.(Filename (Nullability false)) in
-      emit_assert_is_false ~name oc (n_of_expr fname)
+      emit_assert_is_false ~name oc (n_of_expr fname) ;
+      let name = func_err fi Err.(Unlink (ActualType "bool")) in
+      emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr unlink) oc TBool ;
+      let name = func_err fi Err.(Unlink (Nullability false)) in
+      emit_assert_is_false ~name oc (n_of_expr unlink)
 
   | _ -> ())
 
