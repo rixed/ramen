@@ -566,29 +566,39 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
    * non timed out input sources: *)
   let rec wait_for_tuples started =
     read_more () ;
-    if Array.exists (fun to_merge ->
-         not to_merge.timed_out &&
-         RamenSzHeap.is_empty to_merge.tuples) to_merge
-    then (
+    (* Do we have something to read on any non-timeouted input?
+     * If so, return. *)
+    let must_wait, all_timed_out =
+      Array.fold_left (fun (must_wait, all_timed_out) m ->
+        must_wait || not m.timed_out && RamenSzHeap.is_empty m.tuples,
+        all_timed_out && m.timed_out
+      ) (false, true) to_merge in
+    if all_timed_out then ( (* We could as well wait here forever *)
+      Lwt_unix.sleep 0.01 (* TODO *) ;%lwt
+      wait_for_tuples started
+    ) else if must_wait then (
+      (* Some inputs are ready, consider timing out the offenders: *)
       if timeout > 0. &&
          Unix.gettimeofday () > started +. timeout
       then (
-        (* Timeout all that's empty: *)
-        Array.iteri (fun i to_merge ->
-          if not to_merge.timed_out &&
-             RamenSzHeap.is_empty to_merge.tuples
+        Array.iteri (fun i m ->
+          if not m.timed_out &&
+             RamenSzHeap.is_empty m.tuples
           then (
             !logger.debug "Timing out source #%d" i ;
-            to_merge.timed_out <- true)
+            m.timed_out <- true)
         ) to_merge ;
+        (* And return *)
         return_unit
       ) else (
+        (* Wait longer: *)
         if%lwt while_ () then (
-          let dt = 0.01 (* todo *) in
-          Lwt_unix.sleep dt ;%lwt
+          Lwt_unix.sleep 0.1 (* TODO *) ;%lwt
           wait_for_tuples started
-        ) else return_unit)
-    ) else return_unit in
+        ) else return_unit
+      )
+    ) else return_unit (* all inputs that have not timed out are ready *)
+  in
   let rec loop () =
     if%lwt while_ () then (
       wait_for_tuples (Unix.gettimeofday ()) ;%lwt
