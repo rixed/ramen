@@ -300,15 +300,15 @@ let ps conf short pretty with_header sort_col top pattern () =
       (* For --short, we sum everything by program: *)
       let h = RamenPs.per_program stats in
       [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-         "CPU" ; "wait in" ; "wait out" ; "heap" ; "volume in" ;
+         "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
          "volume out" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
             if Globs.matches pattern
                  (RamenName.string_of_program program_name) then
-              let _etime, in_count, selected_count, out_count,
-                  group_count, cpu, ram, wait_in, wait_out, bytes_in,
+              let _min_etime, _max_etime, in_count, selected_count, out_count,
+                  group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
                   bytes_out, _last_out =
                 Hashtbl.find_default h program_name RamenPs.no_stats in
               [| ValStr (RamenName.string_of_program program_name) ;
@@ -321,6 +321,7 @@ let ps conf short pretty with_header sort_col top pattern () =
                  flt_or_na wait_in ;
                  flt_or_na wait_out ;
                  ValInt (Uint64.to_int ram) ;
+                 ValInt (Uint64.to_int max_ram) ;
                  flt_or_na (Option.map Uint64.to_float bytes_in) ;
                  flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
             else lines
@@ -328,8 +329,9 @@ let ps conf short pretty with_header sort_col top pattern () =
     else
       (* Otherwise we want to display all we can about individual workers *)
       [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
-         "max event time" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
-         "volume in" ; "volume out" ; "#parents" ; "#children"; "signature" |],
+         "min event time" ; "max event time" ; "CPU" ; "wait in" ; "wait out" ;
+         "heap" ; "max heap" ; "volume in" ; "volume out" ; "#parents" ;
+         "#children" ; "signature" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           (* First pass to get the childrens: *)
@@ -359,9 +361,9 @@ let ps conf short pretty with_header sort_col top pattern () =
                 let fq_name = RamenName.string_of_program program_name
                               ^"/"^ RamenName.string_of_func func.F.name in
                 if Globs.matches pattern fq_name then
-                  let etime, in_count, selected_count, out_count,
-                      group_count, cpu, ram, wait_in, wait_out,
-                      bytes_in, bytes_out, last_out =
+                  let min_etime, max_etime, in_count, selected_count,
+                      out_count, group_count, cpu, ram, max_ram, wait_in,
+                      wait_out, bytes_in, bytes_out, last_out =
                     Hashtbl.find_default stats fq_name RamenPs.no_stats
                   and num_children = Hashtbl.find_all children_of_func
                                        (func.F.program_name, func.F.name) |>
@@ -372,11 +374,13 @@ let ps conf short pretty with_header sort_col top pattern () =
                      int_or_na out_count ;
                      int_or_na group_count ;
                      date_or_na last_out ;
-                     date_or_na etime ;
+                     date_or_na min_etime ;
+                     date_or_na max_etime ;
                      ValFlt cpu ;
                      flt_or_na wait_in ;
                      flt_or_na wait_out ;
                      ValInt (Uint64.to_int ram) ;
+                     ValInt (Uint64.to_int max_ram) ;
                      flt_or_na (Option.map Uint64.to_float bytes_in) ;
                      flt_or_na (Option.map Uint64.to_float bytes_out) ;
                      ValInt (List.length func.F.parents) ;

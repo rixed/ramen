@@ -66,9 +66,9 @@ let stats_last_out =
   FloatGauge.make RamenConsts.Metric.Names.last_out
     RamenConsts.Metric.Docs.last_out
 
-let stats_max_event_time =
-  FloatGauge.make RamenConsts.Metric.Names.max_event_time
-    RamenConsts.Metric.Docs.max_event_time
+let stats_event_time =
+  FloatGauge.make RamenConsts.Metric.Names.event_time
+    RamenConsts.Metric.Docs.event_time
 
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
 let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
@@ -88,29 +88,38 @@ let update_stats () =
   FloatCounter.set stats_cpu (tot_cpu_time ()) ;
   IntGauge.set stats_ram (tot_ram_usage ())
 
+let gauge_current (_mi, x, _ma) = x
+
 (* Basic tuple without aggregate specific counters: *)
 let get_binocle_tuple worker ic sc gc =
   let si v =
     if v < 0 then !logger.error "Negative int counter: %d" v ;
     Some (Uint64.of_int v) in
   let s v = Some v in
-  let i v = Option.map (fun r -> Uint64.of_int r) v in
+  let ram, max_ram =
+    match IntGauge.get stats_ram with
+    | None -> Uint64.zero, Uint64.zero
+    | Some (_mi, x, ma) -> Uint64.of_int x, Uint64.of_int ma in
+  let min_event_time, max_event_time =
+    match FloatGauge.get stats_event_time with
+    | None -> None, None
+    | Some (mi, _, ma) -> Some mi, Some ma in
   let time = Unix.gettimeofday () in
   worker, time,
-  FloatGauge.get stats_max_event_time,
+  min_event_time, max_event_time,
   ic, sc,
   IntCounter.get stats_out_tuple_count |> si,
   gc,
   FloatCounter.get stats_cpu,
   (* Assuming we call update_stats before this: *)
-  IntGauge.get stats_ram |> i |> Option.get,
+  ram, max_ram,
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
   IntCounter.get stats_rb_write_bytes |> si,
-  FloatGauge.get stats_last_out
+  FloatGauge.get stats_last_out |> Option.map gauge_current
 
-let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBuf.NoMoreRoom -> () (* Just skip *)
@@ -159,14 +168,11 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     let tmin_tmax = time_of_tuple tuple in
     IntCounter.add stats_out_tuple_count 1 ;
     FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
-    (* Update stats_max_event_time: *)
+    (* Update stats_event_time: *)
     Option.may (fun (tmin, _) ->
       (* We'd rather announce the start time of the event, event for
        * negative durations. *)
-      if FloatGauge.get stats_max_event_time |>
-         Option.map_default (fun t -> tmin > t) true
-      then
-        FloatGauge.set stats_max_event_time tmin
+      FloatGauge.set stats_event_time tmin
     ) tmin_tmax ;
     (* Get fnames if they've changed: *)
     let%lwt fnames = get_out_fnames () in
@@ -735,7 +741,7 @@ let aggregate
       worker_name
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
-      (IntGauge.get stats_group_count |> i) in
+      (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
   worker_start worker_name get_binocle_tuple (fun conf ->
     let when_str = string_of_when_to_check_group when_to_check_for_commit in
     !logger.debug "We will commit/flush for... %s" when_str ;

@@ -8,7 +8,8 @@ module F = C.Func
 module P = C.Program
 
 let no_stats =
-  None, None, None, None, None, 0., Uint64.zero, None, None, None, None, None
+  None, None, None, None, None, None, 0., Uint64.zero, Uint64.zero, None, None,
+  None, None, None
 
 let read_stats conf pattern =
   let open Lwt in
@@ -45,22 +46,25 @@ let read_stats conf pattern =
     let worker = get_string tuple.(0) in
     if Globs.matches pattern worker then
       let time = get_float tuple.(1)
-      and etime = get_nfloat tuple.(2)
-      and in_count = get_nu64 tuple.(3)
-      and selected_count = get_nu64 tuple.(4)
-      and out_count = get_nu64 tuple.(5)
-      and group_count = get_nu64 tuple.(6)
-      and cpu = get_float tuple.(7)
-      and ram = get_u64 tuple.(8)
-      and wait_in = get_nfloat tuple.(9)
-      and wait_out = get_nfloat tuple.(10)
-      and bytes_in = get_nu64 tuple.(11)
-      and bytes_out = get_nu64 tuple.(12)
-      and last_out = get_nfloat tuple.(13)
+      and min_etime = get_nfloat tuple.(2)
+      and max_etime = get_nfloat tuple.(3)
+      and in_count = get_nu64 tuple.(4)
+      and selected_count = get_nu64 tuple.(5)
+      and out_count = get_nu64 tuple.(6)
+      and group_count = get_nu64 tuple.(7)
+      and cpu = get_float tuple.(8)
+      and ram = get_u64 tuple.(9)
+      and max_ram = get_u64 tuple.(10)
+      and wait_in = get_nfloat tuple.(11)
+      and wait_out = get_nfloat tuple.(12)
+      and bytes_in = get_nu64 tuple.(13)
+      and bytes_out = get_nu64 tuple.(14)
+      and last_out = get_nfloat tuple.(15)
       in
       let stats =
-        etime, in_count, selected_count, out_count, group_count, cpu,
-        ram, wait_in, wait_out, bytes_in, bytes_out, last_out in
+        min_etime, max_etime, in_count, selected_count, out_count,
+        group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
+        bytes_out, last_out in
       (* Keep only the latest stat line per worker: *)
       Hashtbl.modify_opt worker (function
         | None -> Some (time, stats)
@@ -72,25 +76,30 @@ let read_stats conf pattern =
   return
 
 let add_stats
-      (etime', in_count', selected_count', out_count', group_count',
-       cpu', ram', wait_in', wait_out', bytes_in', bytes_out',
-       last_out')
-      (etime, in_count, selected_count, out_count, group_count, cpu,
-       ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
+      (min_etime', max_etime', in_count', selected_count', out_count',
+       group_count', cpu', ram', max_ram', wait_in', wait_out', bytes_in',
+       bytes_out', last_out')
+      (min_etime, max_etime, in_count, selected_count, out_count, group_count,
+       cpu, ram, max_ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
   let combine_opt f a b =
     match a, b with None, b -> b | a, None -> a
     | Some a, Some b -> Some (f a b) in
   let add_nu64 = combine_opt Uint64.add
   and add_nfloat = combine_opt (+.)
+  and min_nfloat = combine_opt Float.min
   and max_nfloat = combine_opt Float.max
   in
-  max_nfloat etime' etime,
+  min_nfloat min_etime' min_etime,
+  max_nfloat max_etime' max_etime,
   add_nu64 in_count' in_count,
   add_nu64 selected_count' selected_count,
   add_nu64 out_count' out_count,
   add_nu64 group_count' group_count,
   cpu' +. cpu,
   Uint64.add ram' ram,
+  (* It's more useful to see the sum of all max than the max of all max, as it
+   * gives an estimate of the worse that could happen: *)
+  Uint64.add max_ram' max_ram,
   add_nfloat wait_in' wait_in,
   add_nfloat wait_out' wait_out,
   add_nu64 bytes_in' bytes_in,
