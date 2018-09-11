@@ -21,7 +21,7 @@ let notify_tuple = "v6" (* last: firing is now optional *)
 let pending_notify = "v4" (* last: max FPR *)
 
 (* Ringbuf formats *)
-let ringbuf = "v4" (* last: nullable in RamenTypes.t *)
+let ringbuf = "v5" (* last: Cache-aware alignment *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v3" (* last: use PPP *)
