@@ -12,9 +12,7 @@ open Stdint
 open RamenLog
 open RamenTuple
 open RamenNullable
-
-let () =
-  RamenHelpers.mkdir_all RamenConsts.binocle_save_dir
+open RamenHelpers
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
@@ -151,3 +149,25 @@ let unserialize tx =
     wi, wo, bi, bo, lo in
   assert (offs <= max_sersize_of_tuple t) ;
   t
+
+(* Helper to initialize with the actual conf instrumentation metrics as
+ * global parameters. We also register them all in a list so that
+ * `ramen variant` can init and read them all. *)
+
+let all_saved_metrics = ref []
+
+let ensure_inited f =
+  let inited = ref None in
+  let initer persist_dir =
+    match !inited with
+    | None ->
+        let save_dir = persist_dir ^"/binocle" in
+        mkdir_all save_dir ;
+        let m = f save_dir in
+        inited := Some m ;
+        m
+    | Some m -> m
+  in
+  all_saved_metrics :=
+    (fun persist_dir -> ignore (initer persist_dir)) :: !all_saved_metrics ;
+  initer

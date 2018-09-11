@@ -760,7 +760,6 @@ let default =
         info "Ramen" ~version ~doc ~sdocs)
 
 let () =
-  mkdir_all RamenConsts.binocle_save_dir ;
   Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
     supervisor ; gc ; httpd ; notifier ;

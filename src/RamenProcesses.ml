@@ -201,14 +201,16 @@ let rec wait_all_pids_loop and_save =
 open Binocle
 
 let stats_worker_crashes =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.worker_crashes
-    "Number of workers that have crashed (or exited with non 0 status)."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.worker_crashes
+      "Number of workers that have crashed (or exited with non 0 status).")
 
 let stats_worker_deadloopings =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.worker_deadloopings
-    "Number of time a worker has been found to deadloop."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.worker_deadloopings
+      "Number of time a worker has been found to deadloop.")
 
 let stats_worker_count =
   IntGauge.make RamenConsts.Metric.Names.worker_count
@@ -219,19 +221,22 @@ let stats_worker_running =
     "Number of workers actually running."
 
 let stats_ringbuf_repairs =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.ringbuf_repairs
-    "Number of times a worker ringbuf had to be repaired."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.ringbuf_repairs
+      "Number of times a worker ringbuf had to be repaired.")
 
 let stats_outref_repairs =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.outref_repairs
-    "Number of times a worker outref had to be repaired."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.outref_repairs
+      "Number of times a worker outref had to be repaired.")
 
 let stats_worker_sigkills =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.worker_sigkills
-    "Number of times a worker had to be sigkilled instead of sigtermed."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.worker_sigkills
+      "Number of times a worker had to be sigkilled instead of sigtermed.")
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
@@ -278,9 +283,9 @@ let process_workers_terminations conf running =
             proc.last_exit_status <- status_str ;
             if is_err then (
               proc.succ_failures <- proc.succ_failures + 1 ;
-              IntCounter.add stats_worker_crashes 1 ;
+              IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
               if proc.succ_failures = 5 then (
-                IntCounter.add stats_worker_deadloopings 1 ;
+                IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
                 rescue_worker conf proc.func proc.params)) ;
             (* Wait before attempting to restart a failing worker: *)
             let max_delay = float_of_int proc.succ_failures in
@@ -322,7 +327,9 @@ let really_start conf must_run proc parents children =
      * then only assume it's broken. *)
     let rb = RingBuf.load rb_name in
     finally (fun () -> RingBuf.unload rb)
-      (fun () -> repair_and_warn fq_str rb) ()
+      (fun () ->
+        repair_and_warn fq_str rb ;
+        IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
@@ -502,7 +509,7 @@ let try_kill conf must_run proc =
     log_and_ignore_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;
-    IntCounter.add stats_worker_sigkills 1
+    IntCounter.inc (stats_worker_sigkills conf.C.persist_dir)
   ) ;
   return_unit
 
@@ -526,7 +533,7 @@ let check_out_ref =
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
             (RamenName.string_of_fq (F.fq_name func)) fname ;
-          IntCounter.add stats_outref_repairs 1 ;
+          IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
           RamenOutRef.remove out_ref fname
         ) else return_unit) ;%lwt
       (* Conversely, check that all children are in the out_ref of their

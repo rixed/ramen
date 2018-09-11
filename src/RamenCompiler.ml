@@ -20,14 +20,16 @@ open RamenTypingHelpers
 open Binocle
 
 let stats_typing_time =
-  Histogram.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.compiler_typing_time
-    "Time spent typing ramen programs, per typer" Histogram.powers_of_two
+  RamenBinocle.ensure_inited (fun save_dir ->
+    Histogram.make ~save_dir
+      RamenConsts.Metric.Names.compiler_typing_time
+      "Time spent typing ramen programs, per typer" Histogram.powers_of_two)
 
 let stats_typing_count =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.compiler_typing_count
-    "How many times a typer have succeeded/failed"
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.compiler_typing_count
+      "How many times a typer have succeeded/failed")
 
 let entry_point_name = "start"
 
@@ -247,15 +249,16 @@ let compile conf root_path get_parent ?exec_file
     let call_typer typer_name typer =
       with_time (fun () ->
         finally (fun () ->
-          IntCounter.add ~labels:["typer", typer_name ;
-                                  "status", "ko"] stats_typing_count 1)
+          IntCounter.add ~labels:["typer", typer_name ; "status", "ko"]
+                         (stats_typing_count conf.C.persist_dir) 1)
           (fun () ->
             let res = typer () in
-            IntCounter.add ~labels:["typer", typer_name ;
-                                    "status", "ok"] stats_typing_count 1 ;
+            IntCounter.add ~labels:["typer", typer_name ; "status", "ok"]
+                           (stats_typing_count conf.C.persist_dir) 1 ;
             res) ())
         (log_and_ignore_exceptions
-          (Histogram.add stats_typing_time ~labels:["typer", typer_name])) in
+          (Histogram.add (stats_typing_time conf.C.persist_dir)
+             ~labels:["typer", typer_name])) in
     let open RamenSmtTyping in
     let smt2_file = C.smt_file root_path program_name in
     add_single_temp_file smt2_file ;

@@ -7,6 +7,7 @@ open Cohttp
 open Cohttp_lwt_unix
 open Lwt
 open Batteries
+module C = RamenConf
 
 (*
  * Ramen can serve an API over HTTP
@@ -103,15 +104,20 @@ let stop_http_servers () =
 open Binocle
 
 let stats_count =
-  IntCounter.make RamenConsts.Metric.Names.requests_count
-    "Number of HTTP requests, per response status"
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.requests_count
+      "Number of HTTP requests, per response status")
 
 let stats_resp_time =
-  Histogram.make RamenConsts.Metric.Names.http_resp_time
-    "HTTP response time per URL" Histogram.powers_of_two
+  RamenBinocle.ensure_inited (fun save_dir ->
+    Histogram.make ~save_dir
+      RamenConsts.Metric.Names.http_resp_time
+      "HTTP response time per URL" Histogram.powers_of_two)
 
 let requests_since_last_fault_injection = ref 0
-let service_response url_prefix router fault_injection_rate _conn req body =
+let service_response conf url_prefix router fault_injection_rate _conn
+                     req body =
   let path = Uri.path (Request.uri req) in
   (* Check path starts with url_prefix and chop off that prefix: *)
   let path =
@@ -180,17 +186,18 @@ let service_response url_prefix router fault_injection_rate _conn req body =
           router method_ path_lst params headers body in
       let resp_time = Unix.gettimeofday () -. start_time in
       let labels =
-        ("status", string_of_int (Code.code_of_status resp.Response.status)) :: labels in
+        ("status",
+         string_of_int (Code.code_of_status resp.Response.status)) :: labels in
       !logger.debug "Response time to %a: %f"
         (List.print (fun oc (n,v) -> Printf.fprintf oc "%s=%s" n v))
           labels resp_time ;
-      Histogram.add stats_resp_time ~labels resp_time ;
+      Histogram.add (stats_resp_time conf.C.persist_dir) ~labels resp_time ;
       return (resp, body)
     ) with exn -> fail exn
   with HttpError (code, msg) as exn ->
          print_exception exn ;
          let labels = ("status", string_of_int code) :: labels in
-         IntCounter.add ~labels stats_count 1 ;
+         IntCounter.inc ~labels (stats_count conf.C.persist_dir) ;
          let status = Code.status_of_code code in
          let headers =
            Header.init_with "Access-Control-Allow-Origin" "*" in
@@ -201,14 +208,13 @@ let service_response url_prefix router fault_injection_rate _conn req body =
          print_exception exn ;
          let code = 500 in
          let labels = ("status", string_of_int code) :: labels in
-         IntCounter.add ~labels stats_count 1 ;
+         IntCounter.inc ~labels (stats_count conf.C.persist_dir) ;
          let status = Code.status_of_code code in
          let body = Printexc.to_string exn ^ "\n" in
          let headers = Header.init_with "Access-Control-Allow-Origin" "*" in
          Server.respond_error ~headers ~status ~body ()
 
-
-let http_service port url_prefix router fault_injection_rate =
+let http_service conf port url_prefix router fault_injection_rate =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     !logger.info "Received signal %s" (name_of_signal s) ;
     stop_http_servers ())) ;
@@ -217,7 +223,8 @@ let http_service port url_prefix router fault_injection_rate =
     (* This log also useful to rotate the logfile. *)
     !logger.info "Received signal %s" (name_of_signal s) ;
     Binocle.display_console ())) ;
-  let callback = service_response url_prefix router fault_injection_rate in
+  let callback =
+    service_response conf url_prefix router fault_injection_rate in
   let entry_point = Server.make ~callback () in
   let tcp_mode = `TCP (`Port port) in
   let on_exn = function

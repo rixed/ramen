@@ -629,7 +629,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
         dummy_nop ;
         (fun () ->
           RamenHttpHelpers.http_service
-            port url_prefix router fault_injection_rate) |]) ;
+            conf port url_prefix router fault_injection_rate) |]) ;
   Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf for_render query () =
@@ -671,6 +671,7 @@ let graphite_expand conf for_render query () =
  *)
 
 let variants conf () =
+  logger := make_logger conf.C.log_level ;
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
   Printf.printf "Experimenter Id: %d\n" experimenter_id ;
@@ -691,4 +692,9 @@ let variants conf () =
   ) all_experiments
 
 let stats conf () =
+  logger := make_logger conf.C.log_level ;
+  (* Initialize all metrics so that they register to Binocle: *)
+  List.iter (fun initer ->
+    initer conf.C.persist_dir
+  ) !RamenBinocle.all_saved_metrics ;
   Binocle.display_console ()

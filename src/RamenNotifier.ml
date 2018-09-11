@@ -41,34 +41,38 @@ open Binocle
 (* Number of notifications of each types: *)
 
 let stats_count =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.notifs_count
-    "Number of notifications sent, per channel."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.notifs_count
+      "Number of notifications sent, per channel.")
 
 let stats_send_fails =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.notifs_send_fails
-    "Number of messages that could not be sent due to error."
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.notifs_send_fails
+      "Number of messages that could not be sent due to error.")
 
 let stats_team_fallbacks =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.team_fallbacks
-    "Number of times the default team was selected because the \
-    configuration was not specific enough"
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.team_fallbacks
+      "Number of times the default team was selected because the \
+      configuration was not specific enough")
 
 let stats_notifs_cancelled =
-  IntCounter.make ~save_dir:RamenConsts.binocle_save_dir
-    RamenConsts.Metric.Names.notifs_cancelled
-    "Number of notifications not send, per reason"
+  RamenBinocle.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir
+      RamenConsts.Metric.Names.notifs_cancelled
+      "Number of notifications not send, per reason")
 
 type http_cmd_method = HttpCmdGet | HttpCmdPost
   [@@ppp PPP_OCaml]
 
-let http_send method_ url headers body worker =
+let http_send conf method_ url headers body worker =
   let open Cohttp in
   let open Cohttp_lwt_unix in
   let open RamenOperation in
-  IntCounter.add ~labels:["via", "http"] stats_count 1 ;
+  IntCounter.inc ~labels:["via", "http"] (stats_count conf.C.persist_dir) ;
   let headers =
     List.fold_left (fun h (n, v) ->
       Header.add h n v
@@ -97,44 +101,44 @@ let http_send method_ url headers body worker =
   if code <> 200 then (
     let%lwt body = Cohttp_lwt.Body.to_string body in
     !logger.error "Received code %d from %S (%S)" code url body ;
-    IntCounter.add stats_send_fails 1 ;
+    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
     fail_with ("Bad response code: "^ string_of_int code)
   ) else
     Cohttp_lwt.Body.drain_body body
 
-let execute_cmd cmd worker =
-  IntCounter.add ~labels:["via", "execute"] stats_count 1 ;
+let execute_cmd conf cmd worker =
+  IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
   match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
   | exception e ->
       !logger.error "While executing command %S from %s: %s"
         cmd worker
         (Printexc.to_string e) ;
-      IntCounter.add stats_send_fails 1 ;
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
       return_unit
   | stdout, stderr ->
       if stdout <> "" then !logger.debug "cmd: %s" stdout ;
       if stderr <> "" then !logger.error "cmd: %s" stderr ;
       return_unit
 
-let log_str str worker =
-  IntCounter.add ~labels:["via", "syslog"] stats_count 1 ;
+let log_str conf str worker =
+  IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
   let level = `LOG_ALERT in
   match syslog with
   | None ->
-    IntCounter.add stats_send_fails 1 ;
+    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
     fail_with "No syslog on this host"
   | Some slog ->
     Lwt.wrap (fun () -> Syslog.syslog slog level str)
 
-let sqllite_insert file insert_q create_q worker =
-  IntCounter.add ~labels:["via", "sqlite"] stats_count 1 ;
+let sqllite_insert conf file insert_q create_q worker =
+  IntCounter.inc ~labels:["via", "sqlite"] (stats_count conf.C.persist_dir) ;
   let open Sqlite3 in
   let open SqliteHelpers in
   let handle = db_open file in
   let db_fail err q =
     let e = Printf.sprintf "Cannot %S into sqlite DB %S: %s"
               q file (Rc.to_string err) in
-    IntCounter.add stats_send_fails 1 ;
+    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
     failwith e in
   let exec_or_fail q =
     match exec handle q with
@@ -185,12 +189,12 @@ module Team = struct
       contacts : Contact.t list [@ppp_default []] }
     [@@ppp PPP_OCaml]
 
-  let find_in_charge teams name =
+  let find_in_charge conf teams name =
     try List.find (fun t -> String.starts_with name t.name) teams
     with Not_found ->
       !logger.warning "No team name found in notification %S, \
                        assigning to first team." name ;
-      IntCounter.add stats_team_fallbacks 1 ;
+      IntCounter.inc (stats_team_fallbacks conf.C.persist_dir) ;
       List.hd teams
 end
 
@@ -452,16 +456,16 @@ let ack name contact now =
         (string_of_pending_status p.status)
 
 (* When we give up sending a notification *)
-let cancel pending now reason =
+let cancel conf pending now reason =
   !logger.info "Cancelling alert %S: %s"
     pending.item.notif.notif_name reason ;
   let labels = ["reason", reason] in
-  IntCounter.add ~labels stats_notifs_cancelled 1 ;
+  IntCounter.inc ~labels (stats_notifs_cancelled conf.C.persist_dir) ;
   pending.status <- StopAcked ;
   pendings.set <- PendingSet.remove pending pendings.set ;
   pendings.dirty <- true
 
-let contact_via item =
+let contact_via conf item =
   let dict =
     [ "name", item.notif.notif_name ;
       "alert_id", Uint64.to_string item.alert_id ;
@@ -481,20 +485,23 @@ let contact_via item =
   let open Contact in
   match item.contact with
   | ViaHttp http ->
-      http_send http.method_
+      http_send conf
+                http.method_
                 (exp ~q:Uri.pct_encode http.url)
                 (List.map (fun (n, v) -> exp n, exp v) http.headers)
                 (exp http.body)
                 item.notif.worker
-  | ViaExec cmd -> execute_cmd (exp ~q:shell_quote cmd) item.notif.worker
-  | ViaSysLog str -> log_str (exp str) item.notif.worker
+  | ViaExec cmd ->
+      execute_cmd conf (exp ~q:shell_quote cmd) item.notif.worker
+  | ViaSysLog str ->
+      log_str conf (exp str) item.notif.worker
   | ViaSqlite { file ; insert ; create } ->
       Lwt.wrap (fun () ->
         let ins = exp ~q:sql_quote ~n:"NULL" insert in
-        sqllite_insert (exp file) ins create item.notif.worker)
+        sqllite_insert conf (exp file) ins create item.notif.worker)
 
 (* Returns the timeout, or fail *)
-let do_notify pending now =
+let do_notify conf pending now =
   let i = pending.item in
   if i.attempts >= 3 then (
     !logger.warning "Cannot deliver alert %S after %d attempt, \
@@ -504,7 +511,7 @@ let do_notify pending now =
     let timeout = 5. (* TODO *) in
     i.attempts <- i.attempts + 1 ;
     async (fun () ->
-      match%lwt contact_via i with
+      match%lwt contact_via conf i with
       | exception e ->
           !logger.error "Cannot notify: %s" (Printexc.to_string e) ;
           return_unit (* let it timeout *)
@@ -569,7 +576,7 @@ let pass_fpr max_fpr now certainty =
       )
 
 (* Returns true if there may still be notifications to be sent: *)
-let send_next max_fpr now =
+let send_next conf max_fpr now =
   let reschedule_min time =
     let p, heap = RamenHeap.pop_min heap_pending_cmp pendings.heap in
     p.schedule_time <- time ;
@@ -589,9 +596,9 @@ let send_next max_fpr now =
               if p.status = StopToBeSent ||
                  pass_fpr max_fpr now p.item.notif.certainty
               then (
-                match do_notify p now with
+                match do_notify conf p now with
                 | exception Failure reason ->
-                    cancel p now reason ;
+                    cancel conf p now reason ;
                     del_min p
                 | timeout ->
                   p.status <- if p.status = StartToBeSent then StartSent
@@ -603,7 +610,7 @@ let send_next max_fpr now =
                     del_min p
                   )
               ) else ( (* not pass_fpr *)
-                cancel p now "too many false positives" ;
+                cancel conf p now "too many false positives" ;
                 del_min p
               )
             ) else ( (* p.send_time > now *)
@@ -630,10 +637,10 @@ let send_next max_fpr now =
  * and is restarted: *)
 let watchdog = RamenWatchdog.make "notifier" RamenProcesses.quit
 
-let send_notifications max_fpr conf =
+let send_notifications conf max_fpr conf =
   let rec loop () =
     let now = Unix.gettimeofday () in
-    while send_next max_fpr now do () done ;
+    while send_next conf max_fpr now do () done ;
     if pendings.dirty then (
       save_pendings conf ;
       pendings.dirty <- false) ;
@@ -685,7 +692,7 @@ let start conf notif_conf_file rb max_fpr =
   let _alert_id = next_alert_id conf () in
   async (fun () ->
     restart_on_failure "send_notifications"
-      (send_notifications max_fpr) conf) ;
+      (send_notifications conf max_fpr) conf) ;
   let while_ () =
     if !RamenProcesses.quit <> None then return_false else return_true in
   RamenSerialization.read_notifs ~while_ rb
@@ -708,7 +715,7 @@ let start conf notif_conf_file rb max_fpr =
     with exn ->
       !logger.error "Cannot read notifier configuration file %s: %s"
         notif_conf_file (Printexc.to_string exn)) ;
-    let team = Team.find_in_charge !notif_conf.teams notif_name in
+    let team = Team.find_in_charge conf !notif_conf.teams notif_name in
     let action =
       match notif.firing with
       | None ->

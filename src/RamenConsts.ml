@@ -240,5 +240,3 @@ let worker_argv0 = "ramen worker:"
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)
 let cache_factors_ttl = 30.
-
-let binocle_save_dir = "/tmp/binocle"
