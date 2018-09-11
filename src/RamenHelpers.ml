@@ -237,7 +237,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
   | FileOk -> ()
   | FileMissing ->
       !logger.debug "File %s is still missing" fname ;
-      (match openfile fname [O_CREAT; O_EXCL; O_WRONLY] 0o644 with
+      (match openfile fname [O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC] 0o644 with
       | exception Unix_error (EEXIST, _, _) ->
           (* Wait for some other concurrent process to rebuild it: *)
           !logger.debug "File %s just appeared, give it time..." fname ;
@@ -246,10 +246,12 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
       | fd ->
           !logger.debug "Creating file %s with initial content %S"
             fname contents ;
-          if contents <> "" then (
-            let len = String.length contents in
-            single_write_substring fd contents 0 len |> ignore) ;
-          close fd)
+          finally
+            (fun () -> close fd)
+            (fun () ->
+              if contents <> "" then (
+                let len = String.length contents in
+                single_write_substring fd contents 0 len |> ignore)) ())
   | FileTooSmall ->
       (* Not my business, wait until the file length is at least that
        * of contents, which realistically should not take more than 1s: *)
@@ -651,7 +653,7 @@ let marshal_into_fd fd v =
 
 let marshal_into_file fname v =
   mkdir_all ~is_file:true fname ;
-  let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
+  let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC; O_CLOEXEC] 0o640 in
   (* Same as above, must avoid Marshal.from_input (autoclose might
    * eventually close fd at some point - FIXME) *)
   finally
@@ -667,7 +669,7 @@ let marshal_from_fd fd =
 
 let marshal_from_file fname =
   mkdir_all ~is_file:true fname ;
-  let fd = Unix.openfile fname [O_RDWR] 0o640 in
+  let fd = Unix.openfile fname [O_RDWR; O_CLOEXEC] 0o640 in
   finally
     (fun () -> Unix.close fd)
     marshal_from_fd fd

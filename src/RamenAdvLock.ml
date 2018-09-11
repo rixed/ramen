@@ -8,7 +8,7 @@ let mutex = Lwt_mutex.create ()
 
 let with_lock op fname f =
   mkdir_all ~is_file:true fname ;
-  let%lwt fd = openfile fname [O_RDWR; O_CREAT] 0o640 in
+  let%lwt fd = openfile fname [O_RDWR; O_CREAT; O_CLOEXEC] 0o640 in
   (* Of course we lock ourself before locking other processes. *)
   Lwt_mutex.with_lock mutex (fun () ->
     (* Just grab the first "byte", probably simpler than the whole file *)
