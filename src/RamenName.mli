@@ -42,6 +42,7 @@ val fq_of_string : string -> fq
 val string_of_fq : fq -> string
 val fq : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
+val fq_parse : ?default_program:program -> fq -> program * func
 
 (* Base units for composing values units.
  * For dimensional analysis to work, all defined base units must be independent

@@ -40,49 +40,6 @@ let bucket_min b =
 let bucket_max b =
   if b.count = 0 then None else Some b.max
 
-(* Some ringbuf are always available and their type known:
- * instrumentation, notifications. *)
-let read_well_known func_name where suffix bname typ () =
-  if func_name = suffix || String.ends_with func_name ("#"^suffix) then
-    (* For well-known tuple types, serialized tuple is as given (no
-     * private fields, no reordering of fields): *)
-    let ser = typ in
-    let where_filter = RamenSerialization.filter_tuple_by ser where in
-    let wi = RamenSerialization.find_field_index typ "worker" in
-    let filter =
-      if func_name = suffix then where_filter else
-      let func_name, _ = String.rsplit func_name ~by:"#" in
-      fun tuple ->
-        tuple.(wi) = RamenTypes.VString func_name &&
-        where_filter tuple in
-    Some (bname, filter, typ, ser)
-  else None
-
-let read_output conf ?duration func_name where =
-  (* Read directly from the instrumentation ringbuf when func_name ends
-   * with "#stats": *)
-  match read_well_known func_name where "stats"
-          (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
-  | Some (bname, filter, typ, ser) ->
-      return (bname, filter, typ, ser, [], RamenBinocle.event_time)
-  | None ->
-      (* Or from the notifications ringbuf when func_name ends with
-       * "#notifs": *)
-      (match read_well_known func_name where "notifs"
-               (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
-      | Some (bname, filter, typ, ser) ->
-          return (bname, filter, typ, ser, [], RamenNotification.event_time)
-      | None ->
-          (* Normal case: Create the non-wrapping RingBuf (under a standard
-           * name given by RamenConf *)
-          let%lwt prog, func, bname =
-            RamenExport.make_temp_export_by_name conf ?duration func_name in
-          let ser =
-            RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-          let filter = RamenSerialization.filter_tuple_by ser where in
-          return (bname, filter, func.F.out_type, ser, prog.P.params,
-                  func.F.event_time))
-
 (* Enumerates all the time*values.
  * Returns the array of factor-column and the Enum.t of data.
  *
@@ -102,16 +59,16 @@ let read_output conf ?duration func_name where =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 let get conf ?duration max_data_points since until where factors
-        ?(consolidation="avg") func_name data_fields =
+        ?(consolidation="avg") fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
-    func_name
+    (RamenName.string_of_fq fq)
     (List.print String.print) data_fields
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%s%s%a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
   let%lwt bname, filter, typ, ser, params, event_time =
-    read_output conf ?duration func_name where in
+    RamenExport.read_output conf ?duration fq where in
   let open RamenSerialization in
   let fis =
     List.map (find_field_index ser) factors in

@@ -414,7 +414,7 @@ let tail conf func_name with_header sep null raw
     else last in
   Lwt_main.run (
     let%lwt bname, filter, typ, ser, params, event_time =
-      RamenTimeseries.read_output conf ~duration func_name where
+      RamenExport.read_output conf ~duration func_name where
     in
     (* Find out which seqnums we want to scan: *)
     let mi, ma = match last with
@@ -536,7 +536,7 @@ let timeseries conf since until with_header where factors max_data_points
 
 let timerange conf func_name () =
   logger := make_logger conf.C.log_level ;
-  match C.program_func_of_user_string func_name with
+  match RamenName.fq_parse func_name with
   | exception _ -> exit 1
   | program_name, func_name ->
       let mi_ma =

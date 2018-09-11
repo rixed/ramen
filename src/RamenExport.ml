@@ -1,10 +1,11 @@
 open Batteries
-open RamenLog
-module C = RamenConf
-module N = RamenConf.Func
-open RamenHelpers
 open Stdint
 open Lwt
+open RamenLog
+open RamenHelpers
+module C = RamenConf
+module F = C.Func
+module P = C.Program
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -20,7 +21,7 @@ let make_temp_export ?duration conf func =
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let ser =
-    RingBufLib.ser_tuple_typ_of_tuple_typ func.C.Func.out_type in
+    RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   let file_spec =
     RamenOutRef.{
       field_mask =
@@ -32,9 +33,8 @@ let make_temp_export ?duration conf func =
   return bname
 
 (* Returns the func, and the buffer name: *)
-let make_temp_export_by_name conf ?duration func_name =
-  let program_name, func_name =
-    C.program_func_of_user_string func_name in
+let make_temp_export_by_name conf ?duration fq =
+  let program_name, func_name = RamenName.fq_parse fq in
   C.with_rlock conf (fun programs ->
     match C.find_func programs program_name func_name with
     | exception Not_found ->
@@ -44,3 +44,47 @@ let make_temp_export_by_name conf ?duration func_name =
     | prog, func ->
         let%lwt bname = make_temp_export conf ?duration func in
         return (prog, func, bname))
+
+(* Some ringbuf are always available and their type known:
+ * instrumentation, notifications. *)
+let read_well_known fq where suffix bname typ () =
+  let fq_str = RamenName.string_of_fq fq in
+  if fq_str = suffix || String.ends_with fq_str ("#"^suffix) then
+    (* For well-known tuple types, serialized tuple is as given (no
+     * private fields, no reordering of fields): *)
+    let ser = typ in
+    let where_filter = RamenSerialization.filter_tuple_by ser where in
+    let wi = RamenSerialization.find_field_index typ "worker" in
+    let filter =
+      if fq_str = suffix then where_filter else
+      let fq_str, _ = String.rsplit fq_str ~by:"#" in
+      fun tuple ->
+        tuple.(wi) = RamenTypes.VString fq_str &&
+        where_filter tuple in
+    Some (bname, filter, typ, ser)
+  else None
+
+let read_output conf ?duration fq where =
+  (* Read directly from the instrumentation ringbuf when fq ends
+   * with "#stats": *)
+  match read_well_known fq where "stats"
+          (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
+  | Some (bname, filter, typ, ser) ->
+      return (bname, filter, typ, ser, [], RamenBinocle.event_time)
+  | None ->
+      (* Or from the notifications ringbuf when fq ends with
+       * "#notifs": *)
+      (match read_well_known fq where "notifs"
+               (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
+      | Some (bname, filter, typ, ser) ->
+          return (bname, filter, typ, ser, [], RamenNotification.event_time)
+      | None ->
+          (* Normal case: Create the non-wrapping RingBuf (under a standard
+           * name given by RamenConf *)
+          let%lwt prog, func, bname =
+            make_temp_export_by_name conf ?duration fq in
+          let ser =
+            RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+          let filter = RamenSerialization.filter_tuple_by ser where in
+          return (bname, filter, func.F.out_type, ser, prog.P.params,
+                  func.F.event_time))

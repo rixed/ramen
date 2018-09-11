@@ -12,10 +12,12 @@ let func_ppp_ocaml = t_ppp_ocaml
 
 let func_of_string s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
-   * Slashes have to be forbidden because we rsplit to get program names. *)
+   * Slashes have to be forbidden because we rsplit to get program names.
+   * Dashes have to be forbidden because they delimit well-known functions
+   * (stats, notifs...) *)
   if s = "" ||
      String.fold_left (fun bad c ->
-       bad || c = '\n' || c = '\r' || c = '/') false s then
+       bad || c = '\n' || c = '\r' || c = '/' || c = '#') false s then
     invalid_arg "operation name" ;
   s
 
@@ -109,6 +111,18 @@ external string_of_fq : fq -> string = "%identity"
 let fq prog func = prog ^"/"^ func
 
 let fq_print = String.print
+
+let fq_parse ?default_program s =
+  let s = String.trim s in
+  (* rsplit because we might have '/'s in the program name. *)
+  match String.rsplit ~by:"/" s with
+  | exception Not_found ->
+      (match default_program with
+      | Some l -> l, func_of_string s
+      | None ->
+          Printf.sprintf "Cannot find function %S" s |>
+          failwith)
+  | p, f -> (program_of_string p, func_of_string f)
 
 (* Base units *)
 

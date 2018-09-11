@@ -61,8 +61,11 @@ let compare_miss bad1 bad2 =
   (* TODO: also look at the values *)
   Int.compare (List.length bad1) (List.length bad2)
 
-let test_output func bname output_spec =
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+let test_output conf fq output_spec =
+  (* Notice that although we do not provide a filter read_output can
+   * return one, to select the worker in well-known functions: *)
+  let%lwt bname, filter, _typ, ser, _params, _event_time =
+    RamenExport.read_output conf fq [] in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
@@ -71,9 +74,11 @@ let test_output func bname output_spec =
             ftyp.RamenTuple.typ_name = field
           ) ser with
     | exception Not_found ->
-        let msg = Printf.sprintf "Unknown field %s in %s" field
-                    (IO.to_string RamenTuple.print_typ_names ser) in
-        fail_and_quit msg
+        Printf.sprintf2 "Unknown field %S in %s, which has only %a"
+          field
+          (RamenTypingHelpers.func_color (RamenName.string_of_fq fq))
+          RamenTuple.print_typ_names ser |>
+        fail_and_quit
     | idx, _ -> idx in
   (* The other way around to print the results: *)
   let field_name_of_index idx =
@@ -105,35 +110,37 @@ let test_output func bname output_spec =
   let%lwt num_tuples =
     RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
-      !logger.debug "Read a tuple out of operation %S"
-        (RamenName.string_of_func func.F.name) ;
-      tuples_to_find :=
-        List.filter (fun (spec, best_miss) ->
-          let miss =
-            List.fold_left (fun miss (idx, value) ->
-              (* FIXME: instead of comparing in string we should try to parse
-               * the expected value (once and for all -> faster) so that we
-               * also check its type. *)
-              let s = RamenTypes.to_string tuple.(idx) in
-              let ok = s = value in
-              if ok then miss else (
-                !logger.debug "found %S instead of %S" s value ;
-                (idx, s)::miss)
-            ) [] spec in
-          if miss = [] then false
-          else (
-            if !best_miss = [] || compare_miss miss !best_miss < 0 then
-              best_miss := miss ;
-            true
-          )
-        ) !tuples_to_find ;
-      tuples_to_not_find :=
-        List.filter (fun (spec, _) ->
-          List.for_all (fun (idx, value) ->
-            RamenTypes.to_string tuple.(idx) = value) spec
-        ) tuples_must_be_absent |>
-        List.rev_append !tuples_to_not_find ;
-      return (count + 1)) in
+      if filter tuple then (
+        !logger.debug "Read a tuple out of operation %S"
+          (RamenName.string_of_fq fq) ;
+        tuples_to_find :=
+          List.filter (fun (spec, best_miss) ->
+            let miss =
+              List.fold_left (fun miss (idx, value) ->
+                (* FIXME: instead of comparing in string we should try to parse
+                 * the expected value (once and for all -> faster) so that we
+                 * also check its type. *)
+                let s = RamenTypes.to_string tuple.(idx) in
+                let ok = s = value in
+                if ok then miss else (
+                  !logger.debug "found %S instead of %S" s value ;
+                  (idx, s)::miss)
+              ) [] spec in
+            if miss = [] then false
+            else (
+              if !best_miss = [] || compare_miss miss !best_miss < 0 then
+                best_miss := miss ;
+              true
+            )
+          ) !tuples_to_find ;
+        tuples_to_not_find :=
+          List.filter (fun (spec, _) ->
+            List.for_all (fun (idx, value) ->
+              RamenTypes.to_string tuple.(idx) = value) spec
+          ) tuples_must_be_absent |>
+          List.rev_append !tuples_to_not_find ;
+        return (count + 1))
+      else (* filtered out *) return count) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = [] in
   let file_spec_print best_miss oc (idx, value) =
     (* Retrieve actual field name: *)
@@ -158,9 +165,9 @@ let test_output func bname output_spec =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
-      (RamenName.string_of_fq (F.fq_name func)))^
+      (RamenName.string_of_fq fq)) ^
     (if !tuples_to_find = [] then "" else
-      " but could not find "^ err_string_of_tuples !tuples_to_find)^
+      " but could not find "^ err_string_of_tuples !tuples_to_find) ^
     (if !tuples_to_not_find = [] then "" else
       " and found "^ err_string_of_tuples !tuples_to_not_find)
   in
@@ -208,7 +215,7 @@ let test_notifications notify_rb notif_spec =
   return (success, msg)
 
 let run_test conf notify_rb dirname test =
-  (* Hash from func fq name to its rc, bname and mmapped input ring-buffer: *)
+  (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
   (* The only sure way to know when to stop the workers is: when the test
    * succeeded, or timeouted. So we start three threads at the same time:
@@ -224,9 +231,7 @@ let run_test conf notify_rb dirname test =
         let prog = P.of_bin p.params bin in
         Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
         Lwt_list.iter_s (fun func ->
-          (* Each function will archive its output: *)
-          let%lwt bname = RamenExport.make_temp_export conf func in
-          Hashtbl.add workers (F.fq_name func) (func, bname, ref None) ;
+          Hashtbl.add workers (F.fq_name func) (func, ref None) ;
           return_unit
         ) prog.P.funcs ;
       )) in
@@ -239,7 +244,7 @@ let run_test conf notify_rb dirname test =
               (RamenName.string_of_fq input.operation)
               (Enum.print RamenName.fq_print) (Hashtbl.keys workers) in
           lwt_fail_and_quit msg
-      | func, _, rbr ->
+      | func, rbr ->
           let%lwt () =
             if !rbr = None then (
               if func.F.merge_inputs then
@@ -264,7 +269,7 @@ let run_test conf notify_rb dirname test =
         if !RamenProcesses.quit <> None then return_unit
         else feed_input input
       ) test.inputs in
-    Hashtbl.iter (fun _ (_, _, rbr) ->
+    Hashtbl.iter (fun _ (_, rbr) ->
       Option.may RingBuf.unload !rbr ;
       rbr := None
     ) workers ;
@@ -272,14 +277,7 @@ let run_test conf notify_rb dirname test =
   (* One tester thread per operation *)
   let%lwt tester_threads =
     hash_fold_s test.outputs (fun user_fq_name output_spec thds ->
-      let tester_thread =
-        match Hashtbl.find workers user_fq_name with
-        | exception Not_found ->
-            fun () ->
-              lwt_fail_and_quit
-                ("Unknown operation "^ RamenName.string_of_fq user_fq_name)
-        | tested_func, bname, _rbr ->
-            fun () -> test_output tested_func bname output_spec in
+      let tester_thread () = test_output conf user_fq_name output_spec in
       return (tester_thread :: thds)
     ) [] in
   (* Similarly, test the notifications: *)

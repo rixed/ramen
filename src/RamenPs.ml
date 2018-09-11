@@ -58,8 +58,9 @@ let read_stats conf pattern =
       and bytes_out = get_nu64 tuple.(12)
       and last_out = get_nfloat tuple.(13)
       in
-      let stats = etime, in_count, selected_count, out_count, group_count, cpu,
-                  ram, wait_in, wait_out, bytes_in, bytes_out, last_out in
+      let stats =
+        etime, in_count, selected_count, out_count, group_count, cpu,
+        ram, wait_in, wait_out, bytes_in, bytes_out, last_out in
       (* Keep only the latest stat line per worker: *)
       Hashtbl.modify_opt worker (function
         | None -> Some (time, stats)
@@ -70,11 +71,12 @@ let read_stats conf pattern =
   Hashtbl.map (fun _ (_time, stats) -> stats) h |>
   return
 
-let add_stats (etime', in_count', selected_count', out_count', group_count',
-               cpu', ram', wait_in', wait_out', bytes_in', bytes_out',
-               last_out')
-              (etime, in_count, selected_count, out_count, group_count, cpu,
-               ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
+let add_stats
+      (etime', in_count', selected_count', out_count', group_count',
+       cpu', ram', wait_in', wait_out', bytes_in', bytes_out',
+       last_out')
+      (etime, in_count, selected_count, out_count, group_count, cpu,
+       ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
   let combine_opt f a b =
     match a, b with None, b -> b | a, None -> a
     | Some a, Some b -> Some (f a b) in
@@ -98,7 +100,7 @@ let add_stats (etime', in_count', selected_count', out_count', group_count',
 let per_program stats =
   let h = Hashtbl.create 17 in
   Hashtbl.iter (fun worker stats ->
-    let program, _ = C.program_func_of_user_string worker in
+    let program, _ = RamenName.(fq_of_string worker |> fq_parse) in
     Hashtbl.modify_opt program (function
       | None -> Some stats
       | Some stats' -> Some (add_stats stats' stats)

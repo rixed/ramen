@@ -515,12 +515,19 @@ let with_event_time =
                    ["with-event-time"; "event-time"; "t"] in
   Arg.(value (flag i))
 
+let fq_name =
+  let parse s = Pervasives.Ok (RamenName.fq_of_string s)
+  and print fmt p =
+    Format.fprintf fmt "%s" (RamenName.string_of_fq p)
+  in
+  Arg.conv ~docv:"FUNCTION" (parse, print)
+
 (* TODO: returns directly the program and function names to spare some
- * calls to C.program_func_of_user_string *)
+ * calls to RamenName.fq_parse *)
 let func_name p =
   let i = Arg.info ~doc:RamenConsts.CliInfo.func_name
                    ~docv:"OPERATION" [] in
-  Arg.(required (pos p (some string) None i))
+  Arg.(required (pos p (some fq_name) None i))
 
 let duration =
   let i = Arg.info ~doc:RamenConsts.CliInfo.duration
@@ -767,8 +774,8 @@ let () =
           try f ()
           with Exit -> exit 0
              | Timeout ->
-                 Printf.eprintf "%s\n" (RamenLog.red "Timed out") ;
+                 Printf.eprintf "%s\n" "Timed out" ;
                  exit 1
              | Failure msg ->
-                 Printf.eprintf "%s\n" (RamenLog.red msg) ;
+                 Printf.eprintf "%s\n" msg ;
                  exit 1)

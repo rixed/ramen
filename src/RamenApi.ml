@@ -221,7 +221,8 @@ let columns_of_func conf programs func =
 
 let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
-  let prog_name, func_name = C.program_func_of_user_string table in
+  let prog_name, func_name =
+    RamenName.(fq_of_string table |> fq_parse) in
   C.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
     | exception _ -> return_none
@@ -281,7 +282,8 @@ let get_timeseries conf msg =
   let%lwt () =
     Hashtbl.enum req.data |> List.of_enum |>
     Lwt_list.iter_s (fun (table, data_spec) ->
-      let prog_name, func_name = C.program_func_of_user_string table in
+      let fq = RamenName.fq_of_string table in
+      let prog_name, func_name = RamenName.fq_parse fq in
       let%lwt filters =
         C.with_rlock conf (fun programs ->
           let _mre, get_rc = Hashtbl.find programs prog_name in
@@ -297,8 +299,7 @@ let get_timeseries conf msg =
           ) [] data_spec.where |> return) in
       let%lwt column_labels, datapoints =
         RamenTimeseries.get conf req.num_points req.since req.until
-                            filters data_spec.factors table
-                            data_spec.select in
+                            filters data_spec.factors fq data_spec.select in
       (* [column_labels] is an array of labels (empty if no result).
        * Each label is a list of factors values. *)
       let column_labels =
@@ -401,7 +402,8 @@ let stop_alert conf program_name =
   return_unit
 
 let field_typ_of_column programs table column =
-  let pn, fn = C.program_func_of_user_string table in
+  let pn, fn =
+    RamenName.(fq_of_string table |> fq_parse) in
   match Hashtbl.find programs pn with
   | exception Not_found ->
       Printf.sprintf "Program %s does not exist"

@@ -452,8 +452,7 @@ let render_graphite conf headers body =
   let%lwt targets =
     C.with_rlock conf (fun programs ->
       Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
-        let fq = RamenName.string_of_program prog_name ^"/"^
-                 RamenName.string_of_func func_name in
+        let fq = RamenName.fq prog_name func_name in
         match Hashtbl.find programs prog_name with
         | exception Not_found ->
             !logger.error "Program %s just disappeared?"
@@ -466,21 +465,23 @@ let render_graphite conf headers body =
                 (match List.find (fun f ->
                          f.F.name = func_name) prog.P.funcs with
                 | exception Not_found ->
-                    !logger.error "Function %s just disappeared?" fq ;
+                    !logger.error "Function %s just disappeared?"
+                      (RamenName.string_of_fq fq) ;
                     return_none
                 | func ->
                     if List.length fvals <> List.length func.factors then (
-                      !logger.error "Function %s just changed factors?" fq ;
+                      !logger.error "Function %s just changed factors?"
+                        (RamenName.string_of_fq fq) ;
                       return_none
                     ) else if List.mem data_field func.factors then (
                       !logger.error "Function %s just got %s as factor?"
-                        fq data_field ;
+                        (RamenName.string_of_fq fq) data_field ;
                       return_none
                     ) else if not (List.exists (fun ft ->
                                    ft.RamenTuple.typ_name = data_field
                                  ) func.out_type) then (
                       !logger.error "Function %s just lost field %s?"
-                        fq data_field ;
+                        (RamenName.string_of_fq fq) data_field ;
                       return_none
                     ) else (
                       return (Some (func, fq, List.map snd fvals, data_field))
@@ -491,14 +492,16 @@ let render_graphite conf headers body =
    * get a timeseries for all possible values (in a single scan). For this
    * we merely count how many distinct values we are asking for: *)
   let factor_values = Hashtbl.create 9 in
-  let count_factor_values (func, func_name, fvals, data_field) =
+  let count_factor_values (func, fq, fvals, data_field) =
     !logger.debug "target = op:%s, fvals:%a, data:%s"
-      func_name (List.print (Option.print RamenTypes.print)) fvals data_field ;
+      (RamenName.string_of_fq fq)
+      (List.print (Option.print RamenTypes.print)) fvals
+      data_field ;
     List.iteri (fun i fval_opt ->
       match fval_opt with
       | None -> ()
       | Some fval ->
-          Hashtbl.modify_opt (func_name, i) (function
+          Hashtbl.modify_opt (fq, i) (function
             | None -> Some (Set.singleton fval)
             | Some s -> Some (Set.add fval s)
           ) factor_values
@@ -507,11 +510,11 @@ let render_graphite conf headers body =
   let%lwt () = Lwt_list.iter_s count_factor_values targets in
   (* Now we can decide on which scans to perform *)
   let scans = Hashtbl.create 9 in
-  let add_scans (func, func_name, fvals, data_field) =
+  let add_scans (func, fq, fvals, data_field) =
     let where, factors, _ =
       List.fold_left2 (fun (where, factors, i) factor fval ->
         let wanted =
-          Hashtbl.find_default factor_values (func_name, i) Set.empty in
+          Hashtbl.find_default factor_values (fq, i) Set.empty in
         match Set.cardinal wanted with
         | 0 -> (* Can happen if there are no possible values. *)
             where, factors, i + 1
@@ -525,7 +528,7 @@ let render_graphite conf headers body =
            * factor: *)
           where, Set.add factor factors, i + 1
       ) ([], Set.empty, 0) func.F.factors fvals in
-    Hashtbl.modify_opt (func_name, where) (function
+    Hashtbl.modify_opt (fq, where) (function
       | None ->
           Some (Set.singleton data_field, factors, func)
       | Some (d, f, func) ->
@@ -536,7 +539,7 @@ let render_graphite conf headers body =
   (* Now actually run the scans, one for each function/where pair, and start
    * building the result. For each columns we want one timeseries per data
    * field. *)
-  let metrics_of_scan (func_name, where) (data_fields, factors, func) res_th =
+  let metrics_of_scan (fq, where) (data_fields, factors, func) res_th =
     (* [columns] will be an array of the factors. [datapoints] is an
      * enumeration of arrays with one entry per factor, the entry being an
      * array of one timeseries per data_fields. *)
@@ -544,7 +547,7 @@ let render_graphite conf headers body =
     and factors = Set.to_list factors in
     let%lwt columns, datapoints =
       RamenTimeseries.get conf max_data_points since until where factors
-                          func_name data_fields in
+                          fq data_fields in
     let datapoints = Array.of_enum datapoints in
     let%lwt res = res_th in
     (* datapoints.(time).(factor).(data_field) *)

@@ -151,19 +151,6 @@ struct
     root_path ^"/"^ RamenName.path_of_program program_name ^".x"
 end
 
-let program_func_of_user_string ?default_program s =
-  let s = String.trim s in
-  (* rsplit because we might have '/'s in the program name. *)
-  match String.rsplit ~by:"/" s with
-  | exception Not_found ->
-      (match default_program with
-      | Some l -> l, RamenName.func_of_string s
-      | None ->
-          let e = Printf.sprintf "Cannot find function %S" s in
-          !logger.error "%s" e ;
-          failwith e)
-  | p, f -> RamenName.(program_of_string p, func_of_string f)
-
 let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
 
