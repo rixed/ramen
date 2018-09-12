@@ -401,7 +401,8 @@ let time_of_graphite_time s =
 (* We output the field name and then a list of factor=value, to be simplified
  * later to remove all common values: *)
 let target_name_of used_factors fvals =
-  List.fold_left2 (fun res f v -> (f, v) :: res
+  List.fold_left2 (fun res f v ->
+    (f, v) :: res
   ) [] used_factors fvals
 
 (* Used to cound number of occurrences of names in labels: *)
@@ -551,11 +552,11 @@ let render_graphite conf headers body =
     let datapoints = Array.of_enum datapoints in
     let%lwt res = res_th in
     (* datapoints.(time).(factor).(data_field) *)
-    Array.fold_lefti (fun res colnum column ->
-      List.fold_lefti (fun res fieldnum data_field ->
+    Array.fold_lefti (fun res col_idx column ->
+      List.fold_lefti (fun res field_idx data_field ->
         let datapoints =
           Array.map (fun (t, v) ->
-            (if Array.length v > 0 then v.(colnum).(fieldnum) else None),
+            (if Array.length v > 0 then v.(col_idx).(field_idx) else None),
             int_of_float t
           ) datapoints
         and target = target_name_of factors column in
