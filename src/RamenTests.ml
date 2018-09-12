@@ -39,6 +39,9 @@ type test_spec =
     inputs : Input.spec list [@ppp_default []] ;
     outputs : (RamenName.fq, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
+    until : (RamenName.fq, tuple_spec) Hashtbl.t
+      [@ppp_default Hashtbl.create 0] ;
+    (* Notifications likely useless now that we can tests #notifs: *)
     notifications : Notifs.spec
       [@ppp_default Notifs.{ present=[]; absent=[]; timeout=0. }] }
     [@@ppp PPP_OCaml]
@@ -61,6 +64,63 @@ let compare_miss bad1 bad2 =
   (* TODO: also look at the values *)
   Int.compare (List.length bad1) (List.length bad2)
 
+let field_index_of_name fq ser field =
+  match List.findi (fun _ ftyp ->
+          ftyp.RamenTuple.typ_name = field
+        ) ser with
+  | exception Not_found ->
+      Printf.sprintf2 "Unknown field %S in %s, which has only %a"
+        field
+        (RamenTypingHelpers.func_color (RamenName.string_of_fq fq))
+        RamenTuple.print_typ_names ser |>
+      fail_and_quit
+  | idx, _ -> idx
+
+let field_name_of_index ser idx =
+  (List.nth ser idx).RamenTuple.typ_name
+
+(* The configuration file gives us tuple spec as a hash, which is
+ * convenient to serialize, but for filtering it's more convenient to
+ * have a list of field index to values, and a best_miss: *)
+let filter_spec_of_spec fq ser spec =
+  Hashtbl.enum spec /@
+  (fun (field, value) ->
+    field_index_of_name fq ser field, value) |>
+  List.of_enum, ref []
+
+(* Do not use RamenExport.read_output filter facility because of
+ * best_miss: *)
+let filter_of_tuple_spec (spec, best_miss) tuple =
+  let miss =
+    List.fold_left (fun miss (idx, value) ->
+      (* FIXME: instead of comparing in string we should try to parse
+       * the expected value (once and for all -> faster) so that we
+       * also check its type. *)
+      let s = RamenTypes.to_string tuple.(idx) in
+      let ok = s = value in
+      if ok then miss else (
+        !logger.debug "found %S instead of %S" s value ;
+        (idx, s)::miss)
+    ) [] spec in
+  if miss = [] then true
+  else (
+    if !best_miss = [] || compare_miss miss !best_miss < 0 then
+      best_miss := miss ;
+    false
+  )
+
+let file_spec_print ser best_miss oc (idx, value) =
+  (* Retrieve actual field name: *)
+  let n = field_name_of_index ser idx in
+  Printf.fprintf oc "%s=%s" n value ;
+  match List.find (fun (idx', s) -> idx = idx') best_miss with
+  | exception Not_found -> ()
+  | _idx, s -> Printf.fprintf oc " (had %S)" s
+
+let tuple_spec_print ser oc (spec, best_miss) =
+  List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
+  List.print (file_spec_print ser !best_miss) oc
+
 let test_output conf fq output_spec =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
@@ -69,26 +129,8 @@ let test_output conf fq output_spec =
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
-  let field_index_of_name field =
-    match List.findi (fun _ ftyp ->
-            ftyp.RamenTuple.typ_name = field
-          ) ser with
-    | exception Not_found ->
-        Printf.sprintf2 "Unknown field %S in %s, which has only %a"
-          field
-          (RamenTypingHelpers.func_color (RamenName.string_of_fq fq))
-          RamenTuple.print_typ_names ser |>
-        fail_and_quit
-    | idx, _ -> idx in
-  (* The other way around to print the results: *)
-  let field_name_of_index idx =
-    (List.nth ser idx).RamenTuple.typ_name in
   let field_indices_of_tuples =
-    List.map (fun spec ->
-      Hashtbl.enum spec /@
-      (fun (field, value) ->
-        field_index_of_name field, value) |>
-      List.of_enum, ref []) in
+    List.map (filter_spec_of_spec fq ser) in
   let%lwt tuples_to_find = wrap (fun () -> ref (
     field_indices_of_tuples output_spec.Output.present)) in
   let%lwt tuples_must_be_absent = wrap (fun () ->
@@ -114,45 +156,19 @@ let test_output conf fq output_spec =
         !logger.debug "Read a tuple out of operation %S"
           (RamenName.string_of_fq fq) ;
         tuples_to_find :=
-          List.filter (fun (spec, best_miss) ->
-            let miss =
-              List.fold_left (fun miss (idx, value) ->
-                (* FIXME: instead of comparing in string we should try to parse
-                 * the expected value (once and for all -> faster) so that we
-                 * also check its type. *)
-                let s = RamenTypes.to_string tuple.(idx) in
-                let ok = s = value in
-                if ok then miss else (
-                  !logger.debug "found %S instead of %S" s value ;
-                  (idx, s)::miss)
-              ) [] spec in
-            if miss = [] then false
-            else (
-              if !best_miss = [] || compare_miss miss !best_miss < 0 then
-                best_miss := miss ;
-              true
-            )
+          List.filter (fun filter_spec ->
+            not (filter_of_tuple_spec filter_spec tuple)
           ) !tuples_to_find ;
         tuples_to_not_find :=
           List.filter (fun (spec, _) ->
             List.for_all (fun (idx, value) ->
               RamenTypes.to_string tuple.(idx) = value) spec
           ) tuples_must_be_absent |>
-          List.rev_append !tuples_to_not_find ;
-        return (count + 1))
-      else (* filtered out *) return count) in
-  let success = !tuples_to_find = [] && !tuples_to_not_find = [] in
-  let file_spec_print best_miss oc (idx, value) =
-    (* Retrieve actual field name: *)
-    let n = field_name_of_index idx in
-    Printf.fprintf oc "%s=%s" n value ;
-    match List.find (fun (idx', s) -> idx = idx') best_miss with
-    | exception Not_found -> ()
-    | _idx, s -> Printf.fprintf oc " (had %S)" s
+          List.rev_append !tuples_to_not_find) ;
+      (* Count all tuples including those filtered out: *)
+      return (count + 1)) in
+  let success = !tuples_to_find = [] && !tuples_to_not_find = []
   in
-  let tuple_spec_print oc (spec, best_miss) =
-    List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
-    List.print (file_spec_print !best_miss) oc in
   let err_string_of_tuples lst =
     let len = List.length lst in
     let pref =
@@ -160,7 +176,7 @@ let test_output conf fq output_spec =
       else Printf.sprintf "these %d tuples: " len in
     pref ^
     IO.to_string (List.print ~first:"\n  " ~last:"\n" ~sep:"\n  "
-                    tuple_spec_print) lst in
+                    (tuple_spec_print ser)) lst in
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
@@ -172,6 +188,27 @@ let test_output conf fq output_spec =
       " and found "^ err_string_of_tuples !tuples_to_not_find)
   in
   return (success, msg)
+
+(* Wait for the given tuple: *)
+let test_until conf fq spec =
+  let%lwt bname, filter, _typ, ser, _params, _event_time =
+    RamenExport.read_output conf fq [] in
+  let filter_spec = filter_spec_of_spec fq ser spec in
+  let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
+  let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
+  let got_it = ref false in
+  let while_ () = return (not !got_it && !RamenProcesses.quit = None) in
+  !logger.debug "Enumerating tuples from %s for early termination" bname ;
+  let%lwt num_tuples =
+    RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
+      let tuple = unserialize tx in
+      if filter tuple && filter_of_tuple_spec filter_spec tuple then (
+        !logger.info "Got terminator tuple from function %S"
+          (RamenName.string_of_fq fq) ;
+        got_it := true) ;
+      (* Count all tuples including those filtered out: *)
+      return (count + 1)) in
+  return_unit
 
 let test_notifications notify_rb notif_spec =
   (* We keep pat in order to be able to print it later: *)
@@ -274,12 +311,16 @@ let run_test conf notify_rb dirname test =
       rbr := None
     ) workers ;
     return_unit in
+  let stop_workers () =
+    C.with_wlock conf (fun running_programs ->
+      Hashtbl.clear running_programs ;
+      return_unit) in
   (* One tester thread per operation *)
-  let%lwt tester_threads =
-    hash_fold_s test.outputs (fun user_fq_name output_spec thds ->
+  let tester_threads =
+    Hashtbl.fold (fun user_fq_name output_spec thds ->
       let tester_thread () = test_output conf user_fq_name output_spec in
-      return (tester_thread :: thds)
-    ) [] in
+      tester_thread :: thds
+    ) test.outputs [] in
   (* Similarly, test the notifications: *)
   let tester_threads =
     (fun () -> test_notifications notify_rb test.notifications) ::
@@ -298,14 +339,26 @@ let run_test conf notify_rb dirname test =
       decr num_tests_left ;
       if !num_tests_left <= 0 then (
         !logger.info "Finished all tests" ;
+        stop_workers ()
         (* Stop all workers *)
-        C.with_wlock conf (fun running_programs ->
-          Hashtbl.clear running_programs ;
-          return_unit)
       ) else return_unit
     ) tester_threads in
-  let%lwt () =
-    join (worker_feeder :: tester_threads) in
+  (* Finally, a thread that tests the ending condition: *)
+  let early_terminator =
+    if Hashtbl.is_empty test.until then
+      Lwt_unix.sleep 99999999.
+    else (
+      join (
+        Hashtbl.fold (fun user_fq_name tuple_spec thds ->
+          test_until conf user_fq_name tuple_spec :: thds
+        ) test.until []
+      ) ;%lwt
+      !logger.info "Early termination." ;
+      stop_workers ()
+    ) in
+  choose [
+    early_terminator ;
+    join (worker_feeder :: tester_threads) ] ;%lwt
   return !all_good
 
 let run conf test () =
