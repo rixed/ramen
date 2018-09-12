@@ -73,7 +73,7 @@ let get conf ?duration max_data_points since until where factors
   let fis =
     List.map (find_field_index ser) factors in
   let key_of_factors tuple =
-    List.fold_left (fun k fi -> tuple.(fi) :: k) [] fis in
+    List.map (fun fi -> tuple.(fi)) fis in
   let%lwt vis =
     Lwt_list.map_s (fun data_field ->
       Lwt.wrap (fun () -> find_field_index ser data_field)
