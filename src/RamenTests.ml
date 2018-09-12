@@ -264,7 +264,10 @@ let run_test conf notify_rb dirname test =
       Hashtbl.clear programs ;
       hash_iter_p test.programs (fun program_name p ->
         (* The path to the binary is relative to the test file: *)
-        let bin = absolute_path_of ~rel_to:dirname p.bin in
+        if p.bin = "" then failwith "Binary file must not be empty" ;
+        let bin =
+          (if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin) |>
+          absolute_path_of in
         let prog = P.of_bin p.params bin in
         Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
         Lwt_list.iter_s (fun func ->
