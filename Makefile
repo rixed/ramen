@@ -337,7 +337,8 @@ TESTABLE_SOURCES = \
 	src/RingBufLib.ml \
 	src/RamenSerialization.ml \
 	src/RamenSmtParser.ml \
-	src/RamenUnits.ml
+	src/RamenUnits.ml \
+	src/RamenTypeConverters.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -354,6 +355,7 @@ LINKED_FOR_TESTS = \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
+	src/RamenTypeConverters.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \

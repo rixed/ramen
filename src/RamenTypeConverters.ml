@@ -2,6 +2,8 @@
  * Used by CodeGenLib and Ramen. *)
 open Stdint
 
+(*$inject open Stdint *)
+
 (* Converters from string to values *)
 
 let string_of_string s =
@@ -38,3 +40,7 @@ let ip_of_string = RamenIp.of_string
 let cidr4_of_string = RamenIpv4.Cidr.of_string
 let cidr6_of_string = RamenIpv6.Cidr.of_string
 let cidr_of_string = RamenIp.Cidr.of_string
+
+(*$= u32_of_string & ~printer:Uint32.to_string
+  (Uint32.of_int 3600) (u32_of_string "3600")
+ *)

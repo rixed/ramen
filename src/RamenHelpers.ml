@@ -587,6 +587,7 @@ let rec simplified_path =
       ) path res in
     if s = path then strip_final_slash s
     else simplified_path s
+
 (*$= simplified_path & ~printer:identity
   "/glop/glop" (simplified_path "/glop/glop/")
   "/glop/glop" (simplified_path "/glop/glop")
@@ -603,10 +604,15 @@ let rec simplified_path =
   "/glop"      (simplified_path "/glop/glop/../")
  *)
 
-let absolute_path_of ?rel_to path =
+let absolute_path_of ?cwd path =
   (if path <> "" && path.[0] = '/' then path else
-   (rel_to |? Unix.getcwd ()) ^"/"^ path) |>
+   (cwd |? Unix.getcwd ()) ^"/"^ path) |>
   simplified_path
+
+(*$= absolute_path_of & ~printer:identity
+  "/tmp/ramen_root/junkie/csv.x" \
+    (absolute_path_of ~cwd:"/tmp" "ramen_root/junkie/csv.x")
+ *)
 
 let rel_path_from root_path path =
   (* If root path is null assume source file is already relative to root: *)
