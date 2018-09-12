@@ -580,8 +580,10 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         all_timed_out && m.timed_out
       ) (false, true) to_merge in
     if all_timed_out then ( (* We could as well wait here forever *)
-      Lwt_unix.sleep 0.01 (* TODO *) ;%lwt
-      wait_for_tuples started
+      if%lwt while_ () then (
+        Lwt_unix.sleep 0.1 (* TODO *) ;%lwt
+        wait_for_tuples started
+      ) else return_unit
     ) else if must_wait then (
       (* Some inputs are ready, consider timing out the offenders: *)
       if timeout > 0. &&
