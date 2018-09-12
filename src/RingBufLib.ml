@@ -390,6 +390,7 @@ let arc_dir_of_bname fname = fname ^".arc"
 let int_of_hex s = int_of_string ("0x"^ s)
 
 external strtod : string -> float = "wrap_strtod"
+external kill_myself : int -> unit = "wrap_raise"
 
 let parse_archive_file_name fname =
   let mi, rest = String.split ~by:"_" fname in

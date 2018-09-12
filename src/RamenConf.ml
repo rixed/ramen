@@ -9,7 +9,8 @@ let archive_file dir (block_start, block_stop) =
 type conf =
   { log_level : log_level ;
     persist_dir : string ;
-    do_persist : bool ; (* false for tests *)
+    do_persist : bool ; (* false for unit-tests *)
+    test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     initial_export_duration : float }
 
@@ -234,7 +235,8 @@ let find_func programs program_name func_name =
 
 let make_conf ?(do_persist=true) ?(debug=false) ?(quiet=false)
               ?(keep_temp_files=false) ?(forced_variants=[])
-              ?(initial_export_duration=900.) persist_dir =
+              ?(initial_export_duration=900.) ?(test=false)
+              persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -242,7 +244,7 @@ let make_conf ?(do_persist=true) ?(debug=false) ?(quiet=false)
   let persist_dir = simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
-    initial_export_duration }
+    initial_export_duration ; test }
 
 (* Various directory names: *)
 

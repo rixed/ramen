@@ -65,7 +65,7 @@ let fd_of_int : int -> Unix.file_descr = Obj.magic
 let close_fd i =
   Unix.close (fd_of_int i)
 
-let run_background ?cwd cmd args env =
+let run_background ?cwd ?(and_stop=false) cmd args env =
   let open Lwt_unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
   !logger.debug "Running %s as: /usr/bin/env %a %S %a"
@@ -77,6 +77,7 @@ let run_background ?cwd cmd args env =
   match fork () with
   | 0 ->
     let open Unix in
+    if and_stop then RingBufLib.kill_myself Sys.sigstop ;
     Option.may chdir cwd ;
     close_fd 0 ;
     for i = 3 to 255 do
@@ -84,6 +85,38 @@ let run_background ?cwd cmd args env =
     done ;
     execve cmd args env
   | pid -> pid
+
+(*$inject
+  open Unix
+
+  let check_status pid expected =
+    let rep_pid, status = waitpid [ WNOHANG; WUNTRACED ] pid in
+    let status =
+      if rep_pid = 0 then None else Some status in
+    let printer = function
+      | None -> "no status"
+      | Some st -> RamenHelpers.string_of_process_status st in
+    assert_equal ~printer expected status
+
+  let run ?and_stop args =
+    let pid = run_background ?and_stop args.(0) args [||] in
+    sleepf 0.1 ;
+    pid
+*)
+
+(*$R run
+  let pid = run [| "/usr/bin/false" |] in
+  check_status pid (Some (WEXITED 1))
+ *)
+
+(*$R run
+  let pid = run ~and_stop:true [| "/bin/sleep" ; "1" |] in
+  check_status pid (Some (WSTOPPED Sys.sigstop)) ;
+  kill pid Sys.sigcont ;
+  check_status pid None ;
+  sleepf 1.1 ;
+  check_status pid (Some (WEXITED 0))
+ *)
 
 (*
  * Process Supervisor: Start and stop according to a mere file listing which
@@ -100,6 +133,7 @@ type running_process =
     func : C.Func.t ;
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
+    mutable continued : bool ;
     (* purely for reporting: *)
     mutable last_exit : float ;
     mutable last_exit_status : string ;
@@ -113,8 +147,8 @@ let print_running_process oc proc =
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process bin params func =
-  { bin ; params ; pid = None ; last_killed = 0. ; func ;
-    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
+  { bin ; params ; pid = None ; last_killed = 0. ; continued = false ;
+    func ; last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
 (* Returns the name of func input ringbuf for the given parent (if func is
@@ -178,7 +212,7 @@ let terminated_pids = ref []
 
 let rec wait_all_pids_loop and_save =
   let%lwt () =
-    match%lwt Lwt_unix.waitpid [Unix.WNOHANG] 0 with
+    match%lwt Lwt_unix.waitpid Unix.[WNOHANG; WUNTRACED] 0 with
     | exception Unix.Unix_error (Unix.EINTR, _, _) ->
       return_unit
     | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
@@ -191,6 +225,9 @@ let rec wait_all_pids_loop and_save =
     | 0, _  ->
       (* Nothing, sleep and loop. *)
       Lwt_unix.sleep 1.
+    | pid, Unix.(WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+      !logger.debug "pid %d got stopped" pid ;
+      return_unit
     | pid, status ->
       let now = Unix.gettimeofday () in
       if and_save then
@@ -410,7 +447,8 @@ let really_start conf must_run proc parents children =
   let cwd = Filename.dirname proc.bin in
   let cmd = Filename.basename proc.bin in
   let%lwt pid =
-    Lwt.wrap (fun () -> run_background ~cwd cmd args env) in
+    Lwt.wrap (fun () ->
+      run_background ~cwd ~and_stop:conf.C.test cmd args env) in
   !logger.info "Function %s now runs under pid %d" fq_str pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
@@ -493,6 +531,9 @@ let try_kill conf must_run proc =
       Lwt_list.iter_s (fun this_in ->
         RamenOutRef.remove parent_out_ref this_in) input_ringbufs
     ) parents in
+  (* If it's still stopped, unblock first: *)
+  log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
+    (Unix.kill pid) Sys.sigcont ;
   (* Start with a TERM (if last_killed = 0.) and then after 5s send a
    * KILL if the worker is still running. *)
   let now = Unix.gettimeofday () in
@@ -559,6 +600,15 @@ let check_out_ref =
       do_check_out_ref conf must_run
     ) else return_unit
 
+let signal_all_cont conf running =
+  Hashtbl.iter (fun (n, _, _, _) proc ->
+    if proc.pid <> None && not proc.continued then (
+      proc.continued <- true ;
+      !logger.info "Signaling %a to continue" print_running_process proc ;
+      log_and_ignore_exceptions ~what:"Signaling worker to continue"
+        (Unix.kill (Option.get proc.pid)) Sys.sigcont) ;
+  ) running
+
 let watchdog =
   (* In the first run we might have *plenty* of workers to start, thus
    * the extended grace_period (it's not unheard of >1min to start all
@@ -588,6 +638,12 @@ let watchdog =
  * will end-up empty). This is why we first do all the kills, then all the
  * starts (Note that even if a worker does not terminate immediately on
  * kill, its parent out-ref is cleaned immediately).
+ *
+ * Regarding [conf.test]:
+ * In that mode, add a parameter to the workers so that they stop before doing
+ * anything. Then, when nothing is left to be started, the synchronizer will
+ * unblock all workers. This mechanism enforces that CSV readers do not start
+ * to read tuples before all their children are attached to their out_ref file.
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
@@ -638,6 +694,7 @@ let synchronize_running conf autoreload_delay =
     if !to_start = [] && !to_kill = [] && !quit = None then
       check_out_ref conf must_run
     else return_unit ;%lwt
+    if !to_start = [] && conf.C.test then signal_all_cont conf running ;
     (* Return if anything changed: *)
     return (!to_kill <> [] || !to_start <> [])
   in

@@ -365,10 +365,12 @@ let run_test conf notify_rb dirname test =
   return !all_good
 
 let run conf test () =
-  let conf = { conf with C.persist_dir =
-    Filename.get_temp_dir_name ()
-      ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
-    uniquify_filename } in
+  let conf = C.{ conf with
+    persist_dir =
+      Filename.get_temp_dir_name ()
+        ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
+      uniquify_filename ;
+    test = true } in
   logger := make_logger conf.C.log_level ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;

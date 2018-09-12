@@ -633,6 +633,8 @@ CAMLprim value read_str(value tx, value off_)
   CAMLreturn(v);
 }
 
+/* Those two should not be here but in an additional misc lib. */
+
 CAMLprim value wrap_strtod(value str_)
 {
   CAMLparam1(str_);
@@ -643,4 +645,19 @@ CAMLprim value wrap_strtod(value str_)
   if (*end != '\0') caml_failwith("Cannot convert to double");
   ret = caml_copy_double(d);
   CAMLreturn(ret);
+}
+
+#include <signal.h>
+#include <errno.h>
+#define CAML_INTERNALS
+#include <caml/signals.h>
+
+CAMLprim value wrap_raise(value sig_)
+{
+  CAMLparam1(sig_);
+  int sig = caml_convert_signal_number(Int_val(sig_));
+  if (0 != raise(sig) && errno != EINTR) {
+    fprintf(stderr, "Cannot raise(%d): %s\n", sig, strerror(errno));
+  }
+  CAMLreturn(Val_unit);
 }
