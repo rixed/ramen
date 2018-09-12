@@ -49,32 +49,29 @@ let make_temp_export_by_name conf ?duration fq =
  * instrumentation, notifications. *)
 let read_well_known fq where suffix bname typ () =
   let fq_str = RamenName.string_of_fq fq in
-  if fq_str = suffix || String.ends_with fq_str ("#"^suffix) then
+  if fq_str = suffix || String.ends_with fq_str suffix then
     (* For well-known tuple types, serialized tuple is as given (no
      * private fields, no reordering of fields): *)
     let ser = typ in
-    let where_filter = RamenSerialization.filter_tuple_by ser where in
-    let wi = RamenSerialization.find_field_index typ "worker" in
-    let filter =
-      if fq_str = suffix then where_filter else
-      let fq_str, _ = String.rsplit fq_str ~by:"#" in
-      fun tuple ->
-        tuple.(wi) = RamenTypes.VString fq_str &&
-        where_filter tuple in
+    let where =
+      if fq_str = suffix then where else
+      let fq = String.rchop ~n:(String.length suffix) fq_str in
+      ("worker", "=", RamenTypes.VString fq) :: where in
+    let filter = RamenSerialization.filter_tuple_by ser where in
     Some (bname, filter, typ, ser)
   else None
 
 let read_output conf ?duration fq where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
-  match read_well_known fq where "stats"
+  match read_well_known fq where "#stats"
           (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
       return (bname, filter, typ, ser, [], RamenBinocle.event_time)
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
-      (match read_well_known fq where "notifs"
+      (match read_well_known fq where "#notifs"
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
       | Some (bname, filter, typ, ser) ->
           return (bname, filter, typ, ser, [], RamenNotification.event_time)
