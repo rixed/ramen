@@ -352,8 +352,9 @@ let ps conf short pretty with_header sort_col top pattern all () =
                   ) func.F.parents
                 ) prog.P.funcs
           ) programs ;
-          Hashtbl.fold (fun program_name (_mre, get_rc) lines ->
-            match get_rc () with
+          Hashtbl.fold (fun program_name (mre, get_rc) lines ->
+            if not all && mre.C.killed then []
+            else match get_rc () with
             | exception e ->
               let fq_name =
                 red (RamenName.string_of_program program_name ^"/*") in
