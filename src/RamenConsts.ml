@@ -206,6 +206,7 @@ struct
   let graphite = "Impersonate graphite for Grafana"
   let api = "Implement ramen API over http"
   let fault_injection_rate = "Rate at which to generate fake errors"
+  let purge = "Also remove the program from the configuration"
 end
 
 module ExitCodes =

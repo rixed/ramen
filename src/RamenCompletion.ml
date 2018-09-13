@@ -198,6 +198,7 @@ let complete str () =
           (complete_binary_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
+          ("--purge", RamenConsts.CliInfo.purge) ::
           copts @
           (complete_running_program persist_dir last_tok)
       | "tail" ->

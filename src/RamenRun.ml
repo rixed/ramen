@@ -142,7 +142,7 @@ let check_orphans conf killed_prog_names programs =
   ) programs
 
 (* Takes a list of globs and returns the number of kills. *)
-let kill conf program_names =
+let kill conf ?(purge=false) program_names =
   C.with_wlock conf (fun programs ->
     let killed_prog_names =
       Hashtbl.enum programs //
@@ -154,8 +154,13 @@ let kill conf program_names =
       fst |>
       List.of_enum in
     check_orphans conf killed_prog_names programs ;
-    List.iter (fun n ->
-      let mre = Hashtbl.find programs n in
-      mre.C.killed <- true
-    ) killed_prog_names ;
+    if purge then
+      Hashtbl.filteri_inplace (fun name _mre ->
+        not (List.mem name killed_prog_names)
+      ) programs
+    else
+      List.iter (fun n ->
+        let mre = Hashtbl.find programs n in
+        mre.C.killed <- true
+      ) killed_prog_names ;
     Lwt.return (List.length killed_prog_names))

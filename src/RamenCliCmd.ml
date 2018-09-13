@@ -229,12 +229,12 @@ let run conf params replace as_ bin_file () =
  * This time the program is identified by its name not its executable file.
  *)
 
-let kill conf program_names () =
+let kill conf program_names purge () =
   logger := make_logger conf.C.log_level ;
   let program_names =
     List.map Globs.compile program_names in
   let num_kills =
-    Lwt_main.run (RamenRun.kill conf program_names) in
+    Lwt_main.run (RamenRun.kill conf ~purge program_names) in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
 

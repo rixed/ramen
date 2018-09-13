@@ -416,11 +416,17 @@ let run =
       $ bin_file),
     info ~doc:RamenConsts.CliInfo.run "run")
 
+let purge =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.purge
+                   [ "purge" ] in
+  Arg.(value (flag i))
+
 let kill =
   Term.(
     (const RamenCliCmd.kill
       $ copts
-      $ program_globs),
+      $ program_globs
+      $ purge),
     info ~doc:RamenConsts.CliInfo.kill "kill")
 
 (*
