@@ -5,12 +5,12 @@ DEFINE netflow AS
   LISTEN FOR NETFLOW;
 
 DEFINE inbound AS
-  SELECT source, first, last, bytes, packets, in_iface AS iface
+  SELECT source, start, stop, bytes, packets, in_iface AS iface
   FROM netflow
   FACTORS source, iface;
 
 DEFINE outbound AS
-  SELECT source, first, last, bytes, packets, out_iface AS iface
+  SELECT source, start, stop, bytes, packets, out_iface AS iface
   FROM netflow
   FACTORS source, iface;
 
@@ -18,18 +18,17 @@ DEFINE total AS
   FROM inbound, outbound
   SELECT
     source, iface,
-    min first AS first, max last AS last,
-    sum bytes / (out.last - out.first) AS bytes_per_secs,
-    sum packets / (out.last - out.first) AS packets_per_secs
-  GROUP BY source, iface, first // 300
-  COMMIT AFTER in.first > out.last + 100
-  EVENT STARTING AT first AND STOPPING AT last;
+    min start AS start, max stop AS stop,
+    sum bytes / (out.stop - out.start) AS bytes_per_secs,
+    sum packets / (out.stop - out.start) AS packets_per_secs
+  GROUP BY source, iface, start // 300
+  COMMIT AFTER in.start > out.stop + 100s;
 
 DEFINE out_of_range_alert AS
   FROM total
   SELECT
     source, iface,
-    (last - first) / 2 AS time,
+    (stop - start) / 2 AS start,
     bytes_per_secs,
     5-ma locally (float(bytes_per_secs < 100 OR bytes_per_secs > 8e3)) >= 4 AS firing
   GROUP BY source, iface
@@ -38,17 +37,15 @@ DEFINE out_of_range_alert AS
       "${source}" AS source,
       "${iface}" AS iface AND
       "${bytes_per_secs}" AS througput
-  AFTER COALESCE (out.firing <> previous.firing, false)
-  EVENT STARTING AT time;
+  AFTER COALESCE (out.firing <> previous.firing, false);
 
 DEFINE link_down_alert AS
   FROM total
   SELECT
     source, iface,
-    max last,
-    age max_last > 300 AS firing
+    max stop AS stop,
+    age stop > 300 AS firing
   GROUP BY source, iface
-  EVENT STARTING AT max_last
   COMMIT, KEEP ALL AND
     NOTIFY "Interface DOWN" WITH
       "${source}" AS source,

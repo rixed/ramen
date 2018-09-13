@@ -11,9 +11,10 @@ DEFINE per_minute AS
   WHERE not (worker starts with "monitoring/meta/")
   SELECT
     worker,
-    min time AS time,
-    max time AS _max_time,
-    _max_time - out.time AS _dt,
+    min start AS start,
+    max start AS _max_time,
+    _max_time - out.start AS _dt,
+    out.start + 60s AS stop,
 
     max tuples_in AS tuples_in,
     IF _dt > 0 THEN
@@ -63,24 +64,23 @@ DEFINE per_minute AS
     ELSE 0 AS bytes_out_per_secs,
 
     min age last_out AS last_out_age
-  GROUP BY worker, time // 60
-  COMMIT AFTER in.time - out.time > 90
-  EVENT STARTING AT time WITH DURATION 60s
+  GROUP BY worker, start // 60
+  COMMIT AFTER in.start - out.start > 90s
   FACTOR worker;
 
 DEFINE tot_per_minute AS
   FROM per_minute
   SELECT
-    (time // 60) * 60 as time,
+    (start // 60) * 60 as start,
+    out.start + 60s AS stop,
     sum 1 AS running,
     -- Given data arrive only every minute in the test lab (and some datasets
     -- are frequently missed), let's call "active" any operation that had
     -- output anything for the last *3* minutes:
     sum u32(COALESCE(last_out_age <= 180, false)) AS active,
     sum COALESCE(out_per_secs, 0) AS tot_out_per_secs
-  GROUP BY time // 60
-  COMMIT AFTER in.time >= out.time + 60 + 30
-  EVENT STARTING AT time WITH DURATION 60s;
+  GROUP BY start // 60
+  COMMIT AFTER in.start >= out.start + 60s + 30s;
 
 -- Alerts: many of the above are supposed to stay mostly constant. Therefore,
 -- notify when the last value is off compared to the moving average:
@@ -103,8 +103,7 @@ DEFINE alert_output AS
     abs (avg_active - active) AS _d_active,
     min (_d_active, avg_active) / max (_d_active, avg_active) AS diff_active,
 
-    diff_out_per_secs + diff_running + diff_active AS tot_diff
-  EVENT STARTING AT time WITH DURATION 60s;
+    diff_out_per_secs + diff_running + diff_active AS tot_diff;
 
 DEFINE alert_output_do_notif AS
   FROM alert_output

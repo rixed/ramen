@@ -6,7 +6,8 @@ DEFINE collectd AS
 
 DEFINE memory AS
   SELECT
-    MIN time AS time,
+    MIN start AS start,
+    out.start + 30s AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
     AVG (IF _type = "free" THEN value ELSE 0) AS free,
@@ -16,13 +17,13 @@ DEFINE memory AS
     AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
-  GROUP BY host, time // 30
-  COMMIT AFTER in.time > out.time + 30
-  EVENT STARTING AT time WITH DURATION 30s;
+  GROUP BY host, start // 30
+  COMMIT AFTER in.start > out.start + 30s;
 
 DEFINE cpu AS
   SELECT
-    MIN time AS time,
+    MIN start AS start,
+    out.start + 30s AS stop,
     host,
     -- regexp extract the integer from the quotes, then cast to int:
     instance AS cpu_num,
@@ -33,14 +34,13 @@ DEFINE cpu AS
     AVG (IF _type = "idle" THEN value ELSE 0) AS idle
   FROM collectd
   WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
-  GROUP BY host, time // 30, instance
-  COMMIT AFTER in.time > out.time + 30
-  EVENT STARTING AT time WITH DURATION 30s;
+  GROUP BY host, start // 30, instance
+  COMMIT AFTER in.start > out.start + 30;
 
 DEFINE memory_alert AS
   FROM memory
   SELECT
-    time, host,
+    start, host,
     free + used + cached + buffered + slab AS total,
     free * 100 / total AS used_ratio,
     used_ratio > 50 AS firing

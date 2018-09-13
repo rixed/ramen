@@ -4,11 +4,12 @@
 -- Compute the number of new connections per seconds every minutes
 DEFINE DDoS_detector AS
   FROM monitoring/traffic/netflow
-  GROUP BY first // 60 -- Accumulate for one minute
-  COMMIT AFTER in.first > out.first + 120
+  GROUP BY start // 60 -- Accumulate for one minute
+  COMMIT AFTER in.start > out.start + 120
   SELECT
     -- Start time of each time slices:
-    (first // 60) * 60 AS first,
+    (start // 60) * 60 AS start,
+    out.start + 60s AS stop,
     -- Count the number of new client/server pairs
     sum (
       1.1 * -- To save RAM we ask (below) for ~10% of false positives so we
@@ -18,14 +19,13 @@ DEFINE DDoS_detector AS
       -- FIXME: sampling_type and sampling_rate should be taken into account.
       float (not remember (
         0.1, -- 10% of false positives
-        first, -- time of the event to remember
+        start, -- time of the event to remember
         3600, -- remember events for 1 hour
         -- value to remember: src IP + dst IP pair:
         src, dst))) / 60 AS new_cnxs_per_secs,
     -- Count only the number of new clients
-    sum (0.9 * float (not remember (0.1, first, 3600, src))) / 60
-      AS new_clients_per_secs
-  EVENT STARTING AT first WITH DURATION 60s;
+    sum (0.9 * float (not remember (0.1, start, 3600, src))) / 60
+      AS new_clients_per_secs;
 
 -- Output the top 10 TCP DDoS targets every 10 minutes.
 DEFINE DDoS_targets AS
@@ -33,30 +33,30 @@ DEFINE DDoS_targets AS
   -- We want to count how many distinct src are connecting
   -- to the same dst*dst_port*ip_proto.
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
-       not remember globally (0.1, first, 600,
+       not remember globally (0.1, start, 600,
              src, dst, dst_port) AND
        IS dst, dst_port IN TOP 10
   GROUP BY dst, dst_port
   SELECT dst, dst_port, sum 1 AS count
-  COMMIT AFTER age (min first) > 600;
+  COMMIT AFTER age (min start) > 600;
 
 -- Output the top 10 port scanners every hour (scans can be slow)
 DEFINE port_scan_detector AS
   FROM monitoring/traffic/netflow
-  WHEN not remember globally (0.1, first, 3600,
+  WHEN not remember globally (0.1, start, 3600,
              src, dst, dst_port, ip_proto) AND
        IS src, dst IN TOP 10
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
-  COMMIT AFTER age (min first) > 3600;
+  COMMIT AFTER age (min start) > 3600;
 
 -- Output the top 10 IP scanners every hour
 DEFINE ip_scan_detector AS
   FROM monitoring/traffic/netflow
   -- An IP scanner could use varying proto/port to detect host
   -- presence so we just care about src and dst here:
-  WHEN not remember globally (0.1, first, 3600, src, dst) AND
+  WHEN not remember globally (0.1, start, 3600, src, dst) AND
        IS src IN TOP 10
   GROUP BY src
   SELECT src, sum 1 AS count
-  COMMIT AFTER age (min first) > 3600;
+  COMMIT AFTER age (min start) > 3600;
