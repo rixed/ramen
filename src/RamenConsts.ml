@@ -193,6 +193,7 @@ struct
      (first column -name- is 1, then #in is 2...)"
   let top =
     "Truncate the list of operations after the first N entries"
+  let all = "List all workers, including killed ones"
   let pattern = "Display only those workers"
   let server_url = "URL to reach the HTTP service"
   let test_file = "Definition of a test to run"

@@ -117,8 +117,11 @@ let complete_running_function persist_dir str =
 
 let complete_running_program persist_dir str =
   let conf = C.make_conf persist_dir in
-  (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.keys) /@
-  RamenName.string_of_program /@
+  ((Lwt_main.run (C.with_rlock conf Lwt.return)) |>
+  Hashtbl.enum) //@ (fun (p, (mre, _)) ->
+    if not mre.C.killed then
+      Some (RamenName.string_of_program p)
+    else None) /@
   empty_help |> List.of_enum
 
 let complete str () =
@@ -237,6 +240,7 @@ let complete str () =
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::
+          ("--all", RamenConsts.CliInfo.all) ::
           copts @
           (complete_running_function persist_dir last_tok)
       | "links" ->

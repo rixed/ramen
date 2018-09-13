@@ -628,6 +628,11 @@ let short =
                    [ "short" ; "p" ] in
   Arg.(value (flag i))
 
+let all =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.all
+                   [ "a"; "all" ] in
+  Arg.(value (flag i))
+
 let ps =
   Term.(
     (const RamenCliCmd.ps
@@ -637,7 +642,8 @@ let ps =
       $ with_header
       $ sort_col
       $ top
-      $ pattern),
+      $ pattern
+      $ all),
     info ~doc:RamenConsts.CliInfo.ps "ps")
 
 (*

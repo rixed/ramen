@@ -152,9 +152,11 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
       C.with_rlock conf (fun programs ->
         (* Get rid of Lwt in AdvLock and RamenOutRef! *)
         Hashtbl.enum programs |> List.of_enum |>
-        Lwt_list.fold_left_s (fun links (program_name, (_mre, get_rc)) ->
+        Lwt_list.fold_left_s (fun links (program_name, (mre, get_rc)) ->
+          if mre.C.killed then Lwt.return_nil else
           match get_rc () with
-          | exception _ -> Lwt.return_nil (* Errors have been logged already *)
+          | exception _ ->
+              Lwt.return_nil (* Errors have been logged already *)
           | prog ->
               Lwt_list.fold_left_s (fun links func ->
                 let%lwt _, links =

@@ -100,24 +100,29 @@ let run conf params replace ?as_ bin_file =
     let prog = P.of_bin ?as_ params bin in
     let program_name = (List.hd prog.P.funcs).F.program_name in
     check_links program_name prog programs ;
-    if not replace && Hashtbl.mem programs program_name then
-      Printf.sprintf "A program named %s is already running"
-        (RamenName.string_of_program program_name) |>
-      failwith ;
+    if not replace then
+      (match Hashtbl.find programs program_name with
+      | exception Not_found -> ()
+      | mre ->
+        if not mre.C.killed then
+          Printf.sprintf "A program named %s is already running"
+            (RamenName.string_of_program program_name) |>
+          failwith) ;
     (* TODO: Make sure this key is authoritative on a program name: *)
-    Hashtbl.replace programs program_name C.{ bin ; params } ;
+    Hashtbl.replace programs program_name
+      C.{ bin ; params ; killed = false } ;
     Lwt.return_unit)
 
 (*
  * Stopping a worker from running.
  *)
 
-let check_orphans conf killed_prog_names running_programs =
+let check_orphans conf killed_prog_names programs =
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
-    if List.mem prog_name killed_prog_names then
-      () (* This program is being killed, skip it *)
-    else
+    if not mre.C.killed &&
+       not (List.mem prog_name killed_prog_names)
+    then (
       let prog = P.of_bin mre.C.params mre.C.bin in
       List.iter (fun func ->
         (* If this func has parents, all of which are now missing, then
@@ -133,22 +138,24 @@ let check_orphans conf killed_prog_names running_programs =
         then
           !logger.warning "Operation %s, will be left without parents"
             (RamenName.string_of_fq (F.fq_name func))
-      ) prog.P.funcs
-  ) running_programs
+      ) prog.P.funcs)
+  ) programs
 
 (* Takes a list of globs and returns the number of kills. *)
 let kill conf program_names =
-  C.with_wlock conf (fun running_programs ->
+  C.with_wlock conf (fun programs ->
     let killed_prog_names =
-      Hashtbl.keys running_programs //
-      (fun n ->
+      Hashtbl.enum programs //
+      (fun (n, mre) ->
+        not mre.C.killed &&
         List.exists (fun p ->
           Globs.matches p (RamenName.string_of_program n)
-        ) program_names) |>
+        ) program_names) /@
+      fst |>
       List.of_enum in
-    check_orphans conf killed_prog_names running_programs ;
-    let before = Hashtbl.length running_programs in
-    Hashtbl.filteri_inplace (fun name _mre ->
-      not (List.mem name killed_prog_names)
-    ) running_programs ;
-    Lwt.return (before - Hashtbl.length running_programs))
+    check_orphans conf killed_prog_names programs ;
+    List.iter (fun n ->
+      let mre = Hashtbl.find programs n in
+      mre.C.killed <- true
+    ) killed_prog_names ;
+    Lwt.return (List.length killed_prog_names))

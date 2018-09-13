@@ -190,7 +190,8 @@ type program_tree_item =
 
 let tree_enum_of_programs ~only_with_event_time ~only_num_fields programs =
   let programs =
-    Hashtbl.enum programs |>
+    Hashtbl.enum programs //
+    (fun (p, (mre, _get_rc)) -> not mre.C.killed) |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) ->
     String.compare (RamenName.string_of_program k1)

@@ -88,8 +88,8 @@ let get_tables conf msg =
       PPP.of_string_exc get_tables_req_ppp_json msg) in
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
-    Hashtbl.iter (fun _prog_name (_mre, get_rc) ->
-      match get_rc () with
+    Hashtbl.iter (fun _prog_name (mre, get_rc) ->
+      if not mre.C.killed then match get_rc () with
       | exception e -> ()
       | prog ->
           List.iter (fun f ->

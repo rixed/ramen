@@ -313,7 +313,8 @@ let run_test conf notify_rb dirname test =
         (if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin) |>
         absolute_path_of in
       let prog = P.of_bin p.params bin in
-      Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
+      Hashtbl.add programs program_name
+        C.{ bin ; params = p.params ; killed = false } ;
       Lwt_list.iter_s (fun func ->
         Hashtbl.add workers (F.fq_name func) (func, ref None) ;
         return_unit
@@ -358,10 +359,11 @@ let run_test conf notify_rb dirname test =
       rbr := None
     ) workers ;
     return_unit in
-  let stop_workers () =
-    C.with_wlock conf (fun running_programs ->
-      Hashtbl.clear running_programs ;
-      return_unit) in
+  let stop_workers =
+    let all = [ Globs.compile "*" ] in
+    fun () ->
+      let%lwt _ = RamenRun.kill conf all in
+      return_unit in
   (* One tester thread per operation *)
   let tester_threads =
     Hashtbl.fold (fun user_fq_name output_spec thds ->

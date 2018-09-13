@@ -288,7 +288,7 @@ let str_or_na = function
   | None -> TermTable.ValStr "n/a"
   | Some s -> TermTable.ValStr s
 
-let ps conf short pretty with_header sort_col top pattern () =
+let ps conf short pretty with_header sort_col top pattern all () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
@@ -305,8 +305,10 @@ let ps conf short pretty with_header sort_col top pattern () =
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
-            if Globs.matches pattern
-                 (RamenName.string_of_program program_name) then (
+            if (all || not mre.C.killed) &&
+               Globs.matches pattern
+                 (RamenName.string_of_program program_name)
+            then (
               let _min_etime, _max_etime, in_count, selected_count, out_count,
                   group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
                   bytes_out, _last_out =
@@ -336,8 +338,8 @@ let ps conf short pretty with_header sort_col top pattern () =
         C.with_rlock conf (fun programs ->
           (* First pass to get the childrens: *)
           let children_of_func = Hashtbl.create 23 in
-          Hashtbl.iter (fun program_name (_mre, get_rc) ->
-            match get_rc () with
+          Hashtbl.iter (fun program_name (mre, get_rc) ->
+            if all || not mre.C.killed then match get_rc () with
             | exception e -> ()
             | prog ->
                 List.iter (fun func ->

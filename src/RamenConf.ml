@@ -158,7 +158,11 @@ let running_config_file conf =
 (* Saved configuration is merely a hash from (unique) program names
  * to their binaries, and parameters (actual ones, not default values): *)
 type must_run_entry =
-  { bin : string ;
+  { (* Tells whether the entry must actually be started. Set to true
+       at exit so that we do not loose information of previously run
+       entries. *)
+    mutable killed : bool [@ppp_default false] ;
+    bin : string ;
     params : RamenName.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
