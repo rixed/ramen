@@ -47,7 +47,9 @@ let tuple_typ =
     { typ_name = "bytes_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
       doc = RamenConsts.Metric.Docs.rb_write_bytes } ;
     { typ_name = "last_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = RamenConsts.Metric.Docs.last_out } ]
+      doc = RamenConsts.Metric.Docs.last_out } ;
+    { typ_name = "startup_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+      doc = "When this worker started to run for the last time." } ]
 
 let event_time =
   let open RamenEventTime in
@@ -61,12 +63,12 @@ let fix_sz = RingBufLib.tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   let open RingBufLib in
   nullmask_sz + fix_sz + sersize_of_string worker
 
 let serialize tx (worker, start, min_etime, max_etime, ic, sc, oc, gc, cpu,
-                  ram, max_ram, wi, wo, bi, bo, lo) =
+                  ram, max_ram, wi, wo, bi, bo, lo, stime) =
   RingBuf.zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -108,6 +110,9 @@ let serialize tx (worker, start, min_etime, max_etime, ic, sc, oc, gc, cpu,
   let offs = write_nullable_u64 offs 8 bi in
   let offs = write_nullable_u64 offs 9 bo in
   let offs = write_nullable_float offs 10 lo in
+  let offs =
+    RingBuf.write_float tx offs stime ;
+    offs + RingBufLib.sersize_of_float in
   offs
 
 let unserialize tx =
@@ -144,9 +149,11 @@ let unserialize tx =
   let bi, offs = read_nullable_u64 tx 8 offs in
   let bo, offs = read_nullable_u64 tx 9 offs in
   let lo, offs = read_nullable_float tx 10 offs in
+  let stime = RingBuf.read_float tx offs in
+  let offs = offs + RingBufLib.sersize_of_float in
   let t =
     worker, start, min_etime, max_etime, ic, sc , oc, gc, cpu, ram, max_ram,
-    wi, wo, bi, bo, lo in
+    wi, wo, bi, bo, lo, stime in
   assert (offs <= max_sersize_of_tuple t) ;
   t
 

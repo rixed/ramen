@@ -9,7 +9,7 @@ module P = C.Program
 
 let no_stats =
   None, None, None, None, None, None, 0., Uint64.zero, Uint64.zero, None, None,
-  None, None, None
+  None, None, None, 0.
 
 let read_stats conf =
   let open Lwt in
@@ -59,11 +59,12 @@ let read_stats conf =
     and bytes_in = get_nu64 tuple.(13)
     and bytes_out = get_nu64 tuple.(14)
     and last_out = get_nfloat tuple.(15)
+    and stime = get_float tuple.(16)
     in
     let stats =
       min_etime, max_etime, in_count, selected_count, out_count,
       group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
-      bytes_out, last_out in
+      bytes_out, last_out, stime in
     (* Keep only the latest stat line per worker: *)
     Hashtbl.modify_opt worker (function
       | None -> Some (time, stats)
@@ -77,9 +78,10 @@ let read_stats conf =
 let add_stats
       (min_etime', max_etime', in_count', selected_count', out_count',
        group_count', cpu', ram', max_ram', wait_in', wait_out', bytes_in',
-       bytes_out', last_out')
+       bytes_out', last_out', stime')
       (min_etime, max_etime, in_count, selected_count, out_count, group_count,
-       cpu, ram, max_ram, wait_in, wait_out, bytes_in, bytes_out, last_out) =
+       cpu, ram, max_ram, wait_in, wait_out, bytes_in, bytes_out, last_out,
+       stime) =
   let combine_opt f a b =
     match a, b with None, b -> b | a, None -> a
     | Some a, Some b -> Some (f a b) in
@@ -103,7 +105,10 @@ let add_stats
   add_nfloat wait_out' wait_out,
   add_nu64 bytes_in' bytes_in,
   add_nu64 bytes_out' bytes_out,
-  max_nfloat last_out' last_out
+  max_nfloat last_out' last_out,
+  (* Not sure what the meaning of this would be, so it won't be displayed.
+   * Notice though that the max "properly" skip 0 from no_stats: *)
+  max stime' stime
 
 let per_program stats =
   let h = Hashtbl.create 17 in

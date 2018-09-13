@@ -315,7 +315,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
             then (
               let _min_etime, _max_etime, in_count, selected_count, out_count,
                   group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
-                  bytes_out, _last_out =
+                  bytes_out, _last_out, _stime =
                 Hashtbl.find_default h program_name RamenPs.no_stats in
               [| ValStr (RamenName.string_of_program program_name) ;
                  ValStr (RamenName.string_of_params mre.C.params) ;
@@ -336,8 +336,8 @@ let ps conf short pretty with_header sort_col top pattern all () =
       (* Otherwise we want to display all we can about individual workers *)
       [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
          "min event time" ; "max event time" ; "CPU" ; "wait in" ; "wait out" ;
-         "heap" ; "max heap" ; "volume in" ; "volume out" ; "#parents" ;
-         "#children" ; "signature" |],
+         "heap" ; "max heap" ; "volume in" ; "volume out" ; "startup time" ;
+         "#parents" ; "#children" ; "signature" |],
       Lwt_main.run (
         C.with_rlock conf (fun programs ->
           (* First pass to get the childrens: *)
@@ -370,7 +370,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
                 if Globs.matches pattern fq_name then
                   let min_etime, max_etime, in_count, selected_count,
                       out_count, group_count, cpu, ram, max_ram, wait_in,
-                      wait_out, bytes_in, bytes_out, last_out =
+                      wait_out, bytes_in, bytes_out, last_out, stime =
                     Hashtbl.find_default stats fq_name RamenPs.no_stats
                   and num_children = Hashtbl.find_all children_of_func
                                        (func.F.program_name, func.F.name) |>
@@ -390,6 +390,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
                      ValInt (Uint64.to_int max_ram) ;
                      flt_or_na (Option.map Uint64.to_float bytes_in) ;
                      flt_or_na (Option.map Uint64.to_float bytes_out) ;
+                     ValDate stime ;
                      ValInt (List.length func.F.parents) ;
                      ValInt num_children ;
                      ValStr func.signature |] :: lines

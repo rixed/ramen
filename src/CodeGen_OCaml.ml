@@ -2432,7 +2432,7 @@ let emit_operation name func_name in_typ out_typ params op oc =
     let opc = { op ; params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenBinocle.unserialize" "report_ringbuf"
-      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
+      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     let tuple_typ = RamenNotification.tuple_typ in
     let opc = { op ; params ; consts ; tuple_typ } in

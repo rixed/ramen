@@ -460,7 +460,7 @@ let run conf test () =
       String.print
       (fun oc (_min_etime, _max_etime, in_count, selected_count, out_count,
                _group_count, cpu, ram, max_ram, _wait_in, _wait_out, _bytes_in,
-               _bytes_out, _last_out) ->
+               _bytes_out, _last_out, _stime) ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s" cpu (Uint64.to_string max_ram)))
       stats ;
   if !res then !logger.info "Test %s: Success" name

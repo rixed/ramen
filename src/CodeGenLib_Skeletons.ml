@@ -90,6 +90,8 @@ let update_stats () =
 
 let gauge_current (_mi, x, _ma) = x
 
+let startup_time = Unix.gettimeofday ()
+
 (* Basic tuple without aggregate specific counters: *)
 let get_binocle_tuple worker ic sc gc =
   let si v =
@@ -117,9 +119,10 @@ let get_binocle_tuple worker ic sc gc =
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
   IntCounter.get stats_rb_write_bytes |> si,
-  FloatGauge.get stats_last_out |> Option.map gauge_current
+  FloatGauge.get stats_last_out |> Option.map gauge_current,
+  startup_time
 
-let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
   match RingBuf.enqueue_alloc rb sersize with
   | exception RingBuf.NoMoreRoom -> () (* Just skip *)
