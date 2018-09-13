@@ -86,6 +86,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   RingBuf.unload reports_rb ;
   let notify_rb = prepare_notifs conf in
   RingBuf.unload notify_rb ;
+  let while_ () = !RamenProcesses.quit = None in
   Lwt_main.run (
     join [
       (let%lwt () = Lwt_unix.sleep 1. in
@@ -95,7 +96,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
        return_unit) ;
       (* The main job of this process is to make what's actually running
        * in accordance to the running program list: *)
-      restart_on_failure "synchronize_running"
+      restart_on_failure ~while_ "synchronize_running"
         RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
           dummy_nop ;
           (fun () -> synchronize_running conf autoreload) |] ]) ;
@@ -138,11 +139,12 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
+  let while_ () = !RamenProcesses.quit = None in
   Lwt_main.run (
     async (fun () ->
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
-    restart_on_failure "process_notifications"
+    restart_on_failure ~while_ "process_notifications"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
         dummy_nop ;
         (fun () ->
@@ -625,11 +627,12 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   let router = Option.map_default (fun prefix ->
     !logger.info "Serving custom API on %S" prefix ;
     RamenApi.router conf prefix) router api ++ router in
+  let while_ () = !RamenProcesses.quit = None in
   Lwt_main.run (
     async (fun () ->
       restart_on_failure "wait_all_pids_loop"
         RamenProcesses.wait_all_pids_loop false) ;
-    restart_on_failure "http server"
+    restart_on_failure ~while_ "http server"
       RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
         dummy_nop ;
         (fun () ->

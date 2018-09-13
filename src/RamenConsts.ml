@@ -212,7 +212,8 @@ end
 module ExitCodes =
 struct
   let terminated = 0
-  let lwt_uncaught_exception = 2
+  let interrupted = 1
+  let lwt_uncaught_exception = 2 (* This does not depend on us *)
   let cannot_parse_param = 3
   let watchdog = 4
 end

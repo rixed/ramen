@@ -776,7 +776,7 @@ let string_remove c s =
  *)
 
 let udp_server ?(buffer_size=2000) ~inet_addr ~port
-               ?(while_=(fun () -> true)) k =
+               ?(while_ = fun () -> true) k =
   let open Lwt in
   let open Lwt_unix in
   (* FIXME: it seems that binding that socket makes cohttp leack descriptors
@@ -812,8 +812,8 @@ let hex_of =
     if n < 10 then Char.chr (zero + n)
     else Char.chr (ten + n)
 
-let rec restart_on_failure what f x =
-  try%lwt f x
+let rec restart_on_failure ?(while_ = fun () -> true) what f x =
+  try%lwt if while_ () then f x else Lwt.return_unit
   with e -> (
     print_exception e ;
     !logger.error "Will restart %s..." what ;

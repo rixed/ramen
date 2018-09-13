@@ -110,8 +110,8 @@ RAMEN_SOURCES = \
 	src/RamenExport.ml \
 	src/HeavyHitters.ml \
 	src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml \
 	src/RamenProcesses.ml \
+	src/RamenHttpHelpers.ml \
 	src/RamenGc.ml \
 	src/Globs.ml \
 	src/RamenCompilConfig.ml \
@@ -390,8 +390,8 @@ LINKED_FOR_TESTS = \
 	src/RamenExport.ml \
 	src/HeavyHitters.ml \
 	src/RamenTimeseries.ml \
-	src/RamenHttpHelpers.ml \
 	src/RamenProcesses.ml \
+	src/RamenHttpHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
