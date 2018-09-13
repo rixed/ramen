@@ -173,7 +173,7 @@ let compile conf root_path get_parent ?exec_file
             ) func.F.out_type with
         | exception Not_found ->
             !logger.error "In function %s: no such input field %S (have %a)"
-              (func_color (RamenName.string_of_func func.F.name))
+              (RamenName.func_color func.F.name)
               name
               RamenTuple.print_typ_names func.F.out_type ;
             None
@@ -187,7 +187,7 @@ let compile conf root_path get_parent ?exec_file
       let what =
         Printf.sprintf "Field %S in parents of %s"
           field
-          (func_color (RamenName.string_of_func func.F.name)) in
+          (RamenName.func_color func.F.name) in
       let units =
         (List.enum parents /@
          (fun f -> units_of_output f field)) |>
@@ -209,7 +209,7 @@ let compile conf root_path get_parent ?exec_file
               let ctx =
                 Printf.sprintf "evaluating units of %s in function %s"
                   what
-                  (func_color (RamenName.string_of_func func.F.name)) in
+                  (RamenName.func_color func.F.name) in
               fail_with_context ctx (fun () ->
                 RamenExpr.units_of_expr uoi uoo e) in
             if u <> None then (

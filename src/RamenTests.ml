@@ -71,7 +71,7 @@ let field_index_of_name fq ser field =
   | exception Not_found ->
       Printf.sprintf2 "Unknown field %S in %s, which has only %a"
         field
-        (RamenTypingHelpers.func_color (RamenName.string_of_fq fq))
+        (RamenName.fq_color fq)
         RamenTuple.print_typ_names ser |>
       fail_and_quit
   | idx, _ -> idx
@@ -251,6 +251,51 @@ let test_notifications notify_rb notif_spec =
   in
   return (success, msg)
 
+(* Perform all find of checks before spawning testing threads, such as
+ * check the existence of all mentioned programs and functions: *)
+let check_test_spec conf test =
+  let fold_funcs i f =
+    let maybe_f fq (s, i as prev) =
+      if Set.mem fq s then prev else (
+        Set.add fq s,
+        f i fq)
+    in
+    let s_i =
+      List.fold_left (fun s_i in_spec ->
+        maybe_f in_spec.Input.operation s_i
+      ) (Set.empty, i) test.inputs in
+    let s_i =
+      Hashtbl.fold (fun fq _ s_i ->
+        maybe_f fq s_i
+      ) test.outputs s_i in
+    let s, i =
+      Hashtbl.fold (fun fq _ s_i ->
+        maybe_f fq s_i
+      ) test.until s_i in
+    i in
+  let fold_programs i f =
+    let maybe_f prog_name (s, i as prev) =
+      if Set.mem prog_name s then prev else (
+        Set.add prog_name s,
+        f i prog_name) in
+    let s_i =
+      Hashtbl.fold (fun prog_name _ s_i ->
+        maybe_f prog_name s_i
+      ) test.programs (Set.empty, i) in
+    let _, i =
+      fold_funcs s_i (fun s_i fq ->
+        let prog_name, _ = RamenName.fq_parse fq in
+        maybe_f prog_name s_i
+      ) in
+    i in
+  C.with_rlock conf (fun programs ->
+    fold_programs return_unit (fun thd prog_name ->
+      if not (Hashtbl.mem programs prog_name) then
+        Printf.sprintf "Unknown program %s"
+          (RamenName.program_color prog_name) |>
+        fail_with
+      else thd))
+
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
@@ -259,22 +304,21 @@ let run_test conf notify_rb dirname test =
    * the process synchronizer, the worker feeder, and the output evaluator: *)
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
-  let%lwt () =
-    C.with_wlock conf (fun programs ->
-      Hashtbl.clear programs ;
-      hash_iter_p test.programs (fun program_name p ->
-        (* The path to the binary is relative to the test file: *)
-        if p.bin = "" then failwith "Binary file must not be empty" ;
-        let bin =
-          (if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin) |>
-          absolute_path_of in
-        let prog = P.of_bin p.params bin in
-        Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
-        Lwt_list.iter_s (fun func ->
-          Hashtbl.add workers (F.fq_name func) (func, ref None) ;
-          return_unit
-        ) prog.P.funcs ;
-      )) in
+  C.with_wlock conf (fun programs ->
+    Hashtbl.clear programs ;
+    hash_iter_p test.programs (fun program_name p ->
+      (* The path to the binary is relative to the test file: *)
+      if p.bin = "" then failwith "Binary file must not be empty" ;
+      let bin =
+        (if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin) |>
+        absolute_path_of in
+      let prog = P.of_bin p.params bin in
+      Hashtbl.add programs program_name C.{ bin ; params = p.params } ;
+      Lwt_list.iter_s (fun func ->
+        Hashtbl.add workers (F.fq_name func) (func, ref None) ;
+        return_unit
+      ) prog.P.funcs)) ;%lwt
+  (try check_test_spec conf test with e -> fail e) ;%lwt
   let worker_feeder =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with
@@ -395,13 +439,16 @@ let run conf test () =
     join [
       restart_on_failure "synchronize_running"
         (RamenProcesses.synchronize_running conf) 0. ;
-      (
-        let%lwt r =
-          run_test conf notify_rb (Filename.dirname test) test_spec in
-        res := r ;
-        RamenProcesses.quit := Some 0 ;
-        return_unit
-      ) ]) ;
+      finalize
+        (fun () ->
+          let%lwt r =
+            run_test conf notify_rb (Filename.dirname test) test_spec in
+          res := r ;
+          return_unit)
+        (fun () ->
+          (* Terminate the other thread cleanly: *)
+          RamenProcesses.quit := Some 0 ;
+          return_unit) ]) ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
   let stats =

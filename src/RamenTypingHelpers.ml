@@ -7,9 +7,6 @@ module Expr = RamenExpr
 open RamenLang
 open RamenTypes
 
-let func_color = green
-let expr_color = yellow
-
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation field =
   match operation with
@@ -103,7 +100,7 @@ let finalize_func conf parents params func operation =
     | None | Some { structure = (TNum | TAny) ; _ } ->
        Printf.sprintf2 "In function %s: Cannot complete typing of %s, \
                         still of type %a"
-         (func_color (RamenName.string_of_func func.F.name))
+         RamenName.(func_color func.F.name)
          what RamenExpr.print_typ typ |>
       failwith
     | _ -> ()

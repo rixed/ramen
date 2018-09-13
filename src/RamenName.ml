@@ -12,17 +12,14 @@ let func_ppp_ocaml = t_ppp_ocaml
 
 let func_of_string s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
-   * Slashes have to be forbidden because we rsplit to get program names.
-   * Dashes have to be forbidden because they delimit well-known functions
-   * (stats, notifs...) *)
+   * Slashes have to be forbidden because we rsplit to get program names. *)
   if s = "" ||
      String.fold_left (fun bad c ->
-       bad || c = '\n' || c = '\r' || c = '/' || c = '#') false s then
+       bad || c = '\n' || c = '\r' || c = '/') false s then
     invalid_arg "operation name" ;
   s
 
 external string_of_func : func -> string = "%identity"
-
 
 (* Program names *)
 
@@ -133,3 +130,10 @@ let base_unit_ppp_ocaml = t_ppp_ocaml
 external base_unit_of_string : string -> base_unit = "%identity"
 external string_of_base_unit : base_unit -> string = "%identity"
 let base_unit_print = String.print
+
+(* Some dedicated colors for those strings: *)
+
+let func_color f = RamenLog.green (string_of_func f)
+let program_color p = RamenLog.green (string_of_program p)
+let expr_color = RamenLog.yellow
+let fq_color = func_color

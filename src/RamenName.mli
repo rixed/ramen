@@ -10,11 +10,15 @@ type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
 val func_of_string : string -> func
 val string_of_func : func -> string
+val func_color : func -> string
 
 type program = [`Program] t
 val program_ppp_ocaml : program PPP.t
 val program_of_string : string -> program
 val string_of_program : program -> string
+val program_color : program -> string
+(* Misc: *)
+val expr_color : string -> string
 
 type rel_program = [`RelProgram] t
 val rel_program_ppp_ocaml : rel_program PPP.t
@@ -43,6 +47,7 @@ val string_of_fq : fq -> string
 val fq : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
 val fq_parse : ?default_program:program -> fq -> program * func
+val fq_color : fq -> string
 
 (* Base units for composing values units.
  * For dimensional analysis to work, all defined base units must be independent

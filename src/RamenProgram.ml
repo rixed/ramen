@@ -77,7 +77,7 @@ let print oc (params, funcs) =
 let check (params, funcs) =
   let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
-    Printf.sprintf "Name %S not unique" name |> failwith in
+    Printf.sprintf "Name %s not unique" name |> failwith in
   List.fold_left (fun s p ->
     if Set.mem p.RamenTuple.ptyp.typ_name s then
       name_not_unique p.ptyp.typ_name ;
@@ -88,13 +88,19 @@ let check (params, funcs) =
     with Failure msg ->
       let open RamenTypingHelpers in
       Printf.sprintf "In function %s: %s"
-        (func_color (RamenName.string_of_func (n.name |? anonymous)))
+        (RamenName.func_color (n.name |? anonymous))
         msg |>
       failwith) ;
     match n.name with
     | Some name ->
-        if Set.mem name s then
-          name_not_unique (RamenName.string_of_func (n.name |? anonymous)) ;
+        let ns = RamenName.string_of_func name in
+        (* Names of defined functions cannot use '#' as we use it to delimit
+         * special suffixes (stats, notifs): *)
+        if String.contains ns '#' then
+          Printf.sprintf "Invalid dash in function name %s"
+            (RamenName.func_color name) |> failwith ;
+        (* Names must be unique: *)
+        if Set.mem name s then name_not_unique ns ;
         Set.add name s
     | None -> s
   ) Set.empty funcs |> ignore

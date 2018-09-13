@@ -124,13 +124,14 @@ let print funcs oc =
   | Expr (i, e) ->
       let func_name, expr = expr_of_id i in
       p "In function %s: expression %s%a"
-        (func_color (RamenName.string_of_func func_name))
-        (expr_color (IO.to_string (RamenExpr.print ~max_depth:3 false) expr))
+        (RamenName.func_color func_name)
+        (RamenName.expr_color
+          (IO.to_string (RamenExpr.print ~max_depth:3 false) expr))
         print_expr e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
       p "In function %s: %a"
-        (func_color (RamenName.string_of_func func_name))
+        (RamenName.func_color func_name)
         print_func e
 
 (* When annotating an assertion we must always use a unique name, even if we
