@@ -230,7 +230,8 @@ static int unlock(int lock_fd)
 }
 
 // Keep existing files as much as possible:
-extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t num_words)
+extern int ringbuf_create_locked(
+  uint64_t version, bool wrap, char const *fname, uint32_t num_words)
 {
   int ret = -1;
   struct ringbuf_file rbf;
@@ -249,6 +250,7 @@ extern int ringbuf_create_locked(bool wrap, char const *fname, uint32_t num_word
 
     if (0 != read_max_seqnum(fname, &rbf.first_seq)) goto err3;
 
+    rbf.version = version;
     rbf.num_words = num_words;
     atomic_init(&rbf.prod_head, 0);
     atomic_init(&rbf.prod_tail, 0);
@@ -288,7 +290,7 @@ err0:
   return ret;
 }
 
-extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t num_words, char const *fname)
+extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t num_words, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 
@@ -297,7 +299,7 @@ extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t num_words, char con
   int lock_fd = lock(fname, LOCK_EX, false);
   if (lock_fd < 0) goto err0;
 
-  if (0 != ringbuf_create_locked(wrap, fname, num_words)) {
+  if (0 != ringbuf_create_locked(version, wrap, fname, num_words)) {
     goto err1;
   }
 
@@ -329,9 +331,9 @@ static bool check_header_max(char const *fname, char const *what, unsigned max, 
   return false;
 }
 
-static int mmap_rb(struct ringbuf *rb)
+static enum ringbuf_error mmap_rb(uint64_t version, struct ringbuf *rb)
 {
-  int ret = -1;
+  enum ringbuf_error err = RB_ERR_FAILURE;
 
   int fd = open(rb->fname, O_RDWR, S_IRUSR|S_IWUSR);
   if (fd < 0) {
@@ -368,9 +370,16 @@ static int mmap_rb(struct ringbuf *rb)
     goto err1;
   }
 
+  // Check version
+  if (rbf->version != version) {
+    munmap(rbf, file_length);
+    err = RB_ERR_BAD_VERSION;
+    goto err1;
+  }
+
   rb->rbf = rbf;
   rb->mmapped_size = file_length;
-  ret = 0;
+  err = RB_OK;
 
 err1:
   if (close(fd) < 0) {
@@ -379,10 +388,10 @@ err1:
   }
 err0:
   fflush(stderr);
-  return ret;
+  return err;
 }
 
-extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname)
+extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, uint64_t version, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 
@@ -401,7 +410,7 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname)
   int lock_fd = lock(rb->fname, LOCK_SH, true);
   if (lock_fd < 0) goto err0;
 
-  if (0 != mmap_rb(rb)) {
+  if ((err = mmap_rb(version, rb)) != RB_OK) {
     goto err1;
   }
 
@@ -462,7 +471,8 @@ static int rotate_file_locked(struct ringbuf *rb)
   // Regardless of how this rotation went, we must not release the lock without
   // having created a new archive file:
   //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
-  if (0 != ringbuf_create_locked(rb->rbf->wrap, rb->fname, rb->rbf->num_words)) {
+  if (0 != ringbuf_create_locked(rb->rbf->version, rb->rbf->wrap,
+                                 rb->fname, rb->rbf->num_words)) {
     goto err0;
   }
 
@@ -474,10 +484,10 @@ err0:
   return ret;
 }
 
-static int may_rotate(struct ringbuf *rb, uint32_t num_words)
+static enum ringbuf_error may_rotate(struct ringbuf *rb, uint32_t num_words)
 {
   struct ringbuf_file *rbf = rb->rbf;
-  if (rbf->wrap) return 0;
+  if (rbf->wrap) return RB_OK;
 
   uint32_t const needed = 1 /* msg size */ + num_words + 1 /* EOF */;
   uint32_t const free = ringbuf_file_num_free(rbf, rbf->cons_tail, rbf->prod_head);
@@ -491,13 +501,13 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
                 "and %"PRIu32" free) but EOF mark is set\n", needed, free);
       }
     } else {
-      return 0;
+      return RB_OK;
     }
   }
 
   //printf("Rotating buffer '%s'!\n", rb->fname);
 
-  int ret = -1;
+  enum ringbuf_error err = RB_ERR_FAILURE;
 
   // We have filled the non-wrapping buffer: rotate the file!
   // We need a lock to ensure no other writers is rotating at the same time
@@ -512,23 +522,26 @@ static int may_rotate(struct ringbuf *rb, uint32_t num_words)
     //printf("...actually not, someone did already.\n");
   }
 
+  // Remember the version:
+  uint64_t version = rbf->version;
+
   // Unmap rb
   //printf("Unmap rb\n");
   if (RB_OK != ringbuf_unload(rb)) goto err1;
 
   // Mmap the new file and update rbf.
   //printf("Mmap the new file and update rbf\n");
-  if (0 != mmap_rb(rb)) goto err1;
+  if ((err = mmap_rb(version, rb)) != RB_OK) goto err1;
 
-  ret = 0;
+  err = RB_OK;
 
 err1:
-  if (0 != unlock(lock_fd)) ret = -1;
+  if (0 != unlock(lock_fd)) err = RB_ERR_FAILURE;
   // Too bad we cannot unlink that lockfile without a race condition
 err0:
   fflush(stdout);
   fflush(stderr);
-  return ret;
+  return err;
 }
 
 /* ringbuf will have:
@@ -543,7 +556,8 @@ extern enum ringbuf_error ringbuf_enqueue_alloc(struct ringbuf *rb, struct ringb
   uint32_t cons_tail;
   uint32_t need_eof = 0;  // 0 never needs an EOF
 
-  if (may_rotate(rb, num_words) < 0) return RB_ERR_FAILURE;
+  enum ringbuf_error err = may_rotate(rb, num_words);
+  if (err != RB_OK) return err;
 
   struct ringbuf_file *rbf = rb->rbf;
 

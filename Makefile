@@ -138,6 +138,7 @@ RAMEN_SOURCES = \
 	src/ramen.ml
 
 CODEGENLIB_SOURCES = \
+	src/RamenVersions.ml \
 	src/RamenConsts.ml \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
@@ -412,8 +413,8 @@ ringbuf_test.opt: \
 	src/RamenAdvLock.cmx \
 	src/RamenOutRef.cmx src/RamenParsing.cmx \
 	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
-	src/RamenTypeConverters.cmx src/RamenTypes.cmx \
-	src/RamenUnits.cmx src/RamenTuple.cmx src/RingBuf.cmx src/RingBufLib.cmx \
+	src/RamenTypeConverters.cmx src/RamenTypes.cmx src/RamenUnits.cmx \
+	src/RamenTuple.cmx src/RamenVersions.cmx src/RingBuf.cmx src/RingBufLib.cmx \
 	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@

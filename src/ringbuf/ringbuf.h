@@ -32,6 +32,7 @@
 #include <time.h>
 
 struct ringbuf_file {
+  uint64_t version;  // As a null 0 right-padded ascii string (max 8 chars)
   uint64_t first_seq;
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t num_words;
@@ -69,7 +70,8 @@ struct ringbuf {
 enum ringbuf_error {
   RB_OK = 0,
   RB_ERR_NO_MORE_ROOM,
-  RB_ERR_FAILURE
+  RB_ERR_FAILURE,
+  RB_ERR_BAD_VERSION
 };
 
 // Return the number of words currently stored in  the ring-buffer:
@@ -279,11 +281,11 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 }
 
 /* Create a new ring buffer of the specified size. */
-extern enum ringbuf_error ringbuf_create(bool wrap, uint32_t tot_words, char const *fname);
+extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t tot_words, char const *fname);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */
-extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, char const *fname);
+extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, uint64_t version, char const *fname);
 
 /* Unmap the ringbuffer. */
 extern enum ringbuf_error ringbuf_unload(struct ringbuf *);

@@ -88,24 +88,48 @@ static value alloc_tx(void)
   CAMLreturn(res);
 }
 
-CAMLprim value wrap_ringbuf_create(value wrap_, value tot_words_, value fname_)
+static uint64_t uint64_of_version(char const *str)
 {
-  CAMLparam3(wrap_, fname_, tot_words_);
+  uint64_t v = 0;
+  char *d = (char *)&v;
+  bool str_ended = false;
+  unsigned i;
+  for (i = 0; i < sizeof(v); i++) {
+    if (str_ended) {
+      d[i] = '\0';
+    } else {
+      d[i] = str[i];
+      str_ended = str[i] == '\0';
+    }
+  }
+  if (! str_ended && str[i] != '\0')
+    caml_failwith("version string too long");
+
+  return v;
+}
+
+CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_, value fname_)
+{
+  CAMLparam4(version_, wrap_, fname_, tot_words_);
+  char *version_str = String_val(version_);
+  uint64_t version = uint64_of_version(version_str);
   bool wrap = Bool_val(wrap_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  enum ringbuf_error err = ringbuf_create(wrap, tot_words, fname);
+  enum ringbuf_error err = ringbuf_create(version, wrap, tot_words, fname);
   if (RB_OK != err) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value wrap_ringbuf_load(value fname_)
+CAMLprim value wrap_ringbuf_load(value version_, value fname_)
 {
-  CAMLparam1(fname_);
+  CAMLparam2(version_, fname_);
   CAMLlocal1(res);
   res = alloc_ringbuf();
+  char *version_str = String_val(version_);
+  uint64_t version = uint64_of_version(version_str);
   char *fname = String_val(fname_);
-  if (RB_OK != ringbuf_load(Ringbuf_val(res), fname))
+  if (RB_OK != ringbuf_load(Ringbuf_val(res), version, fname))
     caml_failwith("Cannot load ring buffer");
   CAMLreturn(res);
 }
@@ -169,6 +193,25 @@ static void check_size(int size)
   }
 }
 
+static void check_error(
+  enum ringbuf_error err, char const *fail, char const *bad_version)
+{
+  switch (err) {
+    case RB_ERR_FAILURE:
+      caml_failwith(fail);
+      break;
+    case RB_ERR_NO_MORE_ROOM:
+      assert(exception_inited);
+      caml_raise_constant(exn_NoMoreRoom);
+      break;
+    case RB_ERR_BAD_VERSION:
+      caml_failwith(bad_version);
+      break;
+    case RB_OK:
+      break;
+  }
+}
+
 CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value tmin_, value tmax_)
 {
   CAMLparam5(rb_, bytes_, size_, tmin_, tmax_);
@@ -182,17 +225,10 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   double tmax = Double_val(tmax_);
   uint32_t num_words = size / sizeof(uint32_t);
   uint32_t *bytes = (uint32_t *)String_val(bytes_);
-  switch (ringbuf_enqueue(rb, bytes, num_words, tmin, tmax)) {
-    case RB_ERR_NO_MORE_ROOM:
-      assert(exception_inited);
-      caml_raise_constant(exn_NoMoreRoom);
-      break;
-    case RB_ERR_FAILURE:
-      caml_failwith("Cannot ringbuf_enqueue");
-      break;
-    case RB_OK:
-      break;
-  }
+  check_error(
+    ringbuf_enqueue(rb, bytes, num_words, tmin, tmax),
+    "Cannot ringbuf_enqueue",
+    "Ringbuf version mismatch in ringbuf_enqueue");
   CAMLreturn(Val_unit);
 }
 
@@ -287,17 +323,11 @@ CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   wrtx->rb = rb;
   wrtx->alloced = size;
-  switch (ringbuf_enqueue_alloc(rb, &wrtx->tx, num_words)) {
-    case RB_ERR_FAILURE:
-      caml_failwith("Cannot ringbuf_enqueue_alloc");
-      break;
-    case RB_ERR_NO_MORE_ROOM:
-      assert(exception_inited);
-      caml_raise_constant(exn_NoMoreRoom);
-      break;
-    case RB_OK:
-      break;
-  }
+  check_error(
+    ringbuf_enqueue_alloc(rb, &wrtx->tx, num_words),
+    "Cannot ringbuf_enqueue_alloc",
+    "Ringbuf version mismatch in ringbuf_enqueue_alloc");
+
   /*printf("Allocated %d bytes for enqueuing at offset %"PRIu32" (in words)\n",
          size, wrtx->tx.record_start);*/
   CAMLreturn(tx);

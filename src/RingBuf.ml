@@ -14,11 +14,12 @@ let prepend_rb_name f fname =
   try f fname
   with Failure msg -> failwith (fname ^": "^ msg)
 
-external create_ : bool -> int -> string -> unit = "wrap_ringbuf_create"
+external create_ : string -> bool -> int -> string -> unit =
+  "wrap_ringbuf_create"
 
 let create ?(wrap=true) ?(words=1_000_000) fname =
   mkdir_all ~is_file:true fname ;
-  prepend_rb_name (create_ wrap words) fname
+  prepend_rb_name (create_ RamenVersions.ringbuf wrap words) fname
 
 type stats = {
   capacity : int ; (* in words *)
@@ -34,8 +35,8 @@ type stats = {
   cons_tail : int ;
   first_seq : int (* taken from arc/max file *) }
 
-external load_ : string -> t = "wrap_ringbuf_load"
-let load = prepend_rb_name load_
+external load_ : string -> string -> t = "wrap_ringbuf_load"
+let load = prepend_rb_name (load_ RamenVersions.ringbuf)
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
 external repair : t -> bool = "wrap_ringbuf_repair"
