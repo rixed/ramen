@@ -6,7 +6,7 @@
 let release_tag = "v3.0.7"
 
 (* Format of the list of running programs: *)
-let graph_config = "v12" (* last: must_run flag *)
+let graph_config = "v13" (* last: per worker debug flag *)
 
 (* Code generation: sources, binaries, marshaled types... *)
 let codegen = "v37" (* last: commit before *)

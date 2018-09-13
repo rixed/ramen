@@ -220,7 +220,9 @@ let compile conf root_path use_external_compiler bundle_dir
 let run conf params replace as_ bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   logger := make_logger conf.C.log_level ;
-  Lwt_main.run (RamenRun.run conf params replace ?as_ bin_file)
+  (* If we run in --debug mode, also set that worker in debug mode: *)
+  let debug = conf.C.log_level = Debug in
+  Lwt_main.run (RamenRun.run conf params replace ?as_ bin_file debug)
 
 (*
  * `ramen kill`

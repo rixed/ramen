@@ -162,7 +162,12 @@ type must_run_entry =
        at exit so that we do not loose information of previously run
        entries. *)
     mutable killed : bool [@ppp_default false] ;
+    (* Should this worker be started in debug mode regardless of supervisor
+     * mode? *)
+    debug : bool [@ppp_default false] ;
+    (* Full path to the worker's binary: *)
     bin : string ;
+    (* "Command line" for that worker: *)
     params : RamenName.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)

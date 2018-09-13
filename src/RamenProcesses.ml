@@ -131,6 +131,7 @@ type running_process =
   { params : RamenName.params ;
     bin : string ;
     func : C.Func.t ;
+    log_level : log_level ;
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
     mutable continued : bool ;
@@ -146,10 +147,10 @@ let print_running_process oc proc =
     (RamenName.string_of_func proc.func.F.name)
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process bin params func =
+let make_running_process bin params func log_level =
   { bin ; params ; pid = None ; last_killed = 0. ; continued = false ;
     func ; last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
-    quarantine_until = 0. }
+    quarantine_until = 0. ; log_level }
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
@@ -191,7 +192,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (_bin, func) (ps, cs) ->
+  Hashtbl.fold (fun _k (_bin, func, _log_level) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.exists (fun (rel_par_prog, par_func) ->
@@ -394,11 +395,11 @@ let really_start conf must_run proc parents children =
      * but instead to a ringbuffer specific to the test_id. *)
     C.notify_ringbuf conf in
   let ocamlrunparam =
-    let def = if conf.C.log_level = Debug then "b" else "" in
+    let def = if proc.log_level = Debug then "b" else "" in
     getenv ~def "OCAMLRUNPARAM" in
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
-    "log_level="^ string_of_log_level conf.C.log_level ;
+    "log_level="^ string_of_log_level proc.log_level ;
     (* Used to choose the function to perform: *)
     "name="^ RamenName.string_of_func (proc.func.F.name) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
@@ -559,12 +560,12 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _k (_bin, func) s ->
+      Hashtbl.fold (fun _k (_bin, func, _log_level) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
     Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_s (fun (_bin, func) ->
+    Lwt_list.iter_s (fun (_bin, func, _log_level) ->
       (* Iter over all functions and check they do not output to a ringbuf not
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
@@ -649,7 +650,7 @@ let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the function mount point, signature and
-   * parameters to the binary and Func.
+   * parameters to the binary, Func and log_level.
    * [running] is a hash from the function mount point, signature and
    * parameters to its running_process (mutable pid, cleared asynchronously
    * when the worker terminates). *)
@@ -667,10 +668,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, _, params as k) (bin, func) ->
+    Hashtbl.iter (fun (_, _, _, params as k) (bin, func, log_level) ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process bin params func in
+          let proc = make_running_process bin params func log_level in
           Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
@@ -761,8 +762,11 @@ let synchronize_running conf autoreload_delay =
                           (* Use the mount point + signature + params as the key. *)
                           let k =
                             program_name, f.F.name, f.F.signature,
-                            mre.C.params in
-                          Hashtbl.add must_run k (mre.C.bin, f)
+                            mre.C.params
+                          and log_level =
+                            if mre.C.debug then Debug else conf.C.log_level
+                          in
+                          Hashtbl.add must_run k (mre.C.bin, f, log_level)
                         ) prog.P.funcs
                 ) must_run_programs) in
               return now
