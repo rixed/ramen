@@ -292,7 +292,7 @@ let ps conf short pretty with_header sort_col top pattern () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
-  let stats = Lwt_main.run (RamenPs.read_stats conf pattern) in
+  let stats = Lwt_main.run (RamenPs.read_stats conf) in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
@@ -306,7 +306,7 @@ let ps conf short pretty with_header sort_col top pattern () =
         C.with_rlock conf (fun programs ->
           Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
             if Globs.matches pattern
-                 (RamenName.string_of_program program_name) then
+                 (RamenName.string_of_program program_name) then (
               let _min_etime, _max_etime, in_count, selected_count, out_count,
                   group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
                   bytes_out, _last_out =
@@ -324,7 +324,7 @@ let ps conf short pretty with_header sort_col top pattern () =
                  ValInt (Uint64.to_int max_ram) ;
                  flt_or_na (Option.map Uint64.to_float bytes_in) ;
                  flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
-            else lines
+            ) else lines
           ) programs [] |> return))
     else
       (* Otherwise we want to display all we can about individual workers *)

@@ -452,8 +452,7 @@ let run conf test () =
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
   let stats =
-    let pattern = Globs.compile "*" in
-    Lwt_main.run (RamenPs.read_stats conf pattern) in
+    Lwt_main.run (RamenPs.read_stats conf) in
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
       String.print

@@ -11,7 +11,7 @@ let no_stats =
   None, None, None, None, None, None, 0., Uint64.zero, Uint64.zero, None, None,
   None, None, None
 
-let read_stats conf pattern =
+let read_stats conf =
   let open Lwt in
   let h = Hashtbl.create 57 in
   let open RamenTypes in
@@ -44,33 +44,32 @@ let read_stats conf pattern =
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0) in
-    if Globs.matches pattern worker then
-      let time = get_float tuple.(1)
-      and min_etime = get_nfloat tuple.(2)
-      and max_etime = get_nfloat tuple.(3)
-      and in_count = get_nu64 tuple.(4)
-      and selected_count = get_nu64 tuple.(5)
-      and out_count = get_nu64 tuple.(6)
-      and group_count = get_nu64 tuple.(7)
-      and cpu = get_float tuple.(8)
-      and ram = get_u64 tuple.(9)
-      and max_ram = get_u64 tuple.(10)
-      and wait_in = get_nfloat tuple.(11)
-      and wait_out = get_nfloat tuple.(12)
-      and bytes_in = get_nu64 tuple.(13)
-      and bytes_out = get_nu64 tuple.(14)
-      and last_out = get_nfloat tuple.(15)
-      in
-      let stats =
-        min_etime, max_etime, in_count, selected_count, out_count,
-        group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
-        bytes_out, last_out in
-      (* Keep only the latest stat line per worker: *)
-      Hashtbl.modify_opt worker (function
-        | None -> Some (time, stats)
-        | Some (time', stats') as prev ->
-            if time' > time then prev else Some (time, stats)
-      ) h) ;%lwt
+    let time = get_float tuple.(1)
+    and min_etime = get_nfloat tuple.(2)
+    and max_etime = get_nfloat tuple.(3)
+    and in_count = get_nu64 tuple.(4)
+    and selected_count = get_nu64 tuple.(5)
+    and out_count = get_nu64 tuple.(6)
+    and group_count = get_nu64 tuple.(7)
+    and cpu = get_float tuple.(8)
+    and ram = get_u64 tuple.(9)
+    and max_ram = get_u64 tuple.(10)
+    and wait_in = get_nfloat tuple.(11)
+    and wait_out = get_nfloat tuple.(12)
+    and bytes_in = get_nu64 tuple.(13)
+    and bytes_out = get_nu64 tuple.(14)
+    and last_out = get_nfloat tuple.(15)
+    in
+    let stats =
+      min_etime, max_etime, in_count, selected_count, out_count,
+      group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
+      bytes_out, last_out in
+    (* Keep only the latest stat line per worker: *)
+    Hashtbl.modify_opt worker (function
+      | None -> Some (time, stats)
+      | Some (time', stats') as prev ->
+          if time' > time then prev else Some (time, stats)
+    ) h) ;%lwt
   (* Clean out time: *)
   Hashtbl.map (fun _ (_time, stats) -> stats) h |>
   return
