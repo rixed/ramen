@@ -357,9 +357,10 @@ let run_test conf notify_rb dirname test =
         ) test.until []
       ) ;%lwt
       !logger.info "Early termination." ;
+      all_good := false ;
       stop_workers ()
     ) in
-  choose [
+  pick [
     early_terminator ;
     join (worker_feeder :: tester_threads) ] ;%lwt
   return !all_good
