@@ -3,7 +3,7 @@
 
 (* Release tag just for information purpose but not actually used to version
  * anything. *)
-let release_tag = "v3.0.7"
+let release_tag = "v3.0.8"
 
 (* Format of the list of running programs: *)
 let graph_config = "v13" (* last: per worker debug flag *)
