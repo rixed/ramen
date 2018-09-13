@@ -105,7 +105,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
 *)
 
 (*$R run
-  let pid = run [| "/usr/bin/false" |] in
+  let pid = run [| "tests/test_false" |] in
   check_status pid (Some (WEXITED 1))
  *)
 
