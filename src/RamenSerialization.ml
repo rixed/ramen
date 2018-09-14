@@ -4,7 +4,6 @@ open RingBufLib
 open RamenLog
 open RamenHelpers
 open RamenTypes
-open Lwt
 
 let verbose_serialization = false
 
@@ -196,21 +195,20 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
     !logger.debug "fold_rb: from=%d, mi=%d" from mi ;
     read_buf ?while_ ?wait_for_more rb (usr, from) (fun (usr, seq) tx ->
       !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
-      if seq < mi then return ((usr, seq + 1), true) else
+      if seq < mi then (usr, seq + 1), true else
       match ma with Some m when seq >= m ->
-        return ((usr, seq + 1), false)
+        (usr, seq + 1), false
       | _ ->
-        let%lwt usr = f usr seq tx in
+        let usr = f usr seq tx in
         (* Try to save the last sleep: *)
         let more_to_come =
           match ma with None -> true | Some m -> seq < m - 1 in
-        return ((usr, seq + 1), more_to_come)) in
+        (usr, seq + 1), more_to_come) in
   !logger.debug "fold_seq_range: mi=%d, ma=%a" mi (Option.print Int.print) ma ;
-  match ma with Some m when mi >= m -> return init
+  match ma with Some m when mi >= m -> init
   | _ -> (
-    let%lwt keep_going =
-      match while_ with Some w -> w () | _ -> return_true in
-    if not keep_going then return init else (
+    let keep_going = match while_ with Some w -> w () | _ -> true in
+    if not keep_going then init else (
       let dir = arc_dir_of_bname bname in
       let entries =
         arc_files_of dir //
@@ -219,20 +217,19 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
           to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
         Array.of_enum in
       Array.fast_sort arc_file_compare entries ;
-      let%lwt usr, next_seq =
-        Array.to_list entries |> (* FIXME *)
-        Lwt_list.fold_left_s (fun (usr, _) (from, to_, _t1, _t2, fname) ->
+      let usr, next_seq =
+        Array.fold_left (fun (usr, _) (from, to_, _t1, _t2, fname) ->
           let rb = load fname in
-          finalize (fun () -> fold_rb from rb usr)
-                   (fun () -> unload rb ; return_unit)
-        ) (init, 0 (* unused if there are some entries *)) in
+          finally (fun () -> unload rb)
+            (fold_rb from rb) usr
+        ) (init, 0 (* unused if there are some entries *)) entries in
       !logger.debug "After archives, next_seq is %d" next_seq ;
       (* Of course by the time we reach here, new archives might have been
        * created. We will know after opening the current rb, if its starting
        * seqnum is > then max_seq then we should recurse into the archive ... *)
       (* Finish with the current rb: *)
       let rb = load bname in
-      let%lwt s = wrap (fun () -> stats rb) in
+      let s = stats rb in
       if next_seq > 0 && s.first_seq > next_seq && s.first_seq > mi then (
         !logger.debug "fold_seq_range: current starts at %d > %d, \
                        going through the archive again"
@@ -242,9 +239,9 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
       ) else (
         !logger.debug "fold_seq_range: current starts at %d, lgtm"
           s.first_seq ;
-        let%lwt usr, next_seq =
-          finalize (fun () -> fold_rb s.first_seq rb usr)
-                   (fun () -> unload rb ; return_unit) in
+        let usr, next_seq =
+          finally (fun () -> unload rb)
+            (fold_rb s.first_seq rb) usr in
         !logger.debug "After current, next_seq is %d" next_seq ;
         (* And of course, by the time we reach this point this ringbuf might
          * have been archived already. *)
@@ -255,12 +252,11 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
   | exception Failure msg ->
       !logger.debug "Cannot fold_buffer: %s" msg ;
       (* Therefore there is nothing to fold: *)
-      return init
+      init
   | rb ->
-      let%lwt usr = finalize
-        (fun () -> read_buf ?wait_for_more ?while_ rb init f)
-        (fun () -> unload rb ; return_unit) in
-      return usr
+      finally
+        (fun () -> unload rb)
+        (read_buf ?wait_for_more ?while_ rb init) f
 
 (* Like fold_buffer but call f with the tuple rather than the tx: *)
 let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
@@ -270,10 +266,9 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   let f usr tx =
     let tuple =
       read_tuple typ nullmask_size tx in
-    return (
-      let usr, more_to_come as res = f usr tuple in
-      if early_stop then res
-      else (usr, true))
+    let usr, more_to_come as res = f usr tuple in
+    if early_stop then res
+    else (usr, true)
   in
   fold_buffer ~wait_for_more:false ?while_ bname init f
 
@@ -321,12 +316,12 @@ let event_time_of_tuple typ params
 let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ params
                           event_time init f =
   !logger.debug "Folding over %s" bname ;
-  let%lwt event_time_of_tuple =
+  let event_time_of_tuple =
     match event_time with
     | None ->
-        fail_with "Function has no time information"
+        failwith "Function has no time information"
     | Some event_time  ->
-        return (event_time_of_tuple typ params event_time) in
+        event_time_of_tuple typ params event_time in
   let f usr tuple =
     (* Get the times from tuple: *)
     let t1, t2 = event_time_of_tuple tuple in
@@ -358,12 +353,12 @@ let fold_time_range ?while_ bname typ params event_time since until init f =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
   let rec loop usr =
     match Enum.get_exn entries with
-    | exception Enum.No_more_elements -> return usr
+    | exception Enum.No_more_elements -> usr
     | _s1, _s2, _t1, _t2, fname ->
         fold_buffer_with_time ?while_ ~early_stop:false
-                              fname typ params event_time usr f >>=
+                              fname typ params event_time usr f |>
         loop
   in
-  let%lwt usr = loop init in
+  let usr = loop init in
   (* finish with the current rb: *)
   fold_buffer_with_time ?while_ bname typ params event_time usr f

@@ -3,7 +3,6 @@
  *
  * The operation event-time has to be known, though.
  *)
-open Lwt
 open Batteries
 open RamenLog
 open RamenHelpers
@@ -67,16 +66,16 @@ let get conf ?duration max_data_points since until where factors
       Printf.fprintf oc "%s%s%a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
-  let%lwt bname, filter, typ, ser, params, event_time =
+  let bname, filter, typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
   let open RamenSerialization in
   let fis =
     List.map (find_field_index ser) factors in
   let key_of_factors tuple =
     List.map (fun fi -> tuple.(fi)) fis in
-  let%lwt vis =
-    Lwt_list.map_s (fun data_field ->
-      Lwt.wrap (fun () -> find_field_index ser data_field)
+  let vis =
+    List.map (fun data_field ->
+      find_field_index ser data_field
     ) data_fields in
   let dt = (until -. since) /. float_of_int max_data_points in
   let per_factor_buckets = Hashtbl.create 11 in
@@ -85,25 +84,24 @@ let get conf ?duration max_data_points since until where factors
     match String.lowercase consolidation with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | _ -> bucket_avg in
-  let%lwt () =
-    fold_time_range bname ser params event_time since until ()
-      (fun () tuple t1 t2 ->
-      if filter tuple then (
-        let k = key_of_factors tuple in
-        let buckets =
-          try Hashtbl.find per_factor_buckets k
-          with Not_found ->
-            !logger.debug "New timeseries for column key %a"
-              (List.print RamenTypes.print) k ;
-            let buckets = make_buckets max_data_points num_data_fields in
-            Hashtbl.add per_factor_buckets k buckets ;
-            buckets in
-        let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
-        List.iteri (fun i vi ->
-          let v = RamenTypes.float_of_scalar tuple.(vi) in
-          for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
-            pour_into_bucket buckets bi i v done
-        ) vis)) in
+  fold_time_range bname ser params event_time since until ()
+    (fun () tuple t1 t2 ->
+    if filter tuple then (
+      let k = key_of_factors tuple in
+      let buckets =
+        try Hashtbl.find per_factor_buckets k
+        with Not_found ->
+          !logger.debug "New timeseries for column key %a"
+            (List.print RamenTypes.print) k ;
+          let buckets = make_buckets max_data_points num_data_fields in
+          Hashtbl.add per_factor_buckets k buckets ;
+          buckets in
+      let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
+      List.iteri (fun i vi ->
+        let v = RamenTypes.float_of_scalar tuple.(vi) in
+        for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
+          pour_into_bucket buckets bi i v done
+      ) vis)) ;
   (* Extract the results as an Enum, one value per key *)
   let indices = Enum.range 0 ~until:(max_data_points - 1) in
   (* Assume keys and values will enumerate keys in the same orders: *)
@@ -113,16 +111,15 @@ let get conf ?duration max_data_points since until where factors
   let ts =
     Hashtbl.values per_factor_buckets |>
     Array.of_enum in
-  return (
-    columns,
-    indices /@
-    (fun i ->
-      let t = since +. dt *. (float_of_int i +. 0.5)
-      and v =
-        Array.map (fun buckets ->
-          Array.map consolidation buckets.(i)
-        ) ts in
-      t, v))
+  columns,
+  indices /@
+  (fun i ->
+    let t = since +. dt *. (float_of_int i +. 0.5)
+    and v =
+      Array.map (fun buckets ->
+        Array.map consolidation buckets.(i)
+      ) ts in
+    t, v)
 
 (*
  * Factors.
@@ -139,14 +136,13 @@ let scan_possible_values factors bname typ =
     List.map (RamenSerialization.find_field_index ser) factors in
   let possible_values =
     Array.init (List.length fis) (fun _ -> Set.empty) in
-  let%lwt () =
-    RamenSerialization.fold_buffer_tuple bname ser () (fun () tuple ->
-      List.iteri (fun i fidx ->
-        let v = tuple.(fidx) in
-        possible_values.(i) <- Set.add v possible_values.(i)
-      ) fis ;
-      ((), true)) in
-  return possible_values
+  RamenSerialization.fold_buffer_tuple bname ser () (fun () tuple ->
+    List.iteri (fun i fidx ->
+      let v = tuple.(fidx) in
+      possible_values.(i) <- Set.add v possible_values.(i)
+    ) fis ;
+    ((), true)) ;
+  possible_values
 
 let all_seq_bnames conf ?since ?until func =
   let bname = C.archive_buf_name conf func in
@@ -175,13 +171,13 @@ let factors_to_file fname factors =
  * all factors will be refreshed). *)
 let get_possible_values conf ?since ?until func factor =
   if not (List.mem factor func.F.factors) then
-    fail_invalid_arg "get_possible_values: not a factor"
+    invalid_arg "get_possible_values: not a factor"
   else
     let typ = func.F.out_type in
     let bnames = all_seq_bnames conf ?since ?until func |>
                  List.of_enum (* FIXME *) in
-    Lwt_list.fold_left_s (fun set bname ->
-      let%lwt pvs =
+    List.fold_left (fun set bname ->
+      let pvs =
         try
           let cache = C.factors_of_ringbuf bname factor in
           (* If fname is newer than cache and cache is older than X seconds
@@ -193,13 +189,13 @@ let get_possible_values conf ?since ?until func factor =
               raise Exit ;
           let pvs = factors_of_file cache in
           !logger.debug "Got factors from cache %s" cache ;
-          return pvs
+          pvs
         with e ->
           if e <> Exit then
             !logger.debug "Cannot read cached factor values for %s.%s: %s, \
                            scanning." bname factor (Printexc.to_string e) ;
           !logger.debug "Have to recompute factor values cache." ;
-          let%lwt all_pvs = scan_possible_values func.F.factors bname typ in
+          let all_pvs = scan_possible_values func.F.factors bname typ in
           let pvs = ref Set.empty in
           (* Save them all: *)
           List.iteri (fun i factor' ->
@@ -208,9 +204,9 @@ let get_possible_values conf ?since ?until func factor =
             let cache = C.factors_of_ringbuf bname factor' in
             factors_to_file cache all_pvs.(i)
           ) func.F.factors ;
-          return !pvs
+          !pvs
       in
-      return (Set.union pvs set)
+      Set.union pvs set
     ) Set.empty bnames
 
 (* Possible values per factor are precalculated to cut down on promises.
@@ -219,23 +215,19 @@ let get_possible_values conf ?since ?until func factor =
 let possible_values_cache = Hashtbl.create 31
 
 let cache_possible_values conf programs =
-  Hashtbl.values programs |>
-  List.of_enum |> (* FIXME *)
-  Lwt_list.iter_p (fun (_mre, get_rc) ->
+  Hashtbl.iter (fun _ (_mre, get_rc) ->
     match get_rc () with
-    | exception _ -> return_unit
+    | exception _ -> ()
     | prog ->
-        Lwt_list.iter_p (fun func ->
+        List.iter (fun func ->
           let h = Hashtbl.create (List.length func.F.factors) in
-          let%lwt () =
-            Lwt_list.iter_p (fun factor ->
-              let%lwt pvs = get_possible_values conf func factor in
-              Hashtbl.add h factor pvs ;
-              return_unit
-            ) func.F.factors in
-          Hashtbl.replace possible_values_cache (F.fq_name func) h ;
-          return_unit
-        ) prog.P.funcs)
+          List.iter (fun factor ->
+            let pvs = get_possible_values conf func factor in
+            Hashtbl.add h factor pvs
+          ) func.F.factors ;
+          Hashtbl.replace possible_values_cache (F.fq_name func) h
+        ) prog.P.funcs
+  ) programs
 
 (* Enumerate the possible values of a factor: *)
 let possible_values func factor =

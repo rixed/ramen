@@ -102,7 +102,7 @@ let empty_help s = s, ""
 let complete_running_function persist_dir str =
   let conf = C.make_conf persist_dir in
   (
-    (Lwt_main.run (C.with_rlock conf Lwt.return) |> Hashtbl.values) //@
+    Hashtbl.values (C.with_rlock conf identity) //@
     (fun (_mre, get_rc) ->
       try Some (get_rc ())
       with _ -> None) /@
@@ -117,8 +117,8 @@ let complete_running_function persist_dir str =
 
 let complete_running_program persist_dir str =
   let conf = C.make_conf persist_dir in
-  ((Lwt_main.run (C.with_rlock conf Lwt.return)) |>
-  Hashtbl.enum) //@ (fun (p, (mre, _)) ->
+  Hashtbl.enum (C.with_rlock conf identity) //@
+  (fun (p, (mre, _)) ->
     if not mre.C.killed then
       Some (RamenName.string_of_program p)
     else None) /@

@@ -4,7 +4,6 @@
  * new nodes.
  *)
 open Batteries
-open Lwt
 open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
@@ -21,16 +20,18 @@ struct
   let err id msg =
     Printf.sprintf "{\"id\":%s,\"error\":%S}" id msg |>
     (* Assuming jsonrpc does not mix transport errors with applicative errors: *)
-    respond_ok
+    http_msg
 
   let wrap id f =
-    match%lwt f () with
+    match f () with
     | exception e ->
         print_exception ~what:("Answering request "^id) e ;
-        (match e with
-        | Failure msg -> err id msg
-        | e -> err id (Printexc.to_string e))
-    | s -> respond_ok (Printf.sprintf "{\"id\":%s,\"result\":%s}" id s)
+        err id (match e with
+          | Failure msg -> msg
+          | e -> Printexc.to_string e)
+    | s ->
+        Printf.sprintf "{\"id\":%s,\"result\":%s}" id s |>
+        http_msg
 
   (* We need to parse this by hand due to dispatching on the "method" field
    * and unspecified type for the "id" field. PPP provides some good helpers
@@ -72,7 +73,7 @@ end
 type version_resp = string [@@ppp PPP_JSON]
 
 let version () =
-  return (PPP.to_string version_resp_ppp_json RamenVersions.release_tag)
+  PPP.to_string version_resp_ppp_json RamenVersions.release_tag
 
 (*
  * Get list of available tables which name starts with a given prefix
@@ -97,8 +98,8 @@ let get_tables conf msg =
             if f.F.event_time <> None && String.starts_with fqn req.prefix
             then Hashtbl.add tables fqn f.F.doc
           ) prog.P.funcs
-    ) programs |> Lwt.return) ;%lwt
-  return (PPP.to_string get_tables_resp_ppp_json tables)
+    ) programs) ;
+  PPP.to_string get_tables_resp_ppp_json tables
 
 (*
  * Get the schema of a given set of tables.
@@ -225,25 +226,25 @@ let columns_of_table conf table =
     RamenName.(fq_of_string table |> fq_parse) in
   C.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
-    | exception _ -> return_none
+    | exception _ -> None
     | _mre, get_rc ->
       (match get_rc () with
-      | exception _ -> return_none
+      | exception _ -> None
       | prog ->
           (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
-          | exception Not_found -> return_none
-          | func -> return_some (columns_of_func conf programs func))))
+          | exception Not_found -> None
+          | func -> Some (columns_of_func conf programs func))))
 
 let get_columns conf msg =
   let req = fail_with_context "parsing get-columns request" (fun () ->
     PPP.of_string_exc get_columns_req_ppp_json msg) in
   let h = Hashtbl.create 9 in
-  Lwt_list.iter_p (fun table ->
-    match%lwt columns_of_table conf table with
-    | None -> return_unit
-    | Some c -> Hashtbl.add h table c ; return_unit
-  ) req ;%lwt
-  return (PPP.to_string get_columns_resp_ppp_json h)
+  List.iter (fun table ->
+    match columns_of_table conf table with
+    | None -> ()
+    | Some c -> Hashtbl.add h table c
+  ) req ;
+  PPP.to_string get_columns_resp_ppp_json h
 
 (*
  * Get a timeseries for a given set of columns.
@@ -279,44 +280,41 @@ let get_timeseries conf msg =
   let times = Array.make_float req.num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
-  let%lwt () =
-    Hashtbl.enum req.data |> List.of_enum |>
-    Lwt_list.iter_s (fun (table, data_spec) ->
-      let fq = RamenName.fq_of_string table in
-      let prog_name, func_name = RamenName.fq_parse fq in
-      let%lwt filters =
-        C.with_rlock conf (fun programs ->
-          let _mre, get_rc = Hashtbl.find programs prog_name in
-          let prog = get_rc () in
-          let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
-          List.fold_left (fun filters where ->
-            if is_private_field where.lhs then
-              failwith ("Cannot filter through private field "^ where.lhs) ;
-            let open RamenSerialization in
-            let _, ftyp = find_field func.F.out_type where.lhs in
-            let v = value_of_string ftyp.typ where.rhs in
-            (where.lhs, where.op, v) :: filters
-          ) [] data_spec.where |> return) in
-      let%lwt column_labels, datapoints =
-        RamenTimeseries.get conf req.num_points req.since req.until
-                            filters data_spec.factors fq data_spec.select in
-      (* [column_labels] is an array of labels (empty if no result).
-       * Each label is a list of factors values. *)
-      let column_labels =
-        Array.map (List.map RamenTypes.to_string) column_labels in
-      let column_values = Array.create req.num_points [||] in
-      Hashtbl.add values table { column_labels ; column_values } ;
-      Enum.iteri (fun ti (t, data) ->
-        (* in data we have one column per column-label: *)
-        assert (Array.length data = Array.length column_labels) ;
-        column_values.(ti) <- data ;
-        if not !times_inited then times.(ti) <- t
-      ) datapoints ;
-      times_inited := true ;
-      return_unit
-    ) in
+  Hashtbl.iter (fun table data_spec ->
+    let fq = RamenName.fq_of_string table in
+    let prog_name, func_name = RamenName.fq_parse fq in
+    let filters =
+      C.with_rlock conf (fun programs ->
+        let _mre, get_rc = Hashtbl.find programs prog_name in
+        let prog = get_rc () in
+        let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
+        List.fold_left (fun filters where ->
+          if is_private_field where.lhs then
+            failwith ("Cannot filter through private field "^ where.lhs) ;
+          let open RamenSerialization in
+          let _, ftyp = find_field func.F.out_type where.lhs in
+          let v = value_of_string ftyp.typ where.rhs in
+          (where.lhs, where.op, v) :: filters
+        ) [] data_spec.where) in
+    let column_labels, datapoints =
+      RamenTimeseries.get conf req.num_points req.since req.until
+                          filters data_spec.factors fq data_spec.select in
+    (* [column_labels] is an array of labels (empty if no result).
+     * Each label is a list of factors values. *)
+    let column_labels =
+      Array.map (List.map RamenTypes.to_string) column_labels in
+    let column_values = Array.create req.num_points [||] in
+    Hashtbl.add values table { column_labels ; column_values } ;
+    Enum.iteri (fun ti (t, data) ->
+      (* in data we have one column per column-label: *)
+      assert (Array.length data = Array.length column_labels) ;
+      column_values.(ti) <- data ;
+      if not !times_inited then times.(ti) <- t
+    ) datapoints ;
+    times_inited := true
+  ) req.data ;
   let resp = { times ; values } in
-  return (PPP.to_string get_timeseries_resp_ppp_json resp)
+  PPP.to_string get_timeseries_resp_ppp_json resp
 
 (*
  * Save the alerts
@@ -395,11 +393,10 @@ let run_alert conf bin_fname =
 let stop_alert conf program_name =
   let glob =
     Globs.(RamenName.string_of_program program_name |> escape |> compile) in
-  let%lwt num_kills = RamenRun.kill conf [ glob ] in
+  let num_kills = RamenRun.kill conf [ glob ] in
   if num_kills < 0 || num_kills > 1 then
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
-      (RamenName.string_of_program program_name) num_kills ;
-  return_unit
+      (RamenName.string_of_program program_name) num_kills
 
 let field_typ_of_column programs table column =
   let pn, fn =
@@ -439,23 +436,20 @@ let save_alert conf table column to_keep alert_info =
    * That the program is running would tell us that it exists and is
    * enabled, but that the program is not running wouldn't tell us that
    * the alert does not exist. *)
-  if file_check ~min_size:1 conf_fname = FileOk then return_unit else (
+  if file_check ~min_size:1 conf_fname <> FileOk then (
     !logger.info "Saving new alert into %s" conf_fname ;
     (* But do not create this file yet so that we only report that the
      * alert is present unless it's indeed running. *)
     ppp_to_file tmp_fname alert_source_ppp_ocaml alert_info ;
     C.with_rlock conf (fun programs ->
-      let%lwt ft = wrap (fun () ->
-        field_typ_of_column programs table column) in
+      let ft = field_typ_of_column programs table column in
       if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
         Printf.sprintf "Column %s of table %s is not numeric" column table |>
-        fail_with
-      else return_unit ;%lwt
+        failwith ;
       let program_code = generate_alert table ft alert_info in
       !logger.info "Alert code:\n%s" program_code ;
-      wrap (fun () ->
-        compile_alert conf programs program_name program_code bin_fname)) ;%lwt
-    Lwt_unix.rename tmp_fname conf_fname) ;%lwt
+      compile_alert conf programs program_name program_code bin_fname) ;
+    Unix.rename tmp_fname conf_fname) ;
   if is_enabled alert_info then
     (* Won't do anything if it's running already *)
     run_alert conf bin_fname
@@ -471,8 +465,8 @@ let set_alerts conf msg =
    * list of all that are set: *)
   let to_delete = ref Set.String.empty
   and to_keep = ref Set.String.empty in
-  hash_iter_s req (fun table columns ->
-    hash_iter_s columns (fun column alerts ->
+  Hashtbl.iter (fun table columns ->
+    Hashtbl.iter (fun column alerts ->
       (* All non listed alerts must be suppressed *)
       let parent =
         RamenName.program_of_string (table ^"/"^ column) in
@@ -487,25 +481,25 @@ let set_alerts conf msg =
             let program_name =
               RamenName.string_of_program parent ^"/"^ id in
             to_delete := Set.String.add program_name !to_delete)) ;
-      Lwt_list.iter_s (fun alert ->
+      List.iter (fun alert ->
         (* We receive only the latest version: *)
         save_alert conf table column to_keep (V1 alert)
-      ) alerts)) ;%lwt
+      ) alerts
+    ) columns
+  ) req ;
   let to_delete = Set.String.diff !to_delete !to_keep in
-  if Set.String.is_empty to_delete then return_unit else (
+  if not (Set.String.is_empty to_delete) then (
     !logger.info "going to delete non mentioned alerts %a"
       (Set.String.print String.print) to_delete ;
-    Set.String.to_list to_delete |>
-    Lwt_list.iter_s (fun program_name ->
+    Set.String.iter (fun program_name ->
       let program_name = RamenName.program_of_string program_name in
-      stop_alert conf program_name ;%lwt
+      stop_alert conf program_name ;
       let fname =
         C.api_alerts_root conf ^"/"^
         RamenName.(path_of_program program_name)
         ^".alert" in
-      Lwt_unix.unlink fname)) ;%lwt
-  (* Delete to_delete - to_keep *)
-  return ""
+      Unix.unlink fname
+    ) to_delete)
 
 (*
  * Dispatch queries
@@ -514,13 +508,9 @@ let set_alerts conf msg =
 let router conf prefix =
   (* The function called for each HTTP request: *)
   fun meth path params headers body ->
-    !logger.info "meth=%S, path=%a"
-      (Cohttp.Code.string_of_method meth)
-      (List.print String.print) path ;
-    let%lwt prefix =
-      wrap (fun () -> list_of_prefix prefix) in
+    let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
-    if path <> [] then fail BadPrefix
+    if path <> [] then raise BadPrefix
     else
       let open JSONRPC in
       let req = parse body in
@@ -530,5 +520,5 @@ let router conf prefix =
         | "get-tables" -> get_tables conf req.params
         | "get-columns" -> get_columns conf req.params
         | "get-timeseries" -> get_timeseries conf req.params
-        | "set-alerts" -> set_alerts conf req.params
-        | m -> fail_with (Printf.sprintf "unknown method %S" m))
+        | "set-alerts" -> set_alerts conf req.params ; ""
+        | m -> failwith (Printf.sprintf "unknown method %S" m))

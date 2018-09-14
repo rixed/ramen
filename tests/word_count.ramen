@@ -11,7 +11,7 @@ DEFINE splitter AS
 DEFINE counter1 AS
   FROM splitter WHERE word <> ""
   SELECT sum 1 AS count, lower(word) AS word
-  GROUP BY word
+  GROUP BY lower(word)
   COMMIT AND KEEP ALL AFTER true;
 
 -- Method 2: send all counts only when the word "END" is seen
@@ -19,5 +19,5 @@ DEFINE counter1 AS
 DEFINE counter2 AS
   FROM splitter WHERE word <> ""
   SELECT sum 1 AS count, lower(word) AS word
-  GROUP BY word
+  GROUP BY lower(word)
   COMMIT AFTER in.word = "END";

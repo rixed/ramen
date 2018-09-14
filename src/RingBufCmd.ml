@@ -117,19 +117,19 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
               fr, false in
             ringbuf, fr, next_seqs, is_err
       in
-      let%lwt out_ref, spec, is_err2 =
+      let out_ref, spec, is_err2 =
         match p with
         | NotRunning (pn, fn) ->
-            Lwt.return ("", red "NOT RUNNING", true)
+            "", red "NOT RUNNING", true
         | ProgramError (pn, e) ->
-            Lwt.return ("", red e, true)
+            "", red e, true
         | Running p ->
             let out_ref = C.out_ringbuf_names_ref conf p in
-            let%lwt outs = RamenOutRef.read out_ref in
+            let outs = RamenOutRef.read out_ref in
             let spec, is_err =
               if Hashtbl.mem outs ringbuf then ringbuf, false
               else red "MISSING", true in
-            Lwt.return (out_ref, spec, is_err)
+            out_ref, spec, is_err
       in
       let is_err = is_err1 || is_err2 in
       let ap s = if no_abbrev then s else abbrev_path s in
@@ -137,56 +137,52 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
       let ap s = if no_abbrev then s else
                    abbrev_path ~known_prefix:conf.persist_dir s in
       let out_ref = ap out_ref and ringbuf = ap ringbuf in
-      if not show_all && not is_err then Lwt.return_none else
+      if not show_all && not is_err then None else
         Some TermTable.[|
           ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
           ValStr ringbuf ; ValStr fill_ratio ;
-          ValStr next_seqs |] |> Lwt.return
-    else
-      Lwt.return_none
+          ValStr next_seqs |]
+    else None
   in
   (* We first collect all links supposed to exist according to
    * parent/children relationships: *)
   let links =
-    Lwt_main.run (
-      C.with_rlock conf (fun programs ->
-        (* Get rid of Lwt in AdvLock and RamenOutRef! *)
-        Hashtbl.enum programs |> List.of_enum |>
-        Lwt_list.fold_left_s (fun links (program_name, (mre, get_rc)) ->
-          if mre.C.killed then Lwt.return_nil else
-          match get_rc () with
-          | exception _ ->
-              Lwt.return_nil (* Errors have been logged already *)
-          | prog ->
-              Lwt_list.fold_left_s (fun links func ->
-                let%lwt _, links =
-                  Lwt_list.fold_left_s (fun (i, links)
-                                            (par_rel_prog, par_func) ->
-                    (* i is the index in the list of parents for a given
-                     * child *)
-                    let par_prog =
-                      F.program_of_parent_prog func.F.program_name
-                                               par_rel_prog in
-                    let parent =
-                      match Hashtbl.find programs par_prog with
-                      | exception Not_found ->
-                          NotRunning (par_prog, par_func)
-                      | _mre, get_rc ->
-                        (match get_rc () with
-                        | exception e ->
-                            ProgramError (par_prog, Printexc.to_string e)
-                        | pprog ->
-                            (match List.find (fun f ->
-                                     f.F.name = par_func
-                                   ) pprog.P.funcs with
-                            | exception Not_found ->
-                                NotRunning (par_prog, par_func)
-                            | pfunc -> Running pfunc)) in
-                    match%lwt line_of_link i parent (Running func) with
-                    | Some line -> Lwt.return (i + 1, line :: links)
-                    | None -> Lwt.return (i + 1, links)
-                  ) (0, links) func.parents in
-                Lwt.return links
-              ) links prog.P.funcs
-        ) [])) in
+    C.with_rlock conf (fun programs ->
+      Hashtbl.fold (fun program_name (mre, get_rc) links ->
+        if mre.C.killed then links else
+        match get_rc () with
+        | exception _ ->
+            links (* Errors have been logged already *)
+        | prog ->
+            List.fold_left (fun links func ->
+              let _, links =
+                List.fold_left (fun (i, links)
+                                    (par_rel_prog, par_func) ->
+                  (* i is the index in the list of parents for a given
+                   * child *)
+                  let par_prog =
+                    F.program_of_parent_prog func.F.program_name
+                                             par_rel_prog in
+                  let parent =
+                    match Hashtbl.find programs par_prog with
+                    | exception Not_found ->
+                        NotRunning (par_prog, par_func)
+                    | _mre, get_rc ->
+                      (match get_rc () with
+                      | exception e ->
+                          ProgramError (par_prog, Printexc.to_string e)
+                      | pprog ->
+                          (match List.find (fun f ->
+                                   f.F.name = par_func
+                                 ) pprog.P.funcs with
+                          | exception Not_found ->
+                              NotRunning (par_prog, par_func)
+                          | pfunc -> Running pfunc)) in
+                  match line_of_link i parent (Running func) with
+                  | Some line -> i + 1, line :: links
+                  | None -> i + 1, links
+                ) (0, links) func.parents in
+              links
+            ) links prog.P.funcs
+      ) programs []) in
   TermTable.print_table ~pretty ~sort_col ~with_header ?top head links

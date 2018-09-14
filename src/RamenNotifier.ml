@@ -14,7 +14,6 @@
  *)
 open Batteries
 open Stdint
-open Lwt
 open RamenLog
 open RamenHelpers
 open RamenNullable
@@ -65,70 +64,30 @@ let stats_notifs_cancelled =
       RamenConsts.Metric.Names.notifs_cancelled
       "Number of notifications not send, per reason")
 
-type http_cmd_method = HttpCmdGet | HttpCmdPost
-  [@@ppp PPP_OCaml]
-
-let http_send conf method_ url headers body worker =
-  let open Cohttp in
-  let open Cohttp_lwt_unix in
-  let open RamenOperation in
-  IntCounter.inc ~labels:["via", "http"] (stats_count conf.C.persist_dir) ;
-  let headers =
-    List.fold_left (fun h (n, v) ->
-      Header.add h n v
-    ) (Header.init_with "Connection" "close") headers in
-  let url_ = Uri.of_string url in
-  let thd =
-    match method_ with
-    | HttpCmdGet ->
-      Client.get ~headers url_
-    | HttpCmdPost ->
-      let headers, body  =
-        if Header.mem headers "Content-Type" then
-          (* Assumes the caller took care of encoding *)
-          headers, body
-        else
-          Header.add headers "Content-Type"
-                             RamenConsts.ContentTypes.urlencoded,
-          Uri.pct_encode body
-      in
-      !logger.debug "Sending HTTP body = %s" body ;
-      let body = Cohttp_lwt.Body.of_string body in
-      Client.post ~headers ~body url_
-  in
-  let%lwt resp, body = thd in
-  let code = resp |> Response.status |> Code.code_of_status in
-  if code <> 200 then (
-    let%lwt body = Cohttp_lwt.Body.to_string body in
-    !logger.error "Received code %d from %S (%S)" code url body ;
-    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-    fail_with ("Bad response code: "^ string_of_int code)
-  ) else
-    Cohttp_lwt.Body.drain_body body
+let max_exec = AtomicCounter.make 5 (* no more than 5 simultaneous execs *)
 
 let execute_cmd conf cmd worker =
   IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
-  match%lwt run ~timeout:5. [| "/bin/sh"; "-c"; cmd |] with
-  | exception e ->
-      !logger.error "While executing command %S from %s: %s"
-        cmd worker
-        (Printexc.to_string e) ;
-      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-      return_unit
-  | stdout, stderr ->
-      if stdout <> "" then !logger.debug "cmd: %s" stdout ;
-      if stderr <> "" then !logger.error "cmd: %s" stderr ;
-      return_unit
+  let cmd_name = "notifier exec" in
+  match run_coprocess ~max_count:max_exec cmd_name cmd with
+  | None ->
+      !logger.error "Cannot execute %S" cmd ;
+      IntCounter.inc (stats_send_fails conf.C.persist_dir)
+  | Some (Unix.WEXITED 0) -> ()
+  | Some status ->
+      !logger.error "Cannot execute %S: %s"
+        cmd (string_of_process_status status) ;
+      IntCounter.inc (stats_send_fails conf.C.persist_dir)
 
 let log_str conf str worker =
   IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
   let level = `LOG_ALERT in
   match syslog with
   | None ->
-    IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-    fail_with "No syslog on this host"
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      failwith "No syslog on this host"
   | Some slog ->
-    Lwt.wrap (fun () -> Syslog.syslog slog level str)
+      Syslog.syslog slog level str
 
 let sqllite_insert conf file insert_q create_q worker =
   IntCounter.inc ~labels:["via", "sqlite"] (stats_count conf.C.persist_dir) ;
@@ -160,13 +119,6 @@ let sqllite_insert conf file insert_q create_q worker =
  * severity one of two contact is chosen. *)
 module Contact = struct
   type t =
-    | ViaHttp of
-        { method_ : http_cmd_method
-            [@ppp_rename "method"] [@ppp_default HttpCmdGet] ;
-          url : string ;
-          headers : (string * string) list
-            [@ppp_default []] ;
-          body : string [@ppp_default ""] }
     | ViaExec of string
     | ViaSysLog of string
     | ViaSqlite of
@@ -484,21 +436,13 @@ let contact_via conf item =
   let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
   let open Contact in
   match item.contact with
-  | ViaHttp http ->
-      http_send conf
-                http.method_
-                (exp ~q:Uri.pct_encode http.url)
-                (List.map (fun (n, v) -> exp n, exp v) http.headers)
-                (exp http.body)
-                item.notif.worker
   | ViaExec cmd ->
       execute_cmd conf (exp ~q:shell_quote cmd) item.notif.worker
   | ViaSysLog str ->
       log_str conf (exp str) item.notif.worker
   | ViaSqlite { file ; insert ; create } ->
-      Lwt.wrap (fun () ->
-        let ins = exp ~q:sql_quote ~n:"NULL" insert in
-        sqllite_insert conf (exp file) ins create item.notif.worker)
+      let ins = exp ~q:sql_quote ~n:"NULL" insert in
+      sqllite_insert conf (exp file) ins create item.notif.worker
 
 (* Returns the timeout, or fail *)
 let do_notify conf pending now =
@@ -510,16 +454,14 @@ let do_notify conf pending now =
   ) else (
     let timeout = 5. (* TODO *) in
     i.attempts <- i.attempts + 1 ;
-    async (fun () ->
-      match%lwt contact_via conf i with
-      | exception e ->
-          !logger.error "Cannot notify: %s" (Printexc.to_string e) ;
-          return_unit (* let it timeout *)
-      | () ->
-          if timeout > 0. then
-            let now = Unix.gettimeofday () in
-            Lwt.wrap (fun () -> ack i.notif.notif_name i.contact now)
-          else return_unit) ;
+    (match contact_via conf i with
+    | exception e ->
+        !logger.error "Cannot notify: %s" (Printexc.to_string e)
+        (* let it timeout *)
+    | () ->
+        if timeout > 0. then
+          let now = Unix.gettimeofday () in
+          ack i.notif.notif_name i.contact now) ;
     timeout
   )
 
@@ -635,9 +577,12 @@ let send_next conf max_fpr now =
 
 (* Avoid creating several instances of watchdogs even when thread crashes
  * and is restarted: *)
-let watchdog = RamenWatchdog.make "notifier" RamenProcesses.quit
+let watchdog = ref None
 
 let send_notifications conf max_fpr conf =
+  if !watchdog = None then
+    watchdog := Some (RamenWatchdog.make "notifier" RamenProcesses.quit) ;
+  let watchdog = Option.get !watchdog in
   let rec loop () =
     let now = Unix.gettimeofday () in
     while send_next conf max_fpr now do () done ;
@@ -645,8 +590,9 @@ let send_notifications conf max_fpr conf =
       save_pendings conf ;
       pendings.dirty <- false) ;
     RamenWatchdog.reset watchdog ;
-    Lwt_unix.sleep 1. >>= loop in
-  RamenWatchdog.run watchdog ;
+    Unix.sleep 1 ;
+    loop () in
+  RamenWatchdog.enable watchdog ;
   loop ()
 
 let check_conf_is_valid notif_conf =
@@ -657,15 +603,15 @@ let ensure_conf_file_exists notif_conf_file =
   (* Default content in case the configuration file is absent: *)
   let default_conf =
     let send_to_prometheus =
-      Contact.ViaHttp {
-        method_ = HttpCmdPost ;
-        url = "http://localhost:9093/api/v1/alerts" ;
-        headers = [ "Content-Type", "application/json" ] ;
-        body =
-          "[{\"labels\":{\
+      Contact.ViaExec "\
+        curl \
+          -X POST \
+          -H 'Content-Type: application/json' \
+          --data-raw '[{\"labels\":{\
                \"alertname\":\"${name}\",\
                \"summary\":\"${text}\",\
-               \"severity\":\"critical\"}}]" } in
+               \"severity\":\"critical\"}}]' \
+          'http://localhost:9093/api/v1/alerts'" in
     { teams =
         Team.[
           { name = "" ;
@@ -690,11 +636,10 @@ let start conf notif_conf_file rb max_fpr =
   restore_pendings conf ;
   (* Better check if we can draw a new alert_id before we need it: *)
   let _alert_id = next_alert_id conf () in
-  async (fun () ->
+  Thread.create (
     restart_on_failure "send_notifications"
-      (send_notifications conf max_fpr) conf) ;
-  let while_ () =
-    if !RamenProcesses.quit <> None then return_false else return_true in
+      (send_notifications conf max_fpr)) conf |> ignore ;
+  let while_ () = !RamenProcesses.quit = None in
   RamenSerialization.read_notifs ~while_ rb
     (fun (worker, sent_time, event_time, notif_name,
           firing, certainty, parameters) ->
@@ -725,5 +670,4 @@ let start conf notif_conf_file rb max_fpr =
       | Some false ->
           extinguish_pending !notif_conf notif.notif_name notif.event_time now
     in
-    List.iter action team.Team.contacts ;
-    return_unit)
+    List.iter action team.Team.contacts)

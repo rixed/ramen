@@ -9,7 +9,6 @@
  *)
 
 open Batteries
-open Lwt
 open RamenHelpers
 open RamenLog
 module C = RamenConf
@@ -36,7 +35,8 @@ let entry_point_name = "start"
 let init use_external_compiler bundle_dir max_simult_compils smt_solver =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
-  RamenOCamlCompiler.max_simult_compilations := max_simult_compils ;
+  AtomicCounter.set RamenOCamlCompiler.max_simult_compilations
+                    max_simult_compils ;
   RamenSmtTyping.smt_solver := smt_solver
 
 (* Given a program name, retrieve its binary, either form the disk or
@@ -297,27 +297,25 @@ let compile conf root_path get_parent ?exec_file
       let basename = RamenOCamlCompiler.to_module_name basename in
       dirname ^(if dirname <> "" then "/" else "")^ basename
     in
-    let obj_files = Lwt_main.run (
-      Hashtbl.values compiler_funcs |> List.of_enum |>
-      Lwt_list.map_p (fun (func, op) ->
+    let obj_files =
+      Hashtbl.fold (fun _ (func, op) lst ->
         let obj_name =
           root_path ^"/"^ path_of_module program_name ^
           "_"^ func.F.signature ^
           "_"^ RamenVersions.codegen ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
-        Lwt.catch (fun () ->
-          let in_typ = func.F.in_type
-          and out_typ = func.F.out_type in
+        (try
           CodeGen_OCaml.compile
             conf entry_point_name func.F.name obj_name
-            in_typ out_typ parsed_params op)
-          (fun e ->
-            !logger.error "Cannot generate code for %s: %s"
-              (RamenName.string_of_func func.name)
-              (Printexc.to_string e) ;
-            fail e) ;%lwt
+            func.F.in_type func.F.out_type parsed_params op
+        with e ->
+          !logger.error "Cannot generate code for %s: %s"
+            (RamenName.string_of_func func.name)
+            (Printexc.to_string e) ;
+          raise e) ;
         add_temp_file obj_name ;
-        return obj_name)) in
+        obj_name :: lst
+      ) compiler_funcs [] in
     (* It might happen that we have compiled twice the same thing, if two
      * operations where identical. We must not ask the linker to include
      * the same module twice, though: *)
@@ -380,6 +378,5 @@ let compile conf root_path get_parent ?exec_file
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.
      *)
-    Lwt_main.run (
-      RamenOCamlCompiler.link conf program_name obj_files src_file exec_file)
+    RamenOCamlCompiler.link conf program_name obj_files src_file exec_file
   ) () (* and finally, delete temp files! *)

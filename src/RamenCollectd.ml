@@ -12,7 +12,6 @@
  * metric name we already have.  Only then do we output a tuple. *)
 open Batteries
 open RamenLog
-open Lwt
 open RamenHelpers
 open RamenTypes
 open RamenTuple
@@ -54,13 +53,12 @@ let collector ~inet_addr ~port ?while_ k =
   let serve sender buffer recv_len =
     !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
     decode buffer recv_len |>
-    Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) return_unit
+    Array.iter k
   in
   (* collectd current network.c buffer is 1452 bytes: *)
   udp_server ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =
   logger := make_logger Normal ;
-  let display_tuple _t =
-    return_unit in
-  Lwt_main.run (collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)
+  let display_tuple _t = () in
+  collector ~inet_addr:Unix.inet_addr_any ~port display_tuple

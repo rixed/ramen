@@ -110,8 +110,7 @@ let run conf params replace ?as_ bin_file debug =
           failwith) ;
     (* TODO: Make sure this key is authoritative on a program name: *)
     Hashtbl.replace programs program_name
-      C.{ bin ; params ; killed = false ; debug } ;
-    Lwt.return_unit)
+      C.{ bin ; params ; killed = false ; debug })
 
 (*
  * Stopping a worker from running.
@@ -163,4 +162,4 @@ let kill conf ?(purge=false) program_names =
         let mre = Hashtbl.find programs n in
         mre.C.killed <- true
       ) killed_prog_names ;
-    Lwt.return (List.length killed_prog_names))
+    List.length killed_prog_names)

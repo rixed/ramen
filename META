@@ -2,10 +2,10 @@ description = "Event processor tailored for small-scale monitoring"
 version = "3.0.8"
 archive(native) = "codegen.cmxa"
 # parsercombinator is used by string to IP conversion :(
-requires = "lwt.unix lwt_ppx batteries stdint parsercombinator threads
-            findlib inotify.lwt binocle lacaml ppp ppp.unix syslog"
+requires = "batteries stdint parsercombinator threads
+            findlib inotify binocle lacaml ppp ppp.unix syslog"
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
-#   cohttp-lwt-unix compiler-libs compiler-libs.common
+#   compiler-libs compiler-libs.common
 #   compiler-libs.bytecomp compiler-libs.optcomp

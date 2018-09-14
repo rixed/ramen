@@ -27,8 +27,7 @@ exception Timeout
 let retry
     ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
     ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.5) ?delay_rec
-    ?max_retry ?max_retry_time ?(while_ = fun () -> Lwt.return_true) f =
-  let open Lwt in
+    ?max_retry ?max_retry_time ?(while_ = fun () -> true) f =
   let next_delay = ref first_delay in
   let started = Unix.gettimeofday () in
   let can_wait_longer () =
@@ -36,12 +35,12 @@ let retry
     | None -> true
     | Some d -> Unix.gettimeofday () -. started < d in
   let rec loop num_try x =
-    let%lwt keep_going = while_ () in
-    if not keep_going then fail Exit
-    else if not (can_wait_longer ()) then fail Timeout
-    else match%lwt f x with
+    let keep_going = while_ () in
+    if not keep_going then raise Exit
+    else if not (can_wait_longer ()) then raise Timeout
+    else match f x with
       | exception e ->
-        let%lwt retry_on_this = on e in
+        let retry_on_this = on e in
         let should_retry =
           Option.map_default (fun max -> num_try < max) true max_retry &&
           retry_on_this in
@@ -51,16 +50,15 @@ let retry
           let delay = max delay min_delay in
           next_delay := !next_delay *. delay_adjust_nok ;
           Option.may (fun f -> f delay) delay_rec ;
-          let%lwt () = Lwt_unix.sleep delay in
+          Unix.sleepf delay ;
           (loop [@tailcall]) (num_try + 1) x
         ) else (
           !logger.debug "Non-retryable error: %s after %d attempt%s"
             (Printexc.to_string e) num_try (if num_try > 1 then "s" else "") ;
-          fail e
-        )
+          raise e)
       | r ->
         next_delay := !next_delay *. delay_adjust_ok ;
-        return r
+        r
   in
   loop 1
 
@@ -445,54 +443,6 @@ let with_stdout_from_command cmd args k =
           Legacy.input_line)
  *)
 
-(* Low level stuff: run jobs and return lines: *)
-let run ?timeout ?(to_stdin="") cmd =
-  let open Lwt in
-  let string_of_array a =
-    Array.fold_left (fun s v ->
-        s ^ (if String.length s > 0 then " " else "") ^ v
-      ) "" a in
-  if Array.length cmd < 1 then invalid_arg "cmd" ;
-  !logger.debug "Running command %s" (string_of_array cmd) ;
-  Lwt_process.with_process_full ?timeout (cmd.(0), cmd) (fun process ->
-    (* What we write to stdin: *)
-    let write_stdin =
-      let%lwt () =
-        try%lwt Lwt_io.write process#stdin to_stdin
-        with (Unix.Unix_error (Unix.EPIPE, _, _)) -> return_unit in
-      Lwt_io.close process#stdin in
-    (* We need to read both stdout and stderr simultaneously or risk
-     * interlocking: *)
-    let stdout = ref [] and stderr = ref [] in
-    let read_lines c k =
-      try%lwt
-        Lwt_io.read_lines c |>
-        Lwt_stream.iter k
-      with exn ->
-        !logger.error "Error while running %s: %s"
-          (string_of_array cmd) (Printexc.to_string exn) ;
-        return_unit in
-    let read_stdout = read_lines process#stdout (fun l ->
-      stdout := l :: !stdout)
-    and read_stderr = read_lines process#stderr (fun l ->
-      stderr := l :: !stderr) in
-    let%lwt () =
-      join [ write_stdin ; read_stdout ; read_stderr ] in
-    match%lwt process#status with
-    | Unix.WEXITED 0 ->
-      let to_str lst =
-        String.concat "\n" (List.rev lst) in
-      return (to_str !stdout, to_str !stderr)
-    | x ->
-      !logger.error "Command '%s' %s"
-        (string_of_array cmd)
-        (string_of_process_status x) ;
-      fail (RunFailure x))
-(*$= run & ~printer:(fun (out,err) -> Printf.sprintf "out=%s, err=%s" out err)
-  ("glop", "")     (Lwt_main.run (run [|"/bin/sh";"-c";"echo glop"|]))
-  ("", "pas glop") (Lwt_main.run (run [|"/bin/sh";"-c";"echo pas glop 1>&2"|]))
- *)
-
 let quote_at_start s =
   String.length s > 0 && s.[0] = '"'
 
@@ -530,15 +480,6 @@ let strings_of_csv separator line =
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
 
-let lwt_read_whole_file fname =
-  let open Lwt_io in
-  let%lwt len = file_length fname in
-  let len = Int64.to_int len in
-  with_file ~mode:Input fname (fun ic ->
-    let buf = Bytes.create len in
-    let%lwt () = read_into_exactly ic buf 0 len in
-    Lwt.return (Bytes.to_string buf))
-
 let read_whole_file fname =
   File.with_file_in ~mode:[`text] fname IO.read_all
 
@@ -558,10 +499,6 @@ let read_whole_channel ic =
 let touch_file fname to_when =
   !logger.debug "Touching %s" fname ;
   Unix.utimes fname to_when to_when
-
-let lwt_touch_file fname to_when =
-  !logger.debug "Touching %s" fname ;
-  Lwt_unix.utimes fname to_when to_when
 
 let file_print oc fname =
   let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
@@ -711,48 +648,113 @@ let random_string =
     Bytes.init len random_char |>
     Bytes.to_string
 
+module Atomic = struct
+  type 'a t = { mutex : Mutex.t ; x : 'a }
+  let make x =
+    { mutex = Mutex.create () ; x }
+  let with_lock t f =
+    Mutex.lock t.mutex ;
+    finally
+      (fun () -> Mutex.unlock t.mutex)
+      f t.x
+end
+
+module AtomicCounter = struct
+  type t = int Atomic.t
+  let make x = Atomic.make (ref x)
+  let get t = Atomic.with_lock t (!)
+  let set t x = Atomic.with_lock t (fun r -> r := x)
+  let incr t = Atomic.with_lock t incr
+  let decr t = Atomic.with_lock t decr
+end
+
 let max_simult ~max_count =
-  let open Lwt in
   fun f ->
     let rec wait () =
-      if !max_count <= 0 then
-        Lwt_unix.sleep 0.3 >>= wait
-      else (
-        decr max_count ;
-        finalize f (fun () ->
-          incr max_count ; return_unit)) in
+      if AtomicCounter.get max_count <= 0 then (
+        Unix.sleepf 0.3 ;
+        wait ()
+      ) else (
+        AtomicCounter.decr max_count ;
+        finally (fun () -> AtomicCounter.decr max_count)
+          f ()) in
     wait ()
 
-let max_coprocesses = ref max_int
+let read_lines fd =
+  let open Legacy.Unix in
+  let last_chunk = ref Bytes.empty in
+  let buf = Buffer.create 1000 in
+  let eof = ref false in
+  (* Tells if we also had a newline after buf: *)
+  let flush ends_with_nl =
+    if Buffer.length buf = 0 && not ends_with_nl then
+      raise Enum.No_more_elements ;
+    let s = Buffer.contents buf in
+    Buffer.clear buf ;
+    s
+  in
+  Enum.from (fun () ->
+    let rec loop () =
+      if !eof then raise Enum.No_more_elements ;
+      let chunk =
+        if Bytes.length !last_chunk > 0 then (
+          (* If we have some bytes left from previous run, use that: *)
+          !last_chunk
+        ) else (
+          (* Get new bytes: *)
+          let chunk = Bytes.create 1000 in
+          let r = read fd chunk 0 (Bytes.length chunk) in
+          Bytes.sub chunk 0 r
+        ) in
+      if Bytes.length chunk = 0 then (
+        eof := true ;
+        flush false
+      ) else match Bytes.index chunk '\n' with
+        | exception Not_found ->
+            Buffer.add_bytes buf chunk ;
+            last_chunk := Bytes.empty ;
+            loop ()
+        | l ->
+            Buffer.add_bytes buf (Bytes.sub chunk 0 l) ;
+            last_chunk :=
+              (let l = l+1 in
+              Bytes.sub chunk l (Bytes.length chunk - l)) ;
+            flush true in
+    loop ())
 
-(* Run given command using Lwt, logging its output in our log-file *)
-let run_coprocess ?(max_count=max_coprocesses)
-                  ?timeout ?(to_stdin="") cmd_name cmd =
-  let prog, cmdline = cmd in
-  !logger.debug "Executing: %s, %a" prog
-    (Array.print String.print) cmdline ;
+(* Run given command, logging its output in our log-file *)
+let run_coprocess ~max_count
+                  ?(to_stdin="") cmd_name cmd =
+  !logger.debug "Executing: %s" cmd ;
   max_simult ~max_count (fun () ->
-    let open Lwt in
-    Lwt_process.with_process_full ?timeout cmd (fun process ->
-      let write_stdin =
-        let%lwt () =
-          try%lwt Lwt_io.write process#stdin to_stdin
-          with Unix.Unix_error (Unix.EPIPE, _, _) -> return_unit in
-        Lwt_io.close process#stdin
-      and read_lines c =
-        try%lwt
-          Lwt_io.read_lines c |>
-          Lwt_stream.iter (fun line ->
-            !logger.info "%s: %s" cmd_name line)
-        with exn ->
-          let msg = Printexc.to_string exn in
-          !logger.error "%s: Cannot read output: %s" cmd_name msg ;
-          return_unit in
-      let%lwt () =
-        join [ write_stdin ;
-               read_lines process#stdout ;
-               read_lines process#stderr ] in
-      process#status))
+    let open Legacy.Unix in
+    let (pstdout, pstdin, pstderr as chans) = open_process_full cmd [||] in
+    let pstdout = descr_of_in_channel pstdout
+    and pstdin = descr_of_out_channel pstdin
+    and pstderr = descr_of_in_channel pstderr in
+    let status = ref None in
+    let write_stdin () =
+      try
+        let len = String.length to_stdin in
+        let w = write_substring pstdin to_stdin 0 len in
+        if w < len then
+          !logger.error "Can only write %d/%d bytes" w len
+      with Unix_error (EPIPE, _, _) -> ()
+    and read_out c =
+      try
+        read_lines c |>
+        Enum.iter (fun line ->
+          !logger.info "%s: %s" cmd_name line)
+      with exn ->
+        let msg = Printexc.to_string exn in
+        !logger.error "%s: Cannot read output: %s" cmd_name msg
+    in
+    finally (fun () -> status := Some (close_process_full chans))
+      (List.iter Thread.join)
+        [ Thread.create write_stdin () ;
+          Thread.create read_out pstdout ;
+          Thread.create read_out pstderr ] ;
+    !status)
 
 let string_of_time ts =
   let open Unix in
@@ -777,31 +779,29 @@ let string_remove c s =
 
 let udp_server ?(buffer_size=2000) ~inet_addr ~port
                ?(while_ = fun () -> true) k =
-  let open Lwt in
-  let open Lwt_unix in
-  (* FIXME: it seems that binding that socket makes cohttp leack descriptors
+  let open Unix in
+  (* FIXME: it seems that binding that socket makes cohttp leak descriptors
    * when sending reports to ramen. Oh boy! *)
   let sock_of_domain domain =
     let sock = socket domain SOCK_DGRAM 0 in
-    let%lwt () = bind sock (ADDR_INET (inet_addr, port)) in
-    return sock in
-  let%lwt sock =
-    try%lwt sock_of_domain PF_INET6
+    bind sock (ADDR_INET (inet_addr, port)) ;
+    sock in
+  let sock =
+    try sock_of_domain PF_INET6
     with _ -> sock_of_domain PF_INET in
   !logger.debug "Listening for datagrams on port %d" port ;
   let buffer = Bytes.create buffer_size in
   let rec forever () =
     if while_ () then
-      let%lwt recv_len, sockaddr =
+      let recv_len, sockaddr =
         recvfrom sock buffer 0 (Bytes.length buffer) [] in
       let sender =
         match sockaddr with
         | ADDR_INET (addr, port) ->
           Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
         | _ -> "??" in
-      let%lwt () = k sender buffer recv_len in
+      k sender buffer recv_len ;
       (forever [@tailcall]) ()
-    else return_unit
   in
   forever ()
 
@@ -813,12 +813,13 @@ let hex_of =
     else Char.chr (ten + n)
 
 let rec restart_on_failure ?(while_ = fun () -> true) what f x =
-  try%lwt if while_ () then f x else Lwt.return_unit
-  with e -> (
+  try f x
+  with e ->
     print_exception e ;
-    !logger.error "Will restart %s..." what ;
-    let%lwt () = Lwt_unix.sleep (0.5 +. Random.float 0.5) in
-    (restart_on_failure [@tailcall]) what f x)
+    if while_ () then (
+      !logger.error "Will restart %s..." what ;
+      Unix.sleepf (0.5 +. Random.float 0.5) ;
+      (restart_on_failure [@tailcall]) what f x)
 
 let md5 str = Digest.(string str |> to_hex)
 
@@ -848,30 +849,6 @@ let packed_string_of_int n =
   "abc" (packed_string_of_int 0x636261)
   "" (packed_string_of_int 0)
  *)
-
-let hash_iter_s h f =
-  Hashtbl.fold (fun k v thd ->
-    let%lwt () = f k v in thd
-  ) h Lwt.return_unit
-
-let hash_map_s h f =
-  let res = Hashtbl.create (Hashtbl.length h) in
-  let%lwt () =
-    hash_iter_s h (fun k v ->
-      let%lwt v' = f k v in
-      Hashtbl.add res k v' ;
-      Lwt.return_unit) in
-  Lwt.return res
-
-let hash_fold_s h f i =
-  Hashtbl.fold (fun k v thd ->
-    let%lwt prev = thd in
-    f k v prev
-  ) h (Lwt.return i)
-
-let hash_iter_p h f =
-  Hashtbl.enum h |> List.of_enum |>
-  Lwt_list.iter_p (fun (k, v) -> f k v)
 
 let age t = Unix.gettimeofday () -. t
 
@@ -1330,3 +1307,33 @@ let pretty_array_print p oc =
 let is_failing f x =
   try ignore (f x) ; false
   with _ -> true
+
+(* This is a version of [Unix.establish_server] that does not waitpid its
+ * children (since we have a global waitpid running on a separate thread
+ * already). The other difference is that we pass the file descriptor
+ * instead of buffered channels. Also, we want a way to stop the server: *)
+let forking_server while_ sockaddr server_fun =
+  let open Legacy.Unix in
+  let rec accept_non_intr fd =
+    try accept ~cloexec:true fd
+    with Unix_error (EINTR, _, _) ->
+      if while_ () then (accept_non_intr [@tailcall]) fd
+      else raise Exit in
+  let sock =
+    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
+  finally (fun () -> close sock)
+    (fun () ->
+      setsockopt sock SO_REUSEADDR true ;
+      bind sock sockaddr ;
+      listen sock 5 ;
+      try
+        while while_ () do
+          let s, _caller = accept_non_intr sock in
+          match fork () with
+             0 ->
+                close sock ;
+                server_fun s ;
+                exit 0
+          | id -> close s
+        done
+      with Exit -> ()) ()

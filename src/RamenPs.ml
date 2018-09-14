@@ -12,23 +12,22 @@ let no_stats =
   None, None, None, 0.
 
 let read_stats conf =
-  let open Lwt in
   let h = Hashtbl.create 57 in
   let open RamenTypes in
   let bname = C.report_ringbuf conf in
   let typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
   let now = Unix.gettimeofday () in
-  let%lwt until =
-    match%lwt RamenSerialization.time_range bname typ [] event_time with
+  let until =
+    match RamenSerialization.time_range bname typ [] event_time with
     | None ->
         !logger.warning "No time range information for instrumentation" ;
-        return now
+        now
     | Some (_, ma) ->
         if ma < now -. 120. then
           !logger.warning "Instrumentation info is %ds old"
             (int_of_float (now -. ma)) ;
-        return ma in
+        ma in
   (* FIXME: Not OK because we don't know if report-period has been
    * overridden on `ramen supervisor` command line. Maybe at least make
    * `ramen ps` accept that option too? *)
@@ -40,7 +39,7 @@ let read_stats conf =
   and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"]
   in
   let while_ () = (* Do not wait more than 1s: *)
-    return (Unix.gettimeofday () -. now < 1.) in
+    Unix.gettimeofday () -. now < 1. in
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until ()  (fun () tuple t1 t2 ->
     let worker = get_string tuple.(0) in
@@ -70,10 +69,9 @@ let read_stats conf =
       | None -> Some (time, stats)
       | Some (time', stats') as prev ->
           if time' > time then prev else Some (time, stats)
-    ) h) ;%lwt
+    ) h) ;
   (* Clean out time: *)
-  Hashtbl.map (fun _ (_time, stats) -> stats) h |>
-  return
+  Hashtbl.map (fun _ (_time, stats) -> stats) h
 
 let add_stats
       (min_etime', max_etime', in_count', selected_count', out_count',

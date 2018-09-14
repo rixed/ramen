@@ -1,82 +1,73 @@
-(* Tools for LWT IOs *)
-open Lwt
 open RamenLog
 open Stdint
 open Batteries
+open Legacy.Unix
+open RamenHelpers
 
-let now = ref (Unix.gettimeofday ())
+let now = ref (gettimeofday ())
 
 let on_each_input_pre () =
-  now := Unix.gettimeofday ()
+  now := gettimeofday ()
 
 let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
                     filename preprocessor watchdog k =
   let open_file =
     if preprocessor = "" then (
-      fun () ->
-        let%lwt fd = Lwt_unix.(openfile filename [ O_RDONLY ] 0x644) in
-        return Lwt_io.(of_fd ~mode:Input fd)
+      fun () -> openfile filename [ O_RDONLY ] 0o644
     ) else (
       fun () ->
         let f = RamenHelpers.shell_quote filename in
-        let s =
+        let cmd =
           if String.exists preprocessor "%s" then
             String.nreplace preprocessor "%s" f
           else
             preprocessor ^" "^ f
         in
-        let cmd = Lwt_process.shell s in
-        return (Lwt_process.open_process_in cmd)#stdout
+        open_process_in cmd |>
+        descr_of_in_channel
     ) in
-  match%lwt open_file () with
+  match open_file () with
   | exception e ->
     !logger.error "Cannot open file %S%s: %s, skipping."
       filename
       (if preprocessor = "" then ""
        else (Printf.sprintf " through %S" preprocessor))
-      (Printexc.to_string e) ;
-    return_unit
-  | chan ->
+      (Printexc.to_string e)
+  | fd ->
     !logger.debug "Start reading %S" filename ;
-    let%lwt () =
-      (* If we used a preprocessor we must wait for EOF before
-       * unlinking the file. And in case we crash before the end
-       * of the file it is safer to skip the file rather than redo
-       * the lines that have been read already. *)
-      if do_unlink && preprocessor = "" then
-        Lwt_unix.unlink filename else return_unit in
-    let rec read_next_line () =
-      let on_eof () =
+    finally (fun () -> close fd)
+      (fun () ->
+        (* If we used a preprocessor we must wait for EOF before
+         * unlinking the file. And in case we crash before the end
+         * of the file it is safer to skip the file rather than redo
+         * the lines that have been read already. *)
+        if do_unlink && preprocessor = "" then
+          unlink filename ;
+        RamenWatchdog.enable watchdog ;
+        let lines = read_lines fd in
+        (try
+          Enum.iter (fun line ->
+            if not (while_ ()) then raise Exit ;
+            on_each_input_pre () ;
+            k line ;
+            RamenWatchdog.reset watchdog
+          ) lines
+        with Exit -> ()) ;
         RamenWatchdog.disable watchdog ;
         !logger.debug "Finished reading %S" filename ;
-        Lwt_io.close chan ;%lwt
         if do_unlink && preprocessor <> "" then
-          Lwt_unix.unlink filename else return_unit in
-      if while_ () then (
-        match%lwt Lwt_io.read_line chan with
-        | exception End_of_file -> on_eof ()
-        | line ->
-          on_each_input_pre () ;
-          k line ;%lwt
-          RamenWatchdog.reset watchdog ;
-          read_next_line ()
-      ) else on_eof ()
-    in
-    RamenWatchdog.enable watchdog ;
-    read_next_line ()
+          unlink filename) ()
 
 let check_file_exists kind kind_name path =
   !logger.debug "Checking %S is a %s..." path kind_name ;
-  let open Lwt_unix in
-  match%lwt stat path with
-  | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
-    fail_with (path ^" does not exist")
+  match stat path with
+  | exception Unix_error (ENOENT, _, _) ->
+    failwith (path ^" does not exist")
   | stats ->
     if stats.st_kind <> kind then
-      fail_with (Printf.sprintf "Path %S is not a %s" path kind_name)
-    else return_unit
+      failwith (Printf.sprintf "Path %S is not a %s" path kind_name)
 
-let check_dir_exists = check_file_exists Lwt_unix.S_DIR "directory"
+let check_dir_exists = check_file_exists S_DIR "directory"
 
 (* Try hard not to create several instances of the same watchdog: *)
 let watchdog = ref None
@@ -86,27 +77,25 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
   if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make ~timeout:300. "read lines" quit_flag) ;
+    watchdog := Some (RamenWatchdog.make ~timeout:300. "read lines"
+                                         quit_flag) ;
   let watchdog = Option.get !watchdog in
-  RamenWatchdog.disable watchdog ;
-  RamenWatchdog.run watchdog ;
+  RamenWatchdog.enable watchdog ;
   let import_file_if_match filename =
     if Globs.matches glob filename then
-      try%lwt
+      try
         read_file_lines ?while_ ?do_unlink (dirname ^"/"^ filename)
                         preprocessor watchdog k
       with exn ->
         !logger.error "Exception while reading file %s: %s\n%s"
           filename
           (Printexc.to_string exn)
-          (Printexc.get_backtrace ()) ;
-        return_unit
+          (Printexc.get_backtrace ())
     else (
-      !logger.debug "File %S is not interesting." filename ;
-      return_unit
+      !logger.debug "File %S is not interesting." filename
     ) in
-  check_dir_exists dirname ;%lwt
-  let%lwt handler = RamenFileNotify.make ?while_ dirname in
+  check_dir_exists dirname ;
+  let handler = RamenFileNotify.make ?while_ dirname in
   !logger.debug "Import all files in dir %S..." dirname ;
   RamenFileNotify.for_each (fun filename ->
     !logger.debug "New file %S in dir %S!" filename dirname ;

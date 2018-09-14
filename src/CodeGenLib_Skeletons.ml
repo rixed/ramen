@@ -3,7 +3,6 @@
 open Batteries
 open Stdint
 open RamenLog
-open Lwt
 open RamenHelpers
 
 (* Health and Stats
@@ -132,11 +131,11 @@ let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple
     assert (offs <= sersize)
 
 let update_stats_rb period rb get_tuple =
-  while%lwt true do
+  while true do
     update_stats () ;
     let tuple = get_tuple () in
     send_stats rb tuple ;
-    Lwt_unix.sleep period
+    Unix.sleepf period
   done
 
 (* Helpers *)
@@ -178,7 +177,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
       FloatGauge.set stats_event_time tmin
     ) tmin_tmax ;
     (* Get fnames if they've changed: *)
-    let%lwt fnames = get_out_fnames () in
+    let fnames = get_out_fnames () in
     Option.may (fun out_specs ->
       if Hashtbl.is_empty out_specs then (
         if not (Hashtbl.is_empty out_h) then (
@@ -229,14 +228,13 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                * retrying to write to the same child. *)
               RingBufLib.retry_for_ringbuf
                 ~while_:(fun () ->
-                  if !quit <> None then return_false else
+                  !quit = None &&
                   (* Also check from time to time that we are still supposed to
                    * write in there (we check right after the first error to
                    * quickly detect it when a child disapear): *)
-                  if !CodeGenLib_IO.now > !last_retry +. 3. then (
+                  (!CodeGenLib_IO.now < !last_retry +. 3. || (
                     last_retry := !CodeGenLib_IO.now ;
-                    RamenOutRef.mem rb_ref_out_fname fname
-                  ) else return_true)
+                    RamenOutRef.mem rb_ref_out_fname fname)))
                 ~delay_rec:sleep_out (fun () ->
                   output rb tup_serializer tup_sizer tmin_tmax tuple) ()
             in
@@ -244,16 +242,15 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
-    Lwt_list.iter_p (fun out ->
-      try%lwt out tmin_tmax tuple
-      with RingBuf.NoMoreRoom ->
+    List.iter (fun out ->
+      try out tmin_tmax tuple
+      with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
-        return_unit
-         | Exit ->
+        | RingBuf.NoMoreRoom -> ()
         (* retry_for_ringbuf failing because the recipient is no more in
          * our out_ref: *)
-        return_unit
+        | Exit -> ()
     ) !out_l
 
 type worker_conf =
@@ -299,20 +296,12 @@ let worker_start worker_name get_binocle_tuple k =
     (* This log also useful to rotate the logfile. *)
     !logger.info "Received signal %s" (name_of_signal s) ;
     Binocle.display_console ())) ;
-  Lwt_unix.set_pool_size 1 ;
-  Lwt_main.run (
-    catch
-      (fun () ->
-        join [
-          (async (fun () ->
-             restart_on_failure "update_stats_rb"
-               (update_stats_rb report_period report_rb) get_binocle_tuple) ;
-           return_unit) ;
-          k conf ])
-      (fun e ->
-        print_exception e ;
-        !logger.error "Exiting..." ;
-        return_unit)) ;
+  Thread.create (
+    restart_on_failure "update_stats_rb"
+      (update_stats_rb report_period report_rb)) get_binocle_tuple |>
+    ignore ;
+  log_exceptions k conf ;
+  (* Sending stats for one last time: *)
   ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   exit (!quit |? 1)
 
@@ -350,8 +339,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       match of_string line with
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
-          line (Printexc.to_string e) ;
-        return_unit ;
+          line (Printexc.to_string e)
       | tuple -> outputer tuple))
 
 (*
@@ -359,12 +347,11 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
  *)
 
 let listen_on (collector :
-                inet_addr:Lwt_unix.inet_addr ->
+                inet_addr:Unix.inet_addr ->
                 port:int ->
                 (* We have to specify this one: *)
                 ?while_:(unit -> bool) ->
-                ('a -> unit Lwt.t) ->
-                unit Lwt.t)
+                ('a -> unit) -> unit)
               addr_str port proto_name
               sersize_of_tuple time_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
@@ -406,25 +393,22 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
       List.exists (fun g -> Globs.matches g worker) globs
     in
     let start = Unix.gettimeofday () in
-    let while_ () = Lwt.return (!quit = None) in
+    let while_ () = !quit = None in
     let rec loop last_seq =
       let rb = RingBuf.load bname in
       let st = RingBuf.stats rb in
       if st.first_seq <= last_seq then (
-        let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
+        Unix.sleepf (1. +. Random.float 1.) ;
         loop last_seq
       ) else (
         !logger.info "Reading buffer..." ;
-        let%lwt () =
-          RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
-            let tuple = unserialize_tuple tx in
-            let worker, time = worker_time_of_tuple tuple in
-            (* Filter by time and worker *)
-            if time >= start && match_from worker then
-              let%lwt () = outputer tuple in
-              Lwt.return ((), true)
-            else
-              Lwt.return ((), true)) in
+        RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
+          let tuple = unserialize_tuple tx in
+          let worker, time = worker_time_of_tuple tuple in
+          (* Filter by time and worker *)
+          if time >= start && match_from worker then
+            outputer tuple ;
+          (), true) ;
         !logger.info "Done reading buffer, waiting for next one." ;
         RingBuf.unload rb ;
         loop st.first_seq
@@ -583,10 +567,9 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         all_timed_out && m.timed_out
       ) (false, true) to_merge in
     if all_timed_out then ( (* We could as well wait here forever *)
-      if%lwt while_ () then (
-        Lwt_unix.sleep 0.1 (* TODO *) ;%lwt
-        wait_for_tuples started
-      ) else return_unit
+      if while_ () then (
+        Unix.sleepf 0.1 (* TODO *) ;
+        wait_for_tuples started)
     ) else if must_wait then (
       (* Some inputs are ready, consider timing out the offenders: *)
       if timeout > 0. &&
@@ -599,20 +582,17 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
             !logger.debug "Timing out source #%d" i ;
             m.timed_out <- true)
         ) to_merge ;
-        (* And return *)
-        return_unit
       ) else (
         (* Wait longer: *)
-        if%lwt while_ () then (
-          Lwt_unix.sleep 0.1 (* TODO *) ;%lwt
-          wait_for_tuples started
-        ) else return_unit
+        if while_ () then (
+          Unix.sleepf 0.1 ;
+          wait_for_tuples started)
       )
-    ) else return_unit (* all inputs that have not timed out are ready *)
+    ) (* all inputs that have not timed out are ready *)
   in
   let rec loop () =
-    if%lwt while_ () then (
-      wait_for_tuples (Unix.gettimeofday ()) ;%lwt
+    if while_ () then (
+      wait_for_tuples (Unix.gettimeofday ()) ;
       match
         Array.fold_lefti (fun mi_ma i to_merge ->
           match mi_ma, RamenSzHeap.min_opt to_merge.tuples with
@@ -633,33 +613,34 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          k tx_size min_tuple max_tuple ;%lwt
+          k tx_size min_tuple max_tuple ;
           loop ()
-    ) else return_unit in
+    ) in
   loop ()
 
 let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
   let rec loop () =
-    if%lwt while_ () then (
+    if while_ () then (
       let start = Unix.gettimeofday () in
       let in_tuple = read_tuple tx in
-      let%lwt () = k 0 in_tuple in_tuple in
-      let rec sleep () =
+      k 0 in_tuple in_tuple ;
+      let rec wait () =
         (* Avoid sleeping longer than a few seconds to check while_ in a
          * timely fashion. The 1.33 is supposed to help distinguish this sleep
          * from the many others when using strace: *)
         let sleep_time =
           min 1.33
           ((start +. every) -. Unix.gettimeofday ()) in
-        let%lwt keep_going = while_ () in
+        let keep_going = while_ () in
         if sleep_time > 0. && keep_going then (
           !logger.debug "Sleeping for %f seconds" sleep_time ;
-          Lwt_unix.sleep sleep_time >>= sleep
+          Unix.sleepf sleep_time ;
+          wait ()
         ) else loop () in
-      sleep ()
-    ) else return_unit in
+      wait ()
+    ) in
   loop ()
 
 let aggregate
@@ -667,7 +648,7 @@ let aggregate
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
-      (generate_tuples : ('tuple_in -> 'tuple_out -> unit Lwt.t) -> 'tuple_in -> 'generator_out -> unit Lwt.t)
+      (generate_tuples : ('tuple_in -> 'tuple_out -> unit) -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
       (minimal_tuple_of_aggr :
@@ -768,13 +749,13 @@ let aggregate
         let notifications = get_notifications tuple_in tuple_out in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
-          Lwt_list.iter_s (fun notif ->
+          List.iter (fun notif ->
             notify conf notify_rb worker_name event_time notif
                    field_of_tuple_in tuple_in
                    field_of_tuple_out tuple_out
                    field_of_params
           ) notifications
-        ) else return_unit ;%lwt
+        ) ;
         tuple_outputer tuple_out
       in
       generate_tuples do_out in
@@ -794,17 +775,14 @@ let aggregate
       fun f ->
         let v = restore !state in
         (* We do _not_ want to save the value when f raises an exception: *)
-        let%lwt v = f v in
-        state := save ~save_every:1013 ~save_timeout:21. !state v ;
-        return_unit
+        let v = f v in
+        state := save ~save_every:1013 ~save_timeout:21. !state v
     in
     !logger.debug "Will read ringbuffer %a"
       (List.print String.print) rb_in_fnames ;
-    let%lwt rb_ins =
-      Lwt_list.map_p (fun fname ->
-        retry ~on:(fun _ -> return_true) ~min_delay:1.0
-              (fun n -> return (RingBuf.load n))
-              fname
+    let rb_ins =
+      List.map (fun fname ->
+        retry ~on:(fun _ -> true) ~min_delay:1.0 (RingBuf.load) fname
       ) rb_in_fnames
     in
     (* The big function that aggregate a single tuple *)
@@ -831,15 +809,14 @@ let aggregate
                 g.current_out in
             s.last_out_tuple <- Some out ;
             outputer in_tuple out
-        | true, None ->
-            return_unit
+        | true, None -> ()
         | true, Some previous_out ->
             let out =
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
             s.last_out_tuple <- Some out ;
-            outputer in_tuple out) ;%lwt
+            outputer in_tuple out) ;
         (* Flush/Keep/Slide *)
         if do_flush then (
           if commit_before then (
@@ -854,8 +831,7 @@ let aggregate
              * commit condition we can replay (TODO): *)
             g.local_state <- group_init s.global_state
           ) else Hashtbl.remove s.groups k
-        ) ;
-        return_unit
+        )
       in
       (* Now that this is all in place, here are the next steps:
        * 1. Filtering (fast path)
@@ -926,13 +902,11 @@ let aggregate
         if must_commit g then (
           already_output_aggr := Some g ;
           commit_and_flush (k, g)
-        ) else return_unit ;%lwt
+        ) ;
         if commit_before then
           update_states g.last_in s.last_out_tuple
-                        g.local_state s.global_state g.current_out ;
-        return_unit
-      | None -> (* in_tuple failed filtering *)
-        return_unit) ;%lwt
+                        g.local_state s.global_state g.current_out
+      | None -> () (* in_tuple failed filtering *)) ;
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
       if when_to_check_for_commit = ForAll then (
@@ -945,12 +919,12 @@ let aggregate
             if not (already_output g) && must_commit g
             then (k, g)::l else l
           ) s.groups [] in
-        Lwt_list.iter_s commit_and_flush to_commit
-      ) else return_unit ;%lwt
-      return s
+        List.iter commit_and_flush to_commit
+      ) ;
+      s
     in
     (* The event loop: *)
-    let while_ () = Lwt.return (!quit = None) in
+    let while_ () = !quit = None in
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)
@@ -994,4 +968,4 @@ let aggregate
             s.sort_buf <- sb ;
             aggregate_one s min_in merge_greatest
           else
-            return s)))
+            s)))

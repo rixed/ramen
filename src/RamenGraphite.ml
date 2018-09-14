@@ -17,7 +17,6 @@
  *)
 open Batteries
 open BatOption.Infix
-open Lwt
 open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
@@ -245,24 +244,24 @@ let filters_of_query query =
     Globs.matches glob % fst) query
 
 let full_enum_tree_of_query conf ?anchor_right query =
-    let%lwt programs = C.with_rlock conf return in
-    RamenTimeseries.cache_possible_values conf programs ;%lwt
+    let programs = C.with_rlock conf identity in
+    RamenTimeseries.cache_possible_values conf programs ;
     let te = tree_enum_of_programs ~only_with_event_time:false
                                    ~only_num_fields:false programs in
     let filters = filters_of_query query in
-    return (filter_tree ?anchor_right te filters)
+    filter_tree ?anchor_right te filters
 
 (* Specialized version for graphite, skipping functions with no time info
  * and cached: *)
 let enum_tree_of_query =
   let reread () conf =
     !logger.debug "Recomputing enum_tree for query expansion" ;
-    let%lwt programs = C.with_rlock conf return in
+    let programs = C.with_rlock conf identity in
     !logger.debug "Caching factors possible values..." ;
-    RamenTimeseries.cache_possible_values conf programs ;%lwt
+    RamenTimeseries.cache_possible_values conf programs ;
     !logger.debug "Building tree..." ;
-    return (tree_enum_of_programs ~only_with_event_time:true
-                                  ~only_num_fields:true programs)
+    tree_enum_of_programs ~only_with_event_time:true
+                          ~only_num_fields:true programs
   and time () conf =
     C.last_conf_mtime conf
   in
@@ -270,9 +269,9 @@ let enum_tree_of_query =
   fun ?anchor_right conf query ->
     !logger.debug "Expanding query %a..."
       (List.print String.print) query ;
-    let%lwt te = get_tree () conf in
+    let te = get_tree () conf in
     let filters = filters_of_query query in
-    return (filter_tree ?anchor_right te filters)
+    filter_tree ?anchor_right te filters
 
 let rec find_quote_from s i =
   if i >= String.length s then raise Not_found ;
@@ -331,7 +330,7 @@ let split_query s =
  * is the fully expanded query string matching id. *)
 let expand_query_text conf query =
   let query = split_query query in
-  let%lwt filtered = enum_tree_of_query conf query in
+  let filtered = enum_tree_of_query conf query in
   let num_filters = List.length query in
   let prefix = (List.take (num_filters - 1) query |>
                 String.concat ".") ^ "." in
@@ -344,13 +343,12 @@ let expand_query_text conf query =
     else
       node_res),
     (depth + 1, target')
-  ) [] (0, "") filtered |>
-  return
+  ) [] (0, "") filtered
 
 let expand_query_values ?anchor_right conf query =
   let query = split_query query in
   let depth0 = "", "", [], "" in
-  let%lwt filtered = enum_tree_of_query ?anchor_right conf query in
+  let filtered = enum_tree_of_query ?anchor_right conf query in
   tree_enum_fold (fun node_res
                       (prog_name, func_name, factors, data_field)
                       (n, section) is_leaf ->
@@ -367,12 +365,12 @@ let expand_query_values ?anchor_right conf query =
         (RamenName.program_of_string prog_name,
          RamenName.func_of_string func_name,
          List.rev factors, n) :: node_res, depth0
-  ) [] depth0 filtered |>
-  return
+  ) [] depth0 filtered
 
 let complete_graphite_find conf headers params =
-  let%lwt expanded =
-    Hashtbl.find_default params "query" "*" |>
+  let expanded =
+    Hashtbl.find_default params "query" ["*"] |>
+    List.hd |>
     expand_query_text conf in
   let uniq = uniquify () in
   let resp =
@@ -381,7 +379,7 @@ let complete_graphite_find conf headers params =
       if uniq r then Some r else None
     ) expanded in
   let body = PPP.to_string graphite_metrics_ppp_json resp in
-  respond_ok body
+  http_msg body
 
 (*
  * Render a selected metric (in JSON only, no actual picture is
@@ -441,8 +439,8 @@ let render_graphite conf headers body =
   assert (format = "json") ; (* FIXME *)
   (* We start by expanding the query so that we have also an expansion
    * for field/function names with matches. *)
-  let%lwt targets =
-    Lwt_list.map_s (expand_query_values ~anchor_right:true conf) targets in
+  let targets =
+    List.map (expand_query_values ~anchor_right:true conf) targets in
   (* Targets is now a list of enumerations of program + function name + factors
    * values + field name. Regardless of how many original query were sent, the
    * expected answer is a flat array of target name + timeseries.  We can
@@ -451,42 +449,42 @@ let render_graphite conf headers body =
    * possible factors. *)
   let targets = List.flatten targets in
   (* In addition to the prog and func names we'd like to have the func: *)
-  let%lwt targets =
+  let targets =
     C.with_rlock conf (fun programs ->
-      Lwt_list.filter_map_s (fun (prog_name, func_name, fvals, data_field) ->
+      List.filter_map (fun (prog_name, func_name, fvals, data_field) ->
         let fq = RamenName.fq prog_name func_name in
         match Hashtbl.find programs prog_name with
         | exception Not_found ->
             !logger.error "Program %s just disappeared?"
               (RamenName.string_of_program prog_name) ;
-            return_none
+            None
         | _mre, get_rc ->
             (match get_rc () with
-            | exception e -> return_none
+            | exception e -> None
             | prog ->
                 (match List.find (fun f ->
                          f.F.name = func_name) prog.P.funcs with
                 | exception Not_found ->
                     !logger.error "Function %s just disappeared?"
                       (RamenName.string_of_fq fq) ;
-                    return_none
+                    None
                 | func ->
                     if List.length fvals <> List.length func.factors then (
                       !logger.error "Function %s just changed factors?"
                         (RamenName.string_of_fq fq) ;
-                      return_none
+                      None
                     ) else if List.mem data_field func.factors then (
                       !logger.error "Function %s just got %s as factor?"
                         (RamenName.string_of_fq fq) data_field ;
-                      return_none
+                      None
                     ) else if not (List.exists (fun ft ->
                                    ft.RamenTuple.typ_name = data_field
                                  ) func.out_type) then (
                       !logger.error "Function %s just lost field %s?"
                         (RamenName.string_of_fq fq) data_field ;
-                      return_none
+                      None
                     ) else (
-                      return (Some (func, fq, List.map snd fvals, data_field))
+                      Some (func, fq, List.map snd fvals, data_field)
                     )))
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where
@@ -507,9 +505,8 @@ let render_graphite conf headers body =
             | None -> Some (Set.singleton fval)
             | Some s -> Some (Set.add fval s)
           ) factor_values
-    ) fvals ;
-    return_unit in
-  let%lwt () = Lwt_list.iter_s count_factor_values targets in
+    ) fvals in
+  List.iter count_factor_values targets ;
   (* Now we can decide on which scans to perform *)
   let scans = Hashtbl.create 9 in
   let add_scans (func, fq, fvals, data_field) =
@@ -521,8 +518,8 @@ let render_graphite conf headers body =
         | 0 -> (* Can happen if there are no possible values. *)
             where, factors, i + 1
         | 1 ->
-          (* If we are interested in only one value, do not ask for this factor
-           * but add a where filter: *)
+          (* If we are interested in only one value, do not ask for this
+           * factor but add a where filter: *)
           (factor, "=", Set.min_elt wanted) :: where,
           factors, i + 1
         | _many ->
@@ -535,23 +532,21 @@ let render_graphite conf headers body =
           Some (Set.singleton data_field, factors, func)
       | Some (d, f, func) ->
           Some (Set.add data_field d, Set.union factors f, func)
-    ) scans ;
-    return_unit in
-  let%lwt () = Lwt_list.iter_s add_scans targets in
+    ) scans in
+  List.iter add_scans targets ;
   (* Now actually run the scans, one for each function/where pair, and start
    * building the result. For each columns we want one timeseries per data
    * field. *)
-  let metrics_of_scan (fq, where) (data_fields, factors, func) res_th =
+  let metrics_of_scan (fq, where) (data_fields, factors, func) res =
     (* [columns] will be an array of the factors. [datapoints] is an
      * enumeration of arrays with one entry per factor, the entry being an
      * array of one timeseries per data_fields. *)
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
-    let%lwt columns, datapoints =
+    let columns, datapoints =
       RamenTimeseries.get conf max_data_points since until where factors
                           fq data_fields in
     let datapoints = Array.of_enum datapoints in
-    let%lwt res = res_th in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->
       List.fold_lefti (fun res field_idx data_field ->
@@ -563,9 +558,9 @@ let render_graphite conf headers body =
         and target = target_name_of factors column in
         (data_field, target, datapoints) :: res
       ) res data_fields
-    ) res columns |> return
+    ) res columns
   in
-  let%lwt resp = Hashtbl.fold metrics_of_scan scans return_nil in
+  let resp = Hashtbl.fold metrics_of_scan scans [] in
   (* Build the graphite_render_metric list out of those values, simplifying
    * the label:
    * Map from factor name to values present in the label: *)
@@ -601,35 +596,31 @@ let render_graphite conf headers body =
     ) resp in
   let body = PPP.to_string graphite_render_resp_ppp_json resp in
   !logger.debug "%d metrics from %d scans" (List.length resp) (Hashtbl.length scans) ;
-  respond_ok body
+  http_msg body
 
-let version _conf _headers _params =
-  respond_ok "1.1.3"
+let version = http_msg "1.1.3"
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
   fun meth path params headers body ->
-    let%lwt prefix =
-      wrap (fun () -> RamenHttpHelpers.list_of_prefix prefix) in
+    let prefix = RamenHttpHelpers.list_of_prefix prefix in
     let path = RamenHttpHelpers.chop_prefix prefix path in
     match meth, path with
     (* Mimic Graphite for Grafana datasource *)
-    | `GET, ["metrics"; "find"] ->
+    | CodecHttp.Command.GET, ["metrics"; "find"] ->
       complete_graphite_find conf headers params
-    | `POST, ["render"] ->
+    | CodecHttp.Command.POST, ["render"] ->
       render_graphite conf headers body
-    | `GET, ["version"] ->
-      version conf headers params
-    | `OPTIONS, _ ->
-      let headers = Cohttp.Header.init_with "Access-Control-Allow-Origin" "*" in
+    | CodecHttp.Command.GET, ["version"] ->
+      version
+    | CodecHttp.Command.OPTIONS, _ ->
       let headers =
-        Cohttp.Header.add headers "Access-Control-Allow-Methods" "POST" in
-      let headers =
-        Cohttp.Header.add headers "Access-Control-Allow-Headers" "Content-Type" in
-      Cohttp_lwt_unix.Server.respond_string ~status:(`Code 200) ~headers ~body:"" ()
+        [ "Access-Control-Allow-Methods", "POST" ;
+          "Access-Control-Allow-Headers", "Content-Type" ] in
+      http_msg ~headers ""
     (* Errors *)
-    | `PUT, p | `GET, p | `DELETE, p ->
+    | CodecHttp.Command.(PUT|GET|DELETE), p ->
       let path = String.join "/" p in
       not_found (Printf.sprintf "Unknown resource %S" path)
     | _ ->
-      fail (HttpError (501, "Method not implemented"))
+      not_implemented "Method not implemented"

@@ -1,19 +1,12 @@
 (* For each ramen command, check arguments and mostly transfer the control
  * further to more specialized modules. *)
 open Batteries
-open Lwt
 open Stdint
 open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
-
-let () =
-  async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s\n%s"
-      (Printexc.to_string exn)
-      (Printexc.get_backtrace ()))
 
 let () =
   Printexc.register_printer (function
@@ -48,12 +41,7 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
 
 let dummy_nop () =
   !logger.warning "Running in dummy mode" ;
-  let until_quit f =
-    let rec loop () =
-      if !RamenProcesses.quit <> None then return_unit
-      else f () >>= loop in
-    loop () in
-  until_quit (fun () -> Lwt_unix.sleep 3.)
+  RamenProcesses.until_quit (fun () -> Unix.sleep 3 ; true)
 
 let check_binocle_errors () =
   Option.may raise !Binocle.last_error
@@ -87,19 +75,15 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   let notify_rb = prepare_notifs conf in
   RingBuf.unload notify_rb ;
   let while_ () = !RamenProcesses.quit = None in
-  Lwt_main.run (
-    join [
-      (let%lwt () = Lwt_unix.sleep 1. in
-       async (fun () ->
-         restart_on_failure "wait_all_pids_loop"
-           RamenProcesses.wait_all_pids_loop true) ;
-       return_unit) ;
-      (* The main job of this process is to make what's actually running
-       * in accordance to the running program list: *)
-      restart_on_failure ~while_ "synchronize_running"
-        RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-          dummy_nop ;
-          (fun () -> synchronize_running conf autoreload) |] ]) ;
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop"
+      RamenProcesses.wait_all_pids_loop) true |> ignore ;
+  (* The main job of this process is to make what's actually running
+   * in accordance to the running program list: *)
+  restart_on_failure ~while_ "synchronize_running"
+    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+      dummy_nop ;
+      (fun () -> synchronize_running conf autoreload) |] ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -140,15 +124,14 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let while_ () = !RamenProcesses.quit = None in
-  Lwt_main.run (
-    async (fun () ->
-      restart_on_failure "wait_all_pids_loop"
-        RamenProcesses.wait_all_pids_loop false) ;
-    restart_on_failure ~while_ "process_notifications"
-      RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-        dummy_nop ;
-        (fun () ->
-          RamenNotifier.start conf notif_conf_file notify_rb max_fpr) |]) ;
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop"
+      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  restart_on_failure ~while_ "process_notifications"
+    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+      dummy_nop ;
+      (fun () ->
+        RamenNotifier.start conf notif_conf_file notify_rb max_fpr) |] ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
@@ -158,9 +141,8 @@ let notify conf parameters notif_name () =
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
-  Lwt_main.run (
-    RingBufLib.write_notif rb
-      ("CLI", start, None, notif_name, firing, certainty, parameters))
+  RingBufLib.write_notif rb
+    ("CLI", start, None, notif_name, firing, certainty, parameters)
 
 (*
  * `ramen compile`
@@ -224,7 +206,7 @@ let run conf params replace as_ bin_file () =
   logger := make_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  Lwt_main.run (RamenRun.run conf params replace ?as_ bin_file debug)
+  RamenRun.run conf params replace ?as_ bin_file debug
 
 (*
  * `ramen kill`
@@ -237,8 +219,7 @@ let kill conf program_names purge () =
   logger := make_logger conf.C.log_level ;
   let program_names =
     List.map Globs.compile program_names in
-  let num_kills =
-    Lwt_main.run (RamenRun.kill conf ~purge program_names) in
+  let num_kills = RamenRun.kill conf ~purge program_names in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
 
@@ -296,7 +277,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
-  let stats = Lwt_main.run (RamenPs.read_stats conf) in
+  let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
   let head, lines =
@@ -306,97 +287,95 @@ let ps conf short pretty with_header sort_col top pattern all () =
       [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
          "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
          "volume out" |],
-      Lwt_main.run (
-        C.with_rlock conf (fun programs ->
-          Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
-            if (all || not mre.C.killed) &&
-               Globs.matches pattern
-                 (RamenName.string_of_program program_name)
-            then (
-              let _min_etime, _max_etime, in_count, selected_count, out_count,
-                  group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
-                  bytes_out, _last_out, _stime =
-                Hashtbl.find_default h program_name RamenPs.no_stats in
-              [| ValStr (RamenName.string_of_program program_name) ;
-                 ValStr (RamenName.string_of_params mre.C.params) ;
-                 int_or_na in_count ;
-                 int_or_na selected_count ;
-                 int_or_na out_count ;
-                 int_or_na group_count ;
-                 ValFlt cpu ;
-                 flt_or_na wait_in ;
-                 flt_or_na wait_out ;
-                 ValInt (Uint64.to_int ram) ;
-                 ValInt (Uint64.to_int max_ram) ;
-                 flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                 flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
-            ) else lines
-          ) programs [] |> return))
+      C.with_rlock conf (fun programs ->
+        Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
+          if (all || not mre.C.killed) &&
+             Globs.matches pattern
+               (RamenName.string_of_program program_name)
+          then (
+            let _min_etime, _max_etime, in_count, selected_count, out_count,
+                group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
+                bytes_out, _last_out, _stime =
+              Hashtbl.find_default h program_name RamenPs.no_stats in
+            [| ValStr (RamenName.string_of_program program_name) ;
+               ValStr (RamenName.string_of_params mre.C.params) ;
+               int_or_na in_count ;
+               int_or_na selected_count ;
+               int_or_na out_count ;
+               int_or_na group_count ;
+               ValFlt cpu ;
+               flt_or_na wait_in ;
+               flt_or_na wait_out ;
+               ValInt (Uint64.to_int ram) ;
+               ValInt (Uint64.to_int max_ram) ;
+               flt_or_na (Option.map Uint64.to_float bytes_in) ;
+               flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+          ) else lines
+        ) programs [])
     else
       (* Otherwise we want to display all we can about individual workers *)
       [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
          "min event time" ; "max event time" ; "CPU" ; "wait in" ; "wait out" ;
          "heap" ; "max heap" ; "volume in" ; "volume out" ; "startup time" ;
          "#parents" ; "#children" ; "signature" |],
-      Lwt_main.run (
-        C.with_rlock conf (fun programs ->
-          (* First pass to get the childrens: *)
-          let children_of_func = Hashtbl.create 23 in
-          Hashtbl.iter (fun program_name (mre, get_rc) ->
-            if all || not mre.C.killed then match get_rc () with
-            | exception e -> ()
-            | prog ->
-                List.iter (fun func ->
-                  List.iter (fun (pp, pf) ->
-                    (* We could use the pattern to filter out uninteresting
-                     * parents but there is not much to save at this point. *)
-                    let k =
-                      F.program_of_parent_prog func.F.program_name pp, pf in
-                    Hashtbl.add children_of_func k func
-                  ) func.F.parents
-                ) prog.P.funcs
-          ) programs ;
-          Hashtbl.fold (fun program_name (mre, get_rc) lines ->
-            if not all && mre.C.killed then []
-            else match get_rc () with
-            | exception e ->
-              let fq_name =
-                red (RamenName.string_of_program program_name ^"/*") in
-              [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
-            | prog ->
-              List.fold_left (fun lines func ->
-                let fq_name = RamenName.string_of_program program_name
-                              ^"/"^ RamenName.string_of_func func.F.name in
-                if Globs.matches pattern fq_name then
-                  let min_etime, max_etime, in_count, selected_count,
-                      out_count, group_count, cpu, ram, max_ram, wait_in,
-                      wait_out, bytes_in, bytes_out, last_out, stime =
-                    Hashtbl.find_default stats fq_name RamenPs.no_stats
-                  and num_children = Hashtbl.find_all children_of_func
-                                       (func.F.program_name, func.F.name) |>
-                                       List.length in
-                  [| ValStr fq_name ;
-                     int_or_na in_count ;
-                     int_or_na selected_count ;
-                     int_or_na out_count ;
-                     int_or_na group_count ;
-                     date_or_na last_out ;
-                     date_or_na min_etime ;
-                     date_or_na max_etime ;
-                     ValFlt cpu ;
-                     flt_or_na wait_in ;
-                     flt_or_na wait_out ;
-                     ValInt (Uint64.to_int ram) ;
-                     ValInt (Uint64.to_int max_ram) ;
-                     flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                     flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                     ValDate stime ;
-                     ValInt (List.length func.F.parents) ;
-                     ValInt num_children ;
-                     ValStr func.signature |] :: lines
-                else lines
-              ) lines prog.P.funcs
-          ) programs [] |> return)) in
+      C.with_rlock conf (fun programs ->
+        (* First pass to get the childrens: *)
+        let children_of_func = Hashtbl.create 23 in
+        Hashtbl.iter (fun program_name (mre, get_rc) ->
+          if all || not mre.C.killed then match get_rc () with
+          | exception e -> ()
+          | prog ->
+              List.iter (fun func ->
+                List.iter (fun (pp, pf) ->
+                  (* We could use the pattern to filter out uninteresting
+                   * parents but there is not much to save at this point. *)
+                  let k =
+                    F.program_of_parent_prog func.F.program_name pp, pf in
+                  Hashtbl.add children_of_func k func
+                ) func.F.parents
+              ) prog.P.funcs
+        ) programs ;
+        Hashtbl.fold (fun program_name (mre, get_rc) lines ->
+          if not all && mre.C.killed then []
+          else match get_rc () with
+          | exception e ->
+            let fq_name =
+              red (RamenName.string_of_program program_name ^"/*") in
+            [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
+          | prog ->
+            List.fold_left (fun lines func ->
+              let fq_name = RamenName.string_of_program program_name
+                            ^"/"^ RamenName.string_of_func func.F.name in
+              if Globs.matches pattern fq_name then
+                let min_etime, max_etime, in_count, selected_count,
+                    out_count, group_count, cpu, ram, max_ram, wait_in,
+                    wait_out, bytes_in, bytes_out, last_out, stime =
+                  Hashtbl.find_default stats fq_name RamenPs.no_stats
+                and num_children = Hashtbl.find_all children_of_func
+                                     (func.F.program_name, func.F.name) |>
+                                     List.length in
+                [| ValStr fq_name ;
+                   int_or_na in_count ;
+                   int_or_na selected_count ;
+                   int_or_na out_count ;
+                   int_or_na group_count ;
+                   date_or_na last_out ;
+                   date_or_na min_etime ;
+                   date_or_na max_etime ;
+                   ValFlt cpu ;
+                   flt_or_na wait_in ;
+                   flt_or_na wait_out ;
+                   ValInt (Uint64.to_int ram) ;
+                   ValInt (Uint64.to_int max_ram) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
+                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
+                   ValDate stime ;
+                   ValInt (List.length func.F.parents) ;
+                   ValInt num_children ;
+                   ValStr func.signature |] :: lines
+              else lines
+            ) lines prog.P.funcs
+        ) programs []) in
   print_table ~pretty ~sort_col ~with_header ?top head lines
 
 (*
@@ -424,73 +403,71 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  Lwt_main.run (
-    let%lwt bname, filter, typ, ser, params, event_time =
-      RamenExport.read_output conf ~duration func_name where
-    in
-    (* Find out which seqnums we want to scan: *)
-    let mi, ma = match last with
-      | None ->
-          min_seq,
-          Option.map succ max_seq (* max_seqnum is in *)
-      | Some l when l >= 0 ->
-          let mi, ma = RingBufLib.seq_range bname in
-          Some (cap_add ma ~-l),
-          Some (if continuous then max_int else ma)
-      | Some l ->
-          assert (l < 0) ;
-          let mi, ma = RingBufLib.seq_range bname in
-          Some ma, Some (cap_add ma (cap_neg l)) in
-    !logger.debug "Will display tuples from %a (incl) to %a (excl)"
-      (Option.print Int.print) mi
-      (Option.print Int.print) ma ;
-    (* Then, scan all present ringbufs in the requested range (either
-     * the last N tuples or, TBD, since ts1 [until ts2]) and display
-     * them *)
-    let nullmask_size =
-      RingBufLib.nullmask_bytes_of_tuple_type ser in
-    let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
-    if with_header then (
-      let header = typ |> Array.of_list in
-      let first = if with_seqnums then "Seq"^ sep else "" in
-      let first = if with_event_time then "Event time"^ sep else first in
-      let first = "#"^ first in
-      Array.print ~first ~last:"\n" ~sep
-        (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
-        stdout header ;
-      BatIO.flush stdout) ;
-    async (fun () ->
-      restart_on_failure "wait_all_pids_loop"
-        RamenProcesses.wait_all_pids_loop false) ;
-    let rec reset_export_timeout () =
-      (* Start by sleeping as we've just set the temp export above: *)
-      let%lwt () = Lwt_unix.sleep (max 1. (duration -. 1.)) in
-      let%lwt _ =
-        RamenExport.make_temp_export_by_name conf ~duration func_name in
-      reset_export_timeout () in
-    async (fun () ->
-      restart_on_failure "reset_export_timeout"
-        reset_export_timeout ()) ;
-    let open RamenSerialization in
-    let%lwt event_time_of_tuple = match event_time with
-      | None ->
-        if with_event_time then
-          fail_with "Function has no event time information"
-        else return (fun _ -> 0., 0.)
-      | Some et -> return (event_time_of_tuple typ params et) in
-    fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
-      let tuple = read_tuple ser nullmask_size tx in
-      if filter tuple then (
-        if with_event_time then (
-          let t1, t2 = event_time_of_tuple tuple in
-          Printf.printf "%f..%f%s" t1 t2 sep) ;
-        if with_seqnums then (
-          Int.print stdout m ; String.print stdout sep) ;
-        reorder_column tuple |>
-        Array.print ~first:"" ~last:"\n" ~sep
-          (RamenTypes.print_custom ~null ~quoting:(not raw)) stdout ;
-        BatIO.flush stdout) ;
-      return_unit))
+  let bname, filter, typ, ser, params, event_time =
+    RamenExport.read_output conf ~duration func_name where
+  in
+  (* Find out which seqnums we want to scan: *)
+  let mi, ma = match last with
+    | None ->
+        min_seq,
+        Option.map succ max_seq (* max_seqnum is in *)
+    | Some l when l >= 0 ->
+        let mi, ma = RingBufLib.seq_range bname in
+        Some (cap_add ma ~-l),
+        Some (if continuous then max_int else ma)
+    | Some l ->
+        assert (l < 0) ;
+        let mi, ma = RingBufLib.seq_range bname in
+        Some ma, Some (cap_add ma (cap_neg l)) in
+  !logger.debug "Will display tuples from %a (incl) to %a (excl)"
+    (Option.print Int.print) mi
+    (Option.print Int.print) ma ;
+  (* Then, scan all present ringbufs in the requested range (either
+   * the last N tuples or, TBD, since ts1 [until ts2]) and display
+   * them *)
+  let nullmask_size =
+    RingBufLib.nullmask_bytes_of_tuple_type ser in
+  let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
+  if with_header then (
+    let header = typ |> Array.of_list in
+    let first = if with_seqnums then "Seq"^ sep else "" in
+    let first = if with_event_time then "Event time"^ sep else first in
+    let first = "#"^ first in
+    Array.print ~first ~last:"\n" ~sep
+      (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
+      stdout header ;
+    BatIO.flush stdout) ;
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop"
+      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  let rec reset_export_timeout () =
+    (* Start by sleeping as we've just set the temp export above: *)
+    Unix.sleepf (max 1. (duration -. 1.)) ;
+    let _ = RamenExport.make_temp_export_by_name conf ~duration func_name in
+    reset_export_timeout () in
+  Thread.create (
+    restart_on_failure "reset_export_timeout"
+      reset_export_timeout) () |> ignore ;
+  let open RamenSerialization in
+  let event_time_of_tuple = match event_time with
+    | None ->
+      if with_event_time then
+        failwith "Function has no event time information"
+      else (fun _ -> 0., 0.)
+    | Some et -> event_time_of_tuple typ params et
+  in
+  fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
+    let tuple = read_tuple ser nullmask_size tx in
+    if filter tuple then (
+      if with_event_time then (
+        let t1, t2 = event_time_of_tuple tuple in
+        Printf.printf "%f..%f%s" t1 t2 sep) ;
+      if with_seqnums then (
+        Int.print stdout m ; String.print stdout sep) ;
+      reorder_column tuple |>
+      Array.print ~first:"" ~last:"\n" ~sep
+        (RamenTypes.print_custom ~null ~quoting:(not raw)) stdout ;
+      BatIO.flush stdout))
 
 (*
  * `ramen timeseries`
@@ -512,9 +489,8 @@ let timeseries conf since until with_header where factors max_data_points
   if since >= until then failwith "since must come strictly before until" ;
   (* Obtain the data: *)
   let columns, timeseries =
-    Lwt_main.run (
-      RamenTimeseries.get conf ~duration max_data_points since until where
-                          factors ~consolidation func_name data_fields) in
+    RamenTimeseries.get conf ~duration max_data_points since until where
+                        factors ~consolidation func_name data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
   if with_header then (
@@ -552,16 +528,15 @@ let timerange conf func_name () =
   | exception _ -> exit 1
   | program_name, func_name ->
       let mi_ma =
-        Lwt_main.run (
-          C.with_rlock conf (fun programs ->
-            (* We need the func to know its buffer location.
-             * Nothing better to do in case of error than to exit. *)
-            let prog, func = C.find_func programs program_name func_name in
-            let bname = C.archive_buf_name conf func in
-            let typ = func.F.out_type in
-            let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
-            let params = prog.P.params in
-            RamenSerialization.time_range bname ser params func.F.event_time))
+        C.with_rlock conf (fun programs ->
+          (* We need the func to know its buffer location.
+           * Nothing better to do in case of error than to exit. *)
+          let prog, func = C.find_func programs program_name func_name in
+          let bname = C.archive_buf_name conf func in
+          let typ = func.F.out_type in
+          let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
+          let params = prog.P.params in
+          RamenSerialization.time_range bname ser params func.F.event_time)
       in
       match mi_ma with
         | None -> Printf.printf "No time info or no output yet.\n"
@@ -600,22 +575,22 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
     logger := make_logger ?logdir conf.C.log_level) ;
   (* We take the port and URL prefix from the given URL but does not take
    * into account the hostname or the scheme. *)
-  let uri = Uri.of_string server_url in
+  let url = CodecUrl.of_string server_url in
   (* In a user-supplied URL string the default port should be as usual for
    * HTTP scheme: *)
   let port =
-    match Uri.port uri with
-    | Some p -> p
-    | None ->
-      (match Uri.scheme uri with
-      | Some "https" -> 443
-      | _ -> 80) in
-  let url_prefix = Uri.path uri in
+    match String.split ~by:":" url.CodecUrl.net_loc with
+    | exception Not_found ->
+        (match url.CodecUrl.scheme with
+        | "https" -> 443
+        | _ -> 80)
+    | _, p -> int_of_string p in
+  let url_prefix = url.CodecUrl.path in
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let (++) rout1 rout2 =
     fun meth path params headers body ->
-      try%lwt rout1 meth path params headers body
+      try rout1 meth path params headers body
       with RamenHttpHelpers.BadPrefix ->
         rout2 meth path params headers body in
   let router _ path _ _ _ =
@@ -629,24 +604,23 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
     !logger.info "Serving custom API on %S" prefix ;
     RamenApi.router conf prefix) router api ++ router in
   let while_ () = !RamenProcesses.quit = None in
-  Lwt_main.run (
-    async (fun () ->
-      restart_on_failure "wait_all_pids_loop"
-        RamenProcesses.wait_all_pids_loop false) ;
-    restart_on_failure ~while_ "http server"
-      RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
-        dummy_nop ;
-        (fun () ->
-          RamenHttpHelpers.http_service
-            conf port url_prefix router fault_injection_rate) |]) ;
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop"
+      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  restart_on_failure ~while_ "http server"
+    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+      dummy_nop ;
+      (fun () ->
+        RamenHttpHelpers.http_service
+          conf port url_prefix router fault_injection_rate) |] ;
   Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf for_render query () =
   logger := make_logger conf.C.log_level ;
   let query = String.nsplit ~by:"." query in
-  let te = Lwt_main.run (
+  let te =
     RamenGraphite.full_enum_tree_of_query conf ~anchor_right:for_render
-                                               query) in
+                                               query in
   let rec display indent te =
     let e = RamenGraphite.get te in
     let len = List.length e in

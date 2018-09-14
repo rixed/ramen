@@ -193,45 +193,29 @@ let save_rc_file do_persist rc_file rc =
 let program_of_running_entry ?as_ mre =
   Program.of_bin ?as_ mre.params mre.bin
 
-exception RetryLater of float
-
 (* [f] takes a hash-table of program name to running-config getter.
  * Modifications will not be saved. *)
 let with_rlock conf f =
-  let open Lwt in
   let rc_file = running_config_file conf in
   ensure_file_exists ~contents:"{}" rc_file ;
   mkdir_all ~is_file:true rc_file ;
-  let rec loop () =
-    try%lwt
-      RamenAdvLock.with_r_lock rc_file (fun () ->
-        let programs =
-          read_rc_file conf.do_persist rc_file |>
-          Hashtbl.map (fun pn mre ->
-            mre,
-            memoize (fun () -> program_of_running_entry ~as_:pn mre)) in
-        f programs)
-    with RetryLater s ->
-      Lwt_unix.sleep s >>= loop
-  in
-  loop ()
+  RamenAdvLock.with_r_lock rc_file (fun () ->
+    let programs =
+      read_rc_file conf.do_persist rc_file |>
+      Hashtbl.map (fun pn mre ->
+        mre,
+        memoize (fun () -> program_of_running_entry ~as_:pn mre)) in
+    f programs)
 
 let with_wlock conf f =
-  let open Lwt in
   let rc_file = running_config_file conf in
   ensure_file_exists ~contents:"{}" rc_file ;
-  let rec loop () =
-    try%lwt
-      RamenAdvLock.with_w_lock rc_file (fun () ->
-        let programs = read_rc_file conf.do_persist rc_file in
-        let%lwt ret = f programs in
-        (* Save the config only if f did not fail: *)
-        save_rc_file conf.do_persist rc_file programs ;
-        return ret)
-    with RetryLater s ->
-      Lwt_unix.sleep s >>= loop
-  in
-  loop ()
+  RamenAdvLock.with_w_lock rc_file (fun () ->
+    let programs = read_rc_file conf.do_persist rc_file in
+    let ret = f programs in
+    (* Save the config only if f did not fail: *)
+    save_rc_file conf.do_persist rc_file programs ;
+    ret)
 
 let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.

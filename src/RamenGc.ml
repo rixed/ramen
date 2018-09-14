@@ -99,7 +99,7 @@ let cleanup_loop conf dry_run sleep_time max_archives =
     watchdog :=
       Some (RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
-  RamenWatchdog.run watchdog ;
+  RamenWatchdog.enable watchdog ;
   forever (fun () ->
     cleanup_once conf dry_run max_archives ;
     RamenWatchdog.reset watchdog ;

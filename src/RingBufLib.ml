@@ -253,28 +253,26 @@ and read_list t tx offs =
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =
   let on = function
-    | NoMoreRoom -> Lwt.return_true
-    | Empty -> Lwt.return wait_for_more
-    | _ -> Lwt.return_false
+    | NoMoreRoom -> true
+    | Empty -> wait_for_more
+    | _ -> false
   in
   retry ?while_ ~on ~first_delay:0.001 ~max_delay:1. ?delay_rec
-        ?max_retry_time (fun x -> Lwt.wrap (fun () -> f x))
+        ?max_retry_time f
 
 let out_ringbuf_names outbuf_ref_fname =
-  let open Lwt in
   let last_touched fname =
-    let open Lwt_unix in
-    mtime_of_file_def 0. fname |> return in
+    mtime_of_file_def 0. fname in
   let last_read = ref 0. in
   fun () ->
-    let%lwt t = last_touched outbuf_ref_fname in
+    let t = last_touched outbuf_ref_fname in
     if t > !last_read then (
       if !last_read <> 0. then
         !logger.info "Have to re-read %s" outbuf_ref_fname ;
       last_read := t ;
-      let%lwt lines = RamenOutRef.read outbuf_ref_fname in
-      return (Some lines)
-    ) else return_none
+      let lines = RamenOutRef.read outbuf_ref_fname in
+      Some lines
+    ) else None
 
 (* To allow a func to select only some fields from its parent and write only
  * a skip list in the out_ref (to makes serialization easier not out_ref
@@ -334,14 +332,14 @@ let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
                     dequeue_alloc rb
 
 let read_ringbuf ?while_ ?delay_rec rb f =
-  let open Lwt in
   let rec loop () =
-    match%lwt dequeue_ringbuf_once ?while_ ?delay_rec rb with
-    | exception (Exit | Timeout) -> return_unit
+    match dequeue_ringbuf_once ?while_ ?delay_rec rb with
+    | exception (Exit | Timeout) -> ()
     | tx ->
       (* f has to call dequeue_commit on the passed tx (as soon as
        * possible): *)
-      f tx >>= loop in
+      f tx ;
+      loop () in
   loop ()
 
 let read_buf ?wait_for_more ?while_ ?delay_rec rb init f =
@@ -349,41 +347,32 @@ let read_buf ?wait_for_more ?while_ ?delay_rec rb init f =
    * Note that we may reach the end of the written content, and will
    * have to wait unless we reached the EOF mark (special value
    * returned by tx_next). *)
-  let open Lwt in
-  let rec loop usr tx_ =
-    match%lwt tx_ with
-    | exception (Exit | Timeout | End_of_file) -> return usr
+  let read how arg usr k =
+    match retry_for_ringbuf ?while_ ?wait_for_more
+                            ?delay_rec how arg with
+    | exception (Exit | Timeout | End_of_file) -> usr
     | exception Empty ->
         assert (wait_for_more <> Some true) ;
-        return usr
-    | tx ->
-        (* Contrary to the wrapping case, f must not call dequeue_commit.
-         * Caller must know in which case it is: *)
-        let%lwt usr, more_to_come = f usr tx in
-        if more_to_come then
-          let tx_ = retry_for_ringbuf ?while_ ?wait_for_more
-                                      ?delay_rec read_next tx in
-          loop usr tx_
-        else
-          return usr
+        usr
+    | tx -> k usr tx
   in
-  let tx_ = retry_for_ringbuf ?while_ ?wait_for_more ?delay_rec
-                              read_first rb in
-  loop init tx_
+  let rec loop usr tx =
+    (* Contrary to the wrapping case, f must not call dequeue_commit. *)
+    let usr, more_to_come = f usr tx in
+    if more_to_come then
+      read read_next tx usr loop
+    else usr
+  in
+  read read_first rb init loop
 
 let with_enqueue_tx rb sz f =
-  let open Lwt in
-  let%lwt tx =
+  let tx =
     retry_for_ringbuf (enqueue_alloc rb) sz in
-  try
-    let tmin, tmax = f tx in
-    enqueue_commit tx tmin tmax ;
-    return_unit
-  with exn ->
-    (* There is no such thing as enqueue_rollback. We cannot make the rb
-     * pointer go backward (or... can we?) but we could have a 1 bit header
-     * indicating if an entry is valid or not. *)
-    fail exn
+  let tmin, tmax = f tx in
+  (* There is no such thing as enqueue_rollback. We cannot make the rb
+   * pointer go backward (or... can we?) but we could have a 1 bit header
+   * indicating if an entry is valid or not. *)
+  enqueue_commit tx tmin tmax
 
 let arc_dir_of_bname fname = fname ^".arc"
 

@@ -2448,10 +2448,9 @@ let emit_operation name func_name in_typ out_typ params op oc =
 
 let compile conf entry_point func_name obj_name in_typ out_typ params op =
   let open RamenOperation in
-  let%lwt src_file =
-    Lwt.wrap (fun () ->
-      RamenOCamlCompiler.with_code_file_for obj_name conf
-        (emit_operation entry_point func_name in_typ out_typ params
-         op)) in
+  let src_file =
+    RamenOCamlCompiler.with_code_file_for obj_name conf
+      (emit_operation entry_point func_name in_typ out_typ params
+       op) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file obj_name

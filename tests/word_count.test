@@ -5,11 +5,11 @@
       present = [ { "count" => "15"; "word" => "\"nous\"" } ]};
     "tests/word_count/counter2" => {
       present = [
-        { "count" => "15"; "word" => "\"nous\"" };
-				{ "count" => "8"; "word" => "\"de\"" };
-				{ "count" => "5"; "word" => "\"ne\"" };
-				{ "count" => "4"; "word" => "\"mais\"" };
-				{ "count" => "4"; "word" => "\"la\"" };
-				{ "count" => "4"; "word" => "\"et\"" };
-				{ "count" => "3"; "word" => "\"vueille\"" }]}}
+        { "count" => "17"; "word" => "\"nous\"" };
+        { "count" => "9"; "word" => "\"de\"" };
+        { "count" => "7"; "word" => "\"et\"" };
+        { "count" => "6"; "word" => "\"ne\"" };
+        { "count" => "5"; "word" => "\"la\"" };
+        { "count" => "4"; "word" => "\"mais\"" };
+        { "count" => "3"; "word" => "\"vueille\"" }]}}
 }

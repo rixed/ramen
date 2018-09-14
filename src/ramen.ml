@@ -305,7 +305,8 @@ let max_simult_compilations =
   let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
                    ~env [ "max-simult-compilations" ;
                           "max-simultaneous-compilations" ] in
-  Arg.(value (opt int !RamenOCamlCompiler.max_simult_compilations i))
+  let def = AtomicCounter.get RamenOCamlCompiler.max_simult_compilations in
+  Arg.(value (opt int def i))
 
 let smt_solver =
   let env = Term.env_info "RAMEN_SMT_SOLVER" in
@@ -772,7 +773,6 @@ let default =
         info "Ramen" ~version ~doc ~sdocs)
 
 let () =
-  Lwt_unix.set_pool_size 1 ;
   match Term.eval_choice default [
     supervisor ; gc ; httpd ; notifier ;
     notify ; compile ; run ; kill ;

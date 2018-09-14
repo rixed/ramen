@@ -4,14 +4,13 @@
  *
  * The process is terminated first with the quit flag, then by calling
  * exit. *)
-open Lwt
 open RamenLog
 
 type t =
   { name : string ;
-    (* A flag to avoid having several threads monitoring the same watchdog
-     * in case it is started several times: *)
-    mutable is_running : bool ;
+    (* The thread that monitors the watchdog, started by make once and
+     * for all: *)
+    mutable monitor : Thread.t ;
     (* So that a watchdog can be disabled when we have to block for an
      * undetermined amount of time. Watchdogs start enabled though. *)
     mutable enabled : bool ;
@@ -19,8 +18,8 @@ type t =
     (* Time of last reset: *)
     mutable last_reset : float ;
     (* Set to the time when we have witnessed the quit flag was on for
-     * the first time: *)
-    mutable quitting_since : float option ;
+     * the first time (0. for never): *)
+    mutable quitting_since : float ;
     (* Loops can be legitimately slower at the beginning, so allow for
      * a longer timeout initially (this adds to the normal timeout the
      * first time): *)
@@ -32,15 +31,47 @@ type t =
      * set: *)
     quit_timeout : float }
 
+let rec monitor t =
+  if not t.enabled then (
+    Unix.sleepf (t.timeout /. 2.)
+  ) else if !(t.quit_flag) = None then (
+    let now = Unix.time () in
+    if now -. t.last_reset > t.timeout +. t.grace_period then (
+      !logger.error "Forced quit from watchdog %S \
+                     (last reset was %fs ago)!"
+        t.name (now -. t.last_reset) ;
+      t.quit_flag := Some RamenConsts.ExitCodes.watchdog ;
+      Unix.sleepf t.quit_timeout
+    ) else (
+      Unix.sleepf (t.timeout /. 4.)
+    )
+  ) else ( (* t.quit_flag is set *)
+    let now = Unix.time () in
+    if t.quitting_since = 0. then
+      t.quitting_since <- now
+    else if now -. t.quitting_since > t.quit_timeout then (
+      !logger.error "Forced exit from watchdog %S \
+                     (trying to quit for %fs)!"
+        t.name (now -. t.quitting_since) ;
+      exit RamenConsts.ExitCodes.watchdog
+    ) ;
+    Unix.sleepf ((t.quitting_since +. t.quit_timeout) -. now)
+  ) ;
+  monitor t
+
 let make ?(grace_period=60.) ?(timeout=30.) ?(quit_timeout=30.)
          name quit_flag =
-  { name ; is_running = false ;
-    quit_flag ; last_reset = 0. ; quitting_since = None ;
-    enabled = true ; grace_period ; timeout ; quit_timeout }
+  let t =
+    { name ; monitor = Thread.self () ; quit_flag ; last_reset = 0. ;
+      quitting_since = 0. ; enabled = false ; grace_period ; timeout ;
+      quit_timeout } in
+  !logger.info "Starting watchdog %S" name ;
+  t.monitor <- Thread.create monitor t ;
+  t
 
 let reset t =
   !logger.debug "Reset watchdog %S" t.name ;
-  t.last_reset <- Unix.gettimeofday () ;
+  t.last_reset <- Unix.time () ;
   t.grace_period <- 0.
 
 let disable t =
@@ -49,34 +80,5 @@ let disable t =
 
 let enable t =
   !logger.debug "Enabling watchdog %S" t.name ;
-  t.last_reset <- Unix.gettimeofday () ;
+  t.last_reset <- Unix.time () ;
   t.enabled <- true
-
-let run t =
-  let rec loop () =
-    let now = Unix.time () in
-    (if !(t.quit_flag) <> None then (
-      (match t.quitting_since with
-      | None -> t.quitting_since <- Some now
-      | Some start_quit ->
-          if now -. start_quit > t.quit_timeout then (
-            !logger.error "Forced exit from watchdog %S \
-                           (trying to quit for %fs)!"
-              t.name (now -. start_quit) ;
-            exit RamenConsts.ExitCodes.watchdog)) ;
-      Lwt_unix.sleep (t.quit_timeout /. 4.)
-    ) else (
-      if t.enabled && now -. t.last_reset > t.timeout +. t.grace_period then (
-        !logger.error "Forced quit from watchdog %S \
-                       (last reset was %fs ago)!"
-          t.name (now -. t.last_reset) ;
-        t.quit_flag := Some RamenConsts.ExitCodes.watchdog) ;
-      Lwt_unix.sleep (t.timeout /. 4.)
-    )) >>= loop in
-  if t.is_running then
-    !logger.warning "Ignoring request to run %S again" t.name
-  else (
-    !logger.debug "Starting watchdog %S" t.name ;
-    t.is_running <- true ;
-    t.last_reset <- Unix.gettimeofday () ;
-    async loop)

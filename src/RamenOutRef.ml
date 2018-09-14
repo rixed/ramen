@@ -17,10 +17,8 @@
  * RWLocks and lockf.
  *)
 open Batteries
-open Lwt
 open RamenHelpers
 open RamenLog
-module Lock = RamenAdvLock
 
 (* How are data represented on disk: *)
 type out_ref_conf =
@@ -47,19 +45,18 @@ let read_ =
 
 let read fname =
   ensure_file_exists ~contents:"{}" fname ;
-  Lock.with_r_lock fname (fun () ->
+  RamenAdvLock.with_r_lock fname (fun () ->
     (*!logger.debug "Got read lock for read on %s" fname ;*)
-    wrap (fun () ->
-      let now = Unix.gettimeofday () in
-      let field_mask_of_string s =
-        String.to_list s |> List.map ((=) 'X') in
-      let still_valid timeout = timeout <= 0. || timeout > now in
-      read_ fname |>
-      Hashtbl.filter_map (fun p (mask_str, timeout) ->
-        if still_valid timeout then
-          Some { field_mask = field_mask_of_string mask_str ;
-                 timeout }
-        else None)))
+    let now = Unix.gettimeofday () in
+    let field_mask_of_string s =
+      String.to_list s |> List.map ((=) 'X') in
+    let still_valid timeout = timeout <= 0. || timeout > now in
+    read_ fname |>
+    Hashtbl.filter_map (fun p (mask_str, timeout) ->
+      if still_valid timeout then
+        Some { field_mask = field_mask_of_string mask_str ;
+               timeout }
+      else None))
 
 let add_ fname out_fname file_spec =
   let file_spec =
@@ -81,9 +78,9 @@ let add_ fname out_fname file_spec =
 
 let add fname (out_fname, file_spec) =
   ensure_file_exists ~contents:"{}" fname ;
-  Lock.with_w_lock fname (fun () ->
+  RamenAdvLock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    wrap (fun () -> add_ fname out_fname file_spec))
+    add_ fname out_fname file_spec)
 
 let remove_ fname out_fname =
   let h = read_ fname in
@@ -95,9 +92,9 @@ let remove_ fname out_fname =
 
 let remove fname out_fname =
   ensure_file_exists ~contents:"{}" fname ;
-  Lock.with_w_lock fname (fun () ->
+  RamenAdvLock.with_w_lock fname (fun () ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
-    wrap (fun () -> remove_ fname out_fname))
+    remove_ fname out_fname)
 
 (* Check that fname is listed in outbuf_ref_fname: *)
 let mem_ fname out_fname =
@@ -106,6 +103,6 @@ let mem_ fname out_fname =
 
 let mem fname out_fname =
   ensure_file_exists ~contents:"{}" fname ;
-  Lock.with_r_lock fname (fun () ->
+  RamenAdvLock.with_r_lock fname (fun () ->
     (*!logger.debug "Got read lock for mem on %s" fname ;*)
-    wrap (fun () -> mem_ fname out_fname))
+    mem_ fname out_fname)

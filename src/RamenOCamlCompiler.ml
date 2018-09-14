@@ -1,10 +1,9 @@
 open Batteries
-open Lwt
 open RamenLog
 open RamenHelpers
 module C = RamenConf
 
-let max_simult_compilations = ref 4
+let max_simult_compilations = AtomicCounter.make 4
 let use_external_compiler = ref false
 let bundle_dir = ref ""
 let warnings = "-58-26"
@@ -62,8 +61,13 @@ let ppf () =
 
 let cannot_compile compiler func_name status =
   Printf.sprintf "Cannot generate code for function %s: %s"
-    func_name status |>
-  fail_with
+    (RamenName.func_color func_name) status |>
+  failwith
+
+let cannot_link compiler program_name status =
+  Printf.sprintf "Cannot generate binary for program %s: %s"
+    (RamenName.program_color program_name) status |>
+  failwith
 
 (* Takes a source file and produce an object file: *)
 
@@ -100,17 +104,16 @@ let compile_internal conf func_name src_file obj_file =
   Asmlink.reset () ;
   try
     Optcompile.implementation ~backend (ppf ()) src_file
-      (Filename.remove_extension src_file) ;
-    return_unit
+      (Filename.remove_extension src_file)
   with exn ->
     Location.report_exception (ppf ()) exn ;
     cannot_compile "internal compiler"
-      (RamenName.string_of_func func_name) (Printexc.to_string exn)
+      func_name (Printexc.to_string exn)
 
 let compile_external conf func_name src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
-  let comp_cmd =
+  let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
@@ -124,19 +127,18 @@ let compile_external conf func_name src_file obj_file =
       (shell_quote obj_file)
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
-  let cmd = Lwt_process.shell comp_cmd in
   let cmd_name = "Compilation of "^ RamenName.string_of_func func_name in
-  let%lwt status =
-    run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
-  if status = Unix.WEXITED 0 then (
-    !logger.debug "Compiled %s with: %s"
-      (RamenName.string_of_func func_name) comp_cmd ;
-    return_unit
-  ) else
-    (* As this might well be an installation problem, makes this error
-     * report to the GUI: *)
-    cannot_compile comp_cmd
-      (RamenName.string_of_func func_name) (string_of_process_status status)
+  match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
+  | None ->
+      cannot_compile cmd func_name "Cannot run command"
+  | Some (Unix.WEXITED 0) ->
+      !logger.debug "Compiled %s with: %s"
+        (RamenName.string_of_func func_name) cmd
+  | Some status ->
+      (* As this might well be an installation problem, makes this error
+       * report to the GUI: *)
+      cannot_compile cmd
+        func_name (string_of_process_status status)
 
 let compile conf func_name src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
@@ -190,17 +192,16 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
       (Filename.remove_extension src_file) ;
     (* Now link *)
     Compmisc.init_path true ;
-    Asmlink.link (ppf ()) objfiles bin_file ;
-    return_unit
+    Asmlink.link (ppf ()) objfiles bin_file
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    cannot_compile "embedded compiler"
-      (RamenName.string_of_program program_name) (Printexc.to_string exn)
+    cannot_link "embedded compiler"
+      program_name (Printexc.to_string exn)
 
 let link_external conf program_name inc_dirs obj_files src_file bin_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
-  let comp_cmd =
+  let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
@@ -219,20 +220,19 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
           Printf.fprintf oc "%s" (shell_quote f))) obj_files)
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
-  let cmd = Lwt_process.shell comp_cmd in
   let cmd_name =
     "Compilation+Link of "^ RamenName.string_of_program program_name in
-  let%lwt status =
-    run_coprocess ~max_count:max_simult_compilations cmd_name cmd in
-  if status = Unix.WEXITED 0 then (
-    !logger.debug "Compiled %s with: %s"
-      (RamenName.string_of_program program_name) comp_cmd ;
-    return_unit
-  ) else
-    (* As this might well be an installation problem, makes this error
-     * report to the GUI: *)
-    cannot_compile comp_cmd
-      (RamenName.string_of_program program_name) (string_of_process_status status)
+  match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
+  | None ->
+      cannot_link cmd program_name "Cannot run command"
+  | Some (Unix.WEXITED 0) ->
+      !logger.debug "Compiled %s with: %s"
+        (RamenName.string_of_program program_name) cmd ;
+  | Some status ->
+      (* As this might well be an installation problem, makes this error
+       * report to the GUI: *)
+      cannot_link cmd
+        program_name (string_of_process_status status)
 
 let link conf program_name obj_files src_file bin_file =
   mkdir_all ~is_file:true bin_file ;

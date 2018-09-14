@@ -1,6 +1,5 @@
 open Batteries
 open Stdint
-open Lwt
 open RamenLog
 open RamenHelpers
 module C = RamenConf
@@ -29,8 +28,8 @@ let make_temp_export ?duration conf func =
       timeout = match duration with
                 | None -> 0.
                 | Some d -> Unix.gettimeofday () +. d } in
-  let%lwt () = RamenOutRef.add out_ref (bname, file_spec) in
-  return bname
+  RamenOutRef.add out_ref (bname, file_spec) ;
+  bname
 
 (* Returns the func, and the buffer name: *)
 let make_temp_export_by_name conf ?duration fq =
@@ -38,12 +37,12 @@ let make_temp_export_by_name conf ?duration fq =
   C.with_rlock conf (fun programs ->
     match C.find_func programs program_name func_name with
     | exception Not_found ->
-        fail_with ("Function "^
-                   RamenName.string_of_program program_name ^"/"^
-                   RamenName.string_of_func func_name ^" does not exist")
+        failwith ("Function "^
+                  RamenName.string_of_program program_name ^"/"^
+                  RamenName.string_of_func func_name ^" does not exist")
     | prog, func ->
-        let%lwt bname = make_temp_export conf ?duration func in
-        return (prog, func, bname))
+        let bname = make_temp_export conf ?duration func in
+        prog, func, bname)
 
 (* Some ringbuf are always available and their type known:
  * instrumentation, notifications. *)
@@ -67,21 +66,21 @@ let read_output conf ?duration fq where =
   match read_well_known fq where "#stats"
           (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
-      return (bname, filter, typ, ser, [], RamenBinocle.event_time)
+      bname, filter, typ, ser, [], RamenBinocle.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
       (match read_well_known fq where "#notifs"
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
       | Some (bname, filter, typ, ser) ->
-          return (bname, filter, typ, ser, [], RamenNotification.event_time)
+          bname, filter, typ, ser, [], RamenNotification.event_time
       | None ->
           (* Normal case: Create the non-wrapping RingBuf (under a standard
            * name given by RamenConf *)
-          let%lwt prog, func, bname =
+          let prog, func, bname =
             make_temp_export_by_name conf ?duration fq in
           let ser =
             RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
           let filter = RamenSerialization.filter_tuple_by ser where in
-          return (bname, filter, func.F.out_type, ser, prog.P.params,
-                  func.F.event_time))
+          bname, filter, func.F.out_type, ser, prog.P.params,
+          func.F.event_time)

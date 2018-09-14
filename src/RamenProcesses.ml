@@ -3,7 +3,6 @@
  * to see, send their notifications, delete old unused files...
  *)
 open Batteries
-open Lwt
 open RamenLog
 open RamenHelpers
 module C = RamenConf
@@ -13,6 +12,11 @@ module P = C.Program
 (* Global quit flag, set (to some RamenConsts.ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
 let quit = ref None
+
+let until_quit f =
+  let rec loop () =
+    if !quit = None && f () then loop () in
+  loop ()
 
 (* How frequently hall each worker write a new activity report: *)
 let report_period = ref RamenConsts.Default.report_period
@@ -68,7 +72,7 @@ let close_fd i =
   Unix.close (fd_of_int i)
 
 let run_background ?cwd ?(and_stop=false) cmd args env =
-  let open Lwt_unix in
+  let open Unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
   !logger.debug "Running %s as: /usr/bin/env %a %S %a"
     cmd
@@ -206,36 +210,29 @@ let relatives f must_run =
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
 
-(* waitpid is made non-blocking in a loop by Lwt (as there are no good way to
- * select on that). And having one waitpid per individual worker takes way too
- * much CPU so what we do instead is to have a single waitpid collecting all
- * terminations in a loop, and storing them on this list, to be later examined
- * by the main thread: *)
+(* We collect all children exit code in a single call to waitpid, and then
+ * store all collected information in this list, to be later examined by the
+ * main thread: *)
 let terminated_pids = ref []
 
 let rec wait_all_pids_loop and_save =
-  let%lwt () =
-    match%lwt Lwt_unix.waitpid Unix.[WNOHANG; WUNTRACED] 0 with
-    | exception Unix.Unix_error (Unix.EINTR, _, _) ->
-      return_unit
-    | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
-      (* Will happen if we have no children yet *)
-      Lwt_unix.sleep 1.
-    | exception exn ->
-      (* This should not be used *)
-      !logger.error "waitpid: %s" (Printexc.to_string exn) ;
-      Lwt_unix.sleep (Random.float 2.)
-    | 0, _  ->
-      (* Nothing, sleep and loop. *)
-      Lwt_unix.sleep 1.
-    | pid, Unix.(WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
-      !logger.debug "pid %d got stopped" pid ;
-      return_unit
-    | pid, status ->
-      let now = Unix.gettimeofday () in
-      if and_save then
-        terminated_pids := (pid, status, now) :: !terminated_pids ;
-      return_unit in
+  let open Unix in
+  (match waitpid [ WUNTRACED ] 0 with
+  | exception Unix_error (EINTR, _, _) -> ()
+  (* Will happen if we have no children yet: *)
+  | exception Unix_error (ECHILD, _, _) -> Unix.sleep 1
+  | exception exn ->
+    (* This should not be used *)
+    !logger.error "waitpid: %s" (Printexc.to_string exn) ;
+    Unix.sleep 1
+  (* Nothing, should not happen, loop. *)
+  | 0, _  -> Unix.sleep 1
+  | pid, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+    !logger.debug "pid %d got stopped" pid
+  | pid, status ->
+    let now = gettimeofday () in
+    if and_save then
+      terminated_pids := (pid, status, now) :: !terminated_pids) ;
   wait_all_pids_loop and_save
 
 open Binocle
@@ -374,18 +371,17 @@ let really_start conf must_run proc parents children =
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
-  let%lwt () =
-    Lwt_list.iter_s (fun c ->
-      let fname, specs as out = input_spec conf proc.func c in
-      (* The destination ringbuffer must exist before it's referenced in an
-       * out-ref, or the worker might err and throw away the tuples: *)
-      RingBuf.create fname ;
-      RamenOutRef.add out_ringbuf_ref out
-    ) children in
+  List.iter (fun c ->
+    let fname, specs as out = input_spec conf proc.func c in
+    (* The destination ringbuffer must exist before it's referenced in an
+     * out-ref, or the worker might err and throw away the tuples: *)
+    RingBuf.create fname ;
+    RamenOutRef.add out_ringbuf_ref out
+  ) children ;
   (* Now that the out_ref exists, but before we actually fork the worker,
    * we can start importing: *)
   (* Always export for a little while at the beginning *)
-  let%lwt _ =
+  let _bname =
     RamenExport.make_temp_export ~duration:conf.initial_export_duration
       conf proc.func in
   (* Now actually start the binary *)
@@ -449,14 +445,12 @@ let really_start conf must_run proc parents children =
    * mentioned in the program is relative to the program. *)
   let cwd = Filename.dirname proc.bin in
   let cmd = Filename.basename proc.bin in
-  let%lwt pid =
-    Lwt.wrap (fun () ->
-      run_background ~cwd ~and_stop:conf.C.test cmd args env) in
+  let pid = run_background ~cwd ~and_stop:conf.C.test cmd args env in
   !logger.info "Function %s now runs under pid %d" fq_str pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
-  Lwt_list.iter_p (fun p ->
+  List.iter (fun p ->
     let out_ref =
       C.out_ringbuf_names_ref conf p in
     RamenOutRef.add out_ref (input_spec conf p proc.func)
@@ -506,14 +500,12 @@ let really_try_start conf must_run proc =
       check_linkage proc.func c && ok) linkage_ok children in
   if parents_ok && linkage_ok then
     really_start conf must_run proc parents children
-  else return_unit
 
 let try_start conf must_run proc =
   let now = Unix.gettimeofday () in
   if proc.quarantine_until > now then (
     !logger.debug "Operation %a still in quarantine"
-      print_running_process proc ;
-    return_unit
+      print_running_process proc
   ) else (
     really_try_start conf must_run proc
   )
@@ -527,13 +519,13 @@ let try_kill conf must_run proc =
   let parents, _children = relatives proc.func must_run in
   (* Let's remove this proc from all its parent out-ref. *)
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
-  let%lwt () =
-    Lwt_list.iter_p (fun p ->
-      let parent_out_ref =
-        C.out_ringbuf_names_ref conf p in
-      Lwt_list.iter_s (fun this_in ->
-        RamenOutRef.remove parent_out_ref this_in) input_ringbufs
-    ) parents in
+  List.iter (fun p ->
+    let parent_out_ref =
+      C.out_ringbuf_names_ref conf p in
+    List.iter (fun this_in ->
+      RamenOutRef.remove parent_out_ref this_in
+    ) input_ringbufs
+  ) parents ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
@@ -553,9 +545,7 @@ let try_kill conf must_run proc =
     log_and_ignore_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;
-    IntCounter.inc (stats_worker_sigkills conf.C.persist_dir)
-  ) ;
-  return_unit
+    IntCounter.inc (stats_worker_sigkills conf.C.persist_dir))
 
 let check_out_ref =
   let do_check_out_ref conf must_run =
@@ -566,42 +556,39 @@ let check_out_ref =
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-    Hashtbl.values must_run |> List.of_enum |> (* FIXME *)
-    Lwt_list.iter_s (fun (_bin, func, _log_level) ->
+    Hashtbl.iter (fun _ (_bin, func, _log_level) ->
       (* Iter over all functions and check they do not output to a ringbuf not
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
-      let%lwt outs = RamenOutRef.read out_ref in
-      Hashtbl.keys outs |> List.of_enum |>
-      Lwt_list.iter_s (fun fname ->
+      let outs = RamenOutRef.read out_ref in
+      Hashtbl.iter (fun fname _ ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
             (RamenName.string_of_fq (F.fq_name func)) fname ;
           IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-          RamenOutRef.remove out_ref fname
-        ) else return_unit) ;%lwt
+          RamenOutRef.remove out_ref fname)
+      ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
       let par_funcs, _c = relatives func must_run in
       let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
-      Lwt_list.iter_s (fun par_func ->
+      List.iter (fun par_func ->
         let out_ref = C.out_ringbuf_names_ref conf par_func in
-        let%lwt outs = RamenOutRef.read out_ref in
+        let outs = RamenOutRef.read out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"
             (RamenName.string_of_fq (F.fq_name par_func))
             (RamenName.string_of_fq (F.fq_name func)) ;
-          RamenOutRef.add out_ref (input_spec conf par_func func)
-        ) else return_unit
-      ) par_funcs)
+          RamenOutRef.add out_ref (input_spec conf par_func func))
+      ) par_funcs
+    ) must_run
   and last_checked_out_ref = ref 0. in
   fun conf must_run ->
     let now = Unix.time () in
     if now -. !last_checked_out_ref > 5. then (
       last_checked_out_ref := now ;
-      do_check_out_ref conf must_run
-    ) else return_unit
+      do_check_out_ref conf must_run)
 
 let signal_all_cont conf running =
   Hashtbl.iter (fun (n, _, _, _) proc ->
@@ -612,11 +599,8 @@ let signal_all_cont conf running =
         (Unix.kill (Option.get proc.pid)) Sys.sigcont) ;
   ) running
 
-let watchdog =
-  (* In the first run we might have *plenty* of workers to start, thus
-   * the extended grace_period (it's not unheard of >1min to start all
-   * workers on a small VM) *)
-  RamenWatchdog.make ~grace_period:180. ~timeout:30. "supervisor" quit
+(* Have a single watchdog even when supervisor is restarted: *)
+let watchdog = ref None
 
 (*
  * Synchronisation of the rc file of programs we want to run and the
@@ -650,6 +634,14 @@ let watchdog =
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
+  if !watchdog = None then
+    watchdog :=
+      (* In the first run we might have *plenty* of workers to start, thus
+       * the extended grace_period (it's not unheard of >1min to start all
+       * workers on a small VM) *)
+      Some (RamenWatchdog.make ~grace_period:180. ~timeout:30.
+                               "supervisor" quit) ;
+  let watchdog = Option.get !watchdog in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the function mount point, signature and
    * parameters to the binary, Func and log_level.
@@ -690,25 +682,24 @@ let synchronize_running conf autoreload_delay =
     (* See preamble discussion about autoreload for why workers must be
      * started only after all the kills: *)
     if !to_kill <> [] then !logger.debug "Starting the kills" ;
-    let%lwt () = Lwt_list.iter_p (try_kill conf must_run) !to_kill in
+    List.iter (try_kill conf must_run) !to_kill ;
     if !to_start <> [] then !logger.debug "Starting the starts" ;
-    let%lwt () = Lwt_list.iter_p (try_start conf must_run) !to_start in
+    List.iter (try_start conf must_run) !to_start ;
     (* Try to fix any issue with out_refs: *)
     if !to_start = [] && !to_kill = [] && !quit = None then
-      check_out_ref conf must_run
-    else return_unit ;%lwt
+      check_out_ref conf must_run ;
     if !to_start = [] && conf.C.test then signal_all_cont conf running ;
     (* Return if anything changed: *)
-    return (!to_kill <> [] || !to_start <> [])
+    !to_kill <> [] || !to_start <> []
   in
   (* Once we have forked some workers we must not allow an exception to
    * terminate this function or we'd leave unsupervised workers behind: *)
   let rec none_shall_pass f =
-    try%lwt f ()
+    try f ()
     with exn ->
       print_exception exn ;
       !logger.error "Crashed while supervising children, keep trying!" ;
-      let%lwt () = Lwt_unix.sleep (1. +. Random.float 1.) in
+      Unix.sleepf (1. +. Random.float 1.) ;
       none_shall_pass f
   in
   (* The hash of programs that must be running, updated by [loop]: *)
@@ -718,13 +709,12 @@ let synchronize_running conf autoreload_delay =
     none_shall_pass (fun () ->
       process_workers_terminations conf running ;
       if !quit <> None && Hashtbl.length running = 0 then (
-        !logger.info "All processes stopped, quitting." ;
-        return_unit
+        !logger.info "All processes stopped, quitting."
       ) else (
-        let%lwt last_read =
+        let last_read =
           if !quit <> None then (
             Hashtbl.clear must_run ;
-            return last_read
+            last_read
           ) else (
             let last_mod =
               try Some (mtime_of_file rc_file)
@@ -745,44 +735,42 @@ let synchronize_running conf autoreload_delay =
                   now -. lm > 1. in
             if last_mod <> None && (must_autoreload || must_reread) then (
               (* Reread the content of that file *)
-              let%lwt must_run_programs = C.with_rlock conf return in
+              let must_run_programs = C.with_rlock conf identity in
               (* The run file gives us the programs (and how to run them), but we
                * want [must_run] to be a hash of functions. Also, we want the
                * workers identified by their signature so that if the type of a
                * worker change but not its name we see a different worker. *)
               Hashtbl.clear must_run ;
-              let%lwt () = Lwt.wrap (fun () ->
-                Hashtbl.iter (fun program_name (mre, get_rc) ->
-                  if not mre.C.killed then
-                    match get_rc () with
-                    | exception _ ->
-                        (* Errors have been logged already, nothing more can
-                         * be done about this. *)
-                        ()
-                    | prog ->
-                        List.iter (fun f ->
-                          (* Use the mount point + signature + params as the key. *)
-                          let k =
-                            program_name, f.F.name, f.F.signature,
-                            mre.C.params
-                          and log_level =
-                            if mre.C.debug then Debug else conf.C.log_level
-                          in
-                          Hashtbl.add must_run k (mre.C.bin, f, log_level)
-                        ) prog.P.funcs
-                ) must_run_programs) in
-              return now
-            ) else return last_read) in
-        let%lwt changed = synchronize must_run running in
+              Hashtbl.iter (fun program_name (mre, get_rc) ->
+                if not mre.C.killed then
+                  match get_rc () with
+                  | exception _ ->
+                      (* Errors have been logged already, nothing more can
+                       * be done about this. *)
+                      ()
+                  | prog ->
+                      List.iter (fun f ->
+                        (* Use the mount point + signature + params as the key. *)
+                        let k =
+                          program_name, f.F.name, f.F.signature,
+                          mre.C.params
+                        and log_level =
+                          if mre.C.debug then Debug else conf.C.log_level
+                        in
+                        Hashtbl.add must_run k (mre.C.bin, f, log_level)
+                      ) prog.P.funcs
+              ) must_run_programs ;
+              now
+            ) else last_read) in
+        let changed = synchronize must_run running in
         (* Touch the rc file if anything changed (esp. autoreload) since that
          * mtime is used to signal cache expirations etc. *)
-        if changed then lwt_touch_file rc_file last_read
-        else return_unit ;%lwt
-        let delay = if !quit = None then 1. else 0.1 in
+        if changed then touch_file rc_file last_read ;
         Gc.minor () ;
-        let%lwt () = Lwt_unix.sleep delay in
+        let delay = if !quit = None then 1. else 0.1 in
+        Unix.sleepf delay ;
         RamenWatchdog.reset watchdog ;
         loop last_read))
   in
-  RamenWatchdog.run watchdog ;
+  RamenWatchdog.enable watchdog ;
   loop 0.

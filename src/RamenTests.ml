@@ -1,5 +1,4 @@
 open Batteries
-open Lwt
 open Stdint
 open RamenHelpers
 open RamenLog
@@ -56,9 +55,6 @@ and program_spec =
 let fail_and_quit msg =
   RamenProcesses.quit := Some 1 ;
   failwith msg
-
-let lwt_fail_and_quit msg =
-  wrap (fun () -> fail_and_quit msg)
 
 let compare_miss bad1 bad2 =
   (* TODO: also look at the values *)
@@ -121,20 +117,20 @@ let tuple_spec_print ser oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
   List.print (file_spec_print ser !best_miss) oc
 
-let test_output conf fq output_spec =
+let test_output conf fq output_spec test_ended =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
-  let%lwt bname, filter, _typ, ser, _params, _event_time =
+  let bname, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to value into a list of field index
    * and value: *)
   let field_indices_of_tuples =
     List.map (filter_spec_of_spec fq ser) in
-  let%lwt tuples_to_find = wrap (fun () -> ref (
-    field_indices_of_tuples output_spec.Output.present)) in
-  let%lwt tuples_must_be_absent = wrap (fun () ->
-    field_indices_of_tuples output_spec.Output.absent) in
+  let tuples_to_find = ref (
+    field_indices_of_tuples output_spec.Output.present) in
+  let tuples_must_be_absent =
+    field_indices_of_tuples output_spec.Output.absent in
   let tuples_to_not_find = ref [] in
   let start = Unix.gettimeofday () in
   (* With tuples that must be absent, when to stop listening?
@@ -142,14 +138,14 @@ let test_output conf fq output_spec =
    * for as long as we have not yet received some tuples that
    * must be present and the time did not ran out. *)
   let while_ () =
-    return (
-      !tuples_to_find <> [] &&
-      !tuples_to_not_find = [] &&
-      !RamenProcesses.quit = None &&
-      Unix.gettimeofday () -. start < output_spec.timeout) in
+    not !test_ended &&
+    !tuples_to_find <> [] &&
+    !tuples_to_not_find = [] &&
+    !RamenProcesses.quit = None &&
+    Unix.gettimeofday () -. start < output_spec.timeout in
   let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
-  let%lwt num_tuples =
+  let num_tuples =
     RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
       if filter tuple then (
@@ -166,7 +162,7 @@ let test_output conf fq output_spec =
           ) tuples_must_be_absent |>
           List.rev_append !tuples_to_not_find) ;
       (* Count all tuples including those filtered out: *)
-      return (count + 1)) in
+      count + 1) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = []
   in
   let err_string_of_tuples lst =
@@ -187,30 +183,28 @@ let test_output conf fq output_spec =
     (if !tuples_to_not_find = [] then "" else
       " and found "^ err_string_of_tuples !tuples_to_not_find)
   in
-  return (success, msg)
+  success, msg
 
 (* Wait for the given tuple: *)
 let test_until conf fq spec =
-  let%lwt bname, filter, _typ, ser, _params, _event_time =
+  let bname, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let filter_spec = filter_spec_of_spec fq ser spec in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
   let got_it = ref false in
-  let while_ () = return (not !got_it && !RamenProcesses.quit = None) in
+  let while_ () = not !got_it && !RamenProcesses.quit = None in
   !logger.debug "Enumerating tuples from %s for early termination" bname ;
-  let%lwt num_tuples =
-    RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
-      let tuple = unserialize tx in
-      if filter tuple && filter_of_tuple_spec filter_spec tuple then (
-        !logger.info "Got terminator tuple from function %S"
-          (RamenName.string_of_fq fq) ;
-        got_it := true) ;
-      (* Count all tuples including those filtered out: *)
-      return (count + 1)) in
-  return_unit
+  RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
+    let tuple = unserialize tx in
+    if filter tuple && filter_of_tuple_spec filter_spec tuple then (
+      !logger.info "Got terminator tuple from function %S"
+        (RamenName.string_of_fq fq) ;
+      got_it := true) ;
+    (* Count all tuples including those filtered out: *)
+    count + 1) |> ignore
 
-let test_notifications notify_rb notif_spec =
+let test_notifications notify_rb notif_spec test_ended =
   (* We keep pat in order to be able to print it later: *)
   let to_regexp pat = pat, Str.regexp pat in
   let notifs_must_be_absent = List.map to_regexp notif_spec.Notifs.absent
@@ -218,12 +212,11 @@ let test_notifications notify_rb notif_spec =
   and notifs_to_not_find = ref []
   and start = Unix.gettimeofday () in
   let while_ () =
-    if !notifs_to_find <> [] &&
-       !notifs_to_not_find = [] &&
-       Unix.gettimeofday () -. start < notif_spec.timeout
-    then return_true else return_false in
-  let%lwt () =
-    RamenSerialization.read_notifs ~while_ notify_rb
+    not !test_ended &&
+    !notifs_to_find <> [] &&
+    !notifs_to_not_find = [] &&
+    Unix.gettimeofday () -. start < notif_spec.timeout in
+  RamenSerialization.read_notifs ~while_ notify_rb
     (fun (worker, sent_time, event_time, notif_name, firing, certainty,
           parameters) ->
       let firing = option_of_nullable firing in
@@ -236,8 +229,7 @@ let test_notifications notify_rb notif_spec =
       notifs_to_not_find :=
         List.filter (fun (_pat, re) ->
           Str.string_match re notif_name 0) notifs_must_be_absent |>
-        List.rev_append !notifs_to_not_find ;
-      return_unit) in
+        List.rev_append !notifs_to_not_find) ;
   let success = !notifs_to_find = [] && !notifs_to_not_find = [] in
   let re_print oc (pat, _re) = String.print oc pat in
   let msg =
@@ -249,7 +241,7 @@ let test_notifications notify_rb notif_spec =
       "Found these notifs: "^
         IO.to_string (List.print re_print) !notifs_to_not_find)
   in
-  return (success, msg)
+  success, msg
 
 (* Perform all find of checks before spawning testing threads, such as
  * check the existence of all mentioned programs and functions: *)
@@ -289,12 +281,11 @@ let check_test_spec conf test =
       ) in
     i in
   C.with_rlock conf (fun programs ->
-    fold_programs return_unit (fun thd prog_name ->
+    fold_programs () (fun () prog_name ->
       if not (Hashtbl.mem programs prog_name) then
         Printf.sprintf "Unknown program %s"
           (RamenName.program_color prog_name) |>
-        fail_with
-      else thd))
+        failwith))
 
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
@@ -306,7 +297,7 @@ let run_test conf notify_rb dirname test =
    * hash-table: *)
   C.with_wlock conf (fun programs ->
     Hashtbl.clear programs ;
-    hash_iter_p test.programs (fun program_name p ->
+    Hashtbl.iter (fun program_name p ->
       (* The path to the binary is relative to the test file: *)
       if p.bin = "" then failwith "Binary file must not be empty" ;
       let bin =
@@ -315,12 +306,12 @@ let run_test conf notify_rb dirname test =
       let prog = P.of_bin p.params bin in
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; killed = false ; debug = false } ;
-      Lwt_list.iter_s (fun func ->
-        Hashtbl.add workers (F.fq_name func) (func, ref None) ;
-        return_unit
-      ) prog.P.funcs)) ;%lwt
-  (try check_test_spec conf test with e -> fail e) ;%lwt
-  let worker_feeder =
+      List.iter (fun func ->
+        Hashtbl.add workers (F.fq_name func) (func, ref None)
+      ) prog.P.funcs
+    ) test.programs) ;
+  check_test_spec conf test ;
+  let worker_feeder () =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with
       | exception Not_found ->
@@ -328,51 +319,47 @@ let run_test conf notify_rb dirname test =
             Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
               (RamenName.string_of_fq input.operation)
               (Enum.print RamenName.fq_print) (Hashtbl.keys workers) in
-          lwt_fail_and_quit msg
+          fail_and_quit msg
       | func, rbr ->
-          let%lwt () =
-            if !rbr = None then (
-              if func.F.merge_inputs then
-                (* TODO: either specify a parent number or pick the first one? *)
-                let err = "Writing to merging operations is not \
-                           supported yet!" in
-                lwt_fail_and_quit err
-              else (
-                let in_rb = C.in_ringbuf_name_single conf func in
-                (* It might not exist already. Instead of waiting for the
-                 * worker to start, create it: *)
-                RingBuf.create in_rb ;
-                let rb = RingBuf.load in_rb in
-                rbr := Some rb ;
-                return_unit)
-            ) else return_unit in
+          if !rbr = None then (
+            if func.F.merge_inputs then
+              (* TODO: either specify a parent number or pick the first one? *)
+              let err = "Writing to merging operations is not \
+                         supported yet!" in
+              fail_and_quit err
+            else (
+              let in_rb = C.in_ringbuf_name_single conf func in
+              (* It might not exist already. Instead of waiting for the
+               * worker to start, create it: *)
+              RingBuf.create in_rb ;
+              let rb = RingBuf.load in_rb in
+              rbr := Some rb)) ;
           let rb = Option.get !rbr in
           RamenSerialization.write_record conf func.F.in_type rb input.tuple
     in
-    let%lwt () =
-      Lwt_list.iter_s (fun input ->
-        if !RamenProcesses.quit <> None then return_unit
-        else feed_input input
-      ) test.inputs in
+    List.iter (fun input ->
+      if !RamenProcesses.quit = None then feed_input input
+    ) test.inputs ;
     Hashtbl.iter (fun _ (_, rbr) ->
       Option.may RingBuf.unload !rbr ;
       rbr := None
-    ) workers ;
-    return_unit in
+    ) workers in
+  (* This flag will signal the end to either both tester and early_termination
+   * threads: *)
+  let test_ended = ref false in
   let stop_workers =
     let all = [ Globs.compile "*" ] in
     fun () ->
-      let%lwt _ = RamenRun.kill conf all in
-      return_unit in
+      ignore (RamenRun.kill conf all) ;
+      test_ended := true in
   (* One tester thread per operation *)
   let tester_threads =
     Hashtbl.fold (fun user_fq_name output_spec thds ->
-      let tester_thread () = test_output conf user_fq_name output_spec in
-      tester_thread :: thds
+      test_output conf user_fq_name output_spec :: thds
     ) test.outputs [] in
   (* Similarly, test the notifications: *)
   let tester_threads =
-    (fun () -> test_notifications notify_rb test.notifications) ::
+    (test_notifications notify_rb test.notifications) ::
     tester_threads in
   (* Wrap the testers into threads that update this status and set
    * the quit flag: *)
@@ -380,36 +367,38 @@ let run_test conf notify_rb dirname test =
   let num_tests_left = ref (List.length tester_threads) in
   let tester_threads =
     List.map (fun thd ->
-      let%lwt success, msg = thd () in
-      if not success then (
-        all_good := false ;
-        !logger.error "Failure: %s\n" msg
-      ) ;
-      decr num_tests_left ;
-      if !num_tests_left <= 0 then (
-        !logger.info "Finished all tests" ;
-        stop_workers ()
-        (* Stop all workers *)
-      ) else return_unit
+      Thread.create (fun () ->
+        let success, msg = thd test_ended in
+        if not success then (
+          all_good := false ;
+          !logger.error "Failure: %s\n" msg
+        ) ;
+        decr num_tests_left ;
+        if !num_tests_left <= 0 then (
+          !logger.info "Finished all tests" ;
+          stop_workers ())) ()
     ) tester_threads in
   (* Finally, a thread that tests the ending condition: *)
   let early_terminator =
     if Hashtbl.is_empty test.until then
-      Lwt_unix.sleep 99999999.
+      Thread.create RamenProcesses.until_quit (fun () ->
+        if !test_ended then false else (Unix.sleep 1 ; true))
     else (
-      join (
+      Thread.create (fun () ->
         Hashtbl.fold (fun user_fq_name tuple_spec thds ->
-          test_until conf user_fq_name tuple_spec :: thds
-        ) test.until []
-      ) ;%lwt
-      !logger.info "Early termination." ;
-      all_good := false ;
-      stop_workers ()
+          Thread.create (test_until conf user_fq_name) tuple_spec :: thds
+        ) test.until [] |>
+        List.iter Thread.join ;
+        !logger.info "Early termination." ;
+        all_good := false ;
+        stop_workers ()) ()
     ) in
-  pick [
-    early_terminator ;
-    join (worker_feeder :: tester_threads) ] ;%lwt
-  return !all_good
+  !logger.debug "Waiting for test threads..." ;
+  List.iter Thread.join
+    ((Thread.create worker_feeder ()) :: tester_threads) ;
+  !logger.debug "Waiting for thread early_terminator..." ;
+  Thread.join early_terminator ;
+  !all_good
 
 let run conf test () =
   let conf = C.{ conf with
@@ -434,27 +423,25 @@ let run conf test () =
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
   let res = ref false in
-  Lwt_main.run (
-    async (fun () ->
-      restart_on_failure "wait_all_pids_loop"
-        RamenProcesses.wait_all_pids_loop true) ;
-    join [
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop"
+      RamenProcesses.wait_all_pids_loop) true |> ignore ;
+  let sync =
+    Thread.create (
       restart_on_failure "synchronize_running"
-        (RamenProcesses.synchronize_running conf) 0. ;
-      finalize
-        (fun () ->
-          let%lwt r =
-            run_test conf notify_rb (Filename.dirname test) test_spec in
-          res := r ;
-          return_unit)
-        (fun () ->
-          (* Terminate the other thread cleanly: *)
-          RamenProcesses.quit := Some 0 ;
-          return_unit) ]) ;
+        (RamenProcesses.synchronize_running conf)) 0. in
+  finally (fun () ->
+            (* Terminate the other thread cleanly: *)
+            RamenProcesses.quit := Some 0)
+    (fun () ->
+      let r =
+        run_test conf notify_rb (Filename.dirname test) test_spec in
+      res := r) () ;
+  !logger.debug "Waiting for thread sync..." ;
+  Thread.join sync ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
-  let stats =
-    Lwt_main.run (RamenPs.read_stats conf) in
+  let stats = RamenPs.read_stats conf in
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
       String.print

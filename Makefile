@@ -2,7 +2,7 @@
 
 VERSION = 3.0.8
 
-DUPS_IN  = $(shell ocamlfind query compiler-libs):$(shell ocamlfind query lwt_ppx)
+DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
@@ -25,15 +25,15 @@ FILE_NOTIFIER = src/RamenFileNotify_Inotify.ml
 endif
 
 PACKAGES = \
-	ppp ppp.unix lwt_ppx batteries cmdliner stdint parsercombinator \
-	syslog cohttp-lwt-unix num inotify.lwt binocle unix lacaml \
+	ppp ppp.unix batteries cmdliner stdint parsercombinator \
+	syslog num inotify binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3
 
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
-  META src/codegen.cmxa src/codegen.a \
-  $(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
+	META src/codegen.cmxa src/codegen.a \
+	$(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB)
 

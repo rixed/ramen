@@ -3,15 +3,8 @@
 open Batteries
 open Stdint
 open RamenLog
-open Lwt
 open RamenHelpers
 open RamenNullable
-
-let () =
-  async_exception_hook := (fun exn ->
-    !logger.error "Received exception %s\n%s"
-      (Printexc.to_string exn)
-      (Printexc.get_backtrace ()))
 
 (* Get parameters from the environment.
  * This function is called at module initialization time to get the (constant)
@@ -80,7 +73,7 @@ let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
 let split by what k =
   if what = "" then k what else
-  String.nsplit ~by what |> Lwt_list.iter_s k
+  String.nsplit ~by what |> List.iter k
 
 module Remember = struct
 (* Remember values *)

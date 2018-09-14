@@ -1,7 +1,6 @@
 (* Collector for netflow v5.  *)
 open Batteries
 open RamenLog
-open Lwt
 open RamenHelpers
 open Stdint
 open RamenTuple
@@ -82,12 +81,11 @@ let collector ~inet_addr ~port ?while_ k =
     !logger.debug "Received %d bytes from netflow source @ %s"
       recv_len sender ;
     decode buffer recv_len sender |>
-    Array.fold_left (fun th tuple -> th >>= fun () -> k tuple) return_unit
+    Array.iter k
   in
   udp_server ~inet_addr ~port ?while_ serve
 
 let test ?(port=2055) () =
   logger := make_logger Normal ;
-  let display_tuple _t =
-    return_unit in
-  Lwt_main.run (collector ~inet_addr:Unix.inet_addr_any ~port display_tuple)
+  let display_tuple _t = () in
+  collector ~inet_addr:Unix.inet_addr_any ~port display_tuple
