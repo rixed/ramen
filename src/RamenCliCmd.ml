@@ -424,7 +424,9 @@ let tail conf func_name with_header sep null raw
     let first = if with_event_time then "Event time"^ sep else first in
     let first = "#"^ first in
     Array.print ~first ~last:"\n" ~sep
-      (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
+      (fun oc ft ->
+        String.print oc ft.RamenTuple.typ_name ;
+        Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
     BatIO.flush stdout) ;
   RamenProcesses.thread_create_waitpids false ;
