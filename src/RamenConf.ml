@@ -165,6 +165,8 @@ type must_run_entry =
     (* Should this worker be started in debug mode regardless of supervisor
      * mode? *)
     debug : bool [@ppp_default false] ;
+    (* Stat report period: *)
+    report_period : float [@ppp_default RamenConsts.Default.report_period] ;
     (* Full path to the worker's binary: *)
     bin : string ;
     (* "Command line" for that worker: *)

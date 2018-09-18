@@ -387,8 +387,13 @@ let compile_alert conf programs program_name program_code bin_fname =
   let get_parent = RamenCompiler.parent_from_programs programs in
   RamenCompiler.compile conf root_path get_parent program_name program_code
 
-let run_alert conf bin_fname =
-  RamenRun.run conf (Hashtbl.create 0) true bin_fname false
+let run_alert conf bin_file =
+  let params = Hashtbl.create 0
+  and report_period = RamenConsts.Default.report_period
+  and replace = true
+  and debug = false
+  in
+  RamenRun.run conf params replace report_period bin_file debug
 
 let stop_alert conf program_name =
   let glob =

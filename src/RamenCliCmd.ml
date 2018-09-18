@@ -42,8 +42,7 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
 let check_binocle_errors () =
   Option.may raise !Binocle.last_error
 
-let supervisor conf daemonize to_stdout to_syslog autoreload
-               report_period () =
+let supervisor conf daemonize to_stdout to_syslog autoreload () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -56,7 +55,6 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
       else Some (conf.C.persist_dir ^"/log/supervisor") in
     Option.may mkdir_all logdir ;
     logger := make_logger ?logdir conf.C.log_level) ;
-  RamenProcesses.report_period := report_period ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
@@ -193,12 +191,12 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace as_ bin_file () =
+let run conf params replace report_period as_ bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   logger := make_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf params replace ?as_ bin_file debug
+  RamenRun.run conf params replace report_period ?as_ bin_file debug
 
 (*
  * `ramen kill`

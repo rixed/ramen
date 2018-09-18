@@ -23,9 +23,6 @@ let dummy_nop () =
   until_quit (fun () -> Unix.sleep 3 ; true)
 
 
-(* How frequently hall each worker write a new activity report: *)
-let report_period = ref RamenConsts.Default.report_period
-
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
 
@@ -143,6 +140,7 @@ type running_process =
     bin : string ;
     func : C.Func.t ;
     log_level : log_level ;
+    report_period : float ;
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
     mutable continued : bool ;
@@ -158,10 +156,14 @@ let print_running_process oc proc =
     (RamenName.string_of_func proc.func.F.name)
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process bin params func log_level =
-  { bin ; params ; pid = None ; last_killed = 0. ; continued = false ;
-    func ; last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
-    quarantine_until = 0. ; log_level }
+let make_running_process conf mre func =
+  let log_level =
+    if mre.C.debug then Debug else conf.C.log_level in
+  { bin = mre.C.bin ; params = mre.C.params ; pid = None ;
+    last_killed = 0. ; continued = false ; func ;
+    last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
+    quarantine_until = 0. ; log_level ;
+    report_period = mre.C.report_period }
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
@@ -203,7 +205,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func: *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (_bin, func, _log_level) (ps, cs) ->
+  Hashtbl.fold (fun _k (_, func) (ps, cs) ->
     (* Tells if [func'] is a parent of [func]: *)
     let is_parent_of func func' =
       List.exists (fun (rel_par_prog, par_func) ->
@@ -413,7 +415,7 @@ let really_start conf must_run proc parents children =
     "fq_name="^ fq_str ; (* Used for monitoring *)
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
-    "report_period="^ string_of_float !report_period ;
+    "report_period="^ string_of_float proc.report_period ;
     "notify_ringbuf="^ notify_ringbuf ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
@@ -562,11 +564,11 @@ let check_out_ref =
     !logger.debug "Checking out_refs..." ;
     (* Build the set of all wrapping ringbuf that are being read: *)
     let rbs =
-      Hashtbl.fold (fun _k (_bin, func, _log_level) s ->
+      Hashtbl.fold (fun _k (_, func) s ->
         C.in_ringbuf_names conf func |>
         List.fold_left (fun s rb_name -> Set.add rb_name s) s
       ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-    Hashtbl.iter (fun _ (_bin, func, _log_level) ->
+    Hashtbl.iter (fun _ (_, func) ->
       (* Iter over all functions and check they do not output to a ringbuf not
        * in this set: *)
       let out_ref = C.out_ringbuf_names_ref conf func in
@@ -654,7 +656,7 @@ let synchronize_running conf autoreload_delay =
   let watchdog = Option.get !watchdog in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the function mount point, signature and
-   * parameters to the binary, Func and log_level.
+   * parameters to the [C.must_run_entry] and func.
    * [running] is a hash from the function mount point, signature and
    * parameters to its running_process (mutable pid, cleared asynchronously
    * when the worker terminates). *)
@@ -672,10 +674,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, _, params as k) (bin, func, log_level) ->
+    Hashtbl.iter (fun (_, _, _, params as k) (mre, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process bin params func log_level in
+          let proc = make_running_process conf mre func in
           Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
@@ -764,10 +766,8 @@ let synchronize_running conf autoreload_delay =
                         let k =
                           program_name, f.F.name, f.F.signature,
                           mre.C.params
-                        and log_level =
-                          if mre.C.debug then Debug else conf.C.log_level
                         in
-                        Hashtbl.add must_run k (mre.C.bin, f, log_level)
+                        Hashtbl.add must_run k (mre, f)
                       ) prog.P.funcs
               ) must_run_programs ;
               now

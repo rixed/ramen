@@ -94,7 +94,7 @@ let check_links ?(force=false) program_name prog running_programs =
         ) prog'.P.funcs
   ) running_programs
 
-let run conf params replace ?as_ bin_file debug =
+let run conf params replace report_period ?as_ bin_file debug =
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
     let prog = P.of_bin ?as_ params bin in
@@ -110,7 +110,7 @@ let run conf params replace ?as_ bin_file debug =
           failwith) ;
     (* TODO: Make sure this key is authoritative on a program name: *)
     Hashtbl.replace programs program_name
-      C.{ bin ; params ; killed = false ; debug })
+      C.{ bin ; params ; killed = false ; debug ; report_period })
 
 (*
  * Stopping a worker from running.

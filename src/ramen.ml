@@ -86,12 +86,6 @@ let autoreload =
                    ~env ["autoreload"] in
   Arg.(value (opt ~vopt:5. float 0. i))
 
-let report_period =
-  let env = Term.env_info "RAMEN_REPORT_PERIOD" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.report_period
-                   ~env ["report-period"] in
-  Arg.(value (opt float RamenConsts.Default.report_period i))
-
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -99,8 +93,7 @@ let supervisor =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ autoreload
-      $ report_period),
+      $ autoreload),
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
 
 (*
@@ -407,12 +400,19 @@ let replace =
                    [ "replace" ; "r" ] in
   Arg.(value (flag i))
 
+let report_period =
+  let env = Term.env_info "RAMEN_REPORT_PERIOD" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.report_period
+                   ~env ["report-period"] in
+  Arg.(value (opt float RamenConsts.Default.report_period i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
       $ copts
       $ params
       $ replace
+      $ report_period
       $ as_
       $ bin_file),
     info ~doc:RamenConsts.CliInfo.run "run")
