@@ -1082,11 +1082,11 @@ struct
 
   and higher_prec_left_assoc m =
     let m = "bitwise logical operator" :: m in
-    let op = that_string "&" ||| that_string "|" ||| that_string "^"
+    let op = that_string "&" ||| that_string "|" ||| that_string "#"
     and reduce e1 op e2 = match op with
       | "&" -> StatelessFun2 (make_typ "bitwise and", BitAnd, e1, e2)
       | "|" -> StatelessFun2 (make_typ "bitwise or", BitOr, e1, e2)
-      | "^" -> StatelessFun2 (make_typ "bitwise xor", BitXor, e1, e2)
+      | "#" -> StatelessFun2 (make_typ "bitwise xor", BitXor, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
