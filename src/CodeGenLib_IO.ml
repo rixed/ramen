@@ -13,7 +13,9 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
                     filename preprocessor watchdog k =
   let open_file =
     if preprocessor = "" then (
-      fun () -> openfile filename [ O_RDONLY ] 0o644
+      fun () ->
+        let fd = openfile filename [ O_RDONLY ] 0o644 in
+        fd, (fun () -> close fd)
     ) else (
       fun () ->
         let f = RamenHelpers.shell_quote filename in
@@ -23,8 +25,16 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
           else
             preprocessor ^" "^ f
         in
-        open_process_in cmd |>
-        descr_of_in_channel
+        (* We need to keep the chan for later destruction, as
+         * in_channel_of_descr would create another one *)
+        let chan = open_process_in cmd in
+        descr_of_in_channel chan,
+        fun () ->
+          match close_process_in chan with
+          | Unix.WEXITED 0 -> ()
+          | s ->
+              !logger.warning "CSV preprocessor %S %s"
+                preprocessor (string_of_process_status s)
     ) in
   match open_file () with
   | exception e ->
@@ -33,9 +43,9 @@ let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
       (if preprocessor = "" then ""
        else (Printf.sprintf " through %S" preprocessor))
       (Printexc.to_string e)
-  | fd ->
+  | fd, close_file ->
     !logger.debug "Start reading %S" filename ;
-    finally (fun () -> close fd)
+    finally close_file
       (fun () ->
         (* If we used a preprocessor we must wait for EOF before
          * unlinking the file. And in case we crash before the end
