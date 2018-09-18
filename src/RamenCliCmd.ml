@@ -75,9 +75,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   let notify_rb = prepare_notifs conf in
   RingBuf.unload notify_rb ;
   let while_ () = !RamenProcesses.quit = None in
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop"
-      RamenProcesses.wait_all_pids_loop) true |> ignore ;
+  RamenProcesses.thread_create_waitpids true ;
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
@@ -124,9 +122,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let while_ () = !RamenProcesses.quit = None in
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop"
-      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  RamenProcesses.thread_create_waitpids false ;
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
       dummy_nop ;
@@ -437,9 +433,7 @@ let tail conf func_name with_header sep null raw
       (fun oc ft -> String.print oc ft.RamenTuple.typ_name)
       stdout header ;
     BatIO.flush stdout) ;
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop"
-      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  RamenProcesses.thread_create_waitpids false ;
   let rec reset_export_timeout () =
     (* Start by sleeping as we've just set the temp export above: *)
     Unix.sleepf (max 1. (duration -. 1.)) ;
@@ -604,9 +598,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
     !logger.info "Serving custom API on %S" prefix ;
     RamenApi.router conf prefix) router api ++ router in
   let while_ () = !RamenProcesses.quit = None in
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop"
-      RamenProcesses.wait_all_pids_loop) false |> ignore ;
+  RamenProcesses.thread_create_waitpids false ;
   restart_on_failure ~while_ "http server"
     RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
       dummy_nop ;

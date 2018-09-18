@@ -235,6 +235,11 @@ let rec wait_all_pids_loop and_save =
       terminated_pids := (pid, status, now) :: !terminated_pids) ;
   wait_all_pids_loop and_save
 
+let thread_create_waitpids and_save =
+  Thread.create (
+    restart_on_failure "wait_all_pids_loop" wait_all_pids_loop
+  ) and_save |> ignore
+
 open Binocle
 
 let stats_worker_crashes =
@@ -774,3 +779,31 @@ let synchronize_running conf autoreload_delay =
   in
   RamenWatchdog.enable watchdog ;
   loop 0.
+
+(* This is a version of [Unix.establish_server] that does not waitpid its
+ * children (since we have a global waitpid running on a separate thread
+ * already). The other difference is that we pass the file descriptor
+ * instead of buffered channels. Also, we want a way to stop the server: *)
+let forking_server ~while_ sockaddr server_fun =
+  let open Legacy.Unix in
+  let sock =
+    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
+  finally (fun () -> close sock)
+    (fun () ->
+      setsockopt sock SO_REUSEADDR true ;
+      bind sock sockaddr ;
+      listen sock 5 ;
+      try
+        while while_ () do
+          let s, _caller =
+            restart_on_eintr ~while_ (accept ~cloexec:true) sock in
+          match fork () with
+             0 ->
+                thread_create_waitpids false ;
+                close sock ;
+                server_fun s ;
+                exit 0
+          | id ->
+              close s
+        done
+      with Exit -> ()) ()

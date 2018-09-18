@@ -1308,32 +1308,9 @@ let is_failing f x =
   try ignore (f x) ; false
   with _ -> true
 
-(* This is a version of [Unix.establish_server] that does not waitpid its
- * children (since we have a global waitpid running on a separate thread
- * already). The other difference is that we pass the file descriptor
- * instead of buffered channels. Also, we want a way to stop the server: *)
-let forking_server while_ sockaddr server_fun =
-  let open Legacy.Unix in
-  let rec accept_non_intr fd =
-    try accept ~cloexec:true fd
-    with Unix_error (EINTR, _, _) ->
-      if while_ () then (accept_non_intr [@tailcall]) fd
-      else raise Exit in
-  let sock =
-    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
-  finally (fun () -> close sock)
-    (fun () ->
-      setsockopt sock SO_REUSEADDR true ;
-      bind sock sockaddr ;
-      listen sock 5 ;
-      try
-        while while_ () do
-          let s, _caller = accept_non_intr sock in
-          match fork () with
-             0 ->
-                close sock ;
-                server_fun s ;
-                exit 0
-          | id -> close s
-        done
-      with Exit -> ()) ()
+let rec restart_on_eintr ~while_ f x =
+  let open Unix in
+  try f x
+  with Unix_error (EINTR, _, _) ->
+    if while_ () then restart_on_eintr ~while_ f x
+    else raise Exit
