@@ -18,6 +18,11 @@ let until_quit f =
     if !quit = None && f () then loop () in
   loop ()
 
+let dummy_nop () =
+  !logger.warning "Running in dummy mode" ;
+  until_quit (fun () -> Unix.sleep 3 ; true)
+
+
 (* How frequently hall each worker write a new activity report: *)
 let report_period = ref RamenConsts.Default.report_period
 

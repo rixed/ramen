@@ -400,7 +400,7 @@ let run_test conf notify_rb dirname test =
   Thread.join early_terminator ;
   !all_good
 
-let run conf test () =
+let run conf server_url api graphite test () =
   let conf = C.{ conf with
     persist_dir =
       Filename.get_temp_dir_name ()
@@ -408,6 +408,8 @@ let run conf test () =
       uniquify_filename ;
     test = true } in
   logger := make_logger conf.C.log_level ;
+  if server_url <> "" || api <> None || graphite <> None then
+    RamenHttpd.run_httpd conf server_url api graphite 0.0 ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;
   let test_spec = ppp_of_file test_spec_ppp_ocaml test in

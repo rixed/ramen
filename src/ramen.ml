@@ -657,11 +657,11 @@ let ps =
  * Start the Graphite impersonator
  *)
 
-let server_url =
+let server_url def =
   let env = Term.env_info "RAMEN_URL" in
   let i = Arg.info ~doc:RamenConsts.CliInfo.server_url
                    ~env [ "url" ] in
-  Arg.(value (opt string "http://127.0.0.1:8080" i))
+  Arg.(value (opt string def i))
 
 let graphite =
   let i = Arg.info ~doc:RamenConsts.CliInfo.graphite [ "graphite" ] in
@@ -685,7 +685,7 @@ let httpd =
       $ to_stdout
       $ to_syslog
       $ fault_injection_rate
-      $ server_url
+      $ server_url "http://127.0.0.1:8080"
       $ api
       $ graphite
       $ external_compiler
@@ -725,6 +725,9 @@ let test =
   Term.(
     (const RamenTests.run
       $ copts
+      $ server_url ""
+      $ api
+      $ graphite
       $ test_file),
     info ~doc:RamenConsts.CliInfo.test "test")
 

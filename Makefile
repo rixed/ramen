@@ -131,6 +131,7 @@ RAMEN_SOURCES = \
 	src/RamenNotifier.ml \
 	src/RamenPs.ml \
 	src/TermTable.ml \
+	src/RamenHttpd.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \
