@@ -772,8 +772,12 @@ struct
     let kv m =
       let m = "key-value list" :: m in
       (
-        E.Parser.p +- blanks +- strinG "as" +- blanks ++ non_keyword >>:
-        fun (v, n) ->
+        E.Parser.p ++
+        optional ~def:None (
+          blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
+        fun (v, n_opt) ->
+          let n =
+            Option.default_delayed (fun () -> default_alias v) n_opt in
           let typ =
             RamenTypes.{ structure = TString ; nullable = false } in
           n, E.(StatelessFun1 (make_typ "cast", Cast typ,  v))
