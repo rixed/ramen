@@ -812,7 +812,14 @@ and emit_expr_ ?state ~context ~opc oc expr =
     (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     let n = match op with BitAnd -> "logand" | BitOr -> "logor"
                         | _ -> "logxor" in
-    emit_functionN ?state ~opc ~nullable (omod_of_type t ^"."^ n) [Some t; Some t] oc [e1; e2]
+    emit_functionN ?state ~opc ~nullable
+      (omod_of_type t ^"."^ n)
+      [Some t; Some t] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, BitShift, e1, e2),
+    (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
+    emit_functionN ?state ~opc ~nullable
+      ("CodeGenLib.Shift."^ omod_of_type t ^".shift")
+      [Some t; Some TI16] oc [e1; e2]
   | Finalize, StatelessFun1 (_, Not, e), TBool ->
     emit_functionN ?state ~opc ~nullable "not" [Some TBool] oc [e]
   | Finalize, StatelessFun1 (_, Defined, e), TBool ->

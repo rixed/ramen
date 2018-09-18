@@ -496,6 +496,7 @@ tests/last.success: tests/last.x tests/fixtures/earthquakes.x tests/fixtures/car
 tests/event_time.success: tests/event_time.x
 tests/sample.success: tests/sample.x tests/fixtures/n123.x
 tests/stress.success: tests/stress.x
+tests/bits.success: tests/bits.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

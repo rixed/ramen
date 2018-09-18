@@ -194,6 +194,8 @@ and stateless_fun2 =
   | BitAnd
   | BitOr
   | BitXor
+  (* Negative does shift right. Will be signed for signed integers: *)
+  | BitShift
   (* Same as Nth but only for vectors/lists (accepts non constant index, and
    * indices start at 0) *)
   | VecGet
@@ -514,6 +516,10 @@ let rec print ?(max_depth=max_int) with_types oc e =
       add_types t
     | StatelessFun2 (t, BitXor, e1, e2) ->
       Printf.fprintf oc "(%a) ^ (%a)"
+        p e1 p e2 ;
+      add_types t
+    | StatelessFun2 (t, BitShift, e1, e2) ->
+      Printf.fprintf oc "(%a) << (%a)"
         p e1 p e2 ;
       add_types t
     | StatelessFun2 (t, VecGet, e1, e2) ->
@@ -1082,11 +1088,16 @@ struct
 
   and higher_prec_left_assoc m =
     let m = "bitwise logical operator" :: m in
-    let op = that_string "&" ||| that_string "|" ||| that_string "#"
+    let op = that_string "&" ||| that_string "|" ||| that_string "#" |||
+             that_string "<<" ||| that_string ">>"
     and reduce e1 op e2 = match op with
       | "&" -> StatelessFun2 (make_typ "bitwise and", BitAnd, e1, e2)
       | "|" -> StatelessFun2 (make_typ "bitwise or", BitOr, e1, e2)
       | "#" -> StatelessFun2 (make_typ "bitwise xor", BitXor, e1, e2)
+      | "<<" -> StatelessFun2 (make_typ "bitwise shift", BitShift, e1, e2)
+      | ">>" ->
+          let e2 = StatelessFun1 (make_typ "unary minus", Minus, e2) in
+          StatelessFun2 (make_typ "bitwise shift", BitShift, e1, e2)
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
@@ -1664,8 +1675,11 @@ let units_of_expr units_of_input units_of_output =
         (* Best effort in case the exponent is a constant, otherwise we
          * just don't know what the unit is. *)
         option_map2 RamenUnits.pow (uoe e1) (float_of_const e2)
+    (* Although shifts could be seen as mul/div, we'd rather consider
+     * only dimentionless values receive this treatment, esp. since
+     * it's not possible to distinguish between a mul and div. *)
     | StatelessFun2 (_, (And|Or|Concat|StartsWith|EndsWith|
-                         BitAnd|BitOr|BitXor), e1, e2) ->
+                         BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
         check_no_units e1 ;
         check_no_units e2 ;
         None

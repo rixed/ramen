@@ -634,7 +634,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_is_true oc nid
 
   | StatelessFun2 (_, Mod, e1, e2)
-  | StatelessFun2 (_, (BitAnd|BitOr|BitXor), e1, e2) ->
+  | StatelessFun2 (_, (BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
       (* - e1 and e2 must be any integer;
        * - The result must not be smaller that e1 nor e2;
        * - Nullability propagates. *)

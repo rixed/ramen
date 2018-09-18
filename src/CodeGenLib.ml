@@ -390,6 +390,32 @@ struct
         y +. ym.{i+1, 1} *. x) 0. cur_preds
 end
 
+module Shift = struct
+  module type IS = sig
+    type t
+    val shift_left : t -> int -> t
+    val shift_right : t -> int -> t
+  end
+
+  module Make (I : IS) = struct
+    let shift x s =
+      let s = Int16.to_int s in
+      if s > 0 then I.shift_left x s
+      else I.shift_right x (~-s)
+  end
+
+  module Uint8 = Make (Uint8)
+  module Uint16 = Make (Uint16)
+  module Uint32 = Make (Uint32)
+  module Uint64 = Make (Uint64)
+  module Uint128 = Make (Uint128)
+  module Int8 = Make (Int8)
+  module Int16 = Make (Int16)
+  module Int32 = Make (Int32)
+  module Int64 = Make (Int64)
+  module Int128 = Make (Int128)
+end
+
 let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n

@@ -1,0 +1,11 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  FROM (YIELD COALESCE(previous.x, 0) + 1 AS x EVERY 0.1s)
+  SELECT
+    x,
+    x & 1 AS t1,
+    x | 2 AS t2,
+    x # 3 AS t3,
+    x << 2 AS t4,
+    x >> 2 AS t5;
