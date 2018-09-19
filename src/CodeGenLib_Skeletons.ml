@@ -561,7 +561,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         | exception RingBuf.Empty -> ()
         | tx ->
             if to_merge.timed_out then (
-              !logger.debug "Source #%d is back" i ;
+              !logger.info "Source #%d is back" i ;
               to_merge.timed_out <- false) ;
             let in_tuple = read_tuple tx in
             let tx_size = RingBuf.tx_size tx in
@@ -595,7 +595,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
           if not m.timed_out &&
              RamenSzHeap.is_empty m.tuples
           then (
-            !logger.debug "Timing out source #%d" i ;
+            !logger.info "Timing out source #%d" i ;
             m.timed_out <- true)
         ) to_merge ;
       ) else (
