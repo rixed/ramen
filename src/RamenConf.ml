@@ -245,10 +245,15 @@ let make_conf ?(do_persist=true) ?(debug=false) ?(quiet=false)
 
 let type_signature_hash = md5 % RamenTuple.type_signature
 
-(* Each workers regularly snapshot its internal state in this file: *)
+(* Each workers regularly snapshot its internal state in this file.
+ * This data contains tuples and statefull function internal states, so
+ * that it has to depend on not only worker_state version (which versions
+ * the structure of the state structure itself), but also on codegen
+ * version (which versions the language/state), and also the ocaml
+ * version itself as we use stdlib's Marshaller for this: *)
 let worker_state conf func params =
   conf.persist_dir ^"/workers/states/"
-                   ^ RamenVersions.worker_state
+                   ^ RamenVersions.(worker_state ^"_"^ codegen)
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    ^"/"^ func.signature
