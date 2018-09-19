@@ -23,7 +23,8 @@ let string_of_log_output = function
   | Syslog -> "syslog"
 
 type logger =
-  { error : 'a. 'a printer ;
+  { log_level : log_level ;
+    error : 'a. 'a printer ;
     warning : 'a. 'a printer ;
     info : 'a. 'a printer ;
     debug : 'a. 'a printer ;
@@ -85,7 +86,7 @@ let rate_limit max_rate =
       false
     )
 
-let make_logger ?logdir ?(prefix="") lvl =
+let make_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
   let rate_limit = rate_limit 100 in
@@ -114,37 +115,37 @@ let make_logger ?logdir ?(prefix="") lvl =
   let error fmt = do_log true red fmt
   and warning fmt = do_log true yellow fmt
   and info fmt =
-    if lvl <> Quiet then do_log false green fmt
+    if log_level <> Quiet then do_log false green fmt
     else Printf.ifprintf stderr fmt
   and debug fmt =
-    if lvl = Debug then do_log false identity fmt
+    if log_level = Debug then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
-  { error ; warning ; info ; debug ; output ; prefix }
+  { log_level ; error ; warning ; info ; debug ; output ; prefix }
 
 let syslog =
   try Some (Syslog.openlog ~facility:`LOG_USER "ramen")
   with _ -> None
 
-let make_syslog ?(prefix="") lvl =
+let make_syslog ?(prefix="") log_level =
   let prefix = ref (make_prefix prefix) in
   match syslog with
   | None ->
       failwith "No syslog facility on this host."
   | Some slog ->
-      let do_log lvl fmt =
+      let do_log log_level fmt =
         Printf.ksprintf2 (fun str ->
-          Syslog.syslog slog lvl str) fmt in
+          Syslog.syslog slog log_level str) fmt in
       let error fmt = do_log `LOG_ERR fmt
       and warning fmt = do_log `LOG_WARNING fmt
       and info fmt =
-        if lvl <> Quiet then do_log `LOG_INFO fmt
+        if log_level <> Quiet then do_log `LOG_INFO fmt
         else Printf.ifprintf stderr fmt
       and debug fmt =
-        if lvl = Debug then do_log `LOG_DEBUG fmt
+        if log_level = Debug then do_log `LOG_DEBUG fmt
         else Printf.ifprintf stderr fmt
       in
-      { error ; warning ; info ; debug ; output = Syslog ; prefix }
+      { log_level ; error ; warning ; info ; debug ; output = Syslog ; prefix }
 
 let set_prefix logger prefix =
   logger.prefix := make_prefix prefix

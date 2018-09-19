@@ -263,15 +263,22 @@ let worker_start worker_name get_binocle_tuple k =
   let state_file = getenv ~def:default_persist_dir "state_file" in
   let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
   let prefix = worker_name ^": " in
-  (match getenv "log" with
-  | exception _ ->
-      logger := make_logger ~prefix log_level
-  | logdir ->
-      if logdir = "syslog" then
-        logger := make_syslog ~prefix log_level
-      else (
-        mkdir_all logdir ;
-        logger := make_logger ~logdir log_level)) ;
+  let make_logger log_level =
+    match getenv "log" with
+    | exception _ ->
+        make_logger ~prefix log_level
+    | logdir ->
+        if logdir = "syslog" then
+          make_syslog ~prefix log_level
+        else (
+          mkdir_all logdir ;
+          make_logger ~logdir log_level
+        ) in
+  logger := make_logger log_level ;
+  (* By using SIGUSR2, one can switch into debug mode: *)
+  let alt_log_level =
+    if log_level = Debug then Normal else Debug in
+  let alt_logger = ref (make_logger alt_log_level) in
   !logger.info "Starting %s process. Will log into %s at level %s."
     worker_name
     (string_of_log_output !logger.output)
@@ -291,11 +298,20 @@ let worker_start worker_name get_binocle_tuple k =
     quit :=
       Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
                                else RamenConsts.ExitCodes.interrupted))) ;
-  (* Dump stats on sigusr1 (also on sigusr2 out of security): *)
-  set_signals Sys.[sigusr1; sigusr2] (Signal_handle (fun s ->
+  (* Dump stats on sigusr1: *)
+  set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
-    !logger.info "Received signal %s" (name_of_signal s) ;
+    !logger.info "Received signal %s, dumping stats"
+      (name_of_signal s) ;
     Binocle.display_console ())) ;
+  (* Switch debug logger on usr2: *)
+  set_signals Sys.[sigusr2] (Signal_handle (fun s ->
+    !logger.info "Received signal %s, switching into log level %s"
+      (name_of_signal s)
+      (string_of_log_level (!alt_logger).log_level) ;
+    let cur_logger = !logger in
+    logger := !alt_logger ;
+    alt_logger := cur_logger)) ;
   Thread.create (
     restart_on_failure "update_stats_rb"
       (update_stats_rb report_period report_rb)) get_binocle_tuple |>
