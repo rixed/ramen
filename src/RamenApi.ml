@@ -525,5 +525,5 @@ let router conf prefix =
         | "get-tables" -> get_tables conf req.params
         | "get-columns" -> get_columns conf req.params
         | "get-timeseries" -> get_timeseries conf req.params
-        | "set-alerts" -> set_alerts conf req.params ; ""
+        | "set-alerts" -> set_alerts conf req.params ; "null"
         | m -> failwith (Printf.sprintf "unknown method %S" m))

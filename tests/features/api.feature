@@ -71,3 +71,9 @@ Feature: Test Ramen API from the command line.
     When I wait 3 seconds
     And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9999999999,"num_points":5,"data":{"test/random_walk":{"select":["x"],"where":[{"lhs":"t","op":">=","rhs":"0"}]}}}}' http://localhost:8042
     Then curl must mention "xyz"
+
+  Scenario: An empty set-alerts must return a valid JSON (non-regression)
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 seconds
+    And I run curl with arguments --data-binary '{"method":"set-alerts","id":1,"params":{}}' http://localhost:8042
+    Then curl must mention ""result":null" on stdout
