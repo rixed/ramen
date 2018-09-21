@@ -247,22 +247,6 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
  * Display information about running programs and quit.
  *)
 
-let int_or_na = function
-  | None -> TermTable.ValStr "n/a"
-  | Some i -> TermTable.ValInt (Uint64.to_int i)
-
-let flt_or_na = function
-  | None -> TermTable.ValStr "n/a"
-  | Some f -> TermTable.ValFlt f
-
-let date_or_na = function
-  | None -> TermTable.ValStr "n/a"
-  | Some t -> TermTable.ValDate t
-
-let str_or_na = function
-  | None -> TermTable.ValStr "n/a"
-  | Some s -> TermTable.ValStr s
-
 let ps conf short pretty with_header sort_col top pattern all () =
   logger := make_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
@@ -287,17 +271,17 @@ let ps conf short pretty with_header sort_col top pattern all () =
                 group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
                 bytes_out, _last_out, _stime =
               Hashtbl.find_default h program_name RamenPs.no_stats in
-            [| ValStr (RamenName.string_of_program program_name) ;
-               ValStr (RamenName.string_of_params mre.C.params) ;
+            [| Some (ValStr (RamenName.string_of_program program_name)) ;
+               Some (ValStr (RamenName.string_of_params mre.C.params)) ;
                int_or_na in_count ;
                int_or_na selected_count ;
                int_or_na out_count ;
                int_or_na group_count ;
-               ValFlt cpu ;
+               Some (ValFlt cpu) ;
                flt_or_na wait_in ;
                flt_or_na wait_out ;
-               ValInt (Uint64.to_int ram) ;
-               ValInt (Uint64.to_int max_ram) ;
+               Some (ValInt (Uint64.to_int ram)) ;
+               Some (ValInt (Uint64.to_int max_ram)) ;
                flt_or_na (Option.map Uint64.to_float bytes_in) ;
                flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
           ) else lines
@@ -331,7 +315,8 @@ let ps conf short pretty with_header sort_col top pattern all () =
           | exception e ->
             let fq_name =
               red (RamenName.string_of_program program_name ^"/*") in
-            [| ValStr fq_name ; ValStr (Printexc.to_string e) |] :: lines
+            [| Some (ValStr fq_name) ;
+               Some (ValStr (Printexc.to_string e)) |] :: lines
           | prog ->
             List.fold_left (fun lines func ->
               let fq_name = RamenName.string_of_program program_name
@@ -344,7 +329,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
                 and num_children = Hashtbl.find_all children_of_func
                                      (func.F.program_name, func.F.name) |>
                                      List.length in
-                [| ValStr fq_name ;
+                [| Some (ValStr fq_name) ;
                    int_or_na in_count ;
                    int_or_na selected_count ;
                    int_or_na out_count ;
@@ -352,17 +337,17 @@ let ps conf short pretty with_header sort_col top pattern all () =
                    date_or_na last_out ;
                    date_or_na min_etime ;
                    date_or_na max_etime ;
-                   ValFlt cpu ;
+                   Some (ValFlt cpu) ;
                    flt_or_na wait_in ;
                    flt_or_na wait_out ;
-                   ValInt (Uint64.to_int ram) ;
-                   ValInt (Uint64.to_int max_ram) ;
+                   Some (ValInt (Uint64.to_int ram)) ;
+                   Some (ValInt (Uint64.to_int max_ram)) ;
                    flt_or_na (Option.map Uint64.to_float bytes_in) ;
                    flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                   ValDate stime ;
-                   ValInt (List.length func.F.parents) ;
-                   ValInt num_children ;
-                   ValStr func.signature |] :: lines
+                   Some (ValDate stime) ;
+                   Some (ValInt (List.length func.F.parents)) ;
+                   Some (ValInt num_children) ;
+                   Some (ValStr func.signature) |] :: lines
               else lines
             ) lines prog.P.funcs
         ) programs []) in

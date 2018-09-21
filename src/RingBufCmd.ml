@@ -87,27 +87,28 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
     | Running func -> RamenName.string_of_fq (F.fq_name func) in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
-       "fill ratio" ; "next seqs" |] in
+       "fill ratio" ; "next seqs" ; "max event time" |] in
   let line_of_link i p c =
     let parent = fq_name p and child = fq_name c in
     if Globs.matches pattern parent ||
        Globs.matches pattern child
     then
-      let ringbuf, fill_ratio, next_seqs, is_err1 =
+      let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =
         match c with
-        | NotRunning _ | ProgramError _ -> "", "0.", "", false
+        | NotRunning _ | ProgramError _ -> "", "0.", "", None, false
         | Running c ->
             let ringbuf =
               if c.F.merge_inputs then
                 C.in_ringbuf_name_merging conf c i
               else
                 C.in_ringbuf_name_single conf c in
-            let fill_ratio, next_seqs =
+            let fill_ratio, next_seqs, max_etime =
               match get_rb_stats ringbuf with
-              | None -> 0., ""
+              | None -> 0., "", None
               | Some s ->
                   float_of_int s.alloced_words /. float_of_int s.capacity,
-                  string_of_int s.cons_tail ^".."^ string_of_int s.cons_head in
+                  string_of_int s.cons_tail ^".."^ string_of_int s.cons_head,
+                  if s.t_max = 0. then None else Some s.t_max in
             let fr = string_of_float fill_ratio in
             let fr, is_err =
               if fill_ratio < 0.33 then green fr, false else
@@ -115,7 +116,7 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
               if fill_ratio >= 0.9 then red fr, true else
               if fill_ratio > 0.75 then yellow fr, false else
               fr, false in
-            ringbuf, fr, next_seqs, is_err
+            ringbuf, fr, next_seqs, max_etime, is_err
       in
       let out_ref, spec, is_err2 =
         match p with
@@ -139,9 +140,14 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
       let out_ref = ap out_ref and ringbuf = ap ringbuf in
       if not show_all && not is_err then None else
         Some TermTable.[|
-          ValStr parent ; ValStr child ; ValStr out_ref ; ValStr spec ;
-          ValStr ringbuf ; ValStr fill_ratio ;
-          ValStr next_seqs |]
+          Some (ValStr parent) ;
+          Some (ValStr child) ;
+          Some (ValStr out_ref) ;
+          Some (ValStr spec) ;
+          Some (ValStr ringbuf) ;
+          Some (ValStr fill_ratio) ;
+          Some (ValStr next_seqs) ;
+          date_or_na max_etime |]
     else None
   in
   (* We first collect all links supposed to exist according to

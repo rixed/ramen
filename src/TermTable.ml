@@ -15,41 +15,45 @@ let string_of_val = function
   | ValFlt f -> nice_string_of_float f
   | ValDate t -> ctime t
 
+let int_or_na = Option.map (fun i -> ValInt (Stdint.Uint64.to_int i))
+let flt_or_na = Option.map (fun f -> ValFlt f)
+let date_or_na = Option.map (fun t -> ValDate t)
+let str_or_na = Option.map (fun s -> ValStr s)
+
 let sort ~sort_col lines =
+  (* In case a line has less values that others, assume "n/a": *)
   let safe_get l i =
-    try l.(i-1) with Invalid_argument _ -> ValStr "n/a" in
+    try l.(i-1) with Invalid_argument _ -> None in
   (* We want higher numerical values first, but lower string values first. *)
   let cmp l1 l2 =
     match safe_get l1 sort_col, safe_get l2 sort_col with
-    | ValStr s1, ValStr s2 -> String.compare s1 s2
-    | ValInt i1, ValInt i2 -> Int.compare i2 i1
-    | (ValFlt f1 | ValDate f1), (ValFlt f2 | ValDate f2) ->
+    | Some (ValStr s1), Some (ValStr s2) ->
+        String.compare s1 s2
+    | Some (ValInt i1), Some (ValInt i2) ->
+        Int.compare i2 i1
+    | Some (ValFlt f1 | ValDate f1), Some (ValFlt f2 | ValDate f2) ->
         Float.compare f2 f1
-    | (ValFlt f1 | ValDate f1), ValInt i2 ->
+    | Some (ValFlt f1 | ValDate f1), Some (ValInt i2) ->
         Float.compare (float_of_int i2) f1
-    | ValInt i1, (ValFlt f2 | ValDate f2) ->
+    | Some (ValInt i1), Some (ValFlt f2 | ValDate f2) ->
         Float.compare f2 (float_of_int i1)
-    | ValStr s1, v2 -> String.compare s1 (string_of_val v2)
-    | v1, ValStr s2 -> String.compare (string_of_val v1) s2
+    | Some (ValStr s1), Some v2 ->
+        String.compare s1 (string_of_val v2)
+    | Some v1, Some (ValStr s2) ->
+        String.compare (string_of_val v1) s2
+    | Some _, None -> 1
+    | None, Some _ -> -1
+    | None, None -> 0
   in
   List.fast_sort cmp lines
 
-let print_table_terse ?sort_col ~with_header ?top head lines =
-  let lines =
-    match sort_col with
-    | None -> lines
-    | Some c -> sort ~sort_col:c lines in
-  let lines =
-    match top with
-    | None -> lines
-    | Some n -> List.take n lines
-  in
+let print_table_terse ~with_header ~na head lines =
   if with_header then (
     Array.iter (fun h -> Printf.printf "%s\t" h) head ;
     Printf.printf "\n") ;
   List.iter (fun line ->
     Array.iter (fun v ->
-      Printf.printf "%s\t" (string_of_val v)
+      Printf.printf "%s\t" (Option.map_default string_of_val na v)
     ) line ;
     Printf.printf "\n"
   ) lines
@@ -91,29 +95,37 @@ let make_dot_align vals width =
     let s = s ^ String.make (max_after - after) ' ' in
     right_justify s
 
-let print_table_pretty ?sort_col ~with_header ?top head lines =
-  assert (lines <> []) ; (* for we need the types *)
-  let lines =
-    match sort_col with
-    | None -> lines
-    | Some c -> sort ~sort_col:c lines in
-  let lines =
-    match top with
-    | None -> lines
-    | Some n -> List.take n lines
-  in
+let print_table_pretty ~with_header ~na head lines =
   (* Choose a formatter according to the type of the first line...: *)
-  let fmts =
-    Array.map (function
-      | ValStr _ -> make_left_justify
-      | ValInt _ -> make_right_justify
-      | ValFlt _ -> make_dot_align
-      | ValDate _ -> make_left_justify
-    ) (List.hd lines) in
+  let num_cols = match lines with [] -> 0 | hd::_ -> Array.length hd  in
+  let fmts = Array.create num_cols None in
+  (try
+    List.iter (fun line ->
+      let has_unset =
+        Array.fold_lefti (fun has_unset i -> function
+          | None ->
+              (match line.(i) with
+              | Some (ValStr _) ->
+                  fmts.(i) <- Some make_left_justify ; has_unset
+              | Some (ValInt _) ->
+                  fmts.(i) <- Some make_right_justify ; has_unset
+              | Some (ValFlt _) ->
+                  fmts.(i) <- Some make_dot_align ; has_unset
+              | Some (ValDate _) ->
+                  fmts.(i) <- Some make_left_justify ; has_unset
+              | None ->
+                  fmts.(i) <- None ; true)
+          | Some _ -> has_unset
+        ) false fmts in
+      if not has_unset then raise Exit
+    ) lines
+  with Exit -> ()) ;
+  (* When we have no values in any line then just use justify right: *)
+  let fmts = Array.map (Option.default make_right_justify) fmts in
   (* Get the string representation of headers and values in a single list: *)
   let lines =
     List.map (fun line ->
-      Array.map string_of_val line
+      Array.map (Option.map_default string_of_val na) line
     ) lines in
   let col_width = Array.create (Array.length head) 0 in
   let lines_to_size =
@@ -149,7 +161,17 @@ let print_table_pretty ?sort_col ~with_header ?top head lines =
   ) lines
 
 (* Note: sort_col starts at 1 *)
-let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top head lines =
+let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
+                ?(na="n/a") head lines =
+  let lines =
+    match sort_col with
+    | None -> lines
+    | Some c -> sort ~sort_col:c lines in
+  let lines =
+    match top with
+    | None -> lines
+    | Some n -> List.take n lines
+  in
   if lines <> [] then
     (if pretty then print_table_pretty else print_table_terse)
-      ?sort_col ~with_header ?top head lines
+      ~with_header ~na head lines

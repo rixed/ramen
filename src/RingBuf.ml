@@ -26,7 +26,7 @@ type stats = {
   wrap : bool ;
   alloced_words : int ; (* in words *)
   alloc_count : int ;
-  t_min : float ;
+  t_min : float ; (* Will be 0 when unset *)
   t_max : float ;
   mem_size : int ; (* the number of bytes that were mapped *)
   prod_head : int ;
