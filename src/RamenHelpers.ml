@@ -122,6 +122,15 @@ let list_existsi f l =
   | exception Not_found -> false
   | _ -> true
 
+let list_iter_first_last f lst =
+  let rec loop is_first = function
+  | [] -> ()
+  | [x] -> f is_first true x
+  | x::lst ->
+      f is_first false x ;
+      loop false lst in
+  loop true lst
+
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)

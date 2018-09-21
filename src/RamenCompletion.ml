@@ -248,6 +248,7 @@ let complete str () =
           let persist_dir = persist_dir toks in
           ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
           ("--show-all", RamenConsts.CliInfo.show_all) ::
+          ("--as-tree", RamenConsts.CliInfo.as_tree) ::
           ("--pretty", RamenConsts.CliInfo.pretty) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--sort", RamenConsts.CliInfo.sort_col) ::

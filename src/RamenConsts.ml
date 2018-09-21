@@ -203,6 +203,7 @@ struct
   let program_name = "resulting program name"
   let no_abbrev = "do not abbreviate path names"
   let show_all = "display information on all links"
+  let as_tree = "display links as a tree (imply --show-all)"
   let graphite = "Impersonate graphite for Grafana"
   let api = "Implement ramen API over http"
   let fault_injection_rate = "Rate at which to generate fake errors"

@@ -244,6 +244,11 @@ let show_all =
                    ~env [ "show-all" ; "all" ; "a" ] in
   Arg.(value (flag i))
 
+let as_tree =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.as_tree
+                   [ "as-tree" ; "tree" ] in
+  Arg.(value (flag i))
+
 let pretty =
   let i = Arg.info ~doc:RamenConsts.CliInfo.pretty
                    [ "pretty" ] in
@@ -270,6 +275,7 @@ let links =
       $ copts
       $ no_abbrev
       $ show_all
+      $ as_tree
       $ pretty
       $ with_header
       $ sort_col

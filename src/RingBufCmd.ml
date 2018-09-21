@@ -66,8 +66,12 @@ type func_status =
   | NotRunning of RamenName.program * RamenName.func
   | ProgramError of RamenName.program * string
 
-let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
+let links conf no_abbrev show_all as_tree pretty with_header sort_col top
+          pattern () =
   logger := make_logger conf.C.log_level ;
+  if as_tree && (pretty || with_header || sort_col <> 1 || top <> None) then
+    failwith "Option --as-tree is not compatible with --pretty, --header, \
+              --sort, --top" ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
@@ -85,70 +89,63 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
     | ProgramError (pn, e) ->
         red (RamenName.string_of_program pn ^": "^ e)
     | Running func -> RamenName.string_of_fq (F.fq_name func) in
-  let head =
-    [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
-       "fill ratio" ; "next seqs" ; "max event time" |] in
   let line_of_link i p c =
     let parent = fq_name p and child = fq_name c in
-    if Globs.matches pattern parent ||
-       Globs.matches pattern child
-    then
-      let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =
-        match c with
-        | NotRunning _ | ProgramError _ -> "", "0.", "", None, false
-        | Running c ->
-            let ringbuf =
-              if c.F.merge_inputs then
-                C.in_ringbuf_name_merging conf c i
-              else
-                C.in_ringbuf_name_single conf c in
-            let fill_ratio, next_seqs, max_etime =
-              match get_rb_stats ringbuf with
-              | None -> 0., "", None
-              | Some s ->
-                  float_of_int s.alloced_words /. float_of_int s.capacity,
-                  string_of_int s.cons_tail ^".."^ string_of_int s.cons_head,
-                  if s.t_max = 0. then None else Some s.t_max in
-            let fr = string_of_float fill_ratio in
-            let fr, is_err =
-              if fill_ratio < 0.33 then green fr, false else
-              (* The ringbuffer will be full before the word fill ratio is 100%: *)
-              if fill_ratio >= 0.9 then red fr, true else
-              if fill_ratio > 0.75 then yellow fr, false else
-              fr, false in
-            ringbuf, fr, next_seqs, max_etime, is_err
-      in
-      let out_ref, spec, is_err2 =
-        match p with
-        | NotRunning (pn, fn) ->
-            "", red "NOT RUNNING", true
-        | ProgramError (pn, e) ->
-            "", red e, true
-        | Running p ->
-            let out_ref = C.out_ringbuf_names_ref conf p in
-            let outs = RamenOutRef.read out_ref in
-            let spec, is_err =
-              if Hashtbl.mem outs ringbuf then ringbuf, false
-              else red "MISSING", true in
-            out_ref, spec, is_err
-      in
-      let is_err = is_err1 || is_err2 in
-      let ap s = if no_abbrev then s else abbrev_path s in
-      let parent = ap parent and child = ap child in
-      let ap s = if no_abbrev then s else
-                   abbrev_path ~known_prefix:conf.persist_dir s in
-      let out_ref = ap out_ref and ringbuf = ap ringbuf in
-      if not show_all && not is_err then None else
-        Some TermTable.[|
-          Some (ValStr parent) ;
-          Some (ValStr child) ;
-          Some (ValStr out_ref) ;
-          Some (ValStr spec) ;
-          Some (ValStr ringbuf) ;
-          Some (ValStr fill_ratio) ;
-          Some (ValStr next_seqs) ;
-          date_or_na max_etime |]
-    else None
+    let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =
+      match c with
+      | NotRunning _ | ProgramError _ -> "", "0.", "", None, false
+      | Running c ->
+          let ringbuf =
+            if c.F.merge_inputs then
+              C.in_ringbuf_name_merging conf c i
+            else
+              C.in_ringbuf_name_single conf c in
+          let fill_ratio, next_seqs, max_etime =
+            match get_rb_stats ringbuf with
+            | None -> 0., "", None
+            | Some s ->
+                float_of_int s.alloced_words /. float_of_int s.capacity,
+                string_of_int s.cons_tail ^".."^ string_of_int s.cons_head,
+                if s.t_max = 0. then None else Some s.t_max in
+          let fr = string_of_float fill_ratio in
+          let fr, is_err =
+            if fill_ratio < 0.33 then green fr, false else
+            (* The ringbuffer will be full before the word fill ratio is 100%: *)
+            if fill_ratio >= 0.9 then red fr, true else
+            if fill_ratio > 0.75 then yellow fr, false else
+            fr, false in
+          ringbuf, fr, next_seqs, max_etime, is_err
+    in
+    let out_ref, spec, is_err2 =
+      match p with
+      | NotRunning (pn, fn) ->
+          "", red "NOT RUNNING", true
+      | ProgramError (pn, e) ->
+          "", red e, true
+      | Running p ->
+          let out_ref = C.out_ringbuf_names_ref conf p in
+          let outs = RamenOutRef.read out_ref in
+          let spec, is_err =
+            if Hashtbl.mem outs ringbuf then ringbuf, false
+            else red "MISSING", true in
+          out_ref, spec, is_err
+    in
+    let is_err = is_err1 || is_err2 in
+    let ap s = if no_abbrev then s else abbrev_path s in
+    let parent = ap parent and child = ap child in
+    let ap s = if no_abbrev then s else
+                 abbrev_path ~known_prefix:conf.persist_dir s in
+    let out_ref = ap out_ref and ringbuf = ap ringbuf in
+    is_err, parent, child,
+    TermTable.[|
+      Some (ValStr parent) ;
+      Some (ValStr child) ;
+      Some (ValStr out_ref) ;
+      Some (ValStr spec) ;
+      Some (ValStr ringbuf) ;
+      Some (ValStr fill_ratio) ;
+      Some (ValStr next_seqs) ;
+      date_or_na max_etime |]
   in
   (* We first collect all links supposed to exist according to
    * parent/children relationships: *)
@@ -161,8 +158,8 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
             links (* Errors have been logged already *)
         | prog ->
             List.fold_left (fun links func ->
-              let _, links =
-                List.fold_left (fun (i, links)
+              let links =
+                List.fold_lefti (fun links i
                                     (par_rel_prog, par_func) ->
                   (* i is the index in the list of parents for a given
                    * child *)
@@ -184,11 +181,49 @@ let links conf no_abbrev show_all pretty with_header sort_col top pattern () =
                           | exception Not_found ->
                               NotRunning (par_prog, par_func)
                           | pfunc -> Running pfunc)) in
-                  match line_of_link i parent (Running func) with
-                  | Some line -> i + 1, line :: links
-                  | None -> i + 1, links
-                ) (0, links) func.parents in
+                  line_of_link i parent (Running func) :: links
+                ) links func.parents in
               links
             ) links prog.P.funcs
       ) programs []) in
-  TermTable.print_table ~pretty ~sort_col ~with_header ?top head links
+  (* Filter the links: *)
+  let filter_list =
+    List.filter_map (fun (is_err, parent, child, link) ->
+      if (Globs.matches pattern parent || Globs.matches pattern child) &&
+         (is_err || as_tree || show_all)
+      then Some link else None)
+  and filter_tree links =
+    (* For trees we prune leaves recursively *)
+    let links = ref links in
+    reach_fixed_point (fun () ->
+      let parents, children =
+        List.fold_left (fun (ps, cs) (is_err, parent, child, link) ->
+          Set.String.add parent ps, Set.String.add child cs
+        ) (Set.String.empty, Set.String.empty) !links in
+      let leaves = Set.String.diff children parents in
+      let changed = ref false in
+      links :=
+        List.filter (fun (is_err, parent, child, link) ->
+          !logger.debug "Filtering out %s->%s? leaf:%b match:%b err:%b show-all:%b" parent child
+            (Set.String.mem child leaves)
+            (Globs.matches pattern parent || Globs.matches pattern child)
+            is_err show_all ;
+          if Set.String.mem child leaves &&
+             not (Globs.matches pattern parent || Globs.matches pattern child) &&
+             not (is_err || show_all)
+          then (
+            changed := true ;
+            false
+          ) else true
+        ) !links ;
+      !changed) |> ignore ;
+    List.map (fun (_, _, _, link) -> link) !links in
+  let links =
+    (if as_tree then filter_tree else filter_list) links in
+  let head =
+    [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
+       "fill ratio" ; "next seqs" ; "max event time" |] in
+  if as_tree then
+    TermTable.print_tree ~parent:0 ~child:1 head links
+  else
+    TermTable.print_table ~pretty ~sort_col ~with_header ?top head links

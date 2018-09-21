@@ -175,3 +175,49 @@ let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
   if lines <> [] then
     (if pretty then print_table_pretty else print_table_terse)
       ~with_header ~na head lines
+
+(* Instead of representing the entries as a table, display a tree using the
+ * given two columns to establish node relationship: *)
+
+let rec print_subtree ~parent ~child h head ~indent ~is_last root done_set =
+  let print_info indent line =
+    for i = 0 to Array.length head - 1 do
+      if i <> parent && i <> child then
+        Printf.printf "%s %s: %s\n"
+          indent head.(i) line.(i)
+    done
+  in
+  let indent_end, indent_end_next =
+    if indent = "" then "", "" else
+    if is_last then "└ ", "  " else "├ ", "│ " in
+  Printf.printf "%s%s%s\n"
+    indent indent_end root ;
+  let indent = indent ^ indent_end_next ^ "   " in
+  match Hashtbl.find h root with
+  | exception Not_found -> ()
+  | children ->
+      list_iter_first_last (fun _is_first is_last (c, line) ->
+        print_info (indent ^ "│ ") line ;
+        let k = root, c in
+        if not (Set.mem k done_set) then (
+          let done_set = Set.add k done_set in
+          print_subtree ~parent ~child h head ~indent ~is_last c done_set)
+      ) children
+
+let print_tree ~parent ~child ?(na="n/a") head lines =
+  (* Turn the list of lines into a hash of node -> children *)
+  let h = Hashtbl.create 11 in
+  let to_str = Option.map_default string_of_val na in
+  let non_roots =
+    List.fold_left (fun non_roots line ->
+      let line = Array.map to_str line in
+      let p = line.(parent) and c = line.(child) in
+      Hashtbl.modify_def [] p (fun lst -> (c, line) :: lst) h ;
+      Set.String.add c non_roots
+    ) Set.String.empty lines in
+  let possible_roots = Hashtbl.keys h |> Set.String.of_enum in
+  let roots = Set.String.diff possible_roots non_roots in
+  Set.String.iter (fun root ->
+    print_subtree ~parent ~child h head ~indent:"" ~is_last:true root
+                  Set.empty
+  ) roots
