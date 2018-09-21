@@ -33,7 +33,7 @@ Feature: Test Ramen API from the command line.
     Then curl must mention ""result":"v3.0.9""
     And curl must mention ""id":"123"".
 
-  Scenario: Api can be given it's own path on top of server path.
+  Scenario: Api can be given its own path on top of server path.
     Given ramen httpd --url http://localhost:8042/ramen --api=api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"method":"version","id":"123"}' http://localhost:8042/ramen/api
@@ -46,7 +46,7 @@ Feature: Test Ramen API from the command line.
     And I run curl with arguments --data-binary '{"method":"version","id":123}' http://localhost:8042
     Then curl must mention ""id":123".
 
-  Scenario: Api would understand an float id.
+  Scenario: Api would understand a float id.
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"method":"version","id":12.3}' http://localhost:8042

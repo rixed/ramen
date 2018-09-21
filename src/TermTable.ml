@@ -59,7 +59,7 @@ let print_table_terse ~with_header ~na head lines =
   ) lines
 
 (* Formatters: given the list of all (string) values going in a column, and
- * the max width we want for that colulm, return a formatter for those
+ * the max width we want for that column, return a formatter for those
  * values (formatted value has to be [width] in length): *)
 let make_left_justify vals width =
   ignore vals ;

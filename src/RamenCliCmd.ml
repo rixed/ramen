@@ -561,23 +561,20 @@ let graphite_expand conf for_render query () =
                                                query in
   let rec display indent te =
     let e = RamenGraphite.get te in
-    let len = List.length e in
-    List.iteri (fun i ((n, _), c) ->
-      let first = i = 0
-      and last = i = len - 1 in
+    list_iter_first_last (fun is_first is_last ((n, _), c) ->
       let prefix =
-        if first then
+        if is_first then
           if indent = "" then "" else
-          if last then "-" else "┬"
+          if is_last then "-" else "┬"
         else
-          if last then "└" else "├" in
+          if is_last then "└" else "├" in
       Printf.printf "%s%s%s"
-        (if first then "" else "\n"^indent)
+        (if is_first then "" else "\n"^indent)
         prefix n ;
       let indent' =
         indent
           ^ (if prefix <> "" then
-              if last then " " else "│"
+              if is_last then " " else "│"
             else "")
           ^ String.make (String.length n) ' '
       in
