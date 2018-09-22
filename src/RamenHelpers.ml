@@ -1327,3 +1327,12 @@ let rec restart_on_eintr ~while_ f x =
   with Unix_error (EINTR, _, _) ->
     if while_ () then restart_on_eintr ~while_ f x
     else raise Exit
+
+(* Return the distance (as a float) between two values of the same type: *)
+module Distance = struct
+  let float a b = abs_float (a -. b)
+
+  let string a b =
+    (* TODO *)
+    String.length a - String.length b |> float_of_int
+end

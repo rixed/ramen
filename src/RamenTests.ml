@@ -56,47 +56,99 @@ let fail_and_quit msg =
   RamenProcesses.quit := Some 1 ;
   failwith msg
 
+let rec miss_distance exp actual =
+  let open RamenTypes in
+  (* Fast path: *)
+  if exp = actual then 0. else
+  if exp = VNull || actual = VNull then 1. else
+  if is_a_num (structure_of exp) &&
+     is_a_num (structure_of actual)
+  then
+    Distance.float (float_of_scalar exp) (float_of_scalar actual)
+  else match exp, actual with
+  | VString e, VString a -> Distance.string e a
+  | VEth e, VEth a -> Distance.string (RamenEthAddr.to_string e)
+                                      (RamenEthAddr.to_string a)
+  | VIpv4 e, VIpv4 a -> Distance.string (RamenIpv4.to_string e)
+                                        (RamenIpv4.to_string a)
+  | VIpv6 e, VIpv6 a -> Distance.string (RamenIpv6.to_string e)
+                                        (RamenIpv6.to_string a)
+  | VIp e, VIp a -> Distance.string (RamenIp.to_string e)
+                                    (RamenIp.to_string a)
+  | VCidrv4 e, VCidrv4 a -> Distance.string (RamenIpv4.Cidr.to_string e)
+                                            (RamenIpv4.Cidr.to_string a)
+  | VCidrv6 e, VCidrv6 a -> Distance.string (RamenIpv6.Cidr.to_string e)
+                                            (RamenIpv6.Cidr.to_string a)
+  | VCidr e, VCidr a -> Distance.string (RamenIp.Cidr.to_string e)
+                                        (RamenIp.Cidr.to_string a)
+  | VNull, VNull -> 0.
+  | (VTuple es, VTuple as_)
+  | (VVec es, VVec as_)
+  | (VList es, VList as_) ->
+      Array.map2 miss_distance es as_ |>
+      Array.reduce (+.)
+  | _ ->
+      Printf.sprintf2 "Cannot compare %a with %a"
+        print exp
+        print actual |>
+      fail_and_quit
+
 let compare_miss bad1 bad2 =
-  (* TODO: also look at the values *)
-  Int.compare (List.length bad1) (List.length bad2)
+  (* Favor having the less possible wrong values, and then look at the
+   * distance between expected and actual values: *)
+  match Int.compare (List.length bad1) (List.length bad2) with
+  | 0 ->
+      let tot_err = List.fold_left (fun s (_, _, err) -> s +. err) 0. in
+      Float.compare (tot_err bad1) (tot_err bad2)
+  | c -> c
 
 let field_index_of_name fq ser field =
-  match List.findi (fun _ ftyp ->
-          ftyp.RamenTuple.typ_name = field
-        ) ser with
-  | exception Not_found ->
-      Printf.sprintf2 "Unknown field %S in %s, which has only %a"
-        field
-        (RamenName.fq_color fq)
-        RamenTuple.print_typ_names ser |>
-      fail_and_quit
-  | idx, _ -> idx
+  try
+    List.findi (fun _ ftyp ->
+      ftyp.RamenTuple.typ_name = field
+    ) ser
+  with Not_found ->
+    Printf.sprintf2 "Unknown field %S in %s, which has only %a"
+      field
+      (RamenName.fq_color fq)
+      RamenTuple.print_typ_names ser |>
+    fail_and_quit
 
 let field_name_of_index ser idx =
   (List.nth ser idx).RamenTuple.typ_name
 
 (* The configuration file gives us tuple spec as a hash, which is
  * convenient to serialize, but for filtering it's more convenient to
- * have a list of field index to values, and a best_miss: *)
+ * have a list of field index to values, and a best_miss. While at it
+ * replace the given string by an actual RamenTypes.value: *)
 let filter_spec_of_spec fq ser spec =
   Hashtbl.enum spec /@
   (fun (field, value) ->
-    field_index_of_name fq ser field, value) |>
+    let idx, field_typ = field_index_of_name fq ser field in
+    let typ = field_typ.RamenTuple.typ in
+    match RamenTypes.of_string ~typ value with
+    | Result.Ok v -> idx, v
+    | Result.Bad e -> fail_and_quit e) |>
   List.of_enum, ref []
 
 (* Do not use RamenExport.read_output filter facility because of
  * best_miss: *)
 let filter_of_tuple_spec (spec, best_miss) tuple =
+  (* [miss] is a list of index, value and error (from 0 to 1): *)
   let miss =
-    List.fold_left (fun miss (idx, value) ->
-      (* FIXME: instead of comparing in string we should try to parse
-       * the expected value (once and for all -> faster) so that we
-       * also check its type. *)
-      let s = RamenTypes.to_string tuple.(idx) in
-      let ok = s = value in
+    List.fold_left (fun miss (idx, expected) ->
+      let actual = tuple.(idx) in
+      (* Better not compare float values directly as expected values are
+       * entered as strings. But then miss_distance is required to be fast
+       * when actual = expected! *)
+      let err = miss_distance expected actual in
+      let ok = err < 1e-7 in
       if ok then miss else (
-        !logger.debug "found %S instead of %S" s value ;
-        (idx, s)::miss)
+        !logger.debug "found %a instead of %a (err=%f)"
+          RamenTypes.print actual
+          RamenTypes.print expected
+          err ;
+        (idx, actual, err)::miss)
     ) [] spec in
   if miss = [] then true
   else (
@@ -108,10 +160,10 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
 let file_spec_print ser best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
   let n = field_name_of_index ser idx in
-  Printf.fprintf oc "%s=%s" n value ;
-  match List.find (fun (idx', s) -> idx = idx') best_miss with
+  Printf.fprintf oc "%s=%a" n RamenTypes.print value ;
+  match List.find (fun (idx', _, _) -> idx = idx') best_miss with
   | exception Not_found -> ()
-  | _idx, s -> Printf.fprintf oc " (had %S)" s
+  | _, a, _ -> Printf.fprintf oc " (had %a)" RamenTypes.print a
 
 let tuple_spec_print ser oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
@@ -123,8 +175,8 @@ let test_output conf fq output_spec test_ended =
   let bname, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
-  (* Change the hashtable of field to value into a list of field index
-   * and value: *)
+  (* Change the hashtable of field to string value into a list of field
+   * index and value: *)
   let field_indices_of_tuples =
     List.map (filter_spec_of_spec fq ser) in
   let tuples_to_find = ref (
@@ -158,7 +210,8 @@ let test_output conf fq output_spec test_ended =
         tuples_to_not_find :=
           List.filter (fun (spec, _) ->
             List.for_all (fun (idx, value) ->
-              RamenTypes.to_string tuple.(idx) = value) spec
+              tuple.(idx) = value
+            ) spec
           ) tuples_must_be_absent |>
           List.rev_append !tuples_to_not_find) ;
       (* Count all tuples including those filtered out: *)
