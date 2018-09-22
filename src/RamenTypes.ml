@@ -7,6 +7,7 @@ open RamenHelpers
 (*$inject
   open TestHelpers
   open Stdint
+  open RamenHelpers
 *)
 
 (*
@@ -746,3 +747,33 @@ struct
 
   (*$>*)
 end
+
+(* Use the above parser to get a value from a string.
+ * Pass the expected type if you know it. *)
+let of_string ?(what="value of string") ?typ s =
+  let open RamenParsing in
+  let p = allow_surrounding_blanks Parser.(
+            (* Parse the string as narrowly as possible; values
+             * will be enlarged later as required: *)
+            p_ ~min_int_width:0 ||| null) in
+  let stream = stream_of_string s in
+  let m = [ what ] in
+  (match p m None Parsers.no_error_correction stream |>
+        to_result with
+  | Bad e ->
+      let err =
+        IO.to_string (print_bad_result print) e in
+      Result.Bad err
+  | Ok (v, _) ->
+      let v =
+        match typ with
+        | None -> v
+        | Some typ ->
+            if v = VNull then VNull (* TODO: check typ.nullable *) else
+            enlarge_value typ.structure v in
+      Result.Ok v)
+
+(*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
+  (BatResult.Ok (VI8 (Int8.of_int 42))) \
+    (of_string ~typ:{ structure = TI8 ; nullable = false } "42")
+*)

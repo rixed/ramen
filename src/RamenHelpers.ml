@@ -136,6 +136,10 @@ let print_exception ?(what="Exception") e =
     (Printexc.to_string e)
     (Printexc.get_backtrace ())
 
+let result_print p_ok p_err oc = function
+  | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x
+  | Result.Bad x -> Printf.fprintf oc "Bad(%a)" p_err x
+
 let log_exceptions ?what f x =
   try f x
   with e ->

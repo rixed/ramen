@@ -321,21 +321,10 @@ let assignment =
           `Msg "You must specify the identifier, followed by an equal \
                 sign (=), followed by the value.")
     | pname, pval ->
-        let open RamenParsing in
-        let p = allow_surrounding_blanks RamenTypes.Parser.(
-                  (* Parse the command line as narrowly as possible, values
-                   * will be enlarged later as required: *)
-                  p_ ~min_int_width:0 ||| null) in
-        let stream = stream_of_string pval in
-        let m = [ "value of command line parameter "^ pname ] in
-        (match p m None Parsers.no_error_correction stream |>
-              to_result with
-        | Bad e ->
-            let err =
-              IO.to_string (print_bad_result RamenTypes.print) e in
-            Pervasives.Error (`Msg err)
-        | Ok (v, _) ->
-            Pervasives.Ok (pname, v))
+        let what = "value of command line parameter "^ pname in
+        (match RamenTypes.of_string ~what pval with
+        | Result.Ok v -> Pervasives.Ok (pname, v)
+        | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt (pname, pval) =
     Format.fprintf fmt "%s=%s" pname (RamenTypes.to_string pval)
   in
@@ -493,21 +482,10 @@ let filter =
           `Msg "You must specify the identifier, followed by an equal \
                 sign (=), followed by the value.")
     | pname, op, pval ->
-        let open RamenParsing in
-        let p = allow_surrounding_blanks RamenTypes.Parser.(
-                  (* Parse the command line as narrowly as possible, values
-                   * will be enlarged later as required: *)
-                  p_ ~min_int_width:0 ||| null) in
-        let stream = stream_of_string pval in
-        let m = [ "value of command line parameter "^ pname ] in
-        (match p m None Parsers.no_error_correction stream |>
-              to_result with
-        | Bad e ->
-            let err =
-              IO.to_string (print_bad_result RamenTypes.print) e in
-            Pervasives.Error (`Msg err)
-        | Ok (v, _) ->
-            Pervasives.Ok (pname, op, v))
+        let what = "value of command line parameter "^ pname in
+        (match RamenTypes.of_string ~what pval with
+        | Result.Ok v -> Pervasives.Ok (pname, op, v)
+        | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt (pname, op, pval) =
     Format.fprintf fmt "%s%s%s" pname op (RamenTypes.to_string pval)
   in
