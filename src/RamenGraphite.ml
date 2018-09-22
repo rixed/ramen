@@ -187,10 +187,13 @@ type program_tree_item =
   | Prog of (RamenName.program * (unit -> P.t))
   | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
-let tree_enum_of_programs ~only_with_event_time ~only_num_fields programs =
+let tree_enum_of_programs ~only_with_event_time ~only_num_fields
+                          ~only_running programs =
   let programs =
     Hashtbl.enum programs //
-    (fun (p, (mre, _get_rc)) -> not mre.C.killed) |>
+    (if only_running then
+      (fun (p, (mre, _get_rc)) -> not mre.C.killed)
+     else (fun _ -> true)) |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) ->
     String.compare (RamenName.string_of_program k1)
@@ -243,11 +246,12 @@ let filters_of_query query =
     let glob = Globs.compile q in
     Globs.matches glob % fst) query
 
-let full_enum_tree_of_query conf ?anchor_right query =
+let full_enum_tree_of_query conf ?anchor_right ?(only_running=false) query =
     let programs = C.with_rlock conf identity in
     RamenTimeseries.cache_possible_values conf programs ;
     let te = tree_enum_of_programs ~only_with_event_time:false
-                                   ~only_num_fields:false programs in
+                                   ~only_num_fields:false
+                                   ~only_running programs in
     let filters = filters_of_query query in
     filter_tree ?anchor_right te filters
 
@@ -261,7 +265,8 @@ let enum_tree_of_query =
     RamenTimeseries.cache_possible_values conf programs ;
     !logger.debug "Building tree..." ;
     tree_enum_of_programs ~only_with_event_time:true
-                          ~only_num_fields:true programs
+                          ~only_num_fields:true
+                          ~only_running:false programs
   and time () conf =
     C.last_conf_mtime conf
   in

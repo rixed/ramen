@@ -621,7 +621,7 @@ let short =
 
 let all =
   let i = Arg.info ~doc:RamenConsts.CliInfo.all
-                   [ "a"; "all" ] in
+                   [ "show-all" ; "all" ; "a" ] in
   Arg.(value (flag i))
 
 let ps =
@@ -693,6 +693,7 @@ let expand =
     (const RamenCliCmd.graphite_expand
       $ copts
       $ for_render
+      $ all
       $ query),
     info ~doc:"test graphite query expansion" "_expand")
 
