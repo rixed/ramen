@@ -314,60 +314,84 @@ let enlarge_type t =
  * another, while can_enlarge would have denied the promotion. That's
  * because can_enlarge bases its decision on types only. *)
 let rec enlarge_value t v =
-  let vt = structure_of v in
-  if vt = t then v else
+  let rec loop v =
+    let vt = structure_of v in
+    if vt = t then v else
+    match v, t with
+    (* Any signed integer that is >= 0 can be enlarged to the corresponding
+     * untyped integer: *)
+    | VI8 x, _ when Int8.(compare x zero) >= 0 ->
+        loop (VU8 (Uint8.of_int8 x))
+    | VI8 x, _ ->
+        loop (VI16 (Int16.of_int8 x))
+    | VU8 x, _ ->
+        loop (VI16 (Int16.of_uint8 x))
+    | VI16 x, _ when Int16.(compare x zero) >= 0 ->
+        loop (VU16 (Uint16.of_int16 x))
+    | VI16 x, _ ->
+        loop (VI32 (Int32.of_int16 x))
+    | VU16 x, _ ->
+        loop (VI32 (Int32.of_uint16 x))
+    | VI32 x, _ when Int32.(compare x zero) >= 0 ->
+        loop (VU32 (Uint32.of_int32 x))
+    | VI32 x, _ ->
+        loop (VI64 (Int64.of_int32 x))
+    | VU32 x, _ ->
+        loop (VI64 (Int64.of_uint32 x))
+    | VI64 x, _ when Int64.(compare x zero) >= 0 ->
+        loop (VU64 (Uint64.of_int64 x))
+    | VI64 x, _ ->
+        loop (VI128 (Int128.of_int64 x))
+    | VU64 x, _ ->
+        loop (VI128 (Int128.of_uint64 x))
+    | VI128 x, _ when Int128.(compare x zero) >= 0 ->
+        loop (VU128 (Uint128.of_int128 x))
+    | VI128 x, _ ->
+        loop (VFloat (Int128.to_float x))
+    | VU128 x, _ ->
+        loop (VFloat (Uint128.to_float x))
+    | VIpv4 x, _ ->
+        loop (VIp RamenIp.(V4 x))
+    | VIpv6 x, _ ->
+        loop (VIp RamenIp.(V6 x))
+    | VCidrv4 x, _ ->
+        loop (VCidr RamenIp.Cidr.(V4 x))
+    | VCidrv6 x, _ ->
+        loop (VCidr RamenIp.Cidr.(V6 x))
+    | VTuple vs, TTuple [||] ->
+        v (* Nothing to do *)
+    | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
+        (* Assume we won't try to enlarge to an unknown type: *)
+        let ts = Array.map (fun t -> t.structure) ts in
+        VTuple (Array.map2 enlarge_value ts vs)
+    | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
+        VVec (Array.map (enlarge_value t.structure) vs)
+    | (VVec vs | VList vs), TList t ->
+        VList (Array.map (enlarge_value t.structure) vs)
+    | _ ->
+        Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
+          print v
+          (string_of_structure (structure_of v))
+          (string_of_structure t) |>
+        invalid_arg
+  in
+  (* When growing along the enlargement ladder in [loop] we go from signed to
+   * unsigned of same width (if the value is positive). But we also want to
+   * accept "enlarging" from unsigned to signed whenever it fits, but does this
+   * only if the target type is that signed type to save the continuously
+   * growing scale and avoid looping. So we test this case here first. *)
   match v, t with
-  | VI8 x, _ when Int8.(compare x zero) >= 0 ->
-      enlarge_value t (VU8 (Uint8.of_int8 x))
-  | VI8 x, _ ->
-      enlarge_value t (VI16 (Int16.of_int8 x))
-  | VU8 x, _ ->
-      enlarge_value t (VI16 (Int16.of_uint8 x))
-  | VI16 x, _ when Int16.(compare x zero) >= 0 ->
-      enlarge_value t (VU16 (Uint16.of_int16 x))
-  | VI16 x, _ ->
-      enlarge_value t (VI32 (Int32.of_int16 x))
-  | VU16 x, _ ->
-      enlarge_value t (VI32 (Int32.of_uint16 x))
-  | VI32 x, _ when Int32.(compare x zero) >= 0 ->
-      enlarge_value t (VU32 (Uint32.of_int32 x))
-  | VI32 x, _ ->
-      enlarge_value t (VI64 (Int64.of_int32 x))
-  | VU32 x, _ ->
-      enlarge_value t (VI64 (Int64.of_uint32 x))
-  | VI64 x, _ when Int64.(compare x zero) >= 0 ->
-      enlarge_value t (VU64 (Uint64.of_int64 x))
-  | VI64 x, _ ->
-      enlarge_value t (VI128 (Int128.of_int64 x))
-  | VU64 x, _ ->
-      enlarge_value t (VI128 (Int128.of_uint64 x))
-  | VI128 x, _ when Int128.(compare x zero) >= 0 ->
-      enlarge_value t (VU128 (Uint128.of_int128 x))
-  | VI128 x, _ ->
-      enlarge_value t (VFloat (Int128.to_float x))
-  | VU128 x, _ ->
-      enlarge_value t (VFloat (Uint128.to_float x))
-  | VIpv4 x, _ ->
-      enlarge_value t (VIp RamenIp.(V4 x))
-  | VIpv6 x, _ ->
-      enlarge_value t (VIp RamenIp.(V6 x))
-  | VCidrv4 x, _ ->
-      enlarge_value t (VCidr RamenIp.Cidr.(V4 x))
-  | VCidrv6 x, _ ->
-      enlarge_value t (VCidr RamenIp.Cidr.(V6 x))
-  | VTuple vs, TTuple [||] ->
-      v (* Nothing to do *)
-  | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
-      (* Assume we won't try to enlarge to an unknown type: *)
-      let ts = Array.map (fun t -> t.structure) ts in
-      VTuple (Array.map2 enlarge_value ts vs)
-  | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
-      VVec (Array.map (enlarge_value t.structure) vs)
-  | (VVec vs | VList vs), TList t ->
-      VList (Array.map (enlarge_value t.structure) vs)
-  | _ ->
-      invalid_arg ("Value "^ to_string v ^" cannot be enlarged into a "^
-                   string_of_structure t)
+  | VU8 x, TI8 when Uint8.(compare x (of_int 128)) < 0 ->
+      VI8 (Int8.of_uint8 x)
+  | VU16 x, TI16 when Uint16.(compare x (of_int 32768)) < 0 ->
+      VI16 (Int16.of_uint16 x)
+  | VU32 x, TI32 when Uint32.(compare x (of_int64 2147483648L)) < 0 ->
+      VI32 (Int32.of_uint32 x)
+  | VU64 x, TI64 when Uint64.(compare x (of_string "9223372036854775808")) < 0 ->
+      VI64 (Int64.of_uint64 x)
+  | VU128 x, TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
+      VI128 (Int128.of_uint128 x)
+  | _ -> loop v
 
 (* Return a type that is large enough for both s1 and s2, assuming
  * s1 could be made larger itself. *)
@@ -542,6 +566,11 @@ struct
       ostrinG "u64" >>: fun i -> VU64 (Uint64.of_string (Num.to_string i))) |||
     (integer_range ~min:Num.zero ~max:(Num.of_string "340282366920938463463374607431768211455") +-
       ostrinG "u128" >>: fun i -> VU128 (Uint128.of_string (Num.to_string i)))
+
+  (*$= narrowest_int & ~printer:(test_printer print)
+    (Ok (VU8 (Uint8.of_int 12), (2,[]))) \
+        (test_p (narrowest_int ~min_int_width:0 ()) "12")
+  *)
 
   let all_possible_ints =
     narrowest_int ~all_possible:true ()
