@@ -18,7 +18,9 @@ struct
   type req = { method_ : string ; id : string ; params : string }
 
   let err id msg =
-    Printf.sprintf "{\"id\":%s,\"error\":%S}" id msg |>
+    (* FIXME: strip ANSI sequences from [msg] *)
+    Printf.sprintf "{\"id\":%s,\"error\":%s}"
+      id (PPP_JSON.json_encoded_string msg) |>
     (* Assuming jsonrpc does not mix transport errors with applicative errors: *)
     http_msg
 
