@@ -90,7 +90,6 @@ let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
     watchdog := Some (RamenWatchdog.make ~timeout:300. "read lines"
                                          quit_flag) ;
   let watchdog = Option.get !watchdog in
-  RamenWatchdog.enable watchdog ;
   let import_file_if_match filename =
     if Globs.matches glob filename then
       try
