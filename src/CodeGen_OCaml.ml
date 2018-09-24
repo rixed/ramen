@@ -1998,7 +1998,8 @@ let emit_update_states
   let need_binding field_name i =
     list_existsi (fun j sf ->
       j > i &&
-      expression_needs field_name sf.RamenOperation.expr
+      expression_needs field_name sf.RamenOperation.expr &&
+      RamenExpr.has_unpure sf.RamenOperation.expr
     ) selected_fields
   in
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a "
