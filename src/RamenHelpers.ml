@@ -689,9 +689,9 @@ let max_simult ~max_count =
         wait ()
       ) else (
         AtomicCounter.decr max_count ;
-        finally (fun () -> AtomicCounter.decr max_count)
           f ()) in
     wait ()
+        finally (fun () -> AtomicCounter.incr max_count)
 
 let read_lines fd =
   let open Legacy.Unix in
