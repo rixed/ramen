@@ -129,7 +129,7 @@ and alert_info_v1 =
     where : where_spec list [@ppp_default []] ;
     threshold : float ;
     recovery : float ;
-    duration : float ;
+    duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
     (* Unused, for the client purpose only *)
     id : string [@ppp_default ""] }
