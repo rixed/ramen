@@ -1890,9 +1890,13 @@ let emit_field_of_tuple name oc tuple_typ =
     ) tuple_typ ;
   Printf.fprintf oc "\t| _ -> raise Not_found\n"
 
-let emit_state_update_for_expr ~opc oc expr =
+let emit_state_update_for_expr ~what ~opc oc expr =
+  let titled = ref false in
   RamenExpr.unpure_iter (function
       | RamenExpr.StatefulFun (_, lifespan, skip_nulls, _) as e ->
+          if not !titled then (
+            titled := true ;
+            Printf.fprintf oc "\t(* State Update for %s: *)\n" what) ;
           emit_expr ?state:None ~context:UpdateState ~opc oc e
       | _ -> ()
     ) expr
@@ -1910,7 +1914,7 @@ let emit_where
   else (
     Printf.fprintf oc "=\n" ;
     (* Update the states used by this expression: *)
-    emit_state_update_for_expr ~opc oc expr ;
+    emit_state_update_for_expr ~opc ~what:"where clause" oc expr ;
     Printf.fprintf oc "\t%a\n"
       (emit_expr ?state:None ~context:Finalize ~opc) expr
   )
@@ -1942,9 +1946,8 @@ let emit_field_selection
         if build_minimal then (
           (* Update the states as required for this field, just before
            * computing the field actual value. *)
-          Printf.fprintf oc "\t(* State Update for %s: *)\n"
-            sf.RamenOperation.alias ;
-          emit_state_update_for_expr ~opc oc sf.RamenOperation.expr ;
+          emit_state_update_for_expr ~opc ~what:sf.RamenOperation.alias
+                                     oc sf.RamenOperation.expr ;
         ) ;
         if not build_minimal && field_in_minimal sf.alias then (
           (* We already have this binding *)
@@ -2002,18 +2005,16 @@ let emit_update_states
       RamenExpr.has_unpure sf.RamenOperation.expr
     ) selected_fields
   in
-  Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a "
+  Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
     (emit_in_tuple mentioned) in_typ
     (emit_tuple TupleOut) minimal_typ ;
-  Printf.fprintf oc "=\n" ;
   List.iteri (fun i sf ->
     if not (field_in_minimal sf.RamenOperation.alias) then (
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
-      Printf.fprintf oc "\t(* State Update for %s: *)\n"
-        sf.RamenOperation.alias ;
-      emit_state_update_for_expr ~opc oc sf.RamenOperation.expr ;
+      emit_state_update_for_expr ~opc ~what:sf.RamenOperation.alias
+                                 oc sf.RamenOperation.expr ;
       if not (RamenExpr.is_generator sf.RamenOperation.expr) &&
          (* Avoid finalizing the value yet unless it's needed to update
           * a later state: *)
@@ -2173,7 +2174,7 @@ let emit_when name in_typ mentioned minimal_typ ~opc
     (emit_in_tuple mentioned) in_typ
     (emit_tuple TupleOut) minimal_typ ;
   (* Update the states used by this expression: *)
-  emit_state_update_for_expr ~opc oc when_expr ;
+  emit_state_update_for_expr ~opc ~what:"commit clause" oc when_expr ;
   Printf.fprintf oc "\t%a\n"
     (emit_expr ?state:None ~context:Finalize ~opc) when_expr
 

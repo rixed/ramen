@@ -202,6 +202,14 @@ let is_in_top n x s =
   open TestHelpers
 *)
 
+(*$R is_in_top
+  (* Check that what we add into an empty top is in the top: *)
+  let top_size = 100 in
+  let s = make ~max_size:(top_size * 10) ~decay:8.3e-5 in
+  add s 1. 1. 42 ;
+  assert_bool "42 is in top" (is_in_top top_size 42 s)
+*)
+
 (*$R add
   let (++) = Enum.append in
   let xs = Enum.(
