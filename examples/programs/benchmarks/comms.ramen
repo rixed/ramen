@@ -35,13 +35,13 @@ DEFINE benchmark AS
   FROM metamon
   SELECT
     worker,
-    min time AS _min_time, max time AS time,
-    out.time - _min_time AS _dt,
+    min start AS _min_start, max start AS start,
+    out.start - _min_start AS duration,
     max tuples_out - min tuples_out AS outs,
-    out.outs / _dt AS avg_tuples_per_secs,
-    (max wait_out - min wait_out) / _dt AS wait_out_ratio,
-    (max wait_in - min wait_in) / _dt AS wait_in_ratio,
+    out.outs / duration AS avg_tuples_per_secs,
+    (max wait_out - min wait_out) / duration AS wait_out_ratio,
+    (max wait_in - min wait_in) / duration AS wait_in_ratio,
     (max cpu - min cpu) / out.outs AS avg_cpu_per_tuple,
     max ram
   GROUP BY worker
-  COMMIT BEFORE _dt > 30;
+  COMMIT BEFORE duration > 30;
