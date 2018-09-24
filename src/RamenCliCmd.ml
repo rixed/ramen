@@ -69,7 +69,6 @@ let supervisor conf daemonize to_stdout to_syslog autoreload () =
   let notify_rb = prepare_notifs conf in
   RingBuf.unload notify_rb ;
   let while_ () = !RamenProcesses.quit = None in
-  RamenProcesses.thread_create_waitpids true ;
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
@@ -116,7 +115,6 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   RamenProcesses.prepare_signal_handlers () ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let while_ () = !RamenProcesses.quit = None in
-  RamenProcesses.thread_create_waitpids false ;
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
       RamenProcesses.dummy_nop ;
@@ -414,7 +412,6 @@ let tail conf func_name with_header sep null raw
         Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
     BatIO.flush stdout) ;
-  RamenProcesses.thread_create_waitpids false ;
   let rec reset_export_timeout () =
     (* Start by sleeping as we've just set the temp export above: *)
     Unix.sleepf (max 1. (duration -. 1.)) ;

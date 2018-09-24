@@ -217,36 +217,6 @@ let relatives f must_run =
     (if is_parent_of func f then func::cs else cs)
   ) must_run ([], [])
 
-(* We collect all children exit code in a single call to waitpid, and then
- * store all collected information in this list, to be later examined by the
- * main thread: *)
-let terminated_pids = ref []
-
-let rec wait_all_pids_loop and_save =
-  let open Unix in
-  (match waitpid [ WUNTRACED ] 0 with
-  | exception Unix_error (EINTR, _, _) -> ()
-  (* Will happen if we have no children yet: *)
-  | exception Unix_error (ECHILD, _, _) -> Unix.sleep 1
-  | exception exn ->
-    (* This should not be used *)
-    !logger.error "waitpid: %s" (Printexc.to_string exn) ;
-    Unix.sleep 1
-  (* Nothing, should not happen, loop. *)
-  | 0, _  -> Unix.sleep 1
-  | pid, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
-    !logger.debug "pid %d got stopped" pid
-  | pid, status ->
-    let now = gettimeofday () in
-    if and_save then
-      terminated_pids := (pid, status, now) :: !terminated_pids) ;
-  wait_all_pids_loop and_save
-
-let thread_create_waitpids and_save =
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop" wait_all_pids_loop
-  ) and_save |> ignore
-
 open Binocle
 
 let stats_worker_crashes =
@@ -311,42 +281,41 @@ let rescue_worker conf func params =
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
-  if !terminated_pids <> [] then
-    (* Thanks to light-weight threads, this is atomic: *)
-    let terms = !terminated_pids in
-    terminated_pids := [] ;
-    (* Now we can process those at ease: *)
-    List.iter (fun (pid, status, now) ->
-      (* Find the proc which pid is this: *)
-      try
-        let status_str = string_of_process_status status in
-        let is_err = status <> Unix.WEXITED 0 in
-        Hashtbl.iter (fun _ proc ->
-          if proc.pid = Some pid then (
-            (if is_err then !logger.error else !logger.info)
-              "Operation %s/%s (pid %d) %s."
-              (RamenName.string_of_program proc.func.F.program_name)
-              (RamenName.string_of_func proc.func.name)
-              pid status_str ;
-            proc.last_exit <- now ;
-            proc.last_exit_status <- status_str ;
-            if is_err then (
-              proc.succ_failures <- proc.succ_failures + 1 ;
-              IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
-              if proc.succ_failures = 5 then (
-                IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
-                rescue_worker conf proc.func proc.params)) ;
-            (* Wait before attempting to restart a failing worker: *)
-            let max_delay = float_of_int proc.succ_failures in
-            proc.quarantine_until <-
-              now +. Random.float (min 90. max_delay) ;
-            proc.pid <- None ;
-            raise Exit)
-        ) running ;
-        !logger.debug "Pid %d %s but I cannot find what worker is that."
-          pid status_str
-      with Exit -> ()
-    ) terms
+  let open Unix in
+  let now = gettimeofday () in
+  Hashtbl.iter (fun _ proc ->
+    Option.may (fun pid ->
+      let what =
+        Printf.sprintf "Operation %s/%s (pid %d)"
+          (RamenName.string_of_program proc.func.F.program_name)
+          (RamenName.string_of_func proc.func.name)
+          pid in
+      (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
+      | exception exn ->
+          !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
+      | 0, _ -> () (* Nothing to report *)
+      | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+          !logger.debug "%s got stopped" what
+      | _, status ->
+          let status_str = string_of_process_status status in
+          let is_err = status <> Unix.WEXITED 0 in
+          (if is_err then !logger.error else !logger.info)
+            "%s %s." what status_str ;
+          proc.last_exit <- now ;
+          proc.last_exit_status <- status_str ;
+          if is_err then (
+            proc.succ_failures <- proc.succ_failures + 1 ;
+            IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
+            if proc.succ_failures = 5 then (
+              IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
+              rescue_worker conf proc.func proc.params)) ;
+          (* Wait before attempting to restart a failing worker: *)
+          let max_delay = float_of_int proc.succ_failures in
+          proc.quarantine_until <-
+            now +. Random.float (min 90. max_delay) ;
+          proc.pid <- None)
+    ) proc.pid
+  ) running
 
 (* Try to start the given proc.
  * Check links (ie.: do parents and children have the proper types?)
@@ -777,38 +746,10 @@ let synchronize_running conf autoreload_delay =
          * mtime is used to signal cache expirations etc. *)
         if changed then touch_file rc_file last_read ;
         Gc.minor () ;
-        let delay = if !quit = None then 1. else 0.1 in
+        let delay = if !quit = None then 1. else 0.3 in
         Unix.sleepf delay ;
         RamenWatchdog.reset watchdog ;
         loop last_read))
   in
   RamenWatchdog.enable watchdog ;
   loop 0.
-
-(* This is a version of [Unix.establish_server] that does not waitpid its
- * children (since we have a global waitpid running on a separate thread
- * already). The other difference is that we pass the file descriptor
- * instead of buffered channels. Also, we want a way to stop the server: *)
-let forking_server ~while_ sockaddr server_fun =
-  let open Legacy.Unix in
-  let sock =
-    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
-  finally (fun () -> close sock)
-    (fun () ->
-      setsockopt sock SO_REUSEADDR true ;
-      bind sock sockaddr ;
-      listen sock 5 ;
-      try
-        while while_ () do
-          let s, _caller =
-            restart_on_eintr ~while_ (accept ~cloexec:true) sock in
-          match fork () with
-             0 ->
-                thread_create_waitpids false ;
-                close sock ;
-                server_fun s ;
-                exit 0
-          | id ->
-              close s
-        done
-      with Exit -> ()) ()

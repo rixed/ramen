@@ -108,7 +108,7 @@ struct
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      match with_stdout_from_command
+      match with_stdout_from_command ~expected_status:0
               fname [| fname ; "version" |] Legacy.input_line with
       | exception e ->
           let err = Printf.sprintf "Cannot get version from %s: %s"
@@ -116,7 +116,7 @@ struct
           !logger.error "%s" err ;
           failwith err
       | v when v = RamenVersions.codegen ->
-          (try with_stdout_from_command
+          (try with_stdout_from_command ~expected_status:0
                  fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
            with e ->
              let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"

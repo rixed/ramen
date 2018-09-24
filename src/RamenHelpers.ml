@@ -412,7 +412,18 @@ let () = Printexc.register_printer (function
 (* Trick from LWT: how to exit without executing the at_exit hooks: *)
 external sys_exit : int -> 'a = "caml_sys_exit"
 
-let with_subprocess cmd args k =
+let waitpid_log ?expected_status ~what pid =
+  let open Unix in
+  let _, status = restart_on_EINTR (waitpid [ WUNTRACED ]) pid in
+  if (match status with
+      | WEXITED c ->
+          expected_status <> Some c && expected_status <> None
+      | _ -> true)
+  then
+    !logger.error "%s %s"
+      what (string_of_process_status status)
+
+let with_subprocess ?expected_status cmd args k =
   (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
    * fd is closed several times so limit the magic: *)
   let open Legacy.Unix in
@@ -445,12 +456,21 @@ let with_subprocess cmd args k =
       close my_in ;
       close my_out ;
       close my_err in
-    finally close_all k (out_channel_of_descr my_in,
-                         in_channel_of_descr my_out,
-                         in_channel_of_descr my_err)
+    let close_wait () =
+      close_all () ;
+      let what =
+        IO.to_string
+          (Array.print ~first:"" ~last:"" ~sep:" " String.print) args in
+      waitpid_log ~what ?expected_status pid
+      in
+    finally close_wait
+      k (out_channel_of_descr my_in,
+         in_channel_of_descr my_out,
+         in_channel_of_descr my_err)
 
-let with_stdout_from_command cmd args k =
-  with_subprocess cmd args (fun (_ic, oc, _ec) -> k oc)
+let with_stdout_from_command ?expected_status cmd args k =
+  with_subprocess ?expected_status cmd args (fun (_ic, oc, _ec) -> k oc)
+
 (*$= with_stdout_from_command & ~printer:identity
   "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \
           Legacy.input_line)
@@ -1336,3 +1356,30 @@ module Distance = struct
     (* TODO *)
     String.length a - String.length b |> float_of_int
 end
+
+(* This is a version of [Unix.establish_server] that pass the file
+ * descriptor instead of buffered channels. Also, we want a way to stop
+ * the server: *)
+let forking_server ~while_ sockaddr server_fun =
+  let open Legacy.Unix in
+  let sock =
+    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
+  finally (fun () -> close sock)
+    (fun () ->
+      setsockopt sock SO_REUSEADDR true ;
+      bind sock sockaddr ;
+      listen sock 5 ;
+      try
+        while while_ () do
+          let s, _caller =
+            restart_on_eintr ~while_ (accept ~cloexec:true) sock in
+          match fork () with
+          | 0 ->
+                close sock ;
+                server_fun s ;
+                exit 0
+          | pid ->
+              close s ;
+              waitpid_log ~what:"forked server" ~expected_status:0 pid
+        done
+      with Exit -> ()) ()

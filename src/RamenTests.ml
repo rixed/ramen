@@ -479,9 +479,6 @@ let run conf server_url api graphite test () =
   (* Note: The workers states must be cleaned in between 2 tests ; the
    * simpler is to draw a new test_id. *)
   let res = ref false in
-  Thread.create (
-    restart_on_failure "wait_all_pids_loop"
-      RamenProcesses.wait_all_pids_loop) true |> ignore ;
   let sync =
     Thread.create (
       restart_on_failure "synchronize_running"
