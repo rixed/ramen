@@ -366,7 +366,6 @@ let really_start conf must_run proc parents children =
     RamenExport.make_temp_export ~duration:conf.initial_export_duration
       conf proc.func in
   (* Now actually start the binary *)
-  !logger.info "Start %s" fq_str ;
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a
      * ringbuffer that's read by Ramen, unless it's a test programs.
@@ -427,7 +426,7 @@ let really_start conf must_run proc parents children =
   let cwd = Filename.dirname proc.bin in
   let cmd = Filename.basename proc.bin in
   let pid = run_background ~cwd ~and_stop:conf.C.test cmd args env in
-  !logger.info "Function %s now runs under pid %d" fq_str pid ;
+  !logger.debug "Function %s now runs under pid %d" fq_str pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
@@ -575,7 +574,7 @@ let signal_all_cont conf running =
   Hashtbl.iter (fun (n, _, _, _) proc ->
     if proc.pid <> None && not proc.continued then (
       proc.continued <- true ;
-      !logger.info "Signaling %a to continue" print_running_process proc ;
+      !logger.debug "Signaling %a to continue" print_running_process proc ;
       log_and_ignore_exceptions ~what:"Signaling worker to continue"
         (Unix.kill (Option.get proc.pid)) Sys.sigcont) ;
   ) running
