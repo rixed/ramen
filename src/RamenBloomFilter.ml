@@ -171,5 +171,6 @@ let remember sf time x =
       if time >= slice.start_time &&
          time < slice.start_time +. sf.slice_width
       then set slice.filter x ;
-      rem) false sf.slices in
+      rem
+    ) false sf.slices in
   rem

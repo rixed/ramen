@@ -474,7 +474,7 @@ let with_stdout_from_command ?expected_status cmd args k =
 (*$= with_stdout_from_command & ~printer:identity
   "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \
           Legacy.input_line)
- *)
+*)
 
 let quote_at_start s =
   String.length s > 0 && s.[0] = '"'
@@ -701,17 +701,18 @@ module AtomicCounter = struct
   let decr t = Atomic.with_lock t decr
 end
 
-let max_simult ~max_count =
-  fun f ->
-    let rec wait () =
-      if AtomicCounter.get max_count <= 0 then (
-        Unix.sleepf 0.3 ;
-        wait ()
-      ) else (
-        AtomicCounter.decr max_count ;
-          f ()) in
-    wait ()
-        finally (fun () -> AtomicCounter.incr max_count)
+let max_simult ~what ~max_count f =
+  let rec loop () =
+    if AtomicCounter.get max_count <= 0 then (
+      !logger.debug "Too many %s pending, waiting..." what ;
+      Unix.sleepf (0.2 +. Random.float 0.2) ;
+      loop ()
+    ) else (
+      AtomicCounter.decr max_count ;
+      finally (fun () -> AtomicCounter.incr max_count)
+        f ()
+    ) in
+  loop ()
 
 let read_lines fd =
   let open Legacy.Unix in
@@ -759,7 +760,7 @@ let read_lines fd =
 let run_coprocess ~max_count
                   ?(to_stdin="") cmd_name cmd =
   !logger.debug "Executing: %s" cmd ;
-  max_simult ~max_count (fun () ->
+  max_simult ~what:cmd_name ~max_count (fun () ->
     let open Legacy.Unix in
     let (pstdout, pstdin, pstderr as chans) = open_process_full cmd [||] in
     let pstdout = descr_of_in_channel pstdout

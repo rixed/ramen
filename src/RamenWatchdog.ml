@@ -65,7 +65,6 @@ let make ?(grace_period=60.) ?(timeout=30.) ?(quit_timeout=30.)
     { name ; monitor = Thread.self () ; quit_flag ; last_reset = 0. ;
       quitting_since = 0. ; enabled = false ; grace_period ; timeout ;
       quit_timeout } in
-  !logger.info "Starting watchdog %S" name ;
   t.monitor <- Thread.create monitor t ;
   t
 
