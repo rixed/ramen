@@ -462,8 +462,11 @@ let run conf server_url api graphite test () =
       uniquify_filename ;
     test = true } in
   logger := make_logger conf.C.log_level ;
-  if server_url <> "" || api <> None || graphite <> None then
-    RamenHttpd.run_httpd conf server_url api graphite 0.0 ;
+  let httpd_thread =
+    Thread.create (fun () ->
+      if server_url <> "" || api <> None || graphite <> None then
+          RamenHttpd.run_httpd conf server_url api graphite 0.0
+    ) () in
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;
   let test_spec = ppp_of_file test_spec_ppp_ocaml test in
@@ -504,4 +507,5 @@ let run conf server_url api graphite test () =
         Printf.fprintf oc "cpu:%fs\tmax ram:%s" cpu (Uint64.to_string max_ram)))
       stats ;
   if !res then !logger.info "Test %s: Success" name
-  else failwith ("Test "^ name ^": FAILURE")
+  else failwith ("Test "^ name ^": FAILURE") ;
+  Thread.join httpd_thread
