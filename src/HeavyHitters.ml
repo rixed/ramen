@@ -78,48 +78,51 @@ let add s t w x =
           if Map.is_empty xs then None else Some xs
     ) m
   in
-  let victim_x = ref None in
-  s.w_of_x <-
-    Map.modify_opt x (function
-      | None ->
-          let victim_w = ref 0. in
-          if s.cur_size >= s.max_size then (
-            (* pick the victim and remove it from xs_of_w: *)
-            let victim_w', xs = WMap.max_binding s.xs_of_w in
-            let (victim_x', _victim_o), xs' = Map.pop xs in
-            victim_w := !victim_w' ;
-            victim_x := Some victim_x' ;
+  (* SHortcut for the frequent case when w=0: *)
+  if w <> 0. then (
+    let victim_x = ref None in
+    s.w_of_x <-
+      Map.modify_opt x (function
+        | None ->
+            let victim_w = ref 0. in
+            if s.cur_size >= s.max_size then (
+              (* pick the victim and remove it from xs_of_w: *)
+              let victim_w', xs = WMap.max_binding s.xs_of_w in
+              let (victim_x', _victim_o), xs' = Map.pop xs in
+              victim_w := !victim_w' ;
+              victim_x := Some victim_x' ;
+              s.xs_of_w <-
+                if Map.is_empty xs' then
+                  WMap.remove victim_w' s.xs_of_w
+                else (
+                  (* Bugged in batteries <= v2.8.0:
+                  WMap.update victim_w' victim_w' xs' s.xs_of_w  *)
+                  WMap.remove victim_w' s.xs_of_w |>
+                  WMap.add victim_w' xs'
+                )
+            ) else s.cur_size <- s.cur_size + 1 ;
+            let w = w +. !victim_w in
+            s.xs_of_w <- add_in_xs_of_w x w !victim_w s.xs_of_w ;
+            Some (w, !victim_w)
+        | Some (w', o) ->
+            let w = w +. w' in
             s.xs_of_w <-
-              if Map.is_empty xs' then
-                WMap.remove victim_w' s.xs_of_w
-              else (
-                (* Bugged in batteries <= v2.8.0:
-                WMap.update victim_w' victim_w' xs' s.xs_of_w  *)
-                WMap.remove victim_w' s.xs_of_w |>
-                WMap.add victim_w' xs'
-              )
-          ) else s.cur_size <- s.cur_size + 1 ;
-          let w = w +. !victim_w in
-          s.xs_of_w <- add_in_xs_of_w x w !victim_w s.xs_of_w ;
-          Some (w, !victim_w)
-      | Some (w', o) ->
-          let w = w +. w' in
-          s.xs_of_w <-
-            rem_from_xs_of_w x w' s.xs_of_w |>
-            add_in_xs_of_w x w o ;
-          Some (w, o)
-    ) s.w_of_x ;
-  Option.may (fun x ->
-    if not (Map.mem x s.w_of_x) then (
-      !logger.error "w_of_x does not have x=%s, only %a"
-        (dump x)
-        (Enum.print print_dump) (Map.keys s.w_of_x) ;
-      assert false) ;
-    s.w_of_x <- Map.remove x s.w_of_x
-  ) !victim_x ;
-  assert (s.cur_size <= s.max_size) ;
-  assert (Map.cardinal s.w_of_x = s.cur_size) ;
-  assert (WMap.cardinal s.xs_of_w <= s.cur_size)
+              rem_from_xs_of_w x w' s.xs_of_w |>
+              add_in_xs_of_w x w o ;
+            Some (w, o)
+      ) s.w_of_x ;
+    Option.may (fun x ->
+      if not (Map.mem x s.w_of_x) then (
+        !logger.error "w_of_x does not have x=%s, only %a"
+          (dump x)
+          (Enum.print print_dump) (Map.keys s.w_of_x) ;
+        assert false) ;
+      s.w_of_x <- Map.remove x s.w_of_x
+    ) !victim_x ;
+    assert (s.cur_size <= s.max_size) ;
+    assert (Map.cardinal s.w_of_x = s.cur_size) ;
+    assert (WMap.cardinal s.xs_of_w <= s.cur_size)
+  ) (* w <> 0. *)
 
 (* For each monitored item of rank k <= n, we must ask ourselves: could there
  * be an item with rank k > n, or a non-monitored items, with more weight?  For
