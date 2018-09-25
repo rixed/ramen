@@ -759,11 +759,6 @@ let unpure_fold u f e =
     | StatefulFun _ as e -> f u e
     | _ -> u) u e
 
-let has_unpure e =
-  try unpure_iter (fun _ -> raise Exit) e ;
-      false
-  with Exit -> true
-
 (* Any expression that uses a generator is a generator: *)
 let is_generator =
   fold_by_depth (fun is e ->
