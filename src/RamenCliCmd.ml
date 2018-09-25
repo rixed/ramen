@@ -308,7 +308,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
               ) prog.P.funcs
         ) programs ;
         Hashtbl.fold (fun program_name (mre, get_rc) lines ->
-          if not all && mre.C.killed then []
+          if not all && mre.C.killed then lines
           else match get_rc () with
           | exception e ->
             let fq_name =
