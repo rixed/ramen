@@ -1209,14 +1209,16 @@ let subst_dict =
   fun dict ?(quote=identity) ?null text ->
     global_substitute re (fun s ->
       let var_name = matched_group 1 s in
-      try List.assoc var_name dict |> quote
+      (try List.assoc var_name dict
       with Not_found ->
         !logger.debug "Unknown parameter %S" var_name ;
-        null |? "??"^ var_name ^"??"
+        null |? "??"^ var_name ^"??") |>
+      quote
     ) text
 
 (*$= subst_dict & ~printer:(fun x -> x)
-  "glop pas glop" (subst_dict ["glop", "pas"] "glop ${glop} glop")
+  "glop 'pas' glop" \
+      (subst_dict ~quote:shell_quote ["glop", "pas"] "glop ${glop} glop")
   "pas"           (subst_dict ["glop", "pas"] "${glop}")
   "??"            (subst_dict ~null:"??" ["glop", "pas"] "${gloup}")
  *)
