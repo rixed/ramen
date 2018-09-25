@@ -298,7 +298,7 @@ let test_notifications notify_rb notif_spec test_ended =
   in
   success, msg
 
-(* Perform all find of checks before spawning testing threads, such as
+(* Perform all kind of checks before spawning testing threads, such as
  * check the existence of all mentioned programs and functions: *)
 let check_test_spec conf test =
   let fold_funcs i f =

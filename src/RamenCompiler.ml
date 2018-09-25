@@ -48,6 +48,11 @@ let parent_from_root_path root_path pn =
 let parent_from_programs programs pn =
   (Hashtbl.find programs pn |> snd) ()
 
+(* object and smt2 files will be created in [root_path], as well as the
+ * final binary unless changed with [exec_file].
+ * [get_parent] is a function that returns the P.t of a given
+ * RamenName.program, used to get the output types of pre-existing
+ * functions. *)
 let compile conf root_path get_parent ?exec_file
             program_name program_code =
   (*

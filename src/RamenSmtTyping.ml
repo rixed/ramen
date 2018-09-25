@@ -1184,7 +1184,7 @@ let emit_input_fields oc tuple_sizes parents params funcs =
                   if t <> prev_t then
                     Printf.sprintf2
                       "All parents of %s must agree on the type of field \
-                       %s (%a have %a but %s has %a)"
+                       %s (%a has %a but %s has %a)"
                       (RamenName.func_color func.F.name)
                       field_name
                       (pretty_list_print (fun oc f ->
