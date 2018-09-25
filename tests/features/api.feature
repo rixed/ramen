@@ -30,14 +30,14 @@ Feature: Test Ramen API from the command line.
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"method":"version","id":"123"}' http://localhost:8042
-    Then curl must mention ""result":"v3.0.11""
+    Then curl must mention ""result":"v3.0.12""
     And curl must mention ""id":"123"".
 
   Scenario: Api can be given its own path on top of server path.
     Given ramen httpd --url http://localhost:8042/ramen --api=api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"method":"version","id":"123"}' http://localhost:8042/ramen/api
-    Then curl must mention ""result":"v3.0.11""
+    Then curl must mention ""result":"v3.0.12""
     And curl must mention ""id":"123"".
 
   Scenario: Api would understand an integer id.
