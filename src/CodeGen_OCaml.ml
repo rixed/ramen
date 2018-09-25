@@ -2248,20 +2248,21 @@ let emit_aggregate opc oc name in_typ out_typ =
       Set.String.cardinal !s > nb_fields))
     then failwith "Cannot build minimal_out set?!" ;
     !s in
+  (* minimal tuple: the subset of the out tuple that must be finalized at
+   * every input even in the absence of commit. We need those fields that
+   * are used in the commit condition itself, or used as parameter of a
+   * a stateful function used by another field (as the state update function
+   * will need its finalized value) and also if it's used to compute the
+   * event time in any way, as we want to know the front time as every
+   * input. Of course, any field required to compute a minimal field must
+   * also be minimal. *)
   let minimal_fields =
     let from_commit_cond =
       RamenExpr.fold_by_depth (fun s -> function
         | Field (_, { contents = TupleOut }, fn) ->
             Set.String.add fn s
         | _ -> s
-      ) Set.String.empty commit_cond |>
-      (* We also need all the fields from TupleOut that are used in the
-       * select expression of those fields that are mentioned in commit_cond,
-       * recursively: *)
-      fetch_recursively
-    (* We also need all the fields from TupleOut that are used in any
-     * stateful function for any other fields (for updating its state),
-     * recursively: *)
+      ) Set.String.empty commit_cond
     and for_updates =
       List.fold_left (fun s sf ->
         RamenExpr.unpure_fold s (fun s -> function
@@ -2269,22 +2270,18 @@ let emit_aggregate opc oc name in_typ out_typ =
                    | Field (_, { contents = TupleOut }, fn) ->
                        Set.String.add fn s
                    | _ -> s) s e) sf.RamenOperation.expr
-      ) Set.String.empty fields |>
-      fetch_recursively
-    (* As we also want to know the event time of any input tuple even before
-     * committing the output (for instance to report the front-time) we also
-     * need to make those fields accessible in the minimal-out tuple: *)
+      ) Set.String.empty fields
     and for_event_time =
       List.fold_left (fun s sf ->
         match sf.RamenOperation.alias with
         | ("start"|"stop"|"duration") as fn ->
             Set.String.add fn s
         | _ -> s
-      ) Set.String.empty fields |>
-      fetch_recursively in
+      ) Set.String.empty fields in
     (* Now combine these sets: *)
     Set.String.union from_commit_cond for_updates |>
-    Set.String.union for_event_time
+    Set.String.union for_event_time |>
+    fetch_recursively
   in
   !logger.debug "minimal fields: %a"
     (Set.String.print String.print) minimal_fields ;

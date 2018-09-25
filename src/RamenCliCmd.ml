@@ -291,7 +291,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
          "heap" ; "max heap" ; "volume in" ; "volume out" ; "startup time" ;
          "#parents" ; "#children" ; "signature" |],
       C.with_rlock conf (fun programs ->
-        (* First pass to get the childrens: *)
+        (* First pass to get the children: *)
         let children_of_func = Hashtbl.create 23 in
         Hashtbl.iter (fun program_name (mre, get_rc) ->
           if all || not mre.C.killed then match get_rc () with
