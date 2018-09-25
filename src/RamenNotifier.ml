@@ -481,7 +481,7 @@ let pass_fpr max_fpr now certainty =
         !logger.info "Max FPR test: Haven't sent enough notif yet (%d) to \
                       send more false positives than %d"
           (Deque.size pendings.last_sent) max_fp ;
-        false
+        true
       ) else (
         (* Actually, we are going to compute the probability that we sent
          * exactly 0 junk notif, exactly 1, etc up to max_fp, and then
