@@ -417,6 +417,7 @@ let cancel conf pending now reason =
   pendings.set <- PendingSet.remove pending pendings.set ;
   pendings.dirty <- true
 
+(* Returns the timeout (0. if there will be no delayed ack *)
 let contact_via conf item =
   let dict =
     [ "name", item.notif.notif_name ;
@@ -435,14 +436,15 @@ let contact_via conf item =
   let dict = List.rev dict (* Allow parameters to overwrite builtins *) in
   let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
   let open Contact in
-  match item.contact with
+  (match item.contact with
   | ViaExec cmd ->
       execute_cmd conf (exp ~q:shell_quote cmd) item.notif.worker
   | ViaSysLog str ->
       log_str conf (exp str) item.notif.worker
   | ViaSqlite { file ; insert ; create } ->
       let ins = exp ~q:sql_quote ~n:"NULL" insert in
-      sqllite_insert conf (exp file) ins create item.notif.worker
+      sqllite_insert conf (exp file) ins create item.notif.worker) ;
+  0. (* timeout *)
 
 (* Returns the timeout, or fail *)
 let do_notify conf pending now =
@@ -452,17 +454,8 @@ let do_notify conf pending now =
                      giving up" i.notif.notif_name i.attempts ;
     failwith "too many attempts"
   ) else (
-    let timeout = 5. (* TODO *) in
     i.attempts <- i.attempts + 1 ;
-    (match contact_via conf i with
-    | exception e ->
-        !logger.error "Cannot notify: %s" (Printexc.to_string e)
-        (* let it timeout *)
-    | () ->
-        if timeout > 0. then
-          let now = Unix.gettimeofday () in
-          ack i.notif.notif_name i.contact now) ;
-    timeout
+    contact_via conf i
   )
 
 let pass_fpr max_fpr now certainty =
@@ -542,12 +535,17 @@ let send_next conf max_fpr now =
                 | exception Failure reason ->
                     cancel conf p now reason ;
                     del_min p
+                | exception e ->
+                    !logger.error "Cannot notify: %s"
+                      (Printexc.to_string e)
+                    (* and let it timeout *)
                 | timeout ->
                   p.status <- if p.status = StartToBeSent then StartSent
                                                           else StopSent ;
                   if timeout > 0. then (
                     reschedule_min (now +. timeout)
                   ) else (
+                    ack p.item.notif.notif_name p.item.contact now ;
                     (* Acked alerts need not be in the scheduling heap *)
                     del_min p
                   )
