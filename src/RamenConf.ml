@@ -349,6 +349,9 @@ let pending_notifications_file conf =
 let api_alerts_root conf =
   conf.persist_dir ^"/api/set_alerts"
 
+let test_literal_programs_root conf =
+  conf.persist_dir ^"/tests"
+
 (* Where SMT files (used for type-checking) are written temporarily *)
 let smt_file root_path program_name =
   root_path ^"/"^ RamenName.path_of_program program_name ^".smt2"

@@ -46,7 +46,9 @@ type test_spec =
     [@@ppp PPP_OCaml]
 
 and program_spec =
-  { bin : string ; params : RamenName.params [@ppp_default Hashtbl.create 0] }
+  { bin : string [@ppp_default ""] ;
+    code : string [@ppp_default ""] ;
+    params : RamenName.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields
@@ -300,49 +302,89 @@ let test_notifications notify_rb notif_spec test_ended =
  * check the existence of all mentioned programs and functions: *)
 let check_test_spec conf test =
   let fold_funcs i f =
-    let maybe_f fq (s, i as prev) =
+    let maybe_f fq tuples (s, i as prev) =
       if Set.mem fq s then prev else (
         Set.add fq s,
-        f i fq)
+        f i fq tuples)
     in
     let s_i =
       List.fold_left (fun s_i in_spec ->
-        maybe_f in_spec.Input.operation s_i
+        maybe_f in_spec.Input.operation [ in_spec.Input.tuple ] s_i
       ) (Set.empty, i) test.inputs in
     let s_i =
-      Hashtbl.fold (fun fq _ s_i ->
-        maybe_f fq s_i
+      Hashtbl.fold (fun fq out_spec s_i ->
+        let tuples =
+          out_spec.Output.present @ out_spec.Output.absent in
+        maybe_f fq tuples s_i
       ) test.outputs s_i in
     let s, i =
-      Hashtbl.fold (fun fq _ s_i ->
-        maybe_f fq s_i
+      Hashtbl.fold (fun fq tuple s_i ->
+        maybe_f fq [ tuple ] s_i
       ) test.until s_i in
     i in
-  let fold_programs i f =
-    let maybe_f prog_name (s, i as prev) =
-      if Set.mem prog_name s then prev else (
-        Set.add prog_name s,
-        f i prog_name) in
-    let s_i =
-      Hashtbl.fold (fun prog_name _ s_i ->
-        maybe_f prog_name s_i
-      ) test.programs (Set.empty, i) in
-    let _, i =
-      fold_funcs s_i (fun s_i fq ->
-        let prog_name, _ = RamenName.fq_parse fq in
-        maybe_f prog_name s_i
-      ) in
-    i in
+  let iter_programs ~per_prog ~per_func =
+    let maybe_f prog_name s =
+      if Set.mem prog_name s then s else (
+        per_prog prog_name ;
+        Set.add prog_name s) in
+    let s =
+      Hashtbl.fold (fun prog_name _ s ->
+        maybe_f prog_name s
+      ) test.programs Set.empty in
+    fold_funcs s (fun s fq tuples ->
+      let prog_name, func_name = RamenName.fq_parse fq in
+      (* Check the existence of program first: *)
+      let s = maybe_f prog_name s in
+      List.iter (per_func prog_name func_name) tuples ;
+      s
+    ) |> ignore
+  in
   C.with_rlock conf (fun programs ->
-    fold_programs () (fun () prog_name ->
-      if not (Hashtbl.mem programs prog_name) then
-        Printf.sprintf "Unknown program %s"
-          (RamenName.program_color prog_name) |>
-        failwith))
+    iter_programs
+      ~per_prog:(fun pn ->
+        if not (Hashtbl.mem programs pn) then
+          Printf.sprintf "Unknown program %s"
+            (RamenName.program_color pn) |>
+          failwith)
+      ~per_func:(fun pn fn tuple ->
+        let mre, get_rc = Hashtbl.find programs pn in
+        let prog = get_rc () in
+        match List.find (fun func -> func.F.name = fn) prog.P.funcs with
+        | exception Not_found ->
+            Printf.sprintf "Unknown function %s in program %s"
+              (RamenName.func_color fn)
+              (RamenName.program_color pn) |>
+            failwith ;
+        | func ->
+            Hashtbl.iter (fun field_name _ ->
+              if not (List.exists (fun ft ->
+                        ft.RamenTuple.typ_name = field_name
+                      ) func.F.out_type) then
+                Printf.sprintf2 "Unknown field %s in %s (have %a)"
+                  field_name
+                  RamenName.(fq_color (fq pn fn))
+                  RamenTuple.print_typ_names func.F.out_type |>
+                failwith
+            ) tuple))
+
+(* The given [root_path] is where to get the parent of our code, and will be
+ * set as the dirname of the test file (where bins are looked into), so that
+ * we can select from any bin file. This prevent us from selecting from
+ * another literate program though.
+ * TODO: set the root_path used here and to find the bins as a command line
+ * parameter of `ramen test`. *)
+let bin_of_program conf root_path get_parent program_name program_code =
+  let exec_file =
+    C.test_literal_programs_root conf ^"/"^
+    RamenName.path_of_program program_name ^".x" in
+  RamenCompiler.compile conf root_path get_parent ~exec_file
+                        program_name program_code ;
+  exec_file
 
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
+  let dirname = absolute_path_of dirname in
   (* The only sure way to know when to stop the workers is: when the test
    * succeeded, or timeouted. So we start three threads at the same time:
    * the process synchronizer, the worker feeder, and the output evaluator: *)
@@ -351,11 +393,21 @@ let run_test conf notify_rb dirname test =
   C.with_wlock conf (fun programs ->
     Hashtbl.clear programs ;
     Hashtbl.iter (fun program_name p ->
-      (* The path to the binary is relative to the test file: *)
-      if p.bin = "" then failwith "Binary file must not be empty" ;
       let bin =
-        (if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin) |>
-        absolute_path_of in
+        if p.bin <> "" then (
+          (* The path to the binary is relative to the test file: *)
+          if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin
+        ) else (
+          if p.code = "" then failwith "Either the binary file or the code of \
+                                        a program must be specified" ;
+          let get_parent n =
+            match Hashtbl.find test.programs n with
+            | exception Not_found ->
+                Printf.sprintf "Cannot find program %s" (RamenName.program_color n) |>
+                fail_and_quit
+            | par -> P.of_bin par.params par.bin
+          in
+          bin_of_program conf dirname get_parent program_name p.code) in
       let prog = P.of_bin p.params bin in
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; killed = false ; debug = false ;
@@ -454,7 +506,9 @@ let run_test conf notify_rb dirname test =
   Thread.join early_terminator ;
   !all_good
 
-let run conf server_url api graphite test () =
+let run conf server_url api graphite
+        use_external_compiler bundle_dir max_simult_compils smt_solver
+        test () =
   let conf = C.{ conf with
     persist_dir =
       Filename.get_temp_dir_name ()
@@ -462,6 +516,8 @@ let run conf server_url api graphite test () =
       uniquify_filename ;
     test = true } in
   logger := make_logger conf.C.log_level ;
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
   let httpd_thread =
     Thread.create (fun () ->
       if server_url <> "" || api <> None || graphite <> None then

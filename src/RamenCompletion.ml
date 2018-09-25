@@ -183,11 +183,15 @@ let complete str () =
           ("--parameter=", RamenConsts.CliInfo.param) ::
           copts
       | "compile" ->
-          ("--bundle-dir=", RamenConsts.CliInfo.bundle_dir) ::
-          ("--keep-temp-files", RamenConsts.CliInfo.keep_temp_files) ::
-          ("--root-path=", RamenConsts.CliInfo.root_path) ::
-          ("--external-compiler", RamenConsts.CliInfo.external_compiler) ::
-          ("--as-program", RamenConsts.CliInfo.program_name) ::
+          [ "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
+            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+            "--max-simult-compilations",
+              RamenConsts.CliInfo.max_simult_compilations ;
+            "--solver=", RamenConsts.CliInfo.smt_solver ;
+            "--keep-temp-files", RamenConsts.CliInfo.keep_temp_files ;
+            "--root-path=", RamenConsts.CliInfo.root_path ;
+            "--external-compiler", RamenConsts.CliInfo.external_compiler ;
+            "--as-program", RamenConsts.CliInfo.program_name ] @
           copts @
           (complete_program_files last_tok)
       | "run" ->
@@ -256,7 +260,15 @@ let complete str () =
           copts @
           (complete_running_function persist_dir last_tok)
       | "test" ->
-          ("--help", RamenConsts.CliInfo.help) ::
+          [ "--help", RamenConsts.CliInfo.help ;
+            "--url=", RamenConsts.CliInfo.server_url ;
+            "--api", RamenConsts.CliInfo.api ;
+            "--graphite", RamenConsts.CliInfo.graphite ;
+            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
+            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+            "--max-simult-compilations",
+              RamenConsts.CliInfo.max_simult_compilations ;
+            "--solver=", RamenConsts.CliInfo.smt_solver ] @
           copts @
           (complete_test_file last_tok)
       | "httpd" ->

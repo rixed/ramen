@@ -713,6 +713,10 @@ let test =
       $ server_url ""
       $ api
       $ graphite
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver
       $ test_file),
     info ~doc:RamenConsts.CliInfo.test "test")
 
