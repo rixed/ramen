@@ -371,10 +371,7 @@ let generate_alert table ft =
           (if nullable then ", false)" else "") ;
         Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
         Printf.fprintf oc "    firing AS firing,\n" ;
-        Printf.fprintf oc "    %sreldiff(%s, %f)%s AS certainty,\n"
-          (if nullable then "COALESCE(" else "")
-          column a.threshold
-          (if nullable then ", 0)" else "") ;
+        Printf.fprintf oc "    1 AS certainty,\n" ;
         Printf.fprintf oc "    %s AS values,\n" column ;
         Printf.fprintf oc "    %f AS thresholds\n" a.threshold ;
         (* TODO: a way to add zone, service, etc, if present in the
