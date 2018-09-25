@@ -1365,6 +1365,41 @@ end
  * the server: *)
 let forking_server ~while_ sockaddr server_fun =
   let open Legacy.Unix in
+  (* Keep an eye on my sons pids: *)
+  let sons = ref [] in
+  Thread.create (fun () ->
+    let stop_since = ref 0. in
+    while true do
+      let now = gettimeofday () in
+      let continue = while_ () in
+      (* If we want to quit, kill the sons: *)
+      if not continue then (
+        if !stop_since = 0. then stop_since := now ;
+        if !sons <> [] then (
+          !logger.info "Killing httpd servers..." ;
+          List.iter (fun (pid, _) ->
+            log_and_ignore_exceptions ~what:"stopping httpd servers"
+              (kill pid)
+              Sys.(if now -. !stop_since > 3. then sigkill else sigterm)
+          ) !sons
+        ) else Thread.exit ()
+      ) ;
+      (* Collect the sons statuses: *)
+      sons :=
+        List.filter (fun (pid, start) ->
+          match BatUnix.restart_on_EINTR (waitpid [ WNOHANG ]) pid with
+          | 0, _ -> true
+          | _, status ->
+              let dt = now -. start in
+              (if status = WEXITED 0 then !logger.debug else !logger.error)
+                "httpd server %d %s after %fs"
+                  pid (string_of_process_status status) dt ;
+              false
+        ) !sons ;
+      sleep 1
+    done
+  ) () |> ignore ;
+  (* Now fork a new servers for each connection: *)
   let sock =
     socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
   finally (fun () -> close sock)
@@ -1383,6 +1418,6 @@ let forking_server ~while_ sockaddr server_fun =
                 exit 0
           | pid ->
               close s ;
-              waitpid_log ~what:"forked server" ~expected_status:0 pid
+              sons := (pid, Unix.gettimeofday ()) :: !sons
         done
       with Exit -> ()) ()
