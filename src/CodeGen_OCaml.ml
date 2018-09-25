@@ -1989,20 +1989,7 @@ let emit_update_states
   let field_in_minimal field_name =
     List.exists (fun ft ->
       ft.RamenTuple.typ_name = field_name
-    ) minimal_typ in
-  let expression_needs field_name expr =
-    try RamenExpr.iter (function
-          | RamenExpr.Field (_, { contents = TupleOut }, fn)
-              when fn = field_name -> raise Exit
-          | _ -> ()
-        ) expr ;
-        false
-    with Exit -> true in
-  let need_binding field_name i =
-    list_existsi (fun j sf ->
-      j > i &&
-      expression_needs field_name sf.RamenOperation.expr
-    ) selected_fields
+    ) minimal_typ
   in
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
@@ -2013,16 +2000,7 @@ let emit_update_states
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
       emit_state_update_for_expr ~opc ~what:sf.RamenOperation.alias
-                                 oc sf.RamenOperation.expr ;
-      if not (RamenExpr.is_generator sf.RamenOperation.expr) &&
-         (* Avoid finalizing the value yet unless it's needed to update
-          * a later state: *)
-         need_binding sf.RamenOperation.alias i
-      then (
-        Printf.fprintf oc "\tlet %s = %a in\n"
-          (id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias)
-          (emit_expr ?state:None ~context:Finalize ~opc)
-            sf.RamenOperation.expr))
+                                 oc sf.RamenOperation.expr)
   ) selected_fields ;
   Printf.fprintf oc "\t()\n"
 
