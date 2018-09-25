@@ -180,29 +180,28 @@ let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
  * given two columns to establish node relationship: *)
 
 let rec print_subtree ~parent ~child h head ~indent ~is_last root done_set =
-  let print_info indent line =
-    for i = 0 to Array.length head - 1 do
-      if i <> parent && i <> child then
-        Printf.printf "%s %s: %s\n"
-          indent head.(i) line.(i)
-    done
-  in
-  let indent_end, indent_end_next =
-    if indent = "" then "", "" else
-    if is_last then "└ ", "  " else "├ ", "│ " in
-  Printf.printf "%s%s%s\n"
-    indent indent_end root ;
-  let indent = indent ^ indent_end_next ^ "   " in
-  match Hashtbl.find h root with
-  | exception Not_found -> ()
-  | children ->
-      list_iter_first_last (fun _is_first is_last (c, line) ->
-        print_info (indent ^ "│ ") line ;
-        let k = root, c in
-        if not (Set.mem k done_set) then (
-          let done_set = Set.add k done_set in
-          print_subtree ~parent ~child h head ~indent ~is_last c done_set)
-      ) children
+  if not (Set.String.mem root done_set) then
+    let done_set = Set.String.add root done_set in
+    let print_info indent line =
+      for i = 0 to Array.length head - 1 do
+        if i <> parent && i <> child then
+          Printf.printf "%s %s: %s\n"
+            indent head.(i) line.(i)
+      done
+    in
+    let indent_end, indent_end_next =
+      if indent = "" then "", "" else
+      if is_last then "└ ", "  " else "├ ", "│ " in
+    Printf.printf "%s%s%s\n"
+      indent indent_end root ;
+    let indent = indent ^ indent_end_next ^ "   " in
+    match Hashtbl.find h root with
+    | exception Not_found -> ()
+    | children ->
+        list_iter_first_last (fun _is_first is_last (c, line) ->
+          print_info (indent ^ "│ ") line ;
+          print_subtree ~parent ~child h head ~indent ~is_last c done_set
+        ) children
 
 let print_tree ~parent ~child ?(na="n/a") head lines =
   (* Turn the list of lines into a hash of node -> children *)
@@ -219,5 +218,5 @@ let print_tree ~parent ~child ?(na="n/a") head lines =
   let roots = Set.String.diff possible_roots non_roots in
   Set.String.iter (fun root ->
     print_subtree ~parent ~child h head ~indent:"" ~is_last:true root
-                  Set.empty
+                  Set.String.empty
   ) roots
