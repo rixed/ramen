@@ -25,6 +25,11 @@ type param =
 
 type params = param list [@@ppp PPP_OCaml]
 
+let print_param oc p =
+  Printf.fprintf oc "%s=%a" p.ptyp.typ_name RamenTypes.print p.value
+
+let print_params oc = List.print print_param oc
+
 let params_sort params =
   let param_compare p1 p2 =
     String.compare p1.ptyp.typ_name p2.ptyp.typ_name in
