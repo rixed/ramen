@@ -578,4 +578,5 @@ let run conf server_url api graphite
       stats ;
   if res then !logger.info "Test %s: Success" name
   else failwith ("Test "^ name ^": FAILURE") ;
+  !logger.info "Waiting for http server..." ;
   Thread.join httpd_thread
