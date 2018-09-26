@@ -69,7 +69,7 @@ struct
     RamenName.path_of_program f.program_name
     ^"/"^ RamenName.string_of_func f.name
 
-  let signature conf func op_str params =
+  let signature func op_str params =
     (* We'd like to be formatting independent so that operation text can be
      * reformatted without ramen recompiling it. For this it is not OK to
      * strip redundant white spaces as some of those might be part of literal

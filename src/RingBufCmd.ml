@@ -118,9 +118,9 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     in
     let out_ref, spec, is_err2 =
       match p with
-      | NotRunning (pn, fn) ->
+      | NotRunning _ ->
           "", red "NOT RUNNING", true
-      | ProgramError (pn, e) ->
+      | ProgramError (_, e) ->
           "", red e, true
       | Running p ->
           let out_ref = C.out_ringbuf_names_ref conf p in
@@ -151,7 +151,7 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
    * parent/children relationships: *)
   let links =
     C.with_rlock conf (fun programs ->
-      Hashtbl.fold (fun program_name (mre, get_rc) links ->
+      Hashtbl.fold (fun _prog_name (mre, get_rc) links ->
         if mre.C.killed then links else
         match get_rc () with
         | exception _ ->
@@ -197,13 +197,13 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     let links = ref links in
     reach_fixed_point (fun () ->
       let parents, children =
-        List.fold_left (fun (ps, cs) (is_err, parent, child, link) ->
+        List.fold_left (fun (ps, cs) (_is_err, parent, child, _link) ->
           Set.String.add parent ps, Set.String.add child cs
         ) (Set.String.empty, Set.String.empty) !links in
       let leaves = Set.String.diff children parents in
       let changed = ref false in
       links :=
-        List.filter (fun (is_err, parent, child, link) ->
+        List.filter (fun (is_err, parent, child, _link) ->
           !logger.debug "Filtering out %s->%s? leaf:%b match:%b err:%b show-all:%b" parent child
             (Set.String.mem child leaves)
             (Globs.matches pattern parent || Globs.matches pattern child)

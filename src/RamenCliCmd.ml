@@ -72,7 +72,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload () =
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
-    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+    RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
       (fun () -> synchronize_running conf autoreload) |] ;
   Option.may exit !RamenProcesses.quit
@@ -116,7 +116,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let while_ () = !RamenProcesses.quit = None in
   restart_on_failure ~while_ "process_notifications"
-    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+    RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
       (fun () ->
         RamenNotifier.start conf notif_conf_file notify_rb max_fpr) |] ;
@@ -293,9 +293,9 @@ let ps conf short pretty with_header sort_col top pattern all () =
       C.with_rlock conf (fun programs ->
         (* First pass to get the children: *)
         let children_of_func = Hashtbl.create 23 in
-        Hashtbl.iter (fun program_name (mre, get_rc) ->
+        Hashtbl.iter (fun _prog_name (mre, get_rc) ->
           if all || not mre.C.killed then match get_rc () with
-          | exception e -> ()
+          | exception _ -> ()
           | prog ->
               List.iter (fun func ->
                 List.iter (fun (pp, pf) ->
@@ -385,12 +385,12 @@ let tail conf func_name with_header sep null raw
         min_seq,
         Option.map succ max_seq (* max_seqnum is in *)
     | Some l when l >= 0 ->
-        let mi, ma = RingBufLib.seq_range bname in
+        let _mi, ma = RingBufLib.seq_range bname in
         Some (cap_add ma ~-l),
         Some (if continuous then max_int else ma)
     | Some l ->
         assert (l < 0) ;
-        let mi, ma = RingBufLib.seq_range bname in
+        let _mi, ma = RingBufLib.seq_range bname in
         Some ma, Some (cap_add ma (cap_neg l)) in
   !logger.debug "Will display tuples from %a (incl) to %a (excl)"
     (Option.print Int.print) mi

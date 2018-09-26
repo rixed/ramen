@@ -6,7 +6,7 @@ DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
-WARNS    = -w -40-58
+WARNS    = -w -40-58+27
 override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
 override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \

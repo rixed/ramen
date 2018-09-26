@@ -25,6 +25,6 @@ let del_min cmp (h, c) = del_min cmp h, c - 1
 
 let pop_min cmp t = min t, del_min cmp t
 
-let fold_left cmp f init (h, c) = fold_left cmp f init h
+let fold_left cmp f init (h, _) = fold_left cmp f init h
 
 let cardinal (_, c) = c

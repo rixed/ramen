@@ -163,8 +163,8 @@ and print oc =
   let sep = ", " in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
-                event_time ; notifications ; key ; commit_cond ;
-                commit_before ; flush_how ; from ; every } ->
+                notifications ; key ; commit_cond ; commit_before ;
+                flush_how ; from ; every ; _ } ->
     if from <> [] then
       List.print ~first:"FROM " ~last:"" ~sep print_data_source oc from ;
     if merge.on <> [] then (
@@ -211,8 +211,7 @@ and print oc =
         Printf.fprintf oc " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
           (E.print false) commit_cond)
-  | ReadCSVFile { where = file_spec ;
-                  what = csv_specs ; preprocessor ; event_time } ->
+  | ReadCSVFile { where = file_spec ; what = csv_specs ; preprocessor ; _} ->
     Printf.fprintf oc "%a %s %a"
       print_file_spec file_spec
       (Option.map_default (fun e ->
@@ -244,7 +243,7 @@ let fold_top_level_expr init f = function
       let x = f x "CSV filename" fname in
       f x "CSV DELETE-IF clause" unlink
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
-                flush_how ; notifications ; _ } ->
+                notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
             let what = Printf.sprintf "field %S" sf.alias in
@@ -259,7 +258,7 @@ let fold_top_level_expr init f = function
           ) x key in
       let x = List.fold_left (fun prev notif ->
             let prev = f prev "NOTIFY name" notif.notif_name in
-            List.fold_left (fun prev (n, v) ->
+            List.fold_left (fun prev (_, v) ->
               f prev "NOTIFY parameter" v) prev notif.parameters
           ) x notifications in
       let x = f x "COMMIT clause" commit_cond in
@@ -377,10 +376,10 @@ let out_type_of_operation = function
 
 (* Return the untyped in_type of the given operation: *)
 let in_type_of_operation = function
-  | Aggregate { fields ; _ } as op ->
+  | Aggregate _ as op ->
       let input = ref [] in
       iter_expr (function
-        | Field (expr_typ, tuple, name)
+        | Field (_expr_typ, tuple, name)
           when RamenLang.tuple_has_type_input !tuple &&
                not (is_virtual_field name) ->
             if is_private_field name then
@@ -473,8 +472,8 @@ let check params op =
      failwith "Cannot use #start/#stop without event time" ;
   match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
-                commit_cond ; flush_how ; event_time ; notifications ;
-                from ; every ; factors } ->
+                commit_cond ; event_time ; notifications ; from ; every ;
+                factors ; _ } ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function

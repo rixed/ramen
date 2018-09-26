@@ -99,7 +99,7 @@ let complete_test_file str =
 
 let empty_help s = s, ""
 
-let complete_running_function persist_dir str =
+let complete_running_function persist_dir =
   let conf = C.make_conf persist_dir in
   (
     Hashtbl.values (C.with_rlock conf identity) //@
@@ -115,7 +115,7 @@ let complete_running_function persist_dir str =
   ) /@
   empty_help |> List.of_enum
 
-let complete_running_program persist_dir str =
+let complete_running_program persist_dir =
   let conf = C.make_conf persist_dir in
   Hashtbl.enum (C.with_rlock conf identity) //@
   (fun (p, (mre, _)) ->
@@ -138,7 +138,7 @@ let complete str () =
     | r -> r (* ?? *) in
   let num_toks = List.length toks in
   let command_idx, command =
-    try List.findi (fun i s -> s.[0] <> '-') toks
+    try List.findi (fun _ s -> s.[0] <> '-') toks
     with Not_found -> -1, "" in
   let last_tok =
     if num_toks > 0 then List.nth toks (num_toks-1)
@@ -204,7 +204,7 @@ let complete str () =
           let persist_dir = persist_dir toks in
           ("--purge", RamenConsts.CliInfo.purge) ::
           copts @
-          (complete_running_program persist_dir last_tok)
+          (complete_running_program persist_dir)
       | "tail" ->
           let persist_dir = persist_dir toks in
           ("--last=", RamenConsts.CliInfo.last) ::
@@ -218,7 +218,7 @@ let complete str () =
           ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
           copts @
           (("stats", "Internal instrumentation") ::
-           (complete_running_function persist_dir last_tok))
+           (complete_running_function persist_dir))
       | "timeseries" ->
           let persist_dir = persist_dir toks in
           (* TODO: get the function name from toks and autocomplete
@@ -233,11 +233,11 @@ let complete str () =
           ("--null=", RamenConsts.CliInfo.csv_null) ::
           copts @
           (("stats", "Internal instrumentation") ::
-           (complete_running_function persist_dir last_tok))
+           (complete_running_function persist_dir))
       | "timerange" ->
           let persist_dir = persist_dir toks in
           copts @
-          (complete_running_function persist_dir last_tok)
+          (complete_running_function persist_dir)
       | "ps" ->
           let persist_dir = persist_dir toks in
           ("--short", RamenConsts.CliInfo.short) ::
@@ -247,7 +247,7 @@ let complete str () =
           ("--top", RamenConsts.CliInfo.top) ::
           ("--all", RamenConsts.CliInfo.all) ::
           copts @
-          (complete_running_function persist_dir last_tok)
+          (complete_running_function persist_dir)
       | "links" ->
           let persist_dir = persist_dir toks in
           ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
@@ -258,7 +258,7 @@ let complete str () =
           ("--sort", RamenConsts.CliInfo.sort_col) ::
           ("--top", RamenConsts.CliInfo.top) ::
           copts @
-          (complete_running_function persist_dir last_tok)
+          (complete_running_function persist_dir)
       | "test" ->
           [ "--help", RamenConsts.CliInfo.help ;
             "--url=", RamenConsts.CliInfo.server_url ;

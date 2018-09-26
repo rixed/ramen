@@ -65,7 +65,7 @@ let char_ ?what x = char ?what x >>: fun _ -> ()
 
 let id_quote = char_ ~what:"quote" '\''
 
-let not_in_range what ?min ?max n =
+let not_in_range ?min ?max what =
   let e =
     what ^" must be "^ match min, max with
     | None, None -> "all right, so what's the problem?"
@@ -82,7 +82,7 @@ let integer_range ?min ?max =
     if Option.map_default (Num.ge_num n) true min &&
        Option.map_default (Num.le_num n) true max
     then n
-    else not_in_range "integer" ?min ?max n
+    else not_in_range ?min ?max "integer"
 
 (* Only accept decimal integers from min to max (inclusive). *)
 let decimal_integer_range ?min ?max what =
@@ -97,8 +97,8 @@ let decimal_integer_range ?min ?max what =
     if Option.map_default ((>=) n) true min &&
        Option.map_default ((<=) n) true max
     then n
-    else not_in_range what ?min:(Option.map Num.of_int min)
-                           ?max:(Option.map Num.of_int max) n
+    else not_in_range ?min:(Option.map Num.of_int min)
+                      ?max:(Option.map Num.of_int max) what
 
 let pos_decimal_integer what =
   decimal_integer_range ~min:0 ?max:None what

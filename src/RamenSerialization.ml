@@ -105,7 +105,7 @@ let value_of_string t s =
     (value_of_string { structure = TFloat ; nullable = true }   "null")
  *)
 
-let write_record conf ser_in_type rb tuple =
+let write_record ser_in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
       if ftyp.RamenTuple.typ.nullable then
@@ -218,7 +218,7 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
         Array.of_enum in
       Array.fast_sort arc_file_compare entries ;
       let usr, next_seq =
-        Array.fold_left (fun (usr, _) (from, to_, _t1, _t2, fname) ->
+        Array.fold_left (fun (usr, _) (from, _to, _t1, _t2, fname) ->
           let rb = load fname in
           finally (fun () -> unload rb)
             (fold_rb from rb) usr
@@ -266,7 +266,7 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   let f usr tx =
     let tuple =
       read_tuple typ nullmask_size tx in
-    let usr, more_to_come as res = f usr tuple in
+    let usr, _more_to_come as res = f usr tuple in
     if early_stop then res
     else (usr, true)
   in
@@ -276,15 +276,15 @@ let event_time_of_tuple typ params
       ((start_field, start_field_src, start_scale), duration_info) =
   let open RamenEventTime in
   let float_of_field i s tup = float_of_scalar tup.(i) *. s
-  and float_of_param n =
+  and float_of_param n s =
     let pv = find_param params n in
-    float_of_scalar pv in
+    float_of_scalar pv *. s in
   let get_t1 = match !start_field_src with
     | OutputField ->
         let i = find_field_index typ start_field in
         float_of_field i start_scale
     | Parameter ->
-        let c = float_of_param start_field in
+        let c = float_of_param start_field 1. in
         fun _tup -> c in
   let get_t2 = match duration_info with
     | DurationConst k ->
@@ -296,10 +296,10 @@ let event_time_of_tuple typ params
         let i = find_field_index typ n in
         fun tup _t1 -> float_of_field i s tup
     | DurationField (n, { contents = Parameter }, s) ->
-        let c = float_of_param n in
-        fun tup t1 -> t1 +. c
+        let c = float_of_param n s in
+        fun _tup t1 -> t1 +. c
     | StopField (n, { contents = Parameter }, s) ->
-        let c = float_of_param n in
+        let c = float_of_param n s in
         fun _tup _t1 -> c
   in
   fun tup ->
@@ -313,7 +313,7 @@ let event_time_of_tuple typ params
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
-let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ params
+let fold_buffer_with_time ?while_ ?early_stop bname typ params
                           event_time init f =
   !logger.debug "Folding over %s" bname ;
   let event_time_of_tuple =
@@ -327,7 +327,7 @@ let fold_buffer_with_time ?while_ ?(early_stop=true) bname typ params
     let t1, t2 = event_time_of_tuple tuple in
     f usr tuple t1 t2
   in
-  fold_buffer_tuple ?while_ bname typ init f
+  fold_buffer_tuple ?early_stop ?while_ bname typ init f
 
 let time_range ?while_ bname typ params event_time =
   let dir = arc_dir_of_bname bname in
@@ -348,7 +348,7 @@ let fold_time_range ?while_ bname typ params event_time since until init f =
   let dir = arc_dir_of_bname bname in
   let entries =
     RingBufLib.arc_files_of dir //
-    (fun (_s1, _s2, t1, t2, fname) -> since < t2 && until >= t1) in
+    (fun (_s1, _s2, t1, t2, _fname) -> since < t2 && until >= t1) in
   let f usr tuple t1 t2 =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
   let rec loop usr =

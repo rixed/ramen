@@ -1052,7 +1052,7 @@ let sparkline vec =
       float_of_int (Array.length stairs - 1) /. (ma -. mi)
     else 0. in
   let res = Buffer.create (Array.length vec * 4) in
-  Array.iteri (fun i v ->
+  Array.iter (fun v ->
     let c = int_of_float ((v -. mi) *. ratio) in
     Buffer.add_string res stairs.(c)
   ) vec ;

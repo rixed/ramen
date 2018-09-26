@@ -326,7 +326,7 @@ let emit_constraints tuple_sizes out_fields oc e =
             else
               emit_assert_id_eq_id nid oc (n_of_expr expr))
 
-  | Const (t, VNull) ->
+  | Const (_, VNull) ->
       (* - "NULL" is nullable. *)
       arg_is_nullable oc e
 
@@ -368,7 +368,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         (* Empty vector literal are not accepted by the parser yet... *)
         emit_assert oc (fun oc ->
           Printf.fprintf oc "((_ is vector) %s)" eid)
-      | fst :: rest ->
+      | fst :: _rest ->
         let d = List.length es in
         List.iter (fun x ->
           let name = expr_err x Err.VecSame in
@@ -841,7 +841,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Hash, x) ->
+  | StatelessFun1 (_, Hash, _x) ->
       (* - x can be anything. Notice that hash(NULL) is NULL;
        * - The result is an I64.
        * - Nullability propagates. *)
@@ -1018,14 +1018,13 @@ let emit_constraints tuple_sizes out_fields oc e =
           (t_of_expr e2) (t_of_expr e2)
           (t_of_expr e2) (t_of_expr e2))
 
-let emit_operation declare tuple_sizes fi oc func op =
+let emit_operation declare tuple_sizes fi oc op =
   let open RamenOperation in
   (* Declare all variables: *)
   iter_expr declare op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
-  | Aggregate { fields ; where ; event_time ; notifications ;
-                commit_cond ; flush_how ; _ } ->
+  | Aggregate { fields ; where ; notifications ; commit_cond ; _ } ->
       iter_expr (emit_constraints tuple_sizes fields oc) op ;
       (* Typing rules:
        * - Where must be a bool;
@@ -1080,7 +1079,7 @@ let emit_program declare tuple_sizes oc funcs =
   List.iteri (fun i (func, op) ->
     Printf.fprintf oc "\n; Constraints for function %s\n"
       (RamenName.string_of_func func.F.name) ;
-    emit_operation declare tuple_sizes i oc func op
+    emit_operation declare tuple_sizes i oc op
   ) funcs
 
 let emit_minimize oc funcs =
@@ -1095,7 +1094,7 @@ let emit_minimize oc funcs =
                        (ite (or (= i128 n) (= u128 n)) 6\n\
                        0)))))))\n" ;
   Printf.fprintf oc "(minimize (+ 0" ;
-  List.iter (fun (func, op) ->
+  List.iter (fun (_func, op) ->
     RamenOperation.iter_expr (fun e ->
       let eid = t_of_expr e in
       match (typ_of e).typ with
@@ -1110,7 +1109,7 @@ let emit_minimize oc funcs =
                      (define-fun cost_of_sign ((n Type)) Int\n\
                        (ite (or (= i8 n) (= i16 n) (= i32 n) (= i64 n) (= i128 n)) 1 0))\n" ;
   Printf.fprintf oc "(minimize (+ 0" ;
-  List.iter (fun (func, op) ->
+  List.iter (fun (_func, op) ->
     RamenOperation.iter_expr (fun e ->
       let eid = t_of_expr e in
       match (typ_of e).typ with
@@ -1150,7 +1149,7 @@ let id_or_type_of_field op name =
 let emit_input_fields oc tuple_sizes parents params funcs =
   List.iter (fun (func, op) ->
     RamenOperation.iter_expr (function
-      | Field (field_typ, tupref, field_name) as expr ->
+      | Field (_field_typ, tupref, field_name) as expr ->
           if is_virtual_field field_name then (
             (* Type set during parsing *)
           ) else if !tupref = TupleParam then (
@@ -1407,7 +1406,7 @@ let run_solver smt2_file =
   let shell = "/bin/sh" in
   let args = [| shell ; "-c" ; cmd |] in
   (* Now summon the solver: *)
-  with_subprocess shell args (fun (oc, ic, ec) ->
+  with_subprocess shell args (fun (_oc, ic, ec) ->
     let output = read_whole_channel ic
     and errors = read_whole_channel ec in
     !logger.debug "Solver is done." ;
@@ -1453,7 +1452,7 @@ let used_tuple_sizes funcs parents =
     ) s fs
   ) parents tuple_sizes
 
-let get_types conf parents funcs params smt2_file =
+let get_types parents funcs params smt2_file =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
@@ -1572,7 +1571,7 @@ let set_io_tuples parents funcs h =
   Hashtbl.iter (fun _ -> set_input) funcs
 
 let apply_types parents funcs h =
-  Hashtbl.iter (fun _ (func, op) ->
+  Hashtbl.iter (fun _ (_func, op) ->
     RamenOperation.iter_expr (fun e ->
       let t = typ_of e in
       match Hashtbl.find h t.uniq_num with

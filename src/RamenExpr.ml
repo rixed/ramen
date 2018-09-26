@@ -613,7 +613,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
         p dur
         print_args es ;
       add_types t
-    | StatefulFun (t, g, n, Distinct es) ->
+    | StatefulFun (_, g, n, Distinct es) ->
       Printf.fprintf oc "distinct%s%s(%a)"
         (sl g) (sn n)
         print_args es

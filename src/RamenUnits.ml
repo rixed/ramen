@@ -76,7 +76,7 @@ let processes = make "processes"
 let chars = make "chars"
 
 let is_relative u =
-  MapUnit.exists (fun _ (e, rel) -> rel) u
+  MapUnit.exists (fun _ (_e, rel) -> rel) u
 
 let print oc =
   let p oc (e, rel) =
@@ -99,7 +99,7 @@ let fail ~what msg =
 
 let add u1 u2 =
   let fail = fail ~what:(binop u1 '+' u2) in
-  MapUnit.merge (fun u e1 e2 ->
+  MapUnit.merge (fun _u e1 e2 ->
     match e1, e2 with
     | Some (e1, r1), Some (e2, r2) when e1 = e2 ->
         if r1 && r2 then fail "cannot add relative units" ;
@@ -109,7 +109,7 @@ let add u1 u2 =
 
 let sub ?what u1 u2 =
   let fail = fail ~what:(what |? binop u1 '-' u2) in
-  MapUnit.merge (fun u e1 e2 ->
+  MapUnit.merge (fun _u e1 e2 ->
     match e1, e2 with
     | Some (e1, r1), Some (e2, r2) when e1 = e2 ->
         if not r1 && r2 then fail "cannot subtract a relative unit" ;
@@ -120,7 +120,7 @@ let sub ?what u1 u2 =
 
 let mul ?what u1 u2 =
   let fail = fail ~what:(what |? binop u1 '+' u2) in
-  MapUnit.merge (fun u e1 e2 ->
+  MapUnit.merge (fun _u e1 e2 ->
     let e1, r1 = e1 |? (0., false) and e2, r2 = e2 |? (0., false) in
     if r1 && r2 then
       fail "cannot multiply or divide two relative units" ;

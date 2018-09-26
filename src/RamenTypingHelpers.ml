@@ -87,7 +87,7 @@ let infer_field_doc func operation parents params =
       ) fields
   | _ -> ()
 
-let finalize_func conf parents params func operation =
+let finalize_func parents params func operation =
   F.dump_io func ;
   (* Check that no parents => no input *)
   assert (func.F.parents <> [] || func.F.in_type = []) ;
@@ -131,4 +131,4 @@ let finalize_func conf parents params func operation =
   ) ;
   (* Seal everything: *)
   let op_str = IO.to_string RamenOperation.print operation in
-  func.F.signature <- F.signature conf func op_str params
+  func.F.signature <- F.signature func op_str params

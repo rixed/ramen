@@ -171,6 +171,13 @@ let tuple_spec_print ser oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
   List.print (file_spec_print ser !best_miss) oc
 
+let tuple_print ser oc vs =
+  List.iteri (fun i ft ->
+    Printf.fprintf oc "%s=%a "
+      ft.RamenTuple.typ_name
+      RamenTypes.print vs.(i)
+  ) ser
+
 let test_output conf fq output_spec test_ended =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
@@ -210,33 +217,37 @@ let test_output conf fq output_spec test_ended =
             not (filter_of_tuple_spec filter_spec tuple)
           ) !tuples_to_find ;
         tuples_to_not_find :=
-          List.filter (fun (spec, _) ->
-            List.for_all (fun (idx, value) ->
-              tuple.(idx) = value
-            ) spec
+          List.filter_map (fun (spec, _) ->
+            if List.for_all (fun (idx, value) ->
+                 tuple.(idx) = value
+               ) spec
+            then Some tuple (* Store the whole input for easier debugging *)
+            else None
           ) tuples_must_be_absent |>
           List.rev_append !tuples_to_not_find) ;
       (* Count all tuples including those filtered out: *)
       count + 1) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = []
   in
-  let err_string_of_tuples lst =
+  let err_string_of_tuples p lst =
     let len = List.length lst in
     let pref =
       if len <= 1 then "this tuple: "
       else Printf.sprintf "these %d tuples: " len in
     pref ^
-    IO.to_string (List.print ~first:"\n  " ~last:"\n" ~sep:"\n  "
-                    (tuple_spec_print ser)) lst in
+    IO.to_string
+      (List.print ~first:"\n  " ~last:"\n" ~sep:"\n  " (p ser)) lst in
   let msg =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
       (RamenName.string_of_fq fq)) ^
     (if !tuples_to_find = [] then "" else
-      " but could not find "^ err_string_of_tuples !tuples_to_find) ^
+      " but could not find "^
+        (err_string_of_tuples tuple_spec_print) !tuples_to_find) ^
     (if !tuples_to_not_find = [] then "" else
-      " and found "^ err_string_of_tuples !tuples_to_not_find)
+      " and found "^
+        (err_string_of_tuples tuple_print) !tuples_to_not_find)
   in
   success, msg
 
@@ -272,8 +283,8 @@ let test_notifications notify_rb notif_spec test_ended =
     !notifs_to_not_find = [] &&
     Unix.gettimeofday () -. start < notif_spec.timeout in
   RamenSerialization.read_notifs ~while_ notify_rb
-    (fun (worker, sent_time, event_time, notif_name, firing, certainty,
-          parameters) ->
+    (fun (worker, _sent_time, _event_time, notif_name, firing, _certainty,
+          _parameters) ->
       let firing = option_of_nullable firing in
       !logger.debug "Got %snotification from %s: %S"
         (if firing = Some false then "stopping " else "firing ")
@@ -317,7 +328,7 @@ let check_test_spec conf test =
           out_spec.Output.present @ out_spec.Output.absent in
         maybe_f fq tuples s_i
       ) test.outputs s_i in
-    let s, i =
+    let _, i =
       Hashtbl.fold (fun fq tuple s_i ->
         maybe_f fq [ tuple ] s_i
       ) test.until s_i in
@@ -347,7 +358,7 @@ let check_test_spec conf test =
             (RamenName.program_color pn) |>
           failwith)
       ~per_func:(fun pn fn tuple ->
-        let mre, get_rc = Hashtbl.find programs pn in
+        let _mre, get_rc = Hashtbl.find programs pn in
         let prog = get_rc () in
         match List.find (fun func -> func.F.name = fn) prog.P.funcs with
         | exception Not_found ->
@@ -441,7 +452,7 @@ let run_test conf notify_rb dirname test =
               let rb = RingBuf.load in_rb in
               rbr := Some rb)) ;
           let rb = Option.get !rbr in
-          RamenSerialization.write_record conf func.F.in_type rb input.tuple
+          RamenSerialization.write_record func.F.in_type rb input.tuple
     in
     List.iter (fun input ->
       if !RamenProcesses.quit = None then feed_input input
@@ -557,8 +568,8 @@ let run conf server_url api graphite
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
       String.print
-      (fun oc (_min_etime, _max_etime, in_count, selected_count, out_count,
-               _group_count, cpu, ram, max_ram, _wait_in, _wait_out, _bytes_in,
+      (fun oc (_min_etime, _max_etime, _in_count, _selected_count, _out_count,
+               _group_count, cpu, _ram, max_ram, _wait_in, _wait_out, _bytes_in,
                _bytes_out, _last_out, _stime) ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s" cpu (Uint64.to_string max_ram)))
       stats ;

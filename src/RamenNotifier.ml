@@ -66,7 +66,7 @@ let stats_notifs_cancelled =
 
 let max_exec = AtomicCounter.make 5 (* no more than 5 simultaneous execs *)
 
-let execute_cmd conf cmd worker =
+let execute_cmd conf cmd =
   IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
   let cmd_name = "notifier exec" in
   match run_coprocess ~max_count:max_exec cmd_name cmd with
@@ -79,7 +79,7 @@ let execute_cmd conf cmd worker =
         cmd (string_of_process_status status) ;
       IntCounter.inc (stats_send_fails conf.C.persist_dir)
 
-let log_str conf str worker =
+let log_str conf str =
   IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
   let level = `LOG_ALERT in
   match syslog with
@@ -89,7 +89,7 @@ let log_str conf str worker =
   | Some slog ->
       Syslog.syslog slog level str
 
-let sqllite_insert conf file insert_q create_q worker =
+let sqllite_insert conf file insert_q create_q =
   IntCounter.inc ~labels:["via", "sqlite"] (stats_count conf.C.persist_dir) ;
   let open Sqlite3 in
   let open SqliteHelpers in
@@ -408,7 +408,8 @@ let ack name contact now =
         (string_of_pending_status p.status)
 
 (* When we give up sending a notification *)
-let cancel conf pending now reason =
+(* TODO: log *)
+let cancel conf pending _now reason =
   !logger.info "Cancelling alert %S: %s"
     pending.item.notif.notif_name reason ;
   let labels = ["reason", reason] in
@@ -438,16 +439,17 @@ let contact_via conf item =
   let open Contact in
   (match item.contact with
   | ViaExec cmd ->
-      execute_cmd conf (exp ~q:shell_quote cmd) item.notif.worker
+      execute_cmd conf (exp ~q:shell_quote cmd)
   | ViaSysLog str ->
-      log_str conf (exp str) item.notif.worker
+      log_str conf (exp str)
   | ViaSqlite { file ; insert ; create } ->
       let ins = exp ~q:sql_quote ~n:"NULL" insert in
-      sqllite_insert conf (exp file) ins create item.notif.worker) ;
+      sqllite_insert conf (exp file) ins create) ;
   0. (* timeout *)
 
 (* Returns the timeout, or fail *)
-let do_notify conf pending now =
+(* TODO: log *)
+let do_notify conf pending _now =
   let i = pending.item in
   if i.attempts >= 3 then (
     !logger.warning "Cannot deliver alert %S after %d attempt, \
@@ -577,7 +579,7 @@ let send_next conf max_fpr now =
  * and is restarted: *)
 let watchdog = ref None
 
-let send_notifications conf max_fpr conf =
+let send_notifications max_fpr conf =
   if !watchdog = None then
     watchdog := Some (RamenWatchdog.make "notifier" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
@@ -636,7 +638,7 @@ let start conf notif_conf_file rb max_fpr =
   let _alert_id = next_alert_id conf () in
   Thread.create (
     restart_on_failure "send_notifications"
-      (send_notifications conf max_fpr)) conf |> ignore ;
+      (send_notifications max_fpr)) conf |> ignore ;
   let while_ () = !RamenProcesses.quit = None in
   RamenSerialization.read_notifs ~while_ rb
     (fun (worker, sent_time, event_time, notif_name,

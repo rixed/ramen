@@ -52,7 +52,7 @@ let read fname =
       String.to_list s |> List.map ((=) 'X') in
     let still_valid timeout = timeout <= 0. || timeout > now in
     read_ fname |>
-    Hashtbl.filter_map (fun p (mask_str, timeout) ->
+    Hashtbl.filter_map (fun _p (mask_str, timeout) ->
       if still_valid timeout then
         Some { field_mask = field_mask_of_string mask_str ;
                timeout }

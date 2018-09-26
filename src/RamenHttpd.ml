@@ -35,7 +35,7 @@ let run_httpd conf server_url api graphite fault_injection_rate =
     RamenApi.router conf prefix) router api ++ router in
   let while_ () = !RamenProcesses.quit = None in
   restart_on_failure ~while_ "http server"
-    RamenExperiments.(specialize conf.C.persist_dir the_big_one) [|
+    RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
       (fun () ->
         RamenHttpHelpers.http_service

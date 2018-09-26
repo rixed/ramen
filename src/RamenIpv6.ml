@@ -27,7 +27,7 @@ let string_of_words lst =
         let i =
           s.[i] <- hex_of (v land 0xf) ; i + 1 in
         loop i true lst
-    | Zeros z :: lst ->
+    | Zeros _ :: lst ->
         s.[i] <- ':' ; s.[i+1] <- ':' ;
         loop (i + 2) false lst
   in

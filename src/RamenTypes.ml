@@ -125,26 +125,26 @@ let rec structure_of =
       if v = VNull then true else sub_nullable
     ) false vs in
   function
-  | VFloat v  -> TFloat
-  | VString v -> TString
-  | VBool v   -> TBool
-  | VU8 v     -> TU8
-  | VU16 v    -> TU16
-  | VU32 v    -> TU32
-  | VU64 v    -> TU64
-  | VU128 v   -> TU128
-  | VI8 v     -> TI8
-  | VI16 v    -> TI16
-  | VI32 v    -> TI32
-  | VI64 v    -> TI64
-  | VI128 v   -> TI128
-  | VEth v    -> TEth
-  | VIpv4 v   -> TIpv4
-  | VIpv6 v   -> TIpv6
-  | VIp v     -> TIp
-  | VCidrv4 v -> TCidrv4
-  | VCidrv6 v -> TCidrv6
-  | VCidr v   -> TCidr
+  | VFloat _  -> TFloat
+  | VString _ -> TString
+  | VBool _   -> TBool
+  | VU8 _     -> TU8
+  | VU16 _    -> TU16
+  | VU32 _    -> TU32
+  | VU64 _    -> TU64
+  | VU128 _   -> TU128
+  | VI8 _     -> TI8
+  | VI16 _    -> TI16
+  | VI32 _    -> TI32
+  | VI64 _    -> TI64
+  | VI128 _   -> TI128
+  | VEth _    -> TEth
+  | VIpv4 _   -> TIpv4
+  | VIpv6 _   -> TIpv6
+  | VIp _     -> TIp
+  | VCidrv4 _ -> TCidrv4
+  | VCidrv6 _ -> TCidrv6
+  | VCidr _   -> TCidr
   | VNull     -> TAny
   (* Note regarding NULL and constructed types: We aim for non nullable
    * values, unless one of the value is actually null. *)
@@ -359,7 +359,7 @@ let rec enlarge_value t v =
         loop (VCidr RamenIp.Cidr.(V4 x))
     | VCidrv6 x, _ ->
         loop (VCidr RamenIp.Cidr.(V6 x))
-    | VTuple vs, TTuple [||] ->
+    | VTuple _, TTuple [||] ->
         v (* Nothing to do *)
     | VTuple vs, TTuple ts when Array.length ts = Array.length vs ->
         (* Assume we won't try to enlarge to an unknown type: *)

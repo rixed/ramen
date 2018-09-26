@@ -35,7 +35,7 @@ let downscale s t d =
     s.cur_size d ;
   s.w_of_x <-
     Map.map (fun (w, o) -> w *. d, o *. d) s.w_of_x ;
-  WMap.iter (fun w xs -> w := !w *. d) s.xs_of_w ;
+  WMap.iter (fun w _xs -> w := !w *. d) s.xs_of_w ;
   s.time_origin <- Some t
 
 let add s t w x =
@@ -169,7 +169,7 @@ let fold_top n u f s =
     if debug then Printf.printf "TOP: Couldn't reach rank %d, cur_size=%d\n" n s.cur_size ;
   with Exit -> ()) ;
   (* Now filter the entries if we have a cutoff, and build the result: *)
-  List.fold_left (fun u (w, min_w, x) ->
+  List.fold_left (fun u (_w, min_w, x) ->
     match !cutoff with
     | None -> f u x
     | Some c -> if min_w >= c then f u x else u

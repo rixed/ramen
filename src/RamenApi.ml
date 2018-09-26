@@ -93,7 +93,7 @@ let get_tables conf msg =
   C.with_rlock conf (fun programs ->
     Hashtbl.iter (fun _prog_name (mre, get_rc) ->
       if not mre.C.killed then match get_rc () with
-      | exception e -> ()
+      | exception _ -> ()
       | prog ->
           List.iter (fun f ->
             let fqn = RamenName.string_of_fq (F.fq_name f) in
@@ -379,14 +379,16 @@ let generate_alert table ft =
         Printf.fprintf oc "  AND KEEP ALL\n" ;
         Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false)\n")
 
-let compile_alert conf programs program_name program_code bin_fname =
+let compile_alert conf programs program_name program_code =
   (* Even though we do not look for parents in there we still need a
    * root_path where to write binaries files to: *)
   let root_path = RamenConf.api_alerts_root conf in
   let get_parent = RamenCompiler.parent_from_programs programs in
   RamenCompiler.compile conf root_path get_parent program_name program_code
 
-let run_alert conf bin_file =
+let run_alert conf program_name =
+  let root_path = RamenConf.api_alerts_root conf in
+  let bin_file = P.bin_of_program_name root_path program_name in
   let params = Hashtbl.create 0
   and report_period = RamenConsts.Default.report_period
   and replace = true
@@ -434,8 +436,7 @@ let save_alert conf table column to_keep alert_info =
   let basename =
     C.api_alerts_root conf ^"/"^ RamenName.path_of_program program_name in
   let conf_fname = basename ^".alert"
-  and tmp_fname = basename ^".tmp"
-  and bin_fname = basename ^".x" in
+  and tmp_fname = basename ^".tmp" in
   (* If that file is already there, assume that's the same and do nothing.
    * That the program is running would tell us that it exists and is
    * enabled, but that the program is not running wouldn't tell us that
@@ -452,11 +453,11 @@ let save_alert conf table column to_keep alert_info =
         failwith ;
       let program_code = generate_alert table ft alert_info in
       !logger.info "Alert code:\n%s" program_code ;
-      compile_alert conf programs program_name program_code bin_fname) ;
+      compile_alert conf programs program_name program_code) ;
     Unix.rename tmp_fname conf_fname) ;
   if is_enabled alert_info then
     (* Won't do anything if it's running already *)
-    run_alert conf bin_fname
+    run_alert conf program_name
   else
     (* Won't do anything if it's not running *)
     stop_alert conf program_name
@@ -511,7 +512,7 @@ let set_alerts conf msg =
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
-  fun meth path params headers body ->
+  fun _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
     if path <> [] then raise BadPrefix

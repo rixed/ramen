@@ -39,7 +39,7 @@ type graphite_metric =
     id : string (* Not sure if used *) } [@@ppp PPP_JSON]
 type graphite_metrics = graphite_metric list [@@ppp PPP_JSON]
 
-let metric_of_worker_path (id, leaf, text, targets) =
+let metric_of_worker_path (id, leaf, text, _targets) =
   { text ; id ; expandable = if leaf then 0 else 1 ;
     leaf = if leaf then 1 else 0 ;
     allowChildren = if leaf then 0 else 1 }
@@ -192,7 +192,7 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
   let programs =
     Hashtbl.enum programs //
     (if only_running then
-      (fun (p, (mre, _get_rc)) -> not mre.C.killed)
+      (fun (_p, (mre, _get_rc)) -> not mre.C.killed)
      else (fun _ -> true)) |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) ->
@@ -212,7 +212,7 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
         match String.split suf ~by:"/" with
         | exception Not_found ->
             Hashtbl.add h (false, suf) (Prog (program_name, get_rc))
-        | suf, rest ->
+        | suf, _rest ->
             (* If we've done it already, continue: *)
             if not (Hashtbl.mem h (true, suf)) then
               let pref' = pref ^ suf ^"/" in
@@ -223,7 +223,7 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
   let h = hash_for_prefix "" in
   let rec tree_enum_of_h h =
     E (Hashtbl.enum h //@ (function
-      | (_, name), Prog (program_name, get_rc) ->
+      | (_, name), Prog (_prog_name, get_rc) ->
         (match get_rc () with
         | exception _ -> None
         | prog ->
@@ -339,7 +339,7 @@ let expand_query_text conf query =
   let num_filters = List.length query in
   let prefix = (List.take (num_filters - 1) query |>
                 String.concat ".") ^ "." in
-  tree_enum_fold (fun node_res (depth, target) (n, section) is_leaf ->
+  tree_enum_fold (fun node_res (depth, target) (n, _section) is_leaf ->
     (* depth starts at 0 *)
     let target' =
       if target = "" then n else target ^"."^ n in
@@ -372,7 +372,7 @@ let expand_query_values ?anchor_right conf query =
          List.rev factors, n) :: node_res, depth0
   ) [] depth0 filtered
 
-let complete_graphite_find conf headers params =
+let complete_graphite_find conf params =
   let expanded =
     Hashtbl.find_default params "query" ["*"] |>
     List.hd |>
@@ -465,7 +465,7 @@ let render_graphite conf headers body =
             None
         | _mre, get_rc ->
             (match get_rc () with
-            | exception e -> None
+            | exception _ -> None
             | prog ->
                 (match List.find (fun f ->
                          f.F.name = func_name) prog.P.funcs with
@@ -497,7 +497,7 @@ let render_graphite conf headers body =
    * get a timeseries for all possible values (in a single scan). For this
    * we merely count how many distinct values we are asking for: *)
   let factor_values = Hashtbl.create 9 in
-  let count_factor_values (func, fq, fvals, data_field) =
+  let count_factor_values (_func, fq, fvals, data_field) =
     !logger.debug "target = op:%s, fvals:%a, data:%s"
       (RamenName.string_of_fq fq)
       (List.print (Option.print RamenTypes.print)) fvals
@@ -516,7 +516,7 @@ let render_graphite conf headers body =
   let scans = Hashtbl.create 9 in
   let add_scans (func, fq, fvals, data_field) =
     let where, factors, _ =
-      List.fold_left2 (fun (where, factors, i) factor fval ->
+      List.fold_left2 (fun (where, factors, i) factor _fval ->
         let wanted =
           Hashtbl.find_default factor_values (fq, i) Set.empty in
         match Set.cardinal wanted with
@@ -542,7 +542,7 @@ let render_graphite conf headers body =
   (* Now actually run the scans, one for each function/where pair, and start
    * building the result. For each columns we want one timeseries per data
    * field. *)
-  let metrics_of_scan (fq, where) (data_fields, factors, func) res =
+  let metrics_of_scan (fq, where) (data_fields, factors, _func) res =
     (* [columns] will be an array of the factors. [datapoints] is an
      * enumeration of arrays with one entry per factor, the entry being an
      * array of one timeseries per data_fields. *)
@@ -613,7 +613,7 @@ let router conf prefix =
     match meth, path with
     (* Mimic Graphite for Grafana datasource *)
     | CodecHttp.Command.GET, ["metrics"; "find"] ->
-      complete_graphite_find conf headers params
+      complete_graphite_find conf params
     | CodecHttp.Command.POST, ["render"] ->
       render_graphite conf headers body
     | CodecHttp.Command.GET, ["version"] ->

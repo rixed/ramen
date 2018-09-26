@@ -2,7 +2,7 @@ open Batteries
 open RamenParsing
 
 let test_printer res_printer = function
-  | Ok (res, (len, [])) ->
+  | Ok (res, (_, [])) ->
     Printf.sprintf "%s" (IO.to_string res_printer res)
   | Ok (res, (len, rest)) ->
     Printf.sprintf "%S, parsed_len=%d, rest=%s"
@@ -56,7 +56,7 @@ let typ =
   RamenExpr.make_typ "replaced for tests"
 
 let replace_typ e =
-  RamenExpr.map_type (fun t -> typ) e
+  RamenExpr.map_type (fun _ -> typ) e
 
 let replace_typ_in_expr = function
   | Ok (expr, rest) -> Ok (replace_typ expr, rest)
@@ -92,7 +92,7 @@ let replace_typ_in_operation =
       commit_before = commit_before ;
       flush_how ; every ; factors }
 
-  | ReadCSVFile ({ preprocessor ; _ } as csv) ->
+  | ReadCSVFile csv ->
       ReadCSVFile { csv with
         preprocessor = Option.map replace_typ csv.preprocessor ;
         where = { fname = replace_typ csv.where.fname ;

@@ -394,7 +394,7 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun conf ->
+  worker_start worker_name get_binocle_tuple (fun _conf ->
     let bname =
       getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar in
     let rb_ref_out_fname =
@@ -466,7 +466,7 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
  * product of their values.
  *)
 
-let notify conf rb worker event_time
+let notify rb worker event_time
            (name, parameters)
            field_of_tuple_in tuple_in
            field_of_tuple_out tuple_out
@@ -549,6 +549,7 @@ type ('tuple_in, 'merge_on) to_merge =
     mutable timed_out : bool }
 
 let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
+  ignore delay_rec ; (* TODO: measure how long we spend waiting! *)
   let to_merge =
     Array.of_list rbs |>
     Array.map (fun rb ->
@@ -766,7 +767,7 @@ let aggregate
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
           List.iter (fun notif ->
-            notify conf notify_rb worker_name event_time notif
+            notify notify_rb worker_name event_time notif
                    field_of_tuple_in tuple_in
                    field_of_tuple_out tuple_out
                    field_of_params

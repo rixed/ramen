@@ -526,8 +526,10 @@ let normalize_notif_parameters params =
         else
           firing, certainty, (param :: params)
       with e ->
-        !logger.warning "Cannot convert %S into a standard %s, leaving it \
-                         as a parameter" v n' ;
+        !logger.warning
+          "Cannot convert %S into a standard %s (%s), \
+           leaving it as a parameter"
+          v n' (Printexc.to_string e) ;
         firing, certainty, (param :: params)
     ) (None, 0.5, []) params in
   firing, certainty, List.rev params

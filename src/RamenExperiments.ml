@@ -62,7 +62,7 @@ let all_experiments = [ the_big_one ]
  * Helpers
  *)
 
-let specialize persist_dir e branches =
+let specialize e branches =
   assert (Array.length branches = Array.length e.variants) ;
   branches.(e.variant) ()
 

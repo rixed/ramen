@@ -59,12 +59,12 @@ let ppf () =
         RamenLog.do_output output tm true in
   BatFormat.formatter_of_output oc
 
-let cannot_compile compiler func_name status =
+let cannot_compile func_name status =
   Printf.sprintf "Cannot generate code for function %s: %s"
     (RamenName.func_color func_name) status |>
   failwith
 
-let cannot_link compiler program_name status =
+let cannot_link program_name status =
   Printf.sprintf "Cannot generate binary for program %s: %s"
     (RamenName.program_color program_name) status |>
   failwith
@@ -107,8 +107,7 @@ let compile_internal conf func_name src_file obj_file =
       (Filename.remove_extension src_file)
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    cannot_compile "internal compiler"
-      func_name (Printexc.to_string exn)
+    cannot_compile func_name (Printexc.to_string exn)
 
 let compile_external conf func_name src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -130,15 +129,14 @@ let compile_external conf func_name src_file obj_file =
   let cmd_name = "Compilation of "^ RamenName.string_of_func func_name in
   match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
   | None ->
-      cannot_compile cmd func_name "Cannot run command"
+      cannot_compile func_name "Cannot run command"
   | Some (Unix.WEXITED 0) ->
       !logger.debug "Compiled %s with: %s"
         (RamenName.string_of_func func_name) cmd
   | Some status ->
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)
-      cannot_compile cmd
-        func_name (string_of_process_status status)
+      cannot_compile func_name (string_of_process_status status)
 
 let compile conf func_name src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
@@ -195,8 +193,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     Asmlink.link (ppf ()) objfiles bin_file
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    cannot_link "embedded compiler"
-      program_name (Printexc.to_string exn)
+    cannot_link program_name (Printexc.to_string exn)
 
 let link_external conf program_name inc_dirs obj_files src_file bin_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
@@ -224,15 +221,14 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
     "Compilation+Link of "^ RamenName.string_of_program program_name in
   match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
   | None ->
-      cannot_link cmd program_name "Cannot run command"
+      cannot_link program_name "Cannot run command"
   | Some (Unix.WEXITED 0) ->
       !logger.debug "Compiled %s with: %s"
         (RamenName.string_of_program program_name) cmd ;
   | Some status ->
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)
-      cannot_link cmd
-        program_name (string_of_process_status status)
+      cannot_link program_name (string_of_process_status status)
 
 let link conf program_name obj_files src_file bin_file =
   mkdir_all ~is_file:true bin_file ;

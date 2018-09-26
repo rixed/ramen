@@ -170,7 +170,7 @@ let make_running_process conf mre func =
 let input_spec conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
   (if child.F.merge_inputs then
-    match List.findi (fun i (pprog, pname) ->
+    match List.findi (fun _ (pprog, pname) ->
             let pprog_name =
               F.program_of_parent_prog child.F.program_name pprog in
             pprog_name = parent.F.program_name && pname = parent.name
@@ -317,13 +317,7 @@ let process_workers_terminations conf running =
     ) proc.pid
   ) running
 
-(* Try to start the given proc.
- * Check links (ie.: do parents and children have the proper types?)
- *
- * Need [must_run] so that types can be checked before linking with parents
- * and children.
- *)
-let really_start conf must_run proc parents children =
+let really_start conf proc parents children =
   (* Create the input ringbufs.
    * We now start the workers one by one in no
    * particular order. The input and out-ref ringbufs are created when the
@@ -353,7 +347,7 @@ let really_start conf must_run proc parents children =
   !logger.debug "Updating out-ref buffers..." ;
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
   List.iter (fun c ->
-    let fname, specs as out = input_spec conf proc.func c in
+    let fname, _specs as out = input_spec conf proc.func c in
     (* The destination ringbuffer must exist before it's referenced in an
      * out-ref, or the worker might err and throw away the tuples: *)
     RingBuf.create fname ;
@@ -436,6 +430,10 @@ let really_start conf must_run proc parents children =
     RamenOutRef.add out_ref (input_spec conf p proc.func)
   ) parents
 
+(* Try to start the given proc.
+ * Check links (ie.: do parents and children have the proper types?)
+ * Need [must_run] so that types can be checked before linking with parents
+ * and children. *)
 let really_try_start conf must_run proc =
   !logger.info "Starting operation %a"
     print_running_process proc ;
@@ -479,7 +477,7 @@ let really_try_start conf must_run proc =
     List.fold_left (fun ok c ->
       check_linkage proc.func c && ok) linkage_ok children in
   if parents_ok && linkage_ok then
-    really_start conf must_run proc parents children
+    really_start conf proc parents children
 
 let try_start conf must_run proc =
   let now = Unix.gettimeofday () in
@@ -570,8 +568,8 @@ let check_out_ref =
       last_checked_out_ref := now ;
       do_check_out_ref conf must_run)
 
-let signal_all_cont conf running =
-  Hashtbl.iter (fun (n, _, _, _) proc ->
+let signal_all_cont running =
+  Hashtbl.iter (fun _ proc ->
     if proc.pid <> None && not proc.continued then (
       proc.continued <- true ;
       !logger.debug "Signaling %a to continue" print_running_process proc ;
@@ -642,7 +640,7 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, _, params as k) (mre, func) ->
+    Hashtbl.iter (fun k (mre, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
           let proc = make_running_process conf mre func in
@@ -668,7 +666,7 @@ let synchronize_running conf autoreload_delay =
     (* Try to fix any issue with out_refs: *)
     if !to_start = [] && !to_kill = [] && !quit = None then
       check_out_ref conf must_run ;
-    if !to_start = [] && conf.C.test then signal_all_cont conf running ;
+    if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
   in

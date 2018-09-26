@@ -20,7 +20,7 @@ let nullable_map f = function
   | Null -> Null
   | NotNull x -> NotNull (f x)
 
-let nullable_get f = function
+let nullable_get = function
   | Null -> invalid_arg "Nullable.get"
   | NotNull x -> x
 

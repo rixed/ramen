@@ -269,11 +269,11 @@ let compile conf root_path get_parent ?exec_file
     add_single_temp_file smt2_file ;
     let types =
       call_typer !RamenSmtTyping.smt_solver (fun () ->
-        get_types conf compiler_parents compiler_funcs
+        get_types compiler_parents compiler_funcs
                   parsed_params smt2_file) in
     apply_types compiler_parents compiler_funcs types ;
     Hashtbl.iter (fun _ (func, op) ->
-      finalize_func conf compiler_parents parsed_params func op
+      finalize_func compiler_parents parsed_params func op
     ) compiler_funcs ;
 
     (*

@@ -82,7 +82,7 @@ let unserialize tx =
   let offs = offs + nullmask_sz_of_vector num_params in
   let offs = ref offs in
   let parameters =
-    Array.init num_params (fun i ->
+    Array.init num_params (fun _ ->
       (* Also need to skip the tuple (pair) internal nullmask: *)
       offs := !offs + nullmask_sz_of_vector 2 ;
       let n = RingBuf.read_string tx !offs in

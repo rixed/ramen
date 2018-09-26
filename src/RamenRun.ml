@@ -36,7 +36,7 @@ let check_links ?(force=false) program_name prog running_programs =
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
             (match P.of_bin mre.C.params mre.C.bin with
-            | exception exn -> (* of_bin already logged the error *) ()
+            | exception _ -> (* of_bin already logged the error *) ()
             | pprog ->
                 (match List.find (fun p ->
                          p.F.name = par_func) pprog.P.funcs with
@@ -66,9 +66,9 @@ let check_links ?(force=false) program_name prog running_programs =
    * run by the process supervisor anyway, unless the incompatible
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
-  Hashtbl.iter (fun prog_name mre ->
+  Hashtbl.iter (fun _prog_name mre ->
     match P.of_bin mre.C.params mre.C.bin with
-    | exception exn -> (* of_bin already logged the error *) ()
+    | exception _ -> (* of_bin already logged the error *) ()
     | prog' ->
         List.iter (fun func ->
           (* Check that a children that depends on us gets the proper
@@ -116,7 +116,7 @@ let run conf params replace report_period ?as_ bin_file debug =
  * Stopping a worker from running.
  *)
 
-let check_orphans conf killed_prog_names programs =
+let check_orphans killed_prog_names programs =
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
     if not mre.C.killed &&
@@ -152,7 +152,7 @@ let kill conf ?(purge=false) program_names =
         ) program_names) /@
       fst |>
       List.of_enum in
-    check_orphans conf killed_prog_names programs ;
+    check_orphans killed_prog_names programs ;
     if purge then
       Hashtbl.filteri_inplace (fun name _mre ->
         not (List.mem name killed_prog_names)

@@ -352,7 +352,7 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       (* Note: vector items cannot be NULL: *)
       Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
         (conv_from_to ~nullable:t_from.nullable) (t_from.structure, t_to.structure)
-    | TVec (d, t_from), TList t_to ->
+    | TVec (d, _t_from), TList t_to ->
       print_non_null oc (from_typ, TVec (d, t_to))
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
@@ -764,7 +764,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
         let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
         (* emit_funcN will take care of nullability of es: *)
         emit_functionN ?state ~opc ~nullable nth_func [None] oc [es]
-    | TVec (dim, t) ->
+    | TVec (dim, _) ->
         assert (n < dim) ;
         let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
         emit_functionN ?state ~opc ~nullable nth_func [None] oc [es]
@@ -998,26 +998,26 @@ and emit_expr_ ?state ~context ~opc oc expr =
       [Some TFloat; None] oc [p; lst]
 
   (* Stateful functions *)
-  | InitState, StatefulFun (_, g, _, AggrAnd _), (TBool as t) ->
+  | InitState, StatefulFun (_, _, _, AggrAnd _), (TBool as t) ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a true"
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, AggrAnd e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "(&&)" oc [ Some TBool ]
-  | Finalize, StatefulFun (_, g, n, AggrAnd e), TBool ->
+  | Finalize, StatefulFun (_, g, n, AggrAnd _), TBool ->
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
-  | InitState, StatefulFun (_, g, _, AggrOr _), (TBool as t) ->
+  | InitState, StatefulFun (_, _, _, AggrOr _), (TBool as t) ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a false"
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, AggrOr e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "(||)" oc [ Some TBool ]
-  | Finalize, StatefulFun (_, g, n, AggrOr e), TBool ->
+  | Finalize, StatefulFun (_, g, n, AggrOr _), TBool ->
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
 
-  | InitState, StatefulFun (_, g, _, AggrSum _),
+  | InitState, StatefulFun (_, _, _, AggrSum _),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a Uint8.zero"
@@ -1029,16 +1029,16 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, StatefulFun (_, g, n, AggrSum _), _ ->
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
 
-  | InitState, StatefulFun (_, g, _, AggrAvg e), TFloat ->
+  | InitState, StatefulFun (_, _, _, AggrAvg _), TFloat ->
     wrap_nullable ~nullable oc "CodeGenLib.avg_init"
   | UpdateState, StatefulFun (_, g, n, AggrAvg e), (TFloat as t) ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.avg_add" oc [ Some t ]
-  | Finalize, StatefulFun (_, g, n, AggrAvg e), _ ->
+  | Finalize, StatefulFun (_, g, n, AggrAvg _), _ ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.avg_finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, n, (AggrFirst e|AggrLast e|AggrMax e|AggrMin e)), _ ->
+  | InitState, StatefulFun (_, _, _, (AggrFirst _|AggrLast _|AggrMax _|AggrMin _)), _ ->
     wrap_nullable ~nullable oc "None"
   | UpdateState, StatefulFun (_, g, n, AggrMax e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
@@ -1058,20 +1058,20 @@ and emit_expr_ ?state ~context ~opc oc expr =
   (* Histograms: bucket each float into the array of num_buckets + 2 and then
    * count number of entries per buckets. The 2 extra buckets are for "<min"
    * and ">max". *)
-  | InitState, StatefulFun (_, g, _, AggrHistogram (e, min, max, num_buckets)), _ ->
+  | InitState, StatefulFun (_, _, _, AggrHistogram (_, min, max, num_buckets)), _ ->
     wrap_nullable ~nullable oc
       (Printf.sprintf "CodeGenLib.Histogram.init %s %s %d"
         (Legacy.Printf.sprintf "%h" min)
         (Legacy.Printf.sprintf "%h" max)
         num_buckets)
-  | UpdateState, StatefulFun (_, g, n, AggrHistogram (e, min, max, num_buckets)), _ ->
+  | UpdateState, StatefulFun (_, g, n, AggrHistogram (e, _, _, _)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.Histogram.add" oc [ Some TFloat ]
   | Finalize, StatefulFun (_, g, n, AggrHistogram _), TVec _ ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Histogram.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Lag (k, e)), _ ->
+  | InitState, StatefulFun (_, _, _, Lag (k, e)), _ ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; None] oc
       [k; expr_one (); any_constant_of_expr_type (Option.get (typ_of e).typ)]
@@ -1083,7 +1083,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Seasonal.lag" [] oc []
 
   (* We force the inputs to be float since we are going to return a float anyway. *)
-  | InitState, StatefulFun (_, g, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), TFloat ->
+  | InitState, StatefulFun (_, _, _, (MovingAvg(p,n,_)|LinReg(p,n,_))), TFloat ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Seasonal.init"
       [Some TU32; Some TU32; Some TFloat] oc [p; n; expr_zero ()]
   | UpdateState, StatefulFun (_, g, n, (MovingAvg(_p,_n,e)|LinReg(_p,_n,e))), _ ->
@@ -1099,7 +1099,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Seasonal.multi_linreg" [p; m] oc [Some TU32; Some TU32]
 
-  | InitState, StatefulFun (_, g, _, MultiLinReg (p, m, _, es)), TFloat ->
+  | InitState, StatefulFun (_, _, _, MultiLinReg (p, m, _, es)), TFloat ->
     emit_functionNv ?state ~opc ~nullable "CodeGenLib.Seasonal.init_multi_linreg"
       [Some TU32; Some TU32; Some TFloat]
       [p; m; expr_zero ()]
@@ -1109,7 +1109,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~vars:es ~vars_to_typ:(Some TFloat)
       "CodeGenLib.Seasonal.add_multi_linreg" oc [ Some TFloat ]
 
-  | InitState, StatefulFun (_, g, _, ExpSmooth (_a,_)), (TFloat as t) ->
+  | InitState, StatefulFun (_, _, _, ExpSmooth (_a,_)), (TFloat as t) ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a Uint8.zero"
         (conv_from_to ~nullable:false) (TU8, t))
@@ -1119,7 +1119,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, StatefulFun (_, g, n, ExpSmooth _), TFloat ->
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Remember (fpr,_tim,dur,_es)), TBool ->
+  | InitState, StatefulFun (_, _, _, Remember (fpr,_tim,dur,_es)), TBool ->
     emit_functionN ?state ~opc ~nullable "CodeGenLib.Remember.init"
       [Some TFloat; Some TFloat] oc [fpr; dur]
   | UpdateState, StatefulFun (_, g, n, Remember (_fpr,tim,_dur,es)), _ ->
@@ -1130,17 +1130,17 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Remember.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Distinct _es), _ ->
+  | InitState, StatefulFun (_, _, _, Distinct _es), _ ->
     wrap_nullable ~nullable oc "CodeGenLib.Distinct.init ()"
   | UpdateState, StatefulFun (_, g, n, Distinct es), _ ->
     update_state ?state ~opc ~nullable n (my_state g) es
       ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
-      (List.map (fun e -> None) es)
-  | Finalize, StatefulFun (_, g, n, Distinct es), TBool ->
+      (List.map (fun _ -> None) es)
+  | Finalize, StatefulFun (_, g, n, Distinct _), TBool ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Distinct.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Hysteresis _), t ->
+  | InitState, StatefulFun (_, _, _, Hysteresis _), t ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a true" (* Initially within bounds *)
         (conv_from_to ~nullable:false) (TBool, t))
@@ -1153,7 +1153,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Hysteresis.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, _, Top { c ; duration ; _ }), _ ->
+  | InitState, StatefulFun (_, _, _, Top { c ; duration ; _ }), _ ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "CodeGenLib.Top.init (%a) (%a)"
         (* c can be any numeric type but heavy_hitters_init expects a u32: *)
@@ -1177,7 +1177,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Top.is_in_top"
       (c :: what) oc (Some TU32 :: List.map (fun _ -> None) what)
 
-  | InitState, StatefulFun (_, g, _, Last (c, e, _)), _ ->
+  | InitState, StatefulFun (_, _, _, Last (c, _, _)), _ ->
     let t = (Option.get (typ_of c).typ).structure in
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "CodeGenLib.Last.init (%a %a)"
@@ -1197,7 +1197,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~impl_return_nullable:true
       "CodeGenLib.Last.finalize" [] oc []
 
-  | InitState, StatefulFun (_, g, n, Sample (c, e)), _ ->
+  | InitState, StatefulFun (_, _, n, Sample (c, e)), _ ->
     let t = (Option.get (typ_of c).typ).structure in
     let init_c =
       let c_typ = Option.get (typ_of e).typ in
@@ -1220,7 +1220,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
    * and we return Null in that case. Note that since this is an aggregate
    * function, there is no way ever to commit or use (finalize) a function
    * before it's been sent at least one value. *)
-  | InitState, StatefulFun (_, g, _, Group e), _ ->
+  | InitState, StatefulFun (_, _, _, Group _), _ ->
     wrap_nullable ~nullable oc "[]"
   | UpdateState, StatefulFun (_, g, n, Group e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
@@ -1335,7 +1335,7 @@ and emit_function
       ?(args_as=Arg) ?state ~opc impl arg_typs es oc vt_specs_opt =
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
-  let len, has_nullable =
+  let len, _has_nullable =
     List.fold_left2 (fun (i, had_nullable) e arg_typ ->
         if is_nullable e then (
           Printf.fprintf oc
@@ -1893,7 +1893,7 @@ let emit_field_of_tuple name oc tuple_typ =
 let emit_state_update_for_expr ~what ~opc oc expr =
   let titled = ref false in
   RamenExpr.unpure_iter (function
-      | RamenExpr.StatefulFun (_, lifespan, skip_nulls, _) as e ->
+      | RamenExpr.StatefulFun _ as e ->
           if not !titled then (
             titled := true ;
             Printf.fprintf oc "\t(* State Update for %s: *)\n" what) ;
@@ -1985,7 +1985,7 @@ let emit_field_selection
 
 let emit_update_states
       name in_typ mentioned
-      out_typ minimal_typ ~opc oc selected_fields =
+      minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
       ft.RamenTuple.typ_name = field_name
@@ -1995,7 +1995,7 @@ let emit_update_states
     name
     (emit_in_tuple mentioned) in_typ
     (emit_tuple TupleOut) minimal_typ ;
-  List.iteri (fun i sf ->
+  List.iter (fun sf ->
     if not (field_in_minimal sf.RamenOperation.alias) then (
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
@@ -2196,7 +2196,7 @@ let emit_merge_on name in_typ mentioned ~opc oc es =
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize ~opc)) es
 
-let emit_notification_tuple out_typ ~opc oc notif =
+let emit_notification_tuple ~opc oc notif =
   let open RamenOperation in
   let print_expr = emit_expr ?state:None ~context:Finalize ~opc in
   Printf.fprintf oc
@@ -2213,7 +2213,7 @@ let emit_get_notifications name in_typ mentioned out_typ ~opc oc notifications =
     name
     (emit_in_tuple mentioned) in_typ
     (emit_tuple TupleOut) out_typ
-    (List.print ~sep:";\n\t\t" (emit_notification_tuple out_typ ~opc))
+    (List.print ~sep:";\n\t\t" (emit_notification_tuple ~opc))
       notifications
 
 let expr_needs_group e =
@@ -2228,9 +2228,8 @@ let expr_needs_group e =
 let emit_aggregate opc oc name in_typ out_typ =
   match opc.op with
   | RamenOperation.Aggregate
-      { fields ; merge ; sort ; where ; key ;
-        commit_before ; commit_cond ; flush_how ; notifications ; event_time ;
-        every ; _ } as op ->
+      { fields ; merge ; sort ; where ; key ; commit_before ; commit_cond ;
+        flush_how ; notifications ; every ; _ } as op ->
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
@@ -2317,7 +2316,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_when "commit_cond_" in_typ mentioned minimal_typ ~opc) commit_cond
     (emit_field_selection ~build_minimal:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
     (emit_field_selection ~build_minimal:false "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
-    (emit_update_states "update_states_" in_typ mentioned out_typ minimal_typ ~opc) fields
+    (emit_update_states "update_states_" in_typ mentioned minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_group_") out_typ
@@ -2402,7 +2401,7 @@ let emit_operation name func_name in_typ out_typ params op oc =
   and consts = IO.output_string () in
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                  what = { separator ; null ; fields } ; event_time } ->
+                  what = { separator ; null ; fields } ; _ } ->
     let opc = { op ; params ; consts ; tuple_typ = fields } in
     emit_read_csv_file opc code name fname unlink separator null
                        preprocessor
