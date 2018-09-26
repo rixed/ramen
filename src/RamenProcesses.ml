@@ -730,10 +730,14 @@ let synchronize_running conf autoreload_delay =
                       ()
                   | prog ->
                       List.iter (fun f ->
-                        (* Use the mount point + signature + params as the key. *)
+                        (* Use the mount point + signature + params as the key.
+                         * Notice that we take all the parameter values (from
+                         * prog.params), not only the explitly set values (from
+                         * mre.params), so that if a default value that is
+                         * unset is changed in the program then that's considered a
+                         * different program. *)
                         let k =
-                          program_name, f.F.name, f.F.signature,
-                          mre.C.params
+                          program_name, f.F.name, f.F.signature, prog.P.params
                         in
                         Hashtbl.add must_run k (mre, f)
                       ) prog.P.funcs
