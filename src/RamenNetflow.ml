@@ -86,6 +86,6 @@ let collector ~inet_addr ~port ?while_ k =
   udp_server ~inet_addr ~port ?while_ serve
 
 let test ?(port=2055) () =
-  logger := make_logger Normal ;
+  init_logger Normal ;
   let display_tuple _t = () in
   collector ~inet_addr:Unix.inet_addr_any ~port display_tuple

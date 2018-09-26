@@ -48,13 +48,13 @@ let supervisor conf daemonize to_stdout to_syslog autoreload () =
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
   if to_syslog then
-    logger := make_syslog conf.C.log_level
+    init_syslog conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/supervisor") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.log_level) ;
+    init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
@@ -103,13 +103,13 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
             is_failing RamenNotifier.load_config notif_conf_file then
     failwith ("Configuration file "^ notif_conf_file ^" does not exist.") ;
   if to_syslog then
-    logger := make_syslog conf.C.log_level
+    init_syslog conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/notifier") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.log_level) ;
+    init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers () ;
@@ -123,7 +123,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   let rb = RamenProcesses.prepare_notifs conf in
   let start = Unix.gettimeofday () in
   let firing, certainty, parameters =
@@ -145,7 +145,7 @@ let compile conf root_path use_external_compiler bundle_dir
   let many_source_files = List.length source_files > 1 in
   if many_source_files && program_name_opt <> None then
     failwith "Cannot specify the program name for several source files" ;
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
@@ -191,7 +191,7 @@ let compile conf root_path use_external_compiler bundle_dir
 
 let run conf params replace report_period as_ bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf params replace report_period ?as_ bin_file debug
@@ -204,7 +204,7 @@ let run conf params replace report_period as_ bin_file () =
  *)
 
 let kill conf program_names purge () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   let program_names =
     List.map Globs.compile program_names in
   let num_kills = RamenRun.kill conf ~purge program_names in
@@ -225,13 +225,13 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
   if daemonize && loop = 0 then
     failwith "It makes no sense to --daemonize without --loop." ;
   if to_syslog then
-    logger := make_syslog conf.C.log_level
+    init_syslog conf.C.log_level
   else (
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/gc") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.log_level) ;
+    init_logger ?logdir conf.C.log_level) ;
   if loop = 0 then
     RamenGc.cleanup_once conf dry_run max_archives
   else (
@@ -246,7 +246,7 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
  *)
 
 let ps conf short pretty with_header sort_col top pattern all () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = RamenPs.read_stats conf in
@@ -365,7 +365,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
 let tail conf func_name with_header sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
          duration () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   if last <> None && (min_seq <> None || max_seq <> None) then
     failwith "Options --last  and --{min,max}-seq are incompatible." ;
   if continuous && (min_seq <> None || max_seq <> None) then
@@ -455,7 +455,7 @@ let tail conf func_name with_header sep null raw
 let timeseries conf since until with_header where factors max_data_points
                sep null func_name data_fields consolidation duration
                () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in
   if since >= until then failwith "since must come strictly before until" ;
@@ -495,7 +495,7 @@ let timeseries conf since until with_header where factors max_data_points
  *)
 
 let timerange conf func_name () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   match RamenName.fq_parse func_name with
   | exception _ -> exit 1
   | program_name, func_name ->
@@ -536,7 +536,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if to_syslog then
-    logger := make_syslog conf.C.log_level
+    init_syslog conf.C.log_level
   else (
     let logdir =
       (* In case we serve several API from several daemon we will need an
@@ -544,14 +544,14 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/httpd") in
     Option.may mkdir_all logdir ;
-    logger := make_logger ?logdir conf.C.log_level) ;
+    init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 
 let graphite_expand conf for_render all query () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   let query = String.nsplit ~by:"." query in
   let te =
     RamenGraphite.full_enum_tree_of_query
@@ -586,7 +586,7 @@ let graphite_expand conf for_render all query () =
  *)
 
 let variants conf () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
   Printf.printf "Experimenter Id: %d\n" experimenter_id ;
@@ -607,7 +607,7 @@ let variants conf () =
   ) all_experiments
 
 let stats conf () =
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   (* Initialize all metrics so that they register to Binocle: *)
   List.iter (fun initer ->
     initer conf.C.persist_dir

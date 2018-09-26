@@ -533,7 +533,7 @@ let run conf server_url api graphite
         ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
       uniquify_filename ;
     test = true } in
-  logger := make_logger conf.C.log_level ;
+  init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   let httpd_thread =

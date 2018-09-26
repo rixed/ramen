@@ -29,7 +29,8 @@ type logger =
     info : 'a. 'a printer ;
     debug : 'a. 'a printer ;
     output : log_output ;
-    prefix : string ref }
+    prefix : string ref ;
+    mutable alt : logger option }
 
 let colored ansi =
   Printf.sprintf "\027[%sm%s\027[0m" ansi
@@ -86,7 +87,7 @@ let rate_limit max_rate =
       false
     )
 
-let make_logger ?logdir ?(prefix="") log_level =
+let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
   let rate_limit = rate_limit 100 in
@@ -121,13 +122,38 @@ let make_logger ?logdir ?(prefix="") log_level =
     if log_level = Debug then do_log false identity fmt
     else Printf.ifprintf stderr fmt
   in
-  { log_level ; error ; warning ; info ; debug ; output ; prefix }
+  { log_level ; error ; warning ; info ; debug ; output ; prefix ; alt = None }
+
+let logger = ref (make_single_logger Normal)
+
+let init_sigusr2_once =
+  let inited = ref false in
+  fun () ->
+    if not !inited then (
+      inited := true ;
+      Sys.(set_signal sigusr2 (Signal_handle (fun _ ->
+        match !logger.alt with
+        | None ->
+            !logger.info "Received SIGUSR2 but no alternate logger defined, ignoring"
+        | Some alt ->
+            !logger.info "Received SIGUSR2, switching into log level %s"
+              (string_of_log_level alt.log_level) ;
+            logger := alt))))
+
+let init_logger ?logdir ?prefix log_level =
+  logger := make_single_logger ?logdir ?prefix log_level ;
+  let l2 =
+    let alt_ll = if log_level = Debug then Normal else Debug in
+    make_single_logger ?logdir ?prefix alt_ll in
+  l2.alt <- Some !logger ;
+  !logger.alt <- Some l2 ;
+  init_sigusr2_once ()
 
 let syslog =
   try Some (Syslog.openlog ~facility:`LOG_USER "ramen")
   with _ -> None
 
-let make_syslog ?(prefix="") log_level =
+let init_syslog ?(prefix="") log_level =
   let prefix = ref (make_prefix prefix) in
   match syslog with
   | None ->
@@ -145,9 +171,9 @@ let make_syslog ?(prefix="") log_level =
         if log_level = Debug then do_log `LOG_DEBUG fmt
         else Printf.ifprintf stderr fmt
       in
-      { log_level ; error ; warning ; info ; debug ; output = Syslog ; prefix }
+      logger :=
+        { log_level ; error ; warning ; info ; debug ; output = Syslog ; prefix ;
+          alt = None }
 
-let set_prefix logger prefix =
-  logger.prefix := make_prefix prefix
-
-let logger = ref (make_logger Normal)
+let set_prefix prefix =
+  !logger.prefix := make_prefix prefix

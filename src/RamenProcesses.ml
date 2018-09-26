@@ -58,8 +58,8 @@ let prepare_signal_handlers () =
     quit :=
       Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
                                else RamenConsts.ExitCodes.interrupted))) ;
-  (* Dump stats on sigusr1 (also on sigusr2 out of security): *)
-  set_signals Sys.[sigusr1; sigusr2] (Signal_handle (fun s ->
+  (* Dump stats on sigusr1: *)
+  set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
     !logger.info "Received signal %s" (name_of_signal s) ;
     Binocle.display_console ()))
