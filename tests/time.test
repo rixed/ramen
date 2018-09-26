@@ -2,7 +2,11 @@
   programs = { "tests/time" => { bin = "time.x" } };
   outputs = {
     "tests/time/t" => {
-      present = [ { "t" => "\"1976-01-28 00:00:00.00\"" } ]
+      present = [
+        { "t" => "\"1976-01-28 00:00:00.00\"";
+          "c1" => "true";
+          "c2" => "true"; }
+      ]
     }
   }
 }

@@ -1,6 +1,11 @@
 -- vim: ft=sql expandtab
 
 DEFINE t AS
-  YIELD format_time("%Y-%m-%d %H:%M:%S",
-                    parse_time("28.01.1976")) AS t
+  YIELD
+    format_time("%Y-%m-%d %H:%M:%S",
+                parse_time("28.01.1976")) AS t,
+    parse_time("2018-04-27 18:20:00") =
+      parse_time("2018-04-27") + 18 * 3600 + 20 * 60 AS c1,
+    parse_time("2018-04-27T18:20:00.9") =
+      parse_time("2018-04-27 18:20:01") AS c2
   EVERY 10 second;

@@ -1085,7 +1085,7 @@ let time_of_abstime s =
   let s = String.lowercase s in
   let scan c recv =
     try Some (Scanf.sscanf s c recv)
-    with Scanf.Scan_failure _ -> None
+    with Scanf.Scan_failure _ | End_of_file | Failure _ -> None
   and eq str recv =
     if s = str then Some (recv ()) else None
   and (|||) o1 o2 =
@@ -1102,13 +1102,15 @@ let time_of_abstime s =
     let tm = localtime now in
     (* "If that time is already past, the next day is assumed" *)
     if is_past h m tm then now +. 86400. else now in
+  let time_of_yyyy_mm_dd_h_m_s y mo d h mi s =
+    let tm =
+      { tm_sec = round_to_int s ; tm_min = mi ; tm_hour = h ;
+        tm_mday = d ; tm_mon = mo - 1 ; tm_year = y - 1900 ;
+        (* ignored: *) tm_wday = 0 ; tm_yday = 0 ; tm_isdst = false } in
+    mktime tm |> fst in
   let time_of_dd_mm_yyyy d m y =
     let y = if y < 100 then y + 2000 (* ? *) else y in
-    let tm =
-      { tm_sec = 0 ; tm_min = 0 ; tm_hour = 0 ;
-        tm_mday = d ; tm_mon = m - 1 ; tm_year = y - 1900 ;
-        (* ignored: *) tm_wday = 0 ; tm_yday = 0 ; tm_isdst = false } in
-    mktime tm |> fst
+    time_of_yyyy_mm_dd_h_m_s y m d 0 0 0.
   in
   (* Extracts are from `man 1 at`:
    *
@@ -1145,6 +1147,10 @@ let time_of_abstime s =
    * the job tomorrow by suffixing the time with tomorrow.  The shortcut next
    * can be used instead of + 1." *)
   (* TODO *)
+  (* And now for the only sane formats: *)
+  (scan "%4d-%2d-%2d%!" (fun y m d -> time_of_yyyy_mm_dd_h_m_s y m d 0 0 0.)) |||
+  (scan "%4d-%2d-%2d%[ tT]%d:%d%!" (fun y mo d _ h mi -> time_of_yyyy_mm_dd_h_m_s y mo d h mi 0.)) |||
+  (scan "%4d-%2d-%2d%[ tT]%d:%d:%f%!" (fun y mo d _ h mi s -> time_of_yyyy_mm_dd_h_m_s y mo d h mi s)) |||
   None
 
 (* mktime tm struct "is interpreted in the local time zone". Work around this
@@ -1152,6 +1158,12 @@ let time_of_abstime s =
 (*$= time_of_abstime & ~printer:(function None -> "None" | Some f -> string_of_float f)
  (Some 2218.) (BatOption.map (fun ts -> ceil (ts /. 86400.)) (time_of_abstime "28.01.1976"))
  (time_of_abstime "28.01.1976") (time_of_abstime "01/28/1976")
+ (time_of_abstime "28.01.1976") (time_of_abstime "1976-01-28")
+ (BatOption.map ((+.) (12.*.3600.)) (time_of_abstime "28.01.1976")) \
+    (time_of_abstime "1976-01-28 12:00")
+ (time_of_abstime "1976-01-28 12:00") (time_of_abstime "1976-01-28T12:00:00")
+ (time_of_abstime "1976-01-28 12:00") (time_of_abstime "1976-01-28T12:00:00.1")
+ (time_of_abstime "1976-01-28 12:00:01") (time_of_abstime "1976-01-28 12:00:00.9")
  (Some 1523052000.) (time_of_abstime "1523052000")
  *)
 
