@@ -162,21 +162,24 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
 let file_spec_print ser best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
   let n = field_name_of_index ser idx in
-  Printf.fprintf oc "%s=%a" n RamenTypes.print value ;
+  Printf.fprintf oc "%s => %a" n RamenTypes.print value ;
   match List.find (fun (idx', _, _) -> idx = idx') best_miss with
   | exception Not_found -> ()
   | _, a, _ -> Printf.fprintf oc " (had %a)" RamenTypes.print a
 
 let tuple_spec_print ser oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
-  List.print (file_spec_print ser !best_miss) oc
+  List.print ~first:"{ " ~last:" }" (file_spec_print ser !best_miss) oc
 
 let tuple_print ser oc vs =
+  String.print oc "{ " ;
   List.iteri (fun i ft ->
-    Printf.fprintf oc "%s=%a "
+    if i > 0 then String.print oc "; " ;
+    Printf.fprintf oc "%s => %a"
       ft.RamenTuple.typ_name
       RamenTypes.print vs.(i)
-  ) ser
+  ) ser ;
+  String.print oc " }"
 
 let test_output conf fq output_spec end_flag =
   (* Notice that although we do not provide a filter read_output can
@@ -242,12 +245,12 @@ let test_output conf fq output_spec end_flag =
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
       (RamenName.string_of_fq fq)) ^
-    (if !tuples_to_find = [] then "" else
-      " but could not find "^
-        (err_string_of_tuples tuple_spec_print) !tuples_to_find) ^
-    (if !tuples_to_not_find = [] then "" else
+    (if !tuples_to_not_find <> [] then
       " and found "^
-        (err_string_of_tuples tuple_print) !tuples_to_not_find)
+        (err_string_of_tuples tuple_print) !tuples_to_not_find
+    else
+      " but could not find "^
+        (err_string_of_tuples tuple_spec_print) !tuples_to_find)
   in
   success, msg
 
