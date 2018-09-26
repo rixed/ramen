@@ -698,20 +698,19 @@ let synchronize_running conf autoreload_delay =
               try Some (mtime_of_file rc_file)
               with Unix.(Unix_error (ENOENT, _, _)) -> None in
             let now = Unix.gettimeofday () in
-            let must_autoreload =
-              autoreload_delay > 0. &&
-              now -. last_read >= autoreload_delay
-            and must_reread =
+            let must_reread =
               match last_mod with
               | None -> false
               | Some lm ->
-                  lm > last_read &&
+                  (lm >= last_read -. 1. ||
+                   autoreload_delay > 0. &&
+                   now -. last_read >= autoreload_delay) &&
                   (* To prevent missing the last writes when the file is
                    * updated several times a second (the possible resolution
                    * of mtime), refuse to refresh the file unless last mod
                    * time is old enough: *)
                   now -. lm > 1. in
-            if last_mod <> None && (must_autoreload || must_reread) then (
+            if last_mod <> None && must_reread then (
               (* Reread the content of that file *)
               let must_run_programs = C.with_rlock conf identity in
               (* The run file gives us the programs (and how to run them), but we
