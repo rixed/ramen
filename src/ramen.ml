@@ -304,7 +304,7 @@ let max_simult_compilations =
   let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
                    ~env [ "max-simult-compilations" ;
                           "max-simultaneous-compilations" ] in
-  let def = AtomicCounter.get RamenOCamlCompiler.max_simult_compilations in
+  let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
   Arg.(value (opt int def i))
 
 let smt_solver =

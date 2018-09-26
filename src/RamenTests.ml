@@ -178,7 +178,7 @@ let tuple_print ser oc vs =
       RamenTypes.print vs.(i)
   ) ser
 
-let test_output conf fq output_spec test_ended =
+let test_output conf fq output_spec end_flag =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
   let bname, filter, _typ, ser, _params, _event_time =
@@ -199,7 +199,7 @@ let test_output conf fq output_spec test_ended =
    * for as long as we have not yet received some tuples that
    * must be present and the time did not ran out. *)
   let while_ () =
-    not !test_ended &&
+    Atomic.Flag.is_unset end_flag &&
     !tuples_to_find <> [] &&
     !tuples_to_not_find = [] &&
     !RamenProcesses.quit = None &&
@@ -252,25 +252,27 @@ let test_output conf fq output_spec test_ended =
   success, msg
 
 (* Wait for the given tuple: *)
-let test_until conf fq spec =
+let test_until conf count end_flag fq spec =
   let bname, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let filter_spec = filter_spec_of_spec fq ser spec in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
   let got_it = ref false in
-  let while_ () = not !got_it && !RamenProcesses.quit = None in
+  let while_ () =
+    not !got_it &&
+    !RamenProcesses.quit = None &&
+    Atomic.Flag.is_unset end_flag in
   !logger.debug "Enumerating tuples from %s for early termination" bname ;
-  RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
+  RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname () (fun () _ tx ->
     let tuple = unserialize tx in
     if filter tuple && filter_of_tuple_spec filter_spec tuple then (
       !logger.info "Got terminator tuple from function %S"
         (RamenName.string_of_fq fq) ;
-      got_it := true) ;
-    (* Count all tuples including those filtered out: *)
-    count + 1) |> ignore
+      got_it := true ;
+      Atomic.Counter.incr count))
 
-let test_notifications notify_rb notif_spec test_ended =
+let test_notifications notify_rb notif_spec end_flag =
   (* We keep pat in order to be able to print it later: *)
   let to_regexp pat = pat, Str.regexp pat in
   let notifs_must_be_absent = List.map to_regexp notif_spec.Notifs.absent
@@ -278,7 +280,7 @@ let test_notifications notify_rb notif_spec test_ended =
   and notifs_to_not_find = ref []
   and start = Unix.gettimeofday () in
   let while_ () =
-    not !test_ended &&
+    Atomic.Flag.is_unset end_flag &&
     !notifs_to_find <> [] &&
     !notifs_to_not_find = [] &&
     Unix.gettimeofday () -. start < notif_spec.timeout in
@@ -463,12 +465,12 @@ let run_test conf notify_rb dirname test =
     ) workers in
   (* This flag will signal the end to either both tester and early_termination
    * threads: *)
-  let test_ended = ref false in
+  let end_flag = Atomic.Flag.make false in
   let stop_workers =
     let all = [ Globs.compile "*" ] in
     fun () ->
       ignore (RamenRun.kill conf all) ;
-      test_ended := true in
+      Atomic.Flag.set end_flag in
   (* One tester thread per operation *)
   let tester_threads =
     Hashtbl.fold (fun user_fq_name output_spec thds ->
@@ -481,39 +483,41 @@ let run_test conf notify_rb dirname test =
   (* Wrap the testers into threads that update this status and set
    * the quit flag: *)
   let all_good = ref true in
-  let num_tests_left = ref (List.length tester_threads) in
+  let num_tests_left = Atomic.Counter.make (List.length tester_threads) in
   let tester_threads =
     List.map (fun thd ->
       Thread.create (fun () ->
-        let success, msg = thd test_ended in
+        let success, msg = thd end_flag in
         if not success then (
           all_good := false ;
           !logger.error "Failure: %s\n" msg
         ) ;
-        decr num_tests_left ;
-        if !num_tests_left <= 0 then (
+        Atomic.Counter.decr num_tests_left ;
+        if Atomic.Counter.get num_tests_left <= 0 then (
           !logger.info "Finished all tests" ;
           stop_workers ())) ()
     ) tester_threads in
   (* Finally, a thread that tests the ending condition: *)
+  let until_count = Atomic.Counter.make 0 in
   let early_terminator =
     if Hashtbl.is_empty test.until then
       Thread.create RamenProcesses.until_quit (fun () ->
-        if !test_ended then false else (Unix.sleep 1 ; true))
+        if Atomic.Flag.is_set end_flag then false else (Unix.sleep 1 ; true))
     else (
       Thread.create (fun () ->
         Hashtbl.fold (fun user_fq_name tuple_spec thds ->
-          Thread.create (test_until conf user_fq_name) tuple_spec :: thds
+          Thread.create (test_until conf until_count end_flag user_fq_name) tuple_spec :: thds
         ) test.until [] |>
         List.iter Thread.join ;
-        !logger.info "Early termination." ;
-        all_good := false ;
+        !logger.debug "Early termination detectors ended." ;
+        if Atomic.Counter.get until_count = Hashtbl.length test.until then
+          all_good := false ;
         stop_workers ()) ()
     ) in
-  !logger.debug "Waiting for test threads..." ;
+  !logger.info "Waiting for test threads..." ;
   List.iter Thread.join
     ((Thread.create worker_feeder ()) :: tester_threads) ;
-  !logger.debug "Waiting for thread early_terminator..." ;
+  !logger.info "Waiting for thread early_terminator..." ;
   Thread.join early_terminator ;
   !all_good
 
@@ -546,8 +550,6 @@ let run conf server_url api graphite
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
   (* Run all tests: *)
-  (* Note: The workers states must be cleaned in between 2 tests ; the
-   * simpler is to draw a new test_id. *)
   let res = ref false in
   let sync =
     Thread.create (
@@ -559,8 +561,9 @@ let run conf server_url api graphite
     (fun () ->
       let r =
         run_test conf notify_rb (Filename.dirname test) test_spec in
+        !logger.info "All test runners terminated" ;
       res := r) () ;
-  !logger.debug "Waiting for thread sync..." ;
+  !logger.info "Waiting for thread sync..." ;
   Thread.join sync ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)

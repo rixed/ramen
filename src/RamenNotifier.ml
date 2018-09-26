@@ -64,7 +64,7 @@ let stats_notifs_cancelled =
       RamenConsts.Metric.Names.notifs_cancelled
       "Number of notifications not send, per reason")
 
-let max_exec = AtomicCounter.make 5 (* no more than 5 simultaneous execs *)
+let max_exec = Atomic.Counter.make 5 (* no more than 5 simultaneous execs *)
 
 let execute_cmd conf cmd =
   IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;

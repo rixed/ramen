@@ -75,6 +75,7 @@ RAMEN_SOURCES = \
 	src/RamenConsts.ml \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
+	src/RamenAtomic.ml \
 	src/RamenHelpers.ml \
 	src/RamenExperiments.ml \
 	src/RamenBitmask.ml \
@@ -143,6 +144,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenConsts.ml \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
+	src/RamenAtomic.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenAdvLock.ml \
@@ -330,6 +332,7 @@ TESTABLE_SOURCES = \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
 	src/HeavyHitters.ml \
+	src/RamenAtomic.ml \
 	src/RamenHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/Globs.ml \
@@ -348,6 +351,7 @@ LINKED_FOR_TESTS = \
 	src/RamenVersions.ml \
 	src/RamenLog.ml \
 	src/RamenConsts.ml \
+	src/RamenAtomic.ml \
 	src/RamenHelpers.ml \
 	src/HeavyHitters.ml \
 	src/RamenExperiments.ml \
@@ -410,7 +414,8 @@ all_tests.opt: \
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
-	src/RamenLog.cmx src/RamenConsts.cmx src/RamenHelpers.cmx \
+	src/RamenLog.cmx src/RamenConsts.cmx \
+	src/RamenAtomic.cmx src/RamenHelpers.cmx \
 	src/RamenAdvLock.cmx \
 	src/RamenOutRef.cmx src/RamenParsing.cmx \
 	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \

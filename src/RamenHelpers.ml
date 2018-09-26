@@ -1,5 +1,6 @@
 open Batteries
 open RamenLog
+module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
 
@@ -681,35 +682,15 @@ let random_string =
     Bytes.init len random_char |>
     Bytes.to_string
 
-module Atomic = struct
-  type 'a t = { mutex : Mutex.t ; x : 'a }
-  let make x =
-    { mutex = Mutex.create () ; x }
-  let with_lock t f =
-    Mutex.lock t.mutex ;
-    finally
-      (fun () -> Mutex.unlock t.mutex)
-      f t.x
-end
-
-module AtomicCounter = struct
-  type t = int Atomic.t
-  let make x = Atomic.make (ref x)
-  let get t = Atomic.with_lock t (!)
-  let set t x = Atomic.with_lock t (fun r -> r := x)
-  let incr t = Atomic.with_lock t incr
-  let decr t = Atomic.with_lock t decr
-end
-
 let max_simult ~what ~max_count f =
   let rec loop () =
-    if AtomicCounter.get max_count <= 0 then (
+    if Atomic.Counter.get max_count <= 0 then (
       !logger.debug "Too many %s pending, waiting..." what ;
       Unix.sleepf (0.2 +. Random.float 0.2) ;
       loop ()
     ) else (
-      AtomicCounter.decr max_count ;
-      finally (fun () -> AtomicCounter.incr max_count)
+      Atomic.Counter.decr max_count ;
+      finally (fun () -> Atomic.Counter.incr max_count)
         f ()
     ) in
   loop ()

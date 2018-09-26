@@ -3,7 +3,7 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 
-let max_simult_compilations = AtomicCounter.make 4
+let max_simult_compilations = Atomic.Counter.make 4
 let use_external_compiler = ref false
 let bundle_dir = ref ""
 let warnings = "-58-26"
