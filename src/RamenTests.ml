@@ -433,6 +433,13 @@ let run_test conf notify_rb dirname test =
       ) prog.P.funcs
     ) test.programs) ;
   check_test_spec conf test ;
+  (* Now that the running config is complete we can start the worker
+   * supervisor: *)
+  let sync =
+    Thread.create (
+      restart_on_failure "synchronize_running"
+        (RamenProcesses.synchronize_running conf)) 0. in
+  (* Start the test proper: *)
   let worker_feeder () =
     let feed_input input =
       match Hashtbl.find workers input.Input.operation with
@@ -522,6 +529,9 @@ let run_test conf notify_rb dirname test =
     ((Thread.create worker_feeder ()) :: tester_threads) ;
   !logger.info "Waiting for thread early_terminator..." ;
   Thread.join early_terminator ;
+  !logger.info "Waiting for workers supervisor..." ;
+  RamenProcesses.quit := Some 0 ;
+  Thread.join sync ;
   !all_good
 
 let run conf server_url api graphite
@@ -553,21 +563,8 @@ let run conf server_url api graphite
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
   (* Run all tests: *)
-  let res = ref false in
-  let sync =
-    Thread.create (
-      restart_on_failure "synchronize_running"
-        (RamenProcesses.synchronize_running conf)) 0. in
-  finally (fun () ->
-            (* Terminate the other thread cleanly: *)
-            RamenProcesses.quit := Some 0)
-    (fun () ->
-      let r =
-        run_test conf notify_rb (Filename.dirname test) test_spec in
-        !logger.info "All test runners terminated" ;
-      res := r) () ;
-  !logger.info "Waiting for thread sync..." ;
-  Thread.join sync ;
+  let res = run_test conf notify_rb (Filename.dirname test) test_spec in
+  !logger.info "Finished test" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
   let stats = RamenPs.read_stats conf in
@@ -579,6 +576,6 @@ let run conf server_url api graphite
                _bytes_out, _last_out, _stime) ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s" cpu (Uint64.to_string max_ram)))
       stats ;
-  if !res then !logger.info "Test %s: Success" name
+  if res then !logger.info "Test %s: Success" name
   else failwith ("Test "^ name ^": FAILURE") ;
   Thread.join httpd_thread
