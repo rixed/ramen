@@ -210,7 +210,8 @@ let test_output conf fq output_spec end_flag =
   let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
   !logger.debug "Enumerating tuples from %s" bname ;
   let num_tuples =
-    RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
+    RamenSerialization.fold_seq_range
+      ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
       let tuple = unserialize tx in
       if filter tuple then (
         !logger.debug "Read a tuple out of operation %S"
@@ -267,7 +268,8 @@ let test_until conf count end_flag fq spec =
     !RamenProcesses.quit = None &&
     Atomic.Flag.is_unset end_flag in
   !logger.debug "Enumerating tuples from %s for early termination" bname ;
-  RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname () (fun () _ tx ->
+  RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname ()
+    (fun () _ tx ->
     let tuple = unserialize tx in
     if filter tuple && filter_of_tuple_spec filter_spec tuple then (
       !logger.info "Got terminator tuple from function %S"
@@ -524,10 +526,10 @@ let run_test conf notify_rb dirname test =
           all_good := false ;
         stop_workers ()) ()
     ) in
-  !logger.info "Waiting for test threads..." ;
+  !logger.debug "Waiting for test threads..." ;
   List.iter Thread.join
     ((Thread.create worker_feeder ()) :: tester_threads) ;
-  !logger.info "Waiting for thread early_terminator..." ;
+  !logger.debug "Waiting for thread early_terminator..." ;
   Thread.join early_terminator ;
   !all_good, sync
 

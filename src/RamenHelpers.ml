@@ -1386,11 +1386,15 @@ let forking_server ~while_ sockaddr server_fun =
           if !sons <> [] then (
             !logger.info "Killing httpd servers..." ;
             List.iter (fun (pid, _) ->
+              !logger.debug "Killing %d" pid ;
               log_and_ignore_exceptions ~what:"stopping httpd servers"
                 (kill pid)
                 Sys.(if now -. !stop_since > 3. then sigkill else sigterm)
             ) !sons
-          ) else Thread.exit ()
+          ) else (
+            !logger.debug "Quit servers killer" ;
+            Thread.exit ()
+          )
         ) ;
         (* Collect the sons statuses: *)
         sons :=
@@ -1420,12 +1424,14 @@ let forking_server ~while_ sockaddr server_fun =
           let s, _caller = my_accept ~while_ sock in
           match fork () with
           | 0 ->
-                close sock ;
-                server_fun s ;
-                exit 0
+              close sock ;
+              server_fun s ;
+              exit 0
           | pid ->
               close s ;
               sons := (pid, Unix.gettimeofday ()) :: !sons
         done
-      with Exit -> ()) () ;
+      with Exit ->
+        !logger.debug "Stop accepting connections."
+    ) () ;
   Thread.join killer_thread
