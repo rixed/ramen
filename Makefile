@@ -51,7 +51,7 @@ all: $(INSTALLED)
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
+.SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all check func-check unit-check cli-check err-check \
         dep install uninstall reinstall bundle doc deb tarball \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
@@ -63,6 +63,10 @@ all: $(INSTALLED)
 %.cmx %.annot: %.ml
 	@echo 'Compiling $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+
+%.mlppp: %.ml
+	@echo 'Generating preprocessed sources for $<'
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -dsource -c $< 2> $@
 
 %.html: %.adoc
 	@echo 'Building documentation $@'
@@ -639,7 +643,7 @@ clean-temp:
 
 clean: clean-temp
 	@echo 'Cleaning all build files'
-	@$(RM) src/*.s src/*.annot src/*.o
+	@$(RM) src/*.s src/*.annot src/*.o src/*.mlppp
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o
 	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
