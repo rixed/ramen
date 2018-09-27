@@ -357,6 +357,14 @@ let generate_alert table ft =
       RamenVersions.release_tag (ctime (Unix.time ())) ;
     match alert_info with
     | V1 a ->
+        let desc_firing =
+          Printf.sprintf "%s went %s the configured threshold %f."
+            column
+            (if a.threshold >= a.recovery then "above" else "below")
+            a.threshold
+        and desc_recovered =
+          Printf.sprintf "The value of %s recovered." column
+        in
         Printf.fprintf oc "DEFINE alert AS\n" ;
         Printf.fprintf oc "  FROM %s\n" (ramen_quote table) ;
         if a.where <> [] then
@@ -373,7 +381,9 @@ let generate_alert table ft =
         Printf.fprintf oc "    firing AS firing,\n" ;
         Printf.fprintf oc "    1 AS certainty,\n" ;
         Printf.fprintf oc "    %s AS values,\n" column ;
-        Printf.fprintf oc "    %f AS thresholds\n" a.threshold ;
+        Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
+        Printf.fprintf oc "    (IF firing THEN %S ELSE %S) AS desc\n"
+          desc_firing desc_recovered ;
         (* TODO: a way to add zone, service, etc, if present in the
          * parent table *)
         Printf.fprintf oc "  AND KEEP ALL\n" ;
