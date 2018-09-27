@@ -1353,6 +1353,20 @@ module Distance = struct
     String.length a - String.length b |> float_of_int
 end
 
+(* We need an accept that stops waiting whenever the while_ condition become
+ * false. It is not enough to check while_ on EINTR since the actual signal handler
+ * will be resumed and the OCaml signal handler might not be have run yet when
+ * the accept is interrupted by EINTR. So we have to summon select.
+ * raise Exit when while_ says so. *)
+let rec my_accept ~while_ sock =
+  let open Legacy.Unix in
+  match restart_on_eintr ~while_ (select [sock] [] []) 0.5 with
+  | [], _, _ ->
+      if while_ () then my_accept ~while_ sock
+      else raise Exit
+  | _ ->
+      restart_on_eintr ~while_ (accept ~cloexec:true) sock
+
 (* This is a version of [Unix.establish_server] that pass the file
  * descriptor instead of buffered channels. Also, we want a way to stop
  * the server: *)
@@ -1403,8 +1417,7 @@ let forking_server ~while_ sockaddr server_fun =
       listen sock 5 ;
       try
         while while_ () do
-          let s, _caller =
-            restart_on_eintr ~while_ (accept ~cloexec:true) sock in
+          let s, _caller = my_accept ~while_ sock in
           match fork () with
           | 0 ->
                 close sock ;

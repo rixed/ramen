@@ -224,16 +224,6 @@ let on_all_err err =
     (HttpParser.P.print_bad_result (Option.print CodecHttp.Msg.print)) err
 
 let http_service conf port url_prefix router fault_injection_rate =
-  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    RamenProcesses.quit :=
-      Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
-                               else RamenConsts.ExitCodes.interrupted))) ;
-  (* Dump stats on sigusr1: *)
-  set_signals Sys.[sigusr1] (Signal_handle (fun s ->
-    (* This log also useful to rotate the logfile. *)
-    !logger.info "Received signal %s" (name_of_signal s) ;
-    Binocle.display_console ())) ;
   (* This will run in another process: *)
   let srv fd =
     !logger.debug "New connection! I'm so excited!!" ;

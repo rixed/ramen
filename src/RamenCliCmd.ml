@@ -547,6 +547,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
     init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
+  RamenProcesses.prepare_signal_handlers () ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 

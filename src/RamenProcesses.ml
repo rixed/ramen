@@ -752,4 +752,5 @@ let synchronize_running conf autoreload_delay =
         loop last_read))
   in
   RamenWatchdog.enable watchdog ;
-  loop 0.
+  loop 0. ;
+  RamenWatchdog.disable watchdog

@@ -529,10 +529,7 @@ let run_test conf notify_rb dirname test =
     ((Thread.create worker_feeder ()) :: tester_threads) ;
   !logger.info "Waiting for thread early_terminator..." ;
   Thread.join early_terminator ;
-  !logger.info "Waiting for workers supervisor..." ;
-  RamenProcesses.quit := Some 0 ;
-  Thread.join sync ;
-  !all_good
+  !all_good, sync
 
 let run conf server_url api graphite
         use_external_compiler bundle_dir max_simult_compils smt_solver
@@ -547,10 +544,11 @@ let run conf server_url api graphite
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   let httpd_thread =
-    Thread.create (fun () ->
-      if server_url <> "" || api <> None || graphite <> None then
-          RamenHttpd.run_httpd conf server_url api graphite 0.0
-    ) () in
+    if server_url = "" && api = None && graphite = None then None
+    else Some (
+      Thread.create (fun () ->
+        RamenHttpd.run_httpd conf server_url api graphite 0.0
+      ) ()) in
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.info "Parsing test specification in %S..." test ;
   let test_spec = ppp_of_file test_spec_ppp_ocaml test in
@@ -562,8 +560,8 @@ let run conf server_url api graphite
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
-  (* Run all tests: *)
-  let res = run_test conf notify_rb (Filename.dirname test) test_spec in
+  (* Run all tests. Also return the syn thread that's still running: *)
+  let res, sync = run_test conf notify_rb (Filename.dirname test) test_spec in
   !logger.info "Finished test" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
@@ -578,5 +576,12 @@ let run conf server_url api graphite
       stats ;
   if res then !logger.info "Test %s: Success" name
   else failwith ("Test "^ name ^": FAILURE") ;
-  !logger.info "Waiting for http server..." ;
-  Thread.join httpd_thread
+  if httpd_thread = None then
+    RamenProcesses.quit := Some 0 ;
+  (* else wait for the user to kill *)
+  !logger.debug "Waiting for workers supervisor..." ;
+  Thread.join sync ;
+  Option.may (fun thd ->
+    !logger.debug "Waiting for http server..." ;
+    Thread.join thd
+  ) httpd_thread
