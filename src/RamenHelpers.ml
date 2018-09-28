@@ -1373,7 +1373,7 @@ let rec my_accept ~while_ sock =
 let forking_server ~while_ sockaddr server_fun =
   let open Legacy.Unix in
   (* Keep an eye on my sons pids: *)
-  let sons = ref [] in
+  let sons = Atomic.Set.make () in
   let killer_thread =
     Thread.create (fun () ->
       let stop_since = ref 0. in
@@ -1383,22 +1383,21 @@ let forking_server ~while_ sockaddr server_fun =
         (* If we want to quit, kill the sons: *)
         if not continue then (
           if !stop_since = 0. then stop_since := now ;
-          if !sons <> [] then (
+          if not (Atomic.Set.is_empty sons) then (
             !logger.info "Killing httpd servers..." ;
-            List.iter (fun (pid, _) ->
+            Atomic.Set.iter sons (fun (pid, _) ->
               !logger.debug "Killing %d" pid ;
               log_and_ignore_exceptions ~what:"stopping httpd servers"
                 (kill pid)
-                Sys.(if now -. !stop_since > 3. then sigkill else sigterm)
-            ) !sons
+                Sys.(if now -. !stop_since > 3. then sigkill else sigterm))
           ) else (
             !logger.debug "Quit servers killer" ;
             Thread.exit ()
           )
         ) ;
         (* Collect the sons statuses: *)
-        sons :=
-          List.filter (fun (pid, start) ->
+        Atomic.Set.filter sons
+          (fun (pid, start) ->
             match BatUnix.restart_on_EINTR (waitpid [ WNOHANG ]) pid with
             | 0, _ -> true
             | _, status ->
@@ -1406,8 +1405,7 @@ let forking_server ~while_ sockaddr server_fun =
                 (if status = WEXITED 0 then !logger.debug else !logger.error)
                   "httpd server %d %s after %fs"
                     pid (string_of_process_status status) dt ;
-                false
-          ) !sons ;
+                false) ;
         sleep 1
       done
     ) () in
@@ -1429,7 +1427,7 @@ let forking_server ~while_ sockaddr server_fun =
               exit 0
           | pid ->
               close s ;
-              sons := (pid, Unix.gettimeofday ()) :: !sons
+              Atomic.Set.add sons (pid, Unix.gettimeofday ())
         done
       with Exit ->
         !logger.debug "Stop accepting connections."

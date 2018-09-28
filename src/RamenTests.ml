@@ -505,9 +505,9 @@ let run_test conf notify_rb dirname test =
           !logger.error "Failure: %s\n" msg
         ) ;
         Atomic.Counter.decr num_tests_left ;
-        if Atomic.Counter.get num_tests_left <= 0 then (
-          !logger.info "Finished all tests" ;
-          stop_workers ())) ()
+        if Atomic.Counter.get num_tests_left <= 0 then
+          stop_workers ()
+      ) ()
     ) tester_threads in
   (* Finally, a thread that tests the ending condition: *)
   let until_count = Atomic.Counter.make 0 in

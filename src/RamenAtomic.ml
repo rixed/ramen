@@ -29,4 +29,11 @@ module Counter = struct
   let decr t = Base.with_lock t decr
 end
 
-
+module Set = struct
+  type 'a t = 'a Set.t ref Base.t
+  let make () = Base.make (ref Set.empty)
+  let is_empty t = Base.with_lock t (fun s -> Set.is_empty !s)
+  let iter t f = Base.with_lock t (fun s -> Set.iter f !s)
+  let filter t f = Base.with_lock t (fun s -> s := Set.filter f !s)
+  let add t x = Base.with_lock t (fun s -> s := Set.add x !s)
+end
