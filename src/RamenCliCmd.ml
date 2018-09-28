@@ -63,7 +63,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload () =
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
    * any way. For notifications we could have the notifier reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
-  prepare_signal_handlers () ;
+  prepare_signal_handlers conf ;
   let reports_rb = prepare_reports conf in
   RingBuf.unload reports_rb ;
   let notify_rb = prepare_notifs conf in
@@ -112,7 +112,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
     init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
-  RamenProcesses.prepare_signal_handlers () ;
+  RamenProcesses.prepare_signal_handlers conf ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let while_ () = !RamenProcesses.quit = None in
   restart_on_failure ~while_ "process_notifications"
@@ -547,7 +547,7 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
     init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
-  RamenProcesses.prepare_signal_handlers () ;
+  RamenProcesses.prepare_signal_handlers conf ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 

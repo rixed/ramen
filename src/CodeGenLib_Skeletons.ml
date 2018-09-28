@@ -254,12 +254,19 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     ) !out_l
 
 type worker_conf =
-  { log_level : log_level ; state_file : string ; ramen_url : string }
+  { log_level : log_level ;
+    state_file : string ;
+    ramen_url : string ;
+    is_test : bool }
+
+let info_or_test conf =
+  if conf.is_test then !logger.debug else !logger.info
 
 let worker_start worker_name get_binocle_tuple k =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
+  let is_test = getenv ~def:"false" "is_test" |> bool_of_string in
   let state_file = getenv ~def:default_persist_dir "state_file" in
   let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
   let prefix = worker_name ^": " in
@@ -273,10 +280,6 @@ let worker_start worker_name get_binocle_tuple k =
         mkdir_all logdir ;
         init_logger ~logdir log_level
       )) ;
-  !logger.info "Starting %s process. Will log into %s at level %s."
-    worker_name
-    (string_of_log_output !logger.output)
-    (string_of_log_level log_level) ;
   let report_period =
     getenv ~def:(string_of_float RamenConsts.Default.report_period)
            "report_period" |> float_of_string in
@@ -286,9 +289,13 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  let conf = { log_level ; state_file ; ramen_url } in
+  let conf = { log_level ; state_file ; ramen_url ; is_test } in
+  info_or_test conf "Starting %s process. Will log into %s at level %s."
+    worker_name
+    (string_of_log_output !logger.output)
+    (string_of_log_level log_level) ;
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
+    info_or_test conf "Received signal %s" (name_of_signal s) ;
     quit :=
       Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
                                else RamenConsts.ExitCodes.interrupted))) ;
@@ -317,7 +324,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun _conf ->
+  worker_start worker_name get_binocle_tuple (fun conf ->
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     (* For tests, allow to overwrite what's specified in the operation: *)
     and filename = getenv ~def:filename "csv_filename"
@@ -326,8 +333,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     let filename = subst_tuple_fields tuples filename
     and separator = subst_tuple_fields tuples separator
     in
-    !logger.info "Will read CSV file %S using separator %S"
-                  filename separator ;
+    info_or_test conf "Will read CSV file %S using separator %S"
+      filename separator ;
     let of_string line =
       let strings = strings_of_csv separator line in
       tuple_of_strings (Array.of_list strings)
@@ -359,12 +366,12 @@ let listen_on (collector :
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun _conf ->
+  worker_start worker_name get_binocle_tuple (fun conf ->
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and inet_addr = Unix.inet_addr_of_string addr_str
     in
-    !logger.debug "Will listen to port %d for incoming %s messages"
-                  port proto_name ;
+    info_or_test conf "Will listen to port %d for incoming %s messages"
+      port proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple in
@@ -380,7 +387,7 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun _conf ->
+  worker_start worker_name get_binocle_tuple (fun conf ->
     let bname =
       getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar in
     let rb_ref_out_fname =
@@ -403,7 +410,7 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
         Unix.sleepf (1. +. Random.float 1.) ;
         loop last_seq
       ) else (
-        !logger.info "Reading buffer..." ;
+        info_or_test conf "Reading buffer..." ;
         RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
           let tuple = unserialize_tuple tx in
           let worker, time = worker_time_of_tuple tuple in
@@ -411,7 +418,7 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
           if time >= start && match_from worker then
             outputer tuple ;
           (), true) ;
-        !logger.info "Done reading buffer, waiting for next one." ;
+        info_or_test conf "Done reading buffer, waiting for next one." ;
         RingBuf.unload rb ;
         loop st.first_seq
       ) in

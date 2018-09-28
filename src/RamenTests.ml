@@ -545,6 +545,8 @@ let run conf server_url api graphite
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
+  !logger.info "Using temp dir %s" conf.persist_dir ;
+  mkdir_all conf.persist_dir ;
   let httpd_thread =
     if server_url = "" && api = None && graphite = None then None
     else Some (
@@ -556,15 +558,14 @@ let run conf server_url api graphite
   let test_spec = ppp_of_file test_spec_ppp_ocaml test in
   let name = Filename.(basename test |> remove_extension) in
   (* Start Ramen *)
-  !logger.info "Starting ramen, using temp dir %s" conf.persist_dir ;
-  mkdir_all conf.persist_dir ;
-  RamenProcesses.prepare_signal_handlers () ;
+  RamenProcesses.prepare_signal_handlers conf ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   let report_rb = RamenProcesses.prepare_reports conf in
   RingBuf.unload report_rb ;
   (* Run all tests. Also return the syn thread that's still running: *)
+  !logger.info "Starting tests..." ;
   let res, sync = run_test conf notify_rb (Filename.dirname test) test_spec in
-  !logger.info "Finished test" ;
+  !logger.debug "Finished tests" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
   let stats = RamenPs.read_stats conf in

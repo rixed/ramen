@@ -51,10 +51,14 @@ let prepare_reports conf =
   repair_and_warn "instrumentation" report_rb ;
   report_rb
 
+(* Many messages that are exceptional in supervisor are quite expected in tests: *)
+let info_or_test conf =
+  if conf.C.test then !logger.debug else !logger.info
+
 (* Install signal handlers *)
-let prepare_signal_handlers () =
+let prepare_signal_handlers conf =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    !logger.info "Received signal %s" (name_of_signal s) ;
+    info_or_test conf "Received signal %s" (name_of_signal s) ;
     quit :=
       Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
                                else RamenConsts.ExitCodes.interrupted))) ;
@@ -299,7 +303,7 @@ let process_workers_terminations conf running =
       | _, status ->
           let status_str = string_of_process_status status in
           let is_err = status <> Unix.WEXITED 0 in
-          (if is_err then !logger.error else !logger.info)
+          (if is_err then !logger.error else info_or_test conf)
             "%s %s." what status_str ;
           proc.last_exit <- now ;
           proc.last_exit_status <- status_str ;
@@ -372,6 +376,8 @@ let really_start conf proc parents children =
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "log_level="^ string_of_log_level proc.log_level ;
+    (* To know what to log: *)
+    "is_test="^ string_of_bool conf.C.test ;
     (* Used to choose the function to perform: *)
     "name="^ RamenName.string_of_func (proc.func.F.name) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
@@ -435,7 +441,7 @@ let really_start conf proc parents children =
  * Need [must_run] so that types can be checked before linking with parents
  * and children. *)
 let really_try_start conf must_run proc =
-  !logger.info "Starting operation %a"
+  info_or_test conf "Starting operation %a"
     print_running_process proc ;
   assert (proc.pid = None) ;
   let parents, children = relatives proc.func must_run in
@@ -512,7 +518,7 @@ let try_kill conf must_run proc =
   let now = Unix.gettimeofday () in
   if proc.last_killed = 0. then (
     (* Ask politely: *)
-    !logger.info "Terminating worker %s (pid %d)"
+    info_or_test conf "Terminating worker %s (pid %d)"
       (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
     log_and_ignore_exceptions ~what:"Terminating worker"
       (Unix.kill pid) Sys.sigterm ;
@@ -655,7 +661,7 @@ let synchronize_running conf autoreload_delay =
     ) must_run ;
     let num_running = Hashtbl.length running in
     if !quit <> None && num_running > 0 && num_running <> prev_num_running then
-      !logger.info "Still %d processes running"
+      info_or_test conf "Still %d processes running"
         (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be
      * started only after all the kills: *)
