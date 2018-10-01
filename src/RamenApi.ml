@@ -132,7 +132,10 @@ and alert_info_v1 =
     duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
     (* Unused, for the client purpose only *)
-    id : string [@ppp_default ""] }
+    id : string [@ppp_default ""] ;
+    (* Desc to use when firing/recovering: *)
+    desc_firing : string [@ppp_default ""] ;
+    desc_recovered : string [@ppp_default ""] }
   [@@ppp PPP_JSON]
   [@@ppp PPP_OCaml]
 
@@ -358,12 +361,14 @@ let generate_alert table ft =
     match alert_info with
     | V1 a ->
         let desc_firing =
-          Printf.sprintf "%s went %s the configured threshold %f."
-            column
-            (if a.threshold >= a.recovery then "above" else "below")
-            a.threshold
+          if a.desc_firing <> "" then a.desc_firing else
+            Printf.sprintf "%s went %s the configured threshold %f."
+              column
+              (if a.threshold >= a.recovery then "above" else "below")
+              a.threshold
         and desc_recovered =
-          Printf.sprintf "The value of %s recovered." column
+          if a.desc_recovered <> "" then a.desc_recovered else
+            Printf.sprintf "The value of %s recovered." column
         in
         Printf.fprintf oc "DEFINE alert AS\n" ;
         Printf.fprintf oc "  FROM %s\n" (ramen_quote table) ;

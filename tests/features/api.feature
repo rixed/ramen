@@ -75,7 +75,7 @@ Feature: Test Ramen API from the command line.
   Scenario: Can set an alert.
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
-    And I run curl with arguments --data-binary '{"method":"set-alerts","id":1,"params":{"test/random_walk":{"xyz":[{"threshold":42,"recovery":37,"id":"glop"}]}}}' http://localhost:8042
+    And I run curl with arguments --data-binary '{"method":"set-alerts","id":1,"params":{"test/random_walk":{"xyz":[{"threshold":42,"recovery":37,"id":"glop","desc_firing":"boum!"}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
   Scenario: An empty set-alerts must return a valid JSON (non-regression)
