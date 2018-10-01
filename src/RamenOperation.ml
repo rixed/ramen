@@ -85,7 +85,7 @@ let print_notification oc notif =
   if notif.parameters <> [] then
     List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
       (fun oc (n, v) ->
-        Printf.fprintf oc "%S=%a" n (E.print false) v) oc
+        Printf.fprintf oc "%a AS '%s'" (E.print false) v n) oc
       notif.parameters
 
 (* Type of an operation: *)
