@@ -1420,8 +1420,12 @@ let forking_server ~while_ sockaddr server_fun =
       try
         while while_ () do
           let s, _caller = my_accept ~while_ sock in
+          (* Before forking, advance the PRNG so that all children do not re-init
+           * their own PRNG with the same number: *)
+          let prng_init = Random.bits () in
           match fork () with
           | 0 ->
+              Random.init prng_init ;
               close sock ;
               server_fun s ;
               exit 0
