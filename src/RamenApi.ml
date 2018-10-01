@@ -339,11 +339,11 @@ let alert_id column =
     Printf.fprintf oc "(%s %s %s)" w.op w.lhs w.rhs in
   function
   | V1 { threshold ; where ; recovery ; duration ; ratio ; id ; _ } ->
-      (Legacy.Printf.sprintf "%s-%h-%h-%h-%h-%s"
+      (Legacy.Printf.sprintf "V1-%s-%h-%h-%h-%h-%s"
          column threshold recovery duration ratio id ^
        Printf.sprintf2 "-%a"
          (List.print ~first:"" ~last:"" ~sep:"-" print_where_spec)
-          where) |> md5
+           where) |> md5
 
 let is_enabled = function
   | V1 { enabled ; _ } -> enabled
