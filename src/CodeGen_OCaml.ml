@@ -1153,11 +1153,15 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Hysteresis.finalize" [] oc []
 
-  | InitState, StatefulFun (_, _, _, Top { c ; duration ; _ }), _ ->
+  | InitState, StatefulFun (_, _, _, Top { c ; duration ; max_size ; _ }), _ ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "CodeGenLib.Top.init (%a) (%a)"
-        (* c can be any numeric type but heavy_hitters_init expects a u32: *)
-        (conv_to ?state ~context:Finalize ~opc (Some TU32)) c
+        (* Default max_size is ten times c: *)
+        (fun oc -> function
+          | None ->
+              Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) %a"
+                (conv_to ?state ~context:Finalize ~opc (Some TU32)) c
+          | Some s -> conv_to ?state ~context:Finalize ~opc (Some TU32) oc s) max_size
         (* duration can also be a parameter compatible to float: *)
         (conv_to ?state ~context:Finalize ~opc (Some TFloat)) duration)
   | UpdateState, StatefulFun (_, g, n, Top { what ; by ; time ; _ }), _ ->

@@ -133,10 +133,9 @@ end
 module Top = struct
   (* Heavy Hitters wrappers: *)
 
-  let init n duration =
-    let n = Uint32.to_int n in
+  let init max_size duration =
     assert (duration > 0.) ;
-    let max_size = 10 * n in (* TODO? *)
+    let max_size = Uint32.to_int max_size in
     (* We want an entry weight to be halved after half [duration]: *)
     let decay = -. log 0.5 /. (duration *. 0.5) in
     HeavyHitters.make ~max_size ~decay

@@ -272,8 +272,8 @@ and stateful_fun =
   (* Hysteresis *)
   | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
   (* Top-k operation *)
-  | Top of { want_rank : bool ; c : t ; what : t list ; by : t ;
-             time : t ; duration : t }
+  | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
+             by : t ; time : t ; duration : t }
   (* Last N e1 [BY e2, e3...] - or by arrival.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
@@ -628,11 +628,14 @@ let rec print ?(max_depth=max_int) with_types oc e =
         p accept
         p max ;
       add_types t
-    | StatefulFun (t, g, n, Top { want_rank ; c ; what ; by ; time ;
+    | StatefulFun (t, g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
                                   duration }) ->
-      Printf.fprintf oc "%s %a in top %a %s%sby %a in the last %a at time %a"
+      Printf.fprintf oc "%s %a in top %a %a%s%sby %a in the last %a at time %a"
         (if want_rank then "rank of" else "is")
         (List.print ~first:"" ~last:"" ~sep:", " p) what
+        (fun oc -> function
+         | None -> Unit.print oc ()
+         | Some e -> Printf.fprintf oc " over %a" p e) max_size
         p c
         (sl g) (sn n)
         p by
@@ -722,8 +725,10 @@ let fold_subexpressions f i expr =
       List.fold_left f i (e1::e2::e3::e4s)
 
   | StatefulFun (_, _, _,
-      Top { c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s }) ->
-      List.fold_left f i (e1::e2::e3::e4::e5s)
+      Top { c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s ;
+            max_size = e_opt }) ->
+      let i = List.fold_left f i (e1::e2::e3::e4::e5s) in
+      Option.map_default (f i) i e_opt
 
   | StatefulFun (_, _, _, Last (c, e, es)) ->
       List.fold_left f i (c::e::es)
@@ -861,10 +866,12 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b),
         (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, n, Top { want_rank ; c ; what ; by ; duration ; time }) ->
+  | StatefulFun (t, g, n, Top { want_rank ; c ; max_size ; what ; by ;
+                                duration ; time }) ->
     StatefulFun (f t, g, n, Top {
       want_rank ;
       c = (if recurs then map_type ~recurs f c else c) ;
+      max_size = (if recurs then Option.map (map_type ~recurs f) max_size else max_size) ;
       duration = (if recurs then map_type ~recurs f duration else duration) ;
       what = (if recurs then List.map (map_type ~recurs f) what else what) ;
       by = (if recurs then map_type ~recurs f by else by) ;
@@ -1381,8 +1388,9 @@ struct
      (* We can allow lowest precedence expressions here because of the
       * keywords that follow: *)
      several ~sep:list_sep p +- blanks +-
-     strinG "in" +- blanks +- strinG "top" +- blanks ++
-     (const ||| param) ++
+     strinG "in" +- blanks +- strinG "top" +- blanks ++ (const ||| param) ++
+     optional ~def:None (
+      some (blanks -- strinG "over" -- blanks -+ (const ||| param))) ++
      state_and_nulls ++
      optional ~def:(expr_one ()) (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
@@ -1391,13 +1399,14 @@ struct
        strinG "last" -- blanks -+ (const ||| param)) ++
      optional ~def:(expr_zero ()) (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
-     fun ((((((want_rank, what), c), (g, n)), by), duration), time) ->
+     fun (((((((want_rank, what), c), max_size),
+             (g, n)), by), duration), time) ->
        StatefulFun (
          (if want_rank then make_typ "rank in top"
                        (* same nullability as what+by+time: *)
                        else make_typ "is in top"),
          g, n,
-         Top { want_rank ; c ; what ; by ; duration ; time })) m
+         Top { want_rank ; c ; max_size ; what ; by ; duration ; time })) m
 
   and last m =
     let m = "last expression" :: m in

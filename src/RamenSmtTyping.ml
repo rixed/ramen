@@ -903,9 +903,11 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | StatefulFun (_, _, _, Top { want_rank ; c ; what ; by ; duration ; time }) ->
+  | StatefulFun (_, _, _, Top { want_rank ; c ; max_size ; what ; by ; duration ;
+                                time }) ->
       (* Typing rules:
        * - c must be numeric and not null;
+       * - max_size, if set, must be numeric and not null ;
        * - what can be anything;
        * - by must be numeric;
        * - duration must be a numeric and non null;
@@ -917,6 +919,10 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   and by. *)
       arg_is_numeric oc c ;
       emit_assert_is_false oc (n_of_expr c) ;
+      Option.may (fun s ->
+        arg_is_numeric oc s ;
+        emit_assert_is_false oc (n_of_expr s)
+      ) max_size ;
       arg_is_numeric oc by ;
       arg_is_numeric oc duration ;
       emit_assert_is_false oc (n_of_expr duration) ;
