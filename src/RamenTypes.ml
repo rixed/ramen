@@ -542,11 +542,17 @@ struct
     let ostrinG s =
       if all_possible then optional ~def:() (strinG s)
       else strinG s in
-    (if all_possible then
+    (if all_possible then (
       (* Also in "all_possible" mode, accept an integer as a float: *)
-      (decimal_number >>: fun i -> VFloat (Num.to_float i))
-     else
-      (integer >>: narrowest_int_scalar ?min_int_width)) |||
+      decimal_number ++ float_scale >>: fun (n, s) -> VFloat ((Num.to_float n) *. s)
+     ) else (
+      integer ++ num_scale >>: fun (n, s) ->
+        let n = Num.mul n s in
+        if Num.is_integer_num n then
+          narrowest_int_scalar ?min_int_width n
+        else
+          raise (Reject "Not an integer")
+     )) |||
     (integer_range ~min:(Num.of_int ~-128) ~max:(Num.of_int 127) +-
       ostrinG "i8" >>: fun i -> VI8 (Int8.of_string (Num.to_string i))) |||
     (integer_range ~min:(Num.of_int ~-32768) ~max:(Num.of_int 32767) +-
@@ -571,6 +577,8 @@ struct
   (*$= narrowest_int & ~printer:(test_printer print)
     (Ok (VU8 (Uint8.of_int 12), (2,[]))) \
         (test_p (narrowest_int ~min_int_width:0 ()) "12")
+    (Ok (VU8 (Uint8.of_int 12), (6,[]))) \
+        (test_p (narrowest_int ~min_int_width:0 ()) "12000m")
   *)
 
   let all_possible_ints =
@@ -580,9 +588,9 @@ struct
    * expressions, to disambiguate the syntax. So then we only look for
    * scalars: *)
   let scalar ?min_int_width =
-    (if min_int_width <> None then narrowest_int ?min_int_width ()
-     else all_possible_ints) |||
-    (floating_point >>: fun f -> VFloat f) |||
+    (if min_int_width = None then all_possible_ints
+     else narrowest_int ?min_int_width ()) |||
+    (floating_point ++ float_scale >>: fun (f, s) -> VFloat (f *. s)) |||
     (strinG "false" >>: fun _ -> VBool false) |||
     (strinG "true" >>: fun _ -> VBool true) |||
     (quoted_string >>: fun s -> VString s) |||

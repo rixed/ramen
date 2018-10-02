@@ -9,6 +9,7 @@ include ParseUsual
 
 (*$inject
   open TestHelpers
+  open Batteries
 *)
 
 let blank = ParseUsual.blank >>: ignore
@@ -75,16 +76,8 @@ let not_in_range ?min ?max what =
                           Num.to_string ma ^" (inclusive)" in
   raise (Reject e)
 
-(* Accept any notation (decimal, hexa, etc) only in the given range. Returns
- * a Num. *)
-let integer_range ?min ?max =
-  integer >>: fun n ->
-    if Option.map_default (Num.ge_num n) true min &&
-       Option.map_default (Num.le_num n) true max
-    then n
-    else not_in_range ?min ?max "integer"
-
-(* Only accept decimal integers from min to max (inclusive). *)
+(* Only accept decimal integers from min to max (inclusive) with no scale suffix,
+ * and returns an int (used for IP addresses, port numbers... *)
 let decimal_integer_range ?min ?max what =
   let decimal_integer what m =
     let m = what :: m in
@@ -103,29 +96,89 @@ let decimal_integer_range ?min ?max what =
 let pos_decimal_integer what =
   decimal_integer_range ~min:0 ?max:None what
 
-let number =
-  floating_point ||| (decimal_number >>: Num.to_float)
+let num_scale =
+  optional ~def:Num.one (opt_blanks -+
+    let str ?(case_sensitive=true) s scale =
+      ParseUsual.string ~case_sensitive s >>: fun () -> scale in
+    let stR = str ~case_sensitive:false in
+    let pico = Num.(div one (of_int 1_000_000_000))
+    and micro = Num.(div one (of_int 1_000_000))
+    and milli = Num.(div one (of_int 1_000))
+    and kilo = Num.(of_int 1_000)
+    and mega = Num.(of_int 1_000_000)
+    and giga = Num.(of_int 1_000_000_000)
+    in
+    (str "p" pico) |||
+    (stR "pico" pico) |||
+    (str "µ" micro) |||
+    (stR "micro" micro) |||
+    (str "m" milli ) |||
+    (stR "milli" milli ) |||
+    (str "k" kilo) |||
+    (stR "kilo" kilo) |||
+    (str "M" mega) |||
+    (stR "mega" mega) |||
+    (str "G" giga) |||
+    (stR "giga" giga) |||
+    (str "Ki" (Num.of_int 1024)) |||
+    (str "Mi" (Num.of_int 1_048_576)) |||
+    (str "Gi" (Num.of_int 1_073_741_824)) |||
+    (str "Ti" (Num.of_int 1_099_511_627_776)))
+
+let float_scale =
+  num_scale >>: Num.to_float
+
+let number m =
+  let m = "number" :: m in
+  (
+    (floating_point ||| (decimal_number >>: Num.to_float)) ++
+    float_scale >>: fun (n, scale) -> n *. scale
+  ) m
+
+(*$= number & ~printer:(test_printer BatFloat.print)
+  (Ok (42., (2, [])))  (test_p ~postproc:Float.round number "42")
+  (Ok (42., (6, [])))  (test_p ~postproc:Float.round number "0.042k")
+  (Ok (42., (7, [])))  (test_p ~postproc:Float.round number "0.042 k")
+  (Ok (42., (10, []))) (test_p ~postproc:Float.round number "0.042 kilo")
+  (Ok (42., (6, [])))  (test_p ~postproc:Float.round number "42000m")
+  (Ok (42., (10, []))) (test_p ~postproc:Float.round number "42000milli")
+*)
 
 let rec duration m =
   let m = "duration" :: m in
   let single_duration =
-    number +- opt_blanks ++
-    (((worDs "microsecond" ||| word "μs") >>: fun () -> 0.000_001) |||
-     ((worDs "millisecond" ||| word "ms") >>: fun () -> 0.001) |||
-     ((worDs "second" ||| word "s") >>: fun () -> 1.) |||
-     ((worDs "minute" ||| word "min" ||| word "m") >>: fun () -> 60.) |||
-     ((worDs "hour" ||| word "h") >>: fun () -> 3600.)) >>:
-   fun (dur, scale) ->
-     let d = dur *. scale in
-     if d < 0. then
-       raise (Reject "durations must be greater than zero") ;
-     d
+    number +- opt_blanks ++ (
+      ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
+      ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
+      ((worDs "hour" ||| word "h") >>: fun () -> 3600.)
+    ) >>: fun (dur, scale) ->
+      let d = dur *. scale in
+      if d < 0. then
+        raise (Reject "durations must be greater than zero") ;
+      d
   in
   (
     let sep = (blanks -- strinG "and" -- blanks) |||
               (opt_blanks -- char ',' -- blanks) in
     let sep = optional ~def:() sep in
-    several ~sep single_duration >>: List.reduce (+.)
+    (
+      several ~sep single_duration >>: List.reduce (+.)
+    ) ||| (
+      (* We must not allow "m" for minutes above because it would be ambiguous with
+       * "milli", but we'd really like it to work when used with "h" or "s", so there
+       * you go: *)
+      optional ~def:None (
+        some (number +- opt_blanks +- word "h" +- opt_blanks)) ++
+      number +- opt_blanks +- word "m" ++
+      optional ~def:None (
+        some (opt_blanks -+ number +- opt_blanks +- word "s")) >>:
+      function
+        | (None, _), None ->
+            raise (Reject "Ambiguous \"m\": is it \"minutes\" or \"milli\"?")
+        | (h, m), s ->
+            let h = h |? 0. and s = s |? 0. in
+            h *. 3600. +. m *. 60. +. s
+    )
   ) m
 
 (*$= duration & ~printer:(test_printer BatFloat.print)
@@ -139,11 +192,25 @@ let rec duration m =
     (test_p duration "1 second, 234 milliseconds")
   (Ok (121.5, (6,[]))) \
     (test_p duration "2m1.5s")
- *)
+  (Ok (3720., (4,[]))) \
+    (test_p duration "1h2m")
+*)
 
 (* TODO: use more appropriate units *)
 let print_duration oc d =
   Printf.fprintf oc "%f seconds" d
+
+(* Accept any notation (decimal, hexa, etc) only in the given range. Returns
+ * a Num. *)
+let integer_range ?min ?max =
+  integer ++ num_scale >>: fun (n, s) ->
+    let n = Num.mul n s in
+    if Num.is_integer_num n then
+      if Option.map_default (Num.ge_num n) true min &&
+         Option.map_default (Num.le_num n) true max
+      then n
+      else not_in_range ?min ?max "integer"
+    else raise (Reject "not an integer")
 
 let list_sep m =
   let m = "list separator" :: m in

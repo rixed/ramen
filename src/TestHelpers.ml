@@ -25,13 +25,14 @@ let strip_linecol = function
   | Ok (res, (x, _line, _col)) -> Ok (res, x)
   | Bad x -> Bad x
 
-let test_p p s =
+let test_p ?(postproc=identity) p s =
   (p +- eof) [] None Parsers.no_error_correction (PConfig.stream_of_string s) |>
   to_result |>
-  strip_linecol
+  strip_linecol |>
+  Result.map (fun (r, rest) -> postproc r, rest)
 
-let test_exn p s =
-  match test_p p s with
+let test_exn ?postproc p s =
+  match test_p ?postproc p s with
   | Ok (r, _) -> r
   | Bad (Approximation _) -> failwith "approximation"
   | Bad (NoSolution e) ->
@@ -39,8 +40,8 @@ let test_exn p s =
   | Bad (Ambiguous lst) ->
       failwith ("Ambiguous: "^ string_of_int (List.length lst) ^" results")
 
-let test_op p s =
-  match test_p p s with
+let test_op ?postproc p s =
+  match test_p ?postproc p s with
   | Ok (res, _) as ok_res ->
     let params =
       [ RamenTuple.{
