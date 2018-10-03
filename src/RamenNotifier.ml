@@ -507,9 +507,11 @@ let pass_fpr max_fpr now certainty =
           (Array.print Float.print) p_junks ;
         (* So that the probability to have sent more than max_fp is: *)
         let p_more = 1. -. p_less_eq in
-        !logger.info "Max FPR test: we have sent %d notifications since %.0f, \
+        !logger.info "Max FPR test: we have sent %d notifications in the last %a, \
                       probability to send more than %d false positive: %f."
-          (Deque.size pendings.last_sent) oldest max_fp p_more ;
+          (Deque.size pendings.last_sent)
+          RamenParsing.print_duration dt
+          max_fp p_more ;
         p_more <= 0.5
       )
 
@@ -652,7 +654,9 @@ let start conf notif_conf_file rb max_fpr =
       { worker ; sent_time ; rcvd_time = now ; event_time ;
         notif_name ; firing ; certainty ; parameters } in
     !logger.info "Received notification from %s: %S %s"
-      worker notif_name (if firing = Some false then "ended" else "started") ;
+      worker notif_name
+      (if firing = Some false then "ended"
+       else ("started ("^ string_of_float certainty ^" certainty)")) ;
     (* Each time we receive a notification we have to assign it to a team,
      * and then use the configured channel to notify it. We load the
      * configuration anew each time, relying on ppp_of_file caching

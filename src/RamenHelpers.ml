@@ -1408,7 +1408,7 @@ let forking_server ~while_ sockaddr server_fun =
         sleep 1
       done
     ) () in
-  (* Now fork a new servers for each connection: *)
+  (* Now fork a new server for each new connection: *)
   let sock =
     socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
   finally (fun () -> close sock)
