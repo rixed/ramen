@@ -1159,7 +1159,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
         (* Default max_size is ten times c: *)
         (fun oc -> function
           | None ->
-              Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) %a"
+              Printf.fprintf oc "Uint32.mul (Uint32.of_int 10) (%a)"
                 (conv_to ?state ~context:Finalize ~opc (Some TU32)) c
           | Some s -> conv_to ?state ~context:Finalize ~opc (Some TU32) oc s) max_size
         (* duration can also be a parameter compatible to float: *)
