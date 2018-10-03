@@ -554,28 +554,29 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
 
 let graphite_expand conf for_render all query () =
   init_logger conf.C.log_level ;
-  let query = String.nsplit ~by:"." query in
+  let query = RamenGraphite.split_query query in
   let te =
     RamenGraphite.full_enum_tree_of_query
       conf ~anchor_right:for_render ~only_running:(not all) query in
   let rec display indent te =
     let e = RamenGraphite.get te in
-    list_iter_first_last (fun is_first is_last ((n, _), c) ->
+    list_iter_first_last (fun is_first is_last (pv, c) ->
       let prefix =
         if is_first then
           if indent = "" then "" else
           if is_last then "-" else "┬"
         else
           if is_last then "└" else "├" in
+      let value = RamenGraphite.(fix_quote pv.value) in
       Printf.printf "%s%s%s"
         (if is_first then "" else "\n"^indent)
-        prefix n ;
+        prefix value ;
       let indent' =
         indent
           ^ (if prefix <> "" then
               if is_last then " " else "│"
             else "")
-          ^ String.make (String.length n) ' '
+          ^ String.make (String.length value) ' '
       in
       display indent' c
     ) e

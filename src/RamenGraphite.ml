@@ -102,22 +102,16 @@ let filter_tree ?anchor_right te flts =
  * of: *)
 type tree_enum_section =
   ProgPath | OpName | FactorField of RamenTypes.value option | DataField
-type string_with_scalar = string * tree_enum_section
+type string_with_scalar =
+  { value : string ; (* The value as a raw string (unquoted) *)
+    section : tree_enum_section }
 
-(* Given a func, returns the tree_enum of fields that are not factors and
- * numeric *)
-let tree_enum_of_fields only_num_fields func =
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-  E (List.filter_map (fun ft ->
-       let n = ft.RamenTuple.typ_name in
-       if (not only_num_fields ||
-           RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
-          not (List.mem n func.F.factors)
-       then
-         Some ((n, DataField), E [])
-       else
-         None
-     ) ser)
+let string_of_tree_enum_section = function
+  | ProgPath -> "ProgPath"
+  | OpName -> "OpName"
+  | FactorField (Some v) -> Printf.sprintf2 "FactorField %a" RamenTypes.print v
+  | FactorField None -> "FactorField"
+  | DataField -> "DataField"
 
 (* When building target names we may use scalar values in place of factor
  * fields. When those values are strings they are always quoted. But we'd
@@ -143,6 +137,21 @@ let fix_quote s =
   "\"pas.glop\"" (fix_quote "\"pas.glop\"")
  *)
 
+(* Given a func, returns the tree_enum of fields that are not factors and
+ * numeric *)
+let tree_enum_of_fields only_num_fields func =
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  E (List.filter_map (fun ft ->
+       let n = ft.RamenTuple.typ_name in
+       if (not only_num_fields ||
+           RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
+          not (List.mem n func.F.factors)
+       then
+         Some ({ value = n ; section = DataField }, E [])
+       else
+         None
+     ) ser)
+
 (* Given a functions and a list of factors (any part of func.F.factors),
  * return the tree_enum of the factors (only the branches going as far as
  * an actual non-factor fields tree) : *)
@@ -155,11 +164,12 @@ let rec tree_enum_of_factors only_num_fields func = function
        * good. *)
       let fact_values = RamenTimeseries.possible_values func factor in
       let fact_values =
-        if Set.is_empty fact_values then [ "", FactorField None ]
+        if Set.is_empty fact_values then
+          [ { value = "" ; section = FactorField None } ]
         else
           Set.map (fun v ->
-            RamenTypes.to_string v |> fix_quote,
-            FactorField (Some v)
+            let value = RamenTypes.to_string v in
+            { value ; section = FactorField (Some v) }
           ) fact_values |>
           Set.to_list in
       E (List.filter_map (fun pv ->
@@ -176,7 +186,10 @@ let tree_enum_of_program ~only_with_event_time ~only_num_fields prog =
          let sub_tree =
           tree_enum_of_factors only_num_fields func func.F.factors in
          if tree_enum_is_empty sub_tree then None else
-           Some ((RamenName.string_of_func func.F.name, OpName), sub_tree)
+           Some (
+            let value = RamenName.string_of_func func.F.name in
+            { value ; section = OpName },
+            sub_tree)
      ) prog.P.funcs)
 
 (* Given the programs hashtable, return a tree_enum of the path components and
@@ -230,11 +243,13 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
             let sub_tree =
               tree_enum_of_program ~only_with_event_time ~only_num_fields prog in
             if tree_enum_is_empty sub_tree then None else
-              Some ((name, ProgPath), sub_tree))
+              Some (
+                { value = name ; section = ProgPath }, sub_tree))
       | (_, name), Hash h ->
         let sub_tree = tree_enum_of_h h in
         if tree_enum_is_empty sub_tree then None else
-          Some ((name, ProgPath), sub_tree)) |>
+          Some (
+            { value = name ; section = ProgPath }, sub_tree)) |>
      List.of_enum) in
   tree_enum_of_h h
 
@@ -244,7 +259,8 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
 let filters_of_query query =
   List.map (fun q ->
     let glob = Globs.compile q in
-    Globs.matches glob % fst) query
+    fun pv -> Globs.matches glob pv.value
+  ) query
 
 let full_enum_tree_of_query conf ?anchor_right ?(only_running=false) query =
     let programs = C.with_rlock conf identity in
@@ -339,12 +355,13 @@ let expand_query_text conf query =
   let num_filters = List.length query in
   let prefix = (List.take (num_filters - 1) query |>
                 String.concat ".") ^ "." in
-  tree_enum_fold (fun node_res (depth, target) (n, _section) is_leaf ->
+  tree_enum_fold (fun node_res (depth, target) pv is_leaf ->
     (* depth starts at 0 *)
+    let value = fix_quote pv.value in
     let target' =
-      if target = "" then n else target ^"."^ n in
+      if target = "" then value else target ^"."^ value in
     (if depth = num_filters - 1 then
-      (prefix ^ n, is_leaf, n, target') :: node_res
+      (prefix ^ value, is_leaf, value, target') :: node_res
     else
       node_res),
     (depth + 1, target')
@@ -356,20 +373,24 @@ let expand_query_values ?anchor_right conf query =
   let filtered = enum_tree_of_query ?anchor_right conf query in
   tree_enum_fold (fun node_res
                       (prog_name, func_name, factors, data_field)
-                      (n, section) is_leaf ->
-    match section with
+                      pv is_leaf ->
+    match pv.section with
     | ProgPath ->
-        let prog_name = if prog_name = "" then n else prog_name ^"/"^ n in
+        let prog_name = if prog_name = "" then pv.value
+                        else prog_name ^"/"^ pv.value in
+        let prog_name = fix_quote prog_name in
         node_res, (prog_name, func_name, factors, data_field)
     | OpName ->
-        node_res, (prog_name, n, factors, data_field)
+        node_res,
+        (prog_name, pv.value, factors, data_field)
     | FactorField v_opt ->
-        node_res, (prog_name, func_name, (n, v_opt) :: factors, data_field)
+        node_res,
+        (prog_name, func_name, v_opt :: factors, data_field)
     | DataField ->
         assert is_leaf ;
         (RamenName.program_of_string prog_name,
          RamenName.func_of_string func_name,
-         List.rev factors, n) :: node_res, depth0
+         List.rev factors, pv.value) :: node_res, depth0
   ) [] depth0 filtered
 
 let complete_graphite_find conf params =
@@ -489,7 +510,7 @@ let render_graphite conf headers body =
                         (RamenName.string_of_fq fq) data_field ;
                       None
                     ) else (
-                      Some (func, fq, List.map snd fvals, data_field)
+                      Some (func, fq, fvals, data_field)
                     )))
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where
