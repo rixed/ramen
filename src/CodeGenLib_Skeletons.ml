@@ -329,7 +329,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     (* For tests, allow to overwrite what's specified in the operation: *)
     and filename = getenv ~def:filename "csv_filename"
     and separator = getenv ~def:separator "csv_separator" in
-    let tuples = [ [ "param" ], field_of_params ] in
+    let tuples = [ [ "param" ], field_of_params ;
+                   [ "env" ], Sys.getenv ] in
     let filename = subst_tuple_fields tuples filename
     and separator = subst_tuple_fields tuples separator
     in
@@ -467,7 +468,8 @@ let notify rb worker event_time
   let tuples =
     [ [ ""; "out" ], field_of_tuple_out tuple_out ;
       [ "in" ], field_of_tuple_in tuple_in ;
-      [ "param" ], field_of_params ] in
+      [ "param" ], field_of_params ;
+      [ "env" ], Sys.getenv ] in
   let name = subst_tuple_fields tuples name
   and parameters =
     List.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
