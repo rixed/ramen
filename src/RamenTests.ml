@@ -184,7 +184,7 @@ let tuple_print ser oc vs =
 let test_output conf fq output_spec end_flag =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
-  let bname, filter, _typ, ser, _params, _event_time =
+  let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to string value into a list of field
@@ -257,7 +257,7 @@ let test_output conf fq output_spec end_flag =
 
 (* Wait for the given tuple: *)
 let test_until conf count end_flag fq spec =
-  let bname, filter, _typ, ser, _params, _event_time =
+  let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let filter_spec = filter_spec_of_spec fq ser spec in
   let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in

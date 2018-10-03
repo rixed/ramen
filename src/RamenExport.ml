@@ -60,20 +60,23 @@ let read_well_known fq where suffix bname typ () =
     Some (bname, filter, typ, ser)
   else None
 
+(* Returns the ringbuf name, a bool indicating if it's a temporary export or not,
+ * the filter corresponding to [where], the tuple type, the tuple serialized type,
+ * the parameters and event time of [fq]: *)
 let read_output conf ?duration fq where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where "#stats"
           (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
-      bname, filter, typ, ser, [], RamenBinocle.event_time
+      bname, false, filter, typ, ser, [], RamenBinocle.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
       (match read_well_known fq where "#notifs"
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
       | Some (bname, filter, typ, ser) ->
-          bname, filter, typ, ser, [], RamenNotification.event_time
+          bname, false, filter, typ, ser, [], RamenNotification.event_time
       | None ->
           (* Normal case: Create the non-wrapping RingBuf (under a standard
            * name given by RamenConf *)
@@ -82,5 +85,5 @@ let read_output conf ?duration fq where =
           let ser =
             RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
           let filter = RamenSerialization.filter_tuple_by ser where in
-          bname, filter, func.F.out_type, ser, prog.P.params,
+          bname, true, filter, func.F.out_type, ser, prog.P.params,
           func.F.event_time)

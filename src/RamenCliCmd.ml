@@ -376,7 +376,7 @@ let tail conf func_name with_header sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
-  let bname, filter, typ, ser, params, event_time =
+  let bname, is_temp_export, filter, typ, ser, params, event_time =
     RamenExport.read_output conf ~duration func_name where
   in
   (* Find out which seqnums we want to scan: *)
@@ -412,14 +412,15 @@ let tail conf func_name with_header sep null raw
         Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
     BatIO.flush stdout) ;
-  let rec reset_export_timeout () =
-    (* Start by sleeping as we've just set the temp export above: *)
-    Unix.sleepf (max 1. (duration -. 1.)) ;
-    let _ = RamenExport.make_temp_export_by_name conf ~duration func_name in
-    reset_export_timeout () in
-  Thread.create (
-    restart_on_failure "reset_export_timeout"
-      reset_export_timeout) () |> ignore ;
+  if is_temp_export then (
+    let rec reset_export_timeout () =
+      (* Start by sleeping as we've just set the temp export above: *)
+      Unix.sleepf (max 1. (duration -. 1.)) ;
+      let _ = RamenExport.make_temp_export_by_name conf ~duration func_name in
+      reset_export_timeout () in
+    Thread.create (
+      restart_on_failure "reset_export_timeout"
+        reset_export_timeout) () |> ignore) ;
   let open RamenSerialization in
   let event_time_of_tuple = match event_time with
     | None ->

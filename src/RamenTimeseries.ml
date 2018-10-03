@@ -66,7 +66,7 @@ let get conf ?duration max_data_points since until where factors
       Printf.fprintf oc "%s%s%a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
-  let bname, filter, _typ, ser, params, event_time =
+  let bname, _is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
   let open RamenSerialization in
   let fis =
