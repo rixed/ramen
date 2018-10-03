@@ -461,6 +461,7 @@ let do_notify conf pending _now =
   )
 
 let pass_fpr max_fpr now certainty =
+  let certainty = cap ~min:0. ~max:1. certainty in
   match Deque.rear pendings.last_sent with
   | None ->
       !logger.info "Max FPR test: pass due to first notification ever sent." ;

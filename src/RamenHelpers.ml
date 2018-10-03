@@ -1436,3 +1436,15 @@ let forking_server ~while_ sockaddr server_fun =
         !logger.debug "Stop accepting connections."
     ) () ;
   Thread.join killer_thread
+
+let cap ?min ?max f =
+  let f = Option.map_default (Pervasives.max f) f min in
+  Option.map_default (Pervasives.min f) f max
+
+(*$= cap & ~printer:string_of_int
+  2 (cap ~min:1 ~max:3 2)
+  1 (cap ~min:1 ~max:3 0)
+  0 (cap ~max:3 0)
+  3 (cap ~min:1 ~max:3 5)
+  5 (cap ~min:1 5)
+*)
