@@ -168,7 +168,7 @@ let ensure_inited f =
   let initer persist_dir =
     match !inited with
     | None ->
-        let save_dir = persist_dir ^"/binocle" in
+        let save_dir = persist_dir ^"/binocle/"^ RamenVersions.binocle in
         mkdir_all save_dir ;
         let m = f save_dir in
         inited := Some m ;

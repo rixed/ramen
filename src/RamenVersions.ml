@@ -28,3 +28,6 @@ let out_ref = "v3" (* last: use PPP *)
 
 (* Workers state format *)
 let worker_state = "v10" (* last: remove dead state member *)
+
+(* Format of the binocle save files *)
+let binocle = Binocle.version

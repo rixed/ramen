@@ -15,7 +15,7 @@ depends: [
   "batteries" {= "2.8.0"}
   "stdint" {= "0.5.0fix1"}
   "parsercombinator" {>= "0.6"}
-  "binocle" {>= "0.7"}
+  "binocle" {>= "0.8.0"}
   "lacaml" {= "11.0.1"}
   "num"
   "ppp" {>= "2.6"}
