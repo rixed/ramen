@@ -95,12 +95,7 @@ end
 module Program =
 struct
   type t =
-    { (* Do away with this default_name, that's mostly useless.
-         Instead, binaries should have a cwd that we can set at start.
-         But then we still need a root_path to help the compiler found
-         parents out types? *)
-      default_name : RamenName.program ;
-      params : RamenTuple.params [@ppp_default []] ;
+    { params : RamenTuple.params [@ppp_default []] ;
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
@@ -137,12 +132,10 @@ struct
         0.
     in
     let get_prog = cached "of_bin" reread_data age_of_data in
-    fun ?as_ params fname ->
+    fun program_name params fname ->
       let p = get_prog fname in
-      let program_name = as_ |? p.default_name in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
-      { p with
-        params = RamenTuple.overwrite_params p.params params ;
+      { params = RamenTuple.overwrite_params p.params params ;
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs }
 
   let bin_of_program_name root_path program_name =
@@ -192,8 +185,8 @@ let save_rc_file do_persist rc_file rc =
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
  * the Program.t (with the actual params). *)
-let program_of_running_entry ?as_ mre =
-  Program.of_bin ?as_ mre.params mre.bin
+let program_of_running_entry program_name mre =
+  Program.of_bin program_name mre.params mre.bin
 
 (* [f] takes a hash-table of program name to running-config getter.
  * Modifications will not be saved. *)
@@ -206,7 +199,7 @@ let with_rlock conf f =
       read_rc_file conf.do_persist rc_file |>
       Hashtbl.map (fun pn mre ->
         mre,
-        memoize (fun () -> program_of_running_entry ~as_:pn mre)) in
+        memoize (fun () -> program_of_running_entry pn mre)) in
     f programs)
 
 let with_wlock conf f =

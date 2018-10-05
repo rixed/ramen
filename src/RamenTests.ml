@@ -423,10 +423,10 @@ let run_test conf notify_rb dirname test =
             | exception Not_found ->
                 Printf.sprintf "Cannot find program %s" (RamenName.program_color n) |>
                 fail_and_quit
-            | par -> P.of_bin par.params par.bin
+            | par -> P.of_bin n par.params par.bin
           in
           bin_of_program conf dirname get_parent program_name p.code) in
-      let prog = P.of_bin p.params bin in
+      let prog = P.of_bin program_name p.params bin in
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; killed = false ; debug = false ;
             report_period = RamenConsts.Default.report_period } ;

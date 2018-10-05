@@ -9,7 +9,7 @@ let release_tag = "v3.0.12"
 let graph_config = "v14" (* last: per worker report_period *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v38" (* last: binary shift operators *)
+let codegen = "v39" (* last: remove default program name from binary *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v5" (* last: addition of startup time *)

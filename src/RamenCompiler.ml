@@ -43,7 +43,8 @@ let init use_external_compiler bundle_dir max_simult_compils smt_solver =
  * the running configuration: *)
 
 let parent_from_root_path root_path pn =
-  P.bin_of_program_name root_path pn |> P.of_bin (Hashtbl.create 0)
+  P.bin_of_program_name root_path pn |>
+  P.of_bin pn (Hashtbl.create 0)
 
 let parent_from_programs programs pn =
   (Hashtbl.find programs pn |> snd) ()
@@ -356,7 +357,7 @@ let compile conf root_path get_parent ?exec_file
          * force export and merge flags, and parameters default values. *)
         let funcs = Hashtbl.values compiler_funcs /@ fst |> List.of_enum
         and params = parsed_params in
-        let runconf = P.{ default_name = program_name ; funcs ; params } in
+        let runconf = P.{ funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;

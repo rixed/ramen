@@ -139,6 +139,7 @@ let notify conf parameters notif_name () =
  * Actual work happens in RamenCompiler.
  *)
 
+(* Note: We need a program name to identify relative parents. *)
 let compile conf root_path use_external_compiler bundle_dir
             max_simult_compils smt_solver source_files
             output_file_opt program_name_opt () =
@@ -190,11 +191,17 @@ let compile conf root_path use_external_compiler bundle_dir
  *)
 
 let run conf params replace report_period as_ bin_file () =
+  (* By default use the given path as the program name: *)
+  let program_name =
+    Option.default_delayed (fun () ->
+      Filename.remove_extension bin_file |>
+      RamenName.program_of_string
+    ) as_ in
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf params replace report_period ?as_ bin_file debug
+  RamenRun.run conf params replace report_period program_name bin_file debug
 
 (*
  * `ramen kill`

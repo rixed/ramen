@@ -173,7 +173,13 @@ let filter_tuple_by ser where =
       let idx, t = find_field ser n in
       let v =
         if v = VNull then VNull else
-        RamenTypes.enlarge_value t.typ.structure v in
+        (try RamenTypes.enlarge_value t.typ.structure v
+        with e ->
+          !logger.error "Cannot enlarge %a to %a (ser = %a)"
+            RamenTypes.print v
+            RamenTuple.print_field_typ t
+            RamenTuple.print_typ ser ;
+          raise e) in
       let op =
         match op with
         | "=" -> (=) | "<=" -> (<=) | ">=" -> (>=)

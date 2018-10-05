@@ -35,7 +35,7 @@ let check_links ?(force=false) program_name prog running_programs =
               (RamenName.string_of_program par_prog) ;
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
-            (match P.of_bin mre.C.params mre.C.bin with
+            (match P.of_bin par_prog mre.C.params mre.C.bin with
             | exception _ -> (* of_bin already logged the error *) ()
             | pprog ->
                 (match List.find (fun p ->
@@ -66,8 +66,8 @@ let check_links ?(force=false) program_name prog running_programs =
    * run by the process supervisor anyway, unless the incompatible
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
-  Hashtbl.iter (fun _prog_name mre ->
-    match P.of_bin mre.C.params mre.C.bin with
+  Hashtbl.iter (fun prog_name mre ->
+    match P.of_bin prog_name mre.C.params mre.C.bin with
     | exception _ -> (* of_bin already logged the error *) ()
     | prog' ->
         List.iter (fun func ->
@@ -94,11 +94,10 @@ let check_links ?(force=false) program_name prog running_programs =
         ) prog'.P.funcs
   ) running_programs
 
-let run conf params replace report_period ?as_ bin_file debug =
+let run conf params replace report_period program_name ?source_file bin_file debug =
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
-    let prog = P.of_bin ?as_ params bin in
-    let program_name = (List.hd prog.P.funcs).F.program_name in
+    let prog = P.of_bin program_name params bin in
     check_links program_name prog programs ;
     if not replace then
       (match Hashtbl.find programs program_name with
@@ -122,7 +121,7 @@ let check_orphans killed_prog_names programs =
     if not mre.C.killed &&
        not (List.mem prog_name killed_prog_names)
     then (
-      let prog = P.of_bin mre.C.params mre.C.bin in
+      let prog = P.of_bin prog_name mre.C.params mre.C.bin in
       List.iter (fun func ->
         (* If this func has parents, all of which are now missing, then
          * complain: *)

@@ -409,7 +409,7 @@ let run_alert conf program_name =
   and replace = true
   and debug = false
   in
-  RamenRun.run conf params replace report_period bin_file debug
+  RamenRun.run conf params replace report_period program_name bin_file debug
 
 let stop_alert conf program_name =
   let glob =
@@ -466,14 +466,22 @@ let save_alert conf table column to_keep alert_info =
       if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
         Printf.sprintf "Column %s of table %s is not numeric" column table |>
         failwith ;
+      (* TODO: here instead of compiling ourselves we should merely store the file
+       * and the later call to RamenMake.run (or stop) will compile and run it
+       * (or not). Notice that RamenMake.run takes also the source false in addition
+       * to binary and program name.
+       * We cannot merely put the file and wait, as RamenMake rebuild only the
+       * running programs. *)
       let program_code = generate_alert table ft alert_info in
       !logger.info "Alert code:\n%s" program_code ;
       compile_alert conf programs program_name program_code) ;
     Unix.rename tmp_fname conf_fname) ;
   if is_enabled alert_info then
+    (* TODO: here we should rather call RamenMake.run *)
     (* Won't do anything if it's running already *)
     run_alert conf program_name
   else
+    (* TODO: and again here for completeness: RamenMake.stop *)
     (* Won't do anything if it's not running *)
     stop_alert conf program_name
 

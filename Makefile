@@ -129,6 +129,7 @@ RAMEN_SOURCES = \
 	src/RamenCompiler.ml \
 	src/RamenRun.ml \
 	src/RamenGraphite.ml \
+	src/RamenMake.ml \
 	src/RamenApi.ml \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
