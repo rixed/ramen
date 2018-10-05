@@ -109,7 +109,8 @@ let run conf params replace report_period program_name ?source_file bin_file deb
           failwith) ;
     (* TODO: Make sure this key is authoritative on a program name: *)
     Hashtbl.replace programs program_name
-      C.{ bin ; params ; killed = false ; debug ; report_period })
+      C.{ bin ; params ; killed = false ; debug ; report_period ;
+          source = source_file })
 
 (*
  * Stopping a worker from running.

@@ -163,7 +163,11 @@ type must_run_entry =
     (* Full path to the worker's binary: *)
     bin : string ;
     (* "Command line" for that worker: *)
-    params : RamenName.params [@ppp_default Hashtbl.create 0] }
+    params : RamenName.params [@ppp_default Hashtbl.create 0] ;
+    (* Optionally, file from which this worker can be (re)build (see RamenMake).
+     * When it is rebuild, relative parents are found using the program name that's
+     * the key in the running config. *)
+    source : string option [@ppp_default None] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
 type must_run_file = (RamenName.program, must_run_entry) Hashtbl.t
