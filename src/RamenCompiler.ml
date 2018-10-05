@@ -49,13 +49,13 @@ let parent_from_root_path root_path pn =
 let parent_from_programs programs pn =
   (Hashtbl.find programs pn |> snd) ()
 
-(* object and smt2 files will be created in [root_path], as well as the
- * final binary unless changed with [exec_file].
+(* [program_name] is used to resolve relative parent names, and name a few
+ * temp files.
  * [get_parent] is a function that returns the P.t of a given
  * RamenName.program, used to get the output types of pre-existing
  * functions. *)
-let compile conf root_path get_parent ?exec_file
-            program_name program_code =
+let compile conf get_parent ?exec_file source_file program_name =
+  let program_code = read_whole_file source_file in
   (*
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
@@ -266,7 +266,7 @@ let compile conf root_path get_parent ?exec_file
           (Histogram.add (stats_typing_time conf.C.persist_dir)
              ~labels:["typer", typer_name])) in
     let open RamenSmtTyping in
-    let smt2_file = C.smt_file root_path program_name in
+    let smt2_file = C.smt_file source_file in
     add_single_temp_file smt2_file ;
     let types =
       call_typer !RamenSmtTyping.smt_solver (fun () ->
@@ -295,20 +295,22 @@ let compile conf root_path get_parent ?exec_file
      *)
     !logger.info "Compiling program %s"
       (RamenName.string_of_program program_name) ;
-    let path_of_module p =
-      let prog_path = RamenName.path_of_program p in
+    (* Given a file name, make it a valid module name: *)
+    let make_valid_for_module fname =
       let dirname, basename =
-        try String.rsplit ~by:"/" prog_path
-        with Not_found -> "", prog_path in
+        try String.rsplit ~by:"/" fname
+        with Not_found -> "", fname in
       let basename = RamenOCamlCompiler.to_module_name basename in
       dirname ^(if dirname <> "" then "/" else "")^ basename
     in
+    let src_name_of_func func =
+      Filename.remove_extension source_file ^
+      "_"^ func.F.signature ^
+      "_"^ RamenVersions.codegen |>
+      RamenOCamlCompiler.to_module_name in
     let obj_files =
       Hashtbl.fold (fun _ (func, op) lst ->
-        let obj_name =
-          root_path ^"/"^ path_of_module program_name ^
-          "_"^ func.F.signature ^
-          "_"^ RamenVersions.codegen ^".cmx" in
+        let obj_name = src_name_of_func func ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
@@ -336,12 +338,12 @@ let compile conf root_path get_parent ?exec_file
      *)
     let exec_file =
       Option.default_delayed (fun () ->
-        P.bin_of_program_name root_path program_name
-      ) exec_file
-    and pname = RamenName.string_of_program program_name in
-    let obj_name = root_path ^"/"^ path_of_module program_name
-                   ^"_casing_"^ RamenVersions.codegen ^".cmx" in
-    let src_file =
+        Filename.remove_extension source_file ^".x"
+      ) exec_file in
+    let obj_name =
+      make_valid_for_module (Filename.remove_extension source_file) ^
+      "_casing_"^ RamenVersions.codegen ^".cmx" in
+    let ocaml_file =
       RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (RamenName.string_of_program program_name) ;
@@ -368,21 +370,19 @@ let compile conf root_path get_parent ?exec_file
           "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ [\n"
             RamenVersions.codegen ;
         Hashtbl.iter (fun _ (func, _op) ->
-          assert (pname.[String.length pname-1] <> '/') ;
-          Printf.fprintf oc"\t%S, %s_%s_%s.%s ;\n"
+          let mod_name = src_name_of_func func |>
+                         Filename.basename |>
+                         String.capitalize_ascii in
+          Printf.fprintf oc"\t%S, %s.%s ;\n"
             (RamenName.string_of_func func.F.name)
-            (String.capitalize_ascii
-              (Filename.basename pname |>
-               RamenOCamlCompiler.to_module_name))
-            func.F.signature
-            RamenVersions.codegen
+            mod_name
             entry_point_name
         ) compiler_funcs ;
         Printf.fprintf oc "]\n") in
-    add_temp_file src_file ;
+    add_temp_file ocaml_file ;
     (*
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.
      *)
-    RamenOCamlCompiler.link conf program_name obj_files src_file exec_file
+    RamenOCamlCompiler.link conf program_name obj_files ocaml_file exec_file
   ) () (* and finally, delete temp files! *)

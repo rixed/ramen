@@ -391,12 +391,17 @@ let check_test_spec conf test =
  * another literate program though.
  * TODO: set the root_path used here and to find the bins as a command line
  * parameter of `ramen test`. *)
-let bin_of_program conf root_path get_parent program_name program_code =
+let bin_of_program conf get_parent program_name program_code =
   let exec_file =
     C.test_literal_programs_root conf ^"/"^
-    RamenName.path_of_program program_name ^".x" in
-  RamenCompiler.compile conf root_path get_parent ~exec_file
-                        program_name program_code ;
+    RamenName.path_of_program program_name ^".x"
+  and source_file =
+    C.test_literal_programs_root conf ^"/"^
+    RamenName.path_of_program program_name ^".ramen" in
+  File.with_file_out ~mode:[`create; `text ; `trunc] source_file (fun oc ->
+    String.print oc program_code) ;
+  RamenCompiler.compile conf get_parent ~exec_file
+                        source_file program_name ;
   exec_file
 
 let run_test conf notify_rb dirname test =
@@ -425,7 +430,7 @@ let run_test conf notify_rb dirname test =
                 fail_and_quit
             | par -> P.of_bin n par.params par.bin
           in
-          bin_of_program conf dirname get_parent program_name p.code) in
+          bin_of_program conf get_parent program_name p.code) in
       let prog = P.of_bin program_name p.params bin in
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; killed = false ; debug = false ;

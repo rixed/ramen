@@ -165,11 +165,10 @@ let compile conf root_path use_external_compiler bundle_dir
           !logger.error "No program name given and cannot find out from the \
                          file name, giving up!" ;
           exit 1
-      ) program_name_opt
-    and program_code = read_whole_file source_file in
-    RamenCompiler.compile conf root_path get_parent
+      ) program_name_opt in
+    RamenCompiler.compile conf get_parent
                           ?exec_file:output_file_opt
-                          program_name program_code
+                          source_file program_name
   in
   List.iter (fun source_file ->
     try
