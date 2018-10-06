@@ -106,8 +106,8 @@ let build conf program_name src_file target_file =
           !logger.debug "%S is still up to date" target_file ;
         loop target_file rest
   in
-  let from_type = Filename.extension src_file
-  and to_type = Filename.extension target_file in
+  let from_type = file_ext src_file
+  and to_type = file_ext target_file in
   let path = find_path from_type to_type in
   loop src_file path
 

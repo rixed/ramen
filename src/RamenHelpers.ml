@@ -355,6 +355,10 @@ let ensure_no_trailing_slash dirname =
 let change_ext new_ext fname =
   Filename.remove_extension fname ^ new_ext
 
+let file_ext fname =
+  let e = Filename.extension fname in
+  if e = "" then e else String.lchop e
+
 let starts_with c f =
   String.length f > 0 && f.[0] = c
 
