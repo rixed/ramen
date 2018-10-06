@@ -111,12 +111,20 @@ let build conf program_name src_file target_file =
   let path = find_path from_type to_type in
   loop src_file path
 
+(* OCaml default values are created at every call, so create this one once
+ * and for all: *)
+let no_params = Hashtbl.create 0
+
 (* Maybe build and run a program. *)
 let run ?(report_period=RamenConsts.Default.report_period)
-        ?(replace=false)
-        ?debug
-        conf src_file bin_file program_name params =
+        ?(replace=false) ?(params=no_params)
+        ?debug ?exec_file
+        conf src_file program_name =
   let debug = debug |? conf.C.log_level = Debug in
-  build conf program_name src_file bin_file ;
+  let exec_file =
+    Option.default_delayed (fun () ->
+      Filename.remove_extension src_file ^".x"
+    ) exec_file in
+  build conf program_name src_file exec_file ;
   RamenRun.run conf params replace report_period program_name ~src_file
-               bin_file debug
+               exec_file debug
