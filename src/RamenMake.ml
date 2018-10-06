@@ -42,12 +42,12 @@ let register from to_ f =
  * the running-config (not on disc) and has no option to set a different
  * program name. (FIXME: try to get rid of that option) *)
 let () =
-  register "ramen" "x" (fun conf program_name source_file exec_file ->
+  register "ramen" "x" (fun conf program_name src_file exec_file ->
     (* Where to get the default prog name from? -> FIXME: try to get rid of this.
      * Why do we need a root_path when we are taking the parents from the RC? *)
     C.with_rlock conf (fun programs ->
       let get_parent = RamenCompiler.parent_from_programs programs in
-      RamenCompiler.compile conf get_parent ~exec_file source_file
+      RamenCompiler.compile conf get_parent ~exec_file src_file
                             program_name))
 
 (* Return the list of builders, brute force (N is small!): *)
@@ -88,35 +88,35 @@ let rec find_path from to_ =
 (* using files presence and modification time.
  * Notice that if modification time of target = modification time of source then we
  * have to rebuild. *)
-let must_rebuild _source_file _target_file =
+let must_rebuild _src_file _target_file =
   true (* TODO *)
 
 (* Get the build path, then for each step from the source, check if the build is
  * required. Build program name is required to resolve relative parents. *)
-let build conf program_name source_file target_file =
-  let base_file = Filename.remove_extension source_file in
-  let rec loop source_file = function
+let build conf program_name src_file target_file =
+  let base_file = Filename.remove_extension src_file in
+  let rec loop src_file = function
     | [] ->
         !logger.debug "Done recompiling %S" target_file
     | (to_type, builder) :: rest ->
         let target_file = base_file ^"."^ to_type in
-        if must_rebuild source_file target_file then
-          builder conf program_name source_file target_file
+        if must_rebuild src_file target_file then
+          builder conf program_name src_file target_file
         else
           !logger.debug "%S is still up to date" target_file ;
         loop target_file rest
   in
-  let from_type = Filename.extension source_file
+  let from_type = Filename.extension src_file
   and to_type = Filename.extension target_file in
   let path = find_path from_type to_type in
-  loop source_file path
+  loop src_file path
 
 (* Maybe build and run a program. *)
 let run ?(report_period=RamenConsts.Default.report_period)
         ?(replace=false)
         ?debug
-        conf source_file bin_file program_name params =
+        conf src_file bin_file program_name params =
   let debug = debug |? conf.C.log_level = Debug in
-  build conf program_name source_file bin_file ;
-  RamenRun.run conf params replace report_period program_name ~source_file
+  build conf program_name src_file bin_file ;
+  RamenRun.run conf params replace report_period program_name ~src_file
                bin_file debug

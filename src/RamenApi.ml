@@ -461,9 +461,6 @@ let save_alert conf table column to_keep alert_info =
     ppp_to_file tmp_fname alert_source_ppp_ocaml alert_info ;
     C.with_rlock conf (fun programs ->
       let ft = field_typ_of_column programs table column in
-      if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
-        Printf.sprintf "Column %s of table %s is not numeric" column table |>
-        failwith ;
       (* TODO: here instead of compiling ourselves we should merely store the file
        * and the later call to RamenMake.run (or stop) will compile and run it
        * (or not). Notice that RamenMake.run takes also the source false in addition
@@ -507,6 +504,12 @@ let set_alerts conf msg =
               RamenName.string_of_program parent ^"/"^ id in
             to_delete := Set.String.add program_name !to_delete)) ;
       List.iter (fun alert ->
+        (* Check the alert: *)
+        C.with_rlock conf (fun programs ->
+          let ft = field_typ_of_column programs table column in
+          if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
+            Printf.sprintf "Column %s of table %s is not numeric" column table |>
+            failwith) ;
         (* We receive only the latest version: *)
         save_alert conf table column to_keep (V1 alert)
       ) alerts
