@@ -725,7 +725,10 @@ let synchronize_running conf autoreload_delay =
                * worker change but not its name we see a different worker. *)
               Hashtbl.clear must_run ;
               Hashtbl.iter (fun program_name (mre, get_rc) ->
-                if not mre.C.killed then
+                if not mre.C.killed then (
+                  if mre.C.src_file <> "" then (
+                    !logger.info "Trying to build %S" mre.C.bin ;
+                    RamenMake.build conf program_name mre.C.src_file mre.C.bin) ;
                   match get_rc () with
                   | exception _ ->
                       (* Errors have been logged already, nothing more can
@@ -743,7 +746,7 @@ let synchronize_running conf autoreload_delay =
                           program_name, f.F.name, f.F.signature, prog.P.params
                         in
                         Hashtbl.add must_run k (mre, f)
-                      ) prog.P.funcs
+                      ) prog.P.funcs)
               ) must_run_programs ;
               now
             ) else last_read) in

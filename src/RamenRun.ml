@@ -94,6 +94,8 @@ let check_links ?(force=false) program_name prog running_programs =
         ) prog'.P.funcs
   ) running_programs
 
+(* The binary must have been produced already as it's goin to be read for
+ * linkage checks: *)
 let run conf params replace report_period program_name ?(src_file="")
         bin_file debug =
   C.with_wlock conf (fun programs ->

@@ -85,14 +85,26 @@ let rec find_path from to_ =
   let path_rev, _ = loop 10 [] 0 from in
   List.rev path_rev
 
-(* using files presence and modification time.
+(* Using files presence and modification time.
  * Notice that if modification time of target = modification time of source then we
- * have to rebuild. *)
-let must_rebuild _src_file _target_file =
-  true (* TODO *)
+ * have to rebuild (but we make sure the target will be > next time!) *)
+let must_rebuild src_file target_file =
+  (* FIXME: this should actually be given with the builder,
+   * so that it would return true for "x" files with obsolete codegen versions
+   * regardless of modification time of source file. *)
+  let st = mtime_of_file src_file in
+  let wait_source_in_past () =
+    while st >= Unix.time () do Unix.sleepf 0.2 done in
+  match mtime_of_file target_file with
+  | exception Unix.(Unix_error (ENOENT, _, _)) ->
+      wait_source_in_past () ;
+      true
+  | tt ->
+      st <= tt
 
 (* Get the build path, then for each step from the source, check if the build is
- * required. Build program name is required to resolve relative parents. *)
+ * required.
+ * [program_name] is required to resolve relative parents. *)
 let build conf program_name src_file target_file =
   let base_file = Filename.remove_extension src_file in
   let rec loop src_file = function
@@ -100,6 +112,7 @@ let build conf program_name src_file target_file =
         !logger.debug "Done recompiling %S" target_file
     | (to_type, builder) :: rest ->
         let target_file = base_file ^"."^ to_type in
+        mkdir_all ~is_file:true target_file ;
         if must_rebuild src_file target_file then
           builder conf program_name src_file target_file
         else
@@ -110,21 +123,3 @@ let build conf program_name src_file target_file =
   and to_type = file_ext target_file in
   let path = find_path from_type to_type in
   loop src_file path
-
-(* OCaml default values are created at every call, so create this one once
- * and for all: *)
-let no_params = Hashtbl.create 0
-
-(* Maybe build and run a program. *)
-let run ?(report_period=RamenConsts.Default.report_period)
-        ?(replace=false) ?(params=no_params)
-        ?debug ?exec_file
-        conf src_file program_name =
-  let debug = debug |? conf.C.log_level = Debug in
-  let exec_file =
-    Option.default_delayed (fun () ->
-      Filename.remove_extension src_file ^".x"
-    ) exec_file in
-  build conf program_name src_file exec_file ;
-  RamenRun.run conf params replace report_period program_name ~src_file
-               exec_file debug

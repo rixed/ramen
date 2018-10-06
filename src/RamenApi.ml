@@ -448,17 +448,23 @@ let save_alert conf program_name alert_info =
   let program_name = RamenName.program_of_string program_name in
   let basename =
     C.api_alerts_root conf ^"/"^ RamenName.path_of_program program_name in
-  let alert_file = basename ^".alert" in
+  let src_file = basename ^".alert" in
   (* Avoid triggering a recompilation if it's unchanged: *)
-  if same_file_exist alert_file alert_info then
-    !logger.debug "Alert %s preexist with same definition" alert_file
+  if same_file_exist src_file alert_info then
+    !logger.debug "Alert %s preexist with same definition" src_file
   else (
-    !logger.info "Saving new alert into %s" alert_file ;
-    ppp_to_file alert_file alert_source_ppp_ocaml alert_info ;
-    if is_enabled alert_info then
-      (* Won't do anything if it's running already *)
-      RamenMake.run ~replace:true conf alert_file program_name
-    else
+    !logger.info "Saving new alert into %s" src_file ;
+    ppp_to_file src_file alert_source_ppp_ocaml alert_info ;
+    if is_enabled alert_info then (
+      (* Compile right now so that we can report errors to the client and RamenRun.run
+       * can check linkage errors: *)
+      let exec_file = basename ^".x" in
+      RamenMake.build conf program_name src_file exec_file ;
+      let debug = conf.C.log_level = Debug in
+      let params = Hashtbl.create 0 in
+      RamenRun.run conf params true RamenConsts.Default.report_period
+                   program_name ~src_file exec_file debug
+    ) else
       (* Won't do anything if it's not running *)
       stop_alert conf program_name)
 
