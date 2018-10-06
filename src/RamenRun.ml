@@ -94,7 +94,8 @@ let check_links ?(force=false) program_name prog running_programs =
         ) prog'.P.funcs
   ) running_programs
 
-let run conf params replace report_period program_name ?src_file bin_file debug =
+let run conf params replace report_period program_name ?(src_file="")
+        bin_file debug =
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
     let prog = P.of_bin program_name params bin in

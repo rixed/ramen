@@ -435,7 +435,7 @@ let run_test conf notify_rb dirname test =
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; killed = false ; debug = false ;
             report_period = RamenConsts.Default.report_period ;
-            src_file = None } ;
+            src_file = "" } ;
       List.iter (fun func ->
         Hashtbl.add workers (F.fq_name func) (func, ref None)
       ) prog.P.funcs
