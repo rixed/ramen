@@ -349,8 +349,8 @@ let root_path =
                    ~env [ "root-path" ] in
   Arg.(value (opt string "." i))
 
-let source_files =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.source_files
+let src_files =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.src_files
                    ~docv:"FILE" [] in
   Arg.(non_empty (pos_all string [] i))
 
@@ -385,7 +385,7 @@ let compile =
       $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
-      $ source_files
+      $ src_files
       $ output_file
       $ as_),
     info ~doc:RamenConsts.CliInfo.compile "compile")
@@ -401,6 +401,11 @@ let report_period =
                    ~env ["report-period"] in
   Arg.(value (opt float RamenConsts.Default.report_period i))
 
+let src_file =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.src_file
+                   [ "src-file" ; "source-file" ] in
+  Arg.(value (opt (some string) None i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
@@ -409,6 +414,7 @@ let run =
       $ replace
       $ report_period
       $ as_
+      $ src_file
       $ bin_file),
     info ~doc:RamenConsts.CliInfo.run "run")
 

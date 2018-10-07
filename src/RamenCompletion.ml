@@ -191,13 +191,14 @@ let complete str () =
             "--keep-temp-files", RamenConsts.CliInfo.keep_temp_files ;
             "--root-path=", RamenConsts.CliInfo.root_path ;
             "--external-compiler", RamenConsts.CliInfo.external_compiler ;
-            "--as-program", RamenConsts.CliInfo.program_name ] @
+            "--as-program=", RamenConsts.CliInfo.program_name ] @
           copts @
           (complete_program_files last_tok)
       | "run" ->
           ("--parameter=", RamenConsts.CliInfo.param) ::
-          ("--as", RamenConsts.CliInfo.as_) ::
+          ("--as=", RamenConsts.CliInfo.as_) ::
           ("--replace", RamenConsts.CliInfo.replace) ::
+          ("--source-file=", RamenConsts.CliInfo.src_file) ::
           copts @
           (complete_binary_files last_tok)
       | "kill" ->

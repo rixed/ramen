@@ -158,10 +158,11 @@ struct
   let param = "Override parameter's P default value with V"
   let program_globs = "Program names"
   let root_path = "Path where to find other programs"
-  let source_files = "Source files to compile"
+  let src_files = "Source files to compile"
   let replace =
     "If a program with the same name is already running, replace it"
   let as_ = "name under which to run this program"
+  let src_file = "file from which the worker can be rebuilt"
   let bin_file = "Binary file to run"
   let pretty = "Prettier output"
   let with_header = "Output the header line in CSV"
