@@ -262,7 +262,7 @@ let save_pendings conf =
 let restore_pendings conf =
   let fname = C.pending_notifications_file conf in
   (match ppp_of_file saved_pendings_ppp_ocaml fname with
-  | exception Unix.(Unix_error (ENOENT, _, _)) -> ()
+  | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
   | lst ->
       pendings.set <- PendingSet.of_list lst) ;
   pendings.heap <-
