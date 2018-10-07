@@ -464,7 +464,7 @@ let save_alert conf program_name alert_info =
     !logger.debug "Alert %s preexist with same definition" src_file
   else (
     !logger.info "Saving new alert into %s" src_file ;
-    ppp_to_file src_file alert_source_ppp_ocaml alert_info ;
+    ppp_to_file ~pretty:true src_file alert_source_ppp_ocaml alert_info ;
     if is_enabled alert_info then (
       (* Compile right now so that we can report errors to the client and RamenRun.run
        * can check linkage errors: *)

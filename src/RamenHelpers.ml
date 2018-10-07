@@ -1265,7 +1265,7 @@ let ppp_of_file ?(error_ok=false) ppp =
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_of_file_def 0.)
 
-let ppp_to_file fname ppp v =
+let ppp_to_file ?pretty fname ppp v =
   mkdir_all ~is_file:true fname ;
   let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
   match Pervasives.open_out_gen openflags 0o644 fname with
@@ -1276,7 +1276,7 @@ let ppp_to_file fname ppp v =
   | oc ->
       finally
         (fun () -> Pervasives.close_out oc)
-        (PPP.to_out_channel ppp oc) v
+        (PPP.to_out_channel ?pretty ppp oc) v
 
 let rec reach_fixed_point ?max_try f =
   match max_try with Some n when n <= 0 -> false
