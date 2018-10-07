@@ -26,15 +26,54 @@ open Batteries
 open RamenHelpers
 open RamenLog
 module C = RamenConf
+module F = C.Func
+module P = C.Program
 
 (* Raise any exception on failure: *)
 type builder = C.conf -> RamenName.program -> string -> string -> unit
 
-(* Map from extension to extension (without dot): *)
-let builders : (string, string * builder) Hashtbl.t = Hashtbl.create 11
+(* Tells if the target must be rebuilt from the source: *)
+type check = string -> string -> bool
 
-let register from to_ f =
-  Hashtbl.add builders from (to_, f)
+(*
+ * Possible check functions
+ *)
+
+(* Using files presence and modification time.
+ * Notice that if modification time of target = modification time of source then we
+ * have to rebuild (but we make sure the target will be > next time!) *)
+let target_is_older src_file target_file =
+  (* FIXME: this should actually be given with the builder,
+   * so that it would return true for "x" files with obsolete codegen versions
+   * regardless of modification time of source file. *)
+  let st = mtime_of_file src_file in
+  let wait_source_in_past () =
+    while st >= Unix.time () do Unix.sleepf 0.2 done in
+  match mtime_of_file target_file with
+  | exception Unix.(Unix_error (ENOENT, _, _)) ->
+      wait_source_in_past () ;
+      true
+  | tt ->
+      st <= tt
+
+let target_is_obsolete target_file =
+  match P.version_of_bin target_file with
+  | exception e ->
+      !logger.debug "Cannot get version from %s: %s"
+        target_file (Printexc.to_string e) ;
+      true
+  | v ->
+      v <> RamenVersions.codegen
+
+(*
+ * Registry of known builder
+ *)
+
+(* Map from extension to extension (without dot): *)
+let builders : (string, string * check * builder) Hashtbl.t = Hashtbl.create 11
+
+let register from to_ check build =
+  Hashtbl.add builders from (to_, check, build)
 
 (* Register a builder from ".ramen" to ".x" and converters from various
  * versioned ramen language files.
@@ -42,13 +81,15 @@ let register from to_ f =
  * the running-config (not on disc) and has no option to set a different
  * program name. (FIXME: try to get rid of that option) *)
 let () =
-  register "ramen" "x" (fun conf program_name src_file exec_file ->
-    (* Where to get the default prog name from? -> FIXME: try to get rid of this.
-     * Why do we need a root_path when we are taking the parents from the RC? *)
-    C.with_rlock conf (fun programs ->
-      let get_parent = RamenCompiler.parent_from_programs programs in
-      RamenCompiler.compile conf get_parent ~exec_file src_file
-                            program_name))
+  register "ramen" "x"
+    (fun src_file target_file ->
+      target_is_older src_file target_file ||
+      target_is_obsolete target_file)
+    (fun conf program_name src_file exec_file ->
+      C.with_rlock conf (fun programs ->
+        let get_parent = RamenCompiler.parent_from_programs programs in
+        RamenCompiler.compile conf get_parent ~exec_file src_file
+                              program_name))
 
 (* Return the list of builders, brute force (N is small!): *)
 let rec find_path from to_ =
@@ -63,7 +104,7 @@ let rec find_path from to_ =
       (* Try each builder that accept this type: *)
       let best_path_opt =
         Hashtbl.find_all builders fro |>
-        List.fold_left (fun prev_best_opt (next_to, _ as b) ->
+        List.fold_left (fun prev_best_opt (next_to, _, _ as b) ->
           match loop (max_len - 1) (b :: prev) (prev_len + 1) next_to with
           | exception _ -> prev_best_opt
           | _, path_len as res ->
@@ -79,28 +120,10 @@ let rec find_path from to_ =
           Printf.sprintf "No path from file type %s to %s" from to_ |>
           failwith
       | Some (path, path_len) ->
-          path, path_len
-    )
+          path, path_len)
   in
   let path_rev, _ = loop 10 [] 0 from in
   List.rev path_rev
-
-(* Using files presence and modification time.
- * Notice that if modification time of target = modification time of source then we
- * have to rebuild (but we make sure the target will be > next time!) *)
-let must_rebuild src_file target_file =
-  (* FIXME: this should actually be given with the builder,
-   * so that it would return true for "x" files with obsolete codegen versions
-   * regardless of modification time of source file. *)
-  let st = mtime_of_file src_file in
-  let wait_source_in_past () =
-    while st >= Unix.time () do Unix.sleepf 0.2 done in
-  match mtime_of_file target_file with
-  | exception Unix.(Unix_error (ENOENT, _, _)) ->
-      wait_source_in_past () ;
-      true
-  | tt ->
-      st <= tt
 
 (* Get the build path, then for each step from the source, check if the build is
  * required.
@@ -110,10 +133,10 @@ let build conf program_name src_file target_file =
   let rec loop src_file = function
     | [] ->
         !logger.debug "Done recompiling %S" target_file
-    | (to_type, builder) :: rest ->
+    | (to_type, check, builder) :: rest ->
         let target_file = base_file ^"."^ to_type in
         mkdir_all ~is_file:true target_file ;
-        if must_rebuild src_file target_file then
+        if check src_file target_file then
           builder conf program_name src_file target_file
         else
           !logger.debug "%S is still up to date" target_file ;

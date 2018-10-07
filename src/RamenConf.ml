@@ -99,21 +99,27 @@ struct
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
+  let version_of_bin fname =
+    let args = [| fname ; "version" |] in
+    with_stdout_from_command ~expected_status:0 fname args Legacy.input_line
+
+  let info_of_bin fname =
+    let args = [| fname ; "1nf0" |] in
+    with_stdout_from_command ~expected_status:0 fname args
+      Legacy.Marshal.from_channel
+
   let of_bin =
     (* Cache of path to date of last read and program *)
     let reread_data fname : t =
       !logger.debug "Reading config from %s..." fname ;
-      match with_stdout_from_command ~expected_status:0
-              fname [| fname ; "version" |] Legacy.input_line with
+      match version_of_bin fname with
       | exception e ->
           let err = Printf.sprintf "Cannot get version from %s: %s"
                       fname (Printexc.to_string e) in
           !logger.error "%s" err ;
           failwith err
       | v when v = RamenVersions.codegen ->
-          (try with_stdout_from_command ~expected_status:0
-                 fname [| fname ; "1nf0" |] Legacy.Marshal.from_channel
-           with e ->
+          (try info_of_bin fname with e ->
              let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"
                          fname (Printexc.to_string e) in
              !logger.error "%s" err ;

@@ -419,10 +419,12 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
 
 (* Register a rule to turn an alert into a ramen source file: *)
 let () =
-  RamenMake.register "alert" "ramen" (fun conf _prog_name src_file target_file ->
-    let a = ppp_of_file alert_source_ppp_ocaml src_file in
-    C.with_rlock conf (fun programs ->
-      generate_alert programs target_file a))
+  RamenMake.register "alert" "ramen"
+    RamenMake.target_is_older
+    (fun conf _prog_name src_file target_file ->
+      let a = ppp_of_file alert_source_ppp_ocaml src_file in
+      C.with_rlock conf (fun programs ->
+        generate_alert programs target_file a))
 
 let compile_alert conf programs program_name src_file =
   let get_parent = RamenCompiler.parent_from_programs programs in
