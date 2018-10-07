@@ -190,7 +190,7 @@ let read_rc_file =
 
 let save_rc_file do_persist rc_file rc =
   if do_persist then
-    ppp_to_file rc_file must_run_file_ppp_ocaml rc
+    ppp_to_file ~pretty:true rc_file must_run_file_ppp_ocaml rc
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
