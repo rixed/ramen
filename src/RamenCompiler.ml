@@ -307,7 +307,7 @@ let compile conf get_parent ?exec_file source_file program_name =
       Filename.remove_extension source_file ^
       "_"^ func.F.signature ^
       "_"^ RamenVersions.codegen |>
-      RamenOCamlCompiler.to_module_name in
+      make_valid_for_module in
     let obj_files =
       Hashtbl.fold (fun _ (func, op) lst ->
         let obj_name = src_name_of_func func ^".cmx" in
