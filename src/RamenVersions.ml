@@ -18,7 +18,7 @@ let instrumentation_tuple = "v5" (* last: addition of startup time *)
 let notify_tuple = "v6" (* last: firing is now optional *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v4" (* last: max FPR *)
+let pending_notify = "v5" (* last: use PPP *)
 
 (* Ringbuf formats *)
 let ringbuf = "v6" (* last: Addition of version field *)

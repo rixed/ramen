@@ -196,6 +196,7 @@ type notification =
     firing : bool option ;
     certainty : float ;
     parameters : (string * string) list }
+  [@@ppp PPP_OCaml]
 
 type pending_notification =
   { notif : notification;
@@ -204,6 +205,7 @@ type pending_notification =
     mutable event_stop : float option ;
     mutable attempts : int ;
     mutable alert_id : uint64 }
+  [@@ppp PPP_OCaml]
 
 type scheduled_item  =
   { (* When we planned to send this notif: *)
@@ -216,6 +218,7 @@ type scheduled_item  =
     mutable wait_for_stop : bool ;
     (* The notification that's to be sent: *)
     mutable item : pending_notification }
+  [@@ppp PPP_OCaml]
 
 module PendingSet = Set.Make (struct
   type t = scheduled_item
@@ -249,15 +252,19 @@ let pendings =
 let heap_pending_cmp i1 i2 =
   Float.compare i1.schedule_time i2.schedule_time
 
+type saved_pendings = scheduled_item list [@@ppp PPP_OCaml]
+
 let save_pendings conf =
   let fname = C.pending_notifications_file conf in
-  marshal_into_file fname pendings.set
+  let lst = PendingSet.to_list pendings.set in
+  ppp_to_file fname saved_pendings_ppp_ocaml lst
 
 let restore_pendings conf =
   let fname = C.pending_notifications_file conf in
-  (try
-    pendings.set <- marshal_from_file fname
-  with Unix.(Unix_error (ENOENT, _, _)) -> ()) ;
+  (match ppp_of_file saved_pendings_ppp_ocaml fname with
+  | exception Unix.(Unix_error (ENOENT, _, _)) -> ()
+  | lst ->
+      pendings.set <- PendingSet.of_list lst) ;
   pendings.heap <-
     PendingSet.fold (RamenHeap.add heap_pending_cmp)
       pendings.set RamenHeap.empty ;

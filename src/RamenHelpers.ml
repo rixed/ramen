@@ -632,28 +632,12 @@ let marshal_into_fd fd v =
     lseek fd 0 SEEK_SET |> ignore ;
     write fd bytes 0 len) () |> ignore
 
-let marshal_into_file fname v =
-  mkdir_all ~is_file:true fname ;
-  let fd = Unix.openfile fname [O_RDWR; O_CREAT; O_TRUNC; O_CLOEXEC] 0o640 in
-  (* Same as above, must avoid Marshal.from_input (autoclose might
-   * eventually close fd at some point - FIXME) *)
-  finally
-    (fun () -> Unix.close fd)
-    (marshal_into_fd fd) v
-
 let marshal_from_fd fd =
   let open Unix in
   (* Useful log statement in case the GC crashes right away: *)
   !logger.debug "Retrieving marshaled value from file" ;
   let bytes = read_whole_fd fd in
   Marshal.from_bytes bytes 0
-
-let marshal_from_file fname =
-  mkdir_all ~is_file:true fname ;
-  let fd = Unix.openfile fname [O_RDWR; O_CLOEXEC] 0o640 in
-  finally
-    (fun () -> Unix.close fd)
-    marshal_from_fd fd
 
 let getenv ?def n =
   try Sys.getenv n
