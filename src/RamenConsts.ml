@@ -202,6 +202,8 @@ struct
   let conffile = "configuration file"
   let max_fpr = "max global false-positive rate"
   let program_name = "resulting program name"
+  let parents_from_rc =
+    "get parents from the running programs rather than from the file system."
   let no_abbrev = "do not abbreviate path names"
   let show_all = "display information on all links"
   let as_tree = "display links as a tree (imply --show-all)"

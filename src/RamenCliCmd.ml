@@ -142,7 +142,7 @@ let notify conf parameters notif_name () =
 (* Note: We need a program name to identify relative parents. *)
 let compile conf root_path use_external_compiler bundle_dir
             max_simult_compils smt_solver source_files
-            output_file_opt program_name_opt () =
+            output_file_opt program_name_opt parents_from_rc () =
   let many_source_files = List.length source_files > 1 in
   if many_source_files && program_name_opt <> None then
     failwith "Cannot specify the program name for several source files" ;
@@ -152,7 +152,12 @@ let compile conf root_path use_external_compiler bundle_dir
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   let root_path = absolute_path_of root_path in
-  let get_parent = RamenCompiler.parent_from_root_path root_path in
+  let get_parent =
+    if parents_from_rc then
+      let programs = C.with_rlock conf identity in
+      RamenCompiler.parent_from_programs programs
+    else
+      RamenCompiler.parent_from_root_path root_path in
   let all_ok = ref true in
   let compile_file source_file =
     let program_name =

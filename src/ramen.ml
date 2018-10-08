@@ -376,6 +376,12 @@ let as_ =
                    ~docv:"NAME" [ "as" ] in
   Arg.(value (opt (some program) None i))
 
+let parents_from_rc =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.parents_from_rc
+                   [ "parents-from-rc" ;
+                     "parents-from-running-configuration" ] in
+  Arg.(value (flag i))
+
 let compile =
   Term.(
     (const RamenCliCmd.compile
@@ -387,7 +393,8 @@ let compile =
       $ smt_solver
       $ src_files
       $ output_file
-      $ as_),
+      $ as_
+      $ parents_from_rc),
     info ~doc:RamenConsts.CliInfo.compile "compile")
 
 let replace =
