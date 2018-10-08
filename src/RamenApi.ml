@@ -488,14 +488,20 @@ let save_alert conf program_name alert_info =
     !logger.info "Saving new alert into %s" src_file ;
     ppp_to_file ~pretty:true src_file alert_source_ppp_ocaml alert_info ;
     if is_enabled alert_info then (
-      (* Compile right now so that we can report errors to the client and RamenRun.run
-       * can check linkage errors: *)
-      let exec_file = basename ^".x" in
-      RamenMake.build conf program_name src_file exec_file ;
-      let debug = conf.C.log_level = Debug in
-      let params = Hashtbl.create 0 in
-      RamenRun.run conf params true RamenConsts.Default.report_period
-                   program_name ~src_file exec_file debug
+      try
+        (* Compile right now so that we can report errors to the client and RamenRun.run
+         * can check linkage errors: *)
+        let exec_file = basename ^".x" in
+        RamenMake.build conf program_name src_file exec_file ;
+        let debug = conf.C.log_level = Debug in
+        let params = Hashtbl.create 0 in
+        RamenRun.run conf params true RamenConsts.Default.report_period
+                     program_name ~src_file exec_file debug
+      with e ->
+        (* In case of error, do not leave the alert definition file so that the
+         * client can retry: *)
+        log_and_ignore_exceptions safe_unlink src_file ;
+        raise e
     ) else
       (* Won't do anything if it's not running *)
       stop_alert conf program_name)
@@ -552,7 +558,7 @@ let set_alerts conf msg =
         C.api_alerts_root conf ^"/"^
         RamenName.(path_of_program program_name)
         ^".alert" in
-      Unix.unlink fname
+      safe_unlink fname
     ) to_delete)
 
 (*

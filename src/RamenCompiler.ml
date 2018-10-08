@@ -72,10 +72,7 @@ let compile conf get_parent ?exec_file source_file program_name =
     if not conf.C.keep_temp_files then
       Set.iter (fun fname ->
         !logger.debug "Deleting temp file %s" fname ;
-        let unlink f =
-          try Unix.unlink f
-          with Unix.(Unix_error (ENOENT, _, _)) -> () in
-        log_and_ignore_exceptions unlink fname
+        log_and_ignore_exceptions safe_unlink fname
       ) !temp_files
   in
   finally del_temp_files (fun () ->

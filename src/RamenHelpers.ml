@@ -220,6 +220,10 @@ let is_empty_file fname =
   let s = stat fname in
   s.st_size = 0
 
+let safe_unlink fname =
+  try BatUnix.restart_on_EINTR Unix.unlink fname
+  with Unix.(Unix_error (ENOENT, _, _)) -> ()
+
 let mtime_of_file fname =
   let open Unix in
   let s = stat fname in
@@ -269,7 +273,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
        * of contents, which realistically should not take more than 1s: *)
       let copy = fname ^".bad" in
       let redo () =
-        ignore_exceptions unlink copy ;
+        ignore_exceptions safe_unlink copy ;
         log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
           (rename fname) copy ;
         ensure_file_exists ~contents fname
