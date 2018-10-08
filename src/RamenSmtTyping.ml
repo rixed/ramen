@@ -1404,7 +1404,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes funcs params =
 let run_solver smt2_file =
   let cmd =
     if String.exists !smt_solver "%s" then
-      String.nreplace ~sub:"%s" ~by:smt2_file ~str:!smt_solver
+      String.nreplace ~sub:"%s" ~by:(shell_quote smt2_file) ~str:!smt_solver
     else
       !smt_solver ^" "^ shell_quote smt2_file in
   !logger.debug "Running the solver as %S" cmd ;
