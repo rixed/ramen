@@ -684,7 +684,7 @@ let synchronize_running conf autoreload_delay =
       print_exception exn ;
       !logger.error "Crashed while supervising children, keep trying!" ;
       Unix.sleepf (1. +. Random.float 1.) ;
-      none_shall_pass f
+      (none_shall_pass [@tailcall]) f
   in
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307

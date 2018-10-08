@@ -423,7 +423,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     (* TODO: a way to add zone, service, etc, if present in the
      * parent table *)
     Printf.fprintf oc "  AND KEEP ALL\n" ;
-    Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false)\n")
+    Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false);\n")
 
 (* Register a rule to turn an alert into a ramen source file: *)
 let () =
