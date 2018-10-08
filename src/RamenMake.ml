@@ -54,7 +54,7 @@ let target_is_older src_file target_file =
       wait_source_in_past () ;
       true
   | tt ->
-      st <= tt
+      tt <= st
 
 let target_is_obsolete target_file =
   match P.version_of_bin target_file with
