@@ -11,6 +11,28 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
+(* To help the client to make sense of the error we distinguish between those
+ * kind of errors: *)
+exception ParseError of exn (* When we cannot parse the query. *)
+exception BadRequest of string (* When there is an error in the query. *)
+(* Everything else will be reported as "internal error". *)
+
+let bad_request s = raise (BadRequest s)
+
+let () =
+  Printexc.register_printer (function
+    | ParseError e ->
+        Some ("Error while parsing request: "^ Printexc.to_string e)
+    | BadRequest s ->
+        Some ("Error in request: "^ s)
+    | _ -> None)
+
+let parse_error_with_context ctx f =
+  try
+    fail_with_context ctx f
+  with exn ->
+    raise (ParseError exn)
+
 module JSONRPC =
 struct
   (* Id will be copied verbatim regardless of the type as long as it's a
@@ -29,8 +51,8 @@ struct
     | exception e ->
         print_exception ~what:("Answering request "^id) e ;
         err id (match e with
-          | Failure msg -> msg
-          | e -> Printexc.to_string e)
+          | ParseError _ | BadRequest _ -> Printexc.to_string e
+          | e -> "Internal error: "^ Printexc.to_string e)
     | s ->
         Printf.sprintf "{\"id\":%s,\"result\":%s}" id s |>
         http_msg
@@ -64,7 +86,7 @@ struct
              | _ -> assert false))
 
   let parse =
-    fail_with_context "Parsing JSON" (fun () ->
+    parse_error_with_context "Parsing JSON" (fun () ->
       PPP.of_string_exc req_ppp)
 end
 
@@ -87,7 +109,7 @@ type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
 let get_tables conf msg =
   let req =
-    fail_with_context "parsing get-tables request" (fun () ->
+    parse_error_with_context "parsing get-tables request" (fun () ->
       PPP.of_string_exc get_tables_req_ppp_json msg) in
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
@@ -241,7 +263,7 @@ let columns_of_table conf table =
           | func -> Some (columns_of_func conf programs func))))
 
 let get_columns conf msg =
-  let req = fail_with_context "parsing get-columns request" (fun () ->
+  let req = parse_error_with_context "parsing get-columns request" (fun () ->
     PPP.of_string_exc get_columns_req_ppp_json msg) in
   let h = Hashtbl.create 9 in
   List.iter (fun table ->
@@ -280,7 +302,7 @@ and table_values =
   [@@ppp PPP_JSON]
 
 let get_timeseries conf msg =
-  let req = fail_with_context "parsing get-timeseries request" (fun () ->
+  let req = parse_error_with_context "parsing get-timeseries request" (fun () ->
     PPP.of_string_exc get_timeseries_req_ppp_json msg) in
   let times = Array.make_float req.num_points in
   let times_inited = ref false in
@@ -295,7 +317,7 @@ let get_timeseries conf msg =
         let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
         List.fold_left (fun filters where ->
           if is_private_field where.lhs then
-            failwith ("Cannot filter through private field "^ where.lhs) ;
+            bad_request ("Cannot filter through private field "^ where.lhs) ;
           let open RamenSerialization in
           let _, ftyp = find_field func.F.out_type where.lhs in
           let v = value_of_string ftyp.typ where.rhs in
@@ -359,7 +381,7 @@ let field_typ_of_column programs table column =
   | exception Not_found ->
       Printf.sprintf "Program %s does not exist"
         (RamenName.string_of_program pn) |>
-      failwith
+      bad_request
   | _mre, get_rc ->
       let prog = get_rc () in
       (match List.find (fun f -> f.F.name = fn) prog.P.funcs with
@@ -367,14 +389,14 @@ let field_typ_of_column programs table column =
           Printf.sprintf "No function %s in program %s"
             (RamenName.string_of_func fn)
             (RamenName.string_of_program pn) |>
-          failwith
+          bad_request
       | func ->
           let open RamenTuple in
           try
             List.find (fun t -> t.typ_name = column) func.F.out_type
           with Not_found ->
             Printf.sprintf "No column %s in table %s" column table |>
-            failwith)
+            bad_request)
 
 let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
   let ft = field_typ_of_column programs table column in
@@ -479,7 +501,7 @@ let save_alert conf program_name alert_info =
       stop_alert conf program_name)
 
 let set_alerts conf msg =
-  let req = fail_with_context "parsing set-alerts request" (fun () ->
+  let req = parse_error_with_context "parsing set-alerts request" (fun () ->
     PPP.of_string_exc set_alerts_req_ppp_json msg) in
   (* In case the same table/column appear several times, build a single list
    * of all preexisting alert files for the mentioned tables/columns, and a
@@ -509,7 +531,7 @@ let set_alerts conf msg =
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
             Printf.sprintf "Column %s of table %s is not numeric"
               column table |>
-            failwith) ;
+            bad_request) ;
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
         let id = alert_id column alert_source in
@@ -553,4 +575,4 @@ let router conf prefix =
         | "get-columns" -> get_columns conf req.params
         | "get-timeseries" -> get_timeseries conf req.params
         | "set-alerts" -> set_alerts conf req.params ; "null"
-        | m -> failwith (Printf.sprintf "unknown method %S" m))
+        | m -> bad_request (Printf.sprintf "unknown method %S" m))
