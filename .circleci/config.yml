@@ -13,7 +13,7 @@ jobs:
           command: opam pin add -n ramen $PWD && opam install --yes --deps-only ramen
       - run:
           name: Compile
-          command: make dep && make
+          command: ./configure && make dep && make
       - run:
           name: Unit tests
           command: make unit-check

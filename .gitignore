@@ -50,3 +50,13 @@ examples/prometheus-alertmanager.yml
 wrap.sh
 *.tgz
 docker/z3
+autom4te.cache
+config.status
+META
+Makefile
+debian.control
+docker/Dockerfile
+docker/Dockerfile-builder
+opam
+src/RamenVersions.ml
+tests/features/api.feature
