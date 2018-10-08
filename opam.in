@@ -21,7 +21,7 @@ depends: [
   "binocle" {>= "0.8.0"}
   "lacaml" {= "11.0.1"}
   "num"
-  "ppp" {>= "2.7.1"}
+  "ppp" {>= "2.7.2"}
   "cmdliner" {build & = "1.0.2"}
   "syslog" {= "1.5"}
   "sqlite3" {build}
