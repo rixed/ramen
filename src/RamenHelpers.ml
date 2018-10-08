@@ -547,22 +547,23 @@ let file_print oc fname =
   String.print oc content
 
 let rec simplified_path =
+  let open Str in
   let strip_final_slash s =
     let l = String.length s in
     if l > 1 && s.[l-1] = '/' then
       String.rchop s
     else s in
   let res =
-    [ Str.regexp "/[^/]+/\\.\\./", "/" ;
-      Str.regexp "/[^/]+/\\.\\.$", "" ;
-      Str.regexp "/\\./", "/" ;
-      Str.regexp "//", "/" ;
-      Str.regexp "/\\.?$", "" ;
-      Str.regexp "^\\./", "" ] in
+    [ regexp "/[^/]+/\\.\\./", "/" ;
+      regexp "/[^/]+/\\.\\.$", "" ;
+      regexp "/\\./", "/" ;
+      regexp "//", "/" ;
+      regexp "/\\.?$", "" ;
+      regexp "^\\./", "" ] in
   fun path ->
     let s =
       List.fold_left (fun s (re, repl) ->
-        Str.global_replace re repl s
+        global_replace re repl s
       ) path res in
     if s = path then strip_final_slash s
     else simplified_path s
@@ -1440,3 +1441,15 @@ let cap ?min ?max f =
   3 (cap ~min:1 ~max:3 5)
   5 (cap ~min:1 5)
 *)
+
+let strip_control_chars =
+  let open Str in
+  let res =
+    [ regexp "[\n\r] *", " " ;
+      regexp "\t", "    " ;
+      regexp "\027\\[[0-9];[0-9]+m", "" ;
+      regexp "\027\\[0m", "" ] in
+  fun msg ->
+    List.fold_left (fun s (re, repl) ->
+      Str.global_replace re repl s
+    ) msg res
