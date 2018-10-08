@@ -37,7 +37,8 @@ module JSONRPC =
 struct
   (* Id will be copied verbatim regardless of the type as long as it's a
    * JS value: *)
-  type req = { method_ : string ; id : string ; params : string }
+  type any_json = string * int (* value and position in the query *)
+  type req = { method_ : string ; id : any_json ; params : any_json }
 
   let err id msg =
     let msg = strip_control_chars msg in
@@ -46,7 +47,7 @@ struct
     (* Assuming jsonrpc does not mix transport errors with applicative errors: *)
     http_msg
 
-  let wrap id f =
+  let wrap (id, _) f =
     match f () with
     | exception e ->
         print_exception ~what:("Answering request "^id) e ;
@@ -64,30 +65,39 @@ struct
   (* PPP for the JSONRPC request, returning the params as a verbatim string: *)
   let req_ppp =
     let open PPP in
-    let any_json : string t =
+    let any_json : any_json t =
       fun () ->
-      { printer = (fun o v -> o v) ;
+      { printer = (fun o (v, _) -> o v) ;
         scanner = (fun i o ->
           match skip_any PPP_JSON.groupings PPP_JSON.delims i o with
           | None ->
               parse_error o "Cannot parse json blurb"
           | Some o' ->
+              !logger.info "Found any-json at loc %d" o ;
               let str = i o (o'-o) in
-              Ok (str, o')) ;
+              (* We return both the string and its location, that will be used
+               * later to adjust parse error locations: *)
+              Ok ((str, o), o')) ;
         descr = fun _ -> "some json blurb" }
     in
     PPP_JSON.(record (
       field "method" string <->
       field "id" any_json <->
-      field ~default:"" "params" any_json)) >>:
+      field ~default:("", 0) "params" any_json)) >>:
     ((fun { method_ ; id ; params } -> Some (Some method_, Some id), Some params),
      (function Some (Some method_, Some id), Some params -> { method_ ; id ; params }
-             | Some (Some method_, Some id), None -> { method_ ; id ; params = "" }
+             | Some (Some method_, Some id), None -> { method_ ; id ; params = "", 0 }
              | _ -> assert false))
 
   let parse =
     parse_error_with_context "Parsing JSON" (fun () ->
       PPP.of_string_exc req_ppp)
+
+  let json_any_parse ?(what="the") ppp (str, loc) =
+    let ctx = "parsing "^ what ^" request" in
+    let str = String.make loc ' ' ^ str in
+    parse_error_with_context ctx (fun () ->
+      PPP.of_string_exc ppp str)
 end
 
 (*
@@ -108,9 +118,7 @@ type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
 let get_tables conf msg =
-  let req =
-    parse_error_with_context "parsing get-tables request" (fun () ->
-      PPP.of_string_exc get_tables_req_ppp_json msg) in
+  let req = JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
     Hashtbl.iter (fun _prog_name (mre, get_rc) ->
@@ -263,8 +271,7 @@ let columns_of_table conf table =
           | func -> Some (columns_of_func conf programs func))))
 
 let get_columns conf msg =
-  let req = parse_error_with_context "parsing get-columns request" (fun () ->
-    PPP.of_string_exc get_columns_req_ppp_json msg) in
+  let req = JSONRPC.json_any_parse ~what:"get-columns" get_columns_req_ppp_json msg in
   let h = Hashtbl.create 9 in
   List.iter (fun table ->
     match columns_of_table conf table with
@@ -302,8 +309,8 @@ and table_values =
   [@@ppp PPP_JSON]
 
 let get_timeseries conf msg =
-  let req = parse_error_with_context "parsing get-timeseries request" (fun () ->
-    PPP.of_string_exc get_timeseries_req_ppp_json msg) in
+  let req = JSONRPC.json_any_parse ~what:"get-timeseries"
+                                   get_timeseries_req_ppp_json msg in
   let times = Array.make_float req.num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
@@ -504,8 +511,7 @@ let save_alert conf program_name alert_info =
       stop_alert conf program_name)
 
 let set_alerts conf msg =
-  let req = parse_error_with_context "parsing set-alerts request" (fun () ->
-    PPP.of_string_exc set_alerts_req_ppp_json msg) in
+  let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
   (* In case the same table/column appear several times, build a single list
    * of all preexisting alert files for the mentioned tables/columns, and a
    * list of all that are set: *)
