@@ -22,7 +22,7 @@ let bad_request s = raise (BadRequest s)
 let () =
   Printexc.register_printer (function
     | ParseError e ->
-        Some ("Error while parsing request: "^ Printexc.to_string e)
+        Some ("Parse error: "^ Printexc.to_string e)
     | BadRequest s ->
         Some ("Error in request: "^ s)
     | _ -> None)
@@ -456,10 +456,6 @@ let () =
       let a = ppp_of_file alert_source_ppp_ocaml src_file in
       C.with_rlock conf (fun programs ->
         generate_alert programs target_file a))
-
-let compile_alert conf programs program_name src_file =
-  let get_parent = RamenCompiler.parent_from_programs programs in
-  RamenCompiler.compile conf get_parent src_file program_name
 
 let stop_alert conf program_name =
   let glob =

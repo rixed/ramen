@@ -43,9 +43,6 @@ type check = string -> string -> bool
  * Notice that if modification time of target = modification time of source then we
  * have to rebuild (but we make sure the target will be > next time!) *)
 let target_is_older src_file target_file =
-  (* FIXME: this should actually be given with the builder,
-   * so that it would return true for "x" files with obsolete codegen versions
-   * regardless of modification time of source file. *)
   let st = mtime_of_file src_file in
   let wait_source_in_past () =
     while st >= Unix.time () do Unix.sleepf 0.2 done in
@@ -96,7 +93,7 @@ let rec find_path from to_ =
   (* Complete the given path toward [to_], returns both the path (reverted) and its
    * length (which is not larger than max_len): *)
   let rec loop max_len prev prev_len fro =
-    !logger.debug "Looking for a path from %S to %S of mac length %d"
+    !logger.debug "Looking for a build path from %S to %S of mac length %d"
       fro to_ max_len ;
     if prev_len > max_len then failwith "Path too long"
     else if fro = to_ then prev, prev_len
