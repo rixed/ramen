@@ -157,7 +157,7 @@ and alert_info_v1 =
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
     desc_firing : string [@ppp_default ""] ;
-    desc_recovered : string [@ppp_default ""] }
+    desc_recovery : string [@ppp_default ""] }
   [@@ppp PPP_JSON]
   [@@ppp PPP_OCaml]
 
@@ -417,8 +417,8 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
           (if a.threshold >= a.recovery then "above" else "below")
           a.threshold
           desc_link
-    and desc_recovered =
-      if a.desc_recovered <> "" then a.desc_recovered else
+    and desc_recovery =
+      if a.desc_recovery <> "" then a.desc_recovery else
         Printf.sprintf "The value of %s recovered.\n%s"
           column
           desc_link
@@ -442,7 +442,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "    \"${%s}\" AS values,\n" column ;
     Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
     Printf.fprintf oc "    (IF firing THEN %S ELSE %S) AS desc\n"
-      desc_firing desc_recovered ;
+      desc_firing desc_recovery ;
     (* TODO: a way to add zone, service, etc, if present in the
      * parent table *)
     Printf.fprintf oc "  AND KEEP ALL\n" ;
