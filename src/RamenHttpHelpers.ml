@@ -145,7 +145,7 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
   | CodecHttp.StartLine.Request r ->
       let url =
         r.CodecHttp.RequestLine.url |>
-        CodecUrl.of_string in
+        CodecUrl.of_string ~force_absolute:true in
       !logger.debug "answering to %s..." (CodecUrl.to_string url) ;
       let params = CodecUrl.parse_query_of_url url in
       let path = url.CodecUrl.path in
