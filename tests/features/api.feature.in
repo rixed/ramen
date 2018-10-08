@@ -13,7 +13,8 @@ Feature: Test Ramen API from the command line.
                case when random > 0.66 then "blue"
                     when random > 0.50 then "red"
                     else "green"
-               end as color
+               end as color,
+               case when random > 0.5 then 42 end as nullable_42
         every 1 second
         factor color
         event starts at t;
@@ -83,3 +84,9 @@ Feature: Test Ramen API from the command line.
     When I wait 1 seconds
     And I run curl with arguments --data-binary '{"method":"set-alerts","id":1,"params":{}}' http://localhost:8042
     Then curl must mention ""result":null" on stdout
+
+  Scenario: Alerting must work on a nullable field
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 seconds
+    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":40,"recovery":37}]}}}' http://localhost:8042
+    Then curl must mention ""result":null"

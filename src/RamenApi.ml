@@ -438,7 +438,8 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
-    Printf.fprintf oc "    %s AS values,\n" column ;
+    (* This cast to string can handle the NULL case: *)
+    Printf.fprintf oc "    \"${%s}\" AS values,\n" column ;
     Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
     Printf.fprintf oc "    (IF firing THEN %S ELSE %S) AS desc\n"
       desc_firing desc_recovered ;
