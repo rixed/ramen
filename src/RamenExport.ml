@@ -14,7 +14,7 @@ let () =
     | _ -> None)
 
 (* Returns the buffer name: *)
-let make_temp_export ?duration conf func =
+let make_temp_export ?(duration=RamenConsts.Default.export_duration) conf func =
   let bname = C.archive_buf_name conf func in
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
@@ -25,9 +25,8 @@ let make_temp_export ?duration conf func =
     RamenOutRef.{
       field_mask =
         RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
-      timeout = match duration with
-                | None -> 0.
-                | Some d -> Unix.gettimeofday () +. d } in
+      timeout = if duration <= 0. then 0.
+                else Unix.gettimeofday () +. duration } in
   RamenOutRef.add out_ref (bname, file_spec) ;
   bname
 

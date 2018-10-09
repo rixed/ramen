@@ -231,10 +231,11 @@ let find_func programs program_name func_name =
   let prog = get_rc () in
   prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
-let make_conf ?(do_persist=true) ?(debug=false) ?(quiet=false)
-              ?(keep_temp_files=false) ?(forced_variants=[])
-              ?(initial_export_duration=900.) ?(test=false)
-              persist_dir =
+let make_conf
+      ?(do_persist=true) ?(debug=false) ?(quiet=false)
+      ?(keep_temp_files=false) ?(forced_variants=[])
+      ?(initial_export_duration=RamenConsts.Default.initial_export_duration)
+      ?(test=false) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =

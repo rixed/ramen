@@ -536,7 +536,7 @@ let func_name p =
 let duration =
   let i = Arg.info ~doc:RamenConsts.CliInfo.duration
                    ["timeout"] in
-  Arg.(value (opt float 3600. i))
+  Arg.(value (opt float 300. i))
 
 let tail =
   Term.(

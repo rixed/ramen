@@ -238,6 +238,12 @@ struct
 
   (* Max false-positive rate for notifications: *)
   let max_fpr = 1. /. 600.
+
+  (* Every started program initially archive its output for that long: *)
+  let initial_export_duration = 600.
+
+  (* When asking for a timeseries or any other export, export for that long: *)
+  let export_duration = 600.
 end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top
