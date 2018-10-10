@@ -1390,17 +1390,18 @@ struct
      several ~sep:list_sep p +- blanks +-
      strinG "in" +- blanks +- strinG "top" +- blanks ++ (const ||| param) ++
      optional ~def:None (
-      some (blanks -- strinG "over" -- blanks -+ (const ||| param))) ++
+      some (blanks -- strinG "over" -- blanks -+ p)) ++
      state_and_nulls ++
      optional ~def:(expr_one ()) (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:(expr_1hour ()) (
-       blanks -- strinG "in" -- blanks -- strinG "the" -- blanks --
-       strinG "last" -- blanks -+ (const ||| param)) ++
      optional ~def:(expr_zero ()) (
-       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
+       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) ++
+     optional ~def:(expr_1hour ()) (
+       blanks -- strinG "for" --
+       optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
+       blanks -+ (const ||| param)) >>:
      fun (((((((want_rank, what), c), max_size),
-             (g, n)), by), duration), time) ->
+             (g, n)), by), time), duration) ->
        StatefulFun (
          (if want_rank then make_typ "rank in top"
                        (* same nullability as what+by+time: *)
