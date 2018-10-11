@@ -154,13 +154,18 @@ let kill conf ?(purge=false) program_names =
     let killed_prog_names =
       Hashtbl.enum programs //
       (fun (n, mre) ->
-        not mre.C.killed &&
+        (not mre.C.killed || purge) &&
         List.exists (fun p ->
           Globs.matches p (RamenName.string_of_program n)
         ) program_names) /@
       fst |>
       List.of_enum in
-    check_orphans killed_prog_names programs ;
+    let running_killed_prog_names =
+      List.filter (fun n ->
+        let mre = Hashtbl.find programs n in
+        not mre.C.killed
+      ) killed_prog_names in
+    check_orphans running_killed_prog_names programs ;
     if purge then
       Hashtbl.filteri_inplace (fun name _mre ->
         not (List.mem name killed_prog_names)
@@ -169,5 +174,5 @@ let kill conf ?(purge=false) program_names =
       List.iter (fun n ->
         let mre = Hashtbl.find programs n in
         mre.C.killed <- true
-      ) killed_prog_names ;
+      ) running_killed_prog_names ;
     List.length killed_prog_names)
