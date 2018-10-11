@@ -239,4 +239,9 @@ let non_keyword =
   (check ~what:"no quoted identifier" (nay id_quote) -+
    check ~what:"no keyword" (nay keyword) -+
    identifier) |||
-  (id_quote -+ identifier +- id_quote)
+  (
+    id_quote -+ (
+    repeat_greedy ~sep:none (
+      cond "quoted identifier" (fun c -> c <> '\'') 'x') >>: String.of_list) +-
+    id_quote
+  )
