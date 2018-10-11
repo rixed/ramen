@@ -119,27 +119,33 @@ let run conf params replace report_period program_name ?(src_file="")
  *)
 
 let check_orphans killed_prog_names programs =
+  !logger.debug "Checking orphans of %a..."
+    (pretty_list_print RamenName.program_print) killed_prog_names ;
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
     if not mre.C.killed &&
        not (List.mem prog_name killed_prog_names)
     then (
-      let prog = P.of_bin prog_name mre.C.params mre.C.bin in
-      List.iter (fun func ->
-        (* If this func has parents, all of which are now missing, then
-         * complain: *)
-        if func.F.parents <> [] &&
-           List.for_all (function
-             | None, _ -> false (* does not depend in a killed program *)
-             | Some par_rel_prog, _ ->
-                let par_prog =
-                  RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in
-                List.mem par_prog killed_prog_names
-           ) func.F.parents
-        then
-          !logger.warning "Operation %s, will be left without parents"
-            (RamenName.string_of_fq (F.fq_name func))
-      ) prog.P.funcs)
+      match P.of_bin prog_name mre.C.params mre.C.bin with
+      | exception _ ->
+        (* Missing or erroneous programs can't make orphan check fail. *)
+        ()
+      | prog ->
+        List.iter (fun func ->
+          (* If this func has parents, all of which are now missing, then
+           * complain: *)
+          if func.F.parents <> [] &&
+             List.for_all (function
+               | None, _ -> false (* does not depend in a killed program *)
+               | Some par_rel_prog, _ ->
+                  let par_prog =
+                    RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in
+                  List.mem par_prog killed_prog_names
+             ) func.F.parents
+          then
+            !logger.warning "Operation %s, will be left without parents"
+              (RamenName.string_of_fq (F.fq_name func))
+        ) prog.P.funcs)
   ) programs
 
 (* Takes a list of globs and returns the number of kills. *)

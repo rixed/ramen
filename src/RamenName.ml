@@ -51,6 +51,8 @@ let path_of_program prog =
   List.map abbrev |>
   String.join "/"
 
+let program_print = String.print
+
 (* Relative Program Names: "../" are allowed, and conversion to a normal
  * program name requires the location from which the program is relative: *)
 

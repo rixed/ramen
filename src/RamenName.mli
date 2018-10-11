@@ -25,6 +25,7 @@ val rel_program_ppp_ocaml : rel_program PPP.t
 val rel_program_of_string : string -> rel_program
 val string_of_rel_program : rel_program -> string
 val program_of_rel_program : program -> rel_program -> program
+val program_print : 'a BatInnerIO.output -> program -> unit
 
 (* We also need param expansion as strings, since that's what the user
  * gives us and what we use to identify an instance of a program: *)
