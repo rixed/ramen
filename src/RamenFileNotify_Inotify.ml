@@ -1,5 +1,6 @@
 open Batteries
 open RamenLog
+open RamenHelpers
 
 type notifier =
   { mutable already_present : string list ;
@@ -25,7 +26,7 @@ let for_each f n =
   ) n.already_present ;
   let rec loop () =
     if n.while_ () then (
-      match Inotify.read n.handler with
+      match restart_on_eintr ~while_:n.while_ Inotify.read n.handler with
       | exception exn ->
         !logger.error "Cannot Inotify.read: %s"
           (Printexc.to_string exn) ;
