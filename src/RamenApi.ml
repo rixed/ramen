@@ -161,6 +161,7 @@ and alert_info_v1 =
     recovery : float ;
     duration : float [@ppp_default 0.] ;
     ratio : float [@ppp_default 1.] ;
+    time_step : float [@ppp_rename "time-step"] [@ppp_default 60.] ;
     (* Unused, for the client purpose only *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
@@ -381,7 +382,7 @@ let alert_id column =
 let is_enabled = function
   | V1 { alert = { enabled ; _ } ; _ } -> enabled
 
-let field_typ_of_column programs table column =
+let func_of_table programs table =
   let pn, fn =
     RamenName.(fq_of_string table |> fq_parse) in
   match Hashtbl.find programs pn with
@@ -391,19 +392,21 @@ let field_typ_of_column programs table column =
       bad_request
   | _mre, get_rc ->
       let prog = get_rc () in
-      (match List.find (fun f -> f.F.name = fn) prog.P.funcs with
-      | exception Not_found ->
-          Printf.sprintf "No function %s in program %s"
-            (RamenName.string_of_func fn)
-            (RamenName.string_of_program pn) |>
-          bad_request
-      | func ->
-          let open RamenTuple in
-          try
-            List.find (fun t -> t.typ_name = column) func.F.out_type
-          with Not_found ->
-            Printf.sprintf "No column %s in table %s" column table |>
-            bad_request)
+      (try List.find (fun f -> f.F.name = fn) prog.P.funcs
+      with Not_found ->
+        Printf.sprintf "No function %s in program %s"
+          (RamenName.string_of_func fn)
+          (RamenName.string_of_program pn) |>
+        bad_request)
+
+let field_typ_of_column programs table column =
+  let open RamenTuple in
+  let func = func_of_table programs table in
+  try
+    List.find (fun t -> t.typ_name = column) func.F.out_type
+  with Not_found ->
+    Printf.sprintf "No column %s in table %s" column table |>
+    bad_request
 
 let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
   let ft = field_typ_of_column programs table column in
@@ -430,23 +433,53 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
           column
           desc_link
     in
-    Printf.fprintf oc "DEFINE alert AS\n" ;
+    (* First we need to resample the TS with the desired time step,
+     * aggregating all values for the desired column: *)
+    Printf.fprintf oc "-- Alerting program\n\n" ;
+    Printf.fprintf oc "DEFINE resampled AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote table) ;
     if a.where <> [] then
       List.print ~first:"  WHERE " ~sep:" AND " ~last:"\n"
         (fun oc w ->
-          Printf.fprintf oc "(%s %s %s)" w.lhs w.op w.rhs)
+          Printf.fprintf oc "(%s %s %s)"
+            (ramen_quote w.lhs) w.op (ramen_quote w.rhs))
         oc a.where ;
-    Printf.fprintf oc "  SELECT %s\n"
+    Printf.fprintf oc "  GROUP BY u32(floor(start / %f))\n" a.time_step ;
+    Printf.fprintf oc "  SELECT\n" ;
+    Printf.fprintf oc "    floor(start / %f) * %f AS start,\n"
+      a.time_step a.time_step ;
+    Printf.fprintf oc "    start + %f AS stop,\n"
+      a.time_step ;
+    Printf.fprintf oc "    min %s AS min_value\n," (ramen_quote column) ;
+    Printf.fprintf oc "    max %s AS max_value\n," (ramen_quote column) ;
+    (* FIXME: use the default aggregate function here (have an "aggregate"
+     * function that would use the default one for the passed field? *)
+    Printf.fprintf oc "    avg %s AS avg_value\n" (ramen_quote column) ;
+    Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
+      a.time_step ;
+    (* Then we want for each point to find out if it's within the acceptable
+     * boundaries or not, using hysteresis: *)
+    Printf.fprintf oc "DEFINE ok AS\n" ;
+    Printf.fprintf oc "  FROM resampled\n" ;
+    Printf.fprintf oc "  SELECT\n" ;
+    Printf.fprintf oc "    min_value, max_value,\n" ;
+    Printf.fprintf oc "    %s\n"
       (if nullable then "COALESCE(" else "") ;
-    Printf.fprintf oc "    HYSTERESIS (%s, %f, %f)%s AS firing\n"
-      column a.recovery a.threshold
-      (if nullable then ", false)" else "") ;
+    Printf.fprintf oc "    HYSTERESIS (avg_value, %f, %f)%s AS ok;\n\n"
+      a.recovery a.threshold
+      (if nullable then "\n  , false)" else "") ;
+    (* Then we fire an alert if too many values are outside: *)
+    Printf.fprintf oc "DEFINE alert AS\n" ;
+    Printf.fprintf oc "  FROM ok\n" ;
+    Printf.fprintf oc "  SELECT\n" ;
+    Printf.fprintf oc "    max_value, min_value,\n" ;
+    Printf.fprintf oc "    moveavg(%d, float(not ok)) > %f AS firing\n"
+      (round_to_int (a.duration /. a.time_step)) a.ratio ;
     Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
     (* This cast to string can handle the NULL case: *)
-    Printf.fprintf oc "    \"${%s}\" AS values,\n" column ;
+    Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
     Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
     Printf.fprintf oc "    (IF firing THEN %S ELSE %S) AS desc\n"
       desc_firing desc_recovery ;
@@ -503,8 +536,8 @@ let save_alert conf program_name alert_info =
                      program_name ~src_file exec_file debug
       with e ->
         (* In case of error, do not leave the alert definition file so that the
-         * client can retry: *)
-        log_and_ignore_exceptions safe_unlink src_file ;
+         * client can retry, but keep it for later inspection: *)
+        log_and_ignore_exceptions move_file_away src_file ;
         raise e
     ) else
       (* Won't do anything if it's not running *)
@@ -540,6 +573,11 @@ let set_alerts conf msg =
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
             Printf.sprintf "Column %s of table %s is not numeric"
               column table |>
+            bad_request ;
+          (* Also check that table has event time info: *)
+          let func = func_of_table programs table in
+          if func.event_time = None then
+            Printf.sprintf "Table %s has no event time information" table |>
             bad_request) ;
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in

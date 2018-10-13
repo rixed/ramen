@@ -224,6 +224,21 @@ let safe_unlink fname =
   try BatUnix.restart_on_EINTR Unix.unlink fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()
 
+let rec restart_on_eintr ?(while_=(fun () -> true)) f x =
+  let open Unix in
+  try f x
+  with Unix_error (EINTR, _, _) ->
+    if while_ () then restart_on_eintr ~while_ f x
+    else raise Exit
+
+let move_file_away fname =
+  let bad_file = fname ^".bad?" in
+  ignore_exceptions safe_unlink bad_file ;
+  (try restart_on_eintr (Unix.rename fname) bad_file
+  with e ->
+    !logger.warning "Cannot rename file %s to %s: %s"
+      fname bad_file (Printexc.to_string e))
+
 let mtime_of_file fname =
   let open Unix in
   let s = stat fname in
@@ -271,11 +286,8 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
   | FileTooSmall ->
       (* Not my business, wait until the file length is at least that
        * of contents, which realistically should not take more than 1s: *)
-      let copy = fname ^".bad" in
       let redo () =
-        ignore_exceptions safe_unlink copy ;
-        log_and_ignore_exceptions ~what:("copy "^fname^" to "^ copy)
-          (rename fname) copy ;
+        move_file_away fname ;
         ensure_file_exists ~contents fname
       in
       if file_is_older_than ~on_err:true 3. fname then (
@@ -1328,13 +1340,6 @@ let pretty_array_print p oc =
 let is_failing f x =
   try ignore (f x) ; false
   with _ -> true
-
-let rec restart_on_eintr ~while_ f x =
-  let open Unix in
-  try f x
-  with Unix_error (EINTR, _, _) ->
-    if while_ () then restart_on_eintr ~while_ f x
-    else raise Exit
 
 (* Return the distance (as a float) between two values of the same type: *)
 module Distance = struct

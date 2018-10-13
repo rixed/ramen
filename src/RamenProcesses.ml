@@ -264,14 +264,6 @@ let stats_worker_sigkills =
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
 let rescue_worker conf func params =
-  let move_file_away fname =
-    let trash_file = fname ^".bad?" in
-    ignore_exceptions Unix.unlink trash_file ;
-    (try Unix.rename fname trash_file
-    with e ->
-      !logger.warning "Cannot rename file %s to %s: %s"
-        fname trash_file (Printexc.to_string e))
-  in
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
   !logger.info "Worker %s is deadlooping. Deleting its state file and \

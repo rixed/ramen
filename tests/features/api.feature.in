@@ -8,21 +8,20 @@ Feature: Test Ramen API from the command line.
     And a file test.ramen with content
       """
       define color_of_the_day as
-        select now as t, random as v,
-               u64(t) % 2 = 1 as odd,
+        select now as start, random as v,
+               u64(start) % 2 = 1 as odd,
                case when random > 0.66 then "blue"
                     when random > 0.50 then "red"
                     else "green"
                end as color,
                case when random > 0.5 then 42 end as nullable_42
         every 1 second
-        factor color
-        event starts at t;
+        factor color;
 
       define random_walk as
         from (select sum globally 1 as seq every 1 second)
-        select now as t, coalesce(previous.xyz, 0) + (random*2-1) as xyz
-        event starts at t with duration 1s;
+        select now as start, start + 1s as stop,
+               coalesce(previous.xyz, 0) + (random*2-1) as xyz;
       """
     And test.ramen is compiled
     And the program test is running.
