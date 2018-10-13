@@ -143,7 +143,7 @@ let update_stats_rb period rb get_tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output rb serialize_tuple sersize_of_tuple tmin_tmax tuple =
+let output rb serialize_tuple sersize_of_tuple start_stop tuple =
   let open RingBuf in
   let sersize = sersize_of_tuple tuple in
   IntCounter.add stats_rb_write_bytes sersize ;
@@ -153,8 +153,8 @@ let output rb serialize_tuple sersize_of_tuple tmin_tmax tuple =
   if sersize > 0 then
     let tx = enqueue_alloc rb sersize in
     let offs = serialize_tuple tx tuple in
-    let tmin, tmax = tmin_tmax |? (0., 0.) in
-    enqueue_commit tx tmin tmax ;
+    let start, stop = start_stop |? (0., 0.) in
+    enqueue_commit tx start stop ;
     assert (offs = sersize)
 
 let quit = ref None
@@ -167,15 +167,15 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
   and out_l = ref []  (* list of outputers *) in
   let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
   fun tuple ->
-    let tmin_tmax = time_of_tuple tuple in
+    let start_stop = time_of_tuple tuple in
     IntCounter.add stats_out_tuple_count 1 ;
     FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
     (* Update stats_event_time: *)
-    Option.may (fun (tmin, _) ->
+    Option.may (fun (start, _) ->
       (* We'd rather announce the start time of the event, event for
        * negative durations. *)
-      FloatGauge.set stats_event_time tmin
-    ) tmin_tmax ;
+      FloatGauge.set stats_event_time start
+    ) start_stop ;
     (* Get fnames if they've changed: *)
     let fnames = get_out_fnames () in
     Option.may (fun out_specs ->
@@ -218,7 +218,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             and tup_sizer =
               sersize_of_tuple file_spec.RamenOutRef.field_mask in
             let last_retry = ref 0. in
-            let rb_writer tmin_tmax tuple =
+            let rb_writer start_stop tuple =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
                * terminated then we won't deadloop.  Also, if one child is full
@@ -236,14 +236,14 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                     last_retry := !CodeGenLib_IO.now ;
                     RamenOutRef.mem rb_ref_out_fname fname)))
                 ~delay_rec:sleep_out (fun () ->
-                  output rb tup_serializer tup_sizer tmin_tmax tuple) ()
+                  output rb tup_serializer tup_sizer start_stop tuple) ()
             in
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
     List.iter (fun out ->
-      try out tmin_tmax tuple
+      try out start_stop tuple
       with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
