@@ -17,6 +17,7 @@ type timeserie_bucket =
   { mutable count : int ; mutable sum : float ;
     mutable min : float ; mutable max : float }
 
+(* [nt] is the number of time steps while [nc] is the number of data fields: *)
 let make_buckets nt nc =
   Array.init nt (fun _ ->
     Array.init nc (fun _ ->
@@ -58,7 +59,7 @@ let bucket_max b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 let get conf ?duration max_data_points since until where factors
-        ?(consolidation="avg") fq data_fields =
+        ?consolidation fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
     (List.print String.print) data_fields
@@ -73,17 +74,28 @@ let get conf ?duration max_data_points since until where factors
     List.map (find_field_index ser) factors in
   let key_of_factors tuple =
     List.map (fun fi -> tuple.(fi)) fis in
-  let vis =
-    List.map (fun data_field ->
-      find_field_index ser data_field
-    ) data_fields in
+  let vis, def_aggr =
+    List.fold_left (fun (vis, def_aggr) data_field ->
+      let vi, ft = find_field ser data_field in
+      (vi :: vis), (ft.aggr :: def_aggr)
+    ) ([], []) data_fields in
+  let vis = List.rev vis and def_aggr = List.rev def_aggr in
   let dt = (until -. since) /. float_of_int max_data_points in
   let per_factor_buckets = Hashtbl.create 11 in
   let bucket_of_time = bucket_of_time since dt in
-  let consolidation =
-    match String.lowercase consolidation with
+  let consolidate aggr_str =
+    match String.lowercase aggr_str with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | _ -> bucket_avg in
+  let def_aggr =
+    List.enum def_aggr /@
+    (function
+      | Some str -> consolidate str
+      | None ->
+          (match consolidation with
+          | None -> bucket_avg
+          | Some str -> consolidate str)) |>
+    Array.of_enum in
   fold_time_range bname ser params event_time since until ()
     (fun () tuple t1 t2 ->
     if filter tuple then (
@@ -117,7 +129,9 @@ let get conf ?duration max_data_points since until where factors
     let t = since +. dt *. (float_of_int i +. 0.5)
     and v =
       Array.map (fun buckets ->
-        Array.map consolidation buckets.(i)
+        Array.mapi (fun data_field_idx bucket ->
+          def_aggr.(data_field_idx) bucket
+        ) buckets.(i)
       ) ts in
     t, v)
 
