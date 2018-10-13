@@ -34,12 +34,15 @@ let print_selected_field oc f =
     | E.Field (_, tuple, field)
       when !tuple = TupleIn && f.alias = field -> false
     | _ -> true in
-  if need_alias then
+  if need_alias then (
     Printf.fprintf oc "%a AS %s"
       (E.print false) f.expr
-      f.alias
-  else
-    E.print false oc f.expr
+      f.alias ;
+    if f.doc <> "" then Printf.fprintf oc " %S" f.doc
+  ) else (
+    E.print false oc f.expr ;
+    if f.doc <> "" then Printf.fprintf oc " DOC %S" f.doc
+  )
 
 (* Represents what happens to a group after its value is output: *)
 type flush_method =
