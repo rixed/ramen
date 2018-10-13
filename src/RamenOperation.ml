@@ -26,7 +26,12 @@ module F = C.Func
 
 (* Represents an output field from the select clause
  * 'SELECT expr AS alias' *)
-type selected_field = { expr : E.t ; alias : string ; doc : string }
+type selected_field =
+  { expr : E.t ;
+    alias : string ;
+    doc : string ;
+    (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
+    aggr : string option }
 
 let print_selected_field oc f =
   let need_alias =
@@ -351,6 +356,7 @@ let out_type_of_operation = function
           RamenTuple.{
             typ_name = sf.alias ;
             doc = sf.doc ;
+            aggr = sf.aggr ;
             (* Types and units will need to be copied from the expression
              * after typing and star-expansion: *)
             typ = { structure = TAny ; nullable = true } ;
@@ -397,8 +403,8 @@ let in_type_of_operation = function
                  * typing: *)
                 typ = { structure = TAny ; nullable = true } ;
                 units = None ;
-                (* We don't mind the doc of an input field: *)
-                doc = "" } in
+                (* We don't mind the doc/aggr of an input field: *)
+                doc = "" ; aggr = None } in
               input := t :: !input)
         | _ -> ()
       ) op ;
@@ -666,11 +672,13 @@ struct
           blanks -- strinG "as" -- blanks -+ some non_keyword ++
           optional ~def:"" (blanks -+ quoted_string)) |||
         (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
-         fun doc -> None, doc)) >>:
-      fun (expr, (alias, doc)) ->
+         fun doc -> None, doc)) ++
+      optional ~def:None (
+        blanks -+ some RamenTuple.Parser.default_aggr) >>:
+      fun ((expr, (alias, doc)), aggr) ->
         let alias =
           Option.default_delayed (fun () -> default_alias expr) alias in
-        { expr ; alias ; doc }
+        { expr ; alias ; doc ; aggr }
     ) m
 
   let event_time_clause m =
@@ -1146,13 +1154,13 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "start")) ;\
-            alias = "start" ; doc = "" } ;\
+            alias = "start" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "stop")) ;\
-            alias = "stop" ; doc = "" } ;\
+            alias = "stop" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "itf_clt")) ;\
-            alias = "itf_src" ; doc = "" } ;\
+            alias = "itf_src" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "itf_srv")) ;\
-            alias = "itf_dst" ; doc = "" } ] ;\
+            alias = "itf_dst" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1190,9 +1198,9 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "t")) ;\
-            alias = "t" ; doc = "" } ;\
+            alias = "t" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" ; doc = "" } ] ;\
+            alias = "value" ; doc = "" ; aggr = Some "max" } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1203,19 +1211,19 @@ struct
         commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
-      (65, [])))\
-      (test_op p "from foo select t, value event starting at t*10 with duration 60s" |>\
+      (86, [])))\
+      (test_op p "from foo select t, value aggregates using max event starting at t*10 with duration 60s" |>\
        replace_typ_in_op)
 
     (Ok (\
       Aggregate {\
         fields = [\
           { expr = E.(Field (typ, ref TupleIn, "t1")) ;\
-            alias = "t1" ; doc = "" } ;\
+            alias = "t1" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "t2")) ;\
-            alias = "t2" ; doc = "" } ;\
+            alias = "t2" ; doc = "" ; aggr = None } ;\
           { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" ; doc = "" } ] ;\
+            alias = "value" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1255,17 +1263,17 @@ struct
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMin (\
                 Field (typ, ref TupleIn, "start")))) ;\
-            alias = "start" ; doc = "" } ;\
+            alias = "start" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMax (\
                 Field (typ, ref TupleIn, "stop")))) ;\
-            alias = "max_stop" ; doc = "" } ;\
+            alias = "max_stop" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, true, AggrSum (\
                   Field (typ, ref TupleIn, "packets"))),\
                 Field (typ, ref TupleParam, "avg_window"))) ;\
-            alias = "packets_per_sec" ; doc = "" } ] ;\
+            alias = "packets_per_sec" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1301,7 +1309,7 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.Const (typ, VU32 Uint32.one) ;\
-            alias = "one" ; doc = "" } ] ;\
+            alias = "one" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1323,12 +1331,13 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.Field (typ, ref TupleIn, "n") ; alias = "n" ; doc = "" } ;\
+          { expr = E.Field (typ, ref TupleIn, "n") ; \
+            alias = "n" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatefulFun (typ, GlobalState, true, E.Lag (\
               E.Const (typ, VU32 (Uint32.of_int 2)), \
               E.Field (typ, ref TupleIn, "n")))) ;\
-            alias = "l" ; doc = "" } ] ;\
+            alias = "l" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1351,8 +1360,12 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
+                        { typ_name = "f1" ; \
+                          typ = { structure = TBool ; nullable = true } ; \
+                          units = None ; doc = "" ; aggr = None } ; \
+                        { typ_name = "f2" ; \
+                          typ = { structure = TI32 ; nullable = false } ; \
+                          units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
       (44, [])))\
       (test_op p "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1365,8 +1378,12 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
+                        { typ_name = "f1" ; \
+                          typ = { structure = TBool ; nullable = true } ; \
+                          units = None ; doc = "" ; aggr = None } ; \
+                        { typ_name = "f2" ; \
+                          typ = { structure = TI32 ; nullable = false } ; \
+                          units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
       (55, [])))\
       (test_op p "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)" |>\
@@ -1379,8 +1396,12 @@ struct
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \
-                        { typ_name = "f1" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;\
-                        { typ_name = "f2" ; typ = { structure = TI32 ; nullable = false } ; units = None ; doc = "" } ] } ;\
+                        { typ_name = "f1" ; \
+                          typ = { structure = TBool ; nullable = true } ; \
+                          units = None ; doc = "" ; aggr = None } ;\
+                        { typ_name = "f2" ; \
+                          typ = { structure = TI32 ; nullable = false } ; \
+                          units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
       (73, [])))\
       (test_op p "read file \"/tmp/toto.csv\" \\
@@ -1390,7 +1411,8 @@ struct
 
     (Ok (\
       Aggregate {\
-        fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; alias = "one" ; doc = "" } ] ;\
+        fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; \
+                     alias = "one" ; doc = "" ; aggr = None } ] ;\
         every = 1. ; event_time = None ;\
         and_all_others = false ; merge = { on = []; timeout = 0.; last = 1 } ; sort = None ;\
         where = E.Const (typ, VBool true) ;\

@@ -53,7 +53,7 @@ let infer_factors operation =
     try Some (forwarded_field operation factor)
     with Not_found -> None)
 
-let infer_field_doc func operation parents params =
+let infer_field_doc_aggr func operation parents params =
   let set_doc alias doc =
     if doc <> "" then (
       !logger.debug "Function %s can reuse parent doc for %s"
@@ -62,27 +62,44 @@ let infer_field_doc func operation parents params =
         List.find (fun ft ->
           ft.RamenTuple.typ_name = alias
         ) func.F.out_type in
-      ft.doc <- doc) in
+      ft.doc <- doc)
+  and set_aggr alias aggr =
+    if aggr <> None then (
+      !logger.debug "Function %s can reuse parent default aggr for %s"
+        (RamenName.string_of_func func.F.name) alias ;
+      let ft =
+        List.find (fun ft ->
+          ft.RamenTuple.typ_name = alias
+        ) func.F.out_type in
+      ft.aggr <- aggr)
+  in
   match operation with
     | RamenOperation.Aggregate { fields ; _ } ->
         List.iter (function
         | RamenOperation.{
-            doc = "" ; alias ;
-            expr = Expr.Field (_, { contents = TupleIn }, fn) } ->
+            alias ; doc ; aggr ;
+            expr = Expr.Field (_, { contents = TupleIn }, fn) }
+            when doc = "" || aggr = None ->
             (* Look for this field fn in parent: *)
             (match List.find (fun ft ->
                      ft.RamenTuple.typ_name = fn
                    ) (List.hd parents).F.out_type with
             | exception Not_found -> ()
-            | psf -> set_doc alias psf.doc)
+            | psf ->
+                if doc = "" then set_doc alias psf.doc ;
+                if aggr = None then set_aggr alias psf.aggr) ;
         | RamenOperation.{
-            doc = "" ; alias ;
-            expr = Expr.Field (_, { contents = TupleParam }, fn) } ->
+            alias ; doc ; aggr ;
+            expr = Expr.Field (_, { contents = TupleParam }, fn) }
+            when doc = "" || aggr = None ->
             (match List.find (fun param ->
                      param.RamenTuple.ptyp.typ_name = fn
                    ) params with
             | exception Not_found -> ()
-            | param -> set_doc alias param.RamenTuple.ptyp.doc)
+            | param ->
+                let p = param.RamenTuple.ptyp in
+                if doc = "" then set_doc alias p.doc ;
+                if aggr = None then set_aggr alias p.aggr)
         | _ -> ()
       ) fields
   | _ -> ()
@@ -127,7 +144,7 @@ let finalize_func parents params func operation =
         (List.print String.print) func.factors
   ) ;
   if parents <> [] then (
-    infer_field_doc func operation parents params
+    infer_field_doc_aggr func operation parents params ;
   ) ;
   (* Seal everything: *)
   let op_str = IO.to_string RamenOperation.print operation in

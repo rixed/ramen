@@ -13,7 +13,8 @@ type field_typ =
   { typ_name : string ;
     mutable typ : RamenTypes.t ;
     mutable units : RamenUnits.t option ;
-    mutable doc : string }
+    mutable doc : string ;
+    mutable aggr : string option }
   [@@ppp PPP_OCaml]
 
 type typ = field_typ list
@@ -94,13 +95,25 @@ module Parser =
 struct
   open RamenParsing
 
+  let default_aggr m =
+    let m = "default aggregate" :: m in
+    (
+      strinGs "aggregate" -- blanks -- strinG "using" -- blanks -+
+      identifier >>: fun aggr ->
+        match String.lowercase aggr with
+        (* Same list as in RamenTimeseries: *)
+        | "avg" | "sum" | "min" | "max" as x -> x
+        | x -> raise (Reject ("Unknown aggregation function "^ x))
+    ) m
+
   let field m =
     let m = "field declaration" :: m in
     (
       non_keyword +- blanks ++ RamenTypes.Parser.typ ++
       optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) ++
-      optional ~def:"" quoted_string >>:
-      fun (((typ_name, typ), units), doc) ->
-        { typ_name ; typ ; units ; doc }
+      optional ~def:"" (opt_blanks -+ quoted_string) ++
+      optional ~def:None (opt_blanks -+ some default_aggr) >>:
+      fun ((((typ_name, typ), units), doc), aggr) ->
+        { typ_name ; typ ; units ; doc ; aggr }
     ) m
 end

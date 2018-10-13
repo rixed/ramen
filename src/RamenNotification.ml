@@ -10,15 +10,15 @@ open RamenNullable
  * the (un)serialization functions. *)
 let tuple_typ =
   let open RamenTypes in
-  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" } ;
+  [ { typ_name = "worker" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
     { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Time the notification was sent." } ;
+      doc = "Time the notification was sent." ; aggr = None } ;
     { typ_name = "event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Time the event occurred." } ;
-    { typ_name = "name" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" } ;
-    { typ_name = "firing" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" } ;
+      doc = "Time the event occurred." ; aggr = None } ;
+    { typ_name = "name" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
+    { typ_name = "firing" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
     { typ_name = "certainty" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.dimensionless ;
-      doc = "How certain are we that there is a real problem." } ;
+      doc = "How certain are we that there is a real problem." ; aggr = None } ;
     { typ_name = "parameters" ;
       typ = { structure = TList { structure = TTuple [|
                                     { structure = TString ;
@@ -27,7 +27,7 @@ let tuple_typ =
                                       nullable = false } |] ;
                                   nullable = false } ;
               nullable = false } ; units = None ;
-      doc = "List of arbitrary parameters associated with this notification." } ]
+      doc = "List of arbitrary parameters associated with this notification." ; aggr = None } ]
 
 (* Should the event time of a notification event the time it's been sent, or
  * the event time it refers to? It seems more logical to have it the time it's

@@ -128,8 +128,9 @@ struct
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
             (RamenTypes.Parser.(p_ ~min_int_width:0 ||| null) |||
              (duration >>: fun x -> RamenTypes.VFloat x))) ++
-          optional ~def:"" quoted_string >>:
-          fun ((((typ_name, typ_decl), units), value), doc) ->
+          optional ~def:"" quoted_string ++
+          optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
+          fun (((((typ_name, typ_decl), units), value), doc), aggr) ->
             let typ, value =
               let open RamenTypes in
               match typ_decl with
@@ -175,7 +176,7 @@ struct
                         raise (Reject e)
                     | value -> typ, value
             in
-            RamenTuple.{ ptyp = { typ_name ; typ ; units ; doc } ; value }
+            RamenTuple.{ ptyp = { typ_name ; typ ; units ; doc ; aggr } ; value }
         )
     ) m
 
@@ -220,7 +221,7 @@ struct
         Aggregate {\
           fields = [\
             { expr = RamenExpr.Const (typ, VU32 (Uint32.of_int 42)) ;\
-              alias = "the_answer" ; doc = "" } ] ;\
+              alias = "the_answer" ; doc = "" ; aggr = None } ] ;\
           and_all_others = false ;\
           merge = { on = [] ; timeout = 0. ; last = 1 } ;\
           sort = None ;\
@@ -236,10 +237,16 @@ struct
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
 
-   (Ok (([ RamenTuple.{ ptyp = { typ_name = "p1" ; typ = { structure = TU32 ; nullable = false } ; units = None ; doc = "" } ;\
-                        value = VU32 Uint32.zero } ;\
-           RamenTuple.{ ptyp = { typ_name = "p2" ; typ = { structure = TU32 ; nullable = false } ; units = None ; doc = "" } ;\
-                        value = VU32 Uint32.zero } ], [\
+   (Ok (([ RamenTuple.{ \
+             ptyp = { typ_name = "p1" ; \
+                      typ = { structure = TU32 ; nullable = false } ; \
+                      units = None ; doc = "" ; aggr = None } ;\
+             value = VU32 Uint32.zero } ;\
+           RamenTuple.{ \
+             ptyp = { typ_name = "p2" ; \
+                      typ = { structure = TU32 ; nullable = false } ; \
+                      units = None ; doc = "" ; aggr = None } ;\
+             value = VU32 Uint32.zero } ], [\
     { name = Some (RamenName.func_of_string "add") ;\
       doc = "" ;\
       operation = \
@@ -249,7 +256,7 @@ struct
                 StatelessFun2 (typ, Add,\
                   Field (typ, ref TupleParam, "p1"),\
                   Field (typ, ref TupleParam, "p2"))) ;\
-              alias = "res" ; doc = "" } ] ;\
+              alias = "res" ; doc = "" ; aggr = None } ] ;\
           every = 0. ; event_time = None ;\
           and_all_others = false ; merge = { on = [] ; timeout = 0. ; last = 1 }; sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
@@ -374,7 +381,9 @@ let reify_star_fields get_parent program_name funcs =
     let open RamenExpr in
     { expr = (Field (make_typ alias, ref TupleIn, alias)) ;
       alias ;
-      doc = "" (* will be inherited later, with non-star fields *) } in
+      (* Those two will be inferred later, with non-star fields
+       * (See RamenTypingHelpers): *)
+      doc = "" ; aggr = None } in
   let new_funcs = ref funcs in
   let ok =
     (* If a function selects STAR from a parent that also selects STAR
