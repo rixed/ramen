@@ -42,7 +42,11 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
 let check_binocle_errors () =
   Option.may raise !Binocle.last_error
 
-let supervisor conf daemonize to_stdout to_syslog autoreload () =
+let supervisor conf daemonize to_stdout to_syslog autoreload
+               use_external_compiler bundle_dir max_simult_compils
+               smt_solver () =
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then

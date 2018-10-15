@@ -171,7 +171,12 @@ let complete str () =
             "--to-stdout", RamenConsts.CliInfo.to_stdout ;
             "--syslog", RamenConsts.CliInfo.to_syslog ;
             "--autoreload=", RamenConsts.CliInfo.autoreload ;
-            "--report-period=", RamenConsts.CliInfo.report_period ] @
+            "--report-period=", RamenConsts.CliInfo.report_period ;
+            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
+            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+            "--max-simult-compilations",
+              RamenConsts.CliInfo.max_simult_compilations ;
+            "--solver=", RamenConsts.CliInfo.smt_solver ] @
           copts
        | "notifier" ->
           [ "--daemonize", RamenConsts.CliInfo.daemonize ;
@@ -278,7 +283,12 @@ let complete str () =
             "--syslog", RamenConsts.CliInfo.to_syslog ;
             "--url=", RamenConsts.CliInfo.server_url ;
             "--api", RamenConsts.CliInfo.api ;
-            "--graphite", RamenConsts.CliInfo.graphite ] @
+            "--graphite", RamenConsts.CliInfo.graphite ;
+            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
+            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+            "--max-simult-compilations",
+              RamenConsts.CliInfo.max_simult_compilations ;
+            "--solver=", RamenConsts.CliInfo.smt_solver ] @
           copts
       | "variants" ->
           copts

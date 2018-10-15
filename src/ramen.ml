@@ -86,6 +86,32 @@ let autoreload =
                    ~env ["autoreload"] in
   Arg.(value (opt ~vopt:5. float 0. i))
 
+let external_compiler =
+  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.external_compiler
+                   ~env [ "use-external-compiler"; "external-compiler" ] in
+  Arg.(value (flag i))
+
+let bundle_dir =
+  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.bundle_dir
+                   ~env [ "bundle-dir" ] in
+  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
+
+let max_simult_compilations =
+  let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
+                   ~env [ "max-simult-compilations" ;
+                          "max-simultaneous-compilations" ] in
+  let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
+  Arg.(value (opt int def i))
+
+let smt_solver =
+  let env = Term.env_info "RAMEN_SMT_SOLVER" in
+  let i = Arg.info ~doc:RamenConsts.CliInfo.smt_solver
+                   ~env [ "smt-solver" ; "solver" ] in
+  Arg.(value (opt string !RamenSmtTyping.smt_solver i))
+
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -93,7 +119,11 @@ let supervisor =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ autoreload),
+      $ autoreload
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver),
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
 
 (*
@@ -286,32 +316,6 @@ let links =
 (*
  * Compiling/Running/Stopping
  *)
-
-let external_compiler =
-  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.external_compiler
-                   ~env [ "use-external-compiler"; "external-compiler" ] in
-  Arg.(value (flag i))
-
-let bundle_dir =
-  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.bundle_dir
-                   ~env [ "bundle-dir" ] in
-  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
-
-let max_simult_compilations =
-  let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.max_simult_compilations
-                   ~env [ "max-simult-compilations" ;
-                          "max-simultaneous-compilations" ] in
-  let def = Atomic.Counter.get RamenOCamlCompiler.max_simult_compilations in
-  Arg.(value (opt int def i))
-
-let smt_solver =
-  let env = Term.env_info "RAMEN_SMT_SOLVER" in
-  let i = Arg.info ~doc:RamenConsts.CliInfo.smt_solver
-                   ~env [ "smt-solver" ; "solver" ] in
-  Arg.(value (opt string !RamenSmtTyping.smt_solver i))
 
 let assignment =
   let parse s =
