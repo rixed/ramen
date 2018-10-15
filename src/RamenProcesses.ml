@@ -662,7 +662,11 @@ let synchronize_running conf autoreload_delay =
     if !to_kill <> [] then !logger.debug "Starting the kills" ;
     List.iter (try_kill conf must_run) !to_kill ;
     if !to_start <> [] then !logger.debug "Starting the starts" ;
-    List.iter (try_start conf must_run) !to_start ;
+    List.iter (fun proc ->
+      try_start conf must_run proc ;
+      (* If we had to compile a program this is worth resetting the watchdog: *)
+      RamenWatchdog.reset watchdog
+    ) !to_start ;
     (* Try to fix any issue with out_refs: *)
     if !to_start = [] && !to_kill = [] && !quit = None then
       check_out_ref conf must_run ;
