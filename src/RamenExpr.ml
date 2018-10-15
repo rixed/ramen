@@ -921,11 +921,15 @@ struct
       (
         RamenTypes.Parser.scalar ~min_int_width:32 >>:
         fun c ->
+          (* We'd like to consider all constants as dimensionless, but that'd
+             be a pain (for instance, COALESCE(x, 0) would be invalid if x had
+             a unit, while by leaving the const unit unspecified it has the
+             unit of x.
           let units =
             if RamenTypes.(is_a_num (structure_of c)) then
               Some RamenUnits.dimensionless
-            else None in
-          Const (make_typ ?units "constant", c)
+            else None in*)
+          Const (make_typ "constant", c)
       ) ||| (
         duration >>: fun x ->
           Const (make_typ ~units:RamenUnits.seconds "constant", VFloat x)
