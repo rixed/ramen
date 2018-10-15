@@ -9,6 +9,7 @@ val t_ppp_ocaml : 'a t PPP.t
 type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
 val func_of_string : string -> func
+val func_print : 'a BatInnerIO.output -> func -> unit
 val string_of_func : func -> string
 val func_color : func -> string
 

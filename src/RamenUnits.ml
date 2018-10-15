@@ -119,7 +119,7 @@ let sub ?what u1 u2 =
   ) u1 u2
 
 let mul ?what u1 u2 =
-  let fail = fail ~what:(what |? binop u1 '+' u2) in
+  let fail = fail ~what:(what |? binop u1 '*' u2) in
   MapUnit.merge (fun _u e1 e2 ->
     let e1, r1 = e1 |? (0., false) and e2, r2 = e2 |? (0., false) in
     if r1 && r2 then
@@ -144,6 +144,7 @@ let check_unitless u =
     Printf.sprintf2 "%a must be dimensionless" print u |>
     failwith
 
+(* Same or unset actually: *)
 let check_same_units ~what =
   Enum.fold (fun units_opt u ->
     match units_opt, u with

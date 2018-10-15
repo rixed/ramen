@@ -725,7 +725,7 @@ let synchronize_running conf autoreload_delay =
               Hashtbl.iter (fun program_name (mre, get_rc) ->
                 if not mre.C.killed then (
                   if mre.C.src_file <> "" then (
-                    !logger.info "Trying to build %S" mre.C.bin ;
+                    !logger.debug "Trying to build %S" mre.C.bin ;
                     RamenMake.build conf program_name mre.C.src_file mre.C.bin) ;
                   match get_rc () with
                   | exception _ ->

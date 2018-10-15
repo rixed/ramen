@@ -1336,10 +1336,6 @@ let pretty_list_print p oc =
 let pretty_array_print p oc =
   pretty_enum_print p oc % Array.enum
 
-let is_failing f x =
-  try ignore (f x) ; false
-  with _ -> true
-
 (* Return the distance (as a float) between two values of the same type: *)
 module Distance = struct
   let float a b = abs_float (a -. b)

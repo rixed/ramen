@@ -136,7 +136,7 @@ let check_orphans killed_prog_names programs =
            * complain: *)
           if func.F.parents <> [] &&
              List.for_all (function
-               | None, _ -> false (* does not depend in a killed program *)
+               | None, _ -> false (* does not depend upon a killed program *)
                | Some par_rel_prog, _ ->
                   let par_prog =
                     RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in

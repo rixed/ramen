@@ -41,11 +41,6 @@ let make_typ ?typ ?units expr_name =
   incr uniq_num_seq ;
   { expr_name ; typ ; units ; uniq_num = !uniq_num_seq }
 
-let copy_typ ?name typ =
-  let expr_name = name |? typ.expr_name in
-  incr uniq_num_seq ;
-  { typ with expr_name ; uniq_num = !uniq_num_seq }
-
 (* Stateful function can have either a unique global state a one state per
  * aggregation group (local). Each function has its own default (functions
  * that tends to be used mostly for aggregation have a local default state,
@@ -1686,7 +1681,7 @@ let units_of_expr units_of_input units_of_output =
          * just don't know what the unit is. *)
         option_map2 RamenUnits.pow (uoe e1) (float_of_const e2)
     (* Although shifts could be seen as mul/div, we'd rather consider
-     * only dimentionless values receive this treatment, esp. since
+     * only dimensionless values receive this treatment, esp. since
      * it's not possible to distinguish between a mul and div. *)
     | StatelessFun2 (_, (And|Or|Concat|StartsWith|EndsWith|
                          BitAnd|BitOr|BitXor|BitShift), e1, e2) ->

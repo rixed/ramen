@@ -19,6 +19,8 @@ let func_of_string s =
     invalid_arg "operation name" ;
   s
 
+let func_print = String.print
+
 external string_of_func : func -> string = "%identity"
 
 (* Program names *)
