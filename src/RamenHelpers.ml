@@ -261,10 +261,9 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
   mkdir_all ~is_file:true fname ;
   (* If needed, create the file with the initial content, atomically: *)
   let open Unix in
-  let min_size = min_size |? String.length contents in
   (* But first, check if the file is already there with the proper size
    * (without opening it, or the following O_EXCL dance won't work!): *)
-  match file_check ~min_size fname with
+  match file_check ?min_size fname with
   | FileOk -> ()
   | FileMissing ->
       !logger.debug "File %s is still missing" fname ;
@@ -273,7 +272,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
           (* Wait for some other concurrent process to rebuild it: *)
           !logger.debug "File %s just appeared, give it time..." fname ;
           sleep 1 ;
-          ensure_file_exists ~contents ~min_size fname
+          ensure_file_exists ~contents ?min_size fname
       | fd ->
           !logger.debug "Creating file %s with initial content %S"
             fname contents ;
@@ -288,7 +287,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
        * of contents, which realistically should not take more than 1s: *)
       let redo () =
         move_file_away fname ;
-        ensure_file_exists ~contents fname
+        ensure_file_exists ~contents ?min_size fname
       in
       if file_is_older_than ~on_err:true 3. fname then (
         !logger.warning "File %s is an old left-over, let's redo it" fname ;
@@ -297,7 +296,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
         (* Wait for some other concurrent process to rebuild it: *)
         !logger.debug "File %s is being worked on, give it time..." fname ;
         sleep 1 ;
-        ensure_file_exists ~contents ~min_size fname)
+        ensure_file_exists ~contents ?min_size fname)
   | FileBadPerms ->
       assert false (* We aren't checking that here *)
 

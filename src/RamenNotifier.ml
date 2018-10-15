@@ -28,7 +28,7 @@ type alert_id = uint64 [@@ppp PPP_OCaml]
 
 let next_alert_id conf =
   let fname = conf.C.persist_dir ^"/notifier_state" in
-  ensure_file_exists ~contents:"0" fname ;
+  ensure_file_exists ~min_size:1 ~contents:"0" fname ;
   let get = ppp_of_file ~error_ok:true alert_id_ppp_ocaml in
   fun () ->
     let v = get fname in
@@ -629,7 +629,7 @@ let ensure_conf_file_exists notif_conf_file =
       default_init_schedule_delay = 90. ;
       default_init_schedule_delay_after_startup = 120. } in
   let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
-  ensure_file_exists ~min_size:0 ~contents notif_conf_file
+  ensure_file_exists ~contents notif_conf_file
 
 let load_config notif_conf_file =
   let notif_conf = ppp_of_file notify_config_ppp_ocaml notif_conf_file in
