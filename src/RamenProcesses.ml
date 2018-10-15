@@ -470,10 +470,12 @@ let really_try_start conf must_run proc =
       false in
   let linkage_ok =
     List.fold_left (fun ok p ->
-      check_linkage p proc.func && ok) true parents in
+      check_linkage p proc.func && ok
+    ) true parents in
   let linkage_ok =
     List.fold_left (fun ok c ->
-      check_linkage proc.func c && ok) linkage_ok children in
+      check_linkage proc.func c && ok
+    ) linkage_ok children in
   if parents_ok && linkage_ok then
     really_start conf proc parents children
 
