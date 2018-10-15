@@ -1474,7 +1474,8 @@ struct
 
   and accept_units q =
     q ++ optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
-      fun (e, units) -> (typ_of e).units <- units ; e
+      function (e, None) -> e
+             | (e, units) -> (typ_of e).units <- units ; e
 
   and highestest_prec_no_parenthesis m =
     (accept_units (const ||| field ||| null) ||| func ||| coalesce) m
