@@ -31,3 +31,6 @@ let worker_state = "v10" (* last: remove dead state member *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
+
+(* Format of the experiment definition files *)
+let experiment = "v1"

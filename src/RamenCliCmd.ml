@@ -613,8 +613,9 @@ let variants conf () =
   Printf.printf "Experimenter Id: %d\n" experimenter_id ;
   Printf.printf "Experiments (legend: %s | %s | unselected):\n"
     (green "forced") (yellow "selected") ;
-  List.iter (fun e ->
-    Printf.printf "  %s:\n" e.name ;
+  all_experiments conf.C.persist_dir |>
+  List.iter (fun (name, e) ->
+    Printf.printf "  %s:\n" name ;
     for i = 0 to Array.length e.variants - 1 do
       let v = e.variants.(i) in
       Printf.printf "    %s (%s%%):\n%s\n"
@@ -624,8 +625,7 @@ let variants conf () =
         (nice_string_of_float (100. *. v.Variant.share))
         (reindent "      " v.Variant.descr)
     done ;
-    Printf.printf "\n"
-  ) all_experiments
+    Printf.printf "\n")
 
 let stats conf () =
   init_logger conf.C.log_level ;

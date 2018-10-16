@@ -16,12 +16,21 @@ struct
 end
 
 type t =
-  { name : string ;
-    mutable variant : int ;
+  { mutable variant : int ;
     mutable forced : bool ;
     variants : Variant.t array }
 
-let make name variants =
+module Serialized =
+struct
+  type var =
+    { descr : string ;
+      share : float option [@ppp_default None] }
+    [@@ppp PPP_OCaml]
+  type vars = (string, var) Hashtbl.t [@@ppp PPP_OCaml]
+  type exps = (string, vars) Hashtbl.t [@@ppp PPP_OCaml]
+end
+
+let make variants =
   (* Adjust the shares: *)
   let sum, num_unset =
     Array.fold_left (fun (s, n) v ->
@@ -39,7 +48,7 @@ let make name variants =
           rem_s -. s, rem_n - 1
       | _ -> rem
     ) (1. -. sum, num_unset) variants in
-  { name ; variant = -1 ; forced = false ; variants }
+  { variant = -1 ; forced = false ; variants }
 
 (*
  * Now the actual experiments:
@@ -49,14 +58,15 @@ let make name variants =
  * Not other experiment can run alongside this one. *)
 
 let the_big_one =
-  make "TheBigOne" [|
+  make [|
     Variant.make ~share:0. "off"
       "Run as little as possible from ramen:\n\
        - no workers ;\n\
        - ...?\n" ;
     Variant.make "on" "Run ramen normally." |]
 
-let all_experiments = [ the_big_one ]
+let all_internal_experiments =
+  [ "TheBigOne", the_big_one ]
 
 (*
  * Helpers
@@ -90,8 +100,42 @@ let get_experimenter_id persist_dir =
                    ~deserialize:int_of_string fname
   with _ -> 0
 
+(* A file where to store additional experiments (usable from ramen programs) *)
+let get_add_exps_fname persist_dir =
+  persist_dir ^"/experiments/"
+              ^ RamenVersions.experiment
+              ^"/config"
+
+(* All internal and external (in fname) experiments.
+ * External experiments are loaded only once so that they can be mutated to set
+ * the variant and the ecision remembered. *)
+let all_experiments =
+  let ext_exps = ref None in
+  fun persist_dir ->
+    match !ext_exps with
+    | Some lst -> lst
+    | None ->
+        let fname = get_add_exps_fname persist_dir in
+        let lst =
+          if file_exists fname then
+            let exps =
+              ppp_of_file Serialized.exps_ppp_ocaml fname |>
+              Hashtbl.to_list |>
+              List.map (fun (name, vars) ->
+                name,
+                make (
+                  Hashtbl.to_list vars |>
+                  List.map (fun (name, var) ->
+                    Variant.make name ?share:var.Serialized.share var.descr) |>
+                  Array.of_list)) in
+            List.rev_append all_internal_experiments exps
+          else all_internal_experiments in
+        ext_exps := Some lst ;
+        lst
+
 let set_variants persist_dir forced_variants =
   let eid = get_experimenter_id persist_dir in
+  let all_exps = all_experiments persist_dir in
   (*
    * Set all the forced variants:
    *)
@@ -100,13 +144,13 @@ let set_variants persist_dir forced_variants =
     | exception Not_found ->
         invalid_arg "variant must be `experiment=variant`"
     | en, vn ->
-        (match List.find (fun e -> e.name = en) all_experiments with
+        (match List.assoc en all_exps with
         | exception Not_found ->
             Printf.sprintf2
               "unknown experiment %S, only possible experiments are: %a"
               en
-              (pretty_list_print (fun oc e -> String.print oc e.name))
-                all_experiments |>
+              (pretty_list_print (fun oc (name, _) -> String.print oc name))
+                all_exps |>
             invalid_arg
         | e ->
             (match Array.findi (fun v -> v.Variant.name = vn) e.variants with
@@ -114,7 +158,7 @@ let set_variants persist_dir forced_variants =
                 Printf.sprintf2
                   "unknown variant %S, only possible variants of \
                    experiment %S are: %a"
-                  vn e.name
+                  vn en
                   (pretty_array_print (fun oc v ->
                     String.print oc v.Variant.name)) e.variants |>
                 invalid_arg
@@ -124,7 +168,7 @@ let set_variants persist_dir forced_variants =
   (*
    * Then set the variants that are still unset:
    *)
-  List.iter (fun e ->
+  List.iter (fun (name, e) ->
     let forced = e.variant >= 0 in
     if not forced then (
       (* Look for the share we end up in: *)
@@ -133,11 +177,11 @@ let set_variants persist_dir forced_variants =
         if r < e.variants.(i).share then i else
         find_variant (i + 1) (r -. e.variants.(i).share) in
       let m = 1000 in
-      let r = abs (eid + Hashtbl.hash e.name) mod m in
+      let r = abs (eid + Hashtbl.hash name) mod m in
       let r = float_of_int r /. float_of_int m in
       e.variant <- find_variant 0 r) ;
     !logger.debug "Experiment %s: variant %s%s"
-      e.name
+      name
       e.variants.(e.variant).name
       (if forced then " (forced)" else "")
-  ) all_experiments
+  ) all_exps
