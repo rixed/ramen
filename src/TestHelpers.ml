@@ -50,7 +50,7 @@ let test_op ?postproc p s =
                            nullable = false } ;
                    units = None ; doc = "" ; aggr = None } ;
           value = RamenTypes.VI32 10l }] in
-    RamenOperation.check params res ; ok_res
+    RamenOperation.check params None res ; ok_res
   | x -> x
 
 let typ =
@@ -107,9 +107,10 @@ let replace_typ_in_op = function
 
 let replace_typ_in_program =
   function
-  | Ok ((params, prog), rest) ->
+  | Ok ((params, run_cond, prog), rest) ->
     Ok ((
       params,
+      run_cond,
       List.map (fun func ->
         RamenProgram.{
           func with operation =

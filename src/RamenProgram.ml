@@ -271,7 +271,8 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           event_time = None ;\
-          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } } ]),\
+          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } ;\
+      condition = None } ]),\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
@@ -302,10 +303,11 @@ struct
           notifications = [] ; key = [] ;\
           commit_cond = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ; flush_how = Reset ; from = [] ;\
-          factors = [] } } ]),\
+          factors = [] } ;\
+      condition = None } ]),\
       (84, [])))\
       (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
-       (function Ok ((ps, fs), _) as x -> check (ps, fs) ; x | x -> x) |>\
+       (function Ok ((ps, _, fs), _) as x -> check (ps, fs) ; x | x -> x) |>\
        replace_typ_in_program)
   *)
 
