@@ -207,7 +207,10 @@ type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
 let file_check ?(min_size=0) ?(has_perms=0) fname =
   let open Unix in
   match stat fname with
-  | exception _ -> FileMissing
+  | exception _ ->
+    (* Be it the file or a directory, or a permission issue, we consider the
+     * file to be missing: *)
+    FileMissing
   | s ->
     if s.st_perm land has_perms <> has_perms then FileBadPerms else
     if s.st_size < min_size then FileTooSmall else

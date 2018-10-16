@@ -781,21 +781,28 @@ let default =
   Term.((ret (const (`Help (`Pager, None)))),
         info "Ramen" ~version ~doc ~sdocs)
 
+(* Run the program printing exceptions, and exit *)
+let print_exn f =
+  try f ()
+  with Exit -> exit 0
+     | Timeout ->
+         Printf.eprintf "%s\n" "Timed out" ;
+         exit 1
+     | Failure msg | Invalid_argument msg ->
+         Printf.eprintf "%s\n" msg ;
+         exit 1
+
 let () =
-  match Term.eval_choice default [
-    supervisor ; gc ; httpd ; notifier ;
-    notify ; compile ; run ; kill ;
-    tail ; timeseries ; timerange ; ps ;
-    test ; dequeue ; summary ; repair ; links ;
-    variants ; stats ; autocomplete ; expand
-  ] with `Error _ -> exit 1
-       | `Version | `Help -> exit 0
-       | `Ok f -> (
-          try f ()
-          with Exit -> exit 0
-             | Timeout ->
-                 Printf.eprintf "%s\n" "Timed out" ;
-                 exit 1
-             | Failure msg ->
-                 Printf.eprintf "%s\n" msg ;
-                 exit 1)
+  match
+    print_exn (fun () ->
+      Term.eval_choice ~catch:false default [
+        supervisor ; gc ; httpd ; notifier ;
+        notify ; compile ; run ; kill ;
+        tail ; timeseries ; timerange ; ps ;
+        test ; dequeue ; summary ; repair ; links ;
+        variants ; stats ; autocomplete ; expand
+      ]) with
+  | `Error _ -> exit 1
+  | `Version | `Help -> exit 0
+  | `Ok f ->
+      print_exn f
