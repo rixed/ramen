@@ -712,6 +712,9 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable ~impl_return_nullable:true
       "(fun t_ -> RamenHelpers.time_of_abstime t_)"
         [Some TString] oc [e]
+  | Finalize, StatelessFun1 (_, Variant, e), TString ->
+    emit_functionN ?state ~opc ~nullable ~impl_return_nullable:true
+      "CodeGenLib.get_variant" [Some TString] oc [e]
 
   | Finalize, StatelessFun1 (_, Abs, e),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->

@@ -164,6 +164,8 @@ and stateless_fun1 =
   | Nth of int (* Where the int starts at 0 for the first item *)
   | Sparkline
   | Strptime
+  (* Return the name of the variant we are in, or NULL: *)
+  | Variant
 
 and stateless_fun2 =
   (* Binary Ops scalars *)
@@ -464,6 +466,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
       add_types t
     | StatelessFun1 (t, Strptime, e) ->
       Printf.fprintf oc "parse_time (%a)" p e ;
+      add_types t
+    | StatelessFun1 (t, Variant, e) ->
+      Printf.fprintf oc "variant (%a)" p e ;
       add_types t
     | StatelessFun2 (t, And, e1, e2) ->
       Printf.fprintf oc "(%a) AND (%a)"
@@ -1335,6 +1340,8 @@ struct
         StatelessFun2 (make_typ "format_time", Strftime, e1, e2)) |||
      (afun1 "parse_time" >>: fun e ->
         StatelessFun1 (make_typ "parse_time", Strptime, e)) |||
+     (afun1 "variant" >>: fun e ->
+        StatelessFun1 (make_typ "variant", Variant, e)) |||
      (* At least 2 args to distinguish from the aggregate functions: *)
      (afun2v "max" >>: fun (e1, e2, e3s) ->
         StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||

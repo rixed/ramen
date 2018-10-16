@@ -253,3 +253,6 @@ let worker_argv0 = "ramen worker:"
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)
 let cache_factors_ttl = 30.
+
+(* Prefix to use before all experiment names in the environment: *)
+let exp_envvar_prefix = "experiment_"

@@ -633,6 +633,14 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
       emit_assert_is_true oc nid
 
+  | StatelessFun1 (_, Variant, x) ->
+      (* - x must be a string (the experiment name);
+       * - The Result is a string (the name of the variant);
+       * - The result is always nullable (if the experiment is not defined). *)
+      arg_is_string oc x ;
+      emit_assert_id_eq_typ tuple_sizes eid oc TString ;
+      emit_assert_is_true oc nid
+
   | StatelessFun2 (_, Mod, e1, e2)
   | StatelessFun2 (_, (BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
       (* - e1 and e2 must be any integer;

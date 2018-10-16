@@ -408,6 +408,14 @@ let really_start conf proc parents children =
     List.enum proc.func.envvars //@
     (fun n -> try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
     Enum.append more_env in
+  (* Also add experiment variants: *)
+  let more_env =
+    RamenExperiments.all_experiments conf.C.persist_dir |>
+    List.map (fun (name, exp) ->
+      RamenConsts.exp_envvar_prefix ^ name ^"="
+        ^ exp.RamenExperiments.variants.(exp.variant).name) |>
+    List.enum |>
+    Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
     (* For convenience let's add "ramen worker" and the fun name as

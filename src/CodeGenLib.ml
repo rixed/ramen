@@ -23,6 +23,25 @@ let parameter_value ~def scalar_parser name =
         print_exception ~what e ;
         exit RamenConsts.ExitCodes.cannot_parse_param
 
+(* For experiment names, we don't know in advance the experiment name we are
+ * going to use so we just read them all from the whole envvar vector: *)
+let experiment_variants =
+  let h = Hashtbl.create 17 in
+  Unix.environment () |>
+  Array.iter (fun str ->
+    match String.split ~by:"=" str with
+    | exception Not_found -> ()
+    | n, v ->
+        let pref = RamenConsts.exp_envvar_prefix in
+        if String.starts_with n pref then (
+          let n = String.lchop ~n:(String.length pref) n in
+          Hashtbl.add h n v)) ;
+  h
+
+let get_variant exp_name =
+  try Some (Hashtbl.find experiment_variants exp_name)
+  with Not_found -> None
+
 (* Functions *)
 
 let age_float x = !CodeGenLib_IO.now -. x
