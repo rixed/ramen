@@ -90,6 +90,7 @@ type func =
   | Preprocessor of expr
   | Filename of expr
   | Unlink of expr
+  | RunCondition
     [@@ppp PPP_OCaml]
 
 let print_func oc =
@@ -102,6 +103,7 @@ let print_func oc =
   | Preprocessor e -> p "CSV preprocessor%a" print_expr e
   | Filename e -> p "CSV filename%a" print_expr e
   | Unlink e -> p "CSV unlink clause%a" print_expr e
+  | RunCondition -> p "running condition"
 
 type t = Expr of int * expr
        | Func of int * func
@@ -111,14 +113,16 @@ exception ReturnExpr of RamenName.func * RamenExpr.t
 let print funcs oc =
   let expr_of_id i =
     try
-      List.iter (fun (func, op) ->
-        RamenOperation.iter_expr (fun expr ->
-          if (RamenExpr.typ_of expr).uniq_num = i then
-            raise (ReturnExpr (func.F.name, expr))) op
+      List.iter (fun (func, op, cond) ->
+        let print_expr e =
+          if (RamenExpr.typ_of e).uniq_num = i then
+            raise (ReturnExpr (func.F.name, e)) in
+        RamenOperation.iter_expr print_expr op ;
+        Option.may (RamenExpr.iter print_expr) cond
       ) funcs ;
       assert false
     with ReturnExpr (f, e) -> f, e
-  and func_of_id i = List.at funcs i |> fst
+  and func_of_id i = List.at funcs i |> Tuple3.first
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->

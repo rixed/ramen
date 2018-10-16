@@ -13,6 +13,12 @@ Feature: Ramen behavior can be customized via experiments
                              "var2" => { descr = "the second variant" } }
       }
       """
+    And a file test_prog.ramen with content
+      """
+      DEFINE IF COALESCE(variant("test_external") = "var1", false) f
+      AS YIELD "running" AS glop every 500ms;
+      """
+    And test_prog.ramen is compiled
 
   Scenario: Ramen sees additional experiments
     When I run ramen with argument variants
@@ -25,3 +31,17 @@ Feature: Ramen behavior can be customized via experiments
   Scenario: Specifying an unknown variant still raises an error
     When I run ramen with argument variants --variant test_external=nope
     Then ramen must fail gracefully
+
+  Scenario: A function might run or not depending on some experiment (1)
+    Given the program test_prog is running
+    And ramen supervisor --variant test_external=var1 is started
+    When I wait 2 second
+    And I run ramen with arguments tail -n 1 test_prog/f
+    Then ramen must mention "running"
+
+  Scenario: A function might run or not depending on some experiment (2)
+    Given the program test_prog is running
+    And ramen supervisor --variant test_external=var2 is started
+    When I wait 2 second
+    And I run timeout with arguments 1 ramen tail -n 1 test_prog/f
+    Then timeout must not mention "running"

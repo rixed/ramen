@@ -106,13 +106,13 @@ let run conf params replace report_period program_name ?(src_file="")
       (match Hashtbl.find programs program_name with
       | exception Not_found -> ()
       | mre ->
-        if not mre.C.killed then
+        if mre.C.status = C.MustRun then
           Printf.sprintf "A program named %s is already running"
             (RamenName.string_of_program program_name) |>
           failwith) ;
     (* TODO: Make sure this key is authoritative on a program name: *)
     Hashtbl.replace programs program_name
-      C.{ bin ; params ; killed = false ; debug ; report_period ; src_file })
+      C.{ bin ; params ; status = MustRun ; debug ; report_period ; src_file })
 
 (*
  * Stopping a worker from running.
@@ -123,7 +123,7 @@ let check_orphans killed_prog_names programs =
     (pretty_list_print RamenName.program_print) killed_prog_names ;
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
-    if not mre.C.killed &&
+    if mre.C.status = MustRun &&
        not (List.mem prog_name killed_prog_names)
     then (
       match P.of_bin prog_name mre.C.params mre.C.bin with
@@ -154,7 +154,7 @@ let kill conf ?(purge=false) program_names =
     let killed_prog_names =
       Hashtbl.enum programs //
       (fun (n, mre) ->
-        (not mre.C.killed || purge) &&
+        (mre.C.status <> C.Killed || purge) &&
         List.exists (fun p ->
           Globs.matches p (RamenName.string_of_program n)
         ) program_names) /@
@@ -163,7 +163,7 @@ let kill conf ?(purge=false) program_names =
     let running_killed_prog_names =
       List.filter (fun n ->
         let mre = Hashtbl.find programs n in
-        not mre.C.killed
+        mre.C.status <> C.Killed
       ) killed_prog_names in
     check_orphans running_killed_prog_names programs ;
     if purge then
@@ -173,6 +173,6 @@ let kill conf ?(purge=false) program_names =
     else
       List.iter (fun n ->
         let mre = Hashtbl.find programs n in
-        mre.C.killed <- true
+        mre.C.status <- C.Killed
       ) running_killed_prog_names ;
     List.length killed_prog_names)

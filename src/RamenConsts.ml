@@ -220,6 +220,7 @@ struct
   let lwt_uncaught_exception = 2 (* This does not depend on us *)
   let cannot_parse_param = 3
   let watchdog = 4
+  let run_condition_says_no = 5
 end
 
 module Default =

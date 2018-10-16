@@ -433,7 +433,7 @@ let run_test conf notify_rb dirname test =
           bin_of_program conf get_parent program_name p.code) in
       let prog = P.of_bin program_name p.params bin in
       Hashtbl.add programs program_name
-        C.{ bin ; params = p.params ; killed = false ; debug = false ;
+        C.{ bin ; params = p.params ; status = MustRun ; debug = false ;
             report_period = RamenConsts.Default.report_period ;
             src_file = "" } ;
       List.iter (fun func ->

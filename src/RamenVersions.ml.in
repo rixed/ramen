@@ -6,10 +6,10 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Format of the list of running programs: *)
-let graph_config = "v14" (* last: per worker report_period *)
+let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v40" (* last: add Variant function. *)
+let codegen = "v41" (* last: add running_condition *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v5" (* last: addition of startup time *)

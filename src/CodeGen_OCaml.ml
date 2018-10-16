@@ -1635,8 +1635,8 @@ let emit_read_csv_file opc oc name csv_fname unlink
      "%a\n%a\n%a\n%a\n\
      let %s () =\n\
        \tlet unlink_ = %a in
-       \tCodeGenLib_Skeletons.read_csv_file %s unlink_ %S\n\
-       \t\tsersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
+       \tCodeGenLib_Skeletons.read_csv_file running_condition_ %s\n\
+       \t\tunlink_ %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
        \t\ttuple_of_strings_ %s field_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
@@ -1652,7 +1652,8 @@ let emit_listen_on opc oc name net_addr port proto =
   let collector = collector_of_proto proto in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib_Skeletons.listen_on %s %S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib_Skeletons.listen_on running_condition_ %s\n\
+      \t\t%S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
@@ -1666,7 +1667,8 @@ let emit_well_known opc oc name from
   let open RamenProtocols in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib_Skeletons.read_well_known %a sersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
+      \tCodeGenLib_Skeletons.read_well_known running_condition_ %a\n\
+      \t\tsersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
@@ -2335,7 +2337,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_sort_expr "sort_by_" in_typ mentioned ~opc) (match sort with Some (_, _, b) -> b | None -> [])
     (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
-      \tCodeGenLib_Skeletons.aggregate\n\
+      \tCodeGenLib_Skeletons.aggregate running_condition_\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
@@ -2364,7 +2366,7 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let emit_operation name func_name in_typ out_typ params op oc =
+let emit_operation name func_name in_typ out_typ params op cond oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
     open Batteries\n\
     open Stdint\n\
@@ -2406,6 +2408,13 @@ let emit_operation name func_name in_typ out_typ params op oc =
    * thus the two strings that are assembled later: *)
   let code = IO.output_string ()
   and consts = IO.output_string () in
+  (* The running condition: *)
+  Printf.fprintf oc "let running_condition_ () =\n\t%s\n\n"
+    (match cond with
+    | Some cond ->
+        let opc = { op ; params ; consts ; tuple_typ = [] } in
+        (IO.to_string (emit_expr ?state:None ~context:Finalize ~opc) cond)
+    | None -> "true") ;
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; fields } ; _ } ->
@@ -2435,11 +2444,10 @@ let emit_operation name func_name in_typ out_typ params op oc =
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)
 
-let compile conf entry_point func_name obj_name in_typ out_typ params op =
+let compile conf entry_point func_name obj_name in_typ out_typ params op cond =
   let open RamenOperation in
   let src_file =
     RamenOCamlCompiler.with_code_file_for obj_name conf
-      (emit_operation entry_point func_name in_typ out_typ params
-       op) in
+      (emit_operation entry_point func_name in_typ out_typ params op cond) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   RamenOCamlCompiler.compile conf func_name src_file obj_name

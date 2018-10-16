@@ -104,12 +104,12 @@ let infer_field_doc_aggr func operation parents params =
       ) fields
   | _ -> ()
 
-let finalize_func parents params func operation =
+let finalize_func parents params func operation cond =
   F.dump_io func ;
   (* Check that no parents => no input *)
   assert (func.F.parents <> [] || func.F.in_type = []) ;
   (* Check that all expressions have indeed be typed: *)
-  RamenOperation.iter_expr (fun e ->
+  let check_typed e =
     let open RamenExpr in
     let typ = typ_of e in
     let what = IO.to_string (print true) e in
@@ -120,8 +120,9 @@ let finalize_func parents params func operation =
          RamenName.(func_color func.F.name)
          what RamenExpr.print_typ typ |>
       failwith
-    | _ -> ()
-  ) operation ;
+    | _ -> () in
+  RamenOperation.iter_expr check_typed operation ;
+  Option.may (RamenExpr.iter check_typed) cond ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
    * we can infer them from the parents (we consider only the first parent

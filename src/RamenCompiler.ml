@@ -97,12 +97,15 @@ let compile conf get_parent ?exec_file source_file program_name =
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let op = parsed_func.RamenProgram.operation in
+      let cond = parsed_func.condition in
       let name = Option.get parsed_func.name in
       let me_func =
         let open RamenOperation in
         F.{ program_name ;
             name ;
             doc = parsed_func.doc ;
+            condition =
+              Option.map (IO.to_string (RamenExpr.print false)) cond ;
             in_type = in_type_of_operation op ;
             out_type = out_type_of_operation op ;
             signature = "" ;
@@ -112,7 +115,7 @@ let compile conf get_parent ?exec_file source_file program_name =
             factors = factors_of_operation op ;
             envvars = envvars_of_operation op } in
       let fq_name = RamenName.fq program_name name in
-      Hashtbl.add compiler_funcs fq_name (me_func, op)
+      Hashtbl.add compiler_funcs fq_name (me_func, op, cond)
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
@@ -140,7 +143,7 @@ let compile conf get_parent ?exec_file source_file program_name =
               RamenName.program_of_rel_program program_name rel_prog,
               func_name in
         let parent_name = RamenName.fq parent_prog_name parent_func_name in
-        try Hashtbl.find compiler_funcs parent_name |> fst
+        try Hashtbl.find compiler_funcs parent_name |> Tuple3.first
         with Not_found ->
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
@@ -202,30 +205,32 @@ let compile conf get_parent ?exec_file source_file program_name =
       if units <> None then
         patch_typ field units func.F.in_type ;
       units in
-    let set_units func op =
+    let set_expr_units uoi uoo func what e =
+      let t = RamenExpr.typ_of e in
+      if t.RamenExpr.units = None then (
+        let u =
+          let ctx =
+            Printf.sprintf "evaluating units of %s in function %s"
+              what
+              (RamenName.func_color func.F.name) in
+          fail_with_context ctx (fun () ->
+            RamenExpr.units_of_expr uoi uoo e) in
+        if u <> None then (
+          !logger.debug "Set units of %a to %a"
+            (RamenExpr.print false) e
+            RamenUnits.print (Option.get u) ;
+          t.units <- u ;
+          true
+        ) else false
+      ) else false in
+    let set_operation_units func op =
       let parents =
         Hashtbl.find_default compiler_parents func.F.name [] in
       let uoi = units_of_input func parents in
       let uoo = units_of_output func in
       let changed =
         RamenOperation.fold_top_level_expr false (fun changed what e ->
-          let t = RamenExpr.typ_of e in
-          if t.RamenExpr.units = None then (
-            let u =
-              let ctx =
-                Printf.sprintf "evaluating units of %s in function %s"
-                  what
-                  (RamenName.func_color func.F.name) in
-              fail_with_context ctx (fun () ->
-                RamenExpr.units_of_expr uoi uoo e) in
-            if u <> None then (
-              !logger.debug "Set units of %a to %a"
-                (RamenExpr.print false) e
-                RamenUnits.print (Option.get u) ;
-              t.units <- u ;
-              true
-            ) else changed
-          ) else changed
+          set_expr_units uoi uoo func what e || changed
         ) op in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected one. *)
@@ -244,8 +249,12 @@ let compile conf get_parent ?exec_file source_file program_name =
       changed
     in
     if not (reach_fixed_point (fun () ->
-        Hashtbl.fold (fun _ (func, op) changed ->
-          set_units func op || changed
+        let no_io _ = assert false in (* conditions cannot use in/out tuples *)
+        Hashtbl.fold (fun _ (func, op, cond) changed ->
+          set_operation_units func op ||
+          Option.map_default
+            (set_expr_units no_io no_io func "run condition") false cond ||
+          changed
         ) compiler_funcs false)) then
       failwith "Cannot perform dimensional analysis" ;
 
@@ -273,8 +282,8 @@ let compile conf get_parent ?exec_file source_file program_name =
         get_types compiler_parents compiler_funcs
                   parsed_params smt2_file) in
     apply_types compiler_parents compiler_funcs types ;
-    Hashtbl.iter (fun _ (func, op) ->
-      finalize_func compiler_parents parsed_params func op
+    Hashtbl.iter (fun _ (func, op, cond) ->
+      finalize_func compiler_parents parsed_params func op cond
     ) compiler_funcs ;
 
     (*
@@ -309,13 +318,13 @@ let compile conf get_parent ?exec_file source_file program_name =
       "_"^ RamenVersions.codegen |>
       make_valid_for_module in
     let obj_files =
-      Hashtbl.fold (fun _ (func, op) lst ->
+      Hashtbl.fold (fun _ (func, op, cond) lst ->
         let obj_name = src_name_of_func func ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
             conf entry_point_name func.F.name obj_name
-            func.F.in_type func.F.out_type parsed_params op
+            func.F.in_type func.F.out_type parsed_params op cond
         with e ->
           !logger.error "Cannot generate code for %s: %s"
             (RamenName.string_of_func func.name)
@@ -350,14 +359,16 @@ let compile conf get_parent ?exec_file source_file program_name =
         (* Suppress private fields from function output type, purely for
          * aesthetic reasons. Won't change anything since
          * RingBufLib.ser_tuple_typ_of_tuple_typ will ignore them anyway: *)
-        Hashtbl.iter (fun _ (func, _op) ->
+        Hashtbl.iter (fun _ (func, _op, _cond) ->
           func.F.out_type <- List.filter (fun ft ->
             not (is_private_field ft.RamenTuple.typ_name)) func.F.out_type
         ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. *)
-        let funcs = Hashtbl.values compiler_funcs /@ fst |> List.of_enum
+        let funcs = Hashtbl.values compiler_funcs /@
+                    Tuple3.first |>
+                    List.of_enum
         and params = parsed_params in
         let runconf = P.{ funcs ; params } in
         Printf.fprintf oc "let rc_str_ = %S\n"
@@ -369,7 +380,7 @@ let compile conf get_parent ?exec_file source_file program_name =
         Printf.fprintf oc
           "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ [\n"
             RamenVersions.codegen ;
-        Hashtbl.iter (fun _ (func, _op) ->
+        Hashtbl.iter (fun _ (func, _op, _cond) ->
           let mod_name = src_name_of_func func |>
                          Filename.basename |>
                          String.capitalize_ascii in

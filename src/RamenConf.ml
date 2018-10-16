@@ -32,6 +32,8 @@ struct
     { program_name : RamenName.program ;
       name : RamenName.func ;
       doc : string ;
+      (* For debug only: *)
+      condition : string option ;
       in_type : RamenTuple.typ ;
       mutable out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.
@@ -154,13 +156,16 @@ end
 let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
 
+type worker_status = MustRun | Killed | RunCondSaidNo
+  [@@ppp PPP_OCaml]
+
 (* Saved configuration is merely a hash from (unique) program names
  * to their binaries, and parameters (actual ones, not default values): *)
 type must_run_entry =
   { (* Tells whether the entry must actually be started. Set to true
        at exit so that we do not loose information of previously run
        entries. *)
-    mutable killed : bool [@ppp_default false] ;
+    mutable status : worker_status [@ppp_default MustRun] ;
     (* Should this worker be started in debug mode regardless of supervisor
      * mode? *)
     debug : bool [@ppp_default false] ;

@@ -262,7 +262,8 @@ type worker_conf =
 let info_or_test conf =
   if conf.is_test then !logger.debug else !logger.info
 
-let worker_start worker_name get_binocle_tuple k =
+let worker_start run_cond worker_name get_binocle_tuple k =
+  if not (run_cond ()) then exit RamenConsts.ExitCodes.run_condition_says_no ;
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
@@ -318,13 +319,13 @@ let worker_start worker_name get_binocle_tuple k =
  * Operations that funcs may run: read a CSV file.
  *)
 
-let read_csv_file filename do_unlink separator sersize_of_tuple
+let read_csv_file run_cond filename do_unlink separator sersize_of_tuple
                   time_of_tuple serialize_tuple tuple_of_strings
                   preprocessor field_of_params =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun conf ->
+  worker_start run_cond worker_name get_binocle_tuple (fun conf ->
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     (* For tests, allow to overwrite what's specified in the operation: *)
     and filename = getenv ~def:filename "csv_filename"
@@ -356,7 +357,8 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
  * Operations that funcs may run: listen to some known protocol.
  *)
 
-let listen_on (collector :
+let listen_on run_cond
+              (collector :
                 inet_addr:Unix.inet_addr ->
                 port:int ->
                 (* We have to specify this one: *)
@@ -367,7 +369,7 @@ let listen_on (collector :
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun conf ->
+  worker_start run_cond worker_name get_binocle_tuple (fun conf ->
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and inet_addr = Unix.inet_addr_of_string addr_str
     in
@@ -383,12 +385,12 @@ let listen_on (collector :
  * Operations that funcs may run: read known tuples from a ringbuf.
  *)
 
-let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
+let read_well_known run_cond from sersize_of_tuple time_of_tuple serialize_tuple
                     unserialize_tuple ringbuf_envvar worker_time_of_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
-  worker_start worker_name get_binocle_tuple (fun conf ->
+  worker_start run_cond worker_name get_binocle_tuple (fun conf ->
     let bname =
       getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar in
     let rb_ref_out_fname =
@@ -656,6 +658,7 @@ let yield_every ~while_ read_tuple every k =
   loop ()
 
 let aggregate
+      (run_cond : unit -> bool)
       (read_tuple : RingBuf.tx -> 'tuple_in)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
@@ -740,7 +743,7 @@ let aggregate
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
-  worker_start worker_name get_binocle_tuple (fun conf ->
+  worker_start run_cond worker_name get_binocle_tuple (fun conf ->
     let when_str = string_of_when_to_check_group when_to_check_for_commit in
     !logger.debug "We will commit/flush for... %s" when_str ;
     let rb_in_fnames =

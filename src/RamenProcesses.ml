@@ -294,7 +294,9 @@ let process_workers_terminations conf running =
           !logger.debug "%s got stopped" what
       | _, status ->
           let status_str = string_of_process_status status in
-          let is_err = status <> Unix.WEXITED 0 in
+          let is_err =
+            status <> WEXITED RamenConsts.ExitCodes.terminated &&
+            status <> WEXITED RamenConsts.ExitCodes.run_condition_says_no in
           (if is_err then !logger.error else info_or_test conf)
             "%s %s." what status_str ;
           proc.last_exit <- now ;
@@ -304,11 +306,17 @@ let process_workers_terminations conf running =
             IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
             if proc.succ_failures = 5 then (
               IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
-              rescue_worker conf proc.func proc.params)) ;
+              rescue_worker conf proc.func proc.params)
+          ) else (
+            proc.succ_failures <- 0
+          ) ;
           (* Wait before attempting to restart a failing worker: *)
-          let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
-            now +. Random.float (min 90. max_delay) ;
+            if status = WEXITED RamenConsts.ExitCodes.run_condition_says_no then
+              max_float
+            else (
+              let max_delay = float_of_int proc.succ_failures in
+              now +. Random.float (min 90. max_delay)) ;
           proc.pid <- None)
     ) proc.pid
   ) running
@@ -731,7 +739,7 @@ let synchronize_running conf autoreload_delay =
                * worker change but not its name we see a different worker. *)
               Hashtbl.clear must_run ;
               Hashtbl.iter (fun program_name (mre, get_rc) ->
-                if not mre.C.killed then (
+                if mre.C.status = C.MustRun then (
                   if mre.C.src_file <> "" then (
                     !logger.debug "Trying to build %S" mre.C.bin ;
                     RamenMake.build conf program_name mre.C.src_file mre.C.bin) ;

@@ -122,7 +122,7 @@ let get_tables conf msg =
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
     Hashtbl.iter (fun _prog_name (mre, get_rc) ->
-      if not mre.C.killed then match get_rc () with
+      if mre.C.status = C.MustRun then match get_rc () with
       | exception _ -> ()
       | prog ->
           List.iter (fun f ->

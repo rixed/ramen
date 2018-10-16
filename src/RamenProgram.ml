@@ -35,7 +35,9 @@ module P = C.Program
 type func =
   { name : RamenName.func option (* optional during parsing only *) ;
     doc : string ;
-    operation : RamenOperation.t }
+    operation : RamenOperation.t ;
+    (* Condition to run that function: *)
+    condition : RamenExpr.t option }
 
 type t = RamenTuple.param list * func list
 
@@ -48,8 +50,8 @@ let make_name =
     incr seq ;
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
-let make_func ?name ?(doc="") operation =
-  { name ; doc ; operation }
+let make_func ?name ?condition ?(doc="") operation =
+  { name ; doc ; operation ; condition }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -64,7 +66,10 @@ let print_func oc n =
       Printf.fprintf oc "%a;"
         RamenOperation.print n.operation
   | Some name ->
-      Printf.fprintf oc "DEFINE '%s' AS %a;"
+      Printf.fprintf oc "DEFINE%s '%s' AS %a;"
+        (match n.condition with
+        | None -> ""
+        | Some e -> " IF "^ IO.to_string (RamenExpr.print false) e)
         (RamenName.string_of_func name)
         RamenOperation.print n.operation
 
@@ -84,6 +89,7 @@ let check (params, funcs) =
     Set.add p.ptyp.typ_name s
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
+    (* Check the operation is OK: *)
     (try RamenOperation.check params n.operation
     with Failure msg ->
       let open RamenTypingHelpers in
@@ -91,6 +97,16 @@ let check (params, funcs) =
         (RamenName.func_color (n.name |? anonymous))
         msg |>
       failwith) ;
+    (* Check the running condition does not use any IO tuple: *)
+    Option.may (
+      RamenExpr.iter (function
+        | Field (_, tuple, _) ->
+            Printf.sprintf "Running condition cannot use tuple %s"
+              (RamenLang.string_of_prefix !tuple) |>
+            failwith
+        | _ -> ())
+    ) n.condition ;
+    (* Finally, check that the name is valid and unique: *)
     match n.name with
     | Some name ->
         let ns = RamenName.string_of_func name in
@@ -102,7 +118,7 @@ let check (params, funcs) =
         (* Names must be unique: *)
         if Set.mem name s then name_not_unique ns ;
         Set.add name s
-    | None -> s
+    | None -> s ;
   ) Set.empty funcs |> ignore
 
 module Parser =
@@ -183,11 +199,15 @@ struct
   let named_func m =
     let m = "function" :: m in
     (
-      strinG "define" -- blanks -+ function_name ++
+      strinG "define" -+
+      optional ~def:None (
+        blanks -- strinG "if" -+ blanks -+ some RamenExpr.Parser.p) +-
+      blanks ++ function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
       RamenOperation.Parser.p >>:
-      fun ((name, doc), op) -> make_func ~name ~doc op
+      fun (((condition, name), doc), op) ->
+        make_func ~name ~doc ?condition op
     ) m
 
   let func m =

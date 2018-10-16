@@ -279,7 +279,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
          "volume out" |],
       C.with_rlock conf (fun programs ->
         Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
-          if (all || not mre.C.killed) &&
+          if (all || mre.C.status = C.MustRun) &&
              Globs.matches pattern
                (RamenName.string_of_program program_name)
           then (
@@ -312,7 +312,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
         (* First pass to get the children: *)
         let children_of_func = Hashtbl.create 23 in
         Hashtbl.iter (fun _prog_name (mre, get_rc) ->
-          if all || not mre.C.killed then match get_rc () with
+          if all || mre.C.status = C.MustRun then match get_rc () with
           | exception _ -> ()
           | prog ->
               List.iter (fun func ->
@@ -326,7 +326,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
               ) prog.P.funcs
         ) programs ;
         Hashtbl.fold (fun program_name (mre, get_rc) lines ->
-          if not all && mre.C.killed then lines
+          if not all && mre.C.status <> MustRun then lines
           else match get_rc () with
           | exception e ->
             let fq_name =

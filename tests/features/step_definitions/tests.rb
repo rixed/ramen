@@ -222,10 +222,15 @@ Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
   end
 end
 
-Then /^([^ ]*) must mention "(.*)"(?: on (std(?:out|err)))?\.?/ \
-do |executable, what, out|
+Then /^([^ ]*) must (not )?mention "(.*)"(?: on (std(?:out|err)))?\.?/ \
+do |executable, not_, what, out|
   out = 'stdout' if out.nil?
-  expect(@output[executable][out]).to match(/#{what}/)
+  output = @output[executable][out]
+  if not_ then
+    expect(output).not_to match(/#{what}/)
+  else
+    expect(output).to match(/#{what}/)
+  end
 end
 
 When /I wait (\d+) seconds?/ do |n|

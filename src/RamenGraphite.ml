@@ -205,7 +205,7 @@ let tree_enum_of_programs ~only_with_event_time ~only_num_fields
   let programs =
     Hashtbl.enum programs //
     (if only_running then
-      (fun (_p, (mre, _get_rc)) -> not mre.C.killed)
+      (fun (_p, (mre, _get_rc)) -> mre.C.status = C.MustRun)
      else (fun _ -> true)) |>
     Array.of_enum in
   Array.fast_sort (fun (k1, _) (k2, _) ->
