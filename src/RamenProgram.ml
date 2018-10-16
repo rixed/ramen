@@ -90,7 +90,7 @@ let check (params, funcs) =
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
     (* Check the operation is OK: *)
-    (try RamenOperation.check params n.operation
+    (try RamenOperation.check params n.condition n.operation
     with Failure msg ->
       let open RamenTypingHelpers in
       Printf.sprintf "In function %s: %s"
@@ -100,9 +100,11 @@ let check (params, funcs) =
     (* Check the running condition does not use any IO tuple: *)
     Option.may (
       RamenExpr.iter (function
-        | Field (_, tuple, _) ->
+        | Field (_, tuple, _) when
+          tuple_has_type_input !tuple ||
+          tuple_has_type_output !tuple ->
             Printf.sprintf "Running condition cannot use tuple %s"
-              (RamenLang.string_of_prefix !tuple) |>
+              (string_of_prefix !tuple) |>
             failwith
         | _ -> ())
     ) n.condition ;

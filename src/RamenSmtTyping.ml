@@ -1171,8 +1171,8 @@ let id_or_type_of_field op name =
  * Equals the input type of fields originating from internal parents to
  * those output fields. *)
 let emit_input_fields oc tuple_sizes parents params funcs =
-  List.iter (fun (func, op, _cond (* has no IO *)) ->
-    RamenOperation.iter_expr (function
+  List.iter (fun (func, op, cond) ->
+    let set_fields = function
       | Field (_field_typ, tupref, field_name) as expr ->
           if is_virtual_field field_name then (
             (* Type set during parsing *)
@@ -1268,8 +1268,9 @@ let emit_input_fields oc tuple_sizes parents params funcs =
               emit_assert_id_eq_id ~name (n_of_expr expr) oc (n_of_num id) ;
             ) same_as_ids
           )
-      | _ -> ()
-    ) op
+      | _ -> () in
+    RamenOperation.iter_expr set_fields op ;
+    Option.may (RamenExpr.iter set_fields) cond
   ) funcs
 
 let structure_of_sort_identifier = function

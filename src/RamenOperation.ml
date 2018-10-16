@@ -421,7 +421,7 @@ let envvars_of_operation =
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let check params op =
+let check params run_cond op =
   let check_pure clause =
     E.unpure_iter (fun _ ->
       failwith ("Stateful function not allowed in "^ clause))
@@ -479,6 +479,7 @@ let check params op =
      event_time_of_operation op = None
   then
      failwith "Cannot use #start/#stop without event time" ;
+  Option.may (prefix_def TupleEnv) run_cond ;
   match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
