@@ -807,10 +807,25 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable "String.lowercase_ascii" [Some TString] oc [e]
   | Finalize, StatelessFun1 (_, Upper, e), TString ->
     emit_functionN ?state ~opc ~nullable "String.uppercase_ascii" [Some TString] oc [e]
+
+  (* And and Or does not inherit nullability from their arguments the way
+   * other functions does: given only one value we may be able to find out
+   * the result without looking at the other one (that can then be NULL). *)
   | Finalize, StatelessFun2 (_, And, e1, e2), TBool ->
-    emit_functionN ?state ~opc ~nullable "(&&)" [Some TBool; Some TBool] oc [e1; e2]
+    if nullable then
+      emit_functionN ?state ~opc ~nullable ~inherit_nulls:false
+        "CodeGenLib.and_opt" [Some TBool; Some TBool] oc [e1; e2]
+    else
+      emit_functionN ?state ~opc ~nullable
+        "(&&)" [Some TBool; Some TBool] oc [e1; e2]
   | Finalize, StatelessFun2 (_, Or, e1,e2), TBool ->
-    emit_functionN ?state ~opc ~nullable "(||)" [Some TBool; Some TBool] oc [e1; e2]
+    if nullable then
+      emit_functionN ?state ~opc ~nullable ~inherit_nulls:false
+        "CodeGenLib.or_opt" [Some TBool; Some TBool] oc [e1; e2]
+    else
+      emit_functionN ?state ~opc ~nullable
+        "(||)" [Some TBool; Some TBool] oc [e1; e2]
+
   | Finalize, StatelessFun2 (_, (BitAnd|BitOr|BitXor as op), e1, e2),
     (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     let n = match op with BitAnd -> "logand" | BitOr -> "logor"
@@ -1339,20 +1354,31 @@ and emit_function
       ?(impl_return_nullable=false)
       (* Nullability of the result: *)
       ~nullable
+      (* If false, will make all arguments optional and pass them to the
+       * function, that is then expected to return nullable. *)
+      ?(inherit_nulls=true)
       ?(args_as=Arg) ?state ~opc impl arg_typs es oc vt_specs_opt =
+  let impl_return_nullable =
+    if inherit_nulls then impl_return_nullable else true in
   let open RamenExpr in
   let arg_typs = add_missing_types arg_typs es in
   let len, _has_nullable =
     List.fold_left2 (fun (i, had_nullable) e arg_typ ->
         if is_nullable e then (
-          Printf.fprintf oc
-            "(match %a with Null as n_ -> n_ | NotNull x%d_ -> "
-            (conv_to ?state ~context:Finalize ~opc arg_typ) e
-            i ;
+          if inherit_nulls then
+            Printf.fprintf oc
+              "(match %a with Null as n_ -> n_ | NotNull x%d_ -> "
+              (conv_to ?state ~context:Finalize ~opc arg_typ) e
+              i
+          else
+            Printf.fprintf oc "(let x%d_ = option_of_nullable (%a) in\n\t"
+              i
+              (conv_to ?state ~context:Finalize ~opc arg_typ) e ;
           i + 1, true
         ) else (
-          Printf.fprintf oc "(let x%d_ = %a in\n\t"
+          Printf.fprintf oc "(let x%d_ = %s(%a) in\n\t"
             i
+            (if inherit_nulls then "" else "Some ")
             (conv_to ?state ~context:Finalize ~opc arg_typ) e ;
           i + 1, had_nullable
         )
@@ -1388,15 +1414,15 @@ and emit_function
   for _i = 1 to len do Printf.fprintf oc ")" done ;
   if nullable || impl_return_nullable then Printf.fprintf oc ")"
 
-and emit_functionN ?args_as ?impl_return_nullable ~nullable ?state ~opc
-                   impl arg_typs oc es =
-  emit_function ?args_as ?impl_return_nullable ~nullable ?state ~opc
-                impl arg_typs es oc None
+and emit_functionN ?args_as ?impl_return_nullable ~nullable ?inherit_nulls
+                   ?state ~opc impl arg_typs oc es =
+  emit_function ?args_as ?impl_return_nullable ~nullable ?inherit_nulls
+                ?state ~opc impl arg_typs es oc None
 
-and emit_functionNv ?impl_return_nullable ~nullable ?state ~opc
-                    impl arg_typs es vt oc ves =
-  emit_function ?impl_return_nullable ~nullable ?state ~opc
-                impl arg_typs es oc (Some (vt, ves))
+and emit_functionNv ?impl_return_nullable ~nullable ?inherit_nulls
+                    ?state ~opc impl arg_typs es vt oc ves =
+  emit_function ?impl_return_nullable ~nullable ?inherit_nulls
+                ?state ~opc impl arg_typs es oc (Some (vt, ves))
 
 let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;

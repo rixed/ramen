@@ -44,6 +44,18 @@ let get_variant exp_name =
 
 (* Functions *)
 
+let and_opt a b =
+  match a, b with
+  | Some false, _ | _ , Some false -> Some false
+  | Some a, Some b -> Some (a && b)
+  | _ -> None
+
+let or_opt a b =
+  match a, b with
+  | Some true, _ | _, Some true -> Some true
+  | Some a, Some b -> Some (a || b)
+  | _ -> None
+
 let age_float x = !CodeGenLib_IO.now -. x
 let age_u8 = Uint8.of_float % age_float
 let age_u16 = Uint16.of_float % age_float

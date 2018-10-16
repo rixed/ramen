@@ -1,1 +1,15 @@
-{ programs = {} ; outputs = {} }
+{
+  programs = {
+    "tests/nulls" => { bin = "nulls.x" };
+  } ;
+  outputs = {
+    "tests/nulls/t6" => {
+      present = [
+        { "is_true" => "true";
+          "is_null1" => "NULL";
+          "is_false" => "false";
+          "is_null2" => "NULL" }
+      ]
+    }
+  }
+}

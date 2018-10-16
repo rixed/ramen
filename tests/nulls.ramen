@@ -14,3 +14,11 @@ DEFINE t3 AS SELECT COALESCE(NULL, NULL, "glop") AS ouch;
 DEFINE t4 AS SELECT COALESCE(string(NULL), "glop") AS ouch;
 
 DEFINE t5 AS SELECT u32?(0) AS ouch, COALESCE(NULL, 0) AS owch;
+
+DEFINE t6 AS
+  YIELD
+    true OR NULL AS is_true,
+    false OR NULL AS is_null1,
+    false AND NULL AS is_false,
+    true AND NULL AS is_null2
+  EVERY 100ms;
