@@ -2,6 +2,9 @@ AC_INIT(ramen, 3.0.19)
 m4_include([m4/ocaml.m4])
 
 AC_PROG_CC
+AC_CONFIG_HEADERS([src/config.h])
+
+AC_CHECK_FUNCS([fdatasync])
 
 AC_PROG_OCAML
 if test "$OCAMLC" = "no"; then

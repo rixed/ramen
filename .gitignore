@@ -60,3 +60,5 @@ docker/Dockerfile-builder
 opam
 src/RamenVersions.ml
 tests/features/api.feature
+src/config.h
+*~

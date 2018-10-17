@@ -11,6 +11,7 @@
 #include <stdio.h>
 
 #include "ringbuf.h"
+#include "../config.h"
 
 extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
 extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);
@@ -163,6 +164,18 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
     goto err1;
   }
 
+# if defined(HAVE_FDATASYNC) && !(defined(__APPLE__))
+  if (0 != fdatasync(fd))
+# else
+  // Must be a MacOS then:
+  if (0 != fcntl(fd, F_FULLFSYNC))
+# endif
+  {
+    fprintf(stderr, "Cannot fdatasync sequence file '%s': %s\n",
+            fname, strerror(errno));
+    // best effort
+  }
+
   ret = 0;
 
 err1:
@@ -263,6 +276,11 @@ extern int ringbuf_create_locked(
 
     if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
       goto err3;
+    }
+    if (! wrap && 0 != fsync(fd)) {
+      fprintf(stderr, "Cannot fsync ringbug file '%s': %s\n",
+              fname, strerror(errno));
+      // best effort
     }
   } else {
     if (errno == EEXIST) {
