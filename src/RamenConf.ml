@@ -35,6 +35,7 @@ struct
       (* For debug only: *)
       condition : string option ;
       in_type : RamenTuple.typ ;
+      (* In the order the user want them: *)
       mutable out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs

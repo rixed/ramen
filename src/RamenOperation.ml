@@ -351,31 +351,18 @@ let factors_of_operation = function
 (* Return the _untyped_ output tuple *)
 let out_type_of_operation = function
   | Aggregate { fields ; _ } ->
-      let user =
-        List.map (fun sf ->
-          RamenTuple.{
-            typ_name = sf.alias ;
-            doc = sf.doc ;
-            aggr = sf.aggr ;
-            (* Types and units will need to be copied from the expression
-             * after typing and star-expansion: *)
-            typ = { structure = TAny ; nullable = true } ;
-            units = None }
-        ) fields in
-      (* Ordering according to the operation order: *)
-      let cmp =
-        let sf_index name =
-          try List.findi (fun _ sf -> sf.alias = name) fields |> fst
-          with Not_found ->
-            (* star-imported fields - throw them all at the end in no
-             * specific order. TODO: in parent order? *)
-            max_int in
-        fun f1 f2 ->
-          compare (sf_index f1.RamenTuple.typ_name)
-                  (sf_index f2.RamenTuple.typ_name) in
-      List.fast_sort cmp user
+      List.map (fun sf ->
+        RamenTuple.{
+          typ_name = sf.alias ;
+          doc = sf.doc ;
+          aggr = sf.aggr ;
+          (* Types and units will need to be copied from the expression
+           * after typing and star-expansion: *)
+          typ = { structure = TAny ; nullable = true } ;
+          units = None }
+      ) fields
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      RingBufLib.ser_tuple_typ_of_tuple_typ fields
+      fields
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
   | Instrumentation _ ->
