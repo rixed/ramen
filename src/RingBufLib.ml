@@ -395,13 +395,16 @@ let parse_archive_file_name fname =
       "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b")
  *)
 
-let arc_files_of dir =
-  (try Sys.files_of dir
-  with Sys_error _ -> Enum.empty ()) //@
-  (fun fname ->
+let filter_arc_files dir =
+  Enum.filter_map (fun fname ->
     match parse_archive_file_name fname with
     | exception (Not_found | Failure _) -> None
     | mi, ma, t1, t2 -> Some (mi, ma, t1, t2, dir ^"/"^ fname))
+
+let arc_files_of dir =
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) |>
+  filter_arc_files dir
 
 let arc_file_compare (s1, _, _, _, _) (s2, _, _, _, _) =
   Int.compare s1 s2

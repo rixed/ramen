@@ -73,15 +73,23 @@ let cleanup_once conf dry_run max_archives =
   and notifdir =
     Filename.dirname (RamenConf.notify_ringbuf conf) in
   let clean_seq_archives dir =
-    (* Delete all files matching %d_%d_%a_%a.r but the last ones: *)
-    let files = RingBufLib.arc_files_of dir |> Array.of_enum in
-    Array.fast_sort RingBufLib.arc_file_compare files ;
-    for i = 0 to Array.length files - 1 - max_archives do
-      let _, _, _, _, fname = files.(i) in
+    (* Delete all files matching %d_%d_%a_%a.r but the last ones.
+     * Also, for each of these, try to delete all attached factor files. *)
+    let files = Sys.files_of dir |> Array.of_enum in
+    let arc_files =
+      Array.enum files |> RingBufLib.filter_arc_files dir |> Array.of_enum in
+    Array.fast_sort RingBufLib.arc_file_compare arc_files ;
+    for i = 0 to Array.length arc_files - 1 - max_archives do
+      let _, _, _, _, fname = arc_files.(i) in
       !logger.info "Deleting %s: old archive%s"
         fname (if dry_run then " (NOPE)" else "") ;
-      if not dry_run then
-        log_and_ignore_exceptions Unix.unlink fname
+      if not dry_run then (
+        let pref = Filename.remove_extension fname in
+        Array.iter (fun fname ->
+          if String.starts_with fname pref then
+            log_and_ignore_exceptions Unix.unlink fname ;
+        ) files
+      ) ;
     done
   in
   let on_dir fname rel_fname =
