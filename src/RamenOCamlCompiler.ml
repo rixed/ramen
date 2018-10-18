@@ -59,9 +59,9 @@ let ppf () =
         RamenLog.do_output output tm true in
   BatFormat.formatter_of_output oc
 
-let cannot_compile func_name status =
-  Printf.sprintf "Cannot generate code for function %s: %s"
-    (RamenName.func_color func_name) status |>
+let cannot_compile what status =
+  Printf.sprintf "Cannot generate code for %s: %s"
+    what status |>
   failwith
 
 let cannot_link program_name status =
@@ -71,7 +71,7 @@ let cannot_link program_name status =
 
 (* Takes a source file and produce an object file: *)
 
-let compile_internal conf func_name src_file obj_file =
+let compile_internal conf what src_file obj_file =
   let open Clflags in
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Compiling %S" src_file ;
@@ -82,7 +82,12 @@ let compile_internal conf func_name src_file obj_file =
   verbose := !debug ;
   no_std_include := true ;
   !logger.debug "Use bundled libraries from %S" !bundle_dir ;
+  (* Also include in incdir the directory where the obj_file will be,
+   * since other modules (params...) might have been compiled there
+   * already: *)
+  let obj_dir = Filename.dirname obj_file in
   include_dirs :=
+    obj_dir ::
     List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
   dlcode := true ;
   keep_asm_file := conf.C.keep_temp_files ;
@@ -107,41 +112,42 @@ let compile_internal conf func_name src_file obj_file =
       (Filename.remove_extension src_file)
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    cannot_compile func_name (Printexc.to_string exn)
+    cannot_compile what (Printexc.to_string exn)
 
-let compile_external conf func_name src_file obj_file =
+let compile_external conf what src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -thread -annot -w '%s' \
-                     -o %s -package ramen -c %s"
+           ocamlfind ocamlopt%s%s -thread -annot -w %s \
+                     -o %s -package ramen -I %s -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
       (if conf.C.log_level = Debug then " -g" else "")
       (if conf.C.keep_temp_files then " -S" else "")
-      warnings
+      (shell_quote warnings)
+      (Filename.dirname obj_file)
       (shell_quote obj_file)
+
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
-  let cmd_name = "Compilation of "^ RamenName.string_of_func func_name in
+  let cmd_name = "Compilation of "^ what in
   match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
   | None ->
-      cannot_compile func_name "Cannot run command"
+      cannot_compile what "Cannot run command"
   | Some (Unix.WEXITED 0) ->
-      !logger.debug "Compiled %s with: %s"
-        (RamenName.string_of_func func_name) cmd
+      !logger.debug "Compiled %s with: %s" what cmd
   | Some status ->
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)
-      cannot_compile func_name (string_of_process_status status)
+      cannot_compile what (string_of_process_status status)
 
-let compile conf func_name src_file obj_file =
+let compile conf what src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
   (if !use_external_compiler then compile_external else compile_internal)
-    conf func_name src_file obj_file
+    conf what src_file obj_file
 
 (* Function to take some object files, a source file, and produce an
  * executable: *)
@@ -264,3 +270,8 @@ let with_code_file_for obj_name conf f =
   else
     File.with_file_out ~mode:[`create; `text; `trunc] fname f ;
   fname
+
+let module_name_of_file_name fname =
+  Filename.basename fname |>
+  Filename.remove_extension |>
+  String.capitalize_ascii

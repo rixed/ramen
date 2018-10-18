@@ -15,8 +15,8 @@ Feature: Ramen behavior can be customized via experiments
       """
     And a file test_prog.ramen with content
       """
-      DEFINE IF COALESCE(variant("test_external") = "var1", false) f
-      AS YIELD "running" AS glop every 500ms;
+      RUN IF COALESCE(variant("test_external") = "var1", false);
+      DEFINE f AS YIELD "running" AS glop every 500ms;
       """
     And test_prog.ramen is compiled
 
@@ -33,15 +33,17 @@ Feature: Ramen behavior can be customized via experiments
     Then ramen must fail gracefully
 
   Scenario: A function might run or not depending on some experiment (1)
-    Given the program test_prog is running
-    And ramen supervisor --variant test_external=var1 is started
+    Given the environment variable RAMEN_VARIANTS is set to test_external=var1
+    And the program test_prog is running
+    And ramen supervisor is started
     When I wait 2 second
     And I run ramen with arguments tail -n 1 test_prog/f
     Then ramen must mention "running"
 
   Scenario: A function might run or not depending on some experiment (2)
-    Given the program test_prog is running
-    And ramen supervisor --variant test_external=var2 is started
+    Given the environment variable RAMEN_VARIANTS is set to test_external=var2
+    And the program test_prog is running
+    And ramen supervisor is started
     When I wait 2 second
     And I run timeout with arguments 1 ramen tail -n 1 test_prog/f
     Then timeout must not mention "running"

@@ -104,25 +104,28 @@ let infer_field_doc_aggr func operation parents params =
       ) fields
   | _ -> ()
 
-let finalize_func parents params func operation cond =
+let check_typed ~what e =
+  let open RamenExpr in
+  let typ = typ_of e in
+  match typ.typ with
+  | None | Some { structure = (TNum | TAny) ; _ } ->
+      Printf.sprintf2 "%s: Cannot complete typing of %s, \
+                       still of type %a"
+        what
+        (IO.to_string (print true) e)
+        RamenExpr.print_typ typ |>
+    failwith
+  | _ -> ()
+
+let finalize_func parents params func operation =
   F.dump_io func ;
   (* Check that no parents => no input *)
   assert (func.F.parents <> [] || func.F.in_type = []) ;
   (* Check that all expressions have indeed be typed: *)
-  let check_typed e =
-    let open RamenExpr in
-    let typ = typ_of e in
-    let what = IO.to_string (print true) e in
-    match typ.typ with
-    | None | Some { structure = (TNum | TAny) ; _ } ->
-       Printf.sprintf2 "In function %s: Cannot complete typing of %s, \
-                        still of type %a"
-         RamenName.(func_color func.F.name)
-         what RamenExpr.print_typ typ |>
-      failwith
-    | _ -> () in
-  RamenOperation.iter_expr check_typed operation ;
-  Option.may (RamenExpr.iter check_typed) cond ;
+  let what =
+    Printf.sprintf "In function %s "
+      RamenName.(func_color func.F.name) in
+  RamenOperation.iter_expr (check_typed ~what) operation ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
    * we can infer them from the parents (we consider only the first parent

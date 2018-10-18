@@ -3,7 +3,7 @@
 open Batteries
 open RamenHelpers
 
-let run codegen_version rc_str rc_marsh lst =
+let run codegen_version rc_str rc_marsh run_condition lst =
   (* Init the random number generator *)
   (match Sys.getenv "rand_seed" with
   | exception Not_found -> Random.self_init ()
@@ -33,6 +33,7 @@ let run codegen_version rc_str rc_marsh lst =
   else match Sys.argv.(1) with
   | exception Invalid_argument _ -> help ()
   | "1nf0" -> print_string rc_marsh
+  | "r34dy?" -> Legacy.(output_value stdout (run_condition ()))
   | "version" ->
       (* Allow to override the reported version; useful for tests and also
        * maybe as a last-resort production hack: *)

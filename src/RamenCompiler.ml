@@ -82,7 +82,7 @@ let compile conf get_parent ?exec_file source_file program_name =
      *)
     !logger.info "Parsing program %s"
       (RamenName.string_of_program program_name) ;
-    let parsed_params, parsed_funcs =
+    let parsed_params, condition, parsed_funcs =
       RamenProgram.parse get_parent program_name program_code in
     (*
      * Now we have to type all of these.
@@ -97,15 +97,12 @@ let compile conf get_parent ?exec_file source_file program_name =
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let op = parsed_func.RamenProgram.operation in
-      let cond = parsed_func.condition in
       let name = Option.get parsed_func.name in
       let me_func =
         let open RamenOperation in
         F.{ program_name ;
             name ;
             doc = parsed_func.doc ;
-            condition =
-              Option.map (IO.to_string (RamenExpr.print false)) cond ;
             in_type = in_type_of_operation op ;
             out_type = out_type_of_operation op ;
             signature = "" ;
@@ -115,7 +112,7 @@ let compile conf get_parent ?exec_file source_file program_name =
             factors = factors_of_operation op ;
             envvars = envvars_of_operation op } in
       let fq_name = RamenName.fq program_name name in
-      Hashtbl.add compiler_funcs fq_name (me_func, op, cond)
+      Hashtbl.add compiler_funcs fq_name (me_func, op)
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
@@ -143,7 +140,7 @@ let compile conf get_parent ?exec_file source_file program_name =
               RamenName.program_of_rel_program program_name rel_prog,
               func_name in
         let parent_name = RamenName.fq parent_prog_name parent_func_name in
-        try Hashtbl.find compiler_funcs parent_name |> Tuple3.first
+        try Hashtbl.find compiler_funcs parent_name |> fst
         with Not_found ->
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
@@ -205,14 +202,12 @@ let compile conf get_parent ?exec_file source_file program_name =
       if units <> None then
         patch_typ field units func.F.in_type ;
       units in
-    let set_expr_units uoi uoo func what e =
+    let set_expr_units uoi uoo what e =
       let t = RamenExpr.typ_of e in
       if t.RamenExpr.units = None then (
         let u =
           let ctx =
-            Printf.sprintf "evaluating units of %s in function %s"
-              what
-              (RamenName.func_color func.F.name) in
+            Printf.sprintf "evaluating units of %s" what in
           fail_with_context ctx (fun () ->
             RamenExpr.units_of_expr uoi uoo e) in
         if u <> None then (
@@ -230,7 +225,10 @@ let compile conf get_parent ?exec_file source_file program_name =
       let uoo = units_of_output func in
       let changed =
         RamenOperation.fold_top_level_expr false (fun changed what e ->
-          set_expr_units uoi uoo func what e || changed
+          let what =
+            Printf.sprintf "%s in function %s" what
+              (RamenName.func_color func.F.name) in
+          set_expr_units uoi uoo what e || changed
         ) op in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected one. *)
@@ -250,12 +248,13 @@ let compile conf get_parent ?exec_file source_file program_name =
     in
     if not (reach_fixed_point (fun () ->
         let no_io _ = assert false in (* conditions cannot use in/out tuples *)
-        Hashtbl.fold (fun _ (func, op, cond) changed ->
-          set_operation_units func op ||
+        let changed =
           Option.map_default
-            (set_expr_units no_io no_io func "run condition") false cond ||
+            (set_expr_units no_io no_io "run condition") false condition in
+        Hashtbl.fold (fun _ (func, op) changed ->
+          set_operation_units func op ||
           changed
-        ) compiler_funcs false)) then
+        ) compiler_funcs changed)) then
       failwith "Cannot perform dimensional analysis" ;
 
     (*
@@ -279,12 +278,16 @@ let compile conf get_parent ?exec_file source_file program_name =
     add_single_temp_file smt2_file ;
     let types =
       call_typer !RamenSmtTyping.smt_solver (fun () ->
-        get_types compiler_parents compiler_funcs
+        get_types compiler_parents condition compiler_funcs
                   parsed_params smt2_file) in
-    apply_types compiler_parents compiler_funcs types ;
-    Hashtbl.iter (fun _ (func, op, cond) ->
-      finalize_func compiler_parents parsed_params func op cond
+    apply_types compiler_parents condition compiler_funcs types ;
+    Hashtbl.iter (fun _ (func, op) ->
+      finalize_func compiler_parents parsed_params func op
     ) compiler_funcs ;
+    (* Also check that the running condition have been typed: *)
+    Option.may (fun cond ->
+      RamenExpr.iter (check_typed ~what:"Running condition") cond
+    ) condition ;
 
     (*
      * Now the (OCaml) code can be generated and compiled.
@@ -312,19 +315,40 @@ let compile conf get_parent ?exec_file source_file program_name =
       let basename = RamenOCamlCompiler.to_module_name basename in
       dirname ^(if dirname <> "" then "/" else "")^ basename
     in
+    (* Start by producing a module (used by all funcs and the running_condition
+     * in the casing) with the parameters: *)
+    let params_obj_name =
+      make_valid_for_module (Filename.remove_extension source_file) ^
+      "_params_"^ RamenVersions.codegen ^".cmx" in
+    mkdir_all ~is_file:true params_obj_name ;
+    let params_src_file =
+      RamenOCamlCompiler.with_code_file_for params_obj_name conf (fun oc ->
+        Printf.fprintf oc "(* Parameter values for program %s *)\n\
+          open Batteries\n\
+          open Stdint\n\
+          open RamenNullable\n"
+          (RamenName.string_of_program program_name) ;
+        CodeGen_OCaml.emit_parameters oc parsed_params) in
+    add_temp_file params_src_file ;
+    let what = "program "^ (RamenName.program_color program_name) in
+    RamenOCamlCompiler.compile conf what params_src_file params_obj_name ;
+    let params_mod_name =
+      RamenOCamlCompiler.module_name_of_file_name params_src_file in
+    (* Now one module per function: *)
     let src_name_of_func func =
       Filename.remove_extension source_file ^
       "_"^ func.F.signature ^
       "_"^ RamenVersions.codegen |>
       make_valid_for_module in
     let obj_files =
-      Hashtbl.fold (fun _ (func, op, cond) lst ->
+      Hashtbl.fold (fun _ (func, op) lst ->
         let obj_name = src_name_of_func func ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
             conf entry_point_name func.F.name obj_name
-            func.F.in_type func.F.out_type parsed_params op cond
+            func.F.in_type func.F.out_type
+            params_mod_name parsed_params op
         with e ->
           !logger.error "Cannot generate code for %s: %s"
             (RamenName.string_of_func func.name)
@@ -337,6 +361,8 @@ let compile conf get_parent ?exec_file source_file program_name =
      * operations where identical. We must not ask the linker to include
      * the same module twice, though: *)
     let obj_files = List.sort_unique String.compare obj_files in
+    (* Also include the params module in the compilation, at the end: *)
+    let obj_files = obj_files @ [ params_obj_name ] in
     (*
      * Produce the casing.
      *
@@ -349,17 +375,25 @@ let compile conf get_parent ?exec_file source_file program_name =
       Option.default_delayed (fun () ->
         Filename.remove_extension source_file ^".x"
       ) exec_file in
-    let obj_name =
+    let casing_obj_name =
       make_valid_for_module (Filename.remove_extension source_file) ^
       "_casing_"^ RamenVersions.codegen ^".cmx" in
     let ocaml_file =
-      RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
-        Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
-          (RamenName.string_of_program program_name) ;
+      RamenOCamlCompiler.with_code_file_for casing_obj_name conf (fun oc ->
+        let params = parsed_params in
+        Printf.fprintf oc "(* Ramen Casing for program %s *)\n\
+          open Batteries\n\
+          open Stdint\n\
+          open RamenNullable\n\
+          open %s\n\n"
+          (RamenName.string_of_program program_name)
+          params_mod_name ;
+        (* Emit the running condition: *)
+        CodeGen_OCaml.emit_running_condition oc params condition ;
         (* Suppress private fields from function output type, purely for
          * aesthetic reasons. Won't change anything since
          * RingBufLib.ser_tuple_typ_of_tuple_typ will ignore them anyway: *)
-        Hashtbl.iter (fun _ (func, _op, _cond) ->
+        Hashtbl.iter (fun _ (func, _op) ->
           func.F.out_type <- List.filter (fun ft ->
             not (is_private_field ft.RamenTuple.typ_name)) func.F.out_type
         ) compiler_funcs ;
@@ -367,10 +401,11 @@ let compile conf get_parent ?exec_file source_file program_name =
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. *)
         let funcs = Hashtbl.values compiler_funcs /@
-                    Tuple3.first |>
-                    List.of_enum
-        and params = parsed_params in
-        let runconf = P.{ funcs ; params } in
+                    fst |> List.of_enum in
+        let cond_str =
+          Option.map (IO.to_string (RamenExpr.print false)) condition in
+        let runconf =
+          P.{ funcs ; params ; condition = cond_str } in
         Printf.fprintf oc "let rc_str_ = %S\n"
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;
@@ -378,9 +413,9 @@ let compile conf get_parent ?exec_file source_file program_name =
           (Marshal.(to_string runconf [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
-          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ [\n"
+          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ run_condition_[\n"
             RamenVersions.codegen ;
-        Hashtbl.iter (fun _ (func, _op, _cond) ->
+        Hashtbl.iter (fun _ (func, _op) ->
           let mod_name = src_name_of_func func |>
                          Filename.basename |>
                          String.capitalize_ascii in

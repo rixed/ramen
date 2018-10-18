@@ -446,7 +446,7 @@ let waitpid_log ?expected_status ~what pid =
     !logger.error "%s %s"
       what (string_of_process_status status)
 
-let with_subprocess ?expected_status cmd args k =
+let with_subprocess ?expected_status ?env cmd args k =
   (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
    * fd is closed several times so limit the magic: *)
   let open Legacy.Unix in
@@ -455,7 +455,7 @@ let with_subprocess ?expected_status cmd args k =
    * check the child exit status it will give us a better error message. *)
   if not (file_exists cmd) then
     failwith (Printf.sprintf "File %s does not exist" cmd) ;
-  let env = environment () in
+  let env = env |? environment () in
   let his_in, my_in = pipe ~cloexec:false ()
   and my_out, his_out = pipe ~cloexec:false ()
   and my_err, his_err = pipe ~cloexec:false () in
@@ -491,8 +491,8 @@ let with_subprocess ?expected_status cmd args k =
          in_channel_of_descr my_out,
          in_channel_of_descr my_err)
 
-let with_stdout_from_command ?expected_status cmd args k =
-  with_subprocess ?expected_status cmd args (fun (_ic, oc, _ec) -> k oc)
+let with_stdout_from_command ?expected_status ?env cmd args k =
+  with_subprocess ?expected_status ?env cmd args (fun (_ic, oc, _ec) -> k oc)
 
 (*$= with_stdout_from_command & ~printer:identity
   "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \

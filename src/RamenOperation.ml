@@ -403,12 +403,22 @@ let envvars_of_operation =
     | Field (_, { contents = TupleEnv }, n) -> n :: lst
     | _ -> lst)
 
+(* Unless it's a param, assume TupleUnknow belongs to def: *)
+let prefix_def params def =
+  E.iter (function
+    | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
+        if RamenTuple.params_mem alias params then
+          pref := TupleParam
+        else
+          pref := def
+    | _ -> ())
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let check params run_cond op =
+let check params op =
   let check_pure clause =
     E.unpure_iter (fun _ ->
       failwith ("Stateful function not allowed in "^ clause))
@@ -448,15 +458,6 @@ let check params run_cond op =
     | RamenEventTime.StopField f -> check_field f
   and check_factors field_names =
     List.iter (check_field_exists field_names)
-  (* Unless it's a param, assume TupleUnknow belongs to def: *)
-  and prefix_def def =
-    E.iter (function
-      | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-          if RamenTuple.params_mem alias params then
-            pref := TupleParam
-          else
-            pref := def
-      | _ -> ())
   and check_no_group = check_no_state LocalState
   and use_event_time = fold_expr false (fun b -> function
     | StatelessFun0 (_, (EventStart|EventStop)) -> true
@@ -466,7 +467,6 @@ let check params run_cond op =
      event_time_of_operation op = None
   then
      failwith "Cannot use #start/#stop without event time" ;
-  Option.may (prefix_def TupleEnv) run_cond ;
   match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
@@ -500,12 +500,12 @@ let check params run_cond op =
               alias (string_of_prefix !pref)
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
-    List.iter (prefix_def TupleIn) merge.on ;
+    List.iter (prefix_def params TupleIn) merge.on ;
     Option.may (fun (_, u_opt, b) ->
-      List.iter (prefix_def TupleIn) b ;
-      Option.may (prefix_def TupleIn) u_opt) sort ;
+      List.iter (prefix_def params TupleIn) b ;
+      Option.may (prefix_def params TupleIn) u_opt) sort ;
     prefix_smart where ;
-    List.iter (prefix_def TupleIn) key ;
+    List.iter (prefix_def params TupleIn) key ;
     List.iter (fun notif ->
       prefix_smart notif.notif_name ;
       List.iter (fun (_n, v) -> prefix_smart v) notif.parameters
@@ -608,12 +608,12 @@ let check params run_cond op =
       (* prefix_def will select Param if it is indeed in param, and only
        * if not will it assume it's in env; which makes sense as that's the
        * only two possible tuples here: *)
-      prefix_def TupleEnv p ;
+      prefix_def params TupleEnv p ;
       check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
     ) preprocessor ;
-    prefix_def TupleEnv fname ;
+    prefix_def params TupleEnv fname ;
     check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname ;
-    prefix_def TupleEnv unlink ;
+    prefix_def params TupleEnv unlink ;
     check_fields_from [ TupleParam; TupleEnv ] "DELETE-IF" unlink ;
     check_pure "DELETE-IF" unlink
     (* FIXME: check the field type declarations use only scalar types *)

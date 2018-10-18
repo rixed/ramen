@@ -220,7 +220,6 @@ struct
   let lwt_uncaught_exception = 2 (* This does not depend on us *)
   let cannot_parse_param = 3
   let watchdog = 4
-  let run_condition_says_no = 5
 end
 
 module Default =
@@ -254,6 +253,9 @@ let worker_argv0 = "ramen worker:"
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)
 let cache_factors_ttl = 30.
+
+(* Prefix to use before all parameter names in the environment: *)
+let param_envvar_prefix = "param_"
 
 (* Prefix to use before all experiment names in the environment: *)
 let exp_envvar_prefix = "experiment_"

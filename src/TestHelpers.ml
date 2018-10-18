@@ -50,7 +50,7 @@ let test_op ?postproc p s =
                            nullable = false } ;
                    units = None ; doc = "" ; aggr = None } ;
           value = RamenTypes.VI32 10l }] in
-    RamenOperation.check params None res ; ok_res
+    RamenOperation.check params res ; ok_res
   | x -> x
 
 let typ =

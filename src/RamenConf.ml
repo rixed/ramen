@@ -32,8 +32,6 @@ struct
     { program_name : RamenName.program ;
       name : RamenName.func ;
       doc : string ;
-      (* For debug only: *)
-      condition : string option ;
       in_type : RamenTuple.typ ;
       (* In the order the user want them: *)
       mutable out_type : RamenTuple.typ ;
@@ -99,6 +97,7 @@ module Program =
 struct
   type t =
     { params : RamenTuple.params [@ppp_default []] ;
+      condition : string option ; (* for debug only *)
       funcs : Func.t list }
       [@@ppp PPP_OCaml]
 
@@ -108,8 +107,28 @@ struct
 
   let info_of_bin fname =
     let args = [| fname ; "1nf0" |] in
-    with_stdout_from_command ~expected_status:0 fname args
-      Legacy.Marshal.from_channel
+    with_stdout_from_command ~expected_status:0 fname args Legacy.input_value
+
+  let env_of_params_and_exps conf params =
+    (* First the params: *)
+    let env =
+      Hashtbl.enum params /@
+      (fun (n, v) ->
+        Printf.sprintf2 "%s%s=%a"
+          RamenConsts.param_envvar_prefix n RamenTypes.print v) in
+    (* Then the experiment variants: *)
+    let exps =
+      RamenExperiments.all_experiments conf.persist_dir |>
+      List.map (fun (name, exp) ->
+        RamenConsts.exp_envvar_prefix ^ name ^"="
+          ^ exp.RamenExperiments.variants.(exp.variant).name) |>
+      List.enum in
+    Enum.append env exps
+
+  let wants_to_run conf fname params =
+    let args = [| fname ; "r34dy?" |] in
+    let env = env_of_params_and_exps conf params |> Array.of_enum in
+    with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_value
 
   let of_bin =
     (* Cache of path to date of last read and program *)
@@ -121,18 +140,18 @@ struct
                       fname (Printexc.to_string e) in
           !logger.error "%s" err ;
           failwith err
-      | v when v = RamenVersions.codegen ->
-          (try info_of_bin fname with e ->
-             let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"
-                         fname (Printexc.to_string e) in
-             !logger.error "%s" err ;
-             failwith err)
-      | v ->
+      | v when v <> RamenVersions.codegen ->
         let err = Printf.sprintf "Executable %s is for version %s \
                                   (I'm version %s)"
                     fname v RamenVersions.codegen in
         !logger.error "%s" err ;
         failwith err
+      | _ ->
+          (try info_of_bin fname with e ->
+             let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"
+                         fname (Printexc.to_string e) in
+             !logger.error "%s" err ;
+             failwith err)
     and age_of_data fname =
       try mtime_of_file fname
       with e ->
@@ -145,7 +164,8 @@ struct
       let p = get_prog fname in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { params = RamenTuple.overwrite_params p.params params ;
-        funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs }
+        funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
+        condition = p.condition }
 
   let bin_of_program_name root_path program_name =
     (* Use an extension so we can still use the plain program_name for a
@@ -157,8 +177,7 @@ end
 let running_config_file conf =
   conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
 
-type worker_status = MustRun | Killed | RunCondSaidNo
-  [@@ppp PPP_OCaml]
+type worker_status = MustRun | Killed [@@ppp PPP_OCaml]
 
 (* Saved configuration is merely a hash from (unique) program names
  * to their binaries, and parameters (actual ones, not default values): *)

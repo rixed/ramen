@@ -10,7 +10,7 @@ open RamenNullable
  * This function is called at module initialization time to get the (constant)
  * value of a parameter (with default value in [def]): *)
 let parameter_value ~def scalar_parser name =
-  let envvar = "param_"^ name in
+  let envvar = RamenConsts.param_envvar_prefix ^ name in
   !logger.debug "Looking for envvar %S" envvar ;
   match Sys.getenv envvar with
   | exception Not_found -> def

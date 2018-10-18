@@ -293,10 +293,10 @@ let process_workers_terminations conf running =
       | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
           !logger.debug "%s got stopped" what
       | _, status ->
+          (* Is it disabled, for instance by an experiment? *)
           let status_str = string_of_process_status status in
           let is_err =
-            status <> WEXITED RamenConsts.ExitCodes.terminated &&
-            status <> WEXITED RamenConsts.ExitCodes.run_condition_says_no in
+            status <> WEXITED RamenConsts.ExitCodes.terminated in
           (if is_err then !logger.error else info_or_test conf)
             "%s %s." what status_str ;
           proc.last_exit <- now ;
@@ -311,13 +311,10 @@ let process_workers_terminations conf running =
             proc.succ_failures <- 0
           ) ;
           (* Wait before attempting to restart a failing worker: *)
+          let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
-            if status = WEXITED RamenConsts.ExitCodes.run_condition_says_no then
-              max_float
-            else (
-              let max_delay = float_of_int proc.succ_failures in
-              now +. Random.float (min 90. max_delay)) ;
-          proc.pid <- None)
+            now +. Random.float (min 90. max_delay)) ;
+          proc.pid <- None
     ) proc.pid
   ) running
 
@@ -406,10 +403,7 @@ let really_start conf proc parents children =
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let more_env =
-    Hashtbl.enum proc.params /@
-    (fun (n, v) ->
-      Printf.sprintf2 "param_%s=%a"
-        n RamenTypes.print v) |>
+    P.env_of_params proc.params |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =

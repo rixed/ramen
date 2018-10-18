@@ -82,7 +82,20 @@ let print oc (params, run_cond, funcs) =
 
 (* Check that a syntactically valid program is actually valid: *)
 
-let check (params, funcs) =
+let check (params, run_cond, funcs) =
+  Option.may (fun run_cond ->
+    RamenOperation.prefix_def params TupleEnv run_cond ;
+    (* Check the running condition does not use any IO tuple: *)
+    RamenExpr.iter (function
+      | Field (_, tuple, _) when
+        tuple_has_type_input !tuple ||
+        tuple_has_type_output !tuple ->
+          Printf.sprintf "Running condition cannot use tuple %s"
+            (string_of_prefix !tuple) |>
+          failwith
+      | _ -> ()
+    ) run_cond
+  ) run_cond ;
   let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %s not unique" name |> failwith in
@@ -93,24 +106,13 @@ let check (params, funcs) =
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
     (* Check the operation is OK: *)
-    (try RamenOperation.check params n.condition n.operation
+    (try RamenOperation.check params n.operation
     with Failure msg ->
       let open RamenTypingHelpers in
       Printf.sprintf "In function %s: %s"
         (RamenName.func_color (n.name |? anonymous))
         msg |>
       failwith) ;
-    (* Check the running condition does not use any IO tuple: *)
-    Option.may (
-      RamenExpr.iter (function
-        | Field (_, tuple, _) when
-          tuple_has_type_input !tuple ||
-          tuple_has_type_output !tuple ->
-            Printf.sprintf "Running condition cannot use tuple %s"
-              (string_of_prefix !tuple) |>
-            failwith
-        | _ -> ())
-    ) n.condition ;
     (* Finally, check that the name is valid and unique: *)
     match n.name with
     | Some name ->
@@ -198,7 +200,7 @@ struct
     ) m
 
   let run_cond m =
-    let m = "global running condition" :: m in
+    let m = "running condition" :: m in
     (
       optional ~def:() (strinG "run" -- blanks) --
       strinG "if" -- blanks -+ RamenExpr.Parser.p
@@ -211,15 +213,12 @@ struct
   let named_func m =
     let m = "function" :: m in
     (
-      strinG "define" -+
-      optional ~def:None (
-        blanks -- strinG "if" -+ blanks -+ some RamenExpr.Parser.p) +-
-      blanks ++ function_name ++
+      strinG "define" -- blanks -+ function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
       RamenOperation.Parser.p >>:
-      fun (((condition, name), doc), op) ->
-        make_func ~name ~doc ?condition op
+      fun ((name, doc), op) ->
+        make_func ~name ~doc op
     ) m
 
   let func m =
@@ -307,7 +306,7 @@ struct
       condition = None } ]),\
       (84, [])))\
       (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
-       (function Ok ((ps, _, fs), _) as x -> check (ps, fs) ; x | x -> x) |>\
+       (function Ok ((ps, _, fs), _) as x -> check (ps, None, fs) ; x | x -> x) |>\
        replace_typ_in_program)
   *)
 
@@ -320,18 +319,18 @@ end
 
 let reify_subquery =
   let seqnum = ref 0 in
-  fun ?condition op ->
+  fun op ->
     let name = RamenName.func_of_string ("_"^ string_of_int !seqnum) in
     incr seqnum ;
-    make_func ?condition ~name op
+    make_func ~name op
 
 (* Returns a list of additional funcs and the list of parents that
  * contains only NamedOperations and GlobPattern: *)
-let expurgate ?condition from =
+let expurgate from =
   let open RamenOperation in
   List.fold_left (fun (new_funcs, from) -> function
     | SubQuery q ->
-        let new_func = reify_subquery ?condition q in
+        let new_func = reify_subquery q in
         (new_func :: new_funcs),
         NamedOperation (None, Option.get new_func.name) :: from
     | (GlobPattern _ | NamedOperation _) as f -> new_funcs, f :: from
@@ -340,31 +339,21 @@ let expurgate ?condition from =
 let reify_subqueries funcs =
   let open RamenOperation in
   List.fold_left (fun fs func ->
-    let condition = func.condition in
     match func.operation with
     | Aggregate ({ from ; _ } as f) ->
-        let funcs, from = expurgate ?condition from in
+        let funcs, from = expurgate from in
         { func with operation = Aggregate { f with from } } ::
           funcs @ fs
     | Instrumentation ({ from ; _ }) ->
-        let funcs, from = expurgate ?condition from in
+        let funcs, from = expurgate from in
         { func with operation = Instrumentation { from } } ::
           funcs @ fs
     | Notifications ({ from ; _ }) ->
-        let funcs, from = expurgate ?condition from in
+        let funcs, from = expurgate from in
         { func with operation = Notifications { from } } ::
           funcs @ fs
     | _ -> func :: fs
   ) [] funcs
-
-(* top-level unctions inherit the global running condition while subqueries
- * inherit their parent running condition. At this stage, the subqueries
- * are not functions yet: *)
-let propagate_run_cond run_cond =
-  List.map (fun func ->
-    if func.condition = None then
-      { func with condition = run_cond }
-    else func)
 
 let name_unnamed =
   List.map (fun func ->
@@ -486,8 +475,7 @@ let parse get_parent program_name program =
     failwith
   | Ok ((params, run_cond, funcs), _) ->
     let funcs = name_unnamed funcs in
-    let funcs = propagate_run_cond run_cond funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in
-    let t = params, funcs in
+    let t = params, run_cond, funcs in
     check t ; t

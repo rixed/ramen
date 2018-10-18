@@ -69,9 +69,9 @@ class Filter
       @min = @max = 0
     elsif description =~ /a few/ then
       @min = 1
-      @max = 10
+      @max = 20
     elsif description =~ /(?:(?:a )?lots?(?: of)?|many)/ then
-      @min = 10
+      @min = 20
       @max = 300
     elsif description =~ /some/ then
       @min = 1

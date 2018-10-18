@@ -26,7 +26,7 @@ let verbose_serialization = false
 
 (* We pass this around as "opc" *)
 type op_context =
-  { op : RamenOperation.t ;
+  { op : RamenOperation.t option ;
     (* The type of the output tuple in user order *)
     tuple_typ : RamenTuple.field_typ list ;
     params : RamenTuple.params ;
@@ -542,7 +542,7 @@ and emit_maybe_fields oc out_typ =
 
 and emit_event_time oc opc =
   let (sta_field, sta_src, sta_scale), dur =
-    RamenOperation.event_time_of_operation opc.op |> Option.get in
+    RamenOperation.event_time_of_operation (Option.get opc.op) |> Option.get in
   let open RamenEventTime in
   let field_value_to_float src oc field_name =
     match src with
@@ -1631,7 +1631,7 @@ let emit_time_of_tuple name oc opc =
   Printf.fprintf oc "let %s %a =\n\t"
     name
     (print_tuple_deconstruct TupleOut) opc.tuple_typ ;
-  (match RamenOperation.event_time_of_operation opc.op with
+  (match RamenOperation.event_time_of_operation (Option.get opc.op) with
   | None -> Printf.fprintf oc "None"
   | Some _ -> Printf.fprintf oc "Some (%a)" emit_event_time opc) ;
   Printf.fprintf oc "\n\n"
@@ -1661,7 +1661,7 @@ let emit_read_csv_file opc oc name csv_fname unlink
      "%a\n%a\n%a\n%a\n\
      let %s () =\n\
        \tlet unlink_ = %a in
-       \tCodeGenLib_Skeletons.read_csv_file running_condition_ %s\n\
+       \tCodeGenLib_Skeletons.read_csv_file %s\n\
        \t\tunlink_ %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
        \t\ttuple_of_strings_ %s field_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
@@ -1678,7 +1678,7 @@ let emit_listen_on opc oc name net_addr port proto =
   let collector = collector_of_proto proto in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib_Skeletons.listen_on running_condition_ %s\n\
+      \tCodeGenLib_Skeletons.listen_on %s\n\
       \t\t%S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
@@ -1693,7 +1693,7 @@ let emit_well_known opc oc name from
   let open RamenProtocols in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib_Skeletons.read_well_known running_condition_ %a\n\
+      \tCodeGenLib_Skeletons.read_well_known %a\n\
       \t\tsersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
@@ -2262,9 +2262,9 @@ let expr_needs_group e =
 
 let emit_aggregate opc oc name in_typ out_typ =
   match opc.op with
-  | RamenOperation.Aggregate
+  | Some (RamenOperation.Aggregate
       { fields ; merge ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; _ } as op ->
+        flush_how ; notifications ; every ; _ } as op) ->
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
@@ -2363,7 +2363,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_sort_expr "sort_by_" in_typ mentioned ~opc) (match sort with Some (_, _, b) -> b | None -> [])
     (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
-      \tCodeGenLib_Skeletons.aggregate running_condition_\n\
+      \tCodeGenLib_Skeletons.aggregate\n\
       \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
@@ -2392,13 +2392,7 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let emit_operation name func_name in_typ out_typ params op cond oc =
-  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
-    open Batteries\n\
-    open Stdint\n\
-    open RamenNullable\n"
-    (RamenName.string_of_func func_name)
-    RamenOperation.print op ;
+let emit_parameters oc params =
   (* Emit parameters: *)
   Printf.fprintf oc "\n(* Parameters: *)\n" ;
   List.iter (fun p ->
@@ -2429,51 +2423,70 @@ let emit_operation name func_name in_typ out_typ params op cond oc =
         (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
         glob_name
         (if p.ptyp.typ.nullable then " |! \"?null?\""
-         else ""))) params ;
+         else ""))) params
+
+let emit_running_condition oc params cond =
+  let code = IO.output_string ()
+  and consts = IO.output_string () in
+  let opc = { op = None ; params ; consts ; tuple_typ = [] } in
+  (match cond with
+  | Some cond ->
+      Printf.fprintf code "let run_condition_ () =\n\t%a\n\n"
+        (emit_expr ?state:None ~context:Finalize ~opc) cond
+  | None ->
+      Printf.fprintf code "let run_condition_ () = true") ;
+  Printf.fprintf oc "%s\n%s\n"
+    (IO.close_out consts) (IO.close_out code)
+
+let emit_operation name func_name in_typ out_typ params_mod params op oc =
+  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
+    open Batteries\n\
+    open Stdint\n\
+    open RamenNullable\n\
+    open %s\n"
+    (RamenName.string_of_func func_name)
+    RamenOperation.print op
+    params_mod ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
   let code = IO.output_string ()
   and consts = IO.output_string () in
-  (* The running condition: *)
-  Printf.fprintf oc "let running_condition_ () =\n\t%s\n\n"
-    (match cond with
-    | Some cond ->
-        let opc = { op ; params ; consts ; tuple_typ = [] } in
-        (IO.to_string (emit_expr ?state:None ~context:Finalize ~opc) cond)
-    | None -> "true") ;
   (match op with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; fields } ; _ } ->
-    let opc = { op ; params ; consts ; tuple_typ = fields } in
+    let opc = { op = Some op ; params ; consts ; tuple_typ = fields } in
     emit_read_csv_file opc code name fname unlink separator null
                        preprocessor
   | ListenFor { net_addr ; port ; proto } ->
     let tuple_typ = RamenProtocols.tuple_typ_of_proto proto in
-    let opc = { op ; params ; consts ; tuple_typ } in
+    let opc = { op = Some op ; params ; consts ; tuple_typ } in
     emit_listen_on opc code name net_addr port proto
   | Instrumentation { from } ->
     let tuple_typ = RamenBinocle.tuple_typ in
-    let opc = { op ; params ; consts ; tuple_typ } in
+    let opc = { op = Some op ; params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenBinocle.unserialize" "report_ringbuf"
       "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     let tuple_typ = RamenNotification.tuple_typ in
-    let opc = { op ; params ; consts ; tuple_typ } in
+    let opc = { op = Some op ; params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenNotification.unserialize" "notifs_ringbuf"
       "(fun (w, t, _, _, _, _, _, _) -> w, t)"
   | Aggregate _ ->
-    let opc = { op ; params ; consts ; tuple_typ = out_typ } in
+    let opc = { op = Some op ; params ; consts ; tuple_typ = out_typ } in
     emit_aggregate opc code name in_typ out_typ) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)
 
-let compile conf entry_point func_name obj_name in_typ out_typ params op cond =
+let compile conf entry_point func_name obj_name in_typ out_typ
+            params_mod params op =
   let open RamenOperation in
   let src_file =
     RamenOCamlCompiler.with_code_file_for obj_name conf
-      (emit_operation entry_point func_name in_typ out_typ params op cond) in
+      (emit_operation entry_point func_name in_typ out_typ
+                      params_mod params op) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
-  RamenOCamlCompiler.compile conf func_name src_file obj_name
+  let what = "function "^ RamenName.func_color func_name in
+  RamenOCamlCompiler.compile conf what src_file obj_name

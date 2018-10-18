@@ -100,19 +100,24 @@ let run conf params replace report_period program_name ?(src_file="")
         bin_file debug =
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
-    let prog = P.of_bin program_name params bin in
-    check_links program_name prog programs ;
-    if not replace then
-      (match Hashtbl.find programs program_name with
-      | exception Not_found -> ()
-      | mre ->
-        if mre.C.status = C.MustRun then
-          Printf.sprintf "A program named %s is already running"
-            (RamenName.string_of_program program_name) |>
-          failwith) ;
-    (* TODO: Make sure this key is authoritative on a program name: *)
-    Hashtbl.replace programs program_name
-      C.{ bin ; params ; status = MustRun ; debug ; report_period ; src_file })
+    let can_run = P.wants_to_run conf bin params in
+    if not can_run then
+      !logger.info "Program %a is disabled"
+        RamenName.program_print program_name
+    else (
+      let prog = P.of_bin program_name params bin in
+      check_links program_name prog programs ;
+      if not replace then
+        (match Hashtbl.find programs program_name with
+        | exception Not_found -> ()
+        | mre ->
+          if mre.C.status = C.MustRun then
+            Printf.sprintf "A program named %s is already running"
+              (RamenName.string_of_program program_name) |>
+            failwith) ;
+      (* TODO: Make sure this key is authoritative on a program name: *)
+      Hashtbl.replace programs program_name
+        C.{ bin ; params ; status = MustRun ; debug ; report_period ; src_file }))
 
 (*
  * Stopping a worker from running.
