@@ -24,7 +24,7 @@ module Serialized =
 struct
   type var =
     { descr : string ;
-      share : float option [@ppp_default None] }
+      share : float [@ppp_default -1.] }
     [@@ppp PPP_OCaml]
   type vars = (string, var) Hashtbl.t [@@ppp PPP_OCaml]
   type exps = (string, vars) Hashtbl.t [@@ppp PPP_OCaml]
@@ -126,7 +126,10 @@ let all_experiments =
                 make (
                   Hashtbl.to_list vars |>
                   List.map (fun (name, var) ->
-                    Variant.make name ?share:var.Serialized.share var.descr) |>
+                    let share =
+                      if var.Serialized.share < 0. then None
+                      else Some var.share in
+                    Variant.make name ?share var.descr) |>
                   Array.of_list)) in
             List.rev_append all_internal_experiments exps
           else all_internal_experiments in
