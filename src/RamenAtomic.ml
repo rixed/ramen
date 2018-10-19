@@ -1,14 +1,17 @@
 open Batteries
 
+let with_mutex m f x =
+  Mutex.lock m ;
+  finally
+    (fun () -> Mutex.unlock m)
+    f x
+
 module Base = struct
   type 'a t = { mutex : Mutex.t ; x : 'a }
   let make x =
     { mutex = Mutex.create () ; x }
   let with_lock t f =
-    Mutex.lock t.mutex ;
-    finally
-      (fun () -> Mutex.unlock t.mutex)
-      f t.x
+    with_mutex t.mutex f t.x
 end
 
 module Flag = struct
