@@ -3,13 +3,6 @@ require 'open3'
 require 'fileutils'
 require 'tmpdir'
 
-# Clear this or we might have long, unexpected backtraces on stderr:
-ENV['OCAMLRUNPARAM'] = nil
-# Also, by default we want a specific setting for experiments:
-ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
-# And avoid fault injection:
-ENV['RAMEN_FAULT_INJECTION_RATE'] = '0'
-
 $daemon_pids = {}
 
 def kill_ramens ()
@@ -27,7 +20,16 @@ end
 Before do |scenario|
   $prev_wd = Dir.getwd
   $tmp_dir = Dir.mktmpdir('ramen_cucumber_tests_')
+
+  # Reset some ENV:
   ENV['RAMEN_PERSIST_DIR'] = $tmp_dir + '/ramen_persist_dir'
+  # Clear this or we might have long, unexpected backtraces on stderr:
+  ENV['OCAMLRUNPARAM'] = nil
+  # Also, by default we want a specific setting for experiments:
+  ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
+  # And avoid fault injection:
+  ENV['RAMEN_FAULT_INJECTION_RATE'] = '0'
+
   # If we do this globally then cucumber fails to find the features, so we
   # cheat by doing this in this hook:
   Dir.chdir $tmp_dir

@@ -9,19 +9,19 @@ end
 
 Given /the environment variable (.*) is set(?: to (.*))?/ \
 do |envvar, opt_val|
-  if ENV[envvar].nil? then
+  if ENV[envvar].nil? and opt_val.nil? then
     val =
-      if opt_val.nil?
-        case envvar
-          when /RAMEN_BUNDLE_DIR/
-            ENV['HOME'] + '/share/src/ramen/bundle'
-          else
-            fail(StandardError.new("No idea what to set #{envvar} to"))
-        end
-      else
-        opt_val
+      case envvar
+        when /RAMEN_BUNDLE_DIR/
+          ENV['HOME'] + '/share/src/ramen/bundle'
+        else
+          fail(StandardError.new("No idea what to set #{envvar} to"))
       end
     ENV[envvar] = val
+  else
+    if not opt_val.nil? then
+      ENV[envvar] = opt_val
+    end
   end
 end
 
@@ -29,12 +29,16 @@ Given /the environment variable (.*) is not (?:set|defined)/ do |envvar|
   ENV[envvar] = nil
 end
 
-Given /the environment variable (.*) must (not )?be (?:set|defined)/ \
-do |envvar, unset|
+Given /the environment variable (.*) must (not )?be (?:set(?: to (.*))|defined)/ \
+do |envvar, unset, opt_val|
   if unset then
     expect(ENV[envvar]).to equal nil
   else
-    expect(ENV[envvar]).to be_truthy
+    if opt_val.nil? then
+      expect(ENV[envvar]).to be_truthy
+    else
+      expect(ENV[envvar]).to eq opt_val
+    end
   end
 end
 
