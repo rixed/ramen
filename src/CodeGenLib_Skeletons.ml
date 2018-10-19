@@ -228,12 +228,14 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                * retrying to write to the same child. *)
               RingBufLib.retry_for_ringbuf
                 ~while_:(fun () ->
+                  (* Can't us CodeGenLib_IO.now if we are stuck in output: *)
+                  let now = Unix.gettimeofday () in
                   !quit = None &&
                   (* Also check from time to time that we are still supposed to
                    * write in there (we check right after the first error to
                    * quickly detect it when a child disappear): *)
-                  (!CodeGenLib_IO.now < !last_retry +. 3. || (
-                    last_retry := !CodeGenLib_IO.now ;
+                  (now < !last_retry +. 3. || (
+                    last_retry := now ;
                     RamenOutRef.mem rb_ref_out_fname fname)))
                 ~delay_rec:sleep_out (fun () ->
                   output rb tup_serializer tup_sizer start_stop tuple) ()
