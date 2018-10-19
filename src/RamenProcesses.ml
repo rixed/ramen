@@ -88,14 +88,17 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
   flush_all () ;
   match fork () with
   | 0 ->
-    let open Unix in
-    if and_stop then RingBufLib.kill_myself Sys.sigstop ;
-    Option.may chdir cwd ;
-    close_fd 0 ;
-    for i = 3 to 255 do
-      try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
-    done ;
-    execve cmd args env
+    (try
+      if and_stop then RingBufLib.kill_myself Sys.sigstop ;
+      Option.may chdir cwd ;
+      close_fd 0 ;
+      for i = 3 to 255 do
+        try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
+      done ;
+      execve cmd args env
+    with e ->
+      Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
+      sys_exit 127)
   | pid -> pid
 
 (*$inject
@@ -293,7 +296,6 @@ let process_workers_terminations conf running =
       | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
           !logger.debug "%s got stopped" what
       | _, status ->
-          (* Is it disabled, for instance by an experiment? *)
           let status_str = string_of_process_status status in
           let is_err =
             status <> WEXITED RamenConsts.ExitCodes.terminated in
@@ -313,8 +315,8 @@ let process_workers_terminations conf running =
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
-            now +. Random.float (min 90. max_delay)) ;
-          proc.pid <- None
+            now +. Random.float (min 90. max_delay) ;
+          proc.pid <- None)
     ) proc.pid
   ) running
 
@@ -403,20 +405,12 @@ let really_start conf proc parents children =
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let more_env =
-    P.env_of_params proc.params |>
+    P.env_of_params_and_exps conf proc.params |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
     List.enum proc.func.envvars //@
     (fun n -> try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
-    Enum.append more_env in
-  (* Also add experiment variants: *)
-  let more_env =
-    RamenExperiments.all_experiments conf.C.persist_dir |>
-    List.map (fun (name, exp) ->
-      RamenConsts.exp_envvar_prefix ^ name ^"="
-        ^ exp.RamenExperiments.variants.(exp.variant).name) |>
-    List.enum |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
