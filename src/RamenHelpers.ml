@@ -539,18 +539,23 @@ let strings_of_csv separator line =
 let read_whole_file fname =
   File.with_file_in ~mode:[`text] fname IO.read_all
 
-let read_whole_channel ic =
-  let open Legacy in
+let read_whole_thing read =
   let read_chunk = 1000 in
   let rec loop buf o =
     if Bytes.length buf - o < read_chunk then
       loop (Bytes.extend buf 0 (5 * read_chunk)) o
     else
-      let ret = input ic buf o read_chunk in
+      let ret = read buf o read_chunk in
       if ret = 0 then Bytes.(sub buf 0 o |> to_string)
       else loop buf (o + ret)
   in
   loop (Bytes.create (5 * read_chunk)) 0
+
+let read_whole_channel ic =
+  read_whole_thing (Legacy.input ic)
+
+let read_whole_fd fd =
+  read_whole_thing (Unix.read fd)
 
 let touch_file fname to_when =
   !logger.debug "Touching %s" fname ;
@@ -633,13 +638,6 @@ let really_read_fd fd size =
       failwith e
   in
   loop 0
-
-let read_whole_fd fd =
-  let open Unix in
-  let s = fstat fd in
-  let size = s.st_size in
-  lseek fd 0 SEEK_SET |> ignore ;
-  really_read_fd fd size
 
 let marshal_into_fd fd v =
   let open BatUnix in
@@ -1250,6 +1248,13 @@ let fail_with_context ctx f =
       ctx (Printexc.to_string e) |>
     failwith
 
+let ppp_of_fd ?(default="") ppp fd =
+  Unix.(lseek fd 0 SEEK_SET) |> ignore ;
+  let str = read_whole_fd fd in
+  let str = if str = "" then default else str in
+  fail_with_context "parsing a file descriptor"
+    (fun () -> PPP.of_string_exc ppp str)
+
 let ppp_of_file ?(error_ok=false) ppp =
   let reread fname =
     !logger.debug "Have to reread %S" fname ;
@@ -1267,6 +1272,16 @@ let ppp_of_file ?(error_ok=false) ppp =
               (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_of_file_def 0.)
+
+let ppp_to_fd ?pretty fd ppp v =
+  Unix.(lseek fd 0 SEEK_SET) |> ignore ;
+  let str = PPP.to_string ?pretty ppp v in
+  let len = String.length str in
+  if len = Unix.write_substring fd str 0 len then
+    Unix.ftruncate fd len
+  else
+    Printf.sprintf "Cannot write %d bytes into fd" len |>
+    failwith
 
 let ppp_to_file ?pretty fname ppp v =
   mkdir_all ~is_file:true fname ;

@@ -37,72 +37,68 @@ let string_of_field_mask mask =
   List.map (function true -> 'X' | false -> '_') mask |>
   String.of_list
 
-let write_ fname c =
-  ppp_to_file fname out_ref_conf_ppp_ocaml c
+let write_ fname fd c =
+  fail_with_context ("Writing out_ref "^ fname) (fun () ->
+    ppp_to_fd fd out_ref_conf_ppp_ocaml c)
 
-let read_ =
-  ppp_of_file ~error_ok:false out_ref_conf_ppp_ocaml
+let read_ fname fd =
+  fail_with_context ("Reading out_ref "^ fname) (fun () ->
+    ppp_of_fd ~default:"{}" out_ref_conf_ppp_ocaml fd)
 
 let read fname =
-  ensure_file_exists ~contents:"{}" fname ;
-  RamenAdvLock.with_r_lock fname (fun () ->
+  RamenAdvLock.with_r_lock fname (fun fd ->
     (*!logger.debug "Got read lock for read on %s" fname ;*)
     let now = Unix.gettimeofday () in
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
     let still_valid timeout = timeout <= 0. || timeout > now in
-    read_ fname |>
+    read_ fname fd |>
     Hashtbl.filter_map (fun _p (mask_str, timeout) ->
       if still_valid timeout then
-        Some { field_mask = field_mask_of_string mask_str ;
-               timeout }
+        Some { field_mask = field_mask_of_string mask_str ; timeout }
       else None))
 
-let add_ fname out_fname file_spec =
+let add_ fname fd out_fname file_spec =
   let file_spec =
     string_of_field_mask file_spec.field_mask,
     file_spec.timeout in
   let h =
-    try read_ fname
+    try read_ fname fd
     with Sys_error _ ->
       Hashtbl.create 1
     in
   let rewrite () =
     Hashtbl.replace h out_fname file_spec ;
-    write_ fname h ;
-    !logger.debug "Adding %s into %s" out_fname fname in
+    write_ fname fd h ;
+    !logger.debug "Adding %s" out_fname in
   match Hashtbl.find h out_fname with
   | exception Not_found -> rewrite ()
   | prev_spec ->
     if prev_spec <> file_spec then rewrite ()
 
 let add fname (out_fname, file_spec) =
-  ensure_file_exists ~contents:"{}" fname ;
-  RamenAdvLock.with_w_lock fname (fun () ->
+  RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname out_fname file_spec)
+    add_ fname fd out_fname file_spec)
 
-let remove_ fname out_fname =
-  let h = read_ fname in
+let remove_ fname fd out_fname =
+  let h = read_ fname fd in
   if Hashtbl.mem h out_fname then (
     Hashtbl.remove h out_fname ;
-    write_ fname h ;
-    !logger.debug "Removed %s from %s"
-      out_fname fname)
+    write_ fname fd h ;
+    !logger.debug "Removed %s" out_fname)
 
 let remove fname out_fname =
-  ensure_file_exists ~contents:"{}" fname ;
-  RamenAdvLock.with_w_lock fname (fun () ->
+  RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
-    remove_ fname out_fname)
+    remove_ fname fd out_fname)
 
 (* Check that fname is listed in outbuf_ref_fname: *)
-let mem_ fname out_fname =
-  let c = read_ fname in
+let mem_ fname fd out_fname =
+  let c = read_ fname fd in
   Hashtbl.mem c out_fname
 
 let mem fname out_fname =
-  ensure_file_exists ~contents:"{}" fname ;
-  RamenAdvLock.with_r_lock fname (fun () ->
+  RamenAdvLock.with_r_lock fname (fun fd ->
     (*!logger.debug "Got read lock for mem on %s" fname ;*)
-    mem_ fname out_fname)
+    mem_ fname fd out_fname)

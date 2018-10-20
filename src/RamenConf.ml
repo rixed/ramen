@@ -208,14 +208,17 @@ type must_run_file = (RamenName.program, must_run_entry) Hashtbl.t
 let non_persisted_programs = ref (Hashtbl.create 11)
 
 let read_rc_file =
-  let get = ppp_of_file must_run_file_ppp_ocaml in
-  fun do_persist fname ->
-    if do_persist then get fname
+  let get fd =
+    fail_with_context "Reading RC file"
+      (fun () -> ppp_of_fd ~default:"{}" must_run_file_ppp_ocaml fd) in
+  fun do_persist fd ->
+    if do_persist then get fd
     else !non_persisted_programs
 
-let save_rc_file do_persist rc_file rc =
+let save_rc_file do_persist fd rc =
   if do_persist then
-    ppp_to_file ~pretty:true rc_file must_run_file_ppp_ocaml rc
+    fail_with_context "Saving RC file"
+      (fun () -> ppp_to_fd ~pretty:true fd must_run_file_ppp_ocaml rc)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
@@ -227,11 +230,9 @@ let program_of_running_entry program_name mre =
  * Modifications will not be saved. *)
 let with_rlock conf f =
   let rc_file = running_config_file conf in
-  ensure_file_exists ~contents:"{}" rc_file ;
-  mkdir_all ~is_file:true rc_file ;
-  RamenAdvLock.with_r_lock rc_file (fun () ->
+  RamenAdvLock.with_r_lock rc_file (fun fd ->
     let programs =
-      read_rc_file conf.do_persist rc_file |>
+      read_rc_file conf.do_persist fd |>
       Hashtbl.map (fun pn mre ->
         mre,
         memoize (fun () -> program_of_running_entry pn mre)) in
@@ -239,12 +240,11 @@ let with_rlock conf f =
 
 let with_wlock conf f =
   let rc_file = running_config_file conf in
-  ensure_file_exists ~contents:"{}" rc_file ;
-  RamenAdvLock.with_w_lock rc_file (fun () ->
-    let programs = read_rc_file conf.do_persist rc_file in
+  RamenAdvLock.with_w_lock rc_file (fun fd ->
+    let programs = read_rc_file conf.do_persist fd in
     let ret = f programs in
     (* Save the config only if f did not fail: *)
-    save_rc_file conf.do_persist rc_file programs ;
+    save_rc_file conf.do_persist fd programs ;
     ret)
 
 let last_conf_mtime conf =
