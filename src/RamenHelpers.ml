@@ -654,7 +654,7 @@ let marshal_from_fd fd =
   (* Useful log statement in case the GC crashes right away: *)
   !logger.debug "Retrieving marshaled value from file" ;
   let bytes = read_whole_fd fd in
-  Marshal.from_bytes bytes 0
+  Marshal.from_string bytes 0
 
 let getenv ?def n =
   try Sys.getenv n
