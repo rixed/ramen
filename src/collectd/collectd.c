@@ -1,3 +1,4 @@
+// vim: ft=c bs=2 ts=2 sts=2 sw=2 expandtab
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>

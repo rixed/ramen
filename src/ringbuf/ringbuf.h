@@ -1,3 +1,4 @@
+// vim: ft=c bs=2 ts=2 sts=2 sw=2 expandtab
 /* Ring buffer implementation for Ramen events.
  * Characteristics:
  * - possibly multiple writers but single writer most of the times;

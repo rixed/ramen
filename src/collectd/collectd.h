@@ -1,3 +1,4 @@
+// vim: ft=c bs=2 ts=2 sts=2 sw=2 expandtab
 #ifndef COLLECTD_H_170919
 #define COLLECTD_H_170919
 
