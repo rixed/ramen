@@ -8,7 +8,7 @@ Feature: Test Ramen API from the command line.
     And a file test.ramen with content
       """
       define color_of_the_day as
-        select now as start, random as v,
+        select now as start, start as stop, random as v,
                u64(start) % 2 = 1 as odd,
                case when random > 0.66 then "blue"
                     when random > 0.50 then "red"

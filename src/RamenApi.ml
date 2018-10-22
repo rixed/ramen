@@ -201,16 +201,17 @@ let string_of_ext_type = function
   | String -> "string"
   | Other -> "other"
 
-(* We look for all keys which are simple fields, then look for a output field
- * forwarding that field, and return its name (in theory not only fields but
- * any expression yielding the same results.) *)
+(* We look for all keys which are simple fields (but not start/stop), then look
+ * for a output field forwarding that field, and return its name (in theory not
+ * only fields but any expression yielding the same results.) *)
 let group_keys_of_operation =
   let open RamenOperation in
   function
   | Aggregate { fields ; key ; _ } ->
       let simple_keys =
         List.filter_map (function
-          | RamenExpr.Field (_t, tuple_prefix, name) ->
+          | RamenExpr.Field (_t, tuple_prefix, name) when
+              name <> "start" && name <> "stop" ->
               Some (tuple_prefix, name)
           | _ -> None
         ) key in
@@ -472,55 +473,76 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       let ft = field_typ_of_column programs table fn in
       ft.RamenTuple.aggr |? "avg"
     in
-    (* First we need to resample the TS with the desired time step,
-     * aggregating all values for the desired column: *)
+    (* Do we need to reaggregate?
+     * We need to if the where filter leaves us with several groups. *)
+    let func = func_of_table programs table in
+    let group_keys = group_keys_of_operation func.F.operation in
+    let need_reaggr =
+      List.for_all (fun k ->
+         List.exists (fun w -> w.op = "=" && w.lhs = k) a.where
+       ) group_keys |> not in
     Printf.fprintf oc "-- Alerting program\n\n" ;
-    Printf.fprintf oc "DEFINE resampled AS\n" ;
+    Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote table) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
-    Printf.fprintf oc "  GROUP BY u32(floor(start / %f))\n" a.time_step ;
     Printf.fprintf oc "  SELECT\n" ;
-    Printf.fprintf oc "    floor(start / %f) * %f AS start,\n"
-      a.time_step a.time_step ;
-    Printf.fprintf oc "    start + %f AS stop,\n"
-      a.time_step ;
-    (* Also select all the fields used in the HAVING filter: *)
-    List.iter (fun h ->
-      Printf.fprintf oc "    %s %s AS %s, -- for HAVING\n"
-        (default_aggr_of_field h.lhs)
-        (ramen_quote h.lhs) (ramen_quote h.lhs)
-    ) a.having ;
-    Printf.fprintf oc "    min %s AS min_value,\n" (ramen_quote column) ;
-    Printf.fprintf oc "    max %s AS max_value,\n" (ramen_quote column) ;
-    Printf.fprintf oc "    %s %s AS avg_value\n"
-      (default_aggr_of_field column) (ramen_quote column) ;
-    Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
-      a.time_step ;
+    if need_reaggr then (
+      (* First we need to resample the TS with the desired time step,
+       * aggregating all values for the desired column: *)
+      Printf.fprintf oc "    floor(start / %f) * %f AS start,\n"
+        a.time_step a.time_step ;
+      Printf.fprintf oc "    start + %f AS stop,\n"
+        a.time_step ;
+      (* Also select all the fields used in the HAVING filter: *)
+      List.iter (fun h ->
+        Printf.fprintf oc "    %s %s AS %s, -- for HAVING\n"
+          (default_aggr_of_field h.lhs)
+          (ramen_quote h.lhs) (ramen_quote h.lhs)
+      ) a.having ;
+      Printf.fprintf oc "    min %s AS min_value,\n" (ramen_quote column) ;
+      Printf.fprintf oc "    max %s AS max_value,\n" (ramen_quote column) ;
+      Printf.fprintf oc "    %s %s AS value\n"
+        (default_aggr_of_field column) (ramen_quote column) ;
+      Printf.fprintf oc "  GROUP BY u32(floor(start / %f))\n" a.time_step ;
+      Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
+        a.time_step ;
+    ) else (
+      !logger.debug "All group keys are set to a unique value!" ;
+      Printf.fprintf oc "    start, stop,\n" ;
+      (* Also select all the fields used in the HAVING filter: *)
+      List.iter (fun h ->
+        Printf.fprintf oc "    %s, -- for HAVING\n" (ramen_quote h.lhs)
+      ) a.having ;
+      Printf.fprintf oc "    %s AS value;\n\n" (ramen_quote column) ;
+    ) ;
     (* Then we want for each point to find out if it's within the acceptable
      * boundaries or not, using hysteresis: *)
     Printf.fprintf oc "DEFINE ok AS\n" ;
-    Printf.fprintf oc "  FROM resampled\n" ;
+    Printf.fprintf oc "  FROM filtered\n" ;
     Printf.fprintf oc "  SELECT\n" ;
-    Printf.fprintf oc "    min_value, max_value,\n" ;
-    Printf.fprintf oc "    IF (%a) THEN avg_value AS filtered_avg_value,\n"
+    if need_reaggr then
+      Printf.fprintf oc "    min_value, max_value,\n" ;
+    Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
        print_filter a.having ;
     Printf.fprintf oc "    COALESCE(\n" ;
-    Printf.fprintf oc "      HYSTERESIS (filtered_avg_value, %f, %f),\n"
+    Printf.fprintf oc "      HYSTERESIS (filtered_value, %f, %f),\n"
       a.recovery a.threshold ;
-    (* Be healthy when filtered_avg_value is NULL: *)
+    (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok;\n\n" ;
     (* Then we fire an alert if too many values are unhealthy: *)
     Printf.fprintf oc "DEFINE alert AS\n" ;
     Printf.fprintf oc "  FROM ok\n" ;
     Printf.fprintf oc "  SELECT\n" ;
-    Printf.fprintf oc "    max_value, min_value,\n" ;
+    if need_reaggr then
+      Printf.fprintf oc "    max_value, min_value,\n" ;
     Printf.fprintf oc "    moveavg(%d, float(not ok)) > %f AS firing\n"
       (round_to_int (a.duration /. a.time_step)) a.ratio ;
     Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
     (* This cast to string can handle the NULL case: *)
-    Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
+    if need_reaggr then
+      Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
     Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
     Printf.fprintf oc "    (IF firing THEN %S ELSE %S) AS desc\n"
       desc_firing desc_recovery ;
