@@ -89,32 +89,30 @@ Feature: Test Ramen API from the command line.
 
   Scenario: An empty set-alerts must return a valid JSON (non-regression)
     Given ramen httpd --url http://localhost:8042 --api is started
-    When I wait 1 seconds
+    When I wait 1 second
     And I run curl with arguments --data-binary '{"method":"set-alerts","id":1,"params":{}}' http://localhost:8042
     Then curl must mention ""result":null" on stdout
 
   Scenario: Alerting must work on a nullable field
     Given ramen httpd --url http://localhost:8042 --api is started
-    When I wait 1 seconds
+    When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":40,"recovery":37}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
   Scenario: Query with empty where filter must be accepted
     Given ramen httpd --url http://localhost:8042 --api is started
-    When I wait 1 seconds
+    When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"ratio":100,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
-  Scenario: Another example:
+  Scenario: Another example with a having clause:
     Given ramen httpd --url http://localhost:8042 --api is started
-    When I wait 1 seconds
+    When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"ratio":100,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
-  Scenario: If a field is misspelled then it must be mentionned in the error
+  Scenario: If a field is misspelled then it must be mentioned in the error
     Given ramen httpd --url http://localhost:8042 --api is started
-    When I wait 1 seconds
+    When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enapled":true,"threshold":200,"recovery":100}]}}}' http://localhost:8042
     Then curl must mention "'enapled'"
-
-
