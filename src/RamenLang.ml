@@ -22,6 +22,7 @@ type tuple_prefix =
   (* Environments for nullable string only parameters: *)
   | TupleEnv
   (* TODO: TupleOthers? *)
+  [@@ppp PPP_OCaml]
 
 let string_of_prefix = function
   | TupleIn -> "in"

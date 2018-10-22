@@ -32,6 +32,7 @@ struct
     { program_name : RamenName.program ;
       name : RamenName.func ;
       doc : string ;
+      operation : RamenOperation.t ;
       in_type : RamenTuple.typ ;
       (* In the order the user want them: *)
       mutable out_type : RamenTuple.typ ;
@@ -48,6 +49,39 @@ struct
       (* List of envvar used in that function: *)
       envvars : string list }
     [@@ppp PPP_OCaml]
+
+  module Serialized = struct
+    type t = (* A version of the above without redundancy: *)
+      { program_name : RamenName.program ;
+        name : RamenName.func ;
+        doc : string ;
+        operation : RamenOperation.t ;
+        signature : string }
+      [@@ppp PPP_OCaml]
+  end
+
+  let serialized (t : t) =
+    Serialized.{
+      program_name = t.program_name ;
+      name = t.name ;
+      doc = t.doc ;
+      operation = t.operation ;
+      signature = t.signature }
+
+  let unserialized (t : Serialized.t) =
+    let open RamenOperation in
+    { program_name = t.program_name ;
+      name = t.name ;
+      doc = t.doc ;
+      operation = t.operation ;
+      signature = t.signature ;
+      in_type = in_type_of_operation t.operation ;
+      out_type = out_type_of_operation t.operation ;
+      parents = parents_of_operation t.operation ;
+      merge_inputs = is_merging t.operation ;
+      event_time = event_time_of_operation t.operation ;
+      factors = factors_of_operation t.operation ;
+      envvars = envvars_of_operation t.operation }
 
   (* TODO: takes a func instead of child_prog? *)
   let program_of_parent_prog child_prog = function
@@ -99,7 +133,26 @@ struct
     { params : RamenTuple.params [@ppp_default []] ;
       condition : string option ; (* for debug only *)
       funcs : Func.t list }
+    [@@ppp PPP_OCaml]
+
+  module Serialized = struct
+    type t =
+      { params : RamenTuple.params [@ppp_default []] ;
+        condition : string option ; (* for debug only *)
+        funcs : Func.Serialized.t list }
       [@@ppp PPP_OCaml]
+  end
+
+  let serialized (t : t) =
+    Serialized.{
+      params = t.params ;
+      condition = t.condition ;
+      funcs = List.map Func.serialized t.funcs }
+
+  let unserialized (t : Serialized.t) =
+    { params = t.params ;
+      condition = t.condition ;
+      funcs = List.map Func.unserialized t.funcs }
 
   let version_of_bin fname =
     let args = [| fname ; "version" |] in
@@ -107,7 +160,8 @@ struct
 
   let info_of_bin fname =
     let args = [| fname ; "1nf0" |] in
-    with_stdout_from_command ~expected_status:0 fname args Legacy.input_value
+    with_stdout_from_command ~expected_status:0 fname args Legacy.input_value |>
+    unserialized
 
   let env_of_params_and_exps conf params =
     (* First the params: *)

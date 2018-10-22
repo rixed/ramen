@@ -30,6 +30,7 @@ type selected_field =
     doc : string ;
     (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
     aggr : string option }
+  [@@ppp PPP_OCaml]
 
 let print_selected_field oc f =
   let need_alias =
@@ -51,17 +52,21 @@ let print_selected_field oc f =
 type flush_method =
   | Reset (* it can be deleted (tumbling windows) *)
   | Never (* or we may just keep the group as it is *)
+  [@@ppp PPP_OCaml]
 
 let print_flush_method oc = function
   | Reset ->
     Printf.fprintf oc "FLUSH"
   | Never ->
     Printf.fprintf oc "KEEP ALL"
+  [@@ppp PPP_OCaml]
 
 (* Represents an input CSV format specifications: *)
 type file_spec = { fname : E.t ; unlink : E.t }
+  [@@ppp PPP_OCaml]
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
+  [@@ppp PPP_OCaml]
 
 let print_csv_specs oc specs =
   Printf.fprintf oc "SEPARATOR %S NULL %S %a"
@@ -84,6 +89,7 @@ type notification =
        So use names such as "team: service ${X} for ${Y} is on fire" *)
     notif_name : E.t ;
     parameters : (string * E.t) list }
+  [@@ppp PPP_OCaml]
 
 let print_notification oc notif =
   Printf.fprintf oc "NOTIFY %a"
@@ -140,11 +146,13 @@ type t =
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
   | Notifications of { from : data_source list }
+  [@@ppp PPP_OCaml]
 
 and merge =
   (* Number of entries to buffer (default 1), expression to merge-sort
    * the parents, and timeout: *)
   { last : int ; on : E.t list ; timeout : float }
+  [@@ppp PPP_OCaml]
 
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
@@ -152,6 +160,7 @@ and data_source =
   | NamedOperation of (RamenName.rel_program option * RamenName.func)
   | SubQuery of t
   | GlobPattern of string
+  [@@ppp PPP_OCaml]
 
 let rec print_data_source oc = function
   | NamedOperation (Some rel_p, f) ->
@@ -346,18 +355,18 @@ let factors_of_operation = function
   | Instrumentation _ -> RamenBinocle.factors
   | Notifications _ -> RamenNotification.factors
 
-(* Return the _untyped_ output tuple *)
+(* Return the (likely) untyped output tuple *)
 let out_type_of_operation = function
   | Aggregate { fields ; _ } ->
       List.map (fun sf ->
+        let expr_typ = RamenExpr.typ_of sf.expr in
         RamenTuple.{
           typ_name = sf.alias ;
           doc = sf.doc ;
           aggr = sf.aggr ;
-          (* Types and units will need to be copied from the expression
-           * after typing and star-expansion: *)
-          typ = { structure = TAny ; nullable = true } ;
-          units = None }
+          typ = expr_typ.typ |?
+                  { structure = TAny ; nullable = true } ;
+          units = expr_typ.units }
       ) fields
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
       fields

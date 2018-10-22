@@ -106,8 +106,8 @@ RAMEN_SOURCES = \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
-	src/RamenConf.ml \
 	src/RamenOperation.ml \
+	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
@@ -385,8 +385,8 @@ LINKED_FOR_TESTS = \
 	src/RingBufLib.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
-	src/RamenConf.ml \
 	src/RamenOperation.ml \
+	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
 	src/Globs.ml \

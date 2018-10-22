@@ -23,6 +23,7 @@ type typ =
     uniq_num : int ;
     mutable typ : RamenTypes.t option ;
     mutable units : RamenUnits.t option }
+  [@@ppp PPP_OCaml]
 
 let print_typ oc typ =
   Printf.fprintf oc "%s of %s"
@@ -47,8 +48,10 @@ let make_typ ?typ ?units expr_name =
  * while others have a global state), but you can select explicitly using
  * the "locally" and "globally" keywords. For instance: "sum globally 1". *)
 type state_lifespan = LocalState | GlobalState
+  [@@ppp PPP_OCaml]
 
 type skip_nulls = bool
+  [@@ppp PPP_OCaml]
 
 (* The type of an expression. Each is accompanied with a typ
  * (TODO: not for long!) *)
@@ -130,12 +133,14 @@ type t =
   | StatelessFunMisc of typ * stateless_fun_misc
   | StatefulFun of typ * state_lifespan * skip_nulls * stateful_fun
   | GeneratorFun of typ * generator_fun
+  [@@ppp PPP_OCaml]
 
 and stateless_fun0 =
   | Now
   | Random
   | EventStart
   | EventStop
+  [@@ppp PPP_OCaml]
 
 and stateless_fun1 =
   (* TODO: Other functions: date_part... *)
@@ -166,6 +171,7 @@ and stateless_fun1 =
   | Strptime
   (* Return the name of the variant we are in, or NULL: *)
   | Variant
+  [@@ppp PPP_OCaml]
 
 and stateless_fun2 =
   (* Binary Ops scalars *)
@@ -204,10 +210,12 @@ and stateless_fun2 =
   | Strftime
   (* TODO: several percentiles. Requires multi values returns. *)
   | Percentile
+  [@@ppp PPP_OCaml]
 
 and case_alternative =
   { case_cond : t (* Must be bool *) ;
     case_cons : t (* All alternatives must share a type *) }
+  [@@ppp PPP_OCaml]
 
 and stateless_fun_misc =
   (* a LIKE operator using globs, infix *)
@@ -220,6 +228,7 @@ and stateless_fun_misc =
   | Min of t list
   (* For debug: prints all its arguments, and output its first. *)
   | Print of t list
+  [@@ppp PPP_OCaml]
 
 and stateful_fun =
   (* TODO: Add stddev... *)
@@ -279,12 +288,14 @@ and stateful_fun =
   | Sample of t * t
   (* Build a list with all values from the group *)
   | Group of t
+  [@@ppp PPP_OCaml]
 
 and generator_fun =
   (* First function returning more than once (Generator). Here the typ is
    * type of a single value but the function is a generator and can return
    * from 0 to N such values. *)
   | Split of t * t
+  [@@ppp PPP_OCaml]
 
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)

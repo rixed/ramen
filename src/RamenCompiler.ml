@@ -103,6 +103,7 @@ let compile conf get_parent ?exec_file source_file program_name =
         F.{ program_name ;
             name ;
             doc = parsed_func.doc ;
+            operation = op ;
             in_type = in_type_of_operation op ;
             out_type = out_type_of_operation op ;
             signature = "" ;
@@ -399,7 +400,10 @@ let compile conf get_parent ?exec_file source_file program_name =
         ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
-         * force export and merge flags, and parameters default values. *)
+         * force export and merge flags, and parameters default values. We
+         * embed this under the shape of the typed operation, as it makes it
+         * possible to also analyze the program. For simplicity, all those
+         * info are also computed from the operation when we load a program. *)
         let funcs = Hashtbl.values compiler_funcs /@
                     fst |> List.of_enum in
         let condition =
@@ -410,7 +414,7 @@ let compile conf get_parent ?exec_file source_file program_name =
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;
         Printf.fprintf oc "let rc_marsh_ = %S\n"
-          (Marshal.(to_string runconf [])) ;
+          (Marshal.(to_string (P.serialized runconf) [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
           "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ run_condition_[\n"
