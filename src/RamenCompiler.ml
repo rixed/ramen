@@ -402,10 +402,10 @@ let compile conf get_parent ?exec_file source_file program_name =
          * force export and merge flags, and parameters default values. *)
         let funcs = Hashtbl.values compiler_funcs /@
                     fst |> List.of_enum in
-        let cond_str =
+        let condition =
           Option.map (IO.to_string (RamenExpr.print false)) condition in
         let runconf =
-          P.{ funcs ; params ; condition = cond_str } in
+          P.{ funcs ; params ; condition } in
         Printf.fprintf oc "let rc_str_ = %S\n"
           ((PPP.to_string P.t_ppp_ocaml runconf) |>
            PPP_prettify.prettify) ;

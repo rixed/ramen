@@ -15,8 +15,6 @@ open RamenLang
 open RamenHelpers
 open RamenLog
 module E = RamenExpr
-module C = RamenConf
-module F = C.Func
 
 (*$inject
   open TestHelpers
@@ -370,12 +368,12 @@ let out_type_of_operation = function
   | Notifications _ ->
       RamenNotification.tuple_typ
 
-(* Return the untyped in_type of the given operation: *)
+(* Return the (likely) untyped in_type of the given operation: *)
 let in_type_of_operation = function
   | Aggregate _ as op ->
       let input = ref [] in
       iter_expr (function
-        | Field (_expr_typ, tuple, name)
+        | Field (expr_typ, tuple, name)
           when RamenLang.tuple_has_type_input !tuple &&
                not (is_virtual_field name) ->
             if is_private_field name then
@@ -388,8 +386,9 @@ let in_type_of_operation = function
                 typ_name = name ;
                 (* Actual types/units will be copied from parents after
                  * typing: *)
-                typ = { structure = TAny ; nullable = true } ;
-                units = None ;
+                typ = expr_typ.RamenExpr.typ |?
+                        { structure = TAny ; nullable = true } ;
+                units = expr_typ.RamenExpr.units ;
                 (* We don't mind the doc/aggr of an input field: *)
                 doc = "" ; aggr = None } in
               input := t :: !input)
