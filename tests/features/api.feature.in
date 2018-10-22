@@ -19,9 +19,11 @@ Feature: Test Ramen API from the command line.
         factor color;
 
       define random_walk as
-        from (select sum globally 1 as seq every 1 second)
+        from (yield (sum globally 1) % 10 as seq_key every 1 second)
         select now as start, start + 1s as stop,
-               coalesce(previous.xyz, 0) + (random*2-1) as xyz;
+               seq_key as key,
+               coalesce(previous.xyz, 0) + (random*2-1) as xyz
+        group by seq_key;
       """
     And test.ramen is compiled
     And the program test is running.
@@ -64,6 +66,13 @@ Feature: Test Ramen API from the command line.
     And I run curl with arguments --data-binary '{"method":"get-columns","id":1,"params":["test/color_of_the_day"]}' http://localhost:8042
     Then curl must mention "odd"
     And curl must mention "color".
+    And curl must not mention ""group-key":true"
+
+  Scenario: random_walk table must mention key as a group_key
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 second
+    And I run curl with arguments --data-binary '{"id":1, "method":"get-columns", "params":["test/random_walk"]}' http://localhost:8042
+    Then curl must mention ""group-key":true"
 
   Scenario: Can get some timeseries.
     Given ramen supervisor is started

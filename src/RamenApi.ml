@@ -151,6 +151,7 @@ and column_info =
     units : (string, float) Hashtbl.t [@ppp_default empty_units] ;
     doc : string [@ppp_default ""] ;
     factor : bool [@ppp_default false] ;
+    group_key : bool [@ppp_rename "group-key"] [@ppp_default false] ;
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
 
@@ -200,6 +201,28 @@ let string_of_ext_type = function
   | String -> "string"
   | Other -> "other"
 
+(* We look for all keys which are simple fields, then look for a output field
+ * forwarding that field, and return its name (in theory not only fields but
+ * any expression yielding the same results.) *)
+let group_keys_of_operation =
+  let open RamenOperation in
+  function
+  | Aggregate { fields ; key ; _ } ->
+      let simple_keys =
+        List.filter_map (function
+          | RamenExpr.Field (_t, tuple_prefix, name) ->
+              Some (tuple_prefix, name)
+          | _ -> None
+        ) key in
+      List.filter_map (fun sf ->
+        match sf.expr with
+        | Field (_t, tuple_prefix, name) when
+            List.mem (tuple_prefix, name) simple_keys ->
+            Some sf.alias
+        | _ -> None
+      ) fields
+  | _ -> []
+
 let alert_info_of_alert_source enabled = function
   | V1 { alert ; _ } -> { alert with enabled }
 
@@ -244,6 +267,7 @@ let units_of_column ft =
 
 let columns_of_func conf programs func =
   let h = Hashtbl.create 11 in
+  let group_keys = group_keys_of_operation func.F.operation in
   List.iter (fun ft ->
     if not (is_private_field ft.RamenTuple.typ_name) then
       let type_ = ext_type_of_typ ft.typ.structure in
@@ -253,6 +277,7 @@ let columns_of_func conf programs func =
           units = units_of_column ft ;
           doc = ft.doc ;
           factor = List.mem ft.typ_name func.F.factors ;
+          group_key = List.mem ft.typ_name group_keys ;
           alerts = alerts_of_column conf programs func ft.typ_name }
   ) func.F.out_type ;
   h
