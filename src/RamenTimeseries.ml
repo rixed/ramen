@@ -69,6 +69,7 @@ let get conf ?duration max_data_points since until where factors
   let num_data_fields = List.length data_fields in
   let bname, _is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
+  (* Extract fields of interest (data fields, keys...) from a tuple: *)
   let open RamenSerialization in
   let fis =
     List.map (find_field_index ser) factors in
@@ -80,9 +81,11 @@ let get conf ?duration max_data_points since until where factors
       (vi :: vis), (ft.aggr :: def_aggr)
     ) ([], []) data_fields in
   let vis = List.rev vis and def_aggr = List.rev def_aggr in
+  (* Prepare the buckets in which to aggregate the data fields: *)
   let dt = (until -. since) /. float_of_int max_data_points in
   let per_factor_buckets = Hashtbl.create 11 in
   let bucket_of_time = bucket_of_time since dt in
+  (* And the aggregation function: *)
   let consolidate aggr_str =
     match String.lowercase aggr_str with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
@@ -96,6 +99,7 @@ let get conf ?duration max_data_points since until where factors
           | None -> bucket_avg
           | Some str -> consolidate str)) |>
     Array.of_enum in
+  (* Now loop over those tuples: *)
   fold_time_range bname ser params event_time since until ()
     (fun () tuple t1 t2 ->
     if filter tuple then (
