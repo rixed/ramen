@@ -80,14 +80,15 @@ let cleanup_once conf dry_run max_archives =
       Array.enum files |> RingBufLib.filter_arc_files dir |> Array.of_enum in
     Array.fast_sort RingBufLib.arc_file_compare arc_files ;
     for i = 0 to Array.length arc_files - 1 - max_archives do
-      let _, _, _, _, fname = arc_files.(i) in
+      (* Beware: [fpath] is the full path while [files] are basenames! *)
+      let _, _, _, _, fpath = arc_files.(i) in
       !logger.info "Deleting %s: old archive%s"
-        fname (if dry_run then " (NOPE)" else "") ;
+        fpath (if dry_run then " (NOPE)" else "") ;
       if not dry_run then (
-        let pref = Filename.remove_extension fname in
+        let pref = Filename.(basename fpath |> remove_extension) in
         Array.iter (fun fname ->
           if String.starts_with fname pref then
-            log_and_ignore_exceptions Unix.unlink fname ;
+            log_and_ignore_exceptions Unix.unlink fpath ;
         ) files
       ) ;
     done
