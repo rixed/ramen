@@ -437,13 +437,15 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       if filter = [] then String.print oc "true" else
       List.print ~first:"" ~sep:" AND " ~last:""
         (fun oc w ->
-          let open RamenSerialization in
           let ft = field_typ_of_column programs table w.lhs in
-          let v = value_of_string ft.RamenTuple.typ w.rhs in
+          let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
           Printf.fprintf oc "(%s %s %a)"
             (ramen_quote w.lhs) w.op
             RamenTypes.print v)
         oc filter
+    and default_aggr_of_field fn =
+      let ft = field_typ_of_column programs table fn in
+      ft.RamenTuple.aggr |? "avg"
     in
     (* First we need to resample the TS with the desired time step,
      * aggregating all values for the desired column: *)
@@ -459,14 +461,14 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       a.time_step ;
     (* Also select all the fields used in the HAVING filter: *)
     List.iter (fun h ->
-      Printf.fprintf oc "    avg %s AS %s, -- for HAVING\n"
+      Printf.fprintf oc "    %s %s AS %s, -- for HAVING\n"
+        (default_aggr_of_field h.lhs)
         (ramen_quote h.lhs) (ramen_quote h.lhs)
     ) a.having ;
     Printf.fprintf oc "    min %s AS min_value,\n" (ramen_quote column) ;
     Printf.fprintf oc "    max %s AS max_value,\n" (ramen_quote column) ;
-    (* FIXME: use the default aggregate function here (have an "aggregate"
-     * function that would use the default one for the passed field? *)
-    Printf.fprintf oc "    avg %s AS avg_value\n" (ramen_quote column) ;
+    Printf.fprintf oc "    %s %s AS avg_value\n"
+      (default_aggr_of_field column) (ramen_quote column) ;
     Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
       a.time_step ;
     (* Then we want for each point to find out if it's within the acceptable
