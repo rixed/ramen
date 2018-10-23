@@ -67,19 +67,25 @@ class Filter
 
   def initialize(description)
     # description is supposed to be a string taken from the scenario
-    if description =~ /no/ then
+    if description =~ /^no$/ then
       @min = @max = 0
-    elsif description =~ /a few/ then
+    elsif description =~ /^a +few$/ then
       @min = 1
       @max = 20
-    elsif description =~ /(?:(?:a )?lots?(?: of)?|many)/ then
+    elsif description =~ /^(?:(?:a +)?lots?(?: +of)?|many)$/ then
       @min = 20
       @max = 300
-    elsif description =~ /some/ then
+    elsif description =~ /^some$/ then
       @min = 1
       @max = 1000
-    elsif description =~ /(\d)/ then
+    elsif description =~ /^(\d)$/ then
       @min = @max = $1.to_i
+    elsif description =~ /^less +than +(\d)$/ then
+      @min = 0
+      @max = $1.to_i - 1
+    elsif description =~ /^more +than +(\d)$/ then
+      @min = $1.to_i + 1
+      @max = 1000
     else
       fail ArgumentError, description
     end

@@ -485,13 +485,13 @@ let max_seq =
 
 let filter =
   (* Longer first: *)
-  let operators = [ ">="; "<="; "!="; "="; "<>"; "<"; ">" ] in
+  let operators = [ ">="; "<="; "!="; "="; "<>"; "<"; ">"; " in" ] in
   let parse s =
     match
       List.find_map (fun op ->
         match String.split s ~by:op with
         | exception Not_found -> None
-        | pname, pval -> Some (String.trim pname, op, String.trim pval)
+        | pname, pval -> let t = String.trim in Some (t pname, t op, t pval)
       ) operators
     with
     | exception Not_found ->

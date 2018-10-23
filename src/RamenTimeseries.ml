@@ -64,7 +64,7 @@ let get conf ?duration max_data_points since until where factors
     (RamenName.string_of_fq fq)
     (List.print String.print) data_fields
     (List.print (fun oc (field, op, value) ->
-      Printf.fprintf oc "%s%s%a" field op RamenTypes.print value)) where
+      Printf.fprintf oc "%s %s %a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
   let num_data_fields = List.length data_fields in
   let bname, _is_temp_export, filter, _typ, ser, params, event_time =

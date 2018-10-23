@@ -172,8 +172,11 @@ let filter_tuple_by ser where =
     List.map (fun (n, op, v) ->
       let idx, t = find_field ser n in
       let v =
+        let open RamenTypes in
         if v = VNull then VNull else
-        (try RamenTypes.enlarge_value t.typ.structure v
+        let to_structure =
+          if op = "in" then TVec (0, t.typ) else t.typ.structure in
+        (try enlarge_value to_structure v
         with e ->
           !logger.error "Cannot enlarge %a to %a (ser = %a)"
             RamenTypes.print v
@@ -186,6 +189,9 @@ let filter_tuple_by ser where =
         | "!=" | "<>" -> (<>)
         | "<=" -> (<=) | ">=" -> (>=)
         | "<" -> (<) | ">" -> (>)
+        | "in" -> (fun x -> function
+                     | VVec a | VList a -> Array.exists (fun x' -> x = x') a
+                     | _ -> assert false)
         | _ -> failwith "Invalid operator" in
       idx, op, v
     ) where in

@@ -10,26 +10,32 @@ Feature: test ramen tail
     And a file test.ramen with content
       """
       define ts as
-        select now as t, random as v,
-               u64(t) % 2 = 1 as odd,
-               case when random > 0.66 then "blue"
-                    when random > 0.50 then "red"
-                    else "green"
-               end as color
-        every 1 second
-        event starts at t;
+        select 1000 + sum globally 1 as start,
+               start + 1 as stop,
+               42 as v,
+               u64(start) % 2 = 1 as odd
+        every 10 milliseconds;
       """
     And test.ramen is compiled
     And ramen supervisor is started
+    And program test is running
+    And I wait 2 second
 
   Scenario: I can obtain some values using timeseries.
-    Given program test is running
-    When I run ramen with arguments timeseries -n 5 test/ts v
+    When I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test/ts v
     Then ramen must print 5 lines on stdout
+    And ramen must mention "42"
     And ramen must exit gracefully.
 
-  Scenario: No data is not a problem. We still have the times..
-    Given program test is running
+  Scenario: No data is not a problem. We still have the times.
     When I run ramen with arguments timeseries -n 5 --since=123 --until=124 test/ts v
     Then ramen must print 5 lines on stdout
+    And ramen must not mention "42"
+    And ramen must exit gracefully.
+
+  Scenario: One can use --where to filter the output.
+    When I run ramen with arguments timeseries -n 6 --since=1000 --until=1006 -w 'odd = true' test/ts odd
+    Then ramen must print 6 lines on stdout
+    # booleans have been averaged, thus converted into floats:
+    And ramen must mention ",1."
     And ramen must exit gracefully.
