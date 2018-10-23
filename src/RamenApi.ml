@@ -336,6 +336,8 @@ and table_values =
     column_values : float option array array array }
   [@@ppp PPP_JSON]
 
+let empty_values = Hashtbl.create 0
+
 let get_timeseries conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-timeseries"
                                    get_timeseries_req_ppp_json msg in
@@ -375,7 +377,9 @@ let get_timeseries conf msg =
     ) datapoints ;
     times_inited := true
   ) req.data ;
-  let resp = { times ; values } in
+  let resp =
+    if !times_inited then { times ; values }
+    else { times = [||] ; values = empty_values } in
   PPP.to_string get_timeseries_resp_ppp_json resp
 
 (*
