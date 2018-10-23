@@ -485,7 +485,7 @@ let max_seq =
 
 let filter =
   (* Longer first: *)
-  let operators = [ ">="; "<="; "="; "<"; ">" ] in
+  let operators = [ ">="; "<="; "!="; "="; "<>"; "<"; ">" ] in
   let parse s =
     match
       List.find_map (fun op ->
@@ -496,8 +496,8 @@ let filter =
     with
     | exception Not_found ->
         Pervasives.Error (
-          `Msg "You must specify the identifier, followed by an equal \
-                sign (=), followed by the value.")
+          `Msg "You must specify the identifier, followed by an operator \
+                (=, <=, <, >, >=, etc), followed by the value.")
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
         (match RamenTypes.of_string ~what pval with

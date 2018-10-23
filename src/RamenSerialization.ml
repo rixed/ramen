@@ -182,7 +182,9 @@ let filter_tuple_by ser where =
           raise e) in
       let op =
         match op with
-        | "=" -> (=) | "<=" -> (<=) | ">=" -> (>=)
+        | "=" -> (=)
+        | "!=" | "<>" -> (<>)
+        | "<=" -> (<=) | ">=" -> (>=)
         | "<" -> (<) | ">" -> (>)
         | _ -> failwith "Invalid operator" in
       idx, op, v
