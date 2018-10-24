@@ -1658,7 +1658,16 @@ end
  * - units of a Nth/VecGet is not inferred but in the simplest cases;
  * - units of x**y is not inferred unless y is constant.
  *)
-let units_of_expr units_of_input units_of_output =
+let units_of_expr params units_of_input units_of_output =
+  let units_of_params name =
+    match List.find (fun param ->
+            param.RamenTuple.ptyp.typ_name = name
+          ) params with
+    | exception Not_found ->
+        Printf.sprintf "Unknown parameter %S while looking for units" name |>
+        failwith
+    | p -> p.RamenTuple.ptyp.units
+  in
   let rec uoe ~indent e =
     !logger.debug "%sUnits of expression %a...?" indent (print true) e ;
     let indent = indent ^ "  " in
@@ -1668,10 +1677,14 @@ let units_of_expr units_of_input units_of_output =
     | Const (_, v) ->
         if RamenTypes.(is_a_num (structure_of v)) then t.units
         else None
-    | Field (_, tupref, name) when tuple_has_type_input !tupref ->
-        units_of_input name
-    | Field (_, tupref, name) when tuple_has_type_output !tupref ->
-        units_of_output name
+    | Field (_, tupref, name) ->
+        if tuple_has_type_input !tupref then
+          units_of_input name
+        else if tuple_has_type_output !tupref then
+          units_of_output name
+        else if !tupref = TupleParam then
+          units_of_params name
+        else None
     | Case (_, cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)

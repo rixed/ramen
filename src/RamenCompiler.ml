@@ -210,7 +210,7 @@ let compile conf get_parent ?exec_file source_file program_name =
           let ctx =
             Printf.sprintf "evaluating units of %s" what in
           fail_with_context ctx (fun () ->
-            RamenExpr.units_of_expr uoi uoo e) in
+            RamenExpr.units_of_expr parsed_params uoi uoo e) in
         if u <> None then (
           !logger.debug "Set units of %a to %a"
             (RamenExpr.print false) e
