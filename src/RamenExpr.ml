@@ -1710,6 +1710,8 @@ let units_of_expr params units_of_input units_of_output =
         (* Not super useful. FIXME: use the solver. *)
         (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
+    | StatelessFun1 (_, Sqrt, e) ->
+        Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
     | StatelessFun2 (_, Add, e1, e2) ->
         option_map2 RamenUnits.add (uoe ~indent e1) (uoe ~indent e2)
     | StatelessFun2 (_, Sub, e1, e2) ->
