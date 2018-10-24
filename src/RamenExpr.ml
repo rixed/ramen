@@ -1731,7 +1731,10 @@ let units_of_expr params units_of_input units_of_output =
         Option.bind (float_of_const e1) (fun n ->
           let n = int_of_float n in
           List.at es n |> uoe ~indent)
-    | StatelessFun2 (_, Percentile, _, e) -> uoe ~indent e
+    | StatelessFun2 (_, Percentile, _,
+                     StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|
+                                  Group e))) ->
+        uoe ~indent e
     | StatelessFunMisc (_, Like (e, _)) ->
         check_no_units ~indent e ;
         None
