@@ -82,7 +82,7 @@ let print oc =
   let p oc (e, rel) =
     Printf.fprintf oc "%s^%g"
       (if rel then "(rel)" else "") e in
-  MapUnit.print ~first:"{" ~last:"}" ~sep:"." ~kvsep:""
+  MapUnit.print ~first:"{" ~last:"}" ~sep:"*" ~kvsep:""
     String.print p oc
 
 let binop u1 c u2 =

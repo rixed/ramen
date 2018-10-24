@@ -229,6 +229,7 @@ let compile conf get_parent ?exec_file source_file program_name =
           let what =
             Printf.sprintf "%s in function %s" what
               (RamenName.func_color func.F.name) in
+          !logger.debug "Set units of operation expression %s" what ;
           set_expr_units uoi uoo what e || changed
         ) op in
       (* TODO: check that various operations supposed to accept times or

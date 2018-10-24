@@ -1669,11 +1669,14 @@ let units_of_expr params units_of_input units_of_output =
     | p -> p.RamenTuple.ptyp.units
   in
   let rec uoe ~indent e =
-    !logger.debug "%sUnits of expression %a...?" indent (print true) e ;
-    let indent = indent ^ "  " in
+    let char_of_indent = Char.chr (Char.code 'a' + indent) in
+    let prefix = Printf.sprintf "%s%c. " (String.make (indent * 2) ' ')
+                                         char_of_indent in
+    !logger.debug "%sUnits of expression %a...?" prefix (print true) e ;
+    let indent = indent + 1 in
     let t = typ_of e in
     if t.units <> None then t.units else
-    match e with
+    (match e with
     | Const (_, v) ->
         if RamenTypes.(is_a_num (structure_of v)) then t.units
         else None
@@ -1753,7 +1756,12 @@ let units_of_expr params units_of_input units_of_output =
         check_no_units ~indent e1 ;
         check_no_units ~indent e2 ;
         None
-    | _ -> None
+    | _ -> None) |>
+    function
+      | Some u as res ->
+          !logger.debug "%s-> %a" prefix RamenUnits.print u ;
+          res
+      | None -> None
 
   and check ~indent e u =
     match uoe ~indent e with
@@ -1788,4 +1796,5 @@ let units_of_expr params units_of_input units_of_output =
     List.enum es /@ (uoe ~indent) |>
     RamenUnits.check_same_units ~what i
 
-  in uoe ~indent:""
+  in uoe ~indent:0
+
