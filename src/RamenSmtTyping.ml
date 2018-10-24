@@ -859,7 +859,7 @@ let emit_constraints tuple_sizes out_fields oc e =
   | StatelessFun1 (_, Sparkline, x) ->
       (* - x must be a vector of non-null numerics;
        * - The result is a string;
-       * - The result nullability itself propagates from x itself. *)
+       * - The result nullability itself propagates from x. *)
       let name = expr_err x Err.NumericVec in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr x) oc
         (TVec (0, { structure = TNum ; nullable = false })) ;

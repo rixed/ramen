@@ -144,7 +144,12 @@ let check_unitless u =
     Printf.sprintf2 "%a must be dimensionless" print u |>
     failwith
 
-(* Same or unset actually: *)
+(* Same or unset actually.
+ * FIXME: as None means both unknown and _being_computed_, we might accept
+ * a None as non-conflicting with some other before it's actually fully
+ * typed, and then determine units that are actually incompatible but without
+ * noticing it. We should distinguish between unknown_for_good and
+ * not_yet_known. *)
 let check_same_units ~what =
   Enum.fold (fun units_opt u ->
     match units_opt, u with

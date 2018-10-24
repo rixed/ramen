@@ -232,7 +232,7 @@ let compile conf get_parent ?exec_file source_file program_name =
           set_expr_units uoi uoo what e || changed
         ) op in
       (* TODO: check that various operations supposed to accept times or
-       * durations come with either no units or the expected one. *)
+       * durations come with either no units or the expected ones. *)
       (* Now that we have found the units of some expressions, patch the
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
@@ -253,8 +253,7 @@ let compile conf get_parent ?exec_file source_file program_name =
           Option.map_default
             (set_expr_units no_io no_io "run condition") false condition in
         Hashtbl.fold (fun _ (func, op) changed ->
-          set_operation_units func op ||
-          changed
+          set_operation_units func op || changed
         ) compiler_funcs changed)) then
       failwith "Cannot perform dimensional analysis" ;
 

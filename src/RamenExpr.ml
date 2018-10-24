@@ -8,6 +8,7 @@ open Batteries
 open Stdint
 open RamenLang
 open RamenHelpers
+open RamenLog
 
 (*$inject
   open TestHelpers
@@ -1658,7 +1659,9 @@ end
  * - units of x**y is not inferred unless y is constant.
  *)
 let units_of_expr units_of_input units_of_output =
-  let rec uoe e =
+  let rec uoe ~indent e =
+    !logger.debug "%sUnits of expression %a...?" indent (print true) e ;
+    let indent = indent ^ "  " in
     let t = typ_of e in
     if t.units <> None then t.units else
     match e with
@@ -1672,72 +1675,72 @@ let units_of_expr units_of_input units_of_output =
     | Case (_, cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)
-        List.iter (fun ca -> check_no_units ca.case_cond) cas ;
-        let units_opt = Option.bind else_opt uoe in
+        List.iter (fun ca -> check_no_units ~indent ca.case_cond) cas ;
+        let units_opt = Option.bind else_opt (uoe ~indent) in
         List.map (fun ca -> ca.case_cons) cas |>
-        same_units "Conditional alternatives" units_opt
+        same_units ~indent "Conditional alternatives" units_opt
     | Coalesce (_, es) ->
-        same_units "Coalesce alternatives" None es
+        same_units ~indent "Coalesce alternatives" None es
     | StatelessFun0 (_, (Now|EventStart|EventStop)) ->
         Some RamenUnits.seconds_since_epoch
     | StatelessFun1 (_, Age, e) ->
-        check e RamenUnits.seconds_since_epoch ;
+        check ~indent e RamenUnits.seconds_since_epoch ;
         Some RamenUnits.seconds
-    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e) -> uoe e
+    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e) -> uoe ~indent e
     | StatelessFun1 (_, Length, e) ->
-        check_no_units e ;
+        check_no_units ~indent e ;
         Some RamenUnits.chars
     | StatelessFun1 (_, Nth n, Tuple (_, es)) ->
         (* Not super useful. FIXME: use the solver. *)
-        (try List.at es n |> uoe
+        (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
     | StatelessFun2 (_, Add, e1, e2) ->
-        option_map2 RamenUnits.add (uoe e1) (uoe e2)
+        option_map2 RamenUnits.add (uoe ~indent e1) (uoe ~indent e2)
     | StatelessFun2 (_, Sub, e1, e2) ->
-        option_map2 RamenUnits.sub (uoe e1) (uoe e2)
+        option_map2 RamenUnits.sub (uoe ~indent e1) (uoe ~indent e2)
     | StatelessFun2 (_, (Mul|Mod), e1, e2) ->
-        option_map2 RamenUnits.mul (uoe e1) (uoe e2)
+        option_map2 RamenUnits.mul (uoe ~indent e1) (uoe ~indent e2)
     | StatelessFun2 (_, (Div|IDiv), e1, e2) ->
-        option_map2 RamenUnits.div (uoe e1) (uoe e2)
+        option_map2 RamenUnits.div (uoe ~indent e1) (uoe ~indent e2)
     | StatelessFun2 (_, Pow, e1, e2) ->
         (* Best effort in case the exponent is a constant, otherwise we
          * just don't know what the unit is. *)
-        option_map2 RamenUnits.pow (uoe e1) (float_of_const e2)
+        option_map2 RamenUnits.pow (uoe ~indent e1) (float_of_const e2)
     (* Although shifts could be seen as mul/div, we'd rather consider
      * only dimensionless values receive this treatment, esp. since
      * it's not possible to distinguish between a mul and div. *)
     | StatelessFun2 (_, (And|Or|Concat|StartsWith|EndsWith|
                          BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
-        check_no_units e1 ;
-        check_no_units e2 ;
+        check_no_units ~indent e1 ;
+        check_no_units ~indent e2 ;
         None
     | StatelessFun2 (_, VecGet, e1, Vector (_, es)) ->
         Option.bind (float_of_const e1) (fun n ->
           let n = int_of_float n in
-          List.at es n |> uoe)
-    | StatelessFun2 (_, Percentile, _, e) -> uoe e
+          List.at es n |> uoe ~indent)
+    | StatelessFun2 (_, Percentile, _, e) -> uoe ~indent e
     | StatelessFunMisc (_, Like (e, _)) ->
-        check_no_units e ;
+        check_no_units ~indent e ;
         None
     | StatelessFunMisc (_, (Max es|Min es)) ->
-        same_units "Min/Max alternatives" None es
-    | StatelessFunMisc (_, Print es) when es <> [] -> uoe (List.hd es)
+        same_units ~indent "Min/Max alternatives" None es
+    | StatelessFunMisc (_, Print es) when es <> [] -> uoe ~indent (List.hd es)
     | StatefulFun (_, _, _, (AggrMin e|AggrMax e|AggrAvg e|AggrFirst e|
                              AggrLast e|Lag (_, e)|MovingAvg (_, _, e)|
                              LinReg (_, _, e)|MultiLinReg (_, _, e, _)|
-                             ExpSmooth (_, e))) -> uoe e
+                             ExpSmooth (_, e))) -> uoe ~indent e
     | StatefulFun (_, _, _, AggrSum e) ->
-        let u = uoe e in
+        let u = uoe ~indent e in
         check_not_rel e u ;
         u
     | GeneratorFun (_, Split (e1, e2)) ->
-        check_no_units e1 ;
-        check_no_units e2 ;
+        check_no_units ~indent e1 ;
+        check_no_units ~indent e2 ;
         None
     | _ -> None
 
-  and check e u =
-    match uoe e with
+  and check ~indent e u =
+    match uoe ~indent e with
     | None -> ()
     | Some u' ->
         if not (RamenUnits.eq u u') then
@@ -1747,8 +1750,8 @@ let units_of_expr units_of_input units_of_output =
             RamenUnits.print u' |>
           failwith
 
-  and check_no_units e =
-    match uoe e with
+  and check_no_units ~indent e =
+    match uoe ~indent e with
     | None -> ()
     | Some u ->
         Printf.sprintf2 "%a must have no units but has unit %a"
@@ -1765,8 +1768,8 @@ let units_of_expr units_of_input units_of_output =
         failwith
     ) u
 
-  and same_units what i es =
-    List.enum es /@ uoe |>
+  and same_units ~indent what i es =
+    List.enum es /@ (uoe ~indent) |>
     RamenUnits.check_same_units ~what i
 
-  in uoe
+  in uoe ~indent:""
