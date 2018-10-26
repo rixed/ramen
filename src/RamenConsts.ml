@@ -234,7 +234,7 @@ struct
   let report_period = 30.
 
   (* Rate of fake errors in HTTP service: *)
-  let fault_injection_rate = 0.01
+  let fault_injection_rate = 0.000_001
 
   (* Max false-positive rate for notifications: *)
   let max_fpr = 1. /. 600.
