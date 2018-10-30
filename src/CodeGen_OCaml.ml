@@ -335,6 +335,9 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
       Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
         (omod_of_type to_typ)
+    | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128), TBool ->
+      Printf.fprintf oc "(fun x_ -> %s.(compare zero x_) <> 0)"
+        (omod_of_type from_typ)
     | (TEth|TIpv4|TIpv6|TIp|TCidrv4|TCidrv6|TCidr), TString ->
       Printf.fprintf oc "%s.to_string" (omod_of_type from_typ)
     | (TIpv4 | TU32), TIp -> Printf.fprintf oc "(fun x_ -> RamenIp.V4 x_)"
