@@ -200,12 +200,7 @@ inline ssize_t ringbuf_dequeue_alloc(struct ringbuf *rb, struct ringbuf_tx *tx)
       dequeued = 1 + num_words + rbf->num_words - tx->seen;
     }
 
-    if (ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen) < dequeued) {
-      PRINT_RB(rb,
-        "Cannot read complete record (%"PRIu32" words)!?\n",
-        dequeued);
-      return -1;
-    }
+    ASSERT_RB(dequeued <= ringbuf_file_num_entries(rbf, seen_prod_tail, tx->seen));
 
     tx->next = (tx->record_start + num_words) % rbf->num_words;
 
