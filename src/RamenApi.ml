@@ -635,6 +635,12 @@ let set_alerts conf msg =
             old_alerts:= Set.String.add program_name !old_alerts)) ;
       List.iter (fun alert ->
         (* Check the alert: *)
+        if alert.duration < 0. then
+          bad_request "Duration must be positive" ;
+        if alert.ratio < 0. || alert.ratio > 1. then
+          bad_request "Ratio must be between 0 and 1" ;
+        if alert.time_step <= 0. then
+          bad_request "Time step must be strictly greater than 0" ;
         C.with_rlock conf (fun programs ->
           let ft = field_typ_of_column programs table column in
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
