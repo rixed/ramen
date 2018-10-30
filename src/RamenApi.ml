@@ -73,7 +73,7 @@ struct
           | None ->
               parse_error o "Cannot parse json blurb"
           | Some o' ->
-              !logger.info "Found any-json at loc %d" o ;
+              !logger.debug "Found any-json at loc %d" o ;
               let str = i o (o'-o) in
               (* We return both the string and its location, that will be used
                * later to adjust parse error locations: *)
@@ -657,7 +657,7 @@ let set_alerts conf msg =
   ) req ;
   let to_delete = Set.String.diff !old_alerts !new_alerts in
   if not (Set.String.is_empty to_delete) then (
-    !logger.info "going to delete non mentioned alerts %a"
+    !logger.info "Going to delete non mentioned alerts %a"
       (Set.String.print String.print) to_delete ;
     Set.String.iter (fun program_name ->
       let program_name = RamenName.program_of_string program_name in

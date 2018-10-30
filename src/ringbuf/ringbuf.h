@@ -75,7 +75,7 @@ enum ringbuf_error {
   RB_ERR_BAD_VERSION
 };
 
-// Return the number of words currently stored in  the ring-buffer:
+// Return the number of words currently stored in the ring-buffer:
 inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rbf, uint32_t prod_tail, uint32_t cons_head)
 {
   if (prod_tail >= cons_head) return prod_tail - cons_head;
@@ -113,7 +113,7 @@ struct ringbuf_tx {
           rbf, rb->fname, \
           rbf->cons_tail, rbf->cons_head, \
           rbf->prod_tail, rbf->prod_head, \
-          ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head), \
+          ringbuf_file_num_free(rbf, rbf->prod_tail, rbf->cons_head), \
           __VA_ARGS__); \
   fflush(stderr); \
 } while (0)
