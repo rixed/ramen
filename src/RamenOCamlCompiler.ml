@@ -271,7 +271,22 @@ let with_code_file_for obj_name conf f =
     File.with_file_out ~mode:[`create; `text; `trunc] fname f ;
   fname
 
+let make_valid_ocaml_identifier s =
+  let is_letter c = (c >= 'a' && c <= 'z') ||
+                    (c >= 'A' && c <= 'Z')
+  and is_digit c = c >= '0' && c <= '9'
+  in
+  String.fold_lefti (fun s i c ->
+    s ^ (
+      if is_letter c || c = '_' ||
+         (i > 0 && (c = '\'' || is_digit c)) then String.of_char c
+      else "'" ^ string_of_int (Char.code c))
+        (* Here we use the single quote as an escape char, given the single
+         * quote is not usable in quoted identifiers on ramen's side. *)
+  ) "" s
+
 let module_name_of_file_name fname =
   Filename.basename fname |>
   Filename.remove_extension |>
+  make_valid_ocaml_identifier |>
   String.capitalize_ascii

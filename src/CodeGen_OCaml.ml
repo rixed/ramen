@@ -36,9 +36,11 @@ let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
 
 (* Tuple deconstruction as a function parameter: *)
-let id_of_field_name ?(tuple=TupleIn) = function
+let id_of_field_name ?(tuple=TupleIn) x =
+  (match x with
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
-  | field -> id_of_prefix tuple ^"_"^ field ^"_"
+  | field -> id_of_prefix tuple ^"_"^ field ^"_") |>
+  RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.typ_name
@@ -535,7 +537,9 @@ and finalize_state ?state ~opc ~nullable skip my_state func_name fin_args
  * (TODO: have a context in a single place and inline it directly?) *)
 and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
-    Printf.fprintf oc "let maybe_%s_ = function\n" ft.typ_name ;
+    Printf.fprintf oc "let %s = function\n"
+      ("maybe_"^ ft.typ_name ^"_" |>
+       RamenOCamlCompiler.make_valid_ocaml_identifier) ;
     Printf.fprintf oc "  | None -> Null\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
