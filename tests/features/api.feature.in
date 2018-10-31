@@ -102,13 +102,13 @@ Feature: Test Ramen API from the command line.
   Scenario: Query with empty where filter must be accepted
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
-    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"ratio":100,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
+    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"ratio":1,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
   Scenario: Another example with a having clause:
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
-    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"ratio":100,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
+    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":200,"recovery":100,"duration":0,"where":[],"desc_firing":"x","desc_recovery":"y"}]}}}' http://localhost:8042
     Then curl must mention ""result":null"
 
   Scenario: If a field is misspelled then it must be mentioned in the error
