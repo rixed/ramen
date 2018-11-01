@@ -289,10 +289,13 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
 let event_time_of_tuple typ params
       ((start_field, start_field_src, start_scale), duration_info) =
   let open RamenEventTime in
-  let float_of_field i s tup = float_of_scalar tup.(i) *. s
+  let float_of_field i s tup =
+    s *. (float_of_scalar tup.(i) |>
+          option_get "float_of_scalar of event_time field")
   and float_of_param n s =
     let pv = find_param params n in
-    float_of_scalar pv *. s in
+    s *. (float_of_scalar pv |>
+          option_get "float_of_scalar of event_time param") in
   let get_t1 = match !start_field_src with
     | OutputField ->
         let i = find_field_index typ start_field in

@@ -457,31 +457,32 @@ let is_round_integer = function
   | _ ->
       true
 
-let float_of_scalar =
+let float_of_scalar s =
   let open Stdint in
-  function
-  | VFloat x -> x
-  | VBool x -> if x then 1. else 0.
-  | VU8 x -> Uint8.to_float x
-  | VU16 x -> Uint16.to_float x
-  | VU32 x -> Uint32.to_float x
-  | VU64 x -> Uint64.to_float x
-  | VU128 x -> Uint128.to_float x
-  | VI8 x -> Int8.to_float x
-  | VI16 x -> Int16.to_float x
-  | VI32 x -> Int32.to_float x
-  | VI64 x -> Int64.to_float x
-  | VI128 x -> Int128.to_float x
-  | VEth x -> Uint48.to_float x
-  | VIpv4 x -> Uint32.to_float x
-  | VIpv6 x -> Uint128.to_float x
-  | VIp (V4 x) -> Uint32.to_float x
-  | VIp (V6 x) -> Uint128.to_float x
-  (* Garbage in / garbage out: *)
-  | _ -> 0.
+  if s = VNull then None else
+  Some (
+    match s with
+    | VFloat x -> x
+    | VBool x -> if x then 1. else 0.
+    | VU8 x -> Uint8.to_float x
+    | VU16 x -> Uint16.to_float x
+    | VU32 x -> Uint32.to_float x
+    | VU64 x -> Uint64.to_float x
+    | VU128 x -> Uint128.to_float x
+    | VI8 x -> Int8.to_float x
+    | VI16 x -> Int16.to_float x
+    | VI32 x -> Int32.to_float x
+    | VI64 x -> Int64.to_float x
+    | VI128 x -> Int128.to_float x
+    | VEth x -> Uint48.to_float x
+    | VIpv4 x -> Uint32.to_float x
+    | VIpv6 x -> Uint128.to_float x
+    | VIp (V4 x) -> Uint32.to_float x
+    | VIp (V6 x) -> Uint128.to_float x
+    | _ -> invalid_arg "float_of_scalar")
 
-let int_of_scalar =
-  int_of_float % float_of_scalar
+let int_of_scalar s =
+  Option.map int_of_float (float_of_scalar s)
 
 (*
  * Parsing

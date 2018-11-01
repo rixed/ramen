@@ -333,11 +333,11 @@ let string_of_const = function
   | _ -> None
 
 let float_of_const = function
-  | Const (_, v) -> Some (RamenTypes.float_of_scalar v)
+  | Const (_, v) -> RamenTypes.float_of_scalar v
   | _ -> None
 
 let int_of_const = function
-  | Const (_, v) -> Some (RamenTypes.int_of_scalar v)
+  | Const (_, v) -> RamenTypes.int_of_scalar v
   | _ -> None
 
 let rec print ?(max_depth=max_int) with_types oc e =

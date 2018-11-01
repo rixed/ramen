@@ -13,7 +13,8 @@ Feature: test ramen tail
         select 1000 + sum globally 1 as start,
                start + 1 as stop,
                42 as v,
-               u64(start) % 2 = 1 as odd
+               u64(start) % 2 = 1 as odd,
+               NULL as n
         every 10 milliseconds;
       """
     And test.ramen is compiled
@@ -38,4 +39,11 @@ Feature: test ramen tail
     Then ramen must print 6 lines on stdout
     # booleans have been averaged, thus converted into floats:
     And ramen must mention ",1."
+    And ramen must exit gracefully.
+
+  Scenario: If all data we have is NULL we still get the times with no values.
+    When I run ramen with arguments timeseries --null "<NULL>" -n 5 --since=1000 --until=1005 test/ts n
+    Then ramen must print 5 lines on stdout
+    And ramen must mention "<NULL>"
+    And ramen must not mention ",0"
     And ramen must exit gracefully.

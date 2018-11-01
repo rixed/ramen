@@ -66,7 +66,11 @@ let rec miss_distance exp actual =
   if is_a_num (structure_of exp) &&
      is_a_num (structure_of actual)
   then
-    Distance.float (float_of_scalar exp) (float_of_scalar actual)
+    let fos s =
+      (* When a float can't be associated with that value just use 0 for now. *)
+      try float_of_scalar s |> option_get "float_of_scalar of tested value"
+      with Invalid_argument _ -> 0. in
+    Distance.float (fos exp) (fos actual)
   else match exp, actual with
   | VString e, VString a -> Distance.string e a
   | VEth e, VEth a -> Distance.string (RamenEthAddr.to_string e)

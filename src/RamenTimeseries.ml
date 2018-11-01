@@ -115,8 +115,11 @@ let get conf ?duration max_data_points since until where factors
       let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
       List.iteri (fun i vi ->
         let v = RamenTypes.float_of_scalar tuple.(vi) in
-        for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
-          pour_into_bucket buckets bi i v done
+        Option.may (fun v ->
+          for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
+            pour_into_bucket buckets bi i v
+          done
+        ) v
       ) vis)) ;
   (* Extract the results as an Enum, one value per key *)
   let indices = Enum.range 0 ~until:(max_data_points - 1) in
