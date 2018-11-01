@@ -535,48 +535,44 @@ let try_kill conf must_run proc =
     proc.last_killed <- now ;
     IntCounter.inc (stats_worker_sigkills conf.C.persist_dir))
 
-let check_out_ref =
-  let do_check_out_ref conf must_run =
-    !logger.debug "Checking out_refs..." ;
-    (* Build the set of all wrapping ringbuf that are being read: *)
-    let rbs =
-      Hashtbl.fold (fun _k (_, func) s ->
-        C.in_ringbuf_names conf func |>
-        List.fold_left (fun s rb_name -> Set.add rb_name s) s
-      ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-    Hashtbl.iter (fun _ (_, func) ->
-      (* Iter over all functions and check they do not output to a ringbuf not
-       * in this set: *)
-      let out_ref = C.out_ringbuf_names_ref conf func in
+(* This is used to check that we do not check too often nor too rarely: *)
+let last_checked_outref = ref 0.
+
+let check_out_ref conf must_run =
+  !logger.debug "Checking out_refs..." ;
+  (* Build the set of all wrapping ringbuf that are being read: *)
+  let rbs =
+    Hashtbl.fold (fun _k (_, func) s ->
+      C.in_ringbuf_names conf func |>
+      List.fold_left (fun s rb_name -> Set.add rb_name s) s
+    ) must_run (Set.singleton (C.notify_ringbuf conf)) in
+  Hashtbl.iter (fun _ (_, func) ->
+    (* Iter over all functions and check they do not output to a ringbuf not
+     * in this set: *)
+    let out_ref = C.out_ringbuf_names_ref conf func in
+    let outs = RamenOutRef.read out_ref in
+    Hashtbl.iter (fun fname _ ->
+      if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
+        !logger.error "Operation %s outputs to %s, which is not read, fixing"
+          (RamenName.string_of_fq (F.fq_name func)) fname ;
+        IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
+        RamenOutRef.remove out_ref fname)
+    ) outs ;
+    (* Conversely, check that all children are in the out_ref of their
+     * parent: *)
+    let par_funcs, _c = relatives func must_run in
+    let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
+    List.iter (fun par_func ->
+      let out_ref = C.out_ringbuf_names_ref conf par_func in
       let outs = RamenOutRef.read out_ref in
-      Hashtbl.iter (fun fname _ ->
-        if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
-          !logger.error "Operation %s outputs to %s, which is not read, fixing"
-            (RamenName.string_of_fq (F.fq_name func)) fname ;
-          IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-          RamenOutRef.remove out_ref fname)
-      ) outs ;
-      (* Conversely, check that all children are in the out_ref of their
-       * parent: *)
-      let par_funcs, _c = relatives func must_run in
-      let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
-      List.iter (fun par_func ->
-        let out_ref = C.out_ringbuf_names_ref conf par_func in
-        let outs = RamenOutRef.read out_ref in
-        let outs = Hashtbl.keys outs |> Set.of_enum in
-        if Set.disjoint in_rbs outs then (
-          !logger.error "Operation %s must output to %s but does not, fixing"
-            (RamenName.string_of_fq (F.fq_name par_func))
-            (RamenName.string_of_fq (F.fq_name func)) ;
-          RamenOutRef.add out_ref (input_spec conf par_func func))
-      ) par_funcs
-    ) must_run
-  and last_checked_out_ref = ref 0. in
-  fun conf must_run ->
-    let now = Unix.time () in
-    if now -. !last_checked_out_ref > 5. then (
-      last_checked_out_ref := now ;
-      do_check_out_ref conf must_run)
+      let outs = Hashtbl.keys outs |> Set.of_enum in
+      if Set.disjoint in_rbs outs then (
+        !logger.error "Operation %s must output to %s but does not, fixing"
+          (RamenName.string_of_fq (F.fq_name par_func))
+          (RamenName.string_of_fq (F.fq_name func)) ;
+        RamenOutRef.add out_ref (input_spec conf par_func func))
+    ) par_funcs
+  ) must_run
 
 let signal_all_cont running =
   Hashtbl.iter (fun _ proc ->
@@ -678,8 +674,13 @@ let synchronize_running conf autoreload_delay =
       RamenWatchdog.reset watchdog
     ) !to_start ;
     (* Try to fix any issue with out_refs: *)
-    if !to_start = [] && !to_kill = [] && !quit = None then
-      check_out_ref conf must_run ;
+    let now = Unix.time () in
+    if (now > !last_checked_outref +. 30. ||
+        now > !last_checked_outref +. 5. && !to_start = [] && !to_kill = []) &&
+       !quit = None
+    then (
+      last_checked_outref := now ;
+      check_out_ref conf must_run) ;
     if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
