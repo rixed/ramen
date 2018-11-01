@@ -76,7 +76,7 @@ struct
       operation = t.operation ;
       signature = t.signature ;
       in_type = in_type_of_operation t.operation ;
-      out_type = out_type_of_operation t.operation ;
+      out_type = out_type_of_operation ~with_private:false t.operation ;
       parents = parents_of_operation t.operation ;
       merge_inputs = is_merging t.operation ;
       event_time = event_time_of_operation t.operation ;

@@ -10,12 +10,14 @@ Feature: test ramen tail
     And a file test.ramen with content
       """
       define gen as
-        select 1 + coalesce(previous.x, 0) as x,
-               42 as y,
-        case when random > 0.66 then "blue"
-             when random > 0.50 then "red"
-             else "green"
-        end as color
+        select
+          1 + coalesce(previous.x, 0) as x,
+          42 as y,
+          "blue" as _blue,
+          case when random > 0.66 then _blue
+               when random > 0.50 then "red"
+               else "green"
+          end as color
         every 10 milliseconds;
       """
     And test.ramen is compiled
@@ -68,3 +70,14 @@ Feature: test ramen tail
     Then ramen must exit gracefully
     And ramen must not mention "green"
     And ramen must mention "42".
+
+  Scenario: Headers must not show private fields.
+    When I run ramen with arguments tail -h --min 2 --max 2 test/gen
+    Then ramen must exit gracefully
+    And ramen must print 2 lines on stdout
+    And ramen must not mention "_blue".
+
+  Scenario: Private fields cannot be used as filter.
+    When I run ramen with arguments tail -h --min 2 --max 2 test/gen -w '_blue = "red"'
+    Then ramen must fail gracefully
+    And ramen must mention "_blue" on stderr.

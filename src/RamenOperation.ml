@@ -356,9 +356,10 @@ let factors_of_operation = function
   | Notifications _ -> RamenNotification.factors
 
 (* Return the (likely) untyped output tuple *)
-let out_type_of_operation = function
+let out_type_of_operation ~with_private = function
   | Aggregate { fields ; _ } ->
-      List.map (fun sf ->
+      List.fold_left (fun lst sf ->
+        if not with_private && is_private_field sf.alias then lst else
         let expr_typ = RamenExpr.typ_of sf.expr in
         RamenTuple.{
           typ_name = sf.alias ;
@@ -366,8 +367,8 @@ let out_type_of_operation = function
           aggr = sf.aggr ;
           typ = expr_typ.typ |?
                   { structure = TAny ; nullable = true } ;
-          units = expr_typ.units }
-      ) fields
+          units = expr_typ.units } :: lst
+      ) [] fields |> List.rev
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
       fields
   | ListenFor { proto ; _ } ->
