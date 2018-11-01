@@ -34,8 +34,11 @@ let add t x =
   ) ;
   t
 
+(* Because empty lists are invalid, if we had no entries at all we must return
+ * None (will be turned into NULL): *)
 let finalize t =
+  if t.cur_size = 0 then None else
   if t.cur_size < Array.length t.arr then (
     (* TODO: Lists should be represented by slices not arrays *)
-    Array.sub t.arr 0 t.cur_size
-  ) else t.arr
+    Some (Array.sub t.arr 0 t.cur_size)
+  ) else Some t.arr

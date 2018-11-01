@@ -1242,6 +1242,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "RamenSampling.add" oc [ None ]
   | Finalize, StatefulFun (_, g, n, Sample (_, _)), _ ->
     finalize_state ?state ~opc ~nullable n (my_state g)
+      ~impl_return_nullable:true
       "RamenSampling.finalize" [] oc []
 
   (* Grouping operation: accumulate all values in a list, that we initialize
@@ -1392,8 +1393,14 @@ and emit_function
       ) (0, false) es arg_typs
   in
   Printf.fprintf oc "%s%s"
-    (if impl_return_nullable then "nullable_of_option (" else
-     if nullable then "NotNull (" else "")
+    (match impl_return_nullable, nullable with
+    | true, true -> "nullable_of_option ("
+    | true, false ->
+        (* If impl_return_nullable but nullable is false, it means we must
+         * force that optional result to make it not-nullable. *)
+        "RamenHelpers.option_get \"impl_return_nullable for not nullable\" ("
+    | false, true -> "NotNull ("
+    | false, false -> "")
     impl ;
   for i = 0 to len-1 do
     Printf.fprintf oc "%s"

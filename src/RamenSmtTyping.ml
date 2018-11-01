@@ -964,22 +964,27 @@ let emit_constraints tuple_sizes out_fields oc e =
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
 
-  | StatefulFun (_, _, _, Sample (c, x)) ->
+  | StatefulFun (_, _, n, Sample (c, x)) ->
       (* - c must be a constant (TODO) integer, not nullable;
-       * - The type of the result is a list of items of the same type and
-       *   nullability than x ;
+       * - The type of the result is a list of items of the same type than x;
+       * - If we skip nulls then those items are not nullable, otherwise they
+       *   are as nullable as x;
        * - 'sample c x` is itself nullable whenever x is nullable (if not
        *   skip null and we encounter a null x, or if skip null and we
        *   encounter only nulls). *)
       arg_is_integer oc c ;
       arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)" (t_of_expr x) (n_of_expr x)) ;
+        (Printf.sprintf "(list %s %s)"
+          (t_of_expr x)
+          (if n then "false" else n_of_expr x)) ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatefulFun (_, _, _, Group g) ->
+  | StatefulFun (_, _, n, Group g) ->
       (* - The result is a list which elements have the exact same type as g;
-       * - The result is nullable if we skip nulls and g is nullable.
+       * - If we skip nulls then the elements are not nullable, otherwise they
+       *   are as nullable as g;
+       * - The group itself is nullable whenever g is nullable.
        * Note: It is possible to build as an immediate value a vector of
        * zero length (although, actually it's not), but it is not possible
        * to build an empty list. So Group will, under any circumstance,
@@ -987,7 +992,9 @@ let emit_constraints tuple_sizes out_fields oc e =
        * empty list is by skipping nulls, but then is we skip all nulls
        * it will be null. *)
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)" (t_of_expr g) (n_of_expr g)) ;
+        (Printf.sprintf "(list %s %s)"
+          (t_of_expr g)
+          (if n then "false" else n_of_expr g)) ;
       emit_assert_id_eq_id (n_of_expr g) oc nid
 
   | StatefulFun (_, _, _, AggrHistogram (x, _, _, n)) ->

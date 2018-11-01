@@ -4,5 +4,8 @@
     "tests/fixtures/n123" => { bin = "fixtures/n123.x" }
   };
   outputs = {
-    "tests/sample/f" => { present = [ { "two" => "2" } ] } }
+    "tests/sample/f" => {
+      present = [ { "trou" => "true"; "two" => "2" } ]
+    }
+  }
 }
