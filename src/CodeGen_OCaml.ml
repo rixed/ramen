@@ -1544,7 +1544,8 @@ let emit_serialize_tuple name oc tuple_typ =
       Printf.fprintf oc "\t\t\t\t| Null -> %s, %s + 1\n" offs_var nulli_var ;
       Printf.fprintf oc "\t\t\t\t| NotNull %s ->\n" val_var ;
       Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s %s ;\n" tx_var nulli_var ;
-      Printf.fprintf oc "\t\t\t\t\tlet %s, %s = %a in\n\
+      Printf.fprintf oc "\t\t\t\t\tlet %s, %s =\n\
+                         \t\t\t\t\t\t%a in\n\
                          \t\t\t\t\t%s, %s + 1)\n"
         offs_var nulli_var
         (emit_write_scalar tx_var offs_var nulli_var val_var false) typ

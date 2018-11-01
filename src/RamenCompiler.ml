@@ -391,12 +391,12 @@ let compile conf get_parent ?exec_file source_file program_name =
           params_mod_name ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition oc params condition ;
-        (* Suppress private fields from function output type, purely for
-         * aesthetic reasons. Won't change anything since
-         * RingBufLib.ser_tuple_typ_of_tuple_typ will ignore them anyway: *)
+        (* Chop off private fields: *)
         Hashtbl.iter (fun _ (func, _op) ->
-          func.F.out_type <- List.filter (fun ft ->
-            not (is_private_field ft.RamenTuple.typ_name)) func.F.out_type
+          func.F.out_type <-
+            List.filter (fun ft ->
+              not (is_private_field ft.RamenTuple.typ_name)
+            ) func.F.out_type
         ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,

@@ -472,8 +472,7 @@ let tail conf func_name with_header sep null raw
  *)
 
 let timeseries conf since until with_header where factors max_data_points
-               sep null func_name data_fields consolidation duration
-               () =
+               sep null func_name data_fields consolidation duration () =
   init_logger conf.C.log_level ;
   if max_data_points < 1 then failwith "invalid max_data_points" ;
   let since = since |? until -. 600. in

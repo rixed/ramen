@@ -12,10 +12,14 @@ module P = C.Program
 
 (* Building timeseries with points at regular times *)
 
-type timeserie_bucket =
+type bucket =
   (* Hopefully count will be small enough that sum can be tracked accurately *)
   { mutable count : int ; mutable sum : float ;
     mutable min : float ; mutable max : float }
+
+let print_bucket oc b =
+  Printf.fprintf oc "{ count = %d; sum = %f; min = %f; max = %f }"
+    b.count b.sum b.min b.max
 
 (* [nt] is the number of time steps while [nc] is the number of data fields: *)
 let make_buckets nt nc =

@@ -285,7 +285,7 @@ and stateful_fun =
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
   | Last of t * t * t list
-  (* Sample(n, e) -> Keep only n values of e and return them as a list. *)
+  (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
   | Sample of t * t
   (* Build a list with all values from the group *)
   | Group of t
@@ -1733,8 +1733,7 @@ let units_of_expr params units_of_input units_of_output =
         check_no_units ~indent e2 ;
         None
     | StatelessFun2 (_, VecGet, e1, Vector (_, es)) ->
-        Option.bind (float_of_const e1) (fun n ->
-          let n = int_of_float n in
+        Option.bind (int_of_const e1) (fun n ->
           List.at es n |> uoe ~indent)
     | StatelessFun2 (_, Percentile, _,
                      StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|
