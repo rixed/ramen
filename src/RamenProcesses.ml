@@ -436,7 +436,7 @@ let really_start conf proc parents children =
  * Check links (ie.: do parents and children have the proper types?)
  * Need [must_run] so that types can be checked before linking with parents
  * and children. *)
-let really_try_start conf must_run proc =
+let really_try_start conf now must_run proc =
   info_or_test conf "Starting operation %a"
     print_running_process proc ;
   assert (proc.pid = None) ;
@@ -482,6 +482,12 @@ let really_try_start conf must_run proc =
     ) linkage_ok children in
   if parents_ok && linkage_ok then
     really_start conf proc parents children
+  else
+    let delay =
+      (if parents_ok then 0. else 20.) +.
+      (if linkage_ok then 0. else 500.) in
+    proc.quarantine_until <-
+      now +. Random.float (max 90. delay)
 
 let try_start conf must_run proc =
   let now = Unix.gettimeofday () in
@@ -489,7 +495,7 @@ let try_start conf must_run proc =
     !logger.debug "Operation %a still in quarantine"
       print_running_process proc
   ) else (
-    really_try_start conf must_run proc
+    really_try_start conf now must_run proc
   )
 
 let try_kill conf must_run proc =
