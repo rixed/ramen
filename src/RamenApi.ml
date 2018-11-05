@@ -315,6 +315,8 @@ let get_columns conf msg =
 type get_timeseries_req =
   { since : float ;
     until : float ;
+    consolidation : string [@ppp_default ""] ; (* "" => default aggr *)
+    bucket_time : string [@ppp_default "end"] ;
     num_points : int [@ppp_default 100] ;
     data : (string, timeseries_data_spec) Hashtbl.t }
   [@@ppp PPP_JSON]
@@ -361,8 +363,17 @@ let get_timeseries conf msg =
           (where.lhs, where.op, v) :: filters
         ) [] data_spec.where) in
     let column_labels, datapoints =
-      RamenTimeseries.get conf req.num_points req.since req.until
-                          filters data_spec.factors fq data_spec.select in
+      let consolidation =
+        let s = req.consolidation in
+        if s = "" then None else Some s in
+      let open RamenTimeseries in
+      let bucket_time =
+        match String.lowercase_ascii req.bucket_time with
+        | "begin" -> Begin | "middle" -> Middle | "end" -> End
+        | _ -> bad_request "The only possible values for bucket_time are begin, \
+                            middle and end" in
+      get conf req.num_points req.since req.until filters data_spec.factors
+          ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is a list of factors values. *)
     let column_labels =

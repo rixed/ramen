@@ -62,8 +62,9 @@ let bucket_max b =
  *)
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
+type bucket_time = Begin | Middle | End
 let get conf ?duration max_data_points since until where factors
-        ?consolidation fq data_fields =
+        ?consolidation ?(bucket_time=Middle) fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
     (List.print String.print) data_fields
@@ -88,7 +89,13 @@ let get conf ?duration max_data_points since until where factors
   (* Prepare the buckets in which to aggregate the data fields: *)
   let dt = (until -. since) /. float_of_int max_data_points in
   let per_factor_buckets = Hashtbl.create 11 in
-  let bucket_of_time = bucket_of_time since dt in
+  let bucket_of_time = bucket_of_time since dt
+  and time_of_bucket =
+    match bucket_time with
+    | Begin -> fun i -> since +. dt *. float_of_int i
+    | Middle -> fun i -> since +. dt *. (float_of_int i +. 0.5)
+    | End -> fun i -> since +. dt *. float_of_int (i + 1)
+  in
   (* And the aggregation function: *)
   let consolidate aggr_str =
     match String.lowercase aggr_str with
@@ -137,7 +144,7 @@ let get conf ?duration max_data_points since until where factors
   columns,
   indices /@
   (fun i ->
-    let t = since +. dt *. (float_of_int i +. 0.5)
+    let t = time_of_bucket i
     and v =
       Array.map (fun buckets ->
         Array.mapi (fun data_field_idx bucket ->
