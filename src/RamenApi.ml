@@ -316,8 +316,10 @@ type get_timeseries_req =
   { since : float ;
     until : float ;
     consolidation : string [@ppp_default ""] ; (* "" => default aggr *)
-    bucket_time : string [@ppp_default "end"] ;
-    num_points : int [@ppp_default 100] ;
+    bucket_time : string [@ppp_rename "bucket-time"] [@ppp_default "end"] ;
+    (* One and only one of these two must be set (>0): *)
+    num_points : int [@ppp_default 0] ;
+    time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
     data : (string, timeseries_data_spec) Hashtbl.t }
   [@@ppp PPP_JSON]
 
@@ -326,6 +328,13 @@ and timeseries_data_spec =
     where : simple_filter list [@ppp_default []] ;
     factors : string list [@ppp_default []] }
   [@@ppp PPP_JSON]
+
+let check_get_timeseries_req req =
+  if req.since > req.until then bad_request "since must come before until" ;
+  if req.num_points <= 0 && req.time_step <= 0. then
+    bad_request "must set either num-points or time-step" ;
+  if req.num_points > 0 && req.time_step > 0. then
+    bad_request "must set only one of num-points or time-step"
 
 type get_timeseries_resp =
   { times : float array ;
@@ -343,6 +352,7 @@ let empty_values = Hashtbl.create 0
 let get_timeseries conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-timeseries"
                                    get_timeseries_req_ppp_json msg in
+  check_get_timeseries_req req ;
   let times = Array.make_float req.num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
@@ -372,8 +382,8 @@ let get_timeseries conf msg =
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      get conf req.num_points req.since req.until filters data_spec.factors
-          ?consolidation ~bucket_time fq data_spec.select in
+      get conf req.num_points req.time_step req.since req.until filters
+          data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is a list of factors values. *)
     let column_labels =

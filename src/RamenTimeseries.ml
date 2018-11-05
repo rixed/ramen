@@ -63,7 +63,7 @@ let bucket_max b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 type bucket_time = Begin | Middle | End
-let get conf ?duration max_data_points since until where factors
+let get conf ?duration num_points time_step since until where factors
         ?consolidation ?(bucket_time=Middle) fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
@@ -71,6 +71,17 @@ let get conf ?duration max_data_points since until where factors
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%s %s %a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
+  (* Either num_points or time_step (but not both) must be set (>0): *)
+  assert ((num_points > 0 || time_step > 0.) &&
+          (num_points <= 0 || time_step <= 0.)) ;
+  (* If time_step is given then align bucket times with it.
+   * Internally, we use num_points though: *)
+  let since, until, num_points =
+    if num_points > 0 then since, until, num_points else
+    let since = align_float time_step since
+    and until = align_float ~round:ceil time_step until in
+    let num_points = round_to_int ((until -. since) /. time_step) in
+  since, until, num_points in
   let num_data_fields = List.length data_fields in
   let bname, _is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
@@ -87,7 +98,7 @@ let get conf ?duration max_data_points since until where factors
     ) ([], []) data_fields in
   let vis = List.rev vis and def_aggr = List.rev def_aggr in
   (* Prepare the buckets in which to aggregate the data fields: *)
-  let dt = (until -. since) /. float_of_int max_data_points in
+  let dt = (until -. since) /. float_of_int num_points in
   let per_factor_buckets = Hashtbl.create 11 in
   let bucket_of_time = bucket_of_time since dt
   and time_of_bucket =
@@ -120,7 +131,7 @@ let get conf ?duration max_data_points since until where factors
         with Not_found ->
           !logger.debug "New timeseries for column key %a"
             (List.print RamenTypes.print) k ;
-          let buckets = make_buckets max_data_points num_data_fields in
+          let buckets = make_buckets num_points num_data_fields in
           Hashtbl.add per_factor_buckets k buckets ;
           buckets in
       let bi1 = bucket_of_time t1 and bi2 = bucket_of_time t2 in
@@ -133,7 +144,7 @@ let get conf ?duration max_data_points since until where factors
         ) v
       ) vis)) ;
   (* Extract the results as an Enum, one value per key *)
-  let indices = Enum.range 0 ~until:(max_data_points - 1) in
+  let indices = Enum.range 0 ~until:(num_points - 1) in
   (* Assume keys and values will enumerate keys in the same orders: *)
   let columns =
     Hashtbl.keys per_factor_buckets |>

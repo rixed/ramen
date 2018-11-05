@@ -575,10 +575,15 @@ let until =
                    ~docv:"UNTIL" ["until"] in
   Arg.(value (opt float (Unix.gettimeofday ()) i))
 
-let max_num_points =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.max_num_points
-                   ~docv:"POINTS" ["n"; "nb-points"; "max-nb-points"] in
-  Arg.(value (opt int 100 i))
+let num_points =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.num_points
+                   ~docv:"POINTS" ["n"; "nb-points"] in
+  Arg.(value (opt int 0 i))
+
+let time_step =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.time_step
+                   ~docv:"DURATION" ["time-step"] in
+  Arg.(value (opt float 0. i))
 
 let data_fields p =
   let i = Arg.info ~doc:RamenConsts.CliInfo.data_fields
@@ -607,7 +612,8 @@ let timeseries =
       $ with_header
       $ where
       $ factors
-      $ max_num_points
+      $ num_points
+      $ time_step
       $ csv_separator
       $ csv_null
       $ func_name 0

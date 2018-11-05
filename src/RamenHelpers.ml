@@ -13,6 +13,9 @@ let get_cap a i =
   assert (len > 0) ;
   a.(min i (len - 1))
 
+let align_float ?(round=floor) step v =
+  round (v /. step) *. step
+
 let round_to_int f =
   int_of_float (Float.round f)
 

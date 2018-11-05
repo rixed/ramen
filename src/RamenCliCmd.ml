@@ -471,16 +471,17 @@ let tail conf func_name with_header sep null raw
  * same output archive files as the `ramen tail` command does.
  *)
 
-let timeseries conf since until with_header where factors max_data_points
-               sep null func_name data_fields consolidation duration () =
+let timeseries conf since until with_header where factors num_points
+               time_step sep null func_name data_fields consolidation duration
+               () =
   init_logger conf.C.log_level ;
-  if max_data_points < 1 then failwith "invalid max_data_points" ;
+  let num_points =
+    if num_points <= 0 && time_step <= 0. then 100 else num_points in
   let since = since |? until -. 600. in
-  if since >= until then failwith "since must come strictly before until" ;
   (* Obtain the data: *)
   let columns, timeseries =
-    RamenTimeseries.get conf ~duration max_data_points since until where
-                        factors ~consolidation func_name data_fields in
+    RamenTimeseries.get conf ~duration num_points time_step since until
+                        where factors ~consolidation func_name data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
   if with_header then (
