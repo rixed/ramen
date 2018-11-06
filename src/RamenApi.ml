@@ -570,8 +570,13 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "  SELECT\n" ;
     if need_reaggr then
       Printf.fprintf oc "    max_value, min_value,\n" ;
-    Printf.fprintf oc "    moveavg(%d, float(not ok)) > %f AS firing\n"
-      (round_to_int (a.duration /. a.time_step)) a.ratio ;
+    (* FIXME: we'd like moveavg to take into account the current point as well.
+     * Best would be if avg would (also) accept a list of values as input, and
+     * then we would have a avg(last N thing), with a last function that also
+     * include the current point... Like `sliding` or `latest` for instance?
+     * Or rename the current `last` into `previous`? *)
+    Printf.fprintf oc "    moveavg(%d, float(not ok)) >= %f AS firing\n"
+      (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
     Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
