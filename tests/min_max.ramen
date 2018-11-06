@@ -19,13 +19,13 @@ DEFINE aggr AS
     -- Must be OK to do the aggr min/max of any of the above:
     MIN s, MAX s,
     MIN r, MAX r,
-    MIN no skip nulls nullable_float,
-    MAX no skip nulls nullable_float,
+    MIN keep nulls nullable_float,
+    MAX keep nulls nullable_float,
     MIN small_int, MAX small_int,
     MIN bit, MAX bit,
     MIN glop, MAX glop,
-    MIN no skip nulls nullable_string,
-    MAX no skip nulls nullable_string
+    MIN keep nulls nullable_string,
+    MAX keep nulls nullable_string
   COMMIT AFTER
     -- Works because random returns a float from 0 inclusive to 1 exclusive,
     -- and because casting to u8 truncates:

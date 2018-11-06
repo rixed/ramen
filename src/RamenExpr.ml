@@ -1023,10 +1023,10 @@ struct
 
   let skip_nulls m =
     let m = "skip nulls" :: m in
-    let skip = strinG "skip" -- blanks -- strinGs "null" in
     (
-      (skip >>: fun () -> true) |||
-      (strinG "no" -- blanks -- skip >>: fun () -> false)
+      ((strinG "skip" >>: fun () -> true) |||
+       (strinG "keep" >>: fun () -> false)) +-
+      blanks +- strinGs "null"
     ) m
 
   let state_and_nulls ?(def_state=GlobalState)
