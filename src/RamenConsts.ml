@@ -245,6 +245,10 @@ struct
 
   (* When asking for a timeseries or any other export, export for that long: *)
   let export_duration = 600.
+
+  (* Special case for when the timeseries query comes from the API: we then
+   * want it to export for longer. *)
+  let api_export_duration = 3600. *. 24.
 end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top
