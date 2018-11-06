@@ -697,11 +697,12 @@ let set_alerts conf msg =
     Set.String.iter (fun program_name ->
       let program_name = RamenName.program_of_string program_name in
       stop_alert conf program_name ;
-      let fname =
+      let fname ext =
         C.api_alerts_root conf ^"/"^
         RamenName.(path_of_program program_name)
-        ^".alert" in
-      safe_unlink fname
+        ^ "." ^ ext in
+      List.iter (fun ext -> safe_unlink (fname ext))
+        [ "alert" ; "ramen" ; "x" ]
     ) to_delete)
 
 (*
