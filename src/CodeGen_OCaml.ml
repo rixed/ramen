@@ -300,6 +300,9 @@ let omod_of_type = function
   | TCidr -> "RamenIp.Cidr"
   | TTuple _ | TVec _ | TList _ | TNum | TAny | TEmpty -> assert false
 
+(* When we do have to convert a null value into a string: *)
+let string_of_null = "?null?"
+
 (* Given a function name and an output type, return the actual function
  * returning that type, and the types each input parameters must be converted
  * into, if any. None means we need no conversion whatsoever (useful for
@@ -315,7 +318,7 @@ let omod_of_type = function
  * about what conversions are required to implement that in OCaml. *)
 
 (* Note: for field_of_tuple, we must be able to convert any value into a
- * string *)
+ * string. *)
 (* This only returns the function name (or code) but does not emit the
  * call to that function. *)
 let rec conv_from_to ~nullable oc (from_typ, to_typ) =
@@ -1928,9 +1931,10 @@ let emit_field_of_tuple name oc tuple_typ =
       Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
       let id = id_of_field_name ~tuple:TupleOut field_typ.typ_name in
       if field_typ.typ.nullable then (
-        Printf.fprintf oc "(match %s with Null -> \"?null?\" \
+        Printf.fprintf oc "(match %s with Null -> %S \
                             | NotNull v_ -> (%a) v_)\n"
           id
+          string_of_null
           (conv_from_to ~nullable:false) (field_typ.typ.structure, TString)
       ) else (
         Printf.fprintf oc "(%a) %s\n"
@@ -2437,7 +2441,7 @@ let emit_parameters oc params =
         p.ptyp.typ_name
         (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
         glob_name
-        (if p.ptyp.typ.nullable then " |! \"?null?\""
+        (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
          else ""))) params
 
 let emit_running_condition oc params cond =

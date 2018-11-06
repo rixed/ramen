@@ -245,7 +245,7 @@ and stateful_fun =
   (* FIXME: those float should be expressions so we could use params *)
   | AggrHistogram of t * float * float * int
   (* value retarded by k steps. If we have had less than k past values
-   * then return the first we've had. *)(* FIXME: then return NULL *)
+   * then return NULL. *)
   | Lag of t * t
   (* If the current time is t, the seasonal, moving average of period p on k
    * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
@@ -253,7 +253,8 @@ and stateful_fun =
    * average.  Notice that lag is a special case of season average with p=k
    * and k=1, but with a universal type for the data (while season-avg works
    * only on numbers).  For instance, a moving average of order 5 would be
-   * period=1, count=5 *)
+   * period=1, count=5.
+   * When we have not enough history then the result will be NULL. *)
   | MovingAvg of t * t * t (* period, how many seasons to keep, expression *)
   (* Simple linear regression *)
   | LinReg of t * t * t (* as above: period, how many seasons to keep, expression *)
@@ -284,7 +285,7 @@ and stateful_fun =
   (* Last N e1 [BY e2, e3...] - or by arrival.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
-  | Last of t * t * t list
+  | Last of t (* N *) * t (* what *) * t list (* by *)
   (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
   | Sample of t * t
   (* Build a list with all values from the group *)
