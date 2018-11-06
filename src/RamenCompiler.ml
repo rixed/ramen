@@ -429,10 +429,10 @@ let compile conf get_parent ?exec_file source_file program_name =
             entry_point_name
         ) compiler_funcs ;
         Printf.fprintf oc "]\n") in
-    add_temp_file ocaml_file ;
     (*
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.
      *)
-    RamenOCamlCompiler.link conf program_name obj_files ocaml_file exec_file
+    RamenOCamlCompiler.link conf program_name obj_files ocaml_file exec_file ;
+    add_temp_file ocaml_file
   ) () (* and finally, delete temp files! *)
