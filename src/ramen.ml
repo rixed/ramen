@@ -227,7 +227,7 @@ let rb_file =
 
 let num_tuples =
   let i = Arg.info ~doc:RamenConsts.CliInfo.num_tuples
-                   [ "n"; "nb-entries" ] in
+                   [ "n"; "num-entries" ] in
   Arg.(value (opt int 1 i))
 
 let dequeue =
@@ -577,7 +577,7 @@ let until =
 
 let num_points =
   let i = Arg.info ~doc:RamenConsts.CliInfo.num_points
-                   ~docv:"POINTS" ["n"; "nb-points"] in
+                   ~docv:"POINTS" ["n"; "num-points"] in
   Arg.(value (opt int 0 i))
 
 let time_step =

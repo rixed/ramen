@@ -83,7 +83,7 @@ end
 
 Given /no files? (ending with|starting with|named) (.*) (?:is|are) present in (.*)/ \
 do |condition, like, dir|
-  Dir[$tmp_dir +'/' + dir + '/*'].each do |f|
+  Dir[$tmp_dir + '/' + dir + '/*'].each do |f|
     File.delete(f) if
       case condition
         when /ending with/
