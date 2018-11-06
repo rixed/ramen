@@ -167,8 +167,8 @@ and alert_info_v1 =
     (* Unused, for the client purpose only *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
-    desc_firing : string [@ppp_default ""] ;
-    desc_recovery : string [@ppp_default ""] }
+    desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
+    desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
   [@@ppp PPP_JSON]
   [@@ppp PPP_OCaml]
 
@@ -318,7 +318,8 @@ type get_timeseries_req =
     consolidation : string [@ppp_default ""] ; (* "" => default aggr *)
     bucket_time : string [@ppp_rename "bucket-time"] [@ppp_default "end"] ;
     (* One and only one of these two must be set (>0): *)
-    num_points : int [@ppp_default 0] ;
+    num_points : int [@ppp_rename "num-points"] [@ppp_default 0] ;
+    num_points_ : int [@ppp_default 0] ;
     time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
     data : (string, timeseries_data_spec) Hashtbl.t ;
     export_duration : float [@ppp_rename "export-duration"]
@@ -354,6 +355,10 @@ let empty_values = Hashtbl.create 0
 let get_timeseries conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-timeseries"
                                    get_timeseries_req_ppp_json msg in
+  (* Accept both "num-points" (new) and "num_points" (old): *)
+  let req =
+    if req.num_points <> 0 || req.num_points_ = 0 then req else
+    { req with num_points = req.num_points_ } in
   check_get_timeseries_req req ;
   let times = Array.make_float req.num_points in
   let times_inited = ref false in
