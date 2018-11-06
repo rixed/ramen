@@ -946,10 +946,11 @@ let emit_constraints tuple_sizes out_fields oc e =
               String.print oc (n_of_expr w))) what
             (n_of_expr by)))
 
-  | StatefulFun (_, _, _, Last (c, x, es)) ->
+  | StatefulFun (_, _, n, Last (c, x, es)) ->
       (* - c must be a constant (TODO) integer;
-       * - The type of the result is a list of items of the same type and
-       *   nullability than those of x;
+       * - The type of the result is a list of items of the same type than x;
+       * - If we skip nulls then those items are not nullable, otherwise
+       *   they are as nullable as x;
        * - In theory, 'Last c e1 by es` should itself be nullable if c is
        *   nullable or any of the es is nullable. And then become and stays
        *   null forever as soon as one es is actually NULL. This is kind
@@ -960,7 +961,9 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_integer oc c ;
       arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
-        (Printf.sprintf "(list %s %s)" (t_of_expr x) (n_of_expr x)) ;
+        (Printf.sprintf "(list %s %s)"
+          (t_of_expr x)
+          (if n then "false" else n_of_expr x)) ;
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
 
