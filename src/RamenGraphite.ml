@@ -570,7 +570,7 @@ let render_graphite conf headers body =
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
     let columns, datapoints =
-      RamenTimeseries.get conf max_data_points 0. since until where factors
+      RamenTimeseries.get conf max_data_points since until where factors
                           fq data_fields in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)

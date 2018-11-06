@@ -127,3 +127,11 @@ Feature: Test Ramen API from the command line.
     Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in api/set_alerts/test/color_of_the_day/nullable_42
     Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.ramen must be present in api/set_alerts/test/color_of_the_day/nullable_42
     Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.x must be present in api/set_alerts/test/color_of_the_day/nullable_42
+
+  Scenario: time-step can replace num-points in get-timeseries.
+    Given ramen supervisor is started
+    And ramen httpd --url http://localhost:8042 --api is started
+    When I wait 3 seconds
+    And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9,"time-step":60,"data":{"test/random_walk":{"select":["xyz","key"],"where":[{"lhs":"key","op":">=","rhs":"0"}]}}}}' http://localhost:8042
+    # We are going to use a single bucket between 0 and 60, and by default the times are the end times for the API:
+    Then curl must mention ""times":[60.0]"

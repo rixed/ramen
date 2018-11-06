@@ -63,7 +63,7 @@ let bucket_max b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 type bucket_time = Begin | Middle | End
-let get conf ?duration num_points time_step since until where factors
+let get conf ?duration num_points since until where factors
         ?consolidation ?(bucket_time=Middle) fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
@@ -71,17 +71,6 @@ let get conf ?duration num_points time_step since until where factors
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%s %s %a" field op RamenTypes.print value)) where
     (List.print String.print) factors ;
-  (* Either num_points or time_step (but not both) must be set (>0): *)
-  assert ((num_points > 0 || time_step > 0.) &&
-          (num_points <= 0 || time_step <= 0.)) ;
-  (* If time_step is given then align bucket times with it.
-   * Internally, we use num_points though: *)
-  let since, until, num_points =
-    if num_points > 0 then since, until, num_points else
-    let since = align_float time_step since
-    and until = align_float ~round:ceil time_step until in
-    let num_points = round_to_int ((until -. since) /. time_step) in
-  since, until, num_points in
   let num_data_fields = List.length data_fields in
   let bname, _is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
@@ -163,6 +152,26 @@ let get conf ?duration num_points time_step since until where factors
         ) buckets.(i)
       ) ts in
     t, v)
+
+(* [get] uses the number of points but users can specify either num-points or
+ * the time-step (in which case [since] and [until] are aligned to a multiple
+ * of that time-step.
+ * This helper function thus computes the effective [since], [until] and
+ * [num_points] based on user supplied [since], [until], [num_points] and
+ * [time_step]: *)
+let compute_num_points time_step num_points since until =
+  (* Either num_points or time_step (but not both) must be set (>0): *)
+  assert ((num_points > 0 || time_step > 0.) &&
+          (num_points <= 0 || time_step <= 0.)) ;
+  (* If time_step is given then align bucket times with it.
+   * Internally, we use num_points though: *)
+  if num_points > 0 then
+    num_points, since, until
+  else
+    let since = align_float time_step since
+    and until = align_float ~round:ceil time_step until in
+    let num_points = round_to_int ((until -. since) /. time_step) in
+    num_points, since, until
 
 (*
  * Factors.

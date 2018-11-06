@@ -360,7 +360,10 @@ let get_timeseries conf msg =
     if req.num_points <> 0 || req.num_points_ = 0 then req else
     { req with num_points = req.num_points_ } in
   check_get_timeseries_req req ;
-  let times = Array.make_float req.num_points in
+  let open RamenTimeseries in
+  let num_points, since, until =
+    compute_num_points req.time_step req.num_points req.since req.until in
+  let times = Array.make_float num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
   Hashtbl.iter (fun table data_spec ->
@@ -383,20 +386,19 @@ let get_timeseries conf msg =
       let consolidation =
         let s = req.consolidation in
         if s = "" then None else Some s in
-      let open RamenTimeseries in
       let bucket_time =
         match String.lowercase_ascii req.bucket_time with
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
       get conf ~duration:req.export_duration
-          req.num_points req.time_step req.since req.until filters
+          num_points since until filters
           data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is a list of factors values. *)
     let column_labels =
       Array.map (List.map RamenTypes.to_string) column_labels in
-    let column_values = Array.create req.num_points [||] in
+    let column_values = Array.create num_points [||] in
     Hashtbl.add values table { column_labels ; column_values } ;
     Enum.iteri (fun ti (t, data) ->
       (* in data we have one column per column-label: *)
