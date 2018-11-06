@@ -1,5 +1,7 @@
 -- vim: ft=sql expandtab
 
+-- Check we will have the last two entries before 2000, and thus
+-- making sure LAST N include the current item:
 DEFINE win1 AS
   FROM tests/fixtures/earthquakes/csv
   WHERE year < 2000
@@ -13,9 +15,21 @@ DEFINE win2 AS
   FROM tests/fixtures/cars/csv
   WHERE model starts with "A3"
   SELECT
-    -- LAST does not work with nullable values:
-    -- FIXME: of course it does!
-    LAST 3 COALESCE(CO, 0) AS _lst,
-    GET(0, _lst) AS third_to_last,
-    GET(1, _lst) AS second_to_last,
-    GET(2, _lst) AS last_one;
+    -- Will skip NULLs:
+    LAST 3 CO AS _lst,
+    GET(0, _lst) AS third_to_last_co,
+    GET(1, _lst) AS second_to_last_co,
+    GET(2, _lst) AS last_one_co,
+    LAST 3 horsepower AS _hp,
+    GET(0, _hp) AS third_to_last_hp,
+    GET(1, _hp) AS second_to_last_hp,
+    GET(2, _hp) AS last_one_hp,
+    -- Will not skip NULLs:
+    LAST 3 keep nulls CO AS _lst_n,
+    GET(0, _lst_n) AS third_to_last_co_n,
+    GET(1, _lst_n) AS second_to_last_co_n,
+    GET(2, _lst_n) AS last_one_co_n,
+    LAST 3 horsepower AS _hp_n,
+    GET(0, _hp_n) AS third_to_last_hp_n,
+    GET(1, _hp_n) AS second_to_last_hp_n,
+    GET(2, _hp_n) AS last_one_hp_n;

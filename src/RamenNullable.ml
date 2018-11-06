@@ -27,6 +27,10 @@ let nullable_get = function
 let (|!) a b =
   match a with Null -> b | NotNull a -> a
 
+let default d = function
+  | Null -> d
+  | NotNull x -> x
+
 let default_delayed f = function
   | Null -> f ()
   | NotNull x -> x

@@ -39,22 +39,22 @@ let experiment_variants =
   h
 
 let get_variant exp_name =
-  try Some (Hashtbl.find experiment_variants exp_name)
-  with Not_found -> None
+  try NotNull (Hashtbl.find experiment_variants exp_name)
+  with Not_found -> Null
 
 (* Functions *)
 
 let and_opt a b =
   match a, b with
-  | Some false, _ | _ , Some false -> Some false
-  | Some a, Some b -> Some (a && b)
-  | _ -> None
+  | NotNull false, _ | _ , NotNull false -> NotNull false
+  | NotNull a, NotNull b -> NotNull (a && b)
+  | _ -> Null
 
 let or_opt a b =
   match a, b with
-  | Some true, _ | _, Some true -> Some true
-  | Some a, Some b -> Some (a || b)
-  | _ -> None
+  | NotNull true, _ | _, NotNull true -> NotNull true
+  | NotNull a, NotNull b -> NotNull (a || b)
+  | _ -> Null
 
 let age_float x = !CodeGenLib_IO.now -. x
 let age_u8 = Uint8.of_float % age_float
@@ -71,20 +71,20 @@ let age_i128 = Int128.of_float % age_float
 
 let aggr_min s x =
   match s with
-  | None -> Some x
-  | Some y -> Some (min x y)
+  | Null -> NotNull x
+  | NotNull y -> NotNull (min x y)
 
 let aggr_max s x =
   match s with
-  | None -> Some x
-  | Some y -> Some (max x y)
+  | Null -> NotNull x
+  | NotNull y -> NotNull (max x y)
 
 let aggr_first s x =
   match s with
-  | None -> Some x
+  | Null -> NotNull x
   | y -> y
 
-let aggr_last _ x = Some x
+let aggr_last _ x = NotNull x
 
 (* State is count * sum *)
 let avg_init = 0, 0.
@@ -176,7 +176,8 @@ module Top = struct
     s
 
   let rank s n x =
-    HeavyHitters.rank (Uint32.to_int n) x s
+    HeavyHitters.rank (Uint32.to_int n) x s |>
+    nullable_of_option
 
   let is_in_top s n x =
     HeavyHitters.is_in_top (Uint32.to_int n) x s
@@ -186,7 +187,6 @@ let hash x = Hashtbl.hash x |> Int64.of_int
 
 (* An operator used only for debugging: *)
 let print strs =
-  let open RamenNullable in
   !logger.info "PRINT: %a"
     (List.print ~first:"" ~last:"" ~sep:", "
        (fun oc s -> String.print oc (s |! "<NULL>"))) strs
@@ -258,7 +258,7 @@ module Last = struct
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =
-    if state.length < state.max_length then None
+    if state.length < state.max_length then Null
     else
       (* FIXME: faster conversion from heap to array: *)
       let values =
@@ -267,7 +267,7 @@ module Last = struct
         ) [] state.values |>
         List.rev |>
         Array.of_list in
-      Some values
+      NotNull values
 end
 
 module Group = struct
