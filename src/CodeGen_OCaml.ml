@@ -365,11 +365,13 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
         "(fun v_ -> \
-           \"[\"^ (\
+           (\
             Array.enum v_ /@ (%a) |> \
-            Enum.reduce (fun s1_ s2_ -> s1_^\";\"^s2_)
+            Enum.fold (fun res_ s_ -> res_^\";\"^(%s s_)) \"[\"
            ) ^\"]\")"
         (conv_from_to ~nullable:t.nullable) (t.structure, TString)
+        (if t.nullable then
+           Printf.sprintf "RamenNullable.default %S" string_of_null else "")
     | TTuple ts, TString ->
       let i = ref 0 in
       Printf.fprintf oc
