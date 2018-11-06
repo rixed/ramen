@@ -118,3 +118,9 @@ Feature: Test Ramen API from the command line.
     Then curl must mention "'enapled'"
 
   Scenario: Alert-definition files must correspond to set alerts (and be deleted with them)
+    Given ramen httpd --url http://localhost:8042 --api is started
+    When I wait 1 second
+    And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":40,"recovery":37}]}}}' http://localhost:8042
+    Then a file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in api/set_alerts/test/color_of_the_day/nullable_42
+    When I run curl with arguments --data-binary '{"id":2, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[]}}}' http://localhost:8042
+    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in api/set_alerts/test/color_of_the_day/nullable_42

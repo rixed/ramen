@@ -96,6 +96,12 @@ do |condition, like, dir|
   end
 end
 
+Given /(a|no) file named (.*) must be present in (.*)/ \
+do |presence, name, dir|
+  file_name = ENV['RAMEN_PERSIST_DIR'] + '/' + dir + '/' + name
+  expect(File.exist? file_name).to be (presence == 'a')
+end
+
 Then /(?:an? )?(executable )?files? (.*) must exist/ \
 do |opt_file_type, files|
   files.list_split.each do |f|
