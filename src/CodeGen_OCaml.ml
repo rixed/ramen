@@ -352,16 +352,25 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | TIpv4, TU32 | TU32, TIpv4 -> Printf.fprintf oc "identity"
     | TIpv6, TU128 | TU128, TIpv6 -> Printf.fprintf oc "identity"
     | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
-    | TVec (d_from, t_from), TVec (d_to, t_to)
-      when (d_from = d_to || d_to = 0) &&
-           (* TODO: We could implement other combinations as well *)
-           t_from.nullable = t_to.nullable ->
-      (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
-      (* Note: vector items cannot be NULL: *)
+    | TList t_from, TList t_to
+         when t_from.nullable = t_to.nullable ->
       Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
-        (conv_from_to ~nullable:t_from.nullable) (t_from.structure, t_to.structure)
-    | TVec (d, _t_from), TList t_to ->
-      print_non_null oc (from_typ, TVec (d, t_to))
+        (conv_from_to ~nullable:t_from.nullable)
+          (t_from.structure, t_to.structure)
+     | TList t_from, TList t_to
+          when nullable && t_from.nullable && not t_to.nullable ->
+      Printf.fprintf oc
+        "(fun v_ -> Array.map (function \
+            | Null -> raise ImNull \
+            | NotNull x_ -> %a x_) v_)"
+        (conv_from_to ~nullable:t_from.nullable)
+          (t_from.structure, t_to.structure)
+    | TVec (_, t_from), TList t_to ->
+      print_non_null oc (TList t_from, TList t_to)
+    | TVec (d_from, t_from), TVec (d_to, t_to)
+      when (d_from = d_to || d_to = 0) ->
+      (* d_to = 0 means no constraint (copy the one from the left-hand side) *)
+      print_non_null oc (TList t_from, TList t_to)
     | (TVec (_, t) | TList t), TString ->
       Printf.fprintf oc
         "(fun v_ -> \

@@ -16,9 +16,15 @@
 
 type 'a nullable = Null | NotNull of 'a
 
+(* Nulls are absorbing each others: NotNull Null must be Null.
+ * The easiest way to achieve that is for null-aware combinators
+ * to catch an exception and turn the whole result Null: *)
+exception ImNull
+
 let nullable_map f = function
   | Null -> Null
-  | NotNull x -> NotNull (f x)
+  | NotNull x ->
+      (try NotNull (f x) with ImNull -> Null)
 
 let nullable_get = function
   | Null -> invalid_arg "Nullable.get"
