@@ -158,6 +158,12 @@ let emit_assert_id_eq_smt2 ?name id oc smt2 =
 
 let emit_assert_id_eq_id = emit_assert_id_eq_smt2
 
+let emit_imply a oc b =
+  Printf.fprintf oc "(or (not %s) %s)" a b
+
+let assert_imply ?name a oc b =
+  emit_assert ?name oc (fun oc -> emit_imply a oc b)
+
 (* Check that types are either the same (for those we cannot compare)
  * or that e1 is <= e2.
  * For IP/CIDR, it means version is either the same or generic.
@@ -540,12 +546,13 @@ let emit_constraints tuple_sizes out_fields oc e =
         let lst_type = "(list-type "^ eid2 ^")"
         and vec_type = "(vector-type "^ eid2 ^")" in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) %a (or (not (list-nullable %s)) %s))
+          "(or (and ((_ is list) %s) %a (or (not (list-nullable %s)) %s)) \
                (and ((_ is vector) %s) %a (or (not (vector-nullable %s)) %s)))"
           eid2 (emit_id_le_smt2 lst_type) eid eid2 nid
           eid2 (emit_id_le_smt2 vec_type) eid eid2 nid) ;
-      emit_assert_id_eq_smt2 nid oc
+      assert_imply
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
+        oc nid
 
   | StatelessFun2 (_, (Add|Sub|Mul|IDiv|Pow), e1, e2) ->
       (* - e1 and e2 must be numeric;
