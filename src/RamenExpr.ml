@@ -344,10 +344,10 @@ let int_of_const = function
 let rec print ?(max_depth=max_int) with_types oc e =
   let add_types t =
     if with_types then Printf.fprintf oc " [%a]" print_typ t
-  and sl =
-    (* TODO: do not display the default *)
-    function LocalState -> " locally " | GlobalState -> " globally "
-  and sn n = if n then " skip nulls " else " no skip nulls "
+  and st g n =
+    (* TODO: do not display default *)
+    (match g with LocalState -> " locally" | GlobalState -> " globally") ^
+    (if n then " skip nulls" else " keep nulls")
   and print_args =
     List.print ~first:"(" ~last:")" ~sep:", " (print with_types)
   in
@@ -557,100 +557,100 @@ let rec print ?(max_depth=max_int) with_types oc e =
       Printf.fprintf oc "PRINT %a" print_args es ;
       add_types t
     | StatefulFun (t, g, n, AggrMin e) ->
-      Printf.fprintf oc "min%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "min%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrMax e) ->
-      Printf.fprintf oc "max%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "max%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrSum e) ->
-      Printf.fprintf oc "sum%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "sum%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrAvg e) ->
-      Printf.fprintf oc "avg%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "avg%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrAnd e) ->
-      Printf.fprintf oc "and%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "and%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrOr e) ->
-      Printf.fprintf oc "or%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "or%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrFirst e) ->
-      Printf.fprintf oc "first%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "first%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrLast e) ->
-      Printf.fprintf oc "last%s%s(%a)"
-        (sl g) (sn n) p e ;
+      Printf.fprintf oc "last%s(%a)"
+        (st g n) p e ;
       add_types t
     | StatefulFun (t, g, n, AggrHistogram (what, min, max, num_buckets)) ->
-      Printf.fprintf oc "histogram%s%s(%a, %g, %g, %d)"
-        (sl g) (sn n)
+      Printf.fprintf oc "histogram%s(%a, %g, %g, %d)"
+        (st g n)
         p what min max num_buckets ;
       add_types t
     | StatefulFun (t, g, n, Lag (e1, e2)) ->
-      Printf.fprintf oc "lag%s%s(%a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "lag%s(%a, %a)"
+        (st g n)
         p e1 p e2 ;
       add_types t
     | StatefulFun (t, g, n, MovingAvg (e1, e2, e3)) ->
-      Printf.fprintf oc "season_moveavg%s%s(%a, %a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "season_moveavg%s(%a, %a, %a)"
+        (st g n)
         p e1
         p e2 p e3 ;
       add_types t
     | StatefulFun (t, g, n, LinReg (e1, e2, e3)) ->
-      Printf.fprintf oc "season_fit%s%s(%a, %a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "season_fit%s(%a, %a, %a)"
+        (st g n)
         p e1
         p e2 p e3 ;
       add_types t
     | StatefulFun (t, g, n, MultiLinReg (e1, e2, e3, e4s)) ->
-      Printf.fprintf oc "season_fit_multi%s%s(%a, %a, %a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "season_fit_multi%s(%a, %a, %a, %a)"
+        (st g n)
         p e1
         p e2
         p e3
         print_args e4s ;
       add_types t
     | StatefulFun (t, g, n, Remember (fpr, tim, dur, es)) ->
-      Printf.fprintf oc "remember%s%s(%a, %a, %a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "remember%s(%a, %a, %a, %a)"
+        (st g n)
         p fpr
         p tim
         p dur
         print_args es ;
       add_types t
     | StatefulFun (_, g, n, Distinct es) ->
-      Printf.fprintf oc "distinct%s%s(%a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "distinct%s(%a)"
+        (st g n)
         print_args es
     | StatefulFun (t, g, n, ExpSmooth (e1, e2)) ->
-      Printf.fprintf oc "smooth%s%s(%a, %a)"
-        (sl g) (sn n) p e1 p e2 ;
+      Printf.fprintf oc "smooth%s(%a, %a)"
+        (st g n) p e1 p e2 ;
       add_types t
     | StatefulFun (t, g, n, Hysteresis (meas, accept, max)) ->
-      Printf.fprintf oc "hysteresis%s%s(%a, %a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "hysteresis%s(%a, %a, %a)"
+        (st g n)
         p meas
         p accept
         p max ;
       add_types t
     | StatefulFun (t, g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
                                   duration }) ->
-      Printf.fprintf oc "%s %a in top %a %a%s%sby %a in the last %a at time %a"
+      Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
         (if want_rank then "rank of" else "is")
         (List.print ~first:"" ~last:"" ~sep:", " p) what
         (fun oc -> function
          | None -> Unit.print oc ()
          | Some e -> Printf.fprintf oc " over %a" p e) max_size
         p c
-        (sl g) (sn n)
+        (st g n)
         p by
         p duration
         p time ;
@@ -660,21 +660,21 @@ let rec print ?(max_depth=max_int) with_types oc e =
         if es <> [] then
           Printf.fprintf oc " BY %a"
             (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "LAST %a %s%s%a%a"
+      Printf.fprintf oc "LAST %a%s %a%a"
         p c
-        (sl g) (sn n)
+        (st g n)
         p e
         print_by es ;
       add_types t
     | StatefulFun (t, g, n, Sample (c, e)) ->
-      Printf.fprintf oc "SAMPLE%s%s(%a, %a)"
-        (sl g) (sn n)
+      Printf.fprintf oc "SAMPLE%s(%a, %a)"
+        (st g n)
         p c
         p e ;
       add_types t
     | StatefulFun (t, g, n, Group e) ->
-      Printf.fprintf oc "GROUP%s%s %a"
-        (sl g) (sn n)
+      Printf.fprintf oc "GROUP%s %a"
+        (st g n)
         p e ;
       add_types t
 

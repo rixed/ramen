@@ -8,7 +8,7 @@
  * is when it is using skip nulls and all its inputs have been thus skipped.
  * This case is also dealt with from the code generator.
  *
- * The only case when a statefull function might deal with Nulls is when
+ * The only case when a stateful function might deal with Nulls is when
  * it returns Null for other reasons. In that case it would actually return
  * some special value, typically None, and the code generator will translate
  * this case also into Null.
