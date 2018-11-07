@@ -1100,7 +1100,71 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable "CodeGenLib.percentile"
       [Some TFloat, PropagateNull; None, PropagateNull] oc [p; lst]
 
-  (* Stateful functions *)
+  (*
+   * Stateful functions
+   *
+   * All the aggregation functions below should accept lists as input.
+   * In that case, we merely iterate over all the elements of that list at
+   * finalization.
+   * InitState is unchanged and UpdateState is a NOP.
+   * We do this for most of them but not all, as use case is arguable in
+   * many cases and a better approach needs to be devised.
+   * We pattern match those case first:
+   *)
+  | UpdateState, StatefulFun (_, _, _, (AggrAnd e|AggrOr e|AggrSum e
+                                       |AggrAvg e|AggrFirst e|AggrLast e
+                                       |AggrMax e|AggrMin e|MovingAvg (_, _, e)
+                                       |LinReg (_, _, e)|ExpSmooth (_, e))), _
+    when is_a_list e -> ()
+  | Finalize, StatefulFun (t, g, n, (AggrAnd e|AggrOr e|AggrSum e
+                                    |AggrAvg e|AggrFirst e|AggrLast e
+                                    |AggrMax e|AggrMin e|MovingAvg (_, _, e)
+                                    |LinReg (_, _, e)|ExpSmooth (_, e)
+                                    as aggr)), _
+    when is_a_list e ->
+    (* Build the expression that aggregate the list item rather than the
+     * list: *)
+    let expr' =
+      let item_typ =
+        match (Option.get (typ_of e).typ).structure with
+        | TList t | TVec (_, t) -> t
+        | _ -> assert false in
+      let e' =
+        StateField (make_typ ~typ:item_typ "list element", "item_") in
+      (* By reporting the skip-null flag we make sure that each update will
+       * skip the nulls in the list - while the list itself will make the
+       * whole expression null if it's null. *)
+      StatefulFun (t, g, n, (
+        match aggr with
+        | AggrAnd _ -> AggrAnd e'
+        | AggrOr _ -> AggrOr e'
+        | AggrSum _ -> AggrSum e'
+        | AggrAvg _ -> AggrAvg e'
+        | AggrFirst _ -> AggrFirst e'
+        | AggrLast _ -> AggrLast e'
+        | AggrMax _ -> AggrMax e'
+        | AggrMin _ -> AggrMin e'
+        | MovingAvg (p, s, _) -> MovingAvg (p, s, e')
+        | LinReg (p, s, _) -> LinReg (p, s, e')
+        | ExpSmooth (s, _) -> ExpSmooth (s, e')
+        | _ -> assert false))
+    in
+    assert (not (is_a_list expr')) ;
+
+    Printf.fprintf oc "(match %a with "
+      (emit_expr ?state ~context:Finalize ~opc) e ;
+    if is_nullable e then
+      Printf.fprintf oc "Null as n_ -> n_ | NotNull arr_ ->\n"
+    else
+      Printf.fprintf oc "arr_ ->\n" ;
+    Printf.fprintf oc
+      "Array.iter (fun item_ -> %a) arr_ ;\n"
+      (emit_expr ?state ~context:UpdateState ~opc) expr' ;
+    (* And finalize that using the fake expression [expr'] to reach
+     * the actual finalizer: *)
+    emit_expr ?state ~context ~opc oc expr' ;
+    Printf.fprintf oc ")"
+
   | InitState, StatefulFun (_, _, _, AggrAnd _), (TBool as t) ->
     wrap_nullable ~nullable oc
       (Printf.sprintf2 "%a true"

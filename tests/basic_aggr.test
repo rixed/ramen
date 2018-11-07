@@ -11,7 +11,9 @@
         { "min_horsepower" => "1";
           "max_horsepower" => "946";
           "sum_horsepower" => "1262598";
+          "sum_horsepower_2" => "1262598";
           "avg_horsepower" => "278.16655651";
+          "avg_horsepower_2" => "278.16655651";
           "first_horsepower" => "552";
           "last_horsepower" => "313";
           "horsepower_10th" => "140";

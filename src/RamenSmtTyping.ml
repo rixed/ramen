@@ -458,34 +458,58 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes eid oc TBool ;
       arg_is_not_nullable oc e
 
-  | StatefulFun (_, _, _, (AggrMin x|AggrMax x)) ->
-      (* - x can be of any type;
-       * - The result has its type;
-       * - The result nullability is set by propagation from x. *)
-      emit_assert_id_eq_id (t_of_expr x) oc eid ;
-      emit_assert_id_eq_id nid oc (n_of_expr x)
+  | StatefulFun (_, _, _, (AggrSum x|AggrMin x|AggrMax x|AggrFirst x
+                          |AggrLast x|AggrAnd x| AggrOr x as aggr)) ->
+      (* - if x is a list/vector, then the result has the type and
+       *   nullability of its elements;
+       * - otherwise the result has the type and nullability of x. *)
+      emit_assert oc (fun oc ->
+        let xid = t_of_expr x in
+        Printf.fprintf oc
+          "(or (and ((_ is list) %s) \
+                    (= %s (list-type %s)) \
+                    (= %s (list-nullable %s))) \
+               (and ((_ is vector) %s) \
+                    (= %s (vector-type %s)) \
+                    (= %s (vector-nullable %s))) \
+               (and (= %s %s) \
+                    (= %s %s)))"
+          xid eid xid nid xid
+          xid eid xid nid xid
+          eid xid nid (n_of_expr x)) ;
 
-  | StatefulFun (_, _, _, (AggrFirst x|AggrLast x)) ->
-      (* - The result has the same type than that of x;
-       * - The result has same nullability than that of x. *)
-      emit_assert_id_eq_id (t_of_expr x) oc eid ;
-      emit_assert_id_eq_id (n_of_expr x) oc nid
-
-  | StatefulFun (_, _, _, AggrSum x) ->
-      (* - x must be numeric;
-       * - The result has the same type than x;
-       * - The result has same nullability than x. *)
-      arg_is_numeric oc x ;
-      emit_assert_id_eq_id (t_of_expr x) oc eid ;
-      emit_assert_id_eq_id (n_of_expr x) oc nid
+      (match aggr with AggrSum _ ->
+        (* - The result is numeric *)
+        arg_is_numeric oc e
+      | AggrAnd _ | AggrOr _ ->
+        (* - The result is a boolean *)
+        emit_assert_id_eq_typ tuple_sizes eid oc TBool
+      | _ -> ())
 
   | StatefulFun (_, _, _, AggrAvg x) ->
-      (* - x must be numeric;
+      (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
-       * - The result has same nullability than that of x. *)
-      arg_is_numeric oc x ;
+       * - The result is as nullable as x and its elements. *)
+      emit_assert oc (fun oc ->
+        let xid = t_of_expr x in
+        Printf.fprintf oc
+          "(or (and ((_ is list) %s) \
+                    %a \
+                    %a) \
+               (and ((_ is vector) %s) \
+                    %a \
+                    %a) \
+               %a)"
+          xid
+            emit_numeric ("(list-type "^ xid ^")")
+            (emit_imply ("(list-nullable "^ xid ^")")) nid
+          xid
+            emit_numeric ("(vector-type "^ xid ^")")
+            (emit_imply ("(vector-nullable "^ xid ^")")) nid
+          emit_numeric xid) ;
+
       emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
-      emit_assert_id_eq_id (n_of_expr x) oc nid
+      assert_imply (n_of_expr x) oc nid
 
   | StatelessFun1 (_, Minus, x) ->
       (* - The only argument must be numeric;
@@ -513,7 +537,6 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_le_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatefulFun (_, _, _, (AggrAnd x | AggrOr x))
   | StatelessFun1 (_, Not, x) ->
       (* - The only argument must be boolean;
        * - The result type is a boolean;
@@ -800,17 +823,28 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* Typing rules:
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
-       * - e3 must be numeric;
        * - Neither e1 or e2 can be NULL;
-       * - The result type is known from parsing to be float;
-       * - The result nullability propagates from e3. *)
+       * - e3 must be numeric or a list/vector of numerics;
+       * - The result type is float;
+       * - The result nullability propagates from e3 (and its elements). *)
       arg_is_unsigned oc e1 ;
       arg_is_unsigned oc e2 ;
-      arg_is_numeric oc e3 ;
       arg_is_not_nullable oc e1 ;
       arg_is_not_nullable oc e2 ;
       emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
-      emit_assert_id_eq_id (n_of_expr e3) oc nid
+
+      emit_assert oc (fun oc ->
+        let xid = t_of_expr e3 in
+        Printf.fprintf oc
+          "(or (and ((_ is list) %s) %a %a) \
+               (and ((_ is vector) %s) %a %a) \
+               (and %a))"
+          xid emit_numeric ("(list-type "^ xid ^")")
+              (emit_imply ("(list-nullable "^ xid ^")")) nid
+          xid emit_numeric ("(vector-type "^ xid ^")")
+              (emit_imply ("(vector-nullable "^ xid ^")")) nid
+          emit_numeric xid) ;
+      assert_imply (n_of_expr e3) oc nid
 
   | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be

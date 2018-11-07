@@ -5,8 +5,12 @@ DEFINE f1 AS
   SELECT
     min horsepower,
     max (horsepower),
-    sum u32(horsepower) as sum_horsepower,
+    sum u32(horsepower),
+    sum group u32(horsepower) as sum_horsepower_2,
     avg horsepower,
+    avg group horsepower as avg_horsepower_2,
+    -- Every aggregation functions must also accept lists as input:
+    -- avg (group horsepower) AS avg_horsepower_2,
     first ((horsepower)),
     last horsepower,
     10th percentile (group horsepower) as horsepower_10th,

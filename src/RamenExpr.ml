@@ -700,9 +700,11 @@ let is_const = function
 let is_a_string e =
   (Option.get (typ_of e).typ).structure = TString
 
+(* Tells if [e] (that must be typed) is a list or a vector, ie anything
+ * which is represented with an OCaml array. *)
 let is_a_list e =
   match (Option.get (typ_of e).typ).structure with
-  | TList _ -> true
+  | TList _ | TVec _ -> true
   | _ -> false
 
 (* Propagate values up the tree only, depth first. *)
