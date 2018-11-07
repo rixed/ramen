@@ -276,11 +276,11 @@ let compile conf get_parent ?exec_file source_file program_name =
              ~labels:["typer", typer_name])) in
     let open RamenSmtTyping in
     let smt2_file = C.smt_file source_file in
-    add_single_temp_file smt2_file ;
     let types =
       call_typer !RamenSmtTyping.smt_solver (fun () ->
         get_types compiler_parents condition compiler_funcs
                   parsed_params smt2_file) in
+    add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
     Hashtbl.iter (fun _ (func, op) ->
       finalize_func compiler_parents parsed_params func op
