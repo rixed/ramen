@@ -655,8 +655,12 @@ struct
     | StatelessFun2 (_, Percentile, Const (_, p), e)
       when RamenTypes.is_round_integer p ->
       Printf.sprintf "%s_%sth" (default_alias e) (IO.to_string RamenTypes.print p)
+    (* Some functions better leave no traces: *)
     | StatelessFunMisc (_, Print es) when es <> [] ->
       default_alias (List.hd es)
+    | StatelessFun1 (_, Cast _, e)
+    | StatefulFun (_, _, _, Group e) ->
+      default_alias e
     | _ -> raise (Reject "must set alias")
 
   (* Either `expr` or `expr AS alias` or `expr AS alias "doc"`, or
