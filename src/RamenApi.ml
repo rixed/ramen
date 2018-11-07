@@ -319,7 +319,7 @@ type get_timeseries_req =
     bucket_time : string [@ppp_rename "bucket-time"] [@ppp_default "end"] ;
     (* One and only one of these two must be set (>0): *)
     num_points : int [@ppp_rename "num-points"] [@ppp_default 0] ;
-    num_points_ : int [@ppp_default 0] ;
+    num_points_ : int [@ppp_rename "num_points"] [@ppp_default 0] ;
     time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
     data : (string, timeseries_data_spec) Hashtbl.t ;
     export_duration : float [@ppp_rename "export-duration"]
