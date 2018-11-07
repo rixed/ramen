@@ -478,6 +478,7 @@ tests/fun_with_funcs.x: tests/fixtures/cars.x
 tests/case.x: tests/fixtures/n123.x
 tests/commit_before.x: tests/fixtures/n123.x tests/fixtures/cars.x
 tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
+tests/moveavg.x: tests/fixtures/n123.x
 tests/tuples.x: tests/fixtures/n123.x
 tests/groups.x: tests/fixtures/cars.x
 tests/port_scan.x: tests/fixtures/port_scan.x
@@ -502,6 +503,8 @@ tests/commit_before.success: tests/commit_before.x tests/fixtures/n123.x tests/f
 tests/word_count.success: tests/word_count.x
 tests/word_split.success: tests/word_split.x
 tests/basic_aggr.success: tests/basic_aggr.x tests/fixtures/n123.x tests/fixtures/cars.x
+tests/list_aggr.success: tests/list_aggr.x
+tests/moveavg.success: tests/moveavg.x tests/fixtures/n123.x
 tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
 tests/port_scan.success: tests/port_scan.x tests/fixtures/port_scan.x
 tests/ip.success: tests/ip.x tests/fixtures/mixture.x

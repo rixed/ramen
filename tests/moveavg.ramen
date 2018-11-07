@@ -1,0 +1,15 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  FROM tests/fixtures/n123/csv
+  SELECT
+    -- So when n = 3 the last values are 1, 2, and 3.
+    -- But since moveavg does not consider the last value (see
+    -- explanation about seasonal in CodeGenLib) the equivalent
+    -- is actually `avg _last_ last N`:
+    n,
+    moveavg(1, n) AS n1_1,
+    avg lag last 1 n AS n1_2,
+    moveavg(2, n) AS n2_1,
+    avg lag last 2 n AS n2_2
+  COMMIT AFTER n = 3;

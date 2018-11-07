@@ -1,0 +1,8 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  SELECT
+    sum [1; 2; 3] AS s1,
+    sum [u8?(1); u8?(2); u8?(3); NULL] AS s2,
+    sum keep nulls [u8?(1); u8?(2); u8?(3); NULL] AS s3
+  EVERY 1s;
