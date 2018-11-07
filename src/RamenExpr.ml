@@ -258,6 +258,8 @@ and stateful_fun =
   | MovingAvg of t * t * t (* period, how many seasons to keep, expression *)
   (* Simple linear regression *)
   | LinReg of t * t * t (* as above: period, how many seasons to keep, expression *)
+  (* TODO: in (most) functions below it should be doable to replace the
+   * variadic lists of expressions by a single expression that's a tuple. *)
   (* Multiple linear regression - and our first variadic function (the
    * last parameter being a list of expressions to use for the predictors) *)
   | MultiLinReg of t * t * t * t list

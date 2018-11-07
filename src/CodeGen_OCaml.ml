@@ -403,9 +403,10 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       (if nullable then "nullable_map " else "")
       print_non_null (from_typ, to_typ)
 
-let wrap_nullable ~nullable oc s =
-  if nullable then Printf.fprintf oc "NotNull (%s)" s
-  else Printf.fprintf oc "%s" s
+let wrap_nullable ~nullable oc f =
+  (* TODO: maybe catch ImNull? *)
+  if nullable then Printf.fprintf oc "NotNull (%t)" f
+  else f oc
 
 let freevar_name t = "fv_"^ string_of_int t.RamenExpr.uniq_num ^"_"
 
@@ -1166,8 +1167,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
     Printf.fprintf oc ")"
 
   | InitState, StatefulFun (_, _, _, AggrAnd _), (TBool as t) ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "%a true"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "%a true"
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, AggrAnd e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
@@ -1175,8 +1176,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, StatefulFun (_, g, n, AggrAnd _), TBool ->
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
   | InitState, StatefulFun (_, _, _, AggrOr _), (TBool as t) ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "%a false"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "%a false"
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, AggrOr e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
@@ -1186,8 +1187,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
 
   | InitState, StatefulFun (_, _, _, AggrSum _),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "%a Uint8.zero"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "%a Uint8.zero"
         (conv_from_to ~nullable:false) (TU8, t))
   | UpdateState, StatefulFun (_, g, n, AggrSum e),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
@@ -1197,7 +1198,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
     finalize_state ?state ~opc ~nullable n (my_state g) "identity" [] oc []
 
   | InitState, StatefulFun (_, _, _, AggrAvg _), TFloat ->
-    wrap_nullable ~nullable oc "CodeGenLib.avg_init"
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc "CodeGenLib.avg_init")
   | UpdateState, StatefulFun (_, g, n, AggrAvg e), (TFloat as t) ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.avg_add" oc [ Some t, PropagateNull ]
@@ -1206,7 +1208,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.avg_finalize" [] oc []
 
   | InitState, StatefulFun (_, _, _, (AggrFirst _|AggrLast _|AggrMax _|AggrMin _)), _ ->
-    wrap_nullable ~nullable oc "Null"
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc "Null")
   | UpdateState, StatefulFun (_, g, n, AggrMax e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.aggr_max" oc [ None, PropagateNull ]
@@ -1227,8 +1230,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
    * count number of entries per buckets. The 2 extra buckets are for "<min"
    * and ">max". *)
   | InitState, StatefulFun (_, _, _, AggrHistogram (_, min, max, num_buckets)), _ ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf "CodeGenLib.Histogram.init %s %s %d"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.Histogram.init %s %s %d"
         (Legacy.Printf.sprintf "%h" min)
         (Legacy.Printf.sprintf "%h" max)
         num_buckets)
@@ -1284,10 +1287,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Seasonal.add_multi_linreg" oc [ Some TFloat, PropagateNull ]
 
   | InitState, StatefulFun (_, _, _, ExpSmooth (_a,_)), (TFloat as t) ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "%a Uint8.zero"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "%a Uint8.zero"
         (conv_from_to ~nullable:false) (TU8, t))
-  | UpdateState, StatefulFun (_, g, n, ExpSmooth (a,e)), _ ->
+  | UpdateState, StatefulFun (_, g, n, ExpSmooth (a, e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ a ; e ]
       "CodeGenLib.smooth" oc
       [ Some TFloat, PropagateNull; Some TFloat, PropagateNull ]
@@ -1306,7 +1309,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Remember.finalize" [] oc []
 
   | InitState, StatefulFun (_, _, _, Distinct _es), _ ->
-    wrap_nullable ~nullable oc "CodeGenLib.Distinct.init ()"
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc "CodeGenLib.Distinct.init ()")
   | UpdateState, StatefulFun (_, g, n, Distinct es), _ ->
     update_state ?state ~opc ~nullable n (my_state g) es
       ~args_as:(Tuple 1) "CodeGenLib.Distinct.add" oc
@@ -1316,8 +1320,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Distinct.finalize" [] oc []
 
   | InitState, StatefulFun (_, _, _, Hysteresis _), t ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "%a true" (* Initially within bounds *)
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "%a true" (* Initially within bounds *)
         (conv_from_to ~nullable:false) (TBool, t))
   | UpdateState, StatefulFun (_, g, n, Hysteresis (meas, accept, max)), TBool ->
     (* TODO: shouldn't we promote everything to the most accurate of those types? *)
@@ -1330,8 +1334,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Hysteresis.finalize" [] oc []
 
   | InitState, StatefulFun (_, _, _, Top { c ; duration ; max_size ; _ }), _ ->
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "CodeGenLib.Top.init (%a) (%a)"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.Top.init (%a) (%a)"
         (* Default max_size is ten times c: *)
         (fun oc -> function
           | None ->
@@ -1359,8 +1363,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
 
   | InitState, StatefulFun (_, _, _, Last (c, _, _)), _ ->
     let t = (Option.get (typ_of c).typ).structure in
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "CodeGenLib.Last.init (%a %a)"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.Last.init (%a %a)"
         (conv_from_to ~nullable:false) (t, TU32)
         (emit_expr ?state ~context:Finalize ~opc) c)
   (* Special updater that use the internal count when no `by` expressions
@@ -1383,8 +1387,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       let c_typ = Option.get (typ_of e).typ in
       let c_typ = if n then { c_typ with nullable = false } else c_typ in
       any_constant_of_expr_type c_typ in
-    wrap_nullable ~nullable oc
-      (Printf.sprintf2 "RamenSampling.init (%a %a) (%a)"
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "RamenSampling.init (%a %a) (%a)"
         (conv_from_to ~nullable:false) (t, TU32)
         (emit_expr ?state ~context:Finalize ~opc) c
         (emit_expr ?state ~context:Finalize ~opc) init_c)
@@ -1402,7 +1406,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
    * function, there is no way ever to commit or use (finalize) a function
    * before it's been sent at least one value. *)
   | InitState, StatefulFun (_, _, _, Group _), _ ->
-    wrap_nullable ~nullable oc "[]"
+    wrap_nullable ~nullable oc (fun oc ->
+      String.print oc "[]")
   | UpdateState, StatefulFun (_, g, n, Group e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
       "CodeGenLib.Group.add" oc [ None, PassNull ]

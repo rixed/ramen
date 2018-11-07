@@ -53,7 +53,7 @@ let print_expr oc =
   | Nullability true -> p " must be nullable"
   | Sortable -> p " must be sortable"
   | Same -> p ": both arguments must have the same type"
-  | VecSame -> p ": vector elements must have the same type"
+  | VecSame -> p ": all vector elements must have the same type"
   | CaseCond (c, t) ->
       p ": %scondition must be a boolean"
         (string_of_index c t)
