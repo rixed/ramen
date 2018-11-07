@@ -490,7 +490,8 @@ let emit_constraints tuple_sizes out_fields oc e =
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
        * - The result is as nullable as x and its elements. *)
-      emit_assert oc (fun oc ->
+      let name = expr_err x Err.Numeric in
+      emit_assert ~name oc (fun oc ->
         let xid = t_of_expr x in
         Printf.fprintf oc
           "(or (and ((_ is list) %s) \
