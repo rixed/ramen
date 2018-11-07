@@ -570,8 +570,9 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "  SELECT\n" ;
     if need_reaggr then
       Printf.fprintf oc "    max_value, min_value,\n" ;
-    Printf.fprintf oc "    avg last %d float(not ok) >= %f AS firing\n"
+    Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
       (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
+    Printf.fprintf oc "      AS firing\n" ;
     Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
