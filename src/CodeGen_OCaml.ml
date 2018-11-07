@@ -1317,7 +1317,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
         (emit_expr ?state ~context:Finalize ~opc) init_c)
   | UpdateState, StatefulFun (_, g, n, Sample (_, e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
-      "RamenSampling.add" oc [ None, PropagateNull ]
+      "RamenSampling.add" oc [ None, PassNull ]
   | Finalize, StatefulFun (_, g, n, Sample (_, _)), _ ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       ~impl_return_nullable:true
@@ -1332,7 +1332,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     wrap_nullable ~nullable oc "[]"
   | UpdateState, StatefulFun (_, g, n, Group e), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
-      "CodeGenLib.Group.add" oc [ None, PropagateNull ]
+      "CodeGenLib.Group.add" oc [ None, PassNull ]
   | Finalize, StatefulFun (_, g, n, Group _), _ ->
     finalize_state ?state ~opc ~nullable n (my_state g)
       "CodeGenLib.Group.finalize" [] oc []
