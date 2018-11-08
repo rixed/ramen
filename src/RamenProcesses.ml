@@ -685,21 +685,13 @@ let synchronize_running conf autoreload_delay =
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
   in
-  (* Once we have forked some workers we must not allow an exception to
-   * terminate this function or we'd leave unsupervised workers behind: *)
-  let rec none_shall_pass f =
-    try f ()
-    with exn ->
-      print_exception exn ;
-      !logger.error "Crashed while supervising children, keep trying!" ;
-      Unix.sleepf (1. +. Random.float 1.) ;
-      (none_shall_pass [@tailcall]) f
-  in
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
   and running = Hashtbl.create 307 in
   let rec loop last_read =
-    none_shall_pass (fun () ->
+    (* Once we have forked some workers we must not allow an exception to
+     * terminate this function or we'd leave unsupervised workers behind: *)
+    restart_on_failure "process supervisor" (fun () ->
       process_workers_terminations conf running ;
       if !quit <> None && Hashtbl.length running = 0 then (
         !logger.info "All processes stopped, quitting."
@@ -767,7 +759,7 @@ let synchronize_running conf autoreload_delay =
         let delay = if !quit = None then 1. else 0.3 in
         Unix.sleepf delay ;
         RamenWatchdog.reset watchdog ;
-        loop last_read))
+        loop last_read)) ()
   in
   RamenWatchdog.enable watchdog ;
   loop 0. ;

@@ -112,6 +112,11 @@ let smt_solver =
                    ~env [ "smt-solver" ; "solver" ] in
   Arg.(value (opt string !RamenSmtTyping.smt_solver i))
 
+let fail_for_good =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.fail_for_good
+                   [ "fail-for-good" ] in
+  Arg.(value (flag i))
+
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -123,7 +128,8 @@ let supervisor =
       $ external_compiler
       $ bundle_dir
       $ max_simult_compilations
-      $ smt_solver),
+      $ smt_solver
+      $ fail_for_good),
     info ~doc:RamenConsts.CliInfo.supervisor "supervisor")
 
 (*

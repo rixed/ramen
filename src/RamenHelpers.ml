@@ -835,14 +835,18 @@ let hex_of =
     if n < 10 then Char.chr (zero + n)
     else Char.chr (ten + n)
 
+let fail_for_good = ref false
 let rec restart_on_failure ?(while_ = fun () -> true) what f x =
-  try f x
-  with e ->
-    print_exception e ;
-    if while_ () then (
-      !logger.error "Will restart %s..." what ;
-      Unix.sleepf (0.5 +. Random.float 0.5) ;
-      (restart_on_failure [@tailcall]) what f x)
+  if !fail_for_good then
+    f x
+  else
+    try f x
+    with e ->
+      print_exception e ;
+      if while_ () then (
+        !logger.error "Will restart %s..." what ;
+        Unix.sleepf (0.5 +. Random.float 0.5) ;
+        (restart_on_failure [@tailcall]) what f x)
 
 let md5 str = Digest.(string str |> to_hex)
 

@@ -155,6 +155,7 @@ struct
     "Max number of compilations to perform simultaneously"
   let smt_solver =
     "Command to run the SMT solver (with %s in place of the SMT2 file name)"
+  let fail_for_good = "For tests: do not restart after a crash"
   let param = "Override parameter's P default value with V"
   let program_globs = "Program names"
   let root_path = "Path where to find other programs"

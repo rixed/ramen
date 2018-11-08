@@ -44,7 +44,7 @@ let check_binocle_errors () =
 
 let supervisor conf daemonize to_stdout to_syslog autoreload
                use_external_compiler bundle_dir max_simult_compils
-               smt_solver () =
+               smt_solver fail_for_good_ () =
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   if to_stdout && daemonize then
@@ -54,6 +54,8 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   if to_syslog then
     init_syslog conf.C.log_level
   else (
+    (* Controls all calls to restart_on_failure: *)
+    fail_for_good := fail_for_good_ ;
     let logdir =
       if to_stdout then None
       else Some (conf.C.persist_dir ^"/log/supervisor") in
