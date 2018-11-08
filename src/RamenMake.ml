@@ -41,7 +41,8 @@ type check = string -> string -> bool
 
 (* Using files presence and modification time.
  * Notice that if modification time of target = modification time of source then we
- * have to rebuild (but we make sure the target will be > next time!) *)
+ * have to rebuild (but we make sure the target will be > next time!)
+ * Fails if src_file does not exist. *)
 let target_is_older src_file target_file =
   let st = mtime_of_file src_file in
   let wait_source_in_past () =

@@ -23,7 +23,7 @@ Before do |scenario|
 
   # Reset some ENV:
   ENV['RAMEN_PERSIST_DIR'] = $tmp_dir + '/ramen_persist_dir'
-  # Clear this or we might have long, unexpected backtraces on stderr:
+  # Clear this or we might have longer than expected backtraces on stderr:
   ENV['OCAMLRUNPARAM'] = nil
   # Also, by default we want a specific setting for experiments:
   ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
