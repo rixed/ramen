@@ -14,21 +14,21 @@ module P = C.Program
 
 type bucket =
   (* Hopefully count will be small enough that sum can be tracked accurately *)
-  { mutable count : int ; mutable sum : float ;
+  { mutable count : float ; mutable sum : float ;
     mutable min : float ; mutable max : float }
 
 let print_bucket oc b =
-  Printf.fprintf oc "{ count = %d; sum = %f; min = %f; max = %f }"
+  Printf.fprintf oc "{ count = %f; sum = %f; min = %f; max = %f }"
     b.count b.sum b.min b.max
 
 (* [nt] is the number of time steps while [nc] is the number of data fields: *)
 let make_buckets nt nc =
   Array.init nt (fun _ ->
     Array.init nc (fun _ ->
-      { count = 0 ; sum = 0. ; min = max_float ; max = min_float }))
+      { count = 0. ; sum = 0. ; min = max_float ; max = min_float }))
 
-let pour_into_bucket b bi ci v =
-  b.(bi).(ci).count <- succ b.(bi).(ci).count ;
+let pour_into_bucket b bi ci v r =
+  b.(bi).(ci).count <- b.(bi).(ci).count +. r ;
   b.(bi).(ci).min <- min b.(bi).(ci).min v ;
   b.(bi).(ci).max <- max b.(bi).(ci).max v ;
   b.(bi).(ci).sum <- b.(bi).(ci).sum +. v
@@ -42,13 +42,13 @@ let bucket_of_time since dt t =
   (t -. (i *. dt)) /. dt
 
 let bucket_sum b =
-  if b.count = 0 then None else Some b.sum
+  if b.count = 0. then None else Some b.sum
 let bucket_avg b =
-  if b.count = 0 then None else Some (b.sum /. float_of_int b.count)
+  if b.count = 0. then None else Some (b.sum /. b.count)
 let bucket_min b =
-  if b.count = 0 then None else Some b.min
+  if b.count = 0. then None else Some b.min
 let bucket_max b =
-  if b.count = 0 then None else Some b.max
+  if b.count = 0. then None else Some b.max
 
 (* Enumerates all the time*values.
  * Returns the array of factor-column and the Enum.t of data.
@@ -149,13 +149,13 @@ let get conf ?duration num_points since until where factors
               (* Values on the edge should contribute in proportion to overlap: *)
               let v1 = v *. (1. -. r1) and v2 = v *. r2 in
               if bi1 > 0 && bi1 < Array.length buckets then
-                pour_into_bucket buckets bi1 i v1 ;
+                pour_into_bucket buckets bi1 i v1 (1. -. r1) ;
               if bi2 > 0 && bi2 < Array.length buckets then
-                pour_into_bucket buckets bi2 i v2 ;
+                pour_into_bucket buckets bi2 i v2 r2 ;
               v, bi1 + 1, bi2 - 1
             ) in
           for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
-            pour_into_bucket buckets bi i v
+            pour_into_bucket buckets bi i v 1.
           done
         ) v
       ) vis)) ;
