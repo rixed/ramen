@@ -37,7 +37,7 @@ let pour_into_bucket b bi ci v =
  * (between 0 inc. and 1 excl.) *)
 let bucket_of_time since dt t =
   let t = t -. since in
-  let i = ceil (t /. dt) in
+  let i = floor (t /. dt) in
   int_of_float i,
   (t -. (i *. dt)) /. dt
 
@@ -130,6 +130,7 @@ let get conf ?duration num_points since until where factors
           Hashtbl.add per_factor_buckets k buckets ;
           buckets in
       let bi1, r1 = bucket_of_time t1 and bi2, r2 = bucket_of_time t2 in
+      !logger.debug "bi1=%d (r1=%f), bi2=%d (r2=%f)" bi1 r1 bi2 r2 ;
       (* If bi2 ends up right on the boundary, speed things up by shortening
        * the range: *)
       let bi2, r2 =
