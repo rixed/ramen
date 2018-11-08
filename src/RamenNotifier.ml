@@ -97,10 +97,10 @@ let sqllite_insert conf file insert_q create_q =
   let open SqliteHelpers in
   let handle = db_open file in
   let db_fail err q =
-    let e = Printf.sprintf "Cannot %S into sqlite DB %S: %s"
-              q file (Rc.to_string err) in
     IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
-    failwith e in
+    Printf.sprintf "Cannot %S into sqlite DB %S: %s"
+      q file (Rc.to_string err) |>
+    failwith in
   let exec_or_fail q =
     match exec handle q with
     | Rc.OK -> ()
