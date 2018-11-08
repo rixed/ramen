@@ -23,7 +23,7 @@ Feature: test ramen tail
     And test.ramen is compiled
     And ramen supervisor is started
     And program test is running
-    And I wait 2 seconds
+    And I wait 3 seconds
 
   Scenario: I can retrieve the first 2 lines using tail.
     When I run ramen with arguments tail --min-seq 0 --max-seq 1 test/gen
