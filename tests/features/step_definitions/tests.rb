@@ -162,6 +162,12 @@ Given /^(ramen .*) is started$/ do |cmd|
   end
 end
 
+Then /^(ramen .*) must still be running/ do |cmd|
+  expect($daemon_pids[cmd]).to be_truthy
+  ps_out = `ps -p #{$daemon_pids[cmd]} -o comm`
+  expect(ps_out).to match(/^ramen\b/)
+end
+
 Given /^no worker must be running$/ do
   `ramen ps`.lines.length == 0
 end
@@ -210,7 +216,7 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   end
   programs.list_split.each do |prog|
     if not running.include? prog
-      expect(system("ramen run '#{prog}.x'")).to eq true
+      expect(system("ramen run --src-file '#{prog}.ramen' '#{prog}.x'")).to eq true
     end
   end
 end
