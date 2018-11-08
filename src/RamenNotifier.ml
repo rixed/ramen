@@ -71,13 +71,15 @@ let execute_cmd conf cmd =
   let cmd_name = "notifier exec" in
   match run_coprocess ~max_count:max_exec cmd_name cmd with
   | None ->
-      !logger.error "Cannot execute %S" cmd ;
-      IntCounter.inc (stats_send_fails conf.C.persist_dir)
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      Printf.sprintf "Cannot execute %S" cmd
+      |> failwith
   | Some (Unix.WEXITED 0) -> ()
   | Some status ->
-      !logger.error "Cannot execute %S: %s"
-        cmd (string_of_process_status status) ;
-      IntCounter.inc (stats_send_fails conf.C.persist_dir)
+      IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
+      Printf.sprintf "Cannot execute %S: %s"
+        cmd (string_of_process_status status) |>
+      failwith
 
 let log_str conf str =
   IntCounter.inc ~labels:["via", "syslog"] (stats_count conf.C.persist_dir) ;
