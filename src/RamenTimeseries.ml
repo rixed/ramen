@@ -141,10 +141,11 @@ let get conf ?duration num_points since until where factors
          * instead of distributing the value (TODO: extensive values) *)
         let v = RamenTypes.float_of_scalar tuple.(vi) in
         Option.may (fun v ->
-          let v, bi1, bi2 =
+          let v, bi1, bi2, r =
             if bi1 = bi2 then (
               (* Special case: just soften v *)
-              abs_float (r2 -. r1) *. v, bi1, bi2
+              let r = r2 -. r1 in
+              abs_float r *. v, bi1, bi2, r
             ) else (
               (* Values on the edge should contribute in proportion to overlap: *)
               let v1 = v *. (1. -. r1) and v2 = v *. r2 in
@@ -152,10 +153,10 @@ let get conf ?duration num_points since until where factors
                 pour_into_bucket buckets bi1 i v1 (1. -. r1) ;
               if bi2 > 0 && bi2 < Array.length buckets then
                 pour_into_bucket buckets bi2 i v2 r2 ;
-              v, bi1 + 1, bi2 - 1
+              v, bi1 + 1, bi2 - 1, 1.
             ) in
           for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
-            pour_into_bucket buckets bi i v 1.
+            pour_into_bucket buckets bi i v r
           done
         ) v
       ) vis)) ;
