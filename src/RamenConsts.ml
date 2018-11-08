@@ -190,6 +190,7 @@ struct
   let time_step = "Duration between two points"
   let data_fields = "Fields to retrieve values from"
   let consolidation = "Consolidation function"
+  let bucket_time = "Selected bucket time"
   let short = "Display only a short summary"
   let sort_col =
     "Sort the operation list according to this column \

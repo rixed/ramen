@@ -474,8 +474,8 @@ let tail conf func_name with_header sep null raw
  *)
 
 let timeseries conf since until with_header where factors num_points
-               time_step sep null func_name data_fields consolidation duration
-               () =
+               time_step sep null func_name data_fields consolidation
+               bucket_time duration () =
   init_logger conf.C.log_level ;
   let num_points =
     if num_points <= 0 && time_step <= 0. then 100 else num_points in
@@ -485,8 +485,8 @@ let timeseries conf since until with_header where factors num_points
   let num_points, since, until =
     compute_num_points time_step num_points since until in
   let columns, timeseries =
-    get conf ~duration num_points since until
-        where factors ~consolidation func_name data_fields in
+    get conf ~duration num_points since until where factors
+        ~consolidation ~bucket_time func_name data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
   if with_header then (

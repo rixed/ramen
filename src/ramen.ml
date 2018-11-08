@@ -604,6 +604,14 @@ let consolidation =
     [ p "min" ; p "max" ; p "avg" ; p "sum" ] in
   Arg.(value (opt (enum cons_func) "avg" i))
 
+let bucket_time =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.bucket_time
+                   ~docv:"begin|middle|end" ["bucket-time"] in
+  let open RamenTimeseries in
+  let cons_func =
+    [ "begin", Begin ; "middle", Middle ; "end", End ] in
+  Arg.(value (opt (enum cons_func) Begin i))
+
 let factors =
   let i = Arg.info ~doc:RamenConsts.CliInfo.factors
                    ~docv:"FIELD" ["f"; "factor"] in
@@ -625,6 +633,7 @@ let timeseries =
       $ func_name 0
       $ data_fields 1
       $ consolidation
+      $ bucket_time
       $ duration),
     info ~doc:RamenConsts.CliInfo.timeseries "timeseries")
 
