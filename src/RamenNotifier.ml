@@ -443,8 +443,8 @@ let contact_via conf item =
         (match item.rcvd_stop with
         | Some t -> ("stop", string_of_float t) :: dict
         | None -> dict) in
-  let dict = List.rev_append dict item.notif.parameters in
-  let dict = List.rev dict (* Allow parameters to overwrite builtins *) in
+  (* Allow parameters to overwrite builtins: *)
+  let dict = List.rev_append item.notif.parameters dict in
   let exp ?q ?n = subst_dict dict ?quote:q ?null:n in
   let open Contact in
   (match item.contact with
