@@ -230,8 +230,8 @@ let alert_info_of_alert_source enabled = function
 let alerts_of_column conf programs func column =
   (* All files with extension ".alert" in this directory is supposed to be
    * an alert description: *)
-  let func_path = F.path func in
-  let dir = C.api_alerts_root conf ^"/"^ func_path ^"/"^ column in
+  let alert_func_path = "alerts/"^ F.path func in
+  let dir = C.api_alerts_root conf ^"/"^ alert_func_path ^"/"^ column in
   if is_directory dir then
     Sys.readdir dir |>
     Array.fold_left (fun lst f ->
@@ -243,7 +243,7 @@ let alerts_of_column conf programs func column =
         | a ->
             let id = Filename.remove_extension f in
             let program_name =
-              RamenName.program_of_string (func_path ^"/"^ column ^"/"^ id) in
+              RamenName.program_of_string (alert_func_path ^"/"^ column ^"/"^ id) in
             !logger.debug "Program implementing alert %s: %s"
               id (RamenName.string_of_program program_name) ;
             let enabled = Hashtbl.mem programs program_name in
@@ -653,7 +653,9 @@ let set_alerts conf msg =
     Hashtbl.iter (fun column alerts ->
       (* All non listed alerts must be suppressed *)
       let parent =
-        RamenName.program_of_string (table ^"/"^ column) in
+        (* It's safer to anchor alerts in a different subtree
+         * (for instance to avoid configurator "managing" them) *)
+        RamenName.program_of_string ("alerts/"^ table ^"/"^ column) in
       let dir =
         C.api_alerts_root conf ^"/"^
         RamenName.path_of_program parent in
@@ -664,7 +666,7 @@ let set_alerts conf msg =
             let id = Filename.remove_extension f in
             let program_name =
               RamenName.string_of_program parent ^"/"^ id in
-            old_alerts:= Set.String.add program_name !old_alerts)) ;
+            old_alerts := Set.String.add program_name !old_alerts)) ;
       List.iter (fun alert ->
         (* Check the alert: *)
         if alert.duration < 0. then
@@ -687,7 +689,7 @@ let set_alerts conf msg =
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
         let id = alert_id column alert_source in
-        let program_name = table ^"/"^ column ^"/"^ id in
+        let program_name = "alerts/"^ table ^"/"^ column ^"/"^ id in
         new_alerts := Set.String.add program_name !new_alerts ;
         save_alert conf program_name alert_source
       ) alerts
