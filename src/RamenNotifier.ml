@@ -434,7 +434,8 @@ let contact_via conf item =
       "alert_id", Uint64.to_string item.alert_id ;
       "start", string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
       "worker", item.notif.worker ;
-      "firing", string_of_bool (item.notif.firing |? true) ] in
+      "firing", string_of_bool (item.notif.firing |? true) ;
+      "certainty", string_of_float item.notif.certainty ] in
   (* Add "stop" if we have it (or let it be NULL) *)
   let dict =
     match item.event_stop with
