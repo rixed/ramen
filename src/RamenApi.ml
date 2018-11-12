@@ -246,7 +246,10 @@ let alerts_of_column conf programs func column =
               RamenName.program_of_string (alert_func_path ^"/"^ column ^"/"^ id) in
             !logger.debug "Program implementing alert %s: %s"
               id (RamenName.string_of_program program_name) ;
-            let enabled = Hashtbl.mem programs program_name in
+            let enabled =
+              match Hashtbl.find programs program_name with
+              | exception Not_found -> false
+              | mre, _get_rc -> mre.C.status = MustRun in
             alert_info_of_alert_source enabled a :: lst
       else lst
     ) []
