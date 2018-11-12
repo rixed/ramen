@@ -24,6 +24,8 @@ RUN echo "version @PACKAGE_VERSION@~0"
 # Install ramen
 COPY ramen.@PACKAGE_VERSION@.deb /tmp
 RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
+# And z3
+COPY z3 /usr/bin/z3
 
 # Environment
 ENV RAMEN_PERSIST_DIR=/ramen

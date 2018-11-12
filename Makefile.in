@@ -6,6 +6,7 @@ DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
+Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
 override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
 override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
@@ -607,7 +608,7 @@ ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
 	@$(RM) -r tmp/ramen
 	@install -d tmp/ramen
 	@install $(INSTALLED_BIN) tmp/ramen/
-	@install /usr/bin/z3 tmp/ramen/
+	@install $(Z3) tmp/ramen/
 	@for f in $(INSTALLED_BIN) z3; do strip tmp/ramen/$$(basename $$f); done
 	@chmod -R a+x tmp/ramen/*
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-examples
@@ -630,7 +631,11 @@ docker-build-builder: docker/Dockerfile-builder
 		$(RM) docker/Dockerfile-builder.$$distrib ;\
 	done
 
-docker-build-image: docker-latest
+docker/z3: $(Z3)
+	@echo 'Copying z3 from system to docker/'
+	@cp $< $@
+
+docker-build-image: docker-latest docker/z3
 	@echo 'Tagging latest docker image to v$(VERSION)'
 	@docker tag rixed/ramen:latest rixed/ramen:v$(VERSION)
 
