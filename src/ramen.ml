@@ -377,7 +377,7 @@ let program =
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
 let output_file =
-  let i = Arg.info ~doc:RamenConsts.CliInfo.program_name
+  let i = Arg.info ~doc:RamenConsts.CliInfo.output_file
                    ~docv:"FILE" [ "o" ] in
   Arg.(value (opt (some string) None i))
 
