@@ -435,7 +435,9 @@ let contact_via conf item =
       "start", string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
       "worker", item.notif.worker ;
       "firing", string_of_bool (item.notif.firing |? true) ;
-      "certainty", string_of_float item.notif.certainty ] in
+      "certainty", string_of_float item.notif.certainty ;
+      (* A few envvars might also be interesting: *)
+      "hostname", getenv ~def:"" "HOSTNAME" ] in
   (* Add "stop" if we have it (or let it be NULL) *)
   let dict =
     match item.event_stop with
