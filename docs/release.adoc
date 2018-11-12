@@ -13,36 +13,20 @@ endif::[]
 :lang: en
 :encoding: utf-8
 
-1. `git grep '${old_version}'` -> replace by the new version.
-   of course other versions listed in RamenVersions.ml have been
-   upgraded at the same time as any related change, but it's worth
-   taking this opportunity to check.
+1. Upgrade version number in +configure.ac+. Run +autoconf+ as the
+   +configure+ script is in git.
 
 2. `git commit -m 'Bump version to ${new_version}' && git push`
 
 3. `git tag v${new_version} && git push --tags`
 
-4. create a new ramen version in ocalme repository by copying previous version
+4. `./configure && make && make reinstall bin_dir=~/.opam/ramen/bin && make bundle && make deb`
 
-5. copy ramen/opam into ocalme repository in `ramen/ramen.${new_version}/opam`
+5. Copy the generated +.deb+ file into the +docker+ subdirectory.
 
-6. wget from github the latest tag and md5sum it to fix the url file
+6. Optionally, `docker pull debian:stretch` and docker pull `debian:jessie`
 
-7. `git add * && git commit -m 'Ramen v${new_version}'`
+7. build the final image: `make docker-build-image`
 
-8. Optionally, `docker pull debian:stretch` and docker pull `debian:jessie`
-
-9. `make docker-build-builder` to build the builder docker images
-
-10. Using these builder, build the deb package:
-    `docker run -ti --name builder --rm rixed/ramen-builder:stretch`.
-    Then press 1 (build).
-
-11. *before* quitting the builder, extract the debian package and copy
-    in into the docker directory:
-    `docker cp builder:/root/ramen/ramen.${new_version}.deb docker/`
-
-12. build the final image: `make docker-build-image`
-
-13. Push all the images: `make docker-push`
+8. Push all the images: `make docker-push`
 

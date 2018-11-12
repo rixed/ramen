@@ -24,8 +24,6 @@ endif::[]
 
 - Alerter as a separate service, or better integration with a good-enough FOSS alerter;
 
-- Default configuration for junkie.
-
 == Annoyances To Be Addressed
 
 - Integer overflows;

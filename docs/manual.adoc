@@ -22,7 +22,9 @@ toward network monitoring.
 Unlike other stream processors that are designed to scale to many servers,
 Ramen is designed to be efficient on a single (or very few) servers.
 
-It is mainly composed of a compiler that turns queries like these:
+It is mainly composed of these components:
+
+- a compiler that turns queries like these into a machine code program:
 
 [source,sql]
 ----
@@ -33,22 +35,20 @@ SELECT
   sum bytes / (out.last - out.first) AS bytes_per_secs,
   sum packets / (out.last - out.first) AS packets_per_secs
 GROUP BY source, iface
-COMMIT WHEN out.last - out.first > 300
+COMMIT BEFORE out.last - out.first > 300
 ----
 
-...into a machine code program, and of a process supervisor that runs those
-in parallel and connects them so that data flows between them efficiently.
+- a process supervisor that runs those programs in parallel and connects them
+  so that data flows between them efficiently;
+
+- a set of command line tools or HTTP services to retrieve values.
 
 Processed events are tuples made of arbitrary fields which actual types are
 statically inferred at compile time to avoid runtime failures and improve
 speed.
 
-The stream of tuples flows directly from one worker to the next using
+The streams of tuples flow directly from one worker to the next using
 efficient memory-mapped xref:RingBuffer[ring buffers].
-
-Other tools to feed data into Ramen from external systems or to extract data
-from Ramen into external systems will be released separately with their own
-documentation.
 
 == Glossary
 
@@ -69,7 +69,7 @@ documentation.
   What happens to that group after the result tuple has been output depends on
   the flush clause; By default it will merely be reset (tumbling windows),
   but it is also possible to resume the aggregation from where it was or to
-  expels oldest events (sliding window) or any other behavior.
+  expels oldest events (sliding window) or even other behaviors.
 
 [[Event]]Event::
   An individual message to be processed. In Ramen events are
@@ -84,9 +84,15 @@ documentation.
 [[Group]]Group::
   Within the context of an operation, a `group` refers to an aggregation group,
   ie. the set of tuples sharing the same key and aggregated together. This
-  group lives until it is committed, when it can be deleted or downsized
-  before resuming the operation. Aggregation groups are therefore closely
-  related to the concept of xref:Windowing[windows].
+  group lives (in RAM) until it is committed, when it can be deleted or
+  downsized before resuming the operation. Aggregation groups are therefore
+  closely related to the concept of xref:Windowing[windows].
+
+[[Notification]]Notification::
+  In addition to tuples, workers also output so called `notifications` using
+  the `notify` clause. Those follow a particular format and are not intended
+  for other workers but for the notifier process, that may eventually send an
+  alert to users.
 
 [[Nullable]]Nullable::
   Said of a tuple field that can hold the NULL value. Most fields should not be
@@ -133,22 +139,21 @@ documentation.
 [[Tuple]]Tuple::
   What is consumed and produced by functions.  A set of values, each of its
   own type. Those values are called "fields" and beside its type a field also
-  has a name that must be unique in the tuple.  Tuples are the only
-  constructed data type, and must itself be composed only of primitive types.
-  For instance, +{ "name": "John Dae"; "age": 42; "is_male": true }+ is an
-  example of a tuple with 3 fields, represented in JSON.
+  has a name that must be unique in the tuple.
+  For instance, +{ "name": "John Dae"; "age": 42; "is_male": true }+ is a
+  tuple with 3 fields (here represented in JSON for convenience).
 
 [[Windowing]]Windowing::
   In a xref:StreamProcessor[stream processor], _windowing_ refers to how
-  incoming events are batched before processing. Usually windows are either
+  incoming events are batched for aggregation. Usually windows are either
   sliding or tumbling, with variations (see for instance
   https://i.stack.imgur.com/mm06A.jpg[this picture]). Ramen is rather unique
   in this regard that it has no notion of a window, especially not one bound
   to time, since it has no preconception of time. Instead, Ramen has explicit
   conditions for when to stop an aggregation (to xref:Commit[commit] the
   group), and what to keep from one aggregation to the next. This makes it
-  possible to configure any conceivable windows, including tumbling, sliding
-  or non sequential "windows".
+  possible to implement many windowing behavior, including tumbling and
+  sliding windows.
 
 [[Worker]]Worker::
   One of the possibly many executables generated and run by Ramen to carry out
@@ -156,10 +161,10 @@ documentation.
 
 == The Language Reference
 
-We describe first values, then expressions, then operations, and finally
+Values are described first, then expressions, then operations, and finally
 programs.  All these concepts reference each others so there is no reading
-order that would save you from jumping around. First reading may not be clear
-but everything should fall into place eventually.
+order that would save the reader from jumping around. First reading may not be
+clear but everything should fall into place eventually.
 
 === Basic Syntax
 

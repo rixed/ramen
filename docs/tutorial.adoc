@@ -31,7 +31,7 @@ The docker image is about 150MiB compressed. Run it with:
 [source,shell]
 ----
 $ docker run --name=ramen-test \
-    -v $HOME/ramen_root:/ramen/root \
+    -v $HOME/ramen_root:/ramen/ramen_root \
     -p 25826:25826/udp -p 2055:2055/udp \
     rixed/ramen:demo
 ----
@@ -111,11 +111,14 @@ Note that comments are introduced with +--+ as in SQL, and also like SQL
 ramen language is mostly case insensitive (but for field and operation
 names though).
 
+This program thus defines two operations, named `netflow` and `collectd`,
+with whatever content will be received using those protocols.
+
 You can then compile this file with:
 
 [source,shell]
 ----
-$ ramen compile --root=root root/demo.ramen
+$ ramen compile ramen_root/demo.ramen --as demo
 ----
 
 and if all goes well you should get see something along those lines:
@@ -125,14 +128,15 @@ and if all goes well you should get see something along those lines:
 10h35m34: Parsing program demo
 10h35m34: Typing program demo
 10h35m34: Compiling for program demo
-10h35m34: Compiling "root/demo_9cecc492bd21247f054b8f85f8335637.ml"
+10h35m34: Compiling "/root/demo_bdbdfbabfe4ad6b3f387f95b4945423f.ml"
+10h35m34: Compiling "/root/demo_9cecc492bd21247f054b8f85f8335637.ml"
 10h35m34: Linking "root/demo_casing.ml"
 ----
 
 informing you that your program has been successfully parsed, typed,
 compiled and linked. You should now have a +demo.x+ executable file
 in your +ramen_root+ directory. You could try to run it but that would
-not give anything useful at the moment:
+not give anything useful at that stage:
 
 [source,shell]
 ----
