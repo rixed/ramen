@@ -330,11 +330,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
         Hashtbl.fold (fun program_name (mre, get_rc) lines ->
           if not all && mre.C.status <> MustRun then lines
           else match get_rc () with
-          | exception e ->
-            let fq_name =
-              red (RamenName.string_of_program program_name ^"/*") in
-            [| Some (ValStr fq_name) ;
-               Some (ValStr (Printexc.to_string e)) |] :: lines
+          | exception _ -> (* which has been logged already *) lines
           | prog ->
             List.fold_left (fun lines func ->
               let fq_name = RamenName.string_of_program program_name

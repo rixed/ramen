@@ -96,9 +96,7 @@ let make_dot_align vals width =
     right_justify s
 
 let print_table_pretty ~with_header ~na head lines =
-  (* Choose a formatter according to the type of the first line...: *)
-  let num_cols = match lines with [] -> 0 | hd::_ -> Array.length hd  in
-  let fmts = Array.create num_cols None in
+  let fmts = Array.create (Array.length head) None in
   (try
     List.iter (fun line ->
       let has_unset =
