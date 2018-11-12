@@ -560,7 +560,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
         | tx ->
             (match to_merge.timed_out with
             | Some timed_out ->
-                !logger.info "Source #%d is back after %fs"
+                !logger.debug "Source #%d is back after %fs"
                   i (Unix.gettimeofday () -. timed_out) ;
                 to_merge.timed_out <- None
             | None -> ()) ;
