@@ -432,19 +432,22 @@ let contact_via conf item =
   let dict =
     [ "name", item.notif.notif_name ;
       "alert_id", Uint64.to_string item.alert_id ;
-      "start", string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
+      "start", nice_string_of_float (item.notif.event_time |? item.notif.rcvd_time) ;
       "worker", item.notif.worker ;
       "firing", string_of_bool (item.notif.firing |? true) ;
-      "certainty", string_of_float item.notif.certainty ;
-      (* A few envvars might also be interesting: *)
-      "hostname", getenv ~def:"" "HOSTNAME" ] in
+      "certainty", nice_string_of_float item.notif.certainty ;
+      (* Those are for convenience, before we can call actual functions
+       * from the templates: *)
+      "hostname", getenv ~def:"" "HOSTNAME" ;
+      "certainty_percent", 100. *. item.notif.certainty |>
+                           round_to_int |> string_of_int ] in
   (* Add "stop" if we have it (or let it be NULL) *)
   let dict =
     match item.event_stop with
-    | Some t -> ("stop", string_of_float t) :: dict
+    | Some t -> ("stop", nice_string_of_float t) :: dict
     | None ->
         (match item.rcvd_stop with
-        | Some t -> ("stop", string_of_float t) :: dict
+        | Some t -> ("stop", nice_string_of_float t) :: dict
         | None -> dict) in
   (* Allow parameters to overwrite builtins: *)
   let dict = List.rev_append item.notif.parameters dict in
@@ -669,7 +672,7 @@ let start conf notif_conf_file rb max_fpr =
     !logger.info "Received notification from %s: %S %s"
       worker notif_name
       (if firing = Some false then "ended"
-       else ("started ("^ string_of_float certainty ^" certainty)")) ;
+       else ("started ("^ nice_string_of_float certainty ^" certainty)")) ;
     (* Each time we receive a notification we have to assign it to a team,
      * and then use the configured channel to notify it. We load the
      * configuration anew each time, relying on ppp_of_file caching
