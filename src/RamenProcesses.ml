@@ -671,6 +671,9 @@ let synchronize_running conf autoreload_delay =
     if !to_kill <> [] then !logger.debug "Starting the kills" ;
     List.iter (try_kill conf must_run) !to_kill ;
     if !to_start <> [] then !logger.debug "Starting the starts" ;
+    (* FIXME: sort it so that parents are started before children,
+     * so that in case of linkage error we do not end up with orphans
+     * preventing parents to be run. *)
     List.iter (fun proc ->
       try_start conf must_run proc ;
       (* If we had to compile a program this is worth resetting the watchdog: *)
