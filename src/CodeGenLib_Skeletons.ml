@@ -217,7 +217,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
               serialize_tuple file_spec.RamenOutRef.field_mask
             and tup_sizer =
               sersize_of_tuple file_spec.RamenOutRef.field_mask in
-            let last_retry = ref 0. in
+            let last_check_outref = ref 0.
+            and quarantine_until = ref 0.
+            and quarantine_delay = ref 30. in
             let rb_writer start_stop tuple =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
@@ -228,17 +230,41 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                * retrying to write to the same child. *)
               RingBufLib.retry_for_ringbuf
                 ~while_:(fun () ->
-                  (* Can't us CodeGenLib_IO.now if we are stuck in output: *)
+                  if !quit <> None then false else
+                  (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
                   let now = Unix.gettimeofday () in
-                  !quit = None &&
                   (* Also check from time to time that we are still supposed to
                    * write in there (we check right after the first error to
                    * quickly detect it when a child disappear): *)
-                  (now < !last_retry +. 3. || (
-                    last_retry := now ;
-                    RamenOutRef.mem rb_ref_out_fname fname)))
-                ~delay_rec:sleep_out (fun () ->
-                  output rb tup_serializer tup_sizer start_stop tuple) ()
+                  if now < !last_check_outref +. 3. then true else (
+                    last_check_outref := now ;
+                    if not (RamenOutRef.mem rb_ref_out_fname fname) then false
+                    else (
+                      (* At this point, we have been failing for more than 3s
+                       * for a child that's still in our out_ref, and should
+                       * consider quarantine for a bit: *)
+                      !logger.error "Quarantining output %s" fname ;
+                      quarantine_delay := 30. ;
+                      quarantine_until := now +. jitter !quarantine_delay ;
+                      true)))
+                ~delay_rec:sleep_out
+                (fun () ->
+                  match !quarantine_until with
+                  | 0. ->
+                    output rb tup_serializer tup_sizer start_stop tuple
+                  | t ->
+                    if t < !CodeGenLib_IO.now then (
+                      try
+                        output rb tup_serializer tup_sizer start_stop tuple ;
+                        (* Good boy! *)
+                        !logger.info "Resuming outputting to %s" fname ;
+                        quarantine_delay := 30. ;
+                        quarantine_until := 0.
+                      with e ->
+                        quarantine_delay := !quarantine_delay *. 1.5 ;
+                        quarantine_until :=
+                          !CodeGenLib_IO.now +.  jitter !quarantine_delay ;
+                        raise e)) ()
             in
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
