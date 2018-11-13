@@ -442,50 +442,51 @@ let really_try_start conf now must_run proc =
   assert (proc.pid = None) ;
   let parents, children = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
-  let parents_ok =
-    List.fold_left (fun ok parent ->
-      if match parent with
-         | None, _ ->
-            true (* Parent runs in the very program we want to start *)
-         | Some rel_p_prog, p_func ->
-            let p_prog =
-              RamenName.(program_of_rel_program proc.func.program_name rel_p_prog) in
+  let check_parents () =
+    List.iter (function
+       | None, _ ->
+          () (* Parent runs in the very program we want to start *)
+       | Some rel_p_prog, p_func as parent ->
+          let p_prog =
+            RamenName.(program_of_rel_program proc.func.program_name rel_p_prog) in
+          let has_parent =
             List.exists (fun func ->
               func.F.program_name = p_prog && func.F.name = p_func
-            ) parents
-      then ok
-      else (
-        !logger.error "Parent of %s is missing: %a"
-          (RamenName.string_of_fq (F.fq_name proc.func))
-          F.print_parent parent ;
-        false)
-    ) true proc.func.parents in
+            ) parents in
+          if not has_parent then
+            Printf.sprintf2 "Parent of %s is missing: %a"
+              (RamenName.string_of_fq (F.fq_name proc.func))
+              F.print_parent parent |>
+            failwith
+    ) proc.func.parents in
   let check_linkage p c =
-    try check_is_subtype c.F.in_type p.F.out_type ;
-        true
+    try check_is_subtype c.F.in_type p.F.out_type
     with Failure msg ->
-      !logger.error "Input type of %s (%a) is not compatible with \
-                     output type of %s (%a): %s"
+      Printf.sprintf2
+        "Input type of %s (%a) is not compatible with \
+         output type of %s (%a): %s"
         (RamenName.string_of_fq (F.fq_name c))
         RamenTuple.print_typ_names c.in_type
         (RamenName.string_of_fq (F.fq_name p))
         RamenTuple.print_typ_names p.out_type
-        msg ;
-      false in
-  let linkage_ok =
-    List.fold_left (fun ok p ->
-      check_linkage p proc.func && ok
-    ) true parents in
-  let linkage_ok =
-    List.fold_left (fun ok c ->
-      check_linkage proc.func c && ok
-    ) linkage_ok children in
-  if parents_ok && linkage_ok then
+        msg |>
+      failwith in
+  let parents_ok = ref false in (* This is benign *)
+  try
+    check_parents () ;
+    parents_ok := true ;
+    List.iter (fun p ->
+      check_linkage p proc.func
+    ) parents ;
+    List.iter (fun c ->
+      check_linkage proc.func c
+    ) children ;
     really_start conf proc parents children
-  else
+  with e ->
+    print_exception ~what:"Cannot start worker" e ;
+    (* Anything goes wrong when starting a node? Quarantine it! *)
     let delay =
-      (if parents_ok then 0. else 20.) +.
-      (if linkage_ok then 0. else 500.) in
+      if not !parents_ok then 20. else 600. in
     proc.quarantine_until <-
       now +. Random.float (max 90. delay)
 
@@ -555,8 +556,9 @@ let check_out_ref conf must_run =
       if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
         !logger.error "Operation %s outputs to %s, which is not read, fixing"
           (RamenName.string_of_fq (F.fq_name func)) fname ;
-        IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-        RamenOutRef.remove out_ref fname)
+        log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
+          IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
+          RamenOutRef.remove out_ref fname) ())
     ) outs ;
     (* Conversely, check that all children are in the out_ref of their
      * parent: *)
@@ -570,7 +572,8 @@ let check_out_ref conf must_run =
         !logger.error "Operation %s must output to %s but does not, fixing"
           (RamenName.string_of_fq (F.fq_name par_func))
           (RamenName.string_of_fq (F.fq_name func)) ;
-        RamenOutRef.add out_ref (input_spec conf par_func func))
+        log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
+          RamenOutRef.add out_ref (input_spec conf par_func func)) ())
     ) par_funcs
   ) must_run
 
@@ -680,7 +683,8 @@ let synchronize_running conf autoreload_delay =
        !quit = None
     then (
       last_checked_outref := now ;
-      check_out_ref conf must_run) ;
+      log_and_ignore_exceptions ~what:"checking out_refs"
+        (check_out_ref conf) must_run) ;
     if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []

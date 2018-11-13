@@ -319,11 +319,10 @@ let skip_list ~out_type ~in_type =
         loop (true :: v) (os', is')
       else (
         (* not possible: i must be in o *)
-        !logger.error "Field %s is not in its parent output" i.typ_name ;
-        assert false)
+        Printf.sprintf "Field %s is not in its parent output" i.typ_name |>
+        failwith)
     | [], _ ->
-      !logger.error "More inputs than parent outputs?" ;
-      assert false
+      failwith "More inputs than parent outputs?"
   in
   loop [] (ser_out, ser_in)
 
