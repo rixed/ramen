@@ -47,10 +47,11 @@ struct
     (* Assuming jsonrpc does not mix transport errors with applicative errors: *)
     http_msg
 
-  let wrap (id, _) f =
+  let wrap body (id, _) f =
     match f () with
     | exception e ->
-        print_exception ~what:("Answering request "^id) e ;
+        let what = Printf.sprintf "Answering request %S" body in
+        print_exception ~what e ;
         err id (match e with
           | ParseError _ | BadRequest _ -> Printexc.to_string e
           | e -> "Internal error: "^ Printexc.to_string e)
@@ -728,7 +729,7 @@ let router conf prefix =
     else
       let open JSONRPC in
       let req = parse body in
-      wrap req.id (fun () ->
+      wrap body req.id (fun () ->
         match String.lowercase_ascii req.method_ with
         | "version" -> version ()
         | "get-tables" -> get_tables conf req.params
