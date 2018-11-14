@@ -20,11 +20,29 @@ let round_to_int f =
   int_of_float (Float.round f)
 
 (* The original Float.to_string adds a useless dot at the end of
- * round numbers: *)
+ * round numbers, and likes to end with lots of zeroes: *)
 let nice_string_of_float v =
   let s = Float.to_string v in
   assert (String.length s > 0) ;
-  if s.[String.length s - 1] <> '.' then s else String.rchop s
+  match String.index s '.' with
+  | exception Not_found -> s
+  | i ->
+      let last_non_zero =
+        let rec loop j =
+          assert (j >= i) ;
+          if s.[j] <> '0' then j else loop (j - 1) in
+        loop (String.length s - 1) in
+      let has_trailling_dot = s.[last_non_zero] = '.' in
+      let n =
+        (String.length s - last_non_zero) - 1 +
+        (if has_trailling_dot then 1 else 0) in
+      String.rchop ~n s
+
+(*$= nice_string_of_float & ~printer:(fun x -> x)
+  "1.234" (nice_string_of_float 1.234)
+  "1.001" (nice_string_of_float 1.001)
+  "1"     (nice_string_of_float 1.)
+*)
 
 exception Timeout
 
