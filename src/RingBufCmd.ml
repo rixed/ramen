@@ -69,9 +69,10 @@ type func_status =
 let links conf no_abbrev show_all as_tree pretty with_header sort_col top
           pattern () =
   init_logger conf.C.log_level ;
-  if as_tree && (pretty || with_header || sort_col <> 1 || top <> None) then
+  if as_tree && (pretty || with_header || sort_col <> 1 || top <> None ||
+                 show_all) then
     failwith "Option --as-tree is not compatible with --pretty, --header, \
-              --sort, --top" ;
+              --sort, --top and --show-all" ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
@@ -132,14 +133,14 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     in
     let is_err = is_err1 || is_err2 in
     let ap s = if no_abbrev then s else abbrev_path s in
-    let parent = ap parent and child = ap child in
+    let parent_disp = ap parent and child_disp = ap child in
     let ap s = if no_abbrev then s else
                  abbrev_path ~known_prefix:conf.persist_dir s in
     let out_ref = ap out_ref and ringbuf = ap ringbuf in
-    is_err, parent, child,
+    is_err, parent, parent_disp, child,
     TermTable.[|
-      Some (ValStr parent) ;
-      Some (ValStr child) ;
+      Some (ValStr parent_disp) ;
+      Some (ValStr child_disp) ;
       Some (ValStr out_ref) ;
       Some (ValStr spec) ;
       Some (ValStr ringbuf) ;
@@ -186,44 +187,24 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
               links
             ) links prog.P.funcs
       ) programs []) in
-  (* Filter the links: *)
-  let filter_list =
-    List.filter_map (fun (is_err, parent, child, link) ->
-      if (Globs.matches pattern parent || Globs.matches pattern child) &&
-         (is_err || as_tree || show_all)
-      then Some link else None)
-  and filter_tree links =
-    (* For trees we prune leaves recursively *)
-    let links = ref links in
-    reach_fixed_point (fun () ->
-      let parents, children =
-        List.fold_left (fun (ps, cs) (_is_err, parent, child, _link) ->
-          Set.String.add parent ps, Set.String.add child cs
-        ) (Set.String.empty, Set.String.empty) !links in
-      let leaves = Set.String.diff children parents in
-      let changed = ref false in
-      links :=
-        List.filter (fun (is_err, parent, child, _link) ->
-          !logger.debug "Filtering out %s->%s? leaf:%b match:%b err:%b show-all:%b" parent child
-            (Set.String.mem child leaves)
-            (Globs.matches pattern parent || Globs.matches pattern child)
-            is_err show_all ;
-          if Set.String.mem child leaves &&
-             not (Globs.matches pattern parent || Globs.matches pattern child) &&
-             not (is_err || show_all)
-          then (
-            changed := true ;
-            false
-          ) else true
-        ) !links ;
-      !changed) |> ignore ;
-    List.map (fun (_, _, _, link) -> link) !links in
-  let links =
-    (if as_tree then filter_tree else filter_list) links in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
        "fill ratio" ; "next seqs" ; "max event time" |] in
-  if as_tree then
-    TermTable.print_tree ~parent:0 ~child:1 head links
-  else
+  if as_tree then (
+    let roots =
+      List.filter_map (fun (_is_err, parent, parent_disp, _child, _link) ->
+        if Globs.matches pattern parent then Some parent_disp
+        else None
+      ) links
+    (* FIXME: roots should be ordered parents first. *)
+    and links = List.map (fun (_, _, _, _, link) -> link) links in
+    TermTable.print_tree ~parent:0 ~child:1 head links roots
+  ) else (
+    let links =
+      List.filter_map (fun (is_err, parent, _parent_disp, child, link) ->
+        if (Globs.matches pattern parent || Globs.matches pattern child) &&
+           (is_err || show_all)
+        then Some link else None
+      ) links in
     TermTable.print_table ~pretty ~sort_col ~with_header ?top head links
+  )

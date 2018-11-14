@@ -201,20 +201,17 @@ let rec print_subtree ~parent ~child h head ~indent ~is_last root done_set =
           print_subtree ~parent ~child h head ~indent ~is_last c done_set
         ) children
 
-let print_tree ~parent ~child ?(na="n/a") head lines =
+(* [parent] and [child] are indices within lines *)
+let print_tree ~parent ~child ?(na="n/a") head lines roots =
   (* Turn the list of lines into a hash of node -> children *)
   let h = Hashtbl.create 11 in
   let to_str = Option.map_default string_of_val na in
-  let non_roots =
-    List.fold_left (fun non_roots line ->
-      let line = Array.map to_str line in
-      let p = line.(parent) and c = line.(child) in
-      Hashtbl.modify_def [] p (fun lst -> (c, line) :: lst) h ;
-      Set.String.add c non_roots
-    ) Set.String.empty lines in
-  let possible_roots = Hashtbl.keys h |> Set.String.of_enum in
-  let roots = Set.String.diff possible_roots non_roots in
-  Set.String.iter (fun root ->
+  List.iter (fun line ->
+    let line = Array.map to_str line in
+    let p = line.(parent) and c = line.(child) in
+    Hashtbl.modify_def [] p (fun lst -> (c, line) :: lst) h
+  ) lines ;
+  List.iter (fun root ->
     print_subtree ~parent ~child h head ~indent:"" ~is_last:true root
                   Set.String.empty
   ) roots
