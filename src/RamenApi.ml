@@ -294,13 +294,14 @@ let columns_of_table conf table =
   C.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
     | exception _ -> None
-    | _mre, get_rc ->
-      (match get_rc () with
-      | exception _ -> None
-      | prog ->
-          (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
-          | exception Not_found -> None
-          | func -> Some (columns_of_func conf programs func))))
+    | mre, get_rc ->
+      if mre.status <> MustRun then None else
+        (match get_rc () with
+        | exception _ -> None
+        | prog ->
+            (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
+            | exception Not_found -> None
+            | func -> Some (columns_of_func conf programs func))))
 
 let get_columns conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-columns" get_columns_req_ppp_json msg in
@@ -375,6 +376,8 @@ let get_timeseries conf msg =
     let prog_name, func_name = RamenName.fq_parse fq in
     let filters =
       C.with_rlock conf (fun programs ->
+        (* Even if the program has been killed we want to be able to output
+         * its timeseries: *)
         let _mre, get_rc = Hashtbl.find programs prog_name in
         let prog = get_rc () in
         let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
@@ -453,19 +456,24 @@ let is_enabled = function
 let func_of_table programs table =
   let pn, fn =
     RamenName.(fq_of_string table |> fq_parse) in
+  let no_such_program () =
+    Printf.sprintf "Program %s does not exist"
+      (RamenName.string_of_program pn) |>
+    bad_request in
   match Hashtbl.find programs pn with
-  | exception Not_found ->
-      Printf.sprintf "Program %s does not exist"
-        (RamenName.string_of_program pn) |>
-      bad_request
-  | _mre, get_rc ->
-      let prog = get_rc () in
-      (try List.find (fun f -> f.F.name = fn) prog.P.funcs
-      with Not_found ->
-        Printf.sprintf "No function %s in program %s"
-          (RamenName.string_of_func fn)
-          (RamenName.string_of_program pn) |>
-        bad_request)
+  | exception Not_found -> no_such_program ()
+  | mre, get_rc ->
+      (match get_rc () with
+      (* Best effort if the program is no longer running: *)
+      | exception _ when mre.C.status <> MustRun ->
+          no_such_program ()
+      | prog ->
+        (try List.find (fun f -> f.F.name = fn) prog.P.funcs
+        with Not_found ->
+          Printf.sprintf "No function %s in program %s"
+            (RamenName.string_of_func fn)
+            (RamenName.string_of_program pn) |>
+          bad_request))
 
 let field_typ_of_column programs table column =
   let open RamenTuple in

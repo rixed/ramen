@@ -47,7 +47,8 @@ let parent_from_root_path root_path pn =
   P.of_bin pn (Hashtbl.create 0)
 
 let parent_from_programs programs pn =
-  (Hashtbl.find programs pn |> snd) ()
+  let mre, get_rc = Hashtbl.find programs pn in
+  if mre.C.status <> MustRun then raise Not_found else get_rc ()
 
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.
