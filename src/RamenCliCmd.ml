@@ -496,8 +496,10 @@ let timeseries conf since until with_header where factors num_points
           String.concat "." in
         if single_data_field then
           (if v = "" then List.hd data_fields else v) :: res
-        else List.fold_left (fun res df ->
-          (df ^(if v = "" then "" else "("^ v ^")")) :: res) res data_fields
+        else
+          List.fold_left (fun res df ->
+            (df ^(if v = "" then "" else "("^ v ^")")) :: res
+          ) res data_fields
       ) [] columns |> List.rev in
     List.print ~first:("#Time"^ sep) ~last:"\n" ~sep
                 String.print stdout column_names) ;
