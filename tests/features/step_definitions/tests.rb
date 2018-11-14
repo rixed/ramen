@@ -98,7 +98,7 @@ end
 
 Given /(a|no) file named (.*) must be present in (.*)/ \
 do |presence, name, dir|
-  file_name = ENV['RAMEN_PERSIST_DIR'] + '/' + dir + '/' + name
+  file_name = $tmp_dir + '/' + dir + '/' + name
   expect(File.exist? file_name).to be (presence == 'a')
 end
 
