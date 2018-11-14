@@ -1478,3 +1478,19 @@ let strip_control_chars =
     List.fold_left (fun s (re, repl) ->
       Str.global_replace re repl s
     ) msg res
+
+(* Return whether we are _below_ the rate limit *)
+let rate_limit max_events duration =
+  let last_period = ref 0
+  and count = ref 0 in
+  fun () ->
+    let now = Unix.time () in
+    let period = int_of_float (now /. duration) in
+    if period = !last_period && !count >= max_events then false else (
+      if period = !last_period then (
+        incr count
+      ) else (
+        last_period := period ;
+        count := 1
+      ) ;
+      true)

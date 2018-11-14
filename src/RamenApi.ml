@@ -15,6 +15,7 @@ module P = C.Program
  * kind of errors: *)
 exception ParseError of exn (* When we cannot parse the query. *)
 exception BadRequest of string (* When there is an error in the query. *)
+exception RateLimited
 (* Everything else will be reported as "internal error". *)
 
 let bad_request s = raise (BadRequest s)
@@ -25,6 +26,8 @@ let () =
         Some ("Parse error: "^ Printexc.to_string e)
     | BadRequest s ->
         Some ("Error in request: "^ s)
+    | RateLimited ->
+        Some "Rate limited"
     | _ -> None)
 
 let parse_error_with_context ctx f =
@@ -53,7 +56,8 @@ struct
         let what = Printf.sprintf "Answering request %S" body in
         print_exception ~what e ;
         err id (match e with
-          | ParseError _ | BadRequest _ -> Printexc.to_string e
+          | ParseError _ | BadRequest _ | RateLimited ->
+              Printexc.to_string e
           | e -> "Internal error: "^ Printexc.to_string e)
     | s ->
         Printf.sprintf "{\"id\":%s,\"result\":%s}" id s |>
@@ -732,6 +736,11 @@ let set_alerts conf msg =
 
 let router conf prefix =
   (* The function called for each HTTP request: *)
+  let set_alerts =
+    let r = rate_limit 10 10. in
+    fun conf msg ->
+      if r () then set_alerts conf msg
+      else raise RateLimited in
   fun _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
     let path = chop_prefix prefix path in
