@@ -167,6 +167,7 @@ struct
   let bin_file = "Binary file to run"
   let pretty = "Prettier output"
   let with_header = "Output the header line in CSV"
+  let with_units = "Add units in the header line"
   let csv_separator = "Field separator"
   let csv_null = "Representation of NULL values"
   let csv_raw = "Do not quote values"

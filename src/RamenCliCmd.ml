@@ -378,7 +378,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let tail conf func_name with_header sep null raw
+let tail conf func_name with_header with_units sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
          duration () =
   init_logger conf.C.log_level ;
@@ -388,6 +388,8 @@ let tail conf func_name with_header sep null raw
     failwith "Options --continuous and --{min,max}-seq are incompatible." ;
   if continuous && Option.map_default (fun l -> l < 0) false last then
     failwith "Option --last must be >0 if used with --continuous." ;
+  if with_units && not with_header then
+    failwith "Option --with-units makes no sense without --with-header" ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
@@ -425,7 +427,8 @@ let tail conf func_name with_header sep null raw
     Array.print ~first ~last:"\n" ~sep
       (fun oc ft ->
         String.print oc ft.RamenTuple.typ_name ;
-        Option.may (fun u -> RamenUnits.print oc u) ft.units)
+        if with_units then
+          Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
     BatIO.flush stdout) ;
   if is_temp_export then (

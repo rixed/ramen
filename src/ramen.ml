@@ -548,12 +548,18 @@ let duration =
                    ["timeout"] in
   Arg.(value (opt float 300. i))
 
+let with_units =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.with_units
+                   [ "u"; "with-units"; "units" ] in
+  Arg.(value (flag i))
+
 let tail =
   Term.(
     (const RamenCliCmd.tail
       $ copts
       $ func_name 0
       $ with_header
+      $ with_units
       $ csv_separator
       $ csv_null
       $ csv_raw
