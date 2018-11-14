@@ -8,7 +8,7 @@ type notifier =
     handler : Unix.file_descr ;
     while_ : unit -> bool }
 
-let make ?(while_=(fun () -> true)) dirname =
+let make ?(while_=always) dirname =
   let handler = Inotify.create () in
   let mask = Inotify.[ S_Create ; S_Moved_to ; S_Onlydir ] in
   let _ = Inotify.add_watch handler dirname mask in

@@ -9,7 +9,7 @@ let now = ref (gettimeofday ())
 let on_each_input_pre () =
   now := gettimeofday ()
 
-let read_file_lines ?(while_=(fun () -> true)) ?(do_unlink=false)
+let read_file_lines ?(while_=always) ?(do_unlink=false)
                     filename preprocessor watchdog k =
   let open_file =
     if preprocessor = "" then (

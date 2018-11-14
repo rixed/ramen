@@ -28,10 +28,13 @@ let nice_string_of_float v =
 
 exception Timeout
 
+(* Avoid to create a new while_ at each call: *)
+let always () = true
+
 let retry
     ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
     ?(delay_adjust_ok=0.2) ?(delay_adjust_nok=1.5) ?delay_rec
-    ?max_retry ?max_retry_time ?(while_ = fun () -> true) f =
+    ?max_retry ?max_retry_time ?(while_=always) f =
   let next_delay = ref first_delay in
   let started = Unix.gettimeofday () in
   let can_wait_longer () =
@@ -230,7 +233,7 @@ let safe_unlink fname =
   try BatUnix.restart_on_EINTR Unix.unlink fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()
 
-let rec restart_on_eintr ?(while_=(fun () -> true)) f x =
+let rec restart_on_eintr ?(while_=always) f x =
   let open Unix in
   try f x
   with Unix_error (EINTR, _, _) ->
@@ -746,8 +749,7 @@ let read_lines fd =
     loop ())
 
 (* Run given command, logging its output in our log-file *)
-let run_coprocess ~max_count
-                  ?(to_stdin="") cmd_name cmd =
+let run_coprocess ~max_count ?(to_stdin="") cmd_name cmd =
   !logger.debug "Executing: %s" cmd ;
   max_simult ~what:cmd_name ~max_count (fun () ->
     let open Legacy.Unix in
@@ -800,8 +802,7 @@ let string_remove c s =
   "1234" (string_remove ':' "::12:34")
  *)
 
-let udp_server ?(buffer_size=2000) ~inet_addr ~port
-               ?(while_ = fun () -> true) k =
+let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
   let open Unix in
   (* FIXME: it seems that binding that socket makes cohttp leak descriptors
    * when sending reports to ramen. Oh boy! *)
@@ -836,7 +837,7 @@ let hex_of =
     else Char.chr (ten + n)
 
 let fail_for_good = ref false
-let rec restart_on_failure ?(while_ = fun () -> true) what f x =
+let rec restart_on_failure ?(while_=always) what f x =
   if !fail_for_good then
     f x
   else
@@ -846,7 +847,7 @@ let rec restart_on_failure ?(while_ = fun () -> true) what f x =
       if while_ () then (
         !logger.error "Will restart %s..." what ;
         Unix.sleepf (0.5 +. Random.float 0.5) ;
-        (restart_on_failure [@tailcall]) what f x)
+        (restart_on_failure ~while_ [@tailcall]) what f x)
 
 let md5 str = Digest.(string str |> to_hex)
 

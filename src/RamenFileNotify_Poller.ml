@@ -1,12 +1,13 @@
 open Batteries
 open RamenLog
+open RamenHelpers
 
 type notifier =
   { mutable reported : (string * float (* time *)) list ;
     dirname : string ;
     while_ : unit -> bool }
 
-let make ?(while_=(fun () -> true)) dirname =
+let make ?(while_=always) dirname =
   { reported = [] ; dirname ; while_ }
 
 let rec for_each f n =
