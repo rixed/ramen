@@ -218,6 +218,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             and tup_sizer =
               sersize_of_tuple file_spec.RamenOutRef.field_mask in
             let last_check_outref = ref 0.
+            and last_successful_output = ref (Unix.gettimeofday ())
             and quarantine_until = ref 0.
             and quarantine_delay = ref 0. in
             let rb_writer start_stop tuple =
@@ -239,8 +240,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                      * quickly detect it when a child disappear): *)
                     if now < !last_check_outref +. 3. then true else (
                       last_check_outref := now ;
-                      if not (RamenOutRef.mem rb_ref_out_fname fname) then false
-                      else (
+                      if not (RamenOutRef.mem rb_ref_out_fname fname) then false else
+                      if now < !last_successful_output +. 15. then true else (
                         (* At this point, we have been failing for more than 3s
                          * for a child that's still in our out_ref, and should
                          * consider quarantine for a bit: *)
@@ -256,6 +257,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   if !quarantine_until < !CodeGenLib_IO.now then (
                     output rb tup_serializer tup_sizer start_stop tuple ;
                     if !quarantine_delay > 0. then (
+                      last_successful_output := !CodeGenLib_IO.now ;
                       !logger.info "Resuming output to %s" fname ;
                       quarantine_delay := 0.
                     )
