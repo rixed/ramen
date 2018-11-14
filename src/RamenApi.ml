@@ -605,7 +605,9 @@ let () =
 let stop_alert conf program_name =
   let glob =
     Globs.(RamenName.string_of_program program_name |> escape |> compile) in
-  let num_kills = RamenRun.kill conf [ glob ] in
+  (* As we are also deleting the binary better purge the conf as per
+   * https://github.com/rixed/ramen/issues/548 *)
+  let num_kills = RamenRun.kill ~purge:true conf [ glob ] in
   if num_kills < 0 || num_kills > 1 then
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
       (RamenName.string_of_program program_name) num_kills
