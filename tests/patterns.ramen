@@ -1,0 +1,7 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM tests/fixtures/cars/csv
+  WHERE manufacturer = "BMW" AND model LIKE "%i"
+  SELECT sum 1 AS count
+  COMMIT AFTER in.manufacturer = "Volvo";

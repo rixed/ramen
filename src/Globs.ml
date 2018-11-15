@@ -77,13 +77,15 @@ let rec match_chunks ~at_start ~at_end ?(from=0) c = function
   | [] ->
     (not at_start || from = 0) &&
     (not at_end || from = length c)
-  | s :: rest ->
+  | s :: rest as chunks ->
     (match Str.(search_forward (regexp_string s) c from) with
      | exception Not_found -> false
      | i ->
        (not at_start || i = 0) &&
-       (rest <> [] || not at_end || string_ends_with c s) &&
-       match_chunks ~at_start:false ~at_end ~from:(i + length s) c rest)
+       ((* Either the substring at i is the one we wanted to match: *)
+        match_chunks ~at_start:false ~at_end ~from:(i + length s) c rest ||
+        (* or it is still part of the star and we should look further away: *)
+        match_chunks ~at_start:false ~at_end ~from:(i + 1) c chunks))
 
 let matches p c =
   match_chunks ~at_start:p.anchored_start ~at_end:p.anchored_end c p.chunks
@@ -127,6 +129,8 @@ let matches p c =
   true  (matches (compile "pas\\*glop") "pas*glop")
   false (matches (compile "glopz*") "glop glop")
   true  (matches (compile "glop**") "glop glop")
+  true  (matches (compile "*glop") "glop glop")
+  true  (matches (compile "*glop") "pas glop glop")
  *)
 
 let has_wildcard = function
