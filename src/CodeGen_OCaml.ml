@@ -868,10 +868,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
   | Finalize, StatelessFunMisc (_, Like (e, p)), TBool ->
     let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
-    Printf.fprintf oc "(let pattern_ = \
-      Globs.{ anchored_start = %b ; anchored_end = %b ; chunks = %a } in "
-      pattern.anchored_start pattern.anchored_end
-      (List.print (fun oc s -> Printf.fprintf oc "%S" s)) pattern.chunks ;
+    Printf.fprintf oc "(let pattern_ = Globs.%a in "
+      (List.print Globs.print_chunk) pattern ;
     emit_functionN ?state ~opc ~nullable "Globs.matches pattern_ "
       [Some TString, PropagateNull] oc [e];
     Printf.fprintf oc ")"

@@ -1,59 +1,86 @@
-open BatString
-(* TODO: implement '?' for replacing a single char. (Like wants '_') *)
+open Batteries
+open String
 
-type pattern = { anchored_start : bool ;
-                 anchored_end : bool ;
-                 chunks : string list }
+type chunk =
+  | String of string
+  | AnyString of int (* min length *)
+  | AnyChar
 
-let compile ?(star='*') ?(escape='\\') =
+let print_chunk oc = function
+  | String s -> Printf.fprintf oc "String %S" s
+  | AnyString n -> Printf.fprintf oc "AnyString %d" n
+  | AnyChar -> String.print oc "AnyChar"
+
+type pattern = chunk list
+
+let compile ?(star='*') ?(placeholder='_') ?(escape='\\') =
+  (* It matters that Str is opened *after* String so quote is Str.quote: *)
   let open Str in
   let unescape =
-    (* Replaces \* with *, once their interpretation as globs is over: *)
-    let re = regexp (quote (of_char escape) ^ quote (of_char star)) in
-    fun str -> global_replace re (of_char star) str
+    (* Replaces \* and \_ with * and _, once their interpretation as globs
+     * is over: *)
+    let re c = regexp (quote (of_char escape) ^ quote (of_char c)) in
+    let re1 = re star and re2 = re placeholder in
+    fun str ->
+      global_replace re1 (of_char star) str |>
+      global_replace re2 (of_char placeholder)
   (* The regexp below reads as: either at beginning of string or not
-   * after a backslash, then a star. *)
-  and star_re = regexp ("\\(^\\|[^"^ of_char escape ^"]\\)"^ quote (of_char star) ^"+") in
+   * after a backslash, then either (some) * or (one) _: *)
+  and split_re =
+    let re_s =
+      "\\(^\\|[^"^ quote (of_char escape) ^"]\\)"^
+      "\\("^ quote (of_char star) ^"+\\|"^ quote (of_char placeholder) ^"\\)" in
+    regexp re_s
+  in
   (* We cannot use Str.split because it would consider the non-\ character
-   * before the star as part of the delimiter. *)
-  let my_split re s =
-    let add_chunk lst s =
-      if s <> "" then s::lst else lst in
-    let rec loop prev o =
-      match search_forward re s o with
+   * before the star as part of the delimiter.
+   * Note: split return the list of pieces _reverted_: *)
+  let rec split prev s =
+    if s = "" then prev else (
+      match search_forward split_re s 0 with
       | exception Not_found ->
-        add_chunk prev (sub s o (length s - o)) |> List.rev
-      | o' ->
-        assert (o' >= o) ;
-        let o' = if s.[o'] <> star then o'+1 else o' in
-        loop (add_chunk prev (sub s o (o'-o))) (match_end ()) in
-    loop [] 0 in
+        String (unescape s) :: prev
+      | o ->
+        (* Skip the non-\ char before the special char: *)
+        let o = if s.[o] <> star && s.[o] <> placeholder then
+          o + 1 else o in
+        let spec =
+          if s.[o] = star then AnyString 0 else
+          (assert (s.[o] = placeholder) ; AnyChar) in
+        (* Have to call match_end before unescape! *)
+        let n = match_end () in
+        let prev' =
+          spec :: String (unescape (sub s 0 o)) :: prev in
+        split prev' (lchop ~n s)) in
   fun s ->
-    let l = length s in
-    let anchored_start = l = 0 || s.[0] <> star in
-    let anchored_end =
-      l = 0 ||
-      s.[l-1] <> star ||
-      (l >= 2 && s.[l-2] = escape) in
-    { anchored_start ; anchored_end ;
-      chunks = my_split star_re s |> List.map unescape }
+    let rec aux prev rest =
+      match rest with
+      | [] ->
+          prev
+      | String "" :: rest ->
+          aux prev rest
+      | x :: String "" :: rest ->
+          aux prev (x :: rest)
+      | AnyString m1 :: AnyString m2 :: rest ->
+          aux prev (AnyString (m1 + m2) :: rest)
+      | AnyString m :: AnyChar :: rest
+      | AnyChar :: AnyString m :: rest ->
+          aux prev (AnyString (m + 1) :: rest)
+      | x :: rest ->
+          aux (x :: prev) rest in
+    aux [] (split [] s)
 
-(*$inject
-  let string_of_pattern p =
-    (if p.anchored_start then "^" else "") ^
-    (String.concat "*" p.chunks) ^
-    (if p.anchored_end then "$" else "")
-*)
-
-(*$= compile & ~printer:string_of_pattern
-  { anchored_start = true ; anchored_end = false ; chunks = [ "glop" ] } \
-    (compile "glop*")
-  { anchored_start = true ; anchored_end = true ; chunks = [ "pas"; "glop" ] } \
-    (compile "pas*glop")
-  { anchored_start = true ; anchored_end = false ; chunks = [ "zzz" ] } \
-    (compile "zzz**")
-  { anchored_start = true ; anchored_end = true ; chunks = [ "glop"; "glop" ] } \
-    (compile "glop**glop")
+(*$= compile & ~printer:(BatIO.to_string (BatList.print print_chunk))
+  [ String "glop" ; AnyString 0 ] (compile "glop*")
+  [ String "pas" ; AnyString 0 ; String "glop" ] (compile "pas*glop")
+  [ String "zzz" ; AnyString 0 ] (compile "zzz**")
+  [ String "glop" ; AnyString 0 ; String "glop" ] (compile "glop**glop")
+  [] (compile "")
+  [ AnyChar ] (compile "_")
+  [ AnyChar ; String "lop" ] (compile "_lop")
+  [ String "glo" ; AnyChar ] (compile "glo_")
+  [ String "gl" ; AnyChar ; String "p" ] (compile "gl_p")
+  [ String "gl" ; AnyString 1 ; String "p" ] (compile "gl_*p")
 *)
 
 (* Make the given string a glob that matches only itself,
@@ -73,22 +100,43 @@ let string_ends_with s e =
     loop (i+1) in
   loop 0
 
-let rec match_chunks ~at_start ~at_end ?(from=0) c = function
-  | [] ->
-    (not at_start || from = 0) &&
-    (not at_end || from = length c)
-  | s :: rest as chunks ->
-    (match Str.(search_forward (regexp_string s) c from) with
-     | exception Not_found -> false
-     | i ->
-       (not at_start || i = 0) &&
-       ((* Either the substring at i is the one we wanted to match: *)
-        match_chunks ~at_start:false ~at_end ~from:(i + length s) c rest ||
-        (* or it is still part of the star and we should look further away: *)
-        match_chunks ~at_start:false ~at_end ~from:(i + 1) c chunks))
+(* Tells if c.[i..] matches s: *)
+let substring_match c i s =
+  if length s > length c - i then false
+  else
+    try
+      for j = 0 to length s - 1 do
+        if s.[j] <> c.[i + j] then raise Exit
+      done ;
+      true
+    with Exit -> false
 
-let matches p c =
-  match_chunks ~at_start:p.anchored_start ~at_end:p.anchored_end c p.chunks
+let rec match_chunks ?(from=0) c = function
+  | [] ->
+      from >= length c
+  | [ AnyString m ] ->
+      length c - from >= m
+  | AnyChar :: rest ->
+      from < length c &&
+      match_chunks ~from:(from + 1) c rest
+  | AnyString m :: String s :: rest as chunks ->
+      assert (length s > 0) ;
+      (match Str.(search_forward (regexp_string s) c (from + m)) with
+      | exception Not_found -> false
+      | i ->
+        (* Either the substring at i is the one we wanted to match: *)
+        match_chunks ~from:(i + length s) c rest ||
+        (* or it is still part of the star and we should look further away: *)
+        match_chunks ~from:(i + 1) c chunks)
+  | String s :: rest ->
+      assert (length s > 0) ;
+      substring_match c from s &&
+      match_chunks ~from:(from + length s) c rest
+  | AnyString _ :: AnyString _ :: _
+  | AnyString _ :: AnyChar :: _ ->
+      assert false
+
+let matches p c = match_chunks c p
 
 (*$= matches & ~printer:string_of_bool
   true  (matches (compile "") "")
@@ -134,9 +182,7 @@ let matches p c =
  *)
 
 let has_wildcard = function
-  | { chunks = [ _ ] | [] ;
-      anchored_start = true ;
-      anchored_end = true } -> false
+  | [] | [ String _ ] -> false
   | _ -> true
 
 (*$= has_wildcard & ~printer:string_of_bool
