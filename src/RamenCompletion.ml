@@ -222,6 +222,8 @@ let complete str () =
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--with-header", RamenConsts.CliInfo.with_header) ::
           ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
+          ("--with-times", RamenConsts.CliInfo.with_seqnums) ::
+          ("--with-units", RamenConsts.CliInfo.with_seqnums) ::
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
