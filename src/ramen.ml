@@ -35,7 +35,7 @@ let copts =
   and keep_temp_files =
     let env = Term.env_info "RAMEN_KEEP_TEMP_FILES" in
     let i = Arg.info ~doc:RamenConsts.CliInfo.keep_temp_files
-                     ~docs ~env [ "keep-temp-files" ] in
+                     ~docs ~env [ "S" ; "keep-temp-files" ] in
     Arg.(value (flag i))
   and forced_variants =
     let env = Term.env_info "RAMEN_VARIANTS" in
