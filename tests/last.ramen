@@ -33,3 +33,12 @@ DEFINE win2 AS
     GET(0, _hp_n) AS third_to_last_hp_n,
     GET(1, _hp_n) AS second_to_last_hp_n,
     GET(2, _hp_n) AS last_one_hp_n;
+
+-- check that LAST 1 is the current emement
+DEFINE f3 AS
+  FROM tests/fixtures/earthquakes/csv
+  SELECT
+    LENGTH(LAST 1 n) = 1 AS t1,
+    GET(0, LAST 1 n) = n AS t2,
+    AVG(LAST 1 n) = n AS t3,
+    AVG(LAST 1 float(not (n = 99999))) >= 1 AS t4;

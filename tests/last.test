@@ -15,6 +15,18 @@
           "last_one_co" => "0.2192802" ;
           "third_to_last_co_n" => "NULL" ;
           "second_to_last_co_n" => "0.1149516" ;
-          "last_one_co_n" => "0.2192802" } ] }
+          "last_one_co_n" => "0.2192802" } ] } ;
+    "tests/last/f3" => {
+      present = [
+        { "t1" => "true" ; "t2" => "true" ; "t3" => "true" ;
+          "t4" => "true" }
+      ] ;
+      absent = [
+        { "t1" => "false" } ;
+        { "t2" => "false" } ;
+        { "t3" => "false" } ;
+        { "t4" => "false" } ;
+      ]
+    }
   }
 }
