@@ -2470,11 +2470,12 @@ let emit_aggregate opc oc name in_typ out_typ =
   (* minimal tuple: the subset of the out tuple that must be finalized at
    * every input even in the absence of commit. We need those fields that
    * are used in the commit condition itself, or used as parameter of a
-   * a stateful function used by another field (as the state update function
+   * stateful function used by another field (as the state update function
    * will need its finalized value) and also if it's used to compute the
    * event time in any way, as we want to know the front time as every
-   * input. Of course, any field required to compute a minimal field must
-   * also be minimal. *)
+   * input. Also for convenience any field that involve the print function.
+   * Of course, any field required to compute a minimal field must also be
+   * minimal. *)
   let minimal_fields =
     let from_commit_cond =
       RamenExpr.fold_by_depth (fun s -> function
@@ -2496,10 +2497,21 @@ let emit_aggregate opc oc name in_typ out_typ =
         | ("start"|"stop"|"duration") as fn ->
             Set.String.add fn s
         | _ -> s
-      ) Set.String.empty fields in
+      ) Set.String.empty fields
+    and for_printing =
+      List.fold_left (fun s sf ->
+        try
+          RamenExpr.iter (function
+            | StatelessFunMisc (_, Print _) -> raise Exit | _ -> ()
+          ) sf.RamenOperation.expr ;
+          s
+        with Exit -> Set.String.add sf.RamenOperation.alias s
+      ) Set.String.empty fields
+    in
     (* Now combine these sets: *)
     Set.String.union from_commit_cond for_updates |>
     Set.String.union for_event_time |>
+    Set.String.union for_printing |>
     fetch_recursively
   in
   !logger.debug "minimal fields: %a"
