@@ -25,7 +25,7 @@ let compile ?(star='*') ?(escape='\\') =
         add_chunk prev (sub s o (length s - o)) |> List.rev
       | o' ->
         assert (o' >= o) ;
-        let o' = if s.[o'] <> '*' then o'+1 else o' in
+        let o' = if s.[o'] <> star then o'+1 else o' in
         loop (add_chunk prev (sub s o (o'-o))) (match_end ()) in
     loop [] 0 in
   fun s ->
