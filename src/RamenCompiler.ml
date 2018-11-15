@@ -148,10 +148,21 @@ let compile conf get_parent ?exec_file source_file program_name =
             F.print_parent parent ;
           (* Or the parent must have been in compiler_funcs: *)
           assert (parent_prog_name <> program_name) ;
-          let par_rc = get_parent parent_prog_name in
-          List.find (fun f ->
-            f.F.name = parent_func_name
-          ) par_rc.P.funcs
+          match get_parent parent_prog_name with
+          | exception Not_found ->
+              Printf.sprintf2 "Cannot find parent program %a"
+                RamenName.program_print parent_prog_name |>
+              failwith
+          | par_rc ->
+              try
+                List.find (fun f ->
+                  f.F.name = parent_func_name
+                ) par_rc.P.funcs
+              with Not_found ->
+                Printf.sprintf2 "No function %a in parent program %a"
+                  RamenName.func_print parent_func_name
+                  RamenName.program_print parent_prog_name |>
+                failwith
       ) |>
       Hashtbl.add compiler_parents
                   (Option.get parsed_func.RamenProgram.name)
