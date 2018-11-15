@@ -526,7 +526,7 @@ let with_seqnums =
 
 let with_event_time =
   let i = Arg.info ~doc:RamenConsts.CliInfo.with_event_time
-                   ["with-event-time"; "event-time"; "t"] in
+                   ["with-event-times"; "with-times"; "event-times"; "t"] in
   Arg.(value (flag i))
 
 let fq_name =
