@@ -13,7 +13,7 @@ let string_of_val = function
   | ValStr s -> s
   | ValInt i -> string_of_int i
   | ValFlt f -> nice_string_of_float f
-  | ValDate t -> ctime t
+  | ValDate t -> string_of_time t
 
 let int_or_na = Option.map (fun i -> ValInt (Stdint.Uint64.to_int i))
 let flt_or_na = Option.map (fun f -> ValFlt f)
