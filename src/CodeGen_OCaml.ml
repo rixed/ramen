@@ -1106,7 +1106,11 @@ and emit_expr_ ?state ~context ~opc oc expr =
    *
    * All the aggregation functions below should accept lists as input.
    * In that case, we merely iterate over all the elements of that list at
-   * finalization.
+   * finalization. We must then reset the initial state of these function,
+   * in effect making them stateless (they still have a state though,
+   * although they should not.
+   * FIXME: Probably this case should be recognized earlier
+   * and those functions replaced by some other, specific stateless variant.
    * InitState is unchanged and UpdateState is a NOP.
    * We do this for most of them but not all, as use case is arguable in
    * many cases and a better approach needs to be devised.
@@ -1152,6 +1156,15 @@ and emit_expr_ ?state ~context ~opc oc expr =
     in
     assert (not (is_a_list expr')) ;
 
+    (* Start by resetting the state: *)
+    Printf.fprintf oc "(" ;
+
+    Printf.fprintf oc "\t\t%a <- %a ;\n"
+      (emit_expr ?state ~context:Finalize ~opc) (my_state g)
+      (emit_expr ?state ~context:InitState ~opc) expr ;
+    Printf.fprintf oc "\t\t%a_empty_ <- false ;\n"
+      (emit_expr ?state ~context:Finalize ~opc) (my_state g) ;
+
     Printf.fprintf oc "(match %a with "
       (emit_expr ?state ~context:Finalize ~opc) e ;
     if is_nullable e then
@@ -1164,7 +1177,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     (* And finalize that using the fake expression [expr'] to reach
      * the actual finalizer: *)
     emit_expr ?state ~context ~opc oc expr' ;
-    Printf.fprintf oc ")"
+    Printf.fprintf oc "))"
 
   | InitState, StatefulFun (_, _, _, AggrAnd _), (TBool as t) ->
     wrap_nullable ~nullable oc (fun oc ->
