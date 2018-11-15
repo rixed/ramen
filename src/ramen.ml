@@ -570,7 +570,8 @@ let tail =
       $ where
       $ with_seqnums
       $ with_event_time
-      $ duration),
+      $ duration
+      $ pretty),
     info ~doc:RamenConsts.CliInfo.tail "tail")
 
 (*
@@ -640,7 +641,8 @@ let timeseries =
       $ data_fields 1
       $ consolidation
       $ bucket_time
-      $ duration),
+      $ duration
+      $ pretty),
     info ~doc:RamenConsts.CliInfo.timeseries "timeseries")
 
 (*

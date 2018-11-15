@@ -44,6 +44,9 @@ let nice_string_of_float v =
   "1"     (nice_string_of_float 1.)
 *)
 
+let print_nice_float oc f =
+  String.print oc (nice_string_of_float f)
+
 exception Timeout
 
 (* Avoid to create a new while_ at each call: *)
@@ -1506,3 +1509,45 @@ let rate_limit max_events duration =
         count := 1
       ) ;
       true)
+
+let string_same_pref l a b =
+  if l > String.length a || l > String.length b then false
+  else
+    try
+      for i = 0 to l - 1 do
+        if a.[i] <> b.[i] then raise Exit
+      done ;
+      true
+    with Exit -> false
+
+let as_date ?rel t =
+  let full = string_of_time t in
+  match rel with
+  | None -> full
+  | Some rel ->
+      let possible_cuts = [| 11; 14; 18 |] in
+      let rec loop i =
+        if i < 0 then
+          full
+        else (
+          let pref_len = possible_cuts.(i) in
+          if string_same_pref pref_len rel full then
+            String.lchop ~n:pref_len full
+          else
+            loop (i - 1)
+        ) in
+      loop (Array.length possible_cuts - 1)
+
+(*$= as_date & ~printer:(fun x -> x)
+  "2018-11-14 22h13m20s" (as_date ~rel:"" 1542230000.)
+  "2018-11-14 22h13m20s" (as_date ~rel:"1983-11-14 22h13m20s" 1542230000.)
+  "22h13m20s" (as_date ~rel:"2018-11-14 08h12m32s" 1542230000.)
+  "13m20s" (as_date ~rel:"2018-11-14 22h12m20s" 1542230000.)
+*)
+
+(* A pretty printer for timestamps, with the peculiarity that it tries to not
+ * repeat the date components that have already been written, saved in [rel]. *)
+let print_as_date ?rel oc t =
+  let s = as_date ?rel:(Option.map (!) rel) t in
+  Option.may (fun rel -> rel := s) rel ;
+  String.print oc s

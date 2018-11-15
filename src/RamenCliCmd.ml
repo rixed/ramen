@@ -380,7 +380,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
 
 let tail conf func_name with_header with_units sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
-         duration () =
+         duration pretty () =
   init_logger conf.C.log_level ;
   if last <> None && (min_seq <> None || max_seq <> None) then
     failwith "Options --last  and --{min,max}-seq are incompatible." ;
@@ -419,8 +419,8 @@ let tail conf func_name with_header with_units sep null raw
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type ser in
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
+  let header = typ |> Array.of_list in
   if with_header then (
-    let header = typ |> Array.of_list in
     let first = if with_seqnums then "Seq"^ sep else "" in
     let first = if with_event_time then "Event time"^ sep else first in
     let first = "#"^ first in
@@ -431,6 +431,19 @@ let tail conf func_name with_header with_units sep null raw
           Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
     BatIO.flush stdout) ;
+  (* Pick a printer for each column according to the field type: *)
+  let printers =
+    Array.map (fun ft ->
+      let open RamenTypes in
+      if pretty &&
+         ft.RamenTuple.typ.structure = TFloat &&
+         ft.RamenTuple.units = Some RamenUnits.seconds_since_epoch
+      then
+        (fun oc -> function VFloat t -> print_as_date oc t
+                          | _ -> assert false)
+      else
+        print_custom ~null ~quoting:(not raw)
+    ) header in
   if is_temp_export then (
     let rec reset_export_timeout () =
       (* Start by sleeping as we've just set the temp export above: *)
@@ -453,12 +466,17 @@ let tail conf func_name with_header with_units sep null raw
     if filter tuple then (
       if with_event_time then (
         let t1, t2 = event_time_of_tuple tuple in
-        Printf.printf "%f..%f%s" t1 t2 sep) ;
+        let rel = ref "" in
+        let t1 = IO.to_string (print_as_date ~rel) t1 in
+        let t2 = IO.to_string (print_as_date ~rel) t2 in
+        Printf.printf "%s..%s%s" t1 t2 sep) ;
       if with_seqnums then (
         Int.print stdout m ; String.print stdout sep) ;
       reorder_column tuple |>
-      Array.print ~first:"" ~last:"\n" ~sep
-        (RamenTypes.print_custom ~null ~quoting:(not raw)) stdout ;
+      Array.iteri (fun i v ->
+        if i > 0 then String.print stdout sep ;
+        printers.(i) stdout v) ;
+      Char.print stdout '\n' ;
       BatIO.flush stdout))
 
 (*
@@ -474,7 +492,7 @@ let tail conf func_name with_header with_units sep null raw
 
 let timeseries conf since until with_header where factors num_points
                time_step sep null func_name data_fields consolidation
-               bucket_time duration () =
+               bucket_time duration pretty () =
   init_logger conf.C.log_level ;
   let num_points =
     if num_points <= 0 && time_step <= 0. then 100 else num_points in
@@ -503,9 +521,11 @@ let timeseries conf since until with_header where factors num_points
       ) [] columns |> List.rev in
     List.print ~first:("#Time"^ sep) ~last:"\n" ~sep
                 String.print stdout column_names) ;
+  let t_rel = ref "" in
   Enum.iter (fun (t, vs) ->
-    Printf.printf "%f%s%a"
-      t sep
+    Printf.printf "%a%s%a"
+      (if pretty then print_as_date ~rel:t_rel else print_nice_float) t
+      sep
       (Array.print ~first:"" ~last:"\n" ~sep
         (Array.print ~first:"" ~last:"" ~sep
           (fun oc -> function

@@ -224,6 +224,7 @@ let complete str () =
           ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
           ("--with-times", RamenConsts.CliInfo.with_seqnums) ::
           ("--with-units", RamenConsts.CliInfo.with_seqnums) ::
+          ("--pretty", RamenConsts.CliInfo.pretty) ::
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
@@ -240,6 +241,7 @@ let complete str () =
           ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
           ("--separator=", RamenConsts.CliInfo.csv_separator) ::
           ("--null=", RamenConsts.CliInfo.csv_null) ::
+          ("--pretty", RamenConsts.CliInfo.pretty) ::
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
