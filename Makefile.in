@@ -444,7 +444,7 @@ check: unit-check cli-check func-check err-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
-	@OCAMLRUNPARAM=b ./all_tests.opt -bt
+	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
 	@./ringbuf_test.opt
 
 cli-check:
