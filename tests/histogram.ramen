@@ -3,7 +3,7 @@
 DEFINE t AS
   FROM tests/fixtures/cars/csv
   SELECT HISTOGRAM(horsepower, 0, 1000, 10),
-         HISTOGRAM(COALESCE(CO, 0.), 0, 10, 10) AS CO_histogram,
+         HISTOGRAM((CO |? 0.), 0, 10, 10) AS CO_histogram,
          -- keep this one nullable for tests:
          HISTOGRAM(CO2, 0, 1000, 10)
   COMMIT AFTER sum 1 >= 4539;

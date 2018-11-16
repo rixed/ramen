@@ -1086,11 +1086,13 @@ struct
 
   and mid_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
-    let op = that_string "+" ||| that_string "-" ||| that_string "||"
+    let op = that_string "+" ||| that_string "-" ||| that_string "||" |||
+             that_string "|?"
     and reduce e1 op e2 = match op with
       | "+" -> StatelessFun2 (make_typ "addition", Add, e1, e2)
       | "-" -> StatelessFun2 (make_typ "subtraction", Sub, e1, e2)
       | "||" -> StatelessFun2 (make_typ "concatenation", Concat, e1, e2)
+      | "|?" -> Coalesce (make_typ "default", [ e1 ; e2 ])
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 

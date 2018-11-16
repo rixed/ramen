@@ -18,4 +18,4 @@ DEFINE f AS
          ELSE 666
     END AS some_nullable_thing,
     IF (n = 1, -1, -2) AS minus_smth,
-    COALESCE(name, "three") AS real_name;
+    name |? "three" AS real_name;

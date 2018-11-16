@@ -22,7 +22,7 @@ Feature: Test Ramen API from the command line.
         from (yield (sum globally 1) % 10 as seq_key every 1 second)
         select now as start, start + 1s as stop,
                seq_key as key,
-               coalesce(previous.xyz, 0) + (random*2-1) as xyz
+               (previous.xyz |? 0) + (random*2-1) as xyz
         group by seq_key;
       """
     And test.ramen is compiled

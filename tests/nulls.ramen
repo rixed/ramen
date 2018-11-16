@@ -7,13 +7,13 @@
 -- generate code, but those are garanteed to be unused anyway.
 DEFINE t1 AS SELECT string(NULL) AS ouch;
 
-DEFINE t2 AS SELECT COALESCE(NULL, 1) AS ouch;
+DEFINE t2 AS SELECT NULL |? 1 AS ouch;
 
 DEFINE t3 AS SELECT COALESCE(NULL, NULL, "glop") AS ouch;
 
 DEFINE t4 AS SELECT COALESCE(string(NULL), "glop") AS ouch;
 
-DEFINE t5 AS SELECT u32?(0) AS ouch, COALESCE(NULL, 0) AS owch;
+DEFINE t5 AS SELECT u32?(0) AS ouch, NULL |? 0 AS owch;
 
 DEFINE t6 AS
   YIELD

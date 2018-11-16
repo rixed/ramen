@@ -9,6 +9,6 @@ DEFINE p AS
   FROM tests/fixtures/earthquakes/csv
   SELECT n WHERE
     year = sel_year OR
-    year = COALESCE(sel_year2, 0) OR
-    year = COALESCE(sel_year3, 0) OR
+    year = sel_year2 |? 0 OR
+    year = sel_year3 |? 0 OR
     year IN sel_years;

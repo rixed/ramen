@@ -11,7 +11,7 @@ Feature: test ramen tail
       """
       define gen as
         select
-          1 + coalesce(previous.x, 0) as x,
+          1 + (previous.x |? 0) as x,
           42 as y,
           "blue" as _blue,
           case when random > 0.66 then _blue
