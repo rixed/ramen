@@ -2,6 +2,12 @@
 
 DEFINE f AS
   FROM tests/fixtures/cars/csv
-  WHERE manufacturer = "BMW" AND model LIKE "%i"
+  WHERE
+    manufacturer LIKE "B%" AND
+    manufacturer LIKE "%W" AND
+    manufacturer LIKE "B%%%W" AND
+    manufacturer LIKE "___" AND
+    manufacturer LIKE "_M_" AND
+    model LIKE "%i"
   SELECT sum 1 AS count
   COMMIT AFTER in.manufacturer = "Volvo";

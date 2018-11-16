@@ -13,11 +13,11 @@ let print_chunk oc = function
 
 type pattern = chunk list
 
-let compile ?(star='*') ?(placeholder='_') ?(escape='\\') =
+let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
   (* It matters that Str is opened *after* String so quote is Str.quote: *)
   let open Str in
   let unescape =
-    (* Replaces \* and \_ with * and _, once their interpretation as globs
+    (* Replaces \* and \? with * and ?, once their interpretation as globs
      * is over: *)
     let re c = regexp (quote (of_char escape) ^ quote (of_char c)) in
     let re1 = re star and re2 = re placeholder in
@@ -25,7 +25,7 @@ let compile ?(star='*') ?(placeholder='_') ?(escape='\\') =
       global_replace re1 (of_char star) str |>
       global_replace re2 (of_char placeholder)
   (* The regexp below reads as: either at beginning of string or not
-   * after a backslash, then either (some) * or (one) _: *)
+   * after a backslash, then either (some) * or (one) ?: *)
   and split_re =
     let re_s =
       "\\(^\\|[^"^ quote (of_char escape) ^"]\\)"^
@@ -76,11 +76,11 @@ let compile ?(star='*') ?(placeholder='_') ?(escape='\\') =
   [ String "zzz" ; AnyString 0 ] (compile "zzz**")
   [ String "glop" ; AnyString 0 ; String "glop" ] (compile "glop**glop")
   [] (compile "")
-  [ AnyChar ] (compile "_")
-  [ AnyChar ; String "lop" ] (compile "_lop")
-  [ String "glo" ; AnyChar ] (compile "glo_")
-  [ String "gl" ; AnyChar ; String "p" ] (compile "gl_p")
-  [ String "gl" ; AnyString 1 ; String "p" ] (compile "gl_*p")
+  [ AnyChar ] (compile "?")
+  [ AnyChar ; String "lop" ] (compile "?lop")
+  [ String "glo" ; AnyChar ] (compile "glo?")
+  [ String "gl" ; AnyChar ; String "p" ] (compile "gl?p")
+  [ String "gl" ; AnyString 1 ; String "p" ] (compile "gl?*p")
 *)
 
 (* Make the given string a glob that matches only itself,

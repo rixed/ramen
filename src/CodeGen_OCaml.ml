@@ -867,7 +867,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable "String.ends_with"
       [Some TString, PropagateNull; Some TString, PropagateNull] oc [e1; e2]
   | Finalize, StatelessFunMisc (_, Like (e, p)), TBool ->
-    let pattern = Globs.compile ~star:'%' ~escape:'\\' p in
+    let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
     Printf.fprintf oc "(let pattern_ = Globs.%a in "
       (List.print Globs.print_chunk) pattern ;
     emit_functionN ?state ~opc ~nullable "Globs.matches pattern_ "
