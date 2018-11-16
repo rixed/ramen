@@ -225,6 +225,7 @@ let complete str () =
           ("--with-times", RamenConsts.CliInfo.with_seqnums) ::
           ("--with-units", RamenConsts.CliInfo.with_seqnums) ::
           ("--pretty", RamenConsts.CliInfo.pretty) ::
+          ("--flush", RamenConsts.CliInfo.flush) ::
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))

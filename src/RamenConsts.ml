@@ -166,6 +166,7 @@ struct
   let src_file = "file from which the worker can be rebuilt"
   let bin_file = "Binary file to run"
   let pretty = "Prettier output"
+  let flush = "Flush each line to stdout"
   let with_header = "Output the header line in CSV"
   let with_units = "Add units in the header line"
   let csv_separator = "Field separator"

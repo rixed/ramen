@@ -380,7 +380,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
 
 let tail conf func_name with_header with_units sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
-         duration pretty () =
+         duration pretty flush () =
   init_logger conf.C.log_level ;
   if last <> None && (min_seq <> None || max_seq <> None) then
     failwith "Options --last  and --{min,max}-seq are incompatible." ;
@@ -430,7 +430,7 @@ let tail conf func_name with_header with_units sep null raw
         if with_units then
           Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
-    BatIO.flush stdout) ;
+    if flush then BatIO.flush stdout) ;
   (* Pick a printer for each column according to the field type: *)
   let printers =
     Array.map (fun ft ->
@@ -477,7 +477,7 @@ let tail conf func_name with_header with_units sep null raw
         if i > 0 then String.print stdout sep ;
         printers.(i) stdout v) ;
       Char.print stdout '\n' ;
-      BatIO.flush stdout))
+      if flush then BatIO.flush stdout))
 
 (*
  * `ramen timeseries`

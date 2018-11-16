@@ -553,6 +553,11 @@ let with_units =
                    [ "u"; "with-units"; "units" ] in
   Arg.(value (flag i))
 
+let flush =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.flush
+                   [ "flush" ] in
+  Arg.(value (flag i))
+
 let tail =
   Term.(
     (const RamenCliCmd.tail
@@ -571,7 +576,8 @@ let tail =
       $ with_seqnums
       $ with_event_time
       $ duration
-      $ pretty),
+      $ pretty
+      $ flush),
     info ~doc:RamenConsts.CliInfo.tail "tail")
 
 (*
