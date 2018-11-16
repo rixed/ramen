@@ -30,7 +30,10 @@ module F = C.Func
 module P = C.Program
 
 (* Raise any exception on failure: *)
-type builder = C.conf -> RamenName.program -> string -> string -> unit
+type builder =
+  C.conf ->
+  (RamenName.program -> RamenProgram.P.t) ->
+  RamenName.program -> string -> string -> unit
 
 (* Tells if the target must be rebuilt from the source: *)
 type check = string -> string -> bool
@@ -83,11 +86,9 @@ let () =
     (fun src_file target_file ->
       target_is_older src_file target_file ||
       target_is_obsolete target_file)
-    (fun conf program_name src_file exec_file ->
-      C.with_rlock conf (fun programs ->
-        let get_parent = RamenCompiler.parent_from_programs programs in
-        RamenCompiler.compile conf get_parent ~exec_file src_file
-                              program_name))
+    (fun conf get_parent program_name src_file exec_file ->
+      RamenCompiler.compile conf get_parent ~exec_file src_file
+                            program_name)
 
 (* Return the list of builders, brute force (N is small!): *)
 let rec find_path from to_ =
@@ -126,7 +127,7 @@ let rec find_path from to_ =
 (* Get the build path, then for each step from the source, check if the build is
  * required.
  * [program_name] is required to resolve relative parents. *)
-let build conf program_name src_file target_file =
+let build conf get_parent program_name src_file target_file =
   let base_file = Filename.remove_extension src_file in
   let rec loop src_file = function
     | [] ->
@@ -135,7 +136,7 @@ let build conf program_name src_file target_file =
         let target_file = base_file ^"."^ to_type in
         mkdir_all ~is_file:true target_file ;
         if check src_file target_file then
-          builder conf program_name src_file target_file
+          builder conf get_parent program_name src_file target_file
         else
           !logger.debug "%S is still up to date" target_file ;
         loop target_file rest

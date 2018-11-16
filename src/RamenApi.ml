@@ -609,7 +609,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
 let () =
   RamenMake.register "alert" "ramen"
     RamenMake.target_is_older
-    (fun conf _prog_name src_file target_file ->
+    (fun conf _get_parent _prog_name src_file target_file ->
       let a = ppp_of_file alert_source_ppp_ocaml src_file in
       C.with_rlock conf (fun programs ->
         generate_alert programs target_file a))
@@ -648,7 +648,9 @@ let save_alert conf program_name alert_info =
         (* Compile right now so that we can report errors to the client and RamenRun.run
          * can check linkage errors: *)
         let exec_file = basename ^".x" in
-        RamenMake.build conf program_name src_file exec_file ;
+        C.with_rlock conf (fun programs ->
+          let get_parent = RamenCompiler.parent_from_programs programs in
+          RamenMake.build conf get_parent program_name src_file exec_file) ;
         let debug = conf.C.log_level = Debug in
         let params = Hashtbl.create 0 in
         RamenRun.run conf params true RamenConsts.Default.report_period

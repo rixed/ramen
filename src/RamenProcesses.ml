@@ -737,8 +737,12 @@ let synchronize_running conf autoreload_delay =
                   if mre.C.src_file <> "" then (
                     !logger.debug "Trying to build %S" mre.C.bin ;
                     log_and_ignore_exceptions ~what:("rebuilding "^ mre.C.bin)
-                      (RamenMake.build conf program_name mre.C.src_file)
-                      mre.C.bin) ;
+                      (fun () ->
+                        let get_parent =
+                          RamenCompiler.parent_from_programs programs in
+                        RamenMake.build
+                          conf get_parent program_name mre.C.src_file
+                          mre.C.bin) ()) ;
                   match get_rc () with
                   | exception _ ->
                       (* Errors have been logged already, nothing more can

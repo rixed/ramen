@@ -180,9 +180,11 @@ let compile conf root_path use_external_compiler bundle_dir
                          file name, giving up!" ;
           exit 1
       ) program_name_opt in
-    RamenCompiler.compile conf get_parent
-                          ?exec_file:output_file_opt
-                          source_file program_name
+    let output_file =
+      Option.default_delayed (fun () ->
+        Filename.remove_extension source_file ^".x"
+      ) output_file_opt in
+    RamenMake.build conf get_parent program_name source_file output_file
   in
   List.iter (fun source_file ->
     try

@@ -55,7 +55,7 @@ let parent_from_programs programs pn =
  * [get_parent] is a function that returns the P.t of a given
  * RamenName.program, used to get the output types of pre-existing
  * functions. *)
-let compile conf get_parent ?exec_file source_file program_name =
+let compile conf get_parent ~exec_file source_file program_name =
   let program_code = read_whole_file source_file in
   (*
    * If all goes well, many temporary files are going to be created. Here
@@ -384,10 +384,6 @@ let compile conf get_parent ?exec_file source_file program_name =
      * run the worker of the designated operation (which has been compiled
      * above).
      *)
-    let exec_file =
-      Option.default_delayed (fun () ->
-        Filename.remove_extension source_file ^".x"
-      ) exec_file in
     let casing_obj_name =
       make_valid_for_module (Filename.remove_extension source_file) ^
       "_casing_"^ RamenVersions.codegen ^".cmx" in
