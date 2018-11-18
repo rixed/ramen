@@ -128,7 +128,7 @@ let rec find_path from to_ =
  * required.
  * [program_name] is required to resolve relative parents. *)
 let build conf get_parent program_name src_file target_file =
-  let base_file = Filename.remove_extension src_file in
+  let base_file = Filename.remove_extension target_file in
   let rec loop src_file = function
     | [] ->
         !logger.debug "Done recompiling %S" target_file
