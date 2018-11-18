@@ -15,7 +15,7 @@ Feature: Ramen behavior can be customized via experiments
       """
     And a file test_prog.ramen with content
       """
-      RUN IF variant("test_external") = "var1" |? false;
+      RUN IF (variant("test_external") = "var1") |? false;
       DEFINE f AS YIELD "running" AS glop every 500ms;
       """
     And test_prog.ramen is compiled
