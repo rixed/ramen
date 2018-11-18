@@ -95,7 +95,7 @@ let rec find_path from to_ =
   (* Complete the given path toward [to_], returns both the path (reverted) and its
    * length (which is not larger than max_len): *)
   let rec loop max_len prev prev_len fro =
-    !logger.debug "Looking for a build path from %S to %S of mac length %d"
+    !logger.debug "Looking for a build path from %S to %S of max length %d"
       fro to_ max_len ;
     if prev_len > max_len then failwith "Path too long"
     else if fro = to_ then prev, prev_len

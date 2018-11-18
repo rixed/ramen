@@ -135,7 +135,7 @@ let print funcs oc =
       p "In function %s: %a"
         (RamenName.func_color func_name)
         print_func e
-  | RunCondition -> p "running condition"
+  | RunCondition -> p "running condition must be a non nullable boolean."
 
 (* When annotating an assertion we must always use a unique name, even if we
  * annotate several times the very same expression. It is important to
