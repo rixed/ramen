@@ -172,6 +172,7 @@ and alert_info_v1 =
     (* Unused, for the client purpose only *)
     id : string [@ppp_default ""] ;
     (* Desc to use when firing/recovering: *)
+    desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
     desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
     desc_recovery : string [@ppp_rename "desc-recovery"] [@ppp_default ""] }
   [@@ppp PPP_JSON]
@@ -591,7 +592,9 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
       (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
     Printf.fprintf oc "      AS firing\n" ;
-    Printf.fprintf oc "  NOTIFY \"%s is off!\" WITH\n" column ;
+    Printf.fprintf oc "  NOTIFY \"%s triggered%s\" WITH\n"
+      column
+      (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
     Printf.fprintf oc "    firing AS firing,\n" ;
     Printf.fprintf oc "    1 AS certainty,\n" ;
     (* This cast to string can handle the NULL case: *)
