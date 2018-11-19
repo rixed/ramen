@@ -262,8 +262,8 @@ let arg_is_numeric oc e =
 let empty_tuple_sizes = Set.Int.empty
 
 let arg_has_type typ oc e =
-  let typ_name = IO.to_string RamenTypes.print_structure typ in
-  let name = expr_err e (Err.ActualType typ_name) in
+  let name = IO.to_string RamenTypes.print_structure typ in
+  let name = expr_err e (Err.ActualType name) in
   emit_assert ~name oc (fun oc ->
     emit_id_eq_typ empty_tuple_sizes (t_of_expr e) oc typ)
 
@@ -314,10 +314,10 @@ let emit_constraints tuple_sizes out_fields oc e =
         let open RamenOperation in
         match List.find (fun sf -> sf.alias = field_name) out_fields with
         | exception Not_found ->
-            Printf.sprintf2 "Unknown output field %S (out is %a)"
-              field_name
+            Printf.sprintf2 "Unknown output field %a (out is %a)"
+              RamenName.field_print field_name
               (List.print (fun oc sf ->
-                String.print oc sf.alias)) out_fields |>
+                RamenName.field_print oc sf.alias)) out_fields |>
             failwith
         | { expr ; _ } ->
             emit_assert_id_eq_id eid oc (t_of_expr expr) ;
@@ -1203,7 +1203,7 @@ type id_or_type = Id of int | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op name =
   let open RamenOperation in
   let find_field_type =
-    List.find (fun ft -> ft.RamenTuple.typ_name = name) in
+    List.find (fun ft -> ft.RamenTuple.name = name) in
   match op with
   | Aggregate { fields ; _ } ->
       let sf = List.find (fun sf -> sf.alias = name) fields in
@@ -1224,14 +1224,14 @@ let id_or_type_of_field op name =
 let emit_input_fields oc tuple_sizes parents params condition funcs =
   let set_fields ?func what = function
     | Field (_field_typ, tupref, field_name) as expr ->
-        if is_virtual_field field_name then (
+        if RamenName.is_virtual field_name then (
           (* Type set during parsing *)
         ) else if !tupref = TupleParam then (
           (* Copy the scalar type from the default value: *)
           match RamenTuple.params_find field_name params with
           | exception Not_found ->
-              Printf.sprintf "%s is using unknown parameter %S"
-                what field_name |>
+              Printf.sprintf2 "%s is using unknown parameter %a"
+                what RamenName.field_print field_name |>
               failwith
           | param ->
               emit_assert_id_eq_typ tuple_sizes (t_of_expr expr) oc param.ptyp.typ.structure ;
@@ -1242,10 +1242,11 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
         ) else if func <> None && RamenLang.tuple_has_type_input !tupref then (
           let func = Option.get func in
           let no_such_field pfunc =
-            Printf.sprintf2 "Parent %s of %s does not output a field \
-                             named %s (only: %a)"
-              (RamenName.func_color pfunc.F.name)
-              what field_name
+            Printf.sprintf2 "Parent %a of %s does not output a field \
+                             named %a (only: %a)"
+              RamenName.func_print pfunc.F.name
+              what
+              RamenName.field_print field_name
               RamenTuple.print_typ_names pfunc.F.out_type |>
             failwith
           and aggr_types pfunc t prev =
@@ -1256,8 +1257,9 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
                 if t <> prev_t then
                   Printf.sprintf2
                     "All parents of %s must agree on the type of field \
-                     %s (%a has %a but %s has %a)"
-                    what field_name
+                     %a (%a has %a but %s has %a)"
+                    what
+                    RamenName.field_print field_name
                     (pretty_list_print (fun oc f ->
                       String.print oc (RamenName.func_color f))) prev_fns
                     RamenTypes.print_typ prev_t
@@ -1298,7 +1300,7 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
                 let pser =
                   RingBufLib.ser_tuple_typ_of_tuple_typ pfunc.F.out_type in
                 match List.find (fun fld ->
-                        fld.RamenTuple.typ_name = field_name
+                        fld.RamenTuple.name = field_name
                       ) pser with
                   | exception Not_found -> no_such_field pfunc
                   | ft ->
@@ -1597,17 +1599,18 @@ let set_io_tuples parents funcs h =
         | RamenOperation.Aggregate { fields ; _ } ->
             let id =
               List.find_map (fun sf ->
-                if sf.RamenOperation.alias = ft.typ_name then
+                if sf.RamenOperation.alias = ft.name then
                   Some (typ_of sf.expr).uniq_num
                 else None) fields in
             (match Hashtbl.find h id with
             | exception Not_found ->
-                Printf.sprintf2 "Cannot find type for id %d, field %s"
-                  id ft.typ_name |>
+                Printf.sprintf2 "Cannot find type for id %d, field %a"
+                  id RamenName.field_print ft.name |>
                 failwith
             | typ ->
-                !logger.debug "Set output field %s.%s to %a"
-                  (RamenName.string_of_func func.F.name) ft.typ_name
+                !logger.debug "Set output field %a.%a to %a"
+                  RamenName.func_print func.F.name
+                  RamenName.field_print ft.name
                   RamenTypes.print_typ typ ;
                 ft.typ <- typ)
         | _ -> assert false)
@@ -1618,8 +1621,8 @@ let set_io_tuples parents funcs h =
       (* For the in_type we have to check that all parents do export each
        * of the mentioned input fields: *)
       if parents = [] then
-        Printf.sprintf "Cannot use input field %s without any parent"
-          ft.RamenTuple.typ_name |>
+        Printf.sprintf2 "Cannot use input field %a without any parent"
+          RamenName.field_print ft.RamenTuple.name |>
         failwith ;
       if not (RamenTypes.is_typed ft.typ.structure) then (
         (* We already know (from the solver) that all parents export the
@@ -1628,17 +1631,18 @@ let set_io_tuples parents funcs h =
         let pser =
           RingBufLib.ser_tuple_typ_of_tuple_typ parent.F.out_type in
         match List.find_map (fun pft ->
-                if pft.RamenTuple.typ_name = ft.typ_name then
+                if pft.RamenTuple.name = ft.name then
                   Some pft.typ
                 else None) pser with
         | exception Not_found ->
-            Printf.sprintf "Cannot find field %s in %s"
-              ft.typ_name
+            Printf.sprintf2 "Cannot find field %a in %s"
+              RamenName.field_print ft.name
               (RamenName.func_color parent.F.name) |>
             failwith
         | typ ->
-            !logger.debug "Set input field %s.%s to %a"
-              (RamenName.string_of_func func.F.name) ft.typ_name
+            !logger.debug "Set input field %a.%a to %a"
+              RamenName.func_print func.F.name
+              RamenName.field_print ft.name
               RamenTypes.print_typ typ ;
             ft.typ <- typ)
     ) func.in_type

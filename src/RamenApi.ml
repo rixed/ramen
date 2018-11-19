@@ -149,7 +149,7 @@ type get_columns_req = string list [@@ppp PPP_JSON]
 
 type get_columns_resp = (string, columns_info) Hashtbl.t [@@ppp PPP_JSON]
 
-and columns_info = (string, column_info) Hashtbl.t [@@ppp PPP_JSON]
+and columns_info = (RamenName.field, column_info) Hashtbl.t [@@ppp PPP_JSON]
 
 and column_info =
   { type_ : string [@ppp_rename "type"] ;
@@ -182,7 +182,7 @@ and alert_info_v1 =
   [@@ppp PPP_OCaml]
 
 and simple_filter =
-  { lhs : string ;
+  { lhs : RamenName.field ;
     rhs : string ;
     op : string [@ppp_default "="] }
   [@@ppp PPP_JSON]
@@ -190,7 +190,7 @@ and simple_filter =
 
 (* Alerts are saved on disc under this format: *)
 and alert_source =
-  | V1 of { table : string ; column : string ; alert : alert_info_v1 }
+  | V1 of { table : string ; column : RamenName.field ; alert : alert_info_v1 }
   (* ... and so on *)
   [@@ppp PPP_OCaml]
 
@@ -220,7 +220,8 @@ let group_keys_of_operation =
       let simple_keys =
         List.filter_map (function
           | RamenExpr.Field (_t, tuple_prefix, name) when
-              name <> "start" && name <> "stop" ->
+              name <> RamenName.field_of_string "start" &&
+              name <> RamenName.field_of_string "stop" ->
               Some (tuple_prefix, name)
           | _ -> None
         ) key in
@@ -240,7 +241,8 @@ let alerts_of_column conf func column =
   (* All files with extension ".alert" in this directory is supposed to be
    * an alert description: *)
   let alert_func_path = "alerts/"^ F.path func in
-  let dir = C.api_alerts_root conf ^"/"^ alert_func_path ^"/"^ column in
+  let dir = C.api_alerts_root conf ^"/"^ alert_func_path ^"/"^
+            RamenName.string_of_field column in
   if is_directory dir then
     Sys.readdir dir |>
     Array.fold_left (fun lst f ->
@@ -273,16 +275,16 @@ let columns_of_func conf func =
   let h = Hashtbl.create 11 in
   let group_keys = group_keys_of_operation func.F.operation in
   List.iter (fun ft ->
-    if not (is_private_field ft.RamenTuple.typ_name) then
+    if not (RamenName.is_private ft.RamenTuple.name) then
       let type_ = ext_type_of_typ ft.typ.structure in
       if type_ <> Other then
-        Hashtbl.add h ft.typ_name {
+        Hashtbl.add h ft.name {
           type_ = string_of_ext_type type_ ;
           units = units_of_column ft ;
           doc = ft.doc ;
-          factor = List.mem ft.typ_name func.F.factors ;
-          group_key = List.mem ft.typ_name group_keys ;
-          alerts = alerts_of_column conf func ft.typ_name }
+          factor = List.mem ft.name func.F.factors ;
+          group_key = List.mem ft.name group_keys ;
+          alerts = alerts_of_column conf func ft.name }
   ) func.F.out_type ;
   h
 
@@ -331,9 +333,9 @@ type get_timeseries_req =
   [@@ppp PPP_JSON]
 
 and timeseries_data_spec =
-  { select : string list ;
+  { select : RamenName.field list ;
     where : simple_filter list [@ppp_default []] ;
-    factors : string list [@ppp_default []] }
+    factors : RamenName.field list [@ppp_default []] }
   [@@ppp PPP_JSON]
 
 let check_get_timeseries_req req =
@@ -381,8 +383,9 @@ let get_timeseries conf msg =
         let prog = get_rc () in
         let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
         List.fold_left (fun filters where ->
-          if is_private_field where.lhs then
-            bad_request ("Cannot filter through private field "^ where.lhs) ;
+          if RamenName.is_private where.lhs then
+            bad_request ("Cannot filter through private field "^
+                         RamenName.string_of_field where.lhs) ;
           let open RamenSerialization in
           try
             let _, ftyp = find_field func.F.out_type where.lhs in
@@ -426,7 +429,7 @@ let get_timeseries conf msg =
  *)
 
 type set_alerts_req =
-  (string, (string, alert_info_v1 list) Hashtbl.t) Hashtbl.t
+  (string, (RamenName.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
   [@@ppp PPP_JSON]
 
 (* Alert ids are used to uniquely identify alerts (for instance when
@@ -440,13 +443,16 @@ let alert_id column =
   let filterspec filter =
     IO.to_string
       (List.print ~first:"" ~last:"" ~sep:"-"
-        (fun oc w -> Printf.fprintf oc "(%s %s %s)" w.op w.lhs w.rhs))
+        (fun oc w ->
+          Printf.fprintf oc "(%s %s %s)"
+            w.op (RamenName.string_of_field w.lhs) w.rhs))
       filter in
   function
   | V1 { alert = { threshold ; where ; having ; recovery ; duration ; ratio ;
                    id ; _ } ; _ } ->
       Legacy.Printf.sprintf "V1-%s-%h-%h-%h-%h-%s-%s-%s"
-         column threshold recovery duration ratio id
+         (RamenName.string_of_field column)
+         threshold recovery duration ratio id
          (filterspec where)
          (filterspec having) |> md5
 
@@ -476,9 +482,10 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table programs table in
   try
-    List.find (fun t -> t.typ_name = column) func.F.out_type
+    List.find (fun t -> t.name = column) func.F.out_type
   with Not_found ->
-    Printf.sprintf "No column %s in table %s" column table |>
+    Printf.sprintf "No column %s in table %s"
+      (RamenName.string_of_field column) table |>
     bad_request
 
 let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
@@ -497,14 +504,14 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     let desc_firing =
       if a.desc_firing <> "" then String.quote a.desc_firing else
         Printf.sprintf "%s went %s the configured threshold %f.\n"
-          column
+          (RamenName.string_of_field column)
           (if a.threshold >= a.recovery then "above" else "below")
           a.threshold |>
         with_desc_link
     and desc_recovery =
       if a.desc_recovery <> "" then String.quote a.desc_recovery else
         Printf.sprintf "The value of %s recovered.\n"
-          column |>
+          (RamenName.string_of_field column) |>
         with_desc_link
     and print_filter oc filter =
       if filter = [] then String.print oc "true" else
@@ -513,7 +520,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
           let ft = field_typ_of_column programs table w.lhs in
           let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
           Printf.fprintf oc "(%s %s %a)"
-            (ramen_quote w.lhs) w.op
+            (ramen_quote (RamenName.string_of_field w.lhs)) w.op
             RamenTypes.print v)
         oc filter
     and default_aggr_of_field fn =
@@ -544,12 +551,16 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       List.iter (fun h ->
         Printf.fprintf oc "    %s %s AS %s, -- for HAVING\n"
           (default_aggr_of_field h.lhs)
-          (ramen_quote h.lhs) (ramen_quote h.lhs)
+          (ramen_quote (RamenName.string_of_field h.lhs))
+          (ramen_quote (RamenName.string_of_field h.lhs))
       ) a.having ;
-      Printf.fprintf oc "    min %s AS min_value,\n" (ramen_quote column) ;
-      Printf.fprintf oc "    max %s AS max_value,\n" (ramen_quote column) ;
+      Printf.fprintf oc "    min %s AS min_value,\n"
+        (ramen_quote (RamenName.string_of_field column)) ;
+      Printf.fprintf oc "    max %s AS max_value,\n"
+        (ramen_quote (RamenName.string_of_field column)) ;
       Printf.fprintf oc "    %s %s AS value\n"
-        (default_aggr_of_field column) (ramen_quote column) ;
+        (default_aggr_of_field column)
+        (ramen_quote (RamenName.string_of_field column)) ;
       Printf.fprintf oc "  GROUP BY u32(floor(start / %f))\n" a.time_step ;
       Printf.fprintf oc "  COMMIT AFTER in.start > out.start + 1.5 * %f;\n\n"
         a.time_step ;
@@ -558,9 +569,11 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       Printf.fprintf oc "    start, stop,\n" ;
       (* Also select all the fields used in the HAVING filter: *)
       List.iter (fun h ->
-        Printf.fprintf oc "    %s, -- for HAVING\n" (ramen_quote h.lhs)
+        Printf.fprintf oc "    %s, -- for HAVING\n"
+          (ramen_quote (RamenName.string_of_field h.lhs))
       ) a.having ;
-      Printf.fprintf oc "    %s AS value;\n\n" (ramen_quote column) ;
+      Printf.fprintf oc "    %s AS value;\n\n"
+        (ramen_quote (RamenName.string_of_field column)) ;
     ) ;
     (* Then we want for each point to find out if it's within the acceptable
      * boundaries or not, using hysteresis: *)
@@ -589,7 +602,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
         (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
       Printf.fprintf oc "      AS firing\n" ;
       Printf.fprintf oc "  NOTIFY %S || \" triggered\" || %S WITH\n"
-        column
+        (RamenName.string_of_field column)
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       Printf.fprintf oc "    firing AS firing,\n" ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
@@ -669,12 +682,12 @@ let set_alerts conf msg =
   Hashtbl.iter (fun table columns ->
     !logger.debug "set-alerts: table %s" table ;
     Hashtbl.iter (fun column alerts ->
-      !logger.debug "set-alerts: column %s" column ;
+      !logger.debug "set-alerts: column %a" RamenName.field_print column ;
       (* All non listed alerts must be suppressed *)
       let parent =
         (* It's safer to anchor alerts in a different subtree
          * (for instance to avoid configurator "managing" them) *)
-        RamenName.program_of_string ("alerts/"^ table ^"/"^ column) in
+        RamenName.program_of_string ("alerts/"^ table ^"/"^ (RamenName.string_of_field column)) in
       let dir =
         C.api_alerts_root conf ^"/"^
         RamenName.path_of_program parent in
@@ -698,7 +711,7 @@ let set_alerts conf msg =
           let ft = field_typ_of_column programs table column in
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
             Printf.sprintf "Column %s of table %s is not numeric"
-              column table |>
+              (RamenName.string_of_field column) table |>
             bad_request ;
           (* Also check that table has event time info: *)
           let func = func_of_table programs table in
@@ -708,7 +721,8 @@ let set_alerts conf msg =
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
         let id = alert_id column alert_source in
-        let program_name = "alerts/"^ table ^"/"^ column ^"/"^ id in
+        let program_name = "alerts/"^ table ^"/"^
+                           RamenName.string_of_field column ^"/"^ id in
         new_alerts := Set.String.add program_name !new_alerts ;
         save_alert conf program_name alert_source
       ) alerts

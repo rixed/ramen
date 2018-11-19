@@ -56,20 +56,22 @@ let infer_factors operation =
 let infer_field_doc_aggr func operation parents params =
   let set_doc alias doc =
     if doc <> "" then (
-      !logger.debug "Function %s can reuse parent doc for %s"
-        (RamenName.string_of_func func.F.name) alias ;
+      !logger.debug "Function %a can reuse parent doc for %a"
+        RamenName.func_print func.F.name
+        RamenName.field_print alias ;
       let ft =
         List.find (fun ft ->
-          ft.RamenTuple.typ_name = alias
+          ft.RamenTuple.name = alias
         ) func.F.out_type in
       ft.doc <- doc)
   and set_aggr alias aggr =
     if aggr <> None then (
-      !logger.debug "Function %s can reuse parent default aggr for %s"
-        (RamenName.string_of_func func.F.name) alias ;
+      !logger.debug "Function %a can reuse parent default aggr for %a"
+        RamenName.func_print func.F.name
+        RamenName.field_print alias ;
       let ft =
         List.find (fun ft ->
-          ft.RamenTuple.typ_name = alias
+          ft.RamenTuple.name = alias
         ) func.F.out_type in
       ft.aggr <- aggr)
   in
@@ -82,7 +84,7 @@ let infer_field_doc_aggr func operation parents params =
             when doc = "" || aggr = None ->
             (* Look for this field fn in parent: *)
             (match List.find (fun ft ->
-                     ft.RamenTuple.typ_name = fn
+                     ft.RamenTuple.name = fn
                    ) (List.hd parents).F.out_type with
             | exception Not_found -> ()
             | psf ->
@@ -93,7 +95,7 @@ let infer_field_doc_aggr func operation parents params =
             expr = Expr.Field (_, { contents = TupleParam }, fn) }
             when doc = "" || aggr = None ->
             (match List.find (fun param ->
-                     param.RamenTuple.ptyp.typ_name = fn
+                     param.RamenTuple.ptyp.name = fn
                    ) params with
             | exception Not_found -> ()
             | param ->
@@ -143,9 +145,9 @@ let finalize_func parents params func operation =
     func.factors <-
       infer_factors operation (List.hd parents).factors ;
     if func.factors <> [] then
-      !logger.debug "Function %s can reuse factors %a from parents"
-        (RamenName.string_of_func func.name)
-        (List.print String.print) func.factors
+      !logger.debug "Function %a can reuse factors %a from parents"
+        RamenName.func_print func.name
+        (List.print RamenName.field_print) func.factors
   ) ;
   if parents <> [] then (
     infer_field_doc_aggr func operation parents params ;

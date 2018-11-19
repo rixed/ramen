@@ -45,9 +45,9 @@ struct
       parents : parent list ;
       merge_inputs : bool ;
       mutable event_time : RamenEventTime.t option ;
-      mutable factors : string list ;
+      mutable factors : RamenName.field list ;
       (* List of envvar used in that function: *)
-      envvars : string list }
+      envvars : RamenName.field list }
     [@@ppp PPP_OCaml]
 
   module Serialized = struct
@@ -122,7 +122,7 @@ struct
     (* type_signature does not look at private fields: *)
     ";OUT="^ RamenTuple.type_signature func.out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
-    ";PRM="^ RamenTuple.param_types_signature params |>
+    ";PRM="^ RamenTuple.params_type_signature params |>
     md5
 
   let dump_io func =
@@ -174,7 +174,9 @@ struct
       Hashtbl.enum params /@
       (fun (n, v) ->
         Printf.sprintf2 "%s%s=%a"
-          RamenConsts.param_envvar_prefix n RamenTypes.print v) in
+          RamenConsts.param_envvar_prefix
+          (RamenName.string_of_field n)
+          RamenTypes.print v) in
     (* Then the experiment variants: *)
     let exps =
       RamenExperiments.all_experiments conf.persist_dir |>
@@ -404,7 +406,8 @@ let archive_buf_name conf func =
 (* Each individual ringbuf may have a file storing all possible values for
  * special fields identified as factors: *)
 let factors_of_ringbuf fname factor =
-  Filename.remove_extension fname ^".factors."^ factor
+  Filename.remove_extension fname ^".factors."^
+    RamenName.string_of_field factor
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic

@@ -5,6 +5,17 @@
 
 type 'a t
 val t_ppp_ocaml : 'a t PPP.t
+val t_ppp_json : 'a t PPP.t
+
+type field = [`Field] t
+val field_ppp_ocaml : field PPP.t
+val field_ppp_json : field PPP.t
+val field_of_string : string -> field
+val field_print : 'a BatInnerIO.output -> field -> unit
+val string_of_field : field -> string
+val field_color : field -> string
+val is_private : field -> bool
+val is_virtual : field -> bool
 
 type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
@@ -33,9 +44,8 @@ val program_print : 'a BatInnerIO.output -> program -> unit
 type param = string * RamenTypes.value
 val param_ppp_ocaml : param PPP.t
 
-type params = (string, RamenTypes.value) Hashtbl.t
+type params = (field, RamenTypes.value) Hashtbl.t
 val params_ppp_ocaml : params PPP.t
-val params_sort : param list -> param list
 val string_of_params : params -> string
 val signature_of_params : params -> string
 
@@ -60,4 +70,10 @@ val base_unit_of_string : string -> base_unit
 val string_of_base_unit : base_unit -> string
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 
-(* TODO: field names, bin names, notif names... *)
+(* Compare two strings together as long as they are of the same (phantom)
+ * type: *)
+val compare :
+  ([< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url] as 'a) t ->
+  'a t -> int
+
+(* TODO: bin names, notif names... *)

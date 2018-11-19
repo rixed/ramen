@@ -7,7 +7,7 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
-type tuple_spec = (string, string) Hashtbl.t [@@ppp PPP_OCaml]
+type tuple_spec = (RamenName.field, string) Hashtbl.t [@@ppp PPP_OCaml]
 
 module Input = struct
   type spec =
@@ -111,17 +111,17 @@ let compare_miss bad1 bad2 =
 let field_index_of_name fq ser field =
   try
     List.findi (fun _ ftyp ->
-      ftyp.RamenTuple.typ_name = field
+      ftyp.RamenTuple.name = field
     ) ser
   with Not_found ->
-    Printf.sprintf2 "Unknown field %S in %s, which has only %a"
-      field
-      (RamenName.fq_color fq)
+    Printf.sprintf2 "Unknown field %a in %a, which has only %a"
+      RamenName.field_print field
+      RamenName.fq_print fq
       RamenTuple.print_typ_names ser |>
     fail_and_quit
 
 let field_name_of_index ser idx =
-  (List.nth ser idx).RamenTuple.typ_name
+  (List.nth ser idx).RamenTuple.name
 
 (* The configuration file gives us tuple spec as a hash, which is
  * convenient to serialize, but for filtering it's more convenient to
@@ -166,7 +166,9 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
 let file_spec_print ser best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
   let n = field_name_of_index ser idx in
-  Printf.fprintf oc "%s => %a" n RamenTypes.print value ;
+  Printf.fprintf oc "%a => %a"
+    RamenName.field_print n
+    RamenTypes.print value ;
   match List.find (fun (idx', _, _) -> idx = idx') best_miss with
   | exception Not_found -> ()
   | _, a, _ -> Printf.fprintf oc " (had %a)" RamenTypes.print a
@@ -179,8 +181,8 @@ let tuple_print ser oc vs =
   String.print oc "{ " ;
   List.iteri (fun i ft ->
     if i > 0 then String.print oc "; " ;
-    Printf.fprintf oc "%s => %a"
-      ft.RamenTuple.typ_name
+    Printf.fprintf oc "%a => %a"
+      RamenName.field_print ft.RamenTuple.name
       RamenTypes.print vs.(i)
   ) ser ;
   String.print oc " }"
@@ -380,11 +382,11 @@ let check_test_spec conf test =
         | func ->
             Hashtbl.iter (fun field_name _ ->
               if not (List.exists (fun ft ->
-                        ft.RamenTuple.typ_name = field_name
+                        ft.RamenTuple.name = field_name
                       ) func.F.out_type) then
-                Printf.sprintf2 "Unknown field %s in %s (have %a)"
-                  field_name
-                  RamenName.(fq_color (fq pn fn))
+                Printf.sprintf2 "Unknown field %a in %a (have %a)"
+                  RamenName.field_print field_name
+                  RamenName.fq_print (RamenName.fq pn fn)
                   RamenTuple.print_typ_names func.F.out_type |>
                 failwith
             ) tuple))

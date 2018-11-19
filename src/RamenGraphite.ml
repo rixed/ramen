@@ -142,12 +142,13 @@ let fix_quote s =
 let tree_enum_of_fields only_num_fields func =
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   E (List.filter_map (fun ft ->
-       let n = ft.RamenTuple.typ_name in
+       let n = ft.RamenTuple.name in
        if (not only_num_fields ||
            RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
           not (List.mem n func.F.factors)
        then
-         Some ({ value = n ; section = DataField }, E [])
+         Some ({ value = RamenName.string_of_field n ;
+                 section = DataField }, E [])
        else
          None
      ) ser)
@@ -390,7 +391,8 @@ let expand_query_values ?anchor_right conf query =
         assert is_leaf ;
         (RamenName.program_of_string prog_name,
          RamenName.func_of_string func_name,
-         List.rev factors, pv.value) :: node_res, depth0
+         List.rev factors,
+         RamenName.field_of_string pv.value) :: node_res, depth0
   ) [] depth0 filtered
 
 let complete_graphite_find conf params =
@@ -500,14 +502,16 @@ let render_graphite conf headers body =
                         (RamenName.string_of_fq fq) ;
                       None
                     ) else if List.mem data_field func.factors then (
-                      !logger.error "Function %s just got %s as factor?"
-                        (RamenName.string_of_fq fq) data_field ;
+                      !logger.error "Function %a just got %a as factor?"
+                        RamenName.fq_print fq
+                        RamenName.field_print data_field ;
                       None
                     ) else if not (List.exists (fun ft ->
-                                   ft.RamenTuple.typ_name = data_field
+                                   ft.RamenTuple.name = data_field
                                  ) func.out_type) then (
-                      !logger.error "Function %s just lost field %s?"
-                        (RamenName.string_of_fq fq) data_field ;
+                      !logger.error "Function %a just lost field %a?"
+                        RamenName.fq_print fq
+                        RamenName.field_print data_field ;
                       None
                     ) else (
                       Some (func, fq, fvals, data_field)
@@ -519,10 +523,10 @@ let render_graphite conf headers body =
    * we merely count how many distinct values we are asking for: *)
   let factor_values = Hashtbl.create 9 in
   let count_factor_values (_func, fq, fvals, data_field) =
-    !logger.debug "target = op:%s, fvals:%a, data:%s"
+    !logger.debug "target = op:%s, fvals:%a, data:%a"
       (RamenName.string_of_fq fq)
       (List.print (Option.print RamenTypes.print)) fvals
-      data_field ;
+      RamenName.field_print data_field ;
     List.iteri (fun i fval_opt ->
       match fval_opt with
       | None -> ()
@@ -605,18 +609,22 @@ let render_graphite conf headers body =
     Hashtbl.enum factor_values //@ (fun (fact_name, fact_vals) ->
       if SimpleSet.has_many fact_vals then Some fact_name
       else None) |>
-    Set.String.of_enum in
-  !logger.debug "kept factors = %a" (Set.String.print String.print) with_factors ;
+    Set.of_enum in
+  !logger.debug "kept factors = %a"
+    (Set.print RamenName.field_print) with_factors ;
   let resp =
     List.map (fun (data_field, target, datapoints) ->
       let target =
         Printf.sprintf2 "%s%a"
-          (if with_data_field then data_field ^" " else "")
+          (if with_data_field then
+            RamenName.string_of_field data_field ^" "
+           else "")
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
-            Printf.fprintf oc "%s=%a"
-              n RamenTypes.print v))
+            Printf.fprintf oc "%a=%a"
+              RamenName.field_print n
+              RamenTypes.print v))
             (List.filter (fun (fact_name, _fact_val) ->
-              Set.String.mem fact_name with_factors
+              Set.mem fact_name with_factors
              ) target) in
       { target ; datapoints }
     ) resp in

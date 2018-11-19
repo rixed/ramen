@@ -175,25 +175,27 @@ let compile conf get_parent ~exec_file source_file program_name =
     (* Find this field in this tuple and patch it: *)
     let patch_typ field units typ =
       match List.find (fun ft ->
-              ft.RamenTuple.typ_name = field
+              ft.RamenTuple.name = field
             ) typ with
       | exception Not_found ->
-          assert (is_private_field field)
+          assert (RamenName.is_private field)
       | ft ->
           if ft.units = None then (
-            !logger.debug "Set type of output field %S to %a"
-              field (Option.print RamenUnits.print) units ;
+            !logger.debug "Set type of output field %a to %a"
+              RamenName.field_print field
+              (Option.print RamenUnits.print) units ;
             ft.units <- units) in
     let units_of_output func name =
-      !logger.debug "Looking for units of output field %S in %S"
-        name (RamenName.string_of_func func.F.name) ;
+      !logger.debug "Looking for units of output field %a in %S"
+        RamenName.field_print name
+        (RamenName.string_of_func func.F.name) ;
       match List.find (fun ft ->
-              ft.RamenTuple.typ_name = name
+              ft.RamenTuple.name = name
             ) func.F.out_type with
         | exception Not_found ->
-            !logger.error "In function %s: no such input field %S (have %a)"
-              (RamenName.func_color func.F.name)
-              name
+            !logger.error "In function %a: no such input field %a (have %a)"
+              RamenName.func_print func.F.name
+              RamenName.field_print name
               RamenTuple.print_typ_names func.F.out_type ;
             None
         | ft ->
@@ -204,9 +206,9 @@ let compile conf get_parent ~exec_file source_file program_name =
      * use the same): *)
     let units_of_input func parents field =
       let what =
-        Printf.sprintf "Field %S in parents of %s"
-          field
-          (RamenName.func_color func.F.name) in
+        Printf.sprintf2 "Field %a in parents of %a"
+          RamenName.field_print field
+          RamenName.func_print func.F.name in
       let units =
         (List.enum parents /@
          (fun f -> units_of_output f field)) |>
@@ -403,7 +405,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         Hashtbl.iter (fun _ (func, _op) ->
           func.F.out_type <-
             List.filter (fun ft ->
-              not (is_private_field ft.RamenTuple.typ_name)
+              not (RamenName.is_private ft.RamenTuple.name)
             ) func.F.out_type
         ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program

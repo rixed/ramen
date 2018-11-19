@@ -54,7 +54,8 @@ let read_well_known fq where suffix bname typ () =
     let where =
       if fq_str = suffix then where else
       let fq = String.rchop ~n:(String.length suffix) fq_str in
-      ("worker", "=", RamenTypes.VString fq) :: where in
+      let w = RamenName.field_of_string "worker", "=", RamenTypes.VString fq in
+      w :: where in
     let filter = RamenSerialization.filter_tuple_by ser where in
     Some (bname, filter, typ, ser)
   else None

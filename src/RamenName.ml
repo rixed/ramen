@@ -2,7 +2,34 @@
 open Batteries
 open RamenHelpers
 
-type 'a t = string [@@ppp PPP_OCaml]
+type 'a t = string [@@ppp PPP_OCaml] [@@ppp PPP_JSON]
+
+(* Field names *)
+
+type field = [`Fiield] t
+
+let field_ppp_ocaml = t_ppp_ocaml
+let field_ppp_json = t_ppp_json
+
+let field_of_string s =
+  (* New lines have to be forbidden because of the out_ref ringbuf files.
+   * Slashes have to be forbidden because we rsplit to get program names. *)
+  if s = "" ||
+     String.fold_left (fun bad c ->
+       bad || c = '\n' || c = '\r' || c = '/') false s then
+    invalid_arg "operation name" ;
+  s
+
+let field_print = String.print
+
+external string_of_field : field -> string = "%identity"
+
+let starts_with c f =
+  String.length f > 0 && f.[0] = c
+
+let is_virtual = starts_with '#'
+let is_private = starts_with '_'
+
 
 (* Function names *)
 
@@ -82,7 +109,7 @@ let program_of_rel_program start rel_program =
  * - The MD5 hash of the above, otherwise.  *)
 
 type param = string * RamenTypes.value [@@ppp PPP_OCaml]
-type params = (string, RamenTypes.value) Hashtbl.t [@@ppp PPP_OCaml]
+type params = (field, RamenTypes.value) Hashtbl.t [@@ppp PPP_OCaml]
 
 let params_sort =
   let param_compare (a, _) (b, _) = String.compare a b in
@@ -137,7 +164,10 @@ let base_unit_print = String.print
 
 (* Some dedicated colors for those strings: *)
 
-let func_color f = RamenLog.green (string_of_func f)
-let program_color p = RamenLog.green (string_of_program p)
+let field_color = RamenLog.blue
+let func_color = RamenLog.green
+let program_color = RamenLog.green
 let expr_color = RamenLog.yellow
 let fq_color = func_color
+
+let compare = String.compare

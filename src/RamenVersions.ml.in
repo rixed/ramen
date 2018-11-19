@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v45" (* last: aggr works with lists too *)
+let codegen = "v46" (* last: Make fields its own type and rename typ_name *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v5" (* last: addition of startup time *)

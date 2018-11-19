@@ -37,13 +37,13 @@ let id_of_prefix tuple =
 
 (* Tuple deconstruction as a function parameter: *)
 let id_of_field_name ?(tuple=TupleIn) x =
-  (match x with
+  (match RamenName.string_of_field x with
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
   | field -> id_of_prefix tuple ^"_"^ field ^"_") |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let id_of_field_typ ?tuple field_typ =
-  id_of_field_name ?tuple field_typ.RamenTuple.typ_name
+  id_of_field_name ?tuple field_typ.RamenTuple.name
 
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
 let array_print_as_tuple_i p =
@@ -567,13 +567,13 @@ and finalize_state ?state ~opc ~nullable skip my_state func_name fin_args
 and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
     Printf.fprintf oc "let %s = function\n"
-      ("maybe_"^ ft.typ_name ^"_" |>
+      ("maybe_"^ RamenName.string_of_field ft.name ^"_" |>
        RamenOCamlCompiler.make_valid_ocaml_identifier) ;
     Printf.fprintf oc "  | None -> Null\n" ;
     Printf.fprintf oc "  | Some %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
       (if ft.typ.nullable then "" else "NotNull ")
-      (id_of_field_name ~tuple:TupleOut ft.typ_name)
+      (id_of_field_name ~tuple:TupleOut ft.name)
   ) out_typ
 
 and emit_event_time oc opc =
@@ -584,7 +584,7 @@ and emit_event_time oc opc =
     match src with
     | OutputField ->
         (* This must not fail if RamenOperation.check did its job *)
-        let f = List.find (fun t -> t.typ_name = field_name) opc.tuple_typ in
+        let f = List.find (fun t -> t.name = field_name) opc.tuple_typ in
         Printf.fprintf oc
           (if f.typ.nullable then "((%a) %s |! 0.)" else "(%a) %s")
           (conv_from_to ~nullable:f.typ.nullable)
@@ -594,7 +594,8 @@ and emit_event_time oc opc =
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%a %s_%s_)"
           (conv_from_to ~nullable:false) (param.ptyp.typ.structure, TFloat)
-          (id_of_prefix TupleParam) field_name
+          (id_of_prefix TupleParam)
+          (RamenName.string_of_field field_name)
   in
   Printf.fprintf oc "let start_ = %a *. %a "
     (field_value_to_float !sta_src) sta_field
@@ -661,9 +662,11 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, Field (_, tuple, field), _ ->
     (match !tuple with
     | TupleOutPrevious ->
-      Printf.fprintf oc "(maybe_%s_ out_previous_opt_)" field
+      Printf.fprintf oc "(maybe_%s_ out_previous_opt_)"
+        (RamenName.string_of_field field)
     | TupleEnv ->
-      Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)" field
+      Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)"
+        (RamenName.string_of_field field)
     | _ ->
       String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Case (_, alts, else_), t ->
@@ -1702,7 +1705,7 @@ let emit_sersize_of_tuple name oc tuple_typ =
  * Returns the final offset for * checking with serialized size of this
  * tuple. *)
 let emit_serialize_tuple name oc tuple_typ =
-  (* Serialize in tuple_typ.typ_name order: *)
+  (* Serialize in tuple_typ.name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
   emit_compute_nullmask_size oc ser_typ ;
@@ -1808,7 +1811,10 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
         (emit_value_of_string field_typ.typ.structure) s_var
     ) ;
     Printf.fprintf oc "\t\t) with exn -> (\n" ;
-    Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n" (i+1) field_typ.typ_name ;
+    Printf.fprintf oc
+      "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n"
+      (i+1)
+      (RamenName.string_of_field field_typ.name) ;
     Printf.fprintf oc "\t\t\traise exn))%s\n" sep ;
   ) tuple_typ ;
   Printf.fprintf oc "\t)\n"
@@ -1894,14 +1900,14 @@ let emit_well_known opc oc name from
 (* tuple must be some kind of _input_ tuple *)
 let emit_in_tuple ?(tuple=TupleIn) mentioned oc in_typ =
   print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
-    if Set.mem field_typ.typ_name mentioned then
+    if Set.mem field_typ.name mentioned then
       Some field_typ else None) in_typ)
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. As an optimisation, read
  * (and return) only the mentioned fields. *)
 let emit_read_tuple name mentioned oc in_typ =
-  (* Deserialize in in_tuple_typ.typ_name order: *)
+  (* Deserialize in in_tuple_typ.name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
   Printf.fprintf oc "\
     let %s tx_ =\n\
@@ -1974,13 +1980,12 @@ let emit_read_tuple name mentioned oc in_typ =
   in
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in
-      if Set.mem field.typ_name mentioned then (
+      if Set.mem field.name mentioned then (
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \tlet %s, offs_ =\n%a in\n"
           nulli
           id (emit_read_scalar "tx_" "offs_" id field.typ.nullable "bi_") field.typ.structure
       ) else (
-        Printf.printf "Non mentionned field: %s\n%!" field.typ_name ;
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \nlet offs_ = offs_ + (%a)\n"
           nulli
@@ -1993,7 +1998,7 @@ let emit_read_tuple name mentioned oc in_typ =
    * select clause specified order, not according to serialization order: *)
   let in_typ_only_ser =
     List.filter (fun t ->
-      not (is_private_field t.RamenTuple.typ_name)
+      not (RamenName.is_private t.RamenTuple.name)
     ) in_typ in
   Printf.fprintf oc "\t%a\n"
     (emit_in_tuple mentioned) in_typ_only_ser
@@ -2074,18 +2079,18 @@ let emit_generate_tuples name in_typ mentioned out_typ ~opc oc selected_fields =
       sf.RamenOperation.expr in
     let _ = List.fold_lefti (fun gi i ft ->
         if i > 0 then Printf.fprintf oc ",\n%a" emit_indent (2 + num_gens) ;
-        match RamenExpr.is_generator (expr_of_field ft.typ_name) with
+        match RamenExpr.is_generator (expr_of_field ft.name) with
         | exception Not_found ->
           (* For star-imported fields: *)
           Printf.fprintf oc "%s"
-            (id_of_field_name ft.typ_name) ;
+            (id_of_field_name ft.name) ;
           gi
         | true ->
           Printf.fprintf oc "generated_%d_" gi ;
           gi + 1
         | false ->
           Printf.fprintf oc "%s"
-            (id_of_field_name ~tuple:TupleOut ft.typ_name) ;
+            (id_of_field_name ~tuple:TupleOut ft.name) ;
           gi
         ) 0 out_typ in
     for _ = 1 to num_gens do Printf.fprintf oc ")" done ;
@@ -2097,8 +2102,9 @@ let emit_field_of_tuple name oc tuple_typ =
     name
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   List.iter (fun field_typ ->
-      Printf.fprintf oc "\t| %S -> " field_typ.typ_name ;
-      let id = id_of_field_name ~tuple:TupleOut field_typ.typ_name in
+      Printf.fprintf oc "\t| %S -> "
+        (RamenName.string_of_field field_typ.name) ;
+      let id = id_of_field_name ~tuple:TupleOut field_typ.name in
       if field_typ.typ.nullable then (
         Printf.fprintf oc "(match %s with Null -> %S \
                             | NotNull v_ -> (%a) v_)\n"
@@ -2154,7 +2160,7 @@ let emit_field_selection
       out_typ minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
-      ft.RamenTuple.typ_name = field_name
+      ft.RamenTuple.name = field_name
     ) minimal_typ in
   let must_output_field field_name =
     not build_minimal || field_in_minimal field_name in
@@ -2169,14 +2175,14 @@ let emit_field_selection
         if build_minimal then (
           (* Update the states as required for this field, just before
            * computing the field actual value. *)
-          emit_state_update_for_expr ~opc ~what:sf.RamenOperation.alias
-                                     oc sf.RamenOperation.expr ;
+          let what = RamenName.string_of_field sf.RamenOperation.alias in
+          emit_state_update_for_expr ~opc ~what oc sf.RamenOperation.expr ;
         ) ;
         if not build_minimal && field_in_minimal sf.alias then (
           (* We already have this binding *)
         ) else (
           Printf.fprintf oc "\t(* Output field %s of type %a *)\n"
-            sf.RamenOperation.alias
+            (RamenName.string_of_field sf.RamenOperation.alias)
             RamenExpr.print_typ (RamenExpr.typ_of sf.expr) ;
           if RamenExpr.is_generator sf.RamenOperation.expr then
             (* So that we have a single out_typ both before and after tuples generation *)
@@ -2195,12 +2201,12 @@ let emit_field_selection
     List.exists (fun sf -> sf.RamenOperation.alias = name) selected_fields in
   Printf.fprintf oc "\t(\n\t\t" ;
   List.fold_left (fun i ft ->
-      if must_output_field ft.typ_name then (
+      if must_output_field ft.name then (
         let tuple =
-          if is_selected ft.typ_name then TupleOut else TupleIn in
+          if is_selected ft.name then TupleOut else TupleIn in
         Printf.fprintf oc "%s%s"
           (if i > 0 then ",\n\t\t" else "")
-          (id_of_field_name ~tuple ft.typ_name) ;
+          (id_of_field_name ~tuple ft.name) ;
         i + 1
       ) else i
     ) 0 out_typ |> ignore ;
@@ -2211,7 +2217,7 @@ let emit_update_states
       minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
-      ft.RamenTuple.typ_name = field_name
+      ft.RamenTuple.name = field_name
     ) minimal_typ
   in
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
@@ -2222,8 +2228,8 @@ let emit_update_states
     if not (field_in_minimal sf.RamenOperation.alias) then (
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
-      emit_state_update_for_expr ~opc ~what:sf.RamenOperation.alias
-                                 oc sf.RamenOperation.expr)
+      let what = RamenName.string_of_field sf.RamenOperation.alias in
+      emit_state_update_for_expr ~opc ~what oc sf.RamenOperation.expr)
   ) selected_fields ;
   Printf.fprintf oc "\t()\n"
 
@@ -2464,18 +2470,18 @@ let emit_aggregate opc oc name in_typ out_typ =
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
-      let num_fields = Set.String.cardinal !s in
+      let num_fields = Set.cardinal !s in
       List.iter (fun sf ->
         (* is this out field selected for minimal_out yet? *)
-        if Set.String.mem sf.RamenOperation.alias !s then (
+        if Set.mem sf.RamenOperation.alias !s then (
           (* Add all other fields from out that are needed in this field
            * expression *)
           RamenExpr.iter (function
             | Field (_, { contents = TupleOut }, fn) ->
-                s := Set.String.add fn !s
+                s := Set.add fn !s
             | _ -> ()) sf.RamenOperation.expr)
       ) fields ;
-      Set.String.cardinal !s > num_fields))
+      Set.cardinal !s > num_fields))
     then failwith "Cannot build minimal_out set?!" ;
     !s in
   (* minimal tuple: the subset of the out tuple that must be finalized at
@@ -2491,24 +2497,24 @@ let emit_aggregate opc oc name in_typ out_typ =
     let from_commit_cond =
       RamenExpr.fold_by_depth (fun s -> function
         | Field (_, { contents = TupleOut }, fn) ->
-            Set.String.add fn s
+            Set.add fn s
         | _ -> s
-      ) Set.String.empty commit_cond
+      ) Set.empty commit_cond
     and for_updates =
       List.fold_left (fun s sf ->
         RamenExpr.unpure_fold s (fun s -> function
           | e -> RamenExpr.fold_by_depth (fun s -> function
                    | Field (_, { contents = TupleOut }, fn) ->
-                       Set.String.add fn s
+                       Set.add fn s
                    | _ -> s) s e) sf.RamenOperation.expr
-      ) Set.String.empty fields
+      ) Set.empty fields
     and for_event_time =
       List.fold_left (fun s sf ->
-        match sf.RamenOperation.alias with
+        match RamenName.string_of_field sf.RamenOperation.alias with
         | ("start"|"stop"|"duration") as fn ->
-            Set.String.add fn s
+            Set.add (RamenName.field_of_string fn) s
         | _ -> s
-      ) Set.String.empty fields
+      ) Set.empty fields
     and for_printing =
       List.fold_left (fun s sf ->
         try
@@ -2516,20 +2522,20 @@ let emit_aggregate opc oc name in_typ out_typ =
             | StatelessFunMisc (_, Print _) -> raise Exit | _ -> ()
           ) sf.RamenOperation.expr ;
           s
-        with Exit -> Set.String.add sf.RamenOperation.alias s
-      ) Set.String.empty fields
+        with Exit -> Set.add sf.RamenOperation.alias s
+      ) Set.empty fields
     in
     (* Now combine these sets: *)
-    Set.String.union from_commit_cond for_updates |>
-    Set.String.union for_event_time |>
-    Set.String.union for_printing |>
+    Set.union from_commit_cond for_updates |>
+    Set.union for_event_time |>
+    Set.union for_printing |>
     fetch_recursively
   in
   !logger.debug "minimal fields: %a"
-    (Set.String.print String.print) minimal_fields ;
+    (Set.print RamenName.field_print) minimal_fields ;
   let minimal_typ =
     List.filter (fun ft ->
-      Set.String.mem ft.RamenTuple.typ_name minimal_fields
+      Set.mem ft.RamenTuple.name minimal_fields
     ) out_typ in
   (* FIXME: now that we serialize only used fields, when do we have fields
    * that are not mentioned?? *)
@@ -2609,13 +2615,13 @@ let emit_parameters oc params =
       "let %s_%s_ =\n\
        \tlet parser_ x_ = %s(%a) in\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
-      (id_of_prefix TupleParam) p.ptyp.typ_name
+      (id_of_prefix TupleParam) (RamenName.string_of_field p.ptyp.name)
       (if p.ptyp.typ.nullable then
         "if RamenHelpers.looks_like_null x_ then Null else NotNull "
        else "") (emit_value_of_string p.ptyp.typ.structure) "x_"
       (if p.ptyp.typ.nullable && p.value <> VNull
        then "NotNull " else "")
-      emit_type p.value p.ptyp.typ_name
+      emit_type p.value (RamenName.string_of_field p.ptyp.name)
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
@@ -2625,9 +2631,9 @@ let emit_parameters oc params =
       let glob_name =
         Printf.sprintf "%s_%s_"
           (id_of_prefix TupleParam)
-          p.ptyp.typ_name in
+          (RamenName.string_of_field p.ptyp.name) in
       Printf.fprintf oc "\t| %S -> (%a) %s%s\n"
-        p.ptyp.typ_name
+        (RamenName.string_of_field p.ptyp.name)
         (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
         glob_name
         (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null

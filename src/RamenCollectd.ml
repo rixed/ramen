@@ -28,23 +28,27 @@ type collectd_metric =
   float * float nullable * float nullable * float nullable * float nullable
 
 let tuple_typ =
-  [ { typ_name = "host" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" ; aggr = None } ;
-    { typ_name = "plugin" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "type_name" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "type_instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "value2" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "value3" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "value4" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { typ_name = "value5" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ]
+  [ { name = RamenName.field_of_string "host" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "plugin" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "type_name" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "type_instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "value2" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "value3" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "value4" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
+    { name = RamenName.field_of_string "value5" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ]
 
 let event_time =
   let open RamenEventTime in
-  Some (("start", ref OutputField, 1.), DurationConst 0.)
+  Some ((RamenName.field_of_string "start", ref OutputField, 1.),
+        DurationConst 0.)
 
-let factors = [ "plugin" ; "type_instance" ; "instance" ]
+let factors =
+  [ RamenName.field_of_string "plugin" ;
+    RamenName.field_of_string "type_instance" ;
+    RamenName.field_of_string "instance" ]
 
 external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
 

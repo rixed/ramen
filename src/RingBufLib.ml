@@ -20,7 +20,7 @@ open RingBuf
 
 let nullmask_bytes_of_tuple_type ser =
   List.fold_left (fun s field_typ ->
-    if is_private_field field_typ.RamenTuple.typ_name then s
+    if RamenName.is_private field_typ.RamenTuple.name then s
     else s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
   ) 0 ser |>
   bytes_for_bits |>
@@ -278,11 +278,11 @@ let out_ringbuf_names outbuf_ref_fname =
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
 let ser_tuple_field_cmp t1 t2 =
-  String.compare t1.RamenTuple.typ_name t2.RamenTuple.typ_name
+  RamenName.compare t1.RamenTuple.name t2.RamenTuple.name
 
 let ser_tuple_typ_of_tuple_typ tuple_typ =
   tuple_typ |>
-  List.filter (fun t -> not (is_private_field t.RamenTuple.typ_name)) |>
+  List.filter (fun t -> not (RamenName.is_private t.RamenTuple.name)) |>
   List.fast_sort ser_tuple_field_cmp
 
 (* Given a tuple type and its serialized type, return a function that reorder
@@ -292,10 +292,10 @@ let reorder_tuple_to_user typ ser =
    * the user (minus private) tuple. *)
   let indices =
     List.filter_map (fun f ->
-      if is_private_field f.RamenTuple.typ_name then None
+      if RamenName.is_private f.RamenTuple.name then None
       else Some (
         List.findi (fun _ f' ->
-          f'.RamenTuple.typ_name = f.typ_name) ser |> fst)
+          f'.RamenTuple.name = f.name) ser |> fst)
     ) typ |>
     Array.of_list in
   (* Now reorder a list of scalar values in ser order into user order: *)
@@ -319,7 +319,8 @@ let skip_list ~out_type ~in_type =
         loop (true :: v) (os', is')
       else (
         (* not possible: i must be in o *)
-        Printf.sprintf "Field %s is not in its parent output" i.typ_name |>
+        Printf.sprintf2 "Field %a is not in its parent output"
+          RamenName.field_print i.name |>
         failwith)
     | [], _ ->
       failwith "More inputs than parent outputs?"

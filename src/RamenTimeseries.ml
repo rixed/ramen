@@ -73,10 +73,13 @@ let get conf ?duration num_points since until where factors
         ?consolidation ?(bucket_time=Middle) fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
-    (List.print String.print) data_fields
+    (List.print RamenName.field_print) data_fields
     (List.print (fun oc (field, op, value) ->
-      Printf.fprintf oc "%s %s %a" field op RamenTypes.print value)) where
-    (List.print String.print) factors ;
+      Printf.fprintf oc "%a %s %a"
+        RamenName.field_print field
+        op
+        RamenTypes.print value)) where
+    (List.print RamenName.field_print) factors ;
   let num_data_fields = List.length data_fields in
   let bname, _is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ?duration fq where in
@@ -272,8 +275,11 @@ let get_possible_values conf ?since ?until func factor =
           pvs
         with e ->
           if e <> Exit then
-            !logger.debug "Cannot read cached factor values for %s.%s: %s, \
-                           scanning." bname factor (Printexc.to_string e) ;
+            !logger.debug "Cannot read cached factor values for %s.%a: %s, \
+                           scanning."
+              bname
+              RamenName.field_print factor
+              (Printexc.to_string e) ;
           !logger.debug "Have to recompute factor values cache." ;
           let all_pvs = scan_possible_values func.F.factors bname typ in
           let pvs = ref Set.empty in
@@ -313,14 +319,14 @@ let cache_possible_values conf programs =
 let possible_values func factor =
   match Hashtbl.find possible_values_cache (F.fq_name func) with
   | exception Not_found ->
-      !logger.error "%S possible values are not cached?!"
-        (RamenName.string_of_func func.F.name) ;
+      !logger.error "%a possible values are not cached?!"
+        RamenName.func_print func.F.name ;
       raise Not_found
   | h ->
     (match Hashtbl.find h factor with
     | exception Not_found ->
-        !logger.error "%S is not a factor of %S"
-          factor
-          (RamenName.string_of_func func.F.name) ;
+        !logger.error "%a is not a factor of %a"
+          RamenName.field_print factor
+          RamenName.func_print func.F.name ;
         raise Not_found
     | x -> x)

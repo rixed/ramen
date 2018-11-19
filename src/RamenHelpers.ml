@@ -593,17 +593,6 @@ let replace_if_different ~src ~dst =
 *)
 
 (*
- * Some string utilities
- *)
-
-let starts_with c f =
-  String.length f > 0 && f.[0] = c
-
-let is_virtual_field = starts_with '#'
-
-let is_private_field = starts_with '_'
-
-(*
  * Some Unix utilities
  *)
 

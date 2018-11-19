@@ -26,7 +26,7 @@ module E = RamenExpr
  * 'SELECT expr AS alias' *)
 type selected_field =
   { expr : E.t ;
-    alias : string ;
+    alias : RamenName.field ;
     doc : string ;
     (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
     aggr : string option }
@@ -41,7 +41,7 @@ let print_selected_field oc f =
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
       (E.print false) f.expr
-      f.alias ;
+      (RamenName.string_of_field f.alias) ;
     if f.doc <> "" then Printf.fprintf oc " %S" f.doc
   ) else (
     E.print false oc f.expr ;
@@ -130,18 +130,18 @@ type t =
       every : float ;
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
-      factors : string list }
+      factors : RamenName.field list }
   | ReadCSVFile of {
       where : file_spec ;
       what : csv_specs ;
       preprocessor : E.t option ;
       event_time : RamenEventTime.t option ;
-      factors : string list }
+      factors : RamenName.field list }
   | ListenFor of {
       net_addr : Unix.inet_addr ;
       port : int ;
       proto : RamenProtocols.net_protocol ;
-      factors : string list }
+      factors : RamenName.field list }
   (* For those factors, event time etc are hardcoded, and data sources
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
@@ -261,7 +261,7 @@ let fold_top_level_expr init f = function
                 notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            let what = Printf.sprintf "field %S" sf.alias in
+            let what = Printf.sprintf "field %S" (RamenName.string_of_field sf.alias) in
             f prev what sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->
@@ -308,7 +308,7 @@ let event_time_of_operation op =
     | Aggregate { event_time ; fields ; _ } ->
         event_time, List.map (fun sf -> sf.alias) fields
     | ReadCSVFile { event_time ; what ; _ } ->
-        event_time, List.map (fun ft -> ft.RamenTuple.typ_name) what.fields
+        event_time, List.map (fun ft -> ft.RamenTuple.name) what.fields
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
     | Instrumentation _ ->
@@ -316,13 +316,17 @@ let event_time_of_operation op =
     | Notifications _ ->
         RamenNotification.event_time, []
   and event_time_from_fields fields =
-    if List.mem "start" fields then
+    let fos = RamenName.field_of_string in
+    let start = fos "start"
+    and stop = fos "stop"
+    and duration = fos "duration" in
+    if List.mem start fields then
       Some RamenEventTime.(
-        ("start", ref OutputField, 1.),
-        if List.mem "stop" fields then
-          StopField ("stop", ref OutputField, 1.)
-        else if List.mem "duration" fields then
-          DurationField ("duration", ref OutputField, 1.)
+        (start, ref OutputField, 1.),
+        if List.mem stop fields then
+          StopField (stop, ref OutputField, 1.)
+        else if List.mem duration fields then
+          DurationField (duration, ref OutputField, 1.)
         else
           DurationConst 0.)
     else None
@@ -359,10 +363,10 @@ let factors_of_operation = function
 let out_type_of_operation ~with_private = function
   | Aggregate { fields ; _ } ->
       List.fold_left (fun lst sf ->
-        if not with_private && is_private_field sf.alias then lst else
+        if not with_private && RamenName.is_private sf.alias then lst else
         let expr_typ = RamenExpr.typ_of sf.expr in
         RamenTuple.{
-          typ_name = sf.alias ;
+          name = sf.alias ;
           doc = sf.doc ;
           aggr = sf.aggr ;
           typ = expr_typ.typ |?
@@ -385,15 +389,15 @@ let in_type_of_operation = function
       iter_expr (function
         | Field (expr_typ, tuple, name)
           when RamenLang.tuple_has_type_input !tuple &&
-               not (is_virtual_field name) ->
-            if is_private_field name then
-              Printf.sprintf "Can not use input field %s, which is private."
-                name |>
+               not (RamenName.is_virtual name) ->
+            if RamenName.is_private name then
+              Printf.sprintf2 "Can not use input field %a, which is private."
+                RamenName.field_print name |>
               failwith ;
             if not (List.exists (fun ft ->
-                      ft.RamenTuple.typ_name = name) !input) then (
+                      ft.RamenTuple.name = name) !input) then (
               let t = RamenTuple.{
-                typ_name = name ;
+                name = name ;
                 (* Actual types/units will be copied from parents after
                  * typing: *)
                 typ = expr_typ.RamenExpr.typ |?
@@ -408,10 +412,10 @@ let in_type_of_operation = function
     | _ -> [] (* No inputs *)
 
 let envvars_of_operation op =
-  fold_expr Set.String.empty (fun s -> function
-    | Field (_, { contents = TupleEnv }, n) -> Set.String.add n s
+  fold_expr Set.empty (fun s -> function
+    | Field (_, { contents = TupleEnv }, n) -> Set.add n s
     | _ -> s) op |>
-  Set.String.to_list
+  Set.to_list
 
 (* Unless it's a param, assume TupleUnknow belongs to def: *)
 let prefix_def params def =
@@ -449,8 +453,9 @@ let check params op =
       | _ -> ())
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
-      Printf.sprintf2 "Field %s is not in output tuple (only %a)"
-        f (pretty_list_print String.print) field_names |>
+      Printf.sprintf2 "Field %a is not in output tuple (only %a)"
+        RamenName.field_print f
+        (pretty_list_print RamenName.field_print) field_names |>
       failwith in
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
@@ -506,8 +511,9 @@ let check params op =
             else (
               pref := TupleIn ;
               fields_from_in := Set.add alias !fields_from_in) ;
-            !logger.debug "Field %S thought to belong to %s"
-              alias (string_of_prefix !pref)
+            !logger.debug "Field %a thought to belong to %s"
+              RamenName.field_print alias
+              (string_of_prefix !pref)
         | _ -> ()) in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
     List.iter (prefix_def params TupleIn) merge.on ;
@@ -524,9 +530,9 @@ let check params op =
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (function
       | Field (_, { contents = TupleGroup }, alias) ->
-        if not (is_virtual_field alias) then
-          Printf.sprintf "Tuple group has only virtual fields (no %s)"
-            alias |>
+        if not (RamenName.is_virtual alias) then
+          Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
+            RamenName.field_print alias |>
           failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
@@ -537,7 +543,8 @@ let check params op =
             TupleOutPrevious ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
-          Printf.sprintf "Alias %S is not unique" sf.alias |>
+          Printf.sprintf2 "Alias %a is not unique"
+            RamenName.field_print sf.alias |>
           failwith ;
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
@@ -598,19 +605,21 @@ let check params op =
         | Field (_, tuple_ref, alias)
           when !tuple_ref = TupleOutPrevious ->
             if List.mem alias generators then
-              failwith ("Cannot use a generated output field ("^ alias ^")")
+              Printf.sprintf2 "Cannot use a generated output field %a"
+                RamenName.field_print alias |>
+              failwith
         | _ -> ()) op
 
     (* TODO: notifications: check field names from text templates *)
 
   | ListenFor { proto ; factors ; _ } ->
     let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
-    let field_names = List.map (fun t -> t.RamenTuple.typ_name) tup_typ in
+    let field_names = List.map (fun t -> t.RamenTuple.name) tup_typ in
     check_factors field_names factors
 
   | ReadCSVFile { what ; where = { fname ; unlink } ; event_time ; factors ;
                   preprocessor ; _ } ->
-    let field_names = List.map (fun t -> t.RamenTuple.typ_name) what.fields in
+    let field_names = List.map (fun t -> t.RamenTuple.name) what.fields in
     Option.may (check_event_time field_names) event_time ;
     check_factors field_names factors ;
     (* Default to In if not a param, and then disallow In ):-) *)
@@ -642,7 +651,8 @@ struct
       else String.lchop field in
     function
     | Field (_, _, field)
-        when not (is_virtual_field field) -> force_public field
+        when not (RamenName.is_virtual field) ->
+        force_public (RamenName.string_of_field field)
     (* Provide some default name for common aggregate functions: *)
     | StatefulFun (_, _, _, AggrMin e) -> "min_"^ default_alias e
     | StatefulFun (_, _, _, AggrMax e) -> "max_"^ default_alias e
@@ -680,6 +690,7 @@ struct
       fun ((expr, (alias, doc)), aggr) ->
         let alias =
           Option.default_delayed (fun () -> default_alias expr) alias in
+        let alias = RamenName.field_of_string alias in
         { expr ; alias ; doc ; aggr }
     ) m
 
@@ -699,6 +710,7 @@ struct
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
            (non_keyword ++ scale >>: fun (n, s) ->
+              let n = RamenName.field_of_string n in
               DurationField (n, ref OutputField, s)) |||
            (duration >>: fun n -> DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
@@ -706,8 +718,11 @@ struct
           strinG "ends" ||| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
            (non_keyword ++ scale >>: fun (n, s) ->
+              let n = RamenName.field_of_string n in
               StopField (n, ref OutputField, s)))) >>:
-      fun ((sta, sca), dur) -> (sta, ref OutputField, sca), dur
+      fun ((sta, sca), dur) ->
+        let sta = RamenName.field_of_string sta in
+        (sta, ref OutputField, sca), dur
     ) m
 
   let every_clause m =
@@ -726,7 +741,7 @@ struct
 
   let event_time_start () =
     let open RamenExpr in
-    Field (make_typ "start", ref TupleIn, "start")
+    Field (make_typ "start", ref TupleIn, RamenName.field_of_string "start")
 
   let merge_clause m =
     let m = "merge clause" :: m in
@@ -918,9 +933,10 @@ struct
     ) m
 
   let factor_clause m =
-    let m = "factors" :: m in
+    let m = "factors" :: m
+    and field = non_keyword >>: RamenName.field_of_string in
     ((strinG "factor" ||| strinG "factors") -- blanks -+
-     several ~sep:list_sep_and non_keyword) m
+     several ~sep:list_sep_and field) m
 
   type select_clauses =
     | SelectClause of selected_field option list
@@ -928,7 +944,7 @@ struct
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
-    | FactorClause of string list
+    | FactorClause of RamenName.field list
     | GroupByClause of E.t list
     | CommitClause of (commit_spec list * (bool (* before *) * E.t))
     | FromClause of data_source list
@@ -1155,14 +1171,14 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.(Field (typ, ref TupleIn, "start")) ;\
-            alias = "start" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "stop")) ;\
-            alias = "stop" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "itf_clt")) ;\
-            alias = "itf_src" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "itf_srv")) ;\
-            alias = "itf_dst" ; doc = "" ; aggr = None } ] ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "start")) ;\
+            alias = RamenName.field_of_string "start" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "stop")) ;\
+            alias = RamenName.field_of_string "stop" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "itf_clt")) ;\
+            alias = RamenName.field_of_string "itf_src" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "itf_srv")) ;\
+            alias = RamenName.field_of_string "itf_dst" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1186,7 +1202,7 @@ struct
         sort = None ;\
         where = E.(\
           StatelessFun2 (typ, Gt, \
-            Field (typ, ref TupleIn, "packets"),\
+            Field (typ, ref TupleIn, RamenName.field_of_string "packets"),\
             Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
@@ -1199,15 +1215,15 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.(Field (typ, ref TupleIn, "t")) ;\
-            alias = "t" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" ; doc = "" ; aggr = Some "max" } ] ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "t")) ;\
+            alias = RamenName.field_of_string "t" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "value")) ;\
+            alias = RamenName.field_of_string "value" ; doc = "" ; aggr = Some "max" } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
-        event_time = Some (("t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
+        event_time = Some ((RamenName.field_of_string "t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
         commit_cond = replace_typ (E.expr_true ()) ;\
@@ -1220,18 +1236,18 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.(Field (typ, ref TupleIn, "t1")) ;\
-            alias = "t1" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "t2")) ;\
-            alias = "t2" ; doc = "" ; aggr = None } ;\
-          { expr = E.(Field (typ, ref TupleIn, "value")) ;\
-            alias = "value" ; doc = "" ; aggr = None } ] ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "t1")) ;\
+            alias = RamenName.field_of_string "t1" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "t2")) ;\
+            alias = RamenName.field_of_string "t2" ; doc = "" ; aggr = None } ;\
+          { expr = E.(Field (typ, ref TupleIn, RamenName.field_of_string "value")) ;\
+            alias = RamenName.field_of_string "value" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
-        event_time = Some (("t1", ref RamenEventTime.OutputField, 10.), \
-                           StopField ("t2", ref RamenEventTime.OutputField, 10.)) ;\
+        event_time = Some ((RamenName.field_of_string "t1", ref RamenEventTime.OutputField, 10.), \
+                           StopField (RamenName.field_of_string "t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
         commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\
@@ -1264,18 +1280,18 @@ struct
         fields = [\
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMin (\
-                Field (typ, ref TupleIn, "start")))) ;\
-            alias = "start" ; doc = "" ; aggr = None } ;\
+                Field (typ, ref TupleIn, RamenName.field_of_string "start")))) ;\
+            alias = RamenName.field_of_string "start" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatefulFun (typ, LocalState, true, AggrMax (\
-                Field (typ, ref TupleIn, "stop")))) ;\
-            alias = "max_stop" ; doc = "" ; aggr = None } ;\
+                Field (typ, ref TupleIn, RamenName.field_of_string "stop")))) ;\
+            alias = RamenName.field_of_string "max_stop" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatelessFun2 (typ, Div, \
                 StatefulFun (typ, LocalState, true, AggrSum (\
-                  Field (typ, ref TupleIn, "packets"))),\
-                Field (typ, ref TupleParam, "avg_window"))) ;\
-            alias = "packets_per_sec" ; doc = "" ; aggr = None } ] ;\
+                  Field (typ, ref TupleIn, RamenName.field_of_string "packets"))),\
+                Field (typ, ref TupleParam, RamenName.field_of_string "avg_window"))) ;\
+            alias = RamenName.field_of_string "packets_per_sec" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1284,17 +1300,17 @@ struct
         notifications = [] ;\
         key = [ E.(\
           StatelessFun2 (typ, Div, \
-            Field (typ, ref TupleIn, "start"),\
+            Field (typ, ref TupleIn, RamenName.field_of_string "start"),\
             StatelessFun2 (typ, Mul, \
               Const (typ, VU32 (Uint32.of_int 1_000_000)),\
-              Field (typ, ref TupleParam, "avg_window")))) ] ;\
+              Field (typ, ref TupleParam, RamenName.field_of_string "avg_window")))) ] ;\
         commit_cond = E.(\
           StatelessFun2 (typ, Gt, \
             StatelessFun2 (typ, Add, \
               StatefulFun (typ, LocalState, true, AggrMax (\
-                Field (typ, ref TupleIn, "start"))),\
+                Field (typ, ref TupleIn, RamenName.field_of_string "start"))),\
               Const (typ, VU32 (Uint32.of_int 3600))),\
-            Field (typ, ref TupleOut, "start"))) ; \
+            Field (typ, ref TupleOut, RamenName.field_of_string "start"))) ; \
         commit_before = false ;\
         flush_how = Reset ;\
         from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
@@ -1311,7 +1327,7 @@ struct
       Aggregate {\
         fields = [\
           { expr = E.Const (typ, VU32 Uint32.one) ;\
-            alias = "one" ; doc = "" ; aggr = None } ] ;\
+            alias = RamenName.field_of_string "one" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1333,13 +1349,13 @@ struct
     (Ok (\
       Aggregate {\
         fields = [\
-          { expr = E.Field (typ, ref TupleIn, "n") ; \
-            alias = "n" ; doc = "" ; aggr = None } ;\
+          { expr = E.Field (typ, ref TupleIn, RamenName.field_of_string "n") ; \
+            alias = RamenName.field_of_string "n" ; doc = "" ; aggr = None } ;\
           { expr = E.(\
               StatefulFun (typ, GlobalState, true, E.Lag (\
               E.Const (typ, VU32 (Uint32.of_int 2)), \
-              E.Field (typ, ref TupleIn, "n")))) ;\
-            alias = "l" ; doc = "" ; aggr = None } ] ;\
+              E.Field (typ, ref TupleIn, RamenName.field_of_string "n")))) ;\
+            alias = RamenName.field_of_string "l" ; doc = "" ; aggr = None } ] ;\
         and_all_others = false ;\
         merge = { on = []; timeout = 0.; last = 1 } ;\
         sort = None ;\
@@ -1362,10 +1378,10 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; \
+                        { name = RamenName.field_of_string "f1" ; \
                           typ = { structure = TBool ; nullable = true } ; \
                           units = None ; doc = "" ; aggr = None } ; \
-                        { typ_name = "f2" ; \
+                        { name = RamenName.field_of_string "f2" ; \
                           typ = { structure = TI32 ; nullable = false } ; \
                           units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
@@ -1380,10 +1396,10 @@ struct
                     what = { \
                       separator = "," ; null = "" ; \
                       fields = [ \
-                        { typ_name = "f1" ; \
+                        { name = RamenName.field_of_string "f1" ; \
                           typ = { structure = TBool ; nullable = true } ; \
                           units = None ; doc = "" ; aggr = None } ; \
-                        { typ_name = "f2" ; \
+                        { name = RamenName.field_of_string "f2" ; \
                           typ = { structure = TI32 ; nullable = false } ; \
                           units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
@@ -1398,10 +1414,10 @@ struct
                     what = { \
                       separator = "\t" ; null = "<NULL>" ; \
                       fields = [ \
-                        { typ_name = "f1" ; \
+                        { name = RamenName.field_of_string "f1" ; \
                           typ = { structure = TBool ; nullable = true } ; \
                           units = None ; doc = "" ; aggr = None } ;\
-                        { typ_name = "f2" ; \
+                        { name = RamenName.field_of_string "f2" ; \
                           typ = { structure = TI32 ; nullable = false } ; \
                           units = None ; doc = "" ; aggr = None } ] } ;\
                     factors = [] },\
@@ -1414,7 +1430,7 @@ struct
     (Ok (\
       Aggregate {\
         fields = [ { expr = E.Const (typ, VU32 Uint32.one) ; \
-                     alias = "one" ; doc = "" ; aggr = None } ] ;\
+                     alias = RamenName.field_of_string "one" ; doc = "" ; aggr = None } ] ;\
         every = 1. ; event_time = None ;\
         and_all_others = false ; merge = { on = []; timeout = 0.; last = 1 } ; sort = None ;\
         where = E.Const (typ, VBool true) ;\

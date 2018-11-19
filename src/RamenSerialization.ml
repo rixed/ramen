@@ -16,7 +16,7 @@ let read_tuple ser_tuple_typ nullmask_size tx =
   let tuple = Array.make tuple_len VNull in
   let _ =
     List.fold_lefti (fun (offs, b) i typ ->
-        assert (not (is_private_field typ.RamenTuple.typ_name)) ;
+        assert (not (RamenName.is_private typ.RamenTuple.name)) ;
         let value, offs', b' =
           if typ.typ.nullable && not (get_bit tx b) then (
             None, offs, b+1
@@ -109,7 +109,7 @@ let write_record ser_in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) ftyp ->
       if ftyp.RamenTuple.typ.nullable then
-        match Hashtbl.find tuple ftyp.typ_name with
+        match Hashtbl.find tuple ftyp.name with
         | exception Not_found ->
             (* Unspecified nullable fields are just null. *)
             null_i + 1, lst
@@ -117,7 +117,7 @@ let write_record ser_in_type rb tuple =
             null_i + 1,
             (Some null_i, value_of_string ftyp.typ s) :: lst
       else
-        match Hashtbl.find tuple ftyp.typ_name with
+        match Hashtbl.find tuple ftyp.name with
         | exception Not_found ->
             null_i,
             (None, RamenTypes.any_value_of_type ftyp.typ.structure) :: lst
@@ -145,12 +145,12 @@ let write_record ser_in_type rb tuple =
     0., 0.)
 
 let find_field typ n =
-  try List.findi (fun _i f -> f.RamenTuple.typ_name = n) typ
+  try List.findi (fun _i f -> f.RamenTuple.name = n) typ
   with Not_found ->
     let err_msg =
-      Printf.sprintf2 "Field %s does not exist (possible fields are: %a)" n
-        (List.print ~first:"" ~last:"" ~sep:", "
-           (fun oc f -> String.print oc f.RamenTuple.typ_name)) typ in
+      Printf.sprintf2 "Field %a does not exist (possible fields are: %a)"
+        RamenName.field_print n
+        RamenTuple.print_typ_names typ in
     failwith err_msg
 
 let find_field_index typ n = find_field typ n |> fst
@@ -160,9 +160,9 @@ let find_param params n =
   try (params_find n params).value
   with Not_found ->
     let err_msg =
-      Printf.sprintf2 "Field %s is not a parameter (parameters are: %a)" n
-        (List.print ~first:"" ~last:"" ~sep:", "
-          (fun oc p -> String.print oc p.ptyp.typ_name)) params in
+      Printf.sprintf2 "Field %a is not a parameter (parameters are: %a)"
+        RamenName.field_print n
+        RamenTuple.print_params_names params in
     failwith err_msg
 
 (* Build a filter function for tuples of the given type: *)

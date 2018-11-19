@@ -71,7 +71,7 @@ type t =
   | Vector of typ * t list
   (* A field from a tuple (or parameter, or environment, as special cases of
    * "tuples": *)
-  | Field of typ * tuple_prefix ref * string (* field name *)
+  | Field of typ * tuple_prefix ref * RamenName.field
   (* StateField are met only late in the game in the code generator. Refer to
    * CodeGen_OCaml. *)
   | StateField of typ * string
@@ -365,7 +365,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
       List.print ~first:"[" ~last:"]" ~sep:"; " p oc es ;
       add_types t
     | Field (t, tuple, field) ->
-      Printf.fprintf oc "%s.%s" (string_of_prefix !tuple) field ;
+      Printf.fprintf oc "%s.%s"
+        (string_of_prefix !tuple)
+        (RamenName.string_of_field field) ;
       add_types t
     | StateField (t, s) ->
       String.print oc s ; add_types t
@@ -982,22 +984,22 @@ struct
          * it's a virtual field (starting with #) of course since those are
          * computed on the fly and have no corresponding variable in the
          * tuple) *)
-        Field (make_typ field, ref tuple, field)
+        Field (make_typ field, ref tuple, RamenName.field_of_string field)
     ) m
 
   (*$= field & ~printer:(test_printer (print false))
     (Ok (\
-      Field (typ, ref TupleUnknown, "bytes"),\
+      Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes"),\
       (5, [])))\
       (test_p field "bytes" |> replace_typ_in_expr)
 
     (Ok (\
-      Field (typ, ref TupleIn, "bytes"),\
+      Field (typ, ref TupleIn, RamenName.field_of_string "bytes"),\
       (8, [])))\
       (test_p field "in.bytes" |> replace_typ_in_expr)
 
     (Ok (\
-      Field (typ, ref TupleOut, "bytes"),\
+      Field (typ, ref TupleOut, RamenName.field_of_string "bytes"),\
       (9, [])))\
       (test_p field "out.bytes" |> replace_typ_in_expr)
 
@@ -1011,11 +1013,11 @@ struct
   let param m =
     let m = "parameter" :: m in
     (non_keyword >>: fun p ->
-      Field (make_typ p, ref TupleParam, p)) m
+      Field (make_typ p, ref TupleParam, RamenName.field_of_string p)) m
 
   (*$= param & ~printer:(test_printer (print false))
     (Ok (\
-      Field (typ, ref TupleParam, "glop"),\
+      Field (typ, ref TupleParam, RamenName.field_of_string "glop"),\
       (4, [])))\
       (test_p param "glop" |> replace_typ_in_expr)
   *)
@@ -1558,7 +1560,7 @@ struct
       (test_p p "true" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun1 (typ, Not, StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_src"))),\
+      StatelessFun1 (typ, Not, StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"))),\
       (16, [])))\
       (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
@@ -1566,15 +1568,15 @@ struct
       StatelessFun2 (typ, And, \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
-            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_src"))),\
-          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, "zone_src"),\
-                                  Field (typ, ref TupleUnknown, "z1"))), \
+            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"))),\
+          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"),\
+                                  Field (typ, ref TupleUnknown, RamenName.field_of_string "z1"))), \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
-            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, "zone_dst"))),\
+            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_dst"))),\
           StatelessFun2 (typ, Eq, \
-            Field (typ, ref TupleUnknown, "zone_dst"), \
-            Field (typ, ref TupleUnknown, "z2")))),\
+            Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_dst"), \
+            Field (typ, ref TupleUnknown, RamenName.field_of_string "z2")))),\
       (75, [])))\
       (test_p p "(zone_src IS NULL or zone_src = z1) and \\
                  (zone_dst IS NULL or zone_dst = z2)" |> replace_typ_in_expr)
@@ -1582,36 +1584,36 @@ struct
     (Ok (\
       StatelessFun2 (typ, Div, \
         StatefulFun (typ, LocalState, true, AggrSum (\
-          Field (typ, ref TupleUnknown, "bytes"))),\
-        Field (typ, ref TupleUnknown, "avg_window")),\
+          Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes"))),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "avg_window")),\
       (22, [])))\
       (test_p p "(sum bytes)/avg_window" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, IDiv, \
-        Field (typ, ref TupleUnknown, "start"),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "start"),\
         StatelessFun2 (typ, Mul, \
           Const (typ, VU32 (Uint32.of_int 1_000_000)),\
-          Field (typ, ref TupleUnknown, "avg_window"))),\
+          Field (typ, ref TupleUnknown, RamenName.field_of_string "avg_window"))),\
       (33, [])))\
       (test_p p "start // (1_000_000 * avg_window)" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Percentile, \
-        Field (typ, ref TupleParam, "p"),\
-        Field (typ, ref TupleUnknown, "bytes_per_sec")),\
+        Field (typ, ref TupleParam, RamenName.field_of_string "p"),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes_per_sec")),\
       (26, [])))\
       (test_p p "p percentile bytes_per_sec" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Gt, \
         StatefulFun (typ, LocalState, true, AggrMax (\
-          Field (typ, ref TupleIn, "start"))),\
+          Field (typ, ref TupleIn, RamenName.field_of_string "start"))),\
         StatelessFun2 (typ, Add, \
-          Field (typ, ref TupleOut, "start"),\
+          Field (typ, ref TupleOut, RamenName.field_of_string "start"),\
           StatelessFun2 (typ, Mul, \
             StatelessFun2 (typ, Mul, \
-              Field (typ, ref TupleUnknown, "obs_window"),\
+              Field (typ, ref TupleUnknown, RamenName.field_of_string "obs_window"),\
               Const (typ, VFloat 1.15)),\
             Const (typ, VU32 (Uint32.of_int 1_000_000))))),\
       (58, [])))\
@@ -1620,24 +1622,24 @@ struct
 
     (Ok (\
       StatelessFun2 (typ, Mod, \
-        Field (typ, ref TupleUnknown, "x"),\
-        Field (typ, ref TupleUnknown, "y")),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "x"),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "y")),\
       (5, [])))\
       (test_p p "x % y" |> replace_typ_in_expr)
 
     (Ok ( \
       StatelessFun1 (typ, Abs, \
         StatelessFun2 (typ, Sub, \
-          Field (typ, ref TupleUnknown, "bps"), \
+          Field (typ, ref TupleUnknown, RamenName.field_of_string "bps"), \
           StatefulFun (typ, GlobalState, true, Lag (\
             Const (typ, VU32 Uint32.one), \
-            Field (typ, ref TupleUnknown, "bps"))))), \
+            Field (typ, ref TupleUnknown, RamenName.field_of_string "bps"))))), \
       (21, []))) \
       (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
 
     (Ok ( \
       StatefulFun (typ, GlobalState, true, Hysteresis (\
-        Field (typ, ref TupleUnknown, "value"),\
+        Field (typ, ref TupleUnknown, RamenName.field_of_string "value"),\
         Const (typ, VU32 (Uint32.of_int 900)),\
         Const (typ, VU32 (Uint32.of_int 1000)))),\
       (28, [])))\
@@ -1668,10 +1670,11 @@ end
 let units_of_expr params units_of_input units_of_output =
   let units_of_params name =
     match List.find (fun param ->
-            param.RamenTuple.ptyp.typ_name = name
+            param.RamenTuple.ptyp.name = name
           ) params with
     | exception Not_found ->
-        Printf.sprintf "Unknown parameter %S while looking for units" name |>
+        Printf.sprintf2 "Unknown parameter %a while looking for units"
+          RamenName.field_print name |>
         failwith
     | p -> p.RamenTuple.ptyp.units
   in

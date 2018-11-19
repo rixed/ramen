@@ -8,17 +8,31 @@
 open Batteries
 open RamenHelpers
 
-(* TODO: turn this into a pair name * rest so we can use assoc functions *)
 type field_typ =
-  { typ_name : string ;
+  { mutable name : RamenName.field ;
     mutable typ : RamenTypes.t ;
     mutable units : RamenUnits.t option ;
     mutable doc : string ;
-    mutable aggr : string option }
+    mutable aggr : string option ;
+    (* Also disp name, etc... *) }
   [@@ppp PPP_OCaml]
 
-type typ = field_typ list
-  [@@ppp PPP_OCaml]
+type typ = field_typ list [@@ppp PPP_OCaml]
+
+let print_field_typ oc field =
+  Printf.fprintf oc "%a %a"
+    RamenName.field_print field.name
+    RamenTypes.print_typ field.typ ;
+  Option.may (RamenUnits.print oc) field.units
+
+let print_typ oc =
+  (List.print ~first:"(" ~last:")" ~sep:", "
+    (fun oc t -> print_field_typ oc t)) oc
+
+let print_typ_names oc =
+  pretty_list_print (fun oc t -> RamenName.field_print oc t.name) oc
+
+(* Params form a special tuple with fixed values: *)
 
 type param =
   { ptyp : field_typ ; value : RamenTypes.value }
@@ -27,64 +41,60 @@ type param =
 type params = param list [@@ppp PPP_OCaml]
 
 let print_param oc p =
-  Printf.fprintf oc "%s=%a" p.ptyp.typ_name RamenTypes.print p.value
+  Printf.fprintf oc "%a=%a"
+    RamenName.field_print p.ptyp.name
+    RamenTypes.print p.value
 
-let print_params oc = List.print print_param oc
+let print_params oc =
+  List.print (fun oc p -> print_param oc p) oc
 
 let params_sort params =
   let param_compare p1 p2 =
-    String.compare p1.ptyp.typ_name p2.ptyp.typ_name in
+    RamenName.compare p1.ptyp.name p2.ptyp.name in
   List.fast_sort param_compare params
 
-let params_find n = List.find (fun p -> p.ptyp.typ_name = n)
-let params_mem n = List.exists (fun p -> p.ptyp.typ_name = n)
+let params_find n = List.find (fun p -> p.ptyp.name = n)
+let params_mem n = List.exists (fun p -> p.ptyp.name = n)
 
-let print_field_typ oc field =
-  Printf.fprintf oc "%s %a"
-    field.typ_name
-    RamenTypes.print_typ field.typ ;
-  Option.may (RamenUnits.print oc) field.units
-
-let print_typ oc t =
-  (List.print ~first:"(" ~last:")" ~sep:", "
-    print_field_typ) oc t
-
-let print_typ_names oc =
-  pretty_list_print (fun oc ft -> String.print oc ft.typ_name) oc
-
-let type_signature =
-  List.fold_left (fun s ft ->
-    if is_private_field ft.typ_name then s
-    else
-      (if s = "" then "" else s ^ "_") ^
-      ft.typ_name ^ ":" ^
-      RamenTypes.string_of_typ ft.typ
-  ) ""
+let print_params_names oc =
+  print_typ_names oc % List.map (fun p -> p.ptyp) % params_sort
 
 (* Same signature for different instances of the same program but changes
  * whenever the type of parameters change: *)
-let param_types_signature =
+
+let type_signature =
+  List.fold_left (fun s ft ->
+    if RamenName.is_private ft.name then s
+    else
+      (if s = "" then "" else s ^ "_") ^
+      RamenName.string_of_field ft.name ^ ":" ^
+      RamenTypes.string_of_typ ft.typ
+  ) ""
+
+let params_type_signature =
   type_signature % List.map (fun p -> p.ptyp) % params_sort
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =
   List.map (fun p1 ->
-    match Hashtbl.find ps2 p1.ptyp.typ_name with
+    match Hashtbl.find ps2 p1.ptyp.name with
     | exception Not_found -> p1
     | p2_val ->
         let open RamenTypes in
         if p2_val = VNull then
           if not p1.ptyp.typ.nullable then
-            Printf.sprintf2 "Parameter %s is not nullable so cannot \
-                             be set to NULL" p1.ptyp.typ_name |>
+            Printf.sprintf2 "Parameter %a is not nullable so cannot \
+                             be set to NULL"
+              RamenName.field_print p1.ptyp.name |>
             failwith
           else
             { p1 with value = VNull }
         else match enlarge_value p1.ptyp.typ.structure p2_val with
           | exception Invalid_argument _ ->
-              Printf.sprintf2 "Parameter %s of type %a can not be \
-                               promoted into a %a" p1.ptyp.typ_name
+              Printf.sprintf2 "Parameter %a of type %a can not be \
+                               promoted into a %a"
+                RamenName.field_print p1.ptyp.name
                 print_structure (structure_of p2_val)
                 print_typ p1.ptyp.typ |>
               failwith
@@ -113,7 +123,8 @@ struct
       optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) ++
       optional ~def:"" (opt_blanks -+ quoted_string) ++
       optional ~def:None (opt_blanks -+ some default_aggr) >>:
-      fun ((((typ_name, typ), units), doc), aggr) ->
-        { typ_name ; typ ; units ; doc ; aggr }
+      fun ((((name, typ), units), doc), aggr) ->
+        let name = RamenName.field_of_string name in
+        { name ; typ ; units ; doc ; aggr }
     ) m
 end

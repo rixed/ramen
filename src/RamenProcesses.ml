@@ -200,14 +200,20 @@ let check_is_subtype t1 t2 =
    * public in t2. And since there is no more extension from scalar types at
    * this stage, those fields must have the exact same types. *)
   List.iter (fun f1 ->
-    match List.find (fun f2 -> f1.RamenTuple.typ_name = f2.RamenTuple.typ_name) t2 with
+    match List.find (fun f2 -> f1.RamenTuple.name = f2.RamenTuple.name) t2 with
     | exception Not_found ->
-        failwith ("Field "^ f1.typ_name ^" is missing")
+        Printf.sprintf2 "Field %a is missing"
+          RamenName.field_print f1.name |>
+        failwith
     | f2 ->
-        if is_private_field f2.typ_name then
-          failwith ("Field "^ f2.typ_name ^" is private") ;
+        if RamenName.is_private f2.name then
+          Printf.sprintf2 "Field %a is private"
+            RamenName.field_print f2.name |>
+          failwith ;
         if f1.typ <> f2.typ then
-          failwith ("Fields "^ f1.typ_name ^" have not the same type")
+          Printf.sprintf2 "Fields %a have different types"
+            RamenName.field_print f1.name |>
+          failwith
   ) t1
 
 (* Returns the running parents and children of a func: *)
@@ -410,7 +416,9 @@ let really_start conf proc parents children =
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
     List.enum proc.func.envvars //@
-    (fun n -> try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
+    (fun n ->
+      let n = RamenName.string_of_field n in
+      try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =

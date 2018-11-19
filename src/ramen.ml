@@ -333,10 +333,12 @@ let assignment =
     | pname, pval ->
         let what = "value of command line parameter "^ pname in
         (match RamenTypes.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (pname, v)
+        | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt (pname, pval) =
-    Format.fprintf fmt "%s=%s" pname (RamenTypes.to_string pval)
+    Format.fprintf fmt "%s=%s"
+      (RamenName.string_of_field pname)
+      (RamenTypes.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
 
@@ -513,10 +515,13 @@ let filter =
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
         (match RamenTypes.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (pname, op, v)
+        | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, op, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt (pname, op, pval) =
-    Format.fprintf fmt "%s%s%s" pname op (RamenTypes.to_string pval)
+    Format.fprintf fmt "%s%s%s"
+      (RamenName.string_of_field pname)
+      op
+      (RamenTypes.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER[=|>|<|>=|<=]VALUE" (parse, print)
 
@@ -610,10 +615,17 @@ let time_step =
                    ~docv:"DURATION" ["time-step"] in
   Arg.(value (opt float 0. i))
 
+let field =
+  let parse s = Pervasives.Ok (RamenName.field_of_string s)
+  and print fmt s =
+    Format.fprintf fmt "%s" (RamenName.string_of_field s)
+  in
+  Arg.conv ~docv:"FIELD" (parse, print)
+
 let data_fields p =
   let i = Arg.info ~doc:RamenConsts.CliInfo.data_fields
                    ~docv:"FIELD" [] in
-  Arg.(non_empty (pos_right (p-1) string [] i))
+  Arg.(non_empty (pos_right (p-1) field [] i))
 
 let consolidation =
   let i = Arg.info ~doc:RamenConsts.CliInfo.consolidation
@@ -634,7 +646,7 @@ let bucket_time =
 let factors =
   let i = Arg.info ~doc:RamenConsts.CliInfo.factors
                    ~docv:"FIELD" ["f"; "factor"] in
-  Arg.(value (opt_all string [] i))
+  Arg.(value (opt_all field [] i))
 
 let timeseries =
   Term.(

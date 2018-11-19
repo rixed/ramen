@@ -98,11 +98,11 @@ let check (params, run_cond, funcs) =
   ) run_cond ;
   let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
-    Printf.sprintf "Name %s not unique" name |> failwith in
+    Printf.sprintf "Name %s is not unique" name |> failwith in
   List.fold_left (fun s p ->
-    if Set.mem p.RamenTuple.ptyp.typ_name s then
-      name_not_unique p.ptyp.typ_name ;
-    Set.add p.ptyp.typ_name s
+    if Set.mem p.RamenTuple.ptyp.name s then
+      name_not_unique (RamenName.string_of_field p.ptyp.name) ;
+    Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
   List.fold_left (fun s n ->
     (* Check the operation is OK: *)
@@ -149,16 +149,18 @@ struct
              (duration >>: fun x -> RamenTypes.VFloat x))) ++
           optional ~def:"" quoted_string ++
           optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
-          fun (((((typ_name, typ_decl), units), value), doc), aggr) ->
+          fun (((((name, typ_decl), units), value), doc), aggr) ->
+            let name = RamenName.field_of_string name in
             let typ, value =
               let open RamenTypes in
               match typ_decl with
               | None ->
                   if value = VNull then
                     let e =
-                      Printf.sprintf
-                        "Declaration of parameter %S must either specify \
-                         the type or a non-null default value" typ_name in
+                      Printf.sprintf2
+                        "Declaration of parameter %a must either specify \
+                         the type or a non-null default value"
+                        RamenName.field_print name in
                     raise (Reject e)
                   else
                     (* As usual, promote integers to 32 bits, preferably non
@@ -179,9 +181,9 @@ struct
                     else
                       let e =
                         Printf.sprintf2
-                          "Parameter %S is not nullable, therefore it must have \
+                          "Parameter %a is not nullable, therefore it must have \
                            a default value"
-                          typ_name in
+                          RamenName.field_print name in
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
@@ -189,13 +191,14 @@ struct
                     | exception Invalid_argument _ ->
                         let e =
                           Printf.sprintf2
-                            "In declaration of parameter %S, type is \
+                            "In declaration of parameter %a, type is \
                              incompatible with value %a"
-                            typ_name print value in
+                            RamenName.field_print name
+                            print value in
                         raise (Reject e)
                     | value -> typ, value
             in
-            RamenTuple.{ ptyp = { typ_name ; typ ; units ; doc ; aggr } ; value }
+            RamenTuple.{ ptyp = { name ; typ ; units ; doc ; aggr } ; value }
         )
     ) m
 
@@ -259,7 +262,7 @@ struct
         Aggregate {\
           fields = [\
             { expr = RamenExpr.Const (typ, VU32 (Uint32.of_int 42)) ;\
-              alias = "the_answer" ; doc = "" ; aggr = None } ] ;\
+              alias = RamenName.field_of_string "the_answer" ; doc = "" ; aggr = None } ] ;\
           and_all_others = false ;\
           merge = { on = [] ; timeout = 0. ; last = 1 } ;\
           sort = None ;\
@@ -277,12 +280,12 @@ struct
        replace_typ_in_program)
 
    (Ok (([ RamenTuple.{ \
-             ptyp = { typ_name = "p1" ; \
+             ptyp = { name = RamenName.field_of_string "p1" ; \
                       typ = { structure = TU32 ; nullable = false } ; \
                       units = None ; doc = "" ; aggr = None } ;\
              value = VU32 Uint32.zero } ;\
            RamenTuple.{ \
-             ptyp = { typ_name = "p2" ; \
+             ptyp = { name = RamenName.field_of_string "p2" ; \
                       typ = { structure = TU32 ; nullable = false } ; \
                       units = None ; doc = "" ; aggr = None } ;\
              value = VU32 Uint32.zero } ], None, [\
@@ -293,9 +296,9 @@ struct
           fields = [\
             { expr = RamenExpr.(\
                 StatelessFun2 (typ, Add,\
-                  Field (typ, ref TupleParam, "p1"),\
-                  Field (typ, ref TupleParam, "p2"))) ;\
-              alias = "res" ; doc = "" ; aggr = None } ] ;\
+                  Field (typ, ref TupleParam, RamenName.field_of_string "p1"),\
+                  Field (typ, ref TupleParam, RamenName.field_of_string "p2"))) ;\
+              alias = RamenName.field_of_string "res" ; doc = "" ; aggr = None } ] ;\
           every = 0. ; event_time = None ;\
           and_all_others = false ; merge = { on = [] ; timeout = 0. ; last = 1 }; sort = None ;\
           where = RamenExpr.Const (typ, VBool true) ;\
@@ -376,7 +379,7 @@ let common_fields_of_from get_parent start_name funcs from =
           (* Sub-queries have been reified already *)
           assert false
       | GlobPattern _ ->
-          List.map (fun f -> f.RamenTuple.typ_name) RamenBinocle.tuple_typ
+          List.map (fun f -> f.RamenTuple.name) RamenBinocle.tuple_typ
       | NamedOperation (None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
@@ -389,38 +392,40 @@ let common_fields_of_from get_parent start_name funcs from =
                   if and_all_others then raise Exit ;
                   List.map (fun sf -> sf.alias) fields
               | ReadCSVFile { what ; _ } ->
-                  List.map (fun f -> f.RamenTuple.typ_name) what.fields
+                  List.map (fun f -> f.RamenTuple.name) what.fields
               | ListenFor { proto ; _ } ->
                   RamenProtocols.tuple_typ_of_proto proto |>
-                  List.map (fun f -> f.RamenTuple.typ_name)
+                  List.map (fun f -> f.RamenTuple.name)
               | Instrumentation _ ->
                   RamenBinocle.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.typ_name)
+                  List.map (fun f -> f.RamenTuple.name)
               | Notifications _ ->
                   RamenNotification.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.typ_name)))
+                  List.map (fun f -> f.RamenTuple.name)))
       | NamedOperation (Some rel_pn, fn) ->
           let pn = RamenName.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
           List.map (fun ft ->
-            ft.RamenTuple.typ_name
+            ft.RamenTuple.name
           ) (RingBufLib.ser_tuple_typ_of_tuple_typ par_func.F.out_type)
     in
-    let fields = Set.String.of_list fields in
+    let fields = Set.of_list fields in
     match common with
     | None -> Some fields
     | Some common_fields ->
-        Some (Set.String.inter common_fields fields)
-  ) None from |? Set.String.empty
+        Some (Set.intersect common_fields fields)
+  ) None from |? Set.empty
 
 let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
-    let open RamenExpr in
-    { expr = (Field (make_typ alias, ref TupleIn, alias)) ;
-      alias ;
+    let expr =
+      RamenExpr.(Field (
+        make_typ (RamenName.string_of_field alias),
+        ref TupleIn, alias)) in
+    { expr ; alias ;
       (* Those two will be inferred later, with non-star fields
        * (See RamenTypingHelpers): *)
       doc = "" ; aggr = None } in
@@ -438,8 +443,8 @@ let reify_star_fields get_parent program_name funcs =
               | exception Exit -> changed, func :: prev
               | common_fields ->
                   let fields =
-                    Set.String.fold (fun name lst ->
-                      if is_private_field name ||
+                    Set.fold (fun name lst ->
+                      if RamenName.is_private name ||
                          List.exists (fun sf -> sf.alias = name) fields
                       then lst
                       else input_field name :: lst

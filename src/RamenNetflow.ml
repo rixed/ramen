@@ -15,61 +15,61 @@ type netflow_metric =
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
 
 let tuple_typ =
-  [ { typ_name = "source" ; typ = { structure = TString ; nullable = false } ; units = None ;
+  [ { name = RamenName.field_of_string "source" ; typ = { structure = TString ; nullable = false } ; units = None ;
       doc = "IP address of the netflow source." ; aggr = None } ;
-    { typ_name = "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "SysUptime at start of flow." ; aggr = None } ;
-    { typ_name = "stop" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
+    { name = RamenName.field_of_string "stop" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "SysUptime at the time the last packet of the flow was received." ; aggr = None } ;
-    { typ_name = "seqnum" ; typ = { structure = TU32 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "seqnum" ; typ = { structure = TU32 ; nullable = false } ; units = None ;
       doc = "Sequence counter of total flows seen." ; aggr = None } ;
-    { typ_name = "engine_type" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "engine_type" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "Type of flow-switching engine." ; aggr = None } ;
-    { typ_name = "engine_id" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "engine_id" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "Slot number of the flow-switching engine." ; aggr = None } ;
-    { typ_name = "sampling_type" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "sampling_type" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "One of sampled, input or output." ; aggr = None } ;
-    { typ_name = "sampling_rate" ; typ = { structure = TU16 ; nullable = false } ; units = Some RamenUnits.dimensionless ;
+    { name = RamenName.field_of_string "sampling_rate" ; typ = { structure = TU16 ; nullable = false } ; units = Some RamenUnits.dimensionless ;
       doc = "One one packet out of this number were sampled." ; aggr = None } ;
-    { typ_name = "src" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "src" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
       doc = "Source IP address." ; aggr = None } ;
-    { typ_name = "dst" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "dst" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
       doc = "Destination IP address." ; aggr = None } ;
-    { typ_name = "next_hop" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "next_hop" ; typ = { structure = TIpv4 ; nullable = false } ; units = None ;
       doc = "IP address of next hop router." ; aggr = None } ;
-    { typ_name = "src_port" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "src_port" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "TCP/UDP source port number or equivalent" ; aggr = None } ;
-    { typ_name = "dst_port" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "dst_port" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "TCP/UDP destination port number or equivalent." ; aggr = None } ;
-    { typ_name = "in_iface" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "in_iface" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "SNMP index of input interface." ; aggr = None } ;
-    { typ_name = "out_iface" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "out_iface" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "SNMP index of output interface." ; aggr = None } ;
-    { typ_name = "packets" ; typ = { structure = TU32 ; nullable = false } ; units = Some RamenUnits.packets ;
+    { name = RamenName.field_of_string "packets" ; typ = { structure = TU32 ; nullable = false } ; units = Some RamenUnits.packets ;
       doc = "Packets in the flow." ; aggr = None } ;
-    { typ_name = "bytes" ; typ = { structure = TU32 ; nullable = false } ; units = Some RamenUnits.bytes ;
+    { name = RamenName.field_of_string "bytes" ; typ = { structure = TU32 ; nullable = false } ; units = Some RamenUnits.bytes ;
       doc = "Total number of Layer 3 bytes in the packets of the flow." ; aggr = None } ;
-    { typ_name = "tcp_flags" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "tcp_flags" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "Cumulative OR of TCP flags." ; aggr = None } ;
-    { typ_name = "ip_proto" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "ip_proto" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "IP protocol type (for example, TCP = 6; UDP = 17)." ; aggr = None } ;
-    { typ_name = "ip_tos" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "ip_tos" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "IP type of service (ToS)." ; aggr = None } ;
-    { typ_name = "src_as" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "src_as" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "Autonomous system number of the source, either origin or peer." ; aggr = None } ;
-    { typ_name = "dst_as" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "dst_as" ; typ = { structure = TU16 ; nullable = false } ; units = None ;
       doc = "Autonomous system number of the destination, either origin or peer." ; aggr = None } ;
-    { typ_name = "src_mask" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "src_mask" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "Source address prefix mask bits." ; aggr = None } ;
-    { typ_name = "dst_mask" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
+    { name = RamenName.field_of_string "dst_mask" ; typ = { structure = TU8 ; nullable = false } ; units = None ;
       doc = "Destination address prefix mask bits." ; aggr = None } ]
 
 let event_time =
   let open RamenEventTime in
-  Some (("start", ref OutputField, 1.),
-        StopField ("stop", ref OutputField, 1.))
+  Some ((RamenName.field_of_string "start", ref OutputField, 1.),
+        StopField (RamenName.field_of_string "stop", ref OutputField, 1.))
 
-let factors = [ "source" ]
+let factors = [ RamenName.field_of_string "source" ]
 
 external decode :
   Bytes.t -> int -> string -> netflow_metric array =

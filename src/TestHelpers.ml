@@ -45,7 +45,7 @@ let test_op ?postproc p s =
   | Ok (res, _) as ok_res ->
     let params =
       [ RamenTuple.{
-          ptyp = { typ_name = "avg_window" ;
+          ptyp = { name = RamenName.field_of_string "avg_window" ;
                    typ = { structure = RamenTypes.TI32 ;
                            nullable = false } ;
                    units = None ; doc = "" ; aggr = None } ;

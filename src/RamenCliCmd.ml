@@ -430,7 +430,7 @@ let tail conf func_name with_header with_units sep null raw
     let first = "#"^ first in
     Array.print ~first ~last:"\n" ~sep
       (fun oc ft ->
-        String.print oc ft.RamenTuple.typ_name ;
+        RamenName.field_print oc ft.RamenTuple.name ;
         if with_units then
           Option.may (fun u -> RamenUnits.print oc u) ft.units)
       stdout header ;
@@ -519,9 +519,12 @@ let timeseries conf since until with_header where factors num_points
           List.map RamenTypes.to_string sc |>
           String.concat "." in
         if single_data_field then
-          (if v = "" then List.hd data_fields else v) :: res
+          (if v = "" then
+            List.hd data_fields |> RamenName.string_of_field
+           else v) :: res
         else
           List.fold_left (fun res df ->
+            let df = RamenName.string_of_field df in
             (df ^(if v = "" then "" else "("^ v ^")")) :: res
           ) res data_fields
       ) [] columns |> List.rev in
