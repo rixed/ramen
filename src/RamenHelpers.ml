@@ -671,6 +671,7 @@ let with_subprocess ?expected_status ?env cmd args k =
   let his_in, my_in = pipe ~cloexec:false ()
   and my_out, his_out = pipe ~cloexec:false ()
   and my_err, his_err = pipe ~cloexec:false () in
+  flush_all () ;
   match Unix.fork () with
   | 0 -> (* Child *)
     (try
@@ -759,6 +760,7 @@ let getenv ?def n =
 
 let do_daemonize () =
   let open Unix in
+  flush_all () ;
   if fork () > 0 then sys_exit 0 ;
   setsid () |> ignore ;
   (* Close in/out, ignoring errors in case they have been closed already: *)
@@ -1520,6 +1522,7 @@ let forking_server ~while_ sockaddr server_fun =
           (* Before forking, advance the PRNG so that all children do not re-init
            * their own PRNG with the same number: *)
           let prng_init = Random.bits () in
+          flush_all () ;
           match fork () with
           | 0 ->
               Random.init prng_init ;
