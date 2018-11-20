@@ -390,9 +390,11 @@ let get_timeseries conf msg =
           if is_private_field where.lhs then
             bad_request ("Cannot filter through private field "^ where.lhs) ;
           let open RamenSerialization in
-          let _, ftyp = find_field func.F.out_type where.lhs in
-          let v = value_of_string ftyp.typ where.rhs in
-          (where.lhs, where.op, v) :: filters
+          try
+            let _, ftyp = find_field func.F.out_type where.lhs in
+            let v = value_of_string ftyp.typ where.rhs in
+            (where.lhs, where.op, v) :: filters
+          with Failure msg -> bad_request msg
         ) [] data_spec.where) in
     let column_labels, datapoints =
       let consolidation =
