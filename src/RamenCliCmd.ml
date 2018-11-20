@@ -467,8 +467,9 @@ let tail conf func_name with_header with_units sep null raw
       else (fun _ -> 0., 0.)
     | Some et -> event_time_of_tuple typ params et
   in
+  let read_tuple = RamenSerialization.read_tuple ser nullmask_size in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
-    let tuple = read_tuple ser nullmask_size tx in
+    let tuple = read_tuple tx in
     if filter tuple then (
       if with_event_time then (
         let t1, t2 = event_time_of_tuple tuple in

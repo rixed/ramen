@@ -7,32 +7,35 @@ open RamenTypes
 
 let verbose_serialization = false
 
-let read_tuple ser_tuple_typ nullmask_size tx =
-  (* Read all fields one by one *)
-  if verbose_serialization then
-    !logger.debug "Importing the serialized tuple %a"
-      RamenTuple.print_typ ser_tuple_typ ;
+(* Read all fields one by one.
+ * Slow unserializer used for command line tools such as `ramen tail`.
+ * Not the real thing. *)
+let read_tuple ser_tuple_typ offs =
   let tuple_len = List.length ser_tuple_typ in
-  let tuple = Array.make tuple_len VNull in
-  let _ =
-    List.fold_lefti (fun (offs, b) i typ ->
-        assert (not (RamenName.is_private typ.RamenTuple.name)) ;
-        let value, offs', b' =
-          if typ.typ.nullable && not (get_bit tx b) then (
-            None, offs, b+1
-          ) else (
-            let value = RingBufLib.read_value tx offs typ.typ.structure in
-            if verbose_serialization then
-              !logger.debug "Importing a single value for %a at offset %d: %a"
-                RamenTuple.print_field_typ typ
-                offs RamenTypes.print value ;
-            let offs' = offs + RingBufLib.sersize_of_value value in
-            Some value, offs', if typ.typ.nullable then b+1 else b
-          ) in
-        Option.may (Array.set tuple i) value ;
-        offs', b'
-      ) (nullmask_size, 0) ser_tuple_typ in
-  tuple
+  fun tx ->
+    if verbose_serialization then
+      !logger.debug "De-serializing a tuple of type %a"
+        RamenTuple.print_typ ser_tuple_typ ;
+    let tuple = Array.make tuple_len VNull in
+    let _ =
+      List.fold_lefti (fun (offs, b) i typ ->
+          assert (not (RamenName.is_private typ.RamenTuple.name)) ;
+          let value, offs', b' =
+            if typ.typ.nullable && not (get_bit tx b) then (
+              None, offs, b+1
+            ) else (
+              let value = RingBufLib.read_value tx offs typ.typ.structure in
+              if verbose_serialization then
+                !logger.debug "Importing a single value for %a at offset %d: %a"
+                  RamenTuple.print_field_typ typ
+                  offs RamenTypes.print value ;
+              let offs' = offs + RingBufLib.sersize_of_value value in
+              Some value, offs', if typ.typ.nullable then b+1 else b
+            ) in
+          Option.may (Array.set tuple i) value ;
+          offs', b'
+        ) (offs, 0) ser_tuple_typ in
+    tuple
 
 (* Same as above but returns directly a tuple rather than an array of
  * RamenTypes.values: *)
