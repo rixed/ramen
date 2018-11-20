@@ -192,7 +192,6 @@ let test_output conf fq output_spec end_flag =
    * return one, to select the worker in well-known functions: *)
   let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
-  let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
   (* Change the hashtable of field to string value into a list of field
    * index and value: *)
   let field_indices_of_tuples =
@@ -213,30 +212,35 @@ let test_output conf fq output_spec end_flag =
     !tuples_to_not_find = [] &&
     !RamenProcesses.quit = None &&
     Unix.gettimeofday () -. start < output_spec.timeout in
-  let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
+  let unserialize = RamenSerialization.read_array_of_values ser in
   !logger.debug "Enumerating tuples from %s" bname ;
   let num_tuples =
     RamenSerialization.fold_seq_range
       ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
-      let tuple = unserialize tx in
-      if filter tuple then (
-        !logger.debug "Read a tuple out of operation %S"
-          (RamenName.string_of_fq fq) ;
-        tuples_to_find :=
-          List.filter (fun filter_spec ->
-            not (filter_of_tuple_spec filter_spec tuple)
-          ) !tuples_to_find ;
-        tuples_to_not_find :=
-          List.filter_map (fun (spec, _) ->
-            if List.for_all (fun (idx, value) ->
-                 tuple.(idx) = value
-               ) spec
-            then Some tuple (* Store the whole input for easier debugging *)
-            else None
-          ) tuples_must_be_absent |>
-          List.rev_append !tuples_to_not_find) ;
-      (* Count all tuples including those filtered out: *)
-      count + 1) in
+      match RamenSerialization.read_tuple unserialize tx with
+      | RingBufLib.DataTuple chan, Some tuple ->
+        (* We do no replay on test instance of ramen: *)
+        assert (chan = RingBufLib.live_channel) ;
+        if filter tuple then (
+          !logger.debug "Read a tuple out of operation %S"
+            (RamenName.string_of_fq fq) ;
+          tuples_to_find :=
+            List.filter (fun filter_spec ->
+              not (filter_of_tuple_spec filter_spec tuple)
+            ) !tuples_to_find ;
+          tuples_to_not_find :=
+            List.filter_map (fun (spec, _) ->
+              if List.for_all (fun (idx, value) ->
+                   tuple.(idx) = value
+                 ) spec
+              then (* Store the whole input for easier debugging *)
+                Some tuple
+              else None
+            ) tuples_must_be_absent |>
+            List.rev_append !tuples_to_not_find) ;
+        (* Count all tuples including those filtered out: *)
+        count + 1
+      | _ -> count) in
   let success = !tuples_to_find = [] && !tuples_to_not_find = []
   in
   let err_string_of_tuples p lst =
@@ -266,8 +270,7 @@ let test_until conf count end_flag fq spec =
   let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let filter_spec = filter_spec_of_spec fq ser spec in
-  let nullmask_sz = RingBufLib.nullmask_bytes_of_tuple_type ser in
-  let unserialize = RamenSerialization.read_tuple ser nullmask_sz in
+  let unserialize = RamenSerialization.read_array_of_values ser in
   let got_it = ref false in
   let while_ () =
     not !got_it &&
@@ -276,12 +279,15 @@ let test_until conf count end_flag fq spec =
   !logger.debug "Enumerating tuples from %s for early termination" bname ;
   RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname ()
     (fun () _ tx ->
-    let tuple = unserialize tx in
-    if filter tuple && filter_of_tuple_spec filter_spec tuple then (
-      !logger.info "Got terminator tuple from function %S"
-        (RamenName.string_of_fq fq) ;
-      got_it := true ;
-      Atomic.Counter.incr count))
+    match RamenSerialization.read_tuple unserialize tx with
+    | RingBufLib.DataTuple chan, Some tuple ->
+      assert (chan = RingBufLib.live_channel) ;
+      if filter tuple && filter_of_tuple_spec filter_spec tuple then (
+        !logger.info "Got terminator tuple from function %S"
+          (RamenName.string_of_fq fq) ;
+        got_it := true ;
+        Atomic.Counter.incr count)
+    | _ -> ())
 
 let test_notifications notify_rb notif_spec end_flag =
   (* We keep pat in order to be able to print it later: *)

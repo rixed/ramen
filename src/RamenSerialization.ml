@@ -7,46 +7,57 @@ open RamenTypes
 
 let verbose_serialization = false
 
-(* Read all fields one by one.
- * Slow unserializer used for command line tools such as `ramen tail`.
- * Not the real thing. *)
-let read_tuple ser_tuple_typ offs =
+(* Read all fields one by one. Not the real thing. Skips non-tuple messages.
+ * Slow unserializer used for command line tools such as `ramen tail`. *)
+let read_array_of_values ser_tuple_typ =
   let tuple_len = List.length ser_tuple_typ in
-  fun tx ->
+  let nullmask_size = nullmask_bytes_of_tuple_type ser_tuple_typ in
+  fun tx start_offs ->
     if verbose_serialization then
       !logger.debug "De-serializing a tuple of type %a"
         RamenTuple.print_typ ser_tuple_typ ;
     let tuple = Array.make tuple_len VNull in
-    let _ =
-      List.fold_lefti (fun (offs, b) i typ ->
-          assert (not (RamenName.is_private typ.RamenTuple.name)) ;
-          let value, offs', b' =
-            if typ.typ.nullable && not (get_bit tx b) then (
-              None, offs, b+1
-            ) else (
-              let value = RingBufLib.read_value tx offs typ.typ.structure in
-              if verbose_serialization then
-                !logger.debug "Importing a single value for %a at offset %d: %a"
-                  RamenTuple.print_field_typ typ
-                  offs RamenTypes.print value ;
-              let offs' = offs + RingBufLib.sersize_of_value value in
-              Some value, offs', if typ.typ.nullable then b+1 else b
-            ) in
-          Option.may (Array.set tuple i) value ;
-          offs', b'
-        ) (offs, 0) ser_tuple_typ in
+    List.fold_lefti (fun (offs, b) i typ ->
+        assert (not (RamenName.is_private typ.RamenTuple.name)) ;
+        let value, offs', b' =
+          if typ.typ.nullable && not (get_bit tx start_offs b) then (
+            None, offs, b+1
+          ) else (
+            let value = RingBufLib.read_value tx offs typ.typ.structure in
+            if verbose_serialization then
+              !logger.debug "Importing a single value for %a at offset %d: %a"
+                RamenTuple.print_field_typ typ
+                offs RamenTypes.print value ;
+            let offs' = offs + RingBufLib.sersize_of_value value in
+            Some value, offs', if typ.typ.nullable then b+1 else b
+          ) in
+        Option.may (Array.set tuple i) value ;
+        offs', b'
+      ) (start_offs + nullmask_size, 0) ser_tuple_typ |> ignore ;
     tuple
+
+let read_tuple unserialize tx =
+  match read_message_header tx 0 with
+  | EndOfReplay _ as m -> m, None
+  | DataTuple _ as m ->
+      let tuple = unserialize tx message_header_sersize in
+      m, Some tuple
 
 (* Same as above but returns directly a tuple rather than an array of
  * RamenTypes.values: *)
 let read_tuples ?while_ unserialize rb f =
   read_ringbuf ?while_ rb (fun tx ->
-    let tuple = unserialize tx in
+    let msg = read_tuple unserialize tx in
     dequeue_commit tx ;
-    f tuple)
+    f msg)
 
 let read_notifs ?while_ rb f =
-  read_tuples ?while_ RamenNotification.unserialize rb f
+  (* Ignore all notifications but on live channel. *)
+  read_tuples ?while_ RamenNotification.unserialize rb (function
+    | DataTuple chan, Some notif
+      when chan = live_channel ->
+        f notif
+    | _ -> ())
 
 let value_of_string t s =
   let open RamenParsing in
@@ -129,21 +140,23 @@ let write_record ser_in_type rb tuple =
             (None, value_of_string ftyp.typ s) :: lst
     ) (0, []) ser_in_type |>
     fun (null_i, lst) ->
-      RingBufLib.(round_up_to_rb_word (bytes_for_bits null_i)),
+      round_up_to_rb_word (bytes_for_bits null_i),
       List.rev lst in
   let sz =
     List.fold_left (fun sz (_, v) ->
-      sz + RingBufLib.sersize_of_value v
+      sz + sersize_of_value v
     ) nullmask_sz values in
   !logger.debug "Sending an input tuple of %d bytes" sz ;
   with_enqueue_tx rb sz (fun tx ->
-    zero_bytes tx 0 nullmask_sz ; (* zero the nullmask *)
+    write_message_header tx 0 (DataTuple live_channel) ;
+    let start_offs = message_header_sersize in
+    zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
     (* Loop over all values: *)
     List.fold_left (fun offs (null_i, v) ->
-      Option.may (set_bit tx) null_i ;
-      RingBufLib.write_value tx offs v ;
-      offs + RingBufLib.sersize_of_value v
-    ) nullmask_sz values |> ignore ;
+      Option.may (set_bit tx start_offs) null_i ;
+      write_value tx offs v ;
+      offs + sersize_of_value v
+    ) (start_offs + nullmask_sz) values |> ignore ;
     (* For tests we won't archive the ringbufs so no need for time info: *)
     0., 0.)
 
@@ -275,15 +288,13 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
         (fun () -> unload rb)
         (read_buf ?wait_for_more ?while_ rb init) f
 
-(* Like fold_buffer but call f with the tuple rather than the tx: *)
+(* Like fold_buffer but call f with the message rather than the tx: *)
 let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   !logger.debug "Going to fold over %s" bname ;
-  let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type typ in
+  let unserialize = read_array_of_values typ in
   let f usr tx =
-    let tuple =
-      read_tuple typ nullmask_size tx in
-    let usr, _more_to_come as res = f usr tuple in
+    let msg = read_tuple unserialize tx in
+    let usr, _more_to_come as res = f usr msg in
     if early_stop then res
     else (usr, true)
   in
@@ -333,8 +344,9 @@ let event_time_of_tuple typ params
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
-let fold_buffer_with_time ?while_ ?early_stop bname typ params
-                          event_time init f =
+let fold_buffer_with_time ?(channel_id=RingBufLib.live_channel)
+                          ?while_ ?early_stop
+                          bname typ params event_time init f =
   !logger.debug "Folding over %s" bname ;
   let event_time_of_tuple =
     match event_time with
@@ -342,10 +354,13 @@ let fold_buffer_with_time ?while_ ?early_stop bname typ params
         failwith "Function has no time information"
     | Some event_time  ->
         event_time_of_tuple typ params event_time in
-  let f usr tuple =
-    (* Get the times from tuple: *)
-    let t1, t2 = event_time_of_tuple tuple in
-    f usr tuple t1 t2
+  let f usr = function
+    | DataTuple chan, Some tuple when chan = channel_id ->
+        (* Get the times from tuple: *)
+        let t1, t2 = event_time_of_tuple tuple in
+        f usr tuple t1 t2
+    | _ ->
+        usr, true
   in
   fold_buffer_tuple ?early_stop ?while_ bname typ init f
 

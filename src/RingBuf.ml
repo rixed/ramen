@@ -104,8 +104,8 @@ external read_ip : tx -> int -> RamenIp.t = "read_ip"
 external read_bool : tx -> int -> bool = "read_word"
 external read_word : tx -> int -> int = "read_word"
 
-external set_bit : tx -> int -> unit = "set_bit"
-external get_bit : tx -> int -> bool = "get_bit"
+external set_bit : tx -> int -> int -> unit = "set_bit"
+external get_bit : tx -> int -> int -> bool = "get_bit"
 
 (* See above as to why int8 and int16 are special: *)
 external read_i8_ : tx -> int -> int = "read_int8"

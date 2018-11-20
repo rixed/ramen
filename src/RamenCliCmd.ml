@@ -420,8 +420,6 @@ let tail conf func_name field_names with_header with_units sep null raw
   (* Then, scan all present ringbufs in the requested range (either
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
-  let nullmask_size =
-    RingBufLib.nullmask_bytes_of_tuple_type ser in
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
   (* Check the entered field names are correct: *)
   List.iter (fun fn ->
@@ -491,33 +489,35 @@ let tail conf func_name field_names with_header with_units sep null raw
       else (fun _ -> 0., 0.)
     | Some et -> event_time_of_tuple typ params et
   in
-  let read_tuple = RamenSerialization.read_tuple ser nullmask_size in
+  let unserialize = RamenSerialization.read_array_of_values ser in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
-    let tuple = read_tuple tx in
-    let need_sep = ref false in
-    let may_print_sep () =
-      if !need_sep then String.print stdout sep ;
-      need_sep := true in
-    if filter tuple then (
-      let t1, t2 = event_time_of_tuple tuple in
-      if Option.map_default (fun since -> t2 > since) true since &&
-         Option.map_default (fun until -> t1 <= until) true until
-      then (
-        if with_event_time then (
-          let s1 = IO.to_string et_printer (VFloat t1) in
-          let s2 = IO.to_string et_printer (VFloat t2) in
-          Printf.printf "%s..%s" s1 s2 ;
-          need_sep := true) ;
-        if with_seqnums then (
-          may_print_sep () ;
-          Int.print stdout m) ;
-        reorder_column tuple |>
-        Array.iteri (fun i v ->
-          if display_field.(i) then (
+    match RamenSerialization.read_tuple unserialize tx with
+    | RingBufLib.DataTuple chan, Some tuple
+      when chan = RingBufLib.live_channel && filter tuple ->
+        let t1, t2 = event_time_of_tuple tuple in
+        if Option.map_default (fun since -> t2 > since) true since &&
+           Option.map_default (fun until -> t1 <= until) true until
+        then (
+          let need_sep = ref false in
+          let may_print_sep () =
+            if !need_sep then String.print stdout sep ;
+            need_sep := true in
+          if with_event_time then (
+            let s1 = IO.to_string et_printer (VFloat t1) in
+            let s2 = IO.to_string et_printer (VFloat t2) in
+            Printf.printf "%s..%s" s1 s2 ;
+            need_sep := true) ;
+          if with_seqnums then (
             may_print_sep () ;
-            printers.(i) stdout v)) ;
-        Char.print stdout '\n' ;
-        if flush then BatIO.flush stdout)))
+            Int.print stdout m) ;
+          reorder_column tuple |>
+          Array.iteri (fun i v ->
+            if display_field.(i) then (
+              may_print_sep () ;
+              printers.(i) stdout v)) ;
+          Char.print stdout '\n' ;
+          if flush then BatIO.flush stdout)
+    | _ -> ())
 
 (*
  * `ramen timeseries`

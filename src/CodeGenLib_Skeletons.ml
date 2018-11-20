@@ -122,12 +122,15 @@ let get_binocle_tuple worker ic sc gc =
   startup_time
 
 let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+  let open RingBuf in
   let sersize = RamenBinocle.max_sersize_of_tuple tuple in
-  match RingBuf.enqueue_alloc rb sersize with
-  | exception RingBuf.NoMoreRoom -> () (* Just skip *)
+  match enqueue_alloc rb sersize with
+  | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
-    let offs = RamenBinocle.serialize tx tuple in
-    RingBuf.enqueue_commit tx time time ;
+    RingBufLib.(write_message_header tx 0 (DataTuple live_channel)) ;
+    let offs = RingBufLib.message_header_sersize in
+    let offs = RamenBinocle.serialize tx offs tuple in
+    enqueue_commit tx time time ;
     assert (offs <= sersize)
 
 let update_stats_rb period rb get_tuple =
@@ -143,16 +146,21 @@ let update_stats_rb period rb get_tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output rb serialize_tuple sersize_of_tuple start_stop tuple =
+let output rb serialize_tuple sersize_of_tuple start_stop chan tuple =
   let open RingBuf in
-  let sersize = sersize_of_tuple tuple in
-  IntCounter.add stats_rb_write_bytes sersize ;
+  let head = RingBufLib.DataTuple chan in
+  let tuple_sersize = sersize_of_tuple tuple in
+  let sersize = RingBufLib.message_header_sersize + tuple_sersize in
   (* Nodes with no output (but notifications) have no business writing
    * a ringbuf. Want a signal when a notification is sent? SELECT some
    * value! *)
-  if sersize > 0 then
+  if tuple_sersize > 0 then
+    IntCounter.add stats_rb_write_bytes sersize ;
     let tx = enqueue_alloc rb sersize in
-    let offs = serialize_tuple tx tuple in
+    let offs =
+      RingBufLib.write_message_header tx 0 head ;
+      RingBufLib.message_header_sersize in
+    let offs = serialize_tuple tx offs tuple in
     let start, stop = start_stop |? (0., 0.) in
     enqueue_commit tx start stop ;
     assert (offs = sersize)
@@ -187,16 +195,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         ) else None
       ) else None
   in
-  fun tuple ->
-    let start_stop = time_of_tuple tuple in
-    IntCounter.add stats_out_tuple_count 1 ;
-    FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
-    (* Update stats_event_time: *)
-    Option.may (fun (start, _) ->
-      (* We'd rather announce the start time of the event, event for
-       * negative durations. *)
-      FloatGauge.set stats_event_time start
-    ) start_stop ;
+  let update_out_h () =
     (* Get fnames if they've changed: *)
     let fnames = get_out_fnames () in
     Option.may (fun out_specs ->
@@ -250,7 +249,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 last_check_outref := now ;
                 RamenOutRef.mem rb_ref_out_fname fname)
             in
-            let rb_writer start_stop tuple =
+            let rb_writer start_stop chan tuple =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
                * terminated then we won't deadloop.  Also, if one child is full
@@ -284,7 +283,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
                 (fun () ->
                   if !quarantine_until < !CodeGenLib_IO.now then (
-                    output rb tup_serializer tup_sizer start_stop tuple ;
+                    output rb tup_serializer tup_sizer start_stop chan tuple ;
                     last_successful_output := !CodeGenLib_IO.now ;
                     if !quarantine_delay > 0. then (
                       !logger.info "Resuming output to %s" fname ;
@@ -297,9 +296,21 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
-      out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames ;
+      out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames
+  in
+  fun chan tuple ->
+    let start_stop = time_of_tuple tuple in
+    IntCounter.add stats_out_tuple_count 1 ;
+    FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+    (* Update stats_event_time: *)
+    Option.may (fun (start, _) ->
+      (* We'd rather announce the start time of the event, even for
+       * negative durations. *)
+      FloatGauge.set stats_event_time start
+    ) start_stop ;
+    update_out_h () ;
     List.iter (fun out ->
-      try out start_stop tuple
+      try out start_stop chan tuple
       with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
@@ -406,7 +417,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
-      | tuple -> outputer tuple))
+      | tuple -> outputer RingBufLib.live_channel tuple))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
@@ -431,7 +442,7 @@ let listen_on (collector :
       port proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple in
+                  serialize_tuple RingBufLib.live_channel in
     let while_ () = !quit = None in
     collector ~inet_addr ~port ~while_ outputer)
 
@@ -469,11 +480,16 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
       ) else (
         info_or_test conf "Reading buffer..." ;
         RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
-          let tuple = unserialize_tuple tx in
-          let worker, time = worker_time_of_tuple tuple in
-          (* Filter by time and worker *)
-          if time >= start && match_from worker then
-            outputer tuple ;
+          let open RingBufLib in
+          (match read_message_header tx 0 with
+          | DataTuple chan ->
+            let offs = message_header_sersize in
+            let tuple = unserialize_tuple tx offs in
+            let worker, time = worker_time_of_tuple tuple in
+            (* Filter by time and worker *)
+            if time >= start && match_from worker then
+              outputer chan tuple
+          | _ -> ()) ;
           (), true) ;
         info_or_test conf "Done reading buffer, waiting for next one." ;
         RingBuf.unload rb ;
@@ -589,10 +605,13 @@ type ('tuple_in, 'merge_on) merge_on_fun = 'tuple_in (* last in *) -> 'merge_on
 
 let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
-    let in_tuple = read_tuple tx in
+    let msg = read_tuple tx in
     let tx_size = RingBuf.tx_size tx in
     RingBuf.dequeue_commit tx ;
-    k tx_size in_tuple in_tuple)
+    match msg with
+    | RingBufLib.DataTuple chan, Some tuple ->
+        k tx_size chan tuple tuple
+    | _ -> ())
 
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
@@ -608,7 +627,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
   let tuples_cmp (_, _, k1) (_, _, k2) = compare k1 k2 in
   let read_more () =
     Array.iteri (fun i to_merge ->
-      if RamenSzHeap.cardinal to_merge.tuples < last then
+      if RamenSzHeap.cardinal to_merge.tuples < last then (
         match RingBuf.dequeue_alloc to_merge.rb with
         | exception RingBuf.Empty -> ()
         | tx ->
@@ -618,13 +637,17 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
                   i (Unix.gettimeofday () -. timed_out) ;
                 to_merge.timed_out <- None
             | None -> ()) ;
-            let in_tuple = read_tuple tx in
+            let msg = read_tuple tx in
             let tx_size = RingBuf.tx_size tx in
             RingBuf.dequeue_commit tx ;
-            let key = on in_tuple in
-            to_merge.tuples <-
-              RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
-                              to_merge.tuples
+            (match msg with
+            | RingBufLib.DataTuple _chan, Some in_tuple ->
+              (* TODO: pick the heap for this chan *)
+              let key = on in_tuple in
+              to_merge.tuples <-
+                RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
+                                to_merge.tuples
+            | _ -> ((* TODO *))))
     ) to_merge in
   (* Loop until timeout the given max time or we have a tuple for each
    * non timed out input sources: *)
@@ -684,19 +707,23 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          k tx_size min_tuple max_tuple ;
-          loop ()
-    ) in
+          let chan = RingBufLib.live_channel (* TODO *) in
+          k tx_size chan min_tuple max_tuple ;
+          loop ()) in
   loop ()
 
 let yield_every ~while_ read_tuple every k =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
-  let rec loop () =
+  let rec loop prev_start =
     if while_ () then (
-      let start = Unix.gettimeofday () in
-      let in_tuple = read_tuple tx in
-      k 0 in_tuple in_tuple ;
+      let start =
+        match read_tuple tx with
+        | RingBufLib.DataTuple chan, Some tuple ->
+            let s = Unix.gettimeofday () in
+            k 0 chan tuple tuple ;
+            s
+        | _ -> prev_start in
       let rec wait () =
         (* Avoid sleeping longer than a few seconds to check while_ in a
          * timely fashion. The 1.33 is supposed to help distinguish this sleep
@@ -709,17 +736,17 @@ let yield_every ~while_ read_tuple every k =
           !logger.debug "Sleeping for %f seconds" sleep_time ;
           Unix.sleepf sleep_time ;
           wait ()
-        ) else loop () in
+        ) else loop start in
       wait ()
     ) in
-  loop ()
+  loop 0.
 
 let aggregate
-      (read_tuple : RingBuf.tx -> 'tuple_in)
+      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
-      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> 'tuple_out -> int)
-      (generate_tuples : ('tuple_in -> 'tuple_out -> unit) -> 'tuple_in -> 'generator_out -> unit)
+      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RingBufLib.channel -> 'tuple_out -> int)
+      (generate_tuples : (RingBufLib.channel -> 'tuple_in -> 'tuple_out -> unit) -> RingBufLib.channel -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
       (minimal_tuple_of_aggr :
@@ -816,7 +843,7 @@ let aggregate
                   serialize_tuple in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
-      let do_out tuple_in tuple_out =
+      let do_out chan tuple_in tuple_out =
         let notifications = get_notifications tuple_in tuple_out in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
@@ -827,7 +854,7 @@ let aggregate
                    field_of_params
           ) notifications
         ) ;
-        tuple_outputer tuple_out
+        tuple_outputer chan tuple_out
       in
       generate_tuples do_out in
     let with_state =
@@ -857,7 +884,7 @@ let aggregate
       ) rb_in_fnames
     in
     (* The big function that aggregate a single tuple *)
-    let aggregate_one s in_tuple merge_greatest =
+    let aggregate_one channel_id s in_tuple merge_greatest =
       (* Define some short-hand values and functions we will keep
        * referring to: *)
       (* When committing other groups, this is used to skip the current
@@ -879,7 +906,7 @@ let aggregate
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 g.current_out in
             s.last_out_tuple <- Some out ;
-            outputer in_tuple out
+            outputer channel_id in_tuple out
         | true, None -> ()
         | true, Some previous_out ->
             let out =
@@ -887,7 +914,7 @@ let aggregate
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
             s.last_out_tuple <- Some out ;
-            outputer in_tuple out) ;
+            outputer channel_id in_tuple out) ;
         (* Flush/Keep/Slide *)
         if do_flush then (
           if commit_before then (
@@ -1006,7 +1033,7 @@ let aggregate
           merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
                     merge_timeout read_tuple rb_ins
     in
-    tuple_reader (fun tx_size in_tuple merge_greatest ->
+    tuple_reader (fun tx_size channel_id in_tuple merge_greatest ->
       with_state (fun s ->
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
@@ -1019,7 +1046,7 @@ let aggregate
          * be empty but for the very last tuple. In that case pretend
          * tuple_in is the first (sort.#count will still be 0). *)
         if sort_last <= 1 then
-          aggregate_one s in_tuple merge_greatest
+          aggregate_one channel_id s in_tuple merge_greatest
         else
           let sort_n = RamenSortBuf.length s.sort_buf in
           let or_in f =
@@ -1037,6 +1064,6 @@ let aggregate
           then
             let min_in, sb = RamenSortBuf.pop_min s.sort_buf in
             s.sort_buf <- sb ;
-            aggregate_one s min_in merge_greatest
+            aggregate_one channel_id s min_in merge_greatest
           else
             s)))

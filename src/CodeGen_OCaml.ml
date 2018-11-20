@@ -90,17 +90,17 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
   | TTuple ts -> (* Should not be used! Will be used when a constructed field is not mentioned and is skipped. Get rid of mentioned fields!*)
     let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
     Printf.fprintf oc "\
-      let bi_start_ = %s * 8 in\n" offs_var ;
+      let tuple_start_ = %s in\n" offs_var ;
     Printf.fprintf oc "\
       let %s_ = %s + %d in\n"
       offs_var offs_var nullmask_sz ;
     Array.iteri (fun i t ->
       Printf.fprintf oc "\
-        let bi_ = bi_start_ + %d in\n\
+        let bi_ = %d in\n\
         let %s_ = %s_ + (%a) in\n"
         i
         offs_var offs_var
-        (emit_sersize_of_field_tx tx_var (offs_var^"_") "bi_"
+        (emit_sersize_of_field_tx tx_var "tuple_start_" (offs_var^"_") "bi_"
           t.nullable)
           t.structure
     ) ts ;
@@ -111,11 +111,11 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
   | t -> emit_sersize_of_fixsz_typ oc t
 
 (* Emit the code to retrieve the sersize of some serialized value *)
-and emit_sersize_of_field_tx tx_var offs_var nulli_var
+and emit_sersize_of_field_tx tx_var start_offs_var offs_var nulli_var
                              nullable oc structure =
   if nullable then (
-    Printf.fprintf oc "if RingBuf.get_bit %s %s then %a else 0"
-      tx_var nulli_var
+    Printf.fprintf oc "if RingBuf.get_bit %s %s %s then %a else 0"
+      tx_var start_offs_var nulli_var
       (emit_sersize_of_not_null tx_var offs_var) structure
   ) else
     emit_sersize_of_not_null tx_var offs_var oc structure
@@ -1727,14 +1727,15 @@ let emit_serialize_tuple name oc tuple_typ =
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
   Printf.fprintf oc "let %s skiplist_ =\n" name ;
   emit_compute_nullmask_size oc ser_typ ;
-  Printf.fprintf oc "\tfun tx_ %a ->\n"
+  Printf.fprintf oc "\tfun tx_ start_offs_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   if verbose_serialization then
     Printf.fprintf oc "\t\t!RamenLog.logger.RamenLog.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
   (* Start by zeroing the nullmask *)
-  Printf.fprintf oc "\t\tif nullmask_bytes_ > 0 then\n\
-                     \t\t\tRingBuf.zero_bytes tx_ 0 nullmask_bytes_ ; (* zero the nullmask *)\n" ;
-  Printf.fprintf oc "\t\tlet offs_, nulli_ = nullmask_bytes_, 0 in\n" ;
+  Printf.fprintf oc
+    "\t\tif nullmask_bytes_ > 0 then\n\
+     \t\t\tRingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ; (* zero the nullmask *)\n" ;
+  Printf.fprintf oc "\t\tlet offs_, nulli_ = start_offs_ + nullmask_bytes_, 0 in\n" ;
   (* Write the value and return new offset and nulli: *)
   let rec emit_write_scalar tx_var offs_var nulli_var val_var nullable oc typ =
     if nullable then (
@@ -1743,7 +1744,7 @@ let emit_serialize_tuple name oc tuple_typ =
       Printf.fprintf oc "\t\t\t\t(match %s with\n" val_var ;
       Printf.fprintf oc "\t\t\t\t| Null -> %s, %s + 1\n" offs_var nulli_var ;
       Printf.fprintf oc "\t\t\t\t| NotNull %s ->\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s %s ;\n" tx_var nulli_var ;
+      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s start_offs_ %s ;\n" tx_var nulli_var ;
       Printf.fprintf oc "\t\t\t\t\tlet %s, %s =\n\
                          \t\t\t\t\t\t%a in\n\
                          \t\t\t\t\t%s, %s + 1)\n"
@@ -1923,29 +1924,44 @@ let emit_in_tuple ?(tuple=TupleIn) mentioned oc in_typ =
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. As an optimisation, read
- * (and return) only the mentioned fields. *)
-let emit_read_tuple name mentioned oc in_typ =
+ * (and return) only the mentioned fields.
+ * FIXME: get rid of this mentioned "optimization" that's been obsolete for
+ * a very long time already. *)
+let emit_read_tuple name ?(is_yield=false) mentioned oc in_typ =
   (* Deserialize in in_tuple_typ.name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
+  Printf.fprintf oc "let %s tx_ =\n" name ;
+  if is_yield then (
+    (* Yield produce only tuples for the live channel: *)
+    Printf.fprintf oc "\
+      \tlet m_ = RingBufLib.(DataTuple live_channel) in\n\
+      \tlet start_offs_ = 0 in\n"
+  ) else (
+    Printf.fprintf oc "
+      \tmatch RingBufLib.read_message_header tx_ 0 with\n\
+      \t|RingBufLib.EndOfReplay _ as m_ -> m_, None\n\
+      \t|RingBufLib.DataTuple _ as m_ ->\n\
+      \t\tlet start_offs_ = %d in\n"
+      RingBufLib.message_header_sersize
+  ) ;
   Printf.fprintf oc "\
-    let %s tx_ =\n\
-    \tlet offs_ = %d in\n"
-    name
+    \tlet offs_ = start_offs_ + %d in\n"
     (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
   if verbose_serialization then
     Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
   (* Returns value, offset: *)
-  let rec emit_read_scalar tx_var offs_var val_var nullable nulli_var oc typ =
+  let rec emit_read_scalar tx_var start_offs_var offs_var val_var
+                           nullable nulli_var oc typ =
     if nullable then (
       Printf.fprintf oc "\
-        \t\tif RingBuf.get_bit %s %s then (\n\
+        \t\tif RingBuf.get_bit %s %s %s then (\n\
         \t\tlet %s, %s =\n\
         \t%a in\n
         \t\tNotNull %s, %s\n
         \t\t) else Null, %s"
-        tx_var nulli_var
+        tx_var start_offs_var nulli_var
         val_var offs_var
-        (emit_read_scalar tx_var offs_var val_var false nulli_var) typ
+        (emit_read_scalar tx_var start_offs_var offs_var val_var false nulli_var) typ
         val_var offs_var
         offs_var
     ) else (
@@ -1954,15 +1970,15 @@ let emit_read_tuple name mentioned oc in_typ =
      * item: *)
     | TTuple ts ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\tlet bi_base_ = %s * 8 and %s = %s + %d in\n"
+        Printf.fprintf oc "\t\tlet tuple_start_ = %s and %s = %s + %d in\n"
           offs_var offs_var offs_var nullmask_sz ;
         Array.iteri (fun i t ->
           let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\tlet bi_ = bi_base_ + %d in\n\
+          Printf.fprintf oc "\t\tlet bi_ = %d in\n\
                              \t\tlet %s, %s = %a in\n"
             i
             item_var offs_var
-            (emit_read_scalar tx_var offs_var item_var t.nullable "bi_") t.structure
+            (emit_read_scalar tx_var "tuple_start_" offs_var item_var t.nullable "bi_") t.structure
         ) ts ;
         Printf.fprintf oc "\t%a, %s"
           (array_print_as_tuple_i (fun oc i _ ->
@@ -1971,15 +1987,15 @@ let emit_read_tuple name mentioned oc in_typ =
           offs_var ;
     | TVec (d, t) ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
-        Printf.fprintf oc "\t\tlet bi_base_ = %s * 8 and %s = %s + %d in\n"
+        Printf.fprintf oc "\t\tlet vec_start_ = %s and %s = %s + %d in\n"
           offs_var offs_var offs_var nullmask_sz ;
         for i = 0 to d-1 do
           let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\tlet bi_ = bi_base_ + %d in\n\
+          Printf.fprintf oc "\t\tlet bi_ = %d in\n\
                              \t\tlet %s, %s = %a in\n"
             i
             item_var offs_var
-            (emit_read_scalar tx_var offs_var item_var t.nullable "bi_") t.structure
+            (emit_read_scalar tx_var "vec_start_" offs_var item_var t.nullable "bi_") t.structure
         done ;
         Printf.fprintf oc "\t[| " ;
         for i = 0 to d-1 do
@@ -2002,12 +2018,12 @@ let emit_read_tuple name mentioned oc in_typ =
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \tlet %s, offs_ =\n%a in\n"
           nulli
-          id (emit_read_scalar "tx_" "offs_" id field.typ.nullable "bi_") field.typ.structure
+          id (emit_read_scalar "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_") field.typ.structure
       ) else (
         Printf.fprintf oc "\tlet bi_ = %d in\n\
                            \nlet offs_ = offs_ + (%a)\n"
           nulli
-          (emit_sersize_of_field_tx "tx_" "offs_" "bi_" field.typ.nullable)
+          (emit_sersize_of_field_tx "tx_" "start_offs_" "offs_" "bi_" field.typ.nullable)
             field.typ.structure
       ) ;
       nulli + (if field.typ.nullable then 1 else 0)
@@ -2018,7 +2034,7 @@ let emit_read_tuple name mentioned oc in_typ =
     List.filter (fun t ->
       not (RamenName.is_private t.RamenTuple.name)
     ) in_typ in
-  Printf.fprintf oc "\t%a\n"
+  Printf.fprintf oc "\tm_, Some %a\n"
     (emit_in_tuple mentioned) in_typ_only_ser
 
 (* We know that somewhere in expr we have one or several generators.
@@ -2066,9 +2082,9 @@ let emit_generate_tuples name in_typ mentioned out_typ ~opc oc selected_fields =
       RamenExpr.is_generator sf.RamenOperation.expr)
       selected_fields in
   if not has_generator then
-    Printf.fprintf oc "let %s f_ it_ ot_ = f_ it_ ot_\n" name
+    Printf.fprintf oc "let %s f_ chan_ it_ ot_ = f_ chan_ it_ ot_\n" name
   else (
-    Printf.fprintf oc "let %s f_ (%a as it_) %a =\n"
+    Printf.fprintf oc "let %s f_ chan_ (%a as it_) %a =\n"
       name
       (emit_in_tuple mentioned) in_typ
       (print_tuple_deconstruct TupleOut) out_typ ;
@@ -2088,7 +2104,7 @@ let emit_generate_tuples name in_typ mentioned out_typ ~opc oc selected_fields =
         ) 0 selected_fields in
     (* Now we have all the generated values, actually call f_ on the tuple.
      * Note that the tuple must be in out_typ order: *)
-    Printf.fprintf oc "%af_ it_ (\n%a"
+    Printf.fprintf oc "%af_ chan_ it_ (\n%a"
       emit_indent (1 + num_gens)
       emit_indent (2 + num_gens) ;
     let expr_of_field name =
@@ -2484,7 +2500,7 @@ let emit_aggregate opc oc name in_typ out_typ =
   match opc.op with
   | Some (RamenOperation.Aggregate
       { fields ; merge ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; _ } as op) ->
+        flush_how ; notifications ; every ; from ; _ } as op) ->
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
@@ -2564,12 +2580,13 @@ let emit_aggregate opc oc name in_typ out_typ =
    * uses the group tuple or build a group-wise aggregation on its own,
    * despite this is forbidden in RamenOperation.check): *)
   and where_need_group = expr_needs_group where
-  and when_to_check_for_commit = when_to_check_group_for_expr commit_cond in
+  and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
+  and is_yield = from = [] in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
-    (emit_read_tuple "read_tuple_" mentioned) in_typ
+    (emit_read_tuple "read_tuple_" ~is_yield mentioned) in_typ
     (if where_need_group then
       emit_where "where_fast_" ~always_true:true in_typ mentioned ~opc
     else

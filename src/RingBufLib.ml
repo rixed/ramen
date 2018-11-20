@@ -174,10 +174,9 @@ let rec write_value tx offs = function
 and write_tuple tx offs vs =
   let nullmask_sz = nullmask_sz_of_tuple vs in
   zero_bytes tx offs nullmask_sz ;
-  let bi = offs * 8 in
-  Array.fold_lefti (fun o i v ->
+  Array.fold_lefti (fun o bi v ->
     if v = VNull then offs else (
-      set_bit tx (bi + i) ;
+      set_bit tx offs bi ;
       write_value tx o v ;
       o + sersize_of_value v
     )
@@ -217,9 +216,9 @@ let rec read_value tx offs structure =
   | TList t -> VList (read_list t tx offs)
   | TNum | TAny | TEmpty -> assert false
 
-and read_constructed_value tx t o bi =
+and read_constructed_value tx t offs o bi =
   let v =
-    if t.nullable && not (get_bit tx bi) then VNull
+    if t.nullable && not (get_bit tx offs bi) then VNull
     else read_value tx !o t.structure in
   o := !o + sersize_of_value v ;
   v
@@ -230,17 +229,15 @@ and read_constructed_value tx t o bi =
 and read_tuple ts tx offs =
   let nullmask_sz = nullmask_sz_of_tuple ts in
   let o = ref (offs + nullmask_sz) in
-  let bi = offs * 8 in
-  Array.mapi (fun i t ->
-    read_constructed_value tx t o (bi + i)
+  Array.mapi (fun bi t ->
+    read_constructed_value tx t offs o bi
   ) ts
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
-  let bi = offs * 8 in
   let o = ref (offs + nullmask_sz) in
-  Array.init d (fun i ->
-    read_constructed_value tx t o (bi + i))
+  Array.init d (fun bi ->
+    read_constructed_value tx t offs o bi)
 
 and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
@@ -248,7 +245,8 @@ and read_list t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
   let o = ref (offs + sersize_of_u32 + nullmask_sz) in
   Array.init d (fun i ->
-    read_constructed_value tx t o (bi + i))
+    read_constructed_value tx t offs o (bi + i))
+
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =
@@ -424,21 +422,22 @@ let seq_range bname =
 let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
 
-let serialize_notification tx
+let serialize_notification tx start_offs
       (worker, start, event_time, name, firing, certainty, parameters) =
-  RingBuf.zero_bytes tx 0 notification_nullmask_sz ; (* zero the nullmask *)
+  (* Zero the nullmask: *)
+  RingBuf.zero_bytes tx start_offs notification_nullmask_sz ;
   let write_nullable_thing w sz offs null_i = function
     | None ->
         offs
     | Some v ->
-        RingBuf.set_bit tx null_i ;
+        RingBuf.set_bit tx start_offs null_i ;
         w tx offs v ;
         offs + sz in
   let write_nullable_float =
     write_nullable_thing RingBuf.write_float sersize_of_float in
   let write_nullable_bool =
     write_nullable_thing RingBuf.write_bool sersize_of_bool in
-  let offs = notification_nullmask_sz in
+  let offs = start_offs + notification_nullmask_sz in
   let offs =
     RingBuf.write_string tx offs worker ;
     offs + sersize_of_string worker in
@@ -487,12 +486,55 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
   notification_nullmask_sz + notification_fixsz +
   sersize_of_string worker + sersize_of_string name + psz
 
-let write_notif ?delay_rec rb (_, _, event_time, _, _, _, _ as tuple) =
+(* In the ringbuf we actually pass more than tuples: also various kinds of
+ * notifications. Also, tuples (and some of those meta-messages) are
+ * specific to a * "channel".
+ * A channel is an identifier that is used to segregate the various replays
+ * that are going on. In theory, tuples from different channels do never
+ * see each others. *)
+
+type channel = int
+let live_channel = 0
+
+type message_header =
+  | DataTuple of channel (* Followed by a tuple *)
+  | EndOfReplay of channel
+  (* Also TBD:
+  | Timing of channel * (string * float) list
+  | TimeBarrier ... *)
+
+(* Let's assume there will never be more than 36636 live channels and use
+ * only one word for the header: *)
+let message_header_sersize = 4
+
+let write_message_header tx offs msg =
+  let word_of_message = function
+    | DataTuple chan -> Uint32.of_int chan
+    | EndOfReplay chan -> Uint32.of_int (0x1_0000 + chan)
+  in
+  write_u32 tx offs (word_of_message msg)
+
+let read_message_header tx offs =
+  let u32 = read_u32 tx offs in
+  let open Uint32 in
+  let chan = logand u32 (of_int 0xFFFF) |> to_int in
+  match shift_right_logical u32 16 |> to_int with
+  | 0 -> DataTuple chan
+  | 0x1_0000 -> EndOfReplay chan
+  | _ -> invalid_arg "read_message_head"
+
+(*
+ * Notifications
+ *)
+
+let write_notif ?delay_rec rb ?(channel_id=live_channel)
+                (_, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->
     let sersize = max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in
     let tmin, tmax = event_time |? 0., 0. in
-    let sz = serialize_notification tx tuple in
+    write_message_header tx 0 (DataTuple channel_id) ;
+    let sz = serialize_notification tx message_header_sersize tuple in
     assert (sz <= sersize) ;
     enqueue_commit tx tmin tmax) ()
 

@@ -219,12 +219,15 @@ let scan_possible_values factors bname typ =
     List.map (RamenSerialization.find_field_index ser) factors in
   let possible_values =
     Array.init (List.length fis) (fun _ -> Set.empty) in
-  RamenSerialization.fold_buffer_tuple bname ser () (fun () tuple ->
-    List.iteri (fun i fidx ->
-      let v = tuple.(fidx) in
-      possible_values.(i) <- Set.add v possible_values.(i)
-    ) fis ;
-    ((), true)) ;
+  RamenSerialization.fold_buffer_tuple bname ser () (fun () msg ->
+    (match msg with
+    | RingBufLib.DataTuple _, Some tuple ->
+      List.iteri (fun i fidx ->
+        let v = tuple.(fidx) in
+        possible_values.(i) <- Set.add v possible_values.(i)
+      ) fis
+    | _ -> ()) ;
+    (), true) ;
   possible_values
 
 let all_seq_bnames conf ?since ?until func =

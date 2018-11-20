@@ -634,27 +634,30 @@ CAMLprim value zero_bytes(value tx, value off_, value size_)
 }
 
 // Set the bit_ th bit in the tx to 1 (for the nullmask)
-CAMLprim value set_bit(value tx, value bit_)
+CAMLprim value set_bit(value tx, value offs_, value bit_)
 {
-  CAMLparam2(tx, bit_);
+  CAMLparam3(tx, offs_, bit_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   unsigned bit = Long_val(bit_);
+  unsigned offs = Long_val(offs_);
   assert(bit/8 < wrtx->alloced);
-  uint8_t *addr = (uint8_t *)where_to(wrtx, 0) + bit/8;
+  uint8_t *addr = (uint8_t *)where_to(wrtx, offs) + bit/8;
   uint8_t mask = 1U << (bit % 8);
   *addr |= mask;
   CAMLreturn(Val_unit);
 }
 
 // Return the bit_ th bit in the tx (for the nullmask)
-CAMLprim value get_bit(value tx, value bit_)
+CAMLprim value get_bit(value tx, value offs_, value bit_)
 {
-  CAMLparam2(tx, bit_);
+  CAMLparam3(tx, offs_, bit_);
   CAMLlocal1(b);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   unsigned bit = Long_val(bit_);
   assert(bit/8 < wrtx->alloced);
-  uint8_t const *addr = (uint8_t *)where_to(wrtx, 0) + bit/8;
+  unsigned offs = Long_val(offs_);
+  assert(offs + bit/8 < wrtx->alloced);
+  uint8_t const *addr = (uint8_t *)where_to(wrtx, offs) + bit/8;
   uint8_t mask = 1U << (bit % 8);
   CAMLreturn(Val_bool(*addr & mask));
 }

@@ -43,6 +43,7 @@ let factors =
   [ RamenName.field_of_string "name" ;
     RamenName.field_of_string "firing" ]
 
+open RingBuf
 open RingBufLib
 
 let nullmask_sz =
@@ -55,30 +56,30 @@ let fix_sz =
   assert (sz = notification_fixsz) ; (* FIXME *)
   sz
 
-let unserialize tx =
-  let read_nullable_thing r sz tx null_i offs =
-    if RingBuf.get_bit tx null_i then
+let unserialize tx start_offs =
+  let read_nullable_thing r sz null_i offs =
+    if get_bit tx start_offs null_i then
       NotNull (r tx offs), offs + sz
     else
       Null, offs in
   let read_nullable_float =
     let sz = sersize_of_float in
-    read_nullable_thing RingBuf.read_float sz in
+    read_nullable_thing read_float sz in
   let read_nullable_bool =
     let sz = sersize_of_bool in
-    read_nullable_thing RingBuf.read_bool sz in
-  let offs = nullmask_sz in
-  let worker = RingBuf.read_string tx offs in
+    read_nullable_thing read_bool sz in
+  let offs = start_offs + nullmask_sz in
+  let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
-  let start = RingBuf.read_float tx offs in
+  let start = read_float tx offs in
   let offs = offs + sersize_of_float in
-  let event_time, offs = read_nullable_float tx 0 offs in
-  let name = RingBuf.read_string tx offs in
+  let event_time, offs = read_nullable_float 0 offs in
+  let name = read_string tx offs in
   let offs = offs + sersize_of_string name in
-  let firing, offs = read_nullable_bool tx 1 offs in
-  let certainty = RingBuf.read_float tx offs in
+  let firing, offs = read_nullable_bool 1 offs in
+  let certainty = read_float tx offs in
   let offs = offs + sersize_of_float in
-  let num_params = RingBuf.read_u32 tx offs |> Uint32.to_int in
+  let num_params = read_u32 tx offs |> Uint32.to_int in
   let offs = offs + sersize_of_u32 in
   (* We also have the vector internal nullmask, even though the parameters
    * cannot be NULL: *)
@@ -88,9 +89,9 @@ let unserialize tx =
     Array.init num_params (fun _ ->
       (* Also need to skip the tuple (pair) internal nullmask: *)
       offs := !offs + nullmask_sz_of_vector 2 ;
-      let n = RingBuf.read_string tx !offs in
+      let n = read_string tx !offs in
       offs := !offs + sersize_of_string n ;
-      let v = RingBuf.read_string tx !offs in
+      let v = read_string tx !offs in
       offs := !offs + sersize_of_string v ;
       n, v
     ) in

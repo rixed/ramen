@@ -171,6 +171,9 @@ CODEGENLIB_SOURCES = \
 	src/RamenNetflow.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
+	src/RamenTypes.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
 	src/RingBufLib.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
