@@ -400,6 +400,7 @@ CAMLprim value wrap_ringbuf_dequeue_commit(value tx)
 
 static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
+  assert(!(offs & 3));
   return wrtx->rb->rbf->data /* Where the mmapped data starts */
        + wrtx->tx.record_start /* The offset of the record within that data */
        + offs/sizeof(uint32_t);
@@ -407,7 +408,6 @@ static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 
 static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
 {
-  assert(!(offs & 3));
   assert(size + offs <= wrtx->alloced);
   assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
@@ -423,7 +423,6 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 
 static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
 {
-  assert(!(offs & 3));
   if (offs + size > wrtx->alloced) {
     printf("BAD OFFS: offs=%zu, size=%zu but tx->alloced only %zu\n", offs, size, wrtx->alloced);
     fflush(stdout);
@@ -579,7 +578,6 @@ CAMLprim value write_word(value tx, value off_, value v_)
   CAMLparam3(tx, off_, v_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
-  assert(!(offs & 3));
   uint32_t *addr = where_to(wrtx, offs);
 
   assert(Is_long(v_));
@@ -624,7 +622,6 @@ CAMLprim value zero_bytes(value tx, value off_, value size_)
   CAMLparam3(tx, off_, size_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
-  assert(!(offs & 3));
   uint32_t *addr = where_to(wrtx, offs);
   int size = Long_val(size_);
 
@@ -654,7 +651,6 @@ CAMLprim value get_bit(value tx, value offs_, value bit_)
   CAMLlocal1(b);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   unsigned bit = Long_val(bit_);
-  assert(bit/8 < wrtx->alloced);
   unsigned offs = Long_val(offs_);
   assert(offs + bit/8 < wrtx->alloced);
   uint8_t const *addr = (uint8_t *)where_to(wrtx, offs) + bit/8;

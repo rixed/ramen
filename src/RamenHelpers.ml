@@ -233,9 +233,8 @@ let mkdir_all ?(is_file=false) dir =
       ensure_exist (Filename.dirname d) ;
       !logger.debug "mkdir %S" d ;
       try Unix.mkdir d 0o755
-      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
-        (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
-        !logger.debug "Cannot mkdir as %s already exist" d
+      (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
+      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) -> ()
     ) in
   ensure_exist dir
 

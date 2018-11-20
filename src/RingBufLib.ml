@@ -225,7 +225,7 @@ and read_constructed_value tx t offs o bi =
 
 (* Tuples, vectors and lists come with a separate nullmask as a prefix,
  * with one bit per element regardless of their nullability (because
- * although we knoe the type, write_tuple do not): *)
+ * although we know the type, write_tuple do not): *)
 and read_tuple ts tx offs =
   let nullmask_sz = nullmask_sz_of_tuple ts in
   let o = ref (offs + nullmask_sz) in
@@ -247,6 +247,9 @@ and read_list t tx offs =
   Array.init d (fun i ->
     read_constructed_value tx t offs o (bi + i))
 
+(*
+ * Various other Helpers:
+ *)
 
 (* Unless wait_for_more, this will raise Empty when out of data *)
 let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f =

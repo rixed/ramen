@@ -601,7 +601,8 @@ type ('tuple_in, 'sort_by) sort_by_fun =
   'tuple_in (* sort.smallest *) ->
   'tuple_in (* sort.greatest *) -> 'sort_by
 
-type ('tuple_in, 'merge_on) merge_on_fun = 'tuple_in (* last in *) -> 'merge_on
+type ('tuple_in, 'merge_on) merge_on_fun =
+  'tuple_in (* last in *) -> 'merge_on
 
 let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->

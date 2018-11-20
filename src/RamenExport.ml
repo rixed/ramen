@@ -24,8 +24,7 @@ let make_temp_export ?(duration=Default.export_duration) conf func =
     RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   let file_spec =
     RamenOutRef.{
-      field_mask =
-        RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
+      field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
       timeout = if duration < 0. then 0.
                 else Unix.gettimeofday () +. duration } in
   RamenOutRef.add out_ref (bname, file_spec) ;

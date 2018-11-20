@@ -41,7 +41,7 @@ let read_stats conf =
   let while_ () = (* Do not wait more than 1s: *)
     Unix.gettimeofday () -. now < 1. in
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
-                       since until ()  (fun () tuple _t1 _t2 ->
+                       since until () (fun () tuple _t1 _t2 ->
     let worker = get_string tuple.(0) in
     let time = get_float tuple.(1)
     and min_etime = get_nfloat tuple.(2)
