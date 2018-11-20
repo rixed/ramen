@@ -501,7 +501,9 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       let t =
         Printf.sprintf "&id=%s" (CodecUrl.encode a.id) in
       Printf.sprintf
-        "%S || COALESCE(\"See \" || env.VIEW_ALERT_URL || %S, \" for details\")" s t in
+        "%S || COALESCE(\"See \" || env.VIEW_ALERT_URL || %S \
+                                 || \" for details\", \
+                        \"\")" s t in
     let desc_firing =
       if a.desc_firing <> "" then String.quote a.desc_firing else
         Printf.sprintf "%s went %s the configured threshold %f.\n"
