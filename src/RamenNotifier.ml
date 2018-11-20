@@ -487,7 +487,7 @@ let pass_fpr max_fpr now certainty =
       let max_fp = Float.ceil (dt *. max_fpr) |> int_of_float in
       (* Compute the probability that we had more than max_fp fp already. *)
       if max_fp < 1 (* bogus dt *) then (
-        !logger.info "Max FPR test: bogus DT" ;
+        !logger.info "Max FPR test: bogus DT %f-%f=%f" now oldest dt ;
         false
       ) else if max_fp > 1 + Deque.size pendings.last_sent then (
         !logger.info "Max FPR test: Haven't sent enough notif yet (%d) to \
