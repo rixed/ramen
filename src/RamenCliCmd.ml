@@ -205,7 +205,8 @@ let compile conf root_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace report_period as_ src_file bin_file () =
+let run conf params replace kill_if_disabled report_period as_ src_file
+        bin_file () =
   (* By default use the given path as the program name: *)
   let program_name =
     Option.default_delayed (fun () ->
@@ -216,7 +217,8 @@ let run conf params replace report_period as_ src_file bin_file () =
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf params replace report_period program_name ?src_file bin_file debug
+  RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
+               ?src_file bin_file program_name
 
 (*
  * `ramen kill`

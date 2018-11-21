@@ -412,6 +412,11 @@ let replace =
                    [ "replace" ; "r" ] in
   Arg.(value (flag i))
 
+let kill_if_disabled =
+  let i = Arg.info ~doc:RamenConsts.CliInfo.kill_if_disabled
+                   [ "kill-if-disabled" ] in
+  Arg.(value (flag i))
+
 let report_period =
   let env = Term.env_info "RAMEN_REPORT_PERIOD" in
   let i = Arg.info ~doc:RamenConsts.CliInfo.report_period
@@ -429,6 +434,7 @@ let run =
       $ copts
       $ params
       $ replace
+      $ kill_if_disabled
       $ report_period
       $ as_
       $ src_file

@@ -749,6 +749,11 @@ let synchronize_running conf autoreload_delay =
                        * be done about this. *)
                       ()
                   | prog ->
+                      (* NOTE: We might want to do this only when
+                       *   P.wants_to_run conf mre.bin mre.params
+                       * but given we cannot change the environment nor
+                       * re-read the external experiment file there would be
+                       * little use for this. *)
                       List.iter (fun f ->
                         (* Use the mount point + signature + params as the key.
                          * Notice that we take all the parameter values (from

@@ -203,6 +203,7 @@ let complete str () =
           ("--parameter=", RamenConsts.CliInfo.param) ::
           ("--as=", RamenConsts.CliInfo.as_) ::
           ("--replace", RamenConsts.CliInfo.replace) ::
+          ("--kill-if-disabled", RamenConsts.CliInfo.kill_if_disabled) ::
           ("--source-file=", RamenConsts.CliInfo.src_file) ::
           copts @
           (complete_binary_files last_tok)

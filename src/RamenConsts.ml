@@ -162,6 +162,8 @@ struct
   let src_files = "Source files to compile"
   let replace =
     "If a program with the same name is already running, replace it"
+  let kill_if_disabled =
+    "If the program is disabled by a run-if clause then kills it instead"
   let as_ = "name under which to run this program"
   let src_file = "file from which the worker can be rebuilt"
   let bin_file = "Binary file to run"

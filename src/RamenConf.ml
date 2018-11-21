@@ -111,7 +111,12 @@ struct
      * string values. So we print it, trusting the printer to be exhaustive.
      * This is not enough to print the expression with types, as those do not
      * contain relevant info such as field rank. We therefore print without
-     * types and encode input/output types explicitly below: *)
+     * types and encode input/output types explicitly below.
+     * Also, notice that the program-wide running condition does not alter
+     * the function signature, and rightfully so, as a change in the running
+     * condition does not imply we should disregard past data or consider the
+     * function changed in any way. It's `ramen run` job to evaluate the
+     * running condition independently. *)
     "OP="^ op_str ^
     ";IN="^ RamenTuple.type_signature func.in_type ^
     (* type_signature does not look at private fields: *)
