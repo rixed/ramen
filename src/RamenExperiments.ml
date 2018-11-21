@@ -108,7 +108,7 @@ let get_add_exps_fname persist_dir =
 
 (* All internal and external (in fname) experiments.
  * External experiments are loaded only once so that they can be mutated to set
- * the variant and the ecision remembered. *)
+ * the variant and the decision remembered. *)
 let all_experiments =
   let ext_exps = ref None in
   fun persist_dir ->

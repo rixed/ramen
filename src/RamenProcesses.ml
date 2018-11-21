@@ -757,7 +757,7 @@ let synchronize_running conf autoreload_delay =
                       List.iter (fun f ->
                         (* Use the mount point + signature + params as the key.
                          * Notice that we take all the parameter values (from
-                         * prog.params), not only the explitly set values (from
+                         * prog.params), not only the explicitly set values (from
                          * mre.params), so that if a default value that is
                          * unset is changed in the program then that's considered a
                          * different program. *)
