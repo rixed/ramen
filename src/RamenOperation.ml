@@ -407,10 +407,11 @@ let in_type_of_operation = function
       !input
     | _ -> [] (* No inputs *)
 
-let envvars_of_operation =
-  fold_expr [] (fun lst -> function
-    | Field (_, { contents = TupleEnv }, n) -> n :: lst
-    | _ -> lst)
+let envvars_of_operation op =
+  fold_expr Set.String.empty (fun s -> function
+    | Field (_, { contents = TupleEnv }, n) -> Set.String.add n s
+    | _ -> s) op |>
+  Set.String.to_list
 
 (* Unless it's a param, assume TupleUnknow belongs to def: *)
 let prefix_def params def =
