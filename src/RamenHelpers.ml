@@ -212,7 +212,16 @@ let time what f =
   !logger.info "%s in %gs." what dt ;
   res
 
-(* TODO: add this into batteries *)
+(*
+ * Some file utilities
+ *)
+
+let rec restart_on_eintr ?(while_=always) f x =
+  let open Unix in
+  try f x
+  with Unix_error (EINTR, _, _) ->
+    if while_ () then restart_on_eintr ~while_ f x
+    else raise Exit
 
 let is_directory f =
   try Sys.is_directory f with _ -> false
@@ -245,21 +254,17 @@ let file_check ?(min_size=0) ?(has_perms=0) fname =
 
 let file_exists fname = file_check fname = FileOk
 
-let is_empty_file fname =
+let file_size fname =
   let open Unix in
   let s = stat fname in
-  s.st_size = 0
+  s.st_size
+
+let is_empty_file fname =
+  file_size fname = 0
 
 let safe_unlink fname =
   try BatUnix.restart_on_EINTR Unix.unlink fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()
-
-let rec restart_on_eintr ?(while_=always) f x =
-  let open Unix in
-  try f x
-  with Unix_error (EINTR, _, _) ->
-    if while_ () then restart_on_eintr ~while_ f x
-    else raise Exit
 
 let move_file_away fname =
   let bad_file = fname ^".bad?" in
@@ -404,12 +409,203 @@ let file_ext fname =
   let e = Filename.extension fname in
   if e = "" then e else String.lchop e
 
+let read_whole_file fname =
+  File.with_file_in ~mode:[`text] fname IO.read_all
+
+let read_whole_thing read =
+  let read_chunk = 1000 in
+  let rec loop buf o =
+    if Bytes.length buf - o < read_chunk then
+      loop (Bytes.extend buf 0 (5 * read_chunk)) o
+    else
+      let ret = read buf o read_chunk in
+      if ret = 0 then Bytes.(sub buf 0 o |> to_string)
+      else loop buf (o + ret)
+  in
+  loop (Bytes.create (5 * read_chunk)) 0
+
+let read_whole_channel ic =
+  read_whole_thing (Legacy.input ic)
+
+let read_whole_fd fd =
+  read_whole_thing (Unix.read fd)
+
+let touch_file fname to_when =
+  !logger.debug "Touching %s" fname ;
+  Unix.utimes fname to_when to_when
+
+let file_print oc fname =
+  let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
+  String.print oc content
+
+let rec simplified_path =
+  let open Str in
+  let strip_final_slash s =
+    let l = String.length s in
+    if l > 1 && s.[l-1] = '/' then
+      String.rchop s
+    else s in
+  let res =
+    [ regexp "/[^/]+/\\.\\./", "/" ;
+      regexp "/[^/]+/\\.\\.$", "" ;
+      regexp "/\\./", "/" ;
+      regexp "//", "/" ;
+      regexp "/\\.?$", "" ;
+      regexp "^\\./", "" ] in
+  fun path ->
+    let s =
+      List.fold_left (fun s (re, repl) ->
+        global_replace re repl s
+      ) path res in
+    if s = path then strip_final_slash s
+    else simplified_path s
+
+(*$= simplified_path & ~printer:identity
+  "/glop/glop" (simplified_path "/glop/glop/")
+  "/glop/glop" (simplified_path "/glop/glop")
+  "glop/glop"  (simplified_path "./glop/glop/")
+  "glop/glop"  (simplified_path "glop/glop/.")
+  "/glop/glop" (simplified_path "/glop/pas glop/../glop")
+  "/glop/glop" (simplified_path "/glop/./glop")
+  "glop"       (simplified_path "glop/.")
+  "glop"       (simplified_path "glop/./")
+  "/glop"      (simplified_path "/./glop")
+  "/glop/glop" (simplified_path "/glop//glop")
+  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop//")
+  "/glop"      (simplified_path "/glop/glop/..")
+  "/glop"      (simplified_path "/glop/glop/../")
+ *)
+
+let absolute_path_of ?cwd path =
+  (if path <> "" && path.[0] = '/' then path else
+   (cwd |? Unix.getcwd ()) ^"/"^ path) |>
+  simplified_path
+
+(*$= absolute_path_of & ~printer:identity
+  "/tmp/ramen_root/junkie/csv.x" \
+    (absolute_path_of ~cwd:"/tmp" "ramen_root/junkie/csv.x")
+ *)
+
+let rel_path_from root_path path =
+  (* If root path is null assume source file is already relative to root: *)
+  if root_path = "" then path else
+  let root = absolute_path_of root_path
+  and path = absolute_path_of path in
+  if String.starts_with path root then
+    let rl = String.length root in
+    String.sub path rl (String.length path - rl)
+  else
+    failwith ("Cannot locate "^ path ^" within "^ root_path)
+
+let int_of_fd fd : int = Obj.magic fd
+
+let really_read_fd fd size =
+  let open Unix in
+  let buf = Bytes.create size in
+  let rec loop i =
+    if i >= size then buf else
+    let r = BatUnix.restart_on_EINTR (read fd buf i) (size - i) in
+    if r > 0 then loop (i + r) else
+      let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
+                size i in
+      failwith e
+  in
+  loop 0
+
+let marshal_into_fd fd v =
+  let open BatUnix in
+  (* Leak memory for some reason / and do not write anything to the file
+   * if we Marshal.to_channel directly. :-/ *)
+  let bytes = Marshal.to_bytes v [] in
+  let len = Bytes.length bytes in
+  restart_on_EINTR (fun () ->
+    lseek fd 0 SEEK_SET |> ignore ;
+    write fd bytes 0 len) () |> ignore
+
+let marshal_from_fd fd =
+  let open Unix in
+  (* Useful log statement in case the GC crashes right away: *)
+  !logger.debug "Retrieving marshaled value from file" ;
+  let bytes = read_whole_fd fd in
+  Marshal.from_string bytes 0
+
+let same_files a b =
+  let same_file_size () =
+    try
+      file_size a = file_size b
+    with Unix.(Unix_error (ENOENT, _, _)) -> false
+  and same_content () =
+    read_whole_file a = read_whole_file b
+  in
+  same_file_size () && same_content ()
+
+(* Given two files, compare their content and if it differs rename
+ * [src] into [dst] ; otherwise merely deletes [src].
+ * This is to avoid touching the mtime of the destination when not needed.
+ * [dst] might not exist but the directory does.
+ * Returns true iff the file was moved. *)
+let replace_if_different ~src ~dst =
+  if same_files src dst then (
+    Unix.unlink src ;
+    false
+  ) else (
+    Unix.rename src dst ;
+    true
+  )
+
+(*$R replace_if_different
+  let open Batteries in
+  let tmpdir = "/tmp/ramen_inline_test_"^ string_of_int (Unix.getpid ()) in
+  mkdir_all tmpdir ;
+  let src = tmpdir ^ "/replace_if_different.src"
+  and dst = tmpdir ^ "/replace_if_different.dst" in
+  let set_content f = function
+    | Some c ->
+        File.with_file_out f (fun oc -> String.print oc c)
+    | None ->
+        safe_unlink f
+  in
+  let test csrc cdst_opt =
+    let asrt t =
+      assert_bool (csrc ^"->"^ (cdst_opt |? "none") ^": "^ t) in
+    set_content src (Some csrc) ;
+    set_content dst cdst_opt ;
+    let res = replace_if_different ~src ~dst in
+    (* In any cases: *)
+    asrt "src file must be gone" (not (file_exists src)) ;
+    asrt "dst file must be present" (file_exists dst) ;
+    if res then
+      asrt "dest content must have changed"
+        (csrc = read_whole_file dst)
+    else
+      asrt "dest content must not have changed"
+        ((cdst_opt |? "ENOENT") = read_whole_file dst) ;
+    res
+  in
+  assert_bool "Must not move identical content (1)" (not (test "bla" (Some "bla"))) ;
+  assert_bool "Must not move identical content (2)" (not (test "" (Some ""))) ;
+  assert_bool "Must move non-identical content (1)" (test "bla" (Some "")) ;
+  assert_bool "Must move non-identical content (2)" (test "" (Some "bla")) ;
+  (* Also dest file may not exist: *)
+  assert_bool "Must move over non existing dest" (test "bla" None) ;
+  (* Cleanup: *)
+  safe_unlink src ; safe_unlink dst ; Unix.rmdir tmpdir
+*)
+
+(*
+ * Some string utilities
+ *)
+
 let starts_with c f =
   String.length f > 0 && f.[0] = c
 
 let is_virtual_field = starts_with '#'
 
 let is_private_field = starts_with '_'
+
+(*
+ * Some Unix utilities
+ *)
 
 let name_of_signal s =
   let open Sys in
@@ -562,126 +758,6 @@ let strings_of_csv separator line =
   [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
   [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
  *)
-
-let read_whole_file fname =
-  File.with_file_in ~mode:[`text] fname IO.read_all
-
-let read_whole_thing read =
-  let read_chunk = 1000 in
-  let rec loop buf o =
-    if Bytes.length buf - o < read_chunk then
-      loop (Bytes.extend buf 0 (5 * read_chunk)) o
-    else
-      let ret = read buf o read_chunk in
-      if ret = 0 then Bytes.(sub buf 0 o |> to_string)
-      else loop buf (o + ret)
-  in
-  loop (Bytes.create (5 * read_chunk)) 0
-
-let read_whole_channel ic =
-  read_whole_thing (Legacy.input ic)
-
-let read_whole_fd fd =
-  read_whole_thing (Unix.read fd)
-
-let touch_file fname to_when =
-  !logger.debug "Touching %s" fname ;
-  Unix.utimes fname to_when to_when
-
-let file_print oc fname =
-  let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
-  String.print oc content
-
-let rec simplified_path =
-  let open Str in
-  let strip_final_slash s =
-    let l = String.length s in
-    if l > 1 && s.[l-1] = '/' then
-      String.rchop s
-    else s in
-  let res =
-    [ regexp "/[^/]+/\\.\\./", "/" ;
-      regexp "/[^/]+/\\.\\.$", "" ;
-      regexp "/\\./", "/" ;
-      regexp "//", "/" ;
-      regexp "/\\.?$", "" ;
-      regexp "^\\./", "" ] in
-  fun path ->
-    let s =
-      List.fold_left (fun s (re, repl) ->
-        global_replace re repl s
-      ) path res in
-    if s = path then strip_final_slash s
-    else simplified_path s
-
-(*$= simplified_path & ~printer:identity
-  "/glop/glop" (simplified_path "/glop/glop/")
-  "/glop/glop" (simplified_path "/glop/glop")
-  "glop/glop"  (simplified_path "./glop/glop/")
-  "glop/glop"  (simplified_path "glop/glop/.")
-  "/glop/glop" (simplified_path "/glop/pas glop/../glop")
-  "/glop/glop" (simplified_path "/glop/./glop")
-  "glop"       (simplified_path "glop/.")
-  "glop"       (simplified_path "glop/./")
-  "/glop"      (simplified_path "/./glop")
-  "/glop/glop" (simplified_path "/glop//glop")
-  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop//")
-  "/glop"      (simplified_path "/glop/glop/..")
-  "/glop"      (simplified_path "/glop/glop/../")
- *)
-
-let absolute_path_of ?cwd path =
-  (if path <> "" && path.[0] = '/' then path else
-   (cwd |? Unix.getcwd ()) ^"/"^ path) |>
-  simplified_path
-
-(*$= absolute_path_of & ~printer:identity
-  "/tmp/ramen_root/junkie/csv.x" \
-    (absolute_path_of ~cwd:"/tmp" "ramen_root/junkie/csv.x")
- *)
-
-let rel_path_from root_path path =
-  (* If root path is null assume source file is already relative to root: *)
-  if root_path = "" then path else
-  let root = absolute_path_of root_path
-  and path = absolute_path_of path in
-  if String.starts_with path root then
-    let rl = String.length root in
-    String.sub path rl (String.length path - rl)
-  else
-    failwith ("Cannot locate "^ path ^" within "^ root_path)
-
-let int_of_fd fd : int = Obj.magic fd
-
-let really_read_fd fd size =
-  let open Unix in
-  let buf = Bytes.create size in
-  let rec loop i =
-    if i >= size then buf else
-    let r = BatUnix.restart_on_EINTR (read fd buf i) (size - i) in
-    if r > 0 then loop (i + r) else
-      let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
-                size i in
-      failwith e
-  in
-  loop 0
-
-let marshal_into_fd fd v =
-  let open BatUnix in
-  (* Leak memory for some reason / and do not write anything to the file
-   * if we Marshal.to_channel directly. :-/ *)
-  let bytes = Marshal.to_bytes v [] in
-  let len = Bytes.length bytes in
-  restart_on_EINTR (fun () ->
-    lseek fd 0 SEEK_SET |> ignore ;
-    write fd bytes 0 len) () |> ignore
-
-let marshal_from_fd fd =
-  let open Unix in
-  (* Useful log statement in case the GC crashes right away: *)
-  !logger.debug "Retrieving marshaled value from file" ;
-  let bytes = read_whole_fd fd in
-  Marshal.from_string bytes 0
 
 let getenv ?def n =
   try Sys.getenv n

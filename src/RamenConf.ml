@@ -307,6 +307,11 @@ let with_wlock conf f =
     save_rc_file conf.do_persist fd programs ;
     ret)
 
+let is_program_running programs program_name =
+  match Hashtbl.find programs program_name with
+  | exception Not_found -> false
+  | mre, _get_rc -> mre.status = MustRun
+
 let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.
 

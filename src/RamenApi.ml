@@ -160,6 +160,9 @@ and column_info =
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
 
+(* A disabled alert should not be a non-running alert, but an alert that
+ * does a NOP (or that does not notify, at least). This would tremendously
+ * simplify the handling of serialized alert files. *)
 and alert_info_v1 =
   { enabled : bool [@ppp_default true] ;
     where : simple_filter list [@ppp_default []] ;
@@ -230,10 +233,10 @@ let group_keys_of_operation =
       ) fields
   | _ -> []
 
-let alert_info_of_alert_source enabled = function
-  | V1 { alert ; _ } -> { alert with enabled }
+let alert_info_of_alert_source = function
+  | V1 { alert ; _ } -> alert
 
-let alerts_of_column conf programs func column =
+let alerts_of_column conf func column =
   (* All files with extension ".alert" in this directory is supposed to be
    * an alert description: *)
   let alert_func_path = "alerts/"^ F.path func in
@@ -247,16 +250,7 @@ let alerts_of_column conf programs func column =
             print_exception ~what:"Error while listing alerts" e ;
             lst
         | a ->
-            let id = Filename.remove_extension f in
-            let program_name =
-              RamenName.program_of_string (alert_func_path ^"/"^ column ^"/"^ id) in
-            !logger.debug "Program implementing alert %s: %s"
-              id (RamenName.string_of_program program_name) ;
-            let enabled =
-              match Hashtbl.find programs program_name with
-              | exception Not_found -> false
-              | mre, _get_rc -> mre.C.status = MustRun in
-            alert_info_of_alert_source enabled a :: lst
+            alert_info_of_alert_source a :: lst
       else lst
     ) []
   else []
@@ -275,7 +269,7 @@ let units_of_column ft =
       ) units ;
       h
 
-let columns_of_func conf programs func =
+let columns_of_func conf func =
   let h = Hashtbl.create 11 in
   let group_keys = group_keys_of_operation func.F.operation in
   List.iter (fun ft ->
@@ -288,7 +282,7 @@ let columns_of_func conf programs func =
           doc = ft.doc ;
           factor = List.mem ft.typ_name func.F.factors ;
           group_key = List.mem ft.typ_name group_keys ;
-          alerts = alerts_of_column conf programs func ft.typ_name }
+          alerts = alerts_of_column conf func ft.typ_name }
   ) func.F.out_type ;
   h
 
@@ -306,7 +300,7 @@ let columns_of_table conf table =
         | prog ->
             (match List.find (fun f -> f.F.name = func_name) prog.P.funcs with
             | exception Not_found -> None
-            | func -> Some (columns_of_func conf programs func))))
+            | func -> Some (columns_of_func conf func))))
 
 let get_columns conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-columns" get_columns_req_ppp_json msg in
@@ -436,9 +430,8 @@ type set_alerts_req =
   [@@ppp PPP_JSON]
 
 (* Alert ids are used to uniquely identify alerts (for instance when
- * saving on disc). Alerts are identified by their defining properties,
- * which exclude "enabled" or other similar meta info, should we have
- * some. This is not to be confused with the field "id" from alert_info,
+ * saving on disc). Alerts are identified by their defining properties.
+ * This is not to be confused with the field "id" from alert_info,
  * which is the id for the user and that, as far as we are concerned, need
  * not even be unique. But we have to save this user id as well even when
  * its the only thing that changed so it's easier to make it part of this
@@ -456,9 +449,6 @@ let alert_id column =
          column threshold recovery duration ratio id
          (filterspec where)
          (filterspec having) |> md5
-
-let is_enabled = function
-  | V1 { alert = { enabled ; _ } ; _ } -> enabled
 
 let func_of_table programs table =
   let pn, fn =
@@ -587,29 +577,30 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     (* Be healthy when filtered_value is NULL: *)
     Printf.fprintf oc "    true) AS ok;\n\n" ;
     (* Then we fire an alert if too many values are unhealthy: *)
-    Printf.fprintf oc "DEFINE alert AS\n" ;
-    Printf.fprintf oc "  FROM ok\n" ;
-    Printf.fprintf oc "  SELECT\n" ;
-    if need_reaggr then
-      Printf.fprintf oc "    start, stop, max_value, min_value,\n" ;
-    Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
-      (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
-    Printf.fprintf oc "      AS firing\n" ;
-    Printf.fprintf oc "  NOTIFY %S || \"triggered\" || %S WITH\n"
-      column
-      (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
-    Printf.fprintf oc "    firing AS firing,\n" ;
-    Printf.fprintf oc "    1 AS certainty,\n" ;
-    (* This cast to string can handle the NULL case: *)
-    if need_reaggr then
-      Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
-    Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
-    Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
-      desc_firing desc_recovery ;
-    (* TODO: a way to add zone, service, etc, if present in the
-     * parent table *)
-    Printf.fprintf oc "  AND KEEP ALL\n" ;
-    Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false);\n")
+    if a.enabled then (
+      Printf.fprintf oc "DEFINE alert AS\n" ;
+      Printf.fprintf oc "  FROM ok\n" ;
+      Printf.fprintf oc "  SELECT\n" ;
+      if need_reaggr then
+        Printf.fprintf oc "    start, stop, max_value, min_value,\n" ;
+      Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
+        (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
+      Printf.fprintf oc "      AS firing\n" ;
+      Printf.fprintf oc "  NOTIFY %S || \"triggered\" || %S WITH\n"
+        column
+        (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
+      Printf.fprintf oc "    firing AS firing,\n" ;
+      Printf.fprintf oc "    1 AS certainty,\n" ;
+      (* This cast to string can handle the NULL case: *)
+      if need_reaggr then
+        Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
+      Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
+      Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
+        desc_firing desc_recovery ;
+      (* TODO: a way to add zone, service, etc, if present in the
+       * parent table *)
+      Printf.fprintf oc "  AND KEEP ALL\n" ;
+      Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false);\n"))
 
 (* Register a rule to turn an alert into a ramen source file: *)
 let () =
@@ -630,73 +621,41 @@ let stop_alert conf program_name =
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
       (RamenName.string_of_program program_name) num_kills
 
-let same_file_exist fname new_alert =
-  file_exists fname &&
-  match ppp_of_file alert_source_ppp_ocaml fname with
-  | exception e ->
-      print_exception ~what:"Error while comparing with previous alert" e ;
-      false
-  | old_alert ->
-      if old_alert = new_alert then true else (
-        (* Print the differences: *)
-        (* TODO: a string differ to highlight the differences? *)
-        !logger.debug "former alert is %s but new alert is %s"
-          (PPP.to_string alert_source_ppp_ocaml old_alert)
-          (PPP.to_string alert_source_ppp_ocaml new_alert) ;
-        false)
-
-(*$inject
-  open Batteries
-  let tmpdir = "/tmp/ramen_inline_test_"^ string_of_int (Unix.getpid ())
-  let alert_file =
-    RamenHelpers.mkdir_all tmpdir ;
-    let fname = tmpdir ^ "/test.alert" in
-    File.with_file_out fname (fun oc ->
-      Printf.fprintf oc
-        "V1 { table=\"tbl\"; column=\"cln\"; alert={ threshold=1; recovery=2 }}\n") ;
-    fname
-*)
-(*$T same_file_exist
-   same_file_exist alert_file \
-         (V1 { table = "tbt" ; column = "cln" ; alert = \
-               { enabled = true ; where = [] ; having = [] ; \
-                 duration = 0. ; ratio = 1. ; \
-                 time_step = 60. ; id = "" ; desc_title = "" ; \
-                 desc_firing = "" ; desc_recovery = "" ; \
-                 threshold = 1. ; recovery = 2. } })
-*)
-
 let save_alert conf program_name alert_info =
   let program_name = RamenName.program_of_string program_name in
   let basename =
     C.api_alerts_root conf ^"/"^ RamenName.path_of_program program_name in
   let src_file = basename ^".alert" in
-  (* Avoid triggering a recompilation if it's unchanged: *)
-  if same_file_exist src_file alert_info then
-    !logger.debug "Alert %s preexist with same definition" src_file
-  else (
-    !logger.info "Saving new alert into %s" src_file ;
-    ppp_to_file ~pretty:true src_file alert_source_ppp_ocaml alert_info ;
-    if is_enabled alert_info then (
-      try
-        (* Compile right now so that we can report errors to the client and RamenRun.run
-         * can check linkage errors: *)
-        let exec_file = basename ^".x" in
+  (* Avoid triggering a recompilation if it's unchanged.
+   * To avoid comparing floats we compare the actual serialized result. *)
+  let tmp_src_file = src_file ^".tmp" in
+  ppp_to_file ~pretty:true tmp_src_file alert_source_ppp_ocaml alert_info ;
+  if replace_if_different ~src:tmp_src_file ~dst:src_file then (
+    !logger.info "Saved new alert into %s" src_file ;
+    try
+      let exec_file = basename ^".x" in
+      let is_new_alert =
         C.with_rlock conf (fun programs ->
-          let get_parent = RamenCompiler.parent_from_programs programs in
-          RamenMake.build conf get_parent program_name src_file exec_file) ;
+          (* If this is a new alert we must compile it before we can add it to
+           * the running-config. If it's already running though, we must leave
+           * the recompilation to the supervisor (or we would race). *)
+          if C.is_program_running programs program_name then false else (
+            let get_parent = RamenCompiler.parent_from_programs programs in
+            RamenMake.build conf get_parent program_name src_file exec_file ;
+            true)) in
+      if is_new_alert then (
         let debug = conf.C.log_level = Debug in
         let params = Hashtbl.create 0 in
         RamenRun.run conf ~replace:true ~params ~src_file ~debug
-                     exec_file program_name
-      with e ->
-        (* In case of error, do not leave the alert definition file so that the
-         * client can retry, but keep it for later inspection: *)
-        log_and_ignore_exceptions move_file_away src_file ;
-        raise e
-    ) else
-      (* Won't do anything if it's not running *)
-      stop_alert conf program_name)
+                     exec_file program_name)
+    with e ->
+      (* In case of error, do not leave the alert definition file so that the
+       * client can retry, but keep it for later inspection: *)
+      log_and_ignore_exceptions move_file_away src_file ;
+      raise e
+  ) else
+    (* TODO: demote back into debug once the dust has settled down: *)
+    !logger.info "Alert %s preexist with same definition" src_file
 
 let set_alerts conf msg =
   let req = JSONRPC.json_any_parse ~what:"set-alerts" set_alerts_req_ppp_json msg in
@@ -706,7 +665,9 @@ let set_alerts conf msg =
   let old_alerts = ref Set.String.empty
   and new_alerts = ref Set.String.empty in
   Hashtbl.iter (fun table columns ->
+    !logger.debug "set-alerts: table %s" table ;
     Hashtbl.iter (fun column alerts ->
+      !logger.debug "set-alerts: column %s" column ;
       (* All non listed alerts must be suppressed *)
       let parent =
         (* It's safer to anchor alerts in a different subtree
