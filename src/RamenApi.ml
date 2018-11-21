@@ -636,7 +636,35 @@ let same_file_exist fname new_alert =
   | exception e ->
       print_exception ~what:"Error while comparing with previous alert" e ;
       false
-  | old_alert -> old_alert = new_alert
+  | old_alert ->
+      if old_alert = new_alert then true else (
+        (* Print the differences: *)
+        (* TODO: a string differ to highlight the differences? *)
+        !logger.debug "former alert is %s but new alert is %s"
+          (PPP.to_string alert_source_ppp_ocaml old_alert)
+          (PPP.to_string alert_source_ppp_ocaml new_alert) ;
+        false)
+
+(*$inject
+  open Batteries
+  let tmpdir = "/tmp/ramen_inline_test_"^ string_of_int (Unix.getpid ())
+  let alert_file =
+    RamenHelpers.mkdir_all tmpdir ;
+    let fname = tmpdir ^ "/test.alert" in
+    File.with_file_out fname (fun oc ->
+      Printf.fprintf oc
+        "V1 { table=\"tbl\"; column=\"cln\"; alert={ threshold=1; recovery=2 }}\n") ;
+    fname
+*)
+(*$T same_file_exist
+   same_file_exist alert_file \
+         (V1 { table = "tbt" ; column = "cln" ; alert = \
+               { enabled = true ; where = [] ; having = [] ; \
+                 duration = 0. ; ratio = 1. ; \
+                 time_step = 60. ; id = "" ; desc_title = "" ; \
+                 desc_firing = "" ; desc_recovery = "" ; \
+                 threshold = 1. ; recovery = 2. } })
+*)
 
 let save_alert conf program_name alert_info =
   let program_name = RamenName.program_of_string program_name in
