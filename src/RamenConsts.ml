@@ -219,6 +219,13 @@ struct
   let purge = "Also remove the program from the configuration"
 end
 
+module WorkerCommands =
+struct
+  let get_info = "1nf0"
+  let wants_to_run = "r34dy?"
+  let print_version = "version"
+end
+
 module ExitCodes =
 struct
   let terminated = 0

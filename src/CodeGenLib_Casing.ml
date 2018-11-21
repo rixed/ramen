@@ -32,9 +32,11 @@ let run codegen_version rc_str rc_marsh run_condition lst =
         | f -> f ())
   else match Sys.argv.(1) with
   | exception Invalid_argument _ -> help ()
-  | "1nf0" -> print_string rc_marsh
-  | "r34dy?" -> Legacy.(output_value stdout (run_condition ()))
-  | "version" ->
+  | s when s = RamenConsts.WorkerCommands.get_info ->
+      print_string rc_marsh
+  | s when s = RamenConsts.WorkerCommands.wants_to_run ->
+      Legacy.(output_value stdout (run_condition ()))
+  | s when s = RamenConsts.WorkerCommands.print_version ->
       (* Allow to override the reported version; useful for tests and also
        * maybe as a last-resort production hack: *)
       let v = getenv ~def:codegen_version "pretend_codegen_version" in

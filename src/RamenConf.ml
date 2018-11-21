@@ -155,11 +155,11 @@ struct
       funcs = List.map Func.unserialized t.funcs }
 
   let version_of_bin fname =
-    let args = [| fname ; "version" |] in
+    let args = [| fname ; RamenConsts.WorkerCommands.print_version |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_line
 
   let info_of_bin fname =
-    let args = [| fname ; "1nf0" |] in
+    let args = [| fname ; RamenConsts.WorkerCommands.get_info |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_value |>
     unserialized
 
@@ -180,7 +180,7 @@ struct
     Enum.append env exps
 
   let wants_to_run conf fname params =
-    let args = [| fname ; "r34dy?" |] in
+    let args = [| fname ; RamenConsts.WorkerCommands.wants_to_run |] in
     let env = env_of_params_and_exps conf params |> Array.of_enum in
     with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_value
 
@@ -202,7 +202,7 @@ struct
         failwith err
       | _ ->
           (try info_of_bin fname with e ->
-             let err = Printf.sprintf "Cannot get 1nf0 from %s: %s"
+             let err = Printf.sprintf "Cannot get info from %s: %s"
                          fname (Printexc.to_string e) in
              !logger.error "%s" err ;
              failwith err)
