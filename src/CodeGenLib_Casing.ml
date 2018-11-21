@@ -35,7 +35,7 @@ let run codegen_version rc_str rc_marsh run_condition lst =
   | s when s = RamenConsts.WorkerCommands.get_info ->
       print_string rc_marsh
   | s when s = RamenConsts.WorkerCommands.wants_to_run ->
-      Legacy.(output_value stdout (run_condition ()))
+      Printf.printf "%b\n" (run_condition ())
   | s when s = RamenConsts.WorkerCommands.print_version ->
       (* Allow to override the reported version; useful for tests and also
        * maybe as a last-resort production hack: *)

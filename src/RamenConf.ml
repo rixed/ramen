@@ -182,7 +182,8 @@ struct
   let wants_to_run conf fname params =
     let args = [| fname ; RamenConsts.WorkerCommands.wants_to_run |] in
     let env = env_of_params_and_exps conf params |> Array.of_enum in
-    with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_value
+    with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_line |>
+    bool_of_string
 
   let of_bin =
     (* Cache of path to date of last read and program *)
