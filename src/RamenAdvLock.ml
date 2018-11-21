@@ -4,11 +4,21 @@ open RamenLog
 open RamenHelpers
 open RamenAtomic
 
+(* TODO: some kind of error when we recurse would be great *)
+
+let write_locked = ref BatSet.String.empty
+
 let with_lock op fname f =
+  assert (not (BatSet.String.mem fname !write_locked)) ;
+  if op = F_LOCK then
+    write_locked := BatSet.String.add fname !write_locked ;
   mkdir_all ~is_file:true fname ;
   let fd = openfile fname [O_RDWR; O_CLOEXEC; O_CREAT] 0o640 in
   finally
-    (fun () -> close fd)
+    (fun () ->
+      if op = F_LOCK then
+        write_locked := BatSet.String.remove fname !write_locked ;
+      close fd)
     (fun () ->
       lockf fd op 0 ;
       finally
