@@ -443,8 +443,10 @@ let tail conf func_name with_header with_units sep null raw
          ft.RamenTuple.typ.structure = TFloat &&
          ft.RamenTuple.units = Some RamenUnits.seconds_since_epoch
       then
-        (fun oc -> function VFloat t -> print_as_date oc t
-                          | _ -> assert false)
+        (fun oc -> function
+          | VFloat t -> print_as_date oc t
+          | VNull -> print_custom ~null ~quoting:(not raw) oc VNull
+          | _ -> assert false)
       else
         print_custom ~null ~quoting:(not raw)
     ) header in
