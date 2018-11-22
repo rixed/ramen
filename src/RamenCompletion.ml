@@ -1,6 +1,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -18,28 +19,28 @@ let complete lst s =
 
 let complete_commands s =
   let commands =
-    [ "supervisor", RamenConsts.CliInfo.supervisor ;
-      "notifier", RamenConsts.CliInfo.notifier ;
-      "notify", RamenConsts.CliInfo.notify ;
-      "compile", RamenConsts.CliInfo.compile ;
-      "run", RamenConsts.CliInfo.run ;
-      "kill", RamenConsts.CliInfo.kill ;
-      "tail", RamenConsts.CliInfo.tail ;
-      "timeseries", RamenConsts.CliInfo.timeseries ;
-      "timerange", RamenConsts.CliInfo.timerange ;
-      "ps", RamenConsts.CliInfo.ps ;
-      "links", RamenConsts.CliInfo.links ;
-      "test", RamenConsts.CliInfo.test ;
-      "httpd", RamenConsts.CliInfo.httpd ;
-      "variants", RamenConsts.CliInfo.variants ;
-      "gc", RamenConsts.CliInfo.gc ;
-      "stats", RamenConsts.CliInfo.stats ] in
+    [ "supervisor", CliInfo.supervisor ;
+      "notifier", CliInfo.notifier ;
+      "notify", CliInfo.notify ;
+      "compile", CliInfo.compile ;
+      "run", CliInfo.run ;
+      "kill", CliInfo.kill ;
+      "tail", CliInfo.tail ;
+      "timeseries", CliInfo.timeseries ;
+      "timerange", CliInfo.timerange ;
+      "ps", CliInfo.ps ;
+      "links", CliInfo.links ;
+      "test", CliInfo.test ;
+      "httpd", CliInfo.httpd ;
+      "variants", CliInfo.variants ;
+      "gc", CliInfo.gc ;
+      "stats", CliInfo.stats ] in
   complete commands s
 
 let complete_global_options s =
   let options =
-    [ "--help", RamenConsts.CliInfo.help ;
-      "--version", RamenConsts.CliInfo.version ] in
+    [ "--help", CliInfo.help ;
+      "--version", CliInfo.version ] in
   complete options s
 
 let find_opt o =
@@ -62,7 +63,7 @@ let persist_dir toks =
   try find_opt "--persist-dir" toks
   with Not_found ->
     try Sys.getenv "RAMEN_PERSIST_DIR"
-    with Not_found -> RamenConsts.Default.persist_dir
+    with Not_found -> Default.persist_dir
 
 let complete_file select str =
   let count = ref 0 in
@@ -158,93 +159,93 @@ let complete str () =
   | _ -> (* "ramen ... command ...? <TAB>" *)
     let toks = List.drop (command_idx+1) toks in
     let copts =
-      [ "--help", RamenConsts.CliInfo.help ;
-        "--debug", RamenConsts.CliInfo.debug ;
-        "--quiet", RamenConsts.CliInfo.quiet ;
-        "--rand-seed", RamenConsts.CliInfo.rand_seed ;
-        "--persist-dir=", RamenConsts.CliInfo.persist_dir ;
-        "--variant", RamenConsts.CliInfo.variant ] in
+      [ "--help", CliInfo.help ;
+        "--debug", CliInfo.debug ;
+        "--quiet", CliInfo.quiet ;
+        "--rand-seed", CliInfo.rand_seed ;
+        "--persist-dir=", CliInfo.persist_dir ;
+        "--variant", CliInfo.variant ] in
     let completions =
       (match command with
       | "supervisor" ->
-          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
-            "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--syslog", RamenConsts.CliInfo.to_syslog ;
-            "--autoreload=", RamenConsts.CliInfo.autoreload ;
-            "--report-period=", RamenConsts.CliInfo.report_period ;
-            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
-            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--autoreload=", CliInfo.autoreload ;
+            "--report-period=", CliInfo.report_period ;
+            "--bundle-dir=", CliInfo.bundle_dir ;
+            "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
-              RamenConsts.CliInfo.max_simult_compilations ;
-            "--solver=", RamenConsts.CliInfo.smt_solver ] @
+              CliInfo.max_simult_compilations ;
+            "--solver=", CliInfo.smt_solver ] @
           copts
        | "notifier" ->
-          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
-            "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--syslog", RamenConsts.CliInfo.to_syslog ;
-            "--config", RamenConsts.CliInfo.conffile ] @
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--config", CliInfo.conffile ] @
           copts
        | "notify" ->
-          ("--parameter=", RamenConsts.CliInfo.param) ::
+          ("--parameter=", CliInfo.param) ::
           copts
       | "compile" ->
-          [ "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
-            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+          [ "--bundle-dir=", CliInfo.bundle_dir ;
+            "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
-              RamenConsts.CliInfo.max_simult_compilations ;
-            "--solver=", RamenConsts.CliInfo.smt_solver ;
-            "--keep-temp-files", RamenConsts.CliInfo.keep_temp_files ;
-            "--root-path=", RamenConsts.CliInfo.root_path ;
-            "--external-compiler", RamenConsts.CliInfo.external_compiler ;
-            "--as-program=", RamenConsts.CliInfo.program_name ] @
+              CliInfo.max_simult_compilations ;
+            "--solver=", CliInfo.smt_solver ;
+            "--keep-temp-files", CliInfo.keep_temp_files ;
+            "--root-path=", CliInfo.root_path ;
+            "--external-compiler", CliInfo.external_compiler ;
+            "--as-program=", CliInfo.program_name ] @
           copts @
           (complete_program_files last_tok)
       | "run" ->
-          ("--parameter=", RamenConsts.CliInfo.param) ::
-          ("--as=", RamenConsts.CliInfo.as_) ::
-          ("--replace", RamenConsts.CliInfo.replace) ::
-          ("--kill-if-disabled", RamenConsts.CliInfo.kill_if_disabled) ::
-          ("--source-file=", RamenConsts.CliInfo.src_file) ::
+          ("--parameter=", CliInfo.param) ::
+          ("--as=", CliInfo.as_) ::
+          ("--replace", CliInfo.replace) ::
+          ("--kill-if-disabled", CliInfo.kill_if_disabled) ::
+          ("--source-file=", CliInfo.src_file) ::
           copts @
           (complete_binary_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
-          ("--purge", RamenConsts.CliInfo.purge) ::
+          ("--purge", CliInfo.purge) ::
           copts @
           (complete_running_program persist_dir)
       | "tail" ->
           let persist_dir = persist_dir toks in
-          ("--last=", RamenConsts.CliInfo.last) ::
-          ("--max-seqnum=", RamenConsts.CliInfo.max_seq) ::
-          ("--min-seqnum=", RamenConsts.CliInfo.min_seq) ::
-          ("--continuous", RamenConsts.CliInfo.continuous) ::
-          ("--where=", RamenConsts.CliInfo.where) ::
-          ("--null=", RamenConsts.CliInfo.csv_null) ::
-          ("--separator=", RamenConsts.CliInfo.csv_separator) ::
-          ("--with-header", RamenConsts.CliInfo.with_header) ::
-          ("--with-seqnums", RamenConsts.CliInfo.with_seqnums) ::
-          ("--with-times", RamenConsts.CliInfo.with_seqnums) ::
-          ("--with-units", RamenConsts.CliInfo.with_seqnums) ::
-          ("--pretty", RamenConsts.CliInfo.pretty) ::
-          ("--flush", RamenConsts.CliInfo.flush) ::
+          ("--last=", CliInfo.last) ::
+          ("--max-seqnum=", CliInfo.max_seq) ::
+          ("--min-seqnum=", CliInfo.min_seq) ::
+          ("--continuous", CliInfo.continuous) ::
+          ("--where=", CliInfo.where) ::
+          ("--null=", CliInfo.csv_null) ::
+          ("--separator=", CliInfo.csv_separator) ::
+          ("--with-header", CliInfo.with_header) ::
+          ("--with-seqnums", CliInfo.with_seqnums) ::
+          ("--with-times", CliInfo.with_seqnums) ::
+          ("--with-units", CliInfo.with_seqnums) ::
+          ("--pretty", CliInfo.pretty) ::
+          ("--flush", CliInfo.flush) ::
           copts @
-          ((RamenConsts.SpecialFunctions.stats, "Activity statistics") ::
-           (RamenConsts.SpecialFunctions.notifs, "Internal instrumentation") ::
+          ((SpecialFunctions.stats, "Activity statistics") ::
+           (SpecialFunctions.notifs, "Internal instrumentation") ::
            (complete_running_function persist_dir))
       | "timeseries" ->
           let persist_dir = persist_dir toks in
           (* TODO: get the function name from toks and autocomplete
            * field names! *)
-          ("--since=", RamenConsts.CliInfo.since) ::
-          ("--until=", RamenConsts.CliInfo.until) ::
-          ("--where=", RamenConsts.CliInfo.where) ::
-          ("--factor=", RamenConsts.CliInfo.factors) ::
-          ("--num-points=", RamenConsts.CliInfo.num_points) ::
-          ("--time-step=", RamenConsts.CliInfo.time_step) ::
-          ("--consolidation=", RamenConsts.CliInfo.consolidation) ::
-          ("--separator=", RamenConsts.CliInfo.csv_separator) ::
-          ("--null=", RamenConsts.CliInfo.csv_null) ::
-          ("--pretty", RamenConsts.CliInfo.pretty) ::
+          ("--since=", CliInfo.since) ::
+          ("--until=", CliInfo.until) ::
+          ("--where=", CliInfo.where) ::
+          ("--factor=", CliInfo.factors) ::
+          ("--num-points=", CliInfo.num_points) ::
+          ("--time-step=", CliInfo.time_step) ::
+          ("--consolidation=", CliInfo.consolidation) ::
+          ("--separator=", CliInfo.csv_separator) ::
+          ("--null=", CliInfo.csv_null) ::
+          ("--pretty", CliInfo.pretty) ::
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
@@ -254,56 +255,56 @@ let complete str () =
           (complete_running_function persist_dir)
       | "ps" ->
           let persist_dir = persist_dir toks in
-          ("--short", RamenConsts.CliInfo.short) ::
-          ("--pretty", RamenConsts.CliInfo.pretty) ::
-          ("--with-header", RamenConsts.CliInfo.with_header) ::
-          ("--sort", RamenConsts.CliInfo.sort_col) ::
-          ("--top", RamenConsts.CliInfo.top) ::
-          ("--all", RamenConsts.CliInfo.all) ::
+          ("--short", CliInfo.short) ::
+          ("--pretty", CliInfo.pretty) ::
+          ("--with-header", CliInfo.with_header) ::
+          ("--sort", CliInfo.sort_col) ::
+          ("--top", CliInfo.top) ::
+          ("--all", CliInfo.all) ::
           copts @
           (complete_running_function persist_dir)
       | "links" ->
           let persist_dir = persist_dir toks in
-          ("--no-abbrev", RamenConsts.CliInfo.no_abbrev) ::
-          ("--show-all", RamenConsts.CliInfo.show_all) ::
-          ("--as-tree", RamenConsts.CliInfo.as_tree) ::
-          ("--pretty", RamenConsts.CliInfo.pretty) ::
-          ("--with-header", RamenConsts.CliInfo.with_header) ::
-          ("--sort", RamenConsts.CliInfo.sort_col) ::
-          ("--top", RamenConsts.CliInfo.top) ::
+          ("--no-abbrev", CliInfo.no_abbrev) ::
+          ("--show-all", CliInfo.show_all) ::
+          ("--as-tree", CliInfo.as_tree) ::
+          ("--pretty", CliInfo.pretty) ::
+          ("--with-header", CliInfo.with_header) ::
+          ("--sort", CliInfo.sort_col) ::
+          ("--top", CliInfo.top) ::
           copts @
           (complete_running_function persist_dir)
       | "test" ->
-          [ "--help", RamenConsts.CliInfo.help ;
-            "--url=", RamenConsts.CliInfo.server_url ;
-            "--api", RamenConsts.CliInfo.api ;
-            "--graphite", RamenConsts.CliInfo.graphite ;
-            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
-            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+          [ "--help", CliInfo.help ;
+            "--url=", CliInfo.server_url ;
+            "--api", CliInfo.api ;
+            "--graphite", CliInfo.graphite ;
+            "--bundle-dir=", CliInfo.bundle_dir ;
+            "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
-              RamenConsts.CliInfo.max_simult_compilations ;
-            "--solver=", RamenConsts.CliInfo.smt_solver ] @
+              CliInfo.max_simult_compilations ;
+            "--solver=", CliInfo.smt_solver ] @
           copts @
           (complete_test_file last_tok)
       | "httpd" ->
-          [ "--daemonize", RamenConsts.CliInfo.daemonize ;
-            "--to-stdout", RamenConsts.CliInfo.to_stdout ;
-            "--syslog", RamenConsts.CliInfo.to_syslog ;
-            "--url=", RamenConsts.CliInfo.server_url ;
-            "--api", RamenConsts.CliInfo.api ;
-            "--graphite", RamenConsts.CliInfo.graphite ;
-            "--bundle-dir=", RamenConsts.CliInfo.bundle_dir ;
-            "--external-compiler=", RamenConsts.CliInfo.external_compiler ;
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--url=", CliInfo.server_url ;
+            "--api", CliInfo.api ;
+            "--graphite", CliInfo.graphite ;
+            "--bundle-dir=", CliInfo.bundle_dir ;
+            "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
-              RamenConsts.CliInfo.max_simult_compilations ;
-            "--solver=", RamenConsts.CliInfo.smt_solver ] @
+              CliInfo.max_simult_compilations ;
+            "--solver=", CliInfo.smt_solver ] @
           copts
       | "variants" ->
           copts
       | "gc" ->
-          [ "--max-archives", RamenConsts.CliInfo.max_archives ;
-            "--loop", RamenConsts.CliInfo.loop ;
-            "--dry-run", RamenConsts.CliInfo.dry_run ] @
+          [ "--max-archives", CliInfo.max_archives ;
+            "--loop", CliInfo.loop ;
+            "--dry-run", CliInfo.dry_run ] @
           copts
       | "stats" ->
           copts

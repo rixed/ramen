@@ -2,6 +2,7 @@ open Batteries
 open Stdint
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -14,7 +15,7 @@ let () =
     | _ -> None)
 
 (* Returns the buffer name: *)
-let make_temp_export ?(duration=RamenConsts.Default.export_duration) conf func =
+let make_temp_export ?(duration=Default.export_duration) conf func =
   let bname = C.archive_buf_name conf func in
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
@@ -66,14 +67,14 @@ let read_well_known fq where suffix bname typ () =
 let read_output conf ?duration fq where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
-  match read_well_known fq where ("#"^ RamenConsts.SpecialFunctions.stats)
+  match read_well_known fq where ("#"^ SpecialFunctions.stats)
           (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
       bname, false, filter, typ, ser, [], RamenBinocle.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
-      (match read_well_known fq where ("#"^ RamenConsts.SpecialFunctions.notifs)
+      (match read_well_known fq where ("#"^ SpecialFunctions.notifs)
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
       | Some (bname, filter, typ, ser) ->
           bname, false, filter, typ, ser, [], RamenNotification.event_time
