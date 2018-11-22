@@ -289,23 +289,20 @@ let ps conf short pretty with_header sort_col top pattern all () =
              Globs.matches pattern
                (RamenName.string_of_program program_name)
           then (
-            let _min_etime, _max_etime, in_count, selected_count, out_count,
-                group_count, cpu, ram, max_ram, wait_in, wait_out, bytes_in,
-                bytes_out, _last_out, _stime =
-              Hashtbl.find_default h program_name RamenPs.no_stats in
+            let s = Hashtbl.find_default h program_name RamenPs.no_stats in
             [| Some (ValStr (RamenName.string_of_program program_name)) ;
                Some (ValStr (RamenName.string_of_params mre.C.params)) ;
-               int_or_na in_count ;
-               int_or_na selected_count ;
-               int_or_na out_count ;
-               int_or_na group_count ;
-               Some (ValFlt cpu) ;
-               flt_or_na wait_in ;
-               flt_or_na wait_out ;
-               Some (ValInt (Uint64.to_int ram)) ;
-               Some (ValInt (Uint64.to_int max_ram)) ;
-               flt_or_na (Option.map Uint64.to_float bytes_in) ;
-               flt_or_na (Option.map Uint64.to_float bytes_out) |] :: lines
+               int_or_na s.in_count ;
+               int_or_na s.selected_count ;
+               int_or_na s.out_count ;
+               int_or_na s.group_count ;
+               Some (ValFlt s.cpu) ;
+               flt_or_na s.wait_in ;
+               flt_or_na s.wait_out ;
+               Some (ValInt (Uint64.to_int s.ram)) ;
+               Some (ValInt (Uint64.to_int s.max_ram)) ;
+               flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
+               flt_or_na (Option.map Uint64.to_float s.bytes_out) |] :: lines
           ) else lines
         ) programs [])
     else
@@ -340,29 +337,26 @@ let ps conf short pretty with_header sort_col top pattern all () =
               let fq_name = RamenName.string_of_program program_name
                             ^"/"^ RamenName.string_of_func func.F.name in
               if Globs.matches pattern fq_name then
-                let min_etime, max_etime, in_count, selected_count,
-                    out_count, group_count, cpu, ram, max_ram, wait_in,
-                    wait_out, bytes_in, bytes_out, last_out, stime =
-                  Hashtbl.find_default stats fq_name RamenPs.no_stats
+                let s = Hashtbl.find_default stats fq_name RamenPs.no_stats
                 and num_children = Hashtbl.find_all children_of_func
                                      (func.F.program_name, func.F.name) |>
                                      List.length in
                 [| Some (ValStr fq_name) ;
-                   int_or_na in_count ;
-                   int_or_na selected_count ;
-                   int_or_na out_count ;
-                   int_or_na group_count ;
-                   date_or_na last_out ;
-                   date_or_na min_etime ;
-                   date_or_na max_etime ;
-                   Some (ValFlt cpu) ;
-                   flt_or_na wait_in ;
-                   flt_or_na wait_out ;
-                   Some (ValInt (Uint64.to_int ram)) ;
-                   Some (ValInt (Uint64.to_int max_ram)) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_in) ;
-                   flt_or_na (Option.map Uint64.to_float bytes_out) ;
-                   Some (ValDate stime) ;
+                   int_or_na s.in_count ;
+                   int_or_na s.selected_count ;
+                   int_or_na s.out_count ;
+                   int_or_na s.group_count ;
+                   date_or_na s.last_out ;
+                   date_or_na s.min_etime ;
+                   date_or_na s.max_etime ;
+                   Some (ValFlt s.cpu) ;
+                   flt_or_na s.wait_in ;
+                   flt_or_na s.wait_out ;
+                   Some (ValInt (Uint64.to_int s.ram)) ;
+                   Some (ValInt (Uint64.to_int s.max_ram)) ;
+                   flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
+                   flt_or_na (Option.map Uint64.to_float s.bytes_out) ;
+                   Some (ValDate s.startup_time) ;
                    Some (ValInt (List.length func.F.parents)) ;
                    Some (ValInt num_children) ;
                    Some (ValStr func.signature) |] :: lines

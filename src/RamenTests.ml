@@ -590,10 +590,9 @@ let run conf server_url api graphite
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
       String.print
-      (fun oc (_min_etime, _max_etime, _in_count, _selected_count, _out_count,
-               _group_count, cpu, _ram, max_ram, _wait_in, _wait_out, _bytes_in,
-               _bytes_out, _last_out, _stime) ->
-        Printf.fprintf oc "cpu:%fs\tmax ram:%s" cpu (Uint64.to_string max_ram)))
+      (fun oc s ->
+        Printf.fprintf oc "cpu:%fs\tmax ram:%s"
+          s.RamenPs.cpu (Uint64.to_string s.max_ram)))
       stats ;
   if res then !logger.info "Test %s: Success" name
   else failwith ("Test "^ name ^": FAILURE") ;
