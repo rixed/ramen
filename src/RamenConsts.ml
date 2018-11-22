@@ -265,6 +265,12 @@ struct
   let api_export_duration = 3600. *. 24.
 end
 
+module SpecialFunctions =
+struct
+  let notifs = "notifs"
+  let stats = "stats"
+end
+
 (* What we use as workers argv.(0) to make it easier to read ps/top
  * output: *)
 let worker_argv0 = "ramen worker:"

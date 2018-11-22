@@ -66,14 +66,14 @@ let read_well_known fq where suffix bname typ () =
 let read_output conf ?duration fq where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
-  match read_well_known fq where "#stats"
+  match read_well_known fq where ("#"^ RamenConsts.SpecialFunctions.stats)
           (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
       bname, false, filter, typ, ser, [], RamenBinocle.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
-      (match read_well_known fq where "#notifs"
+      (match read_well_known fq where ("#"^ RamenConsts.SpecialFunctions.notifs)
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
       | Some (bname, filter, typ, ser) ->
           bname, false, filter, typ, ser, [], RamenNotification.event_time

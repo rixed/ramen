@@ -228,7 +228,8 @@ let complete str () =
           ("--pretty", RamenConsts.CliInfo.pretty) ::
           ("--flush", RamenConsts.CliInfo.flush) ::
           copts @
-          (("stats", "Internal instrumentation") ::
+          ((RamenConsts.SpecialFunctions.stats, "Activity statistics") ::
+           (RamenConsts.SpecialFunctions.notifs, "Internal instrumentation") ::
            (complete_running_function persist_dir))
       | "timeseries" ->
           let persist_dir = persist_dir toks in
