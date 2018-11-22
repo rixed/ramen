@@ -567,8 +567,9 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
     Printf.fprintf oc "DEFINE ok AS\n" ;
     Printf.fprintf oc "  FROM filtered\n" ;
     Printf.fprintf oc "  SELECT\n" ;
+    Printf.fprintf oc "    start, stop,\n";
     if need_reaggr then
-      Printf.fprintf oc "    start, stop, min_value, max_value,\n" ;
+      Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF (%a) THEN value AS filtered_value,\n"
        print_filter a.having ;
     Printf.fprintf oc "    COALESCE(\n" ;
@@ -581,8 +582,9 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       Printf.fprintf oc "DEFINE alert AS\n" ;
       Printf.fprintf oc "  FROM ok\n" ;
       Printf.fprintf oc "  SELECT\n" ;
+      Printf.fprintf oc "    start, stop,\n";
       if need_reaggr then
-        Printf.fprintf oc "    start, stop, max_value, min_value,\n" ;
+        Printf.fprintf oc "    max_value, min_value,\n" ;
       Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
         (1 + round_to_int (a.duration /. a.time_step)) a.ratio ;
       Printf.fprintf oc "      AS firing\n" ;
