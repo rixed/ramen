@@ -103,6 +103,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         let open RamenOperation in
         F.{ program_name ;
             name ;
+            persistent = parsed_func.persistent ;
             doc = parsed_func.doc ;
             operation = op ;
             in_type = in_type_of_operation op ;

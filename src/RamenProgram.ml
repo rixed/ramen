@@ -35,7 +35,8 @@ module P = C.Program
 type func =
   { name : RamenName.func option (* optional during parsing only *) ;
     doc : string ;
-    operation : RamenOperation.t }
+    operation : RamenOperation.t ;
+    persistent : bool }
 
 type t = RamenTuple.param list * func list
 
@@ -48,8 +49,8 @@ let make_name =
     incr seq ;
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
-let make_func ?name ?(doc="") operation =
-  { name ; doc ; operation }
+let make_func ?(persistent=false) ?name ?(doc="") operation =
+  { name ; doc ; operation ; persistent }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -211,12 +212,14 @@ struct
   let named_func m =
     let m = "function" :: m in
     (
-      strinG "define" -- blanks -+ function_name ++
+      strinG "define" -- blanks -+
+      optional ~def:false (strinG "persistent" -- blanks >>: fun () -> true) ++
+      function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
       RamenOperation.Parser.p >>:
-      fun ((name, doc), op) ->
-        make_func ~name ~doc op
+      fun (((persistent, name), doc), op) ->
+        make_func ~persistent ~name ~doc op
     ) m
 
   let func m =
@@ -252,7 +255,7 @@ struct
   (*$= p & ~printer:(test_printer print)
    (Ok (([], None, [\
     { name = Some (RamenName.func_of_string "bar") ;\
-      doc = "" ;\
+      persistent = false ; doc = "" ;\
       operation = \
         Aggregate {\
           fields = [\
@@ -284,7 +287,7 @@ struct
                       units = None ; doc = "" ; aggr = None } ;\
              value = VU32 Uint32.zero } ], None, [\
     { name = Some (RamenName.func_of_string "add") ;\
-      doc = "" ;\
+      persistent = false ; doc = "" ;\
       operation = \
         Aggregate {\
           fields = [\

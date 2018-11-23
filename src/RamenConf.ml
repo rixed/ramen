@@ -31,6 +31,10 @@ struct
   type t =
     { program_name : RamenName.program ;
       name : RamenName.func ;
+      (* A function which history we might want to query in the future
+       * so make sure it is either stored or can be computed again from
+       * ancestor stored history: *)
+      persistent : bool ;
       doc : string ;
       operation : RamenOperation.t ;
       in_type : RamenTuple.typ ;
@@ -54,6 +58,7 @@ struct
     type t = (* A version of the above without redundancy: *)
       { program_name : RamenName.program ;
         name : RamenName.func ;
+        persistent : bool ;
         doc : string ;
         operation : RamenOperation.t ;
         signature : string }
@@ -64,6 +69,7 @@ struct
     Serialized.{
       program_name = t.program_name ;
       name = t.name ;
+      persistent = t.persistent ;
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature }
@@ -72,6 +78,7 @@ struct
     let open RamenOperation in
     { program_name = t.program_name ;
       name = t.name ;
+      persistent = t.persistent ;
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature ;
