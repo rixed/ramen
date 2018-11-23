@@ -334,14 +334,13 @@ let ps conf short pretty with_header sort_col top pattern all () =
           | exception _ -> (* which has been logged already *) lines
           | prog ->
             List.fold_left (fun lines func ->
-              let fq_name = RamenName.string_of_program program_name
-                            ^"/"^ RamenName.string_of_func func.F.name in
-              if Globs.matches pattern fq_name then
-                let s = Hashtbl.find_default stats fq_name RamenPs.no_stats
+              let fq = RamenName.fq program_name func.F.name in
+              if Globs.matches pattern (RamenName.string_of_fq fq) then
+                let s = Hashtbl.find_default stats fq RamenPs.no_stats
                 and num_children = Hashtbl.find_all children_of_func
                                      (func.F.program_name, func.F.name) |>
                                      List.length in
-                [| Some (ValStr fq_name) ;
+                [| Some (ValStr (RamenName.string_of_fq fq)) ;
                    int_or_na s.in_count ;
                    int_or_na s.selected_count ;
                    int_or_na s.out_count ;

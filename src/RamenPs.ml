@@ -82,7 +82,7 @@ let read_stats conf =
         startup_time = get_float tuple.(16) }
     in
     (* Keep only the latest stat line per worker: *)
-    Hashtbl.modify_opt worker (function
+    Hashtbl.modify_opt (RamenName.fq_of_string worker) (function
       | None -> Some (time, stats)
       | Some (time', _) as prev ->
           if time' > time then prev else Some (time, stats)
@@ -121,8 +121,8 @@ let add_stats s1 s2 =
 
 let per_program stats =
   let h = Hashtbl.create 17 in
-  Hashtbl.iter (fun worker stats ->
-    let program, _ = RamenName.(fq_of_string worker |> fq_parse) in
+  Hashtbl.iter (fun fq stats ->
+    let program, _ = RamenName.fq_parse fq in
     Hashtbl.modify_opt program (function
       | None -> Some stats
       | Some stats' -> Some (add_stats stats' stats)
