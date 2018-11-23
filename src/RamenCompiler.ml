@@ -3,7 +3,7 @@
  *
  * 1. The parsing, which is done in RamenProgram, RamenOperation, RamenExpr
  *    and RamenTypes modules;
- * 2. The typing, happening in RamenSmtTyping;
+ * 2. The typing, happening in RamenTyping;
  * 3. The code generation, taking place in CodeGen_Ocaml;
  * 4. And finally generating an executable (takes place in RamenOCamlCompiler).
  *)
@@ -37,7 +37,7 @@ let init use_external_compiler bundle_dir max_simult_compils smt_solver =
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
-  RamenSmtTyping.smt_solver := smt_solver
+  RamenSmt.solver := smt_solver
 
 (* Given a program name, retrieve its binary, either form the disk or
  * the running configuration: *)
@@ -288,10 +288,10 @@ let compile conf get_parent ~exec_file source_file program_name =
         (log_and_ignore_exceptions
           (Histogram.add (stats_typing_time conf.C.persist_dir)
              ~labels:["typer", typer_name])) in
-    let open RamenSmtTyping in
+    let open RamenTyping in
     let smt2_file = C.smt_file source_file in
     let types =
-      call_typer !RamenSmtTyping.smt_solver (fun () ->
+      call_typer !RamenSmt.solver (fun () ->
         get_types compiler_parents condition compiler_funcs
                   parsed_params smt2_file) in
     add_single_temp_file smt2_file ;

@@ -9,6 +9,7 @@
 open Batteries
 open RamenHelpers
 open RamenTypingHelpers
+open RamenSmt
 module C = RamenConf
 module F = C.Func
 
@@ -152,10 +153,10 @@ let deuniquify s =
   String.rsplit ~by:"_" s |> fst
 
 let to_assert_name e =
-  PPP.to_string t_ppp_ocaml e |> Base64.str_encode |> uniquify
+  PPP.to_string t_ppp_ocaml e |> scramble |> uniquify
 
 let of_assert_name n =
-  deuniquify n |> Base64.str_decode |> PPP.of_string_exc t_ppp_ocaml
+  deuniquify n |> unscramble |> PPP.of_string_exc t_ppp_ocaml
 
 let print_core funcs oc lst =
   List.map of_assert_name lst |>

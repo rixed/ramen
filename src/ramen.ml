@@ -111,7 +111,7 @@ let smt_solver =
   let env = Term.env_info "RAMEN_SMT_SOLVER" in
   let i = Arg.info ~doc:CliInfo.smt_solver
                    ~env [ "smt-solver" ; "solver" ] in
-  Arg.(value (opt string !RamenSmtTyping.smt_solver i))
+  Arg.(value (opt string !RamenSmt.solver i))
 
 let fail_for_good =
   let i = Arg.info ~doc:CliInfo.fail_for_good

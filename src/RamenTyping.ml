@@ -44,12 +44,11 @@ open RamenTypingHelpers
 open RamenExpr
 open RamenTypes
 open RamenLog
+open RamenSmt
 module C = RamenConf
 module F = C.Func
 module P = C.Program
-module Err = RamenSmtErrors
-
-let smt_solver = ref "z3 -t:20000 -smt2 %s"
+module Err = RamenTypingErrors
 
 let t_of_num num =
   Printf.sprintf "t%d" num
@@ -62,15 +61,6 @@ let n_of_num num =
 
 let n_of_expr e =
   n_of_num((typ_of e).uniq_num)
-
-let emit_comment oc str =
-  Printf.fprintf oc "; %s\n" str
-
-let emit_is_true id oc =
-  Printf.fprintf oc "%s" id
-
-let emit_is_false id oc =
-  Printf.fprintf oc "(not %s)" id
 
 let emit_is_tuple id oc sz =
   Printf.fprintf oc "((_ is tuple%d) %s)" sz id
@@ -157,9 +147,6 @@ let emit_assert_id_eq_smt2 ?name id oc smt2 =
   emit_assert ?name oc (fun oc -> emit_id_eq_smt2 id oc smt2)
 
 let emit_assert_id_eq_id = emit_assert_id_eq_smt2
-
-let emit_imply a oc b =
-  Printf.fprintf oc "(or (not %s) %s)" a b
 
 let assert_imply ?name a oc b =
   emit_assert ?name oc (fun oc -> emit_imply a oc b)
@@ -1406,7 +1393,7 @@ let rec structure_of_term =
       !logger.warning "TODO: exploit define-fun with funny term" ;
       TEmpty
 
-let emit_smt2 oc ~optimize parents tuple_sizes condition funcs params =
+let emit_smt2 parents tuple_sizes condition funcs params oc ~optimize =
   (* We have to start the SMT2 file with declarations before we can
    * produce any assertion: *)
   let decls = IO.output_string () in
@@ -1435,11 +1422,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes condition funcs params =
   emit_program declare tuple_sizes expr_types funcs ;
   if optimize then emit_minimize expr_types condition funcs ;
   Printf.fprintf oc
-    "(set-option :print-success false)\n\
-     (set-option :produce-models %s)\n\
-     (set-option :produce-unsat-cores %s)\n\
-     (set-option :smt.core.minimize %s)\n\
-     (set-logic ALL) ; TODO\n\
+    "%a\
      ; Define a sort for types:\n\
      (declare-datatypes\n\
        ( (Type 0) )\n\
@@ -1457,13 +1440,8 @@ let emit_smt2 oc ~optimize parents tuple_sizes condition funcs params =
      %s\n\
      ; Children-Parent relationships:\n\
      %s\n\
-     ; Closing words: solve and prints the answer:\n\
-     (check-sat) ; also experiment with: (check-sat-using smt)\n\
-     (get-unsat-core)\n\
-     (get-model)\n"
-    (if optimize then "true" else "false")
-    (if optimize then "false" else "true")
-    (if optimize then "false" else "true")
+     %t"
+    preamble optimize
     (Set.Int.print ~first:"" ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(tuple%d" sz ;
       for i = 0 to sz-1 do
@@ -1474,40 +1452,7 @@ let emit_smt2 oc ~optimize parents tuple_sizes condition funcs params =
     (IO.close_out decls)
     (IO.close_out expr_types)
     (IO.close_out parent_types)
-
-let run_solver smt2_file =
-  let cmd =
-    if String.exists !smt_solver "%s" then
-      String.nreplace ~sub:"%s" ~by:(shell_quote smt2_file) ~str:!smt_solver
-    else
-      !smt_solver ^" "^ shell_quote smt2_file in
-  !logger.debug "Running the solver as %S" cmd ;
-  (* Lazy way to split the arguments: *)
-  let shell = "/bin/sh" in
-  let args = [| shell ; "-c" ; cmd |] in
-  (* Now summon the solver: *)
-  with_subprocess shell args (fun (_oc, ic, ec) ->
-    let output = read_whole_channel ic
-    and errors = read_whole_channel ec in
-    !logger.debug "Solver is done." ;
-    let p =
-      RamenParsing.allow_surrounding_blanks RamenSmtParser.response in
-    let stream = RamenParsing.stream_of_string output in
-    match p ["SMT output"] None Parsers.no_error_correction stream |>
-          RamenParsing.to_result with
-    | Ok (sol, _) -> sol, output
-    | Bad e ->
-        !logger.error "Cannot parse solver output:\n%s" output ;
-        if errors <> "" then failwith errors else
-        IO.to_string (RamenParsing.print_bad_result
-                        RamenSmtParser.print_response) e |>
-        failwith)
-
-let unsat funcs syms output =
-  !logger.debug "Solver output:\n%s" output ;
-  Printf.sprintf2 "Cannot solve typing constraints: %a"
-    (Err.print_core funcs) syms |>
-  failwith
+    post_scriptum
 
 let used_tuple_sizes funcs parents =
   let add_tuple_sz s = function
@@ -1532,59 +1477,48 @@ let used_tuple_sizes funcs parents =
     ) s fs
   ) parents tuple_sizes
 
-let get_types parents condition funcs params smt2_file =
+let get_types parents condition funcs params fname =
   let funcs = Hashtbl.values funcs |> List.of_enum in
   let h = Hashtbl.create 71 in
   if funcs <> [] then (
+    let open RamenSmtParser in
     let tuple_sizes = used_tuple_sizes funcs parents in
-    mkdir_all ~is_file:true smt2_file ;
-    !logger.debug "Writing SMT2 program into %S" smt2_file ;
-    File.with_file_out ~mode:[`create; `text; `trunc] smt2_file (fun oc ->
-      emit_smt2 oc ~optimize:true parents tuple_sizes condition funcs params) ;
-    match run_solver smt2_file with
-    | RamenSmtParser.Solved (model, sure), output ->
-        if not sure then
-          !logger.warning "Solver best idea after timeout:\n%s" output ;
-        (* Output a hash of structure*nullability per expression id: *)
-        let open RamenSmtParser in
-        List.iter (fun ((sym, vars, sort, term), _recurs) ->
-          try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
-            match vars, sort, tn with
-            | [], NonParametricSort (Identifier "Type"), "t" ->
-                let structure = structure_of_term term in
-                Hashtbl.modify_opt id (function
-                  | None -> Some { structure ; nullable = false (* by default *) }
-                  | Some prev -> Some { prev with structure }
-                ) h
-            | [], NonParametricSort (Identifier "Bool"), "n" ->
-                let nullable = bool_of_term term in
-                Hashtbl.modify_opt id (function
-                  | None -> Some { structure = TAny (* by default *) ; nullable }
-                  | Some prev -> Some { prev with nullable }
-                ) h
-            | [], NonParametricSort (Identifier sort), _ ->
-                !logger.error "Result not about sort Type but %S?!" sort
-            | _, NonParametricSort (IndexedIdentifier _), _ ->
-              !logger.warning "TODO: exploit define-fun with indexed identifier"
-            | _, ParametricSort _, _ ->
-              !logger.warning "TODO: exploit define-fun of parametric sort"
-            | _::_, _, _ ->
-              !logger.warning "TODO: exploit define-fun with parameters")
-          with Scanf.Scan_failure _ | End_of_file | Failure _ -> ()
-        ) model
-    | RamenSmtParser.Unsolved [], _ ->
-        !logger.debug "No unsat-core, resubmitting." ;
-        (* Resubmit the same problem without optimizations to get the unsat
-         * core: *)
-        let smt2_file' = smt2_file ^".no_opt" in
-        File.with_file_out ~mode:[`create; `text; `trunc] smt2_file' (fun oc ->
-          emit_smt2 oc ~optimize:false parents tuple_sizes condition funcs params) ;
-        (match run_solver smt2_file' with
-        | RamenSmtParser.Unsolved syms, output -> unsat funcs syms output
-        | RamenSmtParser.Solved _, _ ->
-            failwith "Unsat with optimization but sat without?!")
-    | RamenSmtParser.Unsolved syms, output -> unsat funcs syms output
-  ) ;
+    let emit = emit_smt2 parents tuple_sizes condition funcs params
+    and parse_result sym vars sort term =
+      try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
+        match vars, sort, tn with
+        | [], NonParametricSort (Identifier "Type"), "t" ->
+            let structure = structure_of_term term in
+            Hashtbl.modify_opt id (function
+              | None ->
+                  Some { structure ; nullable = false (* by default *) }
+              | Some prev ->
+                  Some { prev with structure }
+            ) h
+        | [], NonParametricSort (Identifier "Bool"), "n" ->
+            let nullable = bool_of_term term in
+            Hashtbl.modify_opt id (function
+              | None ->
+                  Some { structure = TAny (* by default *) ; nullable }
+              | Some prev ->
+                  Some { prev with nullable }
+            ) h
+        | [], NonParametricSort (Identifier sort), _ ->
+            !logger.error "Result not about sort Type but %S?!" sort
+        | _, NonParametricSort (IndexedIdentifier _), _ ->
+          !logger.warning "TODO: exploit define-fun with indexed identifier"
+        | _, ParametricSort _, _ ->
+          !logger.warning "TODO: exploit define-fun of parametric sort"
+        | _::_, _, _ ->
+          !logger.warning "TODO: exploit define-fun with parameters")
+      with Scanf.Scan_failure _ | End_of_file | Failure _ -> ()
+    and unsat syms output =
+      !logger.debug "Solver output:\n%s" output ;
+      Printf.sprintf2 "Cannot solve typing constraints: %a"
+        (Err.print_core funcs) syms |>
+      failwith
+    in
+    run_smt2 ~fname ~emit ~parse_result ~unsat) ;
   h
 
 (* From here: belongs to RamenTypingHelpers. *)
