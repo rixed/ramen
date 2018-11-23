@@ -1,7 +1,9 @@
 open Batteries
 open String
 
-type pattern = chunk list
+type pattern =
+  { chunks : chunk list ;
+    star : char ; placeholder : char ; escape : char }
 
 and chunk =
   | String of string
@@ -14,8 +16,11 @@ let print_chunk_ocaml oc = function
   | AnyString n -> Printf.fprintf oc "AnyString %d" n
   | AnyChar -> String.print oc "AnyChar"
 
-let print_pattern_ocaml oc =
-  List.print print_chunk_ocaml oc
+let print_pattern_ocaml oc p =
+  Printf.fprintf oc
+    "{ chunks = %a ; star = %C ; placeholder = %C ; escape = %C }"
+    (List.print print_chunk_ocaml) p.chunks
+    p.star p.placeholder p.escape
 
 (* Print chunks back to a pattern: *)
 let rec print_chunk_pattern ~star ~placeholder ~escape oc = function
@@ -32,9 +37,12 @@ let rec print_chunk_pattern ~star ~placeholder ~escape oc = function
                        ~by:(esc placeholder) in
       String.print oc s
 
-let decompile ?(star='*') ?(placeholder='?') ?(escape='\\') s =
-  IO.to_string
-    (List.print (print_chunk_pattern ~star ~placeholder ~escape)) s
+let print_pattern oc p =
+  List.print (print_chunk_pattern ~star:p.star ~placeholder:p.placeholder
+                                  ~escape:p.escape) oc p.chunks
+
+let decompile p =
+  IO.to_string print_pattern p
 
 let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
   (* It matters that Str is opened *after* String so quote is Str.quote: *)
@@ -91,19 +99,20 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
           aux prev (AnyString (m + 1) :: rest)
       | x :: rest ->
           aux (x :: prev) rest in
-    aux [] (split [] s)
+    let chunks = aux [] (split [] s) in
+    { chunks ; star ; placeholder ; escape }
 
 (*$= compile & ~printer:(BatIO.to_string (BatList.print print_chunk_ocaml))
-  [ String "glop" ; AnyString 0 ] (compile "glop*")
-  [ String "pas" ; AnyString 0 ; String "glop" ] (compile "pas*glop")
-  [ String "zzz" ; AnyString 0 ] (compile "zzz**")
-  [ String "glop" ; AnyString 0 ; String "glop" ] (compile "glop**glop")
-  [] (compile "")
-  [ AnyChar ] (compile "?")
-  [ AnyChar ; String "lop" ] (compile "?lop")
-  [ String "glo" ; AnyChar ] (compile "glo?")
-  [ String "gl" ; AnyChar ; String "p" ] (compile "gl?p")
-  [ String "gl" ; AnyString 1 ; String "p" ] (compile "gl?*p")
+  [ String "glop" ; AnyString 0 ] (compile "glop*").chunks
+  [ String "pas" ; AnyString 0 ; String "glop" ] (compile "pas*glop").chunks
+  [ String "zzz" ; AnyString 0 ] (compile "zzz**").chunks
+  [ String "glop" ; AnyString 0 ; String "glop" ] (compile "glop**glop").chunks
+  [] (compile "").chunks
+  [ AnyChar ] (compile "?").chunks
+  [ AnyChar ; String "lop" ] (compile "?lop").chunks
+  [ String "glo" ; AnyChar ] (compile "glo?").chunks
+  [ String "gl" ; AnyChar ; String "p" ] (compile "gl?p").chunks
+  [ String "gl" ; AnyString 1 ; String "p" ] (compile "gl?*p").chunks
 *)
 
 (* Make the given string a glob that matches only itself,
@@ -159,7 +168,7 @@ let rec match_chunks ?(from=0) c = function
   | AnyString _ :: AnyChar :: _ ->
       assert false
 
-let matches p c = match_chunks c p
+let matches p c = match_chunks c p.chunks
 
 (*$= matches & ~printer:string_of_bool
   true  (matches (compile "") "")
@@ -204,7 +213,8 @@ let matches p c = match_chunks c p
   true  (matches (compile "*glop") "pas glop glop")
  *)
 
-let has_wildcard = function
+let has_wildcard p =
+  match p.chunks with
   | [] | [ String _ ] -> false
   | _ -> true
 
