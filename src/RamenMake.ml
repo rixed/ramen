@@ -90,39 +90,16 @@ let () =
       RamenCompiler.compile conf get_parent ~exec_file src_file
                             program_name)
 
-(* Return the list of builders, brute force (N is small!): *)
-let rec find_path from to_ =
-  (* Complete the given path toward [to_], returns both the path (reverted) and its
-   * length (which is not larger than max_len): *)
-  let rec loop max_len prev prev_len fro =
-    !logger.debug "Looking for a build path from %S to %S of max length %d"
-      fro to_ max_len ;
-    if prev_len > max_len then failwith "Path too long"
-    else if fro = to_ then prev, prev_len
-    else (
-      (* Try each builder that accept this type: *)
-      let best_path_opt =
-        Hashtbl.find_all builders fro |>
-        List.fold_left (fun prev_best_opt (next_to, _, _ as b) ->
-          match loop (max_len - 1) (b :: prev) (prev_len + 1) next_to with
-          | exception _ -> prev_best_opt
-          | _, path_len as res ->
-              if match prev_best_opt with
-                 | None -> true
-                 | Some (_, best_len) -> path_len < best_len
-              then Some res
-              else prev_best_opt
-        ) None
-      in
-      match best_path_opt with
-      | None ->
-          Printf.sprintf "No path from file type %s to %s" from to_ |>
-          failwith
-      | Some (path, path_len) ->
-          path, path_len)
+(* Return the list of builders, brute force (N is small, loops are rare): *)
+let find_path src dst =
+  let fold fro f u =
+    Hashtbl.find_all builders fro |>
+    List.fold_left (fun u (next_to, _, _ as b) ->
+      f u next_to b
+    ) u
   in
-  let path_rev, _ = loop 10 [] 0 from in
-  List.rev path_rev
+  path_in_graph ~max_len:10 ~src ~dst { fold } |>
+  List.rev
 
 (* Get the build path, then for each step from the source, check if the build is
  * required.

@@ -1619,3 +1619,48 @@ let print_as_date ?rel oc t =
   let s = as_date ?rel:(Option.map (!) rel) t in
   Option.may (fun rel -> rel := s) rel ;
   String.print oc s
+
+(*
+ * Some graph utilities
+ *)
+
+(* Given a set of edges, return the path (reverted) between any two vertices
+ * or raise Not_found.
+ * It is assumed that, as is the case with the running config or the graph
+ * of builders, the graph is mostly a tree.
+ * Edges are given as a folder passing each vertex and its "descendants"
+ * as the vertex identifier and vertex content. *)
+type ('id, 'vtx) fold_t =
+  { fold : 'usr. 'id -> ('usr -> 'id -> 'vtx -> 'usr) -> 'usr -> 'usr }
+
+let path_in_graph fold ?(max_len=50) ~src ~dst =
+  (* Complete the given path towards [dst], return both the path (reverted)
+   * and its length (which is not larger than max_len): *)
+  let rec loop max_len prev prev_len id =
+    !logger.debug "Looking for a path from %S to %S of max length %d"
+      (dump id) (dump dst) max_len ;
+    if prev_len > max_len then failwith "Path too long"
+    else if id = dst then prev, prev_len
+    else (
+      (* Try each edge: *)
+      let best_path_opt =
+        fold.fold id (fun prev_best_opt id' v ->
+          match loop (max_len - 1) (v :: prev) (prev_len + 1) id' with
+          | exception _ -> prev_best_opt
+          | _, path_len as res ->
+              if match prev_best_opt with
+                 | None -> true
+                 | Some (_, best_len) -> path_len < best_len
+              then Some res
+              else prev_best_opt
+        ) None
+      in
+      match best_path_opt with
+      | None ->
+          Printf.sprintf "No path from %s to %s" (dump src) (dump dst) |>
+          failwith
+      | Some (path, path_len) ->
+          path, path_len)
+  in
+  let path_rev, _ = loop max_len [] 0 src in
+  path_rev
