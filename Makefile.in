@@ -125,6 +125,8 @@ RAMEN_SOURCES = \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
+	src/RamenPs.ml \
+	src/RamenArchivist.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenProcesses.ml \
@@ -137,7 +139,6 @@ RAMEN_SOURCES = \
 	src/RamenSzHeap.ml \
 	src/SqliteHelpers.ml \
 	src/RamenNotifier.ml \
-	src/RamenPs.ml \
 	src/TermTable.ml \
 	src/RamenHttpd.ml \
 	src/RamenCliCmd.ml \

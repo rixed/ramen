@@ -129,3 +129,27 @@ let per_program stats =
     ) h
   ) stats ;
   h
+
+(* A function that returns a graph of the currently running nodes. *)
+let func_graph conf =
+  let vertices = Hashtbl.create 27 (* fq -> Func.t *)
+  and edges = Hashtbl.create 27 (* parent fq -> list of children FQs *)
+  in
+  C.with_rlock conf (fun programs ->
+    Hashtbl.iter (fun program_name (mre, get_rc) ->
+      if mre.C.status = C.MustRun then (
+        match get_rc () with
+        | exception _ -> ()
+        | prog ->
+            List.iter (fun func ->
+              let fq = RamenName.fq program_name func.F.name in
+              Hashtbl.replace vertices fq func ;
+              List.iter (fun (pprog, pfunc) ->
+                let pprog = F.program_of_parent_prog program_name pprog in
+                let pfq = RamenName.fq pprog pfunc in
+                Hashtbl.modify_def [ fq ] pfq (List.cons fq) edges
+              ) func.F.parents
+            ) prog.P.funcs
+      )
+    ) programs) ;
+  vertices, edges

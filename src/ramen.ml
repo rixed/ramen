@@ -795,6 +795,20 @@ let test =
     info ~doc:CliInfo.test "test")
 
 (*
+ * Allocate disk space to workers archives
+ *)
+
+let archivist =
+  Term.(
+    (const RamenCliCmd.archivist
+      $ copts
+      $ loop
+      $ daemonize
+      $ to_stdout
+      $ to_syslog),
+    info ~doc:CliInfo.archivist "archivist")
+
+(*
  * Experiments
  *)
 
@@ -854,7 +868,7 @@ let () =
     print_exn (fun () ->
       Term.eval_choice ~catch:false default [
         supervisor ; gc ; httpd ; notifier ;
-        notify ; compile ; run ; kill ;
+        notify ; compile ; run ; kill ; archivist ;
         tail ; timeseries ; timerange ; ps ;
         test ; dequeue ; summary ; repair ; links ;
         variants ; stats ; autocomplete ; expand

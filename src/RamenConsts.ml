@@ -115,6 +115,7 @@ struct
   let autocomplete = "Autocomplete the given command"
   let gc = "Delete old or unused files"
   let stats = "Display internal statistics"
+  let archivist = "Allocate disk for storage"
 
   (* Options *)
   let help = "Show manual page"

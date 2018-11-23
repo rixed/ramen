@@ -34,3 +34,6 @@ let binocle = Binocle.version
 
 (* Format of the experiment definition files *)
 let experiment = "v1"
+
+(* Format of the archiving user configuration file *)
+let archiving_conf = "v1"

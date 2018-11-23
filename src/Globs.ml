@@ -10,6 +10,8 @@ and chunk =
   | AnyString of int (* min length *)
   | AnyChar
 
+let all = { chunks = [] ; star = '*' ; placeholder = '?' ; escape = '\\' }
+
 (* Print chunks as OCaml values: *)
 let print_chunk_ocaml oc = function
   | String s -> Printf.fprintf oc "String %S" s

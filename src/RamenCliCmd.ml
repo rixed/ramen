@@ -42,6 +42,8 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
 let check_binocle_errors () =
   Option.may raise !Binocle.last_error
 
+let while_ () = !RamenProcesses.quit = None
+
 let supervisor conf daemonize to_stdout to_syslog autoreload
                use_external_compiler bundle_dir max_simult_compils
                smt_solver fail_for_good_ () =
@@ -74,7 +76,6 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   RingBuf.unload reports_rb ;
   let notify_rb = prepare_notifs conf in
   RingBuf.unload notify_rb ;
-  let while_ () = !RamenProcesses.quit = None in
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
@@ -123,7 +124,6 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers conf ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
-  let while_ () = !RamenProcesses.quit = None in
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
@@ -664,6 +664,48 @@ let graphite_expand conf for_render all query () =
   in
   display "" te ;
   Printf.printf "\n"
+
+(*
+ * `ramen archivist`
+ *
+ * A daemon that listen to notifier and a user configuration file
+ * and decides what worker should save its history in order to be
+ * able to retrieve or rebuild the output of all persistent functions.
+ *)
+
+let archivist conf loop daemonize to_stdout to_syslog () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
+  if to_syslog then
+    init_syslog conf.C.log_level
+  else (
+    let logdir =
+      if to_stdout then None
+      else Some (conf.C.persist_dir ^"/log/archivist") in
+    Option.may mkdir_all logdir ;
+    init_logger ?logdir conf.C.log_level) ;
+  check_binocle_errors () ;
+  if daemonize then do_daemonize () ;
+  RamenProcesses.prepare_signal_handlers conf ;
+  let stats_thread =
+    Thread.create (
+      restart_on_failure ~while_ "Reading notifications"
+        RamenArchivist.notification_reader) conf in
+  restart_on_failure ~while_ "Allocating storage space"
+    RamenExperiments.(specialize the_big_one) [|
+      RamenProcesses.dummy_nop ;
+      (fun () ->
+        (* We can run at once since we (should) have saved previously
+         * acquired precious statistics. (TODO) *)
+        RamenArchivist.allocate_storage conf ;
+        if loop > 0 then
+          Unix.sleep loop
+        else
+          RamenProcesses.quit := Some RamenConsts.ExitCodes.terminated) |] ;
+  Thread.join stats_thread
+
 
 (*
  * Display various internal informations
