@@ -35,9 +35,7 @@ module P = C.Program
 type func =
   { name : RamenName.func option (* optional during parsing only *) ;
     doc : string ;
-    operation : RamenOperation.t ;
-    (* Condition to run that function: *)
-    condition : RamenExpr.t option }
+    operation : RamenOperation.t }
 
 type t = RamenTuple.param list * func list
 
@@ -50,8 +48,8 @@ let make_name =
     incr seq ;
     RamenName.func_of_string ("f"^ string_of_int !seq)
 
-let make_func ?name ?condition ?(doc="") operation =
-  { name ; doc ; operation ; condition }
+let make_func ?name ?(doc="") operation =
+  { name ; doc ; operation }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -66,10 +64,7 @@ let print_func oc n =
       Printf.fprintf oc "%a;"
         RamenOperation.print n.operation
   | Some name ->
-      Printf.fprintf oc "DEFINE%s '%s' AS %a;"
-        (match n.condition with
-        | None -> ""
-        | Some e -> " IF "^ IO.to_string (RamenExpr.print false) e)
+      Printf.fprintf oc "DEFINE '%s' AS %a;"
         (RamenName.string_of_func name)
         RamenOperation.print n.operation
 
@@ -273,8 +268,7 @@ struct
           commit_before = false ;\
           flush_how = Reset ;\
           event_time = None ;\
-          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } ;\
-      condition = None } ]),\
+          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } } ]),\
       (46, [])))\
       (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
        replace_typ_in_program)
@@ -305,8 +299,7 @@ struct
           notifications = [] ; key = [] ;\
           commit_cond = RamenExpr.Const (typ, VBool true) ;\
           commit_before = false ; flush_how = Reset ; from = [] ;\
-          factors = [] } ;\
-      condition = None } ]),\
+          factors = [] } } ]),\
       (84, [])))\
       (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
        (function Ok ((ps, _, fs), _) as x -> check (ps, None, fs) ; x | x -> x) |>\
