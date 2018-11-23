@@ -1,17 +1,40 @@
 open Batteries
 open String
 
-type chunk =
+type pattern = chunk list
+
+and chunk =
   | String of string
   | AnyString of int (* min length *)
   | AnyChar
 
-let print_chunk oc = function
+(* Print chunks as OCaml values: *)
+let print_chunk_ocaml oc = function
   | String s -> Printf.fprintf oc "String %S" s
   | AnyString n -> Printf.fprintf oc "AnyString %d" n
   | AnyChar -> String.print oc "AnyChar"
 
-type pattern = chunk list
+let print_pattern_ocaml oc =
+  List.print print_chunk_ocaml oc
+
+(* Print chunks back to a pattern: *)
+let rec print_chunk_pattern ~star ~placeholder ~escape oc = function
+  | AnyString 0 -> Char.print oc star
+  | AnyString n ->
+      Char.print oc placeholder ;
+      print_chunk_pattern ~star ~placeholder ~escape oc (AnyString (n-1))
+  | AnyChar -> Char.print oc placeholder
+  | String s ->
+      let open String in
+      let esc c = String.init 2 (function 0 -> escape | _ -> c) in
+      let s = nreplace ~str:s ~sub:(of_char star) ~by:(esc star) in
+      let s = nreplace ~str:s ~sub:(of_char placeholder)
+                       ~by:(esc placeholder) in
+      String.print oc s
+
+let decompile ?(star='*') ?(placeholder='?') ?(escape='\\') s =
+  IO.to_string
+    (List.print (print_chunk_pattern ~star ~placeholder ~escape)) s
 
 let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
   (* It matters that Str is opened *after* String so quote is Str.quote: *)
@@ -70,7 +93,7 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
           aux (x :: prev) rest in
     aux [] (split [] s)
 
-(*$= compile & ~printer:(BatIO.to_string (BatList.print print_chunk))
+(*$= compile & ~printer:(BatIO.to_string (BatList.print print_chunk_ocaml))
   [ String "glop" ; AnyString 0 ] (compile "glop*")
   [ String "pas" ; AnyString 0 ; String "glop" ] (compile "pas*glop")
   [ String "zzz" ; AnyString 0 ] (compile "zzz**")

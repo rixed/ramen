@@ -872,7 +872,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
   | Finalize, StatelessFunMisc (_, Like (e, p)), TBool ->
     let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
     Printf.fprintf oc "(let pattern_ = Globs.%a in "
-      (List.print Globs.print_chunk) pattern ;
+      (List.print Globs.print_chunk_ocaml) pattern ;
     emit_functionN ?state ~opc ~nullable "Globs.matches pattern_ "
       [Some TString, PropagateNull] oc [e];
     Printf.fprintf oc ")"
