@@ -37,6 +37,9 @@ let string_of_field_mask mask =
   List.map (function true -> 'X' | false -> '_') mask |>
   String.of_list
 
+let file_spec_still_valid now (_, timeout) =
+  timeout <= 0. || timeout > now
+
 let write_ fname fd c =
   fail_with_context ("Writing out_ref "^ fname) (fun () ->
     ppp_to_fd fd out_ref_conf_ppp_ocaml c)
@@ -47,14 +50,12 @@ let read_ fname fd =
 
 let read fname =
   RamenAdvLock.with_r_lock fname (fun fd ->
-    (*!logger.debug "Got read lock for read on %s" fname ;*)
     let now = Unix.gettimeofday () in
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
-    let still_valid timeout = timeout <= 0. || timeout > now in
     read_ fname fd |>
-    Hashtbl.filter_map (fun _p (mask_str, timeout) ->
-      if still_valid timeout then
+    Hashtbl.filter_map (fun _p (mask_str, timeout as spec) ->
+      if file_spec_still_valid now spec then
         Some { field_mask = field_mask_of_string mask_str ; timeout }
       else None))
 
@@ -96,7 +97,9 @@ let remove fname out_fname =
 (* Check that fname is listed in outbuf_ref_fname: *)
 let mem_ fname fd out_fname =
   let c = read_ fname fd in
-  Hashtbl.mem c out_fname
+  match Hashtbl.find c out_fname with
+  | exception Not_found -> false
+  | spec -> file_spec_still_valid (Unix.gettimeofday ()) spec
 
 let mem fname out_fname =
   RamenAdvLock.with_r_lock fname (fun fd ->

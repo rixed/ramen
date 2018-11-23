@@ -221,6 +221,14 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             and last_successful_output = ref (Unix.gettimeofday ())
             and quarantine_until = ref 0.
             and quarantine_delay = ref 0. in
+            (* Check that we are still supposed to write in there, but now
+             * more frequently than once every 3 secs (how long we are
+             * ready to block on a dead child): *)
+            let check_outref now =
+              if now < !last_check_outref +. 3. then true else (
+                last_check_outref := now ;
+                RamenOutRef.mem rb_ref_out_fname fname)
+            in
             let rb_writer start_stop tuple =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
@@ -230,7 +238,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                * ordering along the stream and avoid ending up with many threads
                * retrying to write to the same child. *)
               retry
-                ~while_:(fun () -> !quit = None)
+                ~while_:(fun () ->
+                  if !quit <> None then false else
+                  check_outref (Unix.gettimeofday ()))
                 ~on:(function
                   | RingBuf.NoMoreRoom ->
                     (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
@@ -238,9 +248,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                     (* Also check from time to time that we are still supposed to
                      * write in there (we check right after the first error to
                      * quickly detect it when a child disappear): *)
-                    if now < !last_check_outref +. 3. then true else (
-                      last_check_outref := now ;
-                      if not (RamenOutRef.mem rb_ref_out_fname fname) then false else
+                    if not (check_outref now) then false else (
                       if now < !last_successful_output +. 15. then true else (
                         (* At this point, we have been failing for more than 3s
                          * for a child that's still in our out_ref, and should
