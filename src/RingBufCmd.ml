@@ -15,10 +15,13 @@ let dequeue conf file n () =
   let rec dequeue_loop n =
     if n > 0 then (
       (* TODO: same automatic retry-er as in CodeGenLib_IO *)
-      let bytes = dequeue rb in
-      Printf.printf "dequeued %d bytes:" (Bytes.length bytes) ;
-      hex_print stdout bytes ;
-      dequeue_loop (n - 1)
+      match dequeue rb with
+      | exception Empty ->
+          Printf.printf "ring buffer is empty.\n"
+      | bytes ->
+          Printf.printf "dequeued %d bytes:" (Bytes.length bytes) ;
+          hex_print stdout bytes ;
+          dequeue_loop (n - 1)
     )
   in
   dequeue_loop n
