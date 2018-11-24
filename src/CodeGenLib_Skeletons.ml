@@ -123,7 +123,9 @@ let get_binocle_tuple worker ic sc gc =
 
 let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let open RingBuf in
-  let sersize = RamenBinocle.max_sersize_of_tuple tuple in
+  let sersize =
+    RingBufLib.message_header_sersize +
+    RamenBinocle.max_sersize_of_tuple tuple in
   match enqueue_alloc rb sersize with
   | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
