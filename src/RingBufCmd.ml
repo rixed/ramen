@@ -16,7 +16,8 @@ let dequeue conf file n () =
     if n > 0 then (
       (* TODO: same automatic retry-er as in CodeGenLib_IO *)
       let bytes = dequeue rb in
-      Printf.printf "dequeued %d bytes\n%!" (Bytes.length bytes) ;
+      Printf.printf "dequeued %d bytes:" (Bytes.length bytes) ;
+      hex_print stdout bytes ;
       dequeue_loop (n - 1)
     )
   in

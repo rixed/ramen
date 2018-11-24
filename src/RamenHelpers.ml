@@ -924,6 +924,67 @@ let hex_of =
     if n < 10 then Char.chr (zero + n)
     else Char.chr (ten + n)
 
+(* Returns the int (0..255) into a 2 char hex representation: *)
+let hex_byte_of i =
+  assert (i >= 0 && i <= 255) ;
+  String.init 2 (function
+    | 0 -> i lsr 4 |> hex_of
+    | _ -> i land 15 |> hex_of)
+
+(*$= hex_byte_of & ~printer:identity
+  "00" (hex_byte_of 0)
+  "01" (hex_byte_of 1)
+  "0a" (hex_byte_of 10)
+  "42" (hex_byte_of 66)
+*)
+
+let is_printable c =
+  let open Char in
+  is_letter c || is_digit c || is_symbol c
+
+let hex_print ?(num_cols=16) oc bytes =
+  let disp_char_of c =
+    if is_printable c then c else '.'
+  in
+  let rec aux b0 c b =
+    (* Sep from column c-1: *)
+    let sep c =
+      if c >= num_cols then ""
+      else if c = 0 then "    "
+      else if c land 7 = 0 then " - "
+      else " " in
+    (* Display the ascii section + new line: *)
+    let eol () =
+      if c > 0 then (
+        (* Fill up to ascii section: *)
+        for i = c to num_cols do
+          Printf.fprintf oc "%s  " (sep i)
+        done ;
+        (* Ascii section: *)
+        Printf.fprintf oc "  " ;
+        for i = 0 to c - 1 do
+          Printf.fprintf oc "%c"
+            (disp_char_of (Bytes.get bytes (b0 + i)))
+        done ;
+        String.print oc "\n"
+      )
+    in
+    (* Actually add an hex byte: *)
+    if b >= Bytes.length bytes then (
+      eol ()
+    ) else (
+      if c >= num_cols then (
+        eol () ;
+        aux b 0 b
+      ) else (
+        Printf.fprintf oc "%s%s"
+          (sep c)
+          (hex_byte_of (Char.code (Bytes.get bytes b))) ;
+        aux b0 (c + 1) (b + 1)))
+  in
+  Printf.fprintf oc "\n" ;
+  aux 0 0 0
+
 let fail_for_good = ref false
 let rec restart_on_failure ?(while_=always) what f x =
   if !fail_for_good then
