@@ -264,8 +264,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 (fun () ->
                   if !quarantine_until < !CodeGenLib_IO.now then (
                     output rb tup_serializer tup_sizer start_stop tuple ;
+                    last_successful_output := !CodeGenLib_IO.now ;
                     if !quarantine_delay > 0. then (
-                      last_successful_output := !CodeGenLib_IO.now ;
                       !logger.info "Resuming output to %s" fname ;
                       quarantine_delay := 0.
                     )
