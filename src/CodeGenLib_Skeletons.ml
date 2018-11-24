@@ -253,7 +253,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                         (* At this point, we have been failing for more than 3s
                          * for a child that's still in our out_ref, and should
                          * consider quarantine for a bit: *)
-                        quarantine_delay := 10. +. !quarantine_delay *. 1.5 ;
+                        quarantine_delay := min 30. (10. +. !quarantine_delay *. 1.5) ;
                         quarantine_until := now +. jitter !quarantine_delay ;
                         !logger.error "Quarantining %s until %s"
                           fname
