@@ -747,6 +747,24 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (emit_functionN ?state ~opc ~nullable "( ** )"
         [Some TFloat, PropagateNull; Some TFloat, PropagateNull])  [e1; e2]
 
+  | Finalize, StatelessFun2 (_, Trunc, e1, e2), (TFloat as t) ->
+    emit_functionN ?state ~opc ~nullable "CodeGenLib.Truncate.float"
+      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, Trunc, e1, e2), (TU8|TU16|TU32|TU64|TU128 as t) ->
+    let m = omod_of_type t in
+    let f =
+      Printf.sprintf "CodeGenLib.Truncate.uint %s.div %s.mul" m m in
+    emit_functionN ?state ~opc ~nullable f
+      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+  | Finalize, StatelessFun2 (_, Trunc, e1, e2), (TI8|TI16|TI32|TI128 as t) ->
+    let m = omod_of_type t in
+    let f =
+      Printf.sprintf
+        "CodeGenLib.Truncate.int %s.sub %s.compare %s.zero %s.div %s.mul"
+        m m m m m in
+    emit_functionN ?state ~opc ~nullable f
+      [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+
   | Finalize, StatelessFun2 (_, Mod, e1, e2),
     (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN ?state ~opc ~nullable (omod_of_type t ^".rem")

@@ -299,6 +299,96 @@ let reldiff a b =
   let d = abs_float (a -. b) and a = max a b in
   if a = d then 0. else if d < a then d /. a else a /. d
 
+module Truncate =
+struct
+  (*$< Truncate *)
+  (* In all the trunc operations we truncate toward minus infinity, à la
+   * Ruby or Python, for the very same practical reason: Basically, we want
+   * it to work to resample values (such as timestamps) regardless of their
+   * origin. *)
+
+  (* Round the float [n] to the given scale [s] (which must be positive): *)
+  let float n s = Float.floor (n /. s) *. s
+
+  (*$= float & ~printer:string_of_float
+     0. (float 0. 1.)
+     0. (float 0.1 1.)
+     0. (float 0.9 1.)
+     1. (float 1.0 1.)
+     1. (float 1.1 1.)
+     1. (float 1.9 1.)
+     2. (float 2.0 1.)
+     2. (float 2.1 1.)
+     5. (float 5.7 1.)
+     0. (float 1.0 10.)
+     0. (float 9.9 10.)
+    10. (float 11.0 10.)
+     0. (float 11.0 12.)
+    24. (float 25.3 12.)
+   (-1.) (float (-0.1) 1.)
+   (-1.) (float (-0.9) 1.)
+   (-1.) (float (-1.0) 1.)
+   (-2.) (float (-1.1) 1.)
+  (-24.) (float (-23.3) 12.)
+  *)
+
+  (* Same as above but for one of the unsigned integer type. We must be
+   * given the div and mut functions: *)
+  let uint div mul n s = mul (div n s) s
+
+  (* Same as above but for one of the signed integer types: *)
+  let int sub compare zero div mul n s =
+    let r = mul (div n s) s in
+    if compare n zero >= 0 then r else sub r s
+
+  (*$inject
+    module type INT = sig
+      type t
+      val of_int : int -> t
+      val to_int : t -> int
+      val bits : int
+      val zero : t
+      val div : t -> t -> t
+      val mul : t -> t -> t
+      val sub : t -> t -> t
+      val compare : t -> t -> int
+    end
+    let unsigned_mods =
+      let open Stdint in
+      [ (module Uint8 : INT) ; (module Uint16 : INT) ;
+        (module Uint32 : INT) ; (module Uint64 : INT) ;
+        (module Uint128 : INT) ]
+    let signed_mods =
+      let open Stdint in
+      [ (module Int8 : INT) ; (module Int16 : INT) ;
+        (module Int32 : INT) ; (module Int64 : INT) ;
+        (module Int128 : INT) ]
+    let test_trunc signed expected n s m =
+      let module M = (val m : INT) in
+      let t = if signed then int M.sub M.compare M.zero else uint in
+      let r = M.to_int (t M.div M.mul (M.of_int n) (M.of_int s)) in
+      let w = M.bits and ui = if signed then 'i' else 'u' in
+      let msg = Printf.sprintf "truncate(%d%c%d, %d%c%d)" n ui w s ui w in
+      assert_equal ~msg ~printer:string_of_int expected r
+  *)
+  (*$R
+    List.iter (fun (e, n, s) ->
+      List.iter (test_trunc false e n s) unsigned_mods)
+      [ 0, 0, 10 ; 0, 1, 10 ; 0, 9, 10 ;
+        10, 10, 10 ; 10, 19, 10 ; 40, 47, 10 ;
+        250, 255, 10 ] ;
+
+    List.iter (fun (e, n, s) ->
+      List.iter (test_trunc true e n s) signed_mods)
+      [ 0, 0, 10 ; 0, 1, 10 ; 0, 9, 10 ;
+        10, 10, 10 ; 10, 19, 10 ; 40, 47, 10 ;
+        120, 127, 10 ;
+        -10, -1, 10 ; -10, -9, 10 ; -20, -11, 10 ;
+        -120, -118, 10 ]
+  *)
+  (*$>*)
+end
+
 (* We often want functions that work on the last k elements, or the last k
  * periods of length p for seasonal data. So we often need a small sliding
  * window as a function internal state. If we could join between two different

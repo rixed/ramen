@@ -183,6 +183,8 @@ and stateless_fun2 =
   | IDiv
   | Mod
   | Pow
+  (* truncate a float to a multiple of the given interval: *)
+  | Trunc
   (* Compare a and b by computing:
    *   min(abs(a-b), max(a, b)) / max(abs(a-b), max(a, b))
    * Returns 0 when a = b. *)
@@ -468,6 +470,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
     | StatelessFun1 (t, Sparkline, e) ->
       Printf.fprintf oc "sparkline (%a)" p e ;
       add_types t
+    | StatelessFun2 (t, Trunc, e1, e2) ->
+      Printf.fprintf oc "truncate (%a, %a)"
+        p e1 p e2 ; add_types t
     | StatelessFun2 (t, In, e1, e2) ->
       Printf.fprintf oc "(%a) IN (%a)"
         p e1 p e2 ; add_types t
@@ -1280,6 +1285,10 @@ struct
      (afun1 "ceil" >>: fun e -> StatelessFun1 (make_typ "ceil", Ceil, e)) |||
      (afun1 "floor" >>: fun e -> StatelessFun1 (make_typ "floor", Floor, e)) |||
      (afun1 "round" >>: fun e -> StatelessFun1 (make_typ "round", Round, e)) |||
+     (afun1 "truncate" >>: fun e ->
+        StatelessFun2 (make_typ "truncate", Trunc, e, expr_float "one" 1.)) |||
+     (afun2 "truncate" >>: fun (e1, e2) ->
+        StatelessFun2 (make_typ "truncate", Trunc, e1, e2)) |||
      (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ "hash", Hash, e)) |||
      (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ "sparkline", Sparkline, e)) |||
      (afun1_sf ~def_state:LocalState "min" >>: fun ((g, n), e) ->
@@ -1712,7 +1721,9 @@ let units_of_expr params units_of_input units_of_output =
     | StatelessFun1 (_, Age, e) ->
         check ~indent e RamenUnits.seconds_since_epoch ;
         Some RamenUnits.seconds
-    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e) -> uoe ~indent e
+    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e)
+    | StatelessFun2 (_, Trunc, e, _) ->
+        uoe ~indent e
     | StatelessFun1 (_, Length, e) ->
         check_no_units ~indent e ;
         Some RamenUnits.chars

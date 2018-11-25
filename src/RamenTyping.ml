@@ -565,9 +565,10 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         oc nid
 
-  | StatelessFun2 (_, (Add|Sub|Mul|IDiv|Pow), e1, e2) ->
+  | StatelessFun2 (_, (Add|Sub|Mul|IDiv|Pow|Trunc), e1, e2) ->
       (* - e1 and e2 must be numeric;
-       * - The result is not smaller than e1 or e2. *)
+       * - The result is not smaller than e1 or e2;
+       * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
       arg_is_numeric oc e1 ;
       arg_is_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc

@@ -8,7 +8,7 @@ DEFINE DDoS_detector AS
   COMMIT AFTER in.start > out.start + 120
   SELECT
     -- Start time of each time slices:
-    (start // 60) * 60 AS start,
+    TRUNCATE(start, 1min) AS start,
     out.start + 60s AS stop,
     -- Count the number of new client/server pairs
     sum (

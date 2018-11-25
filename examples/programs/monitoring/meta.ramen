@@ -71,7 +71,7 @@ DEFINE per_minute AS
 DEFINE tot_per_minute AS
   FROM per_minute
   SELECT
-    (start // 60) * 60 as start,
+    TRUNCATE(start, 1min) AS start,
     out.start + 60s AS stop,
     sum 1 AS running,
     -- Given data arrive only every minute in the test lab (and some datasets
