@@ -10,7 +10,9 @@ and chunk =
   | AnyString of int (* min length *)
   | AnyChar
 
-let all = { chunks = [] ; star = '*' ; placeholder = '?' ; escape = '\\' }
+let all =
+  { chunks = [ AnyString 0 ] ;
+    star = '*' ; placeholder = '?' ; escape = '\\' }
 
 (* Print chunks as OCaml values: *)
 let print_chunk_ocaml oc = function
@@ -40,8 +42,9 @@ let rec print_chunk_pattern ~star ~placeholder ~escape oc = function
       String.print oc s
 
 let print_pattern oc p =
-  List.print (print_chunk_pattern ~star:p.star ~placeholder:p.placeholder
-                                  ~escape:p.escape) oc p.chunks
+  List.print ~first:"" ~last:"" ~sep:""
+    (print_chunk_pattern ~star:p.star ~placeholder:p.placeholder
+                         ~escape:p.escape) oc p.chunks
 
 let decompile p =
   IO.to_string print_pattern p
