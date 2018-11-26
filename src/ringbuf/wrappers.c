@@ -233,6 +233,24 @@ CAMLprim value wrap_ringbuf_enqueue(value rb_, value bytes_, value size_, value 
   CAMLreturn(Val_unit);
 }
 
+/* A function to read raw words from anywhere in the ringbuffer, used by
+ * `ramen ringbuf-summary`. */
+CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
+{
+  CAMLparam3(rb_, index_, num_words_);
+  CAMLlocal1(bytes_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  unsigned index = Long_val(index_);
+  unsigned num_words = Long_val(num_words_);
+  ssize_t size = num_words * sizeof(*rb->rbf->data);
+
+  bytes_ = caml_alloc_string(size);
+  if (! bytes_) caml_failwith("Cannot malloc read bytes");
+  memcpy(String_val(bytes_), rb->rbf->data + index, size);
+
+  CAMLreturn(bytes_);
+}
+
 CAMLprim value wrap_ringbuf_dequeue(value rb_)
 {
   CAMLparam1(rb_);

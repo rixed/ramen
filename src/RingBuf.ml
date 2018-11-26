@@ -50,6 +50,7 @@ external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_e
 external dequeue_alloc : t -> tx = "wrap_ringbuf_dequeue_alloc"
 external dequeue_commit : tx -> unit = "wrap_ringbuf_dequeue_commit"
 external dequeue : t -> bytes = "wrap_ringbuf_dequeue"
+external read_raw : t -> int -> int -> bytes = "wrap_ringbuf_read_raw"
 external read_first : t -> tx = "wrap_ringbuf_read_first"
 external read_next : tx -> tx = "wrap_ringbuf_read_next"
 external empty_tx : unit -> tx = "wrap_empty_tx"

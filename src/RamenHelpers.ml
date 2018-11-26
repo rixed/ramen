@@ -942,11 +942,17 @@ let is_printable c =
   let open Char in
   is_letter c || is_digit c || is_symbol c
 
-let hex_print ?(num_cols=16) oc bytes =
+let hex_print ?(from_rb=false) ?(num_cols=16) oc bytes =
   let disp_char_of c =
     if is_printable c then c else '.'
   in
-  let rec aux b0 c b =
+  (* [b0] was the offset at the beginning of the line while [b] is the
+   * current offset.
+   * [c] is the current column.
+   * [l] is the length of the current record (length included) if
+   * [from_rb], while [bl] is the offset into that record. [bl0] was
+   * that offset at the beginning of the line. *)
+  let rec aux b0 bl0 l c b bl =
     (* Sep from column c-1: *)
     let sep c =
       if c >= num_cols then ""
@@ -963,7 +969,7 @@ let hex_print ?(num_cols=16) oc bytes =
         (* Ascii section: *)
         Printf.fprintf oc "  " ;
         for i = 0 to c - 1 do
-          Printf.fprintf oc "%c"
+          Char.print oc
             (disp_char_of (Bytes.get bytes (b0 + i)))
         done ;
         String.print oc "\n"
@@ -975,15 +981,32 @@ let hex_print ?(num_cols=16) oc bytes =
     ) else (
       if c >= num_cols then (
         eol () ;
-        aux b 0 b
+        aux b bl l 0 b bl
       ) else (
-        Printf.fprintf oc "%s%s"
-          (sep c)
-          (hex_byte_of (Char.code (Bytes.get bytes b))) ;
-        aux b0 (c + 1) (b + 1)))
+        let l, bl =
+          if from_rb && bl >= l then (
+            (* Read the length, and highlight it.
+             * Remember that the length is the number of words, excluding
+             * the length itself: *)
+            if b = Bytes.length bytes - 1 then (
+              (* Half the length?! Now that's something to highlight!*)
+              2 * (1 + Char.code (Bytes.get bytes b)),
+              0
+            ) else if b < Bytes.length bytes - 1 then (
+              2 * (1 + Char.code (Bytes.get bytes b) +
+                   Char.code (Bytes.get bytes (b+1)) lsl 8),
+              0
+            ) else l, bl
+          ) else l, bl in
+        let str = hex_byte_of (Char.code (Bytes.get bytes b)) in
+        let str =
+          if from_rb && bl < 2 then blue str else
+          if from_rb && bl = l - 1 then yellow str else str in
+        Printf.fprintf oc "%s%s" (sep c) str ;
+        aux b0 bl0 l (c + 1) (b + 1) (bl + 1)))
   in
   Printf.fprintf oc "\n" ;
-  aux 0 0 0
+  aux 0 0 0 0 0 0
 
 let fail_for_good = ref false
 let rec restart_on_failure ?(while_=always) what f x =

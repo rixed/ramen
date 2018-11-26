@@ -31,6 +31,7 @@ let summary conf files () =
     let open RingBuf in
     let rb = load file in
     let s = stats rb in
+    (* The file header: *)
     Printf.printf "%s:\n\
                    Flags:%s\n\
                    seq range: %d..%d (%d)\n\
@@ -45,6 +46,28 @@ let summary conf files () =
       s.alloced_words s.capacity
       (float_of_int s.alloced_words *. 100. /. (float_of_int s.capacity))
       s.mem_size s.prod_tail s.prod_head s.cons_tail s.cons_head ;
+    (* Also dump the content from consumer begin to producer begin, aka
+     * the available tuples. *)
+    let dump o sz =
+      let bytes = RingBuf.read_raw rb o sz in
+      hex_print ~from_rb:true stdout bytes
+    in
+    if s.prod_tail <> s.cons_head then ( (* not empty *)
+      Printf.printf "\nAvailable bytes:" ;
+      let max_sz = 256 in
+      if s.cons_head < s.prod_tail then ( (* no wraparound *)
+        (* Reminder: we manipulate only word indices here: *)
+        let sz = s.prod_tail - s.cons_tail in
+        dump s.cons_tail (min max_sz sz) ;
+        if sz > max_sz then Printf.printf "...\n"
+      ) else ( (* wrap around *)
+        let sz = s.capacity - s.cons_tail in
+        dump s.cons_tail (min max_sz sz) ;
+        if sz < max_sz then (
+          Printf.printf "***** WRAP AROUND *****\n" ;
+          let max_sz_ = max_sz - sz in
+          dump 0 (min max_sz_ s.prod_tail) ;
+          if s.prod_tail > max_sz_ then Printf.printf "...\n"))) ;
     unload rb
   ) files
 
