@@ -265,6 +265,9 @@ struct
   (* Special case for when the timeseries query comes from the API: we then
    * want it to export for longer. *)
   let api_export_duration = 3600. *. 24.
+
+  (* Archives total size: *)
+  let archive_size = 104_857_600 (* 100 MiB *)
 end
 
 module SpecialFunctions =

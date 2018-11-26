@@ -7,9 +7,12 @@ open Batteries
 open RamenHelpers
 open RamenLog
 open RamenSmt
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+
+let tot_archive_size = ref Default.archive_size
 
 (* We want to serialize globs as strings: *)
 type glob = Globs.pattern
@@ -26,6 +29,7 @@ and per_node_conf =
        use [size] bytes of storage. If nothing match then no size
        restriction applies. *)
     pattern : glob [@ppp_default Globs.all] ;
+    (* In bytes but the SMT uses coarse grained sizes. *)
     size : int }
     [@@ppp PPP_OCaml]
 
@@ -75,8 +79,8 @@ and func_stats =
 let get_per_func_stats fname =
   ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
-let func_stats_empty =
-  { startup_time = 0. ; tuples = 0L ;
+let func_stats_empty startup_time =
+  { startup_time ; tuples = 0L ;
     bytes = 0L ; cpu = 0. ; ram = 0L }
 
 let func_stats_of_ps_stats s =
@@ -103,6 +107,18 @@ let per_func_stats_lock = Mutex.create ()
 let per_func_stats_sync f =
   BatMutex.synchronize ~lock:per_func_stats_lock f
 
+let print_func_stats oc fq =
+  match per_func_stats_sync
+          (Hashtbl.find per_func_stats) fq with
+  | exception Not_found ->
+      String.print oc "no statistics"
+  | tot, last ->
+      let s = add_func_stats tot last in
+      Printf.fprintf oc
+        "startup: %s, tuples: %Ld, bytes: %Ld, cpu: %fs, ram: %Ld"
+        (string_of_time s.startup_time)
+        s.tuples s.bytes s.cpu s.ram
+
 (* tail -f the #notifs stream and update per_func_stats: *)
 let notification_reader ?while_ conf =
   !logger.info "Starting thread reading all notifications..." ;
@@ -112,7 +128,8 @@ let notification_reader ?while_ conf =
       per_func_stats_sync
         (Hashtbl.modify_opt fq (function
           | None ->
-              Some (func_stats_empty, func_stats_of_ps_stats s)
+              Some (func_stats_empty s.RamenPs.startup_time,
+                    func_stats_of_ps_stats s)
           | Some (tot, last) ->
               if s.RamenPs.startup_time = last.startup_time then (
                 Some (tot, func_stats_of_ps_stats s)
@@ -129,11 +146,13 @@ let notification_reader ?while_ conf =
   ) ()
   with Exit -> ()
 
+let max_query_cost = 10 (* TODO: Consts *)
+
 (* Returns v relative to r as an integer from 0 to 10 inclusive. *)
 let scale_to r v =
-  if v >= r then 10 else
+  if v >= r then max_query_cost else
   if v <= 0. then 0 else
-  int_of_float (11. *. v /. r)
+  int_of_float (float_of_int (max_query_cost + 1) *. v /. r)
 
 (* Return the "processing cost" per tuple, ie the CPU time rate. *)
 let cost_of_stats now (tot, last) =
@@ -157,7 +176,7 @@ let cost_of_func () =
   in
   fun fq ->
     (match per_func_stats_sync
-            (Hashtbl.find per_func_stats) fq with
+             (Hashtbl.find per_func_stats) fq with
     | exception Not_found -> avg_cost
     | s -> cost_of_stats now s) |>
     scale_to max_cost
@@ -192,6 +211,11 @@ let path edges src dst =
  * - We have hard constraints given by user configuration that set a higher
  *   bound of the sum of some history sizes. We need those constraints named
  *   in case we have to report non-satisfiability;
+ *   FIXME: should be a max duration per precious function, ie should be
+ *   right in the function definition actually.
+ *   Also, we are told how much disk space to use (globally).
+ *   Then we want to know what node we should archive and for what size (GC
+ *   want sizes).
  *
  * - Assuming we will query each persistent function complete history once,
  *   the total cost of doing so must be as small as possible ; the cost being
@@ -219,33 +243,45 @@ let histo = const "h_"
 let size = const "s_"
 let query_cost = const "q_"
 
+let smt_size_of_bytes d =
+  (* FIXME: make this a Consts, and also make sure that each and every node could be at least 1 *)
+  let size_unit = 1. *. 1024. *. 1024. in
+  Float.ceil (float_of_int d /. size_unit) |> int_of_float
+
 (* For each function, declare the boolean h_f: *)
 let emit_all_vars oc vertices =
-  Hashtbl.iter (fun fq _ ->
+  Hashtbl.iter (fun fq (_func, cost) ->
     Printf.fprintf oc
-      "; Storage of %s\n\
+      "; Storage of %s (%a, query cost: %d)\n\
        (declare-const %s Bool) ; archive history?\n\
        (declare-const %s Int) ; archive size\n\
-       (declare-const %s Int) ; query cost\n"
-      (RamenName.string_of_fq fq)
-      (histo fq) (size fq) (query_cost fq)
+       (assert (and (> %s 0) (<= %s %d)))\n\
+       (declare-const %s Int) ; query cost\n\
+       (assert (and (> %s 0) (<= %s %d)))\n"
+      (RamenName.string_of_fq fq) print_func_stats fq cost
+      (histo fq)
+      (size fq)
+      (size fq) (size fq) (smt_size_of_bytes !tot_archive_size)
+      (query_cost fq)
+      (query_cost fq) (query_cost fq) max_query_cost
   ) vertices
 
-let emit_constraints vertices oc user_conf =
+let emit_constraints ~set_name vertices oc user_conf =
   Array.iteri (fun i node_conf ->
-    let err_name = "user_"^ string_of_int i in
+    let err_name = scramble (set_name ^"_"^ string_of_int i) in
     let matching =
       Hashtbl.enum vertices //
       (fun (fq, _) ->
         Globs.matches node_conf.pattern (RamenName.string_of_fq fq)) |>
       List.of_enum in
     if matching = [] then
-      !logger.warning "User constraint %a matches no function"
+      !logger.warning "Constraint %a matches no function"
         Globs.print_pattern node_conf.pattern
     else
       Printf.fprintf oc
-        "(assert (! (+ 0 %a) : named %s))\n"
+        "(assert (! (< (+ 0 %a) %d) :named %s))\n"
         (list_print (fun oc (fq, _) -> String.print oc (size fq))) matching
+        (smt_size_of_bytes node_conf.size)
         err_name
   ) user_conf
 
@@ -281,7 +317,7 @@ let emit_query_costs vertices oc inv_edges =
  *   year. Otherwise, that's zero.  *)
 let emit_storage_costs oc vertices =
   Hashtbl.iter (fun fq _ ->
-    Printf.fprintf oc "%a\n"
+    Printf.fprintf oc "(assert %a)\n"
       (emit_imply_not (histo fq)) ("(= 0 "^ size fq ^")")
   ) vertices
 
@@ -311,9 +347,11 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
   in
   Printf.fprintf oc
     "%a\
-     ; What we aim to know: should each function archi e or not?\n\
+     ; What we aim to know: should each function archive or not?\n\
      %a\n\
      ; User specified constraints:\n\
+     ; TODO\n\
+     ; Total size constraint:\n\
      %a\n\
      ; Query costs:\n\
      %a\n\
@@ -325,7 +363,10 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
      %t"
     preamble optimize
     emit_all_vars vertices
-    (emit_constraints vertices) user_conf
+(*    (emit_constraints ~set_name:"user" vertices) user_conf*)
+    (* FIXME: user should specify history length not size! *)
+    (emit_constraints ~set_name:"totsize" vertices)
+      [| { pattern = Globs.all ; size = !tot_archive_size } |]
     (emit_query_costs vertices) inv_edges
     emit_storage_costs vertices
     emit_persistents_query_costs vertices
