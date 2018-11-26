@@ -31,15 +31,17 @@ let no_stats =
     wait_in = None ; wait_out = None ; bytes_in = None ; bytes_out = None ;
     last_out = None ; startup_time = 0. }
 
-let read_stats conf =
+let read_stats ?while_ conf =
   let h = Hashtbl.create 57 in
   let open RamenTypes in
   let bname = C.report_ringbuf conf in
   let typ = RamenBinocle.tuple_typ in
   let event_time = RamenBinocle.event_time in
   let now = Unix.gettimeofday () in
+  let while_ () = (* Do not wait more than 1s: *)
+    (while_ |? always) () && Unix.gettimeofday () -. now < 1. in
   let until =
-    match RamenSerialization.time_range bname typ [] event_time with
+    match RamenSerialization.time_range ~while_ bname typ [] event_time with
     | None ->
         !logger.warning "No time range information for instrumentation" ;
         now
@@ -58,8 +60,6 @@ let read_stats conf =
   and get_float = function VFloat f -> f [@@ocaml.warning "-8"]
   and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"]
   in
-  let while_ () = (* Do not wait more than 1s: *)
-    Unix.gettimeofday () -. now < 1. in
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until () (fun () tuple _t1 _t2 ->
     let worker = get_string tuple.(0)

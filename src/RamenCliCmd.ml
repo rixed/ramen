@@ -692,7 +692,7 @@ let archivist conf loop daemonize to_stdout to_syslog () =
   let stats_thread =
     Thread.create (
       restart_on_failure ~while_ "Reading notifications"
-        RamenArchivist.notification_reader) conf in
+        (RamenArchivist.notification_reader ~while_)) conf in
   restart_on_failure ~while_ "Allocating storage space"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;

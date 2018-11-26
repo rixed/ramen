@@ -104,10 +104,10 @@ let per_func_stats_sync f =
   BatMutex.synchronize ~lock:per_func_stats_lock f
 
 (* tail -f the #notifs stream and update per_func_stats: *)
-let notification_reader conf =
+let notification_reader ?while_ conf =
   !logger.info "Starting thread reading all notifications..." ;
-  forever (fun () ->
-    RamenPs.read_stats conf |>
+  try forever (fun () ->
+    RamenPs.read_stats ?while_ conf |>
     Hashtbl.iter (fun fq s ->
       per_func_stats_sync
         (Hashtbl.modify_opt fq (function
@@ -124,8 +124,10 @@ let notification_reader conf =
               )
         )) per_func_stats
     ) ;
-    Unix.sleepf (jitter 10.)
+    Option.may (fun w -> if not (w ()) then raise Exit) while_ ;
+    RamenProcesses.sleep_or_exit ?while_ (jitter 10.)
   ) ()
+  with Exit -> ()
 
 (* Returns v relative to r as an integer from 0 to 10 inclusive. *)
 let scale_to r v =

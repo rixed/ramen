@@ -22,6 +22,12 @@ let dummy_nop () =
   !logger.warning "Running in dummy mode" ;
   until_quit (fun () -> Unix.sleep 3 ; true)
 
+let rec sleep_or_exit ?(while_=always) t =
+  if t > 0. && while_ () then (
+    let delay = min 1. t in
+    Unix.sleepf delay ;
+    sleep_or_exit ~while_ (t -. delay)
+  )
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None

@@ -125,11 +125,11 @@ RAMEN_SOURCES = \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
-	src/RamenPs.ml \
-	src/RamenArchivist.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenProcesses.ml \
+	src/RamenPs.ml \
+	src/RamenArchivist.ml \
 	src/RamenHttpHelpers.ml \
 	src/RamenGc.ml \
 	src/RamenRun.ml \

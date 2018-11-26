@@ -379,7 +379,7 @@ let time_range ?while_ bname typ params event_time =
   fold_buffer_with_time ?while_ bname typ params event_time mi_ma (fun mi_ma _tup t1 t2 ->
     max_range mi_ma t1 t2, true)
 
-let fold_time_range ?while_ bname typ params event_time since until init f =
+let fold_time_range ?(while_=always) bname typ params event_time since until init f =
   let dir = arc_dir_of_bname bname in
   let entries =
     RingBufLib.arc_files_of dir //
@@ -387,13 +387,15 @@ let fold_time_range ?while_ bname typ params event_time since until init f =
   let f usr tuple t1 t2 =
     (if t1 >= until || t2 < since then usr else f usr tuple t1 t2), true in
   let rec loop usr =
-    match Enum.get_exn entries with
-    | exception Enum.No_more_elements -> usr
-    | _s1, _s2, _t1, _t2, fname ->
-        fold_buffer_with_time ?while_ ~early_stop:false
-                              fname typ params event_time usr f |>
-        loop
+    if while_ () then
+      match Enum.get_exn entries with
+      | exception Enum.No_more_elements -> usr
+      | _s1, _s2, _t1, _t2, fname ->
+          fold_buffer_with_time ~while_ ~early_stop:false
+                                fname typ params event_time usr f |>
+          loop
+    else usr
   in
   let usr = loop init in
   (* finish with the current rb: *)
-  fold_buffer_with_time ?while_ bname typ params event_time usr f
+  fold_buffer_with_time ~while_ bname typ params event_time usr f
