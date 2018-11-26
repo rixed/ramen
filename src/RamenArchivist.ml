@@ -30,7 +30,7 @@ and per_node_conf =
     [@@ppp PPP_OCaml]
 
 let get_user_conf fname =
-  ppp_of_file user_conf_ppp_ocaml fname
+  ppp_of_file ~error_ok:true user_conf_ppp_ocaml fname
 
 let user_conf_file conf =
   conf.C.persist_dir ^"/archiving/"
@@ -303,7 +303,12 @@ let emit_total_storage_costs oc vertices =
     (hashkeys_print (fun oc fq -> String.print oc (size fq))) vertices
 
 let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
-  let user_conf = get_user_conf (user_conf_file conf) in
+  let user_conf =
+    try get_user_conf (user_conf_file conf)
+    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+      !logger.info "No user configuration found" ;
+      [||]
+  in
   Printf.fprintf oc
     "%a\
      ; What we aim to know: should each function archi e or not?\n\
