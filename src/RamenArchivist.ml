@@ -258,8 +258,8 @@ let parents_of inv_edges fq =
 
 (* The cost for querying the function f is:
  *
- *   if f is archiving its history, then its the cost of reading the history.
- *   otherwise, its the cost of querying each of its parent + the processing
+ *   if f is archiving its history, then it's the cost of reading the history.
+ *   otherwise, it's the cost of querying each of its parent + the processing
  *   cost of f.  *)
 let emit_query_costs vertices oc inv_edges =
   Hashtbl.iter (fun fq (_, proc_cost) ->
