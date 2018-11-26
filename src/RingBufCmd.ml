@@ -57,20 +57,20 @@ let summary conf files () =
     in
     if s.prod_tail <> s.cons_head then ( (* not empty *)
       Printf.printf "\nAvailable bytes:" ;
-      let max_sz = 256 in
+      let max_words = 64 in
       if s.cons_head < s.prod_tail then ( (* no wraparound *)
         (* Reminder: we manipulate only word indices here: *)
         let sz = s.prod_tail - s.cons_tail in
-        dump s.cons_tail (min max_sz sz) ;
-        if sz > max_sz then Printf.printf "...\n"
+        dump s.cons_tail (min max_words sz) ;
+        if sz > max_words then Printf.printf "...\n"
       ) else ( (* wrap around *)
         let sz = s.capacity - s.cons_tail in
-        dump s.cons_tail (min max_sz sz) ;
-        if sz < max_sz then (
+        dump s.cons_tail (min max_words sz) ;
+        if sz < max_words then (
           Printf.printf "***** WRAP AROUND *****\n" ;
-          let max_sz_ = max_sz - sz in
-          dump 0 (min max_sz_ s.prod_tail) ;
-          if s.prod_tail > max_sz_ then Printf.printf "...\n"))) ;
+          let max_words_ = max_words - sz in
+          dump 0 (min max_words_ s.prod_tail) ;
+          if s.prod_tail > max_words_ then Printf.printf "...\n"))) ;
     unload rb
   ) files
 
