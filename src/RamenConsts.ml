@@ -137,7 +137,7 @@ struct
     "Max number of archive files to keep per operation; \
      0 would disable archiving altogether"
   let loop =
-    "Do not return after the GC is over. Instead, wait for the specified \
+    "Do not return after the work is over. Instead, wait for the specified \
      amount of time and restart"
   let dry_run = "Just display what would be deleted"
   let autoreload =
