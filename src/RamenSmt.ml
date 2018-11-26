@@ -38,8 +38,7 @@ let preamble oc optimize =
 
 let post_scriptum oc =
   Printf.fprintf oc
-    "; Now you know it all.\n\
-     ; So what's the answer to life, the universe and everything?\n\
+    "; So what's the answer to life, the universe and everything?\n\
      (check-sat) ; also experiment with: (check-sat-using smt)\n\
      (get-unsat-core)\n\
      (get-model)\n"
