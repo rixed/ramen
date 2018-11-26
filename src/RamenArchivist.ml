@@ -271,7 +271,7 @@ let emit_query_costs vertices oc inv_edges =
     let parents = parents_of inv_edges fq in
     Printf.fprintf oc "(= %s (+ %a %d)))))\n"
       (query_cost fq)
-      (list_print (fun oc parent -> String.print oc (histo parent))) parents
+      (list_print (fun oc parent -> String.print oc (query_cost parent))) parents
       proc_cost
   ) vertices
 
