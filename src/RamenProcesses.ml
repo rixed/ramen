@@ -342,10 +342,6 @@ let really_start conf proc parents children =
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
     RingBuf.create rb_name ;
-    (* FIXME: if a worker started to write and we repair while it hasn't
-     * committed, that message will be lost. Better address this in repair
-     * itself by spinning a bit: if we can't see tail=head on a few tries
-     * then only assume it's broken. *)
     let rb = RingBuf.load rb_name in
     finally (fun () -> RingBuf.unload rb)
       (fun () ->

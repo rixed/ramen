@@ -691,21 +691,37 @@ void ringbuf_dequeue_commit(struct ringbuf *rb, struct ringbuf_tx const *tx)
   //print_rb(rb);
 }
 
+static bool really_is_different(uint32_t _Atomic *a, uint32_t _Atomic *b)
+{
+  uint32_t d = atomic_load(a) - atomic_load(b);
+  if (d == 0) return false;
+
+  for (unsigned try = 0; try < MAX_WAIT_LOOP; try ++) {
+      if (atomic_load(a) - atomic_load(b) != d) return false;
+      nanosleep(&quick, NULL);
+  }
+
+  return true;
+}
+
+/* At start we suppose the RB has head=tail for both prod and cons.
+ * If not we force it so. Be wary that some writers/readers might have
+ * been started already. */
 bool ringbuf_repair(struct ringbuf *rb)
 {
   struct ringbuf_file *rbf = rb->rbf;
-  bool needed = false;
+  bool was_needed = false;
 
   // Avoid writing in this mmaped page for no good reason:
-  if (atomic_load(&rbf->prod_head) != atomic_load(&rbf->prod_tail)) {
+  if (really_is_different(&rbf->prod_head, &rbf->prod_tail)) {
     atomic_store(&rbf->prod_head, atomic_load(&rbf->prod_tail));
-    needed = true;
+    was_needed = true;
   }
 
-  if (rbf->cons_head != rbf->cons_tail) {
-    rbf->cons_head = rbf->cons_tail;
-    needed = true;
+  if (really_is_different(&rbf->cons_head, &rbf->cons_tail)) {
+    atomic_store(&rbf->cons_head, atomic_load(&rbf->cons_tail));
+    was_needed = true;
   }
 
-  return needed;
+  return was_needed;
 }
