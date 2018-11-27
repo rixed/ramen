@@ -22,24 +22,49 @@ let glob_ppp_ocaml : glob PPP.t =
   and g2s = Globs.decompile in
   PPP.(string >>: (g2s, s2g))
 
-type user_conf = per_node_conf array [@@ppp PPP_OCaml]
+type user_conf =
+  { (* Global size limit, in byte (although the SMT uses coarser grained
+       sizes): *)
+    size_limit : int ;
+    (* The cost to retrieve one byte of archived data, expressed in the
+     * unit of CPU time (ie. the time it takes to retrieve that byte if
+     * you value the IO time as much as the CPU time): *)
+    recall_cost : float [@ppp_default 100.] ;
+    (* Individual nodes we want to keep some history, none by default.
+     * TODO: replaces or override the persist flag + retention length
+     * that should go with it): *)
+    retentions : (glob, retention) Hashtbl.t
+      [@ppp_default
+        let h = Hashtbl.create 1 in
+        Hashtbl.add h Globs.all
+          { duration = 86400. *. 365. ; query_freq = 1. /. 600. } ;
+        h ] }
+  [@@ppp PPP_OCaml]
 
-and per_node_conf =
-  { (* Functions which FQ match [pattern] will be collectively allowed to
-       use [size] bytes of storage. If nothing match then no size
-       restriction applies. *)
-    pattern : glob [@ppp_default Globs.all] ;
-    (* In bytes but the SMT uses coarse grained sizes. *)
-    size : int }
-    [@@ppp PPP_OCaml]
+and retention =
+  { duration : float ;
+    (* How frequently we intend to query it, in Hertz (TODO: we could
+     * approximate a better value if absent): *)
+    query_freq : float [@ppp_default 1. /. 600.] }
+  [@@ppp PPP_OCaml]
 
 let get_user_conf fname =
-  ppp_of_file ~error_ok:true user_conf_ppp_ocaml fname
+  ensure_file_exists ~min_size:14 ~contents:"{size_limit=104857600}" fname ;
+  ppp_of_file user_conf_ppp_ocaml fname
 
 let user_conf_file conf =
   conf.C.persist_dir ^"/archiving/"
                      ^ RamenVersions.archiving_conf
                      ^"/config"
+
+let retention_of_fq conf fq =
+  try
+    Hashtbl.enum conf.retentions |>
+    Enum.find_map (fun (pat, ret) ->
+      if Globs.matches pat (RamenName.string_of_fq fq) then Some ret
+      else None)
+  with Not_found -> { duration = 0. ; query_freq = 0. }
+
 
 (* We need to listen to all stats and based on that we build an understanding
  * of each function characteristics such as output size / time, CPU spent and
@@ -55,15 +80,9 @@ let user_conf_file conf =
  * then stored in a file as a mapping from FQ to number of bytes allowed on
  * disk: *)
 
-type per_func_quota = (RamenName.fq, int) Hashtbl.t
-  [@@ppp PPP_OCaml]
-
-let get_per_func_quota fname =
-  ppp_of_file per_func_quota_ppp_ocaml fname
-
 (* Global per-func stats that are updated by the thread reading #notifs and
  * the one reading the RC, and also saved on disk while ramen is not running:
- *)
+ * (TODO) *)
 
 type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
@@ -146,88 +165,101 @@ let notification_reader ?while_ conf =
   ) ()
   with Exit -> ()
 
-let max_query_cost = 10 (* TODO: Consts *)
-
-(* Returns v relative to r as an integer from 0 to 10 inclusive. *)
-let scale_to r v =
-  if v >= r then max_query_cost else
-  if v <= 0. then 0 else
-  int_of_float (float_of_int (max_query_cost + 1) *. v /. r)
-
-(* Return the "processing cost" per tuple, ie the CPU time rate. *)
-let cost_of_stats now (tot, last) =
+(* Return the "processing cost" per second, ie the CPU time it takes to
+ * process one second worth of data, the "storage size" per second in bytes.
+ * The recall cost of a second worth of output is this size times the
+ * recall_cost. *)
+let costs_of_stats now (tot, last) =
   let s = add_func_stats tot last in
   let dt = now -. tot.startup_time in
-  s.cpu /. dt
+  s.cpu /. dt,
+  Int64.to_float s.bytes /. dt
 
-(* The cost of running fq per unit of time, from 0 to 10. *)
-let cost_of_func () =
+(* The costs (cpu * storage) of recomputing and reading fq output per unit of time,
+ * from 0 to 10. *)
+let costs_of_func fq =
   let now = Unix.gettimeofday () in
-  let max_cost, avg_cost =
-    let ma, sum, count =
-      per_func_stats_sync
-        (Hashtbl.fold (fun _fq s (ma, sum, count) ->
-          let c = cost_of_stats now s in
-          max ma c, sum +. c, count + 1
-        ) per_func_stats) (0., 0., 0) in
-    ma,
-    if count = 0 then 0.001 (* wtv at this point *) else
-    sum /. float_of_int count
-  in
-  fun fq ->
-    (match per_func_stats_sync
-             (Hashtbl.find per_func_stats) fq with
-    | exception Not_found -> avg_cost
-    | s -> cost_of_stats now s) |>
-    scale_to max_cost
+  match per_func_stats_sync
+           (Hashtbl.find per_func_stats) fq with
+  | exception Not_found -> 0.5, 100e3 (* Beware of unknown functions! *)
+  | s -> costs_of_stats now s
 
-(* Return a graph of the running config with vertices weighted according to
- * their computing cost: *)
+(* Return a graph of the running config with costs: *)
 let rc_complexity conf =
   let vertices, edges = RamenPs.func_graph conf in
-  let cost_of_func = cost_of_func () in
   let vertices =
     Hashtbl.map (fun fq func ->
-      func, cost_of_func fq
+      func, costs_of_func fq
     ) vertices in
   vertices, edges
 
-(* For any two functions, return the shortest path (reversed) in between
- * them or raise Not_found: *)
-let path edges src dst =
-  let fold v f u =
-    Hashtbl.find edges v |>
-    List.fold_left (fun u d ->
-      let d' = (RamenName.string_of_fq d).[0] in
-      f u d d') u
-  in
-  path_in_graph ~src ~dst { fold }
 
 (*
- * Optimising storage for a duration of one year (actually a parameter):
+ * Optimising storage:
+ *)
+
+(* We have constraints given by the user configuration that set a higher
+ * bound on some history sizes. We need those constraints named
+ * in case we have to report non-satisfiability, so we name them according
+ * to their index in the file: *)
+
+let constraint_name i =
+  scramble ("user_" ^ string_of_int i)
+
+(* Now we want to minimize the cost of querying the whole history of all
+ * persistent functions in proportion to their query frequency, while still
+ * remaining within the bounds allocated to storage.
  *
- * Premises:
+ * The cost to retrieve length L at frequency H of any function output is
+ * either:
  *
- * - We have hard constraints given by user configuration that set a higher
- *   bound of the sum of some history sizes. We need those constraints named
- *   in case we have to report non-satisfiability;
- *   FIXME: should be a max duration per precious function, ie should be
- *   right in the function definition actually.
- *   Also, we are told how much disk space to use (globally).
- *   Then we want to know what node we should archive and for what size (GC
- *   want sizes).
+ * - the IO cost of reading it: L * H * storage cost
+ * - or the CPU (+ RAM?) cost of recomputing it: L * H * cpu cost
  *
- * - Assuming we will query each persistent function complete history once,
- *   the total cost of doing so must be as small as possible ; the cost being
- *   the IO cost of reading the required history and the CPU (and ideally, RAM)
- *   cost of all functions involved to recompute the desired output;
+ * ...depending on whether the output is archived or not.
+ * Notice that here L is coming from the persistent function that's a child of
+ * that one (or that very one).
  *
- * The processing cost of each function is a given constant.
+ * We know each cost individually, and how to relate storage and computing
+ * cost thanks to user configuration.
+ * We want to make the sum of all those costs as small as possible.
  *
- * The total storage cost of the solution is the storage cost of each and
- * every function. We also want it as small as possible.
+ * Notice that we want the total storage to be below the provided limits but
+ * not necessarily as small as possible (although the smaller the storage the
+ * faster it is to read).
  *
- * Each individual cost is represented as an integer from 0 to 10.
+ * The parameters are the history length of each function, perc_i, as a
+ * percentage of available storage space between 0 (no archival whatsoever)
+ * to 100 (archive only that function). The connection between the actual
+ * length (in days) and that share of storage is constant and known for
+ * each function.
+ *
+ * The constraints are thus:
+ *
+ * - Total sum of perc_i <= 100 (we may not use exactly 100% but certainly
+ *   the solution will come close);
+ *
+ * - The archive size of a function is:
+ *   its size per second * perc_i * size_limit/100;
+ *   while its archive duration is:
+ *   its archive size / its size per second, or:
+ *   perc_i * (size_limit/(100 * size per second))
+ *
+ * - The query cost of function F for a duration L is:
+ *   - if its archive length if longer than L:
+ *     its read cost * L
+ *   - otherwise:
+ *     the query cost of each of its parent for duration L +
+ *     its own cpu cost * L.
+ *
+ * - Note that for functions with no parent, the cpu cost is infinite, as
+ *   there are actually no way to recompute it. If a function with no parent
+ *   is queried directly there is no way around archiving.
+ *
+ * - The cost of the solution it the sum of all query costs for each function
+ *   with a retention, that we want to minimize.
+ *
+ * TODO: Make it costly to radically change his mind!
  *)
 
 let list_print oc =
@@ -239,138 +271,116 @@ let hashkeys_print p =
 let const pref fq =
   pref ^ scramble (RamenName.string_of_fq fq)
 
-let histo = const "h_"
-let size = const "s_"
-let query_cost = const "q_"
+let perc = const "perc_"
+let cost i fq = (const "cost_" fq) ^"_"^ string_of_int i
 
-let smt_size_of_bytes d =
-  (* FIXME: make this a Consts, and also make sure that each and every node could be at least 1 *)
-  let size_unit = 1. *. 1024. *. 1024. in
-  Float.ceil (float_of_int d /. size_unit) |> int_of_float
-
-(* For each function, declare the boolean h_f: *)
-let emit_all_vars oc vertices =
-  Hashtbl.iter (fun fq (_func, cost) ->
+(* For each function, declare the boolean perc_f, that must be between 0
+ * and 100: *)
+let emit_all_vars durations oc vertices =
+  Hashtbl.iter (fun fq (_func, (cpu_cost, sto_cost)) ->
     Printf.fprintf oc
-      "; Storage of %s (%a, query cost: %d)\n\
-       (declare-const %s Bool) ; archive history?\n\
-       (declare-const %s Int) ; archive size\n\
-       (assert (and (> %s 0) (<= %s %d)))\n\
-       (declare-const %s Int) ; query cost\n\
-       (assert (and (> %s 0) (<= %s %d)))\n"
-      (RamenName.string_of_fq fq) print_func_stats fq cost
-      (histo fq)
-      (size fq)
-      (size fq) (size fq) (smt_size_of_bytes !tot_archive_size)
-      (query_cost fq)
-      (query_cost fq) (query_cost fq) max_query_cost
+      "; Storage share of %s (%a, query cost: %f, storage cost: %f)\n\
+       (declare-const %s Int)\n\
+       (assert (>= %s 0))\n\
+       (assert (<= %s 100)) ; should not be required but helps\n"
+      (RamenName.string_of_fq fq) print_func_stats fq cpu_cost sto_cost
+      (perc fq) (perc fq) (perc fq) ;
+    List.iteri (fun i _ ->
+      Printf.fprintf oc
+        "(declare-const %s Int)\n"
+        (cost i fq)) durations
   ) vertices
 
-let emit_constraints ~set_name vertices oc user_conf =
-  Array.iteri (fun i node_conf ->
-    let err_name = scramble (set_name ^"_"^ string_of_int i) in
-    let matching =
-      Hashtbl.enum vertices //
-      (fun (fq, _) ->
-        Globs.matches node_conf.pattern (RamenName.string_of_fq fq)) |>
-      List.of_enum in
-    if matching = [] then
-      !logger.warning "Constraint %a matches no function"
-        Globs.print_pattern node_conf.pattern
-    else
-      Printf.fprintf oc
-        "(assert (! (< (+ 0 %a) %d) :named %s))\n"
-        (list_print (fun oc (fq, _) -> String.print oc (size fq))) matching
-        (smt_size_of_bytes node_conf.size)
-        err_name
-  ) user_conf
-
-let cost_reading_history _fq =
-  (* TODO *)
-  5
+let emit_sum_of_percentages oc vertices =
+  Printf.fprintf oc "(+ 0 %a)"
+    (hashkeys_print (fun oc fq -> String.print oc (perc fq))) vertices
 
 let parents_of inv_edges fq =
   Hashtbl.find_default inv_edges fq []
 
-(* The cost for querying the function f is:
- *
- *   if f is archiving its history, then it's the cost of reading the history.
- *   otherwise, it's the cost of querying each of its parent + the processing
- *   cost of f.  *)
-let emit_query_costs vertices oc inv_edges =
-  Hashtbl.iter (fun fq (_, proc_cost) ->
-    Printf.fprintf oc
-      "(assert (or (and %s (= %s %d))\n\
-                   (and (not %s) "
-      (histo fq) (query_cost fq) (cost_reading_history fq)
-      (histo fq) ;
+let secs_per_day = 86400.
+
+let emit_query_costs user_conf durations vertices oc inv_edges =
+  String.print oc "; Durations: " ;
+  List.iteri (fun i d ->
+    Printf.fprintf oc "%s%d:%fs"
+      (if i > 0 then ", " else "") i d
+  ) durations ;
+  String.print oc "\n" ;
+  (* Now for each of these durations, instruct the solver what the query cost
+   * will be: *)
+  Hashtbl.iter (fun fq (_, (cpu_cost, sto_size)) ->
     let parents = parents_of inv_edges fq in
-    Printf.fprintf oc "(= %s (+ %a %d)))))\n"
-      (query_cost fq)
-      (list_print (fun oc parent -> String.print oc (query_cost parent))) parents
-      proc_cost
+    Printf.fprintf oc "; Query cost of %s (parents: %a)\n"
+      (RamenName.string_of_fq fq)
+      (list_print (fun oc p ->
+        String.print oc (RamenName.string_of_fq p))) parents ;
+    List.iteri (fun i d ->
+      let recall_cost =
+        ceil_to_int (sto_size *. d *. user_conf.recall_cost) in
+      let compute_cost =
+        if parents = [] then "9999999999" else
+        Printf.sprintf2 "(+ %d (+ 0 %a))"
+          (ceil_to_int (cpu_cost *. d))
+          (* cost of all parents for that duration: *)
+          (list_print (fun oc parent ->
+             Printf.fprintf oc "%s" (cost i parent))) parents
+      in
+      Printf.fprintf oc
+        "(assert (= %s\n\
+            (ite (>= %s %d)\n\
+                 %d\n\
+                 %s)))\n"
+      (cost i fq)
+      (perc fq)
+        (* Percentage of size_limit required to hold duration [d] of
+         * archives: *)
+        (ceil_to_int (d *. sto_size *. 100. /.
+         float_of_int user_conf.size_limit))
+      recall_cost
+      compute_cost
+    ) durations
   ) vertices
 
-(* The storage cost of f is:
- *
- *   if f is archiving its history, then that's the estimated size after one
- *   year. Otherwise, that's zero.  *)
-let emit_storage_costs oc vertices =
-  Hashtbl.iter (fun fq _ ->
-    Printf.fprintf oc "(assert %a)\n"
-      (emit_imply_not (histo fq)) ("(= 0 "^ size fq ^")")
-  ) vertices
-
-(* The cost of querying the solution is the cost of querying each persistent
- * function. We want it as small as possible.  *)
-let emit_persistents_query_costs oc vertices =
-  let persistents =
-    Hashtbl.enum vertices //@
-    (fun (fq, (func, _proc_cost)) ->
-      if func.F.persistent then Some fq else None) |>
-    List.of_enum in
-  Printf.fprintf oc "(+ 0%a)"
-    (list_print (fun oc fq -> String.print oc (query_cost fq))) persistents
-
-(* We also want to store as little as possible, so we try to minimize the
- * total size of storage on disk.  *)
-let emit_total_storage_costs oc vertices =
-  Printf.fprintf oc "(+ 0%a)"
-    (hashkeys_print (fun oc fq -> String.print oc (size fq))) vertices
+let emit_total_query_costs user_conf durations oc vertices =
+  Printf.fprintf oc "(+ 0 %a)"
+    (hashkeys_print (fun oc fq ->
+      let retention = retention_of_fq user_conf fq in
+      if retention.duration > 0. then
+        (* Which index is that? *)
+        let i = List.index_of retention.duration durations |> Option.get in
+        (* The cost is a whole day of queries: *)
+        let queries_per_days =
+          ceil_to_int (retention.query_freq *. secs_per_day) in
+        Printf.fprintf oc "(* %s %d)"
+          (cost i fq) queries_per_days))
+    vertices
 
 let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
-  let user_conf =
-    try get_user_conf (user_conf_file conf)
-    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
-      !logger.info "No user configuration found" ;
-      [||]
-  in
+  let user_conf = get_user_conf (user_conf_file conf) in
+  (* To begin with, what retention durations are we interested about? *)
+  let durations =
+    Hashtbl.enum user_conf.retentions /@
+    (fun (_fq, ret) -> ret.duration) |>
+    List.of_enum |>
+    List.sort_uniq Float.compare in
   Printf.fprintf oc
     "%a\
-     ; What we aim to know: should each function archive or not?\n\
+     ; What we aim to know: the percentage of available storage to be used\n\
+     ; for each function:\n\
      %a\n\
-     ; User specified constraints:\n\
-     ; TODO\n\
-     ; Total size constraint:\n\
+     ; Of course the sum of those shares cannot exceed 100:
+     (assert (<= %a 100))\n\
+     ; Query costs of each function:\n\
      %a\n\
-     ; Query costs:\n\
-     %a\n\
-     ; Storage costs:\n\
-     %a\n\
-     ; Minimize the cost of querying each persistent function +\n\
-     ; the total storage cost:\n\
-     (minimize (+ %a %a))\n\
+     ; Minimize the cost of querying each function with retention:\n\
+     (minimize %a)\n\
      %t"
     preamble optimize
-    emit_all_vars vertices
-(*    (emit_constraints ~set_name:"user" vertices) user_conf*)
-    (* FIXME: user should specify history length not size! *)
-    (emit_constraints ~set_name:"totsize" vertices)
-      [| { pattern = Globs.all ; size = !tot_archive_size } |]
-    (emit_query_costs vertices) inv_edges
-    emit_storage_costs vertices
-    emit_persistents_query_costs vertices
-    emit_total_storage_costs vertices
+    (emit_all_vars durations) vertices
+    emit_sum_of_percentages vertices
+    (emit_query_costs user_conf durations vertices) inv_edges
+    (emit_total_query_costs user_conf durations) vertices
     post_scriptum
 
 let allocate_storage conf =
@@ -379,12 +389,24 @@ let allocate_storage conf =
   let inv_edges = Hashtbl.create (Hashtbl.length edges) in
   Hashtbl.iter (fun par children ->
     List.iter (fun child ->
-      Hashtbl.modify_def [ par ] child (List.cons par) inv_edges
+      Hashtbl.modify_def [] child (List.cons par) inv_edges
     ) children
   ) edges ;
+  let open RamenSmtParser in
   let fname = "/tmp/archiving.smt2"
   and emit = emit_smt2 conf (vertices, inv_edges)
-  and parse_result _sym _vars _sort _term = ()
+  and parse_result sym vars sort term =
+    try Scanf.sscanf sym "perc_%s%!" (fun s ->
+      let s = unscramble s in
+      match vars, sort, term with
+      | [], NonParametricSort (Identifier "Int"),
+        ConstantTerm perc ->
+          let perc = int_of_constant perc in
+          if perc <> 0 then
+            !logger.info "%S: %d%%" s perc
+      | _ ->
+          !logger.warning "  of some sort...?")
+    with Scanf.Scan_failure _ -> ()
   and unsat _syms _output = ()
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat

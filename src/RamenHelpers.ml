@@ -19,6 +19,9 @@ let align_float ?(round=floor) step v =
 let round_to_int f =
   int_of_float (Float.round f)
 
+let ceil_to_int f =
+  int_of_float (Float.ceil f)
+
 (* The original Float.to_string adds a useless dot at the end of
  * round numbers, and likes to end with lots of zeroes: *)
 let nice_string_of_float v =
