@@ -598,7 +598,7 @@ let render_graphite conf headers body =
   let data_fields =
     List.fold_left (fun dfs (data_field, target, _) ->
       List.iter (fun (fact_name, fact_val) ->
-        Hashtbl.modify_def (SimpleSet.Single fact_val) fact_name (fun vals ->
+        Hashtbl.modify_def SimpleSet.Empty fact_name (fun vals ->
           SimpleSet.add vals fact_val
         ) factor_values ;
       ) target ;

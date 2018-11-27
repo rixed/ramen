@@ -147,7 +147,7 @@ let func_graph conf =
               List.iter (fun (pprog, pfunc) ->
                 let pprog = F.program_of_parent_prog program_name pprog in
                 let pfq = RamenName.fq pprog pfunc in
-                Hashtbl.modify_def [ fq ] pfq (List.cons fq) edges
+                Hashtbl.modify_def [] pfq (List.cons fq) edges
               ) func.F.parents
             ) prog.P.funcs
       )
