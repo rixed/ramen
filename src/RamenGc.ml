@@ -7,9 +7,6 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 
-(* Have a single watchdog for cleanup_old_files whatever happen: *)
-let watchdog = ref None
-
 let get_log_file () =
   Unix.gettimeofday () |> Unix.localtime |> log_file
 
@@ -103,13 +100,11 @@ let cleanup_once conf dry_run max_archives =
   dir_subtree_iter ~on_dir notifdir
 
 let cleanup_loop conf dry_run sleep_time max_archives =
-  if !watchdog = None then
-    let timeout = float_of_int sleep_time *. 2. in
-    watchdog :=
-      Some (RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit) ;
-  let watchdog = Option.get !watchdog in
+  let watchdog =
+    let timeout = sleep_time *. 2. in
+    RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
     cleanup_once conf dry_run max_archives ;
     RamenWatchdog.reset watchdog ;
-    Unix.sleep sleep_time) ()
+    Unix.sleepf (jitter sleep_time)) ()

@@ -246,7 +246,7 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
-  if daemonize && loop = 0 then
+  if daemonize && loop = 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   if to_syslog then
     init_syslog conf.C.log_level
@@ -256,7 +256,7 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
       else Some (conf.C.persist_dir ^"/log/gc") in
     Option.may mkdir_all logdir ;
     init_logger ?logdir conf.C.log_level) ;
-  if loop = 0 then
+  if loop <= 0. then
     RamenGc.cleanup_once conf dry_run max_archives
   else (
     check_binocle_errors () ;
