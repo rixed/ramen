@@ -1,0 +1,14 @@
+{
+  "root" => {
+    parents = [];
+    running_time = 600; tuples = 6000; bytes = 600000; cpu = 1;
+  };
+  "children/a" => {
+    parents = [ "root" ];
+    running_time = 600; tuples = 6000; bytes = 400000; cpu = 1;
+  };
+  "children/b" => {
+    parents = [ "root" ];
+    running_time = 600; tuples = 6000; bytes = 500000; cpu = 1;
+  };
+}

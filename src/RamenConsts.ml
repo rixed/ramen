@@ -221,6 +221,8 @@ struct
   let api = "Implement ramen API over http"
   let fault_injection_rate = "Rate at which to generate fake errors"
   let purge = "Also remove the program from the configuration"
+  let no_update_stats = "Do no attempt to update the workers stats file"
+  let no_update_allocs = "Do no attempt to update the allocations file"
 end
 
 module WorkerCommands =
@@ -265,9 +267,6 @@ struct
   (* Special case for when the timeseries query comes from the API: we then
    * want it to export for longer. *)
   let api_export_duration = 3600. *. 24.
-
-  (* Archives total size: *)
-  let archive_size = 104_857_600 (* 100 MiB *)
 end
 
 module SpecialFunctions =

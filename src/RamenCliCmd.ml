@@ -673,11 +673,13 @@ let graphite_expand conf for_render all query () =
  * able to retrieve or rebuild the output of all persistent functions.
  *)
 
-let archivist conf loop daemonize to_stdout to_syslog () =
+let archivist conf loop daemonize no_stats no_allocs to_stdout to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
+  if no_stats && no_allocs then
+    failwith "Options --no-stats and --no-allocs are incompatible." ;
   if to_syslog then
     init_syslog conf.C.log_level
   else (
@@ -686,25 +688,13 @@ let archivist conf loop daemonize to_stdout to_syslog () =
       else Some (conf.C.persist_dir ^"/log/archivist") in
     Option.may mkdir_all logdir ;
     init_logger ?logdir conf.C.log_level) ;
-  check_binocle_errors () ;
-  if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers conf ;
-  let stats_thread =
-    Thread.create (
-      restart_on_failure ~while_ "Reading notifications"
-        (RamenArchivist.notification_reader ~while_)) conf in
-  restart_on_failure ~while_ "Allocating storage space"
-    RamenExperiments.(specialize the_big_one) [|
-      RamenProcesses.dummy_nop ;
-      (fun () ->
-        (* We can run at once since we (should) have saved previously
-         * acquired precious statistics. (TODO) *)
-        RamenArchivist.allocate_storage conf ;
-        if loop > 0 then
-          Unix.sleep loop
-        else
-          RamenProcesses.quit := Some RamenConsts.ExitCodes.terminated) |] ;
-  Thread.join stats_thread
+  if loop <= 0. then
+    RamenArchivist.run_once conf ~while_ no_stats no_allocs
+  else (
+    check_binocle_errors () ;
+    if daemonize then do_daemonize () ;
+    RamenArchivist.run_loop conf ~while_ loop no_stats no_allocs)
 
 
 (*

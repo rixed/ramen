@@ -34,7 +34,8 @@ let complete_commands s =
       "httpd", CliInfo.httpd ;
       "variants", CliInfo.variants ;
       "gc", CliInfo.gc ;
-      "stats", CliInfo.stats ] in
+      "stats", CliInfo.stats ;
+      "archivist", CliInfo.archivist ] in
   complete commands s
 
 let complete_global_options s =
@@ -309,6 +310,11 @@ let complete str () =
             "--dry-run", CliInfo.dry_run ] @
           copts
       | "stats" ->
+          copts
+      | "archivist" ->
+          [ "--loop", CliInfo.loop ;
+            "--no-stats", CliInfo.no_update_stats ;
+            "--no-allocs", CliInfo.no_update_allocs ] @
           copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

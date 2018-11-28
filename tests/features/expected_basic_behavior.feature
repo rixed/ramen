@@ -39,3 +39,4 @@ Feature: The Ramen cli behaves according to common expectations.
       | httpd      |
       | gc         |
       | links      |
+      | archivist  |

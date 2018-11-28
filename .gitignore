@@ -62,3 +62,6 @@ src/RamenVersions.ml
 tests/features/api.feature
 src/config.h
 *~
+tests/archivist/*/log
+tests/archivist/*/archivist/v1/allocs
+tests/**/.experimenter_id

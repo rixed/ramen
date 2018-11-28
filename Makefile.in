@@ -456,7 +456,7 @@ ringbuf_test.opt: \
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-check: unit-check cli-check func-check err-check
+check: unit-check cli-check func-check err-check arc-check
 
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
@@ -543,7 +543,7 @@ tests/patterns.success: tests/patterns.x tests/fixtures/cars.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
-err-check: $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
+err-check: src/ramen $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 		t=$$(mktemp) ;\
@@ -553,6 +553,20 @@ err-check: $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 			exit 1 ;\
 		fi ;\
 		$(RM) $$t ;\
+	done ;\
+	echo SUCCESS
+
+RAMEN_ARCHIVIST_TESTS = $(wildcard tests/archivist/*.allocs)
+
+arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
+	@echo 'Running storage allocation tests'
+	@for f in $(RAMEN_ARCHIVIST_TESTS); do \
+		d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
+		src/ramen archivist --persist-dir $$d --no-stats --stdout ;\
+		if ! diff -q $$f $$d/archivist/v*/allocs ; then \
+			echo "FAILURE: $$f" ;\
+			exit 1 ;\
+		fi ;\
 	done ;\
 	echo SUCCESS
 

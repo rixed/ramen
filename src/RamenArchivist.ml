@@ -12,7 +12,16 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
-let tot_archive_size = ref Default.archive_size
+let conf_dir conf =
+  conf.C.persist_dir ^"/archivist/"
+                     ^ RamenVersions.archivist_conf
+
+(*
+ * User configuration provides what functions we want to be able to retrieve
+ * the output in the future (either directly via reading the archived output
+ * or indirectly via recomputing from parents output) and what total storage
+ * space we have at disposal.
+ *)
 
 (* We want to serialize globs as strings: *)
 type glob = Globs.pattern
@@ -29,7 +38,7 @@ type user_conf =
     (* The cost to retrieve one byte of archived data, expressed in the
      * unit of CPU time (ie. the time it takes to retrieve that byte if
      * you value the IO time as much as the CPU time): *)
-    recall_cost : float [@ppp_default 100.] ;
+    recall_cost : float [@ppp_default 1e-6] ;
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
@@ -53,9 +62,7 @@ let get_user_conf fname =
   ppp_of_file user_conf_ppp_ocaml fname
 
 let user_conf_file conf =
-  conf.C.persist_dir ^"/archiving/"
-                     ^ RamenVersions.archiving_conf
-                     ^"/config"
+  conf_dir conf ^ "/config"
 
 let retention_of_fq conf fq =
   try
@@ -65,143 +72,142 @@ let retention_of_fq conf fq =
       else None)
   with Not_found -> { duration = 0. ; query_freq = 0. }
 
-
-(* We need to listen to all stats and based on that we build an understanding
- * of each function characteristics such as output size / time, CPU spent and
- * life expectancy.
+(*
+ * Then the first stage is to gather statistics about all running workers.
+ * We do this by continuously listening to the health reports and maintaining
+ * a "stats" file with the best idea of the size of the output of each worker
+ * and its resource consumption.
+ *
  * This could be done with a dedicated worker but for now we just tail on
- * #notifs manually.
- *
- * Then we also need the RC as we also need to know the graph to be able to
- * compute distance between nodes, and also to find binary so that we can
- * measure their "complexity".
- *
- * All these informations are then used to compute the disk shares that are
- * then stored in a file as a mapping from FQ to number of bytes allowed on
- * disk: *)
+ * #notifs "manually".
+ *)
 
 (* Global per-func stats that are updated by the thread reading #notifs and
  * the one reading the RC, and also saved on disk while ramen is not running:
  * (TODO) *)
 
-type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
+type func_stats =
+  { running_time : float [@ppp_default 0.] ;
+    tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
+    bytes : int64 [@ppp_default 0L] ;
+    cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
+    ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
+    mutable parents : RamenName.fq list }
   [@@ppp PPP_OCaml]
-
-and func_stats =
-  { running_time : float ;
-    tuples : int64 ; (* We sacrifice one bit for convenience *)
-    bytes : int64 ;
-    cpu : float (* Cumulated seconds *) ;
-    ram : int64 (* Max observed heap size *) }
-  [@@ppp PPP_OCaml]
-
-let get_per_func_stats fname =
-  ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
 let func_stats_empty =
-  { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L }
+  { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
+    parents = [] }
 
 (* Returns the func_stat resulting of adding the RamenPs.stats to the
  * previous func_stat [a]: *)
-(* FIXME: should take now as argument *)
-let add_ps_stats a s default_dt =
+let add_ps_stats a s now =
   let etime_diff =
     match s.RamenPs.min_etime, s.max_etime with
     | Some t1, Some t2 -> t2 -. t1
-    | _ -> default_dt
+    | _ -> now -. s.startup_time
   in
   { running_time = a.running_time +. etime_diff ;
     tuples = Int64.add a.tuples Uint64.(to_int64 (s.out_count |? zero)) ;
     bytes = Int64.add a.bytes Uint64.(to_int64 (s.bytes_out |? zero)) ;
     cpu = a.cpu +. s.cpu ;
-    ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) }
+    ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) ;
+    parents = a.parents }
 
-(* When running we keep both the stats and the last received health report
- * as well as the last startup_time (to detect restarts): *)
-let per_func_stats : (RamenName.fq, (func_stats * float * RamenPs.t)) Hashtbl.t =
-  Hashtbl.create 29
+(* Those stats are saved on disk: *)
 
-let per_func_stats_lock = Mutex.create ()
+type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
+  [@@ppp PPP_OCaml]
 
-let per_func_stats_sync f =
-  BatMutex.synchronize ~lock:per_func_stats_lock f
+let load_per_func_stats conf =
+  let fname = conf_dir conf ^ "/stats" in
+  ensure_file_exists ~contents:"{}" fname ;
+  ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
-let print_func_stats oc fq =
-  match per_func_stats_sync
-          (Hashtbl.find per_func_stats) fq with
-  | exception Not_found ->
-      String.print oc "no statistics"
-  | tot, startup, last ->
-      let default_dt = Unix.gettimeofday () -. startup in
-      let s = add_ps_stats tot last default_dt in
-      Printf.fprintf oc
-        "running time: %s, tuples: %Ld, bytes: %Ld, cpu: %fs, ram: %Ld"
-        (string_of_duration s.running_time) s.tuples s.bytes s.cpu s.ram
+let save_per_func_stats conf stats =
+  let fname = conf_dir conf ^ "/stats" in
+  ppp_to_file ~pretty:true fname per_func_stats_ser_ppp_ocaml stats
+
+(* Then we also need the RC as we also need to know the workers relationships
+ * in order to estimate how expensive it is to rely on parents as opposed to
+ * archival.
+ *
+ * So this function enriches the per_func_stats hash with parent-children
+ * relationships and also compute and sets the various costs we need. *)
+
+let add_costs_to_stats conf per_func_stats =
+  C.with_rlock conf identity |>
+  Hashtbl.iter (fun program_name (_mre, get_rc) ->
+    match get_rc () with
+    | exception _ -> ()
+    | prog ->
+        List.iter (fun func ->
+          let fq = RamenName.fq program_name func.F.name in
+          match Hashtbl.find per_func_stats fq with
+          | exception Not_found -> ()
+          | (s, _) ->
+              s.parents <-
+                List.map (fun (pprog, pfunc) ->
+                  let pprog =
+                    F.program_of_parent_prog program_name pprog in
+                  RamenName.fq pprog pfunc
+                ) func.F.parents
+        ) prog.P.funcs)
 
 (* tail -f the #notifs stream and update per_func_stats: *)
-let notification_reader ?while_ conf =
-  !logger.info "Starting thread reading all notifications..." ;
-  try forever (fun () ->
-    RamenPs.read_stats ?while_ conf |>
-    Hashtbl.iter (fun fq s ->
-      per_func_stats_sync
-        (Hashtbl.modify_opt fq (function
-          | None ->
-              Some (func_stats_empty, s.RamenPs.startup_time, s)
-          | Some (tot, startup_time, _) ->
-              if s.RamenPs.startup_time = startup_time then (
-                Some (tot, startup_time, s)
-              ) else (
-                (* Worker has restarted. We assume it's still mostly the
-                 * same operation. Maybe consider the function signature
-                 * (and add it to the stats?) *)
-                let default_dt = Unix.gettimeofday () -. startup_time in
-                let tot = add_ps_stats tot s default_dt in
-                Some (tot, s.RamenPs.startup_time, s)
-              )
-        )) per_func_stats
-    ) ;
-    Option.may (fun w -> if not (w ()) then raise Exit) while_ ;
-    RamenProcesses.sleep_or_exit ?while_ (jitter 10.)
-  ) ()
-  with Exit -> ()
+let update_worker_stats ?while_ conf =
+  (* When running we keep both the stats and the last received health report
+   * as well as the last startup_time (to detect restarts): *)
+  let per_func_stats :
+    (RamenName.fq, (func_stats * (float * RamenPs.t) option)) Hashtbl.t =
+    load_per_func_stats conf |>
+    Hashtbl.map (fun _fq s -> s, None)
+  in
+  let now = Unix.gettimeofday () in
+  RamenPs.read_stats ?while_ conf |>
+  Hashtbl.iter (fun fq s ->
+    Hashtbl.modify_opt fq (function
+      | None ->
+          Some (func_stats_empty, Some (s.RamenPs.startup_time, s))
+      | Some (tot, None) ->
+          Some (tot, Some (s.RamenPs.startup_time, s))
+      | Some (tot, Some (startup_time, _)) ->
+          if s.RamenPs.startup_time = startup_time then (
+            Some (tot, Some (startup_time, s))
+          ) else (
+            (* Worker has restarted. We assume it's still mostly the
+             * same operation. Maybe consider the function signature
+             * (and add it to the stats?) *)
+            let tot = add_ps_stats tot s now in
+            Some (tot, Some (s.RamenPs.startup_time, s))
+          )
+    ) per_func_stats
+  ) ;
+  add_costs_to_stats conf per_func_stats ;
 
-(* Return the "processing cost" per second, ie the CPU time it takes to
- * process one second worth of data, the "storage size" per second in bytes.
- * The recall cost of a second worth of output is this size times the
- * recall_cost. *)
-let costs_of_stats (tot, startup_time, last) =
-  let default_dt = Unix.gettimeofday () -. startup_time in
-  let s = add_ps_stats tot last default_dt in
-  s.cpu /. s.running_time,
-  Int64.to_float s.bytes /. s.running_time
-
-(* The costs (cpu * storage) of recomputing and reading fq output per unit of time,
- * from 0 to 10. *)
-let costs_of_func fq =
-  match per_func_stats_sync
-           (Hashtbl.find per_func_stats) fq with
-  | exception Not_found -> 0.5, 100e3 (* Beware of unknown functions! *)
-  | s -> costs_of_stats s
-
-(* Return a graph of the running config with costs: *)
-let rc_complexity conf =
-  let vertices, edges = RamenPs.func_graph conf in
-  let vertices =
-    Hashtbl.map (fun fq func ->
-      func, costs_of_func fq
-    ) vertices in
-  vertices, edges
-
+  Hashtbl.map (fun _fq -> function
+    | tot, None -> tot
+    | tot, Some (_, last) -> add_ps_stats tot last now
+  ) per_func_stats |>
+  save_per_func_stats conf
 
 (*
  * Optimising storage:
+ *
+ * All the information in the stats file can then be used to compute the
+ * disk shares per functions ; also to be stored in a file as a mapping
+ * from FQ to number of bytes allowed on disk. This will then be read and
+ * used by the GC.
  *)
 
 (* We have constraints given by the user configuration that set a higher
  * bound on some history sizes. We need those constraints named
  * in case we have to report non-satisfiability, so we name them according
- * to their index in the file: *)
+ * to their index in the file.
+ * The only other constraint we have is that no function must cost more
+ * than the invalid cost, which arrives only when there is no other
+ * solution than to "recompute" the original values, ie there is not
+ * enough storage space. *)
 
 let constraint_name i =
   scramble ("user_" ^ string_of_int i)
@@ -259,7 +265,7 @@ let constraint_name i =
  * - The cost of the solution it the sum of all query costs for each function
  *   with a retention, that we want to minimize.
  *
- * TODO: Make it costly to radically change his mind!
+ * TODO: Make it costly to radically change one's mind!
  *)
 
 let list_print oc =
@@ -274,79 +280,86 @@ let const pref fq =
 let perc = const "perc_"
 let cost i fq = (const "cost_" fq) ^"_"^ string_of_int i
 
+(* The "compute cost" per second is the CPU time it takes to
+ * process one second worth of data. *)
+let compute_cost s = s.cpu /. s.running_time
+
+(* The "recall size" is the total size per second in bytes.
+ * The recall cost of a second worth of output will be this size
+ * times the user_conf.recall_cost. *)
+let recall_size s = Int64.to_float s.bytes /. s.running_time
+
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100: *)
-let emit_all_vars durations oc vertices =
-  Hashtbl.iter (fun fq (_func, (cpu_cost, sto_cost)) ->
+let emit_all_vars durations oc per_func_stats =
+  Hashtbl.iter (fun fq s ->
     Printf.fprintf oc
-      "; Storage share of %s (%a, query cost: %f, storage cost: %f)\n\
+      "; Storage share of %s (compute cost: %f, recall size: %f)\n\
        (declare-const %s Int)\n\
        (assert (>= %s 0))\n\
        (assert (<= %s 100)) ; should not be required but helps\n"
-      (RamenName.string_of_fq fq) print_func_stats fq cpu_cost sto_cost
+      (RamenName.string_of_fq fq)
+      (compute_cost s) (recall_size s)
       (perc fq) (perc fq) (perc fq) ;
     List.iteri (fun i _ ->
       Printf.fprintf oc
         "(declare-const %s Int)\n"
         (cost i fq)) durations
-  ) vertices
+  ) per_func_stats
 
-let emit_sum_of_percentages oc vertices =
+let emit_sum_of_percentages oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
-    (hashkeys_print (fun oc fq -> String.print oc (perc fq))) vertices
-
-let parents_of inv_edges fq =
-  Hashtbl.find_default inv_edges fq []
+    (hashkeys_print (fun oc fq -> String.print oc (perc fq))) per_func_stats
 
 let secs_per_day = 86400.
-let invalid_cost = "99999999999"
+let invalid_cost = "99999999999999999999"
 
-let emit_query_costs user_conf durations vertices oc inv_edges =
+let emit_query_costs user_conf durations oc per_func_stats =
   String.print oc "; Durations: " ;
   List.iteri (fun i d ->
-    Printf.fprintf oc "%s%d:%fs"
-      (if i > 0 then ", " else "") i d
+    Printf.fprintf oc "%s%d:%s"
+      (if i > 0 then ", " else "") i (string_of_duration d)
   ) durations ;
   String.print oc "\n" ;
-  (* Now for each of these durations, instruct the solver what the query cost
-   * will be: *)
-  Hashtbl.iter (fun fq (_, (cpu_cost, sto_size)) ->
-    let parents = parents_of inv_edges fq in
+  (* Now for each of these durations, instruct the solver what the query
+   * cost will be: *)
+  Hashtbl.iter (fun fq s ->
     Printf.fprintf oc "; Query cost of %s (parents: %a)\n"
       (RamenName.string_of_fq fq)
       (list_print (fun oc p ->
-        String.print oc (RamenName.string_of_fq p))) parents ;
+        String.print oc (RamenName.string_of_fq p))) s.parents ;
     List.iteri (fun i d ->
+      let recall_size = recall_size s in
       let recall_cost =
-        ceil_to_int (sto_size *. d *. user_conf.recall_cost) in
+        if recall_size < 0. then invalid_cost else
+        string_of_int (
+          ceil_to_int (user_conf.recall_cost *. recall_size *. d)) in
+      let compute_cost = compute_cost s in
       let compute_cost =
-        if parents = [] then invalid_cost else
+        if s.parents = [] || compute_cost < 0. then invalid_cost else
         Printf.sprintf2 "(+ %d (+ 0 %a))"
-          (ceil_to_int (cpu_cost *. d))
+          (ceil_to_int (compute_cost *. d))
           (* cost of all parents for that duration: *)
           (list_print (fun oc parent ->
-             Printf.fprintf oc "%s" (cost i parent))) parents
+             Printf.fprintf oc "%s" (cost i parent))) s.parents
       in
-      !logger.info "Cost to recall %a output for duration %.0fs: %d (or cpu=%d)"
-        RamenName.fq_print fq d recall_cost
-        (ceil_to_int (cpu_cost *. d)) ;
       Printf.fprintf oc
         "(assert (= %s\n\
-            (ite (>= %s %d)\n\
-                 %d\n\
-                 %s)))\n"
+            \t(ite (>= %s %d)\n\
+                 \t\t%s\n\
+                 \t\t%s)))\n"
       (cost i fq)
       (perc fq)
         (* Percentage of size_limit required to hold duration [d] of
          * archives: *)
-        (ceil_to_int (d *. sto_size *. 100. /.
+        (ceil_to_int (d *. recall_size *. 100. /.
          float_of_int user_conf.size_limit))
       recall_cost
       compute_cost
     ) durations
-  ) vertices
+  ) per_func_stats
 
-let emit_no_invalid_cost user_conf durations oc vertices =
+let emit_no_invalid_cost user_conf durations oc per_func_stats =
   Hashtbl.iter (fun fq _ ->
     let retention = retention_of_fq user_conf fq in
     if retention.duration > 0. then (
@@ -354,9 +367,9 @@ let emit_no_invalid_cost user_conf durations oc vertices =
       let i = List.index_of retention.duration durations |> Option.get in
       Printf.fprintf oc "(assert (< %s %s))\n"
         (cost i fq) invalid_cost)
-  ) vertices
+  ) per_func_stats
 
-let emit_total_query_costs user_conf durations oc vertices =
+let emit_total_query_costs user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc fq ->
       let retention = retention_of_fq user_conf fq in
@@ -373,10 +386,9 @@ let emit_total_query_costs user_conf durations oc vertices =
           queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
           (cost i fq) queries_per_days))
-      vertices
+      per_func_stats
 
-let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
-  let user_conf = get_user_conf (user_conf_file conf) in
+let emit_smt2 user_conf per_func_stats oc ~optimize =
   (* To begin with, what retention durations are we interested about? *)
   let durations =
     Hashtbl.enum user_conf.retentions /@
@@ -388,7 +400,7 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
      ; What we aim to know: the percentage of available storage to be used\n\
      ; for each function:\n\
      %a\n\
-     ; Of course the sum of those shares cannot exceed 100:
+     ; Of course the sum of those shares cannot exceed 100:\n\
      (assert (<= %a 100))\n\
      ; Query costs of each function:\n\
      %a\n\
@@ -398,37 +410,74 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
      (minimize %a)\n\
      %t"
     preamble optimize
-    (emit_all_vars durations) vertices
-    emit_sum_of_percentages vertices
-    (emit_query_costs user_conf durations vertices) inv_edges
-    (emit_no_invalid_cost user_conf durations) vertices
-    (emit_total_query_costs user_conf durations) vertices
+    (emit_all_vars durations) per_func_stats
+    emit_sum_of_percentages per_func_stats
+    (emit_query_costs user_conf durations) per_func_stats
+    (emit_no_invalid_cost user_conf durations) per_func_stats
+    (emit_total_query_costs user_conf durations) per_func_stats
     post_scriptum
 
-let allocate_storage conf =
-  let vertices, edges = rc_complexity conf in
-  (* Create a map from vertices to parents: *)
-  let inv_edges = Hashtbl.create (Hashtbl.length edges) in
-  Hashtbl.iter (fun par children ->
-    List.iter (fun child ->
-      Hashtbl.modify_def [] child (List.cons par) inv_edges
-    ) children
-  ) edges ;
+(*
+ * The results are stored in the file "allocs", which is a map from names
+ * to size.
+ *)
+
+type per_func_allocs_ser = (RamenName.fq, int) Hashtbl.t
+  [@@ppp PPP_OCaml]
+
+let save_per_func_allocs conf allocs =
+  let fname = conf_dir conf ^ "/allocs" in
+  ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
+
+let update_storage_allocation conf =
   let open RamenSmtParser in
-  let fname = "/tmp/archiving.smt2"
-  and emit = emit_smt2 conf (vertices, inv_edges)
+  let solution = Hashtbl.create 17 in
+  let user_conf = get_user_conf (user_conf_file conf)
+  and per_func_stats = load_per_func_stats conf in
+  let fname = conf_dir conf ^ "/allocations.smt2"
+  and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
     try Scanf.sscanf sym "perc_%s%!" (fun s ->
-      let s = unscramble s in
+      let fq = unscramble s |> RamenName.fq_of_string in
       match vars, sort, term with
       | [], NonParametricSort (Identifier "Int"),
         ConstantTerm perc ->
           let perc = int_of_constant perc in
-          if perc <> 0 then
-            !logger.info "%S: %d%%" s perc
+          if perc <> 0 then !logger.info "%a: %d%%"
+            RamenName.fq_print fq perc ;
+          Hashtbl.replace solution fq perc
       | _ ->
           !logger.warning "  of some sort...?")
     with Scanf.Scan_failure _ -> ()
   and unsat _syms _output = ()
   in
-  run_smt2 ~fname ~emit ~parse_result ~unsat
+  run_smt2 ~fname ~emit ~parse_result ~unsat ;
+  (* Scale it up to 100% and convert to bytes: *)
+  let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
+  assert (tot_perc <= 100) ;
+  let scale = float_of_int user_conf.size_limit /. float_of_int tot_perc in
+  Hashtbl.map (fun _ p ->
+    if tot_perc = 0 then user_conf.size_limit
+    else round_to_int (float_of_int p *. scale)) solution |>
+  save_per_func_allocs conf
+
+let run_once conf ?while_ no_stats no_allocs =
+  (* Start by gathering (more) workers stats: *)
+  if not no_stats then (
+    !logger.info "Updating workers stats" ;
+    update_worker_stats ?while_ conf) ;
+  (* Then use those to answer the big questions about queries, the storage
+   * and everything: *)
+  if not no_allocs then (
+    !logger.info "Updating storage allocations" ;
+    update_storage_allocation conf)
+
+let run_loop conf ?while_ sleep_time no_stats no_allocs =
+  let watchdog =
+    let timeout = sleep_time *. 2. in
+    RamenWatchdog.make ~timeout "Archiver" RamenProcesses.quit in
+  RamenWatchdog.enable watchdog ;
+  forever (fun () ->
+    run_once conf ?while_ no_stats no_allocs ;
+    RamenWatchdog.reset watchdog ;
+    Unix.sleepf (jitter sleep_time)) ()

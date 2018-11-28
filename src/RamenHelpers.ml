@@ -42,9 +42,10 @@ let nice_string_of_float v =
       String.rchop ~n s
 
 (*$= nice_string_of_float & ~printer:(fun x -> x)
-  "1.234" (nice_string_of_float 1.234)
-  "1.001" (nice_string_of_float 1.001)
-  "1"     (nice_string_of_float 1.)
+  "1.234"    (nice_string_of_float 1.234)
+  "1.001"    (nice_string_of_float 1.001)
+  "1"        (nice_string_of_float 1.)
+  "31536000" (nice_string_of_float 31536000.)
 *)
 
 let print_nice_float oc f =

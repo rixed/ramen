@@ -1,0 +1,6 @@
+{
+  size_limit = 4000000;
+  retentions = {
+    "children/*" => { duration = 3600 };
+  };
+}

@@ -798,12 +798,24 @@ let test =
  * Allocate disk space to workers archives
  *)
 
+let no_update_stats =
+  let i = Arg.info ~doc:CliInfo.no_update_stats
+                   [ "no-stats" ] in
+  Arg.(value (flag i))
+
+let no_update_allocs =
+  let i = Arg.info ~doc:CliInfo.no_update_allocs
+                   [ "no-allocs" ] in
+  Arg.(value (flag i))
+
 let archivist =
   Term.(
     (const RamenCliCmd.archivist
       $ copts
       $ loop
       $ daemonize
+      $ no_update_stats
+      $ no_update_allocs
       $ to_stdout
       $ to_syslog),
     info ~doc:CliInfo.archivist "archivist")
