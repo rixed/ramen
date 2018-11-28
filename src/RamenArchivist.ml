@@ -88,7 +88,7 @@ type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 and func_stats =
-  { startup_time : float ;
+  { running_time : float ;
     tuples : int64 ; (* We sacrifice one bit for convenience *)
     bytes : int64 ;
     cpu : float (* Cumulated seconds *) ;
@@ -98,27 +98,27 @@ and func_stats =
 let get_per_func_stats fname =
   ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
-let func_stats_empty startup_time =
-  { startup_time ; tuples = 0L ;
-    bytes = 0L ; cpu = 0. ; ram = 0L }
+let func_stats_empty =
+  { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L }
 
-let func_stats_of_ps_stats s =
-  { startup_time = s.RamenPs.startup_time ;
-    tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
-    bytes = Uint64.(to_int64 (s.bytes_out |? zero)) ;
-    cpu = s.cpu ;
-    ram = Uint64.(to_int64 s.max_ram) }
+(* Returns the func_stat resulting of adding the RamenPs.stats to the
+ * previous func_stat [a]: *)
+(* FIXME: should take now as argument *)
+let add_ps_stats a s default_dt =
+  let etime_diff =
+    match s.RamenPs.min_etime, s.max_etime with
+    | Some t1, Some t2 -> t2 -. t1
+    | _ -> default_dt
+  in
+  { running_time = a.running_time +. etime_diff ;
+    tuples = Int64.add a.tuples Uint64.(to_int64 (s.out_count |? zero)) ;
+    bytes = Int64.add a.bytes Uint64.(to_int64 (s.bytes_out |? zero)) ;
+    cpu = a.cpu +. s.cpu ;
+    ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) }
 
-let add_func_stats a b =
-  { startup_time = a.startup_time ;
-    tuples = Int64.(a.tuples + b.tuples) ;
-    bytes = Int64.(a.bytes + b.bytes) ;
-    cpu = a.cpu +. b.cpu ;
-    ram = Int64.(a.ram + b.ram) }
-
-(* Actually, when running we keep both a total of all past stats and the
- * stats since last worker startup: *)
-let per_func_stats : (RamenName.fq, (func_stats * func_stats)) Hashtbl.t =
+(* When running we keep both the stats and the last received health report
+ * as well as the last startup_time (to detect restarts): *)
+let per_func_stats : (RamenName.fq, (func_stats * float * RamenPs.t)) Hashtbl.t =
   Hashtbl.create 29
 
 let per_func_stats_lock = Mutex.create ()
@@ -131,12 +131,12 @@ let print_func_stats oc fq =
           (Hashtbl.find per_func_stats) fq with
   | exception Not_found ->
       String.print oc "no statistics"
-  | tot, last ->
-      let s = add_func_stats tot last in
+  | tot, startup, last ->
+      let default_dt = Unix.gettimeofday () -. startup in
+      let s = add_ps_stats tot last default_dt in
       Printf.fprintf oc
-        "startup: %s, tuples: %Ld, bytes: %Ld, cpu: %fs, ram: %Ld"
-        (string_of_time s.startup_time)
-        s.tuples s.bytes s.cpu s.ram
+        "running time: %s, tuples: %Ld, bytes: %Ld, cpu: %fs, ram: %Ld"
+        (string_of_duration s.running_time) s.tuples s.bytes s.cpu s.ram
 
 (* tail -f the #notifs stream and update per_func_stats: *)
 let notification_reader ?while_ conf =
@@ -147,16 +147,17 @@ let notification_reader ?while_ conf =
       per_func_stats_sync
         (Hashtbl.modify_opt fq (function
           | None ->
-              Some (func_stats_empty s.RamenPs.startup_time,
-                    func_stats_of_ps_stats s)
-          | Some (tot, last) ->
-              if s.RamenPs.startup_time = last.startup_time then (
-                Some (tot, func_stats_of_ps_stats s)
+              Some (func_stats_empty, s.RamenPs.startup_time, s)
+          | Some (tot, startup_time, _) ->
+              if s.RamenPs.startup_time = startup_time then (
+                Some (tot, startup_time, s)
               ) else (
-                (* worker have restarted. We assume it's still mostly the
+                (* Worker has restarted. We assume it's still mostly the
                  * same operation. Maybe consider the function signature
                  * (and add it to the stats?) *)
-                Some (add_func_stats tot last, func_stats_of_ps_stats s)
+                let default_dt = Unix.gettimeofday () -. startup_time in
+                let tot = add_ps_stats tot s default_dt in
+                Some (tot, s.RamenPs.startup_time, s)
               )
         )) per_func_stats
     ) ;
@@ -169,20 +170,19 @@ let notification_reader ?while_ conf =
  * process one second worth of data, the "storage size" per second in bytes.
  * The recall cost of a second worth of output is this size times the
  * recall_cost. *)
-let costs_of_stats now (tot, last) =
-  let s = add_func_stats tot last in
-  let dt = now -. tot.startup_time in
-  s.cpu /. dt,
-  Int64.to_float s.bytes /. dt
+let costs_of_stats (tot, startup_time, last) =
+  let default_dt = Unix.gettimeofday () -. startup_time in
+  let s = add_ps_stats tot last default_dt in
+  s.cpu /. s.running_time,
+  Int64.to_float s.bytes /. s.running_time
 
 (* The costs (cpu * storage) of recomputing and reading fq output per unit of time,
  * from 0 to 10. *)
 let costs_of_func fq =
-  let now = Unix.gettimeofday () in
   match per_func_stats_sync
            (Hashtbl.find per_func_stats) fq with
   | exception Not_found -> 0.5, 100e3 (* Beware of unknown functions! *)
-  | s -> costs_of_stats now s
+  | s -> costs_of_stats s
 
 (* Return a graph of the running config with costs: *)
 let rc_complexity conf =
@@ -299,6 +299,7 @@ let parents_of inv_edges fq =
   Hashtbl.find_default inv_edges fq []
 
 let secs_per_day = 86400.
+let invalid_cost = "99999999999"
 
 let emit_query_costs user_conf durations vertices oc inv_edges =
   String.print oc "; Durations: " ;
@@ -319,13 +320,16 @@ let emit_query_costs user_conf durations vertices oc inv_edges =
       let recall_cost =
         ceil_to_int (sto_size *. d *. user_conf.recall_cost) in
       let compute_cost =
-        if parents = [] then "9999999999" else
+        if parents = [] then invalid_cost else
         Printf.sprintf2 "(+ %d (+ 0 %a))"
           (ceil_to_int (cpu_cost *. d))
           (* cost of all parents for that duration: *)
           (list_print (fun oc parent ->
              Printf.fprintf oc "%s" (cost i parent))) parents
       in
+      !logger.info "Cost to recall %a output for duration %.0fs: %d (or cpu=%d)"
+        RamenName.fq_print fq d recall_cost
+        (ceil_to_int (cpu_cost *. d)) ;
       Printf.fprintf oc
         "(assert (= %s\n\
             (ite (>= %s %d)\n\
@@ -342,6 +346,16 @@ let emit_query_costs user_conf durations vertices oc inv_edges =
     ) durations
   ) vertices
 
+let emit_no_invalid_cost user_conf durations oc vertices =
+  Hashtbl.iter (fun fq _ ->
+    let retention = retention_of_fq user_conf fq in
+    if retention.duration > 0. then (
+      (* Which index is that? *)
+      let i = List.index_of retention.duration durations |> Option.get in
+      Printf.fprintf oc "(assert (< %s %s))\n"
+        (cost i fq) invalid_cost)
+  ) vertices
+
 let emit_total_query_costs user_conf durations oc vertices =
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc fq ->
@@ -352,9 +366,14 @@ let emit_total_query_costs user_conf durations oc vertices =
         (* The cost is a whole day of queries: *)
         let queries_per_days =
           ceil_to_int (retention.query_freq *. secs_per_day) in
+        !logger.info
+          "Must be able to query %a for a duration %s, at %d queries per day"
+          RamenName.fq_print fq
+          (string_of_duration retention.duration)
+          queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
           (cost i fq) queries_per_days))
-    vertices
+      vertices
 
 let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
   let user_conf = get_user_conf (user_conf_file conf) in
@@ -373,6 +392,8 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
      (assert (<= %a 100))\n\
      ; Query costs of each function:\n\
      %a\n\
+     ; No actually used cost must be < invalid_cost\n\
+     %a\n\
      ; Minimize the cost of querying each function with retention:\n\
      (minimize %a)\n\
      %t"
@@ -380,6 +401,7 @@ let emit_smt2 conf (vertices, inv_edges) oc ~optimize =
     (emit_all_vars durations) vertices
     emit_sum_of_percentages vertices
     (emit_query_costs user_conf durations vertices) inv_edges
+    (emit_no_invalid_cost user_conf durations) vertices
     (emit_total_query_costs user_conf durations) vertices
     post_scriptum
 
