@@ -334,6 +334,10 @@ let emit_query_costs user_conf durations oc per_func_stats =
         if recall_size < 0. then invalid_cost else
         string_of_int (
           ceil_to_int (user_conf.recall_cost *. recall_size *. d)) in
+      if String.length recall_cost > String.length invalid_cost then
+        (* Poor man arbitrary size integers :> *)
+        !logger.error "Archivist: Got a cost of %s which is greater than invalid!"
+          recall_cost ;
       let compute_cost = compute_cost s in
       let compute_cost =
         if s.parents = [] || compute_cost < 0. then invalid_cost else
