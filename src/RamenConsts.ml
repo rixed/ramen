@@ -223,6 +223,7 @@ struct
   let purge = "Also remove the program from the configuration"
   let no_update_stats = "Do no attempt to update the workers stats file"
   let no_update_allocs = "Do no attempt to update the allocations file"
+  let no_reconf_workers = "Do not change the workers export configuration"
 end
 
 module WorkerCommands =
@@ -261,12 +262,15 @@ struct
   (* Every started program initially archive its output for that long: *)
   let initial_export_duration = 0.
 
-  (* When asking for a timeseries or any other export, export for that long: *)
+  (* When asking for a timeseries or a tail, export for that long: *)
   let export_duration = 600.
 
   (* Special case for when the timeseries query comes from the API: we then
    * want it to export for longer. *)
   let api_export_duration = 3600. *. 24.
+
+  (* Special case for when that's the archivist asking: *)
+  let archivist_export_duration = 3600.
 end
 
 module SpecialFunctions =

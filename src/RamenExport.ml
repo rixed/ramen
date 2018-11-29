@@ -15,7 +15,7 @@ let () =
     | _ -> None)
 
 (* Returns the buffer name: *)
-let make_temp_export ?(duration=Default.export_duration) conf func =
+let start ?(duration=Default.export_duration) conf func =
   let bname = C.archive_buf_name conf func in
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
@@ -29,19 +29,6 @@ let make_temp_export ?(duration=Default.export_duration) conf func =
                 else Unix.gettimeofday () +. duration } in
   RamenOutRef.add out_ref (bname, file_spec) ;
   bname
-
-(* Returns the func, and the buffer name: *)
-let make_temp_export_by_name conf ?duration fq =
-  let program_name, func_name = RamenName.fq_parse fq in
-  C.with_rlock conf (fun programs ->
-    match C.find_func programs program_name func_name with
-    | exception Not_found ->
-        failwith ("Function "^
-                  RamenName.string_of_program program_name ^"/"^
-                  RamenName.string_of_func func_name ^" does not exist")
-    | prog, func ->
-        let bname = make_temp_export conf ?duration func in
-        prog, func, bname)
 
 (* Some ringbuf are always available and their type known:
  * instrumentation, notifications. *)
@@ -81,7 +68,14 @@ let read_output conf ?duration fq where =
           (* Normal case: Create the non-wrapping RingBuf (under a standard
            * name given by RamenConf *)
           let prog, func, bname =
-            make_temp_export_by_name conf ?duration fq in
+            C.with_rlock conf (fun programs ->
+              match C.find_func programs fq with
+              | exception Not_found ->
+                  failwith ("Function "^ RamenName.string_of_fq fq ^
+                            " does not exist")
+              | prog, func ->
+                  let bname = start conf ?duration func in
+                  prog, func, bname) in
           let ser =
             RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
           let filter = RamenSerialization.filter_tuple_by ser where in

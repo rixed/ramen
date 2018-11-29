@@ -429,6 +429,11 @@ let save_per_func_allocs conf allocs =
   let fname = conf_dir conf ^ "/allocs" in
   ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
 
+let load_per_func_allocs conf =
+  let fname = conf_dir conf ^ "/allocs" in
+  ensure_file_exists ~contents:"{}" fname ;
+  ppp_of_file per_func_allocs_ser_ppp_ocaml fname
+
 let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
@@ -461,7 +466,32 @@ let update_storage_allocation conf =
     else round_to_int (float_of_int p *. scale)) solution |>
   save_per_func_allocs conf
 
-let run_once conf ?while_ no_stats no_allocs =
+(*
+ * The allocs are used to update the workers out_ref to make them archive.
+ * If not refreshed periodically (see
+ * [RamenConst.Defaults.archivist_export_duration]) any worker will stop
+ * exporting at some point.
+ *)
+
+let update_workers_export conf =
+  let programs = C.with_rlock conf identity in (* Best effort *)
+  load_per_func_allocs conf |>
+  Hashtbl.iter (fun fq max_size ->
+    match C.find_func programs fq with
+    | exception e ->
+        !logger.debug "Cannot find function %a: %s, skipping"
+          RamenName.fq_print fq
+          (Printexc.to_string e)
+    | _prog, func ->
+        if max_size > 0 then
+          let duration=Default.archivist_export_duration in
+          RamenExport.start ~duration conf func |> ignore)
+
+(*
+ * CLI
+ *)
+
+let run_once conf ?while_ no_stats no_allocs no_reconf =
   (* Start by gathering (more) workers stats: *)
   if not no_stats then (
     !logger.info "Updating workers stats" ;
@@ -470,14 +500,18 @@ let run_once conf ?while_ no_stats no_allocs =
    * and everything: *)
   if not no_allocs then (
     !logger.info "Updating storage allocations" ;
-    update_storage_allocation conf)
+    update_storage_allocation conf) ;
+  (* Now update the archiving configuration of running workers: *)
+  if not no_reconf then (
+    !logger.info "Updating workers export configuration" ;
+    update_workers_export conf)
 
-let run_loop conf ?while_ sleep_time no_stats no_allocs =
+let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
   let watchdog =
     let timeout = sleep_time *. 2. in
     RamenWatchdog.make ~timeout "Archiver" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    run_once conf ?while_ no_stats no_allocs ;
+    run_once conf ?while_ no_stats no_allocs no_reconf ;
     RamenWatchdog.reset watchdog ;
     Unix.sleepf (jitter sleep_time)) ()

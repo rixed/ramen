@@ -562,7 +562,7 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	@echo 'Running storage allocation tests'
 	@for f in $(RAMEN_ARCHIVIST_TESTS); do \
 		d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
-		src/ramen archivist --persist-dir $$d --no-stats --stdout ;\
+		src/ramen archivist --persist-dir $$d --no-stats --no-reconf --stdout ;\
 		if ! diff -q $$f $$d/archivist/v*/allocs ; then \
 			echo "FAILURE: $$f" ;\
 			exit 1 ;\

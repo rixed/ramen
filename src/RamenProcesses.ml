@@ -366,8 +366,8 @@ let really_start conf proc parents children =
   ) children ;
   (* Always export for a little while at the beginning *)
   let _bname =
-    RamenExport.make_temp_export ~duration:conf.initial_export_duration
-      conf proc.func in
+    let duration = conf.initial_export_duration in
+    RamenExport.start ~duration conf proc.func in
   (* Now actually start the binary *)
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a

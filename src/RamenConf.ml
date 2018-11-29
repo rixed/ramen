@@ -324,7 +324,8 @@ let is_program_running programs program_name =
 let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.
 
-let find_func programs program_name func_name =
+let find_func programs fq =
+  let program_name, func_name = RamenName.fq_parse fq in
   let _mre, get_rc =
     Hashtbl.find programs program_name in
   let prog = get_rc () in

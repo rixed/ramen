@@ -375,7 +375,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let tail conf func_name field_names with_header with_units sep null raw
+let tail conf fq field_names with_header with_units sep null raw
          last min_seq max_seq continuous where since until
          with_seqnums with_event_time duration pretty flush () =
   init_logger conf.C.log_level ;
@@ -392,7 +392,7 @@ let tail conf func_name field_names with_header with_units sep null raw
     else last in
   let flush = flush || continuous in
   let bname, is_temp_export, filter, typ, ser, params, event_time =
-    RamenExport.read_output conf ~duration func_name where
+    RamenExport.read_output conf ~duration fq where
   in
   (* Find out which seqnums we want to scan: *)
   let mi, ma = match last with
@@ -467,9 +467,12 @@ let tail conf func_name field_names with_header with_units sep null raw
     float_printer (print_as_date ~rel) in
   if is_temp_export then (
     let rec reset_export_timeout () =
+      let _prog, func =
+        C.with_rlock conf (fun programs ->
+          C.find_func programs fq) in
+      let _ = RamenExport.start conf ~duration func in
       (* Start by sleeping as we've just set the temp export above: *)
       Unix.sleepf (max 1. (duration -. 1.)) ;
-      let _ = RamenExport.make_temp_export_by_name conf ~duration func_name in
       reset_export_timeout () in
     Thread.create (
       restart_on_failure "reset_export_timeout"
@@ -576,25 +579,24 @@ let timeseries conf since until with_header where factors num_points
  * Obtain information about the time range available for timeseries.
  *)
 
-let timerange conf func_name () =
+let timerange conf fq () =
   init_logger conf.C.log_level ;
-  match RamenName.fq_parse func_name with
-  | exception _ -> exit 1
-  | program_name, func_name ->
-      let mi_ma =
-        C.with_rlock conf (fun programs ->
+  C.with_rlock conf (fun programs ->
+    match C.find_func programs fq with
+    | exception _ -> exit 1
+    | prog, func ->
+        let mi_ma =
           (* We need the func to know its buffer location.
            * Nothing better to do in case of error than to exit. *)
-          let prog, func = C.find_func programs program_name func_name in
           let bname = C.archive_buf_name conf func in
           let typ = func.F.out_type in
           let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
           let params = prog.P.params in
-          RamenSerialization.time_range bname ser params func.F.event_time)
-      in
-      match mi_ma with
-        | None -> Printf.printf "No time info or no output yet.\n"
-        | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma
+          RamenSerialization.time_range bname ser params func.F.event_time
+        in
+        match mi_ma with
+          | None -> Printf.printf "No time info or no output yet.\n"
+          | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma)
 
 (*
  * `ramen httpd`
@@ -673,13 +675,14 @@ let graphite_expand conf for_render all query () =
  * able to retrieve or rebuild the output of all persistent functions.
  *)
 
-let archivist conf loop daemonize no_stats no_allocs to_stdout to_syslog () =
+let archivist conf loop daemonize no_stats no_allocs no_reconf
+              to_stdout to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
-  if no_stats && no_allocs then
-    failwith "Options --no-stats and --no-allocs are incompatible." ;
+  if no_stats && no_allocs && no_reconf then
+    failwith "Nothing to do then?" ;
   if to_syslog then
     init_syslog conf.C.log_level
   else (
@@ -690,11 +693,11 @@ let archivist conf loop daemonize no_stats no_allocs to_stdout to_syslog () =
     init_logger ?logdir conf.C.log_level) ;
   RamenProcesses.prepare_signal_handlers conf ;
   if loop <= 0. then
-    RamenArchivist.run_once conf ~while_ no_stats no_allocs
+    RamenArchivist.run_once conf ~while_ no_stats no_allocs no_reconf
   else (
     check_binocle_errors () ;
     if daemonize then do_daemonize () ;
-    RamenArchivist.run_loop conf ~while_ loop no_stats no_allocs)
+    RamenArchivist.run_loop conf ~while_ loop no_stats no_allocs no_reconf)
 
 
 (*
