@@ -386,10 +386,9 @@ let tail conf func_name with_header with_units sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
          duration pretty flush () =
   init_logger conf.C.log_level ;
-  if last <> None && (min_seq <> None || max_seq <> None) then
-    failwith "Options --last  and --{min,max}-seq are incompatible." ;
-  if continuous && (min_seq <> None || max_seq <> None) then
-    failwith "Options --continuous and --{min,max}-seq are incompatible." ;
+  if (last <> None || continuous) && (min_seq <> None || max_seq <> None) then
+    failwith "Options --{last,continuous} and \
+              --{min,max}-seq are incompatible." ;
   if continuous && Option.map_default (fun l -> l < 0) false last then
     failwith "Option --last must be >0 if used with --continuous." ;
   if with_units && not with_header then

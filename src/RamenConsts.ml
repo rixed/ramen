@@ -175,7 +175,8 @@ struct
   let csv_null = "Representation of NULL values"
   let csv_raw = "Do not quote values"
   let last =
-    "Output only the last N tuples (or only the next -N, if N is negative)"
+    "Read only the last N tuples (or the next -N if N is negative). \
+     Applied *before* filtering."
   let min_seq = "Output only tuples with greater sequence number"
   let max_seq = "Output only tuples with smaller sequence number"
   let continuous = "Wait for more when end of file is reached"
