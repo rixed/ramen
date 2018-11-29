@@ -383,8 +383,8 @@ let ps conf short pretty with_header sort_col top pattern all () =
  *)
 
 let tail conf func_name field_names with_header with_units sep null raw
-         last min_seq max_seq continuous where with_seqnums with_event_time
-         duration pretty flush () =
+         last min_seq max_seq continuous where since until
+         with_seqnums with_event_time duration pretty flush () =
   init_logger conf.C.log_level ;
   if (last <> None || continuous) && (min_seq <> None || max_seq <> None) then
     failwith "Options --{last,continuous} and \
@@ -499,22 +499,25 @@ let tail conf func_name field_names with_header with_units sep null raw
       if !need_sep then String.print stdout sep ;
       need_sep := true in
     if filter tuple then (
-      if with_event_time then (
-        let t1, t2 = event_time_of_tuple tuple in
-        let t1 = IO.to_string et_printer (VFloat t1) in
-        let t2 = IO.to_string et_printer (VFloat t2) in
-        Printf.printf "%s..%s" t1 t2 ;
-        need_sep := true) ;
-      if with_seqnums then (
-        may_print_sep () ;
-        Int.print stdout m) ;
-      reorder_column tuple |>
-      Array.iteri (fun i v ->
-        if display_field.(i) then (
+      let t1, t2 = event_time_of_tuple tuple in
+      if Option.map_default (fun since -> t2 > since) true since &&
+         Option.map_default (fun until -> t1 <= until) true until
+      then (
+        if with_event_time then (
+          let s1 = IO.to_string et_printer (VFloat t1) in
+          let s2 = IO.to_string et_printer (VFloat t2) in
+          Printf.printf "%s..%s" s1 s2 ;
+          need_sep := true) ;
+        if with_seqnums then (
           may_print_sep () ;
-          printers.(i) stdout v)) ;
-      Char.print stdout '\n' ;
-      if flush then BatIO.flush stdout))
+          Int.print stdout m) ;
+        reorder_column tuple |>
+        Array.iteri (fun i v ->
+          if display_field.(i) then (
+            may_print_sep () ;
+            printers.(i) stdout v)) ;
+        Char.print stdout '\n' ;
+        if flush then BatIO.flush stdout)))
 
 (*
  * `ramen timeseries`
@@ -533,6 +536,7 @@ let timeseries conf since until with_header where factors num_points
   init_logger conf.C.log_level ;
   let num_points =
     if num_points <= 0 && time_step <= 0. then 100 else num_points in
+  let until = until |? Unix.gettimeofday () in
   let since = since |? until -. 600. in
   (* Obtain the data: *)
   let open RamenTimeseries in

@@ -220,6 +220,8 @@ let complete str () =
           ("--min-seqnum=", CliInfo.min_seq) ::
           ("--continuous", CliInfo.continuous) ::
           ("--where=", CliInfo.where) ::
+          ("--since=", CliInfo.since) ::
+          ("--until=", CliInfo.until) ::
           ("--null=", CliInfo.csv_null) ::
           ("--separator=", CliInfo.csv_separator) ::
           ("--with-header", CliInfo.with_header) ::

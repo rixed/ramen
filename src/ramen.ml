@@ -531,6 +531,16 @@ let where =
                    ~docv:"FIELD=VALUE" ["w"; "where"] in
   Arg.(value (opt_all filter [] i))
 
+let since =
+  let i = Arg.info ~doc:CliInfo.since
+                   ~docv:"SINCE" ["since"] in
+  Arg.(value (opt (some float) None i))
+
+let until =
+  let i = Arg.info ~doc:CliInfo.until
+                   ~docv:"UNTIL" ["until"] in
+  Arg.(value (opt (some float) None i))
+
 let with_seqnums =
   let i = Arg.info ~doc:CliInfo.with_seqnums
                    ["with-seqnums"; "seq"; "s"] in
@@ -598,6 +608,8 @@ let tail =
       $ max_seq
       $ continuous
       $ where
+      $ since
+      $ until
       $ with_seqnums
       $ with_event_time
       $ duration
@@ -608,16 +620,6 @@ let tail =
 (*
  * Timeseries
  *)
-
-let since =
-  let i = Arg.info ~doc:CliInfo.since
-                   ~docv:"SINCE" ["since"] in
-  Arg.(value (opt (some float) None i))
-
-let until =
-  let i = Arg.info ~doc:CliInfo.until
-                   ~docv:"UNTIL" ["until"] in
-  Arg.(value (opt float (Unix.gettimeofday ()) i))
 
 let num_points =
   let i = Arg.info ~doc:CliInfo.num_points
