@@ -37,6 +37,11 @@ let string_of_field_mask mask =
   List.map (function true -> 'X' | false -> '_') mask |>
   String.of_list
 
+(* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
+ * Basically, new fields prevail but we keep the longer timeout: *)
+let combine_specs (_, t1) (s, t2) =
+  s, Float.max t1 t2
+
 let file_spec_still_valid now (_, timeout) =
   timeout <= 0. || timeout > now
 
@@ -75,6 +80,7 @@ let add_ fname fd out_fname file_spec =
   match Hashtbl.find h out_fname with
   | exception Not_found -> rewrite ()
   | prev_spec ->
+    let file_spec = combine_specs prev_spec file_spec in
     if prev_spec <> file_spec then rewrite ()
 
 let add fname (out_fname, file_spec) =
