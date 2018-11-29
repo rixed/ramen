@@ -225,7 +225,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
              * more frequently than once every 3 secs (how long we are
              * ready to block on a dead child): *)
             let check_outref now =
-              if now < !last_check_outref +. 3. then true else (
+              if now > !last_check_outref +. 3. then true else (
                 last_check_outref := now ;
                 RamenOutRef.mem rb_ref_out_fname fname)
             in
