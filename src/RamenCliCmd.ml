@@ -397,6 +397,7 @@ let tail conf func_name with_header with_units sep null raw
   let last =
     if last = None && min_seq = None && max_seq = None then Some 10
     else last in
+  let flush = flush || continuous in
   let bname, is_temp_export, filter, typ, ser, params, event_time =
     RamenExport.read_output conf ~duration func_name where
   in
