@@ -76,7 +76,7 @@ let add_ fname fd out_fname file_spec =
   let rewrite () =
     Hashtbl.replace h out_fname file_spec ;
     write_ fname fd h ;
-    !logger.debug "Adding %s" out_fname in
+    !logger.debug "Adding %s to %s" out_fname fname in
   match Hashtbl.find h out_fname with
   | exception Not_found -> rewrite ()
   | prev_spec ->
@@ -93,7 +93,7 @@ let remove_ fname fd out_fname =
   if Hashtbl.mem h out_fname then (
     Hashtbl.remove h out_fname ;
     write_ fname fd h ;
-    !logger.debug "Removed %s" out_fname)
+    !logger.debug "Removed %s from %s" out_fname fname)
 
 let remove fname out_fname =
   RamenAdvLock.with_w_lock fname (fun fd ->
