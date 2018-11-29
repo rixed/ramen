@@ -879,6 +879,19 @@ let string_of_time ts =
         (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
         tm.tm_hour tm.tm_min tm.tm_sec
 
+let string_of_duration d =
+  let aux s d k u =
+    if d >= k then
+      let x = Float.floor (d /. k) in
+      s ^ nice_string_of_float x ^ u, d -. x *. k
+    else
+      s, d in
+  let s, d = aux "" d 3600. "h" in
+  if d = 0. then s else
+  let s, d = aux s d 60. "m" in
+  if d = 0. then s else
+  s ^ nice_string_of_float d ^ "s"
+
 let string_remove c s =
   let len = String.length s in
   let buf = Buffer.create len in
@@ -1704,6 +1717,9 @@ let print_as_date ?rel oc t =
   let s = as_date ?rel:(Option.map (!) rel) t in
   Option.may (fun rel -> rel := s) rel ;
   String.print oc s
+
+let print_as_duration oc d =
+  String.print oc (string_of_duration d)
 
 (*
  * Some graph utilities

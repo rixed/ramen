@@ -436,20 +436,28 @@ let tail conf func_name with_header with_units sep null raw
       stdout header ;
     if flush then BatIO.flush stdout) ;
   (* Pick a printer for each column according to the field type: *)
-  let printers =
-    Array.map (fun ft ->
-      let open RamenTypes in
-      if pretty &&
-         ft.RamenTuple.typ.structure = TFloat &&
-         ft.RamenTuple.units = Some RamenUnits.seconds_since_epoch
-      then
-        (fun oc -> function
-          | VFloat t -> print_as_date oc t
-          | VNull -> print_custom ~null ~quoting:(not raw) oc VNull
-          | _ -> assert false)
-      else
-        print_custom ~null ~quoting:(not raw)
-    ) header in
+  let float_printer p oc =
+    let open RamenTypes in
+    function
+    | VFloat t -> p oc t
+    | t -> print_custom ~null ~quoting:(not raw) oc t
+  in
+  let printer_of ?rel ft =
+    let open RamenTypes in
+      match pretty, ft.RamenTuple.typ.structure, ft.RamenTuple.units with
+      | true, TFloat, Some units
+        when units = RamenUnits.seconds_since_epoch ->
+          float_printer (print_as_date ?rel)
+      | true, TFloat, Some units
+        when units = RamenUnits.seconds ->
+          float_printer print_as_duration
+      | _ ->
+          print_custom ~null ~quoting:(not raw)
+  in
+  let printers = Array.map (printer_of ?rel:None) header in
+  let et_printer =
+    let rel = ref "" in
+    float_printer (print_as_date ~rel) in
   if is_temp_export then (
     let rec reset_export_timeout () =
       (* Start by sleeping as we've just set the temp export above: *)
@@ -473,9 +481,8 @@ let tail conf func_name with_header with_units sep null raw
     if filter tuple then (
       if with_event_time then (
         let t1, t2 = event_time_of_tuple tuple in
-        let rel = ref "" in
-        let t1 = IO.to_string (print_as_date ~rel) t1 in
-        let t2 = IO.to_string (print_as_date ~rel) t2 in
+        let t1 = IO.to_string et_printer (VFloat t1) in
+        let t2 = IO.to_string et_printer (VFloat t2) in
         Printf.printf "%s..%s%s" t1 t2 sep) ;
       if with_seqnums then (
         Int.print stdout m ; String.print stdout sep) ;
