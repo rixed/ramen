@@ -1672,7 +1672,7 @@ let string_same_pref l a b =
       true
     with Exit -> false
 
-let as_date ?rel t =
+let as_date ?rel ?(right_justified=true) t =
   let full = string_of_time t in
   match rel with
   | None -> full
@@ -1684,6 +1684,7 @@ let as_date ?rel t =
         else (
           let pref_len = possible_cuts.(i) in
           if string_same_pref pref_len rel full then
+            (if right_justified then String.make pref_len ' ' else "")^
             String.lchop ~n:pref_len full
           else
             loop (i - 1)
@@ -1693,8 +1694,8 @@ let as_date ?rel t =
 (*$= as_date & ~printer:(fun x -> x)
   "2018-11-14 22h13m20s" (as_date ~rel:"" 1542230000.)
   "2018-11-14 22h13m20s" (as_date ~rel:"1983-11-14 22h13m20s" 1542230000.)
-  "22h13m20s" (as_date ~rel:"2018-11-14 08h12m32s" 1542230000.)
-  "13m20s" (as_date ~rel:"2018-11-14 22h12m20s" 1542230000.)
+  "           22h13m20s" (as_date ~rel:"2018-11-14 08h12m32s" 1542230000.)
+  "              13m20s" (as_date ~rel:"2018-11-14 22h12m20s" 1542230000.)
 *)
 
 (* A pretty printer for timestamps, with the peculiarity that it tries to not
