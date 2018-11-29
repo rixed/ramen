@@ -382,7 +382,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let tail conf func_name with_header with_units sep null raw
+let tail conf func_name field_names with_header with_units sep null raw
          last min_seq max_seq continuous where with_seqnums with_event_time
          duration pretty flush () =
   init_logger conf.C.log_level ;
@@ -423,18 +423,34 @@ let tail conf func_name with_header with_units sep null raw
   let nullmask_size =
     RingBufLib.nullmask_bytes_of_tuple_type ser in
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
+  (* Check the entered field names are correct: *)
+  List.iter (fun fn ->
+    if not (List.exists (fun h -> fn = h.RamenTuple.name) typ) then
+      Printf.sprintf2 "Unknown field %a, should be one of %a"
+        RamenName.field_print fn
+        RamenTuple.print_typ_names typ |>
+      failwith
+  ) field_names ;
   let header = typ |> Array.of_list in
+  let display_field =
+    Array.map (fun h ->
+      field_names = [] || List.mem h.RamenTuple.name field_names
+    ) header in
   if with_header then (
     let first = if with_seqnums then "Seq"^ sep else "" in
     let first = if with_event_time then "Event time"^ sep else first in
-    let first = "#"^ first in
-    Array.print ~first ~last:"\n" ~sep
-      (fun oc ft ->
-        RamenName.field_print oc ft.RamenTuple.name ;
+    Printf.printf "#%s" first ;
+    let need_sep = ref false in
+    for i = 0 to Array.length header - 1 do
+      if display_field.(i) then (
+        if !need_sep then String.print stdout sep ;
+        RamenName.field_print stdout header.(i).name ;
         if with_units then
-          Option.may (fun u -> RamenUnits.print oc u) ft.units)
-      stdout header ;
-    if flush then BatIO.flush stdout) ;
+          Option.may (fun u -> RamenUnits.print stdout u) header.(i).units ;
+        need_sep := true)
+    done ;
+    Char.print stdout '\n' ;
+    (*if flush then BatIO.flush stdout*)) ;
   (* Pick a printer for each column according to the field type: *)
   let float_printer p oc =
     let open RamenTypes in
@@ -478,18 +494,25 @@ let tail conf func_name with_header with_units sep null raw
   let read_tuple = RamenSerialization.read_tuple ser nullmask_size in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
     let tuple = read_tuple tx in
+    let need_sep = ref false in
+    let may_print_sep () =
+      if !need_sep then String.print stdout sep ;
+      need_sep := true in
     if filter tuple then (
       if with_event_time then (
         let t1, t2 = event_time_of_tuple tuple in
         let t1 = IO.to_string et_printer (VFloat t1) in
         let t2 = IO.to_string et_printer (VFloat t2) in
-        Printf.printf "%s..%s%s" t1 t2 sep) ;
+        Printf.printf "%s..%s" t1 t2 ;
+        need_sep := true) ;
       if with_seqnums then (
-        Int.print stdout m ; String.print stdout sep) ;
+        may_print_sep () ;
+        Int.print stdout m) ;
       reorder_column tuple |>
       Array.iteri (fun i v ->
-        if i > 0 then String.print stdout sep ;
-        printers.(i) stdout v) ;
+        if display_field.(i) then (
+          may_print_sep () ;
+          printers.(i) stdout v)) ;
       Char.print stdout '\n' ;
       if flush then BatIO.flush stdout))
 

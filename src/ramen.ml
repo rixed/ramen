@@ -555,6 +555,18 @@ let func_name p =
                    ~docv:"OPERATION" [] in
   Arg.(required (pos p (some fq_name) None i))
 
+let field =
+  let parse s = Pervasives.Ok (RamenName.field_of_string s)
+  and print fmt s =
+    Format.fprintf fmt "%s" (RamenName.string_of_field s)
+  in
+  Arg.conv ~docv:"FIELD" (parse, print)
+
+let data_fields ~mandatory p =
+  let i = Arg.info ~doc:CliInfo.data_fields
+                   ~docv:"FIELD" [] in
+  Arg.((if mandatory then non_empty else value) (pos_right (p-1) field [] i))
+
 let duration =
   let i = Arg.info ~doc:CliInfo.duration
                    ["timeout"] in
@@ -575,6 +587,7 @@ let tail =
     (const RamenCliCmd.tail
       $ copts
       $ func_name 0
+      $ data_fields ~mandatory:false 1
       $ with_header
       $ with_units
       $ csv_separator
@@ -616,18 +629,6 @@ let time_step =
                    ~docv:"DURATION" ["time-step"] in
   Arg.(value (opt float 0. i))
 
-let field =
-  let parse s = Pervasives.Ok (RamenName.field_of_string s)
-  and print fmt s =
-    Format.fprintf fmt "%s" (RamenName.string_of_field s)
-  in
-  Arg.conv ~docv:"FIELD" (parse, print)
-
-let data_fields p =
-  let i = Arg.info ~doc:CliInfo.data_fields
-                   ~docv:"FIELD" [] in
-  Arg.(non_empty (pos_right (p-1) field [] i))
-
 let consolidation =
   let i = Arg.info ~doc:CliInfo.consolidation
                    ~docv:"min|max|avg|sum" ["consolidation"] in
@@ -663,7 +664,7 @@ let timeseries =
       $ csv_separator
       $ csv_null
       $ func_name 0
-      $ data_fields 1
+      $ data_fields ~mandatory:true 1
       $ consolidation
       $ bucket_time
       $ duration
