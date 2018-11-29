@@ -92,12 +92,15 @@ type func_stats =
     bytes : int64 [@ppp_default 0L] ;
     cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
     ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
-    mutable parents : RamenName.fq list }
+    mutable parents : RamenName.fq list ;
+    (* Also gather available history per running workers, to speed up
+     * establishing query plans: *)
+    mutable archives : (float * float) list [@ppp_default []] }
   [@@ppp PPP_OCaml]
 
 let func_stats_empty =
   { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
-    parents = [] }
+    parents = [] ; archives = [] }
 
 (* Returns the func_stat resulting of adding the RamenPs.stats to the
  * previous func_stat [a]: *)
@@ -112,7 +115,7 @@ let add_ps_stats a s now =
     bytes = Int64.add a.bytes Uint64.(to_int64 (s.bytes_out |? zero)) ;
     cpu = a.cpu +. s.cpu ;
     ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) ;
-    parents = a.parents }
+    parents = a.parents ; archives = a.archives }
 
 (* Those stats are saved on disk: *)
 
@@ -135,7 +138,41 @@ let save_per_func_stats conf stats =
  * So this function enriches the per_func_stats hash with parent-children
  * relationships and also compute and sets the various costs we need. *)
 
-let add_costs_to_stats conf per_func_stats =
+let update_parents s program_name func =
+  s.parents <-
+    List.map (fun (pprog, pfunc) ->
+      let pprog =
+        F.program_of_parent_prog program_name pprog in
+      RamenName.fq pprog pfunc
+    ) func.F.parents
+
+let update_archives conf s func =
+  let bname = C.archive_buf_name conf func in
+  let lst =
+    RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
+    (fun (_seq_mi, _seq_ma, t1, t2, _f) ->
+      if Float.(is_nan t1 || is_nan t2) then None else Some (t1, t2)) |>
+    List.of_enum |>
+    List.sort (fun (ta,_) (tb,_) -> Float.compare ta tb) in
+  (* Compress that list: when a gap in between two file is smaller than
+   * one tenth of the duration of those two files then assume there is no
+   * gap: *)
+  let rec loop prev rest =
+    match prev, rest with
+    | (t11, t12)::prev', (t21, t22)::rest' ->
+        assert (t12 >= t11 && t22 >= t21) ;
+        let gap = t21 -. t12 in
+        if gap < 0.1 *. abs_float (t22 -. t11) then
+          loop ((t11, t22) :: prev') rest'
+        else
+          loop ((t21, t22) :: prev) rest'
+    | [], t::rest' ->
+        loop [t] rest'
+    | prev, [] ->
+        List.rev prev in
+  s.archives <- loop [] lst
+
+let enrich_stats conf per_func_stats =
   C.with_rlock conf identity |>
   Hashtbl.iter (fun program_name (_mre, get_rc) ->
     match get_rc () with
@@ -146,12 +183,8 @@ let add_costs_to_stats conf per_func_stats =
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
           | (s, _) ->
-              s.parents <-
-                List.map (fun (pprog, pfunc) ->
-                  let pprog =
-                    F.program_of_parent_prog program_name pprog in
-                  RamenName.fq pprog pfunc
-                ) func.F.parents
+              update_parents s program_name func ;
+              update_archives conf s func
         ) prog.P.funcs)
 
 (* tail -f the #notifs stream and update per_func_stats: *)
@@ -183,7 +216,7 @@ let update_worker_stats ?while_ conf =
           )
     ) per_func_stats
   ) ;
-  add_costs_to_stats conf per_func_stats ;
+  enrich_stats conf per_func_stats ;
 
   Hashtbl.map (fun _fq -> function
     | tot, None -> tot
