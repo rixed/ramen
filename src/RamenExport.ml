@@ -26,7 +26,9 @@ let start ?(duration=Default.export_duration) conf func =
     RamenOutRef.{
       field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
       timeout = if duration < 0. then 0.
-                else Unix.gettimeofday () +. duration } in
+                else Unix.gettimeofday () +. duration ;
+      (* We archive only the live channel: *)
+      channel = Some RamenChannel.live } in
   RamenOutRef.add out_ref (bname, file_spec) ;
   bname
 

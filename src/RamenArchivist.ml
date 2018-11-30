@@ -122,12 +122,12 @@ let add_ps_stats a s now =
 type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
-let load_per_func_stats conf =
+let load_stats conf =
   let fname = conf_dir conf ^ "/stats" in
   ensure_file_exists ~contents:"{}" fname ;
   ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
-let save_per_func_stats conf stats =
+let save_stats conf stats =
   let fname = conf_dir conf ^ "/stats" in
   ppp_to_file ~pretty:true fname per_func_stats_ser_ppp_ocaml stats
 
@@ -193,7 +193,7 @@ let update_worker_stats ?while_ conf =
    * as well as the last startup_time (to detect restarts): *)
   let per_func_stats :
     (RamenName.fq, (func_stats * (float * RamenPs.t) option)) Hashtbl.t =
-    load_per_func_stats conf |>
+    load_stats conf |>
     Hashtbl.map (fun _fq s -> s, None)
   in
   let now = Unix.gettimeofday () in
@@ -222,7 +222,7 @@ let update_worker_stats ?while_ conf =
     | tot, None -> tot
     | tot, Some (_, last) -> add_ps_stats tot last now
   ) per_func_stats |>
-  save_per_func_stats conf
+  save_stats conf
 
 (*
  * Optimising storage:
@@ -462,11 +462,11 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
 type per_func_allocs_ser = (RamenName.fq, int) Hashtbl.t
   [@@ppp PPP_OCaml]
 
-let save_per_func_allocs conf allocs =
+let save_allocs conf allocs =
   let fname = conf_dir conf ^ "/allocs" in
   ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
 
-let load_per_func_allocs conf =
+let load_allocs conf =
   let fname = conf_dir conf ^ "/allocs" in
   ensure_file_exists ~contents:"{}" fname ;
   ppp_of_file per_func_allocs_ser_ppp_ocaml fname
@@ -475,7 +475,7 @@ let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let user_conf = get_user_conf (user_conf_file conf)
-  and per_func_stats = load_per_func_stats conf in
+  and per_func_stats = load_stats conf in
   let fname = conf_dir conf ^ "/allocations.smt2"
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
@@ -501,7 +501,7 @@ let update_storage_allocation conf =
   Hashtbl.map (fun _ p ->
     if tot_perc = 0 then user_conf.size_limit
     else round_to_int (float_of_int p *. scale)) solution |>
-  save_per_func_allocs conf
+  save_allocs conf
 
 (*
  * The allocs are used to update the workers out_ref to make them archive.
@@ -512,7 +512,7 @@ let update_storage_allocation conf =
 
 let update_workers_export conf =
   let programs = C.with_rlock conf identity in (* Best effort *)
-  load_per_func_allocs conf |>
+  load_allocs conf |>
   Hashtbl.iter (fun fq max_size ->
     match C.find_func programs fq with
     | exception e ->

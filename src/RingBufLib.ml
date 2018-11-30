@@ -491,19 +491,13 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
 
 (* In the ringbuf we actually pass more than tuples: also various kinds of
  * notifications. Also, tuples (and some of those meta-messages) are
- * specific to a * "channel".
- * A channel is an identifier that is used to segregate the various replays
- * that are going on. In theory, tuples from different channels do never
- * see each others. *)
-
-type channel = int
-let live_channel = 0
+ * specific to a * "channel". *)
 
 type message_header =
-  | DataTuple of channel (* Followed by a tuple *)
-  | EndOfReplay of channel
+  | DataTuple of RamenChannel.t (* Followed by a tuple *)
+  | EndOfReplay of RamenChannel.t
   (* Also TBD:
-  | Timing of channel * (string * float) list
+  | Timing of RamenChannel.t * (string * float) list
   | TimeBarrier ... *)
 
 (* Let's assume there will never be more than 36636 live channels and use
@@ -530,7 +524,7 @@ let read_message_header tx offs =
  * Notifications
  *)
 
-let write_notif ?delay_rec rb ?(channel_id=live_channel)
+let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
                 (_, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->
     let sersize = max_sersize_of_notification tuple in

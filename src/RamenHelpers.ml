@@ -1716,8 +1716,8 @@ let as_date ?rel ?(right_justified=true) t =
 
 (* A pretty printer for timestamps, with the peculiarity that it tries to not
  * repeat the date components that have already been written, saved in [rel]. *)
-let print_as_date ?rel oc t =
-  let s = as_date ?rel:(Option.map (!) rel) t in
+let print_as_date ?rel ?right_justified oc t =
+  let s = as_date ?rel:(Option.map (!) rel) ?right_justified t in
   Option.may (fun rel -> rel := s) rel ;
   String.print oc s
 

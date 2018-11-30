@@ -130,7 +130,7 @@ let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple
   match enqueue_alloc rb sersize with
   | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
-    RingBufLib.(write_message_header tx 0 (DataTuple live_channel)) ;
+    RingBufLib.(write_message_header tx 0 (DataTuple RamenChannel.live)) ;
     let offs = RingBufLib.message_header_sersize in
     let offs = RamenBinocle.serialize tx offs tuple in
     enqueue_commit tx time time ;
@@ -420,7 +420,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
-      | tuple -> outputer RingBufLib.live_channel tuple))
+      | tuple -> outputer RamenChannel.live tuple))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
@@ -445,7 +445,7 @@ let listen_on (collector :
       port proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple RingBufLib.live_channel in
+                  serialize_tuple RamenChannel.live in
     let while_ () = !quit = None in
     collector ~inet_addr ~port ~while_ outputer)
 
@@ -711,7 +711,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          let chan = RingBufLib.live_channel (* TODO *) in
+          let chan = RamenChannel.live (* TODO *) in
           k tx_size chan min_tuple max_tuple ;
           loop ()) in
   loop ()
@@ -749,8 +749,8 @@ let aggregate
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
-      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RingBufLib.channel -> 'tuple_out -> int)
-      (generate_tuples : (RingBufLib.channel -> 'tuple_in -> 'tuple_out -> unit) -> RingBufLib.channel -> 'tuple_in -> 'generator_out -> unit)
+      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
+      (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
       (minimal_tuple_of_aggr :

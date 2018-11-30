@@ -102,6 +102,7 @@ struct
   let run = "Run one (or several) compiled program(s)"
   let kill = "Stop a program"
   let tail = "Display the last outputs of an operation"
+  let replay = "Rebuild the past output of the given operation"
   let timeseries = "Extract a timeseries from an operation"
   let timerange =
     "Retrieve the available time range of an operation output"

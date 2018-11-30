@@ -24,7 +24,7 @@ let pending_notify = "v6" (* last: refactor schema *)
 let ringbuf = "v7" (* last: channel ids *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v3" (* last: use PPP *)
+let out_ref = "v4" (* last: Add channels *)
 
 (* Workers state format *)
 let worker_state = "v10" (* last: remove dead state member *)

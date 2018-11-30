@@ -24,11 +24,19 @@ open RamenLog
 type out_ref_conf =
   (string (* dest file *), file_spec_conf) Hashtbl.t [@@ppp PPP_OCaml]
 and file_spec_conf =
-  string (* field mask *) * float (* timeout *) [@@ppp PPP_OCaml]
+  (* field mask: *)
+  string *
+  (* timeout: *)
+  float *
+  (* To ask for a specific channel (useful for leaf nodes) *)
+  RamenChannel.t option
+  [@@ppp PPP_OCaml]
 
 (* ...and internally, where the field mask is a proper list of booleans: *)
 type file_spec =
-  { field_mask : bool list ; timeout : float (* 0 for no timeout *) }
+  { field_mask : bool list ;
+    timeout : float (* 0 for no timeout *) ;
+    channel : RamenChannel.t option }
 
 let print_out_specs oc =
   Hashtbl.print String.print (fun _oc _s -> ()) oc
@@ -39,10 +47,10 @@ let string_of_field_mask mask =
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
  * Basically, new fields prevail but we keep the longer timeout: *)
-let combine_specs (_, t1) (s, t2) =
-  s, Float.max t1 t2
+let combine_specs (_, t1, _) (s, t2, c) =
+  s, Float.max t1 t2, c
 
-let file_spec_still_valid now (_, timeout) =
+let file_spec_still_valid now (_, timeout, _) =
   timeout <= 0. || timeout > now
 
 let write_ fname fd c =
@@ -59,15 +67,17 @@ let read fname =
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
     read_ fname fd |>
-    Hashtbl.filter_map (fun _p (mask_str, timeout as spec) ->
+    Hashtbl.filter_map (fun _p (mask_str, timeout, channel  as spec) ->
       if file_spec_still_valid now spec then
-        Some { field_mask = field_mask_of_string mask_str ; timeout }
+        Some { field_mask = field_mask_of_string mask_str ;
+               timeout ; channel }
       else None))
 
 let add_ fname fd out_fname file_spec =
   let file_spec =
     string_of_field_mask file_spec.field_mask,
-    file_spec.timeout in
+    file_spec.timeout,
+    file_spec.channel in
   let h =
     try read_ fname fd
     with Sys_error _ ->

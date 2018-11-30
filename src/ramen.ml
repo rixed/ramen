@@ -618,6 +618,41 @@ let tail =
     info ~doc:CliInfo.tail "tail")
 
 (*
+ * Replay
+ *)
+
+let since_mandatory =
+  let i = Arg.info ~doc:CliInfo.since
+                   ~docv:"SINCE" ["since"] in
+  Arg.(required (opt (some float) None i))
+
+let until_mandatory =
+  let i = Arg.info ~doc:CliInfo.until
+                   ~docv:"UNTIL" ["until"] in
+  Arg.(required (opt (some float) None i))
+
+
+let replay =
+  Term.(
+    (const RamenCliCmd.replay
+      $ copts
+      $ func_name 0
+      $ data_fields ~mandatory:false 1
+      $ with_header
+      $ with_units
+      $ csv_separator
+      $ csv_null
+      $ csv_raw
+      $ where
+      $ since_mandatory
+      $ until_mandatory
+      $ with_event_time
+      $ pretty
+      $ flush),
+    info ~doc:CliInfo.replay "replay")
+
+
+(*
  * Timeseries
  *)
 
@@ -887,7 +922,7 @@ let () =
       Term.eval_choice ~catch:false default [
         supervisor ; gc ; httpd ; notifier ;
         notify ; compile ; run ; kill ; archivist ;
-        tail ; timeseries ; timerange ; ps ;
+        tail ; replay ; timeseries ; timerange ; ps ;
         test ; dequeue ; summary ; repair ; links ;
         variants ; stats ; autocomplete ; expand
       ]) with

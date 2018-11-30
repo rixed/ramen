@@ -375,6 +375,16 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
+(* Check the entered field names are correct: *)
+let check_field_names typ field_names =
+  List.iter (fun fn ->
+    if not (List.exists (fun h -> fn = h.RamenTuple.name) typ) then
+      Printf.sprintf2 "Unknown field %a, should be one of %a"
+        RamenName.field_print fn
+        RamenTuple.print_typ_names typ |>
+      failwith
+  ) field_names
+
 let tail conf fq field_names with_header with_units sep null raw
          last min_seq max_seq continuous where since until
          with_seqnums with_event_time duration pretty flush () =
@@ -414,14 +424,7 @@ let tail conf fq field_names with_header with_units sep null raw
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
-  (* Check the entered field names are correct: *)
-  List.iter (fun fn ->
-    if not (List.exists (fun h -> fn = h.RamenTuple.name) typ) then
-      Printf.sprintf2 "Unknown field %a, should be one of %a"
-        RamenName.field_print fn
-        RamenTuple.print_typ_names typ |>
-      failwith
-  ) field_names ;
+  check_field_names typ field_names ;
   let header = typ |> Array.of_list in
   let display_field =
     Array.map (fun h ->
@@ -489,7 +492,7 @@ let tail conf fq field_names with_header with_units sep null raw
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
     match RamenSerialization.read_tuple unserialize tx with
     | RingBufLib.DataTuple chan, Some tuple
-      when chan = RingBufLib.live_channel && filter tuple ->
+      when chan = RamenChannel.live && filter tuple ->
         let t1, t2 = event_time_of_tuple tuple in
         if Option.map_default (fun since -> t2 > since) true since &&
            Option.map_default (fun until -> t1 <= until) true until
@@ -514,6 +517,126 @@ let tail conf fq field_names with_header with_units sep null raw
           Char.print stdout '\n' ;
           if flush then BatIO.flush stdout)
     | _ -> ())
+
+(*
+ * `ramen replay`
+ *
+ * Like tail, but replays history.
+ * Mainly for testing purposes for now.
+ * `tail` ask a worker to archive its output and then display this archive.
+ * Non-live channels are never archived though. So replay has to create its
+ * own receiving ring-buffer like a new worker would do, create a channel,
+ * ask for the operation to output this channel to this ringbuf,
+ * choose the replayers according to the stats file, setup all the out_ref
+ * from the replayers to its own ringbuf (no the outref currently in place
+ * should be ok), and finally launch the replayers.
+ *
+ * Note: refactor the CSV dumper to accommodate for tail, replay and
+ * timeseries.
+ *)
+
+let replay conf fq field_names with_header with_units sep null raw
+           where since until with_event_time pretty flush () =
+  init_logger conf.C.log_level ;
+  if with_units && not with_header then
+    failwith "Option --with-units makes no sense without --with-header" ;
+  (* Start with the most hazardeous and interesting part: find a way to
+   * get the data that's being asked: *)
+  (* First, make sure the operation actually exist: *)
+  let _prog, func =
+    C.with_rlock conf (fun programs ->
+      C.find_func programs fq) in
+  check_field_names func.F.out_type field_names ;
+  (* Then, get the runtime stats: *)
+  let stats = RamenArchivist.load_stats conf in
+  (* Find a way to get the data from func in between from and until.
+   * Note that there could be several ways to obtain those. For instance,
+   * we could ask for a 1year retention of some node that queried very
+   * infrequently, and that is also a parent of some other node for which
+   * we asked for a much shorter retention but that is queried more often:
+   * in that case the archiver could well decide to archive both the
+   * parent and, as an optimisation, this child. Now which best (or only)
+   * path to query that child depends on since/until.
+   * But the shortest path form func to its archiving parents that have the
+   * required data is always the best. So start from func and progress
+   * through parents until we have found all required sources with the whole
+   * archived content. AS a first attempt, just look for a parent that has
+   * all the data (avoid "roaming").
+   *)
+  (* Using stats, append to lst the list of all sources required to recall
+   * data from since to until, and also return the best times we have
+   * found so far: *)
+  (* TODO: handle gaps in archives (for instance, best_since and best_until
+   * could also come with a ratio of the coverage of the asked time
+   * slice) *)
+  let rec find_sources lst fq =
+    let s = Hashtbl.find stats fq in
+    let best_opt =
+      List.fold_left (fun best_opt (t1, t2) ->
+        if t1 > until || t2 < since then best_opt else
+        Some (max t1 since, min t2 until)
+      ) None s.RamenArchivist.archives in
+    match best_opt with
+    | Some (best_since, best_until)
+      when best_since <= since && best_until >= until ->
+        fq :: lst, Some (best_since, best_until)
+    | _ ->
+        List.fold_left (fun (lst, best_opt) pfq ->
+          let lst, best_opt' = find_sources lst pfq in
+          lst,
+          (* We have to take the intersection of our parents time ranges *)
+          match best_opt, best_opt' with
+          | x, None -> x
+          | None, (Some _ as x) -> x
+          | Some (bf', bu'), Some (bf, bu) ->
+              Some (max bf bf', min bu bu')
+        ) (lst, None) s.parents
+  in
+  match find_sources [] fq with
+  | exception Not_found ->
+      !logger.error "Cannot find some parents in the stats?!"
+  | _, None ->
+      !logger.info "No archive found. Game over."
+  | sources, Some (best_since, best_until) ->
+      !logger.info "List of required sources: %a"
+        (pretty_list_print RamenName.fq_print) sources ;
+      let rel = ref "" in
+      let p = print_as_date ~right_justified:false ~rel in
+      !logger.info "Time slice covered: %a..%a"
+        p best_since p best_until ;
+      (* Then create a ringbuffer for reception: *)
+      let rb_name =
+        Printf.sprintf "/tmp/replay_test_%d" (Unix.getpid ()) in
+      finally (fun () -> safe_unlink rb_name) (fun () ->
+        RingBuf.create rb_name ;
+        let rb = RingBuf.load rb_name in
+        finally (fun () -> RingBuf.unload rb) (fun () ->
+          (* Pick a channel. They are cheap, we do not care if we fail
+           * in the next step: *)
+          let chn = RamenChannel.make conf in
+          (* Ask to export only the fields we want. From no on we'd better
+           * not fail and retry as we would hammer the out_ref with temp
+           * ringbufs.
+           * Maybe we should use the channel in the rb name, and pick a
+           * channel_id large enough to be a hash of FQ, output fields and
+           * dates? But that mean 256bits integers (2xU128?). *)
+          let out_type =
+            RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type
+          and in_type =
+            if field_names = [] then func.F.out_type
+            else
+              List.filter (fun ft ->
+                List.mem ft.RamenTuple.name field_names
+              ) func.F.out_type in
+          let field_mask = RingBufLib.skip_list ~out_type ~in_type in
+          let file_spec =
+            RamenOutRef.{ field_mask ; timeout = 300. ;
+                          channel = Some chn } in
+          let out_ref = C.out_ringbuf_names_ref conf func in
+          RamenOutRef.add out_ref (rb_name, file_spec) ;
+          (* *)
+          ) ()) ()
+
 
 (*
  * `ramen timeseries`
@@ -564,7 +687,8 @@ let timeseries conf since until with_header where factors num_points
   let t_rel = ref "" in
   Enum.iter (fun (t, vs) ->
     Printf.printf "%a%s%a"
-      (if pretty then print_as_date ~rel:t_rel else print_nice_float) t
+      (if pretty then print_as_date ~right_justified:true ~rel:t_rel
+                 else print_nice_float) t
       sep
       (Array.print ~first:"" ~last:"\n" ~sep
         (Array.print ~first:"" ~last:"" ~sep

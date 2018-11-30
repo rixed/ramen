@@ -55,7 +55,7 @@ let read_notifs ?while_ rb f =
   (* Ignore all notifications but on live channel. *)
   read_tuples ?while_ RamenNotification.unserialize rb (function
     | DataTuple chan, Some notif
-      when chan = live_channel ->
+      when chan = RamenChannel.live ->
         f notif
     | _ -> ())
 
@@ -148,7 +148,7 @@ let write_record ser_in_type rb tuple =
     ) nullmask_sz values in
   !logger.debug "Sending an input tuple of %d bytes" sz ;
   with_enqueue_tx rb sz (fun tx ->
-    write_message_header tx 0 (DataTuple live_channel) ;
+    write_message_header tx 0 (DataTuple RamenChannel.live) ;
     let start_offs = message_header_sersize in
     zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
     (* Loop over all values: *)
@@ -344,7 +344,7 @@ let event_time_of_tuple typ params
  * Notice that contrary to `ramen tail`, `ramen timeseries` must never
  * wait for data and must return as soon as we've reached the end of what's
  * available. *)
-let fold_buffer_with_time ?(channel_id=RingBufLib.live_channel)
+let fold_buffer_with_time ?(channel_id=RamenChannel.live)
                           ?while_ ?early_stop
                           bname typ params event_time init f =
   !logger.debug "Folding over %s" bname ;

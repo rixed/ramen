@@ -220,7 +220,7 @@ let test_output conf fq output_spec end_flag =
       match RamenSerialization.read_tuple unserialize tx with
       | RingBufLib.DataTuple chan, Some tuple ->
         (* We do no replay on test instance of ramen: *)
-        assert (chan = RingBufLib.live_channel) ;
+        assert (chan = RamenChannel.live) ;
         if filter tuple then (
           !logger.debug "Read a tuple out of operation %S"
             (RamenName.string_of_fq fq) ;
@@ -281,7 +281,7 @@ let test_until conf count end_flag fq spec =
     (fun () _ tx ->
     match RamenSerialization.read_tuple unserialize tx with
     | RingBufLib.DataTuple chan, Some tuple ->
-      assert (chan = RingBufLib.live_channel) ;
+      assert (chan = RamenChannel.live) ;
       if filter tuple && filter_of_tuple_spec filter_spec tuple then (
         !logger.info "Got terminator tuple from function %S"
           (RamenName.string_of_fq fq) ;

@@ -1934,7 +1934,7 @@ let emit_read_tuple name ?(is_yield=false) mentioned oc in_typ =
   if is_yield then (
     (* Yield produce only tuples for the live channel: *)
     Printf.fprintf oc "\
-      \tlet m_ = RingBufLib.(DataTuple live_channel) in\n\
+      \tlet m_ = RingBufLib.(DataTuple RamenChannel.live) in\n\
       \tlet start_offs_ = 0 in\n"
   ) else (
     Printf.fprintf oc "

@@ -200,7 +200,7 @@ let input_spec conf parent child =
   let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.out_type
   and in_type = child.in_type in
   let field_mask = RingBufLib.skip_list ~out_type ~in_type in
-  RamenOutRef.{ field_mask ; timeout = 0. }
+  RamenOutRef.{ field_mask ; timeout = 0. ; channel = None }
 
 let check_is_subtype t1 t2 =
   (* For t1 to be a subtype of t2, all fields of t1 must be present and
