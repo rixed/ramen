@@ -826,7 +826,7 @@ let aggregate
         let v = restore !state in
         (* We do _not_ want to save the value when f raises an exception: *)
         let v = f v in
-        state := save ~save_every:1013 ~save_timeout:21. !state v
+        state := save ~save_every:100000 ~save_timeout:31. !state v
     in
     !logger.debug "Will read ringbuffer %a"
       (List.print String.print) rb_in_fnames ;
