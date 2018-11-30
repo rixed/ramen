@@ -87,7 +87,7 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
       emit_sersize_of_fixsz_typ TCidrv4
       emit_sersize_of_fixsz_typ TCidrv6
 
-  | TTuple ts -> (* Should not be used! Will be used when a constructed field is not mentioned and is skipped. Get rid of mentioned fields!*)
+  | TTuple ts -> (* Should not be used! Was used when a constructed field was not mentioned and was skipped. *)
     let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
     Printf.fprintf oc "\
       let tuple_start_ = %s in\n" offs_var ;
@@ -170,27 +170,6 @@ let rec emit_value_of_string typ oc var =
   | typ ->
       Printf.fprintf oc "RamenTypeConverters.%s_of_string %s"
         (id_of_typ typ) var
-
-(* Returns the set of all field names from the "in" tuple mentioned
- * anywhere in the given expression: *)
-let add_mentioned prev =
-  let open RamenExpr in
-  fold_by_depth (fun prev e ->
-    match e with
-    | Field (_, tuple, field) when tuple_has_type_input !tuple ->
-      Set.add field prev
-    | _ -> prev) prev
-
-let add_all_mentioned_in_expr lst =
-  let rec loop prev = function
-    | [] -> prev
-    | e :: e' -> loop (add_mentioned prev e) e'
-  in
-  loop Set.empty lst
-
-let add_all_mentioned_in_string mentioned _str =
-  (* TODO! *)
-  mentioned
 
 let emit_float oc f =
   (* printf "%F" would not work for infinity:
@@ -1917,17 +1896,12 @@ let emit_well_known opc oc name from
    unserializer_name ringbuf_envvar worker_and_time
 
 (* tuple must be some kind of _input_ tuple *)
-let emit_in_tuple ?(tuple=TupleIn) mentioned oc in_typ =
-  print_tuple_deconstruct tuple oc (List.filter_map (fun field_typ ->
-    if Set.mem field_typ.name mentioned then
-      Some field_typ else None) in_typ)
+let emit_in_tuple oc in_typ =
+  print_tuple_deconstruct TupleIn oc in_typ
 
 (* We do not want to read the value from the RB each time it's used,
- * so extract a tuple from the ring buffer. As an optimisation, read
- * (and return) only the mentioned fields.
- * FIXME: get rid of this mentioned "optimization" that's been obsolete for
- * a very long time already. *)
-let emit_read_tuple name ?(is_yield=false) mentioned oc in_typ =
+ * so extract a tuple from the ring buffer. *)
+let emit_read_tuple name ?(is_yield=false) oc in_typ =
   (* Deserialize in in_tuple_typ.name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
   Printf.fprintf oc "let %s tx_ =\n" name ;
@@ -2014,18 +1988,12 @@ let emit_read_tuple name ?(is_yield=false) mentioned oc in_typ =
   in
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in
-      if Set.mem field.name mentioned then (
-        Printf.fprintf oc "\tlet bi_ = %d in\n\
-                           \tlet %s, offs_ =\n%a in\n"
-          nulli
-          id (emit_read_scalar "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_") field.typ.structure
-      ) else (
-        Printf.fprintf oc "\tlet bi_ = %d in\n\
-                           \nlet offs_ = offs_ + (%a)\n"
-          nulli
-          (emit_sersize_of_field_tx "tx_" "start_offs_" "offs_" "bi_" field.typ.nullable)
-            field.typ.structure
-      ) ;
+      Printf.fprintf oc "\tlet bi_ = %d in\n\
+                         \tlet %s, offs_ =\n%a in\n"
+        nulli
+        id
+        (emit_read_scalar "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_")
+          field.typ.structure ;
       nulli + (if field.typ.nullable then 1 else 0)
     ) 0 ser_typ in
   (* We want to output the tuple with fields ordered according to the
@@ -2035,7 +2003,7 @@ let emit_read_tuple name ?(is_yield=false) mentioned oc in_typ =
       not (RamenName.is_private t.RamenTuple.name)
     ) in_typ in
   Printf.fprintf oc "\tm_, Some %a\n"
-    (emit_in_tuple mentioned) in_typ_only_ser
+    emit_in_tuple in_typ_only_ser
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -2076,7 +2044,7 @@ let emit_generator user_fun ~opc oc expr =
     (emit_expr ?state:None ~context:Finalize ~opc) expr ;
   List.iter (fun _ -> Printf.fprintf oc ")") generators
 
-let emit_generate_tuples name in_typ mentioned out_typ ~opc oc selected_fields =
+let emit_generate_tuples name in_typ out_typ ~opc oc selected_fields =
   let has_generator =
     List.exists (fun sf ->
       RamenExpr.is_generator sf.RamenOperation.expr)
@@ -2086,7 +2054,7 @@ let emit_generate_tuples name in_typ mentioned out_typ ~opc oc selected_fields =
   else (
     Printf.fprintf oc "let %s f_ chan_ (%a as it_) %a =\n"
       name
-      (emit_in_tuple mentioned) in_typ
+      emit_in_tuple in_typ
       (print_tuple_deconstruct TupleOut) out_typ ;
     (* Each generator is a functional receiving the continuation and calling it
      * as many times as there are values. *)
@@ -2166,11 +2134,11 @@ let emit_state_update_for_expr ~what ~opc oc expr =
 
 let emit_where
       ?(with_group=false) ?(always_true=false)
-      name in_typ mentioned ~opc oc expr =
+      name in_typ ~opc oc expr =
   Printf.fprintf oc "let %s global_ %a %a out_previous_opt_ "
     name
-    (emit_in_tuple mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleMergeGreatest mentioned) in_typ ;
+    emit_in_tuple in_typ
+    (print_tuple_deconstruct TupleMergeGreatest) in_typ ;
   if with_group then Printf.fprintf oc "group_ " ;
   if always_true then
     Printf.fprintf oc "= true\n"
@@ -2190,7 +2158,7 @@ let emit_field_selection
        * fields already computed in minimal_typ). And no need to update
        * states at all. *)
       ~build_minimal
-      name in_typ mentioned
+      name in_typ
       out_typ minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
@@ -2200,7 +2168,7 @@ let emit_field_selection
     not build_minimal || field_in_minimal field_name in
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ "
     name
-    (emit_in_tuple mentioned) in_typ ;
+    emit_in_tuple in_typ ;
   if not build_minimal then
     Printf.fprintf oc "%a " (emit_tuple TupleOut) minimal_typ ;
   Printf.fprintf oc "=\n" ;
@@ -2247,7 +2215,7 @@ let emit_field_selection
   Printf.fprintf oc "\n\t)\n"
 
 let emit_update_states
-      name in_typ mentioned
+      name in_typ
       minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
@@ -2256,7 +2224,7 @@ let emit_update_states
   in
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
-    (emit_in_tuple mentioned) in_typ
+    emit_in_tuple in_typ
     (emit_tuple TupleOut) minimal_typ ;
   List.iter (fun sf ->
     if not (field_in_minimal sf.RamenOperation.alias) then (
@@ -2270,10 +2238,10 @@ let emit_update_states
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
-let emit_key_of_input name in_typ mentioned ~opc oc exprs =
+let emit_key_of_input name in_typ ~opc oc exprs =
   Printf.fprintf oc "let %s %a =\n\t("
     name
-    (emit_in_tuple mentioned) in_typ ;
+    emit_in_tuple in_typ ;
   List.iteri (fun i expr ->
       Printf.fprintf oc "%s\n\t\t%a"
         (if i > 0 then "," else "")
@@ -2415,11 +2383,10 @@ let emit_state_init name state_lifespan other_state_vars
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when name in_typ mentioned minimal_typ ~opc
-              oc when_expr =
+let emit_when name in_typ minimal_typ ~opc oc when_expr =
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
-    (emit_in_tuple mentioned) in_typ
+    emit_in_tuple in_typ
     (emit_tuple TupleOut) minimal_typ ;
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~opc ~what:"commit clause" oc when_expr ;
@@ -2443,13 +2410,13 @@ let when_to_check_group_for_expr expr =
   if need_all then "CodeGenLib_Skeletons.ForAll"
   else "CodeGenLib_Skeletons.ForInGroup"
 
-let emit_sort_expr name in_typ mentioned ~opc oc es_opt =
+let emit_sort_expr name in_typ ~opc oc es_opt =
   Printf.fprintf oc "let %s sort_count_ %a %a %a %a =\n"
     name
-    (emit_in_tuple ~tuple:TupleSortFirst mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleIn mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleSortSmallest mentioned) in_typ
-    (emit_in_tuple ~tuple:TupleSortGreatest mentioned) in_typ ;
+    (print_tuple_deconstruct TupleSortFirst) in_typ
+    (print_tuple_deconstruct TupleIn) in_typ
+    (print_tuple_deconstruct TupleSortSmallest) in_typ
+    (print_tuple_deconstruct TupleSortGreatest) in_typ ;
   match es_opt with
   | [] ->
       (* The default sort_until clause must be false.
@@ -2460,10 +2427,10 @@ let emit_sort_expr name in_typ mentioned ~opc oc es_opt =
         (List.print ~first:"(" ~last:")" ~sep:", "
            (emit_expr ?state:None ~context:Finalize ~opc)) es
 
-let emit_merge_on name in_typ mentioned ~opc oc es =
+let emit_merge_on name in_typ ~opc oc es =
   Printf.fprintf oc "let %s %a =\n\t%a\n"
     name
-    (emit_in_tuple mentioned) in_typ
+    emit_in_tuple in_typ
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ?state:None ~context:Finalize ~opc)) es
 
@@ -2479,10 +2446,10 @@ let emit_notification_tuple ~opc oc notif =
 
 (* We want a function that, when given the worker name, current time and the
  * output tuple, will return the list of RamenNotification.tuple to send: *)
-let emit_get_notifications name in_typ mentioned out_typ ~opc oc notifications =
+let emit_get_notifications name in_typ out_typ ~opc oc notifications =
   Printf.fprintf oc "let %s %a %a =\n\t%a\n"
     name
-    (emit_in_tuple mentioned) in_typ
+    emit_in_tuple in_typ
     (emit_tuple TupleOut) out_typ
     (List.print ~sep:";\n\t\t" (emit_notification_tuple ~opc))
       notifications
@@ -2498,9 +2465,9 @@ let expr_needs_group e =
 
 let emit_aggregate opc oc name in_typ out_typ =
   match opc.op with
-  | Some (RamenOperation.Aggregate
+  | Some RamenOperation.Aggregate
       { fields ; merge ; sort ; where ; key ; commit_before ; commit_cond ;
-        flush_how ; notifications ; every ; from ; _ } as op) ->
+        flush_how ; notifications ; every ; from ; _ } ->
   let fetch_recursively s =
     let s = ref s in
     if not (reach_fixed_point (fun () ->
@@ -2571,49 +2538,44 @@ let emit_aggregate opc oc name in_typ out_typ =
     List.filter (fun ft ->
       Set.mem ft.RamenTuple.name minimal_fields
     ) out_typ in
-  (* FIXME: now that we serialize only used fields, when do we have fields
-   * that are not mentioned?? *)
-  let mentioned =
-    let all_exprs = RamenOperation.fold_expr [] (fun l s -> s :: l) op in
-    add_all_mentioned_in_expr all_exprs
   (* Tells whether we need the group to check the where clause (because it
    * uses the group tuple or build a group-wise aggregation on its own,
    * despite this is forbidden in RamenOperation.check): *)
-  and where_need_group = expr_needs_group where
+  let where_need_group = expr_needs_group where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
   and is_yield = from = [] in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
-    (emit_read_tuple "read_tuple_" ~is_yield mentioned) in_typ
+    (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
     (if where_need_group then
-      emit_where "where_fast_" ~always_true:true in_typ mentioned ~opc
+      emit_where "where_fast_" ~always_true:true in_typ ~opc
     else
-      emit_where "where_fast_" in_typ mentioned ~opc) where
+      emit_where "where_fast_" in_typ ~opc) where
     (if not where_need_group then
-      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ mentioned ~opc
+      emit_where "where_slow_" ~with_group:true ~always_true:true in_typ ~opc
     else
-      emit_where "where_slow_" ~with_group:true in_typ mentioned ~opc) where
-    (emit_key_of_input "key_of_input_" in_typ mentioned ~opc) key
+      emit_where "where_slow_" ~with_group:true in_typ ~opc) where
+    (emit_key_of_input "key_of_input_" in_typ ~opc) key
     emit_maybe_fields out_typ
-    (emit_when "commit_cond_" in_typ mentioned minimal_typ ~opc) commit_cond
-    (emit_field_selection ~build_minimal:true "minimal_tuple_of_group_" in_typ mentioned out_typ minimal_typ ~opc) fields
-    (emit_field_selection ~build_minimal:false "out_tuple_of_minimal_tuple_" in_typ mentioned out_typ minimal_typ ~opc) fields
-    (emit_update_states "update_states_" in_typ mentioned minimal_typ ~opc) fields
+    (emit_when "commit_cond_" in_typ minimal_typ ~opc) commit_cond
+    (emit_field_selection ~build_minimal:true "minimal_tuple_of_group_" in_typ out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:false "out_tuple_of_minimal_tuple_" in_typ out_typ minimal_typ ~opc) fields
+    (emit_update_states "update_states_" in_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_group_") out_typ
-    (emit_generate_tuples "generate_tuples_" in_typ mentioned out_typ ~opc) fields
+    (emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc) fields
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
-    (emit_merge_on "merge_on_" in_typ mentioned ~opc) merge.on
-    (emit_sort_expr "sort_until_" in_typ mentioned ~opc) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
-    (emit_sort_expr "sort_by_" in_typ mentioned ~opc) (match sort with Some (_, _, b) -> b | None -> [])
-    (emit_get_notifications "get_notifications_" in_typ mentioned out_typ ~opc) notifications ;
+    (emit_merge_on "merge_on_" in_typ ~opc) merge.on
+    (emit_sort_expr "sort_until_" in_typ ~opc) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
+    (emit_sort_expr "sort_by_" in_typ ~opc) (match sort with Some (_, _, b) -> b | None -> [])
+    (emit_get_notifications "get_notifications_" in_typ out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib_Skeletons.aggregate\n\
-      \t\tread_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
+      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
       \t\tupdate_states_\n\
