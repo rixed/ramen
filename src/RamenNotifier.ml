@@ -54,6 +54,7 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenNullable
+open RamenConsts
 module C = RamenConf
 
 (* Used to know if we must use normal schedule delay or schedule delay
@@ -81,26 +82,26 @@ open Binocle
 let stats_count =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.messages_count
+      Metric.Names.messages_count
       "Number of messages sent, per channel.")
 
 let stats_send_fails =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.messages_send_fails
+      Metric.Names.messages_send_fails
       "Number of messages that could not be sent due to error.")
 
 let stats_team_fallbacks =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.team_fallbacks
+      Metric.Names.team_fallbacks
       "Number of times the default team was selected because the \
       configuration was not specific enough")
 
 let stats_messages_cancelled =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.messages_cancelled
+      Metric.Names.messages_cancelled
       "Number of notifications not send, per reason")
 
 let max_exec = Atomic.Counter.make 5 (* no more than 5 simultaneous execs *)

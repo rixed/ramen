@@ -4,6 +4,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 
 (*
@@ -37,12 +38,12 @@ let rec chop_prefix pfx path =
 (* Case is significant for multipart boundaries *)
 let get_content_type headers =
   try List.assoc "Content-Type" headers
-  with Not_found -> RamenConsts.ContentTypes.json
+  with Not_found -> ContentTypes.json
 
 let get_accept headers =
   let h =
     (try List.assoc "Accept" headers
-     with Not_found -> RamenConsts.ContentTypes.json) |>
+     with Not_found -> ContentTypes.json) |>
     String.lowercase in
   let h =
     try String.split ~by:";" h |> fst
@@ -72,13 +73,13 @@ open Binocle
 let stats_count =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.requests_count
+      Metric.Names.requests_count
       "Number of HTTP requests, per response status")
 
 let stats_resp_time =
   RamenBinocle.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir
-      RamenConsts.Metric.Names.http_resp_time
+      Metric.Names.http_resp_time
       "HTTP response time per URL" Histogram.powers_of_two)
 
 (* Perf measurements (FIXME) *)
@@ -121,7 +122,7 @@ let kaputt str =
       "Content-Type", "text/plain" ] ;
     body = str })
 
-let http_msg ?(code=200) ?(content_type=RamenConsts.ContentTypes.json)
+let http_msg ?(code=200) ?(content_type=ContentTypes.json)
              ?(headers=[]) body =
   let headers =
     ("Access-Control-Allow-Origin", "*") ::
@@ -207,7 +208,7 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
              let labels = ("status", string_of_int code) :: labels in
              IntCounter.inc ~labels (stats_count conf.C.persist_dir) ;
              let body = Printexc.to_string exn ^ "\n" in
-             let content_type = RamenConsts.ContentTypes.text in
+             let content_type = ContentTypes.text in
              http_msg ~code ~content_type body
         ) in
       let resp_time = Unix.gettimeofday () -. start_time in

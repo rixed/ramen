@@ -5,11 +5,12 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
 
-(* Global quit flag, set (to some RamenConsts.ExitCodes) when the term signal
+(* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
 let quit = ref None
 
@@ -66,8 +67,8 @@ let prepare_signal_handlers conf =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     info_or_test conf "Received signal %s" (name_of_signal s) ;
     quit :=
-      Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
-                               else RamenConsts.ExitCodes.interrupted))) ;
+      Some (if s = Sys.sigterm then ExitCodes.terminated
+                               else ExitCodes.interrupted))) ;
   (* Dump stats on sigusr1: *)
   set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
@@ -241,39 +242,39 @@ open Binocle
 let stats_worker_crashes =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.worker_crashes
+      Metric.Names.worker_crashes
       "Number of workers that have crashed (or exited with non 0 status).")
 
 let stats_worker_deadloopings =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.worker_deadloopings
+      Metric.Names.worker_deadloopings
       "Number of time a worker has been found to deadloop.")
 
 let stats_worker_count =
-  IntGauge.make RamenConsts.Metric.Names.worker_count
+  IntGauge.make Metric.Names.worker_count
     "Number of workers configured to run."
 
 let stats_worker_running =
-  IntGauge.make RamenConsts.Metric.Names.worker_running
+  IntGauge.make Metric.Names.worker_running
     "Number of workers actually running."
 
 let stats_ringbuf_repairs =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.ringbuf_repairs
+      Metric.Names.ringbuf_repairs
       "Number of times a worker ringbuf had to be repaired.")
 
 let stats_outref_repairs =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.outref_repairs
+      Metric.Names.outref_repairs
       "Number of times a worker outref had to be repaired.")
 
 let stats_worker_sigkills =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.worker_sigkills
+      Metric.Names.worker_sigkills
       "Number of times a worker had to be sigkilled instead of sigtermed.")
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
@@ -310,7 +311,7 @@ let process_workers_terminations conf running =
       | _, status ->
           let status_str = string_of_process_status status in
           let is_err =
-            status <> WEXITED RamenConsts.ExitCodes.terminated in
+            status <> WEXITED ExitCodes.terminated in
           (if is_err then !logger.error else info_or_test conf)
             "%s %s." what status_str ;
           proc.last_exit <- now ;
@@ -424,7 +425,7 @@ let really_start conf proc parents children =
   let args =
     (* For convenience let's add "ramen worker" and the fun name as
      * arguments: *)
-    [| RamenConsts.worker_argv0 ; fq_str |] in
+    [| worker_argv0 ; fq_str |] in
   (* Better have the workers CWD where the binary is, so that any file name
    * mentioned in the program is relative to the program. *)
   let cwd = Filename.dirname proc.bin in

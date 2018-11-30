@@ -4,6 +4,7 @@ open Batteries
 open Stdint
 open RamenLog
 open RamenHelpers
+open RamenConsts
 
 (* Health and Stats
  *
@@ -26,48 +27,48 @@ open RamenHelpers
 open Binocle
 
 let stats_in_tuple_count =
-  IntCounter.make RamenConsts.Metric.Names.in_tuple_count
-    RamenConsts.Metric.Docs.in_tuple_count
+  IntCounter.make Metric.Names.in_tuple_count
+    Metric.Docs.in_tuple_count
 
 let make_stats_selected_tuple_count () =
-  IntCounter.make RamenConsts.Metric.Names.selected_tuple_count
-    RamenConsts.Metric.Docs.selected_tuple_count
+  IntCounter.make Metric.Names.selected_tuple_count
+    Metric.Docs.selected_tuple_count
 
 let stats_out_tuple_count =
-  IntCounter.make RamenConsts.Metric.Names.out_tuple_count
-    RamenConsts.Metric.Docs.out_tuple_count
+  IntCounter.make Metric.Names.out_tuple_count
+    Metric.Docs.out_tuple_count
 
 let stats_cpu =
-  FloatCounter.make RamenConsts.Metric.Names.cpu_time
-    RamenConsts.Metric.Docs.cpu_time
+  FloatCounter.make Metric.Names.cpu_time
+    Metric.Docs.cpu_time
 
 let stats_ram =
-  IntGauge.make RamenConsts.Metric.Names.ram_usage
-    RamenConsts.Metric.Docs.ram_usage
+  IntGauge.make Metric.Names.ram_usage
+    Metric.Docs.ram_usage
 
 let stats_rb_read_bytes =
-  IntCounter.make RamenConsts.Metric.Names.rb_read_bytes
-    RamenConsts.Metric.Docs.rb_read_bytes
+  IntCounter.make Metric.Names.rb_read_bytes
+    Metric.Docs.rb_read_bytes
 
 let stats_rb_write_bytes =
-  IntCounter.make RamenConsts.Metric.Names.rb_write_bytes
-    RamenConsts.Metric.Docs.rb_write_bytes
+  IntCounter.make Metric.Names.rb_write_bytes
+    Metric.Docs.rb_write_bytes
 
 let stats_rb_read_sleep_time =
-  FloatCounter.make RamenConsts.Metric.Names.rb_wait_read
-    RamenConsts.Metric.Docs.rb_wait_read
+  FloatCounter.make Metric.Names.rb_wait_read
+    Metric.Docs.rb_wait_read
 
 let stats_rb_write_sleep_time =
-  FloatCounter.make RamenConsts.Metric.Names.rb_wait_write
-    RamenConsts.Metric.Docs.rb_wait_write
+  FloatCounter.make Metric.Names.rb_wait_write
+    Metric.Docs.rb_wait_write
 
 let stats_last_out =
-  FloatGauge.make RamenConsts.Metric.Names.last_out
-    RamenConsts.Metric.Docs.last_out
+  FloatGauge.make Metric.Names.last_out
+    Metric.Docs.last_out
 
 let stats_event_time =
-  FloatGauge.make RamenConsts.Metric.Names.event_time
-    RamenConsts.Metric.Docs.event_time
+  FloatGauge.make Metric.Names.event_time
+    Metric.Docs.event_time
 
 let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
 let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
@@ -350,7 +351,7 @@ let worker_start worker_name get_binocle_tuple k =
         init_logger ~logdir log_level
       )) ;
   let report_period =
-    getenv ~def:(string_of_float RamenConsts.Default.report_period)
+    getenv ~def:(string_of_float Default.report_period)
            "report_period" |> float_of_string in
   let report_rb_fname =
     getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
@@ -366,8 +367,8 @@ let worker_start worker_name get_binocle_tuple k =
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
     info_or_test conf "Received signal %s" (name_of_signal s) ;
     quit :=
-      Some (if s = Sys.sigterm then RamenConsts.ExitCodes.terminated
-                               else RamenConsts.ExitCodes.interrupted))) ;
+      Some (if s = Sys.sigterm then ExitCodes.terminated
+                               else ExitCodes.interrupted))) ;
   (* Dump stats on sigusr1: *)
   set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
@@ -817,8 +818,8 @@ let aggregate
       (every : float) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
-    IntGauge.make RamenConsts.Metric.Names.group_count
-                  RamenConsts.Metric.Docs.group_count in
+    IntGauge.make Metric.Names.group_count
+                  Metric.Docs.group_count in
   IntGauge.set stats_group_count 0 ;
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =

@@ -1,6 +1,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module Expr = RamenExpr
 
 let archive_file dir (block_start, block_stop) =
@@ -167,11 +168,11 @@ struct
       funcs = List.map Func.unserialized t.funcs }
 
   let version_of_bin fname =
-    let args = [| fname ; RamenConsts.WorkerCommands.print_version |] in
+    let args = [| fname ; WorkerCommands.print_version |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_line
 
   let info_of_bin fname =
-    let args = [| fname ; RamenConsts.WorkerCommands.get_info |] in
+    let args = [| fname ; WorkerCommands.get_info |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_value |>
     unserialized
 
@@ -181,20 +182,20 @@ struct
       Hashtbl.enum params /@
       (fun (n, v) ->
         Printf.sprintf2 "%s%s=%a"
-          RamenConsts.param_envvar_prefix
+          param_envvar_prefix
           (RamenName.string_of_field n)
           RamenTypes.print v) in
     (* Then the experiment variants: *)
     let exps =
       RamenExperiments.all_experiments conf.persist_dir |>
       List.map (fun (name, exp) ->
-        RamenConsts.exp_envvar_prefix ^ name ^"="
+        exp_envvar_prefix ^ name ^"="
           ^ exp.RamenExperiments.variants.(exp.variant).name) |>
       List.enum in
     Enum.append env exps
 
   let wants_to_run conf fname params =
-    let args = [| fname ; RamenConsts.WorkerCommands.wants_to_run |] in
+    let args = [| fname ; WorkerCommands.wants_to_run |] in
     let env = env_of_params_and_exps conf params |> Array.of_enum in
     with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
@@ -259,7 +260,7 @@ type must_run_entry =
      * mode? *)
     debug : bool [@ppp_default false] ;
     (* Stat report period: *)
-    report_period : float [@ppp_default RamenConsts.Default.report_period] ;
+    report_period : float [@ppp_default Default.report_period] ;
     (* Full path to the worker's binary: *)
     bin : string ;
     (* "Command line" for that worker: *)
@@ -334,7 +335,7 @@ let find_func programs fq =
 let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])
-      ?(initial_export_duration=RamenConsts.Default.initial_export_duration)
+      ?(initial_export_duration=Default.initial_export_duration)
       ?(test=false) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;

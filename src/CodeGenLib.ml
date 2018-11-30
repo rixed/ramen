@@ -5,12 +5,13 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenNullable
+open RamenConsts
 
 (* Get parameters from the environment.
  * This function is called at module initialization time to get the (constant)
  * value of a parameter (with default value in [def]): *)
 let parameter_value ~def scalar_parser name =
-  let envvar = RamenConsts.param_envvar_prefix ^ name in
+  let envvar = param_envvar_prefix ^ name in
   !logger.debug "Looking for envvar %S" envvar ;
   match Sys.getenv envvar with
   | exception Not_found -> def
@@ -21,7 +22,7 @@ let parameter_value ~def scalar_parser name =
           Printf.sprintf "Cannot parse value %s for parameter %s: %s"
                          s name (Printexc.to_string e) in
         print_exception ~what e ;
-        exit RamenConsts.ExitCodes.cannot_parse_param
+        exit ExitCodes.cannot_parse_param
 
 (* For experiment names, we don't know in advance the experiment name we are
  * going to use so we just read them all from the whole envvar vector: *)
@@ -32,7 +33,7 @@ let experiment_variants =
     match String.split ~by:"=" str with
     | exception Not_found -> ()
     | n, v ->
-        let pref = RamenConsts.exp_envvar_prefix in
+        let pref = exp_envvar_prefix in
         if String.starts_with n pref then (
           let n = String.lchop ~n:(String.length pref) n in
           Hashtbl.add h n v)) ;
