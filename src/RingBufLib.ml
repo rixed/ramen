@@ -260,20 +260,6 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
   retry ?while_ ~on ~first_delay:0.001 ~max_delay:1. ?delay_rec
         ?max_retry_time f
 
-let out_ringbuf_names outbuf_ref_fname =
-  let last_touched fname =
-    mtime_of_file_def 0. fname in
-  let last_read = ref 0. in
-  fun () ->
-    let t = last_touched outbuf_ref_fname in
-    if t > !last_read then (
-      if !last_read <> 0. then
-        !logger.info "Have to re-read %s" outbuf_ref_fname ;
-      last_read := t ;
-      let lines = RamenOutRef.read outbuf_ref_fname in
-      Some lines
-    ) else None
-
 (* To allow a func to select only some fields from its parent and write only
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)

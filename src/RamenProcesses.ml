@@ -358,8 +358,6 @@ let really_start conf proc parents children =
     RingBuf.create fname ;
     RamenOutRef.add out_ringbuf_ref out
   ) children ;
-  (* Now that the out_ref exists, but before we actually fork the worker,
-   * we can start importing: *)
   (* Always export for a little while at the beginning *)
   let _bname =
     RamenExport.make_temp_export ~duration:conf.initial_export_duration

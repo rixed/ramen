@@ -165,7 +165,21 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
   and out_l = ref []  (* list of outputers *) in
-  let get_out_fnames = RingBufLib.out_ringbuf_names rb_ref_out_fname in
+  let get_out_fnames =
+    let last_mtime = ref 0. and last_stat = ref 0. in
+    fun () ->
+      if !CodeGenLib_IO.now > !last_stat +. 1. then (
+        last_stat := !CodeGenLib_IO.now ;
+        let t = mtime_of_file_def 0. rb_ref_out_fname in
+        if t > !last_mtime then (
+          if !last_mtime <> 0. then
+            !logger.info "Have to re-read %s" rb_ref_out_fname ;
+          last_mtime := t ;
+          let lines = RamenOutRef.read rb_ref_out_fname in
+          Some lines
+        ) else None
+      ) else None
+  in
   fun tuple ->
     let start_stop = time_of_tuple tuple in
     IntCounter.add stats_out_tuple_count 1 ;
@@ -185,7 +199,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
           Hashtbl.clear out_h)
       ) else (
         if Hashtbl.is_empty out_h then
-          !logger.debug "OutRef is no more empty!" ;
+          !logger.debug "OutRef is no longer empty!" ;
         !logger.debug "Must now output to: %a"
           RamenOutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
