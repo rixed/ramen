@@ -256,7 +256,7 @@ struct
   let max_fpr = 1. /. 600.
 
   (* Every started program initially archive its output for that long: *)
-  let initial_export_duration = 600.
+  let initial_export_duration = 0.
 
   (* When asking for a timeseries or any other export, export for that long: *)
   let export_duration = 600.
