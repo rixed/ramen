@@ -166,17 +166,24 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
   and out_l = ref []  (* list of outputers *) in
   let get_out_fnames =
-    let last_mtime = ref 0. and last_stat = ref 0. in
+    let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
       if !CodeGenLib_IO.now > !last_stat +. 1. then (
         last_stat := !CodeGenLib_IO.now ;
-        let t = mtime_of_file_def 0. rb_ref_out_fname in
-        if t > !last_mtime then (
-          if !last_mtime <> 0. then
-            !logger.info "Have to re-read %s" rb_ref_out_fname ;
-          last_mtime := t ;
-          let lines = RamenOutRef.read rb_ref_out_fname in
-          Some lines
+        let must_read =
+          let t = mtime_of_file_def 0. rb_ref_out_fname in
+          if t > !last_mtime then (
+            last_mtime := t ;
+            if !last_mtime <> 0. && t > !last_mtime then
+              !logger.info "Have to re-read %s" rb_ref_out_fname ;
+            true
+          (* We have to reread the outref from time to time even if not
+           * changed because of timeout expiry. *)
+          ) else !CodeGenLib_IO.now > !last_read +. 10.
+        in
+        if must_read then (
+          last_read := !CodeGenLib_IO.now ;
+          Some (RamenOutRef.read rb_ref_out_fname)
         ) else None
       ) else None
   in
