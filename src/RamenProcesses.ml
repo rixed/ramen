@@ -541,7 +541,8 @@ let try_kill conf must_run proc =
 (* This is used to check that we do not check too often nor too rarely: *)
 let last_checked_outref = ref 0.
 
-let check_out_ref conf must_run =
+(* Need also running to check which workers are actually running *)
+let check_out_ref conf must_run running =
   !logger.debug "Checking out_refs..." ;
   (* Build the set of all wrapping ringbuf that are being read: *)
   let rbs =
@@ -549,35 +550,37 @@ let check_out_ref conf must_run =
       C.in_ringbuf_names conf func |>
       List.fold_left (fun s rb_name -> Set.add rb_name s) s
     ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-  Hashtbl.iter (fun _ (_, func) ->
-    (* Iter over all functions and check they do not output to a ringbuf not
-     * in this set: *)
-    let out_ref = C.out_ringbuf_names_ref conf func in
-    let outs = RamenOutRef.read out_ref in
-    Hashtbl.iter (fun fname _ ->
-      if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
-        !logger.error "Operation %s outputs to %s, which is not read, fixing"
-          (RamenName.string_of_fq (F.fq_name func)) fname ;
-        log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
-          IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-          RamenOutRef.remove out_ref fname) ())
-    ) outs ;
-    (* Conversely, check that all children are in the out_ref of their
-     * parent: *)
-    let par_funcs, _c = relatives func must_run in
-    let in_rbs = C.in_ringbuf_names conf func |> Set.of_list in
-    List.iter (fun par_func ->
-      let out_ref = C.out_ringbuf_names_ref conf par_func in
+  Hashtbl.iter (fun _ proc ->
+    (* Iter over all running functions and check they do not output to a
+     * ringbuf not in this set: *)
+    if proc.pid <> None then (
+      let out_ref = C.out_ringbuf_names_ref conf proc.func in
       let outs = RamenOutRef.read out_ref in
-      let outs = Hashtbl.keys outs |> Set.of_enum in
-      if Set.disjoint in_rbs outs then (
-        !logger.error "Operation %s must output to %s but does not, fixing"
-          (RamenName.string_of_fq (F.fq_name par_func))
-          (RamenName.string_of_fq (F.fq_name func)) ;
-        log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
-          RamenOutRef.add out_ref (input_spec conf par_func func)) ())
-    ) par_funcs
-  ) must_run
+      Hashtbl.iter (fun fname _ ->
+        if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
+          !logger.error "Operation %s outputs to %s, which is not read, fixing"
+            (RamenName.string_of_fq (F.fq_name proc.func)) fname ;
+          log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
+            IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
+            RamenOutRef.remove out_ref fname) ())
+      ) outs ;
+      (* Conversely, check that all children are in the out_ref of their
+       * parent: *)
+      let par_funcs, _c = relatives proc.func must_run in
+      let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
+      List.iter (fun par_func ->
+        let out_ref = C.out_ringbuf_names_ref conf par_func in
+        let outs = RamenOutRef.read out_ref in
+        let outs = Hashtbl.keys outs |> Set.of_enum in
+        if Set.disjoint in_rbs outs then (
+          !logger.error "Operation %s must output to %s but does not, fixing"
+            (RamenName.string_of_fq (F.fq_name par_func))
+            (RamenName.string_of_fq (F.fq_name proc.func)) ;
+          log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
+            RamenOutRef.add out_ref (input_spec conf par_func proc.func)) ())
+      ) par_funcs
+    )
+  ) running
 
 let signal_all_cont running =
   Hashtbl.iter (fun _ proc ->
@@ -689,7 +692,7 @@ let synchronize_running conf autoreload_delay =
     then (
       last_checked_outref := now ;
       log_and_ignore_exceptions ~what:"checking out_refs"
-        (check_out_ref conf) must_run) ;
+        (check_out_ref conf must_run) running) ;
     if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
