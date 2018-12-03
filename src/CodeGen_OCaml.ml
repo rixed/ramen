@@ -557,7 +557,8 @@ and emit_maybe_fields oc out_typ =
 
 and emit_event_time oc opc =
   let (sta_field, sta_src, sta_scale), dur =
-    RamenOperation.event_time_of_operation (Option.get opc.op) |> Option.get in
+    RamenOperation.event_time_of_operation (Option.get opc.op) |>
+    Option.get in
   let open RamenEventTime in
   let field_value_to_float src oc field_name =
     match src with
@@ -1077,9 +1078,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
           else [], csts @ non_csts in
         let csts_len = List.length csts |> string_of_int
         and csts_hash_init larger_t =
-          IO.to_string (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
-            Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
-              (conv_to ?state ~context ~opc (Some larger_t)) e)) csts in
+          Printf.sprintf2 "%a"
+            (List.print ~first:"" ~last:"" ~sep:" ;\n\t" (fun cc e ->
+              Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
+                (conv_to ?state ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
       | Field ({ typ = Some { structure = (TVec (_, telem) | TList telem) ; _ } ; _ }, _, _) ->
         let csts_len =
@@ -1823,9 +1825,9 @@ let emit_time_of_tuple name oc opc =
     name
     (print_tuple_deconstruct TupleOut) opc.tuple_typ ;
   (match RamenOperation.event_time_of_operation (Option.get opc.op) with
-  | None -> Printf.fprintf oc "None"
+  | None -> String.print oc "None"
   | Some _ -> Printf.fprintf oc "Some (%a)" emit_event_time opc) ;
-  Printf.fprintf oc "\n\n"
+  String.print oc "\n\n"
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file opc oc name csv_fname unlink
@@ -2693,11 +2695,23 @@ let emit_operation name func_name in_typ out_typ params_mod params op oc =
 
 (* A function that reads the history and write it according to some out_ref
  * under a given chanel: *)
-let emit_replay name out_typ oc =
-  emit_read_tuple "read_out_tuple_" oc out_typ ;
+let emit_replay name op out_typ params oc =
+  (* We cannot reuse the sersize_of_tuple_, time_of_tuple_ or
+   * serialize_tuple_ that has been emitted for aggregate as emit_read_tuple
+   * returns a version of out_typ with no private fields, and that's what
+   * we need to pass to those functions as well. So here we merely pretend
+   * the out_typ is the serialized version of out_type (no private fields
+   * _and_ serialization order) *)
+  let ser_out_typ = RingBufLib.ser_tuple_typ_of_tuple_typ out_typ in
+  let consts = IO.output_string () in
+  let opc = { op = Some op ; params ; consts ; tuple_typ = ser_out_typ } in
+  emit_read_tuple "read_out_tuple_" oc ser_out_typ ;
+  emit_sersize_of_tuple "sersize_of_ser_tuple_" oc ser_out_typ ;
+  emit_time_of_tuple "time_of_ser_tuple_" oc opc ;
+  emit_serialize_tuple "serialize_ser_tuple_" oc ser_out_typ ;
   Printf.fprintf oc
     "let %s () =\n\
-       \tCodeGenLib_Skeletons.replay read_out_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+       \tCodeGenLib_Skeletons.replay read_out_tuple_ sersize_of_ser_tuple_ time_of_ser_tuple_ serialize_ser_tuple_\n"
     name
 
 
@@ -2709,7 +2723,7 @@ let compile conf worker_entry_point replay_entry_point
     RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
       emit_operation worker_entry_point func_name in_typ out_typ
                      params_mod params op oc ;
-      emit_replay replay_entry_point out_typ oc) in
+      emit_replay replay_entry_point op out_typ params oc) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   let what = "function "^ RamenName.func_color func_name in
   RamenOCamlCompiler.compile conf what src_file obj_name
