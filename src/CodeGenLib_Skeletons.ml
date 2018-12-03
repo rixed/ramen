@@ -326,7 +326,6 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
 type worker_conf =
   { log_level : log_level ;
     state_file : string ;
-    ramen_url : string ;
     is_test : bool }
 
 let info_or_test conf =
@@ -338,7 +337,6 @@ let worker_start worker_name get_binocle_tuple k =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let is_test = getenv ~def:"false" "is_test" |> bool_of_string in
   let state_file = getenv ~def:default_persist_dir "state_file" in
-  let ramen_url = getenv ~def:"http://localhost:29380" "ramen_url" in
   let prefix = worker_name ^": " in
   (match getenv "log" with
   | exception _ ->
@@ -359,7 +357,7 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  let conf = { log_level ; state_file ; ramen_url ; is_test } in
+  let conf = { log_level ; state_file ; is_test } in
   info_or_test conf "Starting %s process. Will log into %s at level %s."
     worker_name
     (string_of_log_output !logger.output)
