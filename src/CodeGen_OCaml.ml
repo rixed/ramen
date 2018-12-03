@@ -1901,9 +1901,9 @@ let emit_in_tuple oc in_typ =
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. *)
-let emit_read_tuple name ?(is_yield=false) oc in_typ =
+let emit_read_tuple name ?(is_yield=false) oc typ =
   (* Deserialize in in_tuple_typ.name order: *)
-  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ in_typ in
+  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
   Printf.fprintf oc "let %s tx_ =\n" name ;
   if is_yield then (
     (* Yield produce only tuples for the live channel: *)
@@ -1925,7 +1925,7 @@ let emit_read_tuple name ?(is_yield=false) oc in_typ =
     Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
   (* Returns value, offset: *)
   let rec emit_read_scalar tx_var start_offs_var offs_var val_var
-                           nullable nulli_var oc typ =
+                           nullable nulli_var oc structure =
     if nullable then (
       Printf.fprintf oc "\
         \t\tif RingBuf.get_bit %s %s %s then (\n\
@@ -1935,11 +1935,11 @@ let emit_read_tuple name ?(is_yield=false) oc in_typ =
         \t\t) else Null, %s"
         tx_var start_offs_var nulli_var
         val_var offs_var
-        (emit_read_scalar tx_var start_offs_var offs_var val_var false nulli_var) typ
+        (emit_read_scalar tx_var start_offs_var offs_var val_var false nulli_var) structure
         val_var offs_var
         offs_var
     ) else (
-    match typ with
+    match structure with
     (* Constructed types are prefixed with a nullmask and then read item by
      * item: *)
     | TTuple ts ->
@@ -1980,8 +1980,8 @@ let emit_read_tuple name ?(is_yield=false) oc in_typ =
     | _ ->
         Printf.fprintf oc "\
           \t\tRingBuf.read_%s %s %s, %s + %a"
-          (id_of_typ typ) tx_var offs_var
-          offs_var (emit_sersize_of_not_null tx_var offs_var) typ
+          (id_of_typ structure) tx_var offs_var
+          offs_var (emit_sersize_of_not_null tx_var offs_var) structure
     ) ;
     if verbose_serialization then
       Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"deserialized field %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" val_var val_var
@@ -2001,7 +2001,7 @@ let emit_read_tuple name ?(is_yield=false) oc in_typ =
   let in_typ_only_ser =
     List.filter (fun t ->
       not (RamenName.is_private t.RamenTuple.name)
-    ) in_typ in
+    ) typ in
   Printf.fprintf oc "\tm_, Some %a\n"
     emit_in_tuple in_typ_only_ser
 
@@ -2691,13 +2691,25 @@ let emit_operation name func_name in_typ out_typ params_mod params op oc =
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)
 
-let compile conf entry_point func_name obj_name in_typ out_typ
+(* A function that reads the history and write it according to some out_ref
+ * under a given chanel: *)
+let emit_replay name out_typ oc =
+  emit_read_tuple "read_out_tuple_" oc out_typ ;
+  Printf.fprintf oc
+    "let %s () =\n\
+       \tCodeGenLib_Skeletons.replay read_out_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+    name
+
+
+let compile conf worker_entry_point replay_entry_point
+            func_name obj_name in_typ out_typ
             params_mod params op =
   let open RamenOperation in
   let src_file =
-    RamenOCamlCompiler.with_code_file_for obj_name conf
-      (emit_operation entry_point func_name in_typ out_typ
-                      params_mod params op) in
+    RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
+      emit_operation worker_entry_point func_name in_typ out_typ
+                     params_mod params op oc ;
+      emit_replay replay_entry_point out_typ oc) in
   (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   let what = "function "^ RamenName.func_color func_name in
   RamenOCamlCompiler.compile conf what src_file obj_name

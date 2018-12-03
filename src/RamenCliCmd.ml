@@ -4,6 +4,7 @@ open Batteries
 open Stdint
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -104,7 +105,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
     failwith "False-positive rate is a rate is a rate." ;
   (* The configuration file better exists, unless it's the default one in
    * which case it will be created with the default configuration: *)
-  if notif_conf_file = RamenConsts.Default.notif_conf_file then (
+  if notif_conf_file = Default.notif_conf_file then (
     RamenNotifier.ensure_conf_file_exists notif_conf_file
   ) else if file_check ~min_size:1 notif_conf_file <> FileOk then (
     failwith ("Configuration file "^ notif_conf_file ^" does not exist.")
@@ -470,7 +471,7 @@ let tail conf fq field_names with_header with_units sep null raw
     float_printer (print_as_date ~rel) in
   if is_temp_export then (
     let rec reset_export_timeout () =
-      let _prog, func =
+      let _mre, _prog, func =
         C.with_rlock conf (fun programs ->
           C.find_func programs fq) in
       let _ = RamenExport.start conf ~duration func in
@@ -535,15 +536,15 @@ let tail conf fq field_names with_header with_units sep null raw
  * timeseries.
  *)
 
-let replay conf fq field_names with_header with_units sep null raw
-           where since until with_event_time pretty flush () =
+let replay conf fq field_names with_header with_units _sep _null _raw
+           _where since until _with_event_time _pretty _flush () =
   init_logger conf.C.log_level ;
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
   (* Start with the most hazardeous and interesting part: find a way to
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
-  let _prog, func =
+  let mre, _prog, func =
     C.with_rlock conf (fun programs ->
       C.find_func programs fq) in
   check_field_names func.F.out_type field_names ;
@@ -560,9 +561,10 @@ let replay conf fq field_names with_header with_units sep null raw
    * But the shortest path form func to its archiving parents that have the
    * required data is always the best. So start from func and progress
    * through parents until we have found all required sources with the whole
-   * archived content. AS a first attempt, just look for a parent that has
-   * all the data (avoid "roaming").
-   *)
+   * archived content. As a first attempt, just look for a parent that has
+   * all the data (avoid "roaming"). Then gaps could be queried independently
+   * (narrowed since/until might find the data). Or we could actually query all
+   * the gaps while the "main" query is going. TBD.  *)
   (* Using stats, append to lst the list of all sources required to recall
    * data from since to until, and also return the best times we have
    * found so far: *)
@@ -634,7 +636,17 @@ let replay conf fq field_names with_header with_units sep null raw
                           channel = Some chn } in
           let out_ref = C.out_ringbuf_names_ref conf func in
           RamenOutRef.add out_ref (rb_name, file_spec) ;
-          (* *)
+          (* Now spawn the replayers.
+           * For each source, spawn a replayer, passing it the name of the
+           * function, the out_ref files to obey, the channel id to tag tuples
+           * with, and since/until dates. *)
+          List.iter (fun sfq ->
+            let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
+            and env = [||] in
+            let pid = RamenProcesses.run_worker mre.C.bin args env in
+            !logger.info "Replay for %a is running under pid %d"
+              RamenName.fq_print sfq pid
+          ) sources
           ) ()) ()
 
 
@@ -708,7 +720,7 @@ let timerange conf fq () =
   C.with_rlock conf (fun programs ->
     match C.find_func programs fq with
     | exception _ -> exit 1
-    | prog, func ->
+    | _mre, prog, func ->
         let mi_ma =
           (* We need the func to know its buffer location.
            * Nothing better to do in case of error than to exit. *)

@@ -30,7 +30,8 @@ let stats_typing_count =
       RamenConsts.Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let entry_point_name = "start"
+let worker_entry_point = "worker"
+let replay_entry_point = "replay"
 
 let init use_external_compiler bundle_dir max_simult_compils smt_solver =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
@@ -362,7 +363,8 @@ let compile conf get_parent ~exec_file source_file program_name =
         mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
-            conf entry_point_name func.F.name obj_name
+            conf worker_entry_point replay_entry_point
+            func.F.name obj_name
             func.F.in_type func.F.out_type
             params_mod_name parsed_params op
         with e ->
@@ -428,18 +430,22 @@ let compile conf get_parent ~exec_file source_file program_name =
           (Marshal.(to_string (P.serialized runconf) [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
-          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ run_condition_[\n"
+          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ run_condition_\n"
             RamenVersions.codegen ;
-        Hashtbl.iter (fun _ (func, _op) ->
-          let mod_name = src_name_of_func func |>
-                         Filename.basename |>
-                         String.capitalize_ascii in
-          Printf.fprintf oc"\t%S, %s.%s ;\n"
-            (RamenName.string_of_func func.F.name)
-            mod_name
-            entry_point_name
-        ) compiler_funcs ;
-        Printf.fprintf oc "]\n") in
+        let func_list entry_point =
+          Printf.fprintf oc "\t[\n" ;
+          Hashtbl.iter (fun _ (func, _op) ->
+            let mod_name = src_name_of_func func |>
+                           Filename.basename |>
+                           String.capitalize_ascii in
+            Printf.fprintf oc"\t\t%S, %s.%s ;\n"
+              (RamenName.string_of_func func.F.name)
+              mod_name
+              entry_point
+          ) compiler_funcs ;
+          Printf.fprintf oc "\t]\n" in
+        func_list worker_entry_point ;
+        func_list replay_entry_point) in
     (*
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.

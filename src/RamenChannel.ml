@@ -10,3 +10,5 @@ let live = 0
 (* TODO! *)
 let make _conf =
   Random.int max_int_for_random
+
+let of_string = int_of_string

@@ -283,6 +283,7 @@ end
 (* What we use as workers argv.(0) to make it easier to read ps/top
  * output: *)
 let worker_argv0 = "ramen worker:"
+let replay_argv0 = "ramen replay: "
 
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)

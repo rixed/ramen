@@ -1069,3 +1069,97 @@ let aggregate
             aggregate_one channel_id s min_in merge_greatest
           else
             s)))
+
+
+(* Special node that reads the output history instead of computing it.
+ * Takes from the env the ringbuf location and the since/until dates to
+ * replay, as well as the channel id. Then it must follow the instructions
+ * in the same out_ref than the normal worker to inject those tuples in the
+ * normal worker tree.
+ * We need to properly deserialize and reserialize each tuples (instead of
+ * merely copy them) as we must write only the required subset of fields.
+ * Other differences:
+ * - it emits no reports (or of course notifications);
+ * - it has no state therefore no persistence;
+ * - *)
+let replay
+      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
+      (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
+      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
+  let worker_name = getenv ~def:"?" "fq_name" in
+  let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
+  let prefix = worker_name ^" (REPLAY): " in
+  (* TODO: factorize *)
+  (match getenv "log" with
+  | exception _ ->
+      init_logger ~prefix log_level
+  | logdir ->
+      if logdir = "syslog" then
+        init_syslog ~prefix log_level
+      else (
+        mkdir_all logdir ;
+        init_logger ~logdir log_level
+      )) ;
+  let conf = { log_level ; state_file = "/dev/null" ; is_test = false } in
+  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+  and rb_archive = getenv ~def:"/tmp/archive.b" "rb_archive"
+  and since = getenv "since" |> float_of_string
+  and until = getenv "until" |> float_of_string
+  and channel_id = getenv "channel_id" |> RamenChannel.of_string
+  in
+  info_or_test conf "Starting REPLAY of %s. Will log into %s at level %s."
+    worker_name
+    (string_of_log_output !logger.output)
+    (string_of_log_level log_level) ;
+  (* TODO: also factorize *)
+  set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
+    info_or_test conf "Received signal %s" (name_of_signal s) ;
+    quit :=
+      Some (if s = Sys.sigterm then ExitCodes.terminated
+                               else ExitCodes.interrupted))) ;
+  (* Ignore sigusr1: *)
+  set_signals Sys.[sigusr1] Signal_ignore ;
+  info_or_test conf "Will replay archive in %S" rb_archive ;
+  let outputer =
+    outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
+                serialize_tuple in
+  let while_ () = !quit = None in
+  let dir = RingBufLib.arc_dir_of_bname rb_archive in
+  let files = RingBufLib.arc_files_of dir in
+  let time_overlap t1 t2 = since < t2 && until >= t1 in
+  let rec loop_tuples rb =
+    if while_ () then
+      RingBufLib.read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
+        match read_tuple tx with
+        | exception e ->
+            print_exception ~what:"Reading a tuple from archive" e,
+            false (* Skip the rest of that file for safety *)
+        | DataTuple chn, Some tuple when chn = RamenChannel.live ->
+            (* As tuples are not ordered in the archive file we have
+             * to read it all: *)
+            outputer channel_id tuple, true
+        | _ -> (), true) in
+  let loop_tuples_of_file fname =
+    match RingBuf.load rb_archive with
+    | exception e ->
+        let what = "Reading archive "^ fname in
+        print_exception ~what e
+    | rb ->
+        finally (fun () -> RingBuf.unload rb) (fun () ->
+          let st = RingBuf.stats rb in
+          if time_overlap st.t_min st.t_max then
+            loop_tuples rb) () in
+  let rec loop_files () =
+    if while_ () then
+    match Enum.get_exn files with
+    | exception Enum.No_more_elements -> ()
+    | _s1, _s2, t1, t2, fname ->
+        if time_overlap t1 t2 then (
+          loop_tuples_of_file fname ;
+          loop_files ())
+  in
+  loop_files () ;
+  (* Finish with the current archive: *)
+  loop_tuples_of_file rb_archive ;
+  exit (!quit |? 1)

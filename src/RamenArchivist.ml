@@ -519,7 +519,7 @@ let update_workers_export conf =
         !logger.debug "Cannot find function %a: %s, skipping"
           RamenName.fq_print fq
           (Printexc.to_string e)
-    | _prog, func ->
+    | _mre, _prog, func ->
         if max_size > 0 then
           let duration=Default.archivist_export_duration in
           RamenExport.start ~duration conf func |> ignore)

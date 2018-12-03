@@ -327,10 +327,10 @@ let last_conf_mtime conf =
 
 let find_func programs fq =
   let program_name, func_name = RamenName.fq_parse fq in
-  let _mre, get_rc =
+  let mre, get_rc =
     Hashtbl.find programs program_name in
   let prog = get_rc () in
-  prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
+  mre, prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)

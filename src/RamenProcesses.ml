@@ -333,6 +333,13 @@ let process_workers_terminations conf running =
     ) proc.pid
   ) running
 
+let run_worker ?and_stop bin args env =
+  (* Better have the workers CWD where the binary is, so that any file name
+   * mentioned in the program is relative to the program. *)
+  let cwd = Filename.dirname bin in
+  let cmd = Filename.basename bin in
+  run_background ~cwd ?and_stop cmd args env
+
 let really_start conf proc parents children =
   (* Create the input ringbufs.
    * We now start the workers one by one in no
@@ -422,15 +429,8 @@ let really_start conf proc parents children =
       try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
-  let args =
-    (* For convenience let's add "ramen worker" and the fun name as
-     * arguments: *)
-    [| worker_argv0 ; fq_str |] in
-  (* Better have the workers CWD where the binary is, so that any file name
-   * mentioned in the program is relative to the program. *)
-  let cwd = Filename.dirname proc.bin in
-  let cmd = Filename.basename proc.bin in
-  let pid = run_background ~cwd ~and_stop:conf.C.test cmd args env in
+  let args = [| worker_argv0 ; fq_str |] in
+  let pid = run_worker ~and_stop:conf.C.test proc.bin args env in
   !logger.debug "Function %s now runs under pid %d" fq_str pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;

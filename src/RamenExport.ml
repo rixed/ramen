@@ -75,7 +75,7 @@ let read_output conf ?duration fq where =
               | exception Not_found ->
                   failwith ("Function "^ RamenName.string_of_fq fq ^
                             " does not exist")
-              | prog, func ->
+              | _mre, prog, func ->
                   let bname = start conf ?duration func in
                   prog, func, bname) in
           let ser =

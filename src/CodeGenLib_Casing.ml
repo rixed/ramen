@@ -4,7 +4,7 @@ open Batteries
 open RamenHelpers
 open RamenConsts
 
-let run codegen_version rc_str rc_marsh run_condition lst =
+let run codegen_version rc_str rc_marsh run_condition workers replayers =
   (* Init the random number generator *)
   (match Sys.getenv "rand_seed" with
   | exception Not_found -> Random.self_init ()
@@ -16,8 +16,7 @@ let run codegen_version rc_str rc_marsh run_condition lst =
        Runtime configuration:\n\n%s\n\n\
        Have a nice day!\n"
       codegen_version rc_str in
-  (* If we are called "ramen worker:" then we must run: *)
-  if Sys.argv.(0) = worker_argv0 then
+  let run_from_list lst =
     (* Call a function from lst according to envvar "name" *)
     match Sys.getenv "name" with
     | exception Not_found ->
@@ -30,7 +29,12 @@ let run codegen_version rc_str rc_marsh run_condition lst =
              Trying to run a Ramen program? Try `ramen run %s`\n"
             name Sys.executable_name ;
             exit 1
-        | f -> f ())
+        | f -> f ()) in
+  (* If we are called "ramen worker:" then we must run: *)
+  if Sys.argv.(0) = worker_argv0 then
+    run_from_list workers
+  else if Sys.argv.(0) = replay_argv0 then
+    run_from_list replayers
   else match Sys.argv.(1) with
   | exception Invalid_argument _ -> help ()
   | s when s = WorkerCommands.get_info ->
