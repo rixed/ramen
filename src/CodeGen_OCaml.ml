@@ -2327,7 +2327,7 @@ let otype_of_state e =
   | StatefulFun (_, _, _, AggrHistogram _) -> "CodeGenLib.Histogram.state"^ nullable
   | _ -> t ^ nullable
 
-let emit_state_init name state_lifespan other_state_vars
+let emit_state_init name state_lifespan other_params
       ?where ?commit_cond ~opc
       oc selected_fields =
   (* We must collect all unpure functions present in the selected_fields
@@ -2350,7 +2350,7 @@ let emit_state_init name state_lifespan other_state_vars
     Printf.fprintf oc "let %s%a = ()\n\n"
       name
       (List.print ~first:" " ~last:"" ~sep:" " String.print)
-        other_state_vars
+        other_params
   ) else (
     (* First emit the record type definition: *)
     Printf.fprintf oc "type %s = {\n" name ;
@@ -2368,7 +2368,7 @@ let emit_state_init name state_lifespan other_state_vars
     Printf.fprintf oc "let %s%a =\n"
       name
       (List.print ~first:" " ~last:"" ~sep:" " String.print)
-        other_state_vars ;
+        other_params ;
     for_each_my_unpure_fun (fun f ->
         Printf.fprintf oc "\tlet %s = %a in\n"
           (name_of_state f)
@@ -2546,7 +2546,7 @@ let emit_aggregate opc oc name in_typ out_typ =
   and is_yield = from = [] in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" RamenExpr.GlobalState [] ~where ~commit_cond ~opc) fields
+    (emit_state_init "global_init_" RamenExpr.GlobalState ["()"] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
     (if where_need_group then

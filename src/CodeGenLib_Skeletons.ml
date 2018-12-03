@@ -577,7 +577,10 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state
     mutable groups :
       ('key, ('local_state, 'tuple_in, 'minimal_out) group) Hashtbl.t ;
     (* Input sort buffer and related tuples: *)
-    mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t }
+    mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t ;
+    (* We have one such state per channel, that we timeout when a
+     * channel is unseen for too long: *)
+    mutable last_used : float }
 
 (* TODO: instead of a single point, have 3 conditions for committing
  * (and 3 more for flushing) the groups; So that we could maybe split a
@@ -806,7 +809,7 @@ let aggregate
       commit_before
       do_flush
       (when_to_check_for_commit : when_to_check_group)
-      (global_state : 'global_state)
+      (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (field_of_tuple_in : 'tuple_in -> string -> string)
       (field_of_tuple_out : 'tuple_out -> string -> string)
@@ -846,7 +849,10 @@ let aggregate
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
-        let notifications = get_notifications tuple_in tuple_out in
+        let notifications =
+          if chan = RamenChannel.live then
+            get_notifications tuple_in tuple_out
+          else [] in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
           List.iter (fun notif ->
@@ -861,22 +867,38 @@ let aggregate
       generate_tuples do_out in
     let with_state =
       let open CodeGenLib_State.Persistent in
-      (* Try to make the state as small as possible: *)
-      let groups =
-        Hashtbl.create (if is_single_key then 1 else 701)
-      in
-      let init_state =
+      let init_state () =
         { last_out_tuple = None ;
-          global_state ;
-          groups ;
-          sort_buf = RamenSortBuf.empty } in
-      let state =
-        ref (make conf.state_file init_state) in
-      fun f ->
-        let v = restore !state in
-        (* We do _not_ want to save the value when f raises an exception: *)
-        let v = f v in
-        state := save ~save_every:100000 ~save_timeout:31. !state v
+          global_state = global_state () ;
+          groups =
+            (* Try to make the state as small as possible: *)
+            Hashtbl.create (if is_single_key then 1 else 701) ;
+          sort_buf = RamenSortBuf.empty ;
+          last_used = Unix.time () } in
+      let live_state =
+        ref (make conf.state_file (init_state ())) in
+      (* Non live states: *)
+      let states = Hashtbl.create 103 in
+      let get_state chn =
+        if chn = RamenChannel.live then
+          restore !live_state
+        else
+          match Hashtbl.find states chn with
+          | exception Not_found ->
+              let st = init_state () in
+              Hashtbl.add states chn st ;
+              st
+          | st -> st
+      and save_state chn st =
+        if chn = RamenChannel.live then
+          live_state := save ~save_every:100000 ~save_timeout:31. !live_state st
+        else
+          Hashtbl.replace states chn st
+      in
+      fun chn f ->
+        let s = get_state chn in
+        let s' = f s in
+        save_state chn s' (* TODO: have a mutable state and check s==s'? *)
     in
     !logger.debug "Will read ringbuffer %a"
       (List.print String.print) rb_in_fnames ;
@@ -1036,7 +1058,7 @@ let aggregate
                     merge_timeout read_tuple rb_ins
     in
     tuple_reader (fun tx_size channel_id in_tuple merge_greatest ->
-      with_state (fun s ->
+      with_state channel_id (fun s ->
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
