@@ -398,4 +398,6 @@ let fold_time_range ?(while_=always) bname typ params event_time since until ini
   in
   let usr = loop init in
   (* finish with the current rb: *)
+  (* FIXME: shouldn't we check the min/max event time of this file against
+   * since/until as we did for others? *)
   fold_buffer_with_time ~while_ bname typ params event_time usr f
