@@ -2565,7 +2565,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_update_states "update_states_" in_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
-    (emit_serialize_tuple "serialize_group_") out_typ
+    (emit_serialize_tuple "serialize_tuple_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc) fields
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
     (emit_field_of_tuple "field_of_tuple_out_") out_typ
@@ -2575,7 +2575,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_get_notifications "get_notifications_" in_typ out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib_Skeletons.aggregate\n\
-      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_group_\n\
+      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
       \t\tupdate_states_\n\
