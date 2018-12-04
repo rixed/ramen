@@ -277,20 +277,22 @@ let ps conf short pretty with_header sort_col top pattern all () =
   let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)
   let open TermTable in
-  let head, lines =
-    if short then
-      (* For --short, we sum everything by program: *)
-      let h = RamenPs.per_program stats in
+  if short then
+    let head =
       [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
          "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-         "volume out" |],
-      C.with_rlock conf (fun programs ->
-        Hashtbl.fold (fun program_name (mre, _get_rc) lines ->
-          if (all || mre.C.status = C.MustRun) &&
-             Globs.matches pattern
-               (RamenName.string_of_program program_name)
-          then (
-            let s = Hashtbl.find_default h program_name RamenPs.no_stats in
+         "volume out" |]  in
+    let print = print_table ~pretty ~sort_col ~with_header ?top head in
+    (* For --short, we sum everything by program: *)
+    let h = RamenPs.per_program stats in
+    C.with_rlock conf (fun programs ->
+      Hashtbl.iter (fun program_name (mre, _get_rc) ->
+        if (all || mre.C.status = C.MustRun) &&
+           Globs.matches pattern
+             (RamenName.string_of_program program_name)
+        then (
+          let s = Hashtbl.find_default h program_name RamenPs.no_stats in
+          print
             [| Some (ValStr (RamenName.string_of_program program_name)) ;
                Some (ValStr (RamenName.string_of_params mre.C.params)) ;
                int_or_na s.in_count ;
@@ -303,44 +305,48 @@ let ps conf short pretty with_header sort_col top pattern all () =
                Some (ValInt (Uint64.to_int s.ram)) ;
                Some (ValInt (Uint64.to_int s.max_ram)) ;
                flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
-               flt_or_na (Option.map Uint64.to_float s.bytes_out) |] :: lines
-          ) else lines
-        ) programs [])
-    else
-      (* Otherwise we want to display all we can about individual workers *)
-      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ; "last out" ;
-         "min event time" ; "max event time" ; "CPU" ; "wait in" ; "wait out" ;
-         "heap" ; "max heap" ; "volume in" ; "volume out" ; "startup time" ;
-         "#parents" ; "#children" ; "signature" |],
-      C.with_rlock conf (fun programs ->
-        (* First pass to get the children: *)
-        let children_of_func = Hashtbl.create 23 in
-        Hashtbl.iter (fun _prog_name (mre, get_rc) ->
-          if all || mre.C.status = C.MustRun then match get_rc () with
-          | exception _ -> ()
-          | prog ->
-              List.iter (fun func ->
-                List.iter (fun (pp, pf) ->
-                  (* We could use the pattern to filter out uninteresting
-                   * parents but there is not much to save at this point. *)
-                  let k =
-                    F.program_of_parent_prog func.F.program_name pp, pf in
-                  Hashtbl.add children_of_func k func
-                ) func.F.parents
-              ) prog.P.funcs
-        ) programs ;
-        Hashtbl.fold (fun program_name (mre, get_rc) lines ->
-          if not all && mre.C.status <> MustRun then lines
-          else match get_rc () with
-          | exception _ -> (* which has been logged already *) lines
-          | prog ->
-            List.fold_left (fun lines func ->
-              let fq = RamenName.fq program_name func.F.name in
-              if Globs.matches pattern (RamenName.string_of_fq fq) then
-                let s = Hashtbl.find_default stats fq RamenPs.no_stats
-                and num_children = Hashtbl.find_all children_of_func
-                                     (func.F.program_name, func.F.name) |>
-                                     List.length in
+               flt_or_na (Option.map Uint64.to_float s.bytes_out) |]
+        )
+      ) programs) ;
+      print [||]
+  else
+    (* Otherwise we want to display all we can about individual workers *)
+    let head =
+      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+         "last out" ; "min event time" ; "max event time" ; "CPU" ;
+         "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
+         "volume out" ; "startup time" ; "#parents" ; "#children" ;
+         "signature" |] in
+    let print = print_table ~pretty ~sort_col ~with_header ?top head in
+    C.with_rlock conf (fun programs ->
+      (* First pass to get the children: *)
+      let children_of_func = Hashtbl.create 23 in
+      Hashtbl.iter (fun _prog_name (mre, get_rc) ->
+        if all || mre.C.status = C.MustRun then match get_rc () with
+        | exception _ -> ()
+        | prog ->
+            List.iter (fun func ->
+              List.iter (fun (pp, pf) ->
+                (* We could use the pattern to filter out uninteresting
+                 * parents but there is not much to save at this point. *)
+                let k =
+                  F.program_of_parent_prog func.F.program_name pp, pf in
+                Hashtbl.add children_of_func k func
+              ) func.F.parents
+            ) prog.P.funcs
+      ) programs ;
+      Hashtbl.iter (fun program_name (mre, get_rc) ->
+        if all || mre.C.status = MustRun then match get_rc () with
+        | exception _ -> (* which has been logged already *) ()
+        | prog ->
+          List.iter (fun func ->
+            let fq = RamenName.fq program_name func.F.name in
+            if Globs.matches pattern (RamenName.string_of_fq fq) then
+              let s = Hashtbl.find_default stats fq RamenPs.no_stats
+              and num_children = Hashtbl.find_all children_of_func
+                                   (func.F.program_name, func.F.name) |>
+                                   List.length in
+              print
                 [| Some (ValStr (RamenName.string_of_fq fq)) ;
                    int_or_na s.in_count ;
                    int_or_na s.selected_count ;
@@ -359,11 +365,10 @@ let ps conf short pretty with_header sort_col top pattern all () =
                    Some (ValDate s.startup_time) ;
                    Some (ValInt (List.length func.F.parents)) ;
                    Some (ValInt num_children) ;
-                   Some (ValStr func.signature) |] :: lines
-              else lines
-            ) lines prog.P.funcs
-        ) programs []) in
-  print_table ~pretty ~sort_col ~with_header ?top head lines
+                   Some (ValStr func.signature) |]
+          ) prog.P.funcs
+      ) programs) ;
+      print [||]
 
 (*
  * `ramen tail`

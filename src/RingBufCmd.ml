@@ -227,11 +227,12 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     and links = List.map (fun (_, _, _, _, link) -> link) links in
     TermTable.print_tree ~parent:0 ~child:1 head links roots
   ) else (
-    let links =
-      List.filter_map (fun (is_err, parent, _parent_disp, child, link) ->
-        if (Globs.matches pattern parent || Globs.matches pattern child) &&
-           (is_err || show_all)
-        then Some link else None
-      ) links in
-    TermTable.print_table ~pretty ~sort_col ~with_header ?top head links
+    let print =
+      TermTable.print_table ~pretty ~sort_col ~with_header ?top head in
+    List.iter (fun (is_err, parent, _parent_disp, child, link) ->
+      if (Globs.matches pattern parent || Globs.matches pattern child) &&
+         (is_err || show_all)
+      then print link
+    ) links ;
+    print [||]
   )

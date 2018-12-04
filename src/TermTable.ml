@@ -47,16 +47,17 @@ let sort ~sort_col lines =
   in
   List.fast_sort cmp lines
 
-let print_table_terse ~with_header ~na head lines =
+let print_table_terse ~with_header ~na head =
   if with_header then (
     Array.iter (fun h -> Printf.printf "%s\t" h) head ;
     Printf.printf "\n") ;
-  List.iter (fun line ->
-    Array.iter (fun v ->
-      Printf.printf "%s\t" (Option.map_default string_of_val na v)
-    ) line ;
-    Printf.printf "\n"
-  ) lines
+  function
+  | [||] -> ()
+  | line ->
+      Array.iter (fun v ->
+        Printf.printf "%s\t" (Option.map_default string_of_val na v)
+      ) line ;
+      Printf.printf "\n"
 
 (* Formatters: given the list of all (string) values going in a column, and
  * the max width we want for that column, return a formatter for those
@@ -95,7 +96,7 @@ let make_dot_align vals width =
     let s = s ^ String.make (max_after - after) ' ' in
     right_justify s
 
-let print_table_pretty ~with_header ~na head lines =
+let print_subtable_pretty ~with_header ~na head lines =
   let fmts = Array.create (Array.length head) None in
   (try
     List.iter (fun line ->
@@ -158,21 +159,54 @@ let print_table_pretty ~with_header ~na head lines =
     Printf.printf "\n"
   ) lines
 
-(* Note: sort_col starts at 1 *)
+let print_table_pretty ~with_header ~na head =
+  (* User can't wait until all the data is available before anything gets
+   * printed so the table is reformatted from time to time. *)
+  let screen_length = 50 in
+  let line_no = ref 0 in
+  let lines = ref [] in
+  function
+  | [||] ->
+      if !lines <> [] then
+        print_subtable_pretty ~with_header ~na head !lines
+  | line ->
+      lines := line :: !lines ;
+      incr line_no ;
+      if !line_no >= screen_length then (
+        print_subtable_pretty ~with_header ~na head !lines ;
+        lines := [] ;
+        line_no := 0 ;
+      )
+
+(* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
-                ?(na="n/a") head lines =
-  let lines =
-    match sort_col with
-    | None -> lines
-    | Some c -> sort ~sort_col:c lines in
-  let lines =
-    match top with
-    | None -> lines
-    | Some n -> List.take n lines
+                ?(na="n/a") head =
+  let print =
+    let line_no = ref 0
+    and print =
+      (if pretty then print_table_pretty else print_table_terse)
+        ~with_header ~na head in
+    function
+    | [||] as l ->
+        print l
+    | l ->
+        incr line_no ;
+        (match top with
+        | None -> print l
+        | Some n ->
+            if !line_no <= n then print l)
   in
-  if lines <> [] then
-    (if pretty then print_table_pretty else print_table_terse)
-      ~with_header ~na head lines
+  match sort_col with
+  | Some c ->
+      let lines = ref [] in
+      (function
+      | [||] ->
+          sort ~sort_col:c !lines |>
+          List.iter print
+      | l -> lines := l :: !lines)
+  | None ->
+      print
+
 
 (* Instead of representing the entries as a table, display a tree using the
  * given two columns to establish node relationship: *)
