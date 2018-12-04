@@ -380,7 +380,7 @@ let worker_start worker_name get_binocle_tuple k =
   log_exceptions k conf ;
   (* Sending stats for one last time: *)
   ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
-  exit (!quit |? 1)
+  exit (!quit |? ExitCodes.terminated)
 
 (*
  * Operations that funcs may run: read a CSV file.
