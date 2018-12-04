@@ -544,9 +544,8 @@ let replay conf fq field_names with_header with_units _sep _null _raw
   (* Start with the most hazardeous and interesting part: find a way to
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
-  let mre, _prog, func =
-    C.with_rlock conf (fun programs ->
-      C.find_func programs fq) in
+  let programs = C.with_rlock conf identity in
+  let _mre, _prog, func = C.find_func programs fq in
   check_field_names func.F.out_type field_names ;
   (* Then, get the runtime stats: *)
   let stats = RamenArchivist.load_stats conf in
@@ -615,7 +614,7 @@ let replay conf fq field_names with_header with_units _sep _null _raw
         finally (fun () -> RingBuf.unload rb) (fun () ->
           (* Pick a channel. They are cheap, we do not care if we fail
            * in the next step: *)
-          let chn = RamenChannel.make conf in
+          let channel_id = RamenChannel.make conf in
           (* Ask to export only the fields we want. From no on we'd better
            * not fail and retry as we would hammer the out_ref with temp
            * ringbufs.
@@ -633,20 +632,34 @@ let replay conf fq field_names with_header with_units _sep _null _raw
           let field_mask = RingBufLib.skip_list ~out_type ~in_type in
           let file_spec =
             RamenOutRef.{ field_mask ; timeout = 300. ;
-                          channel = Some chn } in
+                          channel = Some channel_id } in
           let out_ref = C.out_ringbuf_names_ref conf func in
           RamenOutRef.add out_ref (rb_name, file_spec) ;
           (* Now spawn the replayers.
            * For each source, spawn a replayer, passing it the name of the
            * function, the out_ref files to obey, the channel id to tag tuples
            * with, and since/until dates. *)
-          List.iter (fun sfq ->
-            let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
-            and env = [||] in
-            let pid = RamenProcesses.run_worker mre.C.bin args env in
-            !logger.info "Replay for %a is running under pid %d"
-              RamenName.fq_print sfq pid
-          ) sources
+          let pids =
+            List.fold_left (fun s sfq ->
+              let smre, _prog, sfunc = C.find_func programs sfq in
+              let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
+              and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
+              let env =
+                [| "name="^ RamenName.string_of_func sfunc.F.name ;
+                   "fq_name="^ RamenName.string_of_fq sfq ;
+                   "log_level="^ string_of_log_level conf.C.log_level ;
+                   "output_ringbufs_ref="^ out_ringbuf_ref ;
+                   "rb_archive="^ C.archive_buf_name conf sfunc ;
+                   "since="^ string_of_float since ;
+                   "until="^ string_of_float until ;
+                   "channel_id="^ RamenChannel.to_string channel_id |] in
+              let pid = RamenProcesses.run_worker smre.C.bin args env in
+              !logger.info "Replay for %a is running under pid %d"
+                RamenName.fq_print sfq pid ;
+              Set.Int.add pid s
+            ) Set.Int.empty sources in
+          waitall_log ~expected_status:ExitCodes.terminated
+                      ~what:"replayer" pids
           ) ()) ()
 
 

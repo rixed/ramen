@@ -1158,12 +1158,16 @@ let replay
             print_exception ~what:"Reading a tuple from archive" e,
             false (* Skip the rest of that file for safety *)
         | DataTuple chn, Some tuple when chn = RamenChannel.live ->
+            !logger.debug "Read a tuple from the live channel" ;
             (* As tuples are not ordered in the archive file we have
              * to read it all: *)
             outputer channel_id tuple, true
-        | _ -> (), true) in
+        | _ ->
+            !logger.debug "Read something else from the live chanel" ;
+            (), true) in
   let loop_tuples_of_file fname =
-    match RingBuf.load rb_archive with
+    !logger.debug "Reading archive %S" fname ;
+    match RingBuf.load fname with
     | exception e ->
         let what = "Reading archive "^ fname in
         print_exception ~what e
@@ -1171,17 +1175,24 @@ let replay
         finally (fun () -> RingBuf.unload rb) (fun () ->
           let st = RingBuf.stats rb in
           if time_overlap st.t_min st.t_max then
-            loop_tuples rb) () in
+            loop_tuples rb
+          else
+            !logger.debug "Archive times of %S (%f..%f) does not overlap \
+                           with search (%f..%f)"
+              rb_archive st.t_min st.t_max since until) () in
   let rec loop_files () =
     if while_ () then
-    match Enum.get_exn files with
-    | exception Enum.No_more_elements -> ()
-    | _s1, _s2, t1, t2, fname ->
-        if time_overlap t1 t2 then (
-          loop_tuples_of_file fname ;
-          loop_files ())
+      match Enum.get_exn files with
+      | exception Enum.No_more_elements -> ()
+      | _s1, _s2, t1, t2, fname ->
+          if time_overlap t1 t2 then (
+            loop_tuples_of_file fname ;
+            loop_files ())
   in
+  !logger.info "Reading the past archives..." ;
   loop_files () ;
   (* Finish with the current archive: *)
+  !logger.info "Reading current archive" ;
   loop_tuples_of_file rb_archive ;
-  exit (!quit |? 1)
+  !logger.info "Finished" ;
+  exit (!quit |? ExitCodes.terminated)

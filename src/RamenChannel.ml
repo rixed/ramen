@@ -12,3 +12,4 @@ let make _conf =
   Random.int max_int_for_random
 
 let of_string = int_of_string
+let to_string = string_of_int

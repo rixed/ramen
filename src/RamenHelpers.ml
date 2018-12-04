@@ -650,16 +650,35 @@ let () = Printexc.register_printer (function
 (* Trick from LWT: how to exit without executing the at_exit hooks: *)
 external sys_exit : int -> 'a = "caml_sys_exit"
 
-let waitpid_log ?expected_status ~what pid =
+(* FIXME: is_singleton and cardinal_greater in batteries *)
+let set_int_is_singleton s = Set.Int.cardinal s = 1
+
+let rec waitall_log ?expected_status ~what pids =
   let open Unix in
-  let _, status = restart_on_EINTR (waitpid [ WUNTRACED ]) pid in
-  if (match status with
-      | WEXITED c ->
-          expected_status <> Some c && expected_status <> None
-      | _ -> true)
-  then
-    !logger.error "%s %s"
-      what (string_of_process_status status)
+  let pids =
+    Set.Int.filter (fun pid ->
+      let complain status =
+        !logger.error "%s %s" what (string_of_process_status status) in
+      let flags = [ WUNTRACED ] in
+      let flags =
+        if set_int_is_singleton pids then flags
+        else WNOHANG :: flags in
+      match restart_on_EINTR (waitpid flags) pid with
+      | 0, _ -> true
+      | _, (WEXITED c as status) ->
+          if expected_status <> Some c && expected_status <> None then
+            complain status ;
+          false
+      | _, status ->
+          complain status ;
+          false
+    ) pids in
+  if not (Set.Int.is_empty pids) then (
+    sleep 1 ;
+    waitall_log ?expected_status ~what pids)
+
+let waitpid_log ?expected_status ~what pid =
+  waitall_log ?expected_status ~what (Set.Int.singleton pid)
 
 let with_subprocess ?expected_status ?env cmd args k =
   (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
