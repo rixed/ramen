@@ -436,44 +436,41 @@ let tail conf fq field_names with_header with_units sep null raw
     Array.map (fun h ->
       field_names = [] || List.mem h.RamenTuple.name field_names
     ) header in
-  if with_header then (
-    let first = if with_seqnums then "Seq"^ sep else "" in
-    let first = if with_event_time then "Event time"^ sep else first in
-    Printf.printf "#%s" first ;
-    let need_sep = ref false in
-    for i = 0 to Array.length header - 1 do
-      if display_field.(i) then (
-        if !need_sep then String.print stdout sep ;
-        RamenName.field_print stdout header.(i).name ;
-        if with_units then
-          Option.may (fun u -> RamenUnits.print stdout u) header.(i).units ;
-        need_sep := true)
-    done ;
-    Char.print stdout '\n' ;
-    (*if flush then BatIO.flush stdout*)) ;
-  (* Pick a printer for each column according to the field type: *)
-  let float_printer p oc =
+  let head =
+    Array.range header //@
+    (fun i ->
+      if display_field.(i) then
+        Some (
+          RamenName.string_of_field header.(i).name ^
+          (if with_units then
+            Option.map_default RamenUnits.to_string "" header.(i).units
+          else ""))
+      else None) |>
+    List.of_enum in
+  let head = if with_seqnums then "Seq"::head else head in
+  let head =
+    if with_event_time then
+      "Event start" :: "Event end" :: head
+    else head in
+  let head = Array.of_list head in
+  let open TermTable in
+  let print = print_table ~sep ~pretty ~with_header ~flush head in
+  (* Pick a "printer" for each column according to the field type: *)
+  let formatter units =
+    (* TODO: reuse RamenTypes in TermTable *)
     let open RamenTypes in
     function
-    | VFloat t -> p oc t
-    | t -> print_custom ~null ~quoting:(not raw) oc t
+    | VFloat t ->
+        if units = Some RamenUnits.seconds_since_epoch && pretty then
+          Some (ValDate t)
+        else if units = Some RamenUnits.seconds && pretty then
+          Some (ValDuration t)
+        else
+          Some (ValFlt t)
+    | VNull -> None
+    | t ->
+      Some (ValStr (IO.to_string (print_custom ~null ~quoting:(not raw)) t))
   in
-  let printer_of ?rel ft =
-    let open RamenTypes in
-      match pretty, ft.RamenTuple.typ.structure, ft.RamenTuple.units with
-      | true, TFloat, Some units
-        when units = RamenUnits.seconds_since_epoch ->
-          float_printer (print_as_date ?rel)
-      | true, TFloat, Some units
-        when units = RamenUnits.seconds ->
-          float_printer print_as_duration
-      | _ ->
-          print_custom ~null ~quoting:(not raw)
-  in
-  let printers = Array.map (printer_of ?rel:None) header in
-  let et_printer =
-    let rel = ref "" in
-    float_printer (print_as_date ~rel) in
   if is_temp_export then (
     let rec reset_export_timeout () =
       let _mre, _prog, func =
@@ -489,10 +486,11 @@ let tail conf fq field_names with_header with_units sep null raw
   let open RamenSerialization in
   let event_time_of_tuple = match event_time with
     | None ->
-      if with_event_time then
-        failwith "Function has no event time information"
-      else (fun _ -> 0., 0.)
-    | Some et -> event_time_of_tuple typ params et
+        if with_event_time then
+          failwith "Function has no event time information"
+        else (fun _ -> 0., 0.)
+    | Some et ->
+        event_time_of_tuple typ params et
   in
   let unserialize = RamenSerialization.read_array_of_values ser in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
@@ -503,26 +501,23 @@ let tail conf fq field_names with_header with_units sep null raw
         if Option.map_default (fun since -> t2 > since) true since &&
            Option.map_default (fun until -> t1 <= until) true until
         then (
-          let need_sep = ref false in
-          let may_print_sep () =
-            if !need_sep then String.print stdout sep ;
-            need_sep := true in
-          if with_event_time then (
-            let s1 = IO.to_string et_printer (VFloat t1) in
-            let s2 = IO.to_string et_printer (VFloat t2) in
-            Printf.printf "%s..%s" s1 s2 ;
-            need_sep := true) ;
-          if with_seqnums then (
-            may_print_sep () ;
-            Int.print stdout m) ;
-          reorder_column tuple |>
-          Array.iteri (fun i v ->
-            if display_field.(i) then (
-              may_print_sep () ;
-              printers.(i) stdout v)) ;
-          Char.print stdout '\n' ;
-          if flush then BatIO.flush stdout)
-    | _ -> ())
+          let pref = if with_seqnums then [ Some (ValInt m) ] else [] in
+          let pref =
+            if with_event_time then
+              Some (ValDate t1) :: Some (ValDate t2) :: pref
+            else pref in
+          let cols = reorder_column tuple in
+          let cols =
+            Array.range cols //@
+            (fun i ->
+              if display_field.(i) then
+                Some (formatter header.(i).units cols.(i)) else None) |>
+            Array.of_enum in
+          let line =
+            Array.(append (of_list pref) cols) in
+          print line)
+    | _ -> ()) ;
+  print [||]
 
 (*
  * `ramen replay`
@@ -696,36 +691,36 @@ let timeseries conf since until with_header where factors num_points
         ~consolidation ~bucket_time func_name data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
-  if with_header then (
-    let column_names =
-      Array.fold_left (fun res sc ->
-        let v =
-          List.map RamenTypes.to_string sc |>
-          String.concat "." in
-        if single_data_field then
-          (if v = "" then
-            List.hd data_fields |> RamenName.string_of_field
-           else v) :: res
-        else
-          List.fold_left (fun res df ->
-            let df = RamenName.string_of_field df in
-            (df ^(if v = "" then "" else "("^ v ^")")) :: res
-          ) res data_fields
-      ) [] columns |> List.rev in
-    List.print ~first:("#Time"^ sep) ~last:"\n" ~sep
-                String.print stdout column_names) ;
-  let t_rel = ref "" in
+  let head =
+    Array.fold_left (fun res sc ->
+      let v =
+        List.map RamenTypes.to_string sc |>
+        String.concat "." in
+      if single_data_field then
+        (if v = "" then
+          List.hd data_fields |> RamenName.string_of_field
+         else v) :: res
+      else
+        List.fold_left (fun res df ->
+          let df = RamenName.string_of_field df in
+          (df ^(if v = "" then "" else "("^ v ^")")) :: res
+        ) res data_fields
+    ) [] columns |> List.rev in
+  let head = "Time" :: head |> Array.of_list in
+  let open TermTable in
+  let print = print_table ~na:null ~sep ~pretty ~with_header head in
   Enum.iter (fun (t, vs) ->
-    Printf.printf "%a%s%a"
-      (if pretty then print_as_date ~right_justified:true ~rel:t_rel
-                 else print_nice_float) t
-      sep
-      (Array.print ~first:"" ~last:"\n" ~sep
-        (Array.print ~first:"" ~last:"" ~sep
-          (fun oc -> function
-            | None -> String.print oc null
-            | Some v -> Float.print oc v))) vs
-  ) timeseries
+    Array.append
+      [| Some (ValDate t) |]
+      (Array.concat
+        (List.map
+          (Array.map (function
+            | None -> None
+            | Some v -> Some (ValFlt v))) (Array.to_list vs))) |>
+    print
+  ) timeseries ;
+  print [||]
+
 
 (*
  * `ramen timerange`

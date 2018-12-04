@@ -3,22 +3,30 @@ open Batteries
 open RamenHelpers
 open RamenLog
 
+(* TODO: reuse RamenTypes in TermTable *)
 type valtype =
   | ValStr of string
   | ValInt of int
   | ValFlt of float
   | ValDate of float
+  | ValDuration of float
 
 let string_of_val = function
   | ValStr s -> s
   | ValInt i -> string_of_int i
   | ValFlt f -> nice_string_of_float f
   | ValDate t -> string_of_time t
+  | ValDuration t -> string_of_duration t
 
 let int_or_na = Option.map (fun i -> ValInt (Stdint.Uint64.to_int i))
 let flt_or_na = Option.map (fun f -> ValFlt f)
 let date_or_na = Option.map (fun t -> ValDate t)
+let duration_or_na = Option.map (fun t -> ValDuration t)
 let str_or_na = Option.map (fun s -> ValStr s)
+
+let newline flush =
+  Char.print stdout '\n' ;
+  if flush then BatIO.flush stdout
 
 let sort ~sort_col lines =
   (* In case a line has less values that others, assume "n/a": *)
@@ -31,11 +39,12 @@ let sort ~sort_col lines =
         String.compare s1 s2
     | Some (ValInt i1), Some (ValInt i2) ->
         Int.compare i2 i1
-    | Some (ValFlt f1 | ValDate f1), Some (ValFlt f2 | ValDate f2) ->
+    | Some (ValFlt f1 | ValDate f1 | ValDuration f1),
+      Some (ValFlt f2 | ValDate f2 | ValDuration f2) ->
         Float.compare f2 f1
-    | Some (ValFlt f1 | ValDate f1), Some (ValInt i2) ->
+    | Some (ValFlt f1 | ValDate f1 | ValDuration f1), Some (ValInt i2) ->
         Float.compare (float_of_int i2) f1
-    | Some (ValInt i1), Some (ValFlt f2 | ValDate f2) ->
+    | Some (ValInt i1), Some (ValFlt f2 | ValDate f2 | ValDuration f2) ->
         Float.compare f2 (float_of_int i1)
     | Some (ValStr s1), Some v2 ->
         String.compare s1 (string_of_val v2)
@@ -47,17 +56,17 @@ let sort ~sort_col lines =
   in
   List.fast_sort cmp lines
 
-let print_table_terse ~with_header ~na head =
+let print_table_terse ~sep ~with_header ~na ~flush head =
   if with_header then (
-    Array.iter (fun h -> Printf.printf "%s\t" h) head ;
-    Printf.printf "\n") ;
+    Array.print ~first:"" ~last:"" ~sep String.print stdout head ;
+    newline flush) ;
   function
   | [||] -> ()
   | line ->
-      Array.iter (fun v ->
-        Printf.printf "%s\t" (Option.map_default string_of_val na v)
-      ) line ;
-      Printf.printf "\n"
+      let pval oc v =
+        String.print oc (Option.map_default string_of_val na v) in
+      Array.print ~first:"" ~last:"" ~sep pval stdout line ;
+      newline flush
 
 (* Formatters: given the list of all (string) values going in a column, and
  * the max width we want for that column, return a formatter for those
@@ -96,7 +105,7 @@ let make_dot_align vals width =
     let s = s ^ String.make (max_after - after) ' ' in
     right_justify s
 
-let print_subtable_pretty ~with_header ~na head lines =
+let print_subtable_pretty ~with_header ~na ~flush head lines =
   let fmts = Array.create (Array.length head) None in
   (try
     List.iter (fun line ->
@@ -112,6 +121,8 @@ let print_subtable_pretty ~with_header ~na head lines =
                   fmts.(i) <- Some make_dot_align ; has_unset
               | Some (ValDate _) ->
                   fmts.(i) <- Some make_left_justify ; has_unset
+              | Some (ValDuration _) ->
+                  fmts.(i) <- Some make_right_justify ; has_unset
               | None ->
                   fmts.(i) <- None ; true)
           | Some _ -> has_unset
@@ -150,16 +161,16 @@ let print_subtable_pretty ~with_header ~na head lines =
       let h = make_left_justify [] col_width.(i) h in
       Printf.printf "%s%s" (cyan h) col_sep
     ) head ;
-    Printf.printf "\n") ;
+    newline flush) ;
   List.iter (fun line ->
     Array.iteri (fun i s ->
       let s = fmts.(i) s in
       Printf.printf "%s%s" s col_sep
     ) line ;
-    Printf.printf "\n"
+    newline flush
   ) lines
 
-let print_table_pretty ~with_header ~na head =
+let print_table_pretty ~with_header ~na ~flush head =
   (* User can't wait until all the data is available before anything gets
    * printed so the table is reformatted from time to time. *)
   let screen_length = 50 in
@@ -168,24 +179,24 @@ let print_table_pretty ~with_header ~na head =
   function
   | [||] ->
       if !lines <> [] then
-        print_subtable_pretty ~with_header ~na head !lines
+        print_subtable_pretty ~with_header ~na ~flush head (List.rev !lines)
   | line ->
       lines := line :: !lines ;
       incr line_no ;
       if !line_no >= screen_length then (
-        print_subtable_pretty ~with_header ~na head !lines ;
+        print_subtable_pretty ~with_header ~na ~flush head (List.rev !lines) ;
         lines := [] ;
         line_no := 0 ;
       )
 
 (* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
-                ?(na="n/a") head =
+                ?(sep="\t") ?(na="n/a") ?(flush=false) head =
   let print =
     let line_no = ref 0
     and print =
-      (if pretty then print_table_pretty else print_table_terse)
-        ~with_header ~na head in
+      (if pretty then print_table_pretty else print_table_terse ~sep)
+        ~with_header ~na ~flush head in
     function
     | [||] as l ->
         print l
@@ -211,32 +222,34 @@ let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
 (* Instead of representing the entries as a table, display a tree using the
  * given two columns to establish node relationship: *)
 
-let rec print_subtree ~parent ~child h head ~indent ~is_last root done_set =
+let rec print_subtree ~flush ~parent ~child h head ~indent ~is_last root done_set =
   if not (Set.String.mem root done_set) then
     let done_set = Set.String.add root done_set in
     let print_info indent line =
       for i = 0 to Array.length head - 1 do
-        if i <> parent && i <> child then
-          Printf.printf "%s %s: %s\n"
-            indent head.(i) line.(i)
+        if i <> parent && i <> child then (
+          Printf.printf "%s %s: %s"
+            indent head.(i) line.(i) ;
+          newline flush)
       done
     in
     let indent_end, indent_end_next =
       if indent = "" then "", "" else
       if is_last then "└ ", "  " else "├ ", "│ " in
-    Printf.printf "%s%s%s\n"
+    Printf.printf "%s%s%s"
       indent indent_end root ;
+    newline flush ;
     let indent = indent ^ indent_end_next ^ "   " in
     match Hashtbl.find h root with
     | exception Not_found -> ()
     | children ->
         list_iter_first_last (fun _is_first is_last (c, line) ->
           print_info (indent ^ "│ ") line ;
-          print_subtree ~parent ~child h head ~indent ~is_last c done_set
+          print_subtree ~flush ~parent ~child h head ~indent ~is_last c done_set
         ) children
 
 (* [parent] and [child] are indices within lines *)
-let print_tree ~parent ~child ?(na="n/a") head lines roots =
+let print_tree ~parent ~child ?(na="n/a") ?(flush=false) head lines roots =
   (* Turn the list of lines into a hash of node -> children *)
   let h = Hashtbl.create 11 in
   let to_str = Option.map_default string_of_val na in
@@ -246,6 +259,6 @@ let print_tree ~parent ~child ?(na="n/a") head lines roots =
     Hashtbl.modify_def [] p (fun lst -> (c, line) :: lst) h
   ) lines ;
   List.iter (fun root ->
-    print_subtree ~parent ~child h head ~indent:"" ~is_last:true root
+    print_subtree ~flush ~parent ~child h head ~indent:"" ~is_last:true root
                   Set.String.empty
   ) roots

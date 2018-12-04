@@ -85,6 +85,8 @@ let print oc =
   MapUnit.print ~first:"{" ~last:"}" ~sep:"*" ~kvsep:""
     String.print p oc
 
+let to_string u = IO.to_string print u
+
 let binop u1 c u2 =
   Printf.sprintf2 "%a %c %a"
     print u1 c print u2
