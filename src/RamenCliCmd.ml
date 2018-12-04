@@ -381,6 +381,17 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
+let header_of_type ?(with_units=false) ?display_field typ =
+  Array.fold_lefti (fun lst i t ->
+    match display_field with
+    | Some arr when arr.(i) ->
+      (RamenName.string_of_field t.RamenTuple.name ^
+       (if with_units then
+         Option.map_default RamenUnits.to_string "" t.units
+       else "")) :: lst
+    | _ -> lst
+  ) [] typ |> List.rev
+
 (* Check the entered field names are correct: *)
 let check_field_names typ field_names =
   List.iter (fun fn ->
@@ -436,18 +447,8 @@ let tail conf fq field_names with_header with_units sep null raw
     Array.map (fun h ->
       field_names = [] || List.mem h.RamenTuple.name field_names
     ) header in
-  let head =
-    Array.range header //@
-    (fun i ->
-      if display_field.(i) then
-        Some (
-          RamenName.string_of_field header.(i).name ^
-          (if with_units then
-            Option.map_default RamenUnits.to_string "" header.(i).units
-          else ""))
-      else None) |>
-    List.of_enum in
-  let head = if with_seqnums then "Seq"::head else head in
+  let head = header_of_type ~with_units ~display_field header in
+  let head = if with_seqnums then "Seq" :: head else head in
   let head =
     if with_event_time then
       "Event start" :: "Event end" :: head
@@ -536,8 +537,8 @@ let tail conf fq field_names with_header with_units sep null raw
  * timeseries.
  *)
 
-let replay conf fq field_names with_header with_units _sep _null _raw
-           _where since until _with_event_time _pretty _flush () =
+let replay conf fq field_names with_header with_units sep null _raw
+           _where since until _with_event_time pretty flush () =
   init_logger conf.C.log_level ;
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
@@ -629,18 +630,25 @@ let replay conf fq field_names with_header with_units _sep _null _raw
               List.filter (fun ft ->
                 List.mem ft.RamenTuple.name field_names
               ) func.F.out_type in
+          let head = header_of_type ~with_units (Array.of_list in_type) in
+          let head = Array.of_list head in
+          let open TermTable in
+          let print =
+            print_table ~na:null ~sep ~pretty ~with_header ~flush head in
           let field_mask = RingBufLib.skip_list ~out_type ~in_type in
+          let timeout = Unix.gettimeofday () +. 300. in
           let file_spec =
-            RamenOutRef.{ field_mask ; timeout = 300. ;
-                          channel = Some channel_id } in
+            RamenOutRef.{ field_mask ; timeout ; channel = Some channel_id } in
           let out_ref = C.out_ringbuf_names_ref conf func in
           RamenOutRef.add out_ref (rb_name, file_spec) ;
           (* Now spawn the replayers.
            * For each source, spawn a replayer, passing it the name of the
            * function, the out_ref files to obey, the channel id to tag tuples
            * with, and since/until dates. *)
-          let pids =
-            List.fold_left (fun s sfq ->
+          let replayer_id =
+            Random.int max_int_for_random |> Uint32.of_int in
+          let _, pids, eofs =
+            List.fold_left (fun (i, pids, eofs) sfq ->
               let smre, _prog, sfunc = C.find_func programs sfq in
               let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
               and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
@@ -652,14 +660,28 @@ let replay conf fq field_names with_header with_units _sep _null _raw
                    "rb_archive="^ C.archive_buf_name conf sfunc ;
                    "since="^ string_of_float since ;
                    "until="^ string_of_float until ;
-                   "channel_id="^ RamenChannel.to_string channel_id |] in
+                   "channel_id="^ RamenChannel.to_string channel_id ;
+                   "replayer_id="^ Uint32.to_string i |] in
               let pid = RamenProcesses.run_worker smre.C.bin args env in
               !logger.info "Replay for %a is running under pid %d"
                 RamenName.fq_print sfq pid ;
-              Set.Int.add pid s
-            ) Set.Int.empty sources in
-          waitall_log ~expected_status:ExitCodes.terminated
-                      ~what:"replayer" pids
+              Uint32.succ i,
+              Set.Int.add pid pids,
+              Set.add i eofs
+            ) (replayer_id, Set.Int.empty, Set.empty) sources in
+          (* Read the rb while monitoring children: *)
+          let pids = ref pids and eofs = ref eofs in
+          let while_ () =
+            !logger.debug "Still %d pids" (Set.Int.cardinal !pids) ;
+            pids :=
+              waitall_once ~expected_status:ExitCodes.terminated
+                          ~what:"replayer" !pids ;
+            (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
+            while_ () in
+          RingBufLib.read_buf ~wait_for_more:true ~while_ rb ()
+                              (fun () tx ->
+            print [| Some (ValStr "got something!") |], true) ;
+          print [||]
           ) ()) ()
 
 

@@ -495,29 +495,32 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
 
 type message_header =
   | DataTuple of RamenChannel.t (* Followed by a tuple *)
-  | EndOfReplay of RamenChannel.t
+  | EndOfReplay of RamenChannel.t * Uint32.t (* identifying the replayer *)
   (* Also TBD:
   | Timing of RamenChannel.t * (string * float) list
   | TimeBarrier ... *)
 
 (* Let's assume there will never be more than 36636 live channels and use
  * only one word for the header: *)
-let message_header_sersize = 4
+let message_header_sersize = function
+  | DataTuple _ -> 4
+  | EndOfReplay _ -> 8
 
-let write_message_header tx offs msg =
-  let word_of_message = function
-    | DataTuple chan -> Uint32.of_int chan
-    | EndOfReplay chan -> Uint32.of_int (0x1_0000 + chan)
-  in
-  write_u32 tx offs (word_of_message msg)
+let write_message_header tx offs = function
+  | DataTuple chan ->
+      write_u32 tx offs (Uint32.of_int chan)
+  | EndOfReplay (chan, replayer_id) ->
+      write_u32 tx offs (Uint32.of_int (0x1_0000 + chan)) ;
+      write_u32 tx (offs+4) replayer_id
 
 let read_message_header tx offs =
   let u32 = read_u32 tx offs in
-  let open Uint32 in
-  let chan = logand u32 (of_int 0xFFFF) |> to_int in
-  match shift_right_logical u32 16 |> to_int with
+  let chan = Uint32.(logand u32 (of_int 0xFFFF) |> to_int) in
+  match Uint32.(shift_right_logical u32 16 |> to_int) with
   | 0 -> DataTuple chan
-  | 0x1_0000 -> EndOfReplay chan
+  | 0x1_0000 ->
+      let replayer_id = read_u32 tx (offs+4) in
+      EndOfReplay (chan, replayer_id)
   | _ -> invalid_arg "read_message_head"
 
 (*
@@ -530,8 +533,10 @@ let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
     let sersize = max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in
     let tmin, tmax = event_time |? 0., 0. in
-    write_message_header tx 0 (DataTuple channel_id) ;
-    let sz = serialize_notification tx message_header_sersize tuple in
+    let head = DataTuple channel_id in
+    write_message_header tx 0 head ;
+    let sz =
+      serialize_notification tx (message_header_sersize head) tuple in
     assert (sz <= sersize) ;
     enqueue_commit tx tmin tmax) ()
 

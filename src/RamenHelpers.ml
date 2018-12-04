@@ -67,8 +67,7 @@ let retry
     | None -> true
     | Some d -> Unix.gettimeofday () -. started < d in
   let rec loop num_try x =
-    let keep_going = while_ () in
-    if not keep_going then raise Exit
+    if not (while_ ()) then raise Exit
     else if not (can_wait_longer ()) then raise Timeout
     else match f x with
       | exception e ->
@@ -77,6 +76,7 @@ let retry
           Option.map_default (fun max -> num_try < max) true max_retry &&
           retry_on_this in
         if should_retry then (
+          if not (while_ ()) then raise Exit ; (* Before sleeping *)
           let delay = !next_delay in
           let delay = min delay max_delay in
           let delay = max delay min_delay in
@@ -653,32 +653,39 @@ external sys_exit : int -> 'a = "caml_sys_exit"
 (* FIXME: is_singleton and cardinal_greater in batteries *)
 let set_int_is_singleton s = Set.Int.cardinal s = 1
 
-let rec waitall_log ?expected_status ~what pids =
+let rec waitall_once ?expected_status ~what pids =
   let open Unix in
-  let pids =
-    Set.Int.filter (fun pid ->
-      let complain status =
-        !logger.error "%s %s" what (string_of_process_status status) in
-      let flags = [ WUNTRACED ] in
-      let flags =
-        if set_int_is_singleton pids then flags
-        else WNOHANG :: flags in
-      match restart_on_EINTR (waitpid flags) pid with
-      | 0, _ -> true
-      | _, (WEXITED c as status) ->
-          if expected_status <> Some c && expected_status <> None then
-            complain status ;
-          false
-      | _, status ->
-          complain status ;
-          false
-    ) pids in
-  if not (Set.Int.is_empty pids) then (
-    sleep 1 ;
-    waitall_log ?expected_status ~what pids)
+  Set.Int.filter (fun pid ->
+    let complain is_err status =
+      (if is_err then !logger.error else !logger.debug)
+        "%s %s" what (string_of_process_status status) in
+    let flags = [ WUNTRACED ] in
+    let flags =
+      if set_int_is_singleton pids then flags
+      else WNOHANG :: flags in
+    match restart_on_EINTR (waitpid flags) pid with
+    | 0, _ -> true
+    | _, (WEXITED c as status) ->
+        complain
+          (expected_status <> Some c && expected_status <> None)
+          status ;
+        false
+    | _, status ->
+        complain true status ;
+        false
+  ) pids
+
+let waitall ?(while_=always) ?expected_status ~what pids =
+  let rec loop pids =
+    if while_ () && not (Set.Int.is_empty pids) then (
+      let pids = waitall_once ?expected_status ~what pids in
+      Unix.sleep 1 ;
+      loop pids)
+  in
+  loop pids
 
 let waitpid_log ?expected_status ~what pid =
-  waitall_log ?expected_status ~what (Set.Int.singleton pid)
+  waitall ?expected_status ~what (Set.Int.singleton pid)
 
 let with_subprocess ?expected_status ?env cmd args k =
   (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the

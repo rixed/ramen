@@ -1917,8 +1917,7 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
       \tmatch RingBufLib.read_message_header tx_ 0 with\n\
       \t|RingBufLib.EndOfReplay _ as m_ -> m_, None\n\
       \t|RingBufLib.DataTuple _ as m_ ->\n\
-      \t\tlet start_offs_ = %d in\n"
-      RingBufLib.message_header_sersize
+      \t\tlet start_offs_ = RingBufLib.message_header_sersize m_ in\n"
   ) ;
   Printf.fprintf oc "\
     \tlet offs_ = start_offs_ + %d in\n"

@@ -40,7 +40,7 @@ let read_tuple unserialize tx =
   match read_message_header tx 0 with
   | EndOfReplay _ as m -> m, None
   | DataTuple _ as m ->
-      let tuple = unserialize tx message_header_sersize in
+      let tuple = unserialize tx (message_header_sersize m) in
       m, Some tuple
 
 (* Same as above but returns directly a tuple rather than an array of
@@ -148,8 +148,9 @@ let write_record ser_in_type rb tuple =
     ) nullmask_sz values in
   !logger.debug "Sending an input tuple of %d bytes" sz ;
   with_enqueue_tx rb sz (fun tx ->
-    write_message_header tx 0 (DataTuple RamenChannel.live) ;
-    let start_offs = message_header_sersize in
+    let head = DataTuple RamenChannel.live in
+    write_message_header tx 0 head ;
+    let start_offs = message_header_sersize head in
     zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
     (* Loop over all values: *)
     List.fold_left (fun offs (null_i, v) ->

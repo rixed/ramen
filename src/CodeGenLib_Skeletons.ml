@@ -124,14 +124,15 @@ let get_binocle_tuple worker ic sc gc =
 
 let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let open RingBuf in
+  let head = RingBufLib.DataTuple RamenChannel.live in
   let sersize =
-    RingBufLib.message_header_sersize +
+    RingBufLib.message_header_sersize head +
     RamenBinocle.max_sersize_of_tuple tuple in
   match enqueue_alloc rb sersize with
   | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
-    RingBufLib.(write_message_header tx 0 (DataTuple RamenChannel.live)) ;
-    let offs = RingBufLib.message_header_sersize in
+    RingBufLib.(write_message_header tx 0 head) ;
+    let offs = RingBufLib.message_header_sersize head in
     let offs = RamenBinocle.serialize tx offs tuple in
     enqueue_commit tx time time ;
     assert (offs <= sersize)
@@ -149,21 +150,25 @@ let update_stats_rb period rb get_tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output rb serialize_tuple sersize_of_tuple start_stop chan tuple =
+let output rb serialize_tuple sersize_of_tuple start_stop head tuple_opt =
   let open RingBuf in
-  let head = RingBufLib.DataTuple chan in
-  let tuple_sersize = sersize_of_tuple tuple in
-  let sersize = RingBufLib.message_header_sersize + tuple_sersize in
+  let tuple_sersize =
+    Option.map_default sersize_of_tuple 0 tuple_opt in
+  let sersize = RingBufLib.message_header_sersize head + tuple_sersize in
   (* Nodes with no output (but notifications) have no business writing
    * a ringbuf. Want a signal when a notification is sent? SELECT some
    * value! *)
-  if tuple_sersize > 0 then
+  if tuple_opt = None || tuple_sersize > 0 then
     IntCounter.add stats_rb_write_bytes sersize ;
     let tx = enqueue_alloc rb sersize in
     let offs =
       RingBufLib.write_message_header tx 0 head ;
-      RingBufLib.message_header_sersize in
-    let offs = serialize_tuple tx offs tuple in
+      RingBufLib.message_header_sersize head in
+    let offs =
+      match tuple_opt with
+      | Some tuple -> serialize_tuple tx offs tuple
+      | None -> offs in
+    (* start = stop = 0. => times are unset *)
     let start, stop = start_stop |? (0., 0.) in
     enqueue_commit tx start stop ;
     assert (offs = sersize)
@@ -183,6 +188,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         last_stat := !CodeGenLib_IO.now ;
         let must_read =
           let t = mtime_of_file_def 0. rb_ref_out_fname in
+          !logger.debug "mtime=%f, last_mtime=%f" t !last_mtime ;
           if t > !last_mtime then (
             last_mtime := t ;
             if !last_mtime <> 0. && t > !last_mtime then
@@ -193,15 +199,17 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
           ) else !CodeGenLib_IO.now > !last_read +. 10.
         in
         if must_read then (
+          !logger.debug "Rereading out-ref" ;
           last_read := !CodeGenLib_IO.now ;
           Some (RamenOutRef.read rb_ref_out_fname)
         ) else None
       ) else None
   in
   let update_out_h () =
-    (* Get fnames if they've changed: *)
-    let fnames = get_out_fnames () in
+    (* Get out_specs if they've changed: *)
+    get_out_fnames () |>
     Option.may (fun out_specs ->
+      !logger.info "out_specs with %d entries" (Hashtbl.length out_specs) ;
       if Hashtbl.is_empty out_specs then (
         if not (Hashtbl.is_empty out_h) then (
           !logger.info "OutRef is now empty!" ;
@@ -225,7 +233,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             fname
         | rb, _ ->
           RingBuf.unload rb ;
-          Hashtbl.remove out_h fname) to_close ;
+          Hashtbl.remove out_h fname
+      ) to_close ;
       (* Open some: *)
       Set.iter (fun fname ->
           !logger.debug "Mapping %S" fname ;
@@ -252,7 +261,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 last_check_outref := now ;
                 RamenOutRef.mem rb_ref_out_fname fname)
             in
-            let rb_writer start_stop chan tuple =
+            let rb_writer start_stop head tuple_opt =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
                * terminated then we won't deadloop.  Also, if one child is full
@@ -286,7 +295,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
                 (fun () ->
                   if !quarantine_until < !CodeGenLib_IO.now then (
-                    output rb tup_serializer tup_sizer start_stop chan tuple ;
+                    output rb tup_serializer tup_sizer start_stop
+                           head tuple_opt ;
                     last_successful_output := !CodeGenLib_IO.now ;
                     if !quarantine_delay > 0. then (
                       !logger.info "Resuming output to %s" fname ;
@@ -299,21 +309,26 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
       (* Update the current list of outputers: *)
-      out_l := Hashtbl.values out_h /@ snd |> List.of_enum) fnames
+      out_l := Hashtbl.values out_h /@ snd |> List.of_enum)
   in
-  fun chan tuple ->
-    let start_stop = time_of_tuple tuple in
-    IntCounter.add stats_out_tuple_count 1 ;
-    FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
-    (* Update stats_event_time: *)
-    Option.may (fun (start, _) ->
-      (* We'd rather announce the start time of the event, even for
-       * negative durations. *)
-      FloatGauge.set stats_event_time start
-    ) start_stop ;
+  fun head tuple_opt ->
+    let start_stop =
+      match tuple_opt with
+      | Some tuple ->
+        let start_stop = time_of_tuple tuple in
+        IntCounter.add stats_out_tuple_count 1 ;
+        FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+        (* Update stats_event_time: *)
+        Option.may (fun (start, _) ->
+          (* We'd rather announce the start time of the event, even for
+           * negative durations. *)
+          FloatGauge.set stats_event_time start
+        ) start_stop ;
+        start_stop
+      | None -> None in
     update_out_h () ;
     List.iter (fun out ->
-      try out start_stop chan tuple
+      try out start_stop head tuple_opt
       with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
@@ -410,7 +425,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
     in
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple in
+                  serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
     CodeGenLib_IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
@@ -418,7 +433,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
-      | tuple -> outputer RamenChannel.live tuple))
+      | tuple -> outputer tuple))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
@@ -443,9 +458,11 @@ let listen_on (collector :
       port proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple RamenChannel.live in
+                  serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
-    collector ~inet_addr ~port ~while_ outputer)
+    collector ~inet_addr ~port ~while_ (fun tup ->
+      CodeGenLib_IO.on_each_input_pre () ;
+      outputer tup))
 
 (*
  * Operations that funcs may run: read known tuples from a ringbuf.
@@ -483,13 +500,14 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
         RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
           let open RingBufLib in
           (match read_message_header tx 0 with
-          | DataTuple chan ->
-            let offs = message_header_sersize in
+          | DataTuple chan as m ->
+            let offs = message_header_sersize m in
             let tuple = unserialize_tuple tx offs in
             let worker, time = worker_time_of_tuple tuple in
             (* Filter by time and worker *)
-            if time >= start && match_from worker then
-              outputer chan tuple
+            if time >= start && match_from worker then (
+              CodeGenLib_IO.on_each_input_pre () ;
+              outputer (RingBufLib.DataTuple chan) (Some tuple))
           | _ -> ()) ;
           (), true) ;
         info_or_test conf "Done reading buffer, waiting for next one." ;
@@ -862,7 +880,7 @@ let aggregate
                    field_of_params
           ) notifications
         ) ;
-        tuple_outputer chan tuple_out
+        tuple_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in
       generate_tuples do_out in
     let with_state =
@@ -1129,6 +1147,7 @@ let replay
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string
   and channel_id = getenv "channel_id" |> RamenChannel.of_string
+  and replayer_id = getenv "replayer_id" |> Uint32.of_string
   in
   info_or_test conf "Starting REPLAY of %s. Will log into %s at level %s."
     worker_name
@@ -1158,10 +1177,10 @@ let replay
             print_exception ~what:"Reading a tuple from archive" e,
             false (* Skip the rest of that file for safety *)
         | DataTuple chn, Some tuple when chn = RamenChannel.live ->
-            !logger.debug "Read a tuple from the live channel" ;
+            CodeGenLib_IO.on_each_input_pre () ;
             (* As tuples are not ordered in the archive file we have
              * to read it all: *)
-            outputer channel_id tuple, true
+            outputer (RingBufLib.DataTuple channel_id) (Some tuple), true
         | _ ->
             !logger.debug "Read something else from the live chanel" ;
             (), true) in
@@ -1194,5 +1213,7 @@ let replay
   (* Finish with the current archive: *)
   !logger.info "Reading current archive" ;
   loop_tuples_of_file rb_archive ;
+  (* Before quitting, signal the end of this replay: *)
+  outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
   !logger.info "Finished" ;
   exit (!quit |? ExitCodes.terminated)
