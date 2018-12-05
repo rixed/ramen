@@ -7,7 +7,7 @@ open RamenTypes
 
 let verbose_serialization = false
 
-(* Read all fields one by one. Not the real thing. Skips non-tuple messages.
+(* Read all fields one by one. Not the real thing.
  * Slow unserializer used for command line tools such as `ramen tail`. *)
 let read_array_of_values ser_tuple_typ =
   let tuple_len = List.length ser_tuple_typ in

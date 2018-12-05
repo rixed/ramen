@@ -498,7 +498,7 @@ let tail conf fq field_names with_header with_units sep null raw
           failwith "Function has no event time information"
         else (fun _ -> 0., 0.)
     | Some et ->
-        event_time_of_tuple typ params et
+        event_time_of_tuple ser params et
   in
   let unserialize = RamenSerialization.read_array_of_values ser in
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
