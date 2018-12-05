@@ -636,7 +636,9 @@ type ('tuple_in, 'sort_by) sort_by_fun =
 type ('tuple_in, 'merge_on) merge_on_fun =
   'tuple_in (* last in *) -> 'merge_on
 
-let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
+(* [on_tup] is the continuation for tuples while [on_else] is the
+ * continuation for non tuples: *)
+let read_single_rb ?while_ ?delay_rec read_tuple rb_in on_tup on_else =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
     match read_tuple tx with
     | exception e ->
@@ -646,15 +648,17 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
         RingBuf.dequeue_commit tx ;
         (match msg with
         | RingBufLib.DataTuple chan, Some tuple ->
-            k tx_size chan tuple tuple
-        | _ -> ()))
+            on_tup tx_size chan tuple tuple
+        | head, None -> on_else head
+        | _ -> assert false))
 
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
     mutable tuples : ('tuple_in * int * 'merge_on) RamenSzHeap.t ;
     mutable timed_out : float option (* When it was timed out *) }
 
-let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
+let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
+              on_tup on_else =
   ignore delay_rec ; (* TODO: measure how long we spend waiting! *)
   let to_merge =
     Array.of_list rbs |>
@@ -686,7 +690,8 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
                   to_merge.tuples <-
                     RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
                                     to_merge.tuples
-                | _ -> ((* TODO *)))))
+                | head, None -> on_else head
+                | _ -> assert false)))
     ) to_merge in
   (* Loop until timeout the given max time or we have a tuple for each
    * non timed out input sources: *)
@@ -747,11 +752,11 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
           let chan = RamenChannel.live (* TODO *) in
-          k tx_size chan min_tuple max_tuple ;
+          on_tup tx_size chan min_tuple max_tuple ;
           loop ()) in
   loop ()
 
-let yield_every ~while_ read_tuple every k =
+let yield_every ~while_ read_tuple every on_tup on_else =
   !logger.debug "YIELD operation"  ;
   let tx = RingBuf.empty_tx () in
   let rec loop prev_start =
@@ -763,9 +768,12 @@ let yield_every ~while_ read_tuple every k =
             prev_start
         | RingBufLib.DataTuple chan, Some tuple ->
             let s = Unix.gettimeofday () in
-            k 0 chan tuple tuple ;
+            on_tup 0 chan tuple tuple ;
             s
-        | _ -> prev_start in
+        | head, None ->
+            on_else head ;
+            prev_start
+        | _ -> assert false in
       let rec wait () =
         (* Avoid sleeping longer than a few seconds to check while_ in a
          * timely fashion. The 1.33 is supposed to help distinguish this sleep
@@ -880,7 +888,7 @@ let aggregate
     and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf" in
     let notify_rb = RingBuf.load notify_rb_name in
-    let tuple_outputer =
+    let msg_outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple in
     let outputer =
@@ -899,7 +907,7 @@ let aggregate
                    field_of_params
           ) notifications
         ) ;
-        tuple_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
+        msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in
       generate_tuples do_out in
     let with_state =
@@ -1093,8 +1101,7 @@ let aggregate
       | rb_ins ->
           merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
                     merge_timeout read_tuple rb_ins
-    in
-    tuple_reader (fun tx_size channel_id in_tuple merge_greatest ->
+    and on_tup tx_size channel_id in_tuple merge_greatest =
       with_state channel_id (fun s ->
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
@@ -1127,7 +1134,11 @@ let aggregate
             s.sort_buf <- sb ;
             aggregate_one channel_id s min_in merge_greatest
           else
-            s)))
+            s)
+    and on_else head =
+      msg_outputer head None
+    in
+    tuple_reader on_tup on_else)
 
 
 (* Special node that reads the output history instead of computing it.
