@@ -370,6 +370,8 @@ let worker_start worker_name get_binocle_tuple k =
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
+  (* Then, the sooner a new worker appears in the stats the better: *)
+  ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   let conf = { log_level ; state_file ; is_test } in
   info_or_test conf "Starting %s process. Will log into %s at level %s."
     worker_name
