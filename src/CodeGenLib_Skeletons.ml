@@ -150,7 +150,9 @@ let update_stats_rb period rb get_tuple =
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
-let output rb serialize_tuple sersize_of_tuple start_stop head tuple_opt =
+let output rb serialize_tuple sersize_of_tuple
+           (* Those last parameters change at every tuple: *)
+           start_stop head tuple_opt =
   let open RingBuf in
   let tuple_sersize =
     Option.map_default sersize_of_tuple 0 tuple_opt in
@@ -259,7 +261,7 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 last_check_outref := now ;
                 RamenOutRef.mem rb_ref_out_fname fname)
             in
-            let rb_writer start_stop head tuple_opt =
+            let rb_writer dest_channel start_stop head tuple_opt =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
                * case the ringbuf disappear altogether because the child is
                * terminated then we won't deadloop.  Also, if one child is full
@@ -292,17 +294,21 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   | _ -> false)
                 ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
                 (fun () ->
-                  if !quarantine_until < !CodeGenLib_IO.now then (
-                    output rb tup_serializer tup_sizer start_stop
-                           head tuple_opt ;
-                    last_successful_output := !CodeGenLib_IO.now ;
-                    if !quarantine_delay > 0. then (
-                      !logger.info "Resuming output to %s" fname ;
-                      quarantine_delay := 0.
-                    )
-                  ) else (
-                    !logger.debug "Skipping output to %s (quarantined)" fname
-                  )) ()
+                  if file_spec.RamenOutRef.channel = None ||
+                     file_spec.RamenOutRef.channel = Some dest_channel
+                  then (
+                    if !quarantine_until < !CodeGenLib_IO.now then (
+                      output rb tup_serializer tup_sizer
+                             start_stop head tuple_opt ;
+                      last_successful_output := !CodeGenLib_IO.now ;
+                      if !quarantine_delay > 0. then (
+                        !logger.info "Resuming output to %s" fname ;
+                        quarantine_delay := 0.
+                      )
+                    ) else (
+                      !logger.debug "Skipping output to %s (quarantined)"
+                        fname
+                    ))) ()
             in
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;
@@ -310,23 +316,25 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
       out_l := Hashtbl.values out_h /@ snd |> List.of_enum)
   in
   fun head tuple_opt ->
+    let dest_channel = RingBufLib.channel_of_message_header head in
     let start_stop =
       match tuple_opt with
       | Some tuple ->
         let start_stop = time_of_tuple tuple in
-        IntCounter.add stats_out_tuple_count 1 ;
-        FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
-        (* Update stats_event_time: *)
-        Option.may (fun (start, _) ->
-          (* We'd rather announce the start time of the event, even for
-           * negative durations. *)
-          FloatGauge.set stats_event_time start
-        ) start_stop ;
+        if dest_channel = RamenChannel.live then (
+          IntCounter.add stats_out_tuple_count 1 ;
+          FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+          (* Update stats_event_time: *)
+          Option.may (fun (start, _) ->
+            (* We'd rather announce the start time of the event, even for
+             * negative durations. *)
+            FloatGauge.set stats_event_time start
+          ) start_stop) ;
         start_stop
       | None -> None in
     update_out_h () ;
     List.iter (fun out ->
-      try out start_stop head tuple_opt
+      try out dest_channel start_stop head tuple_opt
       with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)

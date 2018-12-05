@@ -500,6 +500,10 @@ type message_header =
   | Timing of RamenChannel.t * (string * float) list
   | TimeBarrier ... *)
 
+let channel_of_message_header = function
+  | DataTuple chn -> chn
+  | EndOfReplay (chn, _) -> chn
+
 (* We encode the variant on 4 bits, channel id on 16 and replayer id on
  * 12 so that everything fits in word word for now while we still have
  * plenty of variants left: *)
