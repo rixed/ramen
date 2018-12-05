@@ -191,9 +191,9 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         let must_read =
           let t = mtime_of_file_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
-            last_mtime := t ;
             if !last_mtime <> 0. && t > !last_mtime then
               !logger.info "Have to re-read %s" rb_ref_out_fname ;
+            last_mtime := t ;
             true
           (* We have to reread the outref from time to time even if not
            * changed because of timeout expiry. *)

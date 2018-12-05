@@ -67,13 +67,11 @@ let read fname =
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
     read_ fname fd |>
-    Hashtbl.filter_map (fun p (mask_str, timeout, channel as spec) ->
+    Hashtbl.filter_map (fun _ (mask_str, timeout, channel as spec) ->
       if file_spec_still_valid now spec then
         Some { field_mask = field_mask_of_string mask_str ;
                timeout ; channel }
-      else (
-        !logger.debug "timed out entry to %s" p ;
-        None)))
+      else None))
 
 let add_ fname fd out_fname file_spec =
   let file_spec =
