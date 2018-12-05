@@ -95,12 +95,16 @@ type func_stats =
     mutable parents : RamenName.fq list ;
     (* Also gather available history per running workers, to speed up
      * establishing query plans: *)
-    mutable archives : (float * float) list [@ppp_default []] }
+    mutable archives : (float * float) list [@ppp_default []] ;
+    (* We want to allocate disk space only to those workers that are running,
+     * but also want to save stats about workers that's been running recently
+     * enough and might resume: *)
+    mutable is_running : bool [@ppp_default false] }
   [@@ppp PPP_OCaml]
 
 let func_stats_empty =
   { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
-    parents = [] ; archives = [] }
+    parents = [] ; archives = [] ; is_running = false }
 
 (* Returns the func_stat resulting of adding the RamenPs.stats to the
  * previous func_stat [a]: *)
@@ -115,17 +119,20 @@ let add_ps_stats a s now =
     bytes = Int64.add a.bytes Uint64.(to_int64 (s.bytes_out |? zero)) ;
     cpu = a.cpu +. s.cpu ;
     ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) ;
-    parents = a.parents ; archives = a.archives }
+    parents = a.parents ; archives = a.archives ; is_running = a.is_running }
 
 (* Those stats are saved on disk: *)
 
 type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
-let load_stats conf =
+let load_stats ?(only_running=false) conf =
   let fname = conf_dir conf ^ "/stats" in
   ensure_file_exists ~contents:"{}" fname ;
-  ppp_of_file per_func_stats_ser_ppp_ocaml fname
+  let stats = ppp_of_file per_func_stats_ser_ppp_ocaml fname in
+  if only_running then
+    Hashtbl.filter (fun s -> s.is_running) stats
+  else stats
 
 let save_stats conf stats =
   let fname = conf_dir conf ^ "/stats" in
@@ -174,7 +181,7 @@ let update_archives conf s func =
 
 let enrich_stats conf per_func_stats =
   C.with_rlock conf identity |>
-  Hashtbl.iter (fun program_name (_mre, get_rc) ->
+  Hashtbl.iter (fun program_name (mre, get_rc) ->
     match get_rc () with
     | exception _ -> ()
     | prog ->
@@ -183,6 +190,7 @@ let enrich_stats conf per_func_stats =
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
           | (s, _) ->
+              s.is_running <- mre.C.status = MustRun ;
               update_parents s program_name func ;
               update_archives conf s func
         ) prog.P.funcs)
@@ -228,9 +236,9 @@ let update_worker_stats ?while_ conf =
  * Optimising storage:
  *
  * All the information in the stats file can then be used to compute the
- * disk shares per functions ; also to be stored in a file as a mapping
- * from FQ to number of bytes allowed on disk. This will then be read and
- * used by the GC.
+ * disk shares per running functions ; also to be stored in a file as a mapping
+ * from FQ to number of bytes allowed on disk. This will then be read and used
+ * by the GC.
  *)
 
 (* We have constraints given by the user configuration that set a higher
@@ -441,7 +449,7 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
      (assert (<= %a 100))\n\
      ; Query costs of each function:\n\
      %a\n\
-     ; No actually used cost must be < invalid_cost\n\
+     ; No actually used cost must be greater than invalid_cost\n\
      %a\n\
      ; Minimize the cost of querying each function with retention:\n\
      (minimize %a)\n\
@@ -475,7 +483,7 @@ let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let user_conf = get_user_conf (user_conf_file conf)
-  and per_func_stats = load_stats conf in
+  and per_func_stats = load_stats ~only_running:true conf in
   let fname = conf_dir conf ^ "/allocations.smt2"
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
@@ -491,6 +499,7 @@ let update_storage_allocation conf =
       | _ ->
           !logger.warning "  of some sort...?")
     with Scanf.Scan_failure _ -> ()
+  (* TODO! *)
   and unsat _syms _output = ()
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;
