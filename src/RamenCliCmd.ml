@@ -583,30 +583,52 @@ let replay conf fq field_names with_header with_units sep null raw
   (* TODO: handle gaps in archives (for instance, best_since and best_until
    * could also come with a ratio of the coverage of the asked time
    * slice) *)
-  let rec find_sources lst fq =
+  let rec find_sources sources fqs since until =
+    (* When asked for several fqs, we want to retrieve the same time range from
+     * all of them. *)
+    List.fold_left (fun (sources, best_opt) fq ->
+      let sources, best_opt' = find_sources_single sources fq since until in
+      (* Keep only the intersection of the time range: *)
+      sources,
+      match best_opt, best_opt' with
+      | None, x -> x
+      | x, None -> x
+      | Some (t1, t2), Some (t1', t2') ->
+          Some (max t1 t1', min t2 t2')
+    ) (sources, None) fqs
+  and find_sources_single sources fq since until =
     let s = Hashtbl.find stats fq in
     let best_opt =
       List.fold_left (fun best_opt (t1, t2) ->
         if t1 > until || t2 < since then best_opt else
         Some (max t1 since, min t2 until)
       ) None s.RamenArchivist.archives in
+    !logger.debug "From %a, best_op=%a"
+      RamenName.fq_print fq
+      (Option.print (Tuple2.print Float.print Float.print)) best_opt ;
+    (* Take what we can from here and the rest from the parents: *)
     match best_opt with
-    | Some (best_since, best_until)
-      when best_since <= since && best_until >= until ->
-        fq :: lst, Some (best_since, best_until)
+    | Some (best_since, best_until) ->
+        let sources = fq :: sources in
+        (* Complete to the left: *)
+        let sources, best_opt =
+          if best_since <= since then sources, best_opt else
+          match find_sources sources s.parents since best_since with
+          | sources, Some (best_since', _best_until') ->
+              sources, Some (best_since', best_until)
+          | _ -> sources, best_opt in
+        (* Complete to the right: *)
+        let sources, best_opt =
+          if best_until >= until then sources, best_opt else
+          match find_sources sources s.parents best_until until with
+          | sources, Some (_best_since', best_until') ->
+              sources, Some (best_since, best_until')
+          | _ -> sources, best_opt in
+        sources, best_opt
     | _ ->
-        List.fold_left (fun (lst, best_opt) pfq ->
-          let lst, best_opt' = find_sources lst pfq in
-          lst,
-          (* We have to take the intersection of our parents time ranges *)
-          match best_opt, best_opt' with
-          | x, None -> x
-          | None, (Some _ as x) -> x
-          | Some (bf', bu'), Some (bf, bu) ->
-              Some (max bf bf', min bu bu')
-        ) (lst, None) s.parents
+        find_sources sources s.parents since until
   in
-  match find_sources [] fq with
+  match find_sources_single [] fq since until with
   | exception Not_found ->
       !logger.error "Cannot find some parents in the stats?!"
   | _, None ->
