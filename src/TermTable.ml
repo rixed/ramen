@@ -192,7 +192,7 @@ let print_table_pretty ~with_header ~na ~flush head =
 (* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
                 ?(sep="\t") ?(na="n/a") ?(flush=false) head =
-  let print =
+  let print_top =
     let line_no = ref 0
     and print =
       (if pretty then print_table_pretty else print_table_terse ~sep)
@@ -211,12 +211,13 @@ let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
   | Some c ->
       let lines = ref [] in
       (function
-      | [||] ->
+      | [||] as l ->
           sort ~sort_col:c !lines |>
-          List.iter print
+          List.iter print_top ;
+          print_top l
       | l -> lines := l :: !lines)
   | None ->
-      print
+      print_top
 
 
 (* Instead of representing the entries as a table, display a tree using the

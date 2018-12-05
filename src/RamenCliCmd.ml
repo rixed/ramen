@@ -308,7 +308,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
                flt_or_na (Option.map Uint64.to_float s.bytes_out) |]
         )
       ) programs) ;
-      print [||]
+    print [||]
   else
     (* Otherwise we want to display all we can about individual workers *)
     let head =
