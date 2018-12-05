@@ -156,8 +156,19 @@ let update_archives conf s func =
     RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
     (fun (_seq_mi, _seq_ma, t1, t2, _f) ->
       if Float.(is_nan t1 || is_nan t2) then None else Some (t1, t2)) |>
-    List.of_enum |>
-    List.sort (fun (ta,_) (tb,_) -> Float.compare ta tb) in
+    List.of_enum in
+  (* We might also have a current archive: *)
+  let lst =
+    match RingBuf.load bname with
+    | exception _ -> lst (* nope *)
+    | rb ->
+        finally (fun () -> RingBuf.unload rb) (fun () ->
+          let st = RingBuf.stats rb in
+          if st.t_min <> 0. || st.t_max <> 0. then
+            (st.t_min, st.t_max) :: lst
+          else  lst) () in
+  let lst =
+    List.sort (fun (ta,_) (tb,_) -> Float.compare ta tb) lst in
   (* Compress that list: when a gap in between two file is smaller than
    * one tenth of the duration of those two files then assume there is no
    * gap: *)
