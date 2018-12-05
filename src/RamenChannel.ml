@@ -8,8 +8,7 @@ type t = int [@@ppp PPP_OCaml]
 let live = 0
 
 (* TODO! *)
-let make _conf =
-  Random.int max_int_for_random
+let make _conf = Random.int 0xFFFF
 
 let of_string = int_of_string
 let to_string = string_of_int

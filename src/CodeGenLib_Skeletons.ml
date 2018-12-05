@@ -1158,7 +1158,7 @@ let replay
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string
   and channel_id = getenv "channel_id" |> RamenChannel.of_string
-  and replayer_id = getenv "replayer_id" |> Uint32.of_string
+  and replayer_id = getenv "replayer_id" |> int_of_string
   in
   info_or_test conf "Starting REPLAY of %s. Will log into %s at level %s."
     worker_name

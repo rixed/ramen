@@ -495,35 +495,46 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
 
 type message_header =
   | DataTuple of RamenChannel.t (* Followed by a tuple *)
-  | EndOfReplay of RamenChannel.t * Uint32.t (* identifying the replayer *)
+  | EndOfReplay of RamenChannel.t * int (* identifying the replayer *)
   (* Also TBD:
   | Timing of RamenChannel.t * (string * float) list
   | TimeBarrier ... *)
+
+(* We encode the variant on 4 bits, channel id on 16 and replayer id on
+ * 12 so that everything fits in word word for now while we still have
+ * plenty of variants left: *)
 
 (* Let's assume there will never be more than 36636 live channels and use
  * only one word for the header: *)
 let message_header_sersize = function
   | DataTuple _ -> 4
-  | EndOfReplay _ -> 8
+  | EndOfReplay _ -> 4
 
 let write_message_header tx offs = function
   | DataTuple chan ->
-      write_u32 tx offs (Uint32.of_int chan)
+      assert (chan <= 0xFFFF) ;
+      write_u32 tx offs (Uint32.of_int (chan land 0xFFFF))
   | EndOfReplay (chan, replayer_id) ->
-      write_u32 tx offs (Uint32.of_int (0x1_0000 + chan)) ;
-      write_u32 tx (offs+4) replayer_id
+      assert (chan <= 0xFFFF) ;
+      assert (replayer_id <= 0xFFF) ;
+      let hi = 0x1000 + replayer_id land 0xFFF in
+      Uint32.(
+        shift_left (of_int hi) 16 |>
+        logor (of_int (chan land 0xFFFF))) |>
+      write_u32 tx offs
 
 let read_message_header tx offs =
   let u32 = read_u32 tx offs in
   let chan = Uint32.(logand u32 (of_int 0xFFFF) |> to_int) in
   match Uint32.(shift_right_logical u32 16 |> to_int) with
   | 0 -> DataTuple chan
-  | 0x1_0000 ->
-      let replayer_id = read_u32 tx (offs+4) in
+  | w when w >= 0x1000 ->
+      let replayer_id = w land 0xFFF in
       EndOfReplay (chan, replayer_id)
   | _ ->
-      Printf.sprintf "read_message_header: invalid header at offset %d"
-        offs |>
+      Printf.sprintf
+        "read_message_header: invalid header at offset %d: %s"
+        offs (Uint32.to_string u32) |>
       invalid_arg
 
 (*
