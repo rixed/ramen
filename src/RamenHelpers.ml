@@ -991,7 +991,7 @@ let hex_print ?(from_rb=false) ?(num_cols=16) oc bytes =
   (* [b0] was the offset at the beginning of the line while [b] is the
    * current offset.
    * [c] is the current column.
-   * [l] is the length of the current record (length included) if
+   * [l] is the length of the current record (length included) in bytes if
    * [from_rb], while [bl] is the offset into that record. [bl0] was
    * that offset at the beginning of the line. *)
   let rec aux b0 bl0 l c b bl =
@@ -1030,19 +1030,18 @@ let hex_print ?(from_rb=false) ?(num_cols=16) oc bytes =
             (* Read the length, and highlight it.
              * Remember that the length is the number of words, excluding
              * the length itself: *)
-            if b = Bytes.length bytes - 1 then (
-              (* Half the length?! Now that's something to highlight!*)
-              2 * (1 + Char.code (Bytes.get bytes b)),
-              0
-            ) else if b < Bytes.length bytes - 1 then (
-              2 * (1 + Char.code (Bytes.get bytes b) +
-                   Char.code (Bytes.get bytes (b+1)) lsl 8),
-              0
-            ) else l, bl
+            let rec loop l (* in words *) bl (* in bytes *) =
+              if bl > 3 || b + bl >= Bytes.length bytes then
+                (* We've read the length: *) (l + 1) * 4, 0
+              else
+                (* Assume little endian: *)
+                loop (l + Char.code (Bytes.get bytes (b + bl)) lsl (8 * bl))
+                     (bl + 1) in
+            loop 0 0
           ) else l, bl in
         let str = hex_byte_of (Char.code (Bytes.get bytes b)) in
         let str =
-          if from_rb && bl < 2 then blue str else
+          if from_rb && bl < 4 then blue str else
           if from_rb && bl = l - 1 then yellow str else str in
         Printf.fprintf oc "%s%s" (sep c) str ;
         aux b0 bl0 l (c + 1) (b + 1) (bl + 1)))
