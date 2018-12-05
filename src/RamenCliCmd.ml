@@ -632,13 +632,13 @@ let replay conf fq field_names with_header with_units sep null raw
   | exception Not_found ->
       !logger.error "Cannot find some parents in the stats?!"
   | _, None ->
-      !logger.info "No archive found. Game over."
+      !logger.error "No archive found. Game over."
   | sources, Some (best_since, best_until) ->
-      !logger.info "List of required sources: %a"
+      !logger.debug "List of required sources: %a"
         (pretty_list_print RamenName.fq_print) sources ;
       let rel = ref "" in
       let p = print_as_date ~right_justified:false ~rel in
-      !logger.info "Time slice covered: %a..%a"
+      !logger.debug "Time slice covered: %a..%a"
         p best_since p best_until ;
       (* Then create a ringbuffer for reception: *)
       let rb_name =
@@ -690,7 +690,7 @@ let replay conf fq field_names with_header with_units sep null raw
                  "channel_id="^ RamenChannel.to_string channel_id ;
                  "replayer_id="^ string_of_int i |] in
             let pid = RamenProcesses.run_worker smre.C.bin args env in
-            !logger.info "Replay for %a is running under pid %d"
+            !logger.debug "Replay for %a is running under pid %d"
               RamenName.fq_print sfq pid ;
             i + 1,
             Set.Int.add pid pids,
@@ -735,7 +735,7 @@ let replay conf fq field_names with_header with_units sep null raw
           | RingBufLib.EndOfReplay (chan, replay_id), None ->
             (if chan = channel_id then (
               if Set.mem replay_id !eofs then (
-                !logger.info "EndOfReplay from %d" replay_id ;
+                !logger.debug "EndOfReplay from %d" replay_id ;
                 eofs := Set.remove replay_id !eofs
               ) else
                 !logger.error "Received EndOfReplay from unknown replayer %d"

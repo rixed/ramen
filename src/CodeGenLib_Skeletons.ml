@@ -1140,7 +1140,7 @@ let aggregate
  * Other differences:
  * - it emits no reports (or of course notifications);
  * - it has no state therefore no persistence;
- * - *)
+ * - it is quieter than a normal worker that has its own log file. *)
 let replay
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
@@ -1160,7 +1160,6 @@ let replay
         mkdir_all logdir ;
         init_logger ~logdir log_level
       )) ;
-  let conf = { log_level ; state_file = "/dev/null" ; is_test = false } in
   let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and rb_archive = getenv ~def:"/tmp/archive.b" "rb_archive"
   and since = getenv "since" |> float_of_string
@@ -1168,19 +1167,19 @@ let replay
   and channel_id = getenv "channel_id" |> RamenChannel.of_string
   and replayer_id = getenv "replayer_id" |> int_of_string
   in
-  info_or_test conf "Starting REPLAY of %s. Will log into %s at level %s."
+  !logger.debug "Starting REPLAY of %s. Will log into %s at level %s."
     worker_name
     (string_of_log_output !logger.output)
     (string_of_log_level log_level) ;
   (* TODO: also factorize *)
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    info_or_test conf "Received signal %s" (name_of_signal s) ;
+    !logger.debug "Received signal %s" (name_of_signal s) ;
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;
   (* Ignore sigusr1: *)
   set_signals Sys.[sigusr1] Signal_ignore ;
-  info_or_test conf "Will replay archive in %S" rb_archive ;
+  !logger.debug "Will replay archive in %S" rb_archive ;
   let outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 serialize_tuple in
@@ -1200,9 +1199,12 @@ let replay
             (* As tuples are not ordered in the archive file we have
              * to read it all: *)
             outputer (RingBufLib.DataTuple channel_id) (Some tuple), true
-        | _ ->
-            !logger.debug "Read something else from the live channel" ;
-            (), true) in
+        | DataTuple chn, _ ->
+            (* This should not happen as we archive only the live channel: *)
+            !logger.debug "Read a tuple from channel %d (mine is %d)"
+              chn channel_id ;
+            (), true
+        | _ -> (), true) in
   let loop_tuples_of_file fname =
     !logger.debug "Reading archive %S" fname ;
     match RingBuf.load fname with
@@ -1227,12 +1229,12 @@ let replay
             loop_tuples_of_file fname ;
             loop_files ())
   in
-  !logger.info "Reading the past archives..." ;
+  !logger.debug "Reading the past archives..." ;
   loop_files () ;
   (* Finish with the current archive: *)
-  !logger.info "Reading current archive" ;
+  !logger.debug "Reading current archive" ;
   loop_tuples_of_file rb_archive ;
   (* Before quitting, signal the end of this replay: *)
   outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
-  !logger.info "Finished" ;
+  !logger.debug "Finished" ;
   exit (!quit |? ExitCodes.terminated)
