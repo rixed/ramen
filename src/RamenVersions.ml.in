@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v47" (* last: truncate function *)
+let codegen = "v48" (* last: truncate function *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v5" (* last: addition of startup time *)
@@ -21,7 +21,7 @@ let notify_tuple = "v6" (* last: firing is now optional *)
 let pending_notify = "v6" (* last: refactor schema *)
 
 (* Ringbuf formats *)
-let ringbuf = "v7" (* last: channel ids *)
+let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
 let out_ref = "v4" (* last: Add channels *)
