@@ -78,12 +78,12 @@ class Filter
     elsif description =~ /^some$/ then
       @min = 1
       @max = 1000
-    elsif description =~ /^(\d)$/ then
+    elsif description =~ /^(\d+)$/ then
       @min = @max = $1.to_i
-    elsif description =~ /^less +than +(\d)$/ then
+    elsif description =~ /^less +than +(\d+)$/ then
       @min = 0
       @max = $1.to_i - 1
-    elsif description =~ /^more +than +(\d)$/ then
+    elsif description =~ /^more +than +(\d+)$/ then
       @min = $1.to_i + 1
       @max = 1000
     else
