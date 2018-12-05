@@ -332,6 +332,13 @@ let find_func programs fq =
   let prog = get_rc () in
   mre, prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
+let find_func_or_fail programs fq =
+  try find_func programs fq
+  with Not_found ->
+    Printf.sprintf2 "Unknown function %a"
+      RamenName.fq_print fq |>
+    failwith
+
 let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])

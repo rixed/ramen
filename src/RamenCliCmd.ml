@@ -483,7 +483,7 @@ let tail conf fq field_names with_header with_units sep null raw
     let rec reset_export_timeout () =
       let _mre, _prog, func =
         C.with_rlock conf (fun programs ->
-          C.find_func programs fq) in
+          C.find_func_or_fail programs fq) in
       let _ = RamenExport.start conf ~duration func in
       (* Start by sleeping as we've just set the temp export above: *)
       Unix.sleepf (max 1. (duration -. 1.)) ;
@@ -553,7 +553,7 @@ let replay conf fq field_names with_header with_units sep null raw
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
   let programs = C.with_rlock conf identity in
-  let _mre, prog, func = C.find_func programs fq in
+  let _mre, prog, func = C.find_func_or_fail programs fq in
   check_field_names func.F.out_type field_names ;
   (* Then, get the runtime stats.
    * We assume all functions are runnint for now but this is not required
@@ -654,7 +654,7 @@ let replay conf fq field_names with_header with_units sep null raw
          * with, and since/until dates. *)
         let _, pids, eofs =
           List.fold_left (fun (i, pids, eofs) sfq ->
-            let smre, _prog, sfunc = C.find_func programs sfq in
+            let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
             let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
             and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
             let env =
@@ -827,21 +827,19 @@ let timeseries conf since until with_header where factors num_points
 let timerange conf fq () =
   init_logger conf.C.log_level ;
   C.with_rlock conf (fun programs ->
-    match C.find_func programs fq with
-    | exception _ -> exit 1
-    | _mre, prog, func ->
-        let mi_ma =
-          (* We need the func to know its buffer location.
-           * Nothing better to do in case of error than to exit. *)
-          let bname = C.archive_buf_name conf func in
-          let typ = func.F.out_type in
-          let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
-          let params = prog.P.params in
-          RamenSerialization.time_range bname ser params func.F.event_time
-        in
-        match mi_ma with
-          | None -> Printf.printf "No time info or no output yet.\n"
-          | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma)
+    let _mre, prog, func = C.find_func_or_fail programs fq in
+    let mi_ma =
+      (* We need the func to know its buffer location.
+       * Nothing better to do in case of error than to exit. *)
+      let bname = C.archive_buf_name conf func in
+      let typ = func.F.out_type in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
+      let params = prog.P.params in
+      RamenSerialization.time_range bname ser params func.F.event_time
+    in
+    match mi_ma with
+      | None -> Printf.printf "No time info or no output yet.\n"
+      | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma)
 
 (*
  * `ramen httpd`

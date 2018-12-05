@@ -183,7 +183,7 @@ let enrich_stats conf per_func_stats =
     | exception _ -> ()
     | prog ->
         List.iter (fun func ->
-          let fq = RamenName.fq program_name func.F.name in
+          let fq = RamenName.fq func.F.program_name func.F.name in
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
           | (s, _) ->
