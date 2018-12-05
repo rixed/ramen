@@ -466,7 +466,7 @@ check: unit-check cli-check func-check err-check arc-check
 unit-check: all_tests.opt ringbuf_test.opt
 	@echo 'Running unit tests...'
 	@TZ=CET OCAMLRUNPARAM=b ./all_tests.opt -bt
-	@./ringbuf_test.opt
+	@timeout 3 ./ringbuf_test.opt
 
 cli-check:
 	@echo 'Running CLI tests...'
