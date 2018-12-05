@@ -640,7 +640,8 @@ let replay conf fq field_names with_header with_units sep null raw
             List.filter (fun ft ->
               List.mem ft.RamenTuple.name field_names
             ) func.F.out_type in
-        (* TODO: for now, we ask for all fields. Ask only for field_names *)
+        (* TODO: for now, we ask for all fields. Ask only for field_names,
+         * but beware of with_event_type! *)
         let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
         let timeout = Unix.gettimeofday () +. 300. in
         let file_spec =
@@ -692,7 +693,7 @@ let replay conf fq field_names with_header with_units sep null raw
               else (fun _ -> 0., 0.)
           | Some et ->
               RamenSerialization.event_time_of_tuple
-                func.F.out_type prog.P.params et
+                ser prog.P.params et
         in
         let unserialize =
           RamenSerialization.read_array_of_values ser in
