@@ -642,7 +642,7 @@ let replay conf fq field_names with_header with_units sep null raw
         p best_since p best_until ;
       (* Then create a ringbuffer for reception: *)
       let rb_name =
-        Printf.sprintf "/tmp/replay_test_%d" (Unix.getpid ()) in
+        Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) in
       RingBuf.create rb_name ;
       let rb = RingBuf.load rb_name in
       finally (fun () -> RingBuf.unload rb) (fun () ->
@@ -704,7 +704,9 @@ let replay conf fq field_names with_header with_units sep null raw
               waitall_once ~expected_status:ExitCodes.terminated
                           ~what:"replayer" !pids ;
             if Set.Int.is_empty !pids then
-              !logger.debug "All replayers have exited") ;
+              !logger.debug "All replayers have exited, \
+                             still waiting for %d EndOfReplay"
+                (Set.cardinal !eofs)) ;
           (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
           while_ () in
         let formatter = table_formatter pretty raw null in
@@ -729,8 +731,7 @@ let replay conf fq field_names with_header with_units sep null raw
         let open TermTable in
         let print =
           print_table ~na:null ~sep ~pretty ~with_header ~flush head in
-        RingBufLib.read_buf ~wait_for_more:true ~while_ rb ()
-                            (fun () tx ->
+        RingBufLib.read_ringbuf ~while_ rb (fun tx ->
           match RamenSerialization.read_tuple unserialize tx with
           | RingBufLib.EndOfReplay (chan, replay_id), None ->
             (if chan = channel_id then (
@@ -742,8 +743,7 @@ let replay conf fq field_names with_header with_units sep null raw
                   replay_id
             ) else
               !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id),
-            not (Set.is_empty !eofs)
+                chan channel_id)
           | RingBufLib.DataTuple chan, Some tuple ->
             (if chan = channel_id then (
               if filter tuple then (
@@ -767,11 +767,9 @@ let replay conf fq field_names with_header with_units sep null raw
               ) else !logger.debug "tuple filtered out"
             ) else
               !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id),
-            true
+                chan channel_id)
           | _ ->
-              !logger.error "Received an unknown message in tx",
-              true) ;
+              !logger.error "Received an unknown message in tx") ;
         print [||] ;
         (* In case we got all the eofs before all replayers have exited: *)
         waitall ~while_ ~expected_status:ExitCodes.terminated
