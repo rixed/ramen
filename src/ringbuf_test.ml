@@ -3,7 +3,7 @@ open RingBufLib
 open Stdint
 open Batteries
 
-let debug = true
+let debug = false
 
 let () =
   if debug then Printf.printf "Mmapping ringbuf...\n%!" ;
