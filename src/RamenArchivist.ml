@@ -102,7 +102,7 @@ type func_stats =
     mutable is_running : bool [@ppp_default false] }
   [@@ppp PPP_OCaml]
 
-let func_stats_empty =
+let func_stats_empty () =
   { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
     parents = [] ; archives = [] ; is_running = false }
 
@@ -206,7 +206,7 @@ let update_worker_stats ?while_ conf =
   Hashtbl.iter (fun fq s ->
     Hashtbl.modify_opt fq (function
       | None ->
-          Some (func_stats_empty, Some (s.RamenPs.startup_time, s))
+          Some (func_stats_empty (), Some (s.RamenPs.startup_time, s))
       | Some (tot, None) ->
           Some (tot, Some (s.RamenPs.startup_time, s))
       | Some (tot, Some (startup_time, _)) ->
