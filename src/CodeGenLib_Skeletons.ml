@@ -188,7 +188,6 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
         last_stat := !CodeGenLib_IO.now ;
         let must_read =
           let t = mtime_of_file_def 0. rb_ref_out_fname in
-          !logger.debug "mtime=%f, last_mtime=%f" t !last_mtime ;
           if t > !last_mtime then (
             last_mtime := t ;
             if !last_mtime <> 0. && t > !last_mtime then
@@ -209,7 +208,6 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
     (* Get out_specs if they've changed: *)
     get_out_fnames () |>
     Option.may (fun out_specs ->
-      !logger.info "out_specs with %d entries" (Hashtbl.length out_specs) ;
       if Hashtbl.is_empty out_specs then (
         if not (Hashtbl.is_empty out_h) then (
           !logger.info "OutRef is now empty!" ;
@@ -1193,7 +1191,7 @@ let replay
              * to read it all: *)
             outputer (RingBufLib.DataTuple channel_id) (Some tuple), true
         | _ ->
-            !logger.debug "Read something else from the live chanel" ;
+            !logger.debug "Read something else from the live channel" ;
             (), true) in
   let loop_tuples_of_file fname =
     !logger.debug "Reading archive %S" fname ;

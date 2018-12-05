@@ -408,7 +408,14 @@ static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 
 static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
 {
+  if (size + offs > wrtx->alloced) {
+    printf("ERROR: size (%zu) + offs (%zu) > alloced (%zu)\n", size, offs, wrtx->alloced);
+    fflush(stdout);
+  }
   assert(size + offs <= wrtx->alloced);
+  if (size > MAX_RINGBUF_MSG_SIZE) {
+    printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+  }
   assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
 /*
@@ -424,11 +431,15 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
 {
   if (offs + size > wrtx->alloced) {
-    printf("BAD OFFS: offs=%zu, size=%zu but tx->alloced only %zu\n", offs, size, wrtx->alloced);
+    printf("ERROR: offs (%zu) + size (%zu) > alloced (%zu)\n", offs, size, wrtx->alloced);
     fflush(stdout);
   }
   assert(size + offs <= wrtx->alloced);
+  if (size > MAX_RINGBUF_MSG_SIZE) {
+    printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+  }
   assert(size <= MAX_RINGBUF_MSG_SIZE);
+
   uint32_t *addr = where_to(wrtx, offs);
 /*
   printf("Read %zu bytes from offset %zu:", size, offs);
