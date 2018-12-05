@@ -361,7 +361,8 @@ let factors_of_operation = function
 
 (* Return the (likely) untyped output tuple *)
 let out_type_of_operation ~with_private = function
-  | Aggregate { fields ; _ } ->
+  | Aggregate { fields ; and_all_others ; _ } ->
+      assert (not and_all_others) ;
       List.fold_left (fun lst sf ->
         if not with_private && RamenName.is_private sf.alias then lst else
         let expr_typ = RamenExpr.typ_of sf.expr in

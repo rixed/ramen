@@ -438,6 +438,12 @@ let reify_star_fields get_parent program_name funcs =
               (match common_fields_of_from get_parent program_name funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
+                  (* Note that the fields are added in reverse alphabetical
+                   * order at the beginning of the selected fields. That
+                   * way, they can be used in the specified fields. Still it
+                   * would be better to inject them where the "*" was. This
+                   * requires to keep that star as a token and get rid of
+                   * the "and_all_others" field of Aggregate. FIXME. *)
                   let fields =
                     Set.fold (fun name lst ->
                       if RamenName.is_private name ||
