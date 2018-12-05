@@ -146,10 +146,13 @@ let compile conf get_parent ~exec_file source_file program_name =
         let parent_name = RamenName.fq parent_prog_name parent_func_name in
         try Hashtbl.find compiler_funcs parent_name |> fst
         with Not_found ->
+          if parent_prog_name = program_name then
+            Printf.sprintf2
+              "Cannot find parent function %a in current program"
+              RamenName.fq_print parent_name |>
+            failwith ;
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
-          (* Or the parent must have been in compiler_funcs: *)
-          assert (parent_prog_name <> program_name) ;
           match get_parent parent_prog_name with
           | exception Not_found ->
               Printf.sprintf2 "Cannot find parent program %a"
