@@ -555,8 +555,13 @@ let replay conf fq field_names with_header with_units sep null raw
   let programs = C.with_rlock conf identity in
   let _mre, prog, func = C.find_func programs fq in
   check_field_names func.F.out_type field_names ;
-  (* Then, get the runtime stats: *)
-  let stats = RamenArchivist.load_stats conf in
+  (* Then, get the runtime stats.
+   * We consider only running workers for now but this is not required
+   * for the replayer itself and for intermediary workers we might be
+   * able to start them temporarily, ourself (not involving supervisor),
+   * managing the our_ref ourself for this specific channel, once we've
+   * made sure supervisor will not "fix" the outrefs in that case... *)
+  let stats = RamenArchivist.load_stats ~only_running:true conf in
   (* Find a way to get the data from func in between from and until.
    * Note that there could be several ways to obtain those. For instance,
    * we could ask for a 1year retention of some node that queried very
