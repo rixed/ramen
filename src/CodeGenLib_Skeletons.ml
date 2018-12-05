@@ -433,7 +433,7 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
-      | tuple -> outputer tuple))
+      | tuple -> outputer (Some tuple)))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
@@ -462,7 +462,7 @@ let listen_on (collector :
     let while_ () = !quit = None in
     collector ~inet_addr ~port ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
-      outputer tup))
+      outputer (Some tup)))
 
 (*
  * Operations that funcs may run: read known tuples from a ringbuf.
