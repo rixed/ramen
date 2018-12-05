@@ -186,7 +186,8 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
-      if !CodeGenLib_IO.now > !last_stat +. 1. then (
+      (* TODO: make this min_delay_restats a parameter: *)
+      if !CodeGenLib_IO.now > !last_stat +. Default.min_delay_restats then (
         last_stat := !CodeGenLib_IO.now ;
         let must_read =
           let t = mtime_of_file_def 0. rb_ref_out_fname in

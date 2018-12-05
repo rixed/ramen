@@ -670,6 +670,9 @@ let replay conf fq field_names with_header with_units sep null raw
           RamenOutRef.{ field_mask ; timeout ; channel = Some channel_id } in
         let out_ref = C.out_ringbuf_names_ref conf func in
         RamenOutRef.add out_ref (rb_name, file_spec) ;
+        (* Do not start the replay at once or the workers on the way won't
+         * have reread their out-ref: *)
+        Unix.sleepf Default.min_delay_restats ;
         (* Now spawn the replayers.
          * For each source, spawn a replayer, passing it the name of the
          * function, the out_ref files to obey, the channel id to tag tuples

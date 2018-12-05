@@ -272,6 +272,9 @@ struct
 
   (* Special case for when that's the archivist asking: *)
   let archivist_export_duration = 3600.
+
+  (* Minimum delay between two successive stats of the out-ref file: *)
+  let min_delay_restats = 0.1
 end
 
 module SpecialFunctions =
