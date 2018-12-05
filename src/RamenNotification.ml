@@ -97,5 +97,5 @@ let unserialize tx start_offs =
     ) in
   let t =
     worker, start, event_time, name, firing, certainty, parameters in
-  assert (!offs <= max_sersize_of_notification t) ;
+  assert (!offs <= start_offs + max_sersize_of_notification t) ;
   t

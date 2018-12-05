@@ -159,7 +159,7 @@ let unserialize tx start_offs =
   let t =
     worker, start, min_etime, max_etime, ic, sc , oc, gc, cpu, ram, max_ram,
     wi, wo, bi, bo, lo, stime in
-  assert (offs <= max_sersize_of_tuple t) ;
+  assert (offs <= start_offs + max_sersize_of_tuple t) ;
   t
 
 (* Helper to initialize with the actual conf instrumentation metrics as
