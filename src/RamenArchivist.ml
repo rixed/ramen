@@ -528,10 +528,13 @@ let update_storage_allocation conf =
   (* Scale it up to 100% and convert to bytes: *)
   let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
   assert (tot_perc <= 100) ;
-  let scale = float_of_int user_conf.size_limit /. float_of_int tot_perc in
+  let scale =
+    if tot_perc > 0 then
+      float_of_int user_conf.size_limit /. float_of_int tot_perc
+    else 1. in
   Hashtbl.map (fun _ p ->
-    if tot_perc = 0 then user_conf.size_limit
-    else round_to_int (float_of_int p *. scale)) solution |>
+    round_to_int (float_of_int p *. scale)
+  ) solution |>
   save_allocs conf
 
 (*
