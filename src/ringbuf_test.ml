@@ -3,7 +3,7 @@ open RingBufLib
 open Stdint
 open Batteries
 
-let debug = false
+let debug = true
 
 let () =
   if debug then Printf.printf "Mmapping ringbuf...\n%!" ;
@@ -25,9 +25,9 @@ let () =
   enqueue_commit tx 0. 0. ;
   let str = "glopi" in
   let tx = enqueue_alloc rb (
-            round_up_to_rb_word(String.length str)
+            round_up_to_rb_word (String.length str)
             (* variable sized field will be prepended with its length *)
-          + round_up_to_rb_word(1)) in
+          + round_up_to_rb_word 1) in
   if debug then Printf.printf "Write %S...\n%!" str ;
   write_string tx 0 str ;
   enqueue_commit tx 0. 0.

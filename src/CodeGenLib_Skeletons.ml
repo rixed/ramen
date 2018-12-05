@@ -500,6 +500,8 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
         RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
           let open RingBufLib in
           (match read_message_header tx 0 with
+          | exception e ->
+            print_exception ~what:"read well known tuple" e
           | DataTuple chan as m ->
             let offs = message_header_sersize m in
             let tuple = unserialize_tuple tx offs in
@@ -628,13 +630,16 @@ type ('tuple_in, 'merge_on) merge_on_fun =
 
 let read_single_rb ?while_ ?delay_rec read_tuple rb_in k =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
-    let msg = read_tuple tx in
-    let tx_size = RingBuf.tx_size tx in
-    RingBuf.dequeue_commit tx ;
-    match msg with
-    | RingBufLib.DataTuple chan, Some tuple ->
-        k tx_size chan tuple tuple
-    | _ -> ())
+    match read_tuple tx with
+    | exception e ->
+        print_exception ~what:"reading a tuple" e
+    | msg ->
+        let tx_size = RingBuf.tx_size tx in
+        RingBuf.dequeue_commit tx ;
+        (match msg with
+        | RingBufLib.DataTuple chan, Some tuple ->
+            k tx_size chan tuple tuple
+        | _ -> ()))
 
 type ('tuple_in, 'merge_on) to_merge =
   { rb : RingBuf.t ;
@@ -660,17 +665,20 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs k =
                   i (Unix.gettimeofday () -. timed_out) ;
                 to_merge.timed_out <- None
             | None -> ()) ;
-            let msg = read_tuple tx in
-            let tx_size = RingBuf.tx_size tx in
-            RingBuf.dequeue_commit tx ;
-            (match msg with
-            | RingBufLib.DataTuple _chan, Some in_tuple ->
-              (* TODO: pick the heap for this chan *)
-              let key = on in_tuple in
-              to_merge.tuples <-
-                RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
-                                to_merge.tuples
-            | _ -> ((* TODO *))))
+            (match read_tuple tx with
+            | exception e ->
+                print_exception ~what:"reading a tuple" e
+            | msg ->
+                let tx_size = RingBuf.tx_size tx in
+                RingBuf.dequeue_commit tx ;
+                (match msg with
+                | RingBufLib.DataTuple _chan, Some in_tuple ->
+                  (* TODO: pick the heap for this chan *)
+                  let key = on in_tuple in
+                  to_merge.tuples <-
+                    RamenSzHeap.add tuples_cmp (in_tuple, tx_size, key)
+                                    to_merge.tuples
+                | _ -> ((* TODO *)))))
     ) to_merge in
   (* Loop until timeout the given max time or we have a tuple for each
    * non timed out input sources: *)
@@ -742,6 +750,9 @@ let yield_every ~while_ read_tuple every k =
     if while_ () then (
       let start =
         match read_tuple tx with
+        | exception e ->
+            print_exception ~what:"yielding a tuple" e ;
+            prev_start
         | RingBufLib.DataTuple chan, Some tuple ->
             let s = Unix.gettimeofday () in
             k 0 chan tuple tuple ;
@@ -1174,7 +1185,7 @@ let replay
       RingBufLib.read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
         match read_tuple tx with
         | exception e ->
-            print_exception ~what:"Reading a tuple from archive" e,
+            print_exception ~what:"reading a tuple from archive" e,
             false (* Skip the rest of that file for safety *)
         | DataTuple chn, Some tuple when chn = RamenChannel.live ->
             CodeGenLib_IO.on_each_input_pre () ;

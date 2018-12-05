@@ -381,16 +381,27 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let header_of_type ?(with_units=false) ?display_field typ =
-  Array.fold_lefti (fun lst i t ->
-    match display_field with
-    | Some arr when arr.(i) ->
-      (RamenName.string_of_field t.RamenTuple.name ^
-       (if with_units then
-         Option.map_default RamenUnits.to_string "" t.units
-       else "")) :: lst
-    | _ -> lst
-  ) [] typ |> List.rev
+let header_of_type ?(with_seqnums=false) ?(with_event_time=false)
+                   ?(with_units=false) field_names typ =
+  let display_field =
+    Array.map (fun h ->
+      field_names = [] || List.mem h.RamenTuple.name field_names
+    ) typ in
+  let head =
+    Array.fold_lefti (fun lst i t ->
+      if display_field.(i) then
+        (RamenName.string_of_field t.RamenTuple.name ^
+         (if with_units then
+           Option.map_default RamenUnits.to_string "" t.units
+         else "")) :: lst
+      else lst
+    ) [] typ |> List.rev in
+  let head = if with_seqnums then "Seq" :: head else head in
+  let head =
+    if with_event_time then
+      "Event start" :: "Event end" :: head
+    else head in
+  display_field, head
 
 (* Check the entered field names are correct: *)
 let check_field_names typ field_names =
@@ -401,6 +412,22 @@ let check_field_names typ field_names =
         RamenTuple.print_typ_names typ |>
       failwith
   ) field_names
+
+let table_formatter pretty raw null units =
+  (* TODO: reuse RamenTypes in TermTable *)
+  let open RamenTypes in
+  let open TermTable in
+  function
+  | VFloat t ->
+      if units = Some RamenUnits.seconds_since_epoch && pretty then
+        Some (ValDate t)
+      else if units = Some RamenUnits.seconds && pretty then
+        Some (ValDuration t)
+      else
+        Some (ValFlt t)
+  | VNull -> None
+  | t ->
+    Some (ValStr (IO.to_string (print_custom ~null ~quoting:(not raw)) t))
 
 let tail conf fq field_names with_header with_units sep null raw
          last min_seq max_seq continuous where since until
@@ -443,34 +470,14 @@ let tail conf fq field_names with_header with_units sep null raw
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
   check_field_names typ field_names ;
   let header = typ |> Array.of_list in
-  let display_field =
-    Array.map (fun h ->
-      field_names = [] || List.mem h.RamenTuple.name field_names
-    ) header in
-  let head = header_of_type ~with_units ~display_field header in
-  let head = if with_seqnums then "Seq" :: head else head in
-  let head =
-    if with_event_time then
-      "Event start" :: "Event end" :: head
-    else head in
+  let display_field, head =
+    header_of_type ~with_seqnums ~with_event_time ~with_units
+                   field_names header in
   let head = Array.of_list head in
   let open TermTable in
   let print = print_table ~sep ~pretty ~with_header ~flush head in
   (* Pick a "printer" for each column according to the field type: *)
-  let formatter units =
-    (* TODO: reuse RamenTypes in TermTable *)
-    let open RamenTypes in
-    function
-    | VFloat t ->
-        if units = Some RamenUnits.seconds_since_epoch && pretty then
-          Some (ValDate t)
-        else if units = Some RamenUnits.seconds && pretty then
-          Some (ValDuration t)
-        else
-          Some (ValFlt t)
-    | VNull -> None
-    | t ->
-      Some (ValStr (IO.to_string (print_custom ~null ~quoting:(not raw)) t))
+  let formatter = table_formatter pretty raw null
   in
   if is_temp_export then (
     let rec reset_export_timeout () =
@@ -537,8 +544,8 @@ let tail conf fq field_names with_header with_units sep null raw
  * timeseries.
  *)
 
-let replay conf fq field_names with_header with_units sep null _raw
-           _where since until _with_event_time pretty flush () =
+let replay conf fq field_names with_header with_units sep null raw
+           where since until with_event_time pretty flush () =
   init_logger conf.C.log_level ;
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
@@ -546,7 +553,7 @@ let replay conf fq field_names with_header with_units sep null _raw
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
   let programs = C.with_rlock conf identity in
-  let _mre, _prog, func = C.find_func programs fq in
+  let _mre, prog, func = C.find_func programs fq in
   check_field_names func.F.out_type field_names ;
   (* Then, get the runtime stats: *)
   let stats = RamenArchivist.load_stats conf in
@@ -616,26 +623,21 @@ let replay conf fq field_names with_header with_units sep null _raw
           (* Pick a channel. They are cheap, we do not care if we fail
            * in the next step: *)
           let channel_id = RamenChannel.make conf in
-          (* Ask to export only the fields we want. From no on we'd better
+          (* Ask to export only the fields we want. From now on we'd better
            * not fail and retry as we would hammer the out_ref with temp
            * ringbufs.
            * Maybe we should use the channel in the rb name, and pick a
            * channel_id large enough to be a hash of FQ, output fields and
            * dates? But that mean 256bits integers (2xU128?). *)
-          let out_type =
-            RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type
-          and in_type =
+          let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+          let in_type =
             if field_names = [] then func.F.out_type
             else
               List.filter (fun ft ->
                 List.mem ft.RamenTuple.name field_names
               ) func.F.out_type in
-          let head = header_of_type ~with_units (Array.of_list in_type) in
-          let head = Array.of_list head in
-          let open TermTable in
-          let print =
-            print_table ~na:null ~sep ~pretty ~with_header ~flush head in
-          let field_mask = RingBufLib.skip_list ~out_type ~in_type in
+          (* TODO: for now, we ask for all fields. Ask only for field_names *)
+          let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
           let timeout = Unix.gettimeofday () +. 300. in
           let file_spec =
             RamenOutRef.{ field_mask ; timeout ; channel = Some channel_id } in
@@ -678,10 +680,74 @@ let replay conf fq field_names with_header with_units sep null _raw
                           ~what:"replayer" !pids ;
             (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
             while_ () in
+          let formatter = table_formatter pretty raw null in
+          let event_time_of_tuple = match func.F.event_time with
+            | None ->
+                if with_event_time then
+                  failwith "Function has no event time information"
+                else (fun _ -> 0., 0.)
+            | Some et ->
+                RamenSerialization.event_time_of_tuple
+                  func.F.out_type prog.P.params et
+          in
+          let unserialize =
+            RamenSerialization.read_array_of_values ser in
+          let reorder_column = RingBufLib.reorder_tuple_to_user func.F.out_type ser in
+          let header = Array.of_list in_type in
+          let display_fields, head =
+            header_of_type ~with_event_time ~with_units field_names
+                           header in
+          let filter = RamenSerialization.filter_tuple_by ser where in
+          let head = Array.of_list head in
+          let open TermTable in
+          let print =
+            print_table ~na:null ~sep ~pretty ~with_header ~flush head in
           RingBufLib.read_buf ~wait_for_more:true ~while_ rb ()
                               (fun () tx ->
-            print [| Some (ValStr "got something!") |], true) ;
-          print [||]
+            match RamenSerialization.read_tuple unserialize tx with
+            | RingBufLib.EndOfReplay (chan, replay_id), None ->
+              (if chan = channel_id then (
+                if Set.mem replay_id !eofs then (
+                  !logger.info "End of replay from %s"
+                    (Uint32.to_string replay_id) ;
+                  eofs := Set.remove replay_id !eofs
+                ) else
+                  !logger.error "Received EndOfReplay from unknown replayer %s"
+                    (Uint32.to_string replay_id)
+              ) else
+                !logger.error "Received EndOfReplay for channel %d not %d"
+                  chan channel_id),
+              not (Set.is_empty !eofs)
+            | RingBufLib.DataTuple chan, Some tuple ->
+              (if chan = channel_id then (
+                if filter tuple then (
+                  let t1, t2 = event_time_of_tuple tuple in
+                  if t2 > since && t1 <= until then (
+                    let pref =
+                      if with_event_time then
+                        [ Some (ValDate t1) ; Some (ValDate t2) ]
+                      else [] in
+                    let cols = reorder_column tuple in
+                    let cols =
+                      Array.range cols //@
+                      (fun i ->
+                        if display_fields.(i) then
+                          Some (formatter header.(i).units cols.(i)) else None) |>
+                      Array.of_enum in
+                    let line =
+                      Array.(append (of_list pref) cols) in
+                    print line))
+              ) else
+                !logger.error "Received EndOfReplay for channel %d not %d"
+                  chan channel_id),
+              true
+            | _ ->
+                !logger.error "Received an unknown message in tx",
+                true) ;
+          print [||] ;
+          (* In case we got all the eofs before all replayers have exited: *)
+          waitall ~while_ ~expected_status:ExitCodes.terminated
+                  ~what:"replayer" !pids
           ) ()) ()
 
 

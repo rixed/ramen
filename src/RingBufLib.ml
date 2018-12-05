@@ -521,7 +521,10 @@ let read_message_header tx offs =
   | 0x1_0000 ->
       let replayer_id = read_u32 tx (offs+4) in
       EndOfReplay (chan, replayer_id)
-  | _ -> invalid_arg "read_message_head"
+  | _ ->
+      Printf.sprintf "read_message_header: invalid header at offset %d"
+        offs |>
+      invalid_arg
 
 (*
  * Notifications

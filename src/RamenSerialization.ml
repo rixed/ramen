@@ -47,9 +47,12 @@ let read_tuple unserialize tx =
  * RamenTypes.values: *)
 let read_tuples ?while_ unserialize rb f =
   read_ringbuf ?while_ rb (fun tx ->
-    let msg = read_tuple unserialize tx in
-    dequeue_commit tx ;
-    f msg)
+    (match read_tuple unserialize tx with
+    | exception e ->
+        print_exception ~what:"reading a tuple" e
+    | msg ->
+        f msg) ;
+    dequeue_commit tx)
 
 let read_notifs ?while_ rb f =
   (* Ignore all notifications but on live channel. *)
@@ -294,10 +297,14 @@ let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
   !logger.debug "Going to fold over %s" bname ;
   let unserialize = read_array_of_values typ in
   let f usr tx =
-    let msg = read_tuple unserialize tx in
-    let usr, _more_to_come as res = f usr msg in
-    if early_stop then res
-    else (usr, true)
+    match read_tuple unserialize tx with
+    | exception e ->
+        print_exception ~what:"reading a tuple" e ;
+        usr, true
+    | msg ->
+        let usr, _more_to_come as res = f usr msg in
+        if early_stop then res
+        else (usr, true)
   in
   fold_buffer ~wait_for_more:false ?while_ bname init f
 
