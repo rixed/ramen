@@ -86,6 +86,9 @@ class Filter
     elsif description =~ /^more +than +(\d+)$/ then
       @min = $1.to_i + 1
       @max = 1000
+    elsif description =~ /^between +(\d+) +and +(\d+)$/ then
+      @min = $1.to_i
+      @max = $2.to_i
     else
       fail ArgumentError, description
     end
