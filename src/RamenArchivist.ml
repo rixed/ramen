@@ -126,13 +126,10 @@ let add_ps_stats a s now =
 type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
-let load_stats ?(only_running=false) conf =
+let load_stats conf =
   let fname = conf_dir conf ^ "/stats" in
   ensure_file_exists ~contents:"{}" fname ;
-  let stats = ppp_of_file per_func_stats_ser_ppp_ocaml fname in
-  if only_running then
-    Hashtbl.filter (fun s -> s.is_running) stats
-  else stats
+  ppp_of_file per_func_stats_ser_ppp_ocaml fname
 
 let save_stats conf stats =
   let fname = conf_dir conf ^ "/stats" in
@@ -434,6 +431,31 @@ let emit_total_query_costs user_conf durations oc per_func_stats =
       per_func_stats
 
 let emit_smt2 user_conf per_func_stats oc ~optimize =
+  (* We want to consider only the running functions, but also need their
+   * non running parents! *)
+  let per_func_stats =
+    let h = Hashtbl.filter (fun s -> s.is_running) per_func_stats in
+    let rec loop () =
+      let mia =
+        Hashtbl.fold (fun _fq s mia ->
+          List.fold_left (fun mia pfq ->
+            if Hashtbl.mem h pfq then mia else pfq::mia
+          ) mia s.parents
+        ) h [] in
+      if mia <> [] then (
+        List.iter (fun pfq ->
+          match Hashtbl.find per_func_stats pfq with
+          | exception Not_found ->
+              Printf.sprintf2 "No statistics about %a"
+                RamenName.fq_print pfq |>
+              failwith (* No better idea *)
+          | s ->
+              Hashtbl.add h pfq s
+        ) mia ;
+        loop ()
+      ) in
+    loop () ;
+    h in
   (* To begin with, what retention durations are we interested about? *)
   let durations =
     Hashtbl.enum user_conf.retentions /@
@@ -447,11 +469,11 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
      %a\n\
      ; Of course the sum of those shares cannot exceed 100:\n\
      (assert (<= %a 100))\n\
-     ; Query costs of each function:\n\
+     ; Query costs of each _running_ function:\n\
      %a\n\
      ; No actually used cost must be greater than invalid_cost\n\
      %a\n\
-     ; Minimize the cost of querying each function with retention:\n\
+     ; Minimize the cost of querying each _running_ function with retention:\n\
      (minimize %a)\n\
      %t"
     preamble optimize
@@ -483,7 +505,7 @@ let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let user_conf = get_user_conf (user_conf_file conf)
-  and per_func_stats = load_stats ~only_running:true conf in
+  and per_func_stats = load_stats conf in
   let fname = conf_dir conf ^ "/allocations.smt2"
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
