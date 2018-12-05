@@ -22,14 +22,21 @@ let start ?(duration=Default.export_duration) conf func =
   let out_ref = C.out_ringbuf_names_ref conf func in
   let ser =
     RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-  let file_spec =
-    RamenOutRef.{
-      field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
-      timeout = if duration < 0. then 0.
-                else Unix.gettimeofday () +. duration ;
-      (* We archive only the live channel: *)
-      channel = Some RamenChannel.live } in
-  RamenOutRef.add out_ref (bname, file_spec) ;
+  (* Negative durations, yielding a timestamp of 0, means no timeout ;
+   * while duration = 0 means to actually not export anything (and we have
+   * a cli-test that relies on the spec not being present in the out_ref
+   * in that case): *)
+  if duration <> 0. then (
+    let timeout =
+      if duration < 0. then 0. else Unix.gettimeofday () +. duration in
+    let file_spec =
+      RamenOutRef.{
+        field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
+        timeout ;
+        (* We archive only the live channel: *)
+        channel = Some RamenChannel.live } in
+    RamenOutRef.add out_ref (bname, file_spec)
+  ) ;
   bname
 
 (* Some ringbuf are always available and their type known:

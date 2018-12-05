@@ -47,7 +47,7 @@ let copts =
     let env = Term.env_info "RAMEN_INITIAL_EXPORT" in
     let i = Arg.info ~doc:CliInfo.initial_export_duration
                      ~docs ~env [ "initial-export-duration" ] in
-    Arg.(value (opt float 900. i))
+    Arg.(value (opt float Default.initial_export_duration i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
