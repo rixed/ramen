@@ -679,8 +679,9 @@ let waitall ?(while_=always) ?expected_status ~what pids =
   let rec loop pids =
     if while_ () && not (Set.Int.is_empty pids) then (
       let pids = waitall_once ?expected_status ~what pids in
-      Unix.sleep 1 ;
-      loop pids)
+      if not (Set.Int.is_empty pids) then (
+        Unix.sleep 1 ;
+        loop pids))
   in
   loop pids
 
