@@ -137,13 +137,14 @@ let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple
     enqueue_commit tx time time ;
     assert (offs <= sersize)
 
-let update_stats_rb period rb get_tuple =
-  while true do
-    update_stats () ;
-    let tuple = get_tuple () in
-    send_stats rb tuple ;
-    Unix.sleepf period
-  done
+let update_stats_rb report_period rb get_tuple =
+  if report_period > 0. then
+    while true do
+      update_stats () ;
+      let tuple = get_tuple () in
+      send_stats rb tuple ;
+      Unix.sleepf report_period
+    done
 
 (* Helpers *)
 
@@ -380,7 +381,8 @@ let worker_start worker_name get_binocle_tuple k =
    * must not be NULL: *)
   update_stats () ;
   (* Then, the sooner a new worker appears in the stats the better: *)
-  ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
+  if report_period > 0. then
+    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   let conf = { log_level ; state_file ; is_test } in
   info_or_test conf "Starting %s process. Will log into %s at level %s."
     worker_name
@@ -403,7 +405,8 @@ let worker_start worker_name get_binocle_tuple k =
     ignore ;
   log_exceptions k conf ;
   (* Sending stats for one last time: *)
-  ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
+  if report_period > 0. then
+    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   exit (!quit |? ExitCodes.terminated)
 
 (*
