@@ -26,6 +26,7 @@ let complete_commands s =
       "run", CliInfo.run ;
       "kill", CliInfo.kill ;
       "tail", CliInfo.tail ;
+      "replay", CliInfo.replay ;
       "timeseries", CliInfo.timeseries ;
       "timerange", CliInfo.timerange ;
       "ps", CliInfo.ps ;
@@ -241,6 +242,23 @@ let complete str () =
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::
            (complete_running_function persist_dir))
+      | "replay" ->
+          let persist_dir = persist_dir toks in
+          ("--where=", CliInfo.where) ::
+          ("--since=", CliInfo.since) ::
+          ("--until=", CliInfo.until) ::
+          ("--null=", CliInfo.csv_null) ::
+          ("--separator=", CliInfo.csv_separator) ::
+          ("--with-header", CliInfo.with_header) ::
+          ("--with-times", CliInfo.with_seqnums) ::
+          ("--with-units", CliInfo.with_seqnums) ::
+          ("--pretty", CliInfo.pretty) ::
+          ("--raw", CliInfo.csv_raw) ::
+          ("--flush", CliInfo.flush) ::
+          ("--bundle-dir=", CliInfo.bundle_dir) ::
+          ("--external-compiler=", CliInfo.external_compiler) ::
+          ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
+          ("--solver=", CliInfo.smt_solver) ::
           copts @
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::

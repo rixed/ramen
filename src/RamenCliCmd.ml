@@ -593,6 +593,13 @@ let tail_ conf fq field_names with_header with_units sep null raw
     | _ -> ()) ;
   print [||]
 
+let purge_transient conf to_purge () =
+  let patterns =
+    List.map Globs.(compile % escape % RamenName.string_of_program)
+             to_purge in
+  let nb_kills = RamenRun.kill conf ~purge:true patterns in
+  !logger.debug "Killed %d programs" nb_kills
+
 let tail conf func_name_or_code with_header with_units sep null raw
          last next min_seq max_seq continuous where since until
          with_seqnums with_event_time duration pretty flush
@@ -604,14 +611,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
                      smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  let purge () =
-    let patterns =
-      List.map Globs.(compile % escape % RamenName.string_of_program)
-               to_purge in
-    let nb_kills = RamenRun.kill conf ~purge:true patterns in
-    !logger.debug "Killed %d programs" nb_kills
-  in
-  finally purge (fun () ->
+  finally (purge_transient conf to_purge) (fun () ->
     tail_ conf fq field_names with_header with_units sep null raw
           last next min_seq max_seq continuous where since until
           with_seqnums with_event_time duration pretty flush) ()
@@ -633,9 +633,8 @@ let tail conf func_name_or_code with_header with_units sep null raw
  * timeseries.
  *)
 
-let replay conf fq field_names with_header with_units sep null raw
-           where since until with_event_time pretty flush () =
-  init_logger conf.C.log_level ;
+let replay_ conf fq field_names with_header with_units sep null raw
+            where since until with_event_time pretty flush =
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
   (* Start with the most hazardeous and interesting part: find a way to
@@ -813,7 +812,8 @@ let replay conf fq field_names with_header with_units sep null raw
         in
         let unserialize =
           RamenSerialization.read_array_of_values ser in
-        let reorder_column = RingBufLib.reorder_tuple_to_user func.F.out_type ser in
+        let reorder_column =
+          RingBufLib.reorder_tuple_to_user func.F.out_type ser in
         let header = Array.of_list in_type in
         let display_fields, head =
           header_of_type ~with_event_time ~with_units field_names
@@ -869,6 +869,20 @@ let replay conf fq field_names with_header with_units sep null raw
         ) () ;
       (* If all went well, delete the ringbuf: *)
       safe_unlink rb_name
+
+let replay conf func_name_or_code with_header with_units sep null raw
+           where since until with_event_time pretty flush
+           (* We might compile the command line: *)
+           use_external_compiler bundle_dir max_simult_compils smt_solver
+           () =
+  init_logger conf.C.log_level ;
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
+  let fq, field_names, to_purge =
+    parse_func_name_of_code conf "ramen tail" func_name_or_code in
+  finally (purge_transient conf to_purge) (fun () ->
+    replay_ conf fq field_names with_header with_units sep null raw
+            where since until with_event_time pretty flush) ()
 
 (*
  * `ramen timeseries`

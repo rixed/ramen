@@ -647,8 +647,7 @@ let replay =
   Term.(
     (const RamenCliCmd.replay
       $ copts
-      $ func_name 0
-      $ data_fields ~mandatory:false 1
+      $ func_name_or_code
       $ with_header
       $ with_units
       $ csv_separator
@@ -659,7 +658,11 @@ let replay =
       $ until_mandatory
       $ with_event_time
       $ pretty
-      $ flush),
+      $ flush
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver),
     info ~doc:CliInfo.replay "replay")
 
 
