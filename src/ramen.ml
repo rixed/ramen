@@ -551,6 +551,58 @@ let with_event_time =
                    ["with-event-times"; "with-times"; "event-times"; "t"] in
   Arg.(value (flag i))
 
+let duration =
+  let i = Arg.info ~doc:CliInfo.duration
+                   ["timeout"] in
+  Arg.(value (opt float 300. i))
+
+let with_units =
+  let i = Arg.info ~doc:CliInfo.with_units
+                   [ "u"; "with-units"; "units" ] in
+  Arg.(value (flag i))
+
+let flush =
+  let i = Arg.info ~doc:CliInfo.flush
+                   [ "flush" ] in
+  Arg.(value (flag i))
+
+let func_name_or_code =
+  let i = Arg.info ~doc:CliInfo.func_name_or_code
+                   ~docv:"OPERATION" [] in
+  Arg.(non_empty (pos_all string [] i))
+
+let tail =
+  Term.(
+    (const RamenCliCmd.tail
+      $ copts
+      $ func_name_or_code
+      $ with_header
+      $ with_units
+      $ csv_separator
+      $ csv_null
+      $ csv_raw
+      $ last
+      $ min_seq
+      $ max_seq
+      $ continuous
+      $ where
+      $ since
+      $ until
+      $ with_seqnums
+      $ with_event_time
+      $ duration
+      $ pretty
+      $ flush
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver),
+    info ~doc:CliInfo.tail "tail")
+
+(*
+ * Replay
+ *)
+
 let fq_name =
   let parse s = Pervasives.Ok (RamenName.fq_of_string s)
   and print fmt p =
@@ -558,8 +610,6 @@ let fq_name =
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
-(* TODO: returns directly the program and function names to spare some
- * calls to RamenName.fq_parse *)
 let func_name p =
   let i = Arg.info ~doc:CliInfo.func_name
                    ~docv:"OPERATION" [] in
@@ -577,50 +627,6 @@ let data_fields ~mandatory p =
                    ~docv:"FIELD" [] in
   Arg.((if mandatory then non_empty else value) (pos_right (p-1) field [] i))
 
-let duration =
-  let i = Arg.info ~doc:CliInfo.duration
-                   ["timeout"] in
-  Arg.(value (opt float 300. i))
-
-let with_units =
-  let i = Arg.info ~doc:CliInfo.with_units
-                   [ "u"; "with-units"; "units" ] in
-  Arg.(value (flag i))
-
-let flush =
-  let i = Arg.info ~doc:CliInfo.flush
-                   [ "flush" ] in
-  Arg.(value (flag i))
-
-let tail =
-  Term.(
-    (const RamenCliCmd.tail
-      $ copts
-      $ func_name 0
-      $ data_fields ~mandatory:false 1
-      $ with_header
-      $ with_units
-      $ csv_separator
-      $ csv_null
-      $ csv_raw
-      $ last
-      $ min_seq
-      $ max_seq
-      $ continuous
-      $ where
-      $ since
-      $ until
-      $ with_seqnums
-      $ with_event_time
-      $ duration
-      $ pretty
-      $ flush),
-    info ~doc:CliInfo.tail "tail")
-
-(*
- * Replay
- *)
-
 let since_mandatory =
   let i = Arg.info ~doc:CliInfo.since
                    ~docv:"SINCE" ["since"] in
@@ -630,7 +636,6 @@ let until_mandatory =
   let i = Arg.info ~doc:CliInfo.until
                    ~docv:"UNTIL" ["until"] in
   Arg.(required (opt (some float) None i))
-
 
 let replay =
   Term.(

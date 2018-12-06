@@ -183,6 +183,10 @@ let log_and_ignore_exceptions ?what f x =
   with Exit -> ()
      | e -> print_exception ?what e
 
+let on_error k f =
+  try f ()
+  with e -> k () ; raise e
+
 let print_dump oc x = dump x |> String.print oc
 
 let looks_like_true s =

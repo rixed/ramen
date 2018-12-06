@@ -196,6 +196,8 @@ struct
   let num_points = "Number of points returned"
   let time_step = "Duration between two points"
   let data_fields = "Fields to retrieve values from"
+  let func_name_or_code =
+    "function fully qualified name and field names, or code statement"
   let consolidation = "Consolidation function"
   let bucket_time = "Selected bucket time"
   let short = "Display only a short summary"

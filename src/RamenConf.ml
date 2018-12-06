@@ -465,3 +465,11 @@ let test_literal_programs_root conf =
 (* Where SMT files (used for type-checking) are written temporarily *)
 let smt_file src_file =
   Filename.remove_extension src_file ^".smt2"
+
+(* Create a temporary program name: *)
+let make_transient_program () =
+  let now = Unix.gettimeofday ()
+  and pid = Unix.getpid ()
+  and rnd = Random.int max_int_for_random in
+  Legacy.Printf.sprintf "tmp/_%h_%d.%d" now rnd pid |>
+  RamenName.program_of_string

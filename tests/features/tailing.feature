@@ -81,3 +81,9 @@ Feature: test ramen tail
     When I run ramen with arguments tail -h --min 2 --max 2 test/gen -w '_blue = "red"'
     Then ramen must fail gracefully
     And ramen must mention "_blue" on stderr.
+
+  Scenario: Once can create transient functions from the command line.
+    When I run ramen with arguments tail -n 3 -h -- select y+1 AS z from test/gen
+    Then ramen must print more than 4 lines on stdout
+    And ramen must mention "43"
+    And ramen must exit gracefully.
