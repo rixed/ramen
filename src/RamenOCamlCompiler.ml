@@ -250,8 +250,27 @@ let link conf program_name obj_files src_file bin_file =
 
 (* Helpers: *)
 
-let to_module_name s =
-  if Char.is_letter s.[0] then s else "m"^ s
+(* Accepts a filename (without directory) and change it into something valid
+ * as an ocaml compilation unit: *)
+let to_module_name =
+  let re = Str.regexp "[^a-zA-Z0-9_]" in
+  fun fname ->
+    let ext = Filename.extension fname in
+    let s = Filename.remove_extension fname in
+    let s =
+      if s = "" then "_" else
+      (* Encode all chars not allowed in OCaml modules: *)
+      let s =
+        Str.global_substitute re (fun s ->
+          let c = Str.matched_string s in
+          assert (String.length c = 1) ;
+          let i = Char.code c.[0] in
+          "_" ^ string_of_int i ^ "_"
+        ) s in
+      (* Then make sure we start with a letter: *)
+      if Char.is_letter s.[0] then s else "m"^ s
+    in
+    s ^ ext
 
 (* obj name must not conflict with any external module. *)
 let with_code_file_for obj_name conf f =
