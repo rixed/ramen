@@ -331,9 +331,9 @@ let compile conf get_parent ~exec_file source_file program_name =
     let make_valid_for_module fname =
       let dirname, basename =
         try String.rsplit ~by:"/" fname
-        with Not_found -> "", fname in
+        with Not_found -> ".", fname in
       let basename = RamenOCamlCompiler.to_module_name basename in
-      dirname ^(if dirname <> "" then "/" else "")^ basename
+      dirname ^"/"^ basename
     in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
