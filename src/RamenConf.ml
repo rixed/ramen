@@ -4,9 +4,6 @@ open RamenHelpers
 open RamenConsts
 module Expr = RamenExpr
 
-let archive_file dir (block_start, block_stop) =
-  dir ^"/"^ string_of_int block_start ^"-"^ string_of_int block_stop
-
 type conf =
   { log_level : log_level ;
     persist_dir : string ;
