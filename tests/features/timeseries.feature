@@ -38,7 +38,7 @@ Feature: test ramen tail
     When I run ramen with arguments timeseries -n 6 --since=1000 --until=1006 -w 'odd = true' test/ts odd
     Then ramen must print 6 lines on stdout
     # booleans have been averaged, thus converted into floats:
-    And ramen must mention ",1."
+    And ramen must mention ",1"
     And ramen must exit gracefully.
 
   Scenario: If all data we have is NULL we still get the times with no values.
