@@ -25,10 +25,12 @@ Before do |scenario|
   ENV['RAMEN_PERSIST_DIR'] = $tmp_dir + '/ramen_persist_dir'
   # Clear this or we might have longer than expected backtraces on stderr:
   ENV['OCAMLRUNPARAM'] = nil
-  # Also, by default we want a specific setting for experiments:
+  # By default we want a specific setting for experiments:
   ENV['RAMEN_VARIANTS'] = 'TheBigOne=on'
-  # And avoid fault injection:
+  # Avoid fault injection:
   ENV['RAMEN_FAULT_INJECTION_RATE'] = '0'
+  # Archive all worker output right from the beginning:
+  ENV['RAMEN_INITIAL_EXPORT'] = '300'
 
   # If we do this globally then cucumber fails to find the features, so we
   # cheat by doing this in this hook:
