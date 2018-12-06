@@ -37,7 +37,7 @@ Feature: Ramen behavior can be customized via experiments
     And the program test_prog is running
     And ramen supervisor is started
     When I wait 2 second
-    And I run ramen with arguments tail -n 1 test_prog/f
+    And I run ramen with arguments tail -l 1 test_prog/f
     Then ramen must mention "running"
 
   Scenario: A function might run or not depending on some experiment (2)
@@ -45,5 +45,5 @@ Feature: Ramen behavior can be customized via experiments
     And the program test_prog is running
     And ramen supervisor is started
     When I wait 2 second
-    And I run timeout with arguments 1 ramen tail -n 1 test_prog/f
+    And I run timeout with arguments 1 ramen tail -l 1 test_prog/f
     Then timeout must not mention "running"

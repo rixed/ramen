@@ -217,6 +217,7 @@ let complete str () =
       | "tail" ->
           let persist_dir = persist_dir toks in
           ("--last=", CliInfo.last) ::
+          ("--next=", CliInfo.next) ::
           ("--max-seqnum=", CliInfo.max_seq) ::
           ("--min-seqnum=", CliInfo.min_seq) ::
           ("--continuous", CliInfo.continuous) ::

@@ -23,7 +23,7 @@ Feature: Programs ca  be parameterized
     Given I run ramen with arguments run -p 'first_name="Leontine"' test.x --as test/Leontine
     When I run ramen with arguments ps
     Then ramen must mention "test/Leontine/f"
-    When I run ramen with arguments tail --last=-1 'test/Leontine/f' --raw
+    When I run ramen with arguments tail -n 1 'test/Leontine/f' --raw
     Then ramen must mention "Leontine Smith".
 
   Scenario: We can run two instances of a program with different parameters.

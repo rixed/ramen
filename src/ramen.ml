@@ -480,7 +480,12 @@ let csv_raw =
 
 let last =
   let i = Arg.info ~doc:CliInfo.last
-                   [ "n"; "last" ] in
+                   [ "l"; "last" ] in
+  Arg.(value (opt (some int) None i))
+
+let next =
+  let i = Arg.info ~doc:CliInfo.next
+                   [ "n"; "next" ] in
   Arg.(value (opt (some int) None i))
 
 let continuous =
@@ -582,6 +587,7 @@ let tail =
       $ csv_null
       $ csv_raw
       $ last
+      $ next
       $ min_seq
       $ max_seq
       $ continuous

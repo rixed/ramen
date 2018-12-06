@@ -19,7 +19,7 @@ Feature: behavior under harsh conditions
     And I wait 3 seconds.
 
   Scenario: ramen will recompile modified programs
-    When I run ramen with arguments tail -n 1 dir/p1/f
+    When I run ramen with arguments tail -l 1 dir/p1/f
     Then ramen must mention "one" on stdout
     Given a file dir/p1.ramen with content
       """
@@ -27,7 +27,7 @@ Feature: behavior under harsh conditions
       """
     And I wait 4 seconds
     Then program dir/p1 must be running
-    And I run ramen with arguments tail -n 1 dir/p1/f
+    And I run ramen with arguments tail -l 1 dir/p1/f
     Then ramen must mention "two" on stdout.
 
   Scenario: ramen is fine with deleted programs
@@ -35,7 +35,7 @@ Feature: behavior under harsh conditions
     And I run rmdir with argument dir
     When I run ramen with argument ps
     Then ramen must mention "p2/f"
-    When I run ramen with arguments tail -n 1 p2/f
+    When I run ramen with arguments tail -l 1 p2/f
     Then ramen must mention "hello" on stdout
     And ramen must exit gracefully
     When I wait 2 seconds

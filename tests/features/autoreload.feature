@@ -41,5 +41,5 @@ Feature: hot reloading of ramen workers
       """
     And p1_2.ramen is compiled as p1
     And I wait 3 seconds
-    When I run ramen with arguments tail -n 1 p2/o2
+    When I run ramen with arguments tail -l 1 p2/o2
     Then ramen must mention "two" on stdout.

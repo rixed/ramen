@@ -491,36 +491,42 @@ let parse_func_name_of_code conf what func_name_or_code =
       failwith
 
 let tail_ conf fq field_names with_header with_units sep null raw
-          last min_seq max_seq continuous where since until
+          last next min_seq max_seq continuous where since until
           with_seqnums with_event_time duration pretty flush =
-  if (last <> None || continuous) && (min_seq <> None || max_seq <> None) then
-    failwith "Options --{last,continuous} and \
+  if (last <> None || next <> None || continuous) &&
+     (min_seq <> None || max_seq <> None) then
+    failwith "Options --{last,next,continuous} and \
               --{min,max}-seq are incompatible." ;
-  if continuous && Option.map_default (fun l -> l < 0) false last then
-    failwith "Option --last must be >0 if used with --continuous." ;
+  if continuous && next <> None then
+    failwith "Option --next and --continuous are incompatible." ;
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
-    if last = None && min_seq = None && max_seq = None then Some 10
+    if last = None && next = None && min_seq = None && max_seq = None then
+      Some 10
     else last in
   let flush = flush || continuous in
+  let next = if continuous then Some max_int else next in
   let bname, is_temp_export, filter, typ, ser, params, event_time =
     RamenExport.read_output conf ~duration fq where
   in
   (* Find out which seqnums we want to scan: *)
-  let mi, ma = match last with
-    | None ->
+  let mi, ma = match last, next with
+    | None, None ->
         min_seq,
         Option.map succ max_seq (* max_seqnum is in *)
-    | Some l when l >= 0 ->
+    | Some l, None ->
         let _mi, ma = RingBufLib.seq_range bname in
         Some (cap_add ma ~-l),
-        Some (if continuous then max_int else ma)
-    | Some l ->
-        assert (l < 0) ;
+        Some ma
+    | None, Some n ->
         let _mi, ma = RingBufLib.seq_range bname in
-        Some ma, Some (cap_add ma (cap_neg l)) in
+        Some ma, Some (cap_add ma n)
+    | Some l, Some n ->
+        let _mi, ma = RingBufLib.seq_range bname in
+        Some (cap_add ma ~-l), Some (cap_add ma n)
+  in
   !logger.debug "Will display tuples from %a (incl) to %a (excl)"
     (Option.print Int.print) mi
     (Option.print Int.print) ma ;
@@ -588,7 +594,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
   print [||]
 
 let tail conf func_name_or_code with_header with_units sep null raw
-         last min_seq max_seq continuous where since until
+         last next min_seq max_seq continuous where since until
          with_seqnums with_event_time duration pretty flush
          (* We might compile the command line: *)
          use_external_compiler bundle_dir max_simult_compils smt_solver
@@ -607,7 +613,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
   in
   finally purge (fun () ->
     tail_ conf fq field_names with_header with_units sep null raw
-          last min_seq max_seq continuous where since until
+          last next min_seq max_seq continuous where since until
           with_seqnums with_event_time duration pretty flush) ()
 
 (*
