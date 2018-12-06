@@ -231,7 +231,16 @@ let complete str () =
           ("--with-times", CliInfo.with_seqnums) ::
           ("--with-units", CliInfo.with_seqnums) ::
           ("--pretty", CliInfo.pretty) ::
+          ("--raw", CliInfo.csv_raw) ::
           ("--flush", CliInfo.flush) ::
+          ("--bundle-dir=", CliInfo.bundle_dir) ::
+          ("--external-compiler=", CliInfo.external_compiler) ::
+          ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
+          ("--solver=", CliInfo.smt_solver) ::
+          copts @
+          ((SpecialFunctions.stats, "Activity statistics") ::
+           (SpecialFunctions.notifs, "Internal instrumentation") ::
+           (complete_running_function persist_dir))
           copts @
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::
