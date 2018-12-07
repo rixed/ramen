@@ -1,0 +1,53 @@
+<html>
+  <head>
+    <base href="https://rixed.github.io/ramen/">
+  </head>
+<body>
+  <div id="menu">
+    <a href="index.html">Overview</a>
+    <a href="download.html">Downloading</a>
+    <a href="build.html">Building</a>
+    <a href="tutorials.html">Tutorials</a>
+    <a href="design.html">Design</a>
+    <a href="command_line_reference.html">Command line reference</a>
+    <a href="language_reference.html">Language reference</a>
+    <a href="blog.html">Blog posts</a>
+  </div>
+<h1>2018-12-08</h1>
+
+<p>The two technological jewels I've seen during my short time at <a href="https://en.wikipedia.org/wiki/Booking.com">Booking.com</a> were:</p>
+
+<ul>
+<li>an experiment system that reliably measured the effects of any change while new versions were pushed in production several times a day;</li>
+<li>an event system that collected and stored gazillions of metrics from all around the place, both for data mining or for troubleshooting operations.</li>
+</ul>
+
+<p>Those were the two legs on which their data-driven culture was standing.</p>
+
+<p>One interesting feature of the event system that I always kept in mind while designing Ramen was that it was possible, from any shell, to run a command line tool to see the live stream of events after some basic filtering (for instance, all events from the web servers of a particular cluster) or even to embed a Perl one-liner that would run on all events to answer any question you might have. To achieve this, that piece of code had to be sent up to the event database where it would run against a real-time copy of the event stream, without the user even noticing.</p>
+
+<p>In the hands of experienced devops such a Swiss army knife was the quickest and surest diagnosing tools.</p>
+
+<p>Of course Ramen has no ambition to address a data stream that big, by many orders of magnitude. But as far as convenience is concerned it may do better. Indeed, the event querying tool learning curve was a bit stepper than needed to be.</p>
+
+<p><em>First</em>, to be able to make sense of the events you had to know their internal structure. You might think that's a necessary precondition, but those events being deep JSON objects didn't help discovering and retrieving the interesting bits.</p>
+<p><em>Second</em>, to make the best use of the events querying tool you had to know the event system Perl API. If you didn't then in case of emergency you would have to resort solely on the few shortcuts offered by the tool to handle "common cases" (like "frequently asked questions", "common cases" seldom occurs in real world). In practice you had to work within the event-system team to be familiar enough with that API.</p>
+
+<p>Ramen improves on those two aspects. Regarding locating information, Ramen events uses predominantly flat tuples rather than nested objects, and field names can be as long and descriptive as needed, since field name length incur no processing/saving costs contrary to JSON; and if that's not enough fields can be documented and come with proper units.</p>
+
+<p>Regarding data manipulation, Ramen uses a SQL-like language and compile it <em>before</em> starting to process the events.</p>
+
+<p>So now is time for the three command line querying commands (<code>ramen tail</code>, <code>ramen timeseries</code> and <code>ramen replay</code> to display not only a given pre-existing function name, but to also accept a new transient function.</p>
+
+<p>Example:</p>
+
+<pre>
+$ ramen tail -h -- select start, 5xx_errors from httpd/access where cluster="EU1"
+#start,5xx_errors
+2018-12-06 10:30:20,110
+2018-12-06 10:30:30,71
+2018-12-06 10:30:40,98
+...
+</pre>
+</body>
+</html>
