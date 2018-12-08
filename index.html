@@ -3,6 +3,10 @@
     <base href="https://rixed.github.io/ramen/">
   </head>
 <body>
+
+  <script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
+  <script src="https://hypothes.is/embed.js" async></script>
+
   <div id="menu">
     <a href="index.html">Overview</a>
     <a href="download.html">Downloading</a>
@@ -37,15 +41,13 @@
 <p>This is how it looks like:</p>
 <pre>
 DEFINE memory_alert AS
-  SELECT
-    time, host,
-    free + used + cached + buffered + slab AS total
+  SELECT time, host, free + used + cached AS total
   FROM memory
   GROUP BY host
-  NOTIFY "Low RAM" WITH PARAMETERS host, free, total WHEN free / total < 0.5
+  NOTIFY "Low RAM" WITH PARAMETERS host, free, total WHEN free / total < 0.5;
 </pre>
 
-<li>An HTTP daemon mimics the <a href="https://graphite-api.readthedocs.io/">Graphite API</a> so it works with <a href="https://grafana.com">Grafana</a> out of the box.</li>
+<li>An HTTP daemon mimics the <a href="https://graphite-api.readthedocs.io/">Graphite API</a> so Ramen can serve timeseries to <a href="https://grafana.com">Grafana</a> out of the box.</li>
 
 <li>Past data can be archived and retrieved by new queries, so that Ramen is not only useful for dashboarding and alerting but also for troubleshooting/capacity planning/...</li>
 </ul>
