@@ -892,10 +892,10 @@ let replay conf func_name_or_code with_header with_units sep null raw
  * same output archive files as the `ramen tail` command does.
  *)
 
-let timeseries conf since until with_header where factors num_points
-               time_step sep null func_name data_fields consolidation
-               bucket_time duration pretty () =
-  init_logger conf.C.log_level ;
+let timeseries_ conf fq data_fields
+                since until with_header where factors num_points
+                time_step sep null consolidation
+                bucket_time duration pretty =
   let num_points =
     if num_points <= 0 && time_step <= 0. then 100 else num_points in
   let until = until |? Unix.gettimeofday () in
@@ -906,7 +906,7 @@ let timeseries conf since until with_header where factors num_points
     compute_num_points time_step num_points since until in
   let columns, timeseries =
     get conf ~duration num_points since until where factors
-        ~consolidation ~bucket_time func_name data_fields in
+        ~consolidation ~bucket_time fq data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
   let head =
@@ -939,6 +939,23 @@ let timeseries conf since until with_header where factors num_points
   ) timeseries ;
   print [||]
 
+let timeseries conf func_name_or_code
+               since until with_header where factors num_points
+               time_step sep null consolidation
+               bucket_time duration pretty
+               (* We might compile the command line: *)
+               use_external_compiler bundle_dir max_simult_compils smt_solver
+               () =
+  init_logger conf.C.log_level ;
+  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
+                     smt_solver ;
+  let fq, field_names, to_purge =
+    parse_func_name_of_code conf "ramen tail" func_name_or_code in
+  finally (purge_transient conf to_purge) (fun () ->
+    timeseries_ conf fq field_names
+                since until with_header where factors num_points
+                time_step sep null consolidation
+                bucket_time duration pretty) ()
 
 (*
  * `ramen timerange`

@@ -705,6 +705,7 @@ let timeseries =
   Term.(
     (const RamenCliCmd.timeseries
       $ copts
+      $ func_name_or_code
       $ since
       $ until
       $ with_header
@@ -714,12 +715,14 @@ let timeseries =
       $ time_step
       $ csv_separator
       $ csv_null
-      $ func_name 0
-      $ data_fields ~mandatory:true 1
       $ consolidation
       $ bucket_time
       $ duration
-      $ pretty),
+      $ pretty
+      $ external_compiler
+      $ bundle_dir
+      $ max_simult_compilations
+      $ smt_solver),
     info ~doc:CliInfo.timeseries "timeseries")
 
 (*
