@@ -455,17 +455,17 @@ let parse_func_name_of_code conf what func_name_or_code =
         (Printexc.to_string e2) |>
       failwith
 
-let head_of_types ~with_units head =
+let head_of_types ~with_units head_typ =
   Array.map (fun t ->
     RamenName.string_of_field t.RamenTuple.name ^
        (if with_units then
          Option.map_default RamenUnits.to_string "" t.units
        else "")
-  ) head
+  ) head_typ
 
 let tail_ conf fq field_names with_header with_units sep null raw
           last next min_seq max_seq continuous where since until
-          with_seqnums with_event_time duration pretty flush =
+          with_event_time duration pretty flush =
   if (last <> None || next <> None || continuous) &&
      (min_seq <> None || max_seq <> None) then
     failwith "Options --{last,next,continuous} and \
@@ -506,14 +506,13 @@ let tail_ conf fq field_names with_header with_units sep null raw
   (* Then, scan all present ringbufs in the requested range (either
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
-  let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
   RamenExport.check_field_names typ field_names ;
-  let header = typ |> Array.of_list in
-  let display_field, head =
-    RamenExport.header_of_type ~with_seqnums ~with_event_time
-                               field_names header in
+  let head_idx, head_typ =
+    RamenExport.header_of_type ~with_event_time
+                               field_names typ in
   let open TermTable in
-  let head = head_of_types ~with_units head in
+  let head_typ = Array.of_list head_typ in
+  let head = head_of_types ~with_units head_typ in
   let print = print_table ~sep ~pretty ~with_header ~flush head in
   (* Pick a "printer" for each column according to the field type: *)
   let formatter = table_formatter pretty raw null
@@ -540,7 +539,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
         event_time_of_tuple ser params et
   in
   let unserialize = RamenSerialization.read_array_of_values ser in
-  fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () m tx ->
+  fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () _m tx ->
     match RamenSerialization.read_tuple unserialize tx with
     | RingBufLib.DataTuple chan, Some tuple
       when chan = RamenChannel.live && filter tuple ->
@@ -548,34 +547,28 @@ let tail_ conf fq field_names with_header with_units sep null raw
         if Option.map_default (fun since -> t2 > since) true since &&
            Option.map_default (fun until -> t1 <= until) true until
         then (
-          let pref = if with_seqnums then [ Some (ValInt m) ] else [] in
-          let pref =
-            if with_event_time then
-              Some (ValDate t1) :: Some (ValDate t2) :: pref
-            else pref in
-          let cols = reorder_column tuple in
           let cols =
-            Array.range cols //@
-            (fun i ->
-              if display_field.(i) then
-                Some (formatter header.(i).units cols.(i)) else None) |>
-            Array.of_enum in
-          let line =
-            Array.(append (of_list pref) cols) in
-          print line)
+            Array.mapi (fun i idx ->
+              match idx with
+              | -2 -> Some (ValDate t2)
+              | -1 -> Some (ValDate t1)
+              | idx -> formatter head_typ.(i).units tuple.(idx)
+            ) head_idx in
+          print cols)
     | _ -> ()) ;
   print [||]
 
 let purge_transient conf to_purge () =
-  let patterns =
-    List.map Globs.(compile % escape % RamenName.string_of_program)
-             to_purge in
-  let nb_kills = RamenRun.kill conf ~purge:true patterns in
-  !logger.debug "Killed %d programs" nb_kills
+  if to_purge <> [] then
+    let patterns =
+      List.map Globs.(compile % escape % RamenName.string_of_program)
+               to_purge in
+    let nb_kills = RamenRun.kill conf ~purge:true patterns in
+    !logger.debug "Killed %d programs" nb_kills
 
 let tail conf func_name_or_code with_header with_units sep null raw
          last next min_seq max_seq continuous where since until
-         with_seqnums with_event_time duration pretty flush
+         with_event_time duration pretty flush
          (* We might compile the command line: *)
          use_external_compiler bundle_dir max_simult_compils smt_solver
          () =
@@ -584,10 +577,10 @@ let tail conf func_name_or_code with_header with_units sep null raw
                      smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge) (fun () ->
-    tail_ conf fq field_names with_header with_units sep null raw
-          last next min_seq max_seq continuous where since until
-          with_seqnums with_event_time duration pretty flush) ()
+  finally (purge_transient conf to_purge)
+    (tail_ conf fq field_names with_header with_units sep null raw
+           last next min_seq max_seq continuous where since until
+           with_event_time duration pretty) flush
 
 (*
  * `ramen replay`
@@ -613,13 +606,14 @@ let replay_ conf fq field_names with_header with_units sep null raw
   let formatter = table_formatter pretty raw null in
   RamenExport.replay conf ~while_ fq field_names where since until
                      with_event_time (fun head ->
+      let head = Array.of_list head in
       let head' = head_of_types ~with_units head in
       let print = TermTable.print_table ~na:null ~sep ~pretty ~with_header
                                         ~flush head' in
-      (fun tuple ->
+      (fun _t1 _t2 tuple ->
         let vals =
           Array.mapi (fun i -> formatter head.(i).units) tuple in
-        print vals))
+        print vals), ignore)
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
@@ -631,9 +625,9 @@ let replay conf func_name_or_code with_header with_units sep null raw
                      smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge) (fun () ->
-    replay_ conf fq field_names with_header with_units sep null raw
-            where since until with_event_time pretty flush) ()
+  finally (purge_transient conf to_purge)
+    (replay_ conf fq field_names with_header with_units sep null raw
+             where since until with_event_time pretty) flush
 
 (*
  * `ramen timeseries`
@@ -649,7 +643,7 @@ let replay conf func_name_or_code with_header with_units sep null raw
 let timeseries_ conf fq data_fields
                 since until with_header where factors num_points
                 time_step sep null consolidation
-                bucket_time duration pretty =
+                bucket_time pretty =
   let num_points =
     if num_points <= 0 && time_step <= 0. then 100 else num_points in
   let until = until |? Unix.gettimeofday () in
@@ -659,7 +653,7 @@ let timeseries_ conf fq data_fields
   let num_points, since, until =
     compute_num_points time_step num_points since until in
   let columns, timeseries =
-    get conf ~duration num_points since until where factors
+    get conf num_points since until where factors
         ~consolidation ~bucket_time fq data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
@@ -696,7 +690,7 @@ let timeseries_ conf fq data_fields
 let timeseries conf func_name_or_code
                since until with_header where factors num_points
                time_step sep null consolidation
-               bucket_time duration pretty
+               bucket_time pretty
                (* We might compile the command line: *)
                use_external_compiler bundle_dir max_simult_compils smt_solver
                () =
@@ -705,11 +699,11 @@ let timeseries conf func_name_or_code
                      smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
-  finally (purge_transient conf to_purge) (fun () ->
-    timeseries_ conf fq field_names
-                since until with_header where factors num_points
-                time_step sep null consolidation
-                bucket_time duration pretty) ()
+  finally (purge_transient conf to_purge)
+    (timeseries_ conf fq field_names
+                 since until with_header where factors num_points
+                 time_step sep null consolidation
+                 bucket_time) pretty
 
 (*
  * `ramen timerange`

@@ -39,6 +39,7 @@ let stop_typ =
     doc = "Event stop" ;
     aggr = Some "max" }
 
+(* TODO: have an array instead? *)
 type typ = field_typ list [@@ppp PPP_OCaml]
 
 let print_field_typ oc field =

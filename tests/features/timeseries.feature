@@ -21,6 +21,8 @@ Feature: test ramen tail
     And ramen supervisor is started
     And program test is running
     And I wait 3 second
+    # timeseries now request a stats file:
+    And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: I can obtain some values using timeseries.
     When I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test/ts v
@@ -32,7 +34,7 @@ Feature: test ramen tail
     When I run ramen with arguments timeseries -n 5 --since=123 --until=124 test/ts v
     Then ramen must print 5 lines on stdout
     And ramen must not mention "42"
-    And ramen must exit gracefully.
+    And ramen must exit with status 0.
 
   Scenario: One can use --where to filter the output.
     When I run ramen with arguments timeseries -n 6 --since=1000 --until=1006 -w 'odd = true' test/ts odd

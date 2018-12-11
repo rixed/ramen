@@ -186,7 +186,6 @@ struct
   let where = "Output only tuples which given field match the given value"
   let factors =
     "specify which fields to use as factors/categorical variables"
-  let with_seqnums = "Prepend tuples with their sequence number"
   let with_event_time = "Prepend tuples with their event time"
   let func_name = "Operation unique name"
   let duration =
@@ -268,10 +267,6 @@ struct
 
   (* When asking for a timeseries or a tail, export for that long: *)
   let export_duration = 600.
-
-  (* Special case for when the timeseries query comes from the API: we then
-   * want it to export for longer. *)
-  let api_export_duration = 3600. *. 24.
 
   (* Special case for when that's the archivist asking: *)
   let archivist_export_duration = 3600.

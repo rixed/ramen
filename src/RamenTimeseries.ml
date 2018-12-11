@@ -69,7 +69,7 @@ let bucket_max b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 type bucket_time = Begin | Middle | End
-let get conf ?duration num_points since until where factors
+let get conf num_points since until where factors
         ?consolidation ?(bucket_time=Middle) fq data_fields =
   !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
@@ -81,20 +81,6 @@ let get conf ?duration num_points since until where factors
         RamenTypes.print value)) where
     (List.print RamenName.field_print) factors ;
   let num_data_fields = List.length data_fields in
-  let bname, _is_temp_export, filter, _typ, ser, params, event_time =
-    RamenExport.read_output conf ?duration fq where in
-  (* Extract fields of interest (data fields, keys...) from a tuple: *)
-  let open RamenSerialization in
-  let fis =
-    List.map (find_field_index ser) factors in
-  let key_of_factors tuple =
-    List.map (fun fi -> tuple.(fi)) fis in
-  let vis, def_aggr =
-    List.fold_left (fun (vis, def_aggr) data_field ->
-      let vi, ft = find_field ser data_field in
-      (vi :: vis), (ft.aggr :: def_aggr)
-    ) ([], []) data_fields in
-  let vis = List.rev vis and def_aggr = List.rev def_aggr in
   (* Prepare the buckets in which to aggregate the data fields: *)
   let dt = (until -. since) /. float_of_int num_points in
   let per_factor_buckets = Hashtbl.create 11 in
@@ -109,20 +95,32 @@ let get conf ?duration num_points since until where factors
   let consolidate aggr_str =
     match String.lowercase aggr_str with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
-    | _ -> bucket_avg in
-  let def_aggr =
-    List.enum def_aggr /@
-    (function
-      | Some str -> consolidate str
-      | None ->
-          (match consolidation with
-          | None -> bucket_avg
-          | Some str -> consolidate str)) |>
-    Array.of_enum in
-  (* Now loop over those tuples: *)
-  fold_time_range bname ser params event_time since until ()
-    (fun () tuple t1 t2 ->
-    if filter tuple then (
+    | _ -> bucket_avg
+  in
+  RamenExport.replay conf fq data_fields where since until true (fun head ->
+    (* Extract fields of interest (data fields, keys...) from a tuple: *)
+    let open RamenSerialization in
+    let fis =
+      List.map (find_field_index head) factors in
+    let key_of_factors tuple =
+      List.map (fun fi -> tuple.(fi)) fis in
+    let vis, def_aggr =
+      List.fold_left (fun (vis, def_aggr) data_field ->
+        let vi, ft = find_field head data_field in
+        (vi :: vis), (ft.aggr :: def_aggr)
+      ) ([], []) data_fields in
+    let vis = List.rev vis and def_aggr = List.rev def_aggr in
+    let def_aggr =
+      List.enum def_aggr /@
+      (function
+        | Some str -> consolidate str
+        | None ->
+            (match consolidation with
+            | None -> bucket_avg
+            | Some str -> consolidate str)) |>
+      Array.of_enum
+    in
+    (fun t1 t2 tuple ->
       let k = key_of_factors tuple in
       let buckets =
         try Hashtbl.find per_factor_buckets k
@@ -162,27 +160,28 @@ let get conf ?duration num_points since until where factors
             pour_into_bucket buckets bi i v r
           done
         ) v
-      ) vis)) ;
-  (* Extract the results as an Enum, one value per key *)
-  let indices = Enum.range 0 ~until:(num_points - 1) in
-  (* Assume keys and values will enumerate keys in the same orders: *)
-  let columns =
-    Hashtbl.keys per_factor_buckets |>
-    Array.of_enum in
-  let ts =
-    Hashtbl.values per_factor_buckets |>
-    Array.of_enum in
-  columns,
-  indices /@
-  (fun i ->
-    let t = time_of_bucket i
-    and v =
-      Array.map (fun buckets ->
-        Array.mapi (fun data_field_idx bucket ->
-          def_aggr.(data_field_idx) bucket
-        ) buckets.(i)
-      ) ts in
-    t, v)
+      ) vis),
+    (fun () ->
+      (* Extract the results as an Enum, one value per key *)
+      let indices = Enum.range 0 ~until:(num_points - 1) in
+      (* Assume keys and values will enumerate keys in the same orders: *)
+      let columns =
+        Hashtbl.keys per_factor_buckets |>
+        Array.of_enum in
+      let ts =
+        Hashtbl.values per_factor_buckets |>
+        Array.of_enum in
+      columns,
+      indices /@
+      (fun i ->
+        let t = time_of_bucket i
+        and v =
+          Array.map (fun buckets ->
+            Array.mapi (fun data_field_idx bucket ->
+              def_aggr.(data_field_idx) bucket
+            ) buckets.(i)
+          ) ts in
+        t, v)))
 
 (* [get] uses the number of points but users can specify either num-points or
  * the time-step (in which case [since] and [until] are aligned to a multiple

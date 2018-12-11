@@ -546,11 +546,6 @@ let until =
                    ~docv:"UNTIL" ["until"] in
   Arg.(value (opt (some float) None i))
 
-let with_seqnums =
-  let i = Arg.info ~doc:CliInfo.with_seqnums
-                   ["with-seqnums"; "seq"; "s"] in
-  Arg.(value (flag i))
-
 let with_event_time =
   let i = Arg.info ~doc:CliInfo.with_event_time
                    ["with-event-times"; "with-times"; "event-times"; "t"] in
@@ -594,7 +589,6 @@ let tail =
       $ where
       $ since
       $ until
-      $ with_seqnums
       $ with_event_time
       $ duration
       $ pretty
@@ -717,7 +711,6 @@ let timeseries =
       $ csv_null
       $ consolidation
       $ bucket_time
-      $ duration
       $ pretty
       $ external_compiler
       $ bundle_dir

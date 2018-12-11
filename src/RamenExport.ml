@@ -67,23 +67,20 @@ let read_output conf ?duration fq where =
           bname, true, filter, func.F.out_type, ser, prog.P.params,
           func.F.event_time)
 
-let header_of_type ?(with_seqnums=false) ?(with_event_time=false)
-                   field_names typ =
-  let display_field =
-    Array.map (fun h ->
-      field_names = [] || List.mem h.RamenTuple.name field_names
-    ) typ in
-  let head =
-    Array.fold_lefti (fun lst i t ->
-      if display_field.(i) then t :: lst else lst
-    ) [] typ |> List.rev in
-  let head =
-    if with_seqnums then RamenTuple.seq_typ :: head else head in
-  let head =
+(* Returns an array of index in [typ] tuple * field type.
+ * Index -1 it for t1 and index -2 for t2. *)
+let header_of_type ?(with_event_time=false) field_names typ =
+  let h =
+    List.map (fun n ->
+      List.findi (fun _ t -> t.RamenTuple.name = n) typ
+    ) field_names in
+  let h =
     if with_event_time then
-      RamenTuple.start_typ :: RamenTuple.stop_typ :: head
-    else head in
-  display_field, Array.of_list head
+      (-1, RamenTuple.start_typ) ::
+      (-2, RamenTuple.stop_typ) :: h
+    else h in
+  let idxs, typs = List.enum h |> Enum.uncombine in
+  Array.of_enum idxs, List.of_enum typs
 
 (* Check the entered field names are correct: *)
 let check_field_names typ field_names =
@@ -103,6 +100,15 @@ let replay conf ?(while_=always) fq field_names where since until
   let programs = C.with_rlock conf identity in
   let _mre, prog, func = C.find_func_or_fail programs fq in
   check_field_names func.F.out_type field_names ;
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  (* Asking for no field names is asking for all: *)
+  let field_names =
+    if field_names = [] then
+      List.map (fun t -> t.RamenTuple.name) func.F.out_type
+    else field_names in
+  let head_idx, head_typ =
+    header_of_type ~with_event_time field_names ser in
+  let on_tuple, on_exit = f head_typ in
   (* Then, get the runtime stats.
    * We assume all functions are running for now but this is not required
    * for the replayer itself and for intermediary workers we might be
@@ -180,7 +186,8 @@ let replay conf ?(while_=always) fq field_names where since until
   | exception Not_found ->
       failwith "Cannot find some parents in the stats?!"
   | _, None ->
-      failwith "No archive found. Game over."
+      !logger.warning "No archive found." ;
+      on_exit ()
   | sources, Some (best_since, best_until) ->
       !logger.debug "List of required sources: %a"
         (pretty_list_print RamenName.fq_print) sources ;
@@ -193,7 +200,7 @@ let replay conf ?(while_=always) fq field_names where since until
         Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) in
       RingBuf.create rb_name ;
       let rb = RingBuf.load rb_name in
-      finally (fun () -> RingBuf.unload rb) (fun () ->
+      let ret = finally (fun () -> RingBuf.unload rb) (fun () ->
         (* Pick a channel. They are cheap, we do not care if we fail
          * in the next step: *)
         let channel_id = RamenChannel.make conf in
@@ -203,13 +210,6 @@ let replay conf ?(while_=always) fq field_names where since until
          * Maybe we should use the channel in the rb name, and pick a
          * channel_id large enough to be a hash of FQ, output fields and
          * dates? But that mean 256bits integers (2xU128?). *)
-        let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-        let in_type =
-          if field_names = [] then func.F.out_type
-          else
-            List.filter (fun ft ->
-              List.mem ft.RamenTuple.name field_names
-            ) func.F.out_type in
         (* TODO: for now, we ask for all fields. Ask only for field_names,
          * but beware of with_event_type! *)
         let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
@@ -271,14 +271,7 @@ let replay conf ?(while_=always) fq field_names where since until
         in
         let unserialize =
           RamenSerialization.read_array_of_values ser in
-        let reorder_column =
-          RingBufLib.reorder_tuple_to_user func.F.out_type ser in
-        let header = Array.of_list in_type in
-        let display_fields, head =
-          header_of_type ~with_event_time field_names
-                         header in
         let filter = RamenSerialization.filter_tuple_by ser where in
-        let f = f head in
         RingBufLib.read_ringbuf ~while_ rb (fun tx ->
           match RamenSerialization.read_tuple unserialize tx with
           | RingBufLib.EndOfReplay (chan, replay_id), None ->
@@ -292,24 +285,19 @@ let replay conf ?(while_=always) fq field_names where since until
             ) else
               !logger.error "Received EndOfReplay for channel %d not %d"
                 chan channel_id
-          | RingBufLib.DataTuple chan, Some tuple ->
+          | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
             if chan = channel_id then (
               if filter tuple then (
                 let t1, t2 = event_time_of_tuple tuple in
                 if t2 > since && t1 <= until then (
-                  let pref =
-                    if with_event_time then
-                      RamenTypes.[ VFloat t1 ; VFloat t2 ]
-                    else [] in
-                  let cols = reorder_column tuple in
                   let cols =
-                    Array.range cols //@
-                    (fun i ->
-                      if display_fields.(i) then Some cols.(i) else None) |>
-                    Array.of_enum in
-                  let line =
-                    Array.(append (of_list pref) cols) in
-                  f line
+                    Array.map (fun idx ->
+                      match idx with
+                      | -2 -> RamenTypes.VFloat t2
+                      | -1 -> RamenTypes.VFloat t1
+                      | idx -> tuple.(idx)
+                    ) head_idx in
+                  on_tuple t1 t2 cols
                 ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
               ) else !logger.debug "tuple filtered out"
             ) else
@@ -318,10 +306,12 @@ let replay conf ?(while_=always) fq field_names where since until
           | _ ->
               !logger.error "Received an unknown message in tx") ;
         (* Signal the end of the replay: *)
-        f [||] ;
+        let ret = on_exit () in
         (* In case we got all the eofs before all replayers have exited: *)
         waitall ~while_ ~expected_status:ExitCodes.terminated
-                ~what:"replayer" !pids
-      ) () ;
+                ~what:"replayer" !pids ;
+        ret
+      ) () in
       (* If all went well, delete the ringbuf: *)
-      safe_unlink rb_name
+      safe_unlink rb_name ;
+      ret

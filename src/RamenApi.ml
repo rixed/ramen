@@ -327,9 +327,7 @@ type get_timeseries_req =
     num_points : int [@ppp_rename "num-points"] [@ppp_default 0] ;
     num_points_ : int [@ppp_rename "num_points"] [@ppp_default 0] ;
     time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
-    data : (string, timeseries_data_spec) Hashtbl.t ;
-    export_duration : float [@ppp_rename "export-duration"]
-      [@ppp_default RamenConsts.Default.api_export_duration] }
+    data : (string, timeseries_data_spec) Hashtbl.t }
   [@@ppp PPP_JSON]
 
 and timeseries_data_spec =
@@ -402,8 +400,7 @@ let get_timeseries conf msg =
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      get conf ~duration:req.export_duration
-          num_points since until filters
+      get conf num_points since until filters
           data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is a list of factors values. *)
