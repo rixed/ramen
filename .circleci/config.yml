@@ -2,6 +2,9 @@
 version: 2
 jobs:
   build:
+    branches:
+      ignore:
+        - gh-pages
     docker:
 # An image with opam and all ramen dependencies, but no ramen sources.
 # So that the build time is minimal.
