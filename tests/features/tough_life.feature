@@ -37,6 +37,6 @@ Feature: behavior under harsh conditions
     Then ramen must mention "p2/f"
     When I run ramen with arguments tail -l 1 p2/f
     Then ramen must mention "hello" on stdout
-    And ramen must exit gracefully
+    And ramen must exit with status 0
     When I wait 2 seconds
     Then ramen supervisor --autoreload=1 --debug --fail-for-good must still be running.
