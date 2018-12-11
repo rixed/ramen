@@ -229,8 +229,8 @@ let complete str () =
           ("--separator=", CliInfo.csv_separator) ::
           ("--with-header", CliInfo.with_header) ::
           ("--with-seqnums", CliInfo.with_seqnums) ::
-          ("--with-times", CliInfo.with_seqnums) ::
-          ("--with-units", CliInfo.with_seqnums) ::
+          ("--with-times", CliInfo.with_event_time) ::
+          ("--with-units", CliInfo.with_units) ::
           ("--pretty", CliInfo.pretty) ::
           ("--raw", CliInfo.csv_raw) ::
           ("--flush", CliInfo.flush) ::
@@ -250,8 +250,8 @@ let complete str () =
           ("--null=", CliInfo.csv_null) ::
           ("--separator=", CliInfo.csv_separator) ::
           ("--with-header", CliInfo.with_header) ::
-          ("--with-times", CliInfo.with_seqnums) ::
-          ("--with-units", CliInfo.with_seqnums) ::
+          ("--with-times", CliInfo.with_event_time) ::
+          ("--with-units", CliInfo.with_units) ::
           ("--pretty", CliInfo.pretty) ::
           ("--raw", CliInfo.csv_raw) ::
           ("--flush", CliInfo.flush) ::
