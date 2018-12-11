@@ -432,56 +432,53 @@ let table_formatter pretty raw null units =
 (* [func_name_or_code] is a list of strings as present in the command
  * line. It could be a function name followed by a list of field names, or
  * it could be the code of a function which output we want to display.
- * We find out by trying both and picking what works. In case both approach
+ * We find out by picking the first that works. In case both approach
  * fails we have to display the two error messages though. *)
 let parse_func_name_of_code conf what func_name_or_code =
-  let parse_as_names =
-    BatResult.catch (fun () ->
-      match func_name_or_code with
-      | func_name :: field_names ->
-          RamenName.fq_of_string func_name,
-          List.map RamenName.field_of_string field_names,
-          []
-      | _ -> assert false (* As the command line parser prevent this *)
-    ) ()
-  and parse_as_code =
-    BatResult.catch (fun () ->
-      let program_name = C.make_transient_program () in
-      let func_name = RamenName.func_of_string "f" in
-      let programs = C.with_rlock conf identity in (* best effort *)
-      let get_parent = RamenCompiler.parent_from_programs programs in
-      let oc, src_file =
-        BatFile.open_temporary_out ~prefix:what ~suffix:".ramen" () in
-      !logger.info "Going to use source file %S" src_file ;
-      let exec_file = Filename.remove_extension src_file ^".x" in
-      on_error (fun () ->
-        if not conf.C.keep_temp_files then (
-          safe_unlink src_file ;
-          safe_unlink exec_file))
-               (fun () ->
-        Printf.fprintf oc
-          "-- Temporary file created on %a for %s\n\
-           DEFINE '%s' AS %a\n"
-          (print_as_date ?rel:None ?right_justified:None) (Unix.time ())
-          what
-          (RamenName.string_of_func func_name)
-          (List.print ~first:"" ~last:"" ~sep:" " String.print)
-            func_name_or_code ;
-        close_out oc ;
-        safe_unlink exec_file ; (* hahaha! *)
-        RamenMake.build conf get_parent program_name src_file exec_file ;
-        (* Run it, making sure it archives its history straight from the start: *)
-        let debug = conf.C.log_level = Debug in
-        RamenRun.run conf ~report_period:0. ~src_file ~debug
-                     exec_file program_name) ;
-      let fq = RamenName.fq program_name func_name in
-      fq, [], [ program_name ]
-    ) ()
+  let parse_as_names () =
+    match func_name_or_code with
+    | func_name :: field_names ->
+        RamenName.fq_of_string func_name,
+        List.map RamenName.field_of_string field_names,
+        []
+    | _ -> assert false (* As the command line parser prevent this *)
+  and parse_as_code () =
+    let program_name = C.make_transient_program () in
+    let func_name = RamenName.func_of_string "f" in
+    let programs = C.with_rlock conf identity in (* best effort *)
+    let get_parent = RamenCompiler.parent_from_programs programs in
+    let oc, src_file =
+      BatFile.open_temporary_out ~prefix:what ~suffix:".ramen" () in
+    !logger.info "Going to use source file %S" src_file ;
+    let exec_file = Filename.remove_extension src_file ^".x" in
+    on_error (fun () ->
+      if not conf.C.keep_temp_files then (
+        safe_unlink src_file ;
+        safe_unlink exec_file))
+             (fun () ->
+      Printf.fprintf oc
+        "-- Temporary file created on %a for %s\n\
+         DEFINE '%s' AS %a\n"
+        (print_as_date ?rel:None ?right_justified:None) (Unix.time ())
+        what
+        (RamenName.string_of_func func_name)
+        (List.print ~first:"" ~last:"" ~sep:" " String.print)
+          func_name_or_code ;
+      close_out oc ;
+      safe_unlink exec_file ; (* hahaha! *)
+      RamenMake.build conf get_parent program_name src_file exec_file ;
+      (* Run it, making sure it archives its history straight from the start: *)
+      let debug = conf.C.log_level = Debug in
+      RamenRun.run conf ~report_period:0. ~src_file ~debug
+                   exec_file program_name) ;
+    let fq = RamenName.fq program_name func_name in
+    fq, [], [ program_name ]
   in
-  match parse_as_names, parse_as_code with
-  | BatResult.Ok r1, _ -> r1
-  | _, BatResult.Ok r2 -> r2
-  | BatResult.(Bad e1, Bad e2) ->
+  try
+    parse_as_names ()
+  with e1 ->
+    try parse_as_code ()
+    with e2 ->
       let cmd_line = String.join " " func_name_or_code in
       Printf.sprintf
         "Cannot parse %S as a function name (%s) nor as a program (%s)"
