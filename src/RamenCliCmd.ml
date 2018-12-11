@@ -503,9 +503,9 @@ let tail_ conf fq field_names with_header with_units sep null raw
     failwith "Option --with-units makes no sense without --with-header" ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
-    if last = None && next = None && min_seq = None && max_seq = None then
-      Some 10
-    else last in
+    if last = None && next = None && min_seq = None && max_seq = None &&
+       since = None && until = None
+    then Some 10 else last in
   let flush = flush || continuous in
   let next = if continuous then Some max_int else next in
   let bname, is_temp_export, filter, typ, ser, params, event_time =
