@@ -1,0 +1,20 @@
+{{! vim: ft=html
+}}
+<html>
+  <head>
+    <meta charset="utf-8">
+    <base href="https://rixed.github.io/ramen/">
+    <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <title>Ramen Documentation</title>
+  </head>
+<body>
+
+  <script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
+  <script src="https://hypothes.is/embed.js" async></script>
+
+  <div id="menu">
+    <a href="index.html">Overview</a>
+    {{#info_pages}}
+    <a href="{{page}}.html">{{title}}{{^title}}{{page}}{{/title}}</a>
+    {{/info_pages}}
+  </div>

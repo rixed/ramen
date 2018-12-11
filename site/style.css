@@ -1,0 +1,41 @@
+/* Screen style for Ramen doc */
+
+body {
+  font-family: sans-serif;
+  margin: 0 3rem 1rem 2rem;
+}
+
+p, li {
+  font-family: serif;
+}
+
+#menu a {
+  display: inline-block;
+  margin: 0.5em 0 0.5em 0;
+  background-color: #aac;
+  color: #000;
+  padding: 0.15em 0.75em;
+  border-radius: 0.2em;
+  text-decoration: none;
+}
+
+#menu a:hover {
+  background-color: #eec;
+}
+
+#menu a:visited {
+  color: #111;
+}
+
+a:link, a:visited {
+  text-decoration: underline;
+  color: #88c;
+}
+
+a:hover {
+  color: #aac;
+}
+
+pre.prettyprint {
+  border: 0 !important;
+}

@@ -73,9 +73,17 @@ all: $(INSTALLED)
 	@echo 'Generating preprocessed sources for $<'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -dsource -c $< 2> $@
 
+# Documentation
+
 %.html: %.adoc
 	@echo 'Building documentation $@'
 	@asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
+
+doc: \
+	docs/tutorial.html docs/manual.html docs/roadmap.html
+
+docs/tutorial.html: \
+	docs/tutorial_group_by.svg docs/sample_chart1.svg
 
 # Dependencies
 
@@ -589,14 +597,6 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	done ;\
 	echo SUCCESS
 
-# Documentation
-
-doc: \
-	docs/tutorial.html docs/manual.html docs/roadmap.html
-
-docs/tutorial.html: \
-	docs/tutorial_group_by.svg docs/sample_chart1.svg
-
 # Installation
 
 install: $(INSTALLED)
@@ -741,3 +741,4 @@ clean: clean-temp
 	@sudo rm -rf debtmp
 	@$(RM) -r tmp
 	@$(RM) ramen.*.deb ramen.*.tgz
+	@$(RM) $(PAGES)

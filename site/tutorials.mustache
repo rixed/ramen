@@ -1,0 +1,14 @@
+{{! vim: ft=html
+}}
+{{>header}}
+<h1>Tutorials</h1>
+
+<p>Few documentations about how to achieve basic things, to help start with Ramen</p>
+
+<ul>
+{{#tutorials}}
+<li><a href="tutorials/{{page}}.html">{{page}}</a></li>
+{{/tutorials}}
+</ul>
+
+{{>footer}}

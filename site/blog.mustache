@@ -1,0 +1,14 @@
+{{! vim: ft=html
+}}
+{{>header}}
+<h1>Blog posts</h1>
+
+<p>Some blog posts on specific features as they are being worked on. Might helps understand the trade offs, design decisions and blunders.</p>
+
+<ul>
+{{#blog_posts}}
+<li><a href="blog/{{page}}.html">{{page}}</a>: {{title}}{{^title}}{{page}}{{/title}}</li>
+{{/blog_posts}}
+</ul>
+
+{{>footer}}
