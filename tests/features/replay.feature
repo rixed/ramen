@@ -45,7 +45,7 @@ Feature: test ramen replay in a simple setting
     And I run ramen with arguments archivist
     # Now we have the workers configured to archive, but we still need some
     # actual data archived before updating the stats:
-    And I wait 3 seconds
+    And I wait 5 seconds
     And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: Check the allocations from the background situation obey the config.
