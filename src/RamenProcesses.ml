@@ -340,6 +340,31 @@ let run_worker ?and_stop bin args env =
   let cmd = Filename.basename bin in
   run_background ~cwd ?and_stop cmd args env
 
+(* Returns the buffer name: *)
+let start_export ?(duration=Default.export_duration) conf func =
+  let bname = C.archive_buf_name conf func in
+  RingBuf.create ~wrap:false bname ;
+  (* Add that name to the function out-ref *)
+  let out_ref = C.out_ringbuf_names_ref conf func in
+  let ser =
+    RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  (* Negative durations, yielding a timestamp of 0, means no timeout ;
+   * while duration = 0 means to actually not export anything (and we have
+   * a cli-test that relies on the spec not being present in the out_ref
+   * in that case): *)
+  if duration <> 0. then (
+    let timeout =
+      if duration < 0. then 0. else Unix.gettimeofday () +. duration in
+    let file_spec =
+      RamenOutRef.{
+        field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
+        timeout ;
+        (* We archive only the live channel: *)
+        channel = Some RamenChannel.live } in
+    RamenOutRef.add out_ref (bname, file_spec)
+  ) ;
+  bname
+
 let really_start conf proc parents children =
   (* Create the input ringbufs.
    * We now start the workers one by one in no
@@ -375,7 +400,7 @@ let really_start conf proc parents children =
   (* Always export for a little while at the beginning *)
   let _bname =
     let duration = conf.initial_export_duration in
-    RamenExport.start ~duration conf proc.func in
+    start_export ~duration conf proc.func in
   (* Now actually start the binary *)
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a

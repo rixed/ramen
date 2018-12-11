@@ -17,6 +17,28 @@ type field_typ =
     (* Also disp name, etc... *) }
   [@@ppp PPP_OCaml]
 
+(* Some "well known" type that we might need on the fly: *)
+let seq_typ =
+  { name = RamenName.field_of_string "Seq" ;
+    typ = RamenTypes.{ structure = TU64 ; nullable = false } ;
+    units = Some RamenUnits.dimensionless ;
+    doc = "Sequence number" ;
+    aggr = None }
+
+let start_typ =
+  { name = RamenName.field_of_string "Event start" ;
+    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    units = Some RamenUnits.seconds_since_epoch ;
+    doc = "Event start" ;
+    aggr = Some "min" }
+
+let stop_typ =
+  { name = RamenName.field_of_string "Event stop" ;
+    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    units = Some RamenUnits.seconds_since_epoch ;
+    doc = "Event stop" ;
+    aggr = Some "max" }
+
 type typ = field_typ list [@@ppp PPP_OCaml]
 
 let print_field_typ oc field =

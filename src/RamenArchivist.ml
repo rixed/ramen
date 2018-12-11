@@ -567,7 +567,7 @@ let update_workers_export conf =
     | _mre, _prog, func ->
         if max_size > 0 then
           let duration=Default.archivist_export_duration in
-          RamenExport.start ~duration conf func |> ignore)
+          RamenProcesses.start_export ~duration conf func |> ignore)
 
 (*
  * CLI

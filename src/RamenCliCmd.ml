@@ -381,38 +381,6 @@ let ps conf short pretty with_header sort_col top pattern all () =
  * tuples can reuse the same and benefit from a shared history.
  *)
 
-let header_of_type ?(with_seqnums=false) ?(with_event_time=false)
-                   ?(with_units=false) field_names typ =
-  let display_field =
-    Array.map (fun h ->
-      field_names = [] || List.mem h.RamenTuple.name field_names
-    ) typ in
-  let head =
-    Array.fold_lefti (fun lst i t ->
-      if display_field.(i) then
-        (RamenName.string_of_field t.RamenTuple.name ^
-         (if with_units then
-           Option.map_default RamenUnits.to_string "" t.units
-         else "")) :: lst
-      else lst
-    ) [] typ |> List.rev in
-  let head = if with_seqnums then "Seq" :: head else head in
-  let head =
-    if with_event_time then
-      "Event start" :: "Event end" :: head
-    else head in
-  display_field, head
-
-(* Check the entered field names are correct: *)
-let check_field_names typ field_names =
-  List.iter (fun fn ->
-    if not (List.exists (fun h -> fn = h.RamenTuple.name) typ) then
-      Printf.sprintf2 "Unknown field %a, should be one of %a"
-        RamenName.field_print fn
-        RamenTuple.print_typ_names typ |>
-      failwith
-  ) field_names
-
 let table_formatter pretty raw null units =
   (* TODO: reuse RamenTypes in TermTable *)
   let open RamenTypes in
@@ -487,6 +455,14 @@ let parse_func_name_of_code conf what func_name_or_code =
         (Printexc.to_string e2) |>
       failwith
 
+let head_of_types ~with_units head =
+  Array.map (fun t ->
+    RamenName.string_of_field t.RamenTuple.name ^
+       (if with_units then
+         Option.map_default RamenUnits.to_string "" t.units
+       else "")
+  ) head
+
 let tail_ conf fq field_names with_header with_units sep null raw
           last next min_seq max_seq continuous where since until
           with_seqnums with_event_time duration pretty flush =
@@ -531,13 +507,13 @@ let tail_ conf fq field_names with_header with_units sep null raw
    * the last N tuples or, TBD, since ts1 [until ts2]) and display
    * them *)
   let reorder_column = RingBufLib.reorder_tuple_to_user typ ser in
-  check_field_names typ field_names ;
+  RamenExport.check_field_names typ field_names ;
   let header = typ |> Array.of_list in
   let display_field, head =
-    header_of_type ~with_seqnums ~with_event_time ~with_units
-                   field_names header in
-  let head = Array.of_list head in
+    RamenExport.header_of_type ~with_seqnums ~with_event_time
+                               field_names header in
   let open TermTable in
+  let head = head_of_types ~with_units head in
   let print = print_table ~sep ~pretty ~with_header ~flush head in
   (* Pick a "printer" for each column according to the field type: *)
   let formatter = table_formatter pretty raw null
@@ -547,7 +523,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
       let _mre, _prog, func =
         C.with_rlock conf (fun programs ->
           C.find_func_or_fail programs fq) in
-      let _ = RamenExport.start conf ~duration func in
+      let _ = RamenProcesses.start_export conf ~duration func in
       (* Start by sleeping as we've just set the temp export above: *)
       Unix.sleepf (max 1. (duration -. 1.)) ;
       reset_export_timeout () in
@@ -634,238 +610,16 @@ let replay_ conf fq field_names with_header with_units sep null raw
             where since until with_event_time pretty flush =
   if with_units && not with_header then
     failwith "Option --with-units makes no sense without --with-header" ;
-  (* Start with the most hazardeous and interesting part: find a way to
-   * get the data that's being asked: *)
-  (* First, make sure the operation actually exist: *)
-  let programs = C.with_rlock conf identity in
-  let _mre, prog, func = C.find_func_or_fail programs fq in
-  check_field_names func.F.out_type field_names ;
-  (* Then, get the runtime stats.
-   * We assume all functions are runnint for now but this is not required
-   * for the replayer itself and for intermediary workers we might be
-   * able to start them temporarily, ourself (not involving supervisor),
-   * managing the our_ref ourself for this specific channel, once we've
-   * made sure supervisor will not "fix" the outrefs in that case... *)
-  let stats = RamenArchivist.load_stats conf in
-  (* Find a way to get the data from func in between from and until.
-   * Note that there could be several ways to obtain those. For instance,
-   * we could ask for a 1year retention of some node that queried very
-   * infrequently, and that is also a parent of some other node for which
-   * we asked for a much shorter retention but that is queried more often:
-   * in that case the archiver could well decide to archive both the
-   * parent and, as an optimisation, this child. Now which best (or only)
-   * path to query that child depends on since/until.
-   * But the shortest path form func to its archiving parents that have the
-   * required data is always the best. So start from func and progress
-   * through parents until we have found all required sources with the whole
-   * archived content. As a first attempt, just look for a parent that has
-   * all the data (avoid "roaming"). Then gaps could be queried independently
-   * (narrowed since/until might find the data). Or we could actually query all
-   * the gaps while the "main" query is going. TBD.  *)
-  (* Using stats, append to lst the list of all sources required to recall
-   * data from since to until, and also return the best times we have
-   * found so far: *)
-  (* TODO: handle gaps in archives (for instance, best_since and best_until
-   * could also come with a ratio of the coverage of the asked time
-   * slice) *)
-  let rec find_sources sources fqs since until =
-    (* When asked for several fqs, we want to retrieve the same time range from
-     * all of them. *)
-    List.fold_left (fun (sources, best_opt) fq ->
-      let sources, best_opt' = find_sources_single sources fq since until in
-      (* Keep only the intersection of the time range: *)
-      sources,
-      match best_opt, best_opt' with
-      | None, x -> x
-      | x, None -> x
-      | Some (t1, t2), Some (t1', t2') ->
-          Some (max t1 t1', min t2 t2')
-    ) (sources, None) fqs
-  and find_sources_single sources fq since until =
-    let s = Hashtbl.find stats fq in
-    let best_opt =
-      List.fold_left (fun best_opt (t1, t2) ->
-        if t1 > until || t2 < since then best_opt else
-        Some (max t1 since, min t2 until)
-      ) None s.RamenArchivist.archives in
-    !logger.debug "From %a, best_op=%a"
-      RamenName.fq_print fq
-      (Option.print (Tuple2.print Float.print Float.print)) best_opt ;
-    (* Take what we can from here and the rest from the parents: *)
-    match best_opt with
-    | Some (best_since, best_until) ->
-        let sources = fq :: sources in
-        (* Complete to the left: *)
-        let sources, best_opt =
-          if best_since <= since then sources, best_opt else
-          match find_sources sources s.parents since best_since with
-          | sources, Some (best_since', _best_until') ->
-              sources, Some (best_since', best_until)
-          | _ -> sources, best_opt in
-        (* Complete to the right: *)
-        let sources, best_opt =
-          if best_until >= until then sources, best_opt else
-          match find_sources sources s.parents best_until until with
-          | sources, Some (_best_since', best_until') ->
-              sources, Some (best_since, best_until')
-          | _ -> sources, best_opt in
-        sources, best_opt
-    | _ ->
-        find_sources sources s.parents since until
-  in
-  match find_sources_single [] fq since until with
-  | exception Not_found ->
-      !logger.error "Cannot find some parents in the stats?!"
-  | _, None ->
-      !logger.error "No archive found. Game over."
-  | sources, Some (best_since, best_until) ->
-      !logger.debug "List of required sources: %a"
-        (pretty_list_print RamenName.fq_print) sources ;
-      let rel = ref "" in
-      let p = print_as_date ~right_justified:false ~rel in
-      !logger.debug "Time slice covered: %a..%a"
-        p best_since p best_until ;
-      (* Then create a ringbuffer for reception: *)
-      let rb_name =
-        Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) in
-      RingBuf.create rb_name ;
-      let rb = RingBuf.load rb_name in
-      finally (fun () -> RingBuf.unload rb) (fun () ->
-        (* Pick a channel. They are cheap, we do not care if we fail
-         * in the next step: *)
-        let channel_id = RamenChannel.make conf in
-        (* Ask to export only the fields we want. From now on we'd better
-         * not fail and retry as we would hammer the out_ref with temp
-         * ringbufs.
-         * Maybe we should use the channel in the rb name, and pick a
-         * channel_id large enough to be a hash of FQ, output fields and
-         * dates? But that mean 256bits integers (2xU128?). *)
-        let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-        let in_type =
-          if field_names = [] then func.F.out_type
-          else
-            List.filter (fun ft ->
-              List.mem ft.RamenTuple.name field_names
-            ) func.F.out_type in
-        (* TODO: for now, we ask for all fields. Ask only for field_names,
-         * but beware of with_event_type! *)
-        let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
-        let timeout = Unix.gettimeofday () +. 300. in
-        let file_spec =
-          RamenOutRef.{ field_mask ; timeout ; channel = Some channel_id } in
-        let out_ref = C.out_ringbuf_names_ref conf func in
-        RamenOutRef.add out_ref (rb_name, file_spec) ;
-        (* Do not start the replay at once or the workers on the way won't
-         * have reread their out-ref: *)
-        Unix.sleepf Default.min_delay_restats ;
-        (* Now spawn the replayers.
-         * For each source, spawn a replayer, passing it the name of the
-         * function, the out_ref files to obey, the channel id to tag tuples
-         * with, and since/until dates. *)
-        let _, pids, eofs =
-          List.fold_left (fun (i, pids, eofs) sfq ->
-            let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
-            let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
-            and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
-            let env =
-              [| "name="^ RamenName.string_of_func sfunc.F.name ;
-                 "fq_name="^ RamenName.string_of_fq sfq ;
-                 "log_level="^ string_of_log_level conf.C.log_level ;
-                 "output_ringbufs_ref="^ out_ringbuf_ref ;
-                 "rb_archive="^ C.archive_buf_name conf sfunc ;
-                 "since="^ string_of_float since ;
-                 "until="^ string_of_float until ;
-                 "channel_id="^ RamenChannel.to_string channel_id ;
-                 "replayer_id="^ string_of_int i |] in
-            let pid = RamenProcesses.run_worker smre.C.bin args env in
-            !logger.debug "Replay for %a is running under pid %d"
-              RamenName.fq_print sfq pid ;
-            i + 1,
-            Set.Int.add pid pids,
-            Set.add i eofs
-          ) (0, Set.Int.empty, Set.empty) sources in
-        (* Read the rb while monitoring children: *)
-        let pids = ref pids and eofs = ref eofs in
-        let while_ () =
-          if not (Set.Int.is_empty !pids) then (
-            pids :=
-              waitall_once ~expected_status:ExitCodes.terminated
-                          ~what:"replayer" !pids ;
-            if Set.Int.is_empty !pids then
-              !logger.debug "All replayers have exited, \
-                             still waiting for %d EndOfReplay"
-                (Set.cardinal !eofs)) ;
-          (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
-          while_ () in
-        let formatter = table_formatter pretty raw null in
-        let event_time_of_tuple = match func.F.event_time with
-          | None ->
-              if with_event_time then
-                failwith "Function has no event time information"
-              else (fun _ -> 0., 0.)
-          | Some et ->
-              RamenSerialization.event_time_of_tuple
-                ser prog.P.params et
-        in
-        let unserialize =
-          RamenSerialization.read_array_of_values ser in
-        let reorder_column =
-          RingBufLib.reorder_tuple_to_user func.F.out_type ser in
-        let header = Array.of_list in_type in
-        let display_fields, head =
-          header_of_type ~with_event_time ~with_units field_names
-                         header in
-        let filter = RamenSerialization.filter_tuple_by ser where in
-        let head = Array.of_list head in
-        let open TermTable in
-        let print =
-          print_table ~na:null ~sep ~pretty ~with_header ~flush head in
-        RingBufLib.read_ringbuf ~while_ rb (fun tx ->
-          match RamenSerialization.read_tuple unserialize tx with
-          | RingBufLib.EndOfReplay (chan, replay_id), None ->
-            (if chan = channel_id then (
-              if Set.mem replay_id !eofs then (
-                !logger.debug "EndOfReplay from %d" replay_id ;
-                eofs := Set.remove replay_id !eofs
-              ) else
-                !logger.error "Received EndOfReplay from unknown replayer %d"
-                  replay_id
-            ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id)
-          | RingBufLib.DataTuple chan, Some tuple ->
-            (if chan = channel_id then (
-              if filter tuple then (
-                let t1, t2 = event_time_of_tuple tuple in
-                if t2 > since && t1 <= until then (
-                  let pref =
-                    if with_event_time then
-                      [ Some (ValDate t1) ; Some (ValDate t2) ]
-                    else [] in
-                  let cols = reorder_column tuple in
-                  let cols =
-                    Array.range cols //@
-                    (fun i ->
-                      if display_fields.(i) then
-                        Some (formatter header.(i).units cols.(i)) else None) |>
-                    Array.of_enum in
-                  let line =
-                    Array.(append (of_list pref) cols) in
-                  print line
-                ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
-              ) else !logger.debug "tuple filtered out"
-            ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id)
-          | _ ->
-              !logger.error "Received an unknown message in tx") ;
-        print [||] ;
-        (* In case we got all the eofs before all replayers have exited: *)
-        waitall ~while_ ~expected_status:ExitCodes.terminated
-                ~what:"replayer" !pids
-        ) () ;
-      (* If all went well, delete the ringbuf: *)
-      safe_unlink rb_name
+  let formatter = table_formatter pretty raw null in
+  RamenExport.replay conf ~while_ fq field_names where since until
+                     with_event_time (fun head ->
+      let head' = head_of_types ~with_units head in
+      let print = TermTable.print_table ~na:null ~sep ~pretty ~with_header
+                                        ~flush head' in
+      (fun tuple ->
+        let vals =
+          Array.mapi (fun i -> formatter head.(i).units) tuple in
+        print vals))
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
