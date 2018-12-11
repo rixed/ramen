@@ -43,18 +43,18 @@ Feature: test ramen tail
     And ramen must mention "z" on stderr.
 
   Scenario: Min and max-seqnum options are ANDed with a where expression.
-    When I run ramen with arguments tail -w x=3 --min 4 --max 6 test/gen
+    When I run ramen with arguments tail -w x=3 --min-seq 4 --max-seq 6 test/gen
     Then ramen must exit gracefully
     And ramen must print no line on stdout.
 
   Scenario: Two where options are ANDed.
-    When I run ramen with arguments tail -w x=3 -w y=42 --max 6 test/gen
+    When I run ramen with arguments tail -w x=3 -w y=42 --max-seq 6 test/gen
     Then ramen must exit gracefully
     And ramen must print 1 line on stdout
     And ramen must mention "42".
 
   Scenario: Min and max-seqnum are inclusive.
-    When I run ramen with arguments tail --min 2 --max 2 test/gen
+    When I run ramen with arguments tail --min-seq 2 --max-seq 2 test/gen
     Then ramen must exit gracefully
     And ramen must print 1 line on stdout
     And ramen must mention "42".
@@ -72,13 +72,13 @@ Feature: test ramen tail
     And ramen must mention "42".
 
   Scenario: Headers must not show private fields.
-    When I run ramen with arguments tail -h --min 2 --max 2 test/gen
+    When I run ramen with arguments tail -h --min-seq 2 --max-seq 2 test/gen
     Then ramen must exit gracefully
     And ramen must print 2 lines on stdout
     And ramen must not mention "_blue".
 
   Scenario: Private fields cannot be used as filter.
-    When I run ramen with arguments tail -h --min 2 --max 2 test/gen -w '_blue = "red"'
+    When I run ramen with arguments tail -h --min-seq 2 --max-seq 2 test/gen -w '_blue = "red"'
     Then ramen must fail gracefully
     And ramen must mention "_blue" on stderr.
 
