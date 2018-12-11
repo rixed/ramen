@@ -1194,10 +1194,11 @@ let replay
                                else ExitCodes.interrupted))) ;
   (* Ignore sigusr1: *)
   set_signals Sys.[sigusr1] Signal_ignore ;
-  !logger.debug "Will replay archive in %S" rb_archive ;
+  !logger.debug "Will replay archive from %S" rb_archive ;
   let outputer =
     outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                 serialize_tuple in
+  let num_replayed_tuples = ref 0 in
   let while_ () = !quit = None in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
@@ -1211,12 +1212,13 @@ let replay
             false (* Skip the rest of that file for safety *)
         | DataTuple chn, Some tuple when chn = RamenChannel.live ->
             CodeGenLib_IO.on_each_input_pre () ;
+            incr num_replayed_tuples ;
             (* As tuples are not ordered in the archive file we have
              * to read it all: *)
             outputer (RingBufLib.DataTuple channel_id) (Some tuple), true
         | DataTuple chn, _ ->
             (* This should not happen as we archive only the live channel: *)
-            !logger.debug "Read a tuple from channel %d (mine is %d)"
+            !logger.warning "Read a tuple from channel %d (mine is %d)"
               chn channel_id ;
             (), true
         | _ -> (), true) in
@@ -1251,5 +1253,6 @@ let replay
   loop_tuples_of_file rb_archive ;
   (* Before quitting, signal the end of this replay: *)
   outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
-  !logger.debug "Finished" ;
+  !logger.debug "Finished after having replayed %d tuples"
+    !num_replayed_tuples ;
   exit (!quit |? ExitCodes.terminated)
