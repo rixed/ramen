@@ -1,0 +1,14 @@
+[Unit]
+Description=Ramen HTTP server
+PartOf=ramen.target
+Documentation=https://rixed.github.io/ramen/man/httpd.html
+
+[Install]
+WantedBy=ramen.target
+
+[Service]
+EnvironmentFile=-/etc/default/ramen
+ExecStart=/usr/bin/ramen httpd --url=http://127.0.0.1:29380/ --graphite --stdout
+User=ramen
+Restart=always
+RestartSec=60

@@ -1,0 +1,2 @@
+RAMEN_PERSIST_DIR=/var/lib/ramen
+RAMEN_BUNDLE_DIR=/usr/lib/ramen/bundle

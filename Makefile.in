@@ -48,6 +48,10 @@ lib_dir ?= /usr/lib/ramen
 # Where examples are installed
 sample_dir ?= /var/lib/ramen
 
+# Where to install systemd configuration
+systemd_dir ?= /lib/systemd/system
+sysconf_dir ?= /etc/default
+
 all: $(INSTALLED)
 
 # Generic rules
@@ -612,6 +616,13 @@ install-examples:
 	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
 	   -exec sh -c 'cp {} $(DESTDIR)$(sample_dir)/$$(dirname {})' \;
 
+install-systemd:
+	@echo 'Installing systemd configuration into $(DESTDIR)$(systemd_dir)'
+	@install -d $(DESTDIR)$(systemd_dir)
+	@install -d $(DESTDIR)$(sysconf_dir)
+	@cp systemd/*.target systemd/*.service $(DESTDIR)$(systemd_dir)
+	@cp systemd/ramen $(DESTDIR)$(sysconf_dir)
+
 uninstall:
 	@ocamlfind remove ramen
 	@echo 'Uninstalling binaries and libraries bundle'
@@ -637,6 +648,7 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
+	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
 	@mkdir -p debtmp/DEBIAN
 	@cp debian.control debtmp/DEBIAN/control
 	@chmod -R a+x debtmp/usr
@@ -652,8 +664,9 @@ ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
 	@install $(Z3) tmp/ramen/
 	@for f in $(INSTALLED_BIN) z3; do strip tmp/ramen/$$(basename $$f); done
 	@chmod -R a+x tmp/ramen/*
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-examples
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples install-bundle
+	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
+	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
+	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
 	@tar c -C tmp ramen | gzip > $@
 
 # Docker images
