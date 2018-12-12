@@ -153,40 +153,43 @@ let replay conf ?(while_=always) fq field_names where since until
           Some (max t1 t1', min t2 t2')
     ) (sources, None) fqs
   and find_sources_single sources fq since until =
-    let s = Hashtbl.find stats fq in
-    let best_opt =
-      List.fold_left (fun best_opt (t1, t2) ->
-        if t1 > until || t2 < since then best_opt else
-        Some (max t1 since, min t2 until)
-      ) None s.RamenArchivist.archives in
-    !logger.debug "From %a, best_op=%a"
-      RamenName.fq_print fq
-      (Option.print (Tuple2.print Float.print Float.print)) best_opt ;
-    (* Take what we can from here and the rest from the parents: *)
-    match best_opt with
-    | Some (best_since, best_until) ->
-        let sources = fq :: sources in
-        (* Complete to the left: *)
-        let sources, best_opt =
-          if best_since <= since then sources, best_opt else
-          match find_sources sources s.parents since best_since with
-          | sources, Some (best_since', _best_until') ->
-              sources, Some (best_since', best_until)
-          | _ -> sources, best_opt in
-        (* Complete to the right: *)
-        let sources, best_opt =
-          if best_until >= until then sources, best_opt else
-          match find_sources sources s.parents best_until until with
-          | sources, Some (_best_since', best_until') ->
-              sources, Some (best_since, best_until')
-          | _ -> sources, best_opt in
-        sources, best_opt
-    | _ ->
-        find_sources sources s.parents since until
+    match Hashtbl.find stats fq with
+    |exception Not_found ->
+        Printf.sprintf2 "Cannot find %a in the stats"
+          RamenName.fq_print fq |>
+        failwith
+    | s ->
+        let best_opt =
+          List.fold_left (fun best_opt (t1, t2) ->
+            if t1 > until || t2 < since then best_opt else
+            Some (max t1 since, min t2 until)
+          ) None s.RamenArchivist.archives in
+        !logger.debug "From %a, best_op=%a"
+          RamenName.fq_print fq
+          (Option.print (Tuple2.print Float.print Float.print)) best_opt ;
+        (* Take what we can from here and the rest from the parents: *)
+        match best_opt with
+        | Some (best_since, best_until) ->
+            let sources = fq :: sources in
+            (* Complete to the left: *)
+            let sources, best_opt =
+              if best_since <= since then sources, best_opt else
+              match find_sources sources s.parents since best_since with
+              | sources, Some (best_since', _best_until') ->
+                  sources, Some (best_since', best_until)
+              | _ -> sources, best_opt in
+            (* Complete to the right: *)
+            let sources, best_opt =
+              if best_until >= until then sources, best_opt else
+              match find_sources sources s.parents best_until until with
+              | sources, Some (_best_since', best_until') ->
+                  sources, Some (best_since, best_until')
+              | _ -> sources, best_opt in
+            sources, best_opt
+        | _ ->
+            find_sources sources s.parents since until
   in
   match find_sources_single [] fq since until with
-  | exception Not_found ->
-      failwith "Cannot find some parents in the stats?!"
   | _, None ->
       !logger.warning "No archive found." ;
       on_exit ()

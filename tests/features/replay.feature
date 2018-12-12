@@ -17,7 +17,7 @@ Feature: test ramen replay in a simple setting
     And the environment variable RAMEN_BUNDLE_DIR is set
     And the environment variable RAMEN_ROOT is not defined
     # Speed up reports so archivist do not have to wait for too long:
-    And the environment variable RAMEN_REPORT_PERIOD is set to 2
+    And the environment variable RAMEN_REPORT_PERIOD is set to 1
     # Disable initial export so we can check archiving is setup properly:
     And the environment variable RAMEN_INITIAL_EXPORT is set to 0
     And a file ramen_persist_dir/archivist/v1/config with content

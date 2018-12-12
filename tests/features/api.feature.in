@@ -5,6 +5,8 @@ Feature: Test Ramen API from the command line.
   Background:
     Given ramen must be in the path
     And the environment variable RAMEN_BUNDLE_DIR is set
+    # Speed up reports so archivist do not have to wait for too long:
+    And the environment variable RAMEN_REPORT_PERIOD is set to 1
     And a file test.ramen with content
       """
       define color_of_the_day as
@@ -27,7 +29,7 @@ Feature: Test Ramen API from the command line.
       """
     And test.ramen is compiled
     And the program test is running.
-    And I wait 3 seconds
+    And I wait 5 seconds
     And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: Can get the version number from the API.
