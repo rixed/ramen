@@ -226,7 +226,8 @@ let filter_tuple_by ser where =
  * Note: mi is inclusive, ma exclusive *)
 let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
   let fold_rb from rb usr =
-    !logger.debug "fold_rb: from=%d, mi=%d" from mi ;
+    !logger.debug "fold_rb: from=%d, mi=%d, ma=%a"
+      from mi (Option.print Int.print) ma ;
     read_buf ?while_ ?wait_for_more rb (usr, from) (fun (usr, seq) tx ->
       !logger.debug "fold_seq_range: read_buf seq=%d" seq ;
       if seq < mi then (usr, seq + 1), true else
