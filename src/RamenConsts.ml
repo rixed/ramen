@@ -42,10 +42,10 @@ struct
     let outref_repairs = "workers_outref_repairs"
 
     (* Metrics reported by the notifier: *)
-    let notifs_count = "notifs_count"
-    let notifs_send_fails = "notifs_send_failures"
+    let messages_count = "messages_count"
+    let messages_send_fails = "notifs_send_failures"
     let team_fallbacks = "notifs_team_fallbacks"
-    let notifs_cancelled = "notifs_cancelled"
+    let messages_cancelled = "messages_cancelled"
 
     (* Metrics reported by the HTTP server: *)
     let requests_count = "http_requests_count"
