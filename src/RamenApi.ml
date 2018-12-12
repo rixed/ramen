@@ -601,8 +601,8 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
       Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
         (max 1 (round_to_int (a.duration /. a.time_step))) a.ratio ;
       Printf.fprintf oc "      AS firing\n" ;
-      Printf.fprintf oc "  NOTIFY %S || \" triggered\" || %S WITH\n"
-        (RamenName.string_of_field column)
+      Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S WITH\n"
+        (RamenName.string_of_field column) table
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       Printf.fprintf oc "    firing AS firing,\n" ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
