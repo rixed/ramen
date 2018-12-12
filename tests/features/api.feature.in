@@ -28,8 +28,9 @@ Feature: Test Ramen API from the command line.
         group by seq_key;
       """
     And test.ramen is compiled
-    And the program test is running.
-    And I wait 5 seconds
+    And ramen supervisor is started
+    And the program test is running
+    And I wait 10 seconds
     And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: Can get the version number from the API.
@@ -79,7 +80,6 @@ Feature: Test Ramen API from the command line.
     Then curl must mention ""group-key":true"
 
   Scenario: Can get some timeseries.
-    Given ramen supervisor is started
     And ramen httpd --url http://localhost:8042 --api is started
     When I wait 3 seconds
     And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9999999999,"num-points":5,"data":{"test/random_walk":{"select":["x"],"where":[{"lhs":"t","op":">=","rhs":"0"}]}}}}' http://localhost:8042
@@ -141,7 +141,6 @@ Feature: Test Ramen API from the command line.
     Then cat must mention "HYSTERESIS (filtered_value, 37.000000, 42.000000)"
 
   Scenario: time-step can replace num-points in get-timeseries.
-    Given ramen supervisor is started
     And ramen httpd --url http://localhost:8042 --api is started
     When I wait 3 seconds
     And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9,"time-step":60,"data":{"test/random_walk":{"select":["xyz","key"],"where":[{"lhs":"key","op":">=","rhs":"0"}]}}}}' http://localhost:8042
