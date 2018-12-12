@@ -503,13 +503,9 @@ let tail_ conf fq field_names with_header with_units sep null raw
   !logger.debug "Will display tuples from %a (incl) to %a (excl)"
     (Option.print Int.print) mi
     (Option.print Int.print) ma ;
-  (* Then, scan all present ringbufs in the requested range (either
-   * the last N tuples or, TBD, since ts1 [until ts2]) and display
-   * them *)
-  RamenExport.check_field_names typ field_names ;
+  let field_names = RamenExport.check_field_names typ field_names in
   let head_idx, head_typ =
-    RamenExport.header_of_type ~with_event_time
-                               field_names typ in
+    RamenExport.header_of_type ~with_event_time field_names typ in
   let open TermTable in
   let head_typ = Array.of_list head_typ in
   let head = head_of_types ~with_units head_typ in
@@ -539,6 +535,9 @@ let tail_ conf fq field_names with_header with_units sep null raw
         event_time_of_tuple ser params et
   in
   let unserialize = RamenSerialization.read_array_of_values ser in
+  (* Then, scan all present ringbufs in the requested range (either
+   * the last N tuples or, TBD, since ts1 [until ts2]) and display
+   * them *)
   fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () _m tx ->
     match RamenSerialization.read_tuple unserialize tx with
     | RingBufLib.DataTuple chan, Some tuple

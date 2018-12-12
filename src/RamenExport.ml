@@ -84,13 +84,20 @@ let header_of_type ?(with_event_time=false) field_names typ =
 
 (* Check the entered field names are correct: *)
 let check_field_names typ field_names =
-  List.iter (fun fn ->
-    if not (List.exists (fun h -> fn = h.RamenTuple.name) typ) then
-      Printf.sprintf2 "Unknown field %a, should be one of %a"
-        RamenName.field_print fn
-        RamenTuple.print_typ_names typ |>
-      failwith
-  ) field_names
+  (* Asking for no field names is asking for all: *)
+  if field_names = [] then
+    List.map (fun t ->
+      t.RamenTuple.name
+    ) typ
+  else (
+    List.iter (fun f ->
+      if not (List.exists (fun t -> f = t.RamenTuple.name) typ) then
+        Printf.sprintf2 "Unknown field %a, should be one of %a"
+          RamenName.field_print f
+          RamenTuple.print_typ_names typ |>
+        failwith
+    ) field_names ;
+    field_names)
 
 let replay conf ?(while_=always) fq field_names where since until
            with_event_time f =
@@ -99,13 +106,8 @@ let replay conf ?(while_=always) fq field_names where since until
   (* First, make sure the operation actually exist: *)
   let programs = C.with_rlock conf identity in
   let _mre, prog, func = C.find_func_or_fail programs fq in
-  check_field_names func.F.out_type field_names ;
+  let field_names = check_field_names func.F.out_type field_names in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-  (* Asking for no field names is asking for all: *)
-  let field_names =
-    if field_names = [] then
-      List.map (fun t -> t.RamenTuple.name) func.F.out_type
-    else field_names in
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names ser in
   let on_tuple, on_exit = f head_typ in
