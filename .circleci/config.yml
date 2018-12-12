@@ -37,4 +37,4 @@ jobs:
           name: Functional tests
           command: make func-check || make func-check
       - store_test_results:
-          path: tests/cli-results.json
+          path: tests/results

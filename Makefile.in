@@ -472,7 +472,8 @@ unit-check: all_tests.opt ringbuf_test.opt
 
 cli-check:
 	@echo 'Running CLI tests...'
-	@cd tests && cucumber -f pretty -f json -o cli-results.json
+	@mkdir -p tests/results/cli-check
+	@cd tests && cucumber -f pretty -f json -o results/cli-check/results.json
 
 RAMEN_TESTS = $(wildcard tests/*.test)
 
