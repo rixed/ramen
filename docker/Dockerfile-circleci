@@ -53,7 +53,7 @@ RUN opam install inotify qtest && \
     opam install --deps-only ramen
 
 # Install Cucumber
-RUN gem install --user-install cucumber rspec
+RUN gem install --user-install cucumber rspec rspec_junit_formatter minitest-ci
 
 COPY z3 /usr/bin/
 
