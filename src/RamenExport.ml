@@ -238,99 +238,101 @@ let replay conf ?(while_=always) fq field_names where since until
           RamenOutRef.{ field_mask ; timeout ; channel = Some channel_id } in
         let out_ref = C.out_ringbuf_names_ref conf func in
         RamenOutRef.add out_ref (rb_name, file_spec) ;
-        (* Do not start the replay at once or the worker won't have reread
-         * its out-ref. TODO: signal it. *)
-        Unix.sleepf Default.min_delay_restats ;
-        (* Now spawn the replayers.
-         * For each source, spawn a replayer, passing it the name of the
-         * function, the out_ref files to obey, the channel id to tag tuples
-         * with, and since/until dates. *)
-        let _, pids, eofs =
-          List.fold_left (fun (i, pids, eofs) sfq ->
-            let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
-            let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
-            and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
-            let env =
-              [| "name="^ RamenName.string_of_func sfunc.F.name ;
-                 "fq_name="^ RamenName.string_of_fq sfq ;
-                 "log_level="^ string_of_log_level conf.C.log_level ;
-                 "output_ringbufs_ref="^ out_ringbuf_ref ;
-                 "rb_archive="^ C.archive_buf_name conf sfunc ;
-                 "since="^ string_of_float since ;
-                 "until="^ string_of_float until ;
-                 "channel_id="^ RamenChannel.to_string channel_id ;
-                 "replayer_id="^ string_of_int i |] in
-            let pid = RamenProcesses.run_worker smre.C.bin args env in
-            !logger.debug "Replay for %a is running under pid %d"
-              RamenName.fq_print sfq pid ;
-            i + 1,
-            Set.Int.add pid pids,
-            Set.add i eofs
-          ) (0, Set.Int.empty, Set.empty) sources in
-        (* Read the rb while monitoring children: *)
-        let pids = ref pids and eofs = ref eofs in
-        let while_ () =
-          if not (Set.Int.is_empty !pids) then (
-            pids :=
-              waitall_once ~expected_status:ExitCodes.terminated
-                          ~what:"replayer" !pids ;
-            if Set.Int.is_empty !pids then
-              !logger.debug "All replayers have exited, \
-                             still waiting for %d EndOfReplay"
-                (Set.cardinal !eofs)) ;
-          (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
-          while_ () in
-        let event_time_of_tuple = match func.F.event_time with
-          | None ->
-              if with_event_time then
-                failwith "Function has no event time information"
-              else (fun _ -> 0., 0.)
-          | Some et ->
-              RamenSerialization.event_time_of_tuple
-                ser prog.P.params et
-        in
-        let unserialize =
-          RamenSerialization.read_array_of_values ser in
-        let filter = RamenSerialization.filter_tuple_by ser where in
-        RingBufLib.read_ringbuf ~while_ rb (fun tx ->
-          match RamenSerialization.read_tuple unserialize tx with
-          | RingBufLib.EndOfReplay (chan, replay_id), None ->
-            if chan = channel_id then (
-              if Set.mem replay_id !eofs then (
-                !logger.debug "EndOfReplay from %d" replay_id ;
-                eofs := Set.remove replay_id !eofs
+        finally (fun () -> RamenOutRef.remove out_ref rb_name) (fun () ->
+          (* Do not start the replay at once or the worker won't have reread
+           * its out-ref. TODO: signal it. *)
+          Unix.sleepf Default.min_delay_restats ;
+          (* Now spawn the replayers.
+           * For each source, spawn a replayer, passing it the name of the
+           * function, the out_ref files to obey, the channel id to tag tuples
+           * with, and since/until dates. *)
+          let _, pids, eofs =
+            List.fold_left (fun (i, pids, eofs) sfq ->
+              let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
+              let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
+              and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
+              let env =
+                [| "name="^ RamenName.string_of_func sfunc.F.name ;
+                   "fq_name="^ RamenName.string_of_fq sfq ;
+                   "log_level="^ string_of_log_level conf.C.log_level ;
+                   "output_ringbufs_ref="^ out_ringbuf_ref ;
+                   "rb_archive="^ C.archive_buf_name conf sfunc ;
+                   "since="^ string_of_float since ;
+                   "until="^ string_of_float until ;
+                   "channel_id="^ RamenChannel.to_string channel_id ;
+                   "replayer_id="^ string_of_int i |] in
+              let pid = RamenProcesses.run_worker smre.C.bin args env in
+              !logger.debug "Replay for %a is running under pid %d"
+                RamenName.fq_print sfq pid ;
+              i + 1,
+              Set.Int.add pid pids,
+              Set.add i eofs
+            ) (0, Set.Int.empty, Set.empty) sources in
+          (* Read the rb while monitoring children: *)
+          let pids = ref pids and eofs = ref eofs in
+          let while_ () =
+            if not (Set.Int.is_empty !pids) then (
+              pids :=
+                waitall_once ~expected_status:ExitCodes.terminated
+                            ~what:"replayer" !pids ;
+              if Set.Int.is_empty !pids then
+                !logger.debug "All replayers have exited, \
+                               still waiting for %d EndOfReplay"
+                  (Set.cardinal !eofs)) ;
+            (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
+            while_ () in
+          let event_time_of_tuple = match func.F.event_time with
+            | None ->
+                if with_event_time then
+                  failwith "Function has no event time information"
+                else (fun _ -> 0., 0.)
+            | Some et ->
+                RamenSerialization.event_time_of_tuple
+                  ser prog.P.params et
+          in
+          let unserialize =
+            RamenSerialization.read_array_of_values ser in
+          let filter = RamenSerialization.filter_tuple_by ser where in
+          RingBufLib.read_ringbuf ~while_ rb (fun tx ->
+            match RamenSerialization.read_tuple unserialize tx with
+            | RingBufLib.EndOfReplay (chan, replay_id), None ->
+              if chan = channel_id then (
+                if Set.mem replay_id !eofs then (
+                  !logger.debug "EndOfReplay from %d" replay_id ;
+                  eofs := Set.remove replay_id !eofs
+                ) else
+                  !logger.error "Received EndOfReplay from unknown replayer %d"
+                    replay_id
               ) else
-                !logger.error "Received EndOfReplay from unknown replayer %d"
-                  replay_id
-            ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id
-          | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
-            if chan = channel_id then (
-              if filter tuple then (
-                let t1, t2 = event_time_of_tuple tuple in
-                if t2 > since && t1 <= until then (
-                  let cols =
-                    Array.map (fun idx ->
-                      match idx with
-                      | -2 -> RamenTypes.VFloat t2
-                      | -1 -> RamenTypes.VFloat t1
-                      | idx -> tuple.(idx)
-                    ) head_idx in
-                  on_tuple t1 t2 cols
-                ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
-              ) else !logger.debug "tuple filtered out"
-            ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel_id
-          | _ ->
-              !logger.error "Received an unknown message in tx") ;
-        (* Signal the end of the replay: *)
-        let ret = on_exit () in
-        (* In case we got all the eofs before all replayers have exited: *)
-        waitall ~while_ ~expected_status:ExitCodes.terminated
-                ~what:"replayer" !pids ;
-        ret
+                !logger.error "Received EndOfReplay for channel %d not %d"
+                  chan channel_id
+            | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
+              if chan = channel_id then (
+                if filter tuple then (
+                  let t1, t2 = event_time_of_tuple tuple in
+                  if t2 > since && t1 <= until then (
+                    let cols =
+                      Array.map (fun idx ->
+                        match idx with
+                        | -2 -> RamenTypes.VFloat t2
+                        | -1 -> RamenTypes.VFloat t1
+                        | idx -> tuple.(idx)
+                      ) head_idx in
+                    on_tuple t1 t2 cols
+                  ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                ) else !logger.debug "tuple filtered out"
+              ) else
+                !logger.error "Received EndOfReplay for channel %d not %d"
+                  chan channel_id
+            | _ ->
+                !logger.error "Received an unknown message in tx") ;
+          (* Signal the end of the replay: *)
+          let ret = on_exit () in
+          (* In case we got all the eofs before all replayers have exited: *)
+          waitall ~while_ ~expected_status:ExitCodes.terminated
+                  ~what:"replayer" !pids ;
+          ret
+        ) ()
       ) () in
       (* If all went well, delete the ringbuf: *)
       safe_unlink rb_name ;
