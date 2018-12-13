@@ -87,3 +87,9 @@ Feature: test ramen tail
     Then ramen must print more than 4 lines on stdout
     And ramen must mention "43"
     And ramen must exit gracefully.
+
+  Scenario: this works also when the function is in a single argument.
+    When I run ramen with arguments tail -n 3 -h -- 'select y+1 AS z from test/gen'
+    Then ramen must print more than 4 lines on stdout
+    And ramen must mention "43"
+    And ramen must exit gracefully.
