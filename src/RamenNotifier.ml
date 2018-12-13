@@ -354,7 +354,7 @@ let save_pendings conf =
 
 let restore_pendings conf =
   let fname = C.pending_notifications_file conf in
-  (match ppp_of_file saved_pendings_ppp_ocaml fname with
+  (match ppp_of_file ~error_ok:true saved_pendings_ppp_ocaml fname with
   | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
   | lst ->
       pendings.set <- PendingSet.of_list lst) ;
@@ -368,11 +368,12 @@ let restore_pendings conf =
     ) pendings.set (RamenHeap.empty, 0, None) in
   pendings.heap <- heap ;
   pendings.dirty <- false ;
-  !logger.info "Start with %d tasks%s"
-    count
-    (match mi_ma with None -> ""
-     | Some (mi, ma) -> " scheduled from "^ string_of_time mi
-                        ^" to "^ string_of_time ma)
+  if count > 0 then
+    !logger.info "Start with %d tasks%s"
+      count
+      (match mi_ma with None -> ""
+       | Some (mi, ma) -> " scheduled from "^ string_of_time mi
+                          ^" to "^ string_of_time ma)
 
 (* When we receive a notification that an alert is no more firing, we must
  * cancel pending delivery or send the end of alert notification.

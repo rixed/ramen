@@ -28,7 +28,8 @@ let run_httpd conf server_url api graphite fault_injection_rate =
     RamenHttpHelpers.not_found (Printf.sprintf "Unknown resource %S" path)
   in
   let router = Option.map_default (fun prefix ->
-    !logger.info "Starting Graphite impersonator on %S" prefix ;
+    !logger.info "Starting Graphite impersonator on %S"
+      (if prefix = "" then "/" else prefix) ;
     RamenGraphite.router conf prefix) router graphite ++ router in
   let router = Option.map_default (fun prefix ->
     !logger.info "Serving custom API on %S" prefix ;
