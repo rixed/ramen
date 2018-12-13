@@ -146,7 +146,7 @@ let max_archives =
 let loop =
   let i = Arg.info ~doc:CliInfo.loop
                    ["loop"] in
-  Arg.(value (opt float ~vopt:3600. 0. i))
+  Arg.(value (opt (some float) ~vopt:None (Some 0.) i))
 
 let dry_run =
   let i = Arg.info ~doc:CliInfo.dry_run

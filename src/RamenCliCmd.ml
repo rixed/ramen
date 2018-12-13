@@ -247,8 +247,9 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
-  if daemonize && loop = 0. then
+  if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
+  let loop = loop |? Default.gc_loop in
   if to_syslog then
     init_syslog conf.C.log_level
   else (
@@ -812,6 +813,9 @@ let archivist conf loop daemonize no_stats no_allocs no_reconf
     failwith "Options --syslog and --stdout are incompatible." ;
   if no_stats && no_allocs && no_reconf then
     failwith "Nothing to do then?" ;
+  if daemonize && loop = Some 0. then
+    failwith "It makes no sense to --daemonize without --loop." ;
+  let loop = loop |? Default.archivist_loop in
   if to_syslog then
     init_syslog conf.C.log_level
   else (

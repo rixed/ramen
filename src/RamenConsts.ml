@@ -273,6 +273,13 @@ struct
 
   (* Minimum delay between two successive stats of the out-ref file: *)
   let min_delay_restats = 0.1
+
+  (* How frequently to run the GC: *)
+  let gc_loop = 3600.
+
+  (* How frequently should the archivist reallocate disk space and
+   * reconfigure workers archival behavior: *)
+  let archivist_loop = 3600.
 end
 
 module SpecialFunctions =
