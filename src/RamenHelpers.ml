@@ -1499,7 +1499,7 @@ let ppp_of_file ?(error_ok=false) ppp =
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_of_file_def 0.)
 
-let ppp_to_fd ?pretty fd ppp v =
+let ppp_to_fd ?pretty ppp fd v =
   Unix.(lseek fd 0 SEEK_SET) |> ignore ;
   let str = PPP.to_string ?pretty ppp v in
   let len = String.length str in

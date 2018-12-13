@@ -55,7 +55,7 @@ let file_spec_still_valid now (_, timeout, _) =
 
 let write_ fname fd c =
   fail_with_context ("Writing out_ref "^ fname) (fun () ->
-    ppp_to_fd fd out_ref_conf_ppp_ocaml c)
+    ppp_to_fd out_ref_conf_ppp_ocaml fd c)
 
 let read_ fname fd =
   fail_with_context ("Reading out_ref "^ fname) (fun () ->

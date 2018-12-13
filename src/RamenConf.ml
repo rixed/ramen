@@ -285,7 +285,7 @@ let read_rc_file =
 let save_rc_file do_persist fd rc =
   if do_persist then
     fail_with_context "Saving RC file"
-      (fun () -> ppp_to_fd ~pretty:true fd must_run_file_ppp_ocaml rc)
+      (fun () -> ppp_to_fd ~pretty:true must_run_file_ppp_ocaml fd rc)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
