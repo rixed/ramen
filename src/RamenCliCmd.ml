@@ -520,7 +520,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
     (Option.print Int.print) ma ;
   let field_names = RamenExport.check_field_names typ field_names in
   let head_idx, head_typ =
-    RamenExport.header_of_type ~with_event_time field_names typ in
+    RamenExport.header_of_type ~with_event_time field_names ser in
   let open TermTable in
   let head_typ = Array.of_list head_typ in
   let head = head_of_types ~with_units head_typ in
