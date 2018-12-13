@@ -99,25 +99,9 @@ let check_field_names typ field_names =
     ) field_names ;
     field_names)
 
-let replay conf ?(while_=always) fq field_names where since until
-           with_event_time f =
-  (* Start with the most hazardous and interesting part: find a way to
-   * get the data that's being asked: *)
-  (* First, make sure the operation actually exist: *)
-  let programs = C.with_rlock conf identity in
-  let _mre, prog, func = C.find_func_or_fail programs fq in
-  let field_names = check_field_names func.F.out_type field_names in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
-  let head_idx, head_typ =
-    header_of_type ~with_event_time field_names ser in
-  let on_tuple, on_exit = f head_typ in
-  (* Then, get the runtime stats.
-   * We assume all functions are running for now but this is not required
-   * for the replayer itself and for intermediary workers we might be
-   * able to start them temporarily, ourself (not involving supervisor),
-   * managing the our_ref ourself for this specific channel, once we've
-   * made sure supervisor will not "fix" the outrefs in that case... *)
-  let stats = RamenArchivist.load_stats conf in
+exception NotInStats of RamenName.fq
+
+let find_replay_sources conf ?while_ fq since until =
   (* Find a way to get the data from func in between from and until.
    * Note that there could be several ways to obtain those. For instance,
    * we could ask for a 1year retention of some node that queried very
@@ -139,11 +123,12 @@ let replay conf ?(while_=always) fq field_names where since until
   (* TODO: handle gaps in archives (for instance, best_since and best_until
    * could also come with a ratio of the coverage of the asked time
    * slice) *)
-  let rec find_sources sources fqs since until =
+  let rec find_sources stats sources fqs since until =
     (* When asked for several fqs, we want to retrieve the same time range from
      * all of them. *)
     List.fold_left (fun (sources, best_opt) fq ->
-      let sources, best_opt' = find_sources_single sources fq since until in
+      let sources, best_opt' =
+        find_sources_single stats sources fq since until in
       (* Keep only the intersection of the time range: *)
       sources,
       match best_opt, best_opt' with
@@ -152,12 +137,10 @@ let replay conf ?(while_=always) fq field_names where since until
       | Some (t1, t2), Some (t1', t2') ->
           Some (max t1 t1', min t2 t2')
     ) (sources, None) fqs
-  and find_sources_single sources fq since until =
+  and find_sources_single stats sources fq since until =
     match Hashtbl.find stats fq with
-    |exception Not_found ->
-        Printf.sprintf2 "Cannot find %a in the stats"
-          RamenName.fq_print fq |>
-        failwith
+    | exception Not_found ->
+        raise (NotInStats fq)
     | s ->
         let best_opt =
           List.fold_left (fun best_opt (t1, t2) ->
@@ -174,22 +157,54 @@ let replay conf ?(while_=always) fq field_names where since until
             (* Complete to the left: *)
             let sources, best_opt =
               if best_since <= since then sources, best_opt else
-              match find_sources sources s.parents since best_since with
+              match find_sources stats sources s.parents since best_since with
               | sources, Some (best_since', _best_until') ->
                   sources, Some (best_since', best_until)
               | _ -> sources, best_opt in
             (* Complete to the right: *)
             let sources, best_opt =
               if best_until >= until then sources, best_opt else
-              match find_sources sources s.parents best_until until with
+              match find_sources stats sources s.parents best_until until with
               | sources, Some (_best_since', best_until') ->
                   sources, Some (best_since, best_until')
               | _ -> sources, best_opt in
             sources, best_opt
         | _ ->
-            find_sources sources s.parents since until
+            find_sources stats sources s.parents since until
   in
-  match find_sources_single [] fq since until with
+  (* We assume all functions are running for now but this is not required
+   * for the replayer itself and for intermediary workers we might be
+   * able to start them temporarily, ourself (not involving supervisor),
+   * managing the our_ref ourself for this specific channel, once we've
+   * made sure supervisor will not "fix" the outrefs in that case... *)
+  let stats = RamenArchivist.load_stats conf in
+  try find_sources_single stats [] fq since until
+  with NotInStats _ ->
+    (* Maybe those are old, let's take the time to update them: *)
+    !logger.debug "Trying to rebuilt the stats file" ;
+    RamenArchivist.update_worker_stats ?while_ conf ;
+    let stats = RamenArchivist.load_stats conf in
+    try find_sources_single stats [] fq since until
+    with NotInStats fq ->
+      Printf.sprintf2 "Cannot find %a in the stats"
+        RamenName.fq_print fq |>
+      failwith
+
+
+let replay conf ?(while_=always) fq field_names where since until
+           with_event_time f =
+  (* Start with the most hazardous and interesting part: find a way to
+   * get the data that's being asked: *)
+  (* First, make sure the operation actually exist: *)
+  let programs = C.with_rlock conf identity in
+  let _mre, prog, func = C.find_func_or_fail programs fq in
+  let field_names = check_field_names func.F.out_type field_names in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  let head_idx, head_typ =
+    header_of_type ~with_event_time field_names ser in
+  let on_tuple, on_exit = f head_typ in
+  (* Using the archivist stats, find out all required sources: *)
+  match find_replay_sources conf ~while_ fq since until with
   | _, None ->
       !logger.warning "No archive found." ;
       on_exit ()

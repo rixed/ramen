@@ -129,11 +129,12 @@ type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
 let load_stats conf =
   let fname = conf_dir conf ^ "/stats" in
   ensure_file_exists ~contents:"{}" fname ;
-  ppp_of_file per_func_stats_ser_ppp_ocaml fname
+  RamenAdvLock.with_r_lock fname (ppp_of_fd per_func_stats_ser_ppp_ocaml)
 
 let save_stats conf stats =
   let fname = conf_dir conf ^ "/stats" in
-  ppp_to_file ~pretty:true fname per_func_stats_ser_ppp_ocaml stats
+  RamenAdvLock.with_w_lock fname (fun fd ->
+    ppp_to_fd ~pretty:true per_func_stats_ser_ppp_ocaml fd stats)
 
 (* Then we also need the RC as we also need to know the workers relationships
  * in order to estimate how expensive it is to rely on parents as opposed to
@@ -233,7 +234,6 @@ let update_worker_stats ?while_ conf =
     ) per_func_stats
   ) ;
   enrich_stats conf per_func_stats ;
-
   Hashtbl.map (fun _fq -> function
     | tot, None -> tot
     | tot, Some (_, last) -> add_ps_stats tot last now
