@@ -3,15 +3,16 @@
  * as old versions of ramen configuration. *)
 open Batteries
 open Str
+open Unix
 open RamenLog
 open RamenHelpers
 module C = RamenConf
 
 let get_log_file () =
-  Unix.gettimeofday () |> Unix.localtime |> log_file
+  gettimeofday () |> localtime |> log_file
 
 let delete_directory fname = (* TODO: should really delete *)
-  Unix.rename fname (fname ^".todel")
+  rename fname (fname ^".todel")
 
 let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
 let v_regexp = regexp "v[0-9]+"
@@ -22,8 +23,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
   !logger.debug "Cleaning directory %s..." dir ;
   (* Error in there will be delivered to the stream reader: *)
   match Sys.files_of dir with
-  | exception (Unix.Unix_error (Unix.ENOENT, _, _) |
-               Sys_error _) ->
+  | exception (Unix_error (ENOENT, _, _) | Sys_error _) ->
       (* No such directory is OK: *)
       ()
   | exception exn ->
@@ -33,7 +33,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       let full_path = dir ^"/"^ fname in
       if fname = current_version then (
         if not dry_run then
-          touch_file full_path (Unix.gettimeofday ())
+          touch_file full_path (gettimeofday ())
       ) else if string_match sub_re fname 0 &&
                 is_directory full_path &&
                 (* TODO: should be a few days *)
@@ -88,7 +88,7 @@ let cleanup_once conf dry_run max_archives =
         let pref = Filename.(basename fpath |> remove_extension) in
         Array.iter (fun fname ->
           if String.starts_with fname pref then
-            log_and_ignore_exceptions Unix.unlink fpath ;
+            log_and_ignore_exceptions unlink fpath ;
         ) files
       ) ;
     done
@@ -110,4 +110,4 @@ let cleanup_loop conf dry_run sleep_time max_archives =
   forever (fun () ->
     cleanup_once conf dry_run max_archives ;
     RamenWatchdog.reset watchdog ;
-    Unix.sleepf (jitter sleep_time)) ()
+    sleepf (jitter sleep_time)) ()
