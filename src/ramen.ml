@@ -356,11 +356,11 @@ let program_globs =
                    ~docv:"PROGRAM" [] in
   Arg.(non_empty (pos_all string [] i))
 
-let root_path =
-  let env = Term.env_info "RAMEN_ROOT" in
-  let i = Arg.info ~doc:CliInfo.root_path
-                   ~env [ "root-path" ] in
-  Arg.(value (opt string "." i))
+let lib_path =
+  let env = Term.env_info "RAMEN_PATH" in
+  let i = Arg.info ~doc:CliInfo.lib_path
+                   ~env [ "lib-path" ; "L" ] in
+  Arg.(value (opt (some string) None i))
 
 let src_files =
   let i = Arg.info ~doc:CliInfo.src_files
@@ -389,25 +389,18 @@ let as_ =
                    ~docv:"NAME" [ "as" ] in
   Arg.(value (opt (some program) None i))
 
-let parents_from_rc =
-  let i = Arg.info ~doc:CliInfo.parents_from_rc
-                   [ "parents-from-rc" ;
-                     "parents-from-running-configuration" ] in
-  Arg.(value (flag i))
-
 let compile =
   Term.(
     (const RamenCliCmd.compile
       $ copts
-      $ root_path
+      $ lib_path
       $ external_compiler
       $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ src_files
       $ output_file
-      $ as_
-      $ parents_from_rc),
+      $ as_),
     info ~doc:CliInfo.compile "compile")
 
 let replace =

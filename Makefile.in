@@ -487,7 +487,7 @@ RAMEN_TESTS_SOURCES = \
 
 %.x: %.ramen src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --bundle=bundle $< -o $@
+	@src/ramen compile --bundle=bundle -L . $< -o $@
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
@@ -558,13 +558,14 @@ func-check: $(RAMEN_TESTS:.test=.success)
 err-check: src/ramen $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
-		t=$$(mktemp) ;\
-		src/ramen compile --quiet $$f 2>&1 >/dev/null | sed 1d > $$t ;\
-		if ! diff -q $$f.err $$t ; then \
-			echo "FAILURE: $$f" ;\
-			exit 1 ;\
-		fi ;\
-		$(RM) $$t ;\
+	  t=$$(mktemp) ;\
+	  src/ramen compile --quiet -L tests/errors $$f 2>&1 >/dev/null |\
+	    sed 1d > $$t ;\
+	  if ! diff -q $$f.err $$t ; then \
+	    echo "FAILURE: $$f" ;\
+	    exit 1 ;\
+	  fi ;\
+	  $(RM) $$t ;\
 	done ;\
 	echo SUCCESS
 

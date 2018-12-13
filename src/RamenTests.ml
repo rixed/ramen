@@ -397,12 +397,6 @@ let check_test_spec conf test =
                 failwith
             ) tuple))
 
-(* The given [root_path] is where to get the parent of our code, and will be
- * set as the dirname of the test file (where bins are looked into), so that
- * we can select from any bin file. This prevent us from selecting from
- * another literate program though.
- * TODO: set the root_path used here and to find the bins as a command line
- * parameter of `ramen test`. *)
 let bin_of_program conf get_parent program_name program_code =
   let exec_file =
     C.test_literal_programs_root conf ^"/"^

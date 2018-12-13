@@ -3,7 +3,7 @@ Feature: check that the CLI behave in a sensible way
   Background:
     Given ramen must be in the path
     And the environment variable RAMEN_BUNDLE_DIR is set
-    And the environment variable RAMEN_ROOT is not defined
+    And the environment variable RAMEN_PATH is not defined
     And a file tests/p.ramen with content
       """
       define f as yield "glop" as glop every 1 second;

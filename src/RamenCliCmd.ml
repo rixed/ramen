@@ -150,9 +150,9 @@ let notify conf parameters notif_name () =
  *)
 
 (* Note: We need a program name to identify relative parents. *)
-let compile conf root_path use_external_compiler bundle_dir
+let compile conf lib_path use_external_compiler bundle_dir
             max_simult_compils smt_solver source_files
-            output_file_opt program_name_opt parents_from_rc () =
+            output_file_opt program_name_opt () =
   let many_source_files = List.length source_files > 1 in
   if many_source_files && program_name_opt <> None then
     failwith "Cannot specify the program name for several source files" ;
@@ -161,26 +161,36 @@ let compile conf root_path use_external_compiler bundle_dir
    * here: *)
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
-  let root_path = absolute_path_of root_path in
   let get_parent =
-    if parents_from_rc then
+    match lib_path with
+    | None ->
       let programs = C.with_rlock conf identity in
       RamenCompiler.parent_from_programs programs
-    else
-      RamenCompiler.parent_from_root_path root_path in
+    | Some p ->
+      let lib_path = absolute_path_of p in
+      RamenCompiler.parent_from_lib_path lib_path in
   let all_ok = ref true in
   let compile_file source_file =
+    let program_name_opt =
+      if program_name_opt <> None then
+        program_name_opt
+      else
+        (* Try to get an idea from the lib-path: *)
+        Option.bind lib_path (fun p ->
+          try
+            Filename.remove_extension source_file |>
+            rel_path_from (absolute_path_of p) |>
+            RamenName.program_of_string |>
+            Option.some
+          with Failure s ->
+            !logger.debug "%s" s ;
+            None) in
     let program_name =
-      Option.default_delayed (fun () ->
-        try
-          rel_path_from root_path (Filename.remove_extension source_file) |>
-          RamenName.program_of_string
-        with Failure s ->
-          !logger.error "%s" s ;
-          !logger.error "No program name given and cannot find out from the \
-                         file name, giving up!" ;
-          exit 1
-      ) program_name_opt in
+      match program_name_opt with
+      | Some p -> p
+      | None ->
+          failwith "No program name given and cannot guess from the lib-path"
+    in
     let output_file =
       Option.default_delayed (fun () ->
         Filename.remove_extension source_file ^".x"

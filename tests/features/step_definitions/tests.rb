@@ -141,9 +141,9 @@ end
 Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
   if prog_name then
     # We want both the program and the binary to have that name, for autoreload
-    `ramen compile #{source} --as #{prog_name} -o #{prog_name}.x`
+    `ramen compile -L . #{source} --as #{prog_name} -o #{prog_name}.x`
   else
-    `ramen compile #{source}`
+    `ramen compile -L . #{source}`
   end
 end
 

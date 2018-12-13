@@ -493,16 +493,16 @@ let absolute_path_of ?cwd path =
     (absolute_path_of ~cwd:"/tmp" "ramen_root/junkie/csv.x")
  *)
 
-let rel_path_from root_path path =
+let rel_path_from lib_path path =
   (* If root path is null assume source file is already relative to root: *)
-  if root_path = "" then path else
-  let root = absolute_path_of root_path
+  if lib_path = "" then path else
+  let root = absolute_path_of lib_path
   and path = absolute_path_of path in
   if String.starts_with path root then
     let rl = String.length root in
     String.sub path rl (String.length path - rl)
   else
-    failwith ("Cannot locate "^ path ^" within "^ root_path)
+    failwith ("Cannot locate "^ path ^" within "^ lib_path)
 
 let int_of_fd fd : int = Obj.magic fd
 

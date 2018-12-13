@@ -234,11 +234,11 @@ struct
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
         condition = p.condition }
 
-  let bin_of_program_name root_path program_name =
+  let bin_of_program_name lib_path program_name =
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    root_path ^"/"^ RamenName.path_of_program program_name ^".x"
+    lib_path ^"/"^ RamenName.path_of_program program_name ^".x"
 end
 
 let running_config_file conf =

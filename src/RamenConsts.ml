@@ -160,7 +160,7 @@ struct
   let fail_for_good = "For tests: do not restart after a crash"
   let param = "Override parameter's P default value with V"
   let program_globs = "Program names"
-  let root_path = "Path where to find other programs"
+  let lib_path = "Path where to find other programs"
   let src_files = "Source files to compile"
   let replace =
     "If a program with the same name is already running, replace it"
@@ -215,8 +215,6 @@ struct
   let max_fpr = "max global false-positive rate"
   let output_file = "compiled file (with .x extension)"
   let program_name = "resulting program name"
-  let parents_from_rc =
-    "get parents from the running programs rather than from the file system."
   let no_abbrev = "do not abbreviate path names"
   let show_all = "display information on all links"
   let as_tree = "display links as a tree (imply --show-all)"

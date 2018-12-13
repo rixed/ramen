@@ -5,7 +5,7 @@ Feature: test ramen tail
   Background:
     Given ramen must be in the path
     And the environment variable RAMEN_BUNDLE_DIR is set
-    And the environment variable RAMEN_ROOT is not defined
+    And the environment variable RAMEN_PATH is not defined
     # Create a simple sequence generator
     And a file test.ramen with content
       """

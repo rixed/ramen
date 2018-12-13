@@ -43,8 +43,8 @@ let init use_external_compiler bundle_dir max_simult_compils smt_solver =
 (* Given a program name, retrieve its binary, either form the disk or
  * the running configuration: *)
 
-let parent_from_root_path root_path pn =
-  P.bin_of_program_name root_path pn |>
+let parent_from_lib_path lib_path pn =
+  P.bin_of_program_name lib_path pn |>
   P.of_bin pn (Hashtbl.create 0)
 
 let parent_from_programs programs pn =
@@ -121,8 +121,8 @@ let compile conf get_parent ~exec_file source_file program_name =
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
      * compiled programs that have to be present on disk in the same
-     * $RAMEN_ROOT. Note that we do not look at the running configuration,
-     * as we want to compile a program against a RAMEN_ROOT not against a
+     * lib-path. Note that we do not look at the running configuration,
+     * as we want to compile a program against a lib=path not against a
      * currently running instance.
      * This constraint programs to be compiled in a given order. *)
     (* Hash from function name to Func.t list of parents: *)
