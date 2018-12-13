@@ -953,7 +953,8 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
   let rec forever () =
     if while_ () then
       let recv_len, sockaddr =
-        recvfrom sock buffer 0 (Bytes.length buffer) [] in
+        restart_on_eintr ~while_ (fun () ->
+          recvfrom sock buffer 0 (Bytes.length buffer) []) () in
       let sender =
         match sockaddr with
         | ADDR_INET (addr, port) ->
