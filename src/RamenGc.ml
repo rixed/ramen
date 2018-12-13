@@ -22,7 +22,10 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
   !logger.debug "Cleaning directory %s..." dir ;
   (* Error in there will be delivered to the stream reader: *)
   match Sys.files_of dir with
-  | exception Unix.Unix_error (Unix.ENOENT, _, _) -> ()
+  | exception (Unix.Unix_error (Unix.ENOENT, _, _) |
+               Sys_error _) ->
+      (* No such directory is OK: *)
+      ()
   | exception exn ->
       !logger.error "Cannot list %s: %s" dir (Printexc.to_string exn)
   | files ->
