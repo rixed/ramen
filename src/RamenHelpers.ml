@@ -909,7 +909,7 @@ let string_of_time ts =
   | exception Unix_error (EINVAL, _, _) ->
       Printf.sprintf "Invalid date %f" ts
   | tm ->
-      Printf.sprintf "%04d-%02d-%02d %02dh%02dm%02ds"
+      Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d"
         (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
         tm.tm_hour tm.tm_min tm.tm_sec
 
@@ -1738,10 +1738,10 @@ let as_date ?rel ?(right_justified=true) t =
       loop (Array.length possible_cuts - 1)
 
 (*$= as_date & ~printer:(fun x -> x)
-  "2018-11-14 22h13m20s" (as_date ~rel:"" 1542230000.)
-  "2018-11-14 22h13m20s" (as_date ~rel:"1983-11-14 22h13m20s" 1542230000.)
-  "           22h13m20s" (as_date ~rel:"2018-11-14 08h12m32s" 1542230000.)
-  "              13m20s" (as_date ~rel:"2018-11-14 22h12m20s" 1542230000.)
+  "2018-11-14T22:13:20" (as_date ~rel:"" 1542230000.)
+  "2018-11-14T22:13:20" (as_date ~rel:"1983-11-14T22:13:20" 1542230000.)
+  "           22:13:20" (as_date ~rel:"2018-11-14T08:12:32" 1542230000.)
+  "              13:20" (as_date ~rel:"2018-11-14T22:12:20" 1542230000.)
 *)
 
 (* A pretty printer for timestamps, with the peculiarity that it tries to not
