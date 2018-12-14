@@ -84,6 +84,8 @@ let tot_ram_usage =
     let stat = Gc.quick_stat () in
     stat.Gc.heap_words * word_size
 
+(* Unfortunately, we cannot distinguish that easily between CPU/RAM usage for
+ * live channel and others: *)
 let update_stats () =
   FloatCounter.set stats_cpu (tot_cpu_time ()) ;
   IntGauge.set stats_ram (tot_ram_usage ())
@@ -1021,7 +1023,8 @@ let aggregate
         if where_fast s.global_state in_tuple merge_greatest s.last_out_tuple
         then (
           (* 2. Retrieve the group *)
-          IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
+          if channel_id = RamenChannel.live then
+            IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
           let k = key_of_input in_tuple in
           (* Update/create the group if it passes where_slow. *)
           match Hashtbl.find s.groups k with
@@ -1066,7 +1069,8 @@ let aggregate
       (match k_aggr_opt with
       | Some (k, g) ->
         (* 5. Post-condition to commit and flush *)
-        IntCounter.add stats_selected_tuple_count 1 ;
+        if channel_id = RamenChannel.live then
+          IntCounter.add stats_selected_tuple_count 1 ;
         if not commit_before then
           update_states g.last_in s.last_out_tuple
                         g.local_state s.global_state g.current_out ;
@@ -1110,8 +1114,9 @@ let aggregate
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
-        IntCounter.add stats_in_tuple_count 1 ;
-        IntCounter.add stats_rb_read_bytes tx_size ;
+        if channel_id = RamenChannel.live then (
+          IntCounter.add stats_in_tuple_count 1 ;
+          IntCounter.add stats_rb_read_bytes tx_size) ;
         (* Sort: add in_tuple into the heap of sorted tuples, update
          * smallest/greatest, and consider extracting the smallest. *)
         (* If we assume sort_last >= 2 then the sort buffer will never

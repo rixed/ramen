@@ -60,34 +60,39 @@ struct
   module Docs =
   struct
     let in_tuple_count =
-      "Number of received tuples that have been processed since the \
-       operation started."
+      "Number of received tuples since the worker has started (live channel \
+       only)."
     let selected_tuple_count =
-      "Number of received tuples that have passed the WHERE filter since the \
-       operation started."
+      "Number of received tuples that have passed the WHERE filter since \
+       the worker has started (live channel only)."
     let out_tuple_count =
-      "Number of tuples sent to each child of this operation since it \
-       started."
+      "Number of tuples sent to each child of this worker since it \
+       started (on live channel)."
     let group_count =
-      "Number of groups currently maintained."
+      "Number of groups currently maintained (for the live channel)."
     let cpu_time =
-      "Total CPU time spent in this operation so far."
+      "Total CPU time spent in this worker so far (regardless of the \
+       channel)."
     let ram_usage =
-      "Number of bytes currently allocated in the heap."
+      "Number of bytes currently allocated in the heap for that worker \
+       (regardless of the channel)."
     let max_ram_usage =
       "Maximum observed value of ram_usage."
     let rb_read_bytes =
-      "Number of bytes read from the input ring buffers so far."
+      "Number of bytes read from the input ring buffers so far (for the \
+       live channel only)."
     let rb_write_bytes =
-      "Number of bytes written in output ring buffers so far."
+      "Number of bytes written in all output ring buffers since that worker \
+       has started (regardless of the channel)."
     let rb_wait_read =
-      "Total number of seconds spent waiting for input to refill."
+      "Total number of seconds spent waiting for the input to refill."
     let rb_wait_write =
-      "Total number of seconds spent waiting for output to empty."
+      "Total number of seconds spent waiting for the output to empty."
     let last_out =
-      "When was the last output emitted."
+      "When was the last output emitted (for the live channel only)."
     let event_time =
-      "Current, minimum and maximum event start time emitted so far."
+      "Last, minimum and maximum (since startup) event time emitted \
+       (for the live channel only)."
   end
 end
 
