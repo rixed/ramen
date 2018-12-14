@@ -281,6 +281,10 @@ struct
 
   (* Autoreload every that many seconds: *)
   let autoreload = 5.
+
+  (* Display headers every that many lines (only once on top by default;
+   * 0 to disable headers) : *)
+  let header_every = max_int
 end
 
 module SpecialFunctions =

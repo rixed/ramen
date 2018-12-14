@@ -2,6 +2,7 @@
 open Batteries
 open RamenHelpers
 open RamenLog
+open RamenConsts
 
 (* TODO: reuse RamenTypes in TermTable *)
 type valtype =
@@ -57,16 +58,25 @@ let sort ~sort_col lines =
   List.fast_sort cmp lines
 
 let print_table_terse ~sep ~with_header ~na ~flush head =
-  if with_header then (
-    Array.print ~first:"" ~last:"" ~sep String.print stdout head ;
-    newline flush) ;
+  let lines_before_header = ref 0 in
+  let try_print_header () =
+    if with_header > 0 then
+      if !lines_before_header = 0 then (
+        Array.print ~first:"" ~last:"" ~sep String.print stdout head ;
+        newline flush ;
+        lines_before_header := with_header
+      ) else decr lines_before_header
+  in
+  (* We want the header to be printed even before receiving the first line: *)
+  try_print_header () ;
   function
   | [||] -> ()
   | line ->
       let pval oc v =
         String.print oc (Option.map_default string_of_val na v) in
       Array.print ~first:"" ~last:"" ~sep pval stdout line ;
-      newline flush
+      newline flush ;
+      try_print_header ()
 
 (* Formatters: given the list of all (string) values going in a column, and
  * the max width we want for that column, return a formatter for those
@@ -139,7 +149,7 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
     ) lines in
   let col_width = Array.create (Array.length head) 0 in
   let lines_to_size =
-    if with_header then head :: lines else lines in
+    if with_header > 0 then head :: lines else lines in
   List.iter (fun line ->
     Array.iteri (fun i s ->
       let len = String.length s in
@@ -156,7 +166,7 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
   let fmts = Array.mapi (fun i fmt ->
     fmt vals.(i) col_width.(i)) fmts in
   let col_sep = blue " | " in
-  if with_header then (
+  if with_header > 0 then (
     Array.iteri (fun i h ->
       let h = make_left_justify [] col_width.(i) h in
       Printf.printf "%s%s" (cyan h) col_sep
@@ -173,7 +183,6 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
 let print_table_pretty ~with_header ~na ~flush head =
   (* User can't wait until all the data is available before anything gets
    * printed so the table is reformatted from time to time. *)
-  let screen_length = 50 in
   let line_no = ref 0 in
   let lines = ref [] in
   function
@@ -183,16 +192,19 @@ let print_table_pretty ~with_header ~na ~flush head =
   | line ->
       lines := line :: !lines ;
       incr line_no ;
-      if !line_no >= screen_length then (
+      if !line_no >= with_header then (
         print_subtable_pretty ~with_header ~na ~flush head (List.rev !lines) ;
         lines := [] ;
         line_no := 0 ;
       )
 
 (* Note: sort_col starts at 1. *)
-let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
+let print_table ?(pretty=false) ?sort_col ?(with_header=0) ?top
                 ?(sep="\t") ?(na="n/a") ?(flush=false) head =
-  let with_header = with_header || pretty in
+  let with_header =
+    if with_header > 0 then with_header
+    else if pretty then Default.header_every
+    else 0 in
   let print_top =
     let line_no = ref 0
     and print =

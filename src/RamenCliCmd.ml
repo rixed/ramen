@@ -488,7 +488,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
               --{min,max}-seq are incompatible." ;
   if continuous && next <> None then
     failwith "Option --next and --continuous are incompatible." ;
-  if with_units && not with_header then
+  if with_units && with_header = 0 then
     failwith "Option --with-units makes no sense without --with-header" ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
@@ -616,7 +616,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
 
 let replay_ conf fq field_names with_header with_units sep null raw
             where since until with_event_time pretty flush =
-  if with_units && not with_header then
+  if with_units && with_header = 0 then
     failwith "Option --with-units makes no sense without --with-header" ;
   let formatter = table_formatter pretty raw null in
   RamenExport.replay conf ~while_ fq field_names where since until

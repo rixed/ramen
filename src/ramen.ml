@@ -294,7 +294,7 @@ let pretty =
 let with_header =
   let i = Arg.info ~doc:CliInfo.with_header
                    [ "h"; "with-header"; "header" ] in
-  Arg.(value (flag i))
+  Arg.(value (opt ~vopt:Default.header_every int 0 i))
 
 let sort_col =
   let i = Arg.info ~doc:CliInfo.sort_col

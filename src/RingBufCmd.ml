@@ -96,10 +96,10 @@ type func_status =
 let links conf no_abbrev show_all as_tree pretty with_header sort_col top
           pattern () =
   init_logger conf.C.log_level ;
-  if as_tree && (pretty || with_header || sort_col <> 1 || top <> None ||
+  if as_tree && (pretty || with_header > 0 || sort_col <> 1 || top <> None ||
                  show_all) then
     failwith "Option --as-tree is not compatible with --pretty, --header, \
-              --sort, --top and --show-all" ;
+              --sort, --top or --show-all" ;
   let pattern = Globs.compile pattern in
   (* Same to get the ringbuffer stats, but we never reread the stats (not
    * needed, and mtime wouldn't really work on those mmapped files *)
