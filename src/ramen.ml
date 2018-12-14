@@ -85,7 +85,7 @@ let autoreload =
   let env = Term.env_info "RAMEN_AUTORELOAD" in
   let i = Arg.info ~doc:CliInfo.autoreload
                    ~env ["autoreload"] in
-  Arg.(value (opt ~vopt:5. float 0. i))
+  Arg.(value (opt ~vopt:Default.autoreload float 0. i))
 
 let external_compiler =
   let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in

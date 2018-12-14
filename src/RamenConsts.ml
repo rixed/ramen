@@ -278,6 +278,9 @@ struct
   (* How frequently should the archivist reallocate disk space and
    * reconfigure workers archival behavior: *)
   let archivist_loop = 3600.
+
+  (* Autoreload every that many seconds: *)
+  let autoreload = 5.
 end
 
 module SpecialFunctions =
