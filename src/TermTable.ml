@@ -192,6 +192,7 @@ let print_table_pretty ~with_header ~na ~flush head =
 (* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=true) ?top
                 ?(sep="\t") ?(na="n/a") ?(flush=false) head =
+  let with_header = with_header || pretty in
   let print_top =
     let line_no = ref 0
     and print =
