@@ -428,9 +428,9 @@ let time_of_graphite_time s =
 (* We output the field name and then a list of factor=value, to be simplified
  * later to remove all common values: *)
 let target_name_of used_factors fvals =
-  List.fold_left2 (fun res f v ->
-    (f, v) :: res
-  ) [] used_factors fvals
+  List.fold_lefti (fun res i f ->
+    (f, fvals.(i)) :: res
+  ) [] used_factors
 
 (* Used to cound number of occurrences of names in labels: *)
 module SimpleSet =

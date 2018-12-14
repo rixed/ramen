@@ -97,28 +97,27 @@ let get conf num_points since until where factors
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
     | _ -> bucket_avg
   in
-  RamenExport.replay conf fq data_fields where since until true (fun head ->
+  (* The data fields we are really interested about are: the data fields +
+   * the factors *)
+  let tuple_fields = List.rev_append factors data_fields in
+  let nb_factors = List.length factors
+  and nb_data_fields = List.length data_fields in
+  RamenExport.replay conf fq tuple_fields where since until true (fun head ->
+    (* TODO: RamenTuple.typ should be an array *)
+    let head = Array.of_list head in
     (* Extract fields of interest (data fields, keys...) from a tuple: *)
-    let open RamenSerialization in
-    let fis =
-      List.map (find_field_index head) factors in
+    (* So tuple will be composed of rev factors then data_fields: *)
     let key_of_factors tuple =
-      List.map (fun fi -> tuple.(fi)) fis in
-    let vis, def_aggr =
-      List.fold_left (fun (vis, def_aggr) data_field ->
-        let vi, ft = find_field head data_field in
-        (vi :: vis), (ft.aggr :: def_aggr)
-      ) ([], []) data_fields in
-    let vis = List.rev vis and def_aggr = List.rev def_aggr in
+      Array.sub tuple 0 nb_factors in
+    let open RamenSerialization in
     let def_aggr =
-      List.enum def_aggr /@
-      (function
+      Array.init nb_data_fields (fun i ->
+        match head.(nb_factors + i).aggr with
         | Some str -> consolidate str
         | None ->
             (match consolidation with
             | None -> bucket_avg
-            | Some str -> consolidate str)) |>
-      Array.of_enum
+            | Some str -> consolidate str))
     in
     (fun t1 t2 tuple ->
       let k = key_of_factors tuple in
@@ -126,7 +125,7 @@ let get conf num_points since until where factors
         try Hashtbl.find per_factor_buckets k
         with Not_found ->
           !logger.debug "New timeseries for column key %a"
-            (List.print RamenTypes.print) k ;
+            (Array.print RamenTypes.print) k ;
           let buckets = make_buckets num_points num_data_fields in
           Hashtbl.add per_factor_buckets k buckets ;
           buckets in
@@ -136,11 +135,12 @@ let get conf num_points since until where factors
        * the range: *)
       let bi2, r2 =
         if r2 = 0. && bi2 > bi1 then bi2 - 1, 1. else bi2, r2 in
-      List.iteri (fun i vi ->
+      (* Iter over all data_fields, that are the last components of tuple: *)
+      for i = 0 to nb_data_fields - 1 do
         (* We assume that the value is "intensive" rather than "extensive",
          * and so contribute the same amount to each buckets of the interval,
          * instead of distributing the value (TODO: extensive values) *)
-        let v = RamenTypes.float_of_scalar tuple.(vi) in
+        let v = RamenTypes.float_of_scalar tuple.(nb_factors + i) in
         Option.may (fun v ->
           let v, bi1, bi2, r =
             if bi1 = bi2 then (
@@ -160,7 +160,7 @@ let get conf num_points since until where factors
             pour_into_bucket buckets bi i v r
           done
         ) v
-      ) vis),
+      done),
     (fun () ->
       (* Extract the results as an Enum, one value per key *)
       let indices = Enum.range 0 ~until:(num_points - 1) in

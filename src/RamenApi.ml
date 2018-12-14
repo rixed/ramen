@@ -349,7 +349,7 @@ type get_timeseries_resp =
   [@@ppp PPP_JSON]
 
 and table_values =
-  { column_labels : string list array ;
+  { column_labels : string array array ;
     (* One optional float per selected field, per label, per time: *)
     column_values : float option array array array }
   [@@ppp PPP_JSON]
@@ -403,9 +403,9 @@ let get_timeseries conf msg =
       get conf num_points since until filters
           data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
-     * Each label is a list of factors values. *)
+     * Each label is an array of factors values. *)
     let column_labels =
-      Array.map (List.map RamenTypes.to_string) column_labels in
+      Array.map (Array.map RamenTypes.to_string) column_labels in
     let column_values = Array.create num_points [||] in
     Hashtbl.add values table { column_labels ; column_values } ;
     Enum.iteri (fun ti (t, data) ->

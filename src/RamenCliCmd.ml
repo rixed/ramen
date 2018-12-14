@@ -680,7 +680,8 @@ let timeseries_ conf fq data_fields
   let head =
     Array.fold_left (fun res sc ->
       let v =
-        List.map RamenTypes.to_string sc |>
+        Array.enum sc /@ RamenTypes.to_string |>
+        List.of_enum |>
         String.concat "." in
       if single_data_field then
         (if v = "" then
