@@ -195,7 +195,8 @@ let compile conf lib_path use_external_compiler bundle_dir
       Option.default_delayed (fun () ->
         Filename.remove_extension source_file ^".x"
       ) output_file_opt in
-    RamenMake.build conf get_parent program_name source_file output_file
+    RamenMake.build conf ~force_rebuild:true get_parent program_name
+                    source_file output_file
   in
   List.iter (fun source_file ->
     try

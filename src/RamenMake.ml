@@ -104,7 +104,8 @@ let find_path src dst =
 (* Get the build path, then for each step from the source, check if the build is
  * required.
  * [program_name] is required to resolve relative parents. *)
-let build conf get_parent program_name src_file target_file =
+let build conf ?(force_rebuild=false) get_parent program_name src_file
+          target_file =
   let base_file = Filename.remove_extension target_file in
   let rec loop src_file = function
     | [] ->
@@ -112,7 +113,7 @@ let build conf get_parent program_name src_file target_file =
     | (to_type, check, builder) :: rest ->
         let target_file = base_file ^"."^ to_type in
         mkdir_all ~is_file:true target_file ;
-        if check src_file target_file then
+        if force_rebuild || check src_file target_file then
           builder conf get_parent program_name src_file target_file
         else
           !logger.debug "%S is still up to date" target_file ;
