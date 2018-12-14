@@ -1,12 +1,45 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
+only_ramen="no"
+flags=()
+gc_flags=()
+archivist_flags=()
+notifier_flags=()
+httpd_flags=()
+supervisor_flags=()
+
 # Special argument to not load this stuff:
 
-if test "$1" = "only" ; then
-  shift
-else
+while test -n "$1" ; do case "$1" in
+  (--only)
+    only_ramen='yes' ;
+    shift ;;
+  (--debug)
+    flags+=('--debug') ;
+    shift ;;
+  (--gc-*)
+    gc_flags+=('--'$(echo $1 | cut -c 6-)) ;
+    shift ;;
+  (--archivist-*)
+    archivist_flags+=('--'$(echo $1 | cut -c 13-)) ;
+    shift ;;
+  (--notifier-*)
+    notifier_flags+=('--'$(echo $1 | cut -c 12-)) ;
+    shift ;;
+  (--httpd-*)
+    httpd_flags+=('--'$(echo $1 | cut -c 9-)) ;
+    shift ;;
+  (--supervisor-*)
+    supervisor_flags+=('--'$(echo $1 | cut -c 14-)) ;
+    shift ;;
+  (*)
+    echo "Cannot parse $1" ;
+    exit 1 ;;
+esac ; done
+
+if test "$only_ramen" = no ; then
   if test -x /usr/sbin/collectd ; then
     /usr/sbin/collectd -C /etc/collectd/collectd.conf
   fi
@@ -19,4 +52,8 @@ OCAMLRUNPARAM=b
 export OCAMLRUNPARAM
 
 ulimit -v 2000000
-exec nice ionice -c 2 ramen supervisor $@
+nice ionice -c 2 ramen gc --stdout --loop ${flags[*]} ${gc_flags[*]} &
+nice ionice -c 2 ramen archivist --stdout --loop ${flags[*]} ${archivist_flags[*]} &
+nice ionice -c 2 ramen notifier --stdout ${flags[*]} ${notifier_flags[*]} &
+nice ionice -c 2 ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
+exec nice ionice -c 2 ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]}
