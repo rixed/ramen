@@ -63,7 +63,7 @@ let print_table_terse ~sep ~with_header ~na ~flush head =
     if with_header > 0 then
       if !lines_before_header = 0 then (
         Array.print ~first:"" ~last:"" ~sep String.print stdout head ;
-        newline flush ;
+        newline true ;
         lines_before_header := with_header
       ) else decr lines_before_header
   in
@@ -171,7 +171,7 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
       let h = make_left_justify [] col_width.(i) h in
       Printf.printf "%s%s" (cyan h) col_sep
     ) head ;
-    newline flush) ;
+    newline true) ;
   List.iter (fun line ->
     Array.iteri (fun i s ->
       let s = fmts.(i) s in
