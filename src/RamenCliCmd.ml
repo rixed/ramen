@@ -669,11 +669,10 @@ let timeseries_ conf fq data_fields
   let until = until |? Unix.gettimeofday () in
   let since = since |? until -. 600. in
   (* Obtain the data: *)
-  let open RamenTimeseries in
   let num_points, since, until =
-    compute_num_points time_step num_points since until in
+    RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
-    get conf num_points since until where factors
+    RamenTimeseries.get conf num_points since until where factors
         ~consolidation ~bucket_time fq data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in

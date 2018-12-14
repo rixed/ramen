@@ -80,7 +80,8 @@ let get conf num_points since until where factors
         op
         RamenTypes.print value)) where
     (List.print RamenName.field_print) factors ;
-  let num_data_fields = List.length data_fields in
+  let num_data_fields = List.length data_fields
+  and num_factors = List.length factors in
   (* Prepare the buckets in which to aggregate the data fields: *)
   let dt = (until -. since) /. float_of_int num_points in
   let per_factor_buckets = Hashtbl.create 11 in
@@ -100,19 +101,17 @@ let get conf num_points since until where factors
   (* The data fields we are really interested about are: the data fields +
    * the factors *)
   let tuple_fields = List.rev_append factors data_fields in
-  let nb_factors = List.length factors
-  and nb_data_fields = List.length data_fields in
   RamenExport.replay conf fq tuple_fields where since until true (fun head ->
     (* TODO: RamenTuple.typ should be an array *)
     let head = Array.of_list head in
     (* Extract fields of interest (data fields, keys...) from a tuple: *)
     (* So tuple will be composed of rev factors then data_fields: *)
     let key_of_factors tuple =
-      Array.sub tuple 0 nb_factors in
+      Array.sub tuple 0 num_factors in
     let open RamenSerialization in
     let def_aggr =
-      Array.init nb_data_fields (fun i ->
-        match head.(nb_factors + i).aggr with
+      Array.init num_data_fields (fun i ->
+        match head.(num_factors + i).aggr with
         | Some str -> consolidate str
         | None ->
             (match consolidation with
@@ -136,11 +135,11 @@ let get conf num_points since until where factors
       let bi2, r2 =
         if r2 = 0. && bi2 > bi1 then bi2 - 1, 1. else bi2, r2 in
       (* Iter over all data_fields, that are the last components of tuple: *)
-      for i = 0 to nb_data_fields - 1 do
+      for i = 0 to num_data_fields - 1 do
         (* We assume that the value is "intensive" rather than "extensive",
          * and so contribute the same amount to each buckets of the interval,
          * instead of distributing the value (TODO: extensive values) *)
-        let v = RamenTypes.float_of_scalar tuple.(nb_factors + i) in
+        let v = RamenTypes.float_of_scalar tuple.(num_factors + i) in
         Option.may (fun v ->
           let v, bi1, bi2, r =
             if bi1 = bi2 then (
