@@ -676,6 +676,10 @@ docker-latest: docker/Dockerfile docker/ramen.$(VERSION).deb
 	@echo 'Building docker image for testing DEB version'
 	@docker build -t rixed/ramen:latest --squash -f $< docker/
 
+docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
+	@echo 'Copying debian package into docker/'
+	@cp $< $@
+
 docker-build-builder: docker/Dockerfile-builder
 	@for distrib in jessie stretch ; do \
 		echo 'Building docker image for building the DEB packages for $$distrib' ;\
@@ -687,7 +691,7 @@ docker-build-builder: docker/Dockerfile-builder
 	done
 
 docker/z3: $(Z3)
-	@echo 'Copying z3 from system to docker/'
+	@echo 'Copying z3 from system into docker/'
 	@cp $< $@
 
 docker-build-image: docker-latest docker/z3
