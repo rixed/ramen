@@ -418,13 +418,18 @@ let parse_func_name_of_code conf what func_name_or_code =
   let parse_as_names () =
     match func_name_or_code with
     | func_name :: field_names ->
-        let fq = RamenName.fq_of_string func_name in
-        (* Check this function exists: *)
-        C.with_rlock conf (fun programs ->
-          C.find_func programs fq |> ignore) ;
-        fq,
-        List.map RamenName.field_of_string field_names,
-        []
+        let fq = RamenName.fq_of_string func_name
+        and field_names = List.map RamenName.field_of_string field_names in
+        let ret = fq, field_names, [] in
+        (* First, is it any of the special ringbuf? *)
+        if String.ends_with func_name ("#"^ SpecialFunctions.stats) ||
+           String.ends_with func_name ("#"^ SpecialFunctions.notifs) then
+          ret
+        else (
+          (* Check this function exists: *)
+          C.with_rlock conf (fun programs ->
+            C.find_func programs fq |> ignore) ;
+          ret)
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
     let program_name = C.make_transient_program () in
