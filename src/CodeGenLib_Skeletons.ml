@@ -405,7 +405,7 @@ let worker_start worker_name get_binocle_tuple k =
     restart_on_failure "update_stats_rb"
       (update_stats_rb report_period report_rb)) get_binocle_tuple |>
     ignore ;
-  log_exceptions k conf ;
+  log_and_ignore_exceptions k conf ;
   (* Sending stats for one last time: *)
   if report_period > 0. then
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
