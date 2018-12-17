@@ -1,6 +1,9 @@
 <html>
   <head>
+    <meta charset="utf-8">
     <base href="https://rixed.github.io/ramen/">
+    <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <title>Ramen Documentation</title>
   </head>
 <body>
 
@@ -28,7 +31,7 @@
 
 <p><code>ramen supervisor</code> will start a daemon that will essentially check that the workers specified in the running-configuration are indeed working. When starting new worker it will first check that types are compatible with the other workers (or report an error), create the ring buffers and "connect" the parents to their children.</p>
 
-<p>See <a href="man/supervisor.html">>ramen supervisor --help</a> for more.</p>
+<p>See <a href="man/supervisor.html">ramen supervisor --help</a> for more.</p>
 
 <p>To stop the supervisor, merely sends it a TERM or INT signal. It will then stops all workers and exit. Workers themselves will save their state so that little is lost by stopping and restarting Ramen.</p>
 
@@ -49,7 +52,7 @@ COMMIT WHEN in.time > group.first.time + 30
 
 <p>to know the types of <code>hostname</code>, <code>uptime</code> and <code>time</code> ramen must look at the <code>monitoring/hosts</code> operation output type. It will then look for the executable file <code>$RAMEN_ROOT/monitoring/hosts.x</code> which will then provide this type (as each executable worker can display its types and other information about itself). Therefore this program must have been compiled previously.</p>
 
-<p>See <a href="man/compile.html">>ramen compile --help</a> for details.</p>
+<p>See <a href="man/compile.html">ramen compile --help</a> for details.</p>
 
 <h2>Running a Program</h2>
 

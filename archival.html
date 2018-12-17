@@ -1,6 +1,9 @@
 <html>
   <head>
+    <meta charset="utf-8">
     <base href="https://rixed.github.io/ramen/">
+    <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <title>Ramen Documentation</title>
   </head>
 <body>
 
@@ -98,12 +101,12 @@
 <p>To follow up on the previous example, when a user ask for <code>ramen tail --since $SOME_TIME --until $SOME_LATER_TIME Q1</code> then here is what is happening:</p>
 
 <ol>
-<li>First, a new transient ringbuffer is created and a new channel identifier is choosen;</li>
+<li>First, a new transient ringbuffer is created and a new channel identifier is chosen;</li>
 <li>Then, Q1 is asked to output everything related to that channel into this ringbuffer;</li>
 <li>Then, new workers for Q3 and Q4 are started to replay the archived tuples in the time range into the given channel;</li>
 <li>When replaying the past, the workers will obey the normal output specifications, which in that case will instruct them to add their output into Q2 input ringbuffer;</li>
 <li>When the last tuple is reached then the replay will end with a special message ending that channel, and then terminate;</li>
-<li>Then Ramen merely print what ends up in the transient ring buffer, waiting until it has received two end-of-replay notification to exit.</li>
+<li>Then Ramen merely prints what ends up in the transient ring buffer, waiting until it has received two end-of-replay notifications before exiting.</li>
 </ol>
 
 <p>With such a simple mechanism it is possible to see the recent past (and actually even the distant past) of any newly created function, which comes handy to make sure a new function returns the expected timeseries.</p>
@@ -118,18 +121,17 @@
 
 <h4>Estimation of a program life expectancy</h4>
 
-<p>All of the above assume that any worker that's currently running will be running forever. This is obviously a dangerous assumption.</p>
+<p>All of the above assumes that any worker that's currently running will be running forever. This is obviously a dangerous assumption.</p>
 
-<p>The SMT2 should vet this risk by estimating the life expectancy of functions it consider for archival.</p>
+<p>The SMT2 should vet this risk by estimating the life expectancy of functions considered for archival.</p>
 
 <h4>Cost assessment</h4>
 
-<p>Computation cost are bound to CPU and RAM. But we need to measure the cost of the live channel only. If the same Unix process is serving both live and other channels, though, then measuring the CPU and RAM costs of only the live channel is not easy (at best). Thus we have to also account for other channels in resource costs. But then we do not want a path to appear costly just because it is a very frequent pathway for replaying history. Should we artificially deflate the cost of CPU/RAM with the ratio of non-live tuples that go through a worker?</p>
+<p>Computation costs are bound to CPU and RAM. But we need to measure the cost of the live channel only. If the same Unix process is serving both live and other channels, though, then measuring the CPU and RAM costs of only the live channel is not easy (at best). Thus we have to also account for other channels in resource costs. But then we do not want a path to appear costly just because it is a very frequent pathway for replaying history. Should we artificially deflate the cost of CPU/RAM with the ratio of non-live tuples that go through a worker?</p>
 
 <p>And then storage: assessing the storage cost ahead of time is also not as straightforward as looking for the recent past, especially when we have several level of compression as data ages. The current approach is to look at the aggregated total size written in all output ringbuffers, which is bogus because it does not distinguish between live channel and others, because we write only the fields required by children but we do not know what field will be asked in the future, and last but not least because we do not know how much disk space future tuples will occupy, especially by looking only at what we write in ringbuffers (we are not going to do long term storage in ringbuffers).</p>
 
-<p>So it appears we have actually no reliable estimator for computing nor storage costs (yet)!</p>
-
+<p>So it appears we have actually no reliable estimator for computing or storage costs (yet)!</p>
 
 </body>
 </html>

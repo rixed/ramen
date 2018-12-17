@@ -1,6 +1,9 @@
 <html>
   <head>
+    <meta charset="utf-8">
     <base href="https://rixed.github.io/ramen/">
+    <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <title>Ramen Documentation</title>
   </head>
 <body>
 
@@ -296,6 +299,7 @@ $ ramen tail hosts/memory --with-header
 DEFINE memory AS
   SELECT
     MIN start AS start,
+    MAX start AS stop,
     host,
     COALESCE (type_instance, "") AS _type,
     AVG (IF _type = "free" THEN value ELSE 0) AS free,
@@ -312,7 +316,8 @@ DEFINE memory AS
 <p>Let's quickly go through some bits of this example that might not be immediately clear.</p>
 
 <ul>
-<li>Most of the fields have been given a name explicitely with the <code>AS</code> keyword;</li>
+<li>Most of the fields have been given a name explicitly with the <code>AS</code> keyword;</li>
+<li>We compute both the start and stop of each event by taking the minimum and maximum of the timestamp present in collectd, because we need the events to have a duration (timeseries extraction should consider that default stop is the next start but that's still TBD);</li>
 <li>Any field name starting with underscore, such as <code>_type</code> in this example, is private to the function and not part of the actual output;</li>
 <li><code>//</code> is the integer division, this here we are grouping by host names and slices of 30 seconds;</li>
 <li>The COMMIT clause tells ramen when to stop aggregating a group and output the result;</li>

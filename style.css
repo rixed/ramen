@@ -1,0 +1,9 @@
+/* Screen style for Ramen doc */
+
+* {
+ font-family: sans-serif;
+}
+
+p, li {
+  font-family: serif;
+}
