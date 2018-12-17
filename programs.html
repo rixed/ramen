@@ -54,7 +54,7 @@
 
 <p>For instance, here is a short program demoing many of Ramen's features:</p>
 
-<pre>
+<pre class="prettyprint">
 -- Single line comments start with a double dash as in SQL
 PARAMETERS max_response_time DEFAULT 1.5s
        AND time_step DEFAULT 1m;
@@ -88,15 +88,18 @@ DEFINE alert_on_slow_resp_times AS
 
 <h2>Compilation</h2>
 
-<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code>services/web</code> where it will find the output type of the function <code>http_logs</code>, that it needs to know in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
+<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code class="prettyprint">services/web</code> where it will find the output type of the function <code class="prettyprint">http_logs</code>, that it needs to know in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
 
 <p>The result of the compilation is going to be a single binary executable that embeds the code for all individual functions, as well as a few additional entry points to print various information such as the output type of the functions.</p>
 
-<p>The running configuration is then nothing but a text file that specifies which program is supposed to be running (with what values for the parameters). <code>ramen run</code> merely edits this file. <code>ramen supervisor</code> is a daemon that will spawn one instance of the compiled binary for every of its functions, and connect them with the required ringbuffers.</p>
+<p>The running configuration is then nothing but a text file that specifies which program is supposed to be running (with what values for the parameters). <code class="prettyprint">ramen run</code> merely edits this file. <code class="prettyprint">ramen supervisor</code> is a daemon that will spawn one instance of the compiled binary for every of its functions, and connect them with the required ringbuffers.</p>
 
 <p>Each instance of a compiled binary implementing a particular function is called a <em>worker</em>. So in the above example two workers will be run, one for each of the functions, each with its own input ringbuffer.<p>
 
-<p>The supervisor daemon will also kill the workers that are no longer needed (again, <code>ramen kill</code> merely edits the running configuration).</p>
+<p>The supervisor daemon will also kill the workers that are no longer needed (again, <code class="prettyprint">ramen kill</code> merely edits the running configuration).</p>
+
+
+  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
 
 </body>
 </html>

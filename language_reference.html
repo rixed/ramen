@@ -47,49 +47,49 @@
 
 <p>Like in SQL, some field may have the NULL value. Ramen typing system knows what value can be NULL and spare the NULL checks unless necessary.</p>
 
-<p>Users can check if a nullable value is indeed NULL using the <code>IS NULL</code> or <code>IS NOT NULL</code> operators, which turn a nullable value into a (non-nullable) boolean.</p>
+<p>Users can check if a nullable value is indeed NULL using the <code class="prettyprint">IS NULL</code> or <code class="prettyprint">IS NOT NULL</code> operators, which turn a nullable value into a (non-nullable) boolean.</p>
 
-<p><code>NULL</code> is both a type and a value. The <code>NULL</code> value is the only possible value of the <code>NULL</code> type. It is also a possible value for any nullable type.</p>
+<p><code class="prettyprint">NULL</code> is both a type and a value. The <code class="prettyprint">NULL</code> value is the only possible value of the <code class="prettyprint">NULL</code> type. It is also a possible value for any nullable type.</p>
 
-<p>To write a literal <code>NULL</code> value enter <code>NULL</code>.</p>
+<p>To write a literal <code class="prettyprint">NULL</code> value enter <code class="prettyprint">NULL</code>.</p>
 
 <h3>Booleans</h3>
 
-<p>The type for booleans is called `boolean` (`bool` is also accepted). Boolean true and false are spelled `true` and `false`.</p>
+<p>The type for booleans is called <code class="prettyprint">boolean</code> (<code class="prettyprint">bool</code> is also accepted). Boolean true and false are spelled <code class="prettyprint">true</code> and <code class="prettyprint">false</code>.</p>
 
 <h3>Strings</h3>
 
-<p>The type for character strings is called `string`.  A literal string is double quoted (with <code>"</code>). To include a double-quote within a string, backslash it.  Other characters can be backslashed: single quote (<code>"\'"</code>), newlines (<code>"\n"</code> and <code>"\r"</code>), horizontal tab (<code>"\t"</code>), backspace (<code>"\b"</code>) and the backslash itself (<code>"\\"</code>).</p>
+<p>The type for character strings is called <code class="prettyprint">string</code>.  A literal string is double quoted (with <code class="prettyprint">"</code>). To include a double-quote within a string, backslash it.  Other characters can be backslashed: single quote (<code class="prettyprint">"\'"</code>), newlines (<code class="prettyprint">"\n"</code> and <code class="prettyprint">"\r"</code>), horizontal tab (<code class="prettyprint">"\t"</code>), backspace (<code class="prettyprint">"\b"</code>) and the backslash itself (<code class="prettyprint">"\\"</code>).</p>
 
 <p>Some functions consider strings as UTF-8 encoded, some consider strings as mere sequence of bytes.</p>
 
 <h3>Floats</h3>
 
-<p>The type for real numbers is called `float`. It is the standard IEEE.754 64 bits float.  Literal values will cause minimum surprise: dot notation (`"3.14"`) and scientific notation (`"314e-2"`) are supported.</p>
+<p>The type for real numbers is called <code class="prettyprint">float</code>. It is the standard IEEE.754 64 bits float.  Literal values will cause minimum surprise: dot notation (<code class="prettyprint">"3.14"</code>) and scientific notation (<code class="prettyprint">"314e-2"</code>) are supported.</p>
 
 <h3>Integers</h3>
 
-<p>Ramen allows integer types of 5 different sizes from 8 to 128 bits, signed or unsigned: `i8`, `i16`, `i32`, `i64`, `i128`, that are signed, and `u8`, `u16`, `u32`, `u64` and `u128`, that are unsigned.</p>
+<p>Ramen allows integer types of 5 different sizes from 8 to 128 bits, signed or unsigned: <code class="prettyprint">i8</code>, <code class="prettyprint">i16</code>, <code class="prettyprint">i32</code>, <code class="prettyprint">i64</code>, <code class="prettyprint">i128</code>, that are signed, and <code class="prettyprint">u8</code>, <code class="prettyprint">u16</code>, <code class="prettyprint">u32</code>, <code class="prettyprint">u64</code> and <code class="prettyprint">u128</code>, that are unsigned.</p>
 
 <p>Ramen uses the conventional 2-complement encoding of integers with silent wrap-around in case of overflow.</p>
 
-<p>When writing a literal integer it is possible to specify the intended type by suffixing it with the type name; for instance: `42u128` would be an unsigned integer 128 bits wide with value `42`. If no such suffix is present then Ramen will choose the narrowest possible type that can accommodate that integer value and that's not smaller than i32.  Thus, to get a literal integer smaller than i32 one has to suffix it. This is to avoid having non-intentionally narrow constant values that would wrap around unexpectedly.</p>
+<p>When writing a literal integer it is possible to specify the intended type by suffixing it with the type name; for instance: <code class="prettyprint">42u128</code> would be an unsigned integer 128 bits wide with value <code class="prettyprint">42</code>. If no such suffix is present then Ramen will choose the narrowest possible type that can accommodate that integer value and that's not smaller than i32.  Thus, to get a literal integer smaller than i32 one has to suffix it. This is to avoid having non-intentionally narrow constant values that would wrap around unexpectedly.</p>
 
-<p>In addition to the suffix, you can also use a cast, using the type name as a function: `u128(42)`. This is equivalent but more general as it can be used on other expression than simple literal integers, such as floats or booleans.</p>
+<p>In addition to the suffix, you can also use a cast, using the type name as a function: <code class="prettyprint">u128(42)</code>. This is equivalent but more general as it can be used on other expression than simple literal integers, such as floats or booleans.</p>
 
 <h3>Durations</h3>
 
-<p>Not a datatype per se, but some clauses (namely `yield` and `merge`) can be given durations to set timeouts or periodic emission of tuples. Those duration have a simple syntax: a real number followed by a time unit: `hours`, `minutes`, `seconds`, `milliseconds` or `microseconds`.</p>
+<p>Not a datatype per se, but some clauses (namely <code class="prettyprint">yield</code> and <code class="prettyprint">merge</code>) can be given durations to set timeouts or periodic emission of tuples. Those duration have a simple syntax: a real number followed by a time unit: <code class="prettyprint">hours</code>, <code class="prettyprint">minutes</code>, <code class="prettyprint">seconds</code>, <code class="prettyprint">milliseconds</code> or <code class="prettyprint">microseconds</code>.</p>
 
 <h3>Network addresses</h3>
 
-<p>Ethernet addresses are accepted with the usual notation, such as: `18:d6:c7:28:71:f5` (without quotes; those are not strings). They are internally stored as 48bits unsigned integers and can be cast from/to other integer types.</p>
+<p>Ethernet addresses are accepted with the usual notation, such as: <code class="prettyprint">18:d6:c7:28:71:f5</code> (without quotes; those are not strings). They are internally stored as 48bits unsigned integers and can be cast from/to other integer types.</p>
 
 <p>IP addresses are also accepted, either v4 or v6, again without strings.</p>
 
-<p>CIDR addresses are also accepted; for instance `192.168.10.0/24` (there is no ambiguity with integer division since arithmetic operators do not apply to IP addresses).</p>
+<p>CIDR addresses are also accepted; for instance <code class="prettyprint">192.168.10.0/24</code> (there is no ambiguity with integer division since arithmetic operators do not apply to IP addresses).</p>
 
-<p>NOTE: the `in` operator can check whether an IP belongs to a CIDR.</p>
+<p>NOTE: the <code class="prettyprint">in</code> operator can check whether an IP belongs to a CIDR.</p>
 
 <h2>Expressions</h2>
 
@@ -109,62 +109,62 @@
 <h4>Input tuple</h4>
 </a>
 
-<p>The tuple that has been received as input.  Its name is `in` and that's also the default tuple when the tuple name is omitted.</p>
+<p>The tuple that has been received as input.  Its name is <code class="prettyprint">in</code> and that's also the default tuple when the tuple name is omitted.</p>
 
-<p>You can use the `in` tuple in all clauses as long as there is an input.  When used in a `commit` clause, it refers to the last received tuple.</p>
+<p>You can use the <code class="prettyprint">in</code> tuple in all clauses as long as there is an input.  When used in a <code class="prettyprint">commit</code> clause, it refers to the last received tuple.</p>
 
 <a name="last-in-tuple">
 <h4>Last Input tuple</h4>
 </a>
 
-<p>Named `in.last`, it is the _previous_ input tuple.  Can be used to retrieve the field of the previous received tuple.</p>
+<p>Named <code class="prettyprint">in.last</code>, it is the _previous_ input tuple.  Can be used to retrieve the field of the previous received tuple.</p>
 
-<p>Can be used in the `where`, `select` and `commit/flush` clauses.</p>
+<p>Can be used in the <code class="prettyprint">where</code>, <code class="prettyprint">select</code> and <code class="prettyprint">commit/flush</code> clauses.</p>
 
-<p>When `in` is the first tuple ever, then `in.last` is the same as `in`.  This situation can nonetheless be detected using the `#count` virtual field.</p>
+<p>When <code class="prettyprint">in</code> is the first tuple ever, then <code class="prettyprint">in.last</code> is the same as <code class="prettyprint">in</code>.  This situation can nonetheless be detected using the <code class="prettyprint">#count</code> virtual field.</p>
 
 <a name="selected-tuple">
 <h4>Selected tuple</h4>
 </a>
 
-<p>Named `selected.last`, this is the last tuple that passed the <code>WHERE</code> filter (before `in`).</p>
+<p>Named <code class="prettyprint">selected.last</code>, this is the last tuple that passed the <code class="prettyprint">WHERE</code> filter (before <code class="prettyprint">in</code>).</p>
 
-<p>The `selected.last` tuple can be used anywhere but in a `group-by` clause.</p>
+<p>The <code class="prettyprint">selected.last</code> tuple can be used anywhere but in a <code class="prettyprint">group-by</code> clause.</p>
 
-<p>There is also a `selected` tuple that has only virtual fields.  See <a href="/glossary.html#virtual-fields">next section about virtual fields</a> for details.</p>
+<p>There is also a <code class="prettyprint">selected</code> tuple that has only virtual fields.  See <a href="/glossary.html#virtual-fields">next section about virtual fields</a> for details.</p>
 
-<p>When `in` is the first tuple to pass the <code>WHERE</code> filter then `selected.last` is the same as `in`. This situation can nonetheless be detected using the `#count` virtual field.</p>
+<p>When <code class="prettyprint">in</code> is the first tuple to pass the <code class="prettyprint">WHERE</code> filter then <code class="prettyprint">selected.last</code> is the same as <code class="prettyprint">in</code>. This situation can nonetheless be detected using the <code class="prettyprint">#count</code> virtual field.</p>
 
 <a name="unselected-tuple">
 <h4>Unselected tuple</h4>
 </a>
 
-<p>Named `unselected.last`, this is the last tuple that failed to pass the <code>WHERE</code> filter.</p>
+<p>Named <code class="prettyprint">unselected.last</code>, this is the last tuple that failed to pass the <code class="prettyprint">WHERE</code> filter.</p>
 
-<p>It can be used in the same places as the `selected` tuple, that is pretty much everywhere.</p>
+<p>It can be used in the same places as the <code class="prettyprint">selected</code> tuple, that is pretty much everywhere.</p>
 
-<p>When no tuple failed the <code>WHERE</code> filter yet, then `unselected.last` is the same as `in` but for the virtual fields.</p>
+<p>When no tuple failed the <code class="prettyprint">WHERE</code> filter yet, then <code class="prettyprint">unselected.last</code> is the same as <code class="prettyprint">in</code> but for the virtual fields.</p>
 
-<p>There is also a `unselected` tuple that has only virtual fields.</p>
+<p>There is also a <code class="prettyprint">unselected</code> tuple that has only virtual fields.</p>
 
 <a name="output-tuple">
 <h4>Output tuple</h4>
 </a>
 
-<p>The tuple that is going to be output (if the <code>COMMIT</code> condition holds `true`).  Its name is `out`.  The only places where it can be used is in the commit clause.</p>
+<p>The tuple that is going to be output (if the <code class="prettyprint">COMMIT</code> condition holds <code class="prettyprint">true</code>).  Its name is <code class="prettyprint">out</code>.  The only places where it can be used is in the commit clause.</p>
 
-<p>It is also possible to refer to fields from the out tuple in `select` clauses which creates the out tuple, but only if the referred fields has been defined earlier. So for instance this is valid:</p>
+<p>It is also possible to refer to fields from the out tuple in <code class="prettyprint">select</code> clauses which creates the out tuple, but only if the referred fields has been defined earlier. So for instance this is valid:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT
     sum payload AS total,
     end - start AS duration,
     total / duration AS bps
 </pre>
 
-<p>...where we both define and reuse the fields `total` and `duration`. Notice that here the name of the tuple has been eluded -- despite "in" being the default tuple, on some conditions it is OK to leave out the "out" prefix as well.  This would be an equivalent, more explicit statement:</p>
+<p>...where we both define and reuse the fields <code class="prettyprint">total</code> and <code class="prettyprint">duration</code>. Notice that here the name of the tuple has been eluded -- despite "in" being the default tuple, on some conditions it is OK to leave out the "out" prefix as well.  This would be an equivalent, more explicit statement:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT
     sum in.payload AS total,
     in.end - in.start AS duration,
@@ -177,56 +177,56 @@
 <h4>Previous tuple</h4>
 </a>
 
-<p>Named `out.previous` or just `previous`, refers to the last output tuple.</p>
+<p>Named <code class="prettyprint">out.previous</code> or just <code class="prettyprint">previous</code>, refers to the last output tuple.</p>
 
-<p>Can be used in `select`, `where` and `commit` clauses.</p>
+<p>Can be used in <code class="prettyprint">select</code>, <code class="prettyprint">where</code> and <code class="prettyprint">commit</code> clauses.</p>
 
 <p>When no tuples have been output yet that tuple has all its field set to Null.  Therefore, if you use this tuple you must check for nulls accordingly.</p>
 
-<p>Same type as the `out` tuple, with all fields nullable.</p>
+<p>Same type as the <code class="prettyprint">out</code> tuple, with all fields nullable.</p>
 
 <a name="group-first-tuple">
 <h4>First tuple in group</h4>
 </a>
 
-<p>Named `group.first` or just `first`, refers to the first tuple of an aggregation.  Can be used anywhere but in the `group-by` clause itself.</p>
+<p>Named <code class="prettyprint">group.first</code> or just <code class="prettyprint">first</code>, refers to the first tuple of an aggregation.  Can be used anywhere but in the <code class="prettyprint">group-by</code> clause itself.</p>
 
 <p>Same type as the input tuple.</p>
 
-<p>There is also a `group` tuple with only virtual fields.</p>
+<p>There is also a <code class="prettyprint">group</code> tuple with only virtual fields.</p>
 
-<p>NOTE: It is worth noting that it makes the operation slower to use any tuple from the `group` family in the `where` clause since it requires to build the key and retrieve the aggregate even for tuples that will end up being filtered out.</p>
+<p>NOTE: It is worth noting that it makes the operation slower to use any tuple from the <code class="prettyprint">group</code> family in the <code class="prettyprint">where</code> clause since it requires to build the key and retrieve the aggregate even for tuples that will end up being filtered out.</p>
 
 <a name="group-last-tuple">
 <h4>Last tuple in group</h4>
 </a>
 
-<p>Named `group.last` or just `last`.  Same as `first`, but refers to the last tuple aggregated in the current bucket.</p>
+<p>Named <code class="prettyprint">group.last</code> or just <code class="prettyprint">last</code>.  Same as <code class="prettyprint">first</code>, but refers to the last tuple aggregated in the current bucket.</p>
 
 <p>Same type as the input tuple.</p>
 
-<p>Differs from `previous` by its type (`previous` is the current result of the aggregation while `last` is the last aggregated _input_ tuple) and by the fact that it can also be used in the `select` clause and the `where` clause.</p>
+<p>Differs from <code class="prettyprint">previous</code> by its type (<code class="prettyprint">previous</code> is the current result of the aggregation while <code class="prettyprint">last</code> is the last aggregated _input_ tuple) and by the fact that it can also be used in the <code class="prettyprint">select</code> clause and the <code class="prettyprint">where</code> clause.</p>
 
 <a name="group-previous-tuple">
 <h4>Previous tuple out of group</h4>
 </a>
 
-<p>Named `group.previous`, refers to the previous version of the aggregation result for that group.  Notice that this is not the lastly output tuple (that would be `out.previous`) but rather the previous value for `out`, which have actually been output only if the commit expression returned true (and the aggregate haven't been flushed). There is one distinct `group.previous` per group, while there is only one `out.previous`.</p>
+<p>Named <code class="prettyprint">group.previous</code>, refers to the previous version of the aggregation result for that group.  Notice that this is not the lastly output tuple (that would be <code class="prettyprint">out.previous</code>) but rather the previous value for <code class="prettyprint">out</code>, which have actually been output only if the commit expression returned true (and the aggregate haven't been flushed). There is one distinct <code class="prettyprint">group.previous</code> per group, while there is only one <code class="prettyprint">out.previous</code>.</p>
 
-<p>Can be used in the `select` and `commit` clause.</p>
+<p>Can be used in the <code class="prettyprint">select</code> and <code class="prettyprint">commit</code> clause.</p>
 
 <p>When the aggregate is fresh new then that tuple has all its field set to Null.  Therefore, if you use this tuple you must check for nulls accordingly.</p>
 
-<p>Same type as the `out` tuple, with all fields nullable.</p>
+<p>Same type as the <code class="prettyprint">out</code> tuple, with all fields nullable.</p>
 
 <p>Usage example:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT key, signal GROUP BY key
   COMMIT AND KEEP ALL WHEN signal != COALESCE(group.previous.signal, 0)
 </pre>
 
-<p>To transform a succession of `key, signal` with possibly many times the same signal value into a stream of `key, signal` omitting the repetitions.</p>
+<p>To transform a succession of <code class="prettyprint">key, signal</code> with possibly many times the same signal value into a stream of <code class="prettyprint">key, signal</code> omitting the repetitions.</p>
 
 <a name="param-tuple">
 <h4>Parameters</h4>
@@ -234,7 +234,7 @@
 
 <p>In addition to the tuples read from parent operations, an operation also receive some constant parameters that can be used to customize the behavior of a compiled <a href="/glossary.html#Program">program</a>. See the <a href="/glossary.html#ref-programs">section about defining programs</a> below.</p>
 
-<p>Such parameters can be accessed unambiguously by prefixing them with the tuple name `param`.</p>
+<p>Such parameters can be accessed unambiguously by prefixing them with the tuple name <code class="prettyprint">param</code>.</p>
 
 <p>There is no restriction as to where this "tuple" can be used.</p>
 
@@ -265,17 +265,17 @@
   <td>How many tuples have failed the WHERE filter without any incoming tuple passing it.</td>
 </tr><tr>
   <td>group.#count</td>
-  <td>How many tuples were added so far to form the output tuple. Can be used both in the `where` clause and in the `select` clause.</td>
+  <td>How many tuples were added so far to form the output tuple. Can be used both in the <code class="prettyprint">where</code> clause and in the <code class="prettyprint">select</code> clause.</td>
 </tr><tr>
   <td>group.#successive</td>
-  <td>How many successive incoming tuples were assigned to that group (same `group by` key).</td>
+  <td>How many successive incoming tuples were assigned to that group (same <code class="prettyprint">group by</code> key).</td>
 </tr><tr>
   <td>out.#count</td>
-  <td>In the `select` clause, how many tuples have been output so far. For <code>SELECT</code> operations, use `selected.#count` instead.</td>
+  <td>In the <code class="prettyprint">select</code> clause, how many tuples have been output so far. For <code class="prettyprint">SELECT</code> operations, use <code class="prettyprint">selected.#count</code> instead.</td>
 </tr>
 </table>
 
-<p>NOTE: `group.#successive` is unchanged by an aggregate flush operation and therefore make little sense in a `remove/keep` clause.</p>
+<p>NOTE: <code class="prettyprint">group.#successive</code> is unchanged by an aggregate flush operation and therefore make little sense in a <code class="prettyprint">remove/keep</code> clause.</p>
 
 <h3>Operators and Functions</h3>
 
@@ -285,115 +285,115 @@
 
 <p>Here we list all available functions. There is no way to define your own functions short of adding them directly into Ramen source code. Therefore, there is no real difference between 'operators' and 'functions'.</p>
 
-<p>It is more useful to distinguish between stateless and stateful functions, though. Function state (for those that have one) can be chosen to have either a global lifespan or a per-group lifespan. The default lifespan for aggregate functions is the group and the default lifespan for other stateful functions is global.  Add "globally" after the function name to force it to use the global lifespan and "locally" to force the per-group lifespan. For instance, the `sum` function, being an aggregate function, use a group-wise state by default, meaning <code>sum x</code> is equivalent to <code>sum locally x</code>. To make it use a global state (and build the sum over all incoming tuples regardless of how they are grouped), write: <code>sum globally x</code>.</p>
+<p>It is more useful to distinguish between stateless and stateful functions, though. Function state (for those that have one) can be chosen to have either a global lifespan or a per-group lifespan. The default lifespan for aggregate functions is the group and the default lifespan for other stateful functions is global.  Add "globally" after the function name to force it to use the global lifespan and "locally" to force the per-group lifespan. For instance, the <code class="prettyprint">sum</code> function, being an aggregate function, use a group-wise state by default, meaning <code class="prettyprint">sum x</code> is equivalent to <code class="prettyprint">sum locally x</code>. To make it use a global state (and build the sum over all incoming tuples regardless of how they are grouped), write: <code class="prettyprint">sum globally x</code>.</p>
 
 <h4>Boolean operators</h4>
 
-<p>`and`, `or`: infix, <code>bool ⨉ bool → bool</code>.</p>
+<p><code class="prettyprint">and</code>, <code class="prettyprint">or</code>: infix, <code>bool ⨉ bool → bool</code>.</p>
 
-<p>`not`: prefix, <code>bool → bool</code>.</p>
+<p><code class="prettyprint">not</code>: prefix, <code>bool → bool</code>.</p>
 
 <h4>Arithmetic operators</h4>
 
-<p>`+`, `-`, `*`, `//`, `^`: infix, </code>num ⨉ num → num<code>, where </code>num<code> can be any numeric type (integer or float).</p>
+<p><code class="prettyprint">+</code>, <code class="prettyprint">-</code>, <code class="prettyprint">*</code>, <code class="prettyprint">//</code>, <code class="prettyprint">^</code>: infix, <code>num ⨉ num → num</code>, where <code class="prettyprint">num</code> can be any numeric type (integer or float).</p>
 
-<p>The size of the result is the largest of the size of the operands.  Both operands will also be converted to the largest of their type before proceeding to the operation. For instance, in `1 + 999`, `1` will be converted to <code>i16</code> (the type of `999`) and then a 16 bits addition will yield a 16 bits result (regardless of any overflow). If you expect an overflow then you need to explicitly cast to a larger type.</p>
+<p>The size of the result is the largest of the size of the operands.  Both operands will also be converted to the largest of their type before proceeding to the operation. For instance, in <code class="prettyprint">1 + 999</code>, <code class="prettyprint">1</code> will be converted to <code class="prettyprint">i16</code> (the type of <code class="prettyprint">999</code>) and then a 16 bits addition will yield a 16 bits result (regardless of any overflow). If you expect an overflow then you need to explicitly cast to a larger type.</p>
 
-<p>Notice that `//` is the integer division.</p>
+<p>Notice that <code class="prettyprint">//</code> is the integer division.</p>
 
-<p>`/`: infix, floating point division, <code>float ⨉ float → float</code>.</p>
+<p><code class="prettyprint">/</code>: infix, floating point division, <code>float ⨉ float → float</code>.</p>
 
-<p>`%`: infix, the integer remainder, <code>int ⨉ int → int</code>.</p>
+<p><code class="prettyprint">%</code>: infix, the integer remainder, <code>int ⨉ int → int</code>.</p>
 
-<p>`abs`: prefix, absolute value, <code>num ⨉ num → num</code>.</p>
+<p><code class="prettyprint">abs</code>: prefix, absolute value, <code>num ⨉ num → num</code>.</p>
 
 <h4>Comparison operators</h4>
 
-<p>`&gt;`, `&gt;=`, `&lt;=`, `&lt;`: infix, <code>num ⨉ num → bool</code>.</p>
+<p><code class="prettyprint">&gt;</code>, <code class="prettyprint">&gt;=</code>, <code class="prettyprint">&lt;=</code>, <code class="prettyprint">&lt;</code>: infix, <code>num ⨉ num → bool</code>.</p>
 
-<p>`=`, `!=`, `&lt;&gt;`: infix, <code>any ⨉ any → bool</code>, where <code>any</code> refers to any type.</p>
+<p><code class="prettyprint">=</code>, <code class="prettyprint">!=</code>, <code class="prettyprint">&lt;&gt;</code>: infix, <code>any ⨉ any → bool</code>, where <code class="prettyprint">any</code> refers to any type.</p>
 
-<p>Notice that `&lt;&gt;` and `!=` are synonymous.</p>
+<p>Notice that <code class="prettyprint">&lt;&gt;</code> and <code class="prettyprint">!=</code> are synonymous.</p>
 
 <p>As for arithmetic operators, operand types will be enlarged to the largest common type and the operation will return that same type.</p>
 
 <h4>Time related functions</h4>
 
-<p>`age of ...` or `age(...)`. Expects its argument to be a timestamp in the UNIX epoch and will return the difference between that timestamp and now.</p>
+<p><code class="prettyprint">age of ...</code> or <code class="prettyprint">age(...)</code>. Expects its argument to be a timestamp in the UNIX epoch and will return the difference between that timestamp and now.</p>
 
-<p>`now` returns the current timestamp as a float.</p>
+<p><code class="prettyprint">now</code> returns the current timestamp as a float.</p>
 
 <h4>Casts</h4>
 
-<p>Any type name used as a function would convert its argument into that type.  For instance: `int16(42)` or `int16 of 42`.</p>
+<p>Any type name used as a function would convert its argument into that type.  For instance: <code class="prettyprint">int16(42)</code> or <code class="prettyprint">int16 of 42</code>.</p>
 
 <h4>NULL related function</h4>
 
-<p>`is [not] null`: postfix, <code>any nullable → bool</code>.</p>
+<p><code class="prettyprint">is [not] null</code>: postfix, <code class="prettyprint">any nullable → bool</code>.</p>
 
 <p>Turns a nullable value into a boolean. Invalid on non-nullable values.</p>
 
-<p>For instance: `null is null` is trivially true, while `some_field is not null` can be either true or not depending on the tuple at hand.</p>
+<p>For instance: <code class="prettyprint">null is null</code> is trivially true, while `some_field is not null` can be either true or not depending on the tuple at hand.</p>
 
-<p>`42 is null` is an error, though, as 42 is not nullable.</p>
+<p><code class="prettyprint">42 is null</code> is an error, though, as 42 is not nullable.</p>
 
-<p>`coalesce`: prefix, <code>any nullable ⨉ ... ⨉ any non nullable → any non nullable</code>.</p>
+<p><code class="prettyprint">coalesce</code>: prefix, <code>any nullable ⨉ ... ⨉ any non nullable → any non nullable</code>.</p>
 
 <p>Get rid of nullability by providing a fallback non-nullable value. The result will be the value of the first non-null argument, and is guaranteed to be non-nullable.</p>
 
 <h4>String functions</h4>
 
-<p>`length`, prefix, <code>string → uint16</code>: length _in bytes_ of a string. (TODO: length in UTF-8 characters)</p>
+<p><code class="prettyprint">length</code>, prefix, <code>string → uint16</code>: length _in bytes_ of a string. (TODO: length in UTF-8 characters)</p>
 
-<p>`+`, infix, <code>string ⨉ string → string</code>, concatenation.</p>
+<p><code class="prettyprint">+</code>, infix, <code>string ⨉ string → string</code>, concatenation.</p>
 
-<p>`lower`, prefix, <code>string → string</code>, convert to lowercase.</p>
+<p><code class="prettyprint">lower</code>, prefix, <code>string → string</code>, convert to lowercase.</p>
 
-<p>`upper`, prefix, <code>string → string</code>, convert to uppercase.</p>
+<p><code class="prettyprint">upper</code>, prefix, <code>string → string</code>, convert to uppercase.</p>
 
-<p>Notice that `lower` and `upper` will alter only characters that are part of the US-ASCII character set.</p>
+<p>Notice that <code class="prettyprint">lower</code> and <code class="prettyprint">upper</code> will alter only characters that are part of the US-ASCII character set.</p>
 
-<p>`like`, prefix, <code>string ⨉ pattern → bool</code> where any '%' in pattern will match any substring. TODO: '_' to match any single character.</p>
+<p><code class="prettyprint">like</code>, prefix, <code>string ⨉ pattern → bool</code> where any '%' in pattern will match any substring. TODO: '_' to match any single character.</p>
 
-<p>`split`, prefix, <code>string ⨉ string → multiple strings</code> where the first string is the delimiter where to cut the second string. This function output each fragment successively.</p>
+<p><code class="prettyprint">split</code>, prefix, <code>string ⨉ string → multiple strings</code> where the first string is the delimiter where to cut the second string. This function output each fragment successively.</p>
 
 <h4>Arithmetic functions</h4>
 
-<p>`abs`, prefix, <code>num → num</code>, absolute value.</p>
+<p><code class="prettyprint">abs</code>, prefix, <code>num → num</code>, absolute value.</p>
 
-<p>`exp`, prefix, <code>num → float</code>, exponential.</p>
+<p><code class="prettyprint">exp</code>, prefix, <code>num → float</code>, exponential.</p>
 
-<p>`log`, prefix, <code>num → float</code>, logarithm.</p>
+<p><code class="prettyprint">log</code>, prefix, <code>num → float</code>, logarithm.</p>
 
-<p>`sqrt`, prefix, <code>num → float</code>, square root.</p>
+<p><code class="prettyprint">sqrt</code>, prefix, <code>num → float</code>, square root.</p>
 
 <h4>Network functions</h4>
 
-<p>`in`, infix, <code>address ⨉ cidr → bool</code>, true iif the given address belongs to the CIDR range. Notice that the address can be either IPv4 or IPv6 but the CIDR must correspond to it.</p>
+<p><code class="prettyprint">in</code>, infix, <code>address ⨉ cidr → bool</code>, true iif the given address belongs to the CIDR range. Notice that the address can be either IPv4 or IPv6 but the CIDR must correspond to it.</p>
 
 <h4>Miscellaneous stateless functions</h4>
 
-<p>`hash`, prefix, <code>any → int64</code>, turn anything into a 64 bits integer.</p>
+<p><code class="prettyprint">hash</code>, prefix, <code>any → int64</code>, turn anything into a 64 bits integer.</p>
 
-<p>`random` returns a random float between 0 and 1.</p>
+<p><code class="prettyprint">random</code> returns a random float between 0 and 1.</p>
 
 <h3>Aggregate functions</h3>
 
-<p>Aggregate functions are stateful functions that combines the current value with previous values.  For instance, `max response_time` will compute the max of all the `response_time` fields of all incoming tuples (until the `commit` clause instruct Ramen to output this aggregated tuple).</p>
+<p>Aggregate functions are stateful functions that combines the current value with previous values.  For instance, <code class="prettyprint">max response_time</code> will compute the max of all the <code class="prettyprint">response_time</code> fields of all incoming tuples (until the <code class="prettyprint">commit</code> clause instruct Ramen to output this aggregated tuple).</p>
 
 <h4>Min, Max, Sum, Avg</h4>
 
-<p>Compute the `max`, `min`, `sum` and `avg` of the (numeric) input values.</p>
+<p>Compute the <code class="prettyprint">max</code>, <code class="prettyprint">min</code>, <code class="prettyprint">sum</code> and <code class="prettyprint">avg</code> of the (numeric) input values.</p>
 
-<p>For `sum`, beware that you may want a larger integer type than the one from the operand!</p>
+<p>For <code class="prettyprint">sum</code>, beware that you may want a larger integer type than the one from the operand!</p>
 
 <h4>And, Or</h4>
 
-<p>Compute the logical `and` and `or` of the (boolean) input values.</p>
+<p>Compute the logical <code class="prettyprint">and</code> and <code class="prettyprint">or</code> of the (boolean) input values.</p>
 
 <h4>First, Last</h4>
 
-<p>Remember only the `first` or the `last` value encountered in this aggregation.</p>
+<p>Remember only the <code class="prettyprint">first</code> or the <code class="prettyprint">last</code> value encountered in this aggregation.</p>
 
 <h4>Percentile</h4>
 
@@ -401,65 +401,65 @@
 
 <p>This function is more expensive as it requires to actually keep all encountered values until the aggregate is flushed.</p>
 
-<p>Example: `95th percentile of (response_time + data_transfert_time)`.</p>
+<p>Example: <code class="prettyprint">95th percentile of (response_time + data_transfert_time)</code>.</p>
 
 <p>Notice the infix notation.</p>
 
 <h3>Timeseries functions</h3>
 
-<p>`lag`, prefix, <code>int ⨉ any → any</code>, delayed value of some expression. For instance, `lag (3, f)` returns the value of f 3 steps earlier. Can be used for instance to compute a poor man's derivative `f - lag(1, f)`.</p>
+<p><code class="prettyprint">lag</code>, prefix, <code>int ⨉ any → any</code>, delayed value of some expression. For instance, <code class="prettyprint">lag (3, f)</code> returns the value of f 3 steps earlier. Can be used for instance to compute a poor man's derivative <code class="prettyprint">f - lag(1, f)</code>.</p>
 
 <p>Following functions share the notion of _seasonality_.</p>
 
-<p>Seasonality is like weak periodicity: a seasonal timeseries is a timeseries which is strongly auto-correlated for some period P without being strictly periodic. When this is the case, one often wants to compute some function over the past k same seasons. For instance, if `v` has a seasonality of `p`, one might want to know the average of the last 10 seasons: `(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.</p>
+<p>Seasonality is like weak periodicity: a seasonal timeseries is a timeseries which is strongly auto-correlated for some period P without being strictly periodic. When this is the case, one often wants to compute some function over the past k same seasons. For instance, if <code class="prettyprint">v</code> has a seasonality of <code class="prettyprint">p</code>, one might want to know the average of the last 10 seasons: `(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.</p>
 
-<p>The following functions are such functions, parameterized by `p` (the seasonality) and `k` (how many seasons in the past to consider). Notice that in the example above as well as in the functions below the current value is skipped: `v(t)` is not in the average. This is because we often want to compare the past seasons with the current value.</p>
+<p>The following functions are such functions, parameterized by <code class="prettyprint">p</code> (the seasonality) and <code class="prettyprint">k</code> (how many seasons in the past to consider). Notice that in the example above as well as in the functions below the current value is skipped: <code class="prettyprint">v(t)</code> is not in the average. This is because we often want to compare the past seasons with the current value.</p>
 
 <p>Seasonality is similar to fixed length windows but implemented at the function level rather than at the aggregation level.</p>
 
-<p>`season_moveavg`, prefix, <code>int ⨉ int ⨉ num → float</code>, seasonal moving average.</p>
+<p><code class="prettyprint">season_moveavg</code>, prefix, <code>int ⨉ int ⨉ num → float</code>, seasonal moving average.</p>
 
-<p>For a timeseries of seasonality `p` (first parameter), returns the average of the last `k` values (second parameter), skipping the current one. The third parameter is numerical expression. The result will be a float. This is the same computation than the exemple given above.</p>
+<p>For a timeseries of seasonality <code class="prettyprint">p</code> (first parameter), returns the average of the last <code class="prettyprint">k</code> values (second parameter), skipping the current one. The third parameter is numerical expression. The result will be a float. This is the same computation than the exemple given above.</p>
 
-<p>`moveavg`: same as `season_moveavg` with `p=1`.</p>
+<p><code class="prettyprint">moveavg</code>: same as <code class="prettyprint">season_moveavg</code> with <code class="prettyprint">p=1</code>.</p>
 
-<p>`k-moveavg` or `k-ma`: alternative infix syntax for `moveavg`.</p>
+<p><code class="prettyprint">k-moveavg</code> or <code class="prettyprint">k-ma</code>: alternative infix syntax for <code class="prettyprint">moveavg</code>.</p>
 
-<p>`season_fit`, prefix, <code>int ⨉ int ⨉ num → float</code>, linear regression (fitting).</p>
+<p><code class="prettyprint">season_fit</code>, prefix, <code>int ⨉ int ⨉ num → float</code>, linear regression (fitting).</p>
 
-<p>`fit`: same as `season_fit` with `p=1`.</p>
+<p><code class="prettyprint">fit</code>: same as <code class="prettyprint">season_fit</code> with <code class="prettyprint">p=1</code>.</p>
 
-<p>`season_fit_multi`, prefix, <code>int ⨉ int ⨉ num ⨉ ... → float</code>, multiple linear regression. This is a variadic function. The first `num` (mandatory) is the parameter to be fitted, and all other following optional numbers are regression parameters helping with the fitting.</p>
+<p><code class="prettyprint">season_fit_multi</code>, prefix, <code>int ⨉ int ⨉ num ⨉ ... → float</code>, multiple linear regression. This is a variadic function. The first <code class="prettyprint">num</code> (mandatory) is the parameter to be fitted, and all other following optional numbers are regression parameters helping with the fitting.</p>
 
-<p>`fit_multi`: same as `season_fit_multi` for `p=1`.</p>
+<p><code class="prettyprint">fit_multi</code>: same as <code class="prettyprint">season_fit_multi</code> for <code class="prettyprint">p=1</code>.</p>
 
-<p>`smooth`, prefix, <code>float ⨉ num → float</code>, exponential smoothing of the value (second parameter). The first parameter is a constant float providing the exponent (between 0 and 1, the smaller the softer the smooth).</p>
+<p><code class="prettyprint">smooth</code>, prefix, <code>float ⨉ num → float</code>, exponential smoothing of the value (second parameter). The first parameter is a constant float providing the exponent (between 0 and 1, the smaller the softer the smooth).</p>
 
-<p>`smooth`, prefix, <code>num → float</code>, same as above with a default smoothing factor of 0.5.</p>
+<p><code class="prettyprint">smooth</code>, prefix, <code>num → float</code>, same as above with a default smoothing factor of 0.5.</p>
 
 <h3>Miscellaneous Stateful Functions</h3>
 
-<p>`remember`, prefix, <code>float ⨉ float ⨉ float ⨉ any ⨉ ... → bool</code>, tells if a value (or combination of) have been seen before.</p>
+<p><code class="prettyprint">remember</code>, prefix, <code>float ⨉ float ⨉ float ⨉ any ⨉ ... → bool</code>, tells if a value (or combination of) have been seen before.</p>
 
-<p>This uses rotating <a href="https://en.wikipedia.org/wiki/Bloom_filter">bloom filters</a>.  First parameter is the false positive rate that should be aimed at, second is how to compute the event time, third is the duration, in seconds, that the function should remember values, and finally the last argument is the value to remember. The function will return true if it remember that value (and it will memorize it for next calls).  There can be false positives (`remember` returning true while in fact that very value has never been seen) but no false negative (`remember` returning false while this value had in fact been seen earlier).</p>
+<p>This uses rotating <a href="https://en.wikipedia.org/wiki/Bloom_filter">bloom filters</a>.  First parameter is the false positive rate that should be aimed at, second is how to compute the event time, third is the duration, in seconds, that the function should remember values, and finally the last argument is the value to remember. The function will return true if it remember that value (and it will memorize it for next calls).  There can be false positives (<code class="prettyprint">remember</code> returning true while in fact that very value has never been seen) but no false negative (<code class="prettyprint">remember</code> returning false while this value had in fact been seen earlier).</p>
 
 <p>NOTE: When possible, it might save a lot of space to aim for a high false positive rate and account for it in the surrounding calculations, as opposed to aim for a low false positive rate.</p>
 
-<p>`distinct`, prefix, <code>any ⨉ ... → bool</code>, tells if a value have been seen before.</p>
+<p><code class="prettyprint">distinct</code>, prefix, <code>any ⨉ ... → bool</code>, tells if a value have been seen before.</p>
 
-<p>This is similar to the above `remember` but actually remember every values rather than relying on a bloom filter. So, to be used only when the number of possible distinct values is small.</p>
+<p>This is similar to the above <code class="prettyprint">remember</code> but actually remember every values rather than relying on a bloom filter. So, to be used only when the number of possible distinct values is small.</p>
 
 <p>The other difference is that it has no use for time: it merely remembers everything for the duration of its state, which is local (ie. bound to the group) by default.</p>
 
 <p>Finally, it can take any number of values of any type instead of just one.</p>
 
-<p>`hysteresis`, prefix, <code>float ⨉ float ⨉ float → bool</code>, tells if a measured value is within some permitted range, with an hysteresis once it has ventured outside.</p>
+<p><code class="prettyprint">hysteresis</code>, prefix, <code>float ⨉ float ⨉ float → bool</code>, tells if a measured value is within some permitted range, with an hysteresis once it has ventured outside.</p>
 
-<p>The first parameter is the measured value, the second parameter is the acceptable value and the last one is the maximum value. Starting from a <code>true</code> position, the result of hysteresis will stay true as long as the measured value stays below the defined maximum. Once it has reached or exceeded that maximum then the hysteresis value will be <code>false</code>, and the measured value now has to return below the acceptable value for hysteresis to return <code>true</code> again.</p>
+<p>The first parameter is the measured value, the second parameter is the acceptable value and the last one is the maximum value. Starting from a <code class="prettyprint">true</code> position, the result of hysteresis will stay true as long as the measured value stays below the defined maximum. Once it has reached or exceeded that maximum then the hysteresis value will be <code class="prettyprint">false</code>, and the measured value now has to return below the acceptable value for hysteresis to return <code class="prettyprint">true</code> again.</p>
 
-<p>For instance, <code>hysteresis(x, 8, 10)</code> starts at <code>true</code>. Then is <code>x</code> goes above <code>10</code> the returned value will turn to <code>false</code>, and will stay <code>false</code> until <code>x</code> decrease to below <code>8</code>.</p>
+<p>For instance, <code class="prettyprint">hysteresis(x, 8, 10)</code> starts at <code class="prettyprint">true</code>. Then is <code class="prettyprint">x</code> goes above <code class="prettyprint">10</code> the returned value will turn to <code class="prettyprint">false</code>, and will stay <code class="prettyprint">false</code> until <code class="prettyprint">x</code> decrease to below <code class="prettyprint">8</code>.</p>
 
-<p>If the accepted value is greater than the maximum, it works the other way around: the maximum is interpreted as a minimum and the acceptable value is the smallest value that the measured value must reach in order for the hysteresis to be <code>true</code> again once it had ventured below the minimum.</p>
+<p>If the accepted value is greater than the maximum, it works the other way around: the maximum is interpreted as a minimum and the acceptable value is the smallest value that the measured value must reach in order for the hysteresis to be <code class="prettyprint">true</code> again once it had ventured below the minimum.</p>
 
 <h3>Conditionals</h3>
 
@@ -469,7 +469,7 @@
 
 <p>The only real conditional is the case expression. Other forms of conditionals are just syntactic sugar for it. Its general syntax is:</p>
 
-<pre>
+<pre class="prettyprint">
   CASE
     WHEN cond1 THEN cons1
     WHEN cond2 THEN cons2
@@ -478,7 +478,7 @@
   END
 </pre>
 
-<p>...where you can have as many `when` clauses as you want, including 0, and the `else` clause is also optional.</p>
+<p>...where you can have as many <code class="prettyprint">when</code> clauses as you want, including 0, and the <code class="prettyprint">else</code> clause is also optional.</p>
 
 <p>All conditions must be of type bool. Consequents can have any type as long as they have all the same. That is also the type of the result of the CASE expression.</p>
 
@@ -486,9 +486,9 @@
 
 <h4>Variants</h4>
 
-<p>`IF cond THEN cons` or `IF(cond, cons)`: simple variant that produce either `cons` (if `cond` is true) or `NULL`.</p>
+<p><code class="prettyprint">IF cond THEN cons</code> or <code class="prettyprint">IF(cond, cons)</code>: simple variant that produce either <code class="prettyprint">cons</code> (if <code class="prettyprint">cond</code> is true) or <code class="prettyprint">NULL</code>.</p>
 
-<p>`IF cond THEN cons ELSE alt` or `IF(cond, cons, alt)`: same as above but with an ELSE branch.</p>
+<p>`IF cond THEN cons ELSE alt<code class="prettyprint"> or </code>IF(cond, cons, alt)`: same as above but with an ELSE branch.</p>
 
 <a name="table-of-precedence">
 <h3>Operator precedence</h3>
@@ -504,22 +504,22 @@
   <td>functions</td>
   <td>left to right</td>
 </tr><tr>
-  <td>`not`, `is null`, `is not null`</td>
+  <td><code class="prettyprint">not</code>, <code class="prettyprint">is null</code>, <code class="prettyprint">is not null</code></td>
   <td>left to right</td>
 </tr><tr>
-  <td>`^`</td>
+  <td><code class="prettyprint">^</code></td>
   <td>right tot left</td>
 </tr><tr>
-  <td>`*`, `//`, `/`, `%`</td>
+  <td><code class="prettyprint">*</code>, <code class="prettyprint">//</code>, <code class="prettyprint">/</code>, <code class="prettyprint">%</code></td>
   <td>left to right</td>
 </tr><tr>
-  <td>`+`, `-`</td>
+  <td><code class="prettyprint">+</code>, <code class="prettyprint">-</code></td>
   <td>left to right</td>
 </tr><tr>
-  <td>`&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `=`, `&lt;&gt;`, `!=`</td>
+  <td><code class="prettyprint">&gt;</code>, <code class="prettyprint">&gt;=</code>, <code class="prettyprint">&lt;</code>, <code class="prettyprint">&lt;=</code>, <code class="prettyprint">=</code>, <code class="prettyprint">&lt;&gt;</code>, <code class="prettyprint">!=</code></td>
   <td>left to right</td>
 </tr><tr>
-  <td>`or`, `and`</td>
+  <td><code class="prettyprint">or</code>, <code class="prettyprint">and</code></td>
   <td>left to right</td>
 </tr>
 </table>
@@ -528,11 +528,11 @@
 
 <h3>Read</h3>
 
-<p>The simplest way to get tuples may be to read them from CSV files. The <code>READ</code> operation does just that, reading a set of files and then waiting for more files to appear.</p>
+<p>The simplest way to get tuples may be to read them from CSV files. The <code class="prettyprint">READ</code> operation does just that, reading a set of files and then waiting for more files to appear.</p>
 
 <p>Its syntax is:</p>
 
-<pre>
+<pre class="prettyprint">
   READ [AND DELETE] FILES "file_pattern"
     [ PREPROCESS WITH "preprocessor" ]
     [ SEPARATOR "separator" ] [ NULL "null" ] (
@@ -542,9 +542,9 @@
   )
 </pre>
 
-<p>If <code>AND DELETE</code> is specified then files will be deleted as soon they have been read.</p>
+<p>If <code class="prettyprint">AND DELETE</code> is specified then files will be deleted as soon they have been read.</p>
 
-<p>The <code>file_pattern</code>, which must be quoted, is a file name that can use the star character ("*") as a wildcard matching any possible substring. This wildcard can only appear in the file name section of the path and not in any directory, though.</p>
+<p>The <code class="prettyprint">file_pattern</code>, which must be quoted, is a file name that can use the star character ("*") as a wildcard matching any possible substring. This wildcard can only appear in the file name section of the path and not in any directory, though.</p>
 
 <p>In case a proprocessor is given then it must accept the file content in its standard input and outputs the actual CSV in its standard output.</p>
 
@@ -554,11 +554,11 @@
 
 <p>If a value is equal to the string passed as NULL (the empty string by default) then the value will be assumed to be NULL.</p>
 
-<p>Field names must be valid identifiers (aka string made of letters, underscores and digits but as the first character), field types must be one of `bool`, `string`, `float`, `u8`, `i8`, `u16`, etc...  and `null` or `not null` will specify whether that field can be NULL or not (default to `null`).</p>
+<p>Field names must be valid identifiers (aka string made of letters, underscores and digits but as the first character), field types must be one of <code class="prettyprint">bool</code>, <code class="prettyprint">string</code>, <code class="prettyprint">float</code>, <code class="prettyprint">u8</code>, <code class="prettyprint">i8</code>, <code class="prettyprint">u16</code>, etc...  and <code class="prettyprint">null</code> or <code class="prettyprint">not null</code> will specify whether that field can be NULL or not (default to <code class="prettyprint">null</code>).</p>
 
 <p>Examples:</p>
 
-<pre>
+<pre class="prettyprint">
   READ FILE "/tmp/test.csv" SEPARATOR "\t" NULL "<NULL>" (
     first_name string NOT NULL,
     last_name string,
@@ -566,7 +566,7 @@
     year_of_death u16)
 </pre>
 
-<pre>
+<pre class="prettyprint">
   READ FILES "/tmp/test/*.csv.gz" PREPROCESSOR "zcat" (
     first_name string NOT NULL,
     last_name string)
@@ -578,19 +578,19 @@
 
 <p>Examples:</p>
 
-<pre>
+<pre class="prettyprint">
   YIELD sum globally 1 % 10 AS count
 </pre>
 
-<pre>
+<pre class="prettyprint">
   YIELD 1 AS tick EVERY 10 MILLISECONDS
 </pre>
 
-<p>Yield merely produces an infinite stream of tuples. If no `every` clause is specified, then it will do so as fast as the downstream functions can consume them. With an `every` clause, it will output one tuple at that pace (useful for clocks).</p>
+<p>Yield merely produces an infinite stream of tuples. If no <code class="prettyprint">every</code> clause is specified, then it will do so as fast as the downstream functions can consume them. With an <code class="prettyprint">every</code> clause, it will output one tuple at that pace (useful for clocks).</p>
 
 <p>Syntax:</p>
 
-<pre>
+<pre class="prettyprint">
   YIELD expression1 AS name1, expression2 AS name2, expression3 AS name3... [ EVERY duration ]
 </pre>
 
@@ -598,112 +598,112 @@
 
 <p>Group-By is the meat of Ramen's operation. It performs filtering, sorting, aggregation, windowing and projection. As each of those processes are optional let's visit each of them separately before looking at the big picture.</p>
 
-<h4>Filtering - the `where` clause</h4>
+<h4>Filtering - the <em>where</em> clause</h4>
 
-<p>If all you want is to select tuples matching some conditions, all you need is a filter. For instance, if you have a source of persons and want to filter only men older than 40, you could create an operation consisting of a single `where` clause, such as:</p>
+<p>If all you want is to select tuples matching some conditions, all you need is a filter. For instance, if you have a source of persons and want to filter only men older than 40, you could create an operation consisting of a single <code class="prettyprint">where</code> clause, such as:</p>
 
-<pre>
+<pre class="prettyprint">
   WHERE is_male AND age &gt; 40 FROM source
 </pre>
 
-<p>As is evidenced above, the syntax of the `where` clause is as simple as:</p>
+<p>As is evidenced above, the syntax of the <code class="prettyprint">where</code> clause is as simple as:</p>
 
-<pre>
+<pre class="prettyprint">
   WHERE condition FROM source
 </pre>
 
 <p>Notice that the clauses order within an operation generally doesn't matter so this would be equally valid:</p>
 
-<pre>
+<pre class="prettyprint">
   FROM source WHERE condition
 </pre>
 
 <p>The condition can be any expression which type is a non-nullable boolean.</p>
 
-<p>NOTE: The default `where` clause is <code>WHERE true</code>.</p>
+<p>NOTE: The default <code class="prettyprint">where</code> clause is <code class="prettyprint">WHERE true</code>.</p>
 
-<h4>Joining sources - the `merge` clause</h4>
+<h4>Joining sources - the <em>merge</em> clause</h4>
 
-<p>When selecting from several operation (as in <code>FROM operation1, operation2, ...</code>) the output of all those parent operations will be mixed together.  As parents will typically run simultaneously it is quite unpredictable how their output will mix.  Sometime, we'd like to synchronize those inputs though.</p>
+<p>When selecting from several operation (as in <code class="prettyprint">FROM operation1, operation2, ...</code>) the output of all those parent operations will be mixed together.  As parents will typically run simultaneously it is quite unpredictable how their output will mix.  Sometime, we'd like to synchronize those inputs though.</p>
 
-<p>It is easy and cheap to merge sort those outputs according to some fields, and the `merge` clause does exactly that. For instance:</p>
+<p>It is easy and cheap to merge sort those outputs according to some fields, and the <code class="prettyprint">merge</code> clause does exactly that. For instance:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT * FROM source1, source2, source3 MERGE ON timestamp
 </pre>
 
 <p>In case some parents are producing tuples at a much lower pace than the others, they might slow down the pipeline significantly. Indeed, after each tuple is merged in Ramen will have to wait for the next tuple of the slow source in order to select the smallest one.</p>
 
-<p>In that case, you might prefer not to wait longer than a specified timeout, and then exclude the slow parent from the merge sort until it starts emitting tuples again. You can to that with the <code>TIMEOUT</code> clause:</p>
+<p>In that case, you might prefer not to wait longer than a specified timeout, and then exclude the slow parent from the merge sort until it starts emitting tuples again. You can to that with the <code class="prettyprint">TIMEOUT</code> clause:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT * FROM parent1, parent2 MERGE ON field1, field2 TIMEOUT AFTER 3 SECONDS
 </pre>
 
 <p>Whenever the timed-out parent emits a tuple again it will be injected into the merge sort, with the consequence that in that case the produced tuples might not all be ordered according to the given fields.</p>
 
-<p>The `merge` clause syntax is:</p>
+<p>The <code class="prettyprint">merge</code> clause syntax is:</p>
 
-<pre>
+<pre class="prettyprint">
   MERGE ON expression1, expression2, ... [ TIMEOUT AFTER duration ]
 </pre>
 
-<h4>Sorting - the `sort` clause</h4>
+<h4>Sorting - the <em>sort</em> clause</h4>
 
-<p>Contrary to SQL, in Ramen sorts the query input not its output. This is because in SQL <code>ORDER BY</code> is mostly a way to present the data to the user, while in Ramen <code>SORT</code> is used to enforce some ordering required by the aggregation operations or the windowing.  Also, on a persistent query you do not necessarily know what the output of an operation will be used for, but you know if and how the operation itself needs its input to be sorted.</p>
+<p>Contrary to SQL, in Ramen sorts the query input not its output. This is because in SQL <code class="prettyprint">ORDER BY</code> is mostly a way to present the data to the user, while in Ramen <code class="prettyprint">SORT</code> is used to enforce some ordering required by the aggregation operations or the windowing.  Also, on a persistent query you do not necessarily know what the output of an operation will be used for, but you know if and how the operation itself needs its input to be sorted.</p>
 
 <p>Of course, since the operations never end the sort cannot wait for all the inputs before sorting. The best we can do is to wait for some entries to arrive, and then take the smaller of those, then wait for the next one to arrive, and so on, thus sorting a sliding window.</p>
 
-<p>The maximum length of this sliding window must be specified with a constant integer: <code>SORT LAST 42</code> for instance. It is also possible to specify a condition on that window (as an expression) that, if true, will process the next smallest tuple available, so that this sliding window is not necessarily of fixed length. For instance: <code>SORT LAST 42 OR UNTIL AGE(creation_time) &gt; 60</code> would buffer at most 42 tuples, but would also process one after reception of a tuple which <code>creation_time</code> is older than 60 seconds.</p>
+<p>The maximum length of this sliding window must be specified with a constant integer: <code class="prettyprint">SORT LAST 42</code> for instance. It is also possible to specify a condition on that window (as an expression) that, if true, will process the next smallest tuple available, so that this sliding window is not necessarily of fixed length. For instance: <code class="prettyprint">SORT LAST 42 OR UNTIL AGE(creation_time) &gt; 60</code> would buffer at most 42 tuples, but would also process one after reception of a tuple which <code class="prettyprint">creation_time</code> is older than 60 seconds.</p>
 
-<p>Finally, it must also be specified according to what expression (or list of expressions) the tuples must be ordered: <code>SORT LAST 42 BY creation_time</code>.</p>
+<p>Finally, it must also be specified according to what expression (or list of expressions) the tuples must be ordered: <code class="prettyprint">SORT LAST 42 BY creation_time</code>.</p>
 
-<p>The complete `sort` clause is therefore:</p>
+<p>The complete <code class="prettyprint">sort</code> clause is therefore:</p>
 
-<pre>
+<pre class="prettyprint">
   SORT LAST n [ OR UNTIL expression1 ] BY expression2, expression3, ...
 </pre>
 
-<h4>Projection - the `select` clause</h4>
+<h4>Projection - the <em>select</em> clause</h4>
 
 <p>To follow up on previous example, maybe you are just interested in the persons name and age. So now you could create this operation to select only those:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT name, age FROM source
 </pre>
 
 <p>Instead of mere field names you can write more interesting expressions:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT (IF is_male THEN "Mr. " ELSE "Ms. ") + name AS name,
          age date_of_birth as age_in_seconds
   FROM source
 </pre>
 
-<p>The general syntax of the `select` clause is:</p>
+<p>The general syntax of the <code class="prettyprint">select</code> clause is:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT expression1 AS name1, expression2 AS name2, ...
 </pre>
 
-<p>You can also replace _one_ expression anywhere in this list by a star (`*`).  All fields from the input which are not already present in the list will be copied over to the output. What is meant here by "being present" is: having the same field name and a compatible type. Since field names must be unique, this is an error if an expression of an incompatible type is aliased to the same name of an input type together with the star field selector.</p>
+<p>You can also replace _one_ expression anywhere in this list by a star (<code class="prettyprint">*</code>).  All fields from the input which are not already present in the list will be copied over to the output. What is meant here by "being present" is: having the same field name and a compatible type. Since field names must be unique, this is an error if an expression of an incompatible type is aliased to the same name of an input type together with the star field selector.</p>
 
-<p>NOTE: The default `select` clause is: <code>SELECT *<code>.</p>
+<p>NOTE: The default <code class="prettyprint">select</code> clause is: <code class="prettyprint">SELECT *</code>.</p>
 
 <h4>Aggregation</h4>
 
-<p>Some functions that might be used in the <code>SELECT<code> build their result from several input values, and output a result only when some condition is met. Aggregation functions are a special case of stateful functions.  Stateful functions are functions that needs to maintain an internal state in order to be able to output a result. A simple example is the `lag` function, which merely output the past value for every new value.</p>
+<p>Some functions that might be used in the <code class="prettyprint">SELECT</code> build their result from several input values, and output a result only when some condition is met. Aggregation functions are a special case of stateful functions.  Stateful functions are functions that needs to maintain an internal state in order to be able to output a result. A simple example is the <code class="prettyprint">lag</code> function, which merely output the past value for every new value.</p>
 
-<p>The internal state of those functions can be either global to the whole operation, or specific to a group, which is the default. A group is a set of input tuple sharing something in common. For instance, all persons with the same age and sex. LEt's take an example, and compute the average salary per sex and age. `avg` is the archetypal aggregation function.</p>
+<p>The internal state of those functions can be either global to the whole operation, or specific to a group, which is the default. A group is a set of input tuple sharing something in common. For instance, all persons with the same age and sex. Let's take an example, and compute the average salary per sex and age. <code class="prettyprint">avg</code> is the archetypal aggregation function.</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT avg salary FROM employee GROUP BY age, is_male
 </pre>
 
 <p>What happens here for each incoming tuple:</p>
 
 <ol>
-<li>Extract the fields age and is_male and makes it the `key` of this tuple;</li>
+<li>Extract the fields age and is_male and makes it the <code class="prettyprint">key</code> of this tuple;</li>
 <li>Look for the group for this key.
     <ul>
     <li>If not found, create a new group made only of this tuple. Initialize its average salary with this employee's salary;</li>
@@ -711,108 +711,108 @@
     </ul></li>
 </ol>
 
-<p>The `group-by` clause in itself is very simple: it consists merely on a list of expressions building a key from any input tuple:</p>
+<p>The <code class="prettyprint">group-by</code> clause in itself is very simple: it consists merely on a list of expressions building a key from any input tuple:</p>
 
-<pre>
+<pre class="prettyprint">
   GROUP BY expression1, expression2, ...
 </pre>
 
-<p>You can mix stateful functions drawing their state from the group the tuple under consideration belongs to, with stateful functions having a global state.  Where a stateful function draws its state from depends on the presence or absence of the `globally` modifier to the function name. For instance, let's also compute the global average salary:</p>
+<p>You can mix stateful functions drawing their state from the group the tuple under consideration belongs to, with stateful functions having a global state.  Where a stateful function draws its state from depends on the presence or absence of the <code class="prettyprint">globally</code> modifier to the function name. For instance, let's also compute the global average salary:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT avg salary, avg globally salary AS global_avg_salary
   FROM employee GROUP BY age, is_male
 </pre>
 
-<p>Each time the operation will output a result, it will have the average (so far) for the group that is output (automatically named `avg_salary` since no better name was provided) and the average (so far) globally (named explicitly `global_avg_salary`).</p>
+<p>Each time the operation will output a result, it will have the average (so far) for the group that is output (automatically named <code class="prettyprint">avg_salary</code> since no better name was provided) and the average (so far) globally (named explicitly <code class="prettyprint">global_avg_salary</code>).</p>
 
-<p>Contrary to SQL, it is not an error to select a value from the input tuple with no aggregation function specified. The output tuple will then just use the current input tuple to get the value (similarly to what the `last` aggregation function would do).</p>
+<p>Contrary to SQL, it is not an error to select a value from the input tuple with no aggregation function specified. The output tuple will then just use the current input tuple to get the value (similarly to what the <code class="prettyprint">last</code> aggregation function would do).</p>
 
-<p>This is also what happens if you use the `*` (star) designation in the `select` clause. So for instance:</p>
+<p>This is also what happens if you use the <code class="prettyprint">*</code> (star) designation in the <code class="prettyprint">select</code> clause. So for instance:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT avg salary, *
   FROM employee GROUP BY age, is_male
 </pre>
 
-<p>...would output tuples made of the average value of the input field <code>salary<code> and all the fields of input tuples, using the last encountered values.</p>
+<p>...would output tuples made of the average value of the input field <code class="prettyprint">salary</code> and all the fields of input tuples, using the last encountered values.</p>
 
-<p>NOTE: The default `group-by` clause is: nothing! All tuples will be assigned to the same and only group, then.</p>
+<p>NOTE: The default <code class="prettyprint">group-by</code> clause is: nothing! All tuples will be assigned to the same and only group, then.</p>
 
-<p>Hopefully all is clear so far. Now the question that's still to be addressed is: When does the operation output a result? That is controlled by the `commit` clause.</p>
+<p>Hopefully all is clear so far. Now the question that's still to be addressed is: When does the operation output a result? That is controlled by the <code class="prettyprint">commit</code> clause.</p>
 
-<h4>Windowing, part 1: the `commit` clause</h4>
+<h4>Windowing, part 1: the <em>commit</em> clause</h4>
 
 <p>Windowing is a major difference with SQL, which stops aggregating values when it has processed all the input. Since stream processors model an unbounded stream of inputs one has to give this extra piece of information.</p>
 
-<p>Conceptually, each time a tuple is received Ramen will consider each group one by one and evaluate the <code>COMMIT<code> condition to see if an output should be emitted.</p>
+<p>Conceptually, each time a tuple is received Ramen will consider each group one by one and evaluate the <code class="prettyprint">COMMIT</code> condition to see if an output should be emitted.</p>
 
 <p>Obviously, Ramen tries very hard *not* to actually do this as it would be unbearably slow when the number of groups is large. Instead, it will consider only the groups for which the condition might have changed ; usually, that means only the group which current tuple belongs to.</p>
 
-<p>So, the syntax of the `commit` clause is simple:</p>
+<p>So, the syntax of the <code class="prettyprint">commit</code> clause is simple:</p>
 
-<pre>
+<pre class="prettyprint">
   COMMIT WHEN condition
 </pre>
 
 <p>...where, once again, condition can be any expression which type is a non-nullable boolean.</p>
 
-<p>NOTE: The default `commit` clause is: <code>true<code>, to commit every selected tuples.</p>
+<p>NOTE: The default <code class="prettyprint">commit</code> clause is: <code class="prettyprint">true</code>, to commit every selected tuples.</p>
 
 <p>The next and final step to consider is: when a tuple is output, what to do with the group? The simplest and more sensible thing to do is to delete it so that a fresh new one will be created if we ever met the same key.</p>
 
 <p>Indeed, the above syntax is actually a shorthand for:</p>
 
-<pre>
+<pre class="prettyprint">
   COMMIT AND FLUSH WHEN condition
 </pre>
 
-<p>This additional <code>AND FLUSH<code> means exactly that: when the condition is true, commit the tuple _and_ delete (flush) the group.</p>
+<p>This additional <code class="prettyprint">AND FLUSH</code> means exactly that: when the condition is true, commit the tuple _and_ delete (flush) the group.</p>
 
 <p>If this is the default, what are the other options?</p>
 
-<h4>Windowing, part 2: the `flush` clause</h4>
+<h4>Windowing, part 2: the <em>flush</em> clause</h4>
 
 <p>Instead of deleting the group, one can:</p>
 
 <ul>
-<li>Remove the `n` oldest entries with <code>SLIDE n<code>;</li>
-<li>Remove all entries satisfying a condition with <code>REMOVE condition<code>;</li>
-<li>Conversely, keep only the entries satisfying a condition with <code>KEEP condition<code> (syntactic sugar for <code>REMOVE not (condition)<code>);</li>
-<li>Keep everything and resume aggregation without changing the group in any way, with <code>KEEP ALL<code>.</li>
+<li>Remove the <code class="prettyprint">n</code> oldest entries with <code class="prettyprint">SLIDE n</code>;</li>
+<li>Remove all entries satisfying a condition with <code class="prettyprint">REMOVE condition</code>;</li>
+<li>Conversely, keep only the entries satisfying a condition with <code class="prettyprint">KEEP condition</code> (syntactic sugar for <code class="prettyprint">REMOVE not (condition)</code>);</li>
+<li>Keep everything and resume aggregation without changing the group in any way, with <code class="prettyprint">KEEP ALL</code>.</li>
 </ul>
 
-<p>Notice that <code>SLIDE<code> assumes that the tuples are received in some meaningful order, which is generally not true. It is thus often safer to use a proper filter and use a time value (or other ordered value) from the input tuple to perform the selection, for a very modest performance fee.</p>
+<p>Notice that <code class="prettyprint">SLIDE</code> assumes that the tuples are received in some meaningful order, which is generally not true. It is thus often safer to use a proper filter and use a time value (or other ordered value) from the input tuple to perform the selection, for a very modest performance fee.</p>
 
-<p>TODO: an <code>ORDER BY expression<code> to goes with the <code>SLIDE<code>.</p>
+<p>TODO: an <code class="prettyprint">ORDER BY expression</code> to goes with the <code class="prettyprint">SLIDE</code>.</p>
 
 <p>Also, it is important to be aware that "removing" tuples from the aggregate requires that all received tuples be kept for next aggregate and be "replayed" when the aggregate is "flushed"; therefore windowing has a sizeable impact on performance, memory wise as well as time wise, and should be used only when a small number of tuples are kept from one window to the next.</p>
 
-<p>So the syntax for the `commit` clause that has been given in the previous section should really have been:</p>
+<p>So the syntax for the <code class="prettyprint">commit</code> clause that has been given in the previous section should really have been:</p>
 
-<pre>
+<pre class="prettyprint">
   COMMIT [ AND [ FLUSH | SLIDE n | REMOVE condition | KEEP [ condition | ALL ] ] ] WHEN condition
 </pre>
 
-<p>There is no <code>FLUSH<code> method to keep the group as it is, but you could easily <code>SLIDE 0<code>, for instance. But even better not to flush at all, since _when_ to flush is also a parameter that can be set independently of when to commit.</p>
+<p>There is no <code class="prettyprint">FLUSH</code> method to keep the group as it is, but you could easily <code class="prettyprint">SLIDE 0</code>, for instance. But even better not to flush at all, since _when_ to flush is also a parameter that can be set independently of when to commit.</p>
 
-<p>Indeed, when its not bundled with the `commit` clause, the `flush` clause is:</p>
+<p>Indeed, when its not bundled with the <code class="prettyprint">commit</code> clause, the <code class="prettyprint">flush</code> clause is:</p>
 
-<pre>
+<pre class="prettyprint">
   ( FLUSH | SLIDE n | REMOVE condition | KEEP [ condition | ALL ]) WHEN condition
 </pre>
 
 <p>Therefore to keep the groups as they are the simplest is to add:</p>
 
-<pre>
+<pre class="prettyprint">
   KEEP ALL
 </pre>
 
-<p>Notice that when an explicit `flush` clause is present, then the flush method must not also be bundled with the `commit` clause, as that would be redundant at best and ambiguous at worse.</p>
+<p>Notice that when an explicit <code class="prettyprint">flush</code> clause is present, then the flush method must not also be bundled with the <code class="prettyprint">commit</code> clause, as that would be redundant at best and ambiguous at worse.</p>
 
 <p>So, as an example, suppose we want the average salaries emitted every time we added 10 persons in the aggregation group:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT avg salary, avg globally salary AS global_avg_salary
   FROM employee GROUP BY age, is_male
   COMMIT AND KEEL ALL WHEN group.#count &gt;= 10
@@ -820,18 +820,18 @@
 
 <p>Suppose instead we want a sliding window over the last 10 persons of a group:</p>
 
-<pre>
+<pre class="prettyprint">
   ...
   COMMIT AND SLIDE 1 WHEN group.#count &gt;= 10
 </pre>
 
-<p>NOTE: The default `flush` clause is to flush the group after committing a tuple.</p>
+<p>NOTE: The default <code class="prettyprint">flush</code> clause is to flush the group after committing a tuple.</p>
 
 <h4>Outputting: How Tuples Are Sent To Child Functions</h4>
 
 <p>When Ramen commits a tuple, what tuple exactly is it?</p>
 
-<p>The output tuple is the one that is created by the `select` clause, with no more and no less fields. The types of those fields is obviously heavily influenced by the type of the input tuple. This type itself comes mostly from the output type of the parent operations. Therefore changing an ancestor operation might change the output type of an unmodified operation.</p>
+<p>The output tuple is the one that is created by the <code class="prettyprint">select</code> clause, with no more and no less fields. The types of those fields is obviously heavily influenced by the type of the input tuple. This type itself comes mostly from the output type of the parent operations. Therefore changing an ancestor operation might change the output type of an unmodified operation.</p>
 
 <p>The output tuple is then sent to each of the children operations, before a new input tuple is read. No batching takes place in the operations, although batching does take place in the communication in between them (the ring-buffers).  Indeed, when an operation has no tuple to read it _sleeps_ for a dynamic duration that is supposed to leave enough time for N tuples to arrive, so that next time the operation is run by the operating system there are, in average, N tuples waiting.  This behavior is designed to be efficient (minimizing syscalls when busy and avoiding trashing the cache), but offers no guaranteed batching. If a computation requires batches then those batches have to be computed using windowing, as described above.</p>
 
@@ -841,36 +841,36 @@
 
 <p>And what's more convenient than a simple HTTP GET?</p>
 
-<p>A <code>Group By<code> operation can have a `notify` clause that will cause Ramen to get the specified URL via HTTP whenever a tuple is <a href="/glossary.html#Commit">committed</a>.</p>
+<p>A <code class="prettyprint">Group By</code> operation can have a <code class="prettyprint">notify</code> clause that will cause Ramen to get the specified URL via HTTP whenever a tuple is <a href="/glossary.html#Commit">committed</a>.</p>
 
 <p>The URL parameter is a string that can contain special placeholders for the output tuple field names (with or without the "out" prefix) that will be replaced by the actual field value.</p>
 
 <p>So for example, given a stream of people with both a name and a location, we could notify some service each time a person named "Waldo" is spotted:</p>
 
-<pre>
+<pre class="prettyprint">
   NOTIFY "http://i_found_waldo.com/?location=${location}"
   WHEN name = "Waldo"
 </pre>
 
-<p>NOTE: <code>WHEN<code> is an alias for <code>WHERE<code>.</p>
+<p>NOTE: <code class="prettyprint">WHEN</code> is an alias for <code class="prettyprint">WHERE</code>.</p>
 
-<p>This works because the default `select` clause is <code>SELECT *<code> and the default `commit` clause is to commit every selected tuple.</p>
+<p>This works because the default <code class="prettyprint">select</code> clause is <code class="prettyprint">SELECT *</code> and the default <code class="prettyprint">commit</code> clause is to commit every selected tuple.</p>
 
 <p>The result of the GET is discarded.</p>
 
 <h4>Outputting: Storing Tuples For Posterity</h4>
 
-<p>Storing output tuples can be useful, but doing so for every operation forever would be wasteful. Thus, despite every operation output will be initially stored for some time, any output that is not requested by a client (via `ramen tail` or `ramen timeseries`) for some time will stop being written to disc.</p>
+<p>Storing output tuples can be useful, but doing so for every operation forever would be wasteful. Thus, despite every operation output will be initially stored for some time, any output that is not requested by a client (via <code class="prettyprint">ramen tail</code> or <code class="prettyprint">ramen timeseries</code>) for some time will stop being written to disc.</p>
 
-<p>All stored tuples are archived in files that have the very same structure as the ring-buffers, although they are never emptied and so new files are created when the buffer gets full. Older files will be deleted according to the <code>--max-archives<code> command line parameter.</p>
+<p>All stored tuples are archived in files that have the very same structure as the ring-buffers, although they are never emptied and so new files are created when the buffer gets full. Older files will be deleted according to the <code class="prettyprint">--max-archives</code> command line parameter.</p>
 
 <h4>Outputting: Timeseries and Event Times</h4>
 
 <p>In order to retrieve <a href="/glossary.html#Timeseries">timeseries</a> from output tuples it is necessary to provide information about what time should be associated with each tuple.</p>
 
-<p>This is why the <code>Group By<code>, <code>Yield<code> and <code>Read<code> operations can be accompanied with an `event-time` clause, instructing Ramen how to compute the event times from the tuples.</p>
+<p>This is why the <code class="prettyprint">Group By</code>, <code class="prettyprint">Yield</code> and <code class="prettyprint">Read</code> operations can be accompanied with an <code class="prettyprint">event-time</code> clause, instructing Ramen how to compute the event times from the tuples.</p>
 
-<pre>
+<pre class="prettyprint">
   EVENT STARTING AT identifier [ * scale ]
       [ ( WITH DURATION ( identifier [ * scale ] | constant ) |
           AND STOPPING AT identifier [ * scale ] ) ]
@@ -878,15 +878,15 @@
 
 <p>Contrary to most stream processing tools, events have not only a time but a duration, that can be specified either as an actual length or as an ending time.</p>
 
-<p>In the above, <code>identifier<code> represent the name of an output field where the event time (or duration) is to be found. <code>scale<code> must be a number and the field it applies to will be multiplied by this number to obtain seconds (either to build a time as a UNIX timestamp or to obtain a duration).  <code>constant<code> is a constant number of seconds representing the duration of the event, if it's known and constant.</p>
+<p>In the above, <code class="prettyprint">identifier</code> represent the name of an output field where the event time (or duration) is to be found. <code class="prettyprint">scale</code> must be a number and the field it applies to will be multiplied by this number to obtain seconds (either to build a time as a UNIX timestamp or to obtain a duration).  <code class="prettyprint">constant</code> is a constant number of seconds representing the duration of the event, if it's known and constant.</p>
 
-<p>With all these information, the `timeseries` command will be able to produce accurate results.</p>
+<p>With all these information, the <code class="prettyprint">timeseries</code> command will be able to produce accurate results.</p>
 
-<p>In the future these might also be used to obtain default time for functions requiring it (such as the `remember` function).</p>
+<p>In the future these might also be used to obtain default time for functions requiring it (such as the <code class="prettyprint">remember</code> function).</p>
 
 <p>For instance if we had minutely metric collection from sensors with a field "time" in milliseconds we could write:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT whatever FROM sensors WHERE some_condition
   EVENT STARTING AT time * 0.001 WITH DURATION 30
 </pre>
@@ -897,33 +897,33 @@
 
 <p>For instance, we may want to focus on the top 10 lowest yearly salary in our employee stream so that we do not waste processing time on the rest.</p>
 
-<p>The `top` clause offers to ignore all but the most important groups:</p>
+<p>The <code class="prettyprint">top</code> clause offers to ignore all but the most important groups:</p>
 
-<pre>
+<pre class="prettyprint">
   SELECT name FROM employee
   GROUP BY name
   TOP 10 BY -avg(salary) WHEN group.#count = 12
 </pre>
 
-<p>Notice that the minus sign before the `avg` function: this is because TOP selects the highest result of the given expression. As we want to select the lowest salaries we have to ask for the top negative salaries.</p>
+<p>Notice that the minus sign before the <code class="prettyprint">avg</code> function: this is because TOP selects the highest result of the given expression. As we want to select the lowest salaries we have to ask for the top negative salaries.</p>
 
-<p>Notice also that the top replaces both the `commit` and `flush` clauses with a single condition that will in practice work like a global `commit and flush` clause: once this condition is met all groups will be output and reset. After that a whole new TOP will start with the next tuples to come.</p>
+<p>Notice also that the top replaces both the <code class="prettyprint">commit</code> and <code class="prettyprint">flush</code> clauses with a single condition that will in practice work like a global <code class="prettyprint">commit and flush</code> clause: once this condition is met all groups will be output and reset. After that a whole new TOP will start with the next tuples to come.</p>
 
-<p>The general syntax of the `top` clause is:</p>
+<p>The general syntax of the <code class="prettyprint">top</code> clause is:</p>
 
-<pre>
+<pre class="prettyprint">
   TOP number BY expression WHEN condition
 </pre>
 
 <p>Where the number must be a positive integer and the expression must refers only to the input tuple and produce a number that will be used as a _weight_ contributed to the group by that input tuple.</p>
 
-<p>The presence of a `top` clause changes slightly how a <code>Group By<code> operation works. First and foremost, the number of groups that are maintained in memory is reduced to the same magnitude as the selected number, which can greatly reduce the memory footprint of the operation.</p>
+<p>The presence of a <code class="prettyprint">top</code> clause changes slightly how a <code class="prettyprint">Group By</code> operation works. First and foremost, the number of groups that are maintained in memory is reduced to the same magnitude as the selected number, which can greatly reduce the memory footprint of the operation.</p>
 
 <h4>The Complete Picture</h4>
 
-<p>We are now able to give the full syntax and semantic of the <code>Group By<code> operation:</p>
+<p>We are now able to give the full syntax and semantic of the <code class="prettyprint">Group By</code> operation:</p>
 
-<pre>
+<pre class="prettyprint">
   [ SELECT expression1 AS name1, expression2 AS name2, ... ]
   [ WHERE condition ]
   FROM source
@@ -937,13 +937,13 @@
          AND STOPPING AT identifier [ * scale ] ) ] ]
 </pre>
 
-<p>Each of those clauses can be specified in any order and can be omitted but for the `from` clause; Also, when <code>TOP<code> is specified then no <code>COMMIT<code> or <code>FLUSH<code> must be present.</p>
+<p>Each of those clauses can be specified in any order and can be omitted but for the <code class="prettyprint">from</code> clause; Also, when <code class="prettyprint">TOP</code> is specified then no <code class="prettyprint">COMMIT</code> or <code class="prettyprint">FLUSH</code> must be present.</p>
 
 <p>The semantic is:</p>
 
-<p>For each input tuple, compute the key and retrieve the current aggregate, if any. If no current aggregate exists for this key yet then start a new one.  Then evaluate the `where` clause: if it is false, skip that input (and discard the new aggregate that might have been created).  If the `where` clause yields true, accumulates that input into that aggregate (actual meaning depending on what functions are used in the operation). If a `top-by` clause is present, limit the number of kept groups to the top N contributors according to the given metric.  Compute the current output-tuple.</p>
+<p>For each input tuple, compute the key and retrieve the current aggregate, if any. If no current aggregate exists for this key yet then start a new one.  Then evaluate the <code class="prettyprint">where</code> clause: if it is false, skip that input (and discard the new aggregate that might have been created).  If the <code class="prettyprint">where</code> clause yields true, accumulates that input into that aggregate (actual meaning depending on what functions are used in the operation). If a <code class="prettyprint">top-by</code> clause is present, limit the number of kept groups to the top N contributors according to the given metric.  Compute the current output-tuple.</p>
 
-<p>With all this, evaluates the `commit` clause (or the top condition): if it is true then send the output tuple to all children, and also maybe store it on disc for later retrieval via `ramen tail` or `ramen timeseries`. Should this input tuple be replayed when flushing this aggregate, store it with as part of the group. If the output tuple has been committed, then lush this aggregate -- either by deleting the aggregate altogether or by replacing it with an aggregate build from replaying some of the stored input tuple. If this was a top operation, though, all groups will be committed and flushed.</p>
+<p>With all this, evaluates the <code class="prettyprint">commit</code> clause (or the top condition): if it is true then send the output tuple to all children, and also maybe store it on disc for later retrieval via <code class="prettyprint">ramen tail</code> or <code class="prettyprint">ramen timeseries</code>. Should this input tuple be replayed when flushing this aggregate, store it with as part of the group. If the output tuple has been committed, then lush this aggregate -- either by deleting the aggregate altogether or by replacing it with an aggregate build from replaying some of the stored input tuple. If this was a top operation, though, all groups will be committed and flushed.</p>
 
 <a name="ref-programs">
 <h2>Programs</h2>
@@ -951,7 +951,7 @@
 
 <p>A program is a set of operations. The order of definitions does not matter.  The semi-colon is used as a separator (although omitting the final semi-colon is allowed). The syntax is simple and can be grasped with a single example:</p>
 
-<pre>
+<pre class="prettyprint">
   DEFINE foo AS
     SELECT * FROM other_program/operation WHERE bar &gt; 0;
 
@@ -971,6 +971,9 @@
 <h3>Rate Limited Selection</h3>
 
 <h3>Hysteresis</h3>
+
+
+  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
 
 </body>
 </html>

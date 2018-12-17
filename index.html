@@ -43,7 +43,7 @@
 <li>Operations are defined using a SQL-like language that's compiled down to machine code for efficiency, rather than requiring users to program in a procedural programming language.</li>
 
 <p>This is how it looks like:</p>
-<pre>
+<pre class="prettyprint">
 DEFINE memory_alert AS
   SELECT time, host, free + used + cached AS total
   FROM memory
@@ -68,6 +68,9 @@ DEFINE memory_alert AS
 <li><a href="language_reference.html">Language reference</a>;</li>
 <li><a href="blog.html">Blog about various aspects of Ramen design</a>;</li>
 </ul>
+
+
+  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
 
 </body>
 </html>
