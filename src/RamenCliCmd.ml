@@ -625,7 +625,7 @@ let replay_ conf fq field_names with_header with_units sep null raw
     failwith "Option --with-units makes no sense without --with-header" ;
   let formatter = table_formatter pretty raw null in
   RamenExport.replay conf ~while_ fq field_names where since until
-                     with_event_time (fun head ->
+                     ~with_event_time (fun head ->
       let head = Array.of_list head in
       let head' = head_of_types ~with_units head in
       let print = TermTable.print_table ~na:null ~sep ~pretty ~with_header

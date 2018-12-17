@@ -101,7 +101,9 @@ let get conf num_points since until where factors
   (* The data fields we are really interested about are: the data fields +
    * the factors *)
   let tuple_fields = List.rev_append factors data_fields in
-  RamenExport.replay conf fq tuple_fields where since until true (fun head ->
+  (* Must not add event time in front of factors: *)
+  RamenExport.replay conf fq tuple_fields where since until
+                     ~with_event_time:false (fun head ->
     (* TODO: RamenTuple.typ should be an array *)
     let head = Array.of_list head in
     (* Extract fields of interest (data fields, keys...) from a tuple: *)

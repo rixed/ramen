@@ -192,7 +192,7 @@ let find_replay_sources conf ?while_ fq since until =
 
 
 let replay conf ?(while_=always) fq field_names where since until
-           with_event_time f =
+           ~with_event_time f =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
