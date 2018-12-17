@@ -118,6 +118,14 @@ let get conf num_points since until where factors
             | None -> bucket_avg
             | Some str -> consolidate str))
     in
+    (* If we asked for some factors and have no data, then there will be no
+     * columns in the result, which is OK (cartesian product of data fields and
+     * factors). But if we asked for no factors then we expect one column per
+     * data field, whether there is data or not. So in that case let's create
+     * the buckets in advance, in case on_tuple is not called at all: *)
+    if num_factors = 0 then (
+      let buckets = make_buckets num_points num_data_fields in
+      Hashtbl.add per_factor_buckets [||] buckets) ;
     (fun t1 t2 tuple ->
       let k = key_of_factors tuple in
       let buckets =
