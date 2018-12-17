@@ -48,7 +48,7 @@ type user_conf =
          * with no parents. *)
         let h = Hashtbl.create 1 in
         Hashtbl.add h Globs.all
-          { duration = 86400. *. 365. ; query_freq = 1. /. 600. } ;
+          { duration = 3600. ; query_freq = 1. /. 600. } ;
         h ] }
   [@@ppp PPP_OCaml]
 
@@ -538,7 +538,12 @@ let update_storage_allocation conf =
           !logger.warning "  of some sort...?")
     with Scanf.Scan_failure _ -> ()
   (* TODO! *)
-  and unsat _syms _output = ()
+  and unsat _syms _output =
+    (* Ideally, name the asserts from the user config and report errors
+     * as for typing. For now, just complain loudly giving generic advices. *)
+    !logger.error
+      "Cannot satisfy archival constraints. Try reducing history length or \
+       allocate more disk space."
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;
   (* Scale it up to 100% and convert to bytes: *)
