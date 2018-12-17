@@ -44,6 +44,8 @@ type user_conf =
      * that should go with it): *)
     retentions : (glob, retention) Hashtbl.t
       [@ppp_default
+        (* TODO: A better configuration would be to save only the functions
+         * with no parents. *)
         let h = Hashtbl.create 1 in
         Hashtbl.add h Globs.all
           { duration = 86400. *. 365. ; query_freq = 1. /. 600. } ;
@@ -101,6 +103,9 @@ type func_stats =
      * enough and might resume: *)
     mutable is_running : bool [@ppp_default false] }
   [@@ppp PPP_OCaml]
+
+let archives_print oc =
+  List.print (Tuple2.print Float.print Float.print) oc
 
 let func_stats_empty () =
   { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;

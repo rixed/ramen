@@ -147,8 +147,9 @@ let find_replay_sources conf ?while_ fq since until =
             if t1 > until || t2 < since then best_opt else
             Some (max t1 since, min t2 until)
           ) None s.RamenArchivist.archives in
-        !logger.debug "From %a, best_op=%a"
+        !logger.debug "From %a, best_op from archives %a = %a"
           RamenName.fq_print fq
+          RamenArchivist.archives_print s.RamenArchivist.archives
           (Option.print (Tuple2.print Float.print Float.print)) best_opt ;
         (* Take what we can from here and the rest from the parents: *)
         match best_opt with
@@ -202,6 +203,10 @@ let replay conf ?(while_=always) fq field_names where since until
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names ser in
+  !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
+    (List.print RamenName.field_print) field_names
+    RamenTuple.print_typ head_typ
+    (Array.print Int.print) head_idx ;
   let on_tuple, on_exit = f head_typ in
   (* Using the archivist stats, find out all required sources: *)
   match find_replay_sources conf ~while_ fq since until with
