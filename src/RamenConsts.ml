@@ -139,13 +139,11 @@ struct
   let daemonize = "Daemonize"
   let to_stdout = "Log onto stdout/stderr instead of a file"
   let to_syslog = "log using syslog"
-  let max_archives =
-    "Max number of archive files to keep per operation; \
-     0 would disable archiving altogether"
   let loop =
     "Do not return after the work is over. Instead, wait for the specified \
      amount of time and restart"
   let dry_run = "Just display what would be deleted"
+  let del_ratio = "Only delete that ratio of in-excess archive files"
   let autoreload =
     "Should workers be automatically reloaded when the \
      binary changes? And if so, how frequently to check"
@@ -279,6 +277,9 @@ struct
 
   (* How frequently to run the GC: *)
   let gc_loop = 3600.
+
+  (* Do not delete all excess files at once but only that ratio: *)
+  let del_ratio = 0.3
 
   (* How frequently should the archivist reallocate disk space and
    * reconfigure workers archival behavior: *)

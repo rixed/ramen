@@ -46,7 +46,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       )
     ) files
 
-let cleanup_once conf dry_run max_archives =
+let cleanup_once conf dry_run del_ratio =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
    * directories.
@@ -72,42 +72,104 @@ let cleanup_once conf dry_run max_archives =
     Filename.dirname (RamenConf.report_ringbuf conf)
   and notifdir =
     Filename.dirname (RamenConf.notify_ringbuf conf) in
-  let clean_seq_archives dir =
+  let clean_seq_archives dir alloced =
+    (* Delete oldest files matching %d_%d_%a_%a.r, until the worker is below
+     * its allocated storage space, but not more than a given fraction of
+     * what we should delete. *)
     (* Delete all files matching %d_%d_%a_%a.r but the last ones.
      * Also, for each of these, try to delete all attached factor files. *)
     let files = Sys.files_of dir |> Array.of_enum in
     let arc_files =
-      Array.enum files |> RingBufLib.filter_arc_files dir |> Array.of_enum in
+      Array.enum files |> RingBufLib.filter_arc_files dir |>
+      Array.of_enum in
     Array.fast_sort RingBufLib.arc_file_compare arc_files ;
-    for i = 0 to Array.length arc_files - 1 - max_archives do
-      (* Beware: [fpath] is the full path while [files] are basenames! *)
-      let _, _, _, _, fpath = arc_files.(i) in
-      !logger.info "Deleting %s: old archive%s"
-        fpath (if dry_run then " (NOPE)" else "") ;
-      if not dry_run then (
-        let pref = Filename.(basename fpath |> remove_extension) in
-        Array.iter (fun fname ->
-          if String.starts_with fname pref then
-            log_and_ignore_exceptions unlink fpath ;
-        ) files
-      ) ;
-    done
+    (* Older files come first in [arc_files].
+     * Now find the allocated size for this worker: *)
+    let rec loop i sum_sz num_to_del to_del =
+      if i = 0 then num_to_del, to_del else
+      let _, _, _, _, fpath as f = arc_files.(i) in
+      let sum_sz = sum_sz + file_size fpath in
+      let num_to_del, to_del =
+        if sum_sz <= alloced then num_to_del, to_del
+        else num_to_del + 1, f::to_del in
+      loop (i - 1) sum_sz num_to_del to_del in
+    let num_to_del, to_del = loop (Array.length arc_files - 1) 0 0 [] in
+    (* We have at the head of to_del the oldest files. Delete some of them,
+     * but not all of them at once: *)
+    let num_to_del = round_to_int (float_of_int num_to_del *. del_ratio) in
+    let rec del n = function
+      | [] -> ()
+      | (_, _, _, _, fpath) :: to_del->
+          if n > 0 then (
+            (* TODO: also check that we do not delete younger data than
+             * planned. Ie. allocs must also tell the retention for each
+             * function. *)
+            !logger.info "Deleting %s: old archive%s"
+              fpath (if dry_run then " (NOPE)" else "") ;
+            if not dry_run then (
+              let pref = Filename.(basename fpath |> remove_extension) in
+              Array.iter (fun fname ->
+                if String.starts_with fname pref then
+                  log_and_ignore_exceptions unlink fpath ;
+              ) files
+            ) ;
+            del (n - 1) to_del
+          ) in
+    del num_to_del to_del
   in
-  let on_dir fname rel_fname =
-    let basename = Filename.basename rel_fname in
-    if String.ends_with basename ".arc" then
-      clean_seq_archives fname
+  let programs = C.with_rlock conf identity in
+  let allocs = RamenArchivist.load_allocs conf in
+  let get_alloced_worker rel_fname =
+    (* We need to retrieve the FQ of that worker and then check if this
+     * directory is still the current one, and then look for allocated
+     * space (assuming 0 for unknown worker or version).
+     * See src/ringbuf/ringbuf.c, function rotate_file_locked for details
+     * on how those files are named. *)
+    let fq = Filename.dirname rel_fname |> Filename.dirname |>
+             RamenName.fq_of_string in
+    match C.find_func programs fq with
+    | exception Not_found ->
+        !logger.info
+          "Archive directory %s belongs to unknown function %a"
+          rel_fname RamenName.fq_print fq ;
+        0
+    | _mre, _prog, func ->
+        let arc_dir = C.archive_buf_name conf func ^".arc" in
+        if arc_dir = rel_fname then (
+          !logger.info
+            "Archive directory %s is current archive for %a"
+            rel_fname RamenName.fq_print fq ;
+          Hashtbl.find allocs fq
+        ) else (
+          !logger.info
+            "Archive directory %s is an old archive for %a"
+            rel_fname RamenName.fq_print fq ;
+          0
+        ) in
+  let get_alloced_special _rel_fname = 150_000_000 (* TODO *) in
+  let on_dir get_alloced fname rel_fname =
+    if String.ends_with rel_fname ".arc" then (
+      match get_alloced rel_fname with
+      | exception e ->
+          (* Better not delete anything *)
+          let what =
+            Printf.sprintf "Cannot find allocated storage for archive %s"
+              rel_fname in
+          print_exception ~what e
+      | alloced ->
+          clean_seq_archives fname alloced
+    )
   in
-  dir_subtree_iter ~on_dir arcdir ;
-  dir_subtree_iter ~on_dir reportdir ;
-  dir_subtree_iter ~on_dir notifdir
+  dir_subtree_iter ~on_dir:(on_dir get_alloced_worker) arcdir ;
+  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
+  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
-let cleanup_loop conf dry_run sleep_time max_archives =
+let cleanup_loop conf dry_run del_ratio sleep_time =
   let watchdog =
     let timeout = sleep_time *. 2. in
     RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    cleanup_once conf dry_run max_archives ;
+    cleanup_once conf dry_run del_ratio ;
     RamenWatchdog.reset watchdog ;
     sleepf (jitter sleep_time)) ()

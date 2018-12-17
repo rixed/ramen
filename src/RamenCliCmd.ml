@@ -253,7 +253,7 @@ let kill conf program_names purge () =
  * Delete old or unused files.
  *)
 
-let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
+let gc conf dry_run del_ratio loop daemonize to_stdout to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -270,11 +270,11 @@ let gc conf max_archives dry_run loop daemonize to_stdout to_syslog () =
     Option.may mkdir_all logdir ;
     init_logger ?logdir conf.C.log_level) ;
   if loop <= 0. then
-    RamenGc.cleanup_once conf dry_run max_archives
+    RamenGc.cleanup_once conf dry_run del_ratio
   else (
     check_binocle_errors () ;
     if daemonize then do_daemonize () ;
-    RamenGc.cleanup_loop conf dry_run loop max_archives)
+    RamenGc.cleanup_loop conf dry_run del_ratio loop)
 
 (*
  * `ramen ps`

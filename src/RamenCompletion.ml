@@ -332,7 +332,7 @@ let complete str () =
       | "variants" ->
           copts
       | "gc" ->
-          [ "--max-archives", CliInfo.max_archives ;
+          [ "--del-ratio", CliInfo.del_ratio ;
             "--loop", CliInfo.loop ;
             "--dry-run", CliInfo.dry_run ] @
           copts

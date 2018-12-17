@@ -137,12 +137,6 @@ let supervisor =
  * Delete old or unused files
  *)
 
-let max_archives =
-  let env = Term.env_info "RAMEN_MAX_HISTORY_ARCHIVES" in
-  let i = Arg.info ~doc:CliInfo.max_archives
-                   ~env ["max-archives"] in
-  Arg.(value (opt int 20 i))
-
 let loop =
   let i = Arg.info ~doc:CliInfo.loop
                    ["loop"] in
@@ -153,12 +147,17 @@ let dry_run =
                    [ "dry-run" ] in
   Arg.(value (flag i))
 
+let del_ratio =
+  let i = Arg.info ~doc:CliInfo.del_ratio
+                   [ "del-ratio" ] in
+  Arg.(value (opt float Default.del_ratio i))
+
 let gc =
   Term.(
     (const RamenCliCmd.gc
       $ copts
-      $ max_archives
       $ dry_run
+      $ del_ratio
       $ loop
       $ daemonize
       $ to_stdout
