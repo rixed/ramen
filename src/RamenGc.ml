@@ -11,9 +11,6 @@ module C = RamenConf
 let get_log_file () =
   gettimeofday () |> localtime |> log_file
 
-let delete_directory fname = (* TODO: should really delete *)
-  rename fname (fname ^".todel")
-
 let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
 let v_regexp = regexp "v[0-9]+"
 let v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
@@ -42,7 +39,7 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
         !logger.info "Deleting %s: unused, old version%s"
           fname (if dry_run then " (NOPE)" else "") ;
         if not dry_run then
-          delete_directory full_path
+          rm_rf full_path
       )
     ) files
 

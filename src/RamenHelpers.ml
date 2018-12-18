@@ -269,9 +269,12 @@ let file_size fname =
 let is_empty_file fname =
   file_size fname = 0
 
-let safe_unlink fname =
-  try BatUnix.restart_on_EINTR Unix.unlink fname
+let safe_fileop f fname =
+  try BatUnix.restart_on_EINTR f fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()
+
+let safe_unlink fname =
+  safe_fileop Unix.unlink fname
 
 let move_file_away fname =
   let bad_file = fname ^".bad?" in
@@ -280,6 +283,18 @@ let move_file_away fname =
   with e ->
     !logger.warning "Cannot rename file %s to %s: %s"
       fname bad_file (Printexc.to_string e))
+
+let rec rm_rf fname =
+  assert (String.length fname > 2) ;
+  if not (is_directory fname) then
+    Printf.sprintf "rm_rf: %S must be a directory" fname |>
+    invalid_arg
+  else (
+    foreach (Sys.files_of fname) (fun rel ->
+      let fname = fname ^"/"^ rel in
+      if is_directory fname then rm_rf fname
+      else safe_unlink fname) ;
+    safe_fileop Unix.rmdir fname)
 
 let mtime_of_file fname =
   let open Unix in
