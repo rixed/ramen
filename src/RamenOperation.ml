@@ -1048,7 +1048,8 @@ let fields_schema m =
         List.fold_left (
           fun (select_fields, and_all_others, merge, sort, where,
                event_time, key, commit, from, every, listen,
-               instrumentation, ext_data, preprocessor, csv_specs, factors) ->
+               instrumentation, ext_data, preprocessor, csv_specs,
+               factors) ->
             (* FIXME: in what follows, detect and signal cases when a new value
              * replaces an old one (but the default), such as when two WHERE
              * clauses are given. *)
@@ -1064,33 +1065,40 @@ let fields_schema m =
               let select_fields = List.rev fields in
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | MergeClause merge ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | SortClause sort ->
               select_fields, and_all_others, merge, Some sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | WhereClause where ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | EventTimeClause event_time ->
               select_fields, and_all_others, merge, sort, where,
               Some event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | GroupByClause key ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit', from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | FromClause from' ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, (List.rev_append from' from),
@@ -1099,11 +1107,13 @@ let fields_schema m =
             | EveryClause every ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | ListenClause l ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, Some l,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | InstrumentationClause c ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen, c,
@@ -1111,19 +1121,23 @@ let fields_schema m =
             | ExternalDataClause c ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, Some c, preprocessor, csv_specs, factors
+              instrumentation, Some c, preprocessor, csv_specs,
+              factors
             | PreprocessorClause preprocessor ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
             | CsvSpecsClause c ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, Some c, factors
+              instrumentation, ext_data, preprocessor, Some c,
+              factors
             | FactorClause factors ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs, factors
+              instrumentation, ext_data, preprocessor, csv_specs,
+              factors
           ) default_clauses clauses in
       let commit_specs, (commit_before, commit_cond) = commit in
       (* Try to catch when we write "commit when" instead of "commit

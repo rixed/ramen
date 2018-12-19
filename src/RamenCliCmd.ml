@@ -852,7 +852,6 @@ let archivist conf loop daemonize no_stats no_allocs no_reconf
     if daemonize then do_daemonize () ;
     RamenArchivist.run_loop conf ~while_ loop no_stats no_allocs no_reconf)
 
-
 (*
  * Display various internal informations
  *)

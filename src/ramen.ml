@@ -749,7 +749,7 @@ let ps =
     info ~doc:CliInfo.ps "ps")
 
 (*
- * Start the Graphite impersonator
+ * Start the HTTP daemon (graphite impersonator)
  *)
 
 let server_url def =
