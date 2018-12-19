@@ -219,18 +219,12 @@ let compile conf lib_path use_external_compiler bundle_dir
 
 let run conf params replace kill_if_disabled report_period as_ src_file
         bin_file () =
-  (* By default use the given path as the program name: *)
-  let program_name =
-    Option.default_delayed (fun () ->
-      Filename.remove_extension bin_file |>
-      RamenName.program_of_string
-    ) as_ in
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file bin_file program_name
+               ?src_file bin_file as_
 
 (*
  * `ramen kill`
@@ -459,7 +453,7 @@ let parse_func_name_of_code conf what func_name_or_code =
       (* Run it, making sure it archives its history straight from the start: *)
       let debug = conf.C.log_level = Debug in
       RamenRun.run conf ~report_period:0. ~src_file ~debug
-                   exec_file program_name) ;
+                   exec_file (Some program_name)) ;
     let fq = RamenName.fq program_name func_name in
     fq, [], [ program_name ]
   in

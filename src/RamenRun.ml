@@ -166,7 +166,12 @@ let no_params = Hashtbl.create 0
  * linkage checks: *)
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(report_period=Default.report_period) ?(src_file="") ?(debug=false)
-        ?(params=no_params) bin_file program_name =
+        ?(params=no_params) bin_file program_name_opt =
+  let program_name =
+    Option.default_delayed (fun () ->
+      let prog = P.info_of_bin bin_file in
+      (List.hd prog.P.funcs).F.program_name
+    ) program_name_opt in
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
     let can_run = P.wants_to_run conf bin params in
