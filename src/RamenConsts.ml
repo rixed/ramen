@@ -228,6 +228,7 @@ struct
   let no_update_stats = "Do no attempt to update the workers stats file"
   let no_update_allocs = "Do no attempt to update the allocations file"
   let no_reconf_workers = "Do not change the workers export configuration"
+  let max_bytes = "How many bytes to dump from the ringbuf messages"
 end
 
 module WorkerCommands =

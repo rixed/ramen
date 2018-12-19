@@ -244,6 +244,11 @@ let dequeue =
       $ num_tuples),
     info ~doc:CliInfo.dequeue "dequeue")
 
+let max_bytes =
+  let i = Arg.info ~doc:CliInfo.max_bytes
+                   [ "s" ; "max-bytes" ] in
+  Arg.(value (opt int 64 i))
+
 let rb_files =
   let i = Arg.info ~doc:CliInfo.rb_files
                    ~docv:"FILE" [] in
@@ -253,6 +258,7 @@ let summary =
   Term.(
     (const RingBufCmd.summary
       $ copts
+      $ max_bytes
       $ rb_files),
     info ~doc:CliInfo.summary "ringbuf-summary")
 

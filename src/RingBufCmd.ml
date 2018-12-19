@@ -28,10 +28,11 @@ let dequeue conf file n () =
 
 (* Summary command *)
 
-let summary conf files () =
+let summary conf max_bytes files () =
+  let open RingBuf in
+  let max_words = round_up_to_rb_word max_bytes in
   init_logger conf.C.log_level ;
   List.iter (fun file ->
-    let open RingBuf in
     let rb = load file in
     let s = stats rb in
     (* The file header: *)
@@ -57,7 +58,6 @@ let summary conf files () =
     in
     if s.prod_tail <> s.cons_head then ( (* not empty *)
       Printf.printf "\nAvailable bytes:" ;
-      let max_words = 64 in
       if s.cons_head < s.prod_tail then ( (* no wraparound *)
         (* Reminder: we manipulate only word indices here: *)
         let sz = s.prod_tail - s.cons_tail in
