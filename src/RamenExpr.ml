@@ -227,6 +227,8 @@ and stateless_fun_misc =
    * aggregate functions! The parser distinguish the cases due to the
    * number of arguments: just 1 and that's the aggregate function, more
    * and that's the min/max of the given arguments. *)
+  (* FIXME: those two are useless now that any aggregate function can be
+   * used on lists: *)
   | Max of t list
   | Min of t list
   (* For debug: prints all its arguments, and output its first. *)
