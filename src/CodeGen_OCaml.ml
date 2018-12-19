@@ -65,7 +65,7 @@ let emit_sersize_of_fixsz_typ oc typ =
   let sz = RingBufLib.sersize_of_fixsz_typ typ in
   Int.print oc sz
 
-let rec emit_sersize_of_not_null tx_var offs_var oc = function
+let rec emit_sersize_of_not_null_scalar tx_var offs_var oc = function
   | TString ->
     Printf.fprintf oc "\
       %d + RingBuf.round_up_to_rb_word(RingBuf.read_word %s %s)"
@@ -87,38 +87,9 @@ let rec emit_sersize_of_not_null tx_var offs_var oc = function
       emit_sersize_of_fixsz_typ TCidrv4
       emit_sersize_of_fixsz_typ TCidrv6
 
-  | TTuple ts -> (* Should not be used! Was used when a constructed field was not mentioned and was skipped. *)
-    let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-    Printf.fprintf oc "\
-      let tuple_start_ = %s in\n" offs_var ;
-    Printf.fprintf oc "\
-      let %s_ = %s + %d in\n"
-      offs_var offs_var nullmask_sz ;
-    Array.iteri (fun i t ->
-      Printf.fprintf oc "\
-        let bi_ = %d in\n\
-        let %s_ = %s_ + (%a) in\n"
-        i
-        offs_var offs_var
-        (emit_sersize_of_field_tx tx_var "tuple_start_" (offs_var^"_") "bi_"
-          t.nullable)
-          t.structure
-    ) ts ;
-    Printf.fprintf oc "%s_ - %s"
-      offs_var offs_var
-  | TVec _ | TList _ ->
-    todo "vector sersize"
-  | t -> emit_sersize_of_fixsz_typ oc t
+  | TTuple _ | TVec _ | TList _ -> assert false
 
-(* Emit the code to retrieve the sersize of some serialized value *)
-and emit_sersize_of_field_tx tx_var start_offs_var offs_var nulli_var
-                             nullable oc structure =
-  if nullable then (
-    Printf.fprintf oc "if RingBuf.get_bit %s %s %s then %a else 0"
-      tx_var start_offs_var nulli_var
-      (emit_sersize_of_not_null tx_var offs_var) structure
-  ) else
-    emit_sersize_of_not_null tx_var offs_var oc structure
+  | t -> emit_sersize_of_fixsz_typ oc t
 
 let id_of_typ = function
   | TFloat  -> "float"
@@ -1666,9 +1637,12 @@ let rec emit_sersize_of_var typ nullable oc var =
      * the values and for each, know or compute its size, etc. This is
      * what we do here, but in cases where t has a well known sersize we
      * could generate much faster code of course: *)
-    Printf.fprintf oc "(Array.fold_left (fun s_ v_ -> \
-      s_ + %a) 0 %s)"
+    Printf.fprintf oc "(Array.fold_left (fun s_ v_ ->\n\
+      \t\t\t\ts_ + %a)\n\
+      \t\t\t\t(%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s)"
       (emit_sersize_of_var t.structure t.nullable) "v_"
+      (* start from the size prefix and nullmask: *)
+      RingBufLib.sersize_of_u32 var
       var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
@@ -1717,67 +1691,83 @@ let emit_serialize_tuple name oc tuple_typ =
     "\t\tif nullmask_bytes_ > 0 then\n\
      \t\t\tRingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ; (* zero the nullmask *)\n" ;
   Printf.fprintf oc "\t\tlet offs_, nulli_ = start_offs_ + nullmask_bytes_, 0 in\n" ;
-  (* Write the value and return new offset and nulli: *)
-  let rec emit_write_scalar tx_var offs_var nulli_var val_var nullable oc typ =
+  (*
+   * Write the value and return new offset and nulli:
+   *)
+  let rec emit_write_array tx_var offs_var nulli_var val_var dim_var oc t =
+    if verbose_serialization then
+      Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing an array of size %%d at offset %%d\" %s %s ;\n" dim_var offs_var ;
+    Printf.fprintf oc
+      "\t\t\t(let start_arr_ = %s in\n\
+       \t\t\tlet offs_arr_ = %s + (RingBufLib.nullmask_sz_of_vector %s) in\n"
+      offs_var
+      offs_var dim_var ;
+    Printf.fprintf oc
+      "\t\t\tArray.fold_left (fun (o_, bi_) v_ ->\n\
+       \t\t\t\t%a) (offs_arr_, %s) %s)\n"
+      (emit_write_scalar tx_var "start_arr_" "o_" "bi_" "v_" t.nullable) t.structure
+      nulli_var val_var
+  and emit_write_scalar tx_var start_var offs_var nulli_var val_var nullable oc typ =
     if nullable then (
       (* Write either nothing (since the nullmask is initialized with 0) or
        * the nullmask bit and the value *)
       Printf.fprintf oc "\t\t\t\t(match %s with\n" val_var ;
       Printf.fprintf oc "\t\t\t\t| Null -> %s, %s + 1\n" offs_var nulli_var ;
       Printf.fprintf oc "\t\t\t\t| NotNull %s ->\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s start_offs_ %s ;\n" tx_var nulli_var ;
+      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s %s %s ;\n" tx_var start_var nulli_var ;
       Printf.fprintf oc "\t\t\t\t\tlet %s, %s =\n\
                          \t\t\t\t\t\t%a in\n\
                          \t\t\t\t\t%s, %s + 1)\n"
         offs_var nulli_var
-        (emit_write_scalar tx_var offs_var nulli_var val_var false) typ
+        (emit_write_scalar tx_var start_var offs_var nulli_var val_var false) typ
         offs_var nulli_var
     ) else (match typ with
     (* Constructed types (items not nullable): *)
     | TTuple ts ->
+        if verbose_serialization then
+          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" %s ;\n" (Array.length ts) offs_var ;
         Printf.fprintf oc "\t\t\tlet %a = %s in\n"
           (array_print_as_tuple_i (fun oc i _ ->
             let item_var = val_var ^"_"^ string_of_int i in
             String.print oc item_var)) ts
           val_var ;
         let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\t\tlet %s = %s + %d (* nullmask *) in\n"
-          offs_var offs_var nullmask_sz ;
+        Printf.fprintf oc "\t\t\tlet offs_tup_ = %s + %d (* nullmask *) in\n"
+          offs_var nullmask_sz ;
         Array.iteri (fun i t ->
           let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t\tlet %s, %s = %a in\n"
-            offs_var nulli_var
-            (emit_write_scalar tx_var offs_var nulli_var item_var t.nullable) t.structure
+          Printf.fprintf oc "\t\t\t\tlet offs_tup_, %s = %a in\n"
+            nulli_var
+            (emit_write_scalar tx_var start_var "offs_tup_" nulli_var item_var t.nullable) t.structure
         ) ts ;
-        Printf.fprintf oc "\t\t\t\t%s, %s" offs_var nulli_var
+        Printf.fprintf oc "\t\t\t\toffs_tup_, %s" nulli_var
+
     | TVec (d, t) ->
-        let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
-        Printf.fprintf oc "\t\t\tlet %s = %s + %d (* nullmask *) in\n"
-          offs_var offs_var nullmask_sz ;
-        for i = 0 to d-1 do
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t\tlet %s, %s =\n\
-                             \t\t\t\t\tlet %s = %s.(%d) in %a in\n"
-            offs_var nulli_var
-            item_var val_var i
-            (emit_write_scalar tx_var offs_var nulli_var item_var t.nullable) t.structure
-        done ;
-        Printf.fprintf oc "\t\t\t\t%s, %s" offs_var nulli_var
+        emit_write_array tx_var offs_var nulli_var val_var (string_of_int d) oc t
+
+    | TList t ->
+        Printf.fprintf oc "\t\t\tlet d_ = Array.length %s in\n" val_var ;
+        Printf.fprintf oc "\t\t\tRingBuf.write_u32 %s %s (Uint32.of_int d_) ;\n"
+          tx_var offs_var ;
+        Printf.fprintf oc "\t\t\tlet %s = %s + RingBufLib.sersize_of_u32 in\n"
+          offs_var offs_var ;
+        emit_write_array tx_var offs_var nulli_var val_var "d_" oc t
+
     (* Scalar types (maybe nullable): *)
     | t ->
+        if verbose_serialization then
+          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;\n" val_var val_var offs_var ;
         Printf.fprintf oc "\t\t\t\tRingBuf.write_%s %s %s %s ;\n"
           (id_of_typ t) tx_var offs_var val_var ;
-        Printf.fprintf oc "\t\t\t\t%s + %a, %s"
+        Printf.fprintf oc "\t\t\t\t%s + %a, %s\n"
           offs_var (emit_sersize_of_var t false) val_var nulli_var ;
-        if verbose_serialization then
-          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;\n" val_var val_var offs_var
     )
   in
   List.iter (fun field ->
       Printf.fprintf oc "\t\tlet offs_, nulli_ =\n\
                          \t\t\tif List.hd skiplist_ then (\n" ;
       let id = id_of_field_typ ~tuple:TupleOut field in
-      emit_write_scalar "tx_" "offs_" "nulli_" id field.typ.nullable oc field.typ.structure ;
+      emit_write_scalar "tx_" "start_offs_" "offs_" "nulli_" id field.typ.nullable oc field.typ.structure ;
       Printf.fprintf oc "\n\t\t\t) else offs_, nulli_ in\n" ;
       Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n"
     ) ser_typ ;
@@ -1925,9 +1915,23 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
     (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
   if verbose_serialization then
     Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
-  (* Returns value, offset: *)
-  let rec emit_read_scalar tx_var start_offs_var offs_var val_var
-                           nullable nulli_var oc structure =
+  (*
+   * All thoe following emit_* functions Return value, offset:
+   *)
+  let rec emit_read_array tx_var offs_var dim_var oc t =
+    Printf.fprintf oc
+      "\t\tlet arr_start_ = %s\n\
+       \t\tand offs_arr_ = ref (%s + (RingBufLib.nullmask_sz_of_vector %s)) in\n"
+      offs_var
+      offs_var dim_var ;
+    Printf.fprintf oc
+      "\t\tArray.init %s (fun bi_ ->\n\
+       \t\t\tlet v_, o_ = %a in\n\
+       \t\t\toffs_arr_ := o_ ; v_), !offs_arr_\n"
+      dim_var
+      (emit_read_scalar tx_var "arr_start_" "!offs_arr_" "v_" t.nullable "bi_") t.structure
+  and emit_read_scalar tx_var start_offs_var offs_var val_var
+                       nullable nulli_var oc structure =
     if nullable then (
       Printf.fprintf oc "\
         \t\tif RingBuf.get_bit %s %s %s then (\n\
@@ -1946,47 +1950,39 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
      * item: *)
     | TTuple ts ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\tlet tuple_start_ = %s and %s = %s + %d in\n"
-          offs_var offs_var offs_var nullmask_sz ;
+        Printf.fprintf oc "\t\tlet tuple_start_ = %s and offs_tup_ = %s + %d in\n"
+          offs_var offs_var nullmask_sz ;
         Array.iteri (fun i t ->
           let item_var = val_var ^"_"^ string_of_int i in
           Printf.fprintf oc "\t\tlet bi_ = %d in\n\
-                             \t\tlet %s, %s = %a in\n"
+                             \t\tlet %s, offs_tup_ = %a in\n"
             i
-            item_var offs_var
-            (emit_read_scalar tx_var "tuple_start_" offs_var item_var t.nullable "bi_") t.structure
+            item_var
+            (emit_read_scalar tx_var "tuple_start_" "offs_tup_" item_var t.nullable "bi_") t.structure
         ) ts ;
-        Printf.fprintf oc "\t%a, %s"
+        Printf.fprintf oc "\t%a, offs_tup_"
           (array_print_as_tuple_i (fun oc i _ ->
             let item_var = val_var ^"_"^ string_of_int i in
             String.print oc item_var)) ts
-          offs_var ;
+
     | TVec (d, t) ->
-        let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
-        Printf.fprintf oc "\t\tlet vec_start_ = %s and %s = %s + %d in\n"
-          offs_var offs_var offs_var nullmask_sz ;
-        for i = 0 to d-1 do
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\tlet bi_ = %d in\n\
-                             \t\tlet %s, %s = %a in\n"
-            i
-            item_var offs_var
-            (emit_read_scalar tx_var "vec_start_" offs_var item_var t.nullable "bi_") t.structure
-        done ;
-        Printf.fprintf oc "\t[| " ;
-        for i = 0 to d-1 do
-          Printf.fprintf oc "%s_%d;" val_var i
-        done ;
-        Printf.fprintf oc " |], %s" offs_var
+        emit_read_array tx_var offs_var (string_of_int d) oc t
+
+    | TList t ->
+        (* List are like vectors but prefixed with the actual number of
+         * elements: *)
+        Printf.fprintf oc
+          "\t\tlet d_, offs_lst_ = Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in\n"
+          tx_var offs_var offs_var RingBufLib.sersize_of_u32 ;
+        emit_read_array tx_var "offs_lst_" "d_" oc t
+
     (* Non constructed types: *)
     | _ ->
         Printf.fprintf oc "\
           \t\tRingBuf.read_%s %s %s, %s + %a"
           (id_of_typ structure) tx_var offs_var
-          offs_var (emit_sersize_of_not_null tx_var offs_var) structure
-    ) ;
-    if verbose_serialization then
-      Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"deserialized field %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" val_var val_var
+          offs_var (emit_sersize_of_not_null_scalar tx_var offs_var) structure
+    )
   in
   let _ = List.fold_left (fun nulli field ->
       let id = id_of_field_typ ~tuple:TupleIn field in

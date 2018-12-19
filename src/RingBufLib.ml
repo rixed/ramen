@@ -32,9 +32,6 @@ let nullmask_sz_of_tuple ts =
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
 
-let sersize_of_string s =
-  rb_word_bytes + round_up_to_rb_word (String.length s)
-
 let sersize_of_float = round_up_to_rb_word 8
 let sersize_of_bool = round_up_to_rb_word 1
 let sersize_of_u8 = round_up_to_rb_word 1
@@ -53,6 +50,8 @@ let sersize_of_null = 0
 let sersize_of_eth = round_up_to_rb_word 6
 let sersize_of_cidrv4 = sersize_of_ipv4 + sersize_of_u8
 let sersize_of_cidrv6 = sersize_of_ipv6 + sersize_of_u16
+let sersize_of_string s =
+  sersize_of_u32 + round_up_to_rb_word (String.length s)
 
 let sersize_of_ip = function
   | RamenIp.V4 _ -> rb_word_bytes + sersize_of_ipv4
