@@ -103,6 +103,7 @@ RAMEN_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
 	src/RamenNetflow.ml \
+	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTuple.ml \
@@ -176,6 +177,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
 	src/RamenNetflow.ml \
+	src/RamenGraphiteSink.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
@@ -348,6 +350,7 @@ TESTABLE_SOURCES = \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
 	src/RamenExpr.ml \
+	src/RamenGraphiteSink.ml \
 	src/RamenOperation.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
@@ -390,8 +393,10 @@ LINKED_FOR_TESTS = \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
+	src/RamenNullable.ml \
 	src/RamenCollectd.ml \
 	src/RamenNetflow.ml \
+	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTuple.ml \

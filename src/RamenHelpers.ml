@@ -970,6 +970,7 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
       let recv_len, sockaddr =
         restart_on_eintr ~while_ (fun () ->
           recvfrom sock buffer 0 (Bytes.length buffer) []) () in
+      !logger.debug "Received %d bytes on UDP port %d" recv_len port ;
       let sender =
         match sockaddr with
         | ADDR_INET (addr, _port) -> Some addr

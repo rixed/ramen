@@ -846,12 +846,16 @@ struct
   let default_port_of_protocol = function
     | RamenProtocols.Collectd -> 25826
     | RamenProtocols.NetflowV5 -> 2055
+    | RamenProtocols.Graphite -> 2003
 
   let net_protocol m =
     let m = "network protocol" :: m in
-    ((strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
-     ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
-        RamenProtocols.NetflowV5)) m
+    (
+      (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
+      ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
+        RamenProtocols.NetflowV5) |||
+      (strinG "graphite" >>: fun () -> RamenProtocols.Graphite)
+    ) m
 
   let network_address =
     several ~sep:none (cond "inet address" (fun c ->

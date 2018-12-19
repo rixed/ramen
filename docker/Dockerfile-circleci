@@ -22,6 +22,7 @@ RUN apt-get --yes update && \
       patch \
       rsync \
       ruby \
+      socat \
       sqlite3 \
       ssh \
       sudo \

@@ -1,8 +1,8 @@
 Feature: Test Ramen Graphite Impersonator from the command line.
 
   Background:
-      Given ramen must be in the path
-      And the environment variable RAMEN_BUNDLE_DIR is set
+    Given ramen must be in the path
+    And the environment variable RAMEN_BUNDLE_DIR is set
 
   Scenario: If must be possible to get a graphite version
     Given ramen httpd --url http://localhost:8042 --graphite is started
