@@ -1871,8 +1871,9 @@ let emit_listen_on opc oc name net_addr port proto =
   let collector = collector_of_proto proto in
   Printf.fprintf oc "%a\n%a\n%a\n\
     let %s () =\n\
-      \tCodeGenLib_Skeletons.listen_on %s\n\
-      \t\t%S %d %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+      \tCodeGenLib_Skeletons.listen_on\n\
+      \t\t(%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)\n\
+      \t\t%S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") tuple_typ

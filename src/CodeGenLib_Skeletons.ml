@@ -453,28 +453,21 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
  * Operations that funcs may run: listen to some known protocol.
  *)
 
-let listen_on (collector :
-                inet_addr:Unix.inet_addr ->
-                port:int ->
-                (* We have to specify this one: *)
-                ?while_:(unit -> bool) ->
-                ('a -> unit) -> unit)
-              addr_str port proto_name
+let listen_on (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
+              proto_name
               sersize_of_tuple time_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun conf ->
     let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    and inet_addr = Unix.inet_addr_of_string addr_str
     in
-    info_or_test conf "Will listen to port %d for incoming %s messages"
-      port proto_name ;
+    info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
       outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
                   serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
-    collector ~inet_addr ~port ~while_ (fun tup ->
+    collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
       outputer (Some tup)))
 
