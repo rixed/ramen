@@ -65,3 +65,4 @@ src/config.h
 tests/archivist/*/log
 tests/archivist/*/archivist/v1/allocs
 tests/**/.experimenter_id
+tests/results
