@@ -16,6 +16,8 @@ let of_string n =
   try V4 (RamenIpv4.of_string n)
   with _ -> V6 (RamenIpv6.of_string n)
 
+let of_unix_addr = of_string % Unix.string_of_inet_addr
+
 module Cidr =
 struct
   type t =

@@ -2,20 +2,21 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenNullable
 open Stdint
 open RamenTuple
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * wrap_netflow_decode in wrap_netflow.c and tuple_typ below! *)
 type netflow_metric =
-  string * float * float *
+  RamenIp.t nullable * float * float *
   Uint32.t * Uint8.t * Uint8.t * Uint8.t * Uint16.t *
   Uint32.t * Uint32.t * Uint32.t * Uint16.t * Uint16.t *
   Uint16.t * Uint16.t * Uint32.t * Uint32.t * Uint8.t * Uint8.t *
   Uint8.t * Uint16.t * Uint16.t * Uint8.t * Uint8.t
 
 let tuple_typ =
-  [ { name = RamenName.field_of_string "source" ; typ = { structure = TString ; nullable = false } ; units = None ;
+  [ { name = RamenName.field_of_string "source" ; typ = { structure = TIp ; nullable = true } ; units = None ;
       doc = "IP address of the netflow source." ; aggr = None } ;
     { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "SysUptime at start of flow." ; aggr = None } ;
@@ -72,15 +73,17 @@ let event_time =
 let factors = [ RamenName.field_of_string "source" ]
 
 external decode :
-  Bytes.t -> int -> string -> netflow_metric array =
+  Bytes.t -> int -> RamenIp.t nullable -> netflow_metric array =
   "wrap_netflow_v5_decode"
 
 let collector ~inet_addr ~port ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
-  let serve sender buffer recv_len =
-    !logger.debug "Received %d bytes from netflow source @ %s"
-      recv_len sender ;
-    decode buffer recv_len sender |>
+  let serve ?sender buffer recv_len =
+    let sender = Option.map RamenIp.of_unix_addr sender in
+    !logger.debug "Received %d bytes from netflow source @ %a"
+      recv_len
+      (Option.print RamenIp.print) sender ;
+    decode buffer recv_len (nullable_of_option sender) |>
     Array.iter k
   in
   udp_server ~inet_addr ~port ?while_ serve

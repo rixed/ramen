@@ -972,10 +972,9 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
           recvfrom sock buffer 0 (Bytes.length buffer) []) () in
       let sender =
         match sockaddr with
-        | ADDR_INET (addr, port) ->
-          Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
-        | _ -> "??" in
-      k sender buffer recv_len ;
+        | ADDR_INET (addr, _port) -> Some addr
+        | _ -> None in
+      k ?sender buffer recv_len ;
       (forever [@tailcall]) ()
   in
   forever ()

@@ -54,8 +54,11 @@ external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decod
 
 let collector ~inet_addr ~port ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
-  let serve sender buffer recv_len =
-    !logger.debug "Received %d bytes from collectd @ %s" recv_len sender ;
+  let serve ?sender buffer recv_len =
+    !logger.debug "Received %d bytes from collectd @ %s"
+      recv_len
+      (match sender with None -> "??" |
+       Some ip -> Unix.string_of_inet_addr ip) ;
     decode buffer recv_len |>
     Array.iter k
   in
