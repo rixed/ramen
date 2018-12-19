@@ -58,7 +58,7 @@ let print_flush_method oc = function
   | Reset ->
     Printf.fprintf oc "FLUSH"
   | Never ->
-    Printf.fprintf oc "KEEP ALL"
+    Printf.fprintf oc "KEEP"
   [@@ppp PPP_OCaml]
 
 (* Represents an input CSV format specifications: *)
@@ -825,7 +825,8 @@ struct
   let flush m =
     let m = "flush clause" :: m in
     ((strinG "flush" >>: fun () -> Reset) |||
-     (strinG "keep" -- blanks -- strinG "all" >>: fun () -> Never) >>:
+     (strinG "keep" -- optional ~def:() (blanks -- strinG "all") >>:
+       fun () -> Never) >>:
      fun s -> FlushSpec s) m
 
   let dummy_commit m =
