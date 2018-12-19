@@ -870,6 +870,15 @@ struct
      (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
      (network_address)) m
 
+  let host_port m =
+    let m = "host and port" :: m in
+    (
+      inet_addr ++
+      optional ~def:None (
+        char ':' -+
+        some (decimal_integer_range ~min:0 ~max:65535 "port number"))
+    ) m
+
   let listen_clause m =
     let m = "listen on operation" :: m in
     (strinG "listen" -- blanks --
@@ -878,11 +887,7 @@ struct
      optional ~def:None (
        blanks --
        optional ~def:() (strinG "on" -- blanks) -+
-       some (inet_addr ++
-             optional ~def:None (
-              char ':' -+
-              some (decimal_integer_range ~min:0 ~max:65535
-                      "port number")))) >>:
+       some host_port) >>:
      fun (proto, addr_opt) ->
         let net_addr, port =
           match addr_opt with
@@ -896,6 +901,14 @@ struct
     (strinG "listen" -- blanks --
      optional ~def:() (strinG "for" -- blanks) -+
      (that_string "instrumentation" ||| that_string "notifications")) m
+
+let fields_schema m =
+  let m = "tuple schema" :: m in
+  (
+    char '(' -- opt_blanks -+
+      several ~sep:list_sep RamenTuple.Parser.field +-
+    opt_blanks +- char ')'
+  ) m
 
   (* FIXME: It should be allowed to enter separator, null, preprocessor in
    * any order *)
@@ -917,10 +930,8 @@ struct
     (optional ~def:"," (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:"" (
-       strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) +-
-     char '(' +- opt_blanks ++
-       several ~sep:list_sep RamenTuple.Parser.field +-
-     opt_blanks +- char ')' >>:
+       strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+     fields_schema >>:
      fun ((separator, null), fields) ->
        if separator = null || separator = "" then
          raise (Reject "Invalid CSV separator") ;
