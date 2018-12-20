@@ -445,9 +445,9 @@
 
 <p><code class="prettyprint">in</code>, infix, <code>any ⨉ α list → bool</code>, membership test (also for vectors). O(1) on constants.</code>yy
 
-<p><code class="prettyprint">get</code>, prefix, <code>int ⨉ α list → α</code>, extract a value from a list or a vector.</code>
+<p><code class="prettyprint">get</code>, prefix, <code>int ⨉ α list → α</code> or <code>int ⨉ α vector → α</code> or <code>0 ⨉ (α ⋆ β ⋆ ...) → α</code>, <code>1 ⨉ (α ⋆ β ⋆ ...) → β</code>, and so on. Extract a value from a list, a vector or a tuple. Index is 0-based. For tuples, the index must be constant.</code>
 
-<p><code class="prettyprint">1st</code>|<code>2nd</code>|<code>3rd</code>|<code>nth</code> and so on, <code>int ⨉ α list → α</code>, infix equivalent of the above.</code>
+<p><code class="prettyprint">1st</code>|<code>2nd</code>|<code>3rd</code>|<code>nth</code> and so on, <code>int ⨉ α list → α</code>, infix equivalent of the above, with a 1-based index.</code>
 
 <p><code class="prettyprint">Nth-percentile</code>, infix, <code>num ⨉ num list → num</code>, returns the percentile of the elements of the list. Example: <code class="prettyprint">95th percentile of (sample (1000, response_time + data_transfert_time))</code>.</p>
 
