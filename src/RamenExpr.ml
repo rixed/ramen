@@ -167,7 +167,6 @@ and stateless_fun1 =
   (* Give the bounds of a CIDR: *)
   | BeginOfRange
   | EndOfRange
-  | Nth of int (* Where the int starts at 0 for the first item *)
   | Sparkline
   | Strptime
   (* Return the name of the variant we are in, or NULL: *)
@@ -202,9 +201,7 @@ and stateless_fun2 =
   | BitXor
   (* Negative does shift right. Will be signed for signed integers: *)
   | BitShift
-  (* Same as Nth but only for vectors/lists (accepts non constant index, and
-   * indices start at 0) *)
-  | VecGet
+  | Get
   (* For network address range test membership, or for an efficient constant
    * set membership test, or for a non-efficient sequence of OR kind of
    * membership test if the set is not constant: *)
@@ -483,11 +480,6 @@ let rec print ?(max_depth=max_int) with_types oc e =
         (if op = BeginOfRange then "begin" else "end")
         p e ;
       add_types t
-    | StatelessFun1 (t, Nth n, e) ->
-      let n = n + 1 in
-      Printf.fprintf oc "%d%s %a"
-        n (ordinal_suffix n) p e ;
-      add_types t
     | StatelessFun1 (t, Strptime, e) ->
       Printf.fprintf oc "parse_time (%a)" p e ;
       add_types t
@@ -546,7 +538,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
       Printf.fprintf oc "(%a) << (%a)"
         p e1 p e2 ;
       add_types t
-    | StatelessFun2 (t, VecGet, e1, e2) ->
+    | StatelessFun2 (t, Get, e1, e2) ->
       Printf.fprintf oc "get(%a, %a)"
         p e1 p e2 ;
       add_types t
@@ -1388,7 +1380,7 @@ struct
           if n < 0 then
             raise (Reject "GET index must be positive")
         ) (int_of_const n) ;
-        StatelessFun2 (make_typ "get", VecGet, n, v)) |||
+        StatelessFun2 (make_typ "get", Get, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||
      (afun2 "reldiff" >>: fun (e1, e2) ->
@@ -1473,8 +1465,12 @@ struct
         (* Pedantic but also helps disambiguating the syntax: *)
         else raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
     and sep = check (char '(') ||| blanks in
-    (q +- sep ++ highestest_prec >>: fun (n, es) ->
-      StatelessFun1 (make_typ "nth", Nth (n-1), es)) m
+    (
+      q +- sep ++ highestest_prec >>: fun (n, es) ->
+        let n = Const (make_typ "tuple index",
+                       RamenTypes.scalar_of_int (n - 1)) in
+        StatelessFun2 (make_typ "nth", Get, n, es)
+    ) m
 
   and case m =
     let m = "case" :: m in
@@ -1675,7 +1671,7 @@ end
  * (non-numeric).
  * This is best-effort:
  * - units are not propagated from one conditional consequent to another;
- * - units of a Nth/VecGet is not inferred but in the simplest cases;
+ * - units of a Get is not inferred but in the simplest cases;
  * - units of x**y is not inferred unless y is constant.
  *)
 let units_of_expr params units_of_input units_of_output =
@@ -1729,10 +1725,6 @@ let units_of_expr params units_of_input units_of_output =
     | StatelessFun1 (_, Length, e) ->
         check_no_units ~indent e ;
         Some RamenUnits.chars
-    | StatelessFun1 (_, Nth n, Tuple (_, es)) ->
-        (* Not super useful. FIXME: use the solver. *)
-        (try List.at es n |> uoe ~indent
-        with Invalid_argument _ -> None)
     | StatelessFun1 (_, Sqrt, e) ->
         Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
     | StatelessFun2 (_, Add, e1, e2) ->
@@ -1755,9 +1747,15 @@ let units_of_expr params units_of_input units_of_output =
         check_no_units ~indent e1 ;
         check_no_units ~indent e2 ;
         None
-    | StatelessFun2 (_, VecGet, e1, Vector (_, es)) ->
+    | StatelessFun2 (_, Get, e1, Vector (_, es)) ->
         Option.bind (int_of_const e1) (fun n ->
           List.at es n |> uoe ~indent)
+    | StatelessFun2 (_, Get, n, Tuple (_, es)) ->
+        (* Not super useful. FIXME: use the solver. *)
+        let n = int_of_const n |>
+                option_get "Get from tuple must have const index" in
+        (try List.at es n |> uoe ~indent
+        with Invalid_argument _ -> None)
     | StatelessFun2 (_, Percentile, _,
                      StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|
                                   Group e))) ->

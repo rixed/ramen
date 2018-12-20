@@ -700,38 +700,19 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun1 (_, Nth n, x) ->
-      (* Note: here n starts at 0 (what the user wrote, minus 1),
-       *       and tuple_sizes gives the length.
-       * Typing rules:
-       * - x must be a tuple of at least n elements;
-       * - the resulting type is that if the n-th element;
-       * - the result nullability is also that of the n-th elements. *)
-      let eid' = t_of_expr x in
-      let name = expr_err x Err.Tuple in
-      emit_assert ~name oc (fun oc ->
-        Printf.fprintf oc "(or %a)"
-          (Set.Int.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
-            if sz > n then
-              Printf.fprintf oc "(and %a \
-                                      (= (tuple%d-e%d %s) %s) \
-                                      (= (tuple%d-n%d %s) %s))"
-                (emit_is_tuple eid') sz
-                sz n eid' eid
-                sz n eid' nid))
-            tuple_sizes)
-
-  | StatelessFun2 (_, VecGet, i, x) ->
-      (* TODO: replaces NTH entirely? NTH(i) == Get(i-1) *)
+  | StatelessFun2 (_, Get, i, x) ->
       (* Typing rules:
-       * - x must be a vector or a list;
+       * - x must be a vector, a list or a tuple;
        * - i must be an unsigned;
        * - if x is a vector and i is a constant, then i must
        *   be less than its length;
-       * - the resulting type is the same as the selected type;
-       * - if x is a vector and i a constant, then the result has the
-       *   same nullability than x or x's elements; in all other cases, the
-       *   result is nullable. *)
+       * - if x is a tuple then i must be a constant less than the tuple
+       *   length, and the resulting type is that of that element;
+       * - otherwise, the resulting type is the same as the list/vector
+       *   element type;
+       * - if x is a vector and i a constant, or if x is a tuple, then the
+       *   result has the same nullability than x or x's elements; in all
+       *   other cases, the result is nullable. *)
       arg_is_numeric oc i ;
       let name = expr_err x Err.Gettable in
       (match int_of_const i with
@@ -746,20 +727,33 @@ let emit_constraints tuple_sizes out_fields oc e =
           arg_is_nullable oc e
       | Some i ->
           emit_assert ~name oc (fun oc ->
-            Printf.fprintf oc "(let ((tmp %s)) \
-                                 (or (and ((_ is vector) tmp) \
-                                          (> (vector-dim tmp) %d) \
-                                          (= (vector-type tmp) %s) \
-                                          (= (or %s (vector-nullable tmp)) %s)) \
-                                     (and ((_ is list) tmp) \
-                                          (= (list-type tmp) %s) \
-                                          %s)))"
+            Printf.fprintf oc
+              "(let ((tmp %s)) \
+                 (or (and ((_ is vector) tmp) \
+                          (> (vector-dim tmp) %d) \
+                          (= (vector-type tmp) %s) \
+                          (= (or %s (vector-nullable tmp)) %s)) \
+                     (and ((_ is list) tmp) \
+                          (= (list-type tmp) %s) \
+                          %s)"
               (t_of_expr x)
               i
               eid
               (n_of_expr x) nid
               eid
-              nid))
+              nid ;
+            Printf.fprintf oc "%a"
+              (Set.Int.print ~first:"" ~last:"" ~sep:" " (fun oc sz ->
+                if sz > i then
+                  Printf.fprintf oc " \
+                     (and %a \
+                          (= (tuple%d-e%d %s) %s) \
+                          (= (tuple%d-n%d %s) %s))"
+                    (emit_is_tuple "tmp") sz
+                    sz i "tmp" eid
+                    sz i "tmp" nid))
+                tuple_sizes ;
+            Printf.fprintf oc "))"))
 
   | StatelessFun1 (_, (BeginOfRange|EndOfRange), x) ->
       (* - x is any kind of cidr;

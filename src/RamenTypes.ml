@@ -786,3 +786,12 @@ let of_string ?(what="value of string") ?typ s =
   (BatResult.Ok (VI8 (Int8.of_int 42))) \
     (of_string ~typ:{ structure = TI8 ; nullable = false } "42")
 *)
+
+let scalar_of_int n =
+  Parser.narrowest_int_scalar ~min_int_width:0 (Num.of_int n)
+
+(*$= scalar_of_int & ~printer:(BatIO.to_string print)
+  (VU8 (Uint8.of_int 42)) (scalar_of_int 42)
+  (VI8 (Int8.of_int (-42))) (scalar_of_int (-42))
+  (VU16 (Uint16.of_int 45678)) (scalar_of_int 45678)
+*)

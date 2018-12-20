@@ -790,9 +790,17 @@ and emit_expr_ ?state ~context ~opc oc expr =
       [Some TCidr, PropagateNull] oc [e]
 
   (* Stateless functions manipulating constructed types: *)
-  | Finalize, StatelessFun1 (_, Nth n, e), _ ->
+  | Finalize, StatelessFun2 (_, Get, n, e), _ ->
     (match (Option.get (typ_of e).typ).structure with
+    | TVec (_, t) | TList t ->
+        let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
+        emit_functionN ?state ~opc ~nullable func
+          ~impl_return_nullable:t.nullable
+          [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
     | TTuple ts ->
+        let n = int_of_const n |>
+                option_get "Get from tuple must have const index" in
+        (* Build a tuple selector: *)
         let num_items = Array.length ts in
         let rec loop_t str i =
           if i >= num_items then str else
@@ -800,24 +808,10 @@ and emit_expr_ ?state ~context ~opc oc expr =
                         ^ (if i = n then "x_" else "_") in
           loop_t str (i + 1) in
         let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
-        (* emit_funcN will take care of nullability of e: *)
         emit_functionN ?state ~opc ~nullable nth_func
+          ~impl_return_nullable:ts.(n).nullable
           [None, PropagateNull] oc [e]
-    | TVec (dim, _) ->
-        assert (n < dim) ;
-        let nth_func = "(fun a_ -> Array.get a_ "^ string_of_int n ^")" in
-        emit_functionN ?state ~opc ~nullable nth_func
-          [None, PropagateNull] oc [e]
-    | _ -> assert false)
-  | Finalize, StatelessFun2 (_, VecGet, n, e), _ ->
-    let impl_return_nullable =
-      match (Option.get (typ_of e).typ).structure with
-      | TVec (_, t) | TList t when t.nullable -> true
-      | _ -> false in
-    let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
-    emit_functionN ?state ~opc ~nullable func
-      ~impl_return_nullable
-      [None, PropagateNull; Some TI32, PropagateNull] oc [e; n]
+      | _ -> assert false)
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), TBool ->
