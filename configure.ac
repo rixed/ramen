@@ -20,7 +20,6 @@ AC_CHECK_OCAML_PKG(batteries stdint parsercombinator binocle lacaml num ppp cmdl
 
 AC_CONFIG_FILES([
   Makefile
-  META
   opam
   src/RamenVersions.ml
   tests/features/api.feature

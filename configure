@@ -3809,7 +3809,7 @@ $as_echo "not found" >&6; }
 
 
 
-ac_config_files="$ac_config_files Makefile META opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-builder docker/Dockerfile"
+ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-builder docker/Dockerfile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -4502,7 +4502,6 @@ do
   case $ac_config_target in
     "src/config.h") CONFIG_HEADERS="$CONFIG_HEADERS src/config.h" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
-    "META") CONFIG_FILES="$CONFIG_FILES META" ;;
     "opam") CONFIG_FILES="$CONFIG_FILES opam" ;;
     "src/RamenVersions.ml") CONFIG_FILES="$CONFIG_FILES src/RamenVersions.ml" ;;
     "tests/features/api.feature") CONFIG_FILES="$CONFIG_FILES tests/features/api.feature" ;;
