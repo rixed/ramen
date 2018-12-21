@@ -3,7 +3,7 @@
 # while steps that check uses the modal "must".
 
 Given /(.*) must be in the path/ do |executable|
-  found = ENV["PATH"].split(":").any? {|p| File.executable? (p+'/ramen')}
+  found = ENV['PATH'].split(":").any? {|p| File.executable? (p+'/ramen')}
   expect(found).to eq true
 end
 

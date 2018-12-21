@@ -21,6 +21,11 @@ Before do |scenario|
   $prev_wd = Dir.getwd
   $tmp_dir = Dir.mktmpdir('ramen_cucumber_tests_')
 
+  # Look for ramen in src/
+  src_dir = Pathname($prev_wd +'/'+ scenario.location.file).dirname +
+            "../../src"
+  ENV['PATH'] = "#{src_dir}:#{ENV['PATH']}"
+
   # Reset some ENV:
   ENV['RAMEN_PERSIST_DIR'] = $tmp_dir + '/ramen_persist_dir'
   # Clear this or we might have longer than expected backtraces on stderr:
