@@ -21,14 +21,11 @@ jobs:
           name: Unit tests
           command: make unit-check
       - run:
-          name: Parse/Typing tests
-          command: make err-check
-      - run:
-          name: Install
-          command: make install
-      - run:
           name: Build lib bundle
           command: make bundle
+      - run:
+          name: Parse/Typing tests
+          command: make err-check
       - run:
           name: Behavioral tests
           command: make cli-check
