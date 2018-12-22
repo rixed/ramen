@@ -62,7 +62,7 @@ sample_dir ?= /var/lib/ramen
 systemd_dir ?= /lib/systemd/system
 sysconf_dir ?= /etc/default
 
-all: $(INSTALLED)
+all: $(INSTALLED) bundle
 
 # Generic rules
 
