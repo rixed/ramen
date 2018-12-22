@@ -43,13 +43,7 @@ type user_conf =
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
     retentions : (glob, retention) Hashtbl.t
-      [@ppp_default
-        (* TODO: A better configuration would be to save only the functions
-         * with no parents. *)
-        let h = Hashtbl.create 1 in
-        Hashtbl.add h Globs.all
-          { duration = 3600. ; query_freq = 1. /. 600. } ;
-        h ] }
+      [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 and retention =
@@ -58,10 +52,6 @@ and retention =
      * approximate a better value if absent): *)
     query_freq : float [@ppp_default 1. /. 600.] }
   [@@ppp PPP_OCaml]
-
-let get_user_conf fname =
-  ensure_file_exists ~min_size:14 ~contents:"{size_limit=104857600}" fname ;
-  ppp_of_file user_conf_ppp_ocaml fname
 
 let user_conf_file conf =
   conf_dir conf ^ "/config"
@@ -110,6 +100,26 @@ let archives_print oc =
 let func_stats_empty () =
   { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
     parents = [] ; archives = [] ; is_running = false }
+
+let get_user_conf fname per_func_stats =
+  ensure_file_exists ~min_size:14 ~contents:"{size_limit=104857600}" fname ;
+  let user_conf = ppp_of_file user_conf_ppp_ocaml fname in
+  (* In case no retention was provided, keep the roots for 10 minutes: *)
+  if Hashtbl.length user_conf.retentions = 0 then (
+    let save_short = { duration = 600. ; query_freq = 0.1 }
+    and no_save = { duration = 0. ; query_freq = 0. } in
+    (* Empty configuration: save the roots for 10 minutes. *)
+    if Hashtbl.length per_func_stats = 0 then
+      (* No worker, then do not save anything: *)
+      Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
+    else
+      Hashtbl.iter (fun fq s ->
+        if s.parents = [] then
+          let pat = Globs.(compile (escape (RamenName.string_of_fq fq))) in
+          Hashtbl.add user_conf.retentions pat save_short
+      ) per_func_stats) ;
+  assert (Hashtbl.length user_conf.retentions > 0) ;
+  user_conf
 
 (* Returns the func_stat resulting of adding the RamenPs.stats to the
  * previous func_stat [a]: *)
@@ -520,8 +530,8 @@ let load_allocs conf =
 let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
-  let user_conf = get_user_conf (user_conf_file conf)
-  and per_func_stats = load_stats conf in
+  let per_func_stats = load_stats conf in
+  let user_conf = get_user_conf (user_conf_file conf) per_func_stats in
   let fname = conf_dir conf ^ "/allocations.smt2"
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
