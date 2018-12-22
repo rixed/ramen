@@ -2,6 +2,8 @@
 
 A stream processing language and compiler for small-scale infrastructure monitoring
 
+"The right solution for 100X often not optimal for X" -- Dean Jeff
+
 = Why?
 
 Those last years, thanks to such large companies as Google, Facebook, Linkedin

@@ -56,9 +56,9 @@ and retention =
 let user_conf_file conf =
   conf_dir conf ^ "/config"
 
-let retention_of_fq conf fq =
+let retention_of_fq user_conf fq =
   try
-    Hashtbl.enum conf.retentions |>
+    Hashtbl.enum user_conf.retentions |>
     Enum.find_map (fun (pat, ret) ->
       if Globs.matches pat (RamenName.string_of_fq fq) then Some ret
       else None)
@@ -76,7 +76,7 @@ let retention_of_fq conf fq =
 
 (* Global per-func stats that are updated by the thread reading #notifs and
  * the one reading the RC, and also saved on disk while ramen is not running:
- * (TODO) *)
+ *)
 
 type func_stats =
   { running_time : float [@ppp_default 0.] ;
@@ -213,7 +213,7 @@ let enrich_stats conf per_func_stats =
           let fq = RamenName.fq func.F.program_name func.F.name in
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
-          | (s, _) ->
+          | s, _ ->
               s.is_running <- mre.C.status = MustRun ;
               update_parents s program_name func ;
               update_archives conf s func
@@ -586,7 +586,7 @@ let update_workers_export conf =
           (Printexc.to_string e)
     | _mre, _prog, func ->
         if max_size > 0 then
-          let duration=Default.archivist_export_duration in
+          let duration = Default.archivist_export_duration in
           RamenProcesses.start_export ~duration conf func |> ignore)
 
 (*
