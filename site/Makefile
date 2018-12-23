@@ -1,4 +1,4 @@
-.SUFFIXES: .html .mustache .groff
+.SUFFIXES: .html .php .groff
 
 PAGES = \
 	index.html \
@@ -8,6 +8,7 @@ PAGES = \
 	tutorials/host_monitoring.html \
 	tutorials/detecting_scans.html \
 	design.html \
+	requirements.html \
 	programs.html \
 	communication.html \
 	archival.html \
@@ -122,16 +123,19 @@ man/archivist.groff:
 	@echo "Extracting $@"
 	@../src/ramen archivist --help=groff > $@
 
-%.mustache: %.groff
+%.php: %.groff
 	@echo "Generating $@"
-	@echo '{{>header}}' > $@
+	@echo '<? include "header.php" ?>' > $@
 	@groff -T html -P -l -P -r $< | \
 	 sed -e '0,/<body>/d' -e '/<\/body>/,$$d' >> $@
-	@echo '{{>footer}}' >> $@
+	@echo '<? include "footer.php" ?>' >> $@
 
-%.html: %.mustache header.mustache footer.mustache data.yml
+%.html: %.php header.php footer.php data.php
 	@echo 'Expanding HTML file $@'
-	@mustache data.yml $< > $@
+	@php -n $< > $@ || true
+	@if grep Warning $@ || grep 'Parse error:' $@ ; then \
+	  rm $@ ;\
+	 fi
 
 doc_dir ?= $(PWD)/../../ramen-docs
 

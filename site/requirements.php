@@ -1,33 +1,36 @@
-{{! vim: ft=html
-}}
-{{>header}}
-<h1>Basic requirements and design overview</h1>
+<? include 'header.php' ?>
+<h1>Initial requirements</h1>
 
-<table>
-<tr>
-  <th>Requirements</th>
-  <th>Design decision</th>
-  <th>Are we there yet?</th>
-</tr>
-<tr>
-  <td>
-    <p><b>Delivery Guarantees:</b> The income flow is made of many small events, the individual influence of which on the final outcome is believed to be negligible.</p>
-  </td><td>
+<h2>Delivery Guarantees</h2>
+
+<requirement>
+  <req>
+    <p>The incoming flow is made of many small events, the individual influence of which on the final outcome is believed to be negligible.</p>
+  </req>
+  <decision>
     <p>No delivery guarantee</p>
-  </td><td>
-  </td>
-</tr><tr>
-  <td>
-    <p><b>Simplicity:</b> Ramen should be programmable through a data manipulation language as declarative (as opposed to procedural) and as familiar as possible.</p>
-  </td><td>
+  </decision>
+</requirement>
+
+<h2>Simplicity</h2>
+
+<requirement>
+  <req>
+    <p>Ramen should be programmable through a data manipulation language as declarative (as opposed to procedural) and as familiar as possible.</p>
+  </req>
+  <decision>
     <p>It was initially considered that the best best trade of between simplicity and efficiency would be to use an actual programming language with a syntax and a library of functions tailored toward stream processing (as <a href="http://riemann.io">Riemann</a> does for instance with Clojure), but the prototype has proven too limited: First, speed would have to be sacrificed (regardless of what language we would use to embed Ramen in), and second this was constraining too much how we could distribute processing amongst severall processes or even machines.</p>
     <p>Eventually it was decided to implement a SQL like language that's less demanding from users, more flexible to our ever changing requirements and that Ramen is free to compile into any combination of programs/threads/functions as is deemed desirable.</p>
-  </td><td>
-  </td>
-</tr><tr>
-  <td>
-    <p><b>Performances:</b> The system must run on a small number of machines (up to a few tens but generally only one) and handle about 500k ops/sec.</p>
-  </td><td>
+  </decision>
+</requirement>
+
+<h2>Performances</h2>
+
+<requirement>
+  <req>
+    <p>The system must run on a small number of machines (up to a few tens but generally only one) and handle about 500k ops/sec.</p>
+  </req>
+  <decision>
     <ul>
       <li>The operations must be compiled down to machine code rather than being interpreted;</li>
       <li>Operations must run in parallel in different threads/processes;</li>
@@ -36,55 +39,65 @@
       <li>In case of overcapacity back-pressure should slows down the input flow rather than lead to loss of events.</li>
     </ul>
     <p>Therefore we need some kind of per operation lock-less input queue in shared memory; Ramen uses ring-buffers (ideally variable sized but still fixed sized at the moment).</p>
-  </td><td>
+  </decision>
+  <status>
     <p>Currently Ramen generates native code via the OCaml compiler, therefore the generated code uses garbage collection and uses boxed values that need to be serialized/deserialized out of the ringbuffers. This will be addressed at a latter stage.</p>
-  </td>
-</tr><tr>
-  <td>
-    <p><b>Versatility:</b> Although focusing on monitoring and alerting, as little constraints as possible should be imposed on the input stream. In particular, incoming events can describe anything, and might have undergone some aggregation already, and come with several time stamps attached.</p>
-  </td><td>
+  </status>
+</requirement>
+
+<h2>Versatility</h2>
+
+<requirement>
+  <req>
+    <p>Although focusing on monitoring and alerting, as little constraints as possible should be imposed on the input stream. In particular, incoming events can describe anything, and might have undergone some aggregation already, and come with several time stamps attached.</p>
+  </req>
+  <decision>
     <ul>
       <li>Events can be of any type reachable from the base types and the compound types;</li>
       <li>Events can have a start and end time, which are both taken into account when extracting timeseries;</li>
       <li>How to build these event-time from actual event is part of the schema so incur no cost;</li>
     </ul>
-  </td><td>
+  </decision>
+  <status>
     <p>Ramen supports tuples, arrays and lists as compound types but is still missing records (basically just tuples with syntactic sugar for named fields).  Also, events are constrained to be tuples but that will be alleviated at a later stage.</p>
-  </td>
-</tr><tr>
-  <td>
-    <p><b>Remembering past values:</b> We also want to be able to use Ramen for troubleshooting/capacity planning/etc so it must be able to answer possibly new queries on past data.</p>
-  </td><td>
+  </status>
+</requirement>
+
+<h2>Remembering past values</h2>
+
+<requirement>
+  <req>
+    <p>We also want to be able to use Ramen for troubleshooting/capacity planning/etc so it must be able to answer possibly new queries on past data.</p>
+  </req>
+  <decision>
     <ul>
       <li>Given the total storage space available and a desired retention of some key stages in the stream processing, Ramen allocates the storage space in order to optimize the processing of future queries;</li>
       <li>Every new query can be run either on the live stream of data or on a past time range or both on the recent history and then on live data;</li>
       <li>Data is stored either in uncompressed form (incurs little additional processing cost) or in compressed form (ORC file);</li>
       <li>Any new query branched off the query tree after a save point can be sent archived data;</li>
     </ul>
-  </td><td>
+  </decision>
+  <status>
     <p>Transitioning from past to live is yet to be implemented. Also ORC support is still to be done.</p>
-  </td>
-</tr><tr>
-  <td>
-    <p><b>Batteries included:</b> Ramen should come with all the necessary components required to build a small monitoring solution.</p>
-  </td><td>
+  </decision>
+</requirement>
+
+<h2>Batteries included</h2>
+
+<requirement>
+  <req>
+    <p>Ramen should come with all the necessary components required to build a small monitoring solution.</p>
+  </req>
+  <decision>
     <ul>
       <li>Ramen should accept mere CSV files as input, in addition to fancier interfaces.</li>
       <li>For dashboarding, it should be easy to use Grafana by implementing the Graphite API.</li>
       <li>Ramen should be able to connect to an external alert management system such as the alertmanager of Prometheus, but must also be able to perform "the last mile" of alert delivery out of the box for simplicity.</li>
     </ul>
-  </td><td>
+  </decision>
+  <status>
     <p>The only possible ways to inject data at the moment are CSV files, collectd or netflow protocols, and direct ringbuffer writes. More obviously need to be implemented, popular message queue being on top of the list.</p>
-  </td>
-</tr>
-</table>
+  </status>
+</requirement>
 
-<h2>More details on...</h2>
-
-<ul>
-<li><a href="programs.html">Functions, programs, workers, supervisor</a>;</li>
-<li><a href="communication.html">Messages and message passing</a>;</li>
-<li><a href="archival.html">Archival and replay</a>;</li>
-</ul>
-
-{{>footer}}
+<? include 'footer.php' ?>

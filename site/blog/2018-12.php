@@ -1,6 +1,4 @@
-{{! vim: ft=html
-}}
-{{>header}}
+<? include 'header.php' ?>
 <h1>2018-12-08</h1>
 
 <p>The two technological jewels I've seen during my short time at <a href="https://en.wikipedia.org/wiki/Booking.com">Booking.com</a> were:</p>
@@ -29,7 +27,7 @@
 
 <p>Example:</p>
 
-<pre class="prettyprint">
+<pre>
 $ ramen tail -h -- select start, 5xx_errors from httpd/access where cluster="EU1"
 #start,5xx_errors
 2018-12-06 10:30:20,110
@@ -40,4 +38,4 @@ $ ramen tail -h -- select start, 5xx_errors from httpd/access where cluster="EU1
 
 <p>In practice, that function is compiled and run under the hood, and is destroyed once the command is over.</p>
 
-{{>footer}}
+<? include 'footer.php' ?>

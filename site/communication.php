@@ -1,6 +1,4 @@
-{{! vim: ft=html
-}}
-{{>header}}
+<? include 'header.php' ?>
 <h1>Ringbuffers and ringbuffer references</h1>
 
 <h2>Input ringbuffers</h2>
@@ -32,4 +30,4 @@
 
 <p>If one of those ringbuffer is full then the parent will block, therefore its own input ringbuffer will fill up, and so on, thus exercising back pressure up to the source of events.</p>
 
-{{>footer}}
+<? include 'footer.php' ?>

@@ -1,6 +1,4 @@
-{{! vim: ft=html
-}}
-{{>header}}
+<? include 'header.php' ?>
 <h1>Downloading Ramen</h1>
 
 <h2>Docker</h2>
@@ -15,4 +13,4 @@
 
 <p>You can also build from sources on either Linux (recommended) or MacOS. See <a href="build.html">building from sources</a>.</p>
 
-{{>footer}}
+<? include 'footer.php' ?>

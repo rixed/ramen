@@ -1,6 +1,4 @@
-{{! vim: ft=html
-}}
-{{>header}}
+<? include 'header.php' ?>
 <h1>Data archival and retrieval</h1>
 
 <h2>Requirements</h2>
@@ -113,4 +111,4 @@
 
 <p>So it appears we have actually no reliable estimator for computing or storage costs (yet)!</p>
 
-{{>footer}}
+<? include 'footer.php' ?>
