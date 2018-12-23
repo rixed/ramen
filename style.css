@@ -1,41 +1,188 @@
 /* Screen style for Ramen doc */
 
+:root {
+  --brown: #c96f41;
+  --brown-grey: #efd4c6;
+  --brown-greyer: #faf1ec;
+  --magenta: #a36bbd;
+  --green: #75a656;
+  --white: #efeae8;
+  --link: #252d8d;
+  --link-hover: #3a4aba;
+}
+
 body {
+  background-color: var(--white);
   font-family: sans-serif;
-  margin: 0 3rem 1rem 2rem;
+  margin: 0;
+}
+
+#header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--brown);
+  color: var(--white);
+  box-shadow: 0 0.1rem 0.2rem rgba(0,0,0,.5);
+  margin: 0 0 1em 0;
+  padding: 0 5em 0 5em;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#header p {
+  margin: 0.5em;
+}
+
+#header p.title {
+  font-size: 110%;
+  font-family: sans-serif;
+}
+
+#header a, #header a:link, #header a:visited, #header a:hover {
+  text-decoration: none;
+  color: inherit;
+}
+#header a svg {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.4em;
+}
+#header svg.octicon {
+  fill: var(--white);
+}
+#heacer .github-link {
+  font-size: 80%;
 }
 
 p, li {
   font-family: serif;
 }
 
+#menu {
+  display: block;
+  position: fixed;
+  left: 0;
+  top: 4rem;
+  width: 20rem;
+}
+
 #menu a {
-  display: inline-block;
-  margin: 0.5em 0 0.5em 0;
-  background-color: #aac;
   color: #000;
-  padding: 0.15em 0.75em;
-  border-radius: 0.2em;
+  text-decoration: none;
+}
+
+#menu a:visited {
+  color: #000;
   text-decoration: none;
 }
 
 #menu a:hover {
-  background-color: #eec;
+  text-decoration: none;
+  color: var(--link-hover);
 }
 
-#menu a:visited {
-  color: #111;
+#menu ul {
+  list-style-type: none;
+  /* We want the <li> background to start at the very left: */
+  padding: 0;
+}
+#menu li {
+  line-height: 1.5;
+  font-family: sans-serif;
+}
+
+#menu li a {
+  display: block;
+  padding-right: 0;
+}
+
+#menu li a    { padding-left: 1em; }
+#menu li li a { padding-left: 2em; }
+
+#menu a.is-current {
+  background-color: var(--brown-greyer);
 }
 
 a:link, a:visited {
-  text-decoration: underline;
-  color: #88c;
+  text-decoration: none;
+  color: var(--link);
 }
 
 a:hover {
-  color: #aac;
+  color: var(--link-hover);
 }
 
-pre.prettyprint {
+a[name]:hover { color: inherit; }
+
+#page {
+  margin: 4rem 3rem 6rem 22rem;
+  font-size: 1.1rem;
+  line-height: 1.3em;
+}
+
+#page ul {
+  line-height: 1.5em;
+}
+
+#page pre {
+  background-color: var(--brown-greyer);
+  line-height: 1.3em;
+  padding: 1em;
+}
+
+/* Make sure anchored titles do not fall below the page header: */
+h2 { padding-top: 4rem; }
+
+pre {
   border: 0 !important;
+}
+
+requirement {
+  display: block;
+  width: 100%;
+}
+h2 {
+  clear: both;
+}
+req {
+  display: block;
+  width: 80%;
+  float: left;
+}
+decision {
+  display: block;
+  width: 80%;
+  float: right;
+  clear: left;
+  background-color: var(--brown-greyer);
+  padding: 0 1em 0 1em;
+  border-radius: 0.2em;
+}
+decision::before {
+  content: "⇒";
+  display: block;
+  margin-bottom: -2.3em;
+  margin-top: 0.8em;
+}
+decision p, decision ul {
+  margin-left: 2em;
+}
+decision ul {
+  line-height: 1.4;
+}
+
+status {
+  display: block;
+  clear: both;
+  margin-left: 2em;
+  margin-right: 2em;
+  padding-top: 2em;
+}
+status::before {
+  content: "Are we there yet?";
+  font-style: italic;
 }

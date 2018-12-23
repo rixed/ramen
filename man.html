@@ -7,88 +7,160 @@
   </head>
 <body>
 
-  <script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
-  <script src="https://hypothes.is/embed.js" async></script>
+<div id="header">
+  <p class="title">Ramen Documentation</p>
+  <p>
+    <a class="github-cat" href="https://github.com/rixed/ramen">
+      <svg class="octicon" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M14.7 5.34c.13-.32.55-1.59-.13-3.31 0 0-1.05-.33-3.44 1.3-1-.28-2.07-.32-3.13-.32s-2.13.04-3.13.32c-2.39-1.64-3.44-1.3-3.44-1.3-.68 1.72-.26 2.99-.13 3.31C.49 6.21 0 7.33 0 8.69 0 13.84 3.33 15 7.98 15S16 13.84 16 8.69c0-1.36-.49-2.48-1.3-3.35zM8 14.02c-3.3 0-5.98-.15-5.98-3.35 0-.76.38-1.48 1.02-2.07 1.07-.98 2.9-.46 4.96-.46 2.07 0 3.88-.52 4.96.46.65.59 1.02 1.3 1.02 2.07 0 3.19-2.68 3.35-5.98 3.35zM5.49 9.01c-.66 0-1.2.8-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.54-1.78-1.2-1.78zm5.02 0c-.66 0-1.2.79-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.53-1.78-1.2-1.78z"></path></svg>
+    <span class="github-link">to source code</span></a>
+  </p>
+</div>
 
-  <div id="menu">
-    <a href="index.html">Overview</a>
-    <a href="download.html">Downloading</a>
-    <a href="build.html">Building</a>
-    <a href="tutorials.html">Tutorials</a>
-    <a href="design.html">Design</a>
-    <a href="roadmap.html">Roadmap</a>
-    <a href="man.html">Command line reference</a>
-    <a href="language_reference.html">Language reference</a>
-    <a href="blog.html">Blog posts</a>
-  </div>
+<script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
+<script src="https://hypothes.is/embed.js" async></script>
+
+<div id="menu">
+  <ul>
+            <li>
+      <a class="" href="index.html">Overview</a>
+        </li>
+          <li>
+      <a class="" href="download.html">Downloading</a>
+        </li>
+          <li>
+      <a class="" href="build.html">Building</a>
+        </li>
+          <li>
+      <a class="" href="tutorials.html">Tutorials</a>
+        </li>
+          <li>
+      <a class="" href="design.html">Design</a>
+        </li>
+          <li>
+      <a class="" href="roadmap.html">Roadmap</a>
+        </li>
+          <li>
+      <a class="is-current" href="man.html">Command line reference</a>
+          <ul>
+              <li><a class="" href="man.html#compiling">Compiling programs</a></li>
+              <li><a class="" href="man.html#running">Running programs</a></li>
+              <li><a class="" href="man.html#querying">Retrieving data</a></li>
+              <li><a class="" href="man.html#alerting">Alerting</a></li>
+              <li><a class="" href="man.html#maintenance">Maintenance</a></li>
+              <li><a class="" href="man.html#tests">Tests</a></li>
+            </ul>
+        </li>
+          <li>
+      <a class="" href="language_reference.html">Language reference</a>
+        </li>
+          <li>
+      <a class="" href="glossary.html">Glossary</a>
+        </li>
+          <li>
+      <a class="" href="blog.html">Blog posts</a>
+        </li>
+    </ul>
+</div>
+
+<div id="page">
 <h1>Man pages</h1>
 
 <p>Ramen consists of a single executable that can act as the supervisor daemon, the compiler, a data extractor, and so on.</p>
 
 <p>It is self-documented so only a very rough summary of the main commands is given hereafter. You will find an actual copy of the embedded documentation at the end.</p>
 
-<h2>Starting the Workers Supervisor</h2>
+<a name="compiling">
+<h2>Compiling a program</h2>
+</a>
 
-<p><code class="prettyprint">ramen supervisor</code> will start a daemon that will essentially check that the workers specified in the running-configuration are indeed working. When starting new worker it will first check that types are compatible with the other workers (or report an error), create the ring buffers and "connect" the parents to their children.</p>
+<p>Programs are stored on mere text files which extension should be ".ramen".  To compile one, use the <code>ramen compile</code> command. This will parse, type-check and then generate the executable binary (which extension will be ".x").</p>
 
-<p>See <a href="man/supervisor.html">ramen supervisor --help</a> for more.</p>
-
-<p>To stop the supervisor, merely sends it a TERM or INT signal. It will then stops all workers and exit. Workers themselves will save their state so that little is lost by stopping and restarting Ramen.</p>
-
-<h2>Compiling a Programs</h2>
-
-<p>Programs are stored on mere text files which extension should be ".ramen".  To compile one, use the <code class="prettyprint">ramen compile</code> command. This will parse, type-check and then generate the executable binary (which extension will be ".x").</p>
-
-<p>For type-checking it is likely that the compiler will need to know the output types of referenced functions from other programs. It will then look for those programs in the path provided by wither the <code class="prettyprint">RAMEN_ROOT</code>+ environment variable or the <code class="prettyprint">--root</code> command line option. Those referenced programs must have been compiled already, which forces a given order when compiling multiple programs.</p>
+<p>For type-checking it is likely that the compiler will need to know the output types of referenced functions from other programs. It will then look for those programs in the path provided by wither the <code>RAMEN_ROOT</code>+ environment variable or the <code>--root</code> command line option. Those referenced programs must have been compiled already, which forces a given order when compiling multiple programs.</p>
 
 <p>As an example, suppose this program:</p>
 
-<pre class="prettyprint">
+<pre>
 SELECT hostname, last uptime
 FROM monitoring/hosts
 GROUP BY hostname
 COMMIT WHEN in.time > group.first.time + 30
 </pre>
 
-<p>to know the types of <code class="prettyprint">hostname</code>, <code class="prettyprint">uptime</code> and <code class="prettyprint">time</code> ramen must look at the <code class="prettyprint">monitoring/hosts</code> operation output type. It will then look for the executable file <code class="prettyprint">$RAMEN_ROOT/monitoring/hosts.x</code> which will then provide this type (as each executable worker can display its types and other information about itself). Therefore this program must have been compiled previously.</p>
+<p>to know the types of <code>hostname</code>, <code>uptime</code> and <code>time</code> ramen must look at the <code>monitoring/hosts</code> operation output type. It will then look for the executable file <code>$RAMEN_ROOT/monitoring/hosts.x</code> which will then provide this type (as each executable worker can display its types and other information about itself). Therefore this program must have been compiled previously.</p>
 
 <p>See <a href="man/compile.html">ramen compile --help</a> for details.</p>
 
-<h2>Running a Program</h2>
+<a name="running">
+<h2>Running programs</h2>
+</a>
 
-<p>To start a program use the <code class="prettyprint">ramen run</code> command.  This command does not in itself start anything, though. Instead, it merely adds that program to the list of programs that the supervisor must keep running. Therefore the actual workers won't start until the process supervisor itself is running.</p>
+<p>Contrary to normal executables, Ramen programs must be started by the <em>supervisor</em>, which will make sure all workers are connected properly.</p>
+
+<h3>Starting the supervisor</h3>
+
+<p><code>ramen supervisor</code> will start a daemon that will essentially check that the workers specified in the running-configuration are indeed working. When starting new worker it will first check that types are compatible with the other workers (or report an error), create the ring buffers and "connect" the parents to their children.</p>
+
+<p>See <a href="man/supervisor.html">ramen supervisor --help</a> for more.</p>
+
+<p>To stop the supervisor, merely sends it a TERM or INT signal. It will then stops all workers and exit. Workers themselves will save their state so that little is lost by stopping and restarting Ramen.</p>
+
+<h3>Running a program</h3>
+
+<p>To start a program use the <code>ramen run</code> command.  This command does not in itself start anything, though. Instead, it merely adds that program to the list of programs that the supervisor must keep running. Therefore the actual workers won't start until the process supervisor itself is running.</p>
 
 <p>See <a href="man/run.html">ramen run --help</a> for details.
 
-<h2>Stopping a Program</h2>
+<h3>Stopping a program</h3>
 
-<p>Similarly, <code class="prettyprint">ramen kill</code> will remove a program from the running configuration of the supervisor.</p>
+<p>Similarly, <code>ramen kill</code> will remove a program from the running configuration of the supervisor.</p>
 
 <p>See <a href="man/kill.html">ramen kill --help</a> for more.</p>
 
-<h2>Listing running configuration</h2>
+<h3>Listing running configuration</h3>
 
-<p><code class="prettyprint">ramen ps</code> will list the running programs and display some runtime statistics which makes it a `ps` as well as a `top` equivalent.</p>
+<p><code>ramen ps</code> will list the running programs and display some runtime statistics which makes it a `ps` as well as a `top` equivalent.</p>
 
 <p>See <a href="man/ps.html">ramen ps --help</a> for more.</p>
 
-<h2>Seeing a worker output</h2>
+<a name="querying">
+<h2>Retrieving a worker output</h2>
+</a>
 
-<p><code class="prettyprint">ramen tail</code> followed by the xref:FQName[fully qualified name] of an operation will display the last output tuples by that operation.</p>
+<p><code>ramen tail</code> followed by the <a href="glossary.html#FQName">fully qualified name</a> of an operation will display the last output tuples by that operation.</p>
 
-<p>If this is the first time in a while that this worker has been asked for its output then it may take some time to start receiving data as old tuples may not be archived (so <code class="prettyprint">ramen tail</code> will wait for new tuples instead).</p>
+<p>If this is the first time in a while that this worker has been asked for its output then it may take some time to start receiving data as old tuples may not be archived (so <code>ramen tail</code> will wait for new tuples instead).</p>
 
 <p>Refer to <a href="man/tail.html">ramen tail --help</a> for more information.</p>
 
-<p>Similarly, <code class="prettyprint">ramen timeseries</code> will extract a single field from an operation, indexed by time. Time points will be evenly spaced and events will be "bucketed" into the requested time scale.</p>
+<p>Similarly, <code>ramen timeseries</code> will extract a single field from an operation, indexed by time. Time points will be evenly spaced and events will be "bucketed" into the requested time scale.</p>
 
 <p>See <a href="man/timeseries.html">ramen timeseries --help</a> for more details.</p>
 
-<h2>Testing configuration Changes</h2>
+<a name="alerting">
+<h2>Alerting</h2>
+</a>
+
+<p>In addition to tuples, workers can emit <a href="glossary.html#Notification">notifications</a>. Those are received by a dedicated daemon: <code>ramen notifier</code> that will route them according to its configuration file.</p>
+
+<p>See <a href="man/notifier.html">ramen notifier --help</a> for more details.</p>
+
+<a name="maintenance">
+<h2>Maintenance</h2>
+</a>
+
+<p>Other daemons are required in production, to clean the archived output, compute various statistics, and so on.</p>
+
+<p>See <a href="man/gc.html">ramen gc --help</a> and <a href="man/archivist.html">ramen archivist --help</a> for more details.</p>
+
+<p>Some commands are also available to help with diagnosing issues. See <a href="man/ramen.html">ramen --help</a> for an exhaustive list of commands.</p>
+
+<a name="tests">
+<h2>Testing configuration changes</h2>
+</a>
 
 <p>As Ramen is designed to connect to alerting systems, reliability has been an important design consideration. The main source of errors in production systems being configuration changes, it is therefore important to test any change in the configuration.</p>
 
-<p>The <code class="prettyprint">ramen test</code> command takes text files each describing a test and, independently of any already running instance of ramen, will run all specified programs, provide them with the test input, and check the output matches the ones described in the test file.</p>
+<p>The <code>ramen test</code> command takes text files each describing a test and, independently of any already running instance of ramen, will run all specified programs, provide them with the test input, and check the output matches the ones described in the test file.</p>
 
 <p>See for instance
 <a href="https://github.com/rixed/ramen/blob/master/tests/basic_aggr.test">this test</a> from ramen own test suite for an example of a test specification.</p>
@@ -100,44 +172,41 @@ COMMIT WHEN in.time > group.first.time + 30
 
 <h2>Compiling programs</h2>
 <ul>
-<li><a href="man/compile.html">Compile a Ramen program</a></li>
-</ul>
+  <li><a href="man/compile">Compile a Ramen program</a></li>
+  </ul>
 <h2>Running programs</h2>
 <ul>
-<li><a href="man/supervisor.html">The daemon that runs all functions</a></li>
-<li><a href="man/run.html">Starting a program</a></li>
-<li><a href="man/kill.html">Stopping a program</a></li>
-<li><a href="man/ps.html">See which programs/functions are running</a></li>
-</ul>
-<h2>Querying</h2>
+  <li><a href="man/supervisor">The daemon that runs all functions</a></li>
+  <li><a href="man/run">Starting a program</a></li>
+  <li><a href="man/kill">Stopping a program</a></li>
+  <li><a href="man/ps">See which programs/functions are running</a></li>
+  </ul>
+<h2>Retrieving data</h2>
 <ul>
-<li><a href="man/tail.html">Print some function output</a></li>
-<li><a href="man/timeseries.html">Print a fixed time-step timeseries out of some columns</a></li>
-<li><a href="man/timerange.html">Print the earliest and latest timestamps available for a function</a></li>
-<li><a href="man/replay.html">Like tail, but reconstruct the data that are not available from archived data</a></li>
-<li><a href="man/httpd.html">HTTP daemon to output timeseries, impersonating Graphite</a></li>
-</ul>
+  <li><a href="man/tail">Print some function output</a></li>
+  <li><a href="man/timeseries">Print a fixed time-step timeseries out of some columns</a></li>
+  <li><a href="man/timerange">Print the earliest and latest timestamps available for a function</a></li>
+  <li><a href="man/replay">Like tail, but reconstruct the data that are not available from archived data</a></li>
+  <li><a href="man/httpd">HTTP daemon to output timeseries, impersonating Graphite</a></li>
+  </ul>
 <h2>Alerting</h2>
 <ul>
-<li><a href="man/notifier.html">The daemon responsible for routing and sending alerts</a></li>
-<li><a href="man/notify.html">Inject a notification from the command line</a></li>
-</ul>
+  <li><a href="man/notifier">The daemon responsible for routing and sending alerts</a></li>
+  <li><a href="man/notify">Inject a notification from the command line</a></li>
+  </ul>
 <h2>Maintenance</h2>
 <ul>
-<li><a href="man/gc.html">Garbage collect old archives</a></li>
-<li><a href="man/links.html">Print the state of ring buffers</a></li>
-<li><a href="man/ringbuf.html">Print some information about a ring buffer</a></li>
-<li><a href="man/archivist.html">Daemon that periodically reallocate storage space</a></li>
-<li><a href="man/stats.html">Print some internal instrumentation data</a></li>
-<li><a href="man/variants.html">Print some internal experimentation settings</a></li>
-</ul>
+  <li><a href="man/gc">Garbage collect old archives</a></li>
+  <li><a href="man/links">Print the state of ring buffers</a></li>
+  <li><a href="man/ringbuf">Print some information about a ring buffer</a></li>
+  <li><a href="man/archivist">Daemon that periodically reallocate storage space</a></li>
+  <li><a href="man/stats">Print some internal instrumentation data</a></li>
+  <li><a href="man/variants">Print some internal experimentation settings</a></li>
+  </ul>
 <h2>Tests</h2>
 <ul>
-<li><a href="man/test.html">Test the behavior of a set of prograns</a></li>
-</ul>
-
-
-  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
-
+  <li><a href="man/test">Test the behavior of a set of prograns</a></li>
+  </ul>
+</div>
 </body>
 </html>

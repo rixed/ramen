@@ -7,20 +7,60 @@
   </head>
 <body>
 
-  <script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
-  <script src="https://hypothes.is/embed.js" async></script>
+<div id="header">
+  <p class="title">Ramen Documentation</p>
+  <p>
+    <a class="github-cat" href="https://github.com/rixed/ramen">
+      <svg class="octicon" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M14.7 5.34c.13-.32.55-1.59-.13-3.31 0 0-1.05-.33-3.44 1.3-1-.28-2.07-.32-3.13-.32s-2.13.04-3.13.32c-2.39-1.64-3.44-1.3-3.44-1.3-.68 1.72-.26 2.99-.13 3.31C.49 6.21 0 7.33 0 8.69 0 13.84 3.33 15 7.98 15S16 13.84 16 8.69c0-1.36-.49-2.48-1.3-3.35zM8 14.02c-3.3 0-5.98-.15-5.98-3.35 0-.76.38-1.48 1.02-2.07 1.07-.98 2.9-.46 4.96-.46 2.07 0 3.88-.52 4.96.46.65.59 1.02 1.3 1.02 2.07 0 3.19-2.68 3.35-5.98 3.35zM5.49 9.01c-.66 0-1.2.8-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.54-1.78-1.2-1.78zm5.02 0c-.66 0-1.2.79-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.53-1.78-1.2-1.78z"></path></svg>
+    <span class="github-link">to source code</span></a>
+  </p>
+</div>
 
-  <div id="menu">
-    <a href="index.html">Overview</a>
-    <a href="download.html">Downloading</a>
-    <a href="build.html">Building</a>
-    <a href="tutorials.html">Tutorials</a>
-    <a href="design.html">Design</a>
-    <a href="roadmap.html">Roadmap</a>
-    <a href="man.html">Command line reference</a>
-    <a href="language_reference.html">Language reference</a>
-    <a href="blog.html">Blog posts</a>
-  </div>
+<script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
+<script src="https://hypothes.is/embed.js" async></script>
+
+<div id="menu">
+  <ul>
+            <li>
+      <a class="" href="index.html">Overview</a>
+        </li>
+          <li>
+      <a class="" href="download.html">Downloading</a>
+        </li>
+          <li>
+      <a class="" href="build.html">Building</a>
+        </li>
+          <li>
+      <a class="" href="tutorials.html">Tutorials</a>
+        </li>
+          <li>
+      <a class="" href="design.html">Design</a>
+          <ul>
+              <li><a class="" href="requirements.html">Initial Requirements</a></li>
+              <li><a class="is-current" href="programs.html">Functions, programs and workers</a></li>
+              <li><a class="" href="communication.html">Messages and message passing</a></li>
+              <li><a class="" href="archival.html">Archival and replay</a></li>
+            </ul>
+        </li>
+          <li>
+      <a class="" href="roadmap.html">Roadmap</a>
+        </li>
+          <li>
+      <a class="" href="man.html">Command line reference</a>
+        </li>
+          <li>
+      <a class="" href="language_reference.html">Language reference</a>
+        </li>
+          <li>
+      <a class="" href="glossary.html">Glossary</a>
+        </li>
+          <li>
+      <a class="" href="blog.html">Blog posts</a>
+        </li>
+    </ul>
+</div>
+
+<div id="page">
 
 <h1>Functions, Programs, Workers and the supervisor</h1>
 
@@ -54,7 +94,7 @@
 
 <p>For instance, here is a short program demoing many of Ramen's features:</p>
 
-<pre class="prettyprint">
+<pre>
 -- Single line comments start with a double dash as in SQL
 PARAMETERS max_response_time DEFAULT 1.5s
        AND time_step DEFAULT 1m;
@@ -88,18 +128,16 @@ DEFINE alert_on_slow_resp_times AS
 
 <h2>Compilation</h2>
 
-<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code class="prettyprint">services/web</code> where it will find the output type of the function <code class="prettyprint">http_logs</code>, that it needs to know in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
+<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code>services/web</code> where it will find the output type of the function <code>http_logs</code>, that it needs to know in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
 
 <p>The result of the compilation is going to be a single binary executable that embeds the code for all individual functions, as well as a few additional entry points to print various information such as the output type of the functions.</p>
 
-<p>The running configuration is then nothing but a text file that specifies which program is supposed to be running (with what values for the parameters). <code class="prettyprint">ramen run</code> merely edits this file. <code class="prettyprint">ramen supervisor</code> is a daemon that will spawn one instance of the compiled binary for every of its functions, and connect them with the required ringbuffers.</p>
+<p>The running configuration is then nothing but a text file that specifies which program is supposed to be running (with what values for the parameters). <code>ramen run</code> merely edits this file. <code>ramen supervisor</code> is a daemon that will spawn one instance of the compiled binary for every of its functions, and connect them with the required ringbuffers.</p>
 
 <p>Each instance of a compiled binary implementing a particular function is called a <em>worker</em>. So in the above example two workers will be run, one for each of the functions, each with its own input ringbuffer.<p>
 
-<p>The supervisor daemon will also kill the workers that are no longer needed (again, <code class="prettyprint">ramen kill</code> merely edits the running configuration).</p>
+<p>The supervisor daemon will also kill the workers that are no longer needed (again, <code>ramen kill</code> merely edits the running configuration).</p>
 
-
-  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
-
+</div>
 </body>
 </html>

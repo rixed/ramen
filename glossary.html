@@ -7,130 +7,128 @@
   </head>
 <body>
 
-  <script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
-  <script src="https://hypothes.is/embed.js" async></script>
+<div id="header">
+  <p class="title">Ramen Documentation</p>
+  <p>
+    <a class="github-cat" href="https://github.com/rixed/ramen">
+      <svg class="octicon" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M14.7 5.34c.13-.32.55-1.59-.13-3.31 0 0-1.05-.33-3.44 1.3-1-.28-2.07-.32-3.13-.32s-2.13.04-3.13.32c-2.39-1.64-3.44-1.3-3.44-1.3-.68 1.72-.26 2.99-.13 3.31C.49 6.21 0 7.33 0 8.69 0 13.84 3.33 15 7.98 15S16 13.84 16 8.69c0-1.36-.49-2.48-1.3-3.35zM8 14.02c-3.3 0-5.98-.15-5.98-3.35 0-.76.38-1.48 1.02-2.07 1.07-.98 2.9-.46 4.96-.46 2.07 0 3.88-.52 4.96.46.65.59 1.02 1.3 1.02 2.07 0 3.19-2.68 3.35-5.98 3.35zM5.49 9.01c-.66 0-1.2.8-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.54-1.78-1.2-1.78zm5.02 0c-.66 0-1.2.79-1.2 1.78s.54 1.79 1.2 1.79c.66 0 1.2-.8 1.2-1.79s-.53-1.78-1.2-1.78z"></path></svg>
+    <span class="github-link">to source code</span></a>
+  </p>
+</div>
 
-  <div id="menu">
-    <a href="index.html">Overview</a>
-    <a href="download.html">Downloading</a>
-    <a href="build.html">Building</a>
-    <a href="tutorials.html">Tutorials</a>
-    <a href="design.html">Design</a>
-    <a href="roadmap.html">Roadmap</a>
-    <a href="man.html">Command line reference</a>
-    <a href="language_reference.html">Language reference</a>
-    <a href="blog.html">Blog posts</a>
-  </div>
+<script type="application/json" class="js-hypothesis-config">{ "showHighlights": "whenSidebarOpen" }</script>
+<script src="https://hypothes.is/embed.js" async></script>
+
+<div id="menu">
+  <ul>
+            <li>
+      <a class="" href="index.html">Overview</a>
+        </li>
+          <li>
+      <a class="" href="download.html">Downloading</a>
+        </li>
+          <li>
+      <a class="" href="build.html">Building</a>
+        </li>
+          <li>
+      <a class="" href="tutorials.html">Tutorials</a>
+        </li>
+          <li>
+      <a class="" href="design.html">Design</a>
+        </li>
+          <li>
+      <a class="" href="roadmap.html">Roadmap</a>
+        </li>
+          <li>
+      <a class="" href="man.html">Command line reference</a>
+        </li>
+          <li>
+      <a class="" href="language_reference.html">Language reference</a>
+        </li>
+          <li>
+      <a class="is-current" href="glossary.html">Glossary</a>
+        </li>
+          <li>
+      <a class="" href="blog.html">Blog posts</a>
+        </li>
+    </ul>
+</div>
+
+<div id="page">
 <h1>Glossary</h1>
 
 <a name="AggregationFunction"><h2>Aggregation Function</h2></a>
-  A function that build a result value out of several input values.
-  The result is finalized and output when some given condition is met
-  (see xref:Commit[]).
+
+<p>A function that build a result value out of several input values.  The result is finalized and output when some given condition is met (see <a href="#Commit">commit</a>).</p>
 
 <a name="Clause"><h2>Clause</h2></a>
-  Part of an xref:Operation[operation]. Especially, the aggregate operation
-  has a `select` clause, a `where` clause, a `group-by` clause, etc...
+
+<p>Part of an <a href="#Operation">operation</a>. Especially, the aggregate operation has a `select` clause, a `where` clause, a `group-by` clause, etc...</p>
 
 <a name="Commit"><h2>Commit</h2></a>
-  When several incoming xref:Tuple[tuples] are aggregated into a single
-  xref:Group[group], a condition must be specified that, when met, will trigger
-  the output of the aggregated value. This is called to _commit_ the group.
-  What happens to that group after the result tuple has been output depends on
-  the flush clause; By default it will merely be reset (tumbling windows),
-  but it is also possible to resume the aggregation from where it was or to
-  expels oldest events (sliding window) or even other behaviors.
+
+<p>When several incoming <a href="#Tuple">tuples</a> are aggregated into a single <a href="#Group">group</a>, a condition must be specified that, when met, will trigger the output of the aggregated value. This is called to _commit_ the group.  What happens to that group after the result tuple has been output depends on the flush clause; By default it will merely be reset (tumbling windows), but it is also possible to resume the aggregation from where it was or to expels oldest events (sliding window) or even other behaviors.</p>
 
 <a name="Event"><h2>Event</h2></a>
-  An individual message to be processed. In Ramen events are
-  xref:Tuples[tuples]. `Event`, `message` and `tuple` are used
-  interchangeably.
+
+<p>An individual message to be processed. In Ramen events are <a href="#Tuples">tuples</a>. `Event`, `message` and `tuple` are used interchangeably.</p>
 
 <a name="FQName"><h2>Fully Qualified Name</h2></a>
-  The fully qualified name of an xref:Operation[operation] is the name of the
-  xref:Program[program] it belongs to, followed by a slash ("/"), followed by
-  the operation name. Those FQ names are globally unique.
+
+<p>The fully qualified name of an <a href="#Operation">operation</a> is the name of the <a href="#Program">program</a> it belongs to, followed by a slash ("/"), followed by the operation name. Those FQ names are globally unique.</p>
 
 <a name="Group"><h2>Group</h2></a>
-  Within the context of an operation, a `group` refers to an aggregation group,
-  ie. the set of tuples sharing the same key and aggregated together. This
-  group lives (in RAM) until it is committed, when it can be deleted or
-  downsized before resuming the operation. Aggregation groups are therefore
-  closely related to the concept of xref:Windowing[windows].
+
+<p>Within the context of an operation, a `group` refers to an aggregation group, ie. the set of tuples sharing the same key and aggregated together. This group lives (in RAM) until it is committed, when it can be deleted or downsized before resuming the operation. Aggregation groups are therefore closely related to the concept of <a href="#Windowing">windows</a>.</p>
 
 <a name="Notification"><h2>Notification</h2></a>
-  In addition to tuples, workers also output so called `notifications` using
-  the `notify` clause. Those follow a particular format and are not intended
-  for other workers but for the notifier process, that may eventually send an
-  alert to users.
+
+<p>In addition to tuples, workers also output so called `notifications` using the `notify` clause. Those follow a particular format and are not intended for other workers but for the notifier process, that may eventually send an alert to users.</p>
 
 <a name="Nullable"><h2>Nullable</h2></a>
-  Said of a tuple field that can hold the NULL value. Most fields should not be
-  nullable as it implies expensive runtime checks.
+
+<p>Said of a tuple field that can hold the NULL value. Most fields should not be nullable as it implies expensive runtime checks.</p>
 
 <a name="Operation"><h2>Operation</h2></a>
-  An operation is a statement in the SQL-inspired specific language,
-  describing how to produce some output from some inputs. Operation have names
-  that must be unique within a xref:Program[program].  Every operation has an
-  input and an output type, which is the types of the tuples they consume and
-  produce. Operations can receive tuples from any other operations of the same
-  program or from any operations of any other program already compiled.
+
+<p>An operation is a statement in the SQL-inspired specific language, describing how to produce some output from some inputs. Operation have names that must be unique within a <a href="#Program">program</a>.  Every operation has an input and an output type, which is the types of the tuples they consume and produce. Operations can receive tuples from any other operations of the same program or from any operations of any other program already compiled.</p>
 
 <a name="Program"><h2>Program</h2></a>
-  Containing one or several xref:Operation[operations]. This is the smallest
-  subset of the configuration that can be edited/compiled/started/stopped.
-  Inside a program functions are allowed to form cycles.  In addition to a set
-  of operations, a program also has a name. Those names must be globally
-  unique.
+
+<p>Containing one or several <a href="#Operation">operations</a>. This is the smallest subset of the configuration that can be edited/compiled/started/stopped.  Inside a program functions are allowed to form cycles.  In addition to a set of operations, a program also has a name. Those names must be globally unique.</p>
 
 <a name="RingBuffer"><h2>Ring-Buffer</h2></a>
-  Fixed sized FIFO buffer used by workers to exchange tuples.
+
+<p>Fixed sized FIFO buffer used by workers to exchange tuples.</p>
 
 <a name="StatefulFunction"><h2>Stateful function</h2></a>
-  A function that requires an internal state in order to output a result.
-  xref:AggregationFunction[Aggregation functions] are a special case of
-  stateful functions.
+
+<p>A function that requires an internal state in order to output a result.  <a href="#AggregationFunction">Aggregation functions</a> are a special case of stateful functions.</p>
 
 <a name="StatelessFunction"><h2>Stateless function</h2></a>
-  A function that requires nothing more than its parameters to compute its
-  result. For instance, all arithmetic functions are stateless.
+
+<p>A function that requires nothing more than its parameters to compute its result. For instance, all arithmetic functions are stateless.</p>
 
 <a name="StreamProcessor"><h2>Stream Processor</h2></a>
-  A software which purpose is to perform user defined computations on a
-  theoretically infinite stream of data.
-  See: https://en.wikipedia.org/wiki/Data_stream_management_system.
+
+<p>A software which purpose is to perform user defined computations on a theoretically infinite stream of data.  See: https://en.wikipedia.org/wiki/Data_stream_management_system.</p>
 
 <a name="Timeseries"><h2>Timeseries</h2></a>
-  A time series is a series of values indexed by time. Timeseries can be
-  extracted from Ramen if additional information about event times are
-  provided.
-  See: https://en.wikipedia.org/wiki/Time_series.
+
+<p>A time series is a series of values indexed by time. Timeseries can be extracted from Ramen if additional information about event times are provided.  See: https://en.wikipedia.org/wiki/Time_series.</p>
 
 <a name="Tuple"><h2>Tuple</h2></a>
-  What is consumed and produced by functions.  A set of values, each of its
-  own type. Those values are called "fields" and beside its type a field also
-  has a name that must be unique in the tuple.
-  For instance, +{ "name": "John Dae"; "age": 42; "is_male": true }+ is a
-  tuple with 3 fields (here represented in JSON for convenience).
+
+<p>What is consumed and produced by functions.  A set of values, each of its own type. Those values are called "fields" and beside its type a field also has a name that must be unique in the tuple.  For instance, <code>{ "name": "John Dae"; "age": 42; "is_male": true }</code> is a tuple with 3 fields (here represented in JSON for convenience; Ramen does not encode tuples as JSON internally).</p>
 
 <a name="Windowing"><h2>Windowing</h2></a>
-  In a xref:StreamProcessor[stream processor], _windowing_ refers to how
-  incoming events are batched for aggregation. Usually windows are either
-  sliding or tumbling, with variations (see for instance
-  https://i.stack.imgur.com/mm06A.jpg[this picture]). Ramen is rather unique
-  in this regard that it has no notion of a window, especially not one bound
-  to time, since it has no preconception of time. Instead, Ramen has explicit
-  conditions for when to stop an aggregation (to xref:Commit[commit] the
-  group), and what to keep from one aggregation to the next. This makes it
-  possible to implement many windowing behavior, including tumbling and
-  sliding windows.
+
+<p>In a <a href="#StreamProcessor">stream processor</a>, _windowing_ refers to how incoming events are batched for aggregation. Usually windows are either sliding or tumbling, with variations (see for instance <a href="https://i.stack.imgur.com/mm06A.jpg">this picture</a>). Ramen is rather unique in this regard that it has no notion of a window, especially not one bound to time, since it has no preconception of time. Instead, Ramen has explicit conditions for when to stop an aggregation (to <a href="#Commit">commit</a> the group), and what to keep from one aggregation to the next. This makes it possible to implement many windowing behavior, including tumbling and sliding windows.</p>
 
 <a name="Worker"><h2>Worker</h2></a>
-  One of the possibly many executables generated and run by Ramen to carry out
-  some operation on the data stream.
 
+<p>One of the possibly many executables generated and run by Ramen to carry out some operation on the data stream.</p>
 
-  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=sql,shell"></script>
-
+</div>
 </body>
 </html>
