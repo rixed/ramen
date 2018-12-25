@@ -779,12 +779,13 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 
-let graphite_expand conf for_render all query () =
+let graphite_expand conf for_render all since until query () =
   init_logger conf.C.log_level ;
   let query = RamenGraphite.split_query query in
   let te =
     RamenGraphite.full_enum_tree_of_query
-      conf ~anchor_right:for_render ~only_running:(not all) query in
+      conf ?since ?until ~anchor_right:for_render ~only_running:(not all)
+      query in
   let rec display indent te =
     let e = RamenGraphite.get te in
     list_iter_first_last (fun is_first is_last (pv, c) ->

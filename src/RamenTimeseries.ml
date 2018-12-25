@@ -221,124 +221,25 @@ let compute_num_points time_step num_points since until =
  * the caches on the fly though.
  *)
 
-(* Scan the given file for all possible values for each of the factors *)
-let scan_possible_values factors bname typ =
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
-  let fis =
-    List.map (RamenSerialization.find_field_index ser) factors in
-  let possible_values =
-    Array.init (List.length fis) (fun _ -> Set.empty) in
-  RamenSerialization.fold_buffer_tuple bname ser () (fun () msg ->
-    (match msg with
-    | RingBufLib.DataTuple _, Some tuple ->
-      List.iteri (fun i fidx ->
-        let v = tuple.(fidx) in
-        possible_values.(i) <- Set.add v possible_values.(i)
-      ) fis
-    | _ -> ()) ;
-    (), true) ;
-  possible_values
-
-let all_seq_bnames conf ?since ?until func =
-  let bname = C.archive_buf_name conf func in
-  Enum.append
-    (RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
-     (fun (_, _, t1, t2, fname) ->
-       if Option.map_default (fun t -> t <= t2) true since &&
-          Option.map_default (fun t -> t >= t1) true until
-       then Some fname else None))
-    (Enum.singleton bname)
-
-(* What we save in factors cache files: *)
-type cached_factors = RamenTypes.value list [@@ppp PPP_OCaml]
-
-let factors_of_file =
-  let get = ppp_of_file ~error_ok:true cached_factors_ppp_ocaml in
-  fun fname ->
-    get fname |> Set.of_list
-
-let factors_to_file fname factors =
-  let lst = Set.to_list factors in
-  ppp_to_file fname cached_factors_ppp_ocaml lst
-
-(* Scan all stored values for this operation and return the set of all
- * possible values for that factor (if we need to actually scan a file,
- * all factors will be refreshed). *)
-let get_possible_values conf ?since ?until func factor =
+let possible_values conf ?since ?until func factor =
+  !logger.debug "Retrieving possible values for factor %a of %a"
+    RamenName.field_print factor
+    RamenName.func_print func.F.name ;
   if not (List.mem factor func.F.factors) then
-    invalid_arg "get_possible_values: not a factor"
-  else
-    let typ = func.F.out_type in
-    let bnames = all_seq_bnames conf ?since ?until func |>
-                 List.of_enum (* FIXME *) in
-    List.fold_left (fun set bname ->
-      let pvs =
-        try
-          let cache = C.factors_of_ringbuf bname factor in
-          (* If fname is newer than cache and cache is older than X seconds
-           * then raise *)
-          let b_mtime = mtime_of_file_def 0. bname
-          and c_mtime = mtime_of_file cache in
-          if b_mtime >= c_mtime &&
-             c_mtime < Unix.time () -. RamenConsts.cache_factors_ttl then
-              raise Exit ;
-          let pvs = factors_of_file cache in
-          !logger.debug "Got factors from cache %s" cache ;
-          pvs
-        with e ->
-          if e <> Exit then
-            !logger.debug "Cannot read cached factor values for %s.%a: %s, \
-                           scanning."
-              bname
-              RamenName.field_print factor
-              (Printexc.to_string e) ;
-          !logger.debug "Have to recompute factor values cache." ;
-          let all_pvs = scan_possible_values func.F.factors bname typ in
-          let pvs = ref Set.empty in
-          (* Save them all: *)
-          List.iteri (fun i factor' ->
-            if factor' = factor then (* The one that was asked for *)
-              pvs := all_pvs.(i) ;
-            let cache = C.factors_of_ringbuf bname factor' in
-            factors_to_file cache all_pvs.(i)
-          ) func.F.factors ;
-          !pvs
-      in
-      Set.union pvs set
-    ) Set.empty bnames
-
-(* Possible values per factor are precalculated to cut down on promises.
- * Indexed by FQ names, then factor name: *)
-(* FIXME: change the tree type to make the children enumerator a promise :-( *)
-let possible_values_cache = Hashtbl.create 31
-
-let cache_possible_values conf programs =
-  Hashtbl.iter (fun _ (_mre, get_rc) ->
-    match get_rc () with
-    | exception _ -> ()
-    | prog ->
-        List.iter (fun func ->
-          let h = Hashtbl.create (List.length func.F.factors) in
-          List.iter (fun factor ->
-            let pvs = get_possible_values conf func factor in
-            Hashtbl.add h factor pvs
-          ) func.F.factors ;
-          Hashtbl.replace possible_values_cache (F.fq_name func) h
-        ) prog.P.funcs
-  ) programs
-
-(* Enumerate the possible values of a factor: *)
-let possible_values func factor =
-  match Hashtbl.find possible_values_cache (F.fq_name func) with
-  | exception Not_found ->
-      !logger.error "%a possible values are not cached?!"
-        RamenName.func_print func.F.name ;
-      raise Not_found
-  | h ->
-    (match Hashtbl.find h factor with
-    | exception Not_found ->
-        !logger.error "%a is not a factor of %a"
-          RamenName.field_print factor
-          RamenName.func_print func.F.name ;
-        raise Not_found
-    | x -> x)
+    invalid_arg "get_possible_values: not a factor" ;
+  let dir =
+    C.factors_of_function conf func
+      ^"/"^ path_quote (RamenName.string_of_field factor) in
+  (try Sys.files_of dir
+  with Sys_error _ -> Enum.empty ()) //@
+  (fun fname ->
+    try
+      let mi, ma = String.split ~by:"_" fname in
+      let mi, ma = RingBufLib.(strtod mi, strtod ma) in
+      if Option.map_default (fun t -> t <= ma) true since &&
+         Option.map_default (fun t -> t >= mi) true until
+      then Some (dir ^"/"^ fname) else None
+    with (Not_found | Failure _) -> None) |>
+  Enum.fold (fun s fname ->
+    let s' = RamenAdvLock.with_r_lock fname marshal_from_fd in
+    Set.union s s') Set.empty

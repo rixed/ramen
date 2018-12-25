@@ -416,11 +416,24 @@ let archive_buf_name conf func =
                    ^"/"^ Func.path func
                    ^"/"^ sign ^"/archive.b"
 
-(* Each individual ringbuf may have a file storing all possible values for
- * special fields identified as factors: *)
-let factors_of_ringbuf fname factor =
-  Filename.remove_extension fname ^".factors."^
-    RamenName.string_of_field factor
+(* Every function with factors will have a file sequence storing possible
+ * values encountered for that time range. This is so that we can quickly
+ * do autocomplete for graphite metric names regardless of archiving. This
+ * could also be used to narrow down the time range of a replays in presence
+ * of filtering by a factor.
+ * Those files are cleaned by the GC according to retention times only -
+ * they are not taken into account for size computation, as they are
+ * independent of archiving and are supposed to be small anyway.
+ * This function merely returns the directory name where the factors possible
+ * values are saved. Then, the factor field name (with '/' url-encoded) gives
+ * the name of the directory containing a file per time slice (named
+ * begin_end). *)
+let factors_of_function conf func =
+  let sign = type_signature_hash func.Func.out_type in
+  conf.persist_dir ^"/workers/factors/"
+                   ^ RamenVersions.factors
+                   ^"/"^ Func.path func
+                   ^"/"^ sign
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic

@@ -428,6 +428,7 @@ let really_start conf proc parents children =
     (* We need to change this dir whenever the func signature or params
      * change to prevent it to reload an incompatible state: *)
     "state_file="^ C.worker_state conf proc.func proc.params ;
+    "factors_dir="^ C.factors_of_function conf proc.func ;
     (match !logger.output with
       | Directory _ ->
         "log="^ conf.C.persist_dir ^"/log/workers/" ^ F.path proc.func

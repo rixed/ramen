@@ -811,6 +811,8 @@ let expand =
       $ copts
       $ for_render
       $ all
+      $ since
+      $ until
       $ query),
     info ~doc:"test graphite query expansion" "_expand")
 

@@ -1827,3 +1827,7 @@ let path_in_graph fold ?(max_len=50) ~src ~dst =
   in
   let path_rev, _ = loop max_len [] 0 src in
   path_rev
+
+let possible_values_file dir factor min_time max_time =
+  Legacy.Printf.sprintf "%s/%s/%h_%h"
+    dir (path_quote factor) min_time max_time

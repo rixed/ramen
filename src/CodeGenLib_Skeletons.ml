@@ -148,6 +148,52 @@ let update_stats_rb report_period rb get_tuple =
       Unix.sleepf report_period
     done
 
+(*
+ * Factors possible values:
+ *)
+
+type possible_values_index =
+  { min_time : float ; max_time : float ;
+    (* Name of the previous file where that set was saved.
+     * This file is renamed after every write. *)
+    fname : string ;
+    mutable values : RamenTypes.value Set.t }
+
+(* Just a placeholder to init the initial array. *)
+let possible_values_empty =
+  { min_time = max_float ; max_time = min_float ;
+    fname = "" ; values = Set.empty }
+
+let save_possible_values prev_fname pvs =
+    (* We are going to write a new file and delete the former one.
+     * We only need a lock when that's the same file. *)
+    let do_write fd = marshal_into_fd fd pvs.values in
+    if prev_fname = pvs.fname then (
+      !logger.info "Updating index %s" prev_fname ;
+      RamenAdvLock.with_w_lock prev_fname do_write
+    ) else (
+      !logger.info "Creating new index %s" pvs.fname ;
+      mkdir_all ~is_file:true pvs.fname ;
+      let flags = Unix.[ O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC ] in
+      (match Unix.openfile pvs.fname flags 0o644 with
+      | exception Unix.(Unix_error (EEXIST, _, _)) ->
+          (* Although we though we would create a new file for a singleton,
+           * it turns out this file exists already. This could happen when
+           * event time goes back and forth, which is allowed. So we have
+           * to merge the indices now: *)
+          !logger.warning "Stumbled upon preexisting index %s, merging..."
+            pvs.fname ;
+          RamenAdvLock.with_w_lock pvs.fname (fun fd ->
+            let prev_set = marshal_from_fd fd in
+            let s = Set.union prev_set pvs.values in
+            (* Keep past values for the next write: *)
+            pvs.values <- s ;
+            do_write fd)
+      | fd -> do_write fd) ;
+      if prev_fname <> "" then
+        log_and_ignore_exceptions safe_unlink prev_fname)
+
+
 (* Helpers *)
 
 (* For non-wrapping buffers we need to know the value for the time, as
@@ -182,10 +228,14 @@ let quit = ref None
 
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
-let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                serialize_tuple =
+let outputer_of
+      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple =
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
   and out_l = ref []  (* list of outputers *) in
+  let max_num_fields = 100 (* FIXME *) in
+  let factors_values = Array.make max_num_fields possible_values_empty in
+  let factors_dir = getenv ~def:"/tmp/factors" "factors_dir" in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -326,8 +376,36 @@ let outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
       | Some tuple ->
         let start_stop = time_of_tuple tuple in
         if dest_channel = RamenChannel.live then (
+          let start, stop = start_stop |? (0., end_of_times) in
           IntCounter.add stats_out_tuple_count 1 ;
           FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+          (* Update factors possible values: *)
+          factors_of_tuple tuple |>
+          Array.iteri (fun i (factor, pv) ->
+            assert (i < Array.length factors_values) ;
+            let pvs = factors_values.(i) in
+            if not (Set.mem pv pvs.values) then ( (* FIXME: Set.update *)
+              !logger.info "new value for factor %s: %a"
+                factor RamenTypes.print pv ;
+              let min_time = min start pvs.min_time
+              and max_time = max stop pvs.max_time in
+              let min_time, max_time, values, prev_fname =
+                if start_stop = None || (
+                   let dt = max_time -. min_time in
+                   !logger.info "dt = %f - %f = %f (lifespan = %f)"
+                     max_time min_time dt possible_values_lifespan ;
+                   dt <= possible_values_lifespan)
+                then
+                  min_time, max_time, Set.add pv pvs.values, pvs.fname
+                else
+                  start, stop, Set.singleton pv, "" in
+              let fname =
+                possible_values_file factors_dir factor min_time max_time in
+              let pvs = { min_time ; max_time ; fname ; values } in
+              factors_values.(i) <- pvs ;
+              (* Warning that this function might in some rare case update
+               * pvs.values! *)
+              save_possible_values prev_fname pvs)) ;
           (* Update stats_event_time: *)
           Option.may (fun (start, _) ->
             (* We'd rather announce the start time of the event, even for
@@ -415,9 +493,10 @@ let worker_start worker_name get_binocle_tuple k =
  * Operations that funcs may run: read a CSV file.
  *)
 
-let read_csv_file filename do_unlink separator sersize_of_tuple
-                  time_of_tuple serialize_tuple tuple_of_strings
-                  preprocessor field_of_params =
+let read_csv_file
+    filename do_unlink separator sersize_of_tuple
+    time_of_tuple factors_of_tuple serialize_tuple tuple_of_strings
+    preprocessor field_of_params =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -438,8 +517,9 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
       tuple_of_strings (Array.of_list strings)
     in
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
+      outputer_of
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
     CodeGenLib_IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
@@ -453,9 +533,10 @@ let read_csv_file filename do_unlink separator sersize_of_tuple
  * Operations that funcs may run: listen to some known protocol.
  *)
 
-let listen_on (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
-              proto_name
-              sersize_of_tuple time_of_tuple serialize_tuple =
+let listen_on
+      (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
+      proto_name
+      sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -464,8 +545,9 @@ let listen_on (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
     in
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
+      outputer_of
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
@@ -475,8 +557,9 @@ let listen_on (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
  * Operations that funcs may run: read known tuples from a ringbuf.
  *)
 
-let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
-                    unserialize_tuple ringbuf_envvar worker_time_of_tuple =
+let read_well_known
+      from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
+      unserialize_tuple ringbuf_envvar worker_time_of_tuple =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -487,8 +570,9 @@ let read_well_known from sersize_of_tuple time_of_tuple serialize_tuple
       getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
     in
     let outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple in
+      outputer_of
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple in
     let globs = List.map Globs.compile from in
     let match_from worker =
       from = [] ||
@@ -794,6 +878,7 @@ let aggregate
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
+      (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
       (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
@@ -888,8 +973,9 @@ let aggregate
     and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf" in
     let notify_rb = RingBuf.load notify_rb_name in
     let msg_outputer =
-      outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                  serialize_tuple in
+      outputer_of
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -1158,6 +1244,7 @@ let replay
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
+      (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
       (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
@@ -1194,8 +1281,9 @@ let replay
   set_signals Sys.[sigusr1] Signal_ignore ;
   !logger.debug "Will replay archive from %S" rb_archive ;
   let outputer =
-    outputer_of rb_ref_out_fname sersize_of_tuple time_of_tuple
-                serialize_tuple in
+    outputer_of
+      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple in
   let num_replayed_tuples = ref 0 in
   let while_ () = !quit = None in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in

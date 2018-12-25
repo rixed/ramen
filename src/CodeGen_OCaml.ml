@@ -46,10 +46,16 @@ let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.name
 
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
-let array_print_as_tuple_i p =
+
+let array_print_i ?first ?last ?sep p oc a =
+  let i = ref 0 in
+  Array.print ?first ?last ?sep (fun oc x ->
+    p !i oc x ; incr i) oc a
+
+let array_print_as_tuple_i p oc a =
   let i = ref 0 in
   Array.print ~first:"(" ~last:")" ~sep:", " (fun oc x ->
-    p oc !i x ; incr i)
+    p oc !i x ; incr i) oc a
 
 let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
@@ -149,6 +155,37 @@ let emit_float oc f =
   if f = infinity then String.print oc "infinity"
   else if f = neg_infinity then String.print oc "neg_infinity"
   else Legacy.Printf.sprintf "%h" f |> String.print oc
+
+(* Prints a function that convert an ocaml value into a RamenTypes.value of
+ * the given RamenTypes.t: *)
+let rec emit_value oc typ =
+  let open Stdint in
+  if typ.RamenTypes.nullable then
+    String.print oc "(function Null -> RamenTypes.VNull | NotNull x_ -> "
+  else
+    String.print oc "(fun x_ -> " ;
+  let p n = Printf.fprintf oc "RamenTypes.%s x_" n in
+  (match typ.structure with
+  | TEmpty | TNum | TAny -> assert false
+  | TFloat -> p "VFloat" | TString -> p "VString" | TBool -> p "VBool"
+  | TU8 -> p "VU8" | TU16 -> p "VU16" | TU32 -> p "VU32"
+  | TU64 -> p "VU64" | TU128 -> p "VU128"
+  | TI8 -> p "VI8" | TI16 -> p "VI16" | TI32 -> p "VI32"
+  | TI64 -> p "VI64" | TI128 -> p "VI128"
+  | TEth -> p "VEth" | TIpv4 -> p "VIpv4" | TIpv6 -> p "VIpv6"
+  | TIp -> p "Vip" | TCidrv4 -> p "VCidrv4" | TCidrv6 -> p "VCidrv6"
+  | TCidr -> p "VCidr"
+  | TTuple ts ->
+      Printf.fprintf oc "(let %a = x_ in RamenTypes.VTuple %a)"
+        (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "x%d_" i)) ts
+        (array_print_i (fun i oc typ ->
+          Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
+  | TVec (_d, t) ->
+      Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
+  | TList t ->
+      Printf.fprintf oc "RamenTypes.VList (Array.map %a x_)" emit_value t) ;
+  String.print oc ")"
 
 let rec emit_type oc =
   let open Stdint in
@@ -1813,6 +1850,25 @@ let emit_time_of_tuple name oc opc =
   | Some _ -> Printf.fprintf oc "Some (%a)" emit_event_time opc) ;
   String.print oc "\n\n"
 
+let emit_factors_of_tuple name oc opc =
+  let factors =
+    match opc.op with
+    | Some op -> RamenOperation.factors_of_operation op
+    | None -> [] in
+  Printf.fprintf oc "let %s %a = [|\n"
+    name
+    (print_tuple_deconstruct TupleOut) opc.tuple_typ ;
+  List.iter (fun factor ->
+    let typ =
+      (List.find (fun t -> t.RamenTuple.name = factor) opc.tuple_typ).typ in
+    Printf.fprintf oc "\t%S, %a %s ;\n"
+      (RamenName.string_of_field factor)
+      emit_value typ
+      (id_of_field_name ~tuple:TupleOut factor)
+  ) factors ;
+  (* TODO *)
+  String.print oc "|]\n\n"
+
 (* Given a tuple type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file opc oc name csv_fname unlink
                        csv_separator csv_null preprocessor =
@@ -1835,14 +1891,16 @@ let emit_read_csv_file opc oc name csv_fname unlink
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
   Printf.fprintf oc
-     "%a\n%a\n%a\n%a\n\
+     "%a\n%a\n%a\n%a\n%a\n\
      let %s () =\n\
        \tlet unlink_ = %a in
        \tCodeGenLib_Skeletons.read_csv_file %s\n\
-       \t\tunlink_ %S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
+       \t\tunlink_ %S sersize_of_tuple_ time_of_tuple_\n\
+       \t\tfactors_of_tuple_ serialize_tuple_\n\
        \t\ttuple_of_strings_ %s field_of_params_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
+    (emit_factors_of_tuple "factors_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
     (emit_tuple_of_strings "tuple_of_strings_" csv_null) opc.tuple_typ
     name
@@ -1853,13 +1911,15 @@ let emit_listen_on opc oc name net_addr port proto =
   let open RamenProtocols in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
-  Printf.fprintf oc "%a\n%a\n%a\n\
+  Printf.fprintf oc "%a\n%a\n%a\n%a\n\
     let %s () =\n\
       \tCodeGenLib_Skeletons.listen_on\n\
       \t\t(%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)\n\
-      \t\t%S sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n"
+      \t\t%S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_\n\
+      \t\tserialize_tuple_\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
+    (emit_factors_of_tuple "factors_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") tuple_typ
     name
     collector
@@ -1869,12 +1929,14 @@ let emit_listen_on opc oc name net_addr port proto =
 let emit_well_known opc oc name from
                     unserializer_name ringbuf_envvar worker_and_time =
   let open RamenProtocols in
-  Printf.fprintf oc "%a\n%a\n%a\n\
+  Printf.fprintf oc "%a\n%a\n\n%a%a\n\
     let %s () =\n\
       \tCodeGenLib_Skeletons.read_well_known %a\n\
-      \t\tsersize_of_tuple_ time_of_tuple_ serialize_tuple_ %s %S %s\n"
+      \t\tsersize_of_tuple_ time_of_tuple_ factors_of_tuple_\n\
+      \t\tserialize_tuple_ %s %S %s\n"
     (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
+    (emit_factors_of_tuple "factors_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
     name
     (List.print (fun oc ds ->
@@ -2537,7 +2599,7 @@ let emit_aggregate opc oc name in_typ out_typ =
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
   and is_yield = from = [] in
   Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState ["()"] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
@@ -2557,6 +2619,7 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_update_states "update_states_" in_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
+    (emit_factors_of_tuple "factors_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc) fields
     (emit_field_of_tuple "field_of_tuple_in_") in_typ
@@ -2567,7 +2630,8 @@ let emit_aggregate opc oc name in_typ out_typ =
     (emit_get_notifications "get_notifications_" in_typ out_typ ~opc) notifications ;
   Printf.fprintf oc "let %s () =\n\
       \tCodeGenLib_Skeletons.aggregate\n\
-      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_ serialize_tuple_\n\
+      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_\n\
+      \t\tfactors_of_tuple_ serialize_tuple_\n\
       \t\tgenerate_tuples_\n\
       \t\tminimal_tuple_of_group_\n\
       \t\tupdate_states_\n\
@@ -2698,10 +2762,13 @@ let emit_replay name op out_typ params oc =
   emit_read_tuple "read_out_tuple_" oc ser_out_typ ;
   emit_sersize_of_tuple "sersize_of_ser_tuple_" oc ser_out_typ ;
   emit_time_of_tuple "time_of_ser_tuple_" oc opc ;
+  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
   emit_serialize_tuple "serialize_ser_tuple_" oc ser_out_typ ;
   Printf.fprintf oc
     "let %s () =\n\
-       \tCodeGenLib_Skeletons.replay read_out_tuple_ sersize_of_ser_tuple_ time_of_ser_tuple_ serialize_ser_tuple_\n"
+       \tCodeGenLib_Skeletons.replay read_out_tuple_\n\
+       \t\tsersize_of_ser_tuple_ time_of_ser_tuple_ factors_of_tuple_\n\
+       \t\tserialize_ser_tuple_\n"
     name
 
 

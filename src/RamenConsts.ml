@@ -314,3 +314,9 @@ let param_envvar_prefix = "param_"
 
 (* Prefix to use before all experiment names in the environment: *)
 let exp_envvar_prefix = "experiment_"
+
+(* Lifespan of files caching each factor possible values: *)
+let possible_values_lifespan = 24. *. 3600. (* FIXME: configurable? *)
+
+(* Used to name factor possible value files in absence of event times: *)
+let end_of_times = 5017590000.

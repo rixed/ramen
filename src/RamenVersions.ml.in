@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v48" (* last: truncate function *)
+let codegen = "v49" (* last: factors now computed by workers *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v5" (* last: addition of startup time *)
@@ -37,3 +37,6 @@ let experiment = "v1"
 
 (* Format of the archivist user constraints and other intermediary files *)
 let archivist_conf = "v1"
+
+(* Format used for factor possible values (content and file name) *)
+let factors = "v1"
