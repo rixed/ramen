@@ -107,7 +107,7 @@ let cleanup_once conf dry_run del_ratio =
               let pref = Filename.(basename fpath |> remove_extension) in
               Array.iter (fun fname ->
                 if String.starts_with fname pref then
-                  log_and_ignore_exceptions unlink fpath ;
+                  log_and_ignore_exceptions unlink (dir ^"/"^ fname)
               ) files
             ) ;
             del (n - 1) to_del
