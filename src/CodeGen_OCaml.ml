@@ -173,7 +173,7 @@ let rec emit_value oc typ =
   | TI8 -> p "VI8" | TI16 -> p "VI16" | TI32 -> p "VI32"
   | TI64 -> p "VI64" | TI128 -> p "VI128"
   | TEth -> p "VEth" | TIpv4 -> p "VIpv4" | TIpv6 -> p "VIpv6"
-  | TIp -> p "Vip" | TCidrv4 -> p "VCidrv4" | TCidrv6 -> p "VCidrv6"
+  | TIp -> p "VIp" | TCidrv4 -> p "VCidrv4" | TCidrv6 -> p "VCidrv6"
   | TCidr -> p "VCidr"
   | TTuple ts ->
       Printf.fprintf oc "(let %a = x_ in RamenTypes.VTuple %a)"
