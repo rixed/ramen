@@ -101,7 +101,8 @@ let get conf num_points since until where factors
   (* The data fields we are really interested about are: the data fields +
    * the factors *)
   let tuple_fields = List.rev_append factors data_fields in
-  !logger.debug "tuple_fields = %a" (List.print RamenName.field_print) tuple_fields ;
+  !logger.debug "tuple_fields = %a"
+    (List.print RamenName.field_print) tuple_fields ;
   (* Must not add event time in front of factors: *)
   RamenExport.replay conf fq tuple_fields where since until
                      ~with_event_time:false (fun head ->

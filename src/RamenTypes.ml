@@ -22,6 +22,7 @@ open RamenHelpers
 type t =
   { structure : structure ;
     nullable : bool } [@@ppp PPP_OCaml]
+
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)
   | TFloat | TString | TBool | TNum | TAny
@@ -175,7 +176,7 @@ let rec structure_of =
 
 (* Used for debug, value expansion within strings, output values in tail
  * and timeseries commands, test immediate values.., but not for code
- * generation. *)
+ * generation. For this, see CodeGen_ocaml.emit_value *)
 let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VFloat f  -> nice_string_of_float f |> String.print oc
   | VString s -> Printf.fprintf oc (if quoting then "%S" else "%s") s

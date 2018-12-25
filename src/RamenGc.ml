@@ -145,6 +145,10 @@ let cleanup_once conf dry_run del_ratio =
         ) in
   let get_alloced_special _rel_fname = 150_000_000 (* TODO *) in
   let on_dir get_alloced fname rel_fname =
+    (* FIXME: what if a function or program name ends with ".arc"?
+     * We should leave the GC explore freely under persist_dir, looking
+     * for .gc files giving it instructions (max size and/or max age,
+     * and/or account to given FQ. *)
     if String.ends_with rel_fname ".arc" then (
       match get_alloced rel_fname with
       | exception e ->

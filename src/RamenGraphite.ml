@@ -29,11 +29,11 @@ module P = C.Program
  * http://graphite-api.readthedocs.io/en/latest/api.html#the-metrics-api
  * but the actual graphite does nothing like that
  * (https://github.com/brutasse/graphite-api). It's a bit sad to have to
- * emulate a protocol that's both crap and non documented.
+ * emulate a protocol that's both crap and not documented.
  *)
 
 type graphite_metric =
-  { text : string (* the name of the path component?*) ;
+  { text : string (* the name of the path component? *) ;
     (* These 3 are kind of synonymous ; apparently Grafana uses only "expandable". *)
     expandable : int ; leaf : int ; allowChildren : int ;
     id : string (* Not sure if used *) } [@@ppp PPP_JSON]
@@ -240,8 +240,7 @@ let tree_enum_of_programs
               tree_enum_of_program conf ?since ?until ~only_with_event_time
                                    ~only_num_fields prog in
             if tree_enum_is_empty sub_tree then None else
-              Some (
-                { value = name ; section = ProgPath }, sub_tree))
+              Some ({ value = name ; section = ProgPath }, sub_tree))
       | (_, name), Hash h ->
         let sub_tree = tree_enum_of_h h in
         if tree_enum_is_empty sub_tree then None else
@@ -652,6 +651,10 @@ let router conf prefix =
     match meth, path with
     (* Mimic Graphite for Grafana datasource *)
     | CodecHttp.Command.GET, ["metrics"; "find"] ->
+      (* This is a query that's used to find the possible completions
+       * of a path. It should answer with all possible single component
+       * completions that are compatible with the query, but not expand
+       * the globs present in the query. *)
       complete_graphite_find conf params
     | CodecHttp.Command.POST, ["render"] ->
       render_graphite conf headers body
