@@ -58,13 +58,16 @@ let cleanup_once conf dry_run del_ratio =
         (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
       "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
       "workers/out_ref", v_regexp, RamenVersions.out_ref ;
-      "workers/states", v_regexp, RamenVersions.worker_state ]
+      "workers/states", v_regexp, RamenVersions.worker_state ;
+      "workers/factors", v_regexp, RamenVersions.factors ]
   in
   !logger.info "Cleaning old unused files..." ;
   List.iter (cleanup_dir_old conf dry_run) to_clean ;
   (* Clean old archives *)
   let arcdir =
     conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
+  and factordir =
+    conf.C.persist_dir ^"/workers/factors/"^ RamenVersions.factors
   and reportdir =
     Filename.dirname (RamenConf.report_ringbuf conf)
   and notifdir =
@@ -162,6 +165,7 @@ let cleanup_once conf dry_run del_ratio =
     )
   in
   dir_subtree_iter ~on_dir:(on_dir get_alloced_worker) arcdir ;
+  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) factordir ;
   dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
   dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
