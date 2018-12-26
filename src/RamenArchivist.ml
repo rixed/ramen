@@ -122,16 +122,21 @@ let get_user_conf fname per_func_stats =
   user_conf
 
 (* Returns the func_stat resulting of adding the RamenPs.stats to the
- * previous func_stat [a]: *)
+ * previous func_stat [a]. Those stats are added because it's another
+ * run, so values in [s] are not already accumulated: *)
 let add_ps_stats a s now =
   let etime_diff =
     match s.RamenPs.min_etime, s.max_etime with
     | Some t1, Some t2 -> t2 -. t1
     | _ -> now -. s.startup_time
+  and bytes =
+    match s.avg_full_bytes, s.out_count with
+    | None, _ | _, None -> Uint64.zero
+    | Some b, Some c -> Uint64.(b * c)
   in
   { running_time = a.running_time +. etime_diff ;
     tuples = Int64.add a.tuples Uint64.(to_int64 (s.out_count |? zero)) ;
-    bytes = Int64.add a.bytes Uint64.(to_int64 (s.bytes_out |? zero)) ;
+    bytes = Int64.add a.bytes Uint64.(to_int64 bytes) ;
     cpu = a.cpu +. s.cpu ;
     ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) ;
     parents = a.parents ; archives = a.archives ; is_running = a.is_running }

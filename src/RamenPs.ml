@@ -21,6 +21,7 @@ type t =
     wait_out : float option ;
     bytes_in : Uint64.t option ;
     bytes_out : Uint64.t option ;
+    avg_full_bytes : Uint64.t option ;
     last_out : float option ;
     startup_time : float }
 
@@ -29,7 +30,7 @@ let no_stats =
     selected_count = None ; out_count = None ; group_count = None ;
     cpu = 0. ; ram = Uint64.zero ; max_ram = Uint64.zero ;
     wait_in = None ; wait_out = None ; bytes_in = None ; bytes_out = None ;
-    last_out = None ; startup_time = 0. }
+    avg_full_bytes = None ; last_out = None ; startup_time = 0. }
 
 let read_stats ?while_ conf =
   let h = Hashtbl.create 57 in
@@ -78,8 +79,9 @@ let read_stats ?while_ conf =
         wait_out = get_nfloat tuple.(12) ;
         bytes_in = get_nu64 tuple.(13) ;
         bytes_out = get_nu64 tuple.(14) ;
-        last_out = get_nfloat tuple.(15) ;
-        startup_time = get_float tuple.(16) }
+        avg_full_bytes = get_nu64 tuple.(15) ;
+        last_out = get_nfloat tuple.(16) ;
+        startup_time = get_float tuple.(17) }
     in
     (* Keep only the latest stat line per worker: *)
     Hashtbl.modify_opt (RamenName.fq_of_string worker) (function
@@ -114,6 +116,7 @@ let add_stats s1 s2 =
     wait_out = add_nfloat s1.wait_out s2.wait_out ;
     bytes_in = add_nu64 s1.bytes_in s2.bytes_in ;
     bytes_out = add_nu64 s1.bytes_out s2.bytes_out ;
+    avg_full_bytes = add_nu64 s1.avg_full_bytes s2.avg_full_bytes ;
     last_out = max_nfloat s1.last_out s2.last_out ;
     (* Not sure what the meaning of this would be, so it won't be displayed.
      * Notice though that the max "properly" skip 0 from no_stats: *)

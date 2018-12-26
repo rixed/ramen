@@ -163,6 +163,14 @@ let list_iter_first_last f lst =
       loop false lst in
   loop true lst
 
+(* Same as BatList.fold_left2, but do not choke on lists of different
+ * length but instead go as far as possible. Handy when iterating over
+ * infinite lists such as all-true out-ref file specs. *)
+let rec list_fold_left2 f init l1 l2 =
+  match l1, l2 with
+  | h1::r1, h2::r2 -> list_fold_left2 f (f init h1 h2) r1 r2
+  | _ -> init
+
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)

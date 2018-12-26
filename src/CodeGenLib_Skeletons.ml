@@ -62,6 +62,9 @@ let stats_rb_write_sleep_time =
   FloatCounter.make Metric.Names.rb_wait_write
     Metric.Docs.rb_wait_write
 
+let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
+let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
+
 let stats_last_out =
   FloatGauge.make Metric.Names.last_out
     Metric.Docs.last_out
@@ -70,8 +73,27 @@ let stats_event_time =
   FloatGauge.make Metric.Names.event_time
     Metric.Docs.event_time
 
-let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
-let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
+(* From time to time we measure the full size of an output tuple and
+ * update this. Have a single Gauge rather than two counters to avoid
+ * race conditions between updates and send_stats: *)
+let stats_avg_full_out_bytes =
+  IntGauge.make Metric.Names.avg_full_out_bytes
+    Metric.Docs.avg_full_out_bytes
+
+let measure_full_out =
+  let sum = ref 0 and count = ref 0 in
+  fun sz ->
+    !logger.debug "measured fully fledged out tuple of size %d" sz ;
+    let prev_sum = !sum in
+    sum := !sum + sz ;
+    if !sum < prev_sum then (
+      count := !count / 2 ;
+      sum := prev_sum / 2 + sz
+    ) ;
+    incr count ;
+    float_of_int !sum /. float_of_int !count |>
+    round_to_int |>
+    IntGauge.set stats_avg_full_out_bytes
 
 let tot_cpu_time () =
   let open Unix in
@@ -99,16 +121,17 @@ let get_binocle_tuple worker ic sc gc =
   let si v =
     if v < 0 then !logger.error "Negative int counter: %d" v ;
     Some (Uint64.of_int v) in
-  let s v = Some v in
-  let ram, max_ram =
+  let sg = function None -> None | Some (_, v, _) -> si v
+  and s v = Some v
+  and ram, max_ram =
     match IntGauge.get stats_ram with
     | None -> Uint64.zero, Uint64.zero
-    | Some (_mi, x, ma) -> Uint64.of_int x, Uint64.of_int ma in
-  let min_event_time, max_event_time =
+    | Some (_mi, x, ma) -> Uint64.of_int x, Uint64.of_int ma
+  and min_event_time, max_event_time =
     match FloatGauge.get stats_event_time with
     | None -> None, None
-    | Some (mi, _, ma) -> Some mi, Some ma in
-  let time = Unix.gettimeofday () in
+    | Some (mi, _, ma) -> Some mi, Some ma
+  and time = Unix.gettimeofday () in
   worker, time,
   min_event_time, max_event_time,
   ic, sc,
@@ -121,10 +144,13 @@ let get_binocle_tuple worker ic sc gc =
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
   IntCounter.get stats_rb_write_bytes |> si,
+  IntGauge.get stats_avg_full_out_bytes |> sg,
   FloatGauge.get stats_last_out |> Option.map gauge_current,
   startup_time
 
-let send_stats rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+let send_stats
+    rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+  !logger.info "sending stats..." ;
   let open RingBuf in
   let head = RingBufLib.DataTuple RamenChannel.live in
   let sersize =
@@ -231,11 +257,13 @@ let quit = ref None
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple =
+  let rec all_fields = true :: all_fields in
   let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
   and out_l = ref []  (* list of outputers *) in
   let max_num_fields = 100 (* FIXME *) in
   let factors_values = Array.make max_num_fields possible_values_empty in
   let factors_dir = getenv ~def:"/tmp/factors" "factors_dir" in
+  let last_full_out_measurement = ref 0. in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -376,10 +404,16 @@ let outputer_of
       | Some tuple ->
         let start_stop = time_of_tuple tuple in
         if dest_channel = RamenChannel.live then (
-          let start, stop = start_stop |? (0., end_of_times) in
+          (* Update stats *)
           IntCounter.add stats_out_tuple_count 1 ;
           FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
+          if !CodeGenLib_IO.now -. !last_full_out_measurement >
+               min_delay_between_full_out_measurement
+          then (
+            measure_full_out (sersize_of_tuple all_fields tuple) ;
+            last_full_out_measurement := !CodeGenLib_IO.now) ;
           (* Update factors possible values: *)
+          let start, stop = start_stop |? (0., end_of_times) in
           factors_of_tuple tuple |>
           Array.iteri (fun i (factor, pv) ->
             assert (i < Array.length factors_values) ;

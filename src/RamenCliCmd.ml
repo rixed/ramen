@@ -321,7 +321,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
       [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
          "last out" ; "min event time" ; "max event time" ; "CPU" ;
          "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-         "volume out" ; "startup time" ; "#parents" ; "#children" ;
+         "volume out" ; "avg out sz" ; "startup time" ; "#parents" ; "#children" ;
          "signature" |] in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     C.with_rlock conf (fun programs ->
@@ -368,6 +368,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
                    Some (ValInt (Uint64.to_int s.max_ram)) ;
                    flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
                    flt_or_na (Option.map Uint64.to_float s.bytes_out) ;
+                   flt_or_na (Option.map Uint64.to_float s.avg_full_bytes) ;
                    Some (ValDate s.startup_time) ;
                    Some (ValInt (List.length func.F.parents)) ;
                    Some (ValInt num_children) ;

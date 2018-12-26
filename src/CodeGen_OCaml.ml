@@ -1616,7 +1616,7 @@ and emit_functionNv ?impl_return_nullable ~nullable
 
 let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
-  Printf.fprintf oc "\t\tList.fold_left2 (fun s nullable keep ->\n" ;
+  Printf.fprintf oc "\t\tRamenHelpers.list_fold_left2 (fun s nullable keep ->\n" ;
   Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
   Printf.fprintf oc "\t\t\t%a\n"
     (List.print (fun oc field -> Bool.print oc field.typ.nullable))

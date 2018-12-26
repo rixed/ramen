@@ -31,6 +31,7 @@ struct
     let rb_write_bytes = "out_bytes"
     let last_out = "last_out"
     let event_time = "event_time"
+    let avg_full_out_bytes = "avg_full_out_bytes"
 
     (* Metrics reported by the supervisor: *)
     let worker_crashes = "workers_crashes"
@@ -93,6 +94,7 @@ struct
     let event_time =
       "Last, minimum and maximum (since startup) event time emitted \
        (for the live channel only)."
+    let avg_full_out_bytes = "Average size of a fully-fledged out tuple."
   end
 end
 
@@ -320,3 +322,10 @@ let possible_values_lifespan = 24. *. 3600. (* FIXME: configurable? *)
 
 (* Used to name factor possible value files in absence of event times: *)
 let end_of_times = 5017590000.
+
+(* From time to time every workers compute the size of a full out tuple,
+ * to produce stats for the archivist. This is not necessary to do this
+ * for every output tuple though, as all we need is a rough estimate of
+ * produced output size. So do not do this measurement if one has been done
+ * that recently: *)
+let min_delay_between_full_out_measurement = 3.

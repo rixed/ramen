@@ -47,6 +47,8 @@ let tuple_typ =
       doc = Metric.Docs.rb_read_bytes ; aggr = None } ;
     { name = RamenName.field_of_string "bytes_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
       doc = Metric.Docs.rb_write_bytes ; aggr = None } ;
+    { name = RamenName.field_of_string "avg_out_bytes" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
+      doc = "Average size of a full output tuple." ; aggr = None } ;
     { name = RamenName.field_of_string "last_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = Metric.Docs.last_out ; aggr = None } ;
     { name = RamenName.field_of_string "startup_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
@@ -68,12 +70,12 @@ let fix_sz = tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   nullmask_sz + fix_sz + sersize_of_string worker
 
 let serialize tx start_offs
               (worker, start, min_etime, max_etime, ic, sc, oc, gc, cpu,
-               ram, max_ram, wi, wo, bi, bo, lo, stime) =
+               ram, max_ram, wi, wo, bi, bo, os, lo, stime) =
   zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -114,7 +116,8 @@ let serialize tx start_offs
   let offs = write_nullable_float offs 7 wo in
   let offs = write_nullable_u64 offs 8 bi in
   let offs = write_nullable_u64 offs 9 bo in
-  let offs = write_nullable_float offs 10 lo in
+  let offs = write_nullable_u64 offs 10 os in
+  let offs = write_nullable_float offs 11 lo in
   let offs =
     write_float tx offs stime ;
     offs + sersize_of_float in
@@ -153,12 +156,13 @@ let unserialize tx start_offs =
   let wo, offs = read_nullable_float 7 offs in
   let bi, offs = read_nullable_u64 8 offs in
   let bo, offs = read_nullable_u64 9 offs in
-  let lo, offs = read_nullable_float 10 offs in
+  let os, offs = read_nullable_u64 10 offs in
+  let lo, offs = read_nullable_float 11 offs in
   let stime = read_float tx offs in
   let offs = offs + sersize_of_float in
   let t =
     worker, start, min_etime, max_etime, ic, sc , oc, gc, cpu, ram, max_ram,
-    wi, wo, bi, bo, lo, stime in
+    wi, wo, bi, bo, os, lo, stime in
   assert (offs <= start_offs + max_sersize_of_tuple t) ;
   t
 
