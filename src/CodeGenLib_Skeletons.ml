@@ -150,7 +150,6 @@ let get_binocle_tuple worker ic sc gc =
 
 let send_stats
     rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
-  !logger.info "sending stats..." ;
   let open RingBuf in
   let head = RingBufLib.DataTuple RamenChannel.live in
   let sersize =
@@ -195,10 +194,10 @@ let save_possible_values prev_fname pvs =
      * We only need a lock when that's the same file. *)
     let do_write fd = marshal_into_fd fd pvs.values in
     if prev_fname = pvs.fname then (
-      !logger.info "Updating index %s" prev_fname ;
+      !logger.debug "Updating index %s" prev_fname ;
       RamenAdvLock.with_w_lock prev_fname do_write
     ) else (
-      !logger.info "Creating new index %s" pvs.fname ;
+      !logger.debug "Creating new index %s" pvs.fname ;
       mkdir_all ~is_file:true pvs.fname ;
       let flags = Unix.[ O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC ] in
       (match Unix.openfile pvs.fname flags 0o644 with
@@ -419,16 +418,13 @@ let outputer_of
             assert (i < Array.length factors_values) ;
             let pvs = factors_values.(i) in
             if not (Set.mem pv pvs.values) then ( (* FIXME: Set.update *)
-              !logger.info "new value for factor %s: %a"
+              !logger.debug "new value for factor %s: %a"
                 factor RamenTypes.print pv ;
               let min_time = min start pvs.min_time
               and max_time = max stop pvs.max_time in
               let min_time, max_time, values, prev_fname =
-                if start_stop = None || (
-                   let dt = max_time -. min_time in
-                   !logger.info "dt = %f - %f = %f (lifespan = %f)"
-                     max_time min_time dt possible_values_lifespan ;
-                   dt <= possible_values_lifespan)
+                if start_stop = None ||
+                   max_time -. min_time <= possible_values_lifespan
                 then
                   min_time, max_time, Set.add pv pvs.values, pvs.fname
                 else
