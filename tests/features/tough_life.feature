@@ -5,7 +5,7 @@ Feature: behavior under harsh conditions
   Background:
     Given ramen must be in the path
     And the environment variable RAMEN_BUNDLE_DIR is set
-    And ramen supervisor --autoreload=1 --debug --fail-for-good is started
+    And ramen supervisor --autoreload=1 --fail-for-good is started
     Given a file dir/p1.ramen with content
       """
       define f as select "one" as v every 1s;
@@ -39,4 +39,4 @@ Feature: behavior under harsh conditions
     Then ramen must mention "hello" on stdout
     And ramen must exit with status 0
     When I wait 2 seconds
-    Then ramen supervisor --autoreload=1 --debug --fail-for-good must still be running.
+    Then ramen supervisor --autoreload=1 --fail-for-good must still be running.

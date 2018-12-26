@@ -19,7 +19,7 @@ Feature: test the archivist
       define r0 as select * from s0, s1;
       """
     And test.ramen is compiled
-    And ramen supervisor --debug is started
+    And ramen supervisor is started
     And program test is running
     And I wait 10 seconds
     And I run ramen with arguments archivist
