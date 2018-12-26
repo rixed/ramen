@@ -216,10 +216,6 @@ let compute_num_points time_step num_points since until =
 
 (*
  * Factors.
- *
- * For now let's compute the possible values cache lazily, so we can afford
- * to lose/delete them in case of need. In the future we'd like to compute
- * the caches on the fly though.
  *)
 
 let possible_values conf ?since ?until func factor =

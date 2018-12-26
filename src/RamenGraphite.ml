@@ -289,7 +289,7 @@ let full_enum_tree_of_query
     filter_tree ?anchor_right te filters
 
 (* Specialized version for graphite, skipping functions with no time info
- * and cached: *)
+ * and cached (TODO): *)
 let enum_tree_of_query
     conf ?since ?until ?anchor_right query =
   full_enum_tree_of_query
