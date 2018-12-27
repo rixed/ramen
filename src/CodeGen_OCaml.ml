@@ -2581,11 +2581,12 @@ let emit_aggregate opc oc name in_typ =
                    | _ -> s) s e) sf.RamenOperation.expr
       ) Set.empty fields
     and for_event_time =
+      let req_fields = Option.map_default RamenEventTime.required_fields
+                                          Set.empty opc.event_time in
       List.fold_left (fun s sf ->
-        match RamenName.string_of_field sf.RamenOperation.alias with
-        | ("start"|"stop"|"duration") as fn ->
-            Set.add (RamenName.field_of_string fn) s
-        | _ -> s
+        if Set.mem sf.RamenOperation.alias req_fields then
+          Set.add sf.alias s
+        else s
       ) Set.empty fields
     and for_printing =
       List.fold_left (fun s sf ->
