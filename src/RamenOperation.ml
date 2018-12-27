@@ -302,6 +302,8 @@ let is_merging = function
   | Aggregate { merge ; _ } when merge.on <> [] -> true
   | _ -> false
 
+(* BEWARE: you might have an event_time set in the Func.t that is inherited
+ * and therefore not in the operation! *)
 let event_time_of_operation op =
   let event_time, fields =
     match op with

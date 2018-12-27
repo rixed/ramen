@@ -4,7 +4,7 @@
  * 1. The parsing, which is done in RamenProgram, RamenOperation, RamenExpr
  *    and RamenTypes modules;
  * 2. The typing, happening in RamenTyping;
- * 3. The code generation, taking place in CodeGen_Ocaml;
+ * 3. The code generation, taking place in CodeGen_OCaml;
  * 4. And finally generating an executable (takes place in RamenOCamlCompiler).
  *)
 
@@ -367,9 +367,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         (try
           CodeGen_OCaml.compile
             conf worker_entry_point replay_entry_point
-            func.F.name obj_name
-            func.F.in_type func.F.out_type
-            params_mod_name parsed_params func.F.operation
+            func obj_name params_mod_name parsed_params
         with e ->
           !logger.error "Cannot generate code for %s: %s"
             (RamenName.string_of_func func.name)
