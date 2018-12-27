@@ -151,6 +151,7 @@ let rec duration m =
       ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
       ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
       ((worDs "hour" ||| word "h") >>: fun () -> 3600.)
+      (* Length of a day is already not doable due to DST *)
     ) >>: fun (dur, scale) ->
       let d = dur *. scale in
       if d < 0. then

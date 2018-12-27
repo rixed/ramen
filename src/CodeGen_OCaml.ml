@@ -1129,7 +1129,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
                                     |LinReg (_, _, e)|ExpSmooth (_, e)
                                     as aggr)), _
     when is_a_list e ->
-    (* Build the expression that aggregate the list item rather than the
+    (* Build the expression that aggregate the list items rather than the
      * list: *)
     let expr' =
       let item_typ =
@@ -1377,11 +1377,9 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (c :: what) oc ((Some TU32, PropagateNull) :: List.map (fun _ -> None, PropagateNull) what)
 
   | InitState, StatefulFun (_, _, _, Last (c, _, _)), _ ->
-    let t = (Option.get (typ_of c).typ).structure in
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Last.init (%a %a)"
-        (conv_from_to ~nullable:false) (t, TU32)
-        (emit_expr ?state ~context:Finalize ~opc) c)
+      Printf.fprintf oc "CodeGenLib.Last.init (%a)"
+        (conv_to ?state ~context:Finalize ~opc (Some TU32)) c)
   (* Special updater that use the internal count when no `by` expressions
    * are present: *)
   | UpdateState, StatefulFun (_, g, n, Last (_, e, [])), _ ->
@@ -1397,15 +1395,13 @@ and emit_expr_ ?state ~context ~opc oc expr =
       "CodeGenLib.Last.finalize" [] oc []
 
   | InitState, StatefulFun (_, _, n, Sample (c, e)), _ ->
-    let t = (Option.get (typ_of c).typ).structure in
     let init_c =
       let c_typ = Option.get (typ_of e).typ in
       let c_typ = if n then { c_typ with nullable = false } else c_typ in
       any_constant_of_expr_type c_typ in
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "RamenSampling.init (%a %a) (%a)"
-        (conv_from_to ~nullable:false) (t, TU32)
-        (emit_expr ?state ~context:Finalize ~opc) c
+      Printf.fprintf oc "RamenSampling.init (%a) (%a)"
+        (conv_to ?state ~opc ~context:Finalize (Some TU32)) c
         (emit_expr ?state ~context:Finalize ~opc) init_c)
   | UpdateState, StatefulFun (_, g, n, Sample (_, e)), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ e ]
