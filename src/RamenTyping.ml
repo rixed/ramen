@@ -447,23 +447,27 @@ let emit_constraints tuple_sizes out_fields oc e =
 
   | StatefulFun (_, _, _, (AggrSum x|AggrMin x|AggrMax x|AggrFirst x
                           |AggrLast x|AggrAnd x| AggrOr x as aggr)) ->
-      (* - if x is a list/vector, then the result has the type and
-       *   nullability of its elements;
+      (* - if x is a list/vector then the result has the type of its elements;
+       * - if x is a list/vector then the result is as nullable as its
+       *   elements or the list itself;
        * - otherwise the result has the type and nullability of x. *)
       emit_assert oc (fun oc ->
-        let xid = t_of_expr x in
+        let xtid = t_of_expr x
+        and xnid = n_of_expr x in
         Printf.fprintf oc
           "(or (and ((_ is list) %s) \
                     (= %s (list-type %s)) \
-                    (= %s (list-nullable %s))) \
+                    (= %s (or %s (list-nullable %s)))) \
                (and ((_ is vector) %s) \
                     (= %s (vector-type %s)) \
-                    (= %s (vector-nullable %s))) \
-               (and (= %s %s) \
+                    (= %s (or %s (vector-nullable %s)))) \
+               (and (not ((_ is list) %s)) \
+                    (not ((_ is vector) %s)) \
+                    (= %s %s) \
                     (= %s %s)))"
-          xid eid xid nid xid
-          xid eid xid nid xid
-          eid xid nid (n_of_expr x)) ;
+          xtid eid xtid nid xnid xtid
+          xtid eid xtid nid xnid xtid
+          xtid xtid eid xtid nid (n_of_expr x)) ;
 
       (match aggr with AggrSum _ ->
         (* - The result is numeric *)
@@ -487,14 +491,18 @@ let emit_constraints tuple_sizes out_fields oc e =
                (and ((_ is vector) %s) \
                     %a \
                     %a) \
-               %a)"
+               (and (not ((_ is list) %s)) \
+                    (not ((_ is vector) %s)) \
+                    %a))"
           xid
             emit_numeric ("(list-type "^ xid ^")")
             (emit_imply ("(list-nullable "^ xid ^")")) nid
           xid
             emit_numeric ("(vector-type "^ xid ^")")
             (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          emit_numeric xid) ;
+          xid
+            xid
+            emit_numeric xid) ;
 
       emit_assert_id_eq_typ tuple_sizes eid oc TFloat ;
       assert_imply (n_of_expr x) oc nid
@@ -821,12 +829,16 @@ let emit_constraints tuple_sizes out_fields oc e =
         Printf.fprintf oc
           "(or (and ((_ is list) %s) %a %a) \
                (and ((_ is vector) %s) %a %a) \
-               (and %a))"
+               (and (not ((_ is list) %s)) \
+                    (not ((_ is vector) %s)) \
+                    %a))"
           xid emit_numeric ("(list-type "^ xid ^")")
               (emit_imply ("(list-nullable "^ xid ^")")) nid
           xid emit_numeric ("(vector-type "^ xid ^")")
               (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          emit_numeric xid) ;
+          xid
+            xid
+            emit_numeric xid) ;
       assert_imply (n_of_expr e3) oc nid
 
   | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
