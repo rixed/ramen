@@ -257,18 +257,50 @@ module Last = struct
   let add_on_count state x =
     add state x state.count
 
+  (* Also used by Past.
+   * FIXME: faster conversion from heap to array. *)
+  let array_of_heap_fst cmp h =
+    RamenHeap.fold_left cmp (fun lst (x, _) ->
+      x :: lst
+    ) [] h |>
+    List.rev |>
+    Array.of_list
+
   (* Must return an optional vector of max_length values: *)
   let finalize state =
     if state.length < state.max_length then Null
-    else
-      (* FIXME: faster conversion from heap to array: *)
-      let values =
-        RamenHeap.fold_left cmp (fun lst (x, _) ->
-          x :: lst
-        ) [] state.values |>
-        List.rev |>
-        Array.of_list in
-      NotNull values
+    else NotNull (array_of_heap_fst cmp state.values)
+end
+
+module Past = struct
+  type 'a state =
+    { (* Ordered according to time, smaller on top: *)
+      values : ('a * float) RamenHeap.t ;
+      max_age : float ;
+      length : int (* how many values are there already *) }
+
+  (* TODO: implement sampling *)
+  let init max_age _sample_size =
+    { values = RamenHeap.empty ; max_age ; length = 0 }
+
+  let cmp (_, t1) (_, t2) = Float.compare t1 t2
+
+  let add state x t =
+    let rec out_the_olds outed h =
+      match RamenHeap.min h with
+      | exception Not_found -> outed, h
+      | _, t' ->
+          if t -. t' < state.max_age then outed, h else
+            out_the_olds (outed + 1) (RamenHeap.del_min cmp h) in
+    let outed, values = out_the_olds 0 state.values in
+    let values = RamenHeap.add cmp (x, t) values in
+    { state with
+        values ;
+        length = state.length + 1 - outed }
+
+  (* Must return an optional vector of max_length values: *)
+  let finalize state =
+    NotNull (Last.array_of_heap_fst cmp state.values)
 end
 
 module Group = struct

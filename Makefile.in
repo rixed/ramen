@@ -551,6 +551,7 @@ tests/last.x: tests/fixtures/earthquakes.x tests/fixtures/cars.x
 tests/sample.x: tests/fixtures/n123.x
 tests/merge.x: tests/fixtures/n123.x
 tests/patterns.x: tests/fixtures/cars.x
+tests/past.x: tests/fixtures/earthquakes.x
 tests/lag.success: tests/lag.x tests/fixtures/n123.x
 tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
 tests/params.success: tests/params.x tests/fixtures/earthquakes.x
@@ -586,6 +587,7 @@ tests/stress.success: tests/stress.x
 tests/bits.success: tests/bits.x
 tests/groups.success: tests/groups.x
 tests/patterns.success: tests/patterns.x tests/fixtures/cars.x
+tests/past.success: tests/past.x tests/fixtures/earthquakes.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

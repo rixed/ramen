@@ -1,0 +1,17 @@
+-- vim: ft=sql expandtab
+
+DEFINE earthquakes AS
+  FROM tests/fixtures/earthquakes/csv
+  SELECT
+    ((year-1970) * 31557600.) {seconds(rel)} AS start,
+    *;
+
+DEFINE f AS
+  FROM earthquakes
+  SELECT
+    start,
+    year,
+    past (3 * 31557600 {seconds}) of n AS recent_n,
+    min recent_n, -- should be nullable but is not (recent_n is nullable!)
+    max recent_n,
+    round(avg recent_n) AS avg_recent_n;

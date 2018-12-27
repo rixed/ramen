@@ -1031,6 +1031,33 @@ let emit_constraints tuple_sizes out_fields oc e =
           (if n then "false" else n_of_expr x)) ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
+  | StatefulFun (_, _, n, Past { what ; time ; max_age ; sample_size }) ->
+      (* - max_age must be a constant (TODO) numeric, greater than 0 (TODO);
+       * - max_age must not be nullable;
+       * - time must be a time (numeric);
+       * - sample_size, if set, must be a constant (TODO) strictly (TODO)
+       *   positive integer, not nullable;
+       * - The type of the result is a list of items of the same type than
+       *   [what];
+       * - If we skip nulls then those items are not nullable, otherwise
+       *   they are as nullable as [what];
+       * - The result itself is nullable if we skip nulls and [what] is
+       *   nullable, and if there are less than max_age of data (similar
+       *   behavior than the last function and similarly arguable). Therefore
+       *   it is always nullable. *)
+      arg_is_numeric oc max_age ;
+      arg_is_not_nullable oc max_age ;
+      arg_is_numeric oc time ;
+      Option.may (fun sample_size ->
+        arg_is_unsigned oc sample_size ;
+        arg_is_not_nullable oc sample_size
+      ) sample_size ;
+      emit_assert_id_eq_smt2 eid oc
+        (Printf.sprintf "(list %s %s)"
+          (t_of_expr what)
+          (if n then "false" else n_of_expr what)) ;
+      arg_is_nullable oc e
+
   | StatefulFun (_, _, n, Group g) ->
       (* - The result is a list which elements have the exact same type as g;
        * - If we skip nulls then the elements are not nullable, otherwise they

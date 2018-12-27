@@ -294,6 +294,11 @@ struct
   (* Display headers every that many lines (only once on top by default;
    * 0 to disable headers) : *)
   let header_every = max_int
+
+  (* Even when no sampling is specified, the `past` function still perform
+   * sampling with this large reservoir size: (TODO: have a different
+   * implementation of `past` with unlimited capacity): *)
+  let past_sample_size = 10_000
 end
 
 module SpecialFunctions =

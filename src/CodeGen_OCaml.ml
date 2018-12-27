@@ -1411,6 +1411,22 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~impl_return_nullable:true
       "RamenSampling.finalize" [] oc []
 
+  | InitState, StatefulFun (_, _, _, Past { max_age ; sample_size ; _ }), _ ->
+    wrap_nullable ~nullable oc (fun oc ->
+      Printf.fprintf oc "CodeGenLib.Past.init (%a) (%a)"
+        (conv_to ?state ~context:Finalize ~opc (Some TFloat)) max_age
+        (Option.print (fun oc sample_size ->
+          Printf.fprintf oc "(%a)"
+            (conv_to ?state ~context:Finalize ~opc (Some TU32)) sample_size
+          )) sample_size)
+  | UpdateState, StatefulFun (_, g, n, Past { what ; time ; _ }), _ ->
+    update_state ?state ~opc ~nullable n (my_state g) [ what ; time ]
+      "CodeGenLib.Past.add" oc [ None, PassNull ; Some TFloat, PropagateNull ]
+  | Finalize, StatefulFun (_, g, n, Past _), _ ->
+    finalize_state ?state ~opc ~nullable n (my_state g)
+      ~impl_return_nullable:true
+      "CodeGenLib.Past.finalize" [] oc []
+
   (* Grouping operation: accumulate all values in a list, that we initialize
    * empty. At finalization, an empty list means we skipped all values ;
    * and we return Null in that case. Note that since this is an aggregate
@@ -2369,6 +2385,10 @@ let otype_of_state e =
   | StatefulFun (_, _, n, Sample (_, e)) ->
       Printf.sprintf2 "%a RamenSampling.reservoir%s"
         (print_expr_typ ~skip_null:n) e
+        nullable
+  | StatefulFun (_, _, n, Past { what ; _ }) ->
+      Printf.sprintf2 "%a CodeGenLib.Past.state%s"
+        (print_expr_typ ~skip_null:n) what
         nullable
   | StatefulFun (_, _, n, Group e) ->
     Printf.sprintf2 "%a list%s"

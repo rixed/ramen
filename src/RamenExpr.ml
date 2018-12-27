@@ -291,6 +291,8 @@ and stateful_fun =
   | Last of t (* N *) * t (* what *) * t list (* by *)
   (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
   | Sample of t * t
+  (* Last based on time, with integrated sampling: *)
+  | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
   (* Build a list with all values from the group *)
   | Group of t
   [@@ppp PPP_OCaml]
@@ -675,6 +677,17 @@ let rec print ?(max_depth=max_int) with_types oc e =
         p c
         p e ;
       add_types t
+    | StatefulFun (t, g, n, Past { what ; time ; max_age ; sample_size }) ->
+      (match sample_size with
+      | None -> ()
+      | Some sz ->
+          Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
+      Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
+        p max_age
+        (st g n)
+        p what
+        p time ;
+      add_types t
     | StatefulFun (t, g, n, Group e) ->
       Printf.fprintf oc "GROUP%s %a"
         (st g n)
@@ -750,6 +763,11 @@ let fold_subexpressions f i expr =
 
   | StatefulFun (_, _, _, Last (c, e, es)) ->
       List.fold_left f i (c::e::es)
+
+  | StatefulFun (_, _, _,
+      Past { what = e1 ; time = e2 ; max_age = e3 ; sample_size = e_opt }) ->
+      let i = f (f (f i e1) e2) e3 in
+      Option.map_default (f i) i e_opt
 
   | Case (_, alts, else_) ->
       let i =
@@ -901,6 +919,14 @@ let rec map_type ?(recurs=true) f = function
   | StatefulFun (t, g, n, Sample (c, e)) ->
     StatefulFun (f t, g, n, Sample (c,
       (if recurs then map_type ~recurs f e else e)))
+  | StatefulFun (t, g, n, Past { what ; time ; max_age ; sample_size}) ->
+    StatefulFun (f t, g, n, Past {
+      what = (if recurs then map_type ~recurs f what else what) ;
+      time = (if recurs then map_type ~recurs f time else time) ;
+      max_age = (if recurs then map_type ~recurs f max_age else max_age) ;
+      sample_size =
+        (if recurs then Option.map (map_type ~recurs f) sample_size
+                   else sample_size) })
   | StatefulFun (t, g, n, Group e) ->
     StatefulFun (f t, g, n, Group (if recurs then map_type ~recurs f e else e))
 
@@ -1387,7 +1413,7 @@ struct
        StatelessFun2 (make_typ "reldiff", Reldiff, e1, e2)) |||
      (afun2_sf "sample" >>: fun ((g, n), c, e) ->
         StatefulFun (make_typ "sample", g, n, Sample (c, e))) |||
-     k_moveavg ||| cast ||| top_expr ||| nth ||| last) m
+     k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past) m
 
   and cast m =
     let m = "cast" :: m in
@@ -1452,6 +1478,30 @@ struct
        * been assigned yet. *)
       (* The result is null when the number of input is less than c: *)
       StatefulFun (make_typ "last", g, n, Last (c, e, es))
+    ) m
+
+  and sample m =
+    let m = "sample expression" :: m in
+    (
+      strinG "sample" -- blanks --
+      optional ~def:() (strinG "of" -- blanks -- strinG "size" -- blanks) -+
+      p +- optional ~def:() (strinG "of" -- blanks -- strinG "the")
+    ) m
+
+  and past m =
+    let m = "recent expression" :: m in
+    (
+      optional ~def:None (some sample +- blanks) +-
+      strinG "past" +- blanks ++ p ++
+      state_and_nulls +- opt_blanks +-
+      (* This "of" disambiguate from Last *)
+      strinG "of" +- blanks ++ p ++
+      optional ~def:None
+        (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+
+         some p) >>: fun ((((sample_size, max_age), (g, n)), what), time) ->
+      let time = time |? StatelessFun0 (make_typ "#start", EventStart) in
+      StatefulFun (make_typ "recent", g, n,
+                   Past { what ; time ; max_age ; sample_size })
     ) m
 
   and nth m =
