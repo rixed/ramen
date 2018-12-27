@@ -983,7 +983,7 @@ let emit_constraints tuple_sizes out_fields oc e =
             (n_of_expr by)))
 
   | StatefulFun (_, _, n, Last (c, x, es)) ->
-      (* - c must be a constant (TODO) integer;
+      (* - c must be a constant (TODO) strictly (TODO) positive integer;
        * - The type of the result is a list of items of the same type than x;
        * - If we skip nulls then those items are not nullable, otherwise
        *   they are as nullable as x;
@@ -994,7 +994,7 @@ let emit_constraints tuple_sizes out_fields oc e =
        *   nullable value;
        * - The Last itself is null whenever the number of received item is
        *   less than c, and so is always nullable. *)
-      arg_is_integer oc c ;
+      arg_is_unsigned oc c ;
       arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
@@ -1004,14 +1004,15 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_is_nullable oc e
 
   | StatefulFun (_, _, n, Sample (c, x)) ->
-      (* - c must be a constant (TODO) integer, not nullable;
+      (* - c must be a constant (TODO) strictly (TODO) positive integer;
+       * - c must not be nullable;
        * - The type of the result is a list of items of the same type than x;
        * - If we skip nulls then those items are not nullable, otherwise they
        *   are as nullable as x;
        * - 'sample c x` is itself nullable whenever x is nullable (if not
        *   skip null and we encounter a null x, or if skip null and we
        *   encounter only nulls). *)
-      arg_is_integer oc c ;
+      arg_is_unsigned oc c ;
       arg_is_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
