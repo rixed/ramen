@@ -116,7 +116,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             factors = factors_of_operation op ;
             envvars = envvars_of_operation op } in
       let fq_name = RamenName.fq program_name name in
-      Hashtbl.add compiler_funcs fq_name (me_func, op)
+      Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
      * have been created in compiler_funcs above, and those of already
@@ -144,7 +144,7 @@ let compile conf get_parent ~exec_file source_file program_name =
               RamenName.program_of_rel_program program_name rel_prog,
               func_name in
         let parent_name = RamenName.fq parent_prog_name parent_func_name in
-        try Hashtbl.find compiler_funcs parent_name |> fst
+        try Hashtbl.find compiler_funcs parent_name
         with Not_found ->
           if parent_prog_name = program_name then
             Printf.sprintf2
@@ -238,7 +238,7 @@ let compile conf get_parent ~exec_file source_file program_name =
           true
         ) else false
       ) else false in
-    let set_operation_units func op =
+    let set_operation_units func =
       let parents =
         Hashtbl.find_default compiler_parents func.F.name [] in
       let uoi = units_of_input func parents in
@@ -250,14 +250,14 @@ let compile conf get_parent ~exec_file source_file program_name =
               (RamenName.func_color func.F.name) in
           !logger.debug "Set units of operation expression %s" what ;
           set_expr_units uoi uoo what e || changed
-        ) op in
+        ) func.F.operation in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected ones. *)
       (* Now that we have found the units of some expressions, patch the
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
       if changed then (
-        match op with
+        match func.F.operation with
         | RamenOperation.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
               let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
@@ -272,8 +272,8 @@ let compile conf get_parent ~exec_file source_file program_name =
         let changed =
           Option.map_default
             (set_expr_units no_io no_io "run condition") false condition in
-        Hashtbl.fold (fun _ (func, op) changed ->
-          set_operation_units func op || changed
+        Hashtbl.fold (fun _ func changed ->
+          set_operation_units func || changed
         ) compiler_funcs changed)) then
       failwith "Cannot perform dimensional analysis" ;
 
@@ -301,8 +301,8 @@ let compile conf get_parent ~exec_file source_file program_name =
                   parsed_params smt2_file) in
     add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
-    Hashtbl.iter (fun _ (func, op) ->
-      finalize_func compiler_parents parsed_params func op
+    Hashtbl.iter (fun _ func ->
+      finalize_func compiler_parents parsed_params func
     ) compiler_funcs ;
     (* Also check that the running condition have been typed: *)
     Option.may (fun cond ->
@@ -361,7 +361,7 @@ let compile conf get_parent ~exec_file source_file program_name =
       "_"^ RamenVersions.codegen |>
       make_valid_for_module in
     let obj_files =
-      Hashtbl.fold (fun _ (func, op) lst ->
+      Hashtbl.fold (fun _ func lst ->
         let obj_name = src_name_of_func func ^".cmx" in
         mkdir_all ~is_file:true obj_name ;
         (try
@@ -369,7 +369,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             conf worker_entry_point replay_entry_point
             func.F.name obj_name
             func.F.in_type func.F.out_type
-            params_mod_name parsed_params op
+            params_mod_name parsed_params func.F.operation
         with e ->
           !logger.error "Cannot generate code for %s: %s"
             (RamenName.string_of_func func.name)
@@ -408,7 +408,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition oc params condition ;
         (* Chop off private fields: *)
-        Hashtbl.iter (fun _ (func, _op) ->
+        Hashtbl.iter (fun _ func ->
           func.F.out_type <-
             List.filter (fun ft ->
               not (RamenName.is_private ft.RamenTuple.name)
@@ -420,8 +420,7 @@ let compile conf get_parent ~exec_file source_file program_name =
          * embed this under the shape of the typed operation, as it makes it
          * possible to also analyze the program. For simplicity, all those
          * info are also computed from the operation when we load a program. *)
-        let funcs = Hashtbl.values compiler_funcs /@
-                    fst |> List.of_enum in
+        let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
         let condition =
           Option.map (IO.to_string (RamenExpr.print false)) condition in
         let runconf =
@@ -437,7 +436,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             RamenVersions.codegen ;
         let func_list entry_point =
           Printf.fprintf oc "\t[\n" ;
-          Hashtbl.iter (fun _ (func, _op) ->
+          Hashtbl.iter (fun _ func ->
             let mod_name = src_name_of_func func |>
                            Filename.basename |>
                            String.capitalize_ascii in

@@ -113,15 +113,15 @@ exception ReturnExpr of RamenName.func * RamenExpr.t
 let print funcs oc =
   let expr_of_id i =
     try
-      List.iter (fun (func, op) ->
+      List.iter (fun func ->
         let print_expr e =
           if (RamenExpr.typ_of e).uniq_num = i then
             raise (ReturnExpr (func.F.name, e)) in
-        RamenOperation.iter_expr print_expr op
+        RamenOperation.iter_expr print_expr func.F.operation
       ) funcs ;
       assert false
     with ReturnExpr (f, e) -> f, e
-  and func_of_id i = List.at funcs i |> fst
+  and func_of_id i = List.at funcs i
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->

@@ -1182,10 +1182,10 @@ let emit_operation declare tuple_sizes fi oc op =
 
 let emit_program declare tuple_sizes oc funcs =
   (* Output all the constraints for all the operations: *)
-  List.iteri (fun fi (func, op) ->
+  List.iteri (fun fi func ->
     Printf.fprintf oc "\n; Constraints for function %s\n"
       (RamenName.string_of_func func.F.name) ;
-    emit_operation declare tuple_sizes fi oc op
+    emit_operation declare tuple_sizes fi oc func.F.operation
   ) funcs
 
 let emit_minimize oc condition funcs =
@@ -1207,8 +1207,8 @@ let emit_minimize oc condition funcs =
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
   Option.may (RamenExpr.iter cost_of_expr) condition ;
-  List.iter (fun (_func, op) ->
-    RamenOperation.iter_expr cost_of_expr op
+  List.iter (fun func ->
+    RamenOperation.iter_expr cost_of_expr func.F.operation
   ) funcs ;
   Printf.fprintf oc "))\n" ;
   (* And, separately, number of signed values: *)
@@ -1223,8 +1223,8 @@ let emit_minimize oc condition funcs =
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
   Option.may (RamenExpr.iter cost_of_expr) condition ;
-  List.iter (fun (_func, op) ->
-    RamenOperation.iter_expr cost_of_expr op
+  List.iter (fun func ->
+    RamenOperation.iter_expr cost_of_expr func.F.operation
   ) funcs ;
   Printf.fprintf oc "))\n"
 
@@ -1311,19 +1311,19 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
                  * program then. Output the constraint to bind the
                  * input type to the output type: *)
                 (* Retrieve the id for the parent output fields: *)
-                let _, pop =
+                let pfunc =
                   try
-                    List.find (fun (f, _op) ->
+                    List.find (fun f ->
                       f.F.name = pfunc.F.name
                     ) funcs
                   with Not_found ->
                     !logger.error "Cannot find parent %S in any of this \
                                    program functions (have %a)"
                       (RamenName.string_of_func pfunc.F.name)
-                      (pretty_list_print (fun oc (f, _op) ->
+                      (pretty_list_print (fun oc f ->
                         String.print oc (RamenName.string_of_func f.F.name))) funcs ;
                     raise Not_found in
-                match id_or_type_of_field pop field_name with
+                match id_or_type_of_field pfunc.F.operation field_name with
                 | exception Not_found -> no_such_field pfunc
                 | Id p_id -> prev_typ, p_id::same_as_ids
                 | FieldType ft ->
@@ -1353,10 +1353,10 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
         )
     | _ -> () in
   Option.may (RamenExpr.iter (set_fields "Running condition")) condition ;
-  List.iter (fun (func, op) ->
+  List.iter (fun func ->
     let what =
       Printf.sprintf2 "Function %s" (RamenName.func_color func.F.name) in
-    RamenOperation.iter_expr (set_fields ~func what) op
+    RamenOperation.iter_expr (set_fields ~func what) func.operation
   ) funcs
 
 let structure_of_sort_identifier = function
@@ -1507,8 +1507,8 @@ let used_tuple_sizes funcs parents =
     | Tuple (_, ts) -> Set.Int.add (List.length ts) s
     | _ -> s in
   let tuple_sizes =
-    List.fold_left (fun s (_, op) ->
-      RamenOperation.fold_expr s add_tuple_sz op
+    List.fold_left (fun s func ->
+      RamenOperation.fold_expr s add_tuple_sz func.F.operation
     ) Set.Int.empty funcs in
   (* We might also got tuples from our parents. We collect all their output
    * fields even if it's not used anywhere for simplicity. *)
@@ -1572,10 +1572,10 @@ let get_types parents condition funcs params fname =
 (* Copy the types of all input and output fields from their source
  * expression. *)
 let set_io_tuples parents funcs h =
-  let set_output (func, op) =
+  let set_output func =
     List.iter (fun ft ->
       if not (RamenTypes.is_typed ft.RamenTuple.typ.structure) then (
-        match op with
+        match func.F.operation with
         | RamenOperation.Aggregate { fields ; _ } ->
             let id =
               List.find_map (fun sf ->
@@ -1595,7 +1595,7 @@ let set_io_tuples parents funcs h =
                 ft.typ <- typ)
         | _ -> assert false)
     ) func.out_type
-  and set_input (func, _op) =
+  and set_input func =
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun ft ->
       (* For the in_type we have to check that all parents do export each
@@ -1641,7 +1641,7 @@ let apply_types parents condition funcs h =
           (RamenExpr.print true) e
     | typ -> t.typ <- Some typ in
   Option.may (RamenExpr.iter apply) condition ;
-  Hashtbl.iter (fun _ (_func, op) ->
-    RamenOperation.iter_expr apply op
+  Hashtbl.iter (fun _ func ->
+    RamenOperation.iter_expr apply func.F.operation
   ) funcs ;
   set_io_tuples parents funcs h

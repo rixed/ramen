@@ -20,7 +20,7 @@ let forwarded_field operation field =
       ) fields
   | _ -> raise Not_found
 
-let forwarded_field_or_param parent func operation field = function
+let forwarded_field_or_param parent func field = function
   | RamenEventTime.Parameter ->
       (* The scope of any given parameter is the program.
        * It must be assumed that parameters with same name have different
@@ -28,32 +28,32 @@ let forwarded_field_or_param parent func operation field = function
       if func.F.program_name = parent.F.program_name then field
       else raise Not_found
   | RamenEventTime.OutputField ->
-      forwarded_field operation field
+      forwarded_field func.F.operation field
 
-let infer_event_time func operation parent =
+let infer_event_time func parent =
   let open RamenEventTime in
   try
     Option.map (function ((f1, f1_src, f1_scale), duration) ->
-      (forwarded_field_or_param parent func operation f1 !f1_src, f1_src, f1_scale),
+      (forwarded_field_or_param parent func f1 !f1_src, f1_src, f1_scale),
       try
         match duration with
         | DurationConst _ -> duration
         | DurationField (f2, f2_src, f2_scale) ->
-            DurationField (forwarded_field_or_param parent func operation f2 !f2_src, f2_src, f2_scale)
+            DurationField (forwarded_field_or_param parent func f2 !f2_src, f2_src, f2_scale)
         | StopField (f2, f2_src, f2_scale) ->
-            StopField (forwarded_field_or_param parent func operation f2 !f2_src, f2_src, f2_scale)
+            StopField (forwarded_field_or_param parent func f2 !f2_src, f2_src, f2_scale)
       with Not_found ->
         DurationConst 0.
     ) parent.event_time
   with Not_found -> None
 
-let infer_factors operation =
+let infer_factors func =
   (* All fields that we take without modifications are also our factors *)
   List.filter_map (fun factor ->
-    try Some (forwarded_field operation factor)
+    try Some (forwarded_field func.F.operation factor)
     with Not_found -> None)
 
-let infer_field_doc_aggr func operation parents params =
+let infer_field_doc_aggr func parents params =
   let set_doc alias doc =
     if doc <> "" then (
       !logger.debug "Function %a can reuse parent doc for %a"
@@ -75,7 +75,7 @@ let infer_field_doc_aggr func operation parents params =
         ) func.F.out_type in
       ft.aggr <- aggr)
   in
-  match operation with
+  match func.F.operation with
     | RamenOperation.Aggregate { fields ; _ } ->
         List.iter (function
         | RamenOperation.{
@@ -119,7 +119,7 @@ let check_typed ~what e =
     failwith
   | _ -> ()
 
-let finalize_func parents params func operation =
+let finalize_func parents params func =
   F.dump_io func ;
   (* Check that no parents => no input *)
   assert (func.F.parents <> [] || func.F.in_type = []) ;
@@ -127,7 +127,7 @@ let finalize_func parents params func operation =
   let what =
     Printf.sprintf "In function %s "
       RamenName.(func_color func.F.name) in
-  RamenOperation.iter_expr (check_typed ~what) operation ;
+  RamenOperation.iter_expr (check_typed ~what) func.F.operation ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
    * we can infer them from the parents (we consider only the first parent
@@ -136,22 +136,22 @@ let finalize_func parents params func operation =
   let parents = Hashtbl.find_default parents func.F.name [] in
   if parents <> [] && func.event_time = None then (
     func.event_time <-
-      infer_event_time func operation (List.hd parents) ;
+      infer_event_time func (List.hd parents) ;
     if func.event_time <> None then
       !logger.debug "Function %s can reuse event time from parents"
         (RamenName.string_of_func func.name)
   ) ;
   if parents <> [] && func.factors = [] then (
     func.factors <-
-      infer_factors operation (List.hd parents).factors ;
+      infer_factors func (List.hd parents).factors ;
     if func.factors <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
         RamenName.func_print func.name
         (List.print RamenName.field_print) func.factors
   ) ;
   if parents <> [] then (
-    infer_field_doc_aggr func operation parents params ;
+    infer_field_doc_aggr func parents params ;
   ) ;
   (* Seal everything: *)
-  let op_str = IO.to_string RamenOperation.print operation in
+  let op_str = IO.to_string RamenOperation.print func.F.operation in
   func.F.signature <- F.signature func op_str params
