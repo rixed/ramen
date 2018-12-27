@@ -573,7 +573,7 @@ let emit_constraints tuple_sizes out_fields oc e =
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         oc nid
 
-  | StatelessFun2 (_, (Add|Sub|Mul|IDiv|Pow|Trunc), e1, e2) ->
+  | StatelessFun2 (_, (Add|Mul|IDiv|Pow|Trunc), e1, e2) ->
       (* - e1 and e2 must be numeric;
        * - The result is not smaller than e1 or e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
@@ -584,6 +584,17 @@ let emit_constraints tuple_sizes out_fields oc e =
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
+
+  | StatelessFun2 (_, Sub, e1, e2) ->
+      (* Same as above, with the addition that the result is signed even
+       * if both operands are unsigned: *)
+      arg_is_numeric oc e1 ;
+      arg_is_numeric oc e2 ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
+      emit_assert_id_le_id (t_of_expr e1) oc eid ;
+      emit_assert_id_le_id (t_of_expr e2) oc eid ;
+      arg_is_signed oc e
 
   | StatelessFun2 (_, (Reldiff|Div), e1, e2) ->
       (* - e1 and e2 must be numeric;
