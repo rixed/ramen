@@ -152,6 +152,14 @@ let finalize_func parents params func =
   if parents <> [] then (
     infer_field_doc_aggr func parents params ;
   ) ;
+  (* Check that we use the expressions that require the event time to be
+   * defined only if it is indeed defined. Do not perform this check in
+   * [RamenOperation.check] to give us chance to infer the event time
+   * definition: *)
+  if RamenOperation.use_event_time func.operation &&
+     func.event_time = None
+  then
+     failwith "Cannot use #start/#stop without event time" ;
   (* Seal everything: *)
   let op_str = IO.to_string RamenOperation.print func.F.operation in
   func.F.signature <- F.signature func op_str params

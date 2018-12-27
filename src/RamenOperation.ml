@@ -428,6 +428,12 @@ let prefix_def params def =
           pref := def
     | _ -> ())
 
+let use_event_time op =
+  fold_expr false (fun b -> function
+    | StatelessFun0 (_, (EventStart|EventStop)) -> true
+    | _ -> b
+  ) op
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
@@ -475,14 +481,7 @@ let check params op =
   and check_factors field_names =
     List.iter (check_field_exists field_names)
   and check_no_group = check_no_state LocalState
-  and use_event_time = fold_expr false (fun b -> function
-    | StatelessFun0 (_, (EventStart|EventStop)) -> true
-    | _ -> b) op
   in
-  if use_event_time &&
-     event_time_of_operation op = None
-  then
-     failwith "Cannot use #start/#stop without event time" ;
   match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
