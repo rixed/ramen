@@ -54,6 +54,6 @@ export OCAMLRUNPARAM
 ulimit -v 2000000
 nice ionice -c 2 ramen gc --stdout --loop ${flags[*]} ${gc_flags[*]} &
 nice ionice -c 2 ramen archivist --stdout --loop ${flags[*]} ${archivist_flags[*]} &
-nice ionice -c 2 ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
-nice ionice -c 2 ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
-exec nice ionice -c 2 ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]}
+nice ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
+ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
+exec nice ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]}
