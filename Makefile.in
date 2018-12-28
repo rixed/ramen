@@ -397,7 +397,8 @@ TESTABLE_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenProcesses.ml\
-	src/CodeGenLib.ml
+	src/CodeGenLib.ml \
+	src/RamenExport.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \

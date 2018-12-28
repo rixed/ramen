@@ -322,11 +322,14 @@ let mtime_of_fd_def default fd =
   try mtime_of_fd fd
   with Unix.Unix_error (Unix.ENOENT, _, _) -> default
 
+let age_of_file fname =
+  let mtime = mtime_of_file fname
+  and now = Unix.gettimeofday () in
+  now -. mtime
+
 let file_is_older_than ~on_err age fname =
   try
-    let mtime = mtime_of_file fname in
-    let now = Unix.gettimeofday () in
-    mtime < now -. age
+    age < age_of_file fname
   with e ->
     print_exception e ;
     on_err

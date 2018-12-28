@@ -146,13 +146,15 @@ let add_ps_stats a s now =
 type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
+let stat_fname conf = conf_dir conf ^ "/stats"
+
 let load_stats conf =
-  let fname = conf_dir conf ^ "/stats" in
+  let fname = stat_fname conf in
   ensure_file_exists ~contents:"{}" fname ;
   RamenAdvLock.with_r_lock fname (ppp_of_fd per_func_stats_ser_ppp_ocaml)
 
 let save_stats conf stats =
-  let fname = conf_dir conf ^ "/stats" in
+  let fname = stat_fname conf in
   RamenAdvLock.with_w_lock fname (fun fd ->
     ppp_to_fd ~pretty:true per_func_stats_ser_ppp_ocaml fd stats)
 
@@ -622,3 +624,16 @@ let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
     run_once conf ?while_ no_stats no_allocs no_reconf ;
     RamenWatchdog.reset watchdog ;
     Unix.sleepf (jitter sleep_time)) ()
+
+(* Helpers: get the stats (maybe refreshed) *)
+
+let get_stats ?while_ conf =
+  (match age_of_file (stat_fname conf) with
+  | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+      update_worker_stats ?while_ conf
+  | stat_file_age ->
+      if stat_file_age < age_of_file (C.running_config_file conf) ||
+         stat_file_age > max_archivist_stat_file_age
+      then
+        update_worker_stats ?while_ conf) ;
+  load_stats conf

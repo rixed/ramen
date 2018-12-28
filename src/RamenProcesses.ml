@@ -183,7 +183,8 @@ let make_running_process conf mre func =
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
-let input_spec conf parent child =
+let input_spec
+    conf ?(timeout=0.) ?(channel=RamenChannel.live) parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
   (if child.F.merge_inputs then
     match List.findi (fun _ (pprog, pname) ->
@@ -202,7 +203,7 @@ let input_spec conf parent child =
   let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.out_type
   and in_type = child.in_type in
   let field_mask = RingBufLib.skip_list ~out_type ~in_type in
-  RamenOutRef.{ field_mask ; timeout = 0. ; channel = None }
+  RamenOutRef.{ field_mask ; timeout ; channel }
 
 let check_is_subtype t1 t2 =
   (* For t1 to be a subtype of t2, all fields of t1 must be present and
@@ -362,7 +363,7 @@ let start_export ?(duration=Default.export_duration) conf func =
         field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
         timeout ;
         (* We archive only the live channel: *)
-        channel = Some RamenChannel.live } in
+        channel = RamenChannel.live } in
     RamenOutRef.add out_ref (bname, file_spec)
   ) ;
   bname

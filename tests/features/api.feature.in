@@ -10,7 +10,7 @@ Feature: Test Ramen API from the command line.
     And a file test.ramen with content
       """
       define color_of_the_day as
-        select now as start, start as stop, random as v,
+        select sum globally 1 as start, start as stop, random as v,
                u64(start) % 2 = 1 as odd,
                case when random > 0.66 then "blue"
                     when random > 0.50 then "red"
@@ -22,7 +22,7 @@ Feature: Test Ramen API from the command line.
 
       define random_walk as
         from (yield (sum globally 1) % 10 as seq_key every 1 second)
-        select now as start, start + 1s as stop,
+        select sum globally 1 as start, start + 1s as stop,
                seq_key as key,
                (previous.xyz |? 0) + (random*2-1) as xyz
         group by seq_key;

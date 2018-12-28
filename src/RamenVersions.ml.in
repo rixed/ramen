@@ -24,7 +24,7 @@ let pending_notify = "v6" (* last: refactor schema *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v4" (* last: Add channels *)
+let out_ref = "v5" (* last: Channels are now mandatory *)
 
 (* Workers state format *)
 let worker_state = "v10" (* last: remove dead state member *)

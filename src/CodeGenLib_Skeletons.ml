@@ -375,9 +375,7 @@ let outputer_of
                   | _ -> false)
                 ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
                 (fun () ->
-                  if file_spec.RamenOutRef.channel = None ||
-                     file_spec.RamenOutRef.channel = Some dest_channel
-                  then (
+                  if file_spec.RamenOutRef.channel = dest_channel then (
                     if !quarantine_until < !CodeGenLib_IO.now then (
                       output rb tup_serializer tup_sizer
                              start_stop head tuple_opt ;

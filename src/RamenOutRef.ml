@@ -28,15 +28,14 @@ and file_spec_conf =
   string *
   (* timeout: *)
   float *
-  (* To ask for a specific channel (useful for leaf nodes) *)
-  RamenChannel.t option
+  RamenChannel.t
   [@@ppp PPP_OCaml]
 
 (* ...and internally, where the field mask is a proper list of booleans: *)
 type file_spec =
   { field_mask : bool list ;
     timeout : float (* 0 for no timeout *) ;
-    channel : RamenChannel.t option }
+    channel : RamenChannel.t }
 
 let print_out_specs oc =
   Hashtbl.print String.print (fun _oc _s -> ()) oc
@@ -121,3 +120,10 @@ let mem fname out_fname =
   RamenAdvLock.with_r_lock fname (fun fd ->
     (*!logger.debug "Got read lock for mem on %s" fname ;*)
     mem_ fname fd out_fname)
+
+let remove_channel fname chan =
+  RamenAdvLock.with_w_lock fname (fun fd ->
+    let h = read_ fname fd in
+    Hashtbl.filter_inplace (fun (_, _, channel) -> channel <> chan) h ;
+    write_ fname fd h) ;
+  !logger.debug "Removed channel %d from %s" chan fname
