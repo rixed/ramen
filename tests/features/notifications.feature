@@ -23,8 +23,7 @@ Feature: Notifications work according to the configuration.
     Given a file sqlite.config with content
       """
       { teams = [
-          { name = "" ;
-            contacts = [
+          { contacts = [
               ViaSqlite {
                 file = "alerts.db" ;
                 create = "create table \"alerts\" (

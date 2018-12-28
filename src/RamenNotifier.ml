@@ -181,7 +181,7 @@ end
 module Team = struct
   type t =
     { (* Team name is really nothing but a prefix for notification names: *)
-      name : string ;
+      name : string [@ppp_default ""];
       (* TODO: with each contact have a boolean to disable messaging the
        * alert stops. *)
       contacts : Contact.t list [@ppp_default []] }
