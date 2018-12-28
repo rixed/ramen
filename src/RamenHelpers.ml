@@ -980,7 +980,8 @@ let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
   let sock =
     try sock_of_domain PF_INET6
     with _ -> sock_of_domain PF_INET in
-  !logger.debug "Listening for datagrams on port %d" port ;
+  !logger.info "Listening for datagrams on %s:%d"
+    (Unix.string_of_inet_addr inet_addr) port ;
   let buffer = Bytes.create buffer_size in
   let rec forever () =
     if while_ () then
