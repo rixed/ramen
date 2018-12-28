@@ -486,9 +486,9 @@ let next =
                    [ "n"; "next" ] in
   Arg.(value (opt (some int) None i))
 
-let continuous =
-  let i = Arg.info ~doc:CliInfo.continuous
-                   [ "f"; "continuous" ] in
+let follow =
+  let i = Arg.info ~doc:CliInfo.follow
+                   [ "f"; "follow" ] in
   Arg.(value (flag i))
 
 let min_seq =
@@ -583,7 +583,7 @@ let tail =
       $ next
       $ min_seq
       $ max_seq
-      $ continuous
+      $ follow
       $ where
       $ since
       $ until

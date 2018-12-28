@@ -187,7 +187,7 @@ struct
     "Read only up to the next N tuples. Applied *before* filtering."
   let min_seq = "Output only tuples with greater sequence number"
   let max_seq = "Output only tuples with smaller sequence number"
-  let continuous = "Wait for more when end of file is reached"
+  let follow = "Wait for more when end of file is reached"
   let where = "Output only tuples which given field match the given value"
   let factors =
     "specify which fields to use as factors/categorical variables"

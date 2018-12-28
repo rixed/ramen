@@ -221,7 +221,7 @@ let complete str () =
           ("--next=", CliInfo.next) ::
           ("--max-seqnum=", CliInfo.max_seq) ::
           ("--min-seqnum=", CliInfo.min_seq) ::
-          ("--continuous", CliInfo.continuous) ::
+          ("--follow", CliInfo.follow) ::
           ("--where=", CliInfo.where) ::
           ("--since=", CliInfo.since) ::
           ("--until=", CliInfo.until) ::
