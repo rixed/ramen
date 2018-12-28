@@ -47,79 +47,79 @@ man/ramen.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen --help=groff > $@
 
-man/supervisor.groff:
+man/supervisor.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen supervisor --help=groff > $@
 
-man/variants.groff:
+man/variants.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen variants --help=groff > $@
 
-man/test.groff:
+man/test.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen test --help=groff > $@
 
-man/timerange.groff:
+man/timerange.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen timerange --help=groff > $@
 
-man/stats.groff:
+man/stats.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen stats --help=groff > $@
 
-man/ps.groff:
+man/ps.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen ps --help=groff > $@
 
-man/tail.groff:
+man/tail.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen tail --help=groff > $@
 
-man/replay.groff:
+man/replay.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen replay --help=groff > $@
 
-man/timeseries.groff:
+man/timeseries.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen timeseries --help=groff > $@
 
-man/notify.groff:
+man/notify.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen notify --help=groff > $@
 
-man/links.groff:
+man/links.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen links --help=groff > $@
 
-man/run.groff:
+man/run.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen run --help=groff > $@
 
-man/kill.groff:
+man/kill.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen kill --help=groff > $@
 
-man/httpd.groff:
+man/httpd.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen httpd --help=groff > $@
 
-man/compile.groff:
+man/compile.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen compile --help=groff > $@
 
-man/notifier.groff:
+man/notifier.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen notifier --help=groff > $@
 
-man/gc.groff:
+man/gc.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen gc --help=groff > $@
 
-man/ringbuf.groff:
+man/ringbuf.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen ringbuf --help=groff > $@
 
-man/archivist.groff:
+man/archivist.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen archivist --help=groff > $@
 
