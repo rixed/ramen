@@ -13,8 +13,6 @@ RUN apt-get --yes update && \
         libblas-dev \
         liblapack-dev \
         libsqlite3-0 \
-        collectd \
-        fprobe \
         util-linux \
         coreutils
 

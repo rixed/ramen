@@ -2,7 +2,6 @@
 
 set -e
 
-only_ramen="no"
 flags=()
 gc_flags=()
 archivist_flags=()
@@ -13,9 +12,6 @@ supervisor_flags=()
 # Special argument to not load this stuff:
 
 while test -n "$1" ; do case "$1" in
-  (--only)
-    only_ramen='yes' ;
-    shift ;;
   (--debug)
     flags+=('--debug') ;
     shift ;;
@@ -38,15 +34,6 @@ while test -n "$1" ; do case "$1" in
     echo "Cannot parse $1" ;
     exit 1 ;;
 esac ; done
-
-if test "$only_ramen" = no ; then
-  if test -x /usr/sbin/collectd ; then
-    /usr/sbin/collectd -C /etc/collectd/collectd.conf
-  fi
-  if test -x /usr/sbin/fprobe ; then
-    /usr/sbin/fprobe 127.0.0.1:2055
-  fi
-fi
 
 OCAMLRUNPARAM=b
 export OCAMLRUNPARAM
