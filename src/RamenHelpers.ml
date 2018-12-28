@@ -1760,7 +1760,7 @@ let as_date ?rel ?(right_justified=true) t =
   match rel with
   | None -> full
   | Some rel ->
-      let possible_cuts = [| 11; 14; 18 |] in
+      let possible_cuts = [| 11; 14; 17 |] in
       let rec loop i =
         if i < 0 then
           full
