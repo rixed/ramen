@@ -148,4 +148,5 @@ install: $(PAGES) $(MANPAGES) style.css
 	 done
 
 clean:
-	@$(RM) $(PAGES)
+	@$(RM) $(PAGES) $(MANPAGES)
+	@$(RM) $(MANPAGES:.html=.groff) $(MANPAGES:.html=.php)
