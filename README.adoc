@@ -16,7 +16,7 @@ For smaller use cases though, tools have been left to where they were in the
 only for monitoring hosts and uses Clojure as a configuration language. Which
 in turns requires a resource hungry JVM.
 
-If you need an all-purpose stream processor to manipulate timeseries in order
+If you need an all-purpose stream processor to manipulate time series in order
 to turn inputs from sensors or network probes into alerts but do not want to
 deploy Kubernetes in your three racks of hardware or have only a couple of GiB
 left of RAM for monitoring, then you might want to consider Ramen.
@@ -43,7 +43,7 @@ Currently the stream processing programs are compiled into a language with
 automatic memory management (OCaml), so performance is not optimal. The plan
 is to compile down to C (or such) in a future step.
 
-Also, imports/exports are limited: Ramen currently accepts timeseries from CSV
+Also, imports/exports are limited: Ramen currently accepts time series from CSV
 files, and understands collectd and netflow (v5) protocols. As output, it
 merely reach out to alerting systems via HTTP requests.
 

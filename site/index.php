@@ -9,7 +9,7 @@
 
 <p>Ramen is designed for the scale most mortals are dealing with.</p>
 
-<p>Ramen has been designed to process network monitoring data in embedded appliances but can be useful in other contexts. If you need an all-purpose stream processor to turn inputs timeseries into dashboards or alerts but do not want to deploy Kubernetes in your three racks of hardware or have only a couple of GiB left of RAM for monitoring, then you might want to consider using Ramen.</p>
+<p>Ramen has been designed to process network monitoring data in embedded appliances but can be useful in other contexts. If you need an all-purpose stream processor to turn inputs time series into dashboards or alerts but do not want to deploy Kubernetes in your three racks of hardware or have only a couple of GiB left of RAM for monitoring, then you might want to consider using Ramen.</p>
 
 <h1>How?</h1>
 
@@ -29,7 +29,7 @@ DEFINE memory_alert AS
   NOTIFY "Low RAM" WHEN free / total < 0.5;
 </pre>
 
-<li>An HTTP daemon mimics the <a href="https://graphite-api.readthedocs.io/">Graphite API</a> so Ramen can serve timeseries to <a href="https://grafana.com">Grafana</a> out of the box.</li>
+<li>An HTTP daemon mimics the <a href="https://graphite-api.readthedocs.io/">Graphite API</a> so Ramen can serve time series to <a href="https://grafana.com">Grafana</a> out of the box.</li>
 
 <li>Past data can be archived and retrieved by new queries, so that Ramen is not only useful for dashboarding and alerting but also for troubleshooting/capacity planning/...</li>
 </ul>

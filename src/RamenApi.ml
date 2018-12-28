@@ -1,6 +1,6 @@
 (* JSONRPC API to interact with Ramen.
  *
- * Allows to query the running schema, extract timeseries, and create
+ * Allows to query the running schema, extract time series, and create
  * new nodes.
  *)
 open Batteries
@@ -315,7 +315,7 @@ let get_columns conf msg =
   PPP.to_string get_columns_resp_ppp_json h
 
 (*
- * Get a timeseries for a given set of columns.
+ * Get a time series for a given set of columns.
  *)
 
 type get_timeseries_req =
@@ -376,7 +376,7 @@ let get_timeseries conf msg =
     let filters =
       C.with_rlock conf (fun programs ->
         (* Even if the program has been killed we want to be able to output
-         * its timeseries: *)
+         * its time series: *)
         let _mre, get_rc = Hashtbl.find programs prog_name in
         let prog = get_rc () in
         let func = List.find (fun f -> f.F.name = func_name) prog.funcs in

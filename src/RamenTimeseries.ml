@@ -1,4 +1,4 @@
-(* This program builds timeseries for the requested time range out of any
+(* This program builds time series for the requested time range out of any
  * operation field.
  *
  * The operation event-time has to be known, though.
@@ -10,7 +10,7 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
-(* Building timeseries with points at regular times *)
+(* Building time series with points at regular times *)
 
 type bucket =
   (* Hopefully count will be small enough that sum can be tracked accurately *)
@@ -71,7 +71,7 @@ let bucket_max b =
 type bucket_time = Begin | Middle | End
 let get conf num_points since until where factors
         ?consolidation ?(bucket_time=Middle) fq data_fields =
-  !logger.debug "Build timeseries for %s, data=%a, where=%a, factors=%a"
+  !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
     (RamenName.string_of_fq fq)
     (List.print RamenName.field_print) data_fields
     (List.print (fun oc (field, op, value) ->
@@ -135,7 +135,7 @@ let get conf num_points since until where factors
       let buckets =
         try Hashtbl.find per_factor_buckets k
         with Not_found ->
-          !logger.debug "New timeseries for column key %a"
+          !logger.debug "New time series for column key %a"
             (Array.print RamenTypes.print) k ;
           let buckets = make_buckets num_points num_data_fields in
           Hashtbl.add per_factor_buckets k buckets ;

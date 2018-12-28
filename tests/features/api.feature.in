@@ -79,7 +79,7 @@ Feature: Test Ramen API from the command line.
     And I run curl with arguments --data-binary '{"id":1, "method":"get-columns", "params":["test/random_walk"]}' http://localhost:8042
     Then curl must mention ""group-key":true"
 
-  Scenario: Can get some timeseries.
+  Scenario: Can get some time series.
     And ramen httpd --url http://localhost:8042 --api is started
     When I wait 3 seconds
     And I run curl with arguments --data-binary '{"method":"get-timeseries","id":1,"params":{"since":0,"until":9999999999,"num-points":5,"data":{"test/random_walk":{"select":["x"],"where":[{"lhs":"t","op":">=","rhs":"0"}]}}}}' http://localhost:8042

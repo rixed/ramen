@@ -495,7 +495,7 @@
 
 <p>Following functions share the notion of _seasonality_.</p>
 
-<p>Seasonality is like weak periodicity: a seasonal timeseries is a timeseries which is strongly auto-correlated for some period P without being strictly periodic. When this is the case, one often wants to compute some function over the past k same seasons. For instance, if <code>v</code> has a seasonality of <code>p</code>, one might want to know the average of the last 10 seasons: `(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.</p>
+<p>Seasonality is like weak periodicity: a seasonal time series is one that is strongly auto-correlated for some period P without being strictly periodic. When this is the case, one often wants to compute some function over the past k same seasons. For instance, if <code>v</code> has a seasonality of <code>p</code>, one might want to know the average of the last 10 seasons: `(v(t-p) + v(t-2p) + v(t-3p) + ... + v(t-10p)) / 10`.</p>
 
 <p>The following functions are such functions, parameterized by <code>p</code> (the seasonality) and <code>k</code> (how many seasons in the past to consider). Notice that in the example above as well as in the functions below the current value is skipped: <code>v(t)</code> is not in the average. This is because we often want to compare the past seasons with the current value.</p>
 
@@ -503,7 +503,7 @@
 
 <p><code>season_moveavg</code>, prefix, <code>int ⨉ int ⨉ num → float</code>, seasonal moving average.</p>
 
-<p>For a timeseries of seasonality <code>p</code> (first parameter), returns the average of the last <code>k</code> values (second parameter), skipping the current one. The third parameter is numerical expression. The result will be a float. This is the same computation than the exemple given above.</p>
+<p>For a time series of seasonality <code>p</code> (first parameter), returns the average of the last <code>k</code> values (second parameter), skipping the current one. The third parameter is numerical expression. The result will be a float. This is the same computation than the exemple given above.</p>
 
 <p><code>moveavg</code>: same as <code>season_moveavg</code> with <code>p=1</code>.</p>
 
@@ -941,7 +941,7 @@
 
 <h4>Timeseries and Event Times</h4>
 
-<p>In order to retrieve <a href="/glossary.html#Timeseries">timeseries</a> from output tuples it is necessary to provide information about what time should be associated with each tuple.</p>
+<p>In order to retrieve <a href="/glossary.html#Timeseries">time series</a> from output tuples it is necessary to provide information about what time should be associated with each tuple.</p>
 
 <p>Similarly, some functions need to know which time is associated with each value 9such as <code>TOP</code> or <code>REMEMBER</code>).</p>
 
@@ -965,7 +965,7 @@
 
 <p>As a further simplification, if no event-time clause is present but the function outputs a field named <code>start</code> then it will be assumed it contains the timestamp of the event start time; and similarly for a field names <code>stop</code>.</p>
 
-<p>With all these information, the <code>timeseries</code> command will be able to produce accurate results.</p>
+<p>With all these information, the <a href="man/timeseries.html">timeseries</a> command will be able to produce accurate results.</p>
 
 <p>For instance if we had minutely metric collection from sensors with a field "time" in milliseconds we could write:</p>
 

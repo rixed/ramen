@@ -37,7 +37,7 @@
 <h2>Extraction</h2>
 
 <ul>
-<li>Support for graphite functions when extracting a timeseries;</li>
+<li>Support for graphite functions when extracting a time series;</li>
 </ul>
 
 <h2>Ingestion</h2>

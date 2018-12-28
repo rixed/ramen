@@ -87,7 +87,7 @@
 <li>Then Ramen merely prints what ends up in the transient ring buffer, waiting until it has received two end-of-replay notifications before exiting.</li>
 </ol>
 
-<p>With such a simple mechanism it is possible to see the recent past (and actually even the distant past) of any newly created function, which comes handy to make sure a new function returns the expected timeseries.</p>
+<p>With such a simple mechanism it is possible to see the recent past (and actually even the distant past) of any newly created function, which comes handy to make sure a new function returns the expected time series.</p>
 
 <h3>Challenges</h3>
 

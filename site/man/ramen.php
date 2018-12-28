@@ -163,7 +163,7 @@ range of an operation output</p>
 
 <p style="margin-left:11%;"><b>timeseries</b></p>
 
-<p style="margin-left:17%;">Extract a timeseries from an
+<p style="margin-left:17%;">Extract a time series from an
 operation</p>
 
 <p style="margin-left:11%;"><b>variants</b></p>

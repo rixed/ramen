@@ -3,11 +3,11 @@
  * Implement (the most important bits of) Graphite API for Grafana.
  * This way, there is no need for a Grafana plugin. Just run
  * `ramen graphite --port=XYZ` and create a graphite datasource in
- * Grafana, and then basic charts of timeseries should just work.
+ * Grafana, and then basic charts of time series should just work.
  *
  * What is supported:
  * - Normal charts;
- * - Autocompletion of timeseries in chart editor;
+ * - Autocompletion of time series in chart editor;
  * - The "*" metric;
  * - All dates used by Grafana.
  *
@@ -316,7 +316,7 @@ let rec find_dot_from s i =
  * plain word or a star, but the last component can also be "*word*".
  * The answer is a list of graphite_metric which name field must be the
  * completed last component and which id field the query with the last
- * component completed. The idea is that id will then identify the timeseries
+ * component completed. The idea is that id will then identify the time series
  * we want to display (once expanded).
  * Extracting factors value from this string requires caution as "." can
  * legitimately appear in a string or float value. We assume all such
@@ -480,7 +480,7 @@ let render_graphite conf headers body =
     List.map (expand_query_values conf ~anchor_right:true ~since ~until) targets in
   (* Targets is now a list of enumerations of program + function name + factors
    * values + field name. Regardless of how many original query were sent, the
-   * expected answer is a flat array of target name + timeseries.  We can
+   * expected answer is a flat array of target name + time series.  We can
    * therefore flatten all the expanded targets and regroup by operation +
    * where filter, then scan data for each of those groups asking for all
    * possible factors. *)
@@ -528,7 +528,7 @@ let render_graphite conf headers body =
       ) targets) in
   (* Now we need to decide, for each factor value, if we want it in a where
    * filter (it's the only value we want for this factor) or if we want to
-   * get a timeseries for all possible values (in a single scan). For this
+   * get a time series for all possible values (in a single scan). For this
    * we merely count how many distinct values we are asking for: *)
   let factor_values = Hashtbl.create 9 in
   let count_factor_values (_func, fq, fvals, data_field) =
@@ -574,12 +574,12 @@ let render_graphite conf headers body =
     ) scans in
   List.iter add_scans targets ;
   (* Now actually run the scans, one for each function/where pair, and start
-   * building the result. For each columns we want one timeseries per data
+   * building the result. For each columns we want one time series per data
    * field. *)
   let metrics_of_scan (fq, where) (data_fields, factors, _func) res =
     (* [columns] will be an array of the factors. [datapoints] is an
      * enumeration of arrays with one entry per factor, the entry being an
-     * array of one timeseries per data_fields. *)
+     * array of one time series per data_fields. *)
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
     let columns, datapoints =

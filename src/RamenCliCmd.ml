@@ -611,7 +611,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
  * should be ok), and finally launch the replayers.
  *
  * Note: refactor the CSV dumper to accommodate for tail, replay and
- * timeseries.
+ * time series.
  *)
 
 let replay_ conf fq field_names with_header with_units sep null raw
@@ -723,7 +723,7 @@ let timeseries conf func_name_or_code
 (*
  * `ramen timerange`
  *
- * Obtain information about the time range available for timeseries.
+ * Obtain information about the time range available for time series.
  *)
 
 let timerange conf fq () =
@@ -747,7 +747,7 @@ let timerange conf fq () =
  * `ramen httpd`
  *
  * Starts an HTTP daemon that will serve (and maybe one day also accept)
- * timeseries, either impersonating Graphite API (https://graphiteapp.org/)
+ * time series, either impersonating Graphite API (https://graphiteapp.org/)
  * or any other API of our own.
  *)
 

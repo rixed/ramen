@@ -110,7 +110,7 @@ struct
   let kill = "Stop a program"
   let tail = "Display the last outputs of an operation"
   let replay = "Rebuild the past output of the given operation"
-  let timeseries = "Extract a timeseries from an operation"
+  let timeseries = "Extract a time series from an operation"
   let timerange =
     "Retrieve the available time range of an operation output"
   let ps = "Display info about running programs"
@@ -269,7 +269,7 @@ struct
   (* Every started program initially archive its output for that long: *)
   let initial_export_duration = 0.
 
-  (* When asking for a timeseries or a tail, export for that long: *)
+  (* When asking for a time series or a tail, export for that long: *)
   let export_duration = 600.
 
   (* Special case for when that's the archivist asking: *)

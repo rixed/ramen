@@ -114,7 +114,7 @@ $ ramen tail -f --with-header demo/netflow
 $
 </pre>
 
-<p>Let's now extract a timeseries for the <code>bytes</code> field. Assuming you are using GNU date and a Bourne-like shell, you could type:</p>
+<p>Let's now extract a time series for the <code>bytes</code> field. Assuming you are using GNU date and a Bourne-like shell, you could type:</p>
 
 <pre>
 $ ramen timeseries \
@@ -138,7 +138,7 @@ $ ramen timeseries \
 
 <p>The <code>consolidation</code> option specify how to fit events into the time buckets, and possible values are <code>min</code>, <code>max</code>, <code>avg</code> (the default) and <code>sum</code>. Here we are accumulating traffic volumes from different sources so the only meaningful way to combine those volumes is to sum them.</p>
 
-<p>That timeseries of course could be piped into any dashboarding program, such as the venerable <a href="http://www.gnuplot.info">gnuplot</a> (don't worry, we will use <a href="https://grafana.com">grafana</a> in a minute):</p>
+<p>That time series of course could be piped into any dashboarding program, such as the venerable <a href="http://www.gnuplot.info">gnuplot</a> (don't worry, we will use <a href="https://grafana.com">grafana</a> in a minute):</p>
 
 <pre>
 $ while sleep 10; do \
@@ -295,7 +295,7 @@ DEFINE memory AS
 
 <ul>
 <li>Most of the fields have been given a name explicitly with the <code>AS</code> keyword;</li>
-<li>We compute both the start and stop of each event by taking the minimum and maximum of the timestamp present in collectd, because we need the events to have a duration (timeseries extraction should consider that default stop is the next start but that's still TBD);</li>
+<li>We compute both the start and stop of each event by taking the minimum and maximum of the timestamp present in collectd, because we need the events to have a duration (time series extraction should consider that default stop is the next start but that's still TBD);</li>
 <li>Any field name starting with underscore, such as <code>_type</code> in this example, is private to the function and not part of the actual output;</li>
 <li><code>//</code> is the integer division, this here we are grouping by host names and slices of 30 seconds;</li>
 <li>The COMMIT clause tells ramen when to stop aggregating a group and output the result;</li>
