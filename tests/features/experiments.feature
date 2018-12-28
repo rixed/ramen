@@ -2,11 +2,11 @@ Feature: Ramen behavior can be customized via experiments
 
   Let's just check for now that ramen actually sees experiments defined in
   an external file. This file is supposed to go into
-  $RAMEN_PERSIST_DIR/experiments/$EXP_VERSION/config.
+  $RAMEN_DIR/experiments/$EXP_VERSION/config.
 
   Background:
     Given ramen must be in the path
-    And a file ramen_persist_dir/experiments/v1/config with content
+    And a file ramen_dir/experiments/v1/config with content
       """
       {
         "test_external" => { "var1" => { descr = "the first variant" } ;

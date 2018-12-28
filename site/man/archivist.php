@@ -40,7 +40,7 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;dumb' or undefined.</p>
 
 <p style="margin-left:11%;"><b>--loop</b>[=<i>VAL</i>]
-(default=3600.) (absent=0.)</p>
+(default=) (absent=0.)</p>
 
 <p style="margin-left:17%;">Do not return after the work is
 over. Instead, wait for the specified amount of time and
@@ -96,7 +96,7 @@ output after startup before a client asks for it</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
-(absent=/tmp/ramen or <b>RAMEN_PERSIST_DIR</b> env)</p>
+(absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc</p>
@@ -145,6 +145,11 @@ RAMEN-LOG-SYSLOG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--persist-dir</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
@@ -161,11 +166,6 @@ RAMEN-LOG-SYSLOG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--to-stderr</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_PERSIST_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--persist-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

@@ -64,7 +64,7 @@ let find_opt o =
 let persist_dir toks =
   try find_opt "--persist-dir" toks
   with Not_found ->
-    try Sys.getenv "RAMEN_PERSIST_DIR"
+    try Sys.getenv "RAMEN_DIR"
     with Not_found -> Default.persist_dir
 
 let complete_file select str =

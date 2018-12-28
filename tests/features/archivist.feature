@@ -23,13 +23,13 @@ Feature: test the archivist
     And program test is running
     And I wait 10 seconds
     And I run ramen with arguments archivist
-    And I run cat with arguments ramen_persist_dir/archivist/v1/allocs
+    And I run cat with arguments ramen_dir/archivist/v1/allocs
     Then cat must mention ""test/r0" => 0"
     And cat must mention ""test/s0" => 52428800"
     And cat must mention ""test/s1" => 52428800"
-    When I run cat with arguments ramen_persist_dir/workers/out_ref/*/test/s0/*/out_ref
+    When I run cat with arguments ramen_dir/workers/out_ref/*/test/s0/*/out_ref
     Then cat must mention "archive.b"
-    When I run cat with arguments ramen_persist_dir/workers/out_ref/*/test/s1/*/out_ref
+    When I run cat with arguments ramen_dir/workers/out_ref/*/test/s1/*/out_ref
     Then cat must mention "archive.b"
-    When I run cat with arguments ramen_persist_dir/workers/out_ref/*/test/r0/*/out_ref
+    When I run cat with arguments ramen_dir/workers/out_ref/*/test/r0/*/out_ref
     Then cat must not mention "archive.b".

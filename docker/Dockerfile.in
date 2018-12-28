@@ -28,7 +28,7 @@ RUN dpkg -i /tmp/*.deb && rm /tmp/*.deb
 COPY z3 /usr/bin/z3
 
 # Environment
-ENV RAMEN_PERSIST_DIR=/ramen
+ENV RAMEN_DIR=/ramen
 
 # cohttp/conduit requires /etc/protocols and /etc/services,
 # which debian-slim does not provide:

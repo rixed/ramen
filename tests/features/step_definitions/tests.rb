@@ -156,7 +156,7 @@ end
 
 Given /^(ramen .*) is started$/ do |cmd|
   if $daemon_pids[cmd].nil?
-    step "the environment variable RAMEN_PERSIST_DIR is set"
+    step "the environment variable RAMEN_DIR is set"
     # Cannot daemonize or we won't know the actual pid:
     $daemon_pids[cmd] = Process.spawn(cmd)
   end

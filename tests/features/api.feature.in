@@ -125,19 +125,19 @@ Feature: Test Ramen API from the command line.
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":40,"recovery":37}]}}}' http://localhost:8042
-    Then a file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
-    And a file named 2917a30b8ff8413cb4ca1ecbe007f2d5.ramen must be present in ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
+    Then a file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
+    And a file named 2917a30b8ff8413cb4ca1ecbe007f2d5.ramen must be present in ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
     When I run curl with arguments --data-binary '{"id":2, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[]}}}' http://localhost:8042
-    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
-    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.ramen must be present in ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
-    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.x must be present in ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
+    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.alert must be present in ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
+    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.ramen must be present in ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
+    Then no file named 2917a30b8ff8413cb4ca1ecbe007f2d5.x must be present in ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42
 
   Scenario: It is possible to change the threshold of an alert
     Given ramen httpd --url http://localhost:8042 --api is started
     When I wait 1 second
     And I run curl with arguments --data-binary '{"id":1, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":40,"recovery":37}]}}}' http://localhost:8042
     And I run curl with arguments --data-binary '{"id":2, "method":"set-alerts", "params":{"test/color_of_the_day":{"nullable_42":[{"enabled":true,"id":"xyz","threshold":42,"recovery":37}]}}}' http://localhost:8042
-    Then I run cat with arguments ramen_persist_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42/770559f20540e7222fe341618a521679.ramen
+    Then I run cat with arguments ramen_dir/api/set_alerts/alerts/test/color_of_the_day/nullable_42/770559f20540e7222fe341618a521679.ramen
     Then cat must mention "HYSTERESIS (filtered_value, 37.000000, 42.000000)"
 
   Scenario: time-step can replace num-points in get-timeseries.

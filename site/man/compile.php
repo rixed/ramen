@@ -54,6 +54,13 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;plain' whenever the <b>TERM</b> env var is
 &lsquo;dumb' or undefined.</p>
 
+<p style="margin-left:11%;"><b>-L</b> <i>VAL</i>,
+<b>--lib-path</b>=<i>VAL</i> (absent <b>RAMEN_PATH</b>
+env)</p>
+
+<p style="margin-left:17%;">Path where to find other
+programs</p>
+
 
 <p style="margin-left:11%;"><b>--max-simultaneous-compilations</b>=<i>VAL</i>,
 <b>--max-simult-compilations</b>=<i>VAL</i> <br>
@@ -66,19 +73,6 @@ perform simultaneously</p>
 
 <p style="margin-left:17%;">compiled file (with .x
 extension)</p>
-
-
-<p style="margin-left:11%;"><b>--parents-from-running-configuration</b>,
-<b>--parents-from-rc</b></p>
-
-<p style="margin-left:17%;">get parents from the running
-programs rather than from the file system.</p>
-
-<p style="margin-left:11%;"><b>--root-path</b>=<i>VAL</i>
-(absent=. or <b>RAMEN_ROOT</b> env)</p>
-
-<p style="margin-left:17%;">Path where to find other
-programs</p>
 
 <p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
 <b>--smt-solver</b>=<i>VAL</i> (absent=z3 -t:20000 -smt2 %s
@@ -118,7 +112,7 @@ output after startup before a client asks for it</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
-(absent=/tmp/ramen or <b>RAMEN_PERSIST_DIR</b> env)</p>
+(absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc</p>
@@ -162,6 +156,11 @@ RAMEN_BUNDLE_DIR</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--persist-dir</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
@@ -180,10 +179,10 @@ RAMEN_BUNDLE_DIR</b></p>
 <p style="margin-left:17%;">See option
 <b>--max-simult-compilations</b>.</p>
 
-<p style="margin-left:11%;"><b>RAMEN_PERSIST_DIR</b></p>
+<p style="margin-left:11%;"><b>RAMEN_PATH</b></p>
 
 <p style="margin-left:17%;">See option
-<b>--persist-dir</b>.</p>
+<b>--lib-path</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 
@@ -192,11 +191,6 @@ RAMEN_BUNDLE_DIR</b></p>
 <p style="margin-left:11%;"><b>RAMEN_RANDOM_SEED</b></p>
 
 <p style="margin-left:17%;">See option <b>--seed</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_ROOT</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--root-path</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
 

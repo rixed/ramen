@@ -131,7 +131,7 @@ output after startup before a client asks for it</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
-(absent=/tmp/ramen or <b>RAMEN_PERSIST_DIR</b> env)</p>
+(absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc</p>
@@ -185,6 +185,11 @@ RAMEN-LOG-SYSLOG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--persist-dir</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_FAULT_INJECTION_RATE</b></p>
 
@@ -213,11 +218,6 @@ RAMEN-LOG-SYSLOG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--max-simult-compilations</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_PERSIST_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--persist-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

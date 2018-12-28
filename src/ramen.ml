@@ -24,7 +24,7 @@ let copts =
                      ~docs ~env [ "q"; "quiet" ] in
     Arg.(value (flag i))
   and persist_dir =
-    let env = Term.env_info "RAMEN_PERSIST_DIR" in
+    let env = Term.env_info "RAMEN_DIR" in
     let i = Arg.info ~doc:CliInfo.persist_dir
                      ~docs ~env [ "persist-dir" ] in
     Arg.(value (opt string Default.persist_dir i))

@@ -1058,6 +1058,6 @@
 
 <p>Using the <code>variant</code> function in this <code>run if</code> clause therefore permits to run a program only in some variant.</p>
 
-<p>Custom experiments can be defined in the <code>$RAMEN_PERSIST_DIR/experiments/v1/config</code>. An example configuration can be seen <a href="https://github.com/PerformanceVision/ramen-configurator/blob/master/experiments.config">here</a>.</p>
+<p>Custom experiments can be defined in the <code>$RAMEN_DIR/experiments/v1/config</code>. An example configuration can be seen <a href="https://github.com/PerformanceVision/ramen-configurator/blob/master/experiments.config">here</a>.</p>
 
 <? include 'footer.php' ?>

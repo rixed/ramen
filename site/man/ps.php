@@ -37,8 +37,10 @@ Display info about running programs</p>
 <p style="margin-left:17%;">List all workers, including
 killed ones</p>
 
-<p style="margin-left:11%;"><b>-h</b>,
-<b>--with-header</b>, <b>--header</b></p>
+<p style="margin-left:11%;"><b>-h</b> [<i>VAL</i>],
+<b>--with-header</b>[=<i>VAL</i>],
+<b>--header</b>[=<i>VAL</i>] <br>
+(default=4611686018427387903) (absent=0)</p>
 
 <p style="margin-left:17%;">Output the header line in
 CSV</p>
@@ -97,7 +99,7 @@ output after startup before a client asks for it</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
-(absent=/tmp/ramen or <b>RAMEN_PERSIST_DIR</b> env)</p>
+(absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc</p>
@@ -136,6 +138,11 @@ RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--persist-dir</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
@@ -147,11 +154,6 @@ RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_PERSIST_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--persist-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

@@ -44,6 +44,12 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;plain' whenever the <b>TERM</b> env var is
 &lsquo;dumb' or undefined.</p>
 
+<p style="margin-left:11%;"><b>-s</b> <i>VAL</i>,
+<b>--max-bytes</b>=<i>VAL</i> (absent=64)</p>
+
+<p style="margin-left:17%;">How many bytes to dump from the
+ringbuf messages</p>
+
 <p style="margin-left:11%;"><b>--version</b></p>
 
 <p style="margin-left:17%;">Show version information.</p>
@@ -66,7 +72,7 @@ output after startup before a client asks for it</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
-(absent=/tmp/ramen or <b>RAMEN_PERSIST_DIR</b> env)</p>
+(absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc</p>
@@ -105,6 +111,11 @@ RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--persist-dir</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
@@ -116,11 +127,6 @@ RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_PERSIST_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--persist-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

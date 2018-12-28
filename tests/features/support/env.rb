@@ -27,7 +27,7 @@ Before do |scenario|
   ENV['PATH'] = "#{src_dir}:#{ENV['PATH']}"
 
   # Reset some ENV:
-  ENV['RAMEN_PERSIST_DIR'] = $tmp_dir + '/ramen_persist_dir'
+  ENV['RAMEN_DIR'] = $tmp_dir + '/ramen_dir'
   # Clear this or we might have longer than expected backtraces on stderr:
   ENV['OCAMLRUNPARAM'] = nil
   # By default we want a specific setting for experiments:
