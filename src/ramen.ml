@@ -168,10 +168,10 @@ let gc =
  * Notifications: Start the notifier and send test ones
  *)
 
-let conf_file ~default ?env ?(opt_names=["config"; "c"]) ~doc () =
+let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
   let env = Option.map Term.env_info env in
   let i = Arg.info ~doc ?env opt_names in
-  Arg.(value (opt string default i))
+  Arg.(value (opt (some string) None i))
 
 let max_fpr =
   let env = Term.env_info "NOTIFIER_MAX_FPR" in
@@ -185,7 +185,6 @@ let notifier =
       $ copts
       $ conf_file ~env:"NOTIFIER_CONFIG"
                   ~doc:CliInfo.conffile ()
-                  ~default:Default.notif_conf_file
       $ max_fpr
       $ daemonize
       $ to_stdout

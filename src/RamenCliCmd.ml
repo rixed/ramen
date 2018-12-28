@@ -105,14 +105,20 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
     failwith "False-positive rate is a rate is a rate." ;
   (* The configuration file better exists, unless it's the default one in
    * which case it will be created with the default configuration: *)
-  if notif_conf_file = Default.notif_conf_file then (
-    RamenNotifier.ensure_conf_file_exists notif_conf_file
-  ) else if file_check ~min_size:1 notif_conf_file <> FileOk then (
-    failwith ("Configuration file "^ notif_conf_file ^" does not exist.")
-  ) else (
-    (* Try to parse that file while we have the user attention: *)
-    ignore (RamenNotifier.load_config notif_conf_file)
-  ) ;
+  let notif_conf_file =
+    match notif_conf_file with
+    | None ->
+        let notif_conf_file = conf.C.persist_dir ^"/notifier.conf" in
+        RamenNotifier.ensure_conf_file_exists notif_conf_file ;
+        notif_conf_file
+    | Some notif_conf_file ->
+        if file_check ~min_size:1 notif_conf_file <> FileOk then (
+          failwith ("Configuration file "^ notif_conf_file ^" does not exist.")
+        ) else (
+          (* Try to parse that file while we have the user attention: *)
+          ignore (RamenNotifier.load_config notif_conf_file)
+        ) ;
+        notif_conf_file in
   if to_syslog then
     init_syslog conf.C.log_level
   else (
