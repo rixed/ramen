@@ -1,14 +1,14 @@
 Feature: Notifications work according to the configuration.
 
   We can use `ramen notify` to send generic notifications to the
-  notifier, which must then behave according to its command line
+  alerter, which must then behave according to its command line
   configuration.
 
   Background:
     Given ramen must be in the path.
 
   Scenario: Nonexistent config file must fail.
-    When I run ramen with argument notifier -c enoent.config
+    When I run ramen with argument alerter -c enoent.config
     Then ramen must fail gracefully.
 
   Scenario: Bad config file must fail.
@@ -16,7 +16,7 @@ Feature: Notifications work according to the configuration.
       """
       pas glop
       """
-    When I run ramen with argument notifier -c borken.config
+    When I run ramen with argument alerter -c borken.config
     Then ramen must fail gracefully.
 
   Scenario: Canonical working example.
@@ -37,7 +37,7 @@ Feature: Notifications work according to the configuration.
         default_init_schedule_delay = 0 ;
         default_init_schedule_delay_after_startup = 0 }
       """
-    And ramen notifier -c sqlite.config is started
+    And ramen alerter -c sqlite.config is started
     When I run ramen with argument notify test -p text=ouch
     Then ramen must exit gracefully
     And the query below against alerts.db must return 1,ouch

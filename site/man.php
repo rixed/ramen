@@ -76,9 +76,9 @@ COMMIT WHEN in.time > group.first.time + 30
 <h2>Alerting</h2>
 </a>
 
-<p>In addition to tuples, workers can emit <a href="glossary.html#Notification">notifications</a>. Those are received by a dedicated daemon: <code>ramen notifier</code> that will route them according to its configuration file.</p>
+<p>In addition to tuples, workers can emit <a href="glossary.html#Notification">notifications</a>. Those are received by a dedicated daemon: <code>ramen alerter</code> that will route them according to its configuration file.</p>
 
-<p>See <a href="man/notifier.html">ramen notifier --help</a> for more details.</p>
+<p>See <a href="man/alerter.html">ramen alerter --help</a> for more details.</p>
 
 <a name="maintenance">
 <h2>Maintenance</h2>

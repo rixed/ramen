@@ -33,6 +33,10 @@ command</p>
 <p style="margin-left:17%;">test graphite query
 expansion</p>
 
+<p style="margin-left:11%;"><b>alerter</b></p>
+
+<p style="margin-left:17%;">Start the alerter</p>
+
 <p style="margin-left:11%;"><b>archivist</b></p>
 
 <p style="margin-left:17%;">Allocate disk for storage</p>
@@ -77,10 +81,6 @@ unused files</p></td>
 
 <p style="margin-left:17%;">List all in use ring buffers
 with some statistics</p>
-
-<p style="margin-left:11%;"><b>notifier</b></p>
-
-<p style="margin-left:17%;">Start the notifier</p>
 
 <p style="margin-left:11%;"><b>notify</b></p>
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Ramen Notifier
+Description=Ramen Alerter
 PartOf=ramen.target
 Documentation=https://rixed.github.io/ramen/man/.html
 
@@ -8,7 +8,7 @@ WantedBy=ramen.target
 
 [Service]
 EnvironmentFile=-/etc/default/ramen
-ExecStart=/usr/bin/ramen notifier --stdout
+ExecStart=/usr/bin/ramen alerter --stdout
 User=ramen
 Restart=always
 RestartSec=60

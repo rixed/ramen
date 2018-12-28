@@ -162,7 +162,7 @@ RAMEN_SOURCES = \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
 	src/SqliteHelpers.ml \
-	src/RamenNotifier.ml \
+	src/RamenAlerter.ml \
 	src/TermTable.ml \
 	src/RamenHttpd.ml \
 	src/RamenCliCmd.ml \

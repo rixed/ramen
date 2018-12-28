@@ -922,9 +922,9 @@
 
 <p>Ramen is designed to do alerting, that is to receive a lot of information, to analyze and triage it, and eventually to send some output result to some external program. By design, there is a huge asymmetry between input and output: Ramen receives large amount of data and produces very little of it.  This explains why the mechanisms for receiving tuples are designed to be efficient while mechanisms for sending tuples outside are rather designed to be convenient.</p>
 
-<p>In addition (or instead) of committing a tuple, Ramen can output a notification, which is a very special type of tuple. While tuples are destined to be read by children workers, notifications are destined to be read by the notifier daemon and processed according to the notifier configuration, maybe resulting in an alert or some other kind of external trigger.</p>
+<p>In addition (or instead) of committing a tuple, Ramen can output a notification, which is a very special type of tuple. While tuples are destined to be read by children workers, notifications are destined to be read by the alerter daemon and processed according to the alerter configuration, maybe resulting in an alert or some other kind of external trigger.</p>
 
-<p>A notification tuple has a name (that will be used by the notifier to route the notification) and some parameters supposed to give some more information about the alert.</p>
+<p>A notification tuple has a name (that will be used by the alerter to route the notification) and some parameters supposed to give some more information about the alert.</p>
 
 <p>So for example, given a stream of people with both a name and a location, we could send a notification each time a person named "Waldo" is spotted:</p>
 

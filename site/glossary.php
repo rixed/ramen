@@ -27,7 +27,7 @@
 
 <a name="Notification"><h2>Notification</h2></a>
 
-<p>In addition to tuples, workers also output so called `notifications` using the `notify` clause. Those follow a particular format and are not intended for other workers but for the notifier process, that may eventually send an alert to users.</p>
+<p>In addition to tuples, workers also output so called `notifications` using the `notify` clause. Those follow a particular format and are not intended for other workers but for the alerter process, that may eventually send an alert to users.</p>
 
 <a name="Nullable"><h2>Nullable</h2></a>
 

@@ -50,7 +50,7 @@
 <h2>GUI</h2>
 
 <ul>
-<li>Grafana plugin to manage functions, configure the notifier, retention, etc...</li>
+<li>Grafana plugin to manage functions, configure the alerter, retention, etc...</li>
 </ul>
 
 <h2>Security</h2>

@@ -6,7 +6,7 @@ only_ramen="no"
 flags=()
 gc_flags=()
 archivist_flags=()
-notifier_flags=()
+alerter_flags=()
 httpd_flags=()
 supervisor_flags=()
 
@@ -25,8 +25,8 @@ while test -n "$1" ; do case "$1" in
   (--archivist-*)
     archivist_flags+=('--'$(echo $1 | cut -c 13-)) ;
     shift ;;
-  (--notifier-*)
-    notifier_flags+=('--'$(echo $1 | cut -c 12-)) ;
+  (--alerter-*)
+    alerter_flags+=('--'$(echo $1 | cut -c 12-)) ;
     shift ;;
   (--httpd-*)
     httpd_flags+=('--'$(echo $1 | cut -c 9-)) ;
@@ -54,6 +54,6 @@ export OCAMLRUNPARAM
 ulimit -v 2000000
 nice ionice -c 2 ramen gc --stdout --loop ${flags[*]} ${gc_flags[*]} &
 nice ionice -c 2 ramen archivist --stdout --loop ${flags[*]} ${archivist_flags[*]} &
-nice ionice -c 2 ramen notifier --stdout ${flags[*]} ${notifier_flags[*]} &
+nice ionice -c 2 ramen alerter --stdout ${flags[*]} ${alerter_flags[*]} &
 nice ionice -c 2 ramen httpd --stdout --url=http://127.0.0.1:29380/ --graphite ${flags[*]} ${httpd_flags[*]} &
 exec nice ionice -c 2 ramen supervisor --stdout ${flags[*]} ${supervisor_flags[*]}

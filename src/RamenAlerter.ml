@@ -1,6 +1,6 @@
 (*
  * To alleviate workers from the hassle to deal with external systems,
- * notifications are sent to Ramen notifier process via a ringbuffer.
+ * notifications are sent to Ramen alerter process via a ringbuffer.
  * Advantages are many:
  *
  * - Workers do not need so many libraries and are therefore smaller and
@@ -14,7 +14,7 @@
  *
  * Glossary:
  *
- * A _notification_ is the message sent by a ramen worker to the notifier via
+ * A _notification_ is the message sent by a ramen worker to the alerter via
  * the "NOTIFY" keyword. Notifications must have a name that is used as an
  * identifier. Then, notification can signal either the start (firing true-ish)
  * or the end (firing false-ish) of an incident. Here, everything that's not
@@ -67,7 +67,7 @@ let startup_time = ref (Unix.gettimeofday ())
 type alert_id = uint64 [@@ppp PPP_OCaml]
 
 let next_alert_id conf =
-  let fname = conf.C.persist_dir ^"/notifier_state" in
+  let fname = conf.C.persist_dir ^"/pending_alerts" in
   ensure_file_exists ~min_size:1 ~contents:"0" fname ;
   let get = ppp_of_file ~error_ok:true alert_id_ppp_ocaml in
   fun () ->
@@ -108,7 +108,7 @@ let max_exec = Atomic.Counter.make 5 (* no more than 5 simultaneous execs *)
 
 let execute_cmd conf cmd =
   IntCounter.inc ~labels:["via", "execute"] (stats_count conf.C.persist_dir) ;
-  let cmd_name = "notifier exec" in
+  let cmd_name = "alerter exec" in
   match run_coprocess ~max_count:max_exec cmd_name cmd with
   | None ->
       IntCounter.inc (stats_send_fails conf.C.persist_dir) ;
@@ -457,7 +457,7 @@ let set_alight conf notif_conf notif contact =
  * A thread that notifies the external world and wait for a successful
  * confirmation, or fails.
  *
- * TODO: time this thread and add this to notifier instrumentation.
+ * TODO: time this thread and add this to alerter instrumentation.
  *)
 
 (* When a notification is delivered to the user (or we abandon it).
@@ -704,7 +704,7 @@ let watchdog = ref None
 
 let send_notifications max_fpr conf =
   if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make "notifier" RamenProcesses.quit) ;
+    watchdog := Some (RamenWatchdog.make "alerter" RamenProcesses.quit) ;
   let watchdog = Option.get !watchdog in
   let rec loop () =
     let now = Unix.gettimeofday () in
@@ -751,7 +751,7 @@ let load_config notif_conf_file =
   notif_conf
 
 let start conf notif_conf_file rb max_fpr =
-  !logger.info "Starting notifier, using configuration file %s"
+  !logger.info "Starting alerter, using configuration file %s"
     notif_conf_file ;
   (* Check the configuration file is OK before waiting for the first
    * notification. Also, we will reload this ref, keeping the last
@@ -784,7 +784,7 @@ let start conf notif_conf_file rb max_fpr =
      * mechanism to cut down the work: *)
     (try notif_conf := load_config notif_conf_file
     with exn ->
-      !logger.error "Cannot read notifier configuration file %s: %s"
+      !logger.error "Cannot read alerter configuration file %s: %s"
         notif_conf_file (Printexc.to_string exn)) ;
     let team = Team.find_in_charge conf !notif_conf.teams notif_name in
     let action =

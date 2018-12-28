@@ -20,7 +20,7 @@ let complete lst s =
 let complete_commands s =
   let commands =
     [ "supervisor", CliInfo.supervisor ;
-      "notifier", CliInfo.notifier ;
+      "alerter", CliInfo.alerter ;
       "notify", CliInfo.notify ;
       "compile", CliInfo.compile ;
       "run", CliInfo.run ;
@@ -181,7 +181,7 @@ let complete str () =
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
           copts
-       | "notifier" ->
+       | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;

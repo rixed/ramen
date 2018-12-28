@@ -70,7 +70,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
-   * any way. For notifications we could have the notifier reading though,
+   * any way. For notifications we could have the alerter reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
   prepare_signal_handlers conf ;
   let reports_rb = prepare_reports conf in
@@ -86,16 +86,16 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   Option.may exit !RamenProcesses.quit
 
 (*
- * `ramen notifier`
+ * `ramen alerter`
  *
- * Start the notifier process, which will read the notifications ringbuf
+ * Start the alerter process, which will read the notifications ringbuf
  * and perform whatever action it takes, most likely reaching out to
  * external systems.
  *
- * The actual work is done in module RamenNotifier.
+ * The actual work is done in module RamenAlerter.
  *)
 
-let notifier conf notif_conf_file max_fpr daemonize to_stdout
+let alerter conf notif_conf_file max_fpr daemonize to_stdout
              to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
@@ -108,15 +108,15 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   let notif_conf_file =
     match notif_conf_file with
     | None ->
-        let notif_conf_file = conf.C.persist_dir ^"/notifier.conf" in
-        RamenNotifier.ensure_conf_file_exists notif_conf_file ;
+        let notif_conf_file = conf.C.persist_dir ^"/alerter.conf" in
+        RamenAlerter.ensure_conf_file_exists notif_conf_file ;
         notif_conf_file
     | Some notif_conf_file ->
         if file_check ~min_size:1 notif_conf_file <> FileOk then (
           failwith ("Configuration file "^ notif_conf_file ^" does not exist.")
         ) else (
           (* Try to parse that file while we have the user attention: *)
-          ignore (RamenNotifier.load_config notif_conf_file)
+          ignore (RamenAlerter.load_config notif_conf_file)
         ) ;
         notif_conf_file in
   if to_syslog then
@@ -124,7 +124,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
   else (
     let logdir =
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/notifier") in
+      else Some (conf.C.persist_dir ^"/log/alerter") in
     Option.may mkdir_all logdir ;
     init_logger ?logdir conf.C.log_level) ;
   check_binocle_errors () ;
@@ -135,7 +135,7 @@ let notifier conf notif_conf_file max_fpr daemonize to_stdout
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
       (fun () ->
-        RamenNotifier.start conf notif_conf_file notify_rb max_fpr) |] ;
+        RamenAlerter.start conf notif_conf_file notify_rb max_fpr) |] ;
   Option.may exit !RamenProcesses.quit
 
 let notify conf parameters notif_name () =
@@ -822,7 +822,7 @@ let graphite_expand conf for_render all since until query () =
 (*
  * `ramen archivist`
  *
- * A daemon that listen to notifier and a user configuration file
+ * A daemon that react to RC stats and a user configuration file
  * and decides what worker should save its history in order to be
  * able to retrieve or rebuild the output of all persistent functions.
  *)

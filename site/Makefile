@@ -27,7 +27,7 @@ MANPAGES = \
 	man/httpd.html \
 	man/kill.html \
 	man/links.html \
-	man/notifier.html \
+	man/alerter.html \
 	man/notify.html \
 	man/ps.html \
 	man/replay.html \
@@ -107,9 +107,9 @@ man/compile.groff: ../src/ramen
 	@echo "Extracting $@"
 	@../src/ramen compile --help=groff > $@
 
-man/notifier.groff: ../src/ramen
+man/alerter.groff: ../src/ramen
 	@echo "Extracting $@"
-	@../src/ramen notifier --help=groff > $@
+	@../src/ramen alerter --help=groff > $@
 
 man/gc.groff: ../src/ramen
 	@echo "Extracting $@"

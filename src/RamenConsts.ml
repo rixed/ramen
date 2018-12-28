@@ -42,7 +42,7 @@ struct
     let ringbuf_repairs = "workers_ringbuf_repairs"
     let outref_repairs = "workers_outref_repairs"
 
-    (* Metrics reported by the notifier: *)
+    (* Metrics reported by the alerter: *)
     let messages_count = "messages_count"
     let messages_send_fails = "notifs_send_failures"
     let team_fallbacks = "notifs_team_fallbacks"
@@ -103,7 +103,7 @@ struct
   (* Commands *)
   let supervisor = "Start the processes supervisor"
   let httpd = "Start an HTTP server"
-  let notifier = "Start the notifier"
+  let alerter = "Start the alerter"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"

@@ -165,7 +165,7 @@ let gc =
     info ~doc:CliInfo.gc "gc")
 
 (*
- * Notifications: Start the notifier and send test ones
+ * Notifications: Start the alerter and send test ones
  *)
 
 let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
@@ -174,22 +174,22 @@ let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
   Arg.(value (opt (some string) None i))
 
 let max_fpr =
-  let env = Term.env_info "NOTIFIER_MAX_FPR" in
+  let env = Term.env_info "ALERTER_MAX_FPR" in
   let i = Arg.info ~doc:CliInfo.max_fpr
                    ~env [ "default-max-fpr"; "max-fpr"; "fpr" ] in
   Arg.(value (opt float Default.max_fpr i))
 
-let notifier =
+let alerter =
   Term.(
-    (const RamenCliCmd.notifier
+    (const RamenCliCmd.alerter
       $ copts
-      $ conf_file ~env:"NOTIFIER_CONFIG"
+      $ conf_file ~env:"ALERTER_CONFIG"
                   ~doc:CliInfo.conffile ()
       $ max_fpr
       $ daemonize
       $ to_stdout
       $ to_syslog),
-    info ~doc:CliInfo.notifier "notifier")
+    info ~doc:CliInfo.alerter "alerter")
 
 let text_pos ~doc ~docv p =
   let i = Arg.info ~doc ~docv [] in
@@ -929,7 +929,7 @@ let () =
   match
     print_exn (fun () ->
       Term.eval_choice ~catch:false default [
-        supervisor ; gc ; httpd ; notifier ;
+        supervisor ; gc ; httpd ; alerter ;
         notify ; compile ; run ; kill ; archivist ;
         tail ; replay ; timeseries ; timerange ; ps ;
         test ; dequeue ; summary ; repair ; links ;

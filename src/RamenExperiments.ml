@@ -62,7 +62,7 @@ let the_big_one =
     Variant.make ~share:0. "off"
       "Run as little as possible from ramen:\n\
        - no workers are launched;\n\
-       - httpd, notifier and other daemons do nothing.\n" ;
+       - httpd, alerter and other daemons do nothing.\n" ;
     Variant.make "on" "Run ramen normally." |]
 
 let all_internal_experiments =

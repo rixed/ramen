@@ -255,8 +255,8 @@ end
 
 Then /^the query below against (.*) must return (.*)$/ \
 do |dbfile, answer, query|
-  # Database might be locked by the notifier, thus the sleep. Anyway, we
-  # want to wait until the async notifier tried to notify:
+  # Database might be locked by the alerter, thus the sleep. Anyway, we
+  # want to wait until the async alerter tried to notify:
   out = `sleep 2 && sqlite3 #{dbfile} '.separator ,' '#{query}'`
   expect(out).to match(/\b#{Regexp.escape(answer)}\b/)
 end

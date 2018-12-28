@@ -463,7 +463,7 @@ let notify_ringbuf conf =
                    ^ RamenVersions.ringbuf
                    ^"/ringbuf.r"
 
-(* This is not a ringbuffer but a mere snapshot of the notifier state: *)
+(* This is not a ringbuffer but a mere snapshot of the alerter state: *)
 let pending_notifications_file conf =
   conf.persist_dir ^"/pending_notifications_"
                    ^ RamenVersions.pending_notify ^"_"

@@ -1,4 +1,4 @@
-(* Notifications are message send from workers to the notifier daemon via
+(* Notifications are message send from workers to the alerter daemon via
  * some dedicated ringbuffers, a lot like instrumentation messages. *)
 open Batteries
 open Stdint

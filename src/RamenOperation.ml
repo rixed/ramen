@@ -117,7 +117,7 @@ type t =
       where : E.t ;
       (* How to compute the time range for that event: *)
       event_time : RamenEventTime.t option ;
-      (* Will send these notification commands to the notifier: *)
+      (* Will send these notification commands to the alerter: *)
       notifications : notification list ;
       key : E.t list (* Grouping key *) ;
       commit_cond : E.t (* Output the group after/before this condition holds *) ;
