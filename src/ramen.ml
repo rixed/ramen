@@ -94,7 +94,7 @@ let external_compiler =
   Arg.(value (flag i))
 
 let bundle_dir =
-  let env = Term.env_info "RAMEN_BUNDLE_DIR" in
+  let env = Term.env_info "RAMEN_LIBS" in
   let i = Arg.info ~doc:CliInfo.bundle_dir
                    ~env [ "bundle-dir" ] in
   Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))

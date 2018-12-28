@@ -12,7 +12,7 @@ do |envvar, opt_val|
   if ENV[envvar].nil? and opt_val.nil? then
     val =
       case envvar
-        when /RAMEN_BUNDLE_DIR/
+        when /RAMEN_LIBS/
           ENV['HOME'] + '/share/src/ramen/bundle'
         else
           fail(StandardError.new("No idea what to set #{envvar} to"))

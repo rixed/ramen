@@ -37,9 +37,7 @@ compile</b> [<i>OPTION</i>]... <i>FILE</i>...</p>
 <p style="margin-left:17%;">resulting program name</p>
 
 <p style="margin-left:11%;"><b>--bundle-dir</b>=<i>VAL</i>
-(absent=/usr/lib/ramen/bundle/ or <b>RAMEN_BUNDLE_DIR</b>
-<br>
-env)</p>
+(absent=/usr/lib/ramen/bundle/ or <b>RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler</p>
@@ -147,12 +145,7 @@ generator with (will use a random one if unset)</p>
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of
 <b>compile</b>: <b><br>
-RAMEN_BUNDLE_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--bundle-dir</b>.</p>
-
-<p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
+RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
@@ -172,6 +165,11 @@ RAMEN_BUNDLE_DIR</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_LIBS</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--bundle-dir</b>.</p>
 
 
 <p style="margin-left:11%;"><b>RAMEN_MAX_SIMULT_COMPILATIONS</b></p>

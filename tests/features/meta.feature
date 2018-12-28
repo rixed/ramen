@@ -11,5 +11,5 @@ Feature: Test some step definitions
     And the environment variable RAMEN_VARIANTS must be set to GLOP_GLOP
 
   Scenario: Some envvars are preset
-    Given the environment variable RAMEN_BUNDLE_DIR is set
-    Then the environment variable RAMEN_BUNDLE_DIR must be defined
+    Given the environment variable RAMEN_LIBS is set
+    Then the environment variable RAMEN_LIBS must be defined

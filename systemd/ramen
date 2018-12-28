@@ -1,2 +1,2 @@
 RAMEN_DIR=/var/lib/ramen
-RAMEN_BUNDLE_DIR=/usr/lib/ramen/bundle
+RAMEN_LIBS=/usr/lib/ramen/bundle

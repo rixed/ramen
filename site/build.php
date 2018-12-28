@@ -36,6 +36,6 @@ $ opam install ramen
 
 <p>Then if you modify the source code and want to reinstall you have to either <code>make reinstall</code> or <code>opam upgrade ramen</code>, depending on the method you have chosen to install ramen.</code></p>
 
-<p>The result of the compilation should be a single executable file named <code>ramen</code> and a directory named <code>bundle</code> containing all the libraries that are needed at runtime to compile and run the data stream workers. This directory can be copied anywhere as long as <code>ramen</code> can find it using the <code>RAMEN_BUNDLE_DIR</code> environment variable.</p>
+<p>The result of the compilation should be a single executable file named <code>ramen</code> and a directory named <code>bundle</code> containing all the libraries that are needed at runtime to compile and run the data stream workers. This directory can be copied anywhere as long as <code>ramen</code> can find it using the <code>RAMEN_LIBS</code> environment variable.</p>
 
 <? include 'footer.php' ?>

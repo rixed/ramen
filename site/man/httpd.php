@@ -30,9 +30,7 @@ httpd</b> [<i>OPTION</i>]...</p>
 http</p>
 
 <p style="margin-left:11%;"><b>--bundle-dir</b>=<i>VAL</i>
-(absent=/usr/lib/ramen/bundle/ or <b>RAMEN_BUNDLE_DIR</b>
-<br>
-env)</p>
+(absent=/usr/lib/ramen/bundle/ or <b>RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler</p>
@@ -171,11 +169,6 @@ RAMEN-LOG-SYSLOG</b></p>
 <p style="margin-left:17%;">See option
 <b>--to-syslog</b>.</p>
 
-<p style="margin-left:11%;"><b>RAMEN_BUNDLE_DIR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--bundle-dir</b>.</p>
-
 <p style="margin-left:11%;"><b>RAMEN_DAEMONIZE</b></p>
 
 <p style="margin-left:17%;">See option
@@ -207,6 +200,11 @@ RAMEN-LOG-SYSLOG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_LIBS</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--bundle-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_LOG_TO_STDERR</b></p>
 

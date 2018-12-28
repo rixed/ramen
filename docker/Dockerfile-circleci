@@ -37,7 +37,7 @@ RUN /usr/local/bin/opam init --comp 4.06.1+flambda --no-setup
 # Environment
 ENV CAML_LD_LIBRARY_PATH=/root/.opam/4.06.1+flambda/lib/stublibs \
     PATH=/root/.opam/4.06.1+flambda/bin:/root/.gem/ruby/2.3.0/bin/:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin \
-    RAMEN_BUNDLE_DIR=/root/project/bundle \
+    RAMEN_LIBS=/root/project/bundle \
     TERM=dumb
 
 RUN echo 'Update dependency on Binocle (-> v0.8.1)'

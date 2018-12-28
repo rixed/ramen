@@ -12,7 +12,7 @@ Feature: We can run and kill any program in any order
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_BUNDLE_DIR is set
+    And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     # Create a bad xdep that depends on this to-ne-overwriten definition:
     And a file tests/nodep.ramen with content

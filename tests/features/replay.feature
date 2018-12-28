@@ -14,7 +14,7 @@ Feature: test ramen replay in a simple setting
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_BUNDLE_DIR is set
+    And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     # Speed up reports so archivist do not have to wait for too long:
     And the environment variable RAMEN_REPORT_PERIOD is set to 1
