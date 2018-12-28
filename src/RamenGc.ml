@@ -93,7 +93,9 @@ let cleanup_once conf dry_run del_ratio =
         if sum_sz <= alloced then num_to_del, to_del
         else num_to_del + 1, f::to_del in
       loop (i - 1) sum_sz num_to_del to_del in
-    let num_to_del, to_del = loop (Array.length arc_files - 1) 0 0 [] in
+    let num_to_del, to_del =
+      if Array.length arc_files = 0 then 0, []
+      else loop (Array.length arc_files - 1) 0 0 [] in
     (* We have at the head of to_del the oldest files. Delete some of them,
      * but not all of them at once: *)
     let num_to_del = round_to_int (float_of_int num_to_del *. del_ratio) in
