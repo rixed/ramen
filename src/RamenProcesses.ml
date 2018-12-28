@@ -98,7 +98,9 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
     (try
       if and_stop then RingBufLib.kill_myself Sys.sigstop ;
       Option.may chdir cwd ;
-      close_fd 0 ;
+      let null = openfile "/dev/null" [O_RDONLY] 0 in
+      dup2 null stdin ;
+      close null ;
       for i = 3 to 255 do
         try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
       done ;
