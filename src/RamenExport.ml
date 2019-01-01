@@ -341,12 +341,10 @@ let replay conf ?(while_=always) fq field_names where since until
        * but beware of with_event_type! *)
       let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
       let timeout = Unix.gettimeofday () +. 300. in
-      let file_spec =
-        RamenOutRef.{ field_mask ; timeout ; channel } in
       let out_ref = C.out_ringbuf_names_ref conf func in
-      RamenOutRef.add out_ref (rb_name, file_spec) ;
+      RamenOutRef.add out_ref ~timeout ~channel rb_name field_mask ;
       let clean_links () =
-        RamenOutRef.remove out_ref rb_name ;
+        RamenOutRef.remove out_ref rb_name channel ;
         Set.iter (fun (pfq, _fq) ->
           let _mre, _prog, pfunc = C.find_func_or_fail programs pfq in
           let out_ref = C.out_ringbuf_names_ref conf pfunc in
@@ -360,9 +358,9 @@ let replay conf ?(while_=always) fq field_names where since until
           let _mre, _prog, cfunc = C.find_func_or_fail programs fq in
           let _mre, _prog, pfunc = C.find_func_or_fail programs pfq in
           let out_ref = C.out_ringbuf_names_ref conf pfunc in
-          let out =
-            RamenProcesses.input_spec conf ~timeout ~channel pfunc cfunc in
-          RamenOutRef.add out_ref out
+          let fname = RamenProcesses.input_ringbuf_fname conf pfunc cfunc
+          and field_mask = RamenProcesses.make_field_mask pfunc cfunc in
+          RamenOutRef.add out_ref ~timeout ~channel fname field_mask
         ) links ;
         (* Do not start the replay at once or the worker won't have reread
          * its out-ref. TODO: signal it. *)

@@ -26,16 +26,14 @@ type out_ref_conf =
 and file_spec_conf =
   (* field mask: *)
   string *
-  (* timeout: *)
-  float *
-  RamenChannel.t
+  (* per channel timeouts (0 = no timeout): *)
+  (RamenChannel.t, float) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 (* ...and internally, where the field mask is a proper list of booleans: *)
 type file_spec =
   { field_mask : bool list ;
-    timeout : float (* 0 for no timeout *) ;
-    channel : RamenChannel.t }
+    channels : (RamenChannel.t, float) Hashtbl.t }
 
 let print_out_specs oc =
   Hashtbl.print String.print (fun _oc _s -> ()) oc
@@ -45,12 +43,17 @@ let string_of_field_mask mask =
   String.of_list
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
- * Basically, new fields prevail but we keep the longer timeout: *)
-let combine_specs (_, t1, _) (s, t2, c) =
-  s, Float.max t1 t2, c
+ * Basically, new fields prevail and we merge channels, keeping the longer
+ * timeout: *)
+let combine_specs (_, c1) (s, c2) =
+  s,
+  hashtbl_merge c1 c2
+    (fun _ t1 t2 -> match t1, t2 with
+    | Some t, None | None, Some t -> Some t
+    | Some t1, Some t2 -> Some (Float.max t1 t2)
+    | _ -> assert false)
 
-let file_spec_still_valid now (_, timeout, _) =
-  timeout <= 0. || timeout > now
+let timed_out now t = t <= 0. || t > now
 
 let write_ fname fd c =
   fail_with_context ("Writing out_ref "^ fname) (fun () ->
@@ -66,17 +69,19 @@ let read fname =
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
     read_ fname fd |>
-    Hashtbl.filter_map (fun _ (mask_str, timeout, channel as spec) ->
-      if file_spec_still_valid now spec then
-        Some { field_mask = field_mask_of_string mask_str ;
-               timeout ; channel }
+    Hashtbl.filter_map (fun _ (mask_str, chans) ->
+      let channels =
+        Hashtbl.filter (fun t -> not (timed_out now t)) chans in
+      if Hashtbl.length chans > 0 then
+        Some { field_mask = field_mask_of_string mask_str ; channels }
       else None))
 
-let add_ fname fd out_fname file_spec =
+let add_ fname fd out_fname timeout chan field_mask =
+  let channels = Hashtbl.create 1 in
+  Hashtbl.add channels chan timeout ;
   let file_spec =
-    string_of_field_mask file_spec.field_mask,
-    file_spec.timeout,
-    file_spec.channel in
+    string_of_field_mask field_mask,
+    channels in
   let h =
     try read_ fname fd
     with Sys_error _ ->
@@ -92,38 +97,55 @@ let add_ fname fd out_fname file_spec =
     let file_spec = combine_specs prev_spec file_spec in
     if prev_spec <> file_spec then rewrite ()
 
-let add fname (out_fname, file_spec) =
+let add fname ?(timeout=0.) ?(channel=RamenChannel.live) out_fname
+        field_mask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname fd out_fname file_spec)
+    add_ fname fd out_fname timeout channel field_mask)
 
-let remove_ fname fd out_fname =
+let remove_ fname fd out_fname chan =
   let h = read_ fname fd in
-  if Hashtbl.mem h out_fname then (
-    Hashtbl.remove h out_fname ;
-    write_ fname fd h ;
-    !logger.debug "Removed %s from %s" out_fname fname)
+  match Hashtbl.find h out_fname with
+  | exception Not_found -> ()
+  | _, channels ->
+      if Hashtbl.mem channels chan then (
+        if Hashtbl.length channels > 1 then
+          Hashtbl.remove channels chan
+        else
+          Hashtbl.remove h out_fname) ;
+      write_ fname fd h ;
+      !logger.debug "Removed %s from %s" out_fname fname
 
-let remove fname out_fname =
+let remove fname out_fname chan =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for remove on %s" fname ;*)
-    remove_ fname fd out_fname)
+    remove_ fname fd out_fname chan)
 
-(* Check that fname is listed in outbuf_ref_fname: *)
-let mem_ fname fd out_fname =
-  let c = read_ fname fd in
-  match Hashtbl.find c out_fname with
+(* Check that fname is listed in outbuf_ref_fname for any non-timed out
+ * channel: *)
+let mem_ fname fd out_fname now =
+  let h = read_ fname fd in
+  match Hashtbl.find h out_fname with
   | exception Not_found -> false
-  | spec -> file_spec_still_valid (Unix.gettimeofday ()) spec
+  | _, channels ->
+      try
+        Hashtbl.iter (fun _c t ->
+          if not (timed_out now t) then raise Exit
+        ) channels ;
+        false
+      with Exit -> true
 
-let mem fname out_fname =
+let mem fname out_fname now =
   RamenAdvLock.with_r_lock fname (fun fd ->
     (*!logger.debug "Got read lock for mem on %s" fname ;*)
-    mem_ fname fd out_fname)
+    mem_ fname fd out_fname now)
 
 let remove_channel fname chan =
   RamenAdvLock.with_w_lock fname (fun fd ->
     let h = read_ fname fd in
-    Hashtbl.filter_inplace (fun (_, _, channel) -> channel <> chan) h ;
+    Hashtbl.filter_inplace (fun (_, channels) ->
+      Hashtbl.remove channels chan ;
+      not (Hashtbl.is_empty channels)
+    ) h ;
     write_ fname fd h) ;
-  !logger.debug "Removed channel %d from %s" chan fname
+  !logger.debug "Removed chan %d from %s" chan fname

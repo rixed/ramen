@@ -1843,3 +1843,25 @@ let path_in_graph fold ?(max_len=50) ~src ~dst =
 let possible_values_file dir factor min_time max_time =
   Legacy.Printf.sprintf "%s/%s/%h_%h"
     dir (path_quote factor) min_time max_time
+
+(* TODO: in batteries? *)
+let hashtbl_merge h1 h2 f =
+  let res = Hashtbl.create (Hashtbl.length h1) in
+  let may_add_res k v1 v2 =
+    match f k v1 v2 with
+    | None -> ()
+    | Some v -> Hashtbl.add res k v in
+  Hashtbl.iter (fun k v1 ->
+    match Hashtbl.find h2 k with
+    | exception Not_found ->
+        may_add_res k (Some v1) None
+    | v2 ->
+        may_add_res k (Some v1) (Some v2)
+  ) h1 ;
+  Hashtbl.iter (fun k v2 ->
+    match Hashtbl.find h1 k with
+    | exception Not_found ->
+        may_add_res k None (Some v2)
+    | _ -> () (* done above *)
+  ) h2 ;
+  res

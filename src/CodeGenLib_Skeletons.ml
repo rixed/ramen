@@ -340,7 +340,7 @@ let outputer_of
             let check_outref now =
               if now > !last_check_outref +. 3. then true else (
                 last_check_outref := now ;
-                RamenOutRef.mem rb_ref_out_fname fname)
+                RamenOutRef.mem rb_ref_out_fname fname now)
             in
             let rb_writer dest_channel start_stop head tuple_opt =
               (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
@@ -375,19 +375,23 @@ let outputer_of
                   | _ -> false)
                 ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
                 (fun () ->
-                  if file_spec.RamenOutRef.channel = dest_channel then (
-                    if !quarantine_until < !CodeGenLib_IO.now then (
-                      output rb tup_serializer tup_sizer
-                             start_stop head tuple_opt ;
-                      last_successful_output := !CodeGenLib_IO.now ;
-                      if !quarantine_delay > 0. then (
-                        !logger.info "Resuming output to %s" fname ;
-                        quarantine_delay := 0.
-                      )
-                    ) else (
-                      !logger.debug "Skipping output to %s (quarantined)"
-                        fname
-                    ))) ()
+                  match Hashtbl.find file_spec.RamenOutRef.channels dest_channel with
+                  | exception Not_found -> ()
+                  | t ->
+                      if not (RamenOutRef.timed_out !CodeGenLib_IO.now t)
+                      then (
+                        if !quarantine_until < !CodeGenLib_IO.now then (
+                          output rb tup_serializer tup_sizer
+                                 start_stop head tuple_opt ;
+                          last_successful_output := !CodeGenLib_IO.now ;
+                          if !quarantine_delay > 0. then (
+                            !logger.info "Resuming output to %s" fname ;
+                            quarantine_delay := 0.
+                          )
+                        ) else (
+                          !logger.debug "Skipping output to %s (quarantined)"
+                            fname
+                        ))) ()
             in
             Hashtbl.add out_h fname (rb, rb_writer)
         ) to_open ;

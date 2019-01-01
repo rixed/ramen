@@ -183,10 +183,9 @@ let make_running_process conf mre func =
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
-let input_spec
-    conf ?(timeout=0.) ?(channel=RamenChannel.live) parent child =
+let input_ringbuf_fname conf parent child =
   (* In case of merge, ringbufs are numbered as the node parents: *)
-  (if child.F.merge_inputs then
+  if child.F.merge_inputs then
     match List.findi (fun _ (pprog, pname) ->
             let pprog_name =
               F.program_of_parent_prog child.F.program_name pprog in
@@ -196,14 +195,15 @@ let input_spec
         !logger.error "Operation %S is not a child of %S"
           (RamenName.string_of_func child.name)
           (RamenName.string_of_func parent.name) ;
-        invalid_arg "input_spec"
+        invalid_arg "input_ringbuf_fname"
     | i, _ ->
         C.in_ringbuf_name_merging conf child i
-  else C.in_ringbuf_name_single conf child),
-  let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.out_type
-  and in_type = child.in_type in
-  let field_mask = RingBufLib.skip_list ~out_type ~in_type in
-  RamenOutRef.{ field_mask ; timeout ; channel }
+  else C.in_ringbuf_name_single conf child
+
+let make_field_mask parent child =
+  let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.F.out_type
+  and in_type = child.F.in_type in
+  RingBufLib.skip_list ~out_type ~in_type
 
 let check_is_subtype t1 t2 =
   (* For t1 to be a subtype of t2, all fields of t1 must be present and
@@ -358,13 +358,8 @@ let start_export ?(duration=Default.export_duration) conf func =
   if duration <> 0. then (
     let timeout =
       if duration < 0. then 0. else Unix.gettimeofday () +. duration in
-    let file_spec =
-      RamenOutRef.{
-        field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser ;
-        timeout ;
-        (* We archive only the live channel: *)
-        channel = RamenChannel.live } in
-    RamenOutRef.add out_ref (bname, file_spec)
+    let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
+    RamenOutRef.add out_ref ~timeout bname field_mask
   ) ;
   bname
 
@@ -394,11 +389,12 @@ let really_start conf proc parents children =
   !logger.debug "Updating out-ref buffers..." ;
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
   List.iter (fun c ->
-    let fname, _specs as out = input_spec conf proc.func c in
+    let fname = input_ringbuf_fname conf proc.func c
+    and field_mask = make_field_mask proc.func c in
     (* The destination ringbuffer must exist before it's referenced in an
      * out-ref, or the worker might err and throw away the tuples: *)
     RingBuf.create fname ;
-    RamenOutRef.add out_ringbuf_ref out
+    RamenOutRef.add out_ringbuf_ref fname field_mask
   ) children ;
   (* Always export for a little while at the beginning *)
   let _bname =
@@ -467,7 +463,9 @@ let really_start conf proc parents children =
   List.iter (fun p ->
     let out_ref =
       C.out_ringbuf_names_ref conf p in
-    RamenOutRef.add out_ref (input_spec conf p proc.func)
+    let fname = input_ringbuf_fname conf p proc.func
+    and field_mask = make_field_mask p proc.func in
+    RamenOutRef.add out_ref fname field_mask
   ) parents
 
 (* Try to start the given proc.
@@ -550,7 +548,7 @@ let try_kill conf must_run proc =
     let parent_out_ref =
       C.out_ringbuf_names_ref conf p in
     List.iter (fun this_in ->
-      RamenOutRef.remove parent_out_ref this_in
+      RamenOutRef.remove parent_out_ref this_in RamenChannel.live
     ) input_ringbufs
   ) parents ;
   (* If it's still stopped, unblock first: *)
@@ -598,7 +596,7 @@ let check_out_ref conf must_run running =
             (RamenName.string_of_fq (F.fq_name proc.func)) fname ;
           log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
             IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-            RamenOutRef.remove out_ref fname) ())
+            RamenOutRef.remove out_ref fname RamenChannel.live) ())
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
@@ -613,7 +611,9 @@ let check_out_ref conf must_run running =
             (RamenName.string_of_fq (F.fq_name par_func))
             (RamenName.string_of_fq (F.fq_name proc.func)) ;
           log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
-            RamenOutRef.add out_ref (input_spec conf par_func proc.func)) ())
+            let fname = input_ringbuf_fname conf par_func proc.func
+            and field_mask = make_field_mask par_func proc.func in
+            RamenOutRef.add out_ref fname field_mask) ())
       ) par_funcs
     )
   ) running
