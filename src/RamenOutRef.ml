@@ -53,7 +53,7 @@ let combine_specs (_, c1) (s, c2) =
     | Some t1, Some t2 -> Some (Float.max t1 t2)
     | _ -> assert false)
 
-let timed_out now t = t <= 0. || t > now
+let timed_out now t = t > 0. && now > t
 
 let write_ fname fd c =
   fail_with_context ("Writing out_ref "^ fname) (fun () ->
@@ -149,3 +149,24 @@ let remove_channel fname chan =
     ) h ;
     write_ fname fd h) ;
   !logger.debug "Removed chan %d from %s" chan fname
+
+(*$inject open Batteries *)
+
+(*$R
+  let outref_fname = Filename.temp_file "ramen_test_" ".out" in
+
+  (* out_ref is initially empty/absent: *)
+  let now = Unix.gettimeofday () in
+  assert_bool "outref is empty" (not (mem outref_fname "dest1" now)) ;
+
+  add outref_fname "dest1" [true] ;
+  assert_bool "dest1 is now in outref" (mem outref_fname "dest1" now) ;
+
+  add outref_fname "dest2" ~channel:1 [true] ;
+  assert_bool "dest2 is now in outref" (mem outref_fname "dest1" now) ;
+  remove_channel outref_fname 1 ;
+  assert_bool "no more chan 1" (not (mem outref_fname "dest2" now)) ;
+
+  (* If all went well: *)
+  RamenHelpers.safe_unlink outref_fname
+*)
