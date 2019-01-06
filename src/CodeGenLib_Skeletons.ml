@@ -251,14 +251,99 @@ let output rb serialize_tuple sersize_of_tuple
 
 let quit = ref None
 
+type 'a out_rb =
+  { fname : string ;
+    rb : RingBuf.t ;
+    tup_serializer : RingBuf.tx -> int -> 'a -> int ;
+    tup_sizer : 'a -> int ;
+    field_mask : bool list ;
+    mutable channels : (RamenChannel.t, float) Hashtbl.t ;
+    (* When we last checked this is still in the out_ref: *)
+    mutable last_check_outref : float ;
+    mutable last_successful_output : float ;
+    mutable quarantine_until : float ;
+    mutable quarantine_delay : float ;
+    rate_limit_log_writes : unit -> bool ;
+    rate_limit_log_drops : unit -> bool }
+
+let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
+  (* Check that we are still supposed to write in there, but now
+   * more frequently than once every 3 secs (how long we are
+   * ready to block on a dead child): *)
+  let check_outref now =
+    if now < out_rb.last_check_outref +. 3. then true else (
+      out_rb.last_check_outref <- now ;
+      RamenOutRef.mem rb_ref_out_fname out_rb.fname now)
+  in
+  if dest_channel <> RamenChannel.live && out_rb.rate_limit_log_writes () then
+    !logger.debug "Write a tuple to channel %a"
+      RamenChannel.print dest_channel ;
+  (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
+   * case the ringbuf disappear altogether because the child is
+   * terminated then we won't deadloop.  Also, if one child is full
+   * then we will not write to next children until we can eventually
+   * write to this one. This is actually desired to have proper message
+   * ordering along the stream and avoid ending up with many threads
+   * retrying to write to the same child. *)
+  retry
+    ~while_:(fun () ->
+      if !quit <> None then false else
+      check_outref (Unix.gettimeofday ()))
+    ~on:(function
+      | RingBuf.NoMoreRoom ->
+        !logger.debug "NoMoreRoom in %s" out_rb.fname ;
+        (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
+        let now = Unix.gettimeofday () in
+        (* Also check from time to time that we are still supposed to
+         * write in there (we check right after the first error to
+         * quickly detect it when a child disappear): *)
+        if not (check_outref now) then false else (
+          if now < out_rb.last_successful_output +. 15. then true else (
+            (* At this point, we have been failing for more than 3s
+             * for a child that's still in our out_ref, and should
+             * consider quarantine for a bit: *)
+            out_rb.quarantine_delay <-
+              min 30. (10. +. out_rb.quarantine_delay *. 1.5) ;
+            out_rb.quarantine_until <-
+              now +. jitter out_rb.quarantine_delay ;
+            !logger.error "Quarantining %s until %s"
+              out_rb.fname (string_of_time out_rb.quarantine_until) ;
+            true))
+      | _ -> false)
+    ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
+    (fun () ->
+      match Hashtbl.find out_rb.channels dest_channel with
+      | exception Not_found ->
+          (* Can happen at leaf functions after a replay: *)
+          if out_rb.rate_limit_log_drops () then
+            !logger.warning "Drop a tuple for %s unknown channel %a"
+              out_rb.fname RamenChannel.print dest_channel ;
+      | t ->
+          if not (RamenOutRef.timed_out !CodeGenLib_IO.now t) then (
+            if out_rb.quarantine_until < !CodeGenLib_IO.now then (
+              output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
+                     start_stop head tuple_opt ;
+              out_rb.last_successful_output <- !CodeGenLib_IO.now ;
+              if out_rb.quarantine_delay > 0. then (
+                !logger.info "Resuming output to %s" out_rb.fname ;
+                out_rb.quarantine_delay <- 0.)
+            ) else (
+              !logger.debug "Skipping output to %s (quarantined)"
+                out_rb.fname)
+          ) else (
+            if out_rb.rate_limit_log_drops () then
+              !logger.warning "Drop a tuple for %s outdated channel %a"
+                out_rb.fname RamenChannel.print dest_channel
+          )) ()
+
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple =
   let rec all_fields = true :: all_fields in
-  let out_h = Hashtbl.create 5 (* Hash from fname to rb*outputer *)
-  and out_l = ref []  (* list of outputers *) in
+  let out_h = ref (Hashtbl.create 15) (* Hash from fname to rb*file_spec*)
+  and out_rbs = ref []  (* list of outputers *) in
   let max_num_fields = 100 (* FIXME *) in
   let factors_values = Array.make max_num_fields possible_values_empty in
   let factors_dir = getenv ~def:"/tmp/factors" "factors_dir" in
@@ -287,116 +372,61 @@ let outputer_of
         ) else None
       ) else None
   in
-  let update_out_h () =
+  let update_out_rbs () =
     (* Get out_specs if they've changed: *)
     get_out_fnames () |>
     Option.may (fun out_specs ->
       if Hashtbl.is_empty out_specs then (
-        if not (Hashtbl.is_empty out_h) then (
+        if not (Hashtbl.is_empty !out_h) then (
           !logger.info "OutRef is now empty!" ;
-          Hashtbl.clear out_h)
+          Hashtbl.clear !out_h)
       ) else (
-        if Hashtbl.is_empty out_h then
+        if Hashtbl.is_empty !out_h then
           !logger.debug "OutRef is no longer empty!" ;
         !logger.debug "Must now output to: %a"
           RamenOutRef.print_out_specs out_specs) ;
       (* Change occurred, load/unload as required *)
-      let current = Hashtbl.keys out_h |> Set.of_enum in
-      let next = Hashtbl.keys out_specs |> Set.of_enum in
-      let to_open = Set.diff next current
-      and to_close = Set.diff current next in
-      (* Close some: *)
-      Set.iter (fun fname ->
-        !logger.debug "Unmapping %S" fname ;
-        match Hashtbl.find out_h fname with
-        | exception Not_found ->
-          !logger.error "While unmapping %S: this file is not mapped?!"
-            fname
-        | rb, _ ->
-          RingBuf.unload rb ;
-          Hashtbl.remove out_h fname
-      ) to_close ;
-      (* Open some: *)
-      Set.iter (fun fname ->
-          !logger.debug "Mapping %S" fname ;
-          let file_spec = Hashtbl.find out_specs fname in
-          assert (String.length fname > 0) ;
-          match RingBuf.load fname with
-          | exception e ->
-            !logger.error "Cannot open ringbuf %s: %s"
-              fname (Printexc.to_string e) ;
-          | rb ->
-            let tup_serializer =
-              serialize_tuple file_spec.RamenOutRef.field_mask
-            and tup_sizer =
-              sersize_of_tuple file_spec.RamenOutRef.field_mask in
-            let last_check_outref = ref 0.
-            and last_successful_output = ref (Unix.gettimeofday ())
-            and quarantine_until = ref 0.
-            and quarantine_delay = ref 0. in
-            (* Check that we are still supposed to write in there, but now
-             * more frequently than once every 3 secs (how long we are
-             * ready to block on a dead child): *)
-            let check_outref now =
-              if now > !last_check_outref +. 3. then true else (
-                last_check_outref := now ;
-                RamenOutRef.mem rb_ref_out_fname fname now)
-            in
-            let rb_writer dest_channel start_stop head tuple_opt =
-              (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
-               * case the ringbuf disappear altogether because the child is
-               * terminated then we won't deadloop.  Also, if one child is full
-               * then we will not write to next children until we can eventually
-               * write to this one. This is actually desired to have proper message
-               * ordering along the stream and avoid ending up with many threads
-               * retrying to write to the same child. *)
-              retry
-                ~while_:(fun () ->
-                  if !quit <> None then false else
-                  check_outref (Unix.gettimeofday ()))
-                ~on:(function
-                  | RingBuf.NoMoreRoom ->
-                    (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
-                    let now = Unix.gettimeofday () in
-                    (* Also check from time to time that we are still supposed to
-                     * write in there (we check right after the first error to
-                     * quickly detect it when a child disappear): *)
-                    if not (check_outref now) then false else (
-                      if now < !last_successful_output +. 15. then true else (
-                        (* At this point, we have been failing for more than 3s
-                         * for a child that's still in our out_ref, and should
-                         * consider quarantine for a bit: *)
-                        quarantine_delay := min 30. (10. +. !quarantine_delay *. 1.5) ;
-                        quarantine_until := now +. jitter !quarantine_delay ;
-                        !logger.error "Quarantining %s until %s"
-                          fname
-                          (string_of_time !quarantine_until) ;
-                        true))
-                  | _ -> false)
-                ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
-                (fun () ->
-                  match Hashtbl.find file_spec.RamenOutRef.channels dest_channel with
-                  | exception Not_found -> ()
-                  | t ->
-                      if not (RamenOutRef.timed_out !CodeGenLib_IO.now t)
-                      then (
-                        if !quarantine_until < !CodeGenLib_IO.now then (
-                          output rb tup_serializer tup_sizer
-                                 start_stop head tuple_opt ;
-                          last_successful_output := !CodeGenLib_IO.now ;
-                          if !quarantine_delay > 0. then (
-                            !logger.info "Resuming output to %s" fname ;
-                            quarantine_delay := 0.
-                          )
-                        ) else (
-                          !logger.debug "Skipping output to %s (quarantined)"
-                            fname
-                        ))) ()
-            in
-            Hashtbl.add out_h fname (rb, rb_writer)
-        ) to_open ;
-      (* Update the current list of outputers: *)
-      out_l := Hashtbl.values out_h /@ snd |> List.of_enum)
+      out_h :=
+        hashtbl_merge !out_h out_specs (fun fname prev new_ ->
+          match prev, new_ with
+          | None, Some file_spec ->
+              !logger.info "Mapping %S" fname ;
+              (match RingBuf.load fname with
+              | exception e ->
+                  !logger.error "Cannot open ringbuf %s: %s"
+                    fname (Printexc.to_string e) ;
+                  None
+              | rb ->
+                  (* Since we never output empty tuples (sersize_of_tuple would fail): *)
+                  assert (file_spec.RamenOutRef.field_mask <> []) ;
+                  Some {
+                    fname ; rb ;
+                    tup_serializer =
+                      serialize_tuple file_spec.RamenOutRef.field_mask ;
+                    tup_sizer =
+                      sersize_of_tuple file_spec.RamenOutRef.field_mask ;
+                    field_mask = file_spec.RamenOutRef.field_mask ;
+                    channels = file_spec.RamenOutRef.channels ;
+                    last_check_outref = Unix.gettimeofday () ;
+                    last_successful_output = 0. ;
+                    quarantine_until = 0. ;
+                    quarantine_delay = 0. ;
+                    rate_limit_log_writes = rate_limit 1 1. ;
+                    rate_limit_log_drops = rate_limit 1 1. })
+          | Some out_rb, None ->
+              !logger.info "Unmapping %S" fname ;
+              RingBuf.unload out_rb.rb ;
+              None
+          | Some out_rb, Some file_spec ->
+              (* Or the fname would have changed: *)
+              assert (file_spec.RamenOutRef.field_mask = out_rb.field_mask) ;
+              if out_rb.channels <> file_spec.RamenOutRef.channels then (
+                !logger.info "Updating %S" fname ;
+                out_rb.channels <- file_spec.RamenOutRef.channels) ;
+              out_rb.last_check_outref <- Unix.gettimeofday () ;
+              Some out_rb
+          | None, None -> assert false)) ;
+      out_rbs := Hashtbl.values !out_h |> List.of_enum
   in
   fun head tuple_opt ->
     let dest_channel = RingBufLib.channel_of_message_header head in
@@ -446,9 +476,10 @@ let outputer_of
           ) start_stop) ;
         start_stop
       | None -> None in
-    update_out_h () ;
-    List.iter (fun out ->
-      try out dest_channel start_stop head tuple_opt
+    update_out_rbs () ;
+    List.iter (fun out_rb ->
+      try rb_writer rb_ref_out_fname out_rb dest_channel start_stop head
+                    tuple_opt
       with
         (* It is OK, just skip it. Next tuple we will reread fnames
          * if it has changed. *)
@@ -456,7 +487,7 @@ let outputer_of
         (* retry_for_ringbuf failing because the recipient is no more in
          * our out_ref: *)
         | Exit -> ()
-    ) !out_l
+    ) !out_rbs
 
 type worker_conf =
   { log_level : log_level ;
@@ -1210,6 +1241,7 @@ let aggregate
       s
     in
     (* The event loop: *)
+    let rate_limit_log_reads = rate_limit 1 1. in
     let while_ () = !quit = None in
     let tuple_reader =
       match rb_ins with
@@ -1221,6 +1253,9 @@ let aggregate
           merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
                     merge_timeout read_tuple rb_ins
     and on_tup tx_size channel_id in_tuple merge_greatest =
+      if channel_id <> RamenChannel.live && rate_limit_log_reads () then
+        !logger.info "Read a tuple from channel %a"
+          RamenChannel.print channel_id ;
       with_state channel_id (fun s ->
         (* Set now and in.#count: *)
         CodeGenLib_IO.on_each_input_pre () ;
