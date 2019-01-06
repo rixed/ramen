@@ -36,7 +36,8 @@ type file_spec =
     channels : (RamenChannel.t, float) Hashtbl.t }
 
 let print_out_specs oc =
-  Hashtbl.print String.print (fun _oc _s -> ()) oc
+  Hashtbl.print String.print (fun oc s ->
+    Hashtbl.print RamenChannel.print Float.print oc s.channels) oc
 
 let string_of_field_mask mask =
   List.map (function true -> 'X' | false -> '_') mask |>

@@ -1865,3 +1865,7 @@ let hashtbl_merge h1 h2 f =
     | _ -> () (* done above *)
   ) h2 ;
   res
+
+let invalid_byte_for what x =
+  !logger.error "Invalid byte 0x%0xd for %s" x what ;
+  assert false

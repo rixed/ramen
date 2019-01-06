@@ -82,7 +82,8 @@ let rec emit_sersize_of_not_null_scalar tx_var offs_var oc = function
     Printf.fprintf oc "RingBuf.(rb_word_bytes + \
                          round_up_to_rb_word(\
                            match RingBuf.read_word %s %s with \
-                            0 -> %a | 1 -> %a | _ -> assert false))"
+                             0 -> %a | 1 -> %a \
+                           | x -> invalid_byte_for \"IP\" x))"
       tx_var offs_var
       emit_sersize_of_fixsz_typ TIpv4
       emit_sersize_of_fixsz_typ TIpv6
@@ -90,7 +91,8 @@ let rec emit_sersize_of_not_null_scalar tx_var offs_var oc = function
     Printf.fprintf oc "RingBuf.(rb_word_bytes + \
                          round_up_to_rb_word(\
                            match RingBuf.read_u8 %s %s |> Uint8.to_int with \
-                            4 -> %a | 6 -> %a | _ -> assert false))"
+                             4 -> %a | 6 -> %a \
+                           | x -> invalid_byte_for \"CIDR\" x))"
       tx_var offs_var
       emit_sersize_of_fixsz_typ TCidrv4
       emit_sersize_of_fixsz_typ TCidrv6
@@ -129,7 +131,7 @@ let rec emit_value_of_string typ oc var =
   match typ with
   | TVec (_, t) | TList t ->
       Printf.fprintf oc
-        "RamenHelpers.split_string ~sep:';' ~opn:'[' ~cls:']' %s |>\n\
+        "split_string ~sep:';' ~opn:'[' ~cls:']' %s |>\n\
          Array.map (fun x_ -> %a)"
         var
         (emit_value_of_string t.structure) "x_"
@@ -137,7 +139,7 @@ let rec emit_value_of_string typ oc var =
       (* FIXME: same as above re. [split_on_char]: *)
       Printf.fprintf oc
         "let s_ =\n\
-           RamenHelpers.split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
+           split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
          if Array.length s_ <> %d then failwith (\
            Printf.sprintf \"Bad arity for tuple %%s, expected %d items\" \
              %s) ;\n\
@@ -765,7 +767,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
       [Some TString, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
   | Finalize, StatelessFun1 (_, Strptime, e), TFloat ->
     emit_functionN ?state ~opc ~nullable ~impl_return_nullable:true
-      "(fun t_ -> RamenHelpers.time_of_abstime t_ |> nullable_of_option)"
+      "(fun t_ -> time_of_abstime t_ |> nullable_of_option)"
         [Some TString, PropagateNull] oc [e]
   | Finalize, StatelessFun1 (_, Variant, e), TString ->
     emit_functionN ?state ~opc ~nullable ~impl_return_nullable:true
@@ -804,7 +806,7 @@ and emit_expr_ ?state ~context ~opc oc expr =
     emit_functionN ?state ~opc ~nullable "CodeGenLib.hash"
       [None, PropagateNull] oc [e]
   | Finalize, StatelessFun1 (_, Sparkline, e), TString ->
-    emit_functionN ?state ~opc ~nullable "RamenHelpers.sparkline"
+    emit_functionN ?state ~opc ~nullable "sparkline"
       [Some (TVec (0, { structure = TFloat ; nullable = false })),
        PropagateNull] oc [e]
   | Finalize, StatelessFun1 (_, BeginOfRange, e), TIpv4 ->
@@ -1628,7 +1630,7 @@ and emit_functionNv ?impl_return_nullable ~nullable
 
 let emit_compute_nullmask_size oc ser_typ =
   Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
-  Printf.fprintf oc "\t\tRamenHelpers.list_fold_left2 (fun s nullable keep ->\n" ;
+  Printf.fprintf oc "\t\tlist_fold_left2 (fun s nullable keep ->\n" ;
   Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
   Printf.fprintf oc "\t\t\t%a\n"
     (List.print (fun oc field -> Bool.print oc field.typ.nullable))
@@ -2688,7 +2690,7 @@ let emit_parameters oc params =
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
       (id_of_prefix TupleParam) (RamenName.string_of_field p.ptyp.name)
       (if p.ptyp.typ.nullable then
-        "if RamenHelpers.looks_like_null x_ then Null else NotNull "
+        "if looks_like_null x_ then Null else NotNull "
        else "") (emit_value_of_string p.ptyp.typ.structure) "x_"
       (if p.ptyp.typ.nullable && p.value <> VNull
        then "NotNull " else "")
@@ -2728,6 +2730,7 @@ let emit_operation name func params_mod params oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
     open Batteries\n\
     open Stdint\n\
+    open RamenHelpers\n\
     open RamenNullable\n\
     open %s\n"
     (RamenName.string_of_func func.F.name)

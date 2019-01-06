@@ -272,7 +272,7 @@ let outputer_of
         let must_read =
           let t = mtime_of_file_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
-            if !last_mtime <> 0. && t > !last_mtime then
+            if !last_mtime <> 0. then
               !logger.info "Have to re-read %s" rb_ref_out_fname ;
             last_mtime := t ;
             true

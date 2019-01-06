@@ -5,7 +5,10 @@ open Batteries
 open RamenHelpers
 
 type t = int [@@ppp PPP_OCaml]
+
 let live = 0
+
+let print = Int.print
 
 (* TODO! *)
 let make _conf = Random.int 0xFFFF
