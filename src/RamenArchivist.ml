@@ -635,8 +635,8 @@ let get_stats ?while_ conf =
   | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
       update_worker_stats ?while_ conf
   | stat_file_age ->
-      if stat_file_age < age_of_file (C.running_config_file conf) ||
-         stat_file_age > max_archivist_stat_file_age
+      if stat_file_age > max_archivist_stat_file_age ||
+         stat_file_age > age_of_file (C.running_config_file conf)
       then
         update_worker_stats ?while_ conf) ;
   load_stats conf

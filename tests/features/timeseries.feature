@@ -6,6 +6,8 @@ Feature: test ramen tail
     Given ramen must be in the path
     And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
+    # Speed up reports so archivist do not have to wait for too long:
+    And the environment variable RAMEN_REPORT_PERIOD is set to 1
     # Create a simple sequence generator
     And a file test.ramen with content
       """
@@ -20,7 +22,8 @@ Feature: test ramen tail
     And test.ramen is compiled
     And ramen supervisor is started
     And program test is running
-    And I wait 3 second
+    And I wait 5 second
+    And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: I can obtain some values using timeseries.
     When I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test/ts v
