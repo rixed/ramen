@@ -346,6 +346,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         Printf.fprintf oc "(* Parameter values for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
+          open RamenHelpers\n\
           open RamenNullable\n"
           (RamenName.string_of_program program_name) ;
         CodeGen_OCaml.emit_parameters oc parsed_params) in
@@ -399,6 +400,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
+          open RamenHelpers\n\
           open RamenNullable\n\
           open %s\n\n"
           (RamenName.string_of_program program_name)
