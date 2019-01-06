@@ -271,7 +271,7 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
   (* Check that we are still supposed to write in there, but now
    * more frequently than once every 3 secs (how long we are
    * ready to block on a dead child): *)
-  let check_outref now =
+  let still_in_outref now =
     if now < out_rb.last_check_outref +. 3. then true else (
       out_rb.last_check_outref <- now ;
       RamenOutRef.mem rb_ref_out_fname out_rb.fname now)
@@ -288,8 +288,7 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
    * retrying to write to the same child. *)
   retry
     ~while_:(fun () ->
-      if !quit <> None then false else
-      check_outref (Unix.gettimeofday ()))
+      !quit = None && still_in_outref (Unix.gettimeofday ()))
     ~on:(function
       | RingBuf.NoMoreRoom ->
         !logger.debug "NoMoreRoom in %s" out_rb.fname ;
@@ -298,9 +297,9 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
         (* Also check from time to time that we are still supposed to
          * write in there (we check right after the first error to
          * quickly detect it when a child disappear): *)
-        if not (check_outref now) then false else (
-          if now < out_rb.last_successful_output +. 15. then true else (
-            (* At this point, we have been failing for more than 3s
+        still_in_outref now && (
+          now < out_rb.last_successful_output +. 5. || (
+            (* At this point, we have been failing for a good while
              * for a child that's still in our out_ref, and should
              * consider quarantine for a bit: *)
             out_rb.quarantine_delay <-
