@@ -604,7 +604,7 @@ let check_out_ref conf must_run running =
       let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
       List.iter (fun par_func ->
         let out_ref = C.out_ringbuf_names_ref conf par_func in
-        let outs = RamenOutRef.read out_ref in
+        let outs = RamenOutRef.read_live out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"

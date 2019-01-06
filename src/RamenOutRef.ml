@@ -80,6 +80,14 @@ let read fname =
         Some { field_mask = field_mask_of_string mask_str ; channels }
       else None))
 
+let read_live fname =
+  let h = read fname in
+  Hashtbl.filter_inplace (fun s ->
+    Hashtbl.filteri_inplace (fun c _t -> c = RamenChannel.live) s.channels ;
+    not (Hashtbl.is_empty s.channels)
+  ) h ;
+  h
+
 let add_ fname fd out_fname timeout chan field_mask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels chan timeout ;
