@@ -358,7 +358,7 @@ let outputer_of
           let t = mtime_of_file_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
             if !last_mtime <> 0. then
-              !logger.info "Have to re-read %s" rb_ref_out_fname ;
+              !logger.debug "Have to re-read %s" rb_ref_out_fname ;
             last_mtime := t ;
             true
           (* We have to reread the outref from time to time even if not
@@ -378,7 +378,7 @@ let outputer_of
     Option.may (fun out_specs ->
       if Hashtbl.is_empty out_specs then (
         if not (Hashtbl.is_empty !out_h) then (
-          !logger.info "OutRef is now empty!" ;
+          !logger.debug "OutRef is now empty!" ;
           Hashtbl.clear !out_h)
       ) else (
         if Hashtbl.is_empty !out_h then
@@ -414,14 +414,14 @@ let outputer_of
                     rate_limit_log_writes = rate_limit 1 1. ;
                     rate_limit_log_drops = rate_limit 1 1. })
           | Some out_rb, None ->
-              !logger.info "Unmapping %S" fname ;
+              !logger.debug "Unmapping %S" fname ;
               RingBuf.unload out_rb.rb ;
               None
           | Some out_rb, Some file_spec ->
               (* Or the fname would have changed: *)
               assert (file_spec.RamenOutRef.field_mask = out_rb.field_mask) ;
               if out_rb.channels <> file_spec.RamenOutRef.channels then (
-                !logger.info "Updating %S" fname ;
+                !logger.debug "Updating %S" fname ;
                 out_rb.channels <- file_spec.RamenOutRef.channels) ;
               out_rb.last_check_outref <- Unix.gettimeofday () ;
               Some out_rb
@@ -1254,7 +1254,7 @@ let aggregate
                     merge_timeout read_tuple rb_ins
     and on_tup tx_size channel_id in_tuple merge_greatest =
       if channel_id <> RamenChannel.live && rate_limit_log_reads () then
-        !logger.info "Read a tuple from channel %a"
+        !logger.debug "Read a tuple from channel %a"
           RamenChannel.print channel_id ;
       with_state channel_id (fun s ->
         (* Set now and in.#count: *)

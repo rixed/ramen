@@ -361,8 +361,8 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
                 let len = String.length contents in
                 single_write_substring fd contents 0 len |> ignore)) ())
   | FileTooSmall ->
-      (* Not my business, wait until the file length is at least that
-       * of contents, which realistically should not take more than 1s: *)
+      (* Not my business, wait until the file length is at least min_size,
+       * which realistically should not take more than 1s: *)
       let redo () =
         move_file_away fname ;
         ensure_file_exists ~contents ?min_size fname
