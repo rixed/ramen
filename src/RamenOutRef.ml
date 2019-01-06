@@ -61,11 +61,10 @@ let write_ fname fd c =
     ppp_to_fd out_ref_conf_ppp_ocaml fd c)
 
 let read_ =
-  let ppp_of_file = ppp_of_file out_ref_conf_ppp_ocaml in
+  let ppp_of_file = ppp_of_file ~default:"{}" out_ref_conf_ppp_ocaml in
   fun fname ->
-    ensure_file_exists ~contents:"{}" ~min_size:2 fname ;
-    fail_with_context ("Reading out_ref "^ fname) (fun () ->
-      ppp_of_file fname)
+    let c = "Reading out_ref "^ fname in
+    fail_with_context c (fun () -> ppp_of_file fname)
 
 let read fname =
   RamenAdvLock.with_r_lock fname (fun _fd ->

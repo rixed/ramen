@@ -66,12 +66,11 @@ let startup_time = ref (Unix.gettimeofday ())
  * there can be only one live alert per notification name. *)
 type alert_id = uint64 [@@ppp PPP_OCaml]
 
-let next_alert_id conf =
-  let fname = conf.C.persist_dir ^"/pending_alerts" in
-  ensure_file_exists ~min_size:1 ~contents:"0" fname ;
-  let get = ppp_of_file ~error_ok:true alert_id_ppp_ocaml in
-  fun () ->
-    let v = get fname in
+let next_alert_id =
+  let ppp_of_file = ppp_of_file ~default:"0" alert_id_ppp_ocaml in
+  fun conf ->
+    let fname = conf.C.persist_dir ^"/pending_alerts" in
+    let v = ppp_of_file fname in
     ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
     v
 
@@ -273,7 +272,7 @@ let make_task conf notif_conf start_notif schedule_time contact =
     status = StartToBeSent ;
     alert =
       { attempts = 0 ;
-        alert_id = next_alert_id conf () ;
+        alert_id = next_alert_id conf ;
         first_start_notif = start_notif ;
         last_start_notif = start_notif ;
         last_stop_notif = None ;
@@ -354,7 +353,7 @@ let save_pendings conf =
 
 let restore_pendings conf =
   let fname = C.pending_notifications_file conf in
-  (match ppp_of_file ~error_ok:true saved_pendings_ppp_ocaml fname with
+  (match ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
   | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
   | lst ->
       pendings.set <- PendingSet.of_list lst) ;
@@ -759,7 +758,7 @@ let start conf notif_conf_file rb max_fpr =
   let notif_conf = ref (load_config notif_conf_file) in
   restore_pendings conf ;
   (* Better check if we can draw a new alert_id before we need it: *)
-  let _alert_id = next_alert_id conf () in
+  let _alert_id = next_alert_id conf in
   Thread.create (
     restart_on_failure "send_notifications"
       (send_notifications max_fpr)) conf |> ignore ;

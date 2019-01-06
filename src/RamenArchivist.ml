@@ -102,8 +102,8 @@ let func_stats_empty () =
     parents = [] ; archives = [] ; is_running = false }
 
 let get_user_conf fname per_func_stats =
-  ensure_file_exists ~min_size:14 ~contents:"{size_limit=104857600}" fname ;
-  let user_conf = ppp_of_file user_conf_ppp_ocaml fname in
+  let default = "{size_limit=104857600}" in
+  let user_conf = ppp_of_file ~default user_conf_ppp_ocaml fname in
   (* In case no retention was provided, keep the roots for 10 minutes: *)
   if Hashtbl.length user_conf.retentions = 0 then (
     let save_short = { duration = 600. ; query_freq = 0.1 }
@@ -149,10 +149,10 @@ type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
 let stat_fname conf = conf_dir conf ^ "/stats"
 
 let load_stats =
-  let ppp_of_file = ppp_of_file per_func_stats_ser_ppp_ocaml in
+  let ppp_of_file =
+    ppp_of_file ~default:"{}" per_func_stats_ser_ppp_ocaml in
   fun conf ->
     let fname = stat_fname conf in
-    ensure_file_exists ~contents:"{}" fname ;
     RamenAdvLock.with_r_lock fname (fun _fd -> ppp_of_file fname)
 
 let save_stats conf stats =
@@ -531,10 +531,11 @@ let save_allocs conf allocs =
   let fname = conf_dir conf ^ "/allocs" in
   ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
 
-let load_allocs conf =
-  let fname = conf_dir conf ^ "/allocs" in
-  ensure_file_exists ~contents:"{}" fname ;
-  ppp_of_file per_func_allocs_ser_ppp_ocaml fname
+let load_allocs =
+  let ppp_of_file =
+    ppp_of_file ~default:"{}" per_func_allocs_ser_ppp_ocaml in
+  fun conf ->
+    conf_dir conf ^ "/allocs" |> ppp_of_file
 
 let update_storage_allocation conf =
   let open RamenSmtParser in

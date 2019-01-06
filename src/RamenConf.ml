@@ -277,10 +277,9 @@ let non_persisted_programs = ref (Hashtbl.create 11)
 let read_rc_file =
   let get fname =
     fail_with_context "Reading RC file"
-      (fun () -> ppp_of_file must_run_file_ppp_ocaml fname) in
+      (fun () -> ppp_of_file ~default:"{}" must_run_file_ppp_ocaml fname) in
   fun do_persist fname ->
     if do_persist then (
-      ensure_file_exists ~contents:"{}" ~min_size:2 fname ;
       get fname
     ) else !non_persisted_programs
 

@@ -1512,21 +1512,35 @@ let fail_with_context ctx f =
       ctx (Printexc.to_string e) |>
     failwith
 
-let ppp_of_file ?(error_ok=false) ppp =
+(* [default] replaces a missing _or_empty_ file. *)
+let ppp_of_file ?default ppp =
   let reread fname =
+    let from_string s =
+      let c = "parsing default value for file "^ fname ^": "^ s in
+      fail_with_context c (fun () -> PPP.of_string_exc ppp s)
+    and from_in ic =
+      finally
+        (fun () -> Legacy.close_in ic)
+        (fun ic ->
+          fail_with_context ("parsing file "^ fname)
+            (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
     !logger.debug "Have to reread %S" fname ;
     let openflags = [ Open_rdonly; Open_text ] in
     match Legacy.open_in_gen openflags 0o644 fname with
     | exception e ->
-        (if error_ok then !logger.debug else !logger.warning)
-          "Cannot open %S for reading: %s" fname (Printexc.to_string e) ;
-        raise e
+        (match default with
+        | None ->
+            !logger.warning "Cannot open %S for reading: %s"
+              fname (Printexc.to_string e) ;
+            raise e
+        | Some d -> from_string d)
     | ic ->
-        finally
-          (fun () -> Legacy.close_in ic)
-          (fun ic ->
-            fail_with_context ("parsing file "^ fname)
-              (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
+        (match default with
+        | Some d ->
+            let fd = Legacy.Unix.descr_of_in_channel ic in
+            let s = BatUnix.(restart_on_EINTR fstat fd) in
+            if s.st_size = 0 then from_string d else from_in ic
+        | None -> from_in ic) in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_of_file_def 0.)
 
