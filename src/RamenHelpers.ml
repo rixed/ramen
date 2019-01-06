@@ -254,10 +254,13 @@ let mkdir_all ?(is_file=false) dir =
     ) in
   ensure_exist dir
 
+let safe_stat fname =
+  BatUnix.(restart_on_EINTR stat fname)
+
 type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
 let file_check ?(min_size=0) ?(has_perms=0) fname =
   let open Unix in
-  match stat fname with
+  match safe_stat fname with
   | exception _ ->
     (* Be it the file or a directory, or a permission issue, we consider the
      * file to be missing: *)
@@ -270,9 +273,8 @@ let file_check ?(min_size=0) ?(has_perms=0) fname =
 let file_exists fname = file_check fname = FileOk
 
 let file_size fname =
-  let open Unix in
-  let s = stat fname in
-  s.st_size
+  let s = safe_stat fname in
+  s.Unix.st_size
 
 let is_empty_file fname =
   file_size fname = 0
@@ -305,9 +307,8 @@ let rec rm_rf fname =
     safe_fileop Unix.rmdir fname)
 
 let mtime_of_file fname =
-  let open Unix in
-  let s = stat fname in
-  s.st_mtime
+  let s = safe_stat fname in
+  s.Unix.st_mtime
 
 let mtime_of_file_def default fname =
   try mtime_of_file fname
