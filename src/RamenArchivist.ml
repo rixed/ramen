@@ -148,10 +148,12 @@ type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
 
 let stat_fname conf = conf_dir conf ^ "/stats"
 
-let load_stats conf =
-  let fname = stat_fname conf in
-  ensure_file_exists ~contents:"{}" fname ;
-  RamenAdvLock.with_r_lock fname (ppp_of_fd per_func_stats_ser_ppp_ocaml)
+let load_stats =
+  let ppp_of_file = ppp_of_file per_func_stats_ser_ppp_ocaml in
+  fun conf ->
+    let fname = stat_fname conf in
+    ensure_file_exists ~contents:"{}" fname ;
+    RamenAdvLock.with_r_lock fname (fun _fd -> ppp_of_file fname)
 
 let save_stats conf stats =
   let fname = stat_fname conf in

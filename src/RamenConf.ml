@@ -275,12 +275,14 @@ type must_run_file = (RamenName.program, must_run_entry) Hashtbl.t
 let non_persisted_programs = ref (Hashtbl.create 11)
 
 let read_rc_file =
-  let get fd =
+  let get fname =
     fail_with_context "Reading RC file"
-      (fun () -> ppp_of_fd ~default:"{}" must_run_file_ppp_ocaml fd) in
-  fun do_persist fd ->
-    if do_persist then get fd
-    else !non_persisted_programs
+      (fun () -> ppp_of_file must_run_file_ppp_ocaml fname) in
+  fun do_persist fname ->
+    if do_persist then (
+      ensure_file_exists ~contents:"{}" ~min_size:2 fname ;
+      get fname
+    ) else !non_persisted_programs
 
 let save_rc_file do_persist fd rc =
   if do_persist then
@@ -297,9 +299,9 @@ let program_of_running_entry program_name mre =
  * Modifications will not be saved. *)
 let with_rlock conf f =
   let rc_file = running_config_file conf in
-  RamenAdvLock.with_r_lock rc_file (fun fd ->
+  RamenAdvLock.with_r_lock rc_file (fun _fd ->
     let programs =
-      read_rc_file conf.do_persist fd |>
+      read_rc_file conf.do_persist rc_file |>
       Hashtbl.map (fun pn mre ->
         mre,
         memoize (fun () -> program_of_running_entry pn mre)) in
@@ -308,7 +310,7 @@ let with_rlock conf f =
 let with_wlock conf f =
   let rc_file = running_config_file conf in
   RamenAdvLock.with_w_lock rc_file (fun fd ->
-    let programs = read_rc_file conf.do_persist fd in
+    let programs = read_rc_file conf.do_persist rc_file in
     let ret = f programs in
     (* Save the config only if f did not fail: *)
     save_rc_file conf.do_persist fd programs ;

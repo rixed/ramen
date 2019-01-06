@@ -1511,17 +1511,6 @@ let fail_with_context ctx f =
       ctx (Printexc.to_string e) |>
     failwith
 
-let ppp_of_fd ?(default="") ppp =
-  let reread fd =
-    !logger.debug "Have to reread PPP from filedescr" ;
-    Unix.(lseek fd 0 SEEK_SET) |> ignore ;
-    let str = read_whole_fd fd in
-    let str = if str = "" then default else str in
-    fail_with_context "parsing a file descriptor"
-      (fun () -> PPP.of_string_exc ppp str) in
-  let cache_name = "ppp_of_fd ("^ (ppp ()).descr 0 ^")" in
-  cached cache_name reread (mtime_of_fd_def 0.)
-
 let ppp_of_file ?(error_ok=false) ppp =
   let reread fname =
     !logger.debug "Have to reread %S" fname ;
