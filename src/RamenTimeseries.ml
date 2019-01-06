@@ -238,5 +238,10 @@ let possible_values conf ?since ?until func factor =
       then Some (dir ^"/"^ fname) else None
     with (Not_found | Failure _) -> None) |>
   Enum.fold (fun s fname ->
-    let s' = RamenAdvLock.with_r_lock fname marshal_from_fd in
+    let s' =
+      try RamenAdvLock.with_r_lock fname marshal_from_fd
+      with e ->
+        !logger.error "Cannot unmarshal from file %s: %s"
+          fname (Printexc.to_string e) ;
+        Set.empty in
     Set.union s s') Set.empty

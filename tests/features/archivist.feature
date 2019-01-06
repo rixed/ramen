@@ -25,8 +25,8 @@ Feature: test the archivist
     And I run ramen with arguments archivist
     And I run cat with arguments ramen_dir/archivist/v1/allocs
     Then cat must mention ""test/r0" => 0"
-    And cat must mention ""test/s0" => 52428800"
-    And cat must mention ""test/s1" => 52428800"
+    And cat must mention ""test/s0" => 536870912"
+    And cat must mention ""test/s1" => 536870912"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s0/*/out_ref
     Then cat must mention "archive.b"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s1/*/out_ref
