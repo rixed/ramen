@@ -433,6 +433,7 @@ let factors_of_function conf func =
   let sign = type_signature_hash func.Func.out_type in
   conf.persist_dir ^"/workers/factors/"
                    ^ RamenVersions.factors
+                   ^"/"^ Config.version
                    ^"/"^ Func.path func
                    (* arc extension for the GC. FIXME *)
                    ^"/"^ sign ^".arc"
