@@ -589,7 +589,7 @@ let check_out_ref conf must_run running =
      * ringbuf not in this set: *)
     if proc.pid <> None then (
       let out_ref = C.out_ringbuf_names_ref conf proc.func in
-      let outs = RamenOutRef.read out_ref in
+      let outs = RamenOutRef.read_live out_ref in
       Hashtbl.iter (fun fname _ ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
