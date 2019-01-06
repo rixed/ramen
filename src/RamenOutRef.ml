@@ -88,15 +88,15 @@ let add_ fname fd out_fname timeout chan field_mask =
     with Sys_error _ ->
       Hashtbl.create 1
     in
-  let rewrite () =
+  let rewrite file_spec =
     Hashtbl.replace h out_fname file_spec ;
     write_ fname fd h ;
     !logger.debug "Adding %s to %s" out_fname fname in
   match Hashtbl.find h out_fname with
-  | exception Not_found -> rewrite ()
+  | exception Not_found -> rewrite file_spec
   | prev_spec ->
     let file_spec = combine_specs prev_spec file_spec in
-    if prev_spec <> file_spec then rewrite ()
+    if prev_spec <> file_spec then rewrite file_spec
 
 let add fname ?(timeout=0.) ?(channel=RamenChannel.live) out_fname
         field_mask =
