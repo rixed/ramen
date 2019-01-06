@@ -102,11 +102,11 @@ let func_stats_empty () =
     parents = [] ; archives = [] ; is_running = false }
 
 let get_user_conf fname per_func_stats =
-  let default = "{size_limit=104857600}" in
+  let default = "{size_limit=1073741824}" in
   let user_conf = ppp_of_file ~default user_conf_ppp_ocaml fname in
-  (* In case no retention was provided, keep the roots for 10 minutes: *)
+  (* In case no retention was provided, keep the roots for 1 hour: *)
   if Hashtbl.length user_conf.retentions = 0 then (
-    let save_short = { duration = 600. ; query_freq = 0.1 }
+    let save_short = { duration = 3600. ; query_freq = 0.1 }
     and no_save = { duration = 0. ; query_freq = 0. } in
     (* Empty configuration: save the roots for 10 minutes. *)
     if Hashtbl.length per_func_stats = 0 then
