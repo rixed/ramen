@@ -565,12 +565,20 @@ let marshal_into_fd fd v =
     lseek fd 0 SEEK_SET |> ignore ;
     write fd bytes 0 len) () |> ignore
 
-let marshal_from_fd fd =
+let marshal_from_fd ?default fname fd =
   let open Unix in
   (* Useful log statement in case the GC crashes right away: *)
-  !logger.debug "Retrieving marshaled value from file" ;
-  let bytes = read_whole_fd fd in
-  Marshal.from_string bytes 0
+  !logger.debug "Retrieving marshaled value from file %s" fname ;
+  try
+    let bytes = read_whole_fd fd in
+    Marshal.from_string bytes 0
+  with e ->
+    (match default with
+    | None -> raise e
+    | Some d ->
+        !logger.error "Cannot unmarshal from file %s: %s"
+          fname (Printexc.to_string e) ;
+        d)
 
 let same_files a b =
   let same_file_size () =

@@ -30,7 +30,7 @@ let create_or_read fname v =
   let init_restore () =
     !logger.debug "Will have my state in file %s" fname ;
     let fd = openfile fname [O_RDWR] 0o640 in
-    fd, marshal_from_fd fd
+    fd, marshal_from_fd fname fd
   and init_create () =
     let fd = openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
     marshal_into_fd fd v ;
