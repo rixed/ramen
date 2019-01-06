@@ -190,33 +190,34 @@ let possible_values_empty =
     fname = "" ; values = Set.empty }
 
 let save_possible_values prev_fname pvs =
-    (* We are going to write a new file and delete the former one.
-     * We only need a lock when that's the same file. *)
-    let do_write fd = marshal_into_fd fd pvs.values in
-    if prev_fname = pvs.fname then (
-      !logger.debug "Updating index %s" prev_fname ;
-      RamenAdvLock.with_w_lock prev_fname do_write
-    ) else (
-      !logger.debug "Creating new index %s" pvs.fname ;
-      mkdir_all ~is_file:true pvs.fname ;
-      let flags = Unix.[ O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC ] in
-      (match Unix.openfile pvs.fname flags 0o644 with
-      | exception Unix.(Unix_error (EEXIST, _, _)) ->
-          (* Although we though we would create a new file for a singleton,
-           * it turns out this file exists already. This could happen when
-           * event time goes back and forth, which is allowed. So we have
-           * to merge the indices now: *)
-          !logger.warning "Stumbled upon preexisting index %s, merging..."
-            pvs.fname ;
-          RamenAdvLock.with_w_lock pvs.fname (fun fd ->
-            let prev_set = marshal_from_fd fd in
-            let s = Set.union prev_set pvs.values in
-            (* Keep past values for the next write: *)
-            pvs.values <- s ;
-            do_write fd)
-      | fd -> do_write fd) ;
-      if prev_fname <> "" then
-        log_and_ignore_exceptions safe_unlink prev_fname)
+  (* We are going to write a new file and delete the former one.
+   * We only need a lock when that's the same file. *)
+  let do_write fd = marshal_into_fd fd pvs.values in
+  if prev_fname = pvs.fname then (
+    !logger.debug "Updating index %s" prev_fname ;
+    RamenAdvLock.with_w_lock prev_fname do_write
+  ) else (
+    !logger.debug "Creating new index %s" pvs.fname ;
+    mkdir_all ~is_file:true pvs.fname ;
+    let flags = Unix.[ O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC ] in
+    (match Unix.openfile pvs.fname flags 0o644 with
+    | exception Unix.(Unix_error (EEXIST, _, _)) ->
+        (* Although we though we would create a new file for a singleton,
+         * it turns out this file exists already. This could happen when
+         * event time goes back and forth, which is allowed. So we have
+         * to merge the indices now: *)
+        !logger.warning "Stumbled upon preexisting index %s, merging..."
+          pvs.fname ;
+        RamenAdvLock.with_w_lock pvs.fname (fun fd ->
+          let prev_set : RamenTypes.value Set.t =
+            marshal_from_fd ~default:Set.empty pvs.fname fd in
+          let s = Set.union prev_set pvs.values in
+          (* Keep past values for the next write: *)
+          pvs.values <- s ;
+          do_write fd)
+    | fd -> do_write fd) ;
+    if prev_fname <> "" then
+      log_and_ignore_exceptions safe_unlink prev_fname)
 
 
 (* Helpers *)
