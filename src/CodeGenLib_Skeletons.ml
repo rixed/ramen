@@ -316,7 +316,7 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
-            !logger.warning "Drop a tuple for %s unknown channel %a"
+            !logger.debug "Drop a tuple for %s unknown channel %a"
               out_rb.fname RamenChannel.print dest_channel ;
       | t ->
           if not (RamenOutRef.timed_out !CodeGenLib_IO.now t) then (
@@ -332,7 +332,7 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
                 out_rb.fname)
           ) else (
             if out_rb.rate_limit_log_drops () then
-              !logger.warning "Drop a tuple for %s outdated channel %a"
+              !logger.debug "Drop a tuple for %s outdated channel %a"
                 out_rb.fname RamenChannel.print dest_channel
           )) ()
 
@@ -390,7 +390,7 @@ let outputer_of
         hashtbl_merge !out_h out_specs (fun fname prev new_ ->
           match prev, new_ with
           | None, Some file_spec ->
-              !logger.info "Mapping %S" fname ;
+              !logger.debug "Mapping %S" fname ;
               (match RingBuf.load fname with
               | exception e ->
                   !logger.error "Cannot open ringbuf %s: %s"
