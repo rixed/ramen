@@ -50,3 +50,19 @@ Feature: test ramen tail
     And ramen must mention "<NULL>"
     And ramen must not mention ",0"
     And ramen must exit gracefully.
+
+  Scenario: Can extract a time series even when time is inferred from parent.
+    Given a file test2.ramen with content
+      """
+      define f as
+        select start as my_start, stop as my_stop, v
+        from test/ts;
+      """
+    And test2.ramen is compiled
+    And program test2 is running
+    And I wait 5 second
+    And I run ramen with arguments archivist --no-allocs --no-reconf
+    And I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test2/f v
+    Then ramen must print 5 lines on stdout
+    And ramen must mention "42"
+    And ramen must exit with status 0.

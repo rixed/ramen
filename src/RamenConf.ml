@@ -34,7 +34,7 @@ struct
        * ancestor stored history: *)
       persistent : bool ;
       doc : string ;
-      operation : RamenOperation.t ;
+      mutable operation : RamenOperation.t ;
       in_type : RamenTuple.typ ;
       (* In the order the user want them: *)
       mutable out_type : RamenTuple.typ ;

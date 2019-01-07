@@ -336,6 +336,13 @@ let event_time_of_operation op =
   if event_time <> None then event_time else
   event_time_from_fields fields
 
+let operation_with_event_time op event_time = match op with
+  | Aggregate s -> Aggregate { s with event_time }
+  | ReadCSVFile s -> ReadCSVFile { s with event_time }
+  | ListenFor _ -> op
+  | Instrumentation _ -> op
+  | Notifications _ -> op
+
 let func_id_of_data_source = function
   | NamedOperation id -> id
   | SubQuery _
@@ -360,6 +367,13 @@ let factors_of_operation = function
       else RamenProtocols.factors_of_proto proto
   | Instrumentation _ -> RamenBinocle.factors
   | Notifications _ -> RamenNotification.factors
+
+let operation_with_factors op factors = match op with
+  | ReadCSVFile s -> ReadCSVFile { s with factors }
+  | Aggregate s -> Aggregate { s with factors }
+  | ListenFor s -> ListenFor { s with factors }
+  | Instrumentation _ -> op
+  | Notifications _ -> op
 
 (* Return the (likely) untyped output tuple *)
 let out_type_of_operation ~with_private = function

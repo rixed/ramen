@@ -137,6 +137,8 @@ let finalize_func parents params func =
   if parents <> [] && func.event_time = None then (
     func.event_time <-
       infer_event_time func (List.hd parents) ;
+    func.operation <-
+      RamenOperation.operation_with_event_time func.operation func.event_time ;
     if func.event_time <> None then
       !logger.debug "Function %s can reuse event time from parents"
         (RamenName.string_of_func func.name)
@@ -144,6 +146,8 @@ let finalize_func parents params func =
   if parents <> [] && func.factors = [] then (
     func.factors <-
       infer_factors func (List.hd parents).factors ;
+    func.operation <-
+      RamenOperation.operation_with_factors func.operation func.factors ;
     if func.factors <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
         RamenName.func_print func.name
