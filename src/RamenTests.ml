@@ -386,14 +386,16 @@ let check_test_spec conf test =
               (RamenName.program_color pn) |>
             failwith ;
         | func ->
+            let out_type =
+              RamenOperation.out_type_of_operation func.F.operation in
             Hashtbl.iter (fun field_name _ ->
               if not (List.exists (fun ft ->
                         ft.RamenTuple.name = field_name
-                      ) func.F.out_type) then
+                      ) out_type) then
                 Printf.sprintf2 "Unknown field %a in %a (have %a)"
                   RamenName.field_print field_name
                   RamenName.fq_print (RamenName.fq pn fn)
-                  RamenTuple.print_typ_names func.F.out_type |>
+                  RamenTuple.print_typ_names out_type |>
                 failwith
             ) tuple))
 

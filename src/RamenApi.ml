@@ -131,8 +131,10 @@ let get_tables conf msg =
       | exception _ -> ()
       | prog ->
           List.iter (fun f ->
-            let fqn = RamenName.string_of_fq (F.fq_name f) in
-            if f.F.event_time <> None && String.starts_with fqn req.prefix
+            let fqn = RamenName.string_of_fq (F.fq_name f)
+            and event_time =
+              RamenOperation.event_time_of_operation f.F.operation in
+            if event_time <> None && String.starts_with fqn req.prefix
             then Hashtbl.add tables fqn f.F.doc
           ) prog.P.funcs
     ) programs) ;
@@ -274,18 +276,20 @@ let units_of_column ft =
 let columns_of_func conf func =
   let h = Hashtbl.create 11 in
   let group_keys = group_keys_of_operation func.F.operation in
+  RamenOperation.out_type_of_operation func.F.operation |>
   List.iter (fun ft ->
     if not (RamenName.is_private ft.RamenTuple.name) then
       let type_ = ext_type_of_typ ft.typ.structure in
       if type_ <> Other then
+        let factors =
+          RamenOperation.factors_of_operation func.operation in
         Hashtbl.add h ft.name {
           type_ = string_of_ext_type type_ ;
           units = units_of_column ft ;
           doc = ft.doc ;
-          factor = List.mem ft.name func.F.factors ;
+          factor = List.mem ft.name factors ;
           group_key = List.mem ft.name group_keys ;
-          alerts = alerts_of_column conf func ft.name }
-  ) func.F.out_type ;
+          alerts = alerts_of_column conf func ft.name }) ;
   h
 
 let columns_of_table conf table =
@@ -386,7 +390,9 @@ let get_timeseries conf msg =
                          RamenName.string_of_field where.lhs) ;
           let open RamenSerialization in
           try
-            let _, ftyp = find_field func.F.out_type where.lhs in
+            let out_type =
+              RamenOperation.out_type_of_operation func.F.operation in
+            let _, ftyp = find_field out_type where.lhs in
             let v = value_of_string ftyp.typ where.rhs in
             (where.lhs, where.op, v) :: filters
           with Failure msg -> bad_request msg
@@ -479,7 +485,8 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table programs table in
   try
-    List.find (fun t -> t.name = column) func.F.out_type
+    RamenOperation.out_type_of_operation func.F.operation |>
+    List.find (fun t -> t.name = column)
   with Not_found ->
     Printf.sprintf "No column %s in table %s"
       (RamenName.string_of_field column) table |>
@@ -712,7 +719,8 @@ let set_alerts conf msg =
             bad_request ;
           (* Also check that table has event time info: *)
           let func = func_of_table programs table in
-          if func.event_time = None then
+          if RamenOperation.event_time_of_operation func.F.operation = None
+          then
             Printf.sprintf "Table %s has no event time information" table |>
             bad_request) ;
         (* We receive only the latest version: *)

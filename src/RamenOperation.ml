@@ -376,7 +376,7 @@ let operation_with_factors op factors = match op with
   | Notifications _ -> op
 
 (* Return the (likely) untyped output tuple *)
-let out_type_of_operation ~with_private = function
+let out_type_of_operation ?(with_private=false) = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ;
       List.fold_left (fun lst sf ->

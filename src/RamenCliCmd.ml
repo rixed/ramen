@@ -740,10 +740,13 @@ let timerange conf fq () =
       (* We need the func to know its buffer location.
        * Nothing better to do in case of error than to exit. *)
       let bname = C.archive_buf_name conf func in
-      let typ = func.F.out_type in
+      let typ =
+        RamenOperation.out_type_of_operation func.F.operation in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
       let params = prog.P.params in
-      RamenSerialization.time_range bname ser params func.F.event_time
+      let event_time =
+        RamenOperation.event_time_of_operation func.operation in
+      RamenSerialization.time_range bname ser params event_time
     in
     match mi_ma with
       | None -> Printf.printf "No time info or no output yet.\n"

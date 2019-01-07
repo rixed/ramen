@@ -33,6 +33,7 @@ let forwarded_field_or_param parent func field = function
 let infer_event_time func parent =
   let open RamenEventTime in
   try
+    RamenOperation.event_time_of_operation parent.F.operation |>
     Option.map (function ((f1, f1_src, f1_scale), duration) ->
       (forwarded_field_or_param parent func f1 !f1_src, f1_src, f1_scale),
       try
@@ -43,8 +44,7 @@ let infer_event_time func parent =
         | StopField (f2, f2_src, f2_scale) ->
             StopField (forwarded_field_or_param parent func f2 !f2_src, f2_src, f2_scale)
       with Not_found ->
-        DurationConst 0.
-    ) parent.event_time
+        DurationConst 0.)
   with Not_found -> None
 
 let infer_factors func =
@@ -60,9 +60,9 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
+        RamenOperation.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
-          ft.RamenTuple.name = alias
-        ) func.F.out_type in
+          ft.RamenTuple.name = alias) in
       ft.doc <- doc)
   and set_aggr alias aggr =
     if aggr <> None then (
@@ -70,9 +70,9 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
+        RamenOperation.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
-          ft.RamenTuple.name = alias
-        ) func.F.out_type in
+          ft.RamenTuple.name = alias) in
       ft.aggr <- aggr)
   in
   match func.F.operation with
@@ -83,9 +83,9 @@ let infer_field_doc_aggr func parents params =
             expr = Expr.Field (_, { contents = TupleIn }, fn) }
             when doc = "" || aggr = None ->
             (* Look for this field fn in parent: *)
-            (match List.find (fun ft ->
-                     ft.RamenTuple.name = fn
-                   ) (List.hd parents).F.out_type with
+            let out_type = (List.hd parents).F.operation |>
+                           RamenOperation.out_type_of_operation in
+            (match List.find (fun ft -> ft.RamenTuple.name = fn) out_type with
             | exception Not_found -> ()
             | psf ->
                 if doc = "" then set_doc alias psf.doc ;
@@ -134,24 +134,28 @@ let finalize_func parents params func =
    * here) (TODO: consider all of them until event time can be inferred
    * from one): *)
   let parents = Hashtbl.find_default parents func.F.name [] in
-  if parents <> [] && func.event_time = None then (
-    func.event_time <-
-      infer_event_time func (List.hd parents) ;
+  if parents <> [] &&
+     RamenOperation.event_time_of_operation func.operation = None
+  then (
+    let inferred = infer_event_time func (List.hd parents) in
     func.operation <-
-      RamenOperation.operation_with_event_time func.operation func.event_time ;
-    if func.event_time <> None then
+      RamenOperation.operation_with_event_time func.operation inferred ;
+    if inferred <> None then
       !logger.debug "Function %s can reuse event time from parents"
         (RamenName.string_of_func func.name)
   ) ;
-  if parents <> [] && func.factors = [] then (
-    func.factors <-
-      infer_factors func (List.hd parents).factors ;
+  if parents <> [] &&
+     RamenOperation.factors_of_operation func.operation = []
+  then (
+    let inferred =
+      RamenOperation.factors_of_operation (List.hd parents).operation |>
+      infer_factors func in
     func.operation <-
-      RamenOperation.operation_with_factors func.operation func.factors ;
-    if func.factors <> [] then
+      RamenOperation.operation_with_factors func.operation inferred ;
+    if inferred <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
         RamenName.func_print func.name
-        (List.print RamenName.field_print) func.factors
+        (List.print RamenName.field_print) inferred
   ) ;
   if parents <> [] then (
     infer_field_doc_aggr func parents params ;
@@ -161,9 +165,8 @@ let finalize_func parents params func =
    * [RamenOperation.check] to give us chance to infer the event time
    * definition: *)
   if RamenOperation.use_event_time func.operation &&
-     func.event_time = None
+     RamenOperation.event_time_of_operation func.operation = None
   then
      failwith "Cannot use #start/#stop without event time" ;
   (* Seal everything: *)
-  let op_str = IO.to_string RamenOperation.print func.F.operation in
-  func.F.signature <- F.signature func op_str params
+  func.F.signature <- F.signature func params

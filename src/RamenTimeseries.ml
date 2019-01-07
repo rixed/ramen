@@ -222,7 +222,9 @@ let possible_values conf ?since ?until func factor =
   !logger.debug "Retrieving possible values for factor %a of %a"
     RamenName.field_print factor
     RamenName.func_print func.F.name ;
-  if not (List.mem factor func.F.factors) then
+  let factors =
+    RamenOperation.factors_of_operation func.F.operation in
+  if not (List.mem factor factors) then
     invalid_arg "get_possible_values: not a factor" ;
   let dir =
     C.factors_of_function conf func

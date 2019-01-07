@@ -1280,7 +1280,8 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
               RamenName.func_print pfunc.F.name
               what
               RamenName.field_print field_name
-              RamenTuple.print_typ_names pfunc.F.out_type |>
+              RamenTuple.print_typ_names
+                (RamenOperation.out_type_of_operation pfunc.F.operation) |>
             failwith
           and aggr_types pfunc t prev =
             let fn = pfunc.F.name in
@@ -1331,7 +1332,8 @@ let emit_input_fields oc tuple_sizes parents params condition funcs =
               ) else (
                 (* External parent: look for the exact type: *)
                 let pser =
-                  RingBufLib.ser_tuple_typ_of_tuple_typ pfunc.F.out_type in
+                  RamenOperation.out_type_of_operation pfunc.F.operation |>
+                  RingBufLib.ser_tuple_typ_of_tuple_typ in
                 match List.find (fun fld ->
                         fld.RamenTuple.name = field_name
                       ) pser with
@@ -1519,7 +1521,7 @@ let used_tuple_sizes funcs parents =
         match ft.RamenTuple.typ.structure with
         | TTuple ts -> Set.Int.add (Array.length ts) s
         | _ -> s
-      ) s f.F.out_type
+      ) s (RamenOperation.out_type_of_operation f.F.operation)
     ) s fs
   ) parents tuple_sizes
 
@@ -1573,6 +1575,7 @@ let get_types parents condition funcs params fname =
  * expression. *)
 let set_io_tuples parents funcs h =
   let set_output func =
+    RamenOperation.out_type_of_operation func.F.operation |>
     List.iter (fun ft ->
       if not (RamenTypes.is_typed ft.RamenTuple.typ.structure) then (
         match func.F.operation with
@@ -1593,8 +1596,7 @@ let set_io_tuples parents funcs h =
                   RamenName.field_print ft.name
                   RamenTypes.print_typ typ ;
                 ft.typ <- typ)
-        | _ -> assert false)
-    ) func.out_type
+        | _ -> assert false))
   and set_input func =
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun ft ->
@@ -1609,7 +1611,8 @@ let set_io_tuples parents funcs h =
          * same type. Copy from the first parent: *)
         let parent = List.hd parents in
         let pser =
-          RingBufLib.ser_tuple_typ_of_tuple_typ parent.F.out_type in
+          RamenOperation.out_type_of_operation parent.F.operation |>
+          RingBufLib.ser_tuple_typ_of_tuple_typ in
         match List.find_map (fun pft ->
                 if pft.RamenTuple.name = ft.name then
                   Some pft.typ

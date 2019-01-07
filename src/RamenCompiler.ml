@@ -108,12 +108,9 @@ let compile conf get_parent ~exec_file source_file program_name =
             doc = parsed_func.doc ;
             operation = op ;
             in_type = in_type_of_operation op ;
-            out_type = out_type_of_operation ~with_private:true op ;
             signature = "" ;
             parents = parents_of_operation op ;
             merge_inputs = is_merging op ;
-            event_time = event_time_of_operation op ;
-            factors = factors_of_operation op ;
             envvars = envvars_of_operation op } in
       let fq_name = RamenName.fq program_name name in
       Hashtbl.add compiler_funcs fq_name me_func
@@ -194,14 +191,17 @@ let compile conf get_parent ~exec_file source_file program_name =
       !logger.debug "Looking for units of output field %a in %S"
         RamenName.field_print name
         (RamenName.string_of_func func.F.name) ;
+      let out_type =
+        RamenOperation.out_type_of_operation ~with_private:true
+                                             func.F.operation in
       match List.find (fun ft ->
               ft.RamenTuple.name = name
-            ) func.F.out_type with
+            ) out_type with
         | exception Not_found ->
             !logger.error "In function %a: no such input field %a (have %a)"
               RamenName.func_print func.F.name
               RamenName.field_print name
-              RamenTuple.print_typ_names func.F.out_type ;
+              RamenTuple.print_typ_names out_type ;
             None
         | ft ->
             !logger.debug "found typed units: %a"
@@ -257,12 +257,15 @@ let compile conf get_parent ~exec_file source_file program_name =
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
       if changed then (
+        let out_type =
+          RamenOperation.out_type_of_operation ~with_private:true
+                                               func.F.operation in
         match func.F.operation with
         | RamenOperation.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
               let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
               if units <> None then
-                patch_typ sf.alias units func.F.out_type
+                patch_typ sf.alias units out_type
             ) fields
         | _ -> ()) ;
       changed
@@ -407,13 +410,6 @@ let compile conf get_parent ~exec_file source_file program_name =
           params_mod_name ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition oc params condition ;
-        (* Chop off private fields: *)
-        Hashtbl.iter (fun _ func ->
-          func.F.out_type <-
-            List.filter (fun ft ->
-              not (RamenName.is_private ft.RamenTuple.name)
-            ) func.F.out_type
-        ) compiler_funcs ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. We

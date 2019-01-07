@@ -127,12 +127,16 @@ let fix_quote s =
 (* Given a func, returns the tree_enum of fields that are not factors and
  * numeric *)
 let tree_enum_of_fields only_num_fields func =
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  let factors =
+    RamenOperation.factors_of_operation func.F.operation in
+  let ser =
+    RamenOperation.out_type_of_operation func.F.operation |>
+    RingBufLib.ser_tuple_typ_of_tuple_typ in
   E (List.filter_map (fun ft ->
        let n = ft.RamenTuple.name in
        if (not only_num_fields ||
            RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
-          not (List.mem n func.F.factors)
+          not (List.mem n factors)
        then
          Some ({ value = RamenName.string_of_field n ;
                  section = DataField }, E [])
@@ -178,9 +182,13 @@ let tree_enum_of_program
       conf ?since ?until ~only_with_event_time ~only_num_fields prog =
   E (
     List.filter_map (fun func ->
-      if only_with_event_time && func.F.event_time = None then None else
+      if only_with_event_time &&
+         RamenOperation.event_time_of_operation func.F.operation = None
+      then None else
+        let factors =
+          RamenOperation.factors_of_operation func.F.operation in
         let sub_tree =
-          tree_enum_of_factors conf ?since ?until only_num_fields func func.F.factors in
+          tree_enum_of_factors conf ?since ?until only_num_fields func factors in
         if tree_enum_is_empty sub_tree then None else
           Some (
             let value = RamenName.string_of_func func.F.name in
@@ -506,18 +514,23 @@ let render_graphite conf headers body =
                       (RamenName.string_of_fq fq) ;
                     None
                 | func ->
-                    if List.length fvals <> List.length func.factors then (
+                    let factors =
+                      RamenOperation.factors_of_operation func.operation in
+                    if List.length fvals <> List.length factors then (
                       !logger.error "Function %s just changed factors?"
                         (RamenName.string_of_fq fq) ;
                       None
-                    ) else if List.mem data_field func.factors then (
+                    ) else if List.mem data_field factors then (
                       !logger.error "Function %a just got %a as factor?"
                         RamenName.fq_print fq
                         RamenName.field_print data_field ;
                       None
-                    ) else if not (List.exists (fun ft ->
-                                   ft.RamenTuple.name = data_field
-                                 ) func.out_type) then (
+                    ) else if not (
+                              RamenOperation.out_type_of_operation
+                                func.operation |>
+                              List.exists (fun ft ->
+                                ft.RamenTuple.name = data_field)
+                            ) then (
                       !logger.error "Function %a just lost field %a?"
                         RamenName.fq_print fq
                         RamenName.field_print data_field ;
@@ -549,6 +562,8 @@ let render_graphite conf headers body =
   (* Now we can decide on which scans to perform *)
   let scans = Hashtbl.create 9 in
   let add_scans (func, fq, fvals, data_field) =
+    let factors =
+      RamenOperation.factors_of_operation func.F.operation in
     let where, factors, _ =
       List.fold_left2 (fun (where, factors, i) factor _fval ->
         let wanted =
@@ -565,7 +580,7 @@ let render_graphite conf headers body =
           (* We want several values for that factor, so we will take it as a
            * factor: *)
           where, Set.add factor factors, i + 1
-      ) ([], Set.empty, 0) func.F.factors fvals in
+      ) ([], Set.empty, 0) factors fvals in
     Hashtbl.modify_opt (fq, where) (function
       | None ->
           Some (Set.singleton data_field, factors, func)

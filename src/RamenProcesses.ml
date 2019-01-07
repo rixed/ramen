@@ -201,7 +201,9 @@ let input_ringbuf_fname conf parent child =
   else C.in_ringbuf_name_single conf child
 
 let make_field_mask parent child =
-  let out_type = RingBufLib.ser_tuple_typ_of_tuple_typ parent.F.out_type
+  let out_type =
+    RamenOperation.out_type_of_operation parent.F.operation |>
+    RingBufLib.ser_tuple_typ_of_tuple_typ
   and in_type = child.F.in_type in
   RingBufLib.skip_list ~out_type ~in_type
 
@@ -350,7 +352,8 @@ let start_export ?(duration=Default.export_duration) conf func =
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let ser =
-    RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+    RamenOperation.out_type_of_operation func.F.operation |>
+    RingBufLib.ser_tuple_typ_of_tuple_typ in
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
    * a cli-test that relies on the spec not being present in the out_ref
@@ -496,7 +499,8 @@ let really_try_start conf now must_run proc =
             failwith
     ) proc.func.parents in
   let check_linkage p c =
-    try check_is_subtype c.F.in_type p.F.out_type
+    let out_type = RamenOperation.out_type_of_operation p.F.operation in
+    try check_is_subtype c.F.in_type out_type
     with Failure msg ->
       Printf.sprintf2
         "Input type of %s (%a) is not compatible with \
@@ -504,7 +508,7 @@ let really_try_start conf now must_run proc =
         (RamenName.string_of_fq (F.fq_name c))
         RamenTuple.print_typ_names c.in_type
         (RamenName.string_of_fq (F.fq_name p))
-        RamenTuple.print_typ_names p.out_type
+        RamenTuple.print_typ_names out_type
         msg |>
       failwith in
   let parents_ok = ref false in (* This is benign *)

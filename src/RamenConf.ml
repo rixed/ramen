@@ -36,8 +36,6 @@ struct
       doc : string ;
       mutable operation : RamenOperation.t ;
       in_type : RamenTuple.typ ;
-      (* In the order the user want them: *)
-      mutable out_type : RamenTuple.typ ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
@@ -46,8 +44,6 @@ struct
       mutable signature : string ;
       parents : parent list ;
       merge_inputs : bool ;
-      mutable event_time : RamenEventTime.t option ;
-      mutable factors : RamenName.field list ;
       (* List of envvar used in that function: *)
       envvars : RamenName.field list }
     [@@ppp PPP_OCaml]
@@ -81,11 +77,8 @@ struct
       operation = t.operation ;
       signature = t.signature ;
       in_type = in_type_of_operation t.operation ;
-      out_type = out_type_of_operation ~with_private:false t.operation ;
       parents = parents_of_operation t.operation ;
       merge_inputs = is_merging t.operation ;
-      event_time = event_time_of_operation t.operation ;
-      factors = factors_of_operation t.operation ;
       envvars = envvars_of_operation t.operation }
 
   (* TODO: takes a func instead of child_prog? *)
@@ -109,7 +102,7 @@ struct
     RamenName.path_of_program f.program_name
     ^"/"^ RamenName.string_of_func f.name
 
-  let signature func op_str params =
+  let signature func params =
     (* We'd like to be formatting independent so that operation text can be
      * reformatted without ramen recompiling it. For this it is not OK to
      * strip redundant white spaces as some of those might be part of literal
@@ -122,10 +115,12 @@ struct
      * condition does not imply we should disregard past data or consider the
      * function changed in any way. It's `ramen run` job to evaluate the
      * running condition independently. *)
+    let op_str = IO.to_string RamenOperation.print func.operation
+    and out_type = RamenOperation.out_type_of_operation func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenTuple.type_signature func.in_type ^
     (* type_signature does not look at private fields: *)
-    ";OUT="^ RamenTuple.type_signature func.out_type ^
+    ";OUT="^ RamenTuple.type_signature out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
     ";PRM="^ RamenTuple.params_type_signature params |>
     md5
@@ -134,7 +129,8 @@ struct
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
       (RamenName.string_of_func func.name)
       RamenTuple.print_typ func.in_type
-      RamenTuple.print_typ func.out_type
+      RamenTuple.print_typ
+        (RamenOperation.out_type_of_operation func.operation)
 end
 
 module Program =
@@ -411,7 +407,8 @@ let in_ringbuf_names conf func =
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
 let archive_buf_name conf func =
-  let sign = type_signature_hash func.Func.out_type in
+  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+             type_signature_hash in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func
@@ -430,7 +427,8 @@ let archive_buf_name conf func =
  * the name of the directory containing a file per time slice (named
  * begin_end). *)
 let factors_of_function conf func =
-  let sign = type_signature_hash func.Func.out_type in
+  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+             type_signature_hash in
   conf.persist_dir ^"/workers/factors/"
                    ^ RamenVersions.factors
                    ^"/"^ Config.version
@@ -444,7 +442,8 @@ let factors_of_function conf func =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = type_signature_hash func.Func.out_type in
+  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+             type_signature_hash in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref
                    ^"/"^ Func.path func

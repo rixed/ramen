@@ -2739,37 +2739,37 @@ let emit_operation name func params_mod params oc =
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
   let code = IO.output_string ()
-  and consts = IO.output_string () in
+  and consts = IO.output_string ()
+  and tuple_typ =
+    RamenOperation.out_type_of_operation ~with_private:true func.F.operation
+  in
   (match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                  what = { separator ; null ; fields } ; _ } ->
+                  what = { separator ; null ; _ } ; _ } ->
     let opc =
       { op = Some func.F.operation ;
-        event_time = func.F.event_time ;
-        params ; consts ; tuple_typ = fields } in
+        event_time = RamenOperation.event_time_of_operation func.F.operation ;
+        params ; consts ; tuple_typ } in
     emit_read_csv_file opc code name fname unlink separator null
                        preprocessor
   | ListenFor { net_addr ; port ; proto } ->
-    let tuple_typ = RamenProtocols.tuple_typ_of_proto proto in
     let opc =
       { op = Some func.F.operation ;
-        event_time = func.F.event_time ;
+        event_time = RamenOperation.event_time_of_operation func.F.operation ;
         params ; consts ; tuple_typ } in
     emit_listen_on opc code name net_addr port proto
   | Instrumentation { from } ->
-    let tuple_typ = RamenBinocle.tuple_typ in
     let opc =
       { op = Some func.F.operation ;
-        event_time = func.F.event_time ;
+        event_time = RamenOperation.event_time_of_operation func.F.operation ;
         params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenBinocle.unserialize" "report_ringbuf"
       "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
-    let tuple_typ = RamenNotification.tuple_typ in
     let opc =
       { op = Some func.F.operation ;
-        event_time = func.F.event_time ;
+        event_time = RamenOperation.event_time_of_operation func.F.operation ;
         params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenNotification.unserialize" "notifs_ringbuf"
@@ -2777,8 +2777,8 @@ let emit_operation name func params_mod params oc =
   | Aggregate _ ->
     let opc =
       { op = Some func.F.operation ;
-        event_time = func.F.event_time ;
-        params ; consts ; tuple_typ = func.F.out_type } in
+        event_time = RamenOperation.event_time_of_operation func.F.operation ;
+        params ; consts ; tuple_typ } in
     emit_aggregate opc code name func.F.in_type) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                      \n(* Operation Implementation: *)\n\n%s\n"
@@ -2793,11 +2793,13 @@ let emit_replay name func params oc =
    * we need to pass to those functions as well. So here we merely pretend
    * the out_typ is the serialized version of out_type (no private fields
    * _and_ serialization order) *)
-  let ser_out_typ = RingBufLib.ser_tuple_typ_of_tuple_typ func.F.out_type in
+  let ser_out_typ =
+    RamenOperation.out_type_of_operation func.F.operation |>
+    RingBufLib.ser_tuple_typ_of_tuple_typ in
   let consts = IO.output_string () in
   let opc =
     { op = Some func.F.operation ;
-      event_time = func.F.event_time ;
+      event_time = RamenOperation.event_time_of_operation func.F.operation ;
       params ; consts ; tuple_typ = ser_out_typ } in
   emit_read_tuple "read_out_tuple_" oc ser_out_typ ;
   emit_sersize_of_tuple "sersize_of_ser_tuple_" oc ser_out_typ ;
