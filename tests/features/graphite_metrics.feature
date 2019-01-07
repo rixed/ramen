@@ -38,7 +38,7 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
     And ramen supervisor is started
     And programs p1/p2/t1 and t2 are running
     And ramen httpd --url http://localhost:8042/ --graphite is started
-    And I wait 3 seconds
+    And I wait 5 seconds
 
   Scenario: Completing nothing should yield the first possible program names, "p1." and "t2.",
             both expandable as even t2 has numeric data fields.
