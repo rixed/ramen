@@ -13,11 +13,12 @@
 
 body {
   background-color: var(--white);
-  font-family: sans-serif;
+  font-family: Georgia, serif;
   margin: 0;
 }
 
 #header {
+  font-family: "Avant Garde", sans-serif;
   position: fixed;
   top: 0;
   left: 0;
@@ -39,7 +40,6 @@ body {
 
 #header p.title {
   font-size: 110%;
-  font-family: sans-serif;
 }
 
 #header a, #header a:link, #header a:visited, #header a:hover {
@@ -56,10 +56,6 @@ body {
 }
 #heacer .github-link {
   font-size: 80%;
-}
-
-p, li {
-  font-family: serif;
 }
 
 #menu {
@@ -92,7 +88,7 @@ p, li {
 }
 #menu li {
   line-height: 1.5;
-  font-family: sans-serif;
+  font-family: "Avant Garde", sans-serif;
 }
 
 #menu li a {
@@ -132,14 +128,15 @@ a[name]:hover { color: inherit; }
   background-color: var(--brown-greyer);
   line-height: 1.3em;
   padding: 1em;
+  overflow: auto;
+}
+
+h1, h2, h3, h4 {
+  font-family: "Avant Garde", sans-serif;
 }
 
 /* Make sure anchored titles do not fall below the page header: */
-h2 { padding-top: 4rem; }
-
-pre {
-  border: 0 !important;
-}
+h1, h2 { padding-top: 4rem; }
 
 requirement {
   display: block;

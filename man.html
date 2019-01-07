@@ -140,9 +140,9 @@ COMMIT WHEN in.time > group.first.time + 30
 <h2>Alerting</h2>
 </a>
 
-<p>In addition to tuples, workers can emit <a href="glossary.html#Notification">notifications</a>. Those are received by a dedicated daemon: <code>ramen notifier</code> that will route them according to its configuration file.</p>
+<p>In addition to tuples, workers can emit <a href="glossary.html#Notification">notifications</a>. Those are received by a dedicated daemon: <code>ramen alerter</code> that will route them according to its configuration file.</p>
 
-<p>See <a href="man/notifier.html">ramen notifier --help</a> for more details.</p>
+<p>See <a href="man/alerter.html">ramen alerter --help</a> for more details.</p>
 
 <a name="maintenance">
 <h2>Maintenance</h2>
@@ -172,40 +172,40 @@ COMMIT WHEN in.time > group.first.time + 30
 
 <h2>Compiling programs</h2>
 <ul>
-  <li><a href="man/compile">Compile a Ramen program</a></li>
+  <li><a href="man/compile.html">Compile a Ramen program</a></li>
   </ul>
 <h2>Running programs</h2>
 <ul>
-  <li><a href="man/supervisor">The daemon that runs all functions</a></li>
-  <li><a href="man/run">Starting a program</a></li>
-  <li><a href="man/kill">Stopping a program</a></li>
-  <li><a href="man/ps">See which programs/functions are running</a></li>
+  <li><a href="man/supervisor.html">The daemon that runs all functions</a></li>
+  <li><a href="man/run.html">Starting a program</a></li>
+  <li><a href="man/kill.html">Stopping a program</a></li>
+  <li><a href="man/ps.html">See which programs/functions are running</a></li>
   </ul>
 <h2>Retrieving data</h2>
 <ul>
-  <li><a href="man/tail">Print some function output</a></li>
-  <li><a href="man/timeseries">Print a fixed time-step timeseries out of some columns</a></li>
-  <li><a href="man/timerange">Print the earliest and latest timestamps available for a function</a></li>
-  <li><a href="man/replay">Like tail, but reconstruct the data that are not available from archived data</a></li>
-  <li><a href="man/httpd">HTTP daemon to output timeseries, impersonating Graphite</a></li>
+  <li><a href="man/tail.html">Print some function output</a></li>
+  <li><a href="man/timeseries.html">Print a fixed time-step time series out of some columns</a></li>
+  <li><a href="man/timerange.html">Print the earliest and latest timestamps available for a function</a></li>
+  <li><a href="man/replay.html">Like tail, but reconstruct the data that are not available from archived data</a></li>
+  <li><a href="man/httpd.html">HTTP daemon to output time series, impersonating Graphite</a></li>
   </ul>
 <h2>Alerting</h2>
 <ul>
-  <li><a href="man/notifier">The daemon responsible for routing and sending alerts</a></li>
-  <li><a href="man/notify">Inject a notification from the command line</a></li>
+  <li><a href="man/alerter.html">The daemon responsible for routing and sending alerts</a></li>
+  <li><a href="man/notify.html">Inject a notification from the command line</a></li>
   </ul>
 <h2>Maintenance</h2>
 <ul>
-  <li><a href="man/gc">Garbage collect old archives</a></li>
-  <li><a href="man/links">Print the state of ring buffers</a></li>
-  <li><a href="man/ringbuf">Print some information about a ring buffer</a></li>
-  <li><a href="man/archivist">Daemon that periodically reallocate storage space</a></li>
-  <li><a href="man/stats">Print some internal instrumentation data</a></li>
-  <li><a href="man/variants">Print some internal experimentation settings</a></li>
+  <li><a href="man/gc.html">Garbage collect old archives</a></li>
+  <li><a href="man/links.html">Print the state of ring buffers</a></li>
+  <li><a href="man/ringbuf.html">Print some information about a ring buffer</a></li>
+  <li><a href="man/archivist.html">Daemon that periodically reallocate storage space</a></li>
+  <li><a href="man/stats.html">Print some internal instrumentation data</a></li>
+  <li><a href="man/variants.html">Print some internal experimentation settings</a></li>
   </ul>
 <h2>Tests</h2>
 <ul>
-  <li><a href="man/test">Test the behavior of a set of prograns</a></li>
+  <li><a href="man/test.html">Test the behavior of a set of prograns</a></li>
   </ul>
 </div>
 </body>
