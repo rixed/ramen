@@ -956,6 +956,9 @@ and emit_expr_ ?state ~context ~opc oc expr =
      * This is important because literal NULL type is random. *)
     Printf.fprintf oc "Null"
   | Finalize, StatelessFun1 (_, Cast to_typ, e), _ ->
+    (* A failure to convert should yield a NULL value rather than crash that
+     * tuple, unless the user insisted to convert to a non-nullable type: *)
+    if to_typ.nullable then String.print oc "(try " ;
     let from = Option.get (typ_of e).typ in
     (* Shall we force a non-nullable argument to become nullable, or
      * propagates nullability from the argument? *)
@@ -965,7 +968,8 @@ and emit_expr_ ?state ~context ~opc oc expr =
       (conv_from_to ~nullable:from.nullable)
         (from.structure, to_typ.structure)
       (emit_expr ?state ~context ~opc) e ;
-    if add_nullable then Printf.fprintf oc ")"
+    if add_nullable then Printf.fprintf oc ")" ;
+    if to_typ.nullable then String.print oc " with _ -> Null)"
 
   | Finalize, StatelessFunMisc (_, Max es), t ->
     emit_functionN ~opc ~args_as:(Array 0) ?state ~nullable

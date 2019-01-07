@@ -26,7 +26,7 @@ DEFINE cpu AS
     out.start + 30s AS stop,
     host,
     -- regexp extract the integer from the quotes, then cast to int:
-    instance AS cpu_num,
+    u16(instance) AS cpu_num,
     COALESCE (type_instance, "unknown") AS _type,
     AVG (IF _type = "user" THEN value ELSE 0) AS user,
     AVG (IF _type = "system" THEN value ELSE 0) AS system,
