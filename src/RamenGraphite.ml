@@ -147,7 +147,7 @@ let tree_enum_of_fields only_num_fields func =
 (* Given a functions and a list of factors (any part of func.F.factors),
  * return the tree_enum of the factors (only the branches going as far as
  * an actual non-factor fields tree) : *)
-let rec tree_enum_of_factors conf ?since ?until only_num_fields func =
+let rec tree_enum_of_factors conf cache ?since ?until only_num_fields func =
   function
   | [] -> tree_enum_of_fields only_num_fields func
   | factor :: factors' ->
@@ -156,9 +156,14 @@ let rec tree_enum_of_factors conf ?since ?until only_num_fields func =
        * Grafana will skip that value and offer only the "*", which is all
        * good. *)
       let fact_values =
-        (* FIXME: this is going to be called many times for a single query:
-         * cache the result for a given since/until/only_num_fields/func.prog/func.name/factor ? *)
-        RamenTimeseries.possible_values conf ?since ?until func factor in
+        (* In theory we would have a where clause that would restrict this
+         * search to factors selected earlier: *)
+        let k = since, until, F.fq_name func, factor in
+        try Hashtbl.find cache k
+        with Not_found ->
+          let pv = RamenTimeseries.possible_values conf ?since ?until func factor in
+          Hashtbl.add cache k pv ;
+          pv in
       let fact_values =
         if Set.is_empty fact_values then
           [ { value = "" ; section = FactorField None } ]
@@ -171,15 +176,15 @@ let rec tree_enum_of_factors conf ?since ?until only_num_fields func =
       E (List.filter_map (fun pv ->
           (* Skip over empty branches *)
           let sub_tree =
-            tree_enum_of_factors conf ?since ?until only_num_fields func
-                                 factors' in
+            tree_enum_of_factors conf cache ?since ?until only_num_fields
+                                 func factors' in
           if tree_enum_is_empty sub_tree then None
           else Some (pv, sub_tree)
          ) fact_values)
 
 (* Given a program, returns the tree_enum of its functions: *)
 let tree_enum_of_program
-      conf ?since ?until ~only_with_event_time ~only_num_fields prog =
+      conf cache ?since ?until ~only_with_event_time ~only_num_fields prog =
   E (
     List.filter_map (fun func ->
       if only_with_event_time &&
@@ -188,7 +193,8 @@ let tree_enum_of_program
         let factors =
           RamenOperation.factors_of_operation func.F.operation in
         let sub_tree =
-          tree_enum_of_factors conf ?since ?until only_num_fields func factors in
+          tree_enum_of_factors conf cache ?since ?until only_num_fields func
+                               factors in
         if tree_enum_is_empty sub_tree then None else
           Some (
             let value = RamenName.string_of_func func.F.name in
@@ -204,8 +210,8 @@ type program_tree_item =
   | Hash of ((bool * string), program_tree_item) Hashtbl.t
 
 let tree_enum_of_programs
-    conf ?since ?until ~only_with_event_time ~only_num_fields ~only_running
-    programs =
+    conf cache ?since ?until ~only_with_event_time ~only_num_fields
+    ~only_running programs =
   let programs =
     Hashtbl.enum programs //
     (if only_running then
@@ -245,8 +251,9 @@ let tree_enum_of_programs
         | exception _ -> None
         | prog ->
             let sub_tree =
-              tree_enum_of_program conf ?since ?until ~only_with_event_time
-                                   ~only_num_fields prog in
+              tree_enum_of_program conf cache ?since ?until
+                                   ~only_with_event_time ~only_num_fields
+                                   prog in
             if tree_enum_is_empty sub_tree then None else
               Some ({ value = name ; section = ProgPath }, sub_tree))
       | (_, name), Hash h ->
@@ -286,10 +293,10 @@ let filter_tree ?anchor_right te flts =
   in loop te flts |? E []
 
 let full_enum_tree_of_query
-      conf ?since ?until ?anchor_right ?(only_running=false)
+      conf cache ?since ?until ?anchor_right ?(only_running=false)
       ?(only_with_event_time=false) ?(only_num_fields=false) query =
     let programs = C.with_rlock conf identity in
-    let te = tree_enum_of_programs conf ?since ?until
+    let te = tree_enum_of_programs conf cache ?since ?until
                                    ~only_with_event_time
                                    ~only_num_fields
                                    ~only_running programs in
@@ -299,9 +306,9 @@ let full_enum_tree_of_query
 (* Specialized version for graphite, skipping functions with no time info
  * and cached (TODO): *)
 let enum_tree_of_query
-    conf ?since ?until ?anchor_right query =
+    conf cache ?since ?until ?anchor_right query =
   full_enum_tree_of_query
-    conf ?since ?until ?anchor_right ~only_with_event_time:true
+    conf cache ?since ?until ?anchor_right ~only_with_event_time:true
     ~only_num_fields:true ~only_running:false query
 
 let rec find_quote_from s i =
@@ -321,14 +328,15 @@ let rec find_dot_from s i =
 
 (* query is composed of:
  * several components separated by a dots. Each components can be either a
- * plain word or a star, but the last component can also be "*word*".
+ * plain word (optionally quoted, and then dots within that string are not
+ * component separators) or a star but the last component can also be "*word*".
  * The answer is a list of graphite_metric which name field must be the
  * completed last component and which id field the query with the last
  * component completed. The idea is that id will then identify the time series
  * we want to display (once expanded).
  * Extracting factors value from this string requires caution as "." can
  * legitimately appear in a string or float value. We assume all such
- * problematic strings and floats will be double-quoted. *)
+ * problematic strings and floats will be quoted. *)
 let split_query s =
   let rec extract_next prev i =
     if i >= String.length s then List.rev prev else
@@ -350,9 +358,10 @@ let split_query s =
   in
   extract_next [] 0
 (*$= split_query & ~printer:(IO.to_string (List.print String.print))
- [ "monitoring"; "traffic"; "inbound"; "127.0.0.1:56687"; "0"; "bytes" ] \
+  [ "monitoring"; "traffic"; "inbound"; "127.0.0.1:56687"; "0"; "bytes" ] \
     (split_query "monitoring.traffic.inbound.\"127.0.0.1:56687\".0.bytes")
- *)
+  [ "cpu"; "www.srv.com"; "0" ] (split_query "cpu.\"www.srv.com\".0")
+*)
 
 (* Enumerate the (id, leaf, text, target) matching a query. Where:
  * id is the query with only the last part completed (used for autocompletion)
@@ -361,7 +370,8 @@ let split_query s =
  * is the fully expanded query string matching id. *)
 let expand_query_text conf ?since ?until query =
   let query = split_query query in
-  let filtered = enum_tree_of_query conf ?since ?until query in
+  let cache = Hashtbl.create 11 in
+  let filtered = enum_tree_of_query conf cache ?since ?until query in
   let num_filters = List.length query in
   let prefix = (List.take (num_filters - 1) query |>
                 String.concat ".") ^ "." in
@@ -377,10 +387,11 @@ let expand_query_text conf ?since ?until query =
     (depth + 1, target')
   ) [] (0, "") filtered
 
-let expand_query_values conf ?since ?until ?anchor_right query =
+let expand_query_values conf cache ?since ?until ?anchor_right query =
   let query = split_query query in
   let depth0 = "", "", [], "" in
-  let filtered = enum_tree_of_query conf ?since ?until ?anchor_right query in
+  let filtered =
+    enum_tree_of_query conf cache ?since ?until ?anchor_right query in
   tree_enum_fold (fun node_res
                       (prog_name, func_name, factors, data_field)
                       pv is_leaf ->
@@ -485,7 +496,9 @@ let render_graphite conf headers body =
   (* We start by expanding the query so that we have also an expansion
    * for field/function names with matches. *)
   let targets =
-    List.map (expand_query_values conf ~anchor_right:true ~since ~until) targets in
+    let cache = Hashtbl.create 11 in
+    List.map (expand_query_values conf cache ~anchor_right:true ~since
+                                  ~until) targets in
   (* Targets is now a list of enumerations of program + function name + factors
    * values + field name. Regardless of how many original query were sent, the
    * expected answer is a flat array of target name + time series.  We can
