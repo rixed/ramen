@@ -521,7 +521,7 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	tests/fixtures/n123.ramen
 
-%.x: %.ramen src/ramen src/codegen.cmxa
+%.x: %.ramen bundle src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
 	@src/ramen compile --bundle=bundle -L . $< -o $@
 
