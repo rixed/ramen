@@ -5,7 +5,7 @@
 
 <ul>
 <? foreach ($info_pages['tutorials.html']['sub_pages'] as $page => $p) { ?>
-<li><a href="tutorials/<?=$page?>"><?=$p['title']?></a></li>
+<li><a href="<?=$page?>"><?=$p['title']?></a></li>
 <? } ?>
 </ul>
 

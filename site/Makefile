@@ -5,8 +5,7 @@ PAGES = \
 	download.html \
 	build.html \
 	tutorials.html \
-	tutorials/host_monitoring.html \
-	tutorials/detecting_scans.html \
+	tutorials/monitoring_quick.html \
 	design.html \
 	requirements.html \
 	programs.html \
@@ -41,7 +40,9 @@ MANPAGES = \
 	man/timeseries.html \
 	man/variants.html
 
-all: $(PAGES) $(MANPAGES)
+IMAGES = tutorials/grafana.jpeg
+
+all: $(PAGES) $(MANPAGES) $(IMAGES)
 
 man/ramen.groff: ../src/ramen
 	@echo "Extracting $@"
@@ -139,7 +140,7 @@ man/archivist.groff: ../src/ramen
 
 doc_dir ?= $(PWD)/../../ramen-docs
 
-install: $(PAGES) $(MANPAGES) style.css
+install: $(PAGES) $(MANPAGES) $(IMAGES) style.css
 	@echo "Installing pages into $(prefix)$(doc_dir)"
 	@install -d "$(prefix)$(doc_dir)"
 	for f in $^ ; do \

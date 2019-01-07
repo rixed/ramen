@@ -14,10 +14,8 @@ $info_pages = [
   'tutorials.html' => [
     'title' => 'Tutorials',
     'sub_pages' => [
-      'host_monitoring.html' => [
-        'title' => 'Host monitoring in 15 minutes' ],
-      'detecting_scans.html' => [
-        'title' => 'Detecting network scans' ] ] ],
+      'tutorials/monitoring_quick.html' => [
+        'title' => 'Network monitoring in 15 minutes' ] ] ],
 
   'design.html' => [
     'title' => 'Design',
@@ -120,6 +118,6 @@ $info_pages = [
     'sub_pages' => [
       'blog/2018-12.html' => [
         'date' => 'December 2018',
-        'title' => 'Transient functions for the duration of a single query' ] ] ]
+        'title' => 'One-liners' ] ] ]
 ];
 ?>
