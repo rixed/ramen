@@ -6,7 +6,7 @@ DEFINE collectd AS
 
 DEFINE memory AS
   SELECT
-    MIN start AS start,
+    truncate(start, 30s) AS start,
     out.start + 30s AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
@@ -18,11 +18,12 @@ DEFINE memory AS
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, start // 30
-  COMMIT AFTER in.start > out.start + 30s;
+  COMMIT AFTER in.start > out.start + 30s
+  FACTORS host;
 
 DEFINE cpu AS
   SELECT
-    MIN start AS start,
+    truncate(start, 30s) AS start,
     out.start + 30s AS stop,
     host,
     -- regexp extract the integer from the quotes, then cast to int:
@@ -35,7 +36,20 @@ DEFINE cpu AS
   FROM collectd
   WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
   GROUP BY host, start // 30, instance
-  COMMIT AFTER in.start > out.start + 30;
+  COMMIT AFTER in.start > out.start + 30
+  FACTORS host AND cpu_num;
+
+DEFINE cpu_diff AS
+  SELECT
+    start, stop, host, cpu_num,
+    (user - lag locally user) / 30 AS user,
+    (system - lag locally system) / 30 AS system,
+    (nice - lag locally nice) / 30 AS nice,
+    (idle - lag locally idle) / 30 AS idle
+  FROM cpu
+  GROUP BY host, cpu_num
+  KEEP ALL
+  FACTORS host AND cpu_num;
 
 DEFINE memory_alert AS
   FROM memory
