@@ -790,11 +790,9 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   Option.may exit !RamenProcesses.quit
 
 (* TODO: allow several queries as in the API *)
-let graphite_expand conf for_render for_find since until query () =
+let graphite_expand conf for_render since until query () =
   init_logger conf.C.log_level ;
-  if for_render && for_find then
-    failwith "--for-render and --for-find are mutually exclusive" ;
-  if for_find then
+  if not for_render then
     RamenGraphite.metrics_find conf ?since ?until query |>
     List.of_enum |>
     PPP.to_string ~pretty:true RamenGraphite.metrics_ppp_json |>

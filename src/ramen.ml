@@ -799,22 +799,16 @@ let for_render =
                    [ "for-render" ] in
   Arg.(value (flag i))
 
-let for_find =
-  let i = Arg.info ~doc:"output the result as the graphite API"
-                   [ "for-find" ] in
-  Arg.(value (flag i))
-
 let query =
   let i = Arg.info ~doc:"test graphite query expansion"
                    ~docv:"QUERY" [] in
-  Arg.(value (pos 0 string "" i))
+  Arg.(value (pos 0 string "*" i))
 
 let expand =
   Term.(
     (const RamenCliCmd.graphite_expand
       $ copts
       $ for_render
-      $ for_find
       $ since
       $ until
       $ query),

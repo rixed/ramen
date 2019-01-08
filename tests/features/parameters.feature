@@ -32,7 +32,7 @@ Feature: Programs ca  be parameterized
     When I run ramen with arguments ps
     Then ramen must mention "test/Romuald/f"
     And ramen must mention "test/Raphael/f".
-    When I run ramen with arguments _expand
+    When I run ramen with arguments _expand 'test.*'
     Then ramen must mention "Romuald"
     And ramen must mention "Raphael".
 
