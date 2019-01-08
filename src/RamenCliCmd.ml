@@ -789,39 +789,27 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 
-let graphite_expand conf for_render all since until query () =
+(* TODO: allow several queries as in the API *)
+let graphite_expand conf for_render for_find since until query () =
   init_logger conf.C.log_level ;
-  let query = RamenGraphite.split_query query in
-  let te =
-    let cache = Hashtbl.create 11 in
-    RamenGraphite.full_enum_tree_of_query
-      conf cache ?since ?until ~anchor_right:for_render
-      ~only_running:(not all) query in
-  let rec display indent te =
-    let e = RamenGraphite.get te in
-    list_iter_first_last (fun is_first is_last (pv, c) ->
-      let prefix =
-        if is_first then
-          if indent = "" then "" else
-          if is_last then "-" else "┬"
-        else
-          if is_last then "└" else "├" in
-      let value = RamenGraphite.(fix_quote pv.value) in
-      Printf.printf "%s%s%s"
-        (if is_first then "" else "\n"^indent)
-        prefix value ;
-      let indent' =
-        indent
-          ^ (if prefix <> "" then
-              if is_last then " " else "│"
-            else "")
-          ^ String.make (String.length value) ' '
-      in
-      display indent' c
-    ) e
-  in
-  display "" te ;
-  Printf.printf "\n"
+  if for_render && for_find then
+    failwith "--for-render and --for-find are mutually exclusive" ;
+  if for_find then
+    RamenGraphite.metrics_find conf ?since ?until query |>
+    List.of_enum |>
+    PPP.to_string ~pretty:true RamenGraphite.metrics_ppp_json |>
+    Printf.printf "%s\n"
+  else
+    RamenGraphite.targets_for_render conf ?since ?until [ query ] |>
+    Enum.iter (fun (_func, fq, fvals, data_field) ->
+      Printf.printf "%a %a with %a"
+        RamenName.fq_print fq
+        RamenName.field_print data_field
+        (Set.print (fun oc (factor, opt_val) ->
+          Printf.fprintf oc "%a:" RamenName.field_print factor ;
+          match opt_val with
+          | None -> String.print oc "*"
+          | Some v -> RamenTypes.print oc v)) fvals)
 
 (*
  * `ramen archivist`

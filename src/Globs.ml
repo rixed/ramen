@@ -41,13 +41,13 @@ let rec print_chunk_pattern ~star ~placeholder ~escape oc = function
                        ~by:(esc placeholder) in
       String.print oc s
 
-let print_pattern oc p =
+let print oc p =
   List.print ~first:"" ~last:"" ~sep:""
     (print_chunk_pattern ~star:p.star ~placeholder:p.placeholder
                          ~escape:p.escape) oc p.chunks
 
 let decompile p =
-  IO.to_string print_pattern p
+  IO.to_string print p
 
 let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
   (* It matters that Str is opened *after* String so quote is Str.quote: *)

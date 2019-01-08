@@ -22,7 +22,7 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
           case when digit = 0 then "cyan"
                when digit = 1 then "magenta"
                when digit = 2 then "yellow"
-               else "black"
+               else "bl.a.ck"  -- check dots are OK
           end as color,
           random as high_card
         every 10 milliseconds
@@ -54,21 +54,28 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
     When I run curl with arguments http://localhost:8042/metrics/find?query=p1.p2.t1.f1.*
     Then curl must mention ""text":"1""
 
-  Scenario: Completing *.*.*.f1 should return the same as above
+  Scenario: Completing *.*.*.f1 should return the same as above but for the id
     When I run curl with arguments http://localhost:8042/metrics/find?query=*.*.*.f1.*
     Then curl must mention ""text":"1""
+    And curl must mention ""id":"*.*.*.f1.1""
 
   Scenario: Completing p1.p2.t1.f1.0 should yield the possible values for colors
     When I run curl with arguments http://localhost:8042/metrics/find?query=p1.p2.t1.f1.0.*
     Then curl must mention ""text":"magenta""
+    And curl must mention ""text":"\"bl.a.ck\"""
+    And curl must mention ""id":"p1.p2.t1.f1.0.\"bl.a.ck\"""
 
   Scenario: By the way, filters could be quoted and ramen should unquote them.
     When I run curl with arguments http://localhost:8042/metrics/find?query="p1".p2."t1".f1.0.*
     Then curl must mention ""text":"magenta""
 
-  Scenario: Finally, completing that should yield the list of data field such
-            as high_card, that are all leaves.
+  Scenario: Completing that should yield the list of data field such as
+            high_card, that are all leaves.
     When I run curl with arguments http://localhost:8042/metrics/find?query=p1.p2.t1.f1.0.magenta.*
     Then curl must mention ""text":"high_card""
     And curl must mention ""leaf":1"
     And curl must not mention ""leaf":0"
+
+  Scenario: Finally, completing further should yield nothing.
+    When I run curl with arguments http://localhost:8042/metrics/find?query=p1.p2.t1.f1.0.magenta.*.*
+    Then curl must not mention ""text""
