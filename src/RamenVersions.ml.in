@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v51" (* last: addition of `past` function *)
+let codegen = "v52" (* last: program_name no longer in Func.Serialized *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v6" (* last: addition of average tuple size *)
