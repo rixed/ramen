@@ -32,11 +32,7 @@ DEFINE out_of_range_alert AS
     bytes_per_secs,
     5-ma locally (float(bytes_per_secs < 100 OR bytes_per_secs > 8e3)) >= 4 AS firing
   GROUP BY source, iface
-  COMMIT, KEEP ALL AND
-    NOTIFY "Traffic" WITH
-      "${source}" AS source,
-      "${iface}" AS iface AND
-      "${bytes_per_secs}" AS througput
+  COMMIT, KEEP ALL AND NOTIFY "Traffic"
   AFTER COALESCE (out.firing <> previous.firing, false);
 
 DEFINE link_down_alert AS
@@ -46,8 +42,5 @@ DEFINE link_down_alert AS
     max stop AS stop,
     age stop > 300 AS firing
   GROUP BY source, iface
-  COMMIT, KEEP ALL AND
-    NOTIFY "Interface DOWN" WITH
-      "${source}" AS source,
-      "${iface}" AS iface
+  COMMIT, KEEP ALL AND NOTIFY "Interface DOWN"
   AFTER COALESCE (out.firing != previous.firing, false);

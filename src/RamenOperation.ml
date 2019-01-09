@@ -80,26 +80,6 @@ let print_file_spec oc specs =
       specs.unlink
     (E.print false) specs.fname
 
-(* Type of notifications.
- * Certainty is about how likely we are the alert is not a false positive.
- * For now, if unsure, set a middle value like 0.5. *)
-
-type notification =
-  { (* Act as the alert identifier _and_ the selector for who it's aimed at.
-       So use names such as "team: service ${X} for ${Y} is on fire" *)
-    notif_name : E.t ;
-    parameters : (string * E.t) list }
-  [@@ppp PPP_OCaml]
-
-let print_notification oc notif =
-  Printf.fprintf oc "NOTIFY %a"
-    (E.print false) notif.notif_name ;
-  if notif.parameters <> [] then
-    List.print ~first:" WITH PARAMETERS " ~last:"" ~sep:", "
-      (fun oc (n, v) ->
-        Printf.fprintf oc "%a AS '%s'" (E.print false) v n) oc
-      notif.parameters
-
 (* Type of an operation: *)
 
 type t =
@@ -117,8 +97,8 @@ type t =
       where : E.t ;
       (* How to compute the time range for that event: *)
       event_time : RamenEventTime.t option ;
-      (* Will send these notification commands to the alerter: *)
-      notifications : notification list ;
+      (* Will send these notification to the alerter: *)
+      notifications : E.t list ;
       key : E.t list (* Grouping key *) ;
       commit_cond : E.t (* Output the group after/before this condition holds *) ;
       commit_before : bool ; (* Commit first and aggregate later *)
@@ -219,7 +199,8 @@ and print oc =
         Printf.fprintf oc "%s%a" !sep print_flush_method flush_how ;
         sep := ", ") ;
       if notifications <> [] then (
-        List.print ~first:!sep ~last:"" ~sep:!sep print_notification
+        List.print ~first:!sep ~last:"" ~sep:!sep
+          (fun oc n -> Printf.fprintf oc "NOTIFY %a" (E.print false) n)
           oc notifications ;
         sep := ", ") ;
       if not (E.is_true commit_cond) then
@@ -272,9 +253,7 @@ let fold_top_level_expr init f = function
             f prev "GROUP-BY clause" ke
           ) x key in
       let x = List.fold_left (fun prev notif ->
-            let prev = f prev "NOTIFY name" notif.notif_name in
-            List.fold_left (fun prev (_, v) ->
-              f prev "NOTIFY parameter" v) prev notif.parameters
+            f prev "NOTIFY" notif
           ) x notifications in
       let x = f x "COMMIT clause" commit_cond in
       let x = match sort with
@@ -538,10 +517,7 @@ let check params op =
       Option.may (prefix_def params TupleIn) u_opt) sort ;
     prefix_smart where ;
     List.iter (prefix_def params TupleIn) key ;
-    List.iter (fun notif ->
-      prefix_smart notif.notif_name ;
-      List.iter (fun (_n, v) -> prefix_smart v) notif.parameters
-    ) notifications ;
+    List.iter prefix_smart notifications ;
     prefix_smart commit_cond ;
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (function
@@ -580,13 +556,9 @@ let check params op =
       check_fields_from
         [ TupleParam; TupleEnv; TupleIn ] "Group-By KEY" k
     ) key ;
-    List.iter (fun notif ->
-      let check w e =
-        check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; ] w e in
-      check "notification name" notif.notif_name ;
-      List.iter (fun (n, v) ->
-        check ("notification parameter ("^ n ^")") v
-      ) notif.parameters
+    List.iter (fun name ->
+      check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; ]
+                        "notification" name
     ) notifications ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
@@ -625,8 +597,6 @@ let check params op =
                 RamenName.field_print alias |>
               failwith
         | _ -> ()) op
-
-    (* TODO: notifications: check field names from text templates *)
 
   | ListenFor { proto ; factors ; _ } ->
     let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -807,38 +777,17 @@ struct
      several ~sep:list_sep E.Parser.p) m
 
   type commit_spec =
-    | NotifySpec of notification
+    | NotifySpec of E.t
     | FlushSpec of flush_method
     | CommitSpec (* we would commit anyway, just a placeholder *)
 
   let notification_clause m =
-    let kv m =
-      let m = "key-value list" :: m in
-      (
-        E.Parser.p ++
-        optional ~def:None (
-          blanks -- strinG "as" -- blanks -+ some non_keyword) >>:
-        fun (v, n_opt) ->
-          let n =
-            Option.default_delayed (fun () -> default_alias v) n_opt in
-          let typ =
-            RamenTypes.{ structure = TString ; nullable = false } in
-          n, E.(StatelessFun1 (make_typ "cast", Cast typ,  v))
-      ) m in
-    let notify_cmd m =
-      let m = "notification" :: m in
-      (strinG "notify" -- blanks -+
-       optional ~def:None (some E.Parser.p) ++
-       optional ~def:[]
-         (blanks -- strinGs "with" -- blanks -+
-          several ~sep:list_sep_and kv) >>:
-      fun (notif_name, parameters) ->
-        let notif_name =
-          notif_name |? E.expr_string "alert_name" "Don't Panic!" in
-        { notif_name ; parameters }) m
-    in
-    let m = "notification clause" :: m in
-    (notify_cmd >>: fun s -> NotifySpec s) m
+    let m = "notification" :: m in
+    (
+      strinG "notify" -- blanks -+
+      optional ~def:None (some E.Parser.p) >>: fun name ->
+        NotifySpec (name |? E.expr_string "alert_name" "Don't Panic!")
+    ) m
 
   let flush m =
     let m = "flush clause" :: m in
@@ -1313,9 +1262,7 @@ let fields_schema m =
         sort = None ;\
         where = E.Const (typ, VBool true) ;\
         event_time = None ;\
-        notifications = [ \
-          { notif_name = E.Const (typ, VString "ouch") ;\
-            parameters = [] } ] ;\
+        notifications = [ E.Const (typ, VString "ouch") ] ;\
         key = [] ;\
         commit_cond = replace_typ (E.expr_true ()) ;\
         commit_before = false ;\

@@ -604,21 +604,21 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
         Printf.fprintf oc "    max_value, min_value,\n" ;
       Printf.fprintf oc "    COALESCE(avg(last %d float(not ok)) >= %f, false)\n"
         (max 1 (round_to_int (a.duration /. a.time_step))) a.ratio ;
-      Printf.fprintf oc "      AS firing\n" ;
-      Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S WITH\n"
-        (RamenName.string_of_field column) table
-        (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
-      Printf.fprintf oc "    firing AS firing,\n" ;
+      Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
       (* This cast to string can handle the NULL case: *)
-      if need_reaggr then
-        Printf.fprintf oc "    \"${min_value},${max_value}\" AS values,\n" ;
+      if need_reaggr then (
+        Printf.fprintf oc "    string(min_value) || \",\" || string(max_value)\n" ;
+        Printf.fprintf oc "      AS values,\n") ;
       Printf.fprintf oc "    %f AS thresholds,\n" a.threshold ;
       Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
         desc_firing desc_recovery ;
+      Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
+        (RamenName.string_of_field column) table
+        (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       (* TODO: a way to add zone, service, etc, if present in the
        * parent table *)
-      Printf.fprintf oc "  AND KEEP ALL\n" ;
+      Printf.fprintf oc "  KEEP\n" ;
       Printf.fprintf oc "  AFTER firing <> COALESCE(previous.firing, false);\n"))
 
 (* Register a rule to turn an alert into a ramen source file: *)

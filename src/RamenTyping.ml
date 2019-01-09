@@ -1136,8 +1136,7 @@ let emit_operation declare tuple_sizes fi oc op =
        * - Where must be a bool;
        * - Commit-when must also be a bool;
        * - Flush_how conditions must also be bools;
-       * - Notification names and parameter values must be non-nullable
-       *   strings. *)
+       * - Notification names must be non-nullable strings. *)
       let name = func_err fi Err.(Clause ("where", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr where) oc TBool ;
       let name = func_err fi Err.(Clause ("where", Nullability false)) in
@@ -1149,15 +1148,9 @@ let emit_operation declare tuple_sizes fi oc op =
       List.iteri (fun i notif ->
         let name = func_err fi Err.(Notif (i, ActualType "string")) in
         emit_assert_id_eq_typ ~name tuple_sizes
-          (t_of_expr notif.notif_name) oc TString ;
+          (t_of_expr notif) oc TString ;
         let name = func_err fi Err.(Notif (i, Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr notif.notif_name) ;
-        List.iteri (fun j (_n, v) ->
-          let name = func_err fi Err.(NotifParam (i, j, ActualType "string")) in
-          emit_assert_id_eq_typ ~name tuple_sizes (t_of_expr v) oc TString ;
-          let name = func_err fi Err.(NotifParam (i, j, Nullability false)) in
-          emit_assert_is_false ~name oc (n_of_expr v)
-        ) notif.parameters
+        emit_assert_is_false ~name oc (n_of_expr notif)
       ) notifications
 
   | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->

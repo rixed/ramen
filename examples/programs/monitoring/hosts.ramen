@@ -59,7 +59,5 @@ DEFINE memory_alert AS
     free * 100 / total AS used_ratio,
     used_ratio > 50 AS firing
   GROUP BY host
-  COMMIT, KEEP ALL AND
-    NOTIFY "RAM is low" WITH
-      "${host}" AS hosts AND "${used_ratio}% full" AS ratio
-    AFTER COALESCE (out.firing <> previous.firing, false);
+  KEEP ALL AND NOTIFY "RAM is low"
+  AFTER COALESCE (out.firing <> previous.firing, false);

@@ -930,9 +930,9 @@
 
 <pre>
   FROM employee
-  NOTIFY "Waldo Spotted" -- The notification name
-    WITH PARAMETERS age, gender, salary
-  WHEN name = "Waldo"
+  SELECT age, gender, salary
+  -- The notification with its name:
+  NOTIFY "Waldo Spotted" WHEN name = "Waldo"
 </pre>
 
 <p>NOTE: Notice here the <code>NOTIFY</code> clause replaces the <code>COMMIT</code> clause altogether.</p>
@@ -984,7 +984,7 @@
   FROM source1, source2, ...
   [ GROUP BY expression1, expression2, ... ]
   [ [ COMMIT ],
-    [ NOTIFY name [ WITH PARAMETERS ( expression1 AS parameter1, ... ) ] ],
+    [ NOTIFY name ],
     [ ( FLUSH | KEEP ) ]
     ( AFTER | BEFORE ) condition ]
   [ EVENT STARTING AT identifier [ * scale ]
