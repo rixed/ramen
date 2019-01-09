@@ -50,8 +50,7 @@ struct
 
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
-      { program_name : RamenName.program ;
-        name : RamenName.func ;
+      { name : RamenName.func ;
         persistent : bool ;
         doc : string ;
         operation : RamenOperation.t ;
@@ -61,16 +60,15 @@ struct
 
   let serialized (t : t) =
     Serialized.{
-      program_name = t.program_name ;
       name = t.name ;
       persistent = t.persistent ;
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature }
 
-  let unserialized (t : Serialized.t) =
+  let unserialized program_name (t : Serialized.t) =
     let open RamenOperation in
-    { program_name = t.program_name ;
+    { program_name ;
       name = t.name ;
       persistent = t.persistent ;
       doc = t.doc ;
@@ -155,19 +153,19 @@ struct
       condition = t.condition ;
       funcs = List.map Func.serialized t.funcs }
 
-  let unserialized (t : Serialized.t) =
+  let unserialized program_name (t : Serialized.t) =
     { params = t.params ;
       condition = t.condition ;
-      funcs = List.map Func.unserialized t.funcs }
+      funcs = List.map (Func.unserialized program_name) t.funcs }
 
   let version_of_bin fname =
     let args = [| fname ; WorkerCommands.print_version |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_line
 
-  let info_of_bin fname =
+  let info_of_bin program_name fname =
     let args = [| fname ; WorkerCommands.get_info |] in
     with_stdout_from_command ~expected_status:0 fname args Legacy.input_value |>
-    unserialized
+    unserialized program_name
 
   let env_of_params_and_exps conf params =
     (* First the params: *)
@@ -195,7 +193,7 @@ struct
 
   let of_bin =
     (* Cache of path to date of last read and program *)
-    let reread_data fname : t =
+    let reread_data (program_name, fname) : t =
       !logger.debug "Reading config from %s..." fname ;
       match version_of_bin fname with
       | exception e ->
@@ -210,12 +208,12 @@ struct
         !logger.error "%s" err ;
         failwith err
       | _ ->
-          (try info_of_bin fname with e ->
+          (try info_of_bin program_name fname with e ->
              let err = Printf.sprintf "Cannot get info from %s: %s"
                          fname (Printexc.to_string e) in
              !logger.error "%s" err ;
              failwith err)
-    and age_of_data fname =
+    and age_of_data (_, fname) =
       try mtime_of_file fname
       with e ->
         !logger.error "Cannot get mtime of %s: %s"
@@ -224,7 +222,7 @@ struct
     in
     let get_prog = cached "of_bin" reread_data age_of_data in
     fun program_name params fname ->
-      let p = get_prog fname in
+      let p = get_prog (program_name, fname) in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { params = RamenTuple.overwrite_params p.params params ;
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;

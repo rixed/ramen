@@ -173,8 +173,8 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(params=no_params) bin_file program_name_opt =
   let program_name =
     Option.default_delayed (fun () ->
-      let prog = P.info_of_bin bin_file in
-      (List.hd prog.P.funcs).F.program_name
+      Filename.(remove_extension (basename bin_file)) |>
+      RamenName.program_of_string
     ) program_name_opt in
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in
