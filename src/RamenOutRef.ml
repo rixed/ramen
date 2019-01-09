@@ -75,7 +75,7 @@ let read fname =
     Hashtbl.filter_map (fun _ (mask_str, chans) ->
       let channels =
         Hashtbl.filter (fun t -> not (timed_out now t)) chans in
-      if Hashtbl.length chans > 0 then
+      if Hashtbl.length channels > 0 then
         Some { field_mask = field_mask_of_string mask_str ; channels }
       else None))
 
