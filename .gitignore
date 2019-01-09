@@ -67,3 +67,5 @@ tests/archivist/*/archivist/v1/allocs
 tests/**/.experimenter_id
 tests/results
 site/man/*.groff
+site/favicon.ico
+site/menuicon.png

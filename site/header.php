@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <base href="https://rixed.github.io/ramen/">
     <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <title>Ramen Documentation</title>
   </head>
 <body>

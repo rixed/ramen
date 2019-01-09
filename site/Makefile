@@ -40,9 +40,20 @@ MANPAGES = \
 	man/timeseries.html \
 	man/variants.html
 
-IMAGES = tutorials/grafana.jpeg
+IMAGES = \
+	tutorials/grafana.jpeg \
+	menuicon.png \
+	favicon.ico
 
 all: $(PAGES) $(MANPAGES) $(IMAGES)
+
+favicon.ico: icon.png
+	@echo "Building $@"
+	@convert $< -size 32x32 $@
+
+menuicon.png: icon.png
+	@echo "Building $@"
+	@convert $< -stroke '#efeae8' -colorize 100% $@
 
 man/ramen.groff: ../src/ramen
 	@echo "Extracting $@"

@@ -12,11 +12,13 @@
 <h2>Language</h2>
 
 <ul>
+<li>Fix the parse errors;</li>
 <li>Further simplification of window management;</li>
 <li>Simplified "language" requiring only sources/aggregation key/time step/filter;</li>
 <li>Functions for prediction;</li>
 <li>Records (ideally encoded like in/out tuples and replacing them);</li>
 <li>Asynchronous functions (DNS lookups, geo-ip, ...);</li>
+<li>Deal with integer overflows somehow;</li>
 </ul>
 
 <h2>Performances</h2>
@@ -44,6 +46,7 @@
 
 <ul>
 <li>Read from ORC;</li>
+<li>Read from netCDF?</li>
 <li>Read from popular message-queues;</li>
 </ul>
 
