@@ -67,8 +67,8 @@ let read_ =
     fail_with_context c (fun () -> ppp_of_file fname)
 
 let read fname =
+  let now = Unix.gettimeofday () in
   RamenAdvLock.with_r_lock fname (fun _fd ->
-    let now = Unix.gettimeofday () in
     let field_mask_of_string s =
       String.to_list s |> List.map ((=) 'X') in
     read_ fname |>

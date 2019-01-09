@@ -1097,7 +1097,7 @@ let aggregate
       (List.print String.print) rb_in_fnames ;
     let rb_ins =
       List.map (fun fname ->
-        retry ~on:(fun _ -> true) ~min_delay:1.0 (RingBuf.load) fname
+        retry ~on:(fun _ -> true) ~min_delay:1.0 RingBuf.load fname
       ) rb_in_fnames
     in
     (* The big function that aggregate a single tuple *)
