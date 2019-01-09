@@ -38,7 +38,7 @@ Feature: We can run and kill any program in any order
   Scenario: I can run a worker that depends on nobody.
     Given tests/nodep.ramen is compiled
     And no worker is running
-    When I run ramen with arguments run tests/nodep.x
+    When I run ramen with arguments run --as tests/nodep tests/nodep.x
     Then ramen must exit gracefully
     Then after max 1 second worker tests/nodep/yi must be running
 
@@ -47,7 +47,7 @@ Feature: We can run and kill any program in any order
     Given tests/dep.ramen is compiled
     And program tests/nodep is not running
     Then program tests/nodep must not be running
-    When I run ramen with arguments run tests/dep.x
+    When I run ramen with arguments run --as tests/dep tests/dep.x
     Then ramen must exit with status 0
     And ramen must print a few lines on stderr
     Then after max 1 second worker tests/dep/n must be running

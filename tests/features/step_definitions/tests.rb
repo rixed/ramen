@@ -216,7 +216,7 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   end
   programs.list_split.each do |prog|
     if not running.include? prog
-      expect(system("ramen run --src-file '#{prog}.ramen' '#{prog}.x'")).to eq true
+      expect(system("ramen run --src-file '#{prog}.ramen' --as '#{prog}' '#{prog}.x'")).to eq true
     end
   end
 end
