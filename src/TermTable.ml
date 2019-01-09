@@ -62,7 +62,7 @@ let print_table_terse ~sep ~with_header ~na ~flush head =
   let try_print_header () =
     if with_header > 0 then
       if !lines_before_header = 0 then (
-        Array.print ~first:"" ~last:"" ~sep String.print stdout head ;
+        Array.print ~first:"#" ~last:"" ~sep String.print stdout head ;
         newline true ;
         lines_before_header := with_header
       ) else decr lines_before_header
