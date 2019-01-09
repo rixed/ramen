@@ -65,8 +65,8 @@ let read_file_lines ?(while_=always) ?(do_unlink=false)
         with Exit -> ()) ;
         RamenWatchdog.disable watchdog ;
         !logger.debug "Finished reading %S" filename ;
-        if do_unlink && preprocessor <> "" then
-          unlink filename) ()
+        if do_unlink && preprocessor <> "" then unlink filename ;
+        ignore (Gc.major_slice 0)) ()
 
 let check_file_exists kind kind_name path =
   !logger.debug "Checking %S is a %s..." path kind_name ;
