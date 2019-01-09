@@ -629,11 +629,6 @@ let since_mandatory =
                    ~docv:"SINCE" ["since"] in
   Arg.(required (opt (some float) None i))
 
-let until_mandatory =
-  let i = Arg.info ~doc:CliInfo.until
-                   ~docv:"UNTIL" ["until"] in
-  Arg.(required (opt (some float) None i))
-
 let replay =
   Term.(
     (const RamenCliCmd.replay
@@ -646,7 +641,7 @@ let replay =
       $ csv_raw
       $ where
       $ since_mandatory
-      $ until_mandatory
+      $ until
       $ with_event_time
       $ pretty
       $ flush

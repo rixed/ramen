@@ -626,6 +626,7 @@ let replay_ conf fq field_names with_header with_units sep null raw
             where since until with_event_time pretty flush =
   if with_units && with_header = 0 then
     failwith "Option --with-units makes no sense without --with-header" ;
+  let until = until |? Unix.gettimeofday () in
   let formatter = table_formatter pretty raw null in
   RamenExport.replay conf ~while_ fq field_names where since until
                      ~with_event_time (fun head ->
