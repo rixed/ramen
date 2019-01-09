@@ -827,11 +827,14 @@ struct
       ) m in
     let notify_cmd m =
       let m = "notification" :: m in
-      (strinG "notify" -- blanks -+ E.Parser.p ++
+      (strinG "notify" -- blanks -+
+       optional ~def:None (some E.Parser.p) ++
        optional ~def:[]
          (blanks -- strinGs "with" -- blanks -+
           several ~sep:list_sep_and kv) >>:
       fun (notif_name, parameters) ->
+        let notif_name =
+          notif_name |? E.expr_string "alert_name" "Don't Panic!" in
         { notif_name ; parameters }) m
     in
     let m = "notification clause" :: m in

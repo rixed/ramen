@@ -326,6 +326,10 @@ let expr_zero () = expr_u8 "zero" 0
 let expr_one () = expr_u8 "one" 1
 let expr_1hour () = expr_float ~units:RamenUnits.seconds "1hour" 3600.
 
+let expr_string name s =
+  let typ = RamenTypes.{ nullable = false ; structure = TString } in
+  Const (make_typ ~typ name, VString s)
+
 let of_float ?units v =
   let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
   Const (make_typ ~typ ?units (string_of_float v), VFloat v)
