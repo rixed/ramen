@@ -707,19 +707,7 @@ let read_well_known
  * product of their values.
  *)
 
-let notify rb worker event_time
-           (name, parameters)
-           field_of_tuple_in tuple_in
-           field_of_tuple_out tuple_out
-           field_of_params =
-  let tuples =
-    [ [ ""; "out" ], field_of_tuple_out tuple_out ;
-      [ "in" ], field_of_tuple_in tuple_in ;
-      [ "param" ], field_of_params ;
-      [ "env" ], Sys.getenv ] in
-  let name = subst_tuple_fields tuples name
-  and parameters =
-    List.map (fun (n, v) -> n, subst_tuple_fields tuples v) parameters in
+let notify rb worker event_time (name, parameters) =
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
@@ -1003,9 +991,6 @@ let aggregate
       (when_to_check_for_commit : when_to_check_group)
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
-      (field_of_tuple_in : 'tuple_in -> string -> string)
-      (field_of_tuple_out : 'tuple_out -> string -> string)
-      (field_of_params : string -> string)
       (get_notifications :
         'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
       (every : float) =
@@ -1048,12 +1033,7 @@ let aggregate
           else [] in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
-          List.iter (fun notif ->
-            notify notify_rb worker_name event_time notif
-                   field_of_tuple_in tuple_in
-                   field_of_tuple_out tuple_out
-                   field_of_params
-          ) notifications
+          List.iter (notify notify_rb worker_name event_time) notifications
         ) ;
         msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in

@@ -2171,28 +2171,6 @@ let emit_generate_tuples name in_typ out_typ ~opc oc selected_fields =
     Printf.fprintf oc ")\n"
   )
 
-let emit_field_of_tuple name oc tuple_typ =
-  Printf.fprintf oc "let %s %a = function\n"
-    name
-    (print_tuple_deconstruct TupleOut) tuple_typ ;
-  List.iter (fun field_typ ->
-      Printf.fprintf oc "\t| %S -> "
-        (RamenName.string_of_field field_typ.name) ;
-      let id = id_of_field_name ~tuple:TupleOut field_typ.name in
-      if field_typ.typ.nullable then (
-        Printf.fprintf oc "(match %s with Null -> %S \
-                            | NotNull v_ -> (%a) v_)\n"
-          id
-          string_of_null
-          (conv_from_to ~nullable:false) (field_typ.typ.structure, TString)
-      ) else (
-        Printf.fprintf oc "(%a) %s\n"
-          (conv_from_to ~nullable:false) (field_typ.typ.structure, TString)
-          id
-      )
-    ) tuple_typ ;
-  Printf.fprintf oc "\t| _ -> raise Not_found\n"
-
 let emit_state_update_for_expr ~what ~opc oc expr =
   let titled = ref false in
   RamenExpr.unpure_iter (function
@@ -2518,8 +2496,9 @@ let emit_notification_tuple ~opc oc notif =
     print_expr notif
     (List.print ~sep:";\n\t\t  "
       (fun oc ft ->
-        Printf.fprintf oc "%S, %s"
+        Printf.fprintf oc "%S, %a %s"
           (RamenName.string_of_field ft.RamenTuple.name)
+          (conv_from_to ~nullable:ft.typ.nullable) (ft.typ.structure, TString)
           (id_of_field_name ~tuple:TupleOut ft.name))) opc.tuple_typ
 
 (* We want a function that, when given the worker name, current time and the
@@ -2625,7 +2604,7 @@ let emit_aggregate opc oc name in_typ =
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
   and is_yield = from = [] in
   Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
+    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
     (emit_state_init "global_init_" RamenExpr.GlobalState ["()"] ~where ~commit_cond ~opc) fields
     (emit_state_init "group_init_" RamenExpr.LocalState ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
@@ -2648,8 +2627,6 @@ let emit_aggregate opc oc name in_typ =
     (emit_factors_of_tuple "factors_of_tuple_") opc
     (emit_serialize_tuple "serialize_tuple_") out_typ
     (emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc) fields
-    (emit_field_of_tuple "field_of_tuple_in_") in_typ
-    (emit_field_of_tuple "field_of_tuple_out_") out_typ
     (emit_merge_on "merge_on_" in_typ ~opc) merge.on
     (emit_sort_expr "sort_until_" in_typ ~opc) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
     (emit_sort_expr "sort_by_" in_typ ~opc) (match sort with Some (_, _, b) -> b | None -> [])
@@ -2666,7 +2643,6 @@ let emit_aggregate opc oc name in_typ =
       \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
       \t\tcommit_cond_ %b %b %s\n\
       \t\tglobal_init_ group_init_\n\
-      \t\tfield_of_tuple_in_ field_of_tuple_out_ field_of_params_\n\
       \t\tget_notifications_ %f\n"
     name
     merge.last merge.timeout
