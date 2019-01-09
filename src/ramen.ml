@@ -676,7 +676,7 @@ let consolidation =
                    ~docv:"min|max|avg|sum" ["consolidation"] in
   let cons_func =
     let p x = x, x in
-    [ p "min" ; p "max" ; p "avg" ; p "sum" ] in
+    [ p "min" ; p "max" ; p "avg" ; p "sum" ; p "count" ] in
   Arg.(value (opt (enum cons_func) "avg" i))
 
 let bucket_time =

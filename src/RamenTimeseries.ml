@@ -49,6 +49,8 @@ let bucket_min b =
   if b.count = 0. then None else Some b.min
 let bucket_max b =
   if b.count = 0. then None else Some b.max
+let bucket_count b =
+  Some b.count
 
 (* Enumerates all the time*values.
  * Returns the array of factor-column and the Enum.t of data.
@@ -96,7 +98,8 @@ let get conf num_points since until where factors
   let consolidate aggr_str =
     match String.lowercase aggr_str with
     | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
-    | _ -> bucket_avg
+    | "count" -> bucket_count | "avg" -> bucket_avg
+    | _ -> invalid_arg "RamenTimeseries.get: unknown consoliation function"
   in
   (* The data fields we are really interested about are: the data fields +
    * the factors *)
