@@ -50,3 +50,7 @@ Feature: I can compile programs and get proper error status.
     At least if specifying a dependency first, as expected from a compiler.
     When I run ramen with arguments compile -L . tests/nodep1.ramen tests/dep1.ramen
     Then ramen must produce executable files tests/nodep1.x and tests/dep1.x
+
+  Scenario: One can compile a file with no more indications than path.
+    When I run ramen with arguments compile tests/nodep1.ramen
+    Then ramen must produce executable file tests/nodep1.x

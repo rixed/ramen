@@ -195,7 +195,9 @@ let compile conf lib_path use_external_compiler bundle_dir
       match program_name_opt with
       | Some p -> p
       | None ->
-          failwith "No program name given and cannot guess from the lib-path"
+          (* When all else failed, use the basename: *)
+          Filename.(remove_extension (basename source_file)) |>
+          RamenName.program_of_string
     in
     let output_file =
       Option.default_delayed (fun () ->
