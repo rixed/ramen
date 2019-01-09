@@ -276,6 +276,18 @@ let find_replay_sources conf ?while_ fq since until =
         if Range.is_empty local_range then from_parents else
           let local_way = local_range, (Set.singleton fq, links) in
           local_way :: from_parents
+  and pick_best_way ways =
+    let span_of_range =
+      List.fold_left (fun s (t1, t2) -> s +. (t2 -. t1)) 0. in
+    (* For now, consider only the covered range.
+     * TODO: Maybe favor also shorter paths? *)
+    List.fold_left (fun (best_span, _ as prev) (range, _ as way) ->
+      let span = span_of_range range in
+      assert (span >= 0.) ;
+      if span > best_span then span, Some way else prev
+    ) (0., None) ways |>
+    snd |>
+    option_get "no data in best path"
   in
   (* We assume all functions are running for now but this is not required
    * for the replayer itself and for intermediary workers we might be
@@ -296,8 +308,7 @@ let find_replay_sources conf ?while_ fq since until =
           Range.print
           (Tuple2.print (Set.print RamenName.fq_print)
                         (Set.print link_print)))) ways ;
-      (* TODO: pick the "best" one *)
-      List.hd ways
+      pick_best_way ways
 
 
 let replay conf ?(while_=always) fq field_names where since until
