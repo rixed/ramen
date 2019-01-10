@@ -961,6 +961,12 @@ let rec map_type ?(recurs=true) f = function
         (if recurs then map_type ~recurs f a else a),
         (if recurs then map_type ~recurs f b else b)))
 
+(* We can share default values: *)
+let default_start =
+  StatelessFun0 (make_typ "#start", EventStart)
+let default_one = expr_one ()
+let default_1hour = expr_1hour ()
+
 module Parser =
 struct
   type expr = t
@@ -1452,11 +1458,11 @@ struct
      optional ~def:None (
       some (blanks -- strinG "over" -- blanks -+ p)) ++
      state_and_nulls ++
-     optional ~def:(expr_one ()) (
+     optional ~def:default_one (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:(expr_zero ()) (
+     optional ~def:default_start (
        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) ++
-     optional ~def:(expr_1hour ()) (
+     optional ~def:default_1hour (
        blanks -- strinG "for" --
        optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
        blanks -+ (const ||| param)) >>:
@@ -1500,12 +1506,11 @@ struct
       state_and_nulls +- opt_blanks +-
       (* This "of" disambiguate from Last *)
       strinG "of" +- blanks ++ p ++
-      optional ~def:None
-        (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+
-         some p) >>: fun ((((sample_size, max_age), (g, n)), what), time) ->
-      let time = time |? StatelessFun0 (make_typ "#start", EventStart) in
-      StatefulFun (make_typ "recent", g, n,
-                   Past { what ; time ; max_age ; sample_size })
+      optional ~def:default_start
+        (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
+      fun ((((sample_size, max_age), (g, n)), what), time) ->
+        StatefulFun (make_typ "recent", g, n,
+                     Past { what ; time ; max_age ; sample_size })
     ) m
 
   and nth m =

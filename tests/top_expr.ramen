@@ -8,7 +8,7 @@ DEFINE preparation AS
   FROM tests/fixtures/cars/csv
   SELECT
     manufacturer,
-    IF IS manufacturer IN TOP 2 THEN manufacturer ELSE "other"
+    IF IS manufacturer IN TOP 2 AT TIME 0 THEN manufacturer ELSE "other"
       AS approx_manufacturer;
 
 DEFINE f AS
