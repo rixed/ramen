@@ -2511,12 +2511,18 @@ let emit_get_notifications name in_typ out_typ ~opc oc notifications =
     (List.print ~sep:";\n\t\t" (emit_notification_tuple ~opc))
       notifications
 
+(* Tells whether this expression requires the out tuple (or anything else
+ * from the group). *)
 let expr_needs_group e =
   let open RamenExpr in
   fold_by_depth (fun need expr ->
     need || match expr with
       | Field (_, tuple, _) -> tuple_need_state !tuple
       | StatefulFun (_, LocalState, _, _) -> true
+      | StatelessFun0 (_, (EventStart | EventStop)) ->
+          (* This depends on the definition of the event time really.
+           * TODO: pass the event time down here and actually check. *)
+          true
       | _ -> false
   ) false e
 

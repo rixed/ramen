@@ -444,14 +444,30 @@ let check params op =
           failwith ("Steful function not allowed in "^ clause)
       | _ -> ())
   and check_fields_from lst where =
+    let check_can_use tuple =
+      if not (List.mem tuple lst) then (
+        Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
+          (RamenLang.string_of_prefix tuple)
+          where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
+        failwith) in
     E.iter (function
-      | E.Field (_, tuple, _) ->
-        if not (List.mem !tuple lst) then (
-          Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
-            (RamenLang.string_of_prefix !tuple)
-            where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
-          failwith
-        )
+      | E.Field (_, tuple, _) -> check_can_use !tuple
+      | E.StatelessFun0 (_, (EventStart | EventStop)) ->
+        (* Be conservative for now.
+         * TODO: Actually check the event time expressions.
+         * Also, we may not know yet the event time (if it's inferred from
+         * a parent).
+         * TODO: Perform those checks only after factors/time inference.
+         * And finally, we will do all this for nothing, as the fields are
+         * taken from output event when they are just transferred from input.
+         * So when the field used in the time expression can be computed only
+         * from the input tuple (with no use of another out field) we could
+         * as well recompute it - at least when it's just forwarded.
+         * But then we would need to be smarter in
+         * CodeGen_OCaml.emit_event_time will need more context (is out
+         * available) and how is it computed. So for now, let's assume any
+         * mention of #start/#stop is from out.  *)
+        check_can_use TupleOut
       | _ -> ())
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
