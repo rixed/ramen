@@ -964,6 +964,7 @@ let rec map_type ?(recurs=true) f = function
 (* We can share default values: *)
 let default_start =
   StatelessFun0 (make_typ "#start", EventStart)
+let default_zero = expr_zero ()
 let default_one = expr_one ()
 let default_1hour = expr_1hour ()
 
@@ -1460,14 +1461,21 @@ struct
      state_and_nulls ++
      optional ~def:default_one (
        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:default_start (
-       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) ++
-     optional ~def:default_1hour (
+     optional ~def:None (
+       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ some p) ++
+     optional ~def:None (
        blanks -- strinG "for" --
        optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
-       blanks -+ (const ||| param)) >>:
+       blanks -+ some (const ||| param)) >>:
      fun (((((((want_rank, what), c), max_size),
              (g, n)), by), time), duration) ->
+       let time, duration =
+         match time, duration with
+         (* If we asked for no time decay, use neutral values: *)
+         | None, None -> default_zero, default_1hour
+         | Some t, None -> t, default_1hour
+         | None, Some d -> default_start, d
+         | Some t, Some d -> t, d in
        StatefulFun (
          (if want_rank then make_typ "rank in top"
                        (* same nullability as what+by+time: *)
