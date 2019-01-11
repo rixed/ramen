@@ -1424,7 +1424,32 @@ struct
        StatelessFun2 (make_typ "reldiff", Reldiff, e1, e2)) |||
      (afun2_sf "sample" >>: fun ((g, n), c, e) ->
         StatefulFun (make_typ "sample", g, n, Sample (c, e))) |||
-     k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past) m
+     k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past |||
+     changed_field) m
+
+  (* Syntactic sugar for `x <> previous.x` *)
+  and changed_field m =
+    let m = "changed" :: m in
+    (
+      afun1 "changed" >>: fun f ->
+        let prev_field =
+          match f with
+          | Field (typ, tuple_ref, name) ->
+              (* If tuple is still unknown and we figure out later that it's
+               * not output then the error message will be about that field
+               * not present in the output tuple. Not too bad. *)
+              if !tuple_ref <> TupleOut &&
+                 !tuple_ref <> TupleUnknown
+              then
+                raise (Reject "Changed operator is only valid for \
+                               fields of the output tuple") ;
+              Field (make_typ typ.expr_name, ref TupleOutPrevious, name)
+          | _ ->
+              raise (Reject "Changed operator is only valid for fields")
+        in
+        StatelessFun1 (make_typ "not", Not,
+          StatelessFun2 (make_typ "equality", Eq, f, prev_field))
+    ) m
 
   and cast m =
     let m = "cast" :: m in

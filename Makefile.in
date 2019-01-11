@@ -591,6 +591,7 @@ tests/groups.success: tests/groups.x
 tests/patterns.success: tests/patterns.x tests/fixtures/cars.x
 tests/past.success: tests/past.x tests/fixtures/earthquakes.x
 tests/casts.success: tests/casts.x
+tests/changed.success: tests/changed.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

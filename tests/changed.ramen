@@ -1,0 +1,11 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  YIELD
+    IF RANDOM > 0.5 THEN "yes" ELSE "no" AS answer
+    COMMIT AFTER CHANGED answer |? true
+  EVERY 0.1s;
+
+DEFINE g AS
+  FROM f
+  SELECT answer, previous.answer AS prev;
