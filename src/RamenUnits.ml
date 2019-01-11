@@ -65,6 +65,7 @@ let eq =
 let empty = MapUnit.empty
 
 let make ?(rel=false) n = MapUnit.singleton n (1., rel)
+
 let dimensionless = MapUnit.empty
 let seconds = make "seconds"
 let seconds_since_epoch = make ~rel:true "seconds"
@@ -80,8 +81,11 @@ let is_relative u =
 
 let print oc =
   let p oc (e, rel) =
-    Printf.fprintf oc "%s^%g"
-      (if rel then "(rel)" else "") e in
+    Printf.fprintf oc "%s"
+      (if rel then "(rel)" else "") ;
+    if e <> 1. then
+      Printf.fprintf oc "^%g" e
+  in
   MapUnit.print ~first:"{" ~last:"}" ~sep:"*" ~kvsep:""
     String.print p oc
 
@@ -196,8 +200,8 @@ struct
     ) m
 
   (*$= p & ~printer:identity
-    "{seconds^1}" (test_p p "{seconds}" |> p2s)
-    "{}"          (test_p p "{}" |> p2s)
+    "{seconds}" (test_p p "{seconds}" |> p2s)
+    "{}"        (test_p p "{}" |> p2s)
   *)
   (*$>*)
 end
