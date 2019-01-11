@@ -109,6 +109,10 @@ let check (params, run_cond, funcs) =
         (RamenName.func_color (n.name |? anonymous))
         msg |>
       failwith) ;
+    (* While at it, we should not have any STAR left at that point: *)
+    assert (match n.operation with
+    | Aggregate { and_all_others = true ; _ } -> false
+    | _ -> true) ;
     (* Finally, check that the name is valid and unique: *)
     match n.name with
     | Some name ->
