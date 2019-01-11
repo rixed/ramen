@@ -441,7 +441,7 @@ let reify_star_fields get_parent program_name funcs =
           match func.operation with
           | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
-              (match common_fields_of_from get_parent program_name funcs from with
+              (match common_fields_of_from get_parent program_name !new_funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
                   (* Note that the fields are added in reverse alphabetical
