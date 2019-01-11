@@ -194,10 +194,7 @@ let compile conf lib_path use_external_compiler bundle_dir
     let program_name =
       match program_name_opt with
       | Some p -> p
-      | None ->
-          (* When all else failed, use the basename: *)
-          Filename.(remove_extension (basename source_file)) |>
-          RamenName.program_of_string
+      | None -> RamenRun.default_program_name source_file
     in
     let output_file =
       Option.default_delayed (fun () ->
@@ -225,14 +222,14 @@ let compile conf lib_path use_external_compiler bundle_dir
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace kill_if_disabled report_period as_ src_file
-        bin_file () =
+let run conf params replace kill_if_disabled report_period program_name_opt
+        src_file bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file bin_file as_
+               ?src_file bin_file program_name_opt
 
 (*
  * `ramen kill`

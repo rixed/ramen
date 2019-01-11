@@ -29,15 +29,13 @@ val program_ppp_ocaml : program PPP.t
 val program_of_string : string -> program
 val string_of_program : program -> string
 val program_color : program -> string
-(* Misc: *)
-val expr_color : string -> string
+val program_print : 'a BatInnerIO.output -> program -> unit
 
 type rel_program = [`RelProgram] t
 val rel_program_ppp_ocaml : rel_program PPP.t
 val rel_program_of_string : string -> rel_program
 val string_of_rel_program : rel_program -> string
 val program_of_rel_program : program -> rel_program -> program
-val program_print : 'a BatInnerIO.output -> program -> unit
 
 (* We also need param expansion as strings, since that's what the user
  * gives us and what we use to identify an instance of a program: *)
@@ -75,5 +73,8 @@ val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 val compare :
   ([< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url] as 'a) t ->
   'a t -> int
+
+(* Misc: *)
+val expr_color : string -> string
 
 (* TODO: bin names, notif names... *)

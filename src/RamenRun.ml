@@ -166,6 +166,10 @@ let check_links ?(force=false) program_name prog running_programs =
 
 let no_params = Hashtbl.create 0
 
+let default_program_name bin_file =
+  Filename.(remove_extension (basename bin_file)) |>
+  RamenName.program_of_string
+
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
@@ -173,8 +177,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(params=no_params) bin_file program_name_opt =
   let program_name =
     Option.default_delayed (fun () ->
-      Filename.(remove_extension (basename bin_file)) |>
-      RamenName.program_of_string
+      default_program_name bin_file
     ) program_name_opt in
   C.with_wlock conf (fun programs ->
     let bin = absolute_path_of bin_file in

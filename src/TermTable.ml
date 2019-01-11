@@ -195,8 +195,7 @@ let print_table_pretty ~with_header ~na ~flush head =
       if !line_no >= with_header then (
         print_subtable_pretty ~with_header ~na ~flush head (List.rev !lines) ;
         lines := [] ;
-        line_no := 0 ;
-      )
+        line_no := 0)
 
 (* Note: sort_col starts at 1. *)
 let print_table ?(pretty=false) ?sort_col ?(with_header=0) ?top
