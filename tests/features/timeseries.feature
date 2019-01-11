@@ -26,7 +26,7 @@ Feature: test ramen tail
     And I run ramen with arguments archivist --no-allocs --no-reconf
 
   Scenario: I can obtain some values using timeseries.
-    When I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test/ts v
+    When I run ramen with arguments timeseries -n 5 --since=1000 --until=1005 test/ts v
     Then ramen must print 5 lines on stdout
     And ramen must mention "42"
     And ramen must exit gracefully.

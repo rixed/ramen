@@ -337,12 +337,6 @@ type render_metric =
     datapoints : (float option * int) array } [@@ppp PPP_JSON]
 type render_resp = render_metric list [@@ppp PPP_JSON]
 
-let time_of_graphite_time s =
-  let len = String.length s in
-  if len = 0 then None
-  else if s.[0] = '-' then time_of_reltime s
-  else time_of_abstime s
-
 (* We output the field name and then a list of factor=value, to be simplified
  * later to remove all common values: *)
 let target_name_of used_factors fvals =

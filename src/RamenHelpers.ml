@@ -1326,7 +1326,7 @@ let time_of_reltime s =
         Unix.gettimeofday () +. d *.
           (match s with
           | "s" -> 1.
-          | "min" -> 60.
+          | "m" | "min" -> 60.
           | "h" -> 3600.
           | "d" -> 86400.
           | "w" -> 7. *. 86400.
@@ -1336,7 +1336,8 @@ let time_of_reltime s =
     with Exit ->
       None
   in
-  Scanf.sscanf s "%f%s%!" scale
+  try Scanf.sscanf s "%f%s%!" scale
+  with _ -> None
 
 (* String interpreted in the local time zone: *)
 let time_of_abstime s =
@@ -1376,7 +1377,6 @@ let time_of_abstime s =
    * time of day.  (If that time is already past, the next day is assumed.)
    * (...) and time-of-day may be suffixed with AM or PM for running in the
    * morning or the evening." *)
-  (scan "%2d%2d%s%!" time_of_hh_mm) |||
   (scan "%2d:%2d%s%!" time_of_hh_mm) |||
   (scan "%2d:%2d%s%!" time_of_hh_mm) |||
   (* "As an alternative, the following keywords may be specified: midnight,
@@ -1387,9 +1387,7 @@ let time_of_abstime s =
   (* Not specified but that's actually the first Grafana will send: *)
   (eq "now" time) |||
   (* Also not specified but mere unix timestamps are actually frequent: *)
-  (scan "%f%!" (fun f ->
-    if f > 946681200. && f < 2208985200. then f
-    else raise (Scanf.Scan_failure "Doesn't look like a timestamp"))) |||
+  (scan "%f%!" identity) |||
   (* "The day on which the job is to be run may also be specified by giving a
    * date in the form month-name day with an optional year," *)
   (* TODO *)
@@ -1423,7 +1421,15 @@ let time_of_abstime s =
  (time_of_abstime "1976-01-28 12:00") (time_of_abstime "1976-01-28T12:00:00.1")
  (time_of_abstime "1976-01-28 12:00:01") (time_of_abstime "1976-01-28 12:00:00.9")
  (Some 1523052000.) (time_of_abstime "1523052000")
+ (Some 10.) (time_of_abstime "10")
  *)
+
+let time_of_graphite_time s =
+  let s = String.trim s in
+  let len = String.length s in
+  if len = 0 then None
+  else if s.[0] = '-' then time_of_reltime s
+  else time_of_abstime s
 
 (* Replace ${tuple.field} by the actual value the passed string: *)
 let subst_tuple_fields =

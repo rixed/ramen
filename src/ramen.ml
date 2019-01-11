@@ -556,15 +556,26 @@ let where =
                    ~docv:"FIELD=VALUE" ["w"; "where"] in
   Arg.(value (opt_all filter [] i))
 
+let time =
+  let parse s =
+    match time_of_graphite_time s with
+    | None -> Pervasives.Error (
+        `Msg (Printf.sprintf "Cannot parse string %S as time" s))
+    | Some f -> Pervasives.Ok f
+  and print fmt t =
+    Format.fprintf fmt "%f" t
+  in
+  Arg.conv ~docv:"TIME" (parse, print)
+
 let since =
   let i = Arg.info ~doc:CliInfo.since
                    ~docv:"SINCE" ["since"] in
-  Arg.(value (opt (some float) None i))
+  Arg.(value (opt (some time) None i))
 
 let until =
   let i = Arg.info ~doc:CliInfo.until
                    ~docv:"UNTIL" ["until"] in
-  Arg.(value (opt (some float) None i))
+  Arg.(value (opt (some time) None i))
 
 let with_event_time =
   let i = Arg.info ~doc:CliInfo.with_event_time
@@ -650,7 +661,7 @@ let data_fields ~mandatory p =
 let since_mandatory =
   let i = Arg.info ~doc:CliInfo.since
                    ~docv:"SINCE" ["since"] in
-  Arg.(required (opt (some float) None i))
+  Arg.(required (opt (some time) None i))
 
 let replay =
   Term.(
