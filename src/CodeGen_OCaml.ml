@@ -2753,7 +2753,7 @@ let emit_operation name func params_mod params oc =
         params ; consts ; tuple_typ } in
     emit_well_known opc code name from
       "RamenBinocle.unserialize" "report_ringbuf"
-      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
+      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     let opc =
       { op = Some func.F.operation ;
