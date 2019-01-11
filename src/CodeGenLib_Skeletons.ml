@@ -590,7 +590,9 @@ let read_csv_file
       | exception e ->
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
-      | tuple -> outputer (Some tuple)))
+      | tuple ->
+        IntCounter.add stats_in_tuple_count 1 ;
+        outputer (Some tuple)))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
@@ -614,6 +616,7 @@ let listen_on
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
+      IntCounter.add stats_in_tuple_count 1 ;
       outputer (Some tup)))
 
 (*
@@ -663,6 +666,7 @@ let read_well_known
             (* Filter by time and worker *)
             if time >= start && match_from worker then (
               CodeGenLib_IO.on_each_input_pre () ;
+              IntCounter.add stats_in_tuple_count 1 ;
               outputer (RingBufLib.DataTuple chan) (Some tuple))
           | _ -> ()) ;
           (), true) ;
@@ -1240,7 +1244,7 @@ let aggregate
         !logger.debug "Read a tuple from channel %a"
           RamenChannel.print channel_id ;
       with_state channel_id (fun s ->
-        (* Set now and in.#count: *)
+        (* Set CodeGenLib_IO.now: *)
         CodeGenLib_IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
         if channel_id = RamenChannel.live then (
