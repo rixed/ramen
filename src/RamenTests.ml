@@ -513,11 +513,14 @@ let run_test conf notify_rb dirname test =
   let tester_threads =
     List.map (fun thd ->
       Thread.create (fun () ->
-        let success, msg = thd end_flag in
-        if not success then (
-          all_good := false ;
-          !logger.error "Failure: %s\n" msg
-        ) ;
+        (match thd end_flag with
+        | exception e ->
+            all_good := false ;
+            !logger.error "Exception: %s" (Printexc.to_string e)
+        | success, msg ->
+            if not success then (
+              all_good := false ;
+              !logger.error "Failure: %s" msg)) ;
         Atomic.Counter.decr num_tests_left ;
         if Atomic.Counter.get num_tests_left <= 0 then
           stop_workers ()
