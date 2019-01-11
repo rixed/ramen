@@ -339,6 +339,28 @@ let gc conf dry_run del_ratio loop daemonize to_stdout to_syslog () =
  * Display information about running programs and quit.
  *)
 
+let sort_col_of_string spec str =
+  let str = String.(trim str |> lowercase) in
+  try int_of_string str
+  with Failure _ ->
+    let matching =
+      Array.enum spec |> Enum.foldi (fun i c l ->
+        let c = String.lowercase c in
+        if String.starts_with c str then (i, c) :: l else l) [] in
+    (match matching with
+    | [ i, _ ] -> i
+    | [] ->
+        Printf.sprintf2 "Unknown column %S (must be one of %a)"
+          str
+          (pretty_array_print String.print_quoted) spec |>
+        failwith
+    | l ->
+        Printf.sprintf2 "Ambiguous: %S could be %a"
+          str
+          (pretty_list_print (fun oc (_, s) ->
+            String.print_quoted oc s)) l |>
+        failwith)
+
 let ps conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
@@ -351,6 +373,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
       [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
          "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
          "volume out" |]  in
+    let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
@@ -386,6 +409,7 @@ let ps conf short pretty with_header sort_col top pattern all () =
          "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
          "volume out" ; "avg out sz" ; "startup time" ; "#parents" ; "#children" ;
          "signature" |] in
+    let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     C.with_rlock conf (fun programs ->
       (* First pass to get the children: *)

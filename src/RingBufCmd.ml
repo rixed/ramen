@@ -96,8 +96,9 @@ type func_status =
 let links conf no_abbrev show_all as_tree pretty with_header sort_col top
           pattern () =
   init_logger conf.C.log_level ;
-  if as_tree && (pretty || with_header > 0 || sort_col <> 1 || top <> None ||
-                 show_all) then
+  if as_tree &&
+     (pretty || with_header > 0 || sort_col <> "1" || top <> None || show_all)
+  then
     failwith "Option --as-tree is not compatible with --pretty, --header, \
               --sort, --top or --show-all" ;
   let pattern = Globs.compile pattern in
@@ -227,6 +228,7 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     and links = List.map (fun (_, _, _, _, link) -> link) links in
     TermTable.print_tree ~parent:0 ~child:1 head links roots
   ) else (
+    let sort_col = RamenCliCmd.sort_col_of_string head sort_col in
     let print =
       TermTable.print_table ~pretty ~sort_col ~with_header ?top head in
     List.iter (fun (is_err, parent, _parent_disp, child, link) ->

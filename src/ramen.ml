@@ -303,7 +303,7 @@ let with_header =
 let sort_col =
   let i = Arg.info ~doc:CliInfo.sort_col
                    ~docv:"COL" [ "sort" ; "s" ] in
-  Arg.(value (opt int 1 i))
+  Arg.(value (opt string "1" i))
 
 let top =
   let i = Arg.info ~doc:CliInfo.top
