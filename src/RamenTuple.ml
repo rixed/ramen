@@ -53,7 +53,8 @@ let print_typ oc =
     (fun oc t -> print_field_typ oc t)) oc
 
 let print_typ_names oc =
-  pretty_list_print (fun oc t -> RamenName.field_print oc t.name) oc
+  pretty_list_print (fun oc t ->
+    String.print_quoted oc (RamenName.string_of_field t.name)) oc
 
 (* Params form a special tuple with fixed values: *)
 

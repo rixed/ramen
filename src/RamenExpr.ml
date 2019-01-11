@@ -1609,7 +1609,9 @@ struct
              | (e, units) -> (typ_of e).units <- units ; e
 
   and highestest_prec_no_parenthesis m =
-    (accept_units (const ||| field ||| null) ||| func ||| coalesce) m
+    (
+      accept_units (const ||| field ||| null) ||| func ||| coalesce
+    ) m
 
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||

@@ -21,6 +21,7 @@ let field_of_string s =
   s
 
 let field_print = String.print
+let field_print_quoted = String.print_quoted (* TODO: or just use color *)
 
 external string_of_field : field -> string = "%identity"
 
@@ -47,6 +48,7 @@ let func_of_string s =
   s
 
 let func_print = String.print
+let func_print_quoted = String.print_quoted
 
 external string_of_func : func -> string = "%identity"
 
@@ -81,6 +83,7 @@ let path_of_program prog =
   String.join "/"
 
 let program_print = String.print
+let program_print_quoted = String.print_quoted
 
 (* Relative Program Names: "../" are allowed, and conversion to a normal
  * program name requires the location from which the program is relative: *)
@@ -102,6 +105,7 @@ let program_of_rel_program start rel_program =
   else rel_program
 
 let rel_program_print = String.print
+let rel_program_print_quoted = String.print_quoted
 
 (* Program parameters
  *
@@ -140,6 +144,7 @@ external string_of_fq : fq -> string = "%identity"
 let fq prog func = prog ^"/"^ func
 
 let fq_print = String.print
+let fq_print_quoted = String.print_quoted
 
 let fq_parse ?default_program s =
   let s = String.trim s in
@@ -162,6 +167,7 @@ let base_unit_ppp_ocaml = t_ppp_ocaml
 external base_unit_of_string : string -> base_unit = "%identity"
 external string_of_base_unit : base_unit -> string = "%identity"
 let base_unit_print = String.print
+let base_unit_print_quoted = String.print_quoted
 
 (* Some dedicated colors for those strings: *)
 

@@ -393,8 +393,8 @@ let check_test_spec conf test =
                         ft.RamenTuple.name = field_name
                       ) out_type) then
                 Printf.sprintf2 "Unknown field %a in %a (have %a)"
-                  RamenName.field_print field_name
-                  RamenName.fq_print (RamenName.fq pn fn)
+                  RamenName.field_print_quoted field_name
+                  RamenName.fq_print_quoted (RamenName.fq pn fn)
                   RamenTuple.print_typ_names out_type |>
                 failwith
             ) tuple))

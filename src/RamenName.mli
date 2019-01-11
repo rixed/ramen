@@ -12,6 +12,7 @@ val field_ppp_ocaml : field PPP.t
 val field_ppp_json : field PPP.t
 val field_of_string : string -> field
 val field_print : 'a BatInnerIO.output -> field -> unit
+val field_print_quoted : 'a BatInnerIO.output -> field -> unit
 val string_of_field : field -> string
 val field_color : field -> string
 val is_private : field -> bool
@@ -21,6 +22,7 @@ type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
 val func_of_string : string -> func
 val func_print : 'a BatInnerIO.output -> func -> unit
+val func_print_quoted : 'a BatInnerIO.output -> func -> unit
 val string_of_func : func -> string
 val func_color : func -> string
 
@@ -30,6 +32,7 @@ val program_of_string : string -> program
 val string_of_program : program -> string
 val program_color : program -> string
 val program_print : 'a BatInnerIO.output -> program -> unit
+val program_print_quoted : 'a BatInnerIO.output -> program -> unit
 
 type rel_program = [`RelProgram] t
 val rel_program_ppp_ocaml : rel_program PPP.t
@@ -37,6 +40,7 @@ val rel_program_of_string : string -> rel_program
 val string_of_rel_program : rel_program -> string
 val program_of_rel_program : program -> rel_program -> program
 val rel_program_print : 'a BatInnerIO.output -> rel_program -> unit
+val rel_program_print_quoted : 'a BatInnerIO.output -> rel_program -> unit
 val rel_program_color : rel_program -> string
 
 (* We also need param expansion as strings, since that's what the user
@@ -58,6 +62,7 @@ val fq_of_string : string -> fq
 val string_of_fq : fq -> string
 val fq : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
+val fq_print_quoted : 'a BatInnerIO.output -> fq -> unit
 val fq_parse : ?default_program:program -> fq -> program * func
 val fq_color : fq -> string
 
@@ -69,6 +74,7 @@ val base_unit_ppp_ocaml : base_unit PPP.t
 val base_unit_of_string : string -> base_unit
 val string_of_base_unit : base_unit -> string
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
+val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
 
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
