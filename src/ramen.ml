@@ -525,7 +525,8 @@ let max_seq =
 
 let filter =
   (* Longer first: *)
-  let operators = [ ">="; "<="; "!="; "="; "<>"; "<"; ">"; " in" ] in
+  let operators =
+    [ ">="; "<="; "!="; "="; "<>"; "<"; ">"; " in"; " not in" ] in
   let parse s =
     match
       List.find_map (fun op ->
@@ -553,7 +554,7 @@ let filter =
 
 let where =
   let i = Arg.info ~doc:CliInfo.where
-                   ~docv:"FIELD=VALUE" ["w"; "where"] in
+                   ~docv:"FIELD op VALUE" ["w"; "where"] in
   Arg.(value (opt_all filter [] i))
 
 let time =

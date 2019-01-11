@@ -204,14 +204,16 @@ let filter_tuple_by ser where =
             RamenTuple.print_typ ser ;
           raise e) in
       let op =
+        let op_in x = function
+          | VVec a | VList a -> Array.exists (fun x' -> x = x') a
+          | _ -> assert false in
         match op with
         | "=" -> (=)
         | "!=" | "<>" -> (<>)
         | "<=" -> (<=) | ">=" -> (>=)
         | "<" -> (<) | ">" -> (>)
-        | "in" -> (fun x -> function
-                     | VVec a | VList a -> Array.exists (fun x' -> x = x') a
-                     | _ -> assert false)
+        | "in" -> op_in
+        | "not in" -> (fun a b -> not (op_in a b))
         | _ -> failwith "Invalid operator" in
       idx, op, v
     ) where in
