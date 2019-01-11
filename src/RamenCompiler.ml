@@ -421,14 +421,11 @@ let compile conf get_parent ~exec_file source_file program_name =
           Option.map (IO.to_string (RamenExpr.print false)) condition in
         let runconf =
           P.{ funcs ; params ; condition } in
-        Printf.fprintf oc "let rc_str_ = %S\n"
-          ((PPP.to_string P.t_ppp_ocaml runconf) |>
-           PPP_prettify.prettify) ;
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string (P.serialized runconf) [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
-          "let () = CodeGenLib_Casing.run %S rc_str_ rc_marsh_ run_condition_\n"
+          "let () = CodeGenLib_Casing.run %S rc_marsh_ run_condition_\n"
             RamenVersions.codegen ;
         let func_list entry_point =
           Printf.fprintf oc "\t[\n" ;

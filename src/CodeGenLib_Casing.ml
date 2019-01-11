@@ -4,7 +4,7 @@ open Batteries
 open RamenHelpers
 open RamenConsts
 
-let run codegen_version rc_str rc_marsh run_condition workers replayers =
+let run codegen_version rc_marsh run_condition workers replayers =
   (* Init the random number generator *)
   (match Sys.getenv "rand_seed" with
   | exception Not_found -> Random.self_init ()
@@ -12,10 +12,9 @@ let run codegen_version rc_str rc_marsh run_condition workers replayers =
   | s -> Random.init (int_of_string s)) ;
   let help () =
     Printf.printf
-      "This program is a Ramen worker (codegen %s).\n\n\
-       Runtime configuration:\n\n%s\n\n\
-       Have a nice day!\n"
-      codegen_version rc_str in
+      "This program is a Ramen worker (codegen %s).\n\
+       To learn more about this program, run `ramen info %s`.\n"
+      codegen_version Sys.argv.(0) in
   let run_from_list lst =
     (* Call a function from lst according to envvar "name" *)
     match Sys.getenv "name" with
