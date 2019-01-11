@@ -760,8 +760,9 @@ end
 
 (* Use the above parser to get a value from a string.
  * Pass the expected type if you know it. *)
-let of_string ?(what="value of string") ?typ s =
+let of_string ?what ?typ s =
   let open RamenParsing in
+  let what = what |? ("value of "^ String.quote s) in
   let p = allow_surrounding_blanks Parser.(
             (* Parse the string as narrowly as possible; values
              * will be enlarged later as required: *)
