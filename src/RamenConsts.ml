@@ -107,6 +107,7 @@ struct
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"
+  let info = "Print all meta information about a worker"
   let kill = "Stop a program"
   let tail = "Display the last outputs of an operation"
   let replay = "Rebuild the past output of the given operation"
@@ -192,7 +193,7 @@ struct
   let factors =
     "specify which fields to use as factors/categorical variables"
   let with_event_time = "Prepend tuples with their event time"
-  let func_name = "Operation unique name"
+  let function_name = "Operation unique name"
   let duration =
     "Operation will stop archiving its output after that duration if \
      nobody ask for it"

@@ -454,6 +454,29 @@ let kill =
       $ purge),
     info ~doc:CliInfo.kill "kill")
 
+let func_name =
+  let parse s = Pervasives.Ok (RamenName.func_of_string s)
+  and print fmt p =
+    Format.fprintf fmt "%s" (RamenName.string_of_func p)
+  in
+  Arg.conv ~docv:"FUNCTION" (parse, print)
+
+let opt_function_name p =
+  let i = Arg.info ~doc:CliInfo.function_name
+                   ~docv:"OPERATION" [] in
+  Arg.(value (pos p (some func_name) None i))
+
+
+let info =
+  Term.(
+    (const RamenCliCmd.info
+      $ copts
+      $ params
+      $ as_
+      $ bin_file
+      $ opt_function_name 1),
+    info ~doc:CliInfo.info "info")
+
 (*
  * Display the output of any operation
  *)
@@ -607,8 +630,8 @@ let fq_name =
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
-let func_name p =
-  let i = Arg.info ~doc:CliInfo.func_name
+let function_name p =
+  let i = Arg.info ~doc:CliInfo.function_name
                    ~docv:"OPERATION" [] in
   Arg.(required (pos p (some fq_name) None i))
 
@@ -718,7 +741,7 @@ let timerange =
   Term.(
     (const RamenCliCmd.timerange
       $ copts
-      $ func_name 0),
+      $ function_name 0),
     info ~doc:CliInfo.timerange "timerange")
 
 (*
@@ -923,7 +946,7 @@ let () =
   match
     print_exn (fun () ->
       Term.eval_choice ~catch:false default [
-        supervisor ; gc ; httpd ; alerter ;
+        supervisor ; gc ; httpd ; alerter ; info ;
         notify ; compile ; run ; kill ; archivist ;
         tail ; replay ; timeseries ; timerange ; ps ;
         test ; dequeue ; summary ; repair ; links ;

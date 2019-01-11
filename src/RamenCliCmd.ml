@@ -247,6 +247,64 @@ let kill conf program_names purge () =
     num_kills (if num_kills > 1 then "s" else "")
 
 (*
+ * `ramen info`
+ *
+ * Display a program or function meta information from the binary.
+ *)
+
+let info _conf params program_name_opt bin_file opt_func_name () =
+  let params = List.enum params |> Hashtbl.of_enum in
+  let program_name =
+    Option.default_delayed (fun () ->
+      RamenRun.default_program_name bin_file
+    ) program_name_opt in
+  let prog = P.of_bin program_name params bin_file in
+  if prog.params <> [] then (
+    TermTable.print_head 0 "Parameters" ;
+    TermTable.print 1 "%a" RamenTuple.print_params prog.params) ;
+  Option.may (fun run_cond ->
+    TermTable.print_head 0 "Running condition" ;
+    TermTable.print_string 1 run_cond
+  ) prog.condition ;
+  let info_func i func =
+   TermTable.print i "%s" (RamenName.func_color func.F.name) ;
+    if func.doc <> "" then TermTable.print_abstract i func.doc ;
+    if func.parents <> [] then (
+      TermTable.print_head (i+1) "Parents" ;
+      List.iter (function
+        | None, f ->
+            TermTable.print (i+2) "%s" (RamenName.func_color f)
+        | Some rp, f ->
+            TermTable.print (i+2) "%s/%s"
+              (RamenName.rel_program_color rp)
+              (RamenName.func_color f)
+      ) func.parents ;
+      TermTable.print_head (i+1) "Input type") ;
+    TermTable.print (i+2) "%a" RamenTuple.print_typ func.in_type ;
+    let out_type =
+      RamenOperation.out_type_of_operation func.operation in
+    TermTable.print_head (i+1) "Output type" ;
+    TermTable.print (i+2) "%a" RamenTuple.print_typ out_type ;
+    RamenOperation.event_time_of_operation func.operation |>
+    Option.may (fun et ->
+      TermTable.print_head (i+1) "Event time" ;
+      TermTable.print (i+2) "%a" RamenEventTime.print et) ;
+    print_endline ""
+  in
+  match opt_func_name with
+  | None ->
+      TermTable.print_head 0 "Functions" ;
+      List.iter (info_func 1) prog.funcs
+  | Some func_name ->
+      (match List.find (fun func ->
+               func.F.name = func_name) prog.funcs with
+      | exception Not_found ->
+          Printf.sprintf2 "No such function %a"
+            RamenName.func_print func_name |>
+          failwith
+      | func -> info_func 0 func)
+
+(*
  * `ramen gc`
  *
  * Delete old or unused files.

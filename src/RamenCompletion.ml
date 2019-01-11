@@ -25,6 +25,7 @@ let complete_commands s =
       "compile", CliInfo.compile ;
       "run", CliInfo.run ;
       "kill", CliInfo.kill ;
+      "info", CliInfo.info ;
       "tail", CliInfo.tail ;
       "replay", CliInfo.replay ;
       "timeseries", CliInfo.timeseries ;
@@ -215,6 +216,10 @@ let complete str () =
           ("--purge", CliInfo.purge) ::
           copts @
           (complete_running_program persist_dir)
+      | "info" ->
+          ("--parameter=", CliInfo.param) ::
+          copts @
+          (complete_binary_files last_tok)
       | "tail" ->
           let persist_dir = persist_dir toks in
           ("--last=", CliInfo.last) ::

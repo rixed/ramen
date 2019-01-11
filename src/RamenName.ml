@@ -101,6 +101,7 @@ let program_of_rel_program start rel_program =
     simplified_path (start ^"/"^ rel_program)
   else rel_program
 
+let rel_program_print = String.print
 
 (* Program parameters
  *
@@ -167,6 +168,7 @@ let base_unit_print = String.print
 let field_color = RamenLog.blue
 let func_color = RamenLog.green
 let program_color = RamenLog.green
+let rel_program_color = program_color
 let expr_color = RamenLog.yellow
 let fq_color = func_color
 

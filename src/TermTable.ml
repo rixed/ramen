@@ -275,3 +275,24 @@ let print_tree ~parent ~child ?(na="n/a") ?(flush=false) head lines roots =
     print_subtree ~flush ~parent ~child h head ~indent:"" ~is_last:true root
                   Set.String.empty
   ) roots
+
+(*
+ *  Apart form tables we can also pretty-print hierarchical reports
+ *)
+
+let rec print_indent oc indent =
+  if indent > 0 then (
+    Char.print oc ' ' ;
+    print_indent oc (indent - 1))
+
+let print indent fmt =
+  Printf.fprintf stdout ("%a"^^fmt^^"\n") print_indent indent
+
+let print_head indent title =
+  print indent "%s" (blue title)
+
+let print_abstract indent str =
+  print indent " (%s)" (gray str)
+
+let print_string indent str =
+  print indent "%s" str

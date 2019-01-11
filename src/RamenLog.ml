@@ -42,6 +42,7 @@ let blue = colored "1;34"
 let magenta = colored "1;35"
 let cyan = colored "1;36"
 let white = colored "1;37"
+let gray = colored "2;37"
 
 let log_file tm =
   Printf.sprintf "%04d-%02d-%02d"
