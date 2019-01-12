@@ -273,30 +273,47 @@ module Last = struct
 end
 
 module Past = struct
+
   type 'a state =
     { (* Ordered according to time, smaller on top: *)
       values : ('a * float) RamenHeap.t ;
       max_age : float ;
-      length : int (* how many values are there already *) }
+      sample : ('a * float) RamenSampling.reservoir option }
 
-  (* TODO: implement sampling *)
-  let init max_age _sample_size =
-    { values = RamenHeap.empty ; max_age ; length = 0 }
+  let init max_age sample_size any_value =
+    { sample =
+        Option.map (fun sz ->
+          RamenSampling.init sz (any_value, 0.)
+        ) sample_size ;
+      values = RamenHeap.empty ; max_age }
 
   let cmp (_, t1) (_, t2) = Float.compare t1 t2
 
   let add state x t =
-    let rec out_the_olds outed h =
+    let rec out_the_olds h =
       match RamenHeap.min h with
-      | exception Not_found -> outed, h
+      | exception Not_found -> h
       | _, t' ->
-          if t -. t' < state.max_age then outed, h else
-            out_the_olds (outed + 1) (RamenHeap.del_min cmp h) in
-    let outed, values = out_the_olds 0 state.values in
-    let values = RamenHeap.add cmp (x, t) values in
-    { state with
-        values ;
-        length = state.length + 1 - outed }
+          if t -. t' < state.max_age then h else
+            out_the_olds (RamenHeap.del_min cmp h) in
+    let add values =
+      let values = out_the_olds values in
+      let values = RamenHeap.add cmp (x, t) values in
+      { state with values }
+    in
+    match state.sample with
+    | None -> add state.values
+    | Some r ->
+        (match RamenSampling.swap_in r (x, t) with
+        | None -> state
+        | Some prev ->
+          (* When the reservoir was initially empty it will replace
+           * any_value with time 0., which is not in the heap.
+           * Therefore it is OK for rem to fail: *)
+          let values =
+            try RamenHeap.rem cmp prev state.values
+            with Not_found -> state.values in
+          add values)
 
   (* Must return an optional vector of max_length values: *)
   let finalize state =

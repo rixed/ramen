@@ -1417,14 +1417,20 @@ and emit_expr_ ?state ~context ~opc oc expr =
       ~impl_return_nullable:true
       "RamenSampling.finalize" [] oc []
 
-  | InitState, StatefulFun (_, _, _, Past { max_age ; sample_size ; _ }), _ ->
+  | InitState, StatefulFun (_, _, n, Past { what ; max_age ; sample_size ; _ }), _ ->
+    let init_c =
+      let c_typ = Option.get (typ_of what).typ in
+      let c_typ = if n then { c_typ with nullable = false } else c_typ in
+      any_constant_of_expr_type c_typ in
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "CodeGenLib.Past.init (%a) (%a)"
+      Printf.fprintf oc "CodeGenLib.Past.init (%a) (%a) (%a)"
         (conv_to ?state ~context:Finalize ~opc (Some TFloat)) max_age
-        (Option.print (fun oc sample_size ->
+        (Option.print (fun oc sz ->
+          (* Would be nicer if conv_to would handle the parenth itself *)
           Printf.fprintf oc "(%a)"
-            (conv_to ?state ~context:Finalize ~opc (Some TU32)) sample_size
-          )) sample_size)
+            (conv_to ?state ~context:Finalize ~opc (Some TU32)) sz))
+          sample_size
+        (emit_expr ?state ~context:Finalize ~opc) init_c)
   | UpdateState, StatefulFun (_, g, n, Past { what ; time ; _ }), _ ->
     update_state ?state ~opc ~nullable n (my_state g) [ what ; time ]
       "CodeGenLib.Past.add" oc [ None, PassNull ; Some TFloat, PropagateNull ]

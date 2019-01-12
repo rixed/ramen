@@ -17,15 +17,16 @@ let rank = function
     | E -> 0
     | T (r, _, _, _) -> r
 
+let makeT v l r =
+    let rank_l, rank_r = rank l, rank r in
+    if rank_l >= rank_r then T (rank_l + 1, v, l, r)
+    else T (rank_r + 1, v, r, l)
+
 let rec merge cmp a b = match a with
     | E -> b
     | T (_, x, a_l, a_r) -> (match b with
         | E -> a
         | T (_, y, b_l, b_r) ->
-            let makeT v l r =
-                let rank_l, rank_r = rank l, rank r in
-                if rank_l >= rank_r then T (rank_l + 1, v, l, r)
-                else T (rank_r + 1, v, r, l) in
             if cmp x y < 0 then makeT x a_l (merge cmp a_r b)
             else makeT y b_l (merge cmp a b_r))
 
@@ -47,3 +48,11 @@ let rec fold_left cmp f init = function
   | t ->
       let init' = f init (min t) in
       fold_left cmp f init' (del_min cmp t)
+
+let rec rem cmp x = function
+  | E -> E
+  | T (_, y, l, r) ->
+      let c = cmp x y in
+      if c < 0 then makeT y (rem cmp x l) r else
+      if c = 0 && x = y then merge cmp l r else
+      makeT y l (rem cmp x r)

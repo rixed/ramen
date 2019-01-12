@@ -20,18 +20,29 @@ let init max_size any_value =
   { cur_size = 0 ; count = 0 ;
     arr = Array.make max_size any_value }
 
-let add t x =
+(* Returns the optional index where it's been saved. *)
+let swap_in t x =
   let i = t.count in
   t.count <- i + 1 ;
   if t.cur_size < Array.length t.arr then (
-    t.arr.(t.cur_size) <- x ;
-    t.cur_size <- t.cur_size + 1
+    let idx = t.cur_size in
+    t.cur_size <- t.cur_size + 1 ;
+    let prev = t.arr.(idx) in
+    t.arr.(idx) <- x ;
+    Some prev
   ) else (
     let max_size = float_of_int (Array.length t.arr) in
     let keep = Random.float 1. < max_size /. float_of_int (i + 1) in
-    if keep then
-      t.arr.(Random.int (Array.length t.arr)) <- x
-  ) ;
+    if keep then (
+      let idx = Random.int (Array.length t.arr) in
+      let prev = t.arr.(idx) in
+      t.arr.(idx) <- x ;
+      Some prev
+    ) else None)
+
+(* From codegen: *)
+let add t x =
+  ignore (swap_in t x) ;
   t
 
 (* Because empty lists are invalid, if we had no entries at all we must return

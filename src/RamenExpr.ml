@@ -1528,7 +1528,7 @@ struct
     (
       strinG "sample" -- blanks --
       optional ~def:() (strinG "of" -- blanks -- strinG "size" -- blanks) -+
-      p +- optional ~def:() (strinG "of" -- blanks -- strinG "the")
+      p +- optional ~def:() (blanks -- strinG "of" -- blanks -- strinG "the")
     ) m
 
   and past m =
@@ -1537,7 +1537,6 @@ struct
       optional ~def:None (some sample +- blanks) +-
       strinG "past" +- blanks ++ p ++
       state_and_nulls +- opt_blanks +-
-      (* This "of" disambiguate from Last *)
       strinG "of" +- blanks ++ p ++
       optional ~def:default_start
         (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
@@ -1758,6 +1757,28 @@ struct
 
   (*$>*)
 end
+
+(* Function to check an expression after typing, to check that we do not
+ * use any tuple for init, non constants, etc, when not allowed. *)
+let check =
+  let check_no_tuple what =
+    iter (function
+      (* params and env are available from everywhere: *)
+      | Field (_, tupref, name) when !tupref <> TupleParam &&
+                                     !tupref <> TupleEnv ->
+          Printf.sprintf2 "%s is not allowed to use %s.%a"
+            what (string_of_prefix !tupref)
+            RamenName.field_print name |>
+          failwith
+      (* TODO: all other similar cases *)
+      | _ -> ())
+  in
+  iter (function
+    | StatefulFun (_, _, _, Past { max_age ; sample_size ; _ }) ->
+        check_no_tuple "duration of function past" max_age ;
+        Option.may (check_no_tuple "sample size of function past")
+          sample_size
+    | _ -> ())
 
 (* Return the expected units for a given expression.
  * Fail if the operation does not accept the arguments units.

@@ -1,5 +1,7 @@
 -- vim: ft=sql expandtab
 
+PARAMETER three_years float {seconds} DEFAULT TO 94672800;
+
 DEFINE earthquakes AS
   FROM tests/fixtures/earthquakes/csv
   SELECT
@@ -11,7 +13,14 @@ DEFINE f AS
   SELECT
     start,
     year,
-    past (3 * 31557600 {seconds}) of n AS recent_n,
+    past three_years of n AS recent_n,
     min recent_n, -- should be nullable but is not (recent_n is nullable!)
     max recent_n,
     round(avg recent_n) AS avg_recent_n;
+
+DEFINE f2 AS
+  YIELD
+    now AS start,
+    sample of size 10 of the past 1s of random AS lst,
+    length lst AS len
+  EVERY 0.01s;
