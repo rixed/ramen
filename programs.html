@@ -79,15 +79,15 @@
 
 <p>In all these cases we want back-pressure in case of overcapacity.</p>
 
-<p>The first case is required to spread Ramen over several machine, while the former is the fastest one possible as we could go as far as directly calling the next operation as we call a local function.</p>
+<p>The first case is required to spread Ramen over several machines. The last is the fastest one possible as we could go as far as directly calling the next operation as we call a local function.</p>
 
-<p>Individual messages queue per function has been chosen as a communication mechanism as it suits all of the above with little or no adjustment.</p>
+<p>Individual ring buffers per function has been chosen as a communication mechanism as it suits all of the above with little or no adjustment.</p>
 
 <h2>Programs and Functions</h2>
 
 <p>Although a stream processor usually consists of a <em>tree</em> of continuous queries, we wanted to be able to express local loops, despite it makes type checking and compilation harder.</p>
 
-<p>So Ramen has both the notion of functions, that are individual operations turning a given stream of input tuples into a stream of output, and programs, which are a set of functions that are compiled, ran and stopped together as a whole. Within a program, loops are allowed and functions can be defined in any order. This is quite similar to compiling a normal program.</p>
+<p>So Ramen has both the notion of functions, that are individual operations turning a given stream of input tuples into a stream of output, and programs, which are a set of functions that are compiled, ran and stopped altogether. Within a program, loops are allowed and functions can be defined in any order. This is quite similar to compiling a normal program.</p>
 
 <p>For a compiled program to be able to run though, all of its parents (programs which output are used anywhere in the new program being run) must be running already. This check is a bit similar to the linking stage of process that's being loaded.</p>
 
@@ -128,7 +128,7 @@ DEFINE alert_on_slow_resp_times AS
 
 <h2>Compilation</h2>
 
-<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code>services/web</code> where it will find the output type of the function <code>http_logs</code>, that it needs to know in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
+<p>To compile the above example program, Ramen needs to be given the name of the program (or it will have to infer it from the file name) and also where to find the binary of the program <code>services/web</code> where it will find the output type of the function <code>http_logs</code>, that it needs in order to type-check this program. It could either look for them in the running configuration or from a given path in the file-system.</p>
 
 <p>The result of the compilation is going to be a single binary executable that embeds the code for all individual functions, as well as a few additional entry points to print various information such as the output type of the functions.</p>
 
