@@ -2502,10 +2502,19 @@ let emit_notification_tuple ~opc oc notif =
     print_expr notif
     (List.print ~sep:";\n\t\t  "
       (fun oc ft ->
-        Printf.fprintf oc "%S, %a %s"
-          (RamenName.string_of_field ft.RamenTuple.name)
-          (conv_from_to ~nullable:ft.typ.nullable) (ft.typ.structure, TString)
-          (id_of_field_name ~tuple:TupleOut ft.name))) opc.tuple_typ
+        let id = id_of_field_name ~tuple:TupleOut ft.RamenTuple.name in
+        Printf.fprintf oc "%S, "
+          (RamenName.string_of_field ft.RamenTuple.name) ;
+        if ft.typ.nullable then
+          Printf.fprintf oc
+            "(match %s with Null -> %S \
+             | NotNull v_ -> %a v_)\n"
+            id string_of_null
+            (conv_from_to ~nullable:false) (ft.typ.structure, TString)
+        else
+          Printf.fprintf oc "%a %s"
+            (conv_from_to ~nullable:false) (ft.typ.structure, TString)
+            id)) opc.tuple_typ
 
 (* We want a function that, when given the worker name, current time and the
  * output tuple, will return the list of RamenNotification.tuple to send: *)
