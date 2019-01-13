@@ -123,8 +123,7 @@ DEFINE web_resp_times AS
 DEFINE alert_on_slow_resp_times AS
   FROM web_resp_times
   WHERE response_time > max_response_time
-  NOTIFY "Slow Response"
-    WITH PARAMETERS start, hostname, response_time;
+  NOTIFY "Slow Response";
 </pre>
 
 <h2>Compilation</h2>
