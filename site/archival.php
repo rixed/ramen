@@ -8,11 +8,11 @@
 <p>There are clearly two kinds of queries:</p>
 
 <ul>
-<li><b>Continuous queries</b> which output must be computed once and only once each time the output changes regardless of how many times and how many frequently we want to monitor it. Those are useful for alerting or dashboarding.</li>
+<li><b>Continuous queries</b> which output must be computed once and only once each time the output changes regardless of how many times and how frequently we want to monitor it. Those are useful for alerting or dashboarding.</li>
 <li><b>Transient queries</b> which are run once for as short a time as possible to get a given result about a given time range. This is what is needed for troubleshooting.</li>
 </ul>
 
-<p>Creating a new continuous query falls in between those two cases: we want for instance to monitor some new metric, so we write a new function, but we would like to see what this new function would have returned for the past few hours, so that we do not have to wait hours to see.</p>
+<p>Creating a new continuous query falls in between those two cases: we want for instance to monitor some new metric, so we write a new function, but we would like to see what this new function would have returned for the past few hours, in order to quickly check that it behaves as expected.</p>
 
 <h2>Implementation</h2>
 
@@ -29,14 +29,14 @@
 <p>In order to allocate storage space, Ramen needs to keep an eye on several possibly changing data sources:</p>
 
 <ul>
-<li>The user configuration, that's a ere text file specifying the total available size, and what functions are likely to be queried in the future and how frequently;</li>
+<li>The user configuration, that's a mere text file specifying the total available size, and what functions are likely to be queried in the future and how frequently;</li>
 <li>Statistics about every running functions and their relationship, in order to estimate the cost of each function and their output volume;</li>
 <li>What's the current state of archives to avoid costly plan changes.</li>
 </ul>
 
 <p>We therefore have a dedicated process for this. <code>ramen archivist</code> will monitor workers statistics and regularly read the user configuration and will turn this into an SMT2 file trying to minimize the future query times, and ask the <a href="https://github.com/Z3Prover/z3">Z3 constraint solver</a> to solve it. It will then turn the answer into a file mapping each function to the amount of storage space they should use, and reconfigure the workers so that those who must archive do so.</p>
 
-<p><code>ramen gc</code> need also read this file in order to know how big of an history each workers are allowed to have.</p>
+<p><code>ramen gc</code> needs also to read this file in order to know how big of an history each workers are allowed to have.</p>
 
 <h3>Archive format</h3>
 

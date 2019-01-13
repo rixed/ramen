@@ -1,16 +1,16 @@
 <? include 'header.php' ?>
 <h1>Building from sources</h1>
 
-<p>It is possible to build and run Ramen from sources both from a Linux or a MacOS machine (although it's easier from Linux).</p>
+<p>It is possible to build and run Ramen from a Linux or a MacOS machine.</p>
 
-<p>First, you need to get those sources:</p>
+<p>First, you need to get the sources:</p>
 
 <pre>
 $ git clone https://github.com/rixed/ramen.git
 $ cd ramen
 </pre>
 
-<p>Ramen is implemented in OCaml and C so you need recent compilers for those languages. You also need gnumake.</p>
+<p>Ramen is implemented in OCaml and C so you need recent compilers for those languages. You also need GNU make.</p>
 
 <p>To install the few libraries Ramen depends on, the easiest option is probably to use the <a href="https://opam.ocaml.org">opam</a> package manager. With it, you could merely:</p>
 
