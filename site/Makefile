@@ -16,7 +16,8 @@ PAGES = \
 	man.html \
 	roadmap.html \
 	blog.html \
-	blog/2018-12.html
+	blog/2018-12.html \
+	blog/2019-01.html
 
 MANPAGES = \
 	man/ramen.html \

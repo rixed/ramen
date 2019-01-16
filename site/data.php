@@ -118,6 +118,9 @@ $info_pages = [
     'sub_pages' => [
       'blog/2018-12.html' => [
         'date' => 'December 2018',
-        'title' => 'One-liners' ] ] ]
+        'title' => 'One-liners' ],
+      'blog/2019-01.html' => [
+        'date' => 'January 2019',
+        'title' => 'Projection of deep compound types' ] ] ],
 ];
 ?>

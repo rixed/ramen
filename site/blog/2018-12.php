@@ -1,5 +1,7 @@
 <? include 'header.php' ?>
-<h1>2018-12-08: One-liners</h1>
+
+<h1>One-liners</h1>
+<p class="date">2018-12-08</p>
 
 <p>The two technological jewels I've seen during my short time at <a href="https://en.wikipedia.org/wiki/Booking.com">Booking.com</a> were:</p>
 
