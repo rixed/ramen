@@ -143,6 +143,15 @@ h1, h2, h3, h4 {
 /* Make sure anchored titles do not fall below the page header: */
 h1, h2 { padding-top: 4rem; }
 
+/* For long title that wraps to the next line: */
+h1 { line-height: 1.2em; }
+
+p.date {
+  font-style: italic;
+  font-size: 0.9em;
+  color: #333;
+}
+
 requirement {
   display: block;
   width: 100%;
