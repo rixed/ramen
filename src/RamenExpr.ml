@@ -1758,6 +1758,11 @@ struct
   (*$>*)
 end
 
+(* Used only for tests but could be handy in a REPL: *)
+let parse =
+  let print = print false in
+  RamenParsing.string_parser ~what:"expression" ~print Parser.p
+
 (* Function to check an expression after typing, to check that we do not
  * use any tuple for init, non constants, etc, when not allowed. *)
 let check =

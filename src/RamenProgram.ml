@@ -476,17 +476,10 @@ let reify_star_fields get_parent program_name funcs =
  * for '*' in select clauses.
  *)
 
-let parse get_parent program_name program =
-  let p = RamenParsing.allow_surrounding_blanks Parser.p in
-  let stream = RamenParsing.stream_of_string program in
-  (* TODO: enable error correction *)
-  match p ["program"] None Parsers.no_error_correction stream |>
-        RamenParsing.to_result with
-  | Bad e ->
-    Printf.sprintf2 "Parse error: %a"
-      (RamenParsing.print_bad_result print) e |>
-    failwith
-  | Ok ((params, run_cond, funcs), _) ->
+let parse =
+  let p = RamenParsing.string_parser ~what:"program" ~print Parser.p in
+  fun get_parent program_name program ->
+    let params, run_cond, funcs = p program in
     let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in

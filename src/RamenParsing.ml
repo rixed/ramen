@@ -32,6 +32,17 @@ let opt_blanks =
 let allow_surrounding_blanks ppp =
   opt_blanks -+ ppp +- opt_blanks +- eof
 
+let string_parser ~what ~print p =
+  let p = allow_surrounding_blanks p in
+  fun s ->
+    let stream = stream_of_string s in
+    (* TODO: enable error correction *)
+    match p [what] None Parsers.no_error_correction stream |> to_result with
+    | Bad e ->
+      Printf.sprintf2 "Parse error: %a" (print_bad_result print) e |>
+      failwith
+    | Ok (res, _) -> res
+
 (* strinG will match the given string regardless of the case and
  * regardless of the surrounding (ie even if followed by other letters). *)
 let strinG = ParseUsual.string ~case_sensitive:false
