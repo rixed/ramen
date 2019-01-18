@@ -407,35 +407,6 @@ let out_type_of_operation ?(with_private=false) = function
   | Notifications _ ->
       RamenNotification.tuple_typ
 
-(* Return the (likely) untyped in_type of the given operation: *)
-let in_type_of_operation = function
-  | Aggregate _ as op ->
-      let input = ref [] in
-      iter_expr (function
-        | Field (expr_typ, tuple, name)
-          when RamenLang.tuple_has_type_input !tuple &&
-               not (RamenName.is_virtual name) ->
-            if RamenName.is_private name then
-              Printf.sprintf2 "Can not use input field %a, which is private."
-                RamenName.field_print name |>
-              failwith ;
-            if not (List.exists (fun ft ->
-                      ft.RamenTuple.name = name) !input) then (
-              let t = RamenTuple.{
-                name = name ;
-                (* Actual types/units will be copied from parents after
-                 * typing: *)
-                typ = expr_typ.RamenExpr.typ |?
-                        { structure = TAny ; nullable = true } ;
-                units = expr_typ.RamenExpr.units ;
-                (* We don't mind the doc/aggr of an input field: *)
-                doc = "" ; aggr = None } in
-              input := t :: !input)
-        | _ -> ()
-      ) op ;
-      !input
-    | _ -> [] (* No inputs *)
-
 let envvars_of_operation op =
   fold_expr Set.empty (fun s -> function
     | Field (_, { contents = TupleEnv }, n) -> Set.add n s

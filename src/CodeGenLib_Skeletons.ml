@@ -257,7 +257,7 @@ type 'a out_rb =
     rb : RingBuf.t ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
-    field_mask : bool list ;
+    fieldmask : RamenFieldMask.fieldmask ;
     mutable channels : (RamenChannel.t, float) Hashtbl.t ;
     (* When we last checked this is still in the out_ref: *)
     mutable last_check_outref : float ;
@@ -341,7 +341,8 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple =
-  let rec all_fields = true :: all_fields in
+  (* FIXME: when the output type is a single value, just [| Copy |]: *)
+  let rec all_fields = Array.make 100 RamenFieldMask.Copy in
   let out_h = ref (Hashtbl.create 15) (* Hash from fname to rb*file_spec*)
   and out_rbs = ref []  (* list of outputers *) in
   let max_num_fields = 100 (* FIXME *) in
@@ -398,14 +399,14 @@ let outputer_of
                   None
               | rb ->
                   (* Since we never output empty tuples (sersize_of_tuple would fail): *)
-                  assert (file_spec.RamenOutRef.field_mask <> []) ;
+                  assert (Array.length file_spec.RamenOutRef.fieldmask > 0) ;
                   Some {
                     fname ; rb ;
                     tup_serializer =
-                      serialize_tuple file_spec.RamenOutRef.field_mask ;
+                      serialize_tuple file_spec.RamenOutRef.fieldmask ;
                     tup_sizer =
-                      sersize_of_tuple file_spec.RamenOutRef.field_mask ;
-                    field_mask = file_spec.RamenOutRef.field_mask ;
+                      sersize_of_tuple file_spec.RamenOutRef.fieldmask ;
+                    fieldmask = file_spec.RamenOutRef.fieldmask ;
                     channels = file_spec.RamenOutRef.channels ;
                     last_check_outref = Unix.gettimeofday () ;
                     last_successful_output = 0. ;
@@ -419,7 +420,7 @@ let outputer_of
               None
           | Some out_rb, Some file_spec ->
               (* Or the fname would have changed: *)
-              assert (file_spec.RamenOutRef.field_mask = out_rb.field_mask) ;
+              assert (file_spec.RamenOutRef.fieldmask = out_rb.fieldmask) ;
               if out_rb.channels <> file_spec.RamenOutRef.channels then (
                 !logger.debug "Updating %S" fname ;
                 out_rb.channels <- file_spec.RamenOutRef.channels) ;
@@ -931,10 +932,10 @@ let yield_every ~while_ read_tuple every on_tup on_else =
 
 let aggregate
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
-      (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
+      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
-      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
       (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
@@ -1296,10 +1297,10 @@ let aggregate
  * - it is quieter than a normal worker that has its own log file. *)
 let replay
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
-      (sersize_of_tuple : bool list (* skip list *) -> 'tuple_out -> int)
+      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
-      (serialize_tuple : bool list (* skip list *) -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in

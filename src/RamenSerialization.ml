@@ -122,26 +122,28 @@ let value_of_string t s =
     (value_of_string { structure = TFloat ; nullable = true }   "null")
  *)
 
-let write_record ser_in_type rb tuple =
+let write_record in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
-    List.fold_left (fun (null_i, lst) ftyp ->
-      if ftyp.RamenTuple.typ.nullable then
-        match Hashtbl.find tuple ftyp.name with
+    List.fold_left (fun (null_i, lst) f ->
+      let f_name = RamenFieldMaskLib.(id_of_path f.path) |>
+                   RamenName.field_of_string in
+      if f.RamenFieldMaskLib.typ.nullable then
+        match Hashtbl.find tuple f_name with
         | exception Not_found ->
             (* Unspecified nullable fields are just null. *)
             null_i + 1, lst
         | s ->
             null_i + 1,
-            (Some null_i, value_of_string ftyp.typ s) :: lst
+            (Some null_i, value_of_string f.typ s) :: lst
       else
-        match Hashtbl.find tuple ftyp.name with
+        match Hashtbl.find tuple f_name with
         | exception Not_found ->
             null_i,
-            (None, RamenTypes.any_value_of_type ftyp.typ.structure) :: lst
+            (None, RamenTypes.any_value_of_type f.typ.structure) :: lst
         | s ->
             null_i,
-            (None, value_of_string ftyp.typ s) :: lst
-    ) (0, []) ser_in_type |>
+            (None, value_of_string f.typ s) :: lst
+    ) (0, []) in_type |>
     fun (null_i, lst) ->
       round_up_to_rb_word (bytes_for_bits null_i),
       List.rev lst in

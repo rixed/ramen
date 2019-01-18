@@ -1454,10 +1454,15 @@ struct
      (afun1v "least" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "min", Min (e :: es))) |||
      (afun2 "get" >>: fun (n, v) ->
-        Option.may (fun n ->
-          if n < 0 then
-            raise (Reject "GET index must be positive")
-        ) (int_of_const n) ;
+        (match n with
+        | Const _ ->
+            Option.may (fun n ->
+              if n < 0 then
+                raise (Reject "GET index must be positive")
+            ) (int_of_const n)
+        | Field (_, tup, _) when !tup = TupleUnknown ->
+            tup := Record
+        | _ -> ()) ;
         StatelessFun2 (make_typ "get", Get, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
         StatelessFunMisc (make_typ "print", Print (e :: es))) |||

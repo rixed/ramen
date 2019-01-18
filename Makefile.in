@@ -108,7 +108,6 @@ RAMEN_SOURCES = \
 	src/RamenBitmask.ml \
 	src/RamenAdvLock.ml \
 	src/RamenChannel.ml \
-	src/RamenOutRef.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -132,6 +131,9 @@ RAMEN_SOURCES = \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
+	src/RamenFieldMask.ml \
+	src/RamenFieldMaskLib.ml \
+	src/RamenOutRef.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
@@ -182,7 +184,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenAdvLock.ml \
 	src/RamenWatchdog.ml \
 	src/RamenChannel.ml \
-	src/RamenOutRef.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -191,6 +192,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenTypes.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
+	src/RamenFieldMask.ml \
+	src/RamenOutRef.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
@@ -198,8 +201,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenGraphiteSink.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
 	src/RingBufLib.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
@@ -381,6 +382,8 @@ TESTABLE_SOURCES = \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenOperation.ml \
+	src/RamenFieldMask.ml \
+	src/RamenFieldMaskLib.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
 	src/HeavyHitters.ml \
@@ -413,7 +416,6 @@ LINKED_FOR_TESTS = \
 	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
 	src/RamenChannel.ml \
-	src/RamenOutRef.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -440,6 +442,9 @@ LINKED_FOR_TESTS = \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenOperation.ml \
+	src/RamenFieldMask.ml \
+	src/RamenFieldMaskLib.ml \
+	src/RamenOutRef.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
@@ -493,12 +498,13 @@ ringbuf_test.opt: \
 	src/RamenAtomic.cmx src/RamenHelpers.cmx \
 	src/RamenAdvLock.cmx \
 	src/RamenChannel.cmx \
-	src/RamenOutRef.cmx \
 	src/RamenParsing.cmx \
 	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
 	src/RamenTypeConverters.cmx \
 	src/RamenTypes.cmx \
 	src/RamenName.cmx \
+	src/RamenFieldMask.cmx \
+	src/RamenOutRef.cmx \
 	src/RamenUnits.cmx \
 	src/RamenTuple.cmx src/RamenVersions.cmx src/RingBuf.cmx src/RingBufLib.cmx \
 	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a

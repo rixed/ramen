@@ -35,7 +35,7 @@ struct
       persistent : bool ;
       doc : string ;
       mutable operation : RamenOperation.t ;
-      in_type : RamenTuple.typ ;
+      in_type : RamenFieldMaskLib.in_type ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
        * or any other files where tuples are stored, so that those files
@@ -73,7 +73,7 @@ struct
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature ;
-      in_type = in_type_of_operation t.operation ;
+      in_type = RamenFieldMaskLib.in_type_of_operation t.operation ;
       parents = parents_of_operation t.operation ;
       merge_inputs = is_merging t.operation ;
       envvars = envvars_of_operation t.operation }
@@ -115,7 +115,7 @@ struct
     let op_str = IO.to_string RamenOperation.print func.operation
     and out_type = RamenOperation.out_type_of_operation func.operation in
     "OP="^ op_str ^
-    ";IN="^ RamenTuple.type_signature func.in_type ^
+    ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^
     (* type_signature does not look at private fields: *)
     ";OUT="^ RamenTuple.type_signature out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
@@ -125,7 +125,7 @@ struct
   let dump_io func =
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
       (RamenName.string_of_func func.name)
-      RamenTuple.print_typ func.in_type
+      RamenFieldMaskLib.print_in_type func.in_type
       RamenTuple.print_typ
         (RamenOperation.out_type_of_operation func.operation)
 end
@@ -375,7 +375,7 @@ let worker_state conf func params =
  * FROM clause): *)
 
 let in_ringbuf_name_base conf func =
-  let sign = type_signature_hash func.Func.in_type in
+  let sign = md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func

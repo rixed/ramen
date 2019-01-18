@@ -108,7 +108,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             persistent = parsed_func.persistent ;
             doc = parsed_func.doc ;
             operation = op ;
-            in_type = in_type_of_operation op ;
+            in_type = RamenFieldMaskLib.in_type_of_operation op ;
             signature = "" ;
             parents = parents_of_operation op ;
             merge_inputs = is_merging op ;
@@ -176,15 +176,37 @@ let compile conf get_parent ~exec_file source_file program_name =
      * we are ready to set the units for all inputs and outputs.
      *)
     (* Find this field in this tuple and patch it: *)
-    let patch_typ field units typ =
+    let patch_in_typ field units typ =
+      match List.find (fun f ->
+              (* We won't manage to propagate units from a parent deep
+               * fields. TBD when we have proper records, done with
+               * RamenTuple.typ and units is part of RamenTypes.t. *)
+              f.RamenFieldMaskLib.path =
+                [ Name (RamenName.string_of_field field) ]
+            ) typ with
+      | exception Not_found ->
+          !logger.warning "Cannot find field %a in %a"
+            RamenName.field_print field
+            RamenFieldMaskLib.print_in_type typ
+      | ft ->
+          if ft.units = None then (
+            !logger.debug "Set type of field %a to %a"
+              RamenName.field_print field
+              (Option.print RamenUnits.print) units ;
+            ft.units <- units) in
+    let patch_out_typ field units typ =
       match List.find (fun ft ->
               ft.RamenTuple.name = field
             ) typ with
       | exception Not_found ->
-          assert (RamenName.is_private field)
+          if not (RamenName.is_private field) then (
+            !logger.error "Cannot find field %a in %a"
+              RamenName.field_print field
+              RamenTuple.print_typ typ ;
+            assert false)
       | ft ->
           if ft.units = None then (
-            !logger.debug "Set type of output field %a to %a"
+            !logger.debug "Set type of field %a to %a"
               RamenName.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
@@ -221,7 +243,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         RamenUnits.check_same_units ~what None in
       (* Patch the input type: *)
       if units <> None then
-        patch_typ field units func.F.in_type ;
+        patch_in_typ field units func.F.in_type ;
       units in
     let set_expr_units uoi uoo what e =
       let t = RamenExpr.typ_of e in
@@ -266,7 +288,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             List.iter (fun sf ->
               let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
               if units <> None then
-                patch_typ sf.alias units out_type
+                patch_out_typ sf.alias units out_type
             ) fields
         | _ -> ()) ;
       changed

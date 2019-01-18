@@ -21,6 +21,9 @@ type tuple_prefix =
   | TupleParam
   (* Environments for nullable string only parameters: *)
   | TupleEnv
+  (* For when a field is a record subfield. To know where that record is
+   * coming from one has to look through the chain of Gets. *)
+  | Record
   (* TODO: TupleOthers? *)
   [@@ppp PPP_OCaml]
 
@@ -36,6 +39,7 @@ let string_of_prefix = function
   | TupleMergeGreatest -> "merge.greatest"
   | TupleParam -> "param"
   | TupleEnv -> "env"
+  | Record -> "record"
 
 let tuple_prefix_print oc p =
   Printf.fprintf oc "%s" (string_of_prefix p)
@@ -59,7 +63,9 @@ let parse_prefix ~def m =
      * the same clauses we could convert one into the other (TODO) *)
     (prefix "greatest" >>: fun () -> TupleSortGreatest) |||
     (prefix "param" >>: fun () -> TupleParam) |||
-    (prefix "env" >>: fun () -> TupleEnv))
+    (prefix "env" >>: fun () -> TupleEnv) |||
+    (* Not for public consumption: *)
+    (prefix "record" >>: fun () -> Record))
   ) m
 
 (* Tuple that has the fields of this func input type *)

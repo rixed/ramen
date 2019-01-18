@@ -1592,35 +1592,34 @@ let set_io_tuples parents funcs h =
         | _ -> assert false))
   and set_input func =
     let parents = Hashtbl.find_default parents func.F.name [] in
-    List.iter (fun ft ->
+    List.iter (fun f ->
       (* For the in_type we have to check that all parents do export each
        * of the mentioned input fields: *)
+      let f_name = RamenFieldMaskLib.(id_of_path f.path) |>
+                   RamenName.field_of_string in
       if parents = [] then
         Printf.sprintf2 "Cannot use input field %a without any parent"
-          RamenName.field_print ft.RamenTuple.name |>
+          RamenName.field_print f_name |>
         failwith ;
-      if not (RamenTypes.is_typed ft.typ.structure) then (
+      if not (RamenTypes.is_typed f.typ.structure) then (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
         let parent = List.hd parents in
         let pser =
           RamenOperation.out_type_of_operation parent.F.operation |>
           RingBufLib.ser_tuple_typ_of_tuple_typ in
-        match List.find_map (fun pft ->
-                if pft.RamenTuple.name = ft.name then
-                  Some pft.typ
-                else None) pser with
+        match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
-              RamenName.field_print ft.name
+              RamenName.field_print f_name
               (RamenName.func_color parent.F.name) |>
             failwith
         | typ ->
             !logger.debug "Set input field %a.%a to %a"
               RamenName.func_print func.F.name
-              RamenName.field_print ft.name
+              RamenName.field_print f_name
               RamenTypes.print_typ typ ;
-            ft.typ <- typ)
+            f.typ <- typ)
     ) func.in_type
   in
   (* Start by setting the output types so that it's then easy to copy

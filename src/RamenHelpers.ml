@@ -1889,3 +1889,8 @@ let invalid_byte_for what x =
   assert false
 
 let int_of_bool b = if b then 1 else 0
+
+let array_print_i ?first ?last ?sep p oc a =
+  let i = ref 0 in
+  Array.print ?first ?last ?sep (fun oc x ->
+    p !i oc x ; incr i) oc a

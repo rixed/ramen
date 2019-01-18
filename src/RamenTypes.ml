@@ -46,6 +46,14 @@ let is_an_ip = function
   | TIpv4|TIpv6|TIp -> true
   | _ -> false
 
+let is_scalar = function
+  | TEmpty | TAny -> assert false
+  | TFloat | TString | TBool | TNum
+  | TU8 | TU16 | TU32 | TU64 | TU128 | TI8 | TI16 | TI32 | TI64 | TI128
+  | TEth (* 48bits unsigned integers with funny notation *)
+  | TIpv4 | TIpv6 | TIp | TCidrv4 | TCidrv6 | TCidr -> true
+  | TTuple _ | TVec _ | TList _ -> false
+
 let is_typed t = t <> TNum && t <> TAny
 
 let rec print_structure oc = function

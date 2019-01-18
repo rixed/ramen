@@ -200,32 +200,23 @@ let input_ringbuf_fname conf parent child =
         C.in_ringbuf_name_merging conf child i
   else C.in_ringbuf_name_single conf child
 
-let make_field_mask parent child =
-  let out_type =
+let make_fieldmask parent child =
+  let out_typ =
     RamenOperation.out_type_of_operation parent.F.operation |>
-    RingBufLib.ser_tuple_typ_of_tuple_typ
-  and in_type = child.F.in_type in
-  RingBufLib.skip_list ~out_type ~in_type
+    RingBufLib.ser_tuple_typ_of_tuple_typ in
+  RamenFieldMaskLib.fieldmask_of_operation ~out_typ child.F.operation
 
 let check_is_subtype t1 t2 =
   (* For t1 to be a subtype of t2, all fields of t1 must be present and
    * public in t2. And since there is no more extension from scalar types at
    * this stage, those fields must have the exact same types. *)
   List.iter (fun f1 ->
-    match List.find (fun f2 -> f1.RamenTuple.name = f2.RamenTuple.name) t2 with
-    | exception Not_found ->
-        Printf.sprintf2 "Field %a is missing"
-          RamenName.field_print f1.name |>
-        failwith
-    | f2 ->
-        if RamenName.is_private f2.name then
-          Printf.sprintf2 "Field %a is private"
-            RamenName.field_print f2.name |>
-          failwith ;
-        if f1.typ <> f2.typ then
-          Printf.sprintf2 "Fields %a have different types"
-            RamenName.field_print f1.name |>
-          failwith
+    let f2_typ =
+      RamenFieldMaskLib.find_type_of_path t2 f1.RamenFieldMaskLib.path in
+    if f1.typ <> f2_typ then
+      Printf.sprintf2 "Fields %s have different types"
+        (RamenFieldMaskLib.id_of_path f1.path) |>
+      failwith
   ) t1
 
 (* Returns the running parents and children of a func: *)
@@ -361,8 +352,8 @@ let start_export ?(duration=Default.export_duration) conf func =
   if duration <> 0. then (
     let timeout =
       if duration < 0. then 0. else Unix.gettimeofday () +. duration in
-    let field_mask = RingBufLib.skip_list ~out_type:ser ~in_type:ser in
-    RamenOutRef.add out_ref ~timeout bname field_mask
+    let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
+    RamenOutRef.add out_ref ~timeout bname fieldmask
   ) ;
   bname
 
@@ -393,11 +384,11 @@ let really_start conf proc parents children =
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
   List.iter (fun c ->
     let fname = input_ringbuf_fname conf proc.func c
-    and field_mask = make_field_mask proc.func c in
+    and fieldmask = make_fieldmask proc.func c in
     (* The destination ringbuffer must exist before it's referenced in an
      * out-ref, or the worker might err and throw away the tuples: *)
     RingBuf.create fname ;
-    RamenOutRef.add out_ringbuf_ref fname field_mask
+    RamenOutRef.add out_ringbuf_ref fname fieldmask
   ) children ;
   (* Always export for a little while at the beginning *)
   let _bname =
@@ -467,8 +458,8 @@ let really_start conf proc parents children =
     let out_ref =
       C.out_ringbuf_names_ref conf p in
     let fname = input_ringbuf_fname conf p proc.func
-    and field_mask = make_field_mask p proc.func in
-    RamenOutRef.add out_ref fname field_mask
+    and fieldmask = make_fieldmask p proc.func in
+    RamenOutRef.add out_ref fname fieldmask
   ) parents
 
 (* Try to start the given proc.
@@ -506,7 +497,7 @@ let really_try_start conf now must_run proc =
         "Input type of %s (%a) is not compatible with \
          output type of %s (%a): %s"
         (RamenName.string_of_fq (F.fq_name c))
-        RamenTuple.print_typ_names c.in_type
+        RamenFieldMaskLib.print_in_type c.in_type
         (RamenName.string_of_fq (F.fq_name p))
         RamenTuple.print_typ_names out_type
         msg |>
@@ -616,8 +607,8 @@ let check_out_ref conf must_run running =
             (RamenName.string_of_fq (F.fq_name proc.func)) ;
           log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
             let fname = input_ringbuf_fname conf par_func proc.func
-            and field_mask = make_field_mask par_func proc.func in
-            RamenOutRef.add out_ref fname field_mask) ())
+            and fieldmask = make_fieldmask par_func proc.func in
+            RamenOutRef.add out_ref fname fieldmask) ())
       ) par_funcs
     )
   ) running

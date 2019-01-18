@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let graph_config = "v15" (* last: status instead of killed *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v52" (* last: program_name no longer in Func.Serialized *)
+let codegen = "v53" (* last: recursive fieldmasks *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v6" (* last: addition of average tuple size *)
@@ -24,7 +24,7 @@ let pending_notify = "v6" (* last: refactor schema *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v5" (* last: Channels are now mandatory *)
+let out_ref = "v6" (* last: recursive fieldmasks *)
 
 (* Workers state format *)
 let worker_state = "v10" (* last: remove dead state member *)

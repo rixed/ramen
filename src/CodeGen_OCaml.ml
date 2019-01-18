@@ -49,11 +49,6 @@ let id_of_field_typ ?tuple field_typ =
 
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
 
-let array_print_i ?first ?last ?sep p oc a =
-  let i = ref 0 in
-  Array.print ?first ?last ?sep (fun oc x ->
-    p !i oc x ; incr i) oc a
-
 let array_print_as_tuple_i p oc a =
   let i = ref 0 in
   Array.print ~first:"(" ~last:")" ~sep:", " (fun oc x ->
@@ -1638,22 +1633,10 @@ and emit_functionNv ?impl_return_nullable ~nullable
   emit_function ?impl_return_nullable ~nullable
                 ?state ~opc impl arg_typs es oc (Some (vt, ves))
 
-let emit_compute_nullmask_size oc ser_typ =
-  Printf.fprintf oc "\tlet nullmask_bytes_ =\n" ;
-  Printf.fprintf oc "\t\tlist_fold_left2 (fun s nullable keep ->\n" ;
-  Printf.fprintf oc "\t\t\tif nullable && keep then s+1 else s) 0\n" ;
-  Printf.fprintf oc "\t\t\t%a\n"
-    (List.print (fun oc field -> Bool.print oc field.typ.nullable))
-      ser_typ ;
-  Printf.fprintf oc "\t\t\tskiplist_ |>\n" ;
-  Printf.fprintf oc "\t\tRingBuf.bytes_for_bits |>\n" ;
-  Printf.fprintf oc "\t\tRingBuf.round_up_to_rb_word in\n"
-
 let rec emit_sersize_of_var typ nullable oc var =
   if nullable then (
     Printf.fprintf oc
-      "\t\t\t(match %s with Null -> 0 | NotNull %s ->\n\
-       \t%a)"
+      "\n\t\t\t(match %s with Null -> 0 | NotNull %s -> %a)"
       var var
       (emit_sersize_of_var typ false) var
   ) else match typ with
@@ -1701,133 +1684,317 @@ let rec emit_sersize_of_var typ nullable oc var =
       var
   | _ -> emit_sersize_of_fixsz_typ oc typ
 
+(* Given the name of a variable with the fieldmask, emit a given code for
+ * every values to be sent.
+ * We suppose that the output value is in out_var.
+ * Each code block return a value that is finally returned into out_var. *)
+let rec emit_for_serialized_fields typ copy skip fm_var val_var oc out_var =
+  if is_scalar typ.structure then
+    Printf.fprintf oc
+      "let %s =\n\
+         if %s = RamenFieldMask.Copy then (%a) else (\
+         assert (%s = RamenFieldMask.Skip) ; %a) in\n"
+      out_var
+      fm_var
+      copy (val_var, typ)
+      fm_var
+      skip (val_var, typ)
+  else
+    match typ.structure with
+    | TVec (_, t) | TList t ->
+        Printf.fprintf oc
+          "let %s = match %s with\n\
+          | RamenFieldMask.Copy -> %a\n\
+          | RamenFieldMask.Skip -> %a\n\
+          | RamenFieldMask.Rec fm_ ->\n"
+          out_var fm_var
+          copy (val_var, typ)
+          skip (val_var, typ) ;
+        Printf.fprintf oc
+          "Array.fold_lefti (fun %s i_ fm_ ->\n"
+          out_var ;
+        (* When we want to serialize subfields of a value that is null, we
+         * have to serialize each subfield as null: *)
+        if typ.nullable then
+          Printf.fprintf oc
+            "match %s with Null -> %a | NotNull %s ->\n"
+            val_var skip (val_var, typ) val_var ;
+        if t.nullable then
+          (* For arrays but especially lists of nullable elements, make it
+           * possible to fetch beyond the boundaries of the list: *)
+          Printf.fprintf oc
+            "let x_ = try %s.(i_) with Invalid_argument -> Null in\n"
+            val_var
+        else
+          Printf.fprintf oc "let x_ = %s.(i_) in\n" val_var ;
+        Printf.fprintf oc
+          "%a\n\
+           %s
+          ) %s fm_ in\n"
+          (emit_for_serialized_fields t copy skip "fm_" "x_") out_var
+          out_var
+          out_var
+    | TTuple ts ->
+        Printf.fprintf oc
+          "let %s = match %s with\n\
+          | RamenFieldMask.Copy -> %a\n\
+          | RamenFieldMask.Skip -> %a\n\
+          | RamenFieldMask.Rec fm_ ->\n"
+          out_var fm_var
+          copy (val_var, typ)
+          skip (val_var, typ) ;
+        (* Destructure the tuple, propagating Nulls: *)
+        Printf.fprintf oc
+          "let %a = "
+          (array_print_i ~first:"" ~last:"" ~sep:"," (fun j oc _ ->
+            Printf.fprintf oc "tup_%d_" j)) ts ;
+        if typ.nullable then
+          Array.print ~first:"" ~last:"" ~sep:","
+                      (fun oc _ -> String.print oc "Null") oc ts
+        else
+          String.print oc val_var ;
+        Printf.fprintf oc
+          " in\n
+           %a
+           %s in"
+          (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
+            let val_var = Printf.sprintf "tup_%d_" j
+            and fm_var = Printf.sprintf "fm_.(%d)" j in
+            emit_for_serialized_fields t copy skip fm_var val_var oc
+                                       out_var)) ts
+          out_var
+    | _ -> assert false (* no other non-scalar types *)
+
+let emit_for_serialized_fields_of_output ser_typ copy skip fm_var oc out_var =
+  List.iteri (fun i field ->
+    Printf.fprintf oc "\n\t\t(* Field %a *)\n"
+      RamenName.field_print field.RamenTuple.name ;
+    let val_var = id_of_field_typ ~tuple:TupleOut field in
+    let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
+    emit_for_serialized_fields field.typ copy skip fm_var val_var oc out_var
+  ) ser_typ
+
+(* Same as the above [emit_for_serialized_fields] but for when we do not the
+ * actual value, just its type. *)
+let rec emit_for_serialized_fields_no_value typ copy skip fm_var oc out_var =
+  if is_scalar typ.structure then
+    Printf.fprintf oc
+      "let %s =\n\
+         if %s = RamenFieldMask.Copy then (%a) else (\
+         assert (%s = RamenFieldMask.Skip) ; %a) in\n"
+      out_var
+      fm_var
+      copy typ
+      fm_var
+      skip typ
+  else
+    match typ.structure with
+    | TVec (_, t) | TList t ->
+        Printf.fprintf oc
+          "let %s = match %s with\n\
+          | RamenFieldMask.Copy -> %a\n\
+          | RamenFieldMask.Skip -> %a\n\
+          | RamenFieldMask.Rec fm_ ->\n\
+              Array.fold_lefti (fun %s i_ fm_ ->\n\
+                %a\n\
+                %s
+              ) %s fm_ in\n"
+          out_var fm_var
+          copy typ
+          skip typ
+          out_var
+          (emit_for_serialized_fields_no_value t copy skip "fm_") out_var
+          out_var
+          out_var
+    | TTuple ts ->
+        Printf.fprintf oc
+          "let %s = match %s with\n\
+          | RamenFieldMask.Copy -> %a\n\
+          | RamenFieldMask.Skip -> %a\n\
+          | RamenFieldMask.Rec fm_ ->\n\
+              %a
+              %s in"
+          out_var
+          fm_var
+          copy typ
+          skip typ
+          (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
+            let fm_var = Printf.sprintf "fm_.(%d)" j in
+            emit_for_serialized_fields_no_value t copy skip fm_var oc out_var)) ts
+          out_var
+    | _ -> assert false (* no other non-scalar types *)
+
+let emit_for_serialized_fields_of_output_no_value ser_typ copy skip fm_var oc out_var =
+  List.iteri (fun i field ->
+    Printf.fprintf oc "\n\t\t(* Field %a *)\n"
+      RamenName.field_print field.RamenTuple.name ;
+    let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
+    emit_for_serialized_fields_no_value field.typ copy skip fm_var oc out_var
+  ) ser_typ
+
+let emit_compute_nullmask_size fm_var oc ser_typ =
+  let copy oc typ =
+    String.print oc (if typ.nullable then "b_+1" else "b_") in
+  let skip oc _ = String.print oc "b_" in
+  Printf.fprintf oc "\t\tlet b_ = 0 in\n" ;
+  emit_for_serialized_fields_of_output_no_value
+    ser_typ copy skip fm_var oc "b_" ;
+  Printf.fprintf oc "\t\tRingBuf.(round_up_to_rb_word (bytes_for_bits b_))"
+
+(* The actual nullmask size will depend on the fieldmask which is known
+ * only at runtime: *)
 let emit_sersize_of_tuple name oc tuple_typ =
   (* We want the sersize of the serialized version of course: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
-  (* Like for serialize_tuple, we receive first the skiplist and then the
+  (* Like for serialize_tuple, we receive first the fieldmask and then the
    * actual tuple, so we can compute the nullmask in advance: *)
-  Printf.fprintf oc "let %s skiplist_ =\n" name ;
-  emit_compute_nullmask_size oc ser_typ ;
+  Printf.fprintf oc "let %s fieldmask_ =\n" name ;
+  Printf.fprintf oc "\tlet nullmask_bytes_ = %a in\n"
+    (emit_compute_nullmask_size "fieldmask_") ser_typ ;
+  Printf.fprintf oc "\tassert (nullmask_bytes_ <= %d) ;\n"
+    (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
   Printf.fprintf oc "\tfun %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   Printf.fprintf oc "\t\tlet sz_ = nullmask_bytes_ in\n" ;
-  List.iter (fun field ->
-      let id = id_of_field_typ ~tuple:TupleOut field in
-      Printf.fprintf oc "\t\t(* %s *)\n" id ;
-      Printf.fprintf oc "\t\tlet sz_ = sz_ + if List.hd skiplist_ then (\n" ;
-      emit_sersize_of_var field.typ.structure field.typ.nullable oc id ;
-      Printf.fprintf oc "\n\t\t) else 0 in\n" ;
-      Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n" ;
-    ) ser_typ ;
-  Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
-  Printf.fprintf oc "\t\tsz_\n"
+  let copy oc (out_var, typ) =
+    Printf.fprintf oc "sz_ + %a"
+      (emit_sersize_of_var typ.structure typ.nullable) out_var
+  and skip oc _ = String.print oc "sz_" in
+  emit_for_serialized_fields_of_output ser_typ copy skip "fieldmask_" oc "sz_" ;
+  String.print oc "\tsz_\n"
 
 (* The function that will serialize the fields of the tuple at the given
- * addresses. The first argument is a bitmask of the fields that we must
- * actually output (true = output, false = skip) in serialization order.
- * CodeGenLib will first call the function with this single parameter, leaving
- * us the opportunity to specialize the actual outputer according to this
- * skiplist (here we merely compute the nullmask size).
+ * addresses. The first argument is the recursive fieldmask of the fields
+ * that must actually be sent (depth first order dictates the order of the
+ * bits in the nullmask). Before receiving the next arguments the nullmask
+ * size is computed (that's a bit expensive).
+ * Next arguments are the tx, the offset and the actual value. We need
+ * an offset because of record headers.
  * Everything else (allocating on the RB and writing the record size) is
  * independent of the tuple type and is handled in the library.
- * Returns the final offset for * checking with serialized size of this
- * tuple. *)
+ * The generated function returns the final offset so that the caller
+ * can check for overflow.
+ *
+ * Format:
+ * First comes the header (writen by the caller, not our concern here)
+ * Then comes the nullmask for the toplevel "structure", with one bit per
+ * nullable value that will be copied.
+ * Then the values.
+ * For list values, we start with the number of elements.
+ * Then, for lists, vectors and tuples we have a small local nullmask
+ * (for tuples, even for fields that are not nullable, FIXME). *)
 let emit_serialize_tuple name oc tuple_typ =
   (* Serialize in tuple_typ.name order: *)
   let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
-  Printf.fprintf oc "let %s skiplist_ =\n" name ;
-  emit_compute_nullmask_size oc ser_typ ;
+  Printf.fprintf oc "let %s fieldmask_ =\n" name ;
+  Printf.fprintf oc "\tlet nullmask_bytes_ = %a in\n"
+    (emit_compute_nullmask_size "fieldmask_") ser_typ ;
   Printf.fprintf oc "\tfun tx_ start_offs_ %a ->\n"
     (print_tuple_deconstruct TupleOut) tuple_typ ;
   if verbose_serialization then
-    Printf.fprintf oc "\t\t!RamenLog.logger.RamenLog.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
-  (* Start by zeroing the nullmask *)
-  Printf.fprintf oc
-    "\t\tif nullmask_bytes_ > 0 then\n\
-     \t\t\tRingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ; (* zero the nullmask *)\n" ;
-  Printf.fprintf oc "\t\tlet offs_, nulli_ = start_offs_ + nullmask_bytes_, 0 in\n" ;
+    Printf.fprintf oc
+      "\t\t!RamenLog.logger.RamenLog.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
+
+  (* callbacks [copy] and [skip] have to return the offset and null index
+   * but we have several offsets and several null index (when copying full
+   * compund types) ; we therefore enforce the rule that those variables
+   * are always called "offs_" and "nulli_". *)
+  Printf.fprintf oc "\t\tlet offs_ = start_offs_ + nullmask_bytes_\n\
+                     \t\tand nulli_ = 0 in\n" ;
   (*
-   * Write the value and return new offset and nulli:
+   * Write a full value, updating offs_var and nulli_var:
+   * [start_var]: where we write the value (and where the nullmask is, for
+   *              values with a nullmask).
    *)
-  let rec emit_write_array tx_var offs_var nulli_var val_var dim_var oc t =
-    if verbose_serialization then
-      Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing an array of size %%d at offset %%d\" %s %s ;\n" dim_var offs_var ;
-    Printf.fprintf oc
-      "\t\t\t(let start_arr_ = %s in\n\
-       \t\t\tlet offs_arr_ = %s + (RingBufLib.nullmask_sz_of_vector %s) in\n"
-      offs_var
-      offs_var dim_var ;
-    Printf.fprintf oc
-      "\t\t\tArray.fold_left (fun (o_, bi_) v_ ->\n\
-       \t\t\t\t%a) (offs_arr_, %s) %s)\n"
-      (emit_write_scalar tx_var "start_arr_" "o_" "bi_" "v_" t.nullable) t.structure
-      nulli_var val_var
-  and emit_write_scalar tx_var start_var offs_var nulli_var val_var nullable oc typ =
+  let rec emit_write start_var val_var nullable oc typ =
     if nullable then (
       (* Write either nothing (since the nullmask is initialized with 0) or
        * the nullmask bit and the value *)
       Printf.fprintf oc "\t\t\t\t(match %s with\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t| Null -> %s, %s + 1\n" offs_var nulli_var ;
+      Printf.fprintf oc "\t\t\t\t| Null -> offs_, nulli_ + 1\n" ;
       Printf.fprintf oc "\t\t\t\t| NotNull %s ->\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit %s %s %s ;\n" tx_var start_var nulli_var ;
-      Printf.fprintf oc "\t\t\t\t\tlet %s, %s =\n\
-                         \t\t\t\t\t\t%a in\n\
-                         \t\t\t\t\t%s, %s + 1)\n"
-        offs_var nulli_var
-        (emit_write_scalar tx_var start_var offs_var nulli_var val_var false) typ
-        offs_var nulli_var
-    ) else (match typ with
-    (* Constructed types (items not nullable): *)
-    | TTuple ts ->
+      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit tx_ %s nulli_ ;\n" start_var ;
+      Printf.fprintf oc "\t\t\t\t\tlet offs_, nulli_ = %a in\n\
+                         \t\t\t\t\toffs_, nulli_ + 1)\n"
+        (emit_write start_var val_var false) typ
+    ) else (
+      let emit_write_array dim_var t =
         if verbose_serialization then
-          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" %s ;\n" (Array.length ts) offs_var ;
-        Printf.fprintf oc "\t\t\tlet %a = %s in\n"
-          (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing an array of size %%d at offset %%d\" %s offs_ ;\n" dim_var ;
+        Printf.fprintf oc
+          "\t\t\t(let nullmask_bytes_ = RingBufLib.nullmask_sz_of_vector %s in\n"
+          dim_var ;
+        Printf.fprintf oc
+          "\t\t\tRingBuf.zero_bytes tx_ offs_ nullmask_bytes_ ;\n" ;
+        Printf.fprintf oc
+          "\t\t\tlet start_arr_ = offs_ in\n\
+           \t\t\tlet offs_ = offs_ + nullmask_bytes_ in\n" ;
+        Printf.fprintf oc
+          "\t\t\tlet offs_, _ =\n\
+           \t\t\t\tArray.fold_left (fun (offs_, nulli_) v_ ->\n\
+           \t\t\t\t\t%a\n\
+           \t\t\t\t) (offs_, 0) %s in\n\
+           \t\t\toffs_, nulli_)\n"
+          (emit_write "start_arr_" "v_" t.nullable) t.structure
+          val_var
+      in
+      match typ with
+      (* Constructed types: *)
+      | TTuple ts ->
+          if verbose_serialization then
+            Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;\n" (Array.length ts) ;
+          Printf.fprintf oc "\t\t\tlet %a = %s in\n"
+            (array_print_as_tuple_i (fun oc i _ ->
+              let item_var = val_var ^"_"^ string_of_int i in
+              String.print oc item_var)) ts
+            val_var ;
+          let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
+          Printf.fprintf oc "\t\t\tRingBuf.zero_bytes tx_ offs_ %d ;\n"
+            nullmask_sz ;
+          Printf.fprintf oc
+            "\t\t\tlet start_tup_ = offs_\n\
+             \t\t\tand offs_ = offs_ + %d (* nullmask *) in\n"
+            nullmask_sz ;
+          Array.iteri (fun i t ->
             let item_var = val_var ^"_"^ string_of_int i in
-            String.print oc item_var)) ts
-          val_var ;
-        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\t\tlet offs_tup_ = %s + %d (* nullmask *) in\n"
-          offs_var nullmask_sz ;
-        Array.iteri (fun i t ->
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t\tlet offs_tup_, %s = %a in\n"
-            nulli_var
-            (emit_write_scalar tx_var start_var "offs_tup_" nulli_var item_var t.nullable) t.structure
-        ) ts ;
-        Printf.fprintf oc "\t\t\t\toffs_tup_, %s" nulli_var
+            Printf.fprintf oc "\t\t\t\tlet offs_, _ = (let nulli_ = 0 in %a) in\n"
+              (emit_write "start_tup_" item_var t.nullable) t.structure
+          ) ts ;
+          Printf.fprintf oc "\t\t\t\toffs_, nulli_"
 
-    | TVec (d, t) ->
-        emit_write_array tx_var offs_var nulli_var val_var (string_of_int d) oc t
+      | TVec (d, t) ->
+          emit_write_array (string_of_int d) t
 
-    | TList t ->
-        Printf.fprintf oc "\t\t\tlet d_ = Array.length %s in\n" val_var ;
-        Printf.fprintf oc "\t\t\tRingBuf.write_u32 %s %s (Uint32.of_int d_) ;\n"
-          tx_var offs_var ;
-        Printf.fprintf oc "\t\t\tlet %s = %s + RingBufLib.sersize_of_u32 in\n"
-          offs_var offs_var ;
-        emit_write_array tx_var offs_var nulli_var val_var "d_" oc t
+      | TList t ->
+          Printf.fprintf oc "\t\t\tlet d_ = Array.length %s in\n" val_var ;
+          Printf.fprintf oc "\t\t\tRingBuf.write_u32 tx_ offs_ (Uint32.of_int d_) ;\n" ;
+          Printf.fprintf oc "\t\t\tlet offs_ = offs_ + RingBufLib.sersize_of_u32 in\n" ;
+          emit_write_array "d_" t
 
-    (* Scalar types (maybe nullable): *)
-    | t ->
-        if verbose_serialization then
-          Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;\n" val_var val_var offs_var ;
-        Printf.fprintf oc "\t\t\t\tRingBuf.write_%s %s %s %s ;\n"
-          (id_of_typ t) tx_var offs_var val_var ;
-        Printf.fprintf oc "\t\t\t\t%s + %a, %s\n"
-          offs_var (emit_sersize_of_var t false) val_var nulli_var ;
-    )
+      (* Scalar types: *)
+      | t ->
+          if verbose_serialization then
+            Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" val_var val_var ;
+          Printf.fprintf oc "\t\t\t\tRingBuf.write_%s tx_ offs_ %s ;\n"
+            (id_of_typ t) val_var ;
+          Printf.fprintf oc "\t\t\t\toffs_ + %a, nulli_\n"
+            (emit_sersize_of_var t false) val_var
+    ) in
+  (* Start by zeroing the nullmask *)
+  Printf.fprintf oc
+    "\t\tif nullmask_bytes_ > 0 then\n\
+     \t\t\tRingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ;\n" ;
+  (* All nullable values found in the fieldmask will have its nullbit in the
+   * global nullmask at start_offs: *)
+  let copy oc (out_var, typ) =
+    emit_write "start_offs_" out_var typ.nullable oc typ.structure
+  and skip oc _ =
+    (* We must return offs and null_idx as [copy] does (unchanged here,
+     * since the field is not serialized). *)
+    Printf.fprintf oc "offs_, nulli_"
   in
-  List.iter (fun field ->
-      Printf.fprintf oc "\t\tlet offs_, nulli_ =\n\
-                         \t\t\tif List.hd skiplist_ then (\n" ;
-      let id = id_of_field_typ ~tuple:TupleOut field in
-      emit_write_scalar "tx_" "start_offs_" "offs_" "nulli_" id field.typ.nullable oc field.typ.structure ;
-      Printf.fprintf oc "\n\t\t\t) else offs_, nulli_ in\n" ;
-      Printf.fprintf oc "\t\tlet skiplist_ = List.tl skiplist_ in\n"
-    ) ser_typ ;
-  Printf.fprintf oc "\t\tignore skiplist_ ;\n" ;
-  Printf.fprintf oc "\t\toffs_\n"
+  emit_for_serialized_fields_of_output ser_typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
+  String.print oc "\toffs_\n"
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -2009,9 +2176,9 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
        \t\t\tlet v_, o_ = %a in\n\
        \t\t\toffs_arr_ := o_ ; v_), !offs_arr_\n"
       dim_var
-      (emit_read_scalar tx_var "arr_start_" "!offs_arr_" "v_" t.nullable "bi_") t.structure
-  and emit_read_scalar tx_var start_offs_var offs_var val_var
-                       nullable nulli_var oc structure =
+      (emit_read_value tx_var "arr_start_" "!offs_arr_" "v_" t.nullable "bi_") t.structure
+  and emit_read_value tx_var start_offs_var offs_var val_var
+                      nullable nulli_var oc structure =
     if nullable then (
       Printf.fprintf oc "\
         \t\tif RingBuf.get_bit %s %s %s then (\n\
@@ -2021,7 +2188,7 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
         \t\t) else Null, %s"
         tx_var start_offs_var nulli_var
         val_var offs_var
-        (emit_read_scalar tx_var start_offs_var offs_var val_var false nulli_var) structure
+        (emit_read_value tx_var start_offs_var offs_var val_var false nulli_var) structure
         val_var offs_var
         offs_var
     ) else (
@@ -2038,7 +2205,7 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
                              \t\tlet %s, offs_tup_ = %a in\n"
             i
             item_var
-            (emit_read_scalar tx_var "tuple_start_" "offs_tup_" item_var t.nullable "bi_") t.structure
+            (emit_read_value tx_var "tuple_start_" "offs_tup_" item_var t.nullable "bi_") t.structure
         ) ts ;
         Printf.fprintf oc "\t%a, offs_tup_"
           (array_print_as_tuple_i (fun oc i _ ->
@@ -2070,18 +2237,14 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
                          \tlet %s, offs_ =\n%a in\n"
         nulli
         id
-        (emit_read_scalar "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_")
+        (emit_read_value "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_")
           field.typ.structure ;
       nulli + (if field.typ.nullable then 1 else 0)
     ) 0 ser_typ in
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
-  let in_typ_only_ser =
-    List.filter (fun t ->
-      not (RamenName.is_private t.RamenTuple.name)
-    ) typ in
   Printf.fprintf oc "\tm_, Some %a\n"
-    emit_in_tuple in_typ_only_ser
+    emit_in_tuple typ
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -2778,11 +2941,29 @@ let emit_operation name func params_mod params oc =
       "RamenNotification.unserialize" "notifs_ringbuf"
       "(fun (w, t, _, _, _, _, _, _) -> w, t)"
   | Aggregate _ ->
+    (* Temporary hack: build a RamenTuple out of this in_type (at this point
+     * we do not need the access paths anyway): *)
+    let in_type =
+      List.map (fun f ->
+        RamenTuple.{
+          name = RamenName.field_of_string
+                   RamenFieldMaskLib.(id_of_path f.path) ;
+          typ = f.typ ; units = f.units ;
+          doc = "" ; aggr = None }
+      ) func.F.in_type in
+    (* We won't be able to compile the Get operator that we have eluded to
+     * pass directly the referenced fields. So transform the operation code
+     * to replace those by the new deep Field: *)
+    let op =
+      RamenFieldMaskLib.subst_deep_fields func.F.in_type func.F.operation in
+    !logger.debug "in_type: %a" RamenFieldMaskLib.print_in_type func.F.in_type ;
+    !logger.debug "BEFORE: %a" RamenOperation.print func.F.operation ;
+    !logger.debug "AFTER: %a" RamenOperation.print op ;
     let opc =
-      { op = Some func.F.operation ;
+      { op = Some op ;
         event_time = RamenOperation.event_time_of_operation func.F.operation ;
         params ; consts ; tuple_typ } in
-    emit_aggregate opc code name func.F.in_type) ;
+    emit_aggregate opc code name in_type) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)

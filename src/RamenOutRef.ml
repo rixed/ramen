@@ -32,16 +32,12 @@ and file_spec_conf =
 
 (* ...and internally, where the field mask is a proper list of booleans: *)
 type file_spec =
-  { field_mask : bool list ;
+  { fieldmask : RamenFieldMask.fieldmask ;
     channels : (RamenChannel.t, float) Hashtbl.t }
 
 let print_out_specs oc =
   Hashtbl.print String.print (fun oc s ->
     Hashtbl.print RamenChannel.print Float.print oc s.channels) oc
-
-let string_of_field_mask mask =
-  List.map (function true -> 'X' | false -> '_') mask |>
-  String.of_list
 
 (* [combine_specs s1 s2] returns the result of replacing [s1] with [s2].
  * Basically, new fields prevail and we merge channels, keeping the longer
@@ -69,14 +65,12 @@ let read_ =
 let read fname =
   let now = Unix.gettimeofday () in
   RamenAdvLock.with_r_lock fname (fun _fd ->
-    let field_mask_of_string s =
-      String.to_list s |> List.map ((=) 'X') in
     read_ fname |>
     Hashtbl.filter_map (fun _ (mask_str, chans) ->
       let channels =
         Hashtbl.filter (fun t -> not (timed_out now t)) chans in
       if Hashtbl.length channels > 0 then
-        Some { field_mask = field_mask_of_string mask_str ; channels }
+        Some { fieldmask = RamenFieldMask.of_string mask_str ; channels }
       else None))
 
 let read_live fname =
@@ -87,11 +81,11 @@ let read_live fname =
   ) h ;
   h
 
-let add_ fname fd out_fname timeout chan field_mask =
+let add_ fname fd out_fname timeout chan fieldmask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels chan timeout ;
   let file_spec =
-    string_of_field_mask field_mask,
+    RamenFieldMask.to_string fieldmask,
     channels in
   let h =
     try read_ fname
@@ -109,10 +103,10 @@ let add_ fname fd out_fname timeout chan field_mask =
     if prev_spec <> file_spec then rewrite file_spec
 
 let add fname ?(timeout=0.) ?(channel=RamenChannel.live) out_fname
-        field_mask =
+        fieldmask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname fd out_fname timeout channel field_mask)
+    add_ fname fd out_fname timeout channel fieldmask)
 
 let remove_ fname fd out_fname chan =
   let h = read_ fname in
@@ -170,10 +164,10 @@ let remove_channel fname chan =
   let now = Unix.gettimeofday () in
   assert_bool "outref is empty" (not (mem outref_fname "dest1" now)) ;
 
-  add outref_fname "dest1" [true] ;
+  add outref_fname "dest1" [|RamenFieldMask.Copy|] ;
   assert_bool "dest1 is now in outref" (mem outref_fname "dest1" now) ;
 
-  add outref_fname "dest2" ~channel:1 [true] ;
+  add outref_fname "dest2" ~channel:1 [|RamenFieldMask.Copy|] ;
   assert_bool "dest2 is now in outref" (mem outref_fname "dest1" now) ;
   remove_channel outref_fname 1 ;
   assert_bool "no more chan 1" (not (mem outref_fname "dest2" now)) ;
