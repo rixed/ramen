@@ -1,8 +1,9 @@
 <? include 'data.php' ?>
+<? $base_href = "https://rixed.github.io/ramen/"; ?>
 <html>
   <head>
     <meta charset="utf-8">
-    <base href="https://rixed.github.io/ramen/">
+    <base href="<?=$base_href?>">
     <link rel="stylesheet" href="style.css" type="text/css" media="screen">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <title>Ramen Documentation</title>
@@ -23,10 +24,14 @@
 
 <div id="menu">
   <ul>
-  <? $current = basename($_SERVER['PHP_SELF'], '.php').'.html'; ?>
+  <?
+    $dir = basename(dirname($_SERVER['PHP_SELF']));
+    $current = basename($_SERVER['PHP_SELF'], '.php').'.html';
+  ?>
   <? foreach ($info_pages as $page => $p) { ?>
     <? $is_in_page = $current == $page ||
-                     isset($p['sub_pages'][$current]); ?>
+                     isset($p['sub_pages'][$current]) ||
+                     isset($p['sub_pages'][$dir.'/'.$current]); ?>
     <li>
       <a class="<?=($current == $page ? 'is-current':'')?>" href="<?=$page?>"><?=$p['title']?></a>
     <? if ($is_in_page && isset($p['sub_pages'])) { ?>
