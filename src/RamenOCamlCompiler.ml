@@ -295,10 +295,14 @@ let make_valid_ocaml_identifier s =
                     (c >= 'A' && c <= 'Z')
   and is_digit c = c >= '0' && c <= '9'
   in
+  if s = "" then invalid_arg "make_valid_ocaml_identifier: empty" ;
   String.fold_lefti (fun s i c ->
     s ^ (
       if is_letter c || c = '_' ||
-         (i > 0 && (c = '\'' || is_digit c)) then String.of_char c
+         (i > 0 && (c = '\'' || is_digit c))
+      then
+        if i > 0 then String.of_char c
+        else String.of_char (Char.lowercase c)
       else "'" ^ string_of_int (Char.code c))
         (* Here we use the single quote as an escape char, given the single
          * quote is not usable in quoted identifiers on ramen's side. *)
