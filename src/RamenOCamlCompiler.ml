@@ -78,6 +78,7 @@ let compile_internal conf what src_file obj_file =
   reset () ;
   native_code := true ;
   annotations := true ;
+  use_linscan := true ; (* https://caml.inria.fr/mantis/view.php?id=7899 *)
   debug := conf.C.log_level = Debug ;
   verbose := !debug ;
   no_std_include := true ;
@@ -121,7 +122,7 @@ let compile_external conf what src_file obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -thread -annot -w %s \
+           ocamlfind ocamlopt%s%s -linscan -thread -annot -w %s \
                      -o %s -package ramen -I %s -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
@@ -159,6 +160,7 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   reset () ;
   native_code := true ;
   annotations := true ;
+  use_linscan := true ;
   debug := conf.C.log_level = Debug ;
   verbose := !debug ;
   no_std_include := true ;
