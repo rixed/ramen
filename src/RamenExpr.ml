@@ -727,9 +727,50 @@ let is_a_list e =
   | TList _ | TVec _ -> true
   | _ -> false
 
-(* Propagate values up the tree only, depth first. *)
-let fold_subexpressions f i expr =
+let rec map f expr =
+  let m e = map f e in
   match expr with
+  | Const _ | Field _ | StateField _ | StatelessFun0 _ -> f expr
+  | StatefulFun (t, g, n, AggrMin e) -> f (StatefulFun (t, g, n, AggrMin (m e)))
+  | StatefulFun (t, g, n, AggrMax e) -> f (StatefulFun (t, g, n, AggrMax (m e)))
+  | StatefulFun (t, g, n, AggrSum e) -> f (StatefulFun (t, g, n, AggrSum (m e)))
+  | StatefulFun (t, g, n, AggrAvg e) -> f (StatefulFun (t, g, n, AggrAvg (m e)))
+  | StatefulFun (t, g, n, AggrAnd e) -> f (StatefulFun (t, g, n, AggrAnd (m e)))
+  | StatefulFun (t, g, n, AggrOr e) -> f (StatefulFun (t, g, n, AggrOr (m e)))
+  | StatefulFun (t, g, n, AggrFirst e) -> f (StatefulFun (t, g, n, AggrFirst (m e)))
+  | StatefulFun (t, g, n, AggrLast e) -> f (StatefulFun (t, g, n, AggrLast (m e)))
+  | StatelessFun1 (t, o, e) -> f (StatelessFun1 (t, o, (m e)))
+  | StatelessFunMisc (t, Like (e, p)) -> f (StatelessFunMisc (t, Like (m e, p)))
+  | StatefulFun (t, g, n, AggrHistogram (e, a, b, c)) -> f (StatefulFun (t, g, n, AggrHistogram (m e, a, b, c)))
+  | StatefulFun (t, g, n, Group e) -> f (StatefulFun (t, g, n, Group (m e)))
+  | StatelessFun2 (t, o, e1, e2) -> f (StatelessFun2 (t, o, m e1, m e2))
+  | StatefulFun (t, g, n, Lag (e1, e2)) -> f (StatefulFun (t, g, n, Lag (m e1, m e2)))
+  | StatefulFun (t, g, n, ExpSmooth (e1, e2)) -> f (StatefulFun (t, g, n, ExpSmooth (m e1, m e2)))
+  | StatefulFun (t, g, n, Sample (e1, e2)) -> f (StatefulFun (t, g, n, Sample (m e1, m e2)))
+  | GeneratorFun (t, Split (e1, e2)) -> f (GeneratorFun (t, Split (m e1, m e2)))
+  | StatefulFun (t, g, n, MovingAvg (e1, e2, e3)) -> f (StatefulFun (t, g, n, MovingAvg (m e1, m e2, m e3)))
+  | StatefulFun (t, g, n, LinReg (e1, e2, e3)) -> f (StatefulFun (t, g, n, LinReg (m e1, m e2, m e3)))
+  | StatefulFun (t, g, n, Hysteresis (e1, e2, e3)) -> f (StatefulFun (t, g, n, Hysteresis (m e1, m e2, m e3)))
+  | StatefulFun (t, g, n, Remember (e1, e2, e3, e4s)) -> f (StatefulFun (t, g, n, Remember (m e1, m e2, m e3, List.map m e4s)))
+  | StatefulFun (t, g, n, MultiLinReg (e1, e2, e3, e4s)) -> f (StatefulFun (t, g, n, MultiLinReg (m e1, m e2, m e3, List.map m e4s)))
+  | StatefulFun (t, g, n, Top ({ c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s ; max_size = e_opt } as a)) ->
+      f (StatefulFun (t, g, n, Top { a with c = m e1 ; by = m e2 ; time = m e3 ; duration = m e4 ; what = List.map m e5s ; max_size = Option.map m e_opt }))
+  | StatefulFun (t, g, n, Last (c, e, es)) -> f (StatefulFun (t, g, n, Last (m c, m e, List.map m es)))
+  | StatefulFun (t, g, n, Past { what = e1 ; time = e2 ; max_age = e3 ; sample_size = e_opt }) ->
+      f (StatefulFun (t, g, n, Past { what = m e1 ; time = m e2 ; max_age = m e3 ; sample_size = Option.map m e_opt }))
+  | Case (t, alts, else_) ->
+      let alts = List.map (fun a -> { case_cond = m a.case_cond ; case_cons = m a.case_cons }) alts in
+      f (Case (t, alts, Option.map m else_))
+  | Tuple (t, es) -> f (Tuple (t, List.map m es))
+  | Vector (t, es) -> f (Vector (t, List.map m es))
+  | StatefulFun (t, g, n, Distinct es) -> f (StatefulFun (t, g, n, Distinct (List.map m es)))
+  | Coalesce (t, es) -> f (Coalesce (t, List.map m es))
+  | StatelessFunMisc (t, Max es) -> f (StatelessFunMisc (t, Max (List.map m es)))
+  | StatelessFunMisc (t, Min es) -> f (StatelessFunMisc (t, Min (List.map m es)))
+  | StatelessFunMisc (t, Print es) -> f (StatelessFunMisc (t, Print (List.map m es)))
+
+(* Propagate values up the tree only, depth first. *)
+let fold_subexpressions f i = function
   | Const _ | Field _ | StateField _
   | StatelessFun0 _ ->
       i

@@ -275,6 +275,35 @@ let fold_expr init f =
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
 
+let map_top_level_expr f op =
+  match op with
+  | ListenFor _ | Instrumentation _ | Notifications _ -> op
+  | ReadCSVFile ({ where = { fname ; unlink } ; preprocessor ; _ } as a) ->
+      ReadCSVFile { a with
+        where = { fname = f fname ; unlink = f unlink } ;
+        preprocessor = Option.map f preprocessor }
+  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
+                  notifications ; _ } as a) ->
+      Aggregate { a with
+        fields =
+          List.map (fun sf ->
+            { sf with expr = f sf.expr }
+          ) fields ;
+        merge = { merge with on = List.map f merge.on } ;
+        where = f where ;
+        key = List.map f key ;
+        notifications = List.map f notifications ;
+        commit_cond = f commit_cond ;
+        sort =
+          Option.map (fun (i, u_opt, b) ->
+            i,
+            Option.map f u_opt,
+            List.map f b
+          ) sort }
+
+let map_expr f =
+  map_top_level_expr (E.map f)
+
 (* Various functions to inspect an operation: *)
 
 let is_merging = function
