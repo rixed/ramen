@@ -46,7 +46,6 @@ struct
       merge_inputs : bool ;
       (* List of envvar used in that function: *)
       envvars : RamenName.field list }
-    [@@ppp PPP_OCaml]
 
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
@@ -137,7 +136,6 @@ struct
     { params : RamenTuple.params [@ppp_default []] ;
       condition : string option ; (* for debug only *)
       funcs : Func.t list }
-    [@@ppp PPP_OCaml]
 
   module Serialized = struct
     type t =
