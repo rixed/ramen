@@ -2157,13 +2157,13 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
       \t|RingBufLib.DataTuple _ as m_ ->\n\
       \t\tlet start_offs_ = RingBufLib.message_header_sersize m_ in\n"
   ) ;
-  Printf.fprintf oc "\
-    \tlet offs_ = start_offs_ + %d in\n"
+  Printf.fprintf oc
+    "\tlet offs_ = start_offs_ + %d in\n"
     (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
   if verbose_serialization then
     Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
   (*
-   * All thoe following emit_* functions Return value, offset:
+   * All the following emit_* functions Return value, offset:
    *)
   let rec emit_read_array tx_var offs_var dim_var oc t =
     Printf.fprintf oc
@@ -3005,6 +3005,5 @@ let compile conf worker_entry_point replay_entry_point func
     RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
       emit_operation worker_entry_point func params_mod params oc ;
       emit_replay replay_entry_point func params oc) in
-  (* TODO: any failure in compilation -> delete the source code! Or it will be reused *)
   let what = "function "^ RamenName.func_color func.F.name in
   RamenOCamlCompiler.compile conf what src_file obj_name

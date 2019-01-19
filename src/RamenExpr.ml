@@ -132,6 +132,7 @@ type t =
   | StatelessFun1 of typ * stateless_fun1 * t
   | StatelessFun2 of typ * stateless_fun2 * t * t
   | StatelessFunMisc of typ * stateless_fun_misc
+  (* TODO: StatefulFun1, StatefulFun2, etc... *)
   | StatefulFun of typ * state_lifespan * skip_nulls * stateful_fun
   | GeneratorFun of typ * generator_fun
   [@@ppp PPP_OCaml]
@@ -828,6 +829,7 @@ let fold_subexpressions f i = function
   | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
       List.fold_left f i es
 
+(* TODO: rename into fold *)
 let rec fold_by_depth f i expr =
     f (
       fold_subexpressions (fold_by_depth f) i expr

@@ -621,7 +621,7 @@ CAMLprim value read_float(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   double v;
-  read_words(wrtx, offs, (char *)&v, sizeof(v));
+  read_words(wrtx, offs, (char *)&v, sizeof v);
   v_ = caml_alloc(Double_wosize, Double_tag);
   Store_double_val(v_, v);
   //printf("v=%f, offs=%zu\n", v, offs);
