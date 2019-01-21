@@ -691,16 +691,15 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Record (_, kvs), _ ->
     (* Here we must compute the values in order, as each expression can
      * refer to the previous one. And we must, for each expression, evaluate
-     * it in a context where this record is opened.
-     * ie. add record on top of context. (TODO: make context more like a
-     * proper environment and make it possible to add bindings of specific
-     * fields of a specific record to a given OCaml identifier) *)
-    List.iter (fun (k, v) ->
-      Printf.fprintf oc "\tlet %s = %a in\n"
-        (RamenOCamlCompiler.make_valid_ocaml_identifier k)
-        (emit_expr ~env ~context ~opc) v
-      (* TODO: add k of this record in the context *)
-    ) kvs ;
+     * it in a context where this record is opened. *)
+    let _env =
+      List.fold_left (fun env (k, v) ->
+        let var_name = RamenOCamlCompiler.make_valid_ocaml_identifier k in
+        Printf.fprintf oc "\tlet %s = %a in\n"
+          var_name
+          (emit_expr ~env ~context ~opc) v ;
+        (k, var_name) :: env
+      ) env kvs in
     (* finally, regroup those fields in a tuple: *)
     let es =
       Array.enum (fields_of_record kvs) /@
