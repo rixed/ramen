@@ -667,6 +667,26 @@ and emit_expr_ ?state ~context ~opc oc expr =
       emit_type c
   | Finalize, Tuple (_, es), _ ->
     list_print_as_tuple (emit_expr ?state ~context ~opc) oc es
+  | Finalize, Record (_, kvs), _ ->
+    (* Here we must compute the values in order, as each expression can
+     * refer to the previous one. And we must, for each expression, evaluate
+     * it in a context where this record is opened.
+     * ie. add record on top of context. (TODO: make context more like a
+     * proper environment and make it possible to add bindings of specific
+     * fields of a specific record to a given OCaml identifier) *)
+    List.iter (fun (k, v) ->
+      Printf.fprintf oc "\tlet %s = %a in\n"
+        (RamenOCamlCompiler.make_valid_ocaml_identifier k)
+        (emit_expr ?state ~context ~opc) v
+      (* TODO: add k of this record in the context *)
+    ) kvs ;
+    (* finally, regroup those fields in a tuple: *)
+    let es =
+      Array.enum (fields_of_record kvs) /@
+      RamenOCamlCompiler.make_valid_ocaml_identifier |>
+      List.of_enum in
+    list_print_as_tuple String.print oc es
+
   | Finalize, Vector (_, es), _ ->
     list_print_as_vector (emit_expr ?state ~context ~opc) oc es
 

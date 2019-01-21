@@ -672,6 +672,10 @@ struct
   let tup_sep =
     opt_blanks -- char ';' -- opt_blanks
 
+  (* For now we stay away from the special syntax for SELECT ("as"): *)
+  let kv_sep =
+    blanks -- strinG "az" -- blanks
+
   (* But in general when parsing user provided values (such as in parameters
    * or test files), we want to allow any literal: *)
   (* [p_] returns all possible interpretation of a literal (ie. for an
@@ -681,7 +685,8 @@ struct
     scalar ?min_int_width |||
     (* Also literals of constructed types: *)
     (tuple ?min_int_width >>: fun vs -> VTuple vs) |||
-    (vector ?min_int_width >>: fun vs -> VVec vs)
+    (vector ?min_int_width >>: fun vs -> VVec vs) |||
+    (record ?min_int_width >>: fun h -> VRecord h)
     (* Note: there is no way to enter a litteral list, as it's the same
      * representation than an array. And, given the functions that work
      * on arrays would also work on list, and that arrays are more efficient
@@ -708,6 +713,19 @@ struct
     (
       char '(' -- opt_blanks -+
       (repeat ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>: Array.of_list) +-
+      opt_blanks +- char ')'
+    ) m
+
+  (* Like tuples but with mandatory field names: *)
+  and record ?min_int_width m =
+    let m = "record" :: m in
+    (
+      char '(' -- opt_blanks -+
+      (repeat ~min:1 ~sep:tup_sep (
+        p_ ?min_int_width +- kv_sep ++ non_keyword) >>: fun l ->
+          let h = Hashtbl.create 9 in
+          List.iter (fun (v, k) -> Hashtbl.add h k v) l ;
+          h) +-
       opt_blanks +- char ')'
     ) m
 

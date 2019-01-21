@@ -149,6 +149,13 @@ let path_unquote s =
  *)
 
 
+(* TODO: add in batteries *)
+let list_rfind_map f l =
+  List.rev l |> List.find_map f
+
+let list_rassoc k l =
+  List.rev l |> List.assoc k
+
 let list_existsi f l =
   match List.findi (fun i v -> f i v) l with
   | exception Not_found -> false

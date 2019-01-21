@@ -350,6 +350,23 @@ let emit_constraints tuple_sizes out_fields oc e =
       ) es ;
       emit_assert_is_false oc nid
 
+  | Record (_, kvs) ->
+      (* - The resulting type is a record which length, items type and
+       *   nullability are given by the values in kvs;
+       * - The result is not nullable since it has a literal value. *)
+      let fields = fields_of_record kvs in
+      let d = Array.length fields in
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc "((_ is tuple%d) %s)" d eid) ;
+      Array.iteri (fun i k ->
+        let e = list_rassoc k kvs in
+        emit_assert_id_eq_smt2 (t_of_expr e) oc
+          (Printf.sprintf "(tuple%d-e%d %s)" d i eid) ;
+        emit_assert_id_eq_smt2 (n_of_expr e) oc
+          (Printf.sprintf "(tuple%d-n%d %s)" d i eid)
+      ) fields ;
+      emit_assert_is_false oc nid
+
   | Vector (_, es) ->
       (* Typing rules:
        * - Every element in es must have the same sort;
@@ -1501,9 +1518,12 @@ let emit_smt2 parents tuple_sizes condition funcs params oc ~optimize =
 
 let used_tuple_sizes funcs parents =
   let add_tuple_sz s = function
-    (* The only way to get a tuple in an op is with a Tuple
+    (* The only ways to get a tuple in an op are with a Tuple or a Record
      * expression: *)
     | Tuple (_, ts) -> Set.Int.add (List.length ts) s
+    | Record (_, kvs) ->
+        let fields = fields_of_record kvs in
+        Set.Int.add (Array.length fields) s
     | _ -> s in
   let tuple_sizes =
     List.fold_left (fun s func ->

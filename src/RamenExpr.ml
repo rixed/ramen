@@ -64,6 +64,11 @@ type t =
    * RamenTypes.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
    * (Tuple of...). *)
   | Tuple of typ * t list
+  (* Literal records where fields are constant but values can be any other
+   * expression. Note that the same field name can appear several time in the
+   * definition but only the last occurrence will be present in the final
+   * value (handy for refining the value of some field): *)
+  | Record of typ * (string * t) list
   (* The same distinction applies to vectors.
    * Notice there are no list expressions though, for the same reason that
    * there is no such thing as a list immediate, but only vectors. Lists, ie
@@ -351,6 +356,17 @@ let int_of_const = function
   | Const (_, v) -> RamenTypes.int_of_scalar v
   | _ -> None
 
+(* Return the set of all unique fields in the record expression, ordered
+ * in serialization order: *)
+let fields_of_record kvs =
+  let a =
+    List.fold_left (fun s (k, _) ->
+      Set.String.add k s
+    ) Set.String.empty kvs |>
+    Set.String.to_array in
+  Array.fast_sort String.compare a ;
+  a
+
 let rec print ?(max_depth=max_int) with_types oc e =
   let add_types t =
     if with_types then Printf.fprintf oc " [%a]" print_typ t
@@ -368,6 +384,12 @@ let rec print ?(max_depth=max_int) with_types oc e =
       RamenTypes.print oc c ; add_types t
     | Tuple (t, es) ->
       List.print ~first:"(" ~last:")" ~sep:"; " p oc es ;
+      add_types t
+    | Record (t, es) ->
+      List.print ~first:"(" ~last:")" ~sep:"; "
+        (fun oc (k, v) ->
+          Printf.fprintf oc "%a AZ %s" p v (ramen_quote k))
+        oc es ;
       add_types t
     | Vector (t, es) ->
       List.print ~first:"[" ~last:"]" ~sep:"; " p oc es ;
@@ -705,8 +727,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
       add_types t
 
 let typ_of = function
-  | Const (t, _) | Tuple (t, _) | Vector (t, _) | Field (t, _, _)
-  | StateField (t, _) | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
+  | Const (t, _) | Tuple (t, _) | Record (t, _) | Vector (t, _)
+  | Field (t, _, _) | StateField (t, _)
+  | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
   | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
   | StatefulFun (t, _, _, _) | GeneratorFun (t, _) | Case (t, _, _)
   | Coalesce (t, _) -> t
@@ -763,6 +786,7 @@ let rec map f expr =
       let alts = List.map (fun a -> { case_cond = m a.case_cond ; case_cons = m a.case_cons }) alts in
       f (Case (t, alts, Option.map m else_))
   | Tuple (t, es) -> f (Tuple (t, List.map m es))
+  | Record (t, kvs) -> f (Record (t, List.map (fun (k, e) -> k, m e) kvs))
   | Vector (t, es) -> f (Vector (t, List.map m es))
   | StatefulFun (t, g, n, Distinct es) -> f (StatefulFun (t, g, n, Distinct (List.map m es)))
   | Coalesce (t, es) -> f (Coalesce (t, List.map m es))
@@ -829,6 +853,9 @@ let fold_subexpressions f i = function
   | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
       List.fold_left f i es
 
+  | Record (_, kvs) ->
+      List.fold_left (fun i (_, v) -> f i v) i kvs
+
 (* TODO: rename into fold *)
 let rec fold_by_depth f i expr =
     f (
@@ -875,6 +902,11 @@ let rec map_type ?(recurs=true) f = function
   | Tuple (t, es) ->
     Tuple (f t,
            if recurs then List.map (map_type ~recurs f) es else es)
+  | Record (t, kvs) ->
+    Record (f t,
+            if recurs then
+              List.map (fun (k, v) -> k, map_type ~recurs f v) kvs
+            else kvs)
   | Vector (t, es) ->
     Vector (f t,
             if recurs then List.map (map_type ~recurs f) es else es)
@@ -1678,6 +1710,17 @@ struct
         Tuple (make_typ "tuple", es)
     ) m
 
+  and record m =
+    let m = "record" :: m in
+    (
+      char '(' -- opt_blanks -+
+      repeat ~min:1 ~sep:RamenTypes.Parser.tup_sep (
+        p +- RamenTypes.Parser.kv_sep ++ non_keyword >>:
+        fun (v, k) -> k, v) +-
+      opt_blanks +- char ')' >>: fun kvs ->
+        Record (make_typ "record", kvs)
+    ) m
+
   (* Empty vectors are disallowed so we cannot ignore the element type: *)
   and vector m =
     let m = "vector" :: m in
@@ -1921,6 +1964,12 @@ let units_of_expr params units_of_input units_of_output =
                 option_get "Get from tuple must have const index" in
         (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
+    | StatelessFun2 (_, Get, s, Record (_, kvs)) ->
+        let s = string_of_const s |>
+                option_get "Get from record must have string index" in
+        (try list_rfind_map (fun (k, v) ->
+          if k = s then Some v else None) kvs |> uoe ~indent
+        with Not_found -> None)
     | StatelessFun2 (_, Percentile, _,
                      StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|
                                   Group e))) ->
