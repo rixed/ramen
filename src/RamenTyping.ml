@@ -106,6 +106,9 @@ let rec emit_id_eq_typ tuple_sizes id oc = function
             tuple_sizes
       else
         emit_is_tuple id oc d
+  | TRecord h ->
+      let d = Hashtbl.length h in
+      emit_is_tuple id oc d
   | TVec (d, t) ->
       let id' = Printf.sprintf "(vector-type %s)" id in
       Printf.fprintf oc "(and ((_ is vector) %s) %a"
@@ -1513,6 +1516,7 @@ let used_tuple_sizes funcs parents =
         let open RamenTypes in
         match ft.RamenTuple.typ.structure with
         | TTuple ts -> Set.Int.add (Array.length ts) s
+        | TRecord h -> Set.Int.add (Hashtbl.length h) s
         | _ -> s
       ) s (RamenOperation.out_type_of_operation f.F.operation)
     ) s fs

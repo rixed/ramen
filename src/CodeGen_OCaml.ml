@@ -118,6 +118,7 @@ let id_of_typ = function
   | TCidrv6 -> "cidr6"
   | TCidr   -> "cidr"
   | TTuple _ -> "tuple"
+  | TRecord _ -> "record"
   | TVec _  -> "vector"
   | TList _ -> "list"
   | TNum | TAny | TEmpty -> assert false
@@ -180,6 +181,21 @@ let rec emit_value oc typ =
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc typ ->
           Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
+  | TRecord h ->
+      (* We represent records as OCaml tuples, in serialization order for
+       * simplicity and efficiency. When reading the code we would like to
+       * have those in declaration order, but it's not easy to keep that
+       * declaration order around. Also it would make the code more
+       * complicated as two record types differing only by definition order
+       * are really the same record. *)
+      let a = RingBufLib.ser_array_of_record ~with_private:true h in
+      Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length a) ;
+      Printf.fprintf oc "and %a = x_ in "
+        (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "x%d_" i)) a ;
+      Array.iter (fun (k, t) ->
+        Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) a ;
+      Printf.fprintf oc "RamenTypes.VRecord h_)"
   | TVec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
   | TList t ->
@@ -214,6 +230,10 @@ let rec emit_type oc =
   | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
+  | VRecord h ->
+      let vs = RingBufLib.ser_array_of_record ~with_private:true h |>
+               Array.map snd in
+      emit_type oc (VTuple vs)
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
   | VList vs  -> Array.print emit_type oc vs
@@ -265,6 +285,10 @@ let rec otype_of_type oc = function
       Array.print ~first:"(" ~last:")" ~sep:" * "
         (fun oc t -> otype_of_type oc t.structure)
         oc ts
+  | TRecord h ->
+      let ts = RingBufLib.ser_array_of_record ~with_private:true h |>
+               Array.map snd in
+      otype_of_type oc (TTuple ts)
   | TVec (_, t) | TList t ->
       (* TODO: take into account t.nullable *)
       Printf.fprintf oc "%a array" otype_of_type t.structure
@@ -284,7 +308,8 @@ let omod_of_type = function
   | TCidrv4 -> "RamenIpv4.Cidr"
   | TCidrv6 -> "RamenIpv6.Cidr"
   | TCidr -> "RamenIp.Cidr"
-  | TTuple _ | TVec _ | TList _ | TNum | TAny | TEmpty -> assert false
+  | TTuple _ | TRecord _ | TVec _ | TList _ | TNum | TAny | TEmpty ->
+      assert false
 
 (* When we do have to convert a null value into a string: *)
 let string_of_null = "?null?"

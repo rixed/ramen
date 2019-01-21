@@ -61,6 +61,14 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
+let ser_array_of_record ?(with_private=false) h =
+  let a =
+    Hashtbl.enum h //
+    (fun (k, _) -> with_private || k = "" || k.[0] = '_') |>
+    Array.of_enum in
+  Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
+  a
+
 let rec sersize_of_fixsz_typ = function
   | TFloat -> sersize_of_float
   | TBool -> sersize_of_bool
@@ -80,7 +88,7 @@ let rec sersize_of_fixsz_typ = function
   | TCidrv4 -> sersize_of_cidrv4
   | TCidrv6 -> sersize_of_cidrv6
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
-  | TString | TIp | TCidr | TTuple _ | TVec _ | TList _
+  | TString | TIp | TCidr | TTuple _ | TVec _ | TList _ | TRecord _
   | TNum | TAny | TEmpty -> assert false
 
 let rec sersize_of_value = function
@@ -106,6 +114,7 @@ let rec sersize_of_value = function
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
   | VTuple vs -> sersize_of_tuple vs
+  | VRecord h -> sersize_of_record h
   | VVec vs -> sersize_of_vector vs
   | VList vs -> sersize_of_list vs
 
@@ -116,6 +125,12 @@ and sersize_of_tuple vs =
    * values are considered nullable). *)
   let nullmask_sz = nullmask_sz_of_tuple vs in
   Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
+
+and sersize_of_record h =
+  (* We serialize records as we serialize output: in alphabetical order,
+   * without private fields: *)
+  let vs = ser_array_of_record h |> Array.map snd in
+  sersize_of_tuple vs
 
 and sersize_of_vector vs =
   (* Vectors are serialized in field order, unserializer will also know
@@ -131,7 +146,7 @@ let has_fixed_size = function
   | TString
   (* Technically, those could have a fixed size, but we always treat them as
    * variable: *)
-  | TTuple _ | TVec _ | TList _ -> false
+  | TTuple _ | TRecord _ | TVec _ | TList _ -> false
   | _ -> true
 
 let tot_fixsz tuple_typ =
@@ -163,6 +178,7 @@ let rec write_value tx offs = function
   | VCidrv6 c -> write_cidr6 tx offs c
   | VCidr c -> write_cidr tx offs c
   | VTuple vs -> write_tuple tx offs vs
+  | VRecord h -> write_record tx offs h
   | VVec vs -> write_vector tx offs vs
   | VList vs -> write_list tx offs vs
   | VNull -> assert false
@@ -181,6 +197,10 @@ and write_tuple tx offs vs =
     )
   ) (offs + nullmask_sz) vs |>
   ignore
+
+and write_record tx offs h =
+  let vs = ser_array_of_record h |> Array.map snd in
+  write_tuple tx offs vs
 
 and write_vector tx = write_tuple tx
 
@@ -211,6 +231,7 @@ let rec read_value tx offs structure =
   | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
   | TCidr   -> VCidr (read_cidr tx offs)
   | TTuple ts -> VTuple (read_tuple ts tx offs)
+  | TRecord h -> VRecord (read_record h tx offs)
   | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TList t -> VList (read_list t tx offs)
   | TNum | TAny | TEmpty -> assert false
@@ -231,6 +252,18 @@ and read_tuple ts tx offs =
   Array.mapi (fun bi t ->
     read_constructed_value tx t offs o bi
   ) ts
+
+and read_record h tx offs =
+  (* Return the array of fields and types we are supposed to have, in
+   * serialized order: *)
+  let ts = ser_array_of_record h in
+  let vs = read_tuple (Array.map snd ts) tx offs in
+  assert (Array.length vs = Array.length ts) ;
+  let h = Hashtbl.create (Array.length ts) in
+  Array.iteri (fun i (k, _t) ->
+    Hashtbl.add h k vs.(i)
+  ) ts ;
+  h
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
