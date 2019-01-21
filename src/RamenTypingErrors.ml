@@ -24,7 +24,6 @@ type expr =
   | CaseNullProp
   | CoalesceAlt of int
   | CoalesceNullLast of int
-  | Tuple
   | Gettable
   | AnyCidr
   | NumericVec
@@ -69,7 +68,6 @@ let print_expr oc =
                         a type compatible with others" a
   | CoalesceNullLast a -> p ": alternative #%d of coalesce expression must \
                              be nullable iff it's the last one" a
-  | Tuple -> p " must be a tuple"
   | Gettable -> p " must be a vector or a list"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"

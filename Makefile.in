@@ -460,7 +460,6 @@ LINKED_FOR_TESTS = \
 	src/HeavyHitters.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenDepLibs.ml \
-	src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \

@@ -28,7 +28,8 @@
  *   https://cs.nyu.edu/wies/publ/finding_minimum_type_error_sources.pdf)
  *
  * - We use SMT-LIB v2.6 format as it supports datatypes. Both the latest
- *   versions of Z3 and CVC4 have been tested to work.
+ *   versions of Z3 and CVC4 have been tested to work. CVC4 does not support
+ *   `minimize` though.
  *
  * Notes regarding the SMT:
  *

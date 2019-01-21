@@ -156,8 +156,9 @@ let emit_float oc f =
   else if f = neg_infinity then String.print oc "neg_infinity"
   else Legacy.Printf.sprintf "%h" f |> String.print oc
 
-(* Prints a function that convert an ocaml value into a RamenTypes.value of
- * the given RamenTypes.t: *)
+(* Prints a function that convert an OCaml value into a RamenTypes.value of
+ * the given RamenTypes.t. This is useful for instance to get hand off the
+ * factors to CodeGenLib. *)
 let rec emit_value oc typ =
   let open Stdint in
   if typ.RamenTypes.nullable then

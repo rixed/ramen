@@ -692,14 +692,22 @@ struct
   (* By default, we want only one value of at least 32 bits: *)
   and p m = p_ ~min_int_width:32 m
 
+  (* Do we need literal value-only tuples/vectors/records for
+   * anything since we have literal tuple/vectors/records expressions?
+   * Yes, to be able to parse for instance command line arguments into
+   * immediate values - but we could also instead use the expression parser,
+   * and early-evaluate the result. We could then be able to do away with
+   * the following parsers, and even maybe early-evaluate simple arithmetic
+   * functions so that we would be allowed to enter "1+1" instead of 2
+   * for instance. TODO *)
+
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
    * conflict with parentheses used as grouping symbols: *)
   and tuple ?min_int_width m =
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
-      (repeat ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>:
-       fun vs -> Array.of_list vs) +-
+      (repeat ~min:2 ~sep:tup_sep (p_ ?min_int_width) >>: Array.of_list) +-
       opt_blanks +- char ')'
     ) m
 

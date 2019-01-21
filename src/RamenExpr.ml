@@ -1667,17 +1667,14 @@ struct
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
-   * conflict with parentheses used as grouping symbols: *)
+   * conflict with parentheses used as grouping symbols. We could do the
+   * same trick as in python though (TODO): *)
   and tuple m =
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
       repeat ~min:2 ~sep:RamenTypes.Parser.tup_sep p +-
       opt_blanks +- char ')' >>: fun es ->
-        let num_items = List.length es in
-        assert (num_items >= 2) ;
-        (* Even if all the fields are null the tuple is not null.
-         * No immediate tuple can be null. *)
         Tuple (make_typ "tuple", es)
     ) m
 
