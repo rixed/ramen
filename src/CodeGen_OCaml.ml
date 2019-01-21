@@ -2479,6 +2479,9 @@ let emit_field_selection
     ) 0 out_typ |> ignore ;
   Printf.fprintf oc "\n\t)\n"
 
+(* Fields that are part of the minimal tuple have had their states updated
+ * while the minimal tuple was computed, but others have not. Let's do this
+ * here: *)
 let emit_update_states
       name in_typ
       minimal_typ ~opc oc selected_fields =
@@ -2727,6 +2730,8 @@ let emit_notification_tuple ~opc oc notif =
 
 (* We want a function that, when given the worker name, current time and the
  * output tuple, will return the list of RamenNotification.tuple to send: *)
+(* TODO: shouldn't CodeGenLib pass this func the global and also maybe
+ * the group states? *)
 let emit_get_notifications name in_typ out_typ ~opc oc notifications =
   Printf.fprintf oc "let %s %a %a =\n\t%a\n"
     name

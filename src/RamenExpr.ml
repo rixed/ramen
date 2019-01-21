@@ -79,6 +79,7 @@ type t =
   | Field of typ * tuple_prefix ref * RamenName.field
   (* StateField are met only late in the game in the code generator. Refer to
    * CodeGen_OCaml. *)
+  (* FIXME: rename to Binding? *)
   | StateField of typ * string
   (* A conditional with all conditions and consequents, and finally an optional
    * "else" clause. *)
