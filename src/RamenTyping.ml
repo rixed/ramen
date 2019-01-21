@@ -333,7 +333,7 @@ let emit_constraints tuple_sizes out_fields oc e =
       arg_has_type (RamenTypes.structure_of x) oc e ;
       arg_is_not_nullable oc e
 
-  | StateField _ -> assert false (* Not supposed to appear here *)
+  | Binding _ -> assert false (* Not supposed to appear here *)
 
   | Tuple (_, es) ->
       (* - The resulting type is a tuple which length, items type and

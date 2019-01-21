@@ -463,8 +463,8 @@ type arg_nullability_propagation =
  * is stored in the environment stack (still called [state] for now, soon to be
  * renamed [env]).
  * So that when a statefull function is looking for its state, or when we
- * encounter a special StateField expression (soon to be renamed as well) we
- * look into this environment to find the OCaml variable to use.
+ * encounter a special Binding expression we look into this environment to find
+ * the OCaml variable to use.
  *)
 
 let name_of_state e =
@@ -547,7 +547,7 @@ and update_state ~state ~opc ~nullable skip my_state
         Printf.fprintf oc "(match %a with Null -> () | NotNull %s -> "
           (emit_expr ~context:Finalize ~opc ~state) e
           state_var_name ;
-        StateField ({ t with typ = Some {
+        Binding ({ t with typ = Some {
                         structure = (Option.get t.typ).structure ;
                         nullable = false } },
                     state_var_name) :: args,
@@ -667,13 +667,13 @@ and emit_expr_ ~state ~context ~opc oc expr =
     print_env state ;
   let out_typ = typ_of expr in
   let nullable = (Option.get out_typ.typ).nullable in
-  (* my_state will represent the state of a stateful function with a special
-   * field (StateField) which type will match that of the finalized value. *)
+  (* my_state will represent the variable holding the state of a stateful
+   * function. *)
   let my_state =
-    StateField (out_typ, name_of_state expr) in
+    Binding (out_typ, name_of_state expr) in
   match context, expr, (Option.get out_typ.typ).structure with
   (* Non-functions *)
-  | Finalize, StateField (_, n), _ ->
+  | Finalize, Binding (_, n), _ ->
     (* Look for that name in the environment: *)
     (match List.assoc n state with
     | exception Not_found ->
@@ -1211,7 +1211,7 @@ and emit_expr_ ~state ~context ~opc oc expr =
         | TList t | TVec (_, t) -> t
         | _ -> assert false in
       let e' =
-        StateField (make_typ ~typ:item_typ "list element", "item_") in
+        Binding (make_typ ~typ:item_typ "list element", "item_") in
       (* By reporting the skip-null flag we make sure that each update will
        * skip the nulls in the list - while the list itself will make the
        * whole expression null if it's null. *)

@@ -77,10 +77,9 @@ type t =
   (* A field from a tuple (or parameter, or environment, as special cases of
    * "tuples": *)
   | Field of typ * tuple_prefix ref * RamenName.field
-  (* StateField are met only late in the game in the code generator. Refer to
+  (* Bindings are met only late in the game in the code generator. Refer to
    * CodeGen_OCaml. *)
-  (* FIXME: rename to Binding? *)
-  | StateField of typ * string
+  | Binding of typ * string
   (* A conditional with all conditions and consequents, and finally an optional
    * "else" clause. *)
   | Case of typ * case_alternative list * t option
@@ -400,7 +399,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
         (string_of_prefix !tuple)
         (RamenName.string_of_field field) ;
       add_types t
-    | StateField (t, s) ->
+    | Binding (t, s) ->
       String.print oc s ; add_types t
     | Case (t, alts, else_) ->
       let print_alt oc alt =
@@ -729,7 +728,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
 
 let typ_of = function
   | Const (t, _) | Tuple (t, _) | Record (t, _) | Vector (t, _)
-  | Field (t, _, _) | StateField (t, _)
+  | Field (t, _, _) | Binding (t, _)
   | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
   | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
   | StatefulFun (t, _, _, _) | GeneratorFun (t, _) | Case (t, _, _)
@@ -755,7 +754,7 @@ let is_a_list e =
 let rec map f expr =
   let m e = map f e in
   match expr with
-  | Const _ | Field _ | StateField _ | StatelessFun0 _ -> f expr
+  | Const _ | Field _ | Binding _ | StatelessFun0 _ -> f expr
   | StatefulFun (t, g, n, AggrMin e) -> f (StatefulFun (t, g, n, AggrMin (m e)))
   | StatefulFun (t, g, n, AggrMax e) -> f (StatefulFun (t, g, n, AggrMax (m e)))
   | StatefulFun (t, g, n, AggrSum e) -> f (StatefulFun (t, g, n, AggrSum (m e)))
@@ -797,7 +796,7 @@ let rec map f expr =
 
 (* Propagate values up the tree only, depth first. *)
 let fold_subexpressions f i = function
-  | Const _ | Field _ | StateField _
+  | Const _ | Field _ | Binding _
   | StatelessFun0 _ ->
       i
 
@@ -912,7 +911,7 @@ let rec map_type ?(recurs=true) f = function
     Vector (f t,
             if recurs then List.map (map_type ~recurs f) es else es)
   | Field (t, a, b) -> Field (f t, a, b)
-  | StateField _ as e -> e
+  | Binding _ as e -> e
 
   | Case (t, alts, else_) ->
     Case (f t,
