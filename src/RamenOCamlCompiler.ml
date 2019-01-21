@@ -305,10 +305,18 @@ let make_valid_ocaml_identifier s =
       then
         if i > 0 then String.of_char c
         else String.of_char (Char.lowercase c)
-      else "'" ^ string_of_int (Char.code c))
+      else
+        (if i > 0 then "'" else "x'") ^ string_of_int (Char.code c))
         (* Here we use the single quote as an escape char, given the single
          * quote is not usable in quoted identifiers on ramen's side. *)
   ) "" s
+
+(* Test that [make_valid_ocaml_identifier] is a projection: *)
+(*$Q make_valid_ocaml_identifier
+  Q.small_string (fun s -> s = "" || ( \
+    let f = make_valid_ocaml_identifier in \
+    let i1 = f s in let i2 = f i1 in i1 = i2))
+ *)
 
 let module_name_of_file_name fname =
   Filename.basename fname |>
