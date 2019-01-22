@@ -270,7 +270,7 @@ let fold_top_level_expr init f = function
 let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
 
 let fold_expr init f =
-  fold_top_level_expr init (fun i _ -> E.fold_by_depth f i)
+  fold_top_level_expr init (fun i _ -> E.fold f i)
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op

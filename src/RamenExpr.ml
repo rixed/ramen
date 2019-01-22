@@ -57,6 +57,7 @@ type skip_nulls = bool
 (* The type of an expression. Each is accompanied with a typ
  * (TODO: not for long!) *)
 type t =
+  (* TODO: Those should go into Stateless0: *)
   (* Immediate value: *)
   | Const of typ * RamenTypes.value
   (* A tuple of expression (not to be confounded with an immediate tuple).
@@ -856,27 +857,33 @@ let fold_subexpressions f i = function
   | Record (_, kvs) ->
       List.fold_left (fun i (_, v) -> f i v) i kvs
 
-(* TODO: rename into fold *)
-let rec fold_by_depth f i expr =
-    f (
-      fold_subexpressions (fold_by_depth f) i expr
-    ) expr
+(* Fold depth first, calling [f] bottom up: *)
+let rec fold_up f i e =
+  let i = fold_subexpressions (fold_up f) i e in
+  f i e
 
-let iter f = fold_by_depth (fun () e -> f e) ()
+let rec fold_down f i e =
+  let i = f i e in
+  fold_subexpressions (fold_down f) i e
+
+(* Iterate bottom up by default as that's what most callers expect: *)
+let fold = fold_up
+
+let iter f = fold (fun () e -> f e) ()
 
 let unpure_iter f e =
-  fold_by_depth (fun () -> function
+  fold (fun () -> function
     | StatefulFun _ as e -> f e
     | _ -> ()) () e |> ignore
 
 let unpure_fold u f e =
-  fold_by_depth (fun u -> function
+  fold (fun u -> function
     | StatefulFun _ as e -> f u e
     | _ -> u) u e
 
 (* Any expression that uses a generator is a generator: *)
 let is_generator =
-  fold_by_depth (fun is e ->
+  fold (fun is e ->
     is || match e with GeneratorFun _ -> true | _ -> false) false
 
 (* Unlike is_const, which merely compare the given expression with Const,
@@ -1088,7 +1095,7 @@ struct
   let field m =
     let m = "field" :: m in
     (
-      parse_prefix ~def:TupleUnknown ++ non_keyword >>:
+      optional ~def:TupleUnknown parse_prefix ++ non_keyword >>:
       fun (tuple, field) ->
         (* This is important here that the type name is the raw field name,
          * because we use the tuple field type name as their identifier (unless

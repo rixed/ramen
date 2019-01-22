@@ -5,7 +5,7 @@ open RamenHelpers
 open RamenLog
 
 type tuple_prefix =
-  | TupleUnknown (* Either In, Out or Param*)
+  | TupleUnknown (* Either Record, In, Out, or Param*)
   | TupleIn
   | TupleGroup
   | TupleOutPrevious
@@ -21,18 +21,18 @@ type tuple_prefix =
   | TupleParam
   (* Environments for nullable string only parameters: *)
   | TupleEnv
-  (* For when a field is a record subfield. To know where that record is
-   * coming from one has to look through the chain of Gets. *)
+  (* For when a field is from a locally opened record. To know where that
+   * record is coming from one has to look through the chain of Gets. *)
   | Record
   (* TODO: TupleOthers? *)
   [@@ppp PPP_OCaml]
 
 let string_of_prefix = function
+  | TupleUnknown -> "unknown"
   | TupleIn -> "in"
   | TupleGroup -> "group"
   | TupleOutPrevious -> "out.previous"
   | TupleOut -> "out"
-  | TupleUnknown -> "unknown"
   | TupleSortFirst -> "sort.first"
   | TupleSortSmallest -> "sort.smallest"
   | TupleSortGreatest -> "sort.greatest"
@@ -44,11 +44,11 @@ let string_of_prefix = function
 let tuple_prefix_print oc p =
   Printf.fprintf oc "%s" (string_of_prefix p)
 
-let parse_prefix ~def m =
+let parse_prefix m =
   let open RamenParsing in
   let m = "tuple prefix" :: m in
   let prefix s = strinG (s ^ ".") in
-  (optional ~def (
+  (
     (prefix "in" >>: fun () -> TupleIn) |||
     (prefix "group" >>: fun () -> TupleGroup) |||
     (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
@@ -65,7 +65,7 @@ let parse_prefix ~def m =
     (prefix "param" >>: fun () -> TupleParam) |||
     (prefix "env" >>: fun () -> TupleEnv) |||
     (* Not for public consumption: *)
-    (prefix "record" >>: fun () -> Record))
+    (prefix "record" >>: fun () -> Record)
   ) m
 
 (* Tuple that has the fields of this func input type *)

@@ -684,7 +684,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Printf.fprintf oc "%s(%a %a)"
       (if nullable then "NotNull " else "")
       (conv_from_to ~nullable:false) (structure_of c,
-                                      (Option.get t.typ).structure)
+                                     (Option.get t.typ).structure)
       emit_type c
   | Finalize, Tuple (_, es), _ ->
     list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
@@ -2327,7 +2327,7 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
 let emit_generator user_fun ~opc oc expr =
   let open RamenExpr in
 
-  let generators = fold_by_depth (fun prev e ->
+  let generators = fold (fun prev e ->
     match e with
     | GeneratorFun _ -> e :: prev
     | _ -> prev) [] expr |>
@@ -2722,7 +2722,7 @@ let when_to_check_group_for_expr expr =
   (* Tells whether the commit condition needs the all or the selected tuple *)
   let open RamenExpr in
   let need_all =
-    fold_by_depth (fun need_all -> function
+    fold (fun need_all -> function
         | Field (_, tuple, _) -> need_all || !tuple = TupleIn
         | _ -> need_all
       ) false expr
@@ -2792,7 +2792,7 @@ let emit_get_notifications name in_typ out_typ ~opc oc notifications =
  * from the group). *)
 let expr_needs_group e =
   let open RamenExpr in
-  fold_by_depth (fun need expr ->
+  fold (fun need expr ->
     need || match expr with
       | Field (_, tuple, _) -> tuple_need_state !tuple
       | StatefulFun (_, LocalState, _, _) -> true
@@ -2837,7 +2837,7 @@ let emit_aggregate opc oc global_env group_env name in_typ =
    * minimal. *)
   let minimal_fields =
     let from_commit_cond =
-      RamenExpr.fold_by_depth (fun s -> function
+      RamenExpr.fold (fun s -> function
         | Field (_, { contents = TupleOut }, fn) ->
             Set.add fn s
         | _ -> s
@@ -2845,7 +2845,7 @@ let emit_aggregate opc oc global_env group_env name in_typ =
     and for_updates =
       List.fold_left (fun s sf ->
         RamenExpr.unpure_fold s (fun s -> function
-          | e -> RamenExpr.fold_by_depth (fun s -> function
+          | e -> RamenExpr.fold (fun s -> function
                    | Field (_, { contents = TupleOut }, fn) ->
                        Set.add fn s
                    | _ -> s) s e) sf.RamenOperation.expr
