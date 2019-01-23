@@ -1400,18 +1400,6 @@ let structure_of_sort_identifier = function
       !logger.error "Unknown sort identifier %S" unk ;
       TEmpty
 
-let bool_of_term =
-  let open RamenSmtParser in
-  function
-  | QualIdentifier ((Identifier "true", None), []) ->
-      true
-  | QualIdentifier ((Identifier "false", None), []) ->
-      false
-  | x ->
-      Printf.sprintf2 "Bad term when expecting boolean: %a"
-        print_term x |>
-      failwith
-
 let rec structure_of_term =
   let open RamenSmtParser in
   function

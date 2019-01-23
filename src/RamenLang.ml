@@ -49,6 +49,7 @@ let parse_prefix m =
   let m = "tuple prefix" :: m in
   let prefix s = strinG (s ^ ".") in
   (
+    (prefix "unknown" >>: fun () -> TupleUnknown) |||
     (prefix "in" >>: fun () -> TupleIn) |||
     (prefix "group" >>: fun () -> TupleGroup) |||
     (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||

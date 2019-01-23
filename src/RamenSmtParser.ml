@@ -440,6 +440,23 @@ and print_term oc = function
   | _ ->
       Printf.fprintf oc "some other term (TODO)"
 
+let bool_of_term = function
+  | QualIdentifier ((Identifier "true", None), []) ->
+      true
+  | QualIdentifier ((Identifier "false", None), []) ->
+      false
+  | x ->
+      Printf.sprintf2 "Bad term when expecting boolean: %a"
+        print_term x |>
+      failwith
+
+let int_of_term = function
+  | ConstantTerm c -> int_of_constant c
+  | x ->
+      Printf.sprintf2 "Bad term when expecting integer: %a"
+        print_term x |>
+      failwith
+
 let rec match_case m =
   let m = "match case" :: m in
   (par (pattern +- blanks ++ term)) m

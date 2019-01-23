@@ -269,8 +269,8 @@ let fold_top_level_expr init f = function
 
 let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
 
-let fold_expr init f =
-  fold_top_level_expr init (fun i _ -> E.fold f i)
+let fold_expr ?(expr_folder=E.fold_up) init f =
+  fold_top_level_expr init (fun i _ -> expr_folder f i)
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
@@ -441,7 +441,7 @@ let check params op =
   and check_no_state state clause =
     E.unpure_iter (function
       | StatefulFun (_, s, _, _) when s = state ->
-          failwith ("Steful function not allowed in "^ clause)
+          failwith ("Stateful function not allowed in "^ clause)
       | _ -> ())
   and check_fields_from lst where =
     let check_can_use tuple =

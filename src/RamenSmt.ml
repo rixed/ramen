@@ -19,7 +19,7 @@ let emit_is_false id oc =
 
 (* a => b *)
 let emit_imply a oc b =
-  Printf.fprintf oc "(or (not %s) %s)" a b
+  Printf.fprintf oc "(=> %s %s)" a b
 
 (* (not a) => b *)
 let emit_imply_not a oc b =
