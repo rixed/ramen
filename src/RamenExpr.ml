@@ -1859,13 +1859,14 @@ let parse =
   RamenParsing.string_parser ~what:"expression" ~print Parser.p
 
 (* Function to check an expression after typing, to check that we do not
- * use any tuple for init, non constants, etc, when not allowed. *)
+ * use any IO tuple for init, non constants, etc, when not allowed. *)
 let check =
   let check_no_tuple what =
     iter (function
       (* params and env are available from everywhere: *)
       | Field (_, tupref, name) when !tupref <> TupleParam &&
-                                     !tupref <> TupleEnv ->
+                                     !tupref <> TupleEnv &&
+                                     !tupref <> Record ->
           Printf.sprintf2 "%s is not allowed to use %s.%a"
             what (string_of_prefix !tupref)
             RamenName.field_print name |>

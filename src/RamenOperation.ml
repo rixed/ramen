@@ -493,7 +493,7 @@ let check params op =
     List.iter (check_field_exists field_names)
   and check_no_group = check_no_state LocalState
   in
-  match op with
+  (match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
                 factors ; _ } ->
@@ -639,7 +639,10 @@ let check params op =
     check_pure "DELETE-IF" unlink
     (* FIXME: check the field type declarations use only scalar types *)
 
-  | Instrumentation _ | Notifications _ -> ()
+  | Instrumentation _ | Notifications _ -> ()) ;
+  (* Now that we have inferred the IO tuples, run some additional checks on
+   * the expressions: *)
+  iter_expr RamenExpr.check op
 
 module Parser =
 struct

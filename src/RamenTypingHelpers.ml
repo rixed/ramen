@@ -168,7 +168,5 @@ let finalize_func parents params func =
      RamenOperation.event_time_of_operation func.operation = None
   then
      failwith "Cannot use #start/#stop without event time" ;
-  (* Check expressions are "valid" (ie. obey some additional constraints) *)
-  RamenOperation.iter_expr Expr.check func.operation ;
   (* Seal everything: *)
   func.F.signature <- F.signature func params
