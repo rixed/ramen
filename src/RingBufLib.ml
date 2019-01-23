@@ -61,11 +61,11 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
-let ser_array_of_record ?(with_private=false) h =
+let ser_array_of_record ?(with_private=false) kvs =
   let a =
-    Hashtbl.enum h //
-    (fun (k, _) -> with_private || k = "" || k.[0] = '_') |>
-    Array.of_enum in
+    Array.filter (fun (k, _) ->
+      with_private || k = "" || k.[0] <> '_'
+    ) kvs in
   Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
   a
 
@@ -114,7 +114,7 @@ let rec sersize_of_value = function
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
   | VTuple vs -> sersize_of_tuple vs
-  | VRecord h -> sersize_of_record h
+  | VRecord vs -> sersize_of_record vs
   | VVec vs -> sersize_of_vector vs
   | VList vs -> sersize_of_list vs
 
@@ -178,7 +178,7 @@ let rec write_value tx offs = function
   | VCidrv6 c -> write_cidr6 tx offs c
   | VCidr c -> write_cidr tx offs c
   | VTuple vs -> write_tuple tx offs vs
-  | VRecord h -> write_record tx offs h
+  | VRecord vs -> write_record tx offs vs
   | VVec vs -> write_vector tx offs vs
   | VList vs -> write_list tx offs vs
   | VNull -> assert false
@@ -231,7 +231,7 @@ let rec read_value tx offs structure =
   | TCidrv6 -> VCidrv6 (read_cidr6 tx offs)
   | TCidr   -> VCidr (read_cidr tx offs)
   | TTuple ts -> VTuple (read_tuple ts tx offs)
-  | TRecord h -> VRecord (read_record h tx offs)
+  | TRecord ts -> VRecord (read_record ts tx offs)
   | TVec (d, t) -> VVec (read_vector d t tx offs)
   | TList t -> VList (read_list t tx offs)
   | TNum | TAny | TEmpty -> assert false
@@ -253,17 +253,13 @@ and read_tuple ts tx offs =
     read_constructed_value tx t offs o bi
   ) ts
 
-and read_record h tx offs =
+and read_record ts tx offs =
   (* Return the array of fields and types we are supposed to have, in
    * serialized order: *)
-  let ts = ser_array_of_record h in
+  let ts = ser_array_of_record ts in
   let vs = read_tuple (Array.map snd ts) tx offs in
   assert (Array.length vs = Array.length ts) ;
-  let h = Hashtbl.create (Array.length ts) in
-  Array.iteri (fun i (k, _t) ->
-    Hashtbl.add h k vs.(i)
-  ) ts ;
-  h
+  Array.map2 (fun (k, _t) v -> k, v) ts vs
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in

@@ -33,7 +33,7 @@ and structure =
   | TTuple of t array
   | TVec of int * t (* Fixed length arrays *)
   | TList of t (* Variable length arrays, aka lists *)
-  | TRecord of (string, t) Hashtbl.t
+  | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
 
 let is_an_int = function
@@ -83,10 +83,12 @@ let rec print_structure oc = function
   | TCidr   -> String.print oc "CIDR"
   | TTuple ts -> Array.print ~first:"(" ~last:")" ~sep:";"
                    print_typ oc ts
+  | TRecord kts ->
+      Array.print ~first:"(" ~last:")" ~sep:";" (fun oc (k, t) ->
+        Printf.fprintf oc "%s:%a" k print_typ t
+      ) oc kts
   | TVec (d, t) -> Printf.fprintf oc "%a[%d]" print_typ t d
   | TList t -> Printf.fprintf oc "%a[]" print_typ t
-  | TRecord h -> Hashtbl.print ~first:"{" ~last:"}" ~kvsep:" " ~sep:";"
-                   String.print print_typ oc h
 
 and print_typ oc t =
   print_structure oc t.structure ;
@@ -128,7 +130,7 @@ type value =
   | VTuple of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)
-  | VRecord of (string, value) Hashtbl.t
+  | VRecord of (string * value) array
   [@@ppp PPP_OCaml]
 
 let rec structure_of =
@@ -164,6 +166,9 @@ let rec structure_of =
   | VTuple vs ->
       TTuple (Array.map (fun v ->
         { structure = structure_of v ; nullable = v = VNull }) vs)
+  | VRecord vs ->
+      TRecord (Array.map (fun (k, v) ->
+        k, { structure = structure_of v ; nullable = v = VNull }) vs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
@@ -181,9 +186,6 @@ let rec structure_of =
   | VList vs ->
       let sub_structure, sub_nullable = sub_types_of_array vs in
       TList { structure = sub_structure ; nullable = sub_nullable }
-  | VRecord h ->
-      TRecord (Hashtbl.map (fun _k v ->
-        { structure = structure_of v ; nullable = v = VNull }) h)
 
 (*
  * Printers
@@ -215,15 +217,13 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VCidr i   -> RamenIp.Cidr.to_string i |> String.print oc
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
-  (* For now, mimick the "value AS name" syntax: *)
-  | VRecord h ->
-      String.print oc "{" ;
-      Hashtbl.iter (fun k v ->
+  (* For now, mimic the "value AS name" syntax: *)
+  | VRecord vs ->
+      Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
         Printf.fprintf oc "%a AS %s"
           (print_custom ~null ~quoting) v
           (ramen_quote k)
-      ) h ;
-      String.print oc "}"
+      ) oc vs
   | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
@@ -296,6 +296,21 @@ let rec can_enlarge ~from ~to_ =
       Array.for_all2 (fun from_item to_item ->
         can_enlarge ~from:from_item.structure ~to_:to_item.structure
       ) ts1 ts2
+  | TRecord kts, TRecord kvs ->
+      (* We can enlarge a record into another if each field can be enlarged
+       * and no more fields are present in the larger version (but fields may
+       * be missing, ie the enlargement is a projection - notice that a
+       * narrower record is larger in the sense of "more general" like a
+       * supertype. *)
+      Array.for_all (fun (k1, t1) ->
+        match Array.find (fun (k2, _) -> k1 = k2) kvs with
+        | exception Not_found -> true
+        | _, t2 -> can_enlarge ~from:t1.structure ~to_:t2.structure
+      ) kts &&
+      (* No more fields in h2: *)
+      Array.for_all (fun (k2, _) ->
+        Array.exists (fun (k1, _) -> k1 = k2) kts
+      ) kvs
   | TVec (d1, t1), TVec (d2, t2) ->
       (* Similarly, TVec (0, _) means "any vector", so we can enlarge any
        * actual vector into that: *)
@@ -306,19 +321,6 @@ let rec can_enlarge ~from ~to_ =
       can_enlarge ~from:t1.structure ~to_:t2.structure
   | TList t1, TList t2 ->
       can_enlarge ~from:t1.structure ~to_:t2.structure
-  | TRecord h1, TRecord h2 ->
-      (* We can enlarge a record into another if each field can be enlarged
-       * and no more fields are present in the larger version (but fields may
-       * be missing, ie the enlargement is a projection - notice that a
-       * narrower record is larger in the sense of "more general" like a
-       * supertype. *)
-      Hashtbl.enum h1 |> Enum.for_all (fun (k, t1) ->
-        match Hashtbl.find h2 k with
-        | exception Not_found -> true
-        | t2 -> can_enlarge ~from:t1.structure ~to_:t2.structure) &&
-      (* No more fields in h2: *)
-      Hashtbl.enum h2 |> Enum.for_all (fun (k, _) ->
-        Hashtbl.mem h1 k)
   | TTuple _, _ | _, TTuple _
   | TVec _, _ | _, TVec _
   | TList _, _ | _, TList _
@@ -404,10 +406,10 @@ let rec enlarge_value t v =
         (* Assume we won't try to enlarge to an unknown type: *)
         VTuple (
           Array.map2 (fun t v -> enlarge_value t.structure v) ts vs)
-    | VRecord vh, TRecord th ->
+    | VRecord vs, TRecord ts ->
         VRecord (
-          Hashtbl.map (fun k t ->
-            match Hashtbl.find vh k with
+          Array.map (fun (k, t) ->
+            match Array.find (fun (k', _) -> k = k') vs with
             | exception Not_found ->
                 Printf.sprintf2
                   "value %a (%s) cannot be enlarged into %s: \
@@ -417,8 +419,8 @@ let rec enlarge_value t v =
                   (string_of_structure t.structure)
                   k |>
                 invalid_arg
-            | v -> enlarge_value t.structure v
-          ) th)
+            | k, v -> k, enlarge_value t.structure v
+          ) ts)
     | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.structure) vs)
     | (VVec vs | VList vs), TList t ->
@@ -496,9 +498,9 @@ let rec any_value_of_type = function
   | TTuple ts ->
       VTuple (
         Array.map (fun t -> any_value_of_type t.structure) ts)
-  | TRecord h ->
+  | TRecord kts ->
       VRecord (
-        Hashtbl.map (fun _ t -> any_value_of_type t.structure) h)
+        Array.map (fun (k, t) -> k, any_value_of_type t.structure) kts)
   | TVec (d, t) ->
       VVec (Array.create d (any_value_of_type t.structure))
   (* Avoid loosing type info by returning a non-empty list: *)
@@ -722,10 +724,8 @@ struct
     (
       char '(' -- opt_blanks -+
       (repeat ~min:1 ~sep:tup_sep (
-        p_ ?min_int_width +- kv_sep ++ non_keyword) >>: fun l ->
-          let h = Hashtbl.create 9 in
-          List.iter (fun (v, k) -> Hashtbl.add h k v) l ;
-          h) +-
+        p_ ?min_int_width +- kv_sep ++ non_keyword >>: fun (v, k) -> k, v) >>:
+        Array.of_list) +-
       opt_blanks +- char ')'
     ) m
 

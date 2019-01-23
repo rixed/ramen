@@ -416,8 +416,8 @@ let envvars_of_operation op =
 (* Unless it's a param, assume TupleUnknow belongs to def: *)
 let prefix_def params def =
   E.iter (function
-    | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-        if RamenTuple.params_mem alias params then
+    | Field (_, ({ contents = TupleUnknown } as pref), name) ->
+        if RamenTuple.params_mem name params then
           pref := TupleParam
         else
           pref := def
@@ -500,32 +500,53 @@ let check params op =
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
     iter_expr (function
-      | Field (_, { contents = TupleIn }, alias) ->
-          fields_from_in := Set.add alias !fields_from_in
+      | Field (_, { contents = TupleIn }, name) ->
+          fields_from_in := Set.add name !fields_from_in
       | _ -> ()) op ;
-    let is_selected_fields ?i alias = (* Tells if a field is in _out_ *)
+    let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
       list_existsi (fun i' sf ->
-        sf.alias = alias &&
+        sf.alias = name &&
         Option.map_default (fun i -> i' < i) true i) fields in
-    (* Resolve TupleUnknown into either TupleParam (if the alias is in
+    (* Resolve TupleUnknown into either TupleParam (if the name is in
      * params), TupleIn or TupleOut (depending on the presence of this alias
-     * in selected_fields -- optionally, only before position i) *)
-    let prefix_smart ?i =
-      E.iter (function
-        | Field (_, ({ contents = TupleUnknown } as pref), alias) ->
-            if RamenTuple.params_mem alias params then
-              pref := TupleParam
-            else if Set.mem alias !fields_from_in then
-              pref := TupleIn
-            else if is_selected_fields ?i alias then
-              pref := TupleOut
-            else (
-              pref := TupleIn ;
-              fields_from_in := Set.add alias !fields_from_in) ;
-            !logger.debug "Field %a thought to belong to %s"
-              RamenName.field_print alias
-              (string_of_prefix !pref)
-        | _ -> ()) in
+     * in selected_fields -- optionally, only before position i). It will
+     * also keep track of opened records and look up there first. *)
+    let prefix_smart ?i e =
+      E.fold_down (fun env -> function
+        | Field (_, ({ contents = TupleUnknown } as pref), name) ->
+            (* First by lookup in the environment: *)
+            if List.exists (function
+              | E.Record (_, kvs) ->
+                  (* Notice that we look into _all_ fields, not only the
+                   * ones defined previously. Not sure if better or worse. *)
+                  List.exists (fun (k, _) -> k = name) kvs
+              | _ -> assert false) env
+            then (
+              (* Notice we do not keep a reference on the actual expression.
+               * That's much safer to look it up again whenever we need it,
+               * so that we are free to map the AST. *)
+              pref := Record ;
+              !logger.debug "Field %a though to belong to an opened record"
+                RamenName.field_print name
+            ) else (
+              (* Look into predefined records: *)
+              if RamenTuple.params_mem name params then
+                pref := TupleParam
+              else if Set.mem name !fields_from_in then
+                pref := TupleIn
+              else if is_selected_fields ?i name then
+                pref := TupleOut
+              else (
+                pref := TupleIn ;
+                fields_from_in := Set.add name !fields_from_in) ;
+              !logger.debug "Field %a thought to belong to %s"
+                RamenName.field_print name
+                (string_of_prefix !pref)
+            ) ;
+            env
+        | E.Record _ as e -> e :: env
+        | _ -> env
+      ) [] e |> ignore in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
     List.iter (prefix_def params TupleIn) merge.on ;
     Option.may (fun (_, u_opt, b) ->
@@ -537,10 +558,10 @@ let check params op =
     prefix_smart commit_cond ;
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (function
-      | Field (_, { contents = TupleGroup }, alias) ->
-        if not (RamenName.is_virtual alias) then
+      | Field (_, { contents = TupleGroup }, name) ->
+        if not (RamenName.is_virtual name) then
           Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
-            RamenName.field_print alias |>
+            RamenName.field_print name |>
           failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
@@ -548,7 +569,7 @@ let check params op =
         check_fields_from
           [ TupleParam; TupleEnv; TupleIn; TupleGroup;
             TupleOut (* FIXME: only if defined earlier *);
-            TupleOutPrevious ] "SELECT clause" sf.expr ;
+            TupleOutPrevious ; Record ] "SELECT clause" sf.expr ;
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           Printf.sprintf2 "Alias %a is not unique"
@@ -565,38 +586,38 @@ let check params op =
     check_no_group "WHERE clause" where ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
-        TupleGroup; TupleOutPrevious; TupleMergeGreatest ]
+        TupleGroup; TupleOutPrevious; TupleMergeGreatest ; Record ]
       "WHERE clause" where ;
     List.iter (fun k ->
       check_pure "GROUP-BY clause" k ;
       check_fields_from
-        [ TupleParam; TupleEnv; TupleIn ] "Group-By KEY" k
+        [ TupleParam; TupleEnv; TupleIn ; Record ] "Group-By KEY" k
     ) key ;
     List.iter (fun name ->
-      check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; ]
+      check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; Record ]
                         "notification" name
     ) notifications ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
         TupleOut; TupleOutPrevious;
-        TupleGroup ]
+        TupleGroup; Record ]
       "COMMIT WHEN clause" commit_cond ;
     Option.may (fun (_, until_opt, bys) ->
       Option.may (fun until ->
         check_fields_from
           [ TupleParam; TupleEnv;
-            TupleSortFirst; TupleSortSmallest; TupleSortGreatest ]
+            TupleSortFirst; TupleSortSmallest; TupleSortGreatest; Record ]
           "SORT-UNTIL clause" until
       ) until_opt ;
       List.iter (fun by ->
         check_fields_from
-          [ TupleParam; TupleEnv; TupleIn ]
+          [ TupleParam; TupleEnv; TupleIn; Record ]
           "SORT-BY clause" by
       ) bys
     ) sort ;
     List.iter (fun e ->
       check_fields_from
-        [ TupleParam; TupleEnv; TupleIn ]
+        [ TupleParam; TupleEnv; TupleIn; Record ]
         "MERGE-ON clause" e
     ) merge.on ;
     if every > 0. && from <> [] then
@@ -606,11 +627,11 @@ let check params op =
         if E.is_generator sf.expr then Some sf.alias else None
       ) fields in
     iter_expr (function
-        | Field (_, tuple_ref, alias)
+        | Field (_, tuple_ref, name)
           when !tuple_ref = TupleOutPrevious ->
-            if List.mem alias generators then
+            if List.mem name generators then
               Printf.sprintf2 "Cannot use a generated output field %a"
-                RamenName.field_print alias |>
+                RamenName.field_print name |>
               failwith
         | _ -> ()) op
 

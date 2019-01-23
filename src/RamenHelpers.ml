@@ -150,6 +150,22 @@ let path_unquote s =
 
 
 (* TODO: add in batteries *)
+let array_rfindi f a =
+  let res = ref (-1) in
+  try
+    for i = Array.length a - 1 downto 0 do
+      if f a.(i) then (
+        res := i ; raise Exit
+      )
+    done ;
+    raise Not_found
+  with Exit ->
+    !res
+
+let array_rfind f a =
+  let i = array_rfindi f a in
+  a.(i)
+
 let list_rfind_map f l =
   List.rev l |> List.find_map f
 

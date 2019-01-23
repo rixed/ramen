@@ -24,7 +24,8 @@ type expr =
   | CaseNullProp
   | CoalesceAlt of int
   | CoalesceNullLast of int
-  | Gettable
+  | GettableByInt
+  | GettableByName
   | AnyCidr
   | NumericVec
   | InType
@@ -37,6 +38,8 @@ type expr =
   | ActualType of string
   | InheritType
   | InheritNull
+  | InheritTypeFromRecord
+  | InheritNullFromRecord
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -68,7 +71,8 @@ let print_expr oc =
                         a type compatible with others" a
   | CoalesceNullLast a -> p ": alternative #%d of coalesce expression must \
                              be nullable iff it's the last one" a
-  | Gettable -> p " must be a vector or a list"
+  | GettableByInt -> p " must be a vector, a list or a tuple"
+  | GettableByName -> p " must be a record"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
   | InType -> p ": arguments must be compatible with the IN operator"
@@ -81,6 +85,8 @@ let print_expr oc =
   | ActualType t -> p " must be of type %s" t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
+  | InheritTypeFromRecord -> p " must match record type"
+  | InheritNullFromRecord -> p " must match record field nullability"
 
 type func =
   | Clause of string * expr

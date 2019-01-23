@@ -43,9 +43,10 @@ let path_comp_of_constant_expr e =
   | Expr.Const _ ->
       (match Expr.int_of_const e with
       | Some i -> Int i
-      | None -> fail ())
-  | Expr.Field (_, tuple, name) when !tuple = Record ->
-      Name (RamenName.string_of_field name)
+      | None ->
+          (match Expr.string_of_const e with
+          | Some n -> Name n
+          | None -> fail ()))
   | _ -> fail ()
 
 (*$< Batteries *)
@@ -105,7 +106,7 @@ and paths_of_expression e =
   ([ Name "foo" ; Int 3 ], []) \
     (RamenExpr.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
   ([ Name "foo" ; Name "bar" ], []) \
-    (RamenExpr.parse "get(bar, in.foo)" |> paths_of_expression |> strip_expr)
+    (RamenExpr.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
   ([ Name "foo" ], [ [ Name "some_index" ; Int 2 ] ]) \
     (RamenExpr.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (RamenExpr.parse "0+0" |> paths_of_expression |> strip_expr)
@@ -218,10 +219,10 @@ let tree_of_paths ps =
   "{bar:{1:<get>,2:<get>},foo:{0:<get>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.bar) + get(2,in.bar)")
   "{foo:{bar:<get>,baz:<get>}}" \
-    (str_tree_of "get(record.bar,in.foo) + get(record.baz,in.foo)")
+    (str_tree_of "get(\"bar\",in.foo) + get(\"baz\",in.foo)")
   "{foo:{bar:{1:<get>},baz:<get>}}" \
-    (str_tree_of "get(1,get(record.bar,in.foo)) + get(record.baz,in.foo) + \
-                  get(record.glop,get(record.baz,in.foo))")
+    (str_tree_of "get(1,get(\"bar\",in.foo)) + get(\"baz\",in.foo) + \
+                  get(\"glop\",get(\"baz\",in.foo))")
  *)
 
 (* Iter over a tree in serialization order: *)
@@ -246,6 +247,16 @@ let rec fieldmask_for_output typ t =
   | Subfields m -> fieldmask_for_output_subfields typ m
   | _ -> failwith "Input type must be a record"
 
+and rec_fieldmask : 'b 'c. RamenTypes.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
+                           RamenFieldMask.mask =
+  fun typ finder key map ->
+    match finder key map with
+    | exception Not_found -> Skip
+    | Empty -> assert false
+    | Leaf _ -> Copy
+    | Indices i -> fieldmask_of_indices typ i
+    | Subfields m -> fieldmask_of_subfields typ m
+
 (* [typ] gives us all possible fields ordered, so we can build a mask.
  * For each subfields we have to pick a mask among Skip (not used), Copy
  * (used _fully_, such as scalars), and Rec if that field also has subfields.
@@ -256,18 +267,18 @@ and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
   List.enum typ /@ (fun ft ->
     let name = RamenName.string_of_field ft.RamenTuple.name in
-    match Map.String.find name m with
-    | exception Not_found -> Skip
-    | Empty -> assert false
-    | Leaf _ -> Copy
-    | Indices i -> fieldmask_of_indices ft.typ i
-    | Subfields m -> fieldmask_of_subfields ft.typ m) |>
+    rec_fieldmask ft.typ Map.String.find name m) |>
   Array.of_enum
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match typ.structure with
-  (* TODO: TRecord *)
+  | TRecord kts ->
+      let ser_kts = RingBufLib.ser_array_of_record kts in
+      Rec (
+        Array.map (fun (k, typ) ->
+          rec_fieldmask typ Map.String.find k m
+        ) ser_kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
         print_typ typ
@@ -275,22 +286,15 @@ and fieldmask_of_subfields typ m =
       failwith
 
 and fieldmask_of_indices typ m =
-  let fm_of_sub i typ =
-    match Map.Int.find i m with
-    | exception Not_found -> Skip
-    | Empty -> assert false
-    | Leaf _ -> Copy
-    | Indices i -> fieldmask_of_indices typ i
-    | Subfields m -> fieldmask_of_subfields typ m in
   let fm_of_vec d typ =
-    Rec (Array.init d (fun i -> fm_of_sub i typ))
+    Rec (Array.init d (fun i -> rec_fieldmask typ Map.Int.find i m))
   in
   (* TODO: make an honest effort to find out if its cheaper to copy the
    * whole thing. *)
   let open RamenTypes in
   match typ.structure with
   | TTuple ts ->
-      Rec (Array.mapi (fun i typ -> fm_of_sub i typ) ts)
+      Rec (Array.mapi (fun i typ -> rec_fieldmask typ Map.Int.find i m) ts)
   | TVec (d, typ) -> fm_of_vec d typ
   | TList typ ->
       (match Map.Int.keys m |> Enum.reduce max with
@@ -385,13 +389,16 @@ let find_type_of_path parent_out path =
             locate_type ts.(i) rest
         | _ ->
             invalid ())
-    | Name n :: _rest ->
+    | Name n :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid subfield %S into %a"
             n RamenTypes.print_typ typ |>
           failwith in
         (match typ.structure with
-        (* TODO: Records *)
+        | TRecord ts ->
+            (match array_rfind (fun (k, _) -> k = n) ts with
+            | exception Not_found -> invalid ()
+            | _, t -> locate_type t rest)
         | _ -> invalid ())
   in
   match path with
@@ -426,7 +433,7 @@ let subst_deep_fields in_type =
         true
     | Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
-         * index. We should rather have a symbol, or Field. TODO: *)
+         * index. *)
         Expr.(StatelessFun2 (_, Get, s, e')) ->
           (match Expr.string_of_const s with
           | Some n' when n' = n -> matches_expr path' e'

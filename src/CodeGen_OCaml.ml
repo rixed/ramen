@@ -47,6 +47,23 @@ let id_of_field_name ?(tuple=TupleIn) x =
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.name
 
+let var_name_of_record_field k =
+  RamenName.string_of_field k ^ "_" |>
+  RamenOCamlCompiler.make_valid_ocaml_identifier
+
+let print_env oc =
+  pretty_list_print (fun oc (k, v) -> Printf.fprintf oc "%s=>%s" k v) oc
+
+let emit_binding env oc n =
+  match List.assoc n env with
+  | exception Not_found ->
+      Printf.sprintf2
+        "Cannot find a binding for %S in the environment (%a)"
+        n
+        print_env env |>
+      failwith
+  | binding -> String.print oc binding
+
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
 
 let array_print_as_tuple_i p oc a =
@@ -92,7 +109,7 @@ let rec emit_sersize_of_not_null_scalar tx_var offs_var oc = function
       emit_sersize_of_fixsz_typ TCidrv4
       emit_sersize_of_fixsz_typ TCidrv6
 
-  | TTuple _ | TVec _ | TList _ -> assert false
+  | TTuple _ | TRecord _ | TVec _ | TList _ -> assert false
 
   | t -> emit_sersize_of_fixsz_typ oc t
 
@@ -144,6 +161,21 @@ let rec emit_value_of_string typ oc var =
          (array_print_as_tuple_i (fun oc i t ->
            emit_value_of_string t.structure oc
              ("s_.("^ string_of_int i ^")"))) ts
+  | TRecord kts ->
+      (* FIXME: same as above re. [split_on_char]: *)
+      (* TODO: we should instead also expect to find field names and then
+       * reorder. *)
+      Printf.fprintf oc
+        "let s_ =\n\
+           split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
+         if Array.length s_ <> %d then failwith (\
+           Printf.sprintf \"Bad arity for record %%s, expected %d items\" \
+             %s) ;\n\
+         %a"
+         var (Array.length kts) (Array.length kts) var
+         (array_print_as_tuple_i (fun oc i (_k, t) ->
+           emit_value_of_string t.structure oc
+             ("s_.("^ string_of_int i ^")"))) kts
   | typ ->
       Printf.fprintf oc "RamenTypeConverters.%s_of_string %s"
         (id_of_typ typ) var
@@ -182,14 +214,14 @@ let rec emit_value oc typ =
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc typ ->
           Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
-  | TRecord h ->
+  | TRecord kts ->
       (* We represent records as OCaml tuples, in serialization order for
        * simplicity and efficiency. When reading the code we would like to
        * have those in declaration order, but it's not easy to keep that
        * declaration order around. Also it would make the code more
        * complicated as two record types differing only by definition order
        * are really the same record. *)
-      let a = RingBufLib.ser_array_of_record ~with_private:true h in
+      let a = RingBufLib.ser_array_of_record ~with_private:true kts in
       Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length a) ;
       Printf.fprintf oc "and %a = x_ in "
         (array_print_as_tuple_i (fun oc i _ ->
@@ -231,8 +263,8 @@ let rec emit_type oc =
   | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
-  | VRecord h ->
-      let vs = RingBufLib.ser_array_of_record ~with_private:true h |>
+  | VRecord kvs ->
+      let vs = RingBufLib.ser_array_of_record ~with_private:true kvs |>
                Array.map snd in
       emit_type oc (VTuple vs)
   | VVec vs   -> Array.print emit_type oc vs
@@ -276,8 +308,8 @@ let rec otype_of_type oc = function
       Array.print ~first:"(" ~last:")" ~sep:" * "
         (fun oc t -> otype_of_type oc t.structure)
         oc ts
-  | TRecord h ->
-      let ts = RingBufLib.ser_array_of_record ~with_private:true h |>
+  | TRecord kts ->
+      let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
                Array.map snd in
       otype_of_type oc (TTuple ts)
   | TVec (_, t) | TList t ->
@@ -393,6 +425,17 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
             Printf.fprintf oc "(%a) x%d_"
               (conv_from_to ~nullable:t.nullable) (t.structure, TString) !i ;
             incr i)) ts
+    | TRecord ts, TString ->
+      (* TODO: also print the field names? *)
+      let i = ref 0 in
+      Printf.fprintf oc
+        "(fun %a -> \"(\"^ %a ^\")\")"
+          (array_print_as_tuple_i (fun oc i _ ->
+            Printf.fprintf oc "x%d_" i)) ts
+          (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (_k, t) ->
+            Printf.fprintf oc "(%a) x%d_"
+              (conv_from_to ~nullable:t.nullable) (t.structure, TString) !i ;
+            incr i)) ts
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
         print_structure from_typ
@@ -487,9 +530,6 @@ let initial_environments =
         | RamenExpr.GlobalState -> (n, id_of_state GlobalState ^"."^ n) :: glo, loc
         | RamenExpr.LocalState -> glo, (n, id_of_state LocalState ^"."^ n) :: loc)
     | _ -> prev)
-
-let print_env oc =
-  pretty_list_print (fun oc (k, v) -> Printf.fprintf oc "%s=>%s" k v) oc
 
 (* This printer wrap expression [e] into a converter according to its current
  * type. to_typ is an option type: if None, no conversion is required
@@ -669,14 +709,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* Non-functions *)
   | Finalize, Binding (_, n), _ ->
     (* Look for that name in the environment: *)
-    (match List.assoc n env with
-    | exception Not_found ->
-        Printf.sprintf2
-          "Cannot find a binding for %S in the environment (%a)"
-          n
-          print_env env |>
-        failwith
-    | binding -> String.print oc binding)
+    emit_binding env oc n
   | _, Const (_, VNull), _ ->
     assert nullable ;
     Printf.fprintf oc "Null"
@@ -694,16 +727,16 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * it in a context where this record is opened. *)
     let _env =
       List.fold_left (fun env (k, v) ->
-        let var_name = RamenOCamlCompiler.make_valid_ocaml_identifier k in
+        let var_name = var_name_of_record_field k in
         Printf.fprintf oc "\tlet %s = %a in\n"
           var_name
           (emit_expr ~env ~context ~opc) v ;
-        (k, var_name) :: env
+        (RamenName.string_of_field k, var_name) :: env
       ) env kvs in
     (* finally, regroup those fields in a tuple: *)
     let es =
       Array.enum (fields_of_record kvs) /@
-      RamenOCamlCompiler.make_valid_ocaml_identifier |>
+      var_name_of_record_field |>
       List.of_enum in
     list_print_as_tuple String.print oc es
 
@@ -718,6 +751,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
     | TupleEnv ->
       Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)"
         (RamenName.string_of_field field)
+    | Record ->
+        emit_binding env oc (RamenName.string_of_field field)
     | _ ->
       String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Case (_, alts, else_), t ->
@@ -891,6 +926,19 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   (* Stateless functions manipulating constructed types: *)
   | Finalize, StatelessFun2 (_, Get, n, e), _ ->
+    let emit_select_from_tuple ts n =
+      (* Build a tuple selector: *)
+      let num_items = Array.length ts in
+      let rec loop_t str i =
+        if i >= num_items then str else
+        let str = str ^ (if i > 0 then "," else "")
+                      ^ (if i = n then "x_" else "_") in
+        loop_t str (i + 1) in
+      let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
+      emit_functionN ~env ~opc ~nullable nth_func
+        ~impl_return_nullable:ts.(n).nullable
+        [None, PropagateNull] oc [e]
+    in
     (match (Option.get (typ_of e).typ).structure with
     | TVec (_, t) | TList t ->
         let func = "(fun a_ n_ -> Array.get a_ (Int32.to_int n_))" in
@@ -900,18 +948,20 @@ and emit_expr_ ~env ~context ~opc oc expr =
     | TTuple ts ->
         let n = int_of_const n |>
                 option_get "Get from tuple must have const index" in
-        (* Build a tuple selector: *)
-        let num_items = Array.length ts in
-        let rec loop_t str i =
-          if i >= num_items then str else
-          let str = str ^ (if i > 0 then "," else "")
-                        ^ (if i = n then "x_" else "_") in
-          loop_t str (i + 1) in
-        let nth_func = loop_t "(fun (" 0 ^") -> x_)" in
-        emit_functionN ~env ~opc ~nullable nth_func
-          ~impl_return_nullable:ts.(n).nullable
-          [None, PropagateNull] oc [e]
-      | _ -> assert false)
+        emit_select_from_tuple ts n
+    | TRecord kts ->
+        let s = string_of_const n |>
+                option_get "Get from structure must have const str index" in
+        let pos_of_field =
+          try array_rfindi (fun (k, _t) -> k = s) kts
+          with Not_found ->
+            Printf.sprintf2 "Invalid field name %S (have %a)"
+              s
+              (pretty_array_print (fun oc (k, _) -> String.print oc k)) kts |>
+            failwith in
+        let ts = Array.map snd kts in
+        emit_select_from_tuple ts pos_of_field
+    | _ -> assert false)
 
   (* Other stateless functions *)
   | Finalize, StatelessFun2 (_, Ge, e1, e2), TBool ->
@@ -1708,8 +1758,8 @@ let rec emit_sersize_of_var typ nullable oc var =
       "\n\t\t\t(match %s with Null -> 0 | NotNull %s -> %a)"
       var var
       (emit_sersize_of_var typ false) var
-  ) else match typ with
-  | TTuple ts ->
+  ) else (
+    let emit_for_tuple ts =
       let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
       Printf.fprintf oc "\t\t\t(let %a = %s in\n"
         (array_print_as_tuple_i (fun oc i _ ->
@@ -1722,36 +1772,44 @@ let rec emit_sersize_of_var typ nullable oc var =
           (emit_sersize_of_var t.structure t.nullable) item_var
       ) ts ;
       Printf.fprintf oc "%d)" nullmask_sz
-  | TVec (d, t) ->
-      let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
-      for i = 0 to d-1 do
-        let item_var = var ^"_"^ string_of_int i in
-        Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
-          item_var var i
-          (emit_sersize_of_var t.structure t.nullable) item_var
-      done ;
-      Int.print oc nullmask_sz
-  | TString ->
-    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_string %s)" var
-  | TIp ->
-    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_ip %s)" var
-  | TCidr ->
-    Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_cidr %s)" var
-  | TList t ->
-    (* So var is the name of an array of some values of type t, which can
-     * be a constructed type which sersize can't be known statically.
-     * So at first sight we have to generate code that will iter through
-     * the values and for each, know or compute its size, etc. This is
-     * what we do here, but in cases where t has a well known sersize we
-     * could generate much faster code of course: *)
-    Printf.fprintf oc "(Array.fold_left (fun s_ v_ ->\n\
-      \t\t\t\ts_ + %a)\n\
-      \t\t\t\t(%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s)"
-      (emit_sersize_of_var t.structure t.nullable) "v_"
-      (* start from the size prefix and nullmask: *)
-      RingBufLib.sersize_of_u32 var
-      var
-  | _ -> emit_sersize_of_fixsz_typ oc typ
+    in
+    match typ with
+    | TTuple ts ->
+        emit_for_tuple ts
+    | TRecord kts ->
+        let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
+        emit_for_tuple ts
+    | TVec (d, t) ->
+        let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
+        for i = 0 to d-1 do
+          let item_var = var ^"_"^ string_of_int i in
+          Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
+            item_var var i
+            (emit_sersize_of_var t.structure t.nullable) item_var
+        done ;
+        Int.print oc nullmask_sz
+    | TString ->
+      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_string %s)" var
+    | TIp ->
+      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_ip %s)" var
+    | TCidr ->
+      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_cidr %s)" var
+    | TList t ->
+      (* So var is the name of an array of some values of type t, which can
+       * be a constructed type which sersize can't be known statically.
+       * So at first sight we have to generate code that will iter through
+       * the values and for each, know or compute its size, etc. This is
+       * what we do here, but in cases where t has a well known sersize we
+       * could generate much faster code of course: *)
+      Printf.fprintf oc "(Array.fold_left (fun s_ v_ ->\n\
+        \t\t\t\ts_ + %a)\n\
+        \t\t\t\t(%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s)"
+        (emit_sersize_of_var t.structure t.nullable) "v_"
+        (* start from the size prefix and nullmask: *)
+        RingBufLib.sersize_of_u32 var
+        var
+    | _ -> emit_sersize_of_fixsz_typ oc typ
+  )
 
 (* Given the name of a variable with the fieldmask, emit a given code for
  * every values to be sent.
@@ -1769,6 +1827,36 @@ let rec emit_for_serialized_fields typ copy skip fm_var val_var oc out_var =
       fm_var
       skip (val_var, typ)
   else
+    let emit_for_tuple ts =
+      Printf.fprintf oc
+        "let %s = match %s with\n\
+        | RamenFieldMask.Copy -> %a\n\
+        | RamenFieldMask.Skip -> %a\n\
+        | RamenFieldMask.Rec fm_ ->\n"
+        out_var fm_var
+        copy (val_var, typ)
+        skip (val_var, typ) ;
+      (* Destructure the tuple, propagating Nulls: *)
+      Printf.fprintf oc
+        "let %a = "
+        (array_print_i ~first:"" ~last:"" ~sep:"," (fun j oc _ ->
+          Printf.fprintf oc "tup_%d_" j)) ts ;
+      if typ.nullable then
+        Array.print ~first:"" ~last:"" ~sep:","
+                    (fun oc _ -> String.print oc "Null") oc ts
+      else
+        String.print oc val_var ;
+      Printf.fprintf oc
+        " in\n
+         %a
+         %s in"
+        (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
+          let val_var = Printf.sprintf "tup_%d_" j
+          and fm_var = Printf.sprintf "fm_.(%d)" j in
+          emit_for_serialized_fields t copy skip fm_var val_var oc
+                                     out_var)) ts
+        out_var
+    in
     match typ.structure with
     | TVec (_, t) | TList t ->
         Printf.fprintf oc
@@ -1804,34 +1892,10 @@ let rec emit_for_serialized_fields typ copy skip fm_var val_var oc out_var =
           out_var
           out_var
     | TTuple ts ->
-        Printf.fprintf oc
-          "let %s = match %s with\n\
-          | RamenFieldMask.Copy -> %a\n\
-          | RamenFieldMask.Skip -> %a\n\
-          | RamenFieldMask.Rec fm_ ->\n"
-          out_var fm_var
-          copy (val_var, typ)
-          skip (val_var, typ) ;
-        (* Destructure the tuple, propagating Nulls: *)
-        Printf.fprintf oc
-          "let %a = "
-          (array_print_i ~first:"" ~last:"" ~sep:"," (fun j oc _ ->
-            Printf.fprintf oc "tup_%d_" j)) ts ;
-        if typ.nullable then
-          Array.print ~first:"" ~last:"" ~sep:","
-                      (fun oc _ -> String.print oc "Null") oc ts
-        else
-          String.print oc val_var ;
-        Printf.fprintf oc
-          " in\n
-           %a
-           %s in"
-          (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
-            let val_var = Printf.sprintf "tup_%d_" j
-            and fm_var = Printf.sprintf "fm_.(%d)" j in
-            emit_for_serialized_fields t copy skip fm_var val_var oc
-                                       out_var)) ts
-          out_var
+        emit_for_tuple ts
+    | TRecord kts ->
+        let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
+        emit_for_tuple ts
     | _ -> assert false (* no other non-scalar types *)
 
 let emit_for_serialized_fields_of_output ser_typ copy skip fm_var oc out_var =
@@ -1843,8 +1907,8 @@ let emit_for_serialized_fields_of_output ser_typ copy skip fm_var oc out_var =
     emit_for_serialized_fields field.typ copy skip fm_var val_var oc out_var
   ) ser_typ
 
-(* Same as the above [emit_for_serialized_fields] but for when we do not the
- * actual value, just its type. *)
+(* Same as the above [emit_for_serialized_fields] but for when we do not know
+ * the actual value, just its type. *)
 let rec emit_for_serialized_fields_no_value typ copy skip fm_var oc out_var =
   if is_scalar typ.structure then
     Printf.fprintf oc
@@ -1857,6 +1921,23 @@ let rec emit_for_serialized_fields_no_value typ copy skip fm_var oc out_var =
       fm_var
       skip typ
   else
+    let emit_for_tuple ts =
+      Printf.fprintf oc
+        "let %s = match %s with\n\
+        | RamenFieldMask.Copy -> %a\n\
+        | RamenFieldMask.Skip -> %a\n\
+        | RamenFieldMask.Rec fm_ ->\n\
+            %a
+            %s in"
+        out_var
+        fm_var
+        copy typ
+        skip typ
+        (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
+          let fm_var = Printf.sprintf "fm_.(%d)" j in
+          emit_for_serialized_fields_no_value t copy skip fm_var oc out_var)) ts
+        out_var
+    in
     match typ.structure with
     | TVec (_, t) | TList t ->
         Printf.fprintf oc
@@ -1876,21 +1957,9 @@ let rec emit_for_serialized_fields_no_value typ copy skip fm_var oc out_var =
           out_var
           out_var
     | TTuple ts ->
-        Printf.fprintf oc
-          "let %s = match %s with\n\
-          | RamenFieldMask.Copy -> %a\n\
-          | RamenFieldMask.Skip -> %a\n\
-          | RamenFieldMask.Rec fm_ ->\n\
-              %a
-              %s in"
-          out_var
-          fm_var
-          copy typ
-          skip typ
-          (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
-            let fm_var = Printf.sprintf "fm_.(%d)" j in
-            emit_for_serialized_fields_no_value t copy skip fm_var oc out_var)) ts
-          out_var
+        emit_for_tuple ts
+    | TRecord ts ->
+        Array.map snd ts |> emit_for_tuple
     | _ -> assert false (* no other non-scalar types *)
 
 let emit_for_serialized_fields_of_output_no_value ser_typ copy skip fm_var oc out_var =
@@ -2006,30 +2075,37 @@ let emit_serialize_tuple name oc tuple_typ =
            \t\t\toffs_, nulli_)\n"
           (emit_write "start_arr_" "v_" t.nullable) t.structure
           val_var
+      and emit_write_tuple ts =
+        if verbose_serialization then
+          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;\n" (Array.length ts) ;
+        Printf.fprintf oc "\t\t\tlet %a = %s in\n"
+          (array_print_as_tuple_i (fun oc i _ ->
+            let item_var = val_var ^"_"^ string_of_int i in
+            String.print oc item_var)) ts
+          val_var ;
+        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
+        if nullmask_sz > 0 then
+          Printf.fprintf oc "\t\t\tRingBuf.zero_bytes tx_ offs_ %d ;\n"
+            nullmask_sz ;
+        Printf.fprintf oc
+          "\t\t\tlet start_tup_ = offs_\n\
+           \t\t\tand offs_ = offs_ + %d (* nullmask *) in\n"
+          nullmask_sz ;
+        Array.iteri (fun i t ->
+          let item_var = val_var ^"_"^ string_of_int i in
+          Printf.fprintf oc "\t\t\t\tlet offs_, _ = (let nulli_ = 0 in %a) in\n"
+            (emit_write "start_tup_" item_var t.nullable) t.structure
+        ) ts ;
+        Printf.fprintf oc "\t\t\t\toffs_, nulli_"
       in
       match typ with
       (* Constructed types: *)
       | TTuple ts ->
-          if verbose_serialization then
-            Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;\n" (Array.length ts) ;
-          Printf.fprintf oc "\t\t\tlet %a = %s in\n"
-            (array_print_as_tuple_i (fun oc i _ ->
-              let item_var = val_var ^"_"^ string_of_int i in
-              String.print oc item_var)) ts
-            val_var ;
-          let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-          Printf.fprintf oc "\t\t\tRingBuf.zero_bytes tx_ offs_ %d ;\n"
-            nullmask_sz ;
-          Printf.fprintf oc
-            "\t\t\tlet start_tup_ = offs_\n\
-             \t\t\tand offs_ = offs_ + %d (* nullmask *) in\n"
-            nullmask_sz ;
-          Array.iteri (fun i t ->
-            let item_var = val_var ^"_"^ string_of_int i in
-            Printf.fprintf oc "\t\t\t\tlet offs_, _ = (let nulli_ = 0 in %a) in\n"
-              (emit_write "start_tup_" item_var t.nullable) t.structure
-          ) ts ;
-          Printf.fprintf oc "\t\t\t\toffs_, nulli_"
+          emit_write_tuple ts
+
+      | TRecord kts ->
+          let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
+          emit_write_tuple ts
 
       | TVec (d, t) ->
           emit_write_array (string_of_int d) t
@@ -2261,10 +2337,7 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
         val_var offs_var
         offs_var
     ) else (
-    match structure with
-    (* Constructed types are prefixed with a nullmask and then read item by
-     * item: *)
-    | TTuple ts ->
+      let emit_for_tuple ts =
         let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
         Printf.fprintf oc "\t\tlet tuple_start_ = %s and offs_tup_ = %s + %d in\n"
           offs_var offs_var nullmask_sz ;
@@ -2280,24 +2353,39 @@ let emit_read_tuple name ?(is_yield=false) oc typ =
           (array_print_as_tuple_i (fun oc i _ ->
             let item_var = val_var ^"_"^ string_of_int i in
             String.print oc item_var)) ts
+      in
+      match structure with
+      (* Constructed types are prefixed with a nullmask and then read item by
+       * item: *)
+      | TTuple ts ->
+          emit_for_tuple ts
 
-    | TVec (d, t) ->
-        emit_read_array tx_var offs_var (string_of_int d) oc t
+      | TRecord kts ->
+          let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
+          if Array.length ts <> Array.length kts then
+            Printf.sprintf2 "Cannot deserialize a record of type %a \
+                             which has private/shadowed fields"
+              RamenTypes.print_structure structure |>
+            failwith ;
+          emit_for_tuple ts
 
-    | TList t ->
-        (* List are like vectors but prefixed with the actual number of
-         * elements: *)
-        Printf.fprintf oc
-          "\t\tlet d_, offs_lst_ = Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in\n"
-          tx_var offs_var offs_var RingBufLib.sersize_of_u32 ;
-        emit_read_array tx_var "offs_lst_" "d_" oc t
+      | TVec (d, t) ->
+          emit_read_array tx_var offs_var (string_of_int d) oc t
 
-    (* Non constructed types: *)
-    | _ ->
-        Printf.fprintf oc "\
-          \t\tRingBuf.read_%s %s %s, %s + %a"
-          (id_of_typ structure) tx_var offs_var
-          offs_var (emit_sersize_of_not_null_scalar tx_var offs_var) structure
+      | TList t ->
+          (* List are like vectors but prefixed with the actual number of
+           * elements: *)
+          Printf.fprintf oc
+            "\t\tlet d_, offs_lst_ = Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in\n"
+            tx_var offs_var offs_var RingBufLib.sersize_of_u32 ;
+          emit_read_array tx_var "offs_lst_" "d_" oc t
+
+      (* Non constructed types: *)
+      | _ ->
+          Printf.fprintf oc "\
+            \t\tRingBuf.read_%s %s %s, %s + %a"
+            (id_of_typ structure) tx_var offs_var
+            offs_var (emit_sersize_of_not_null_scalar tx_var offs_var) structure
     )
   in
   let _ = List.fold_left (fun nulli field ->

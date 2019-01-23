@@ -69,7 +69,7 @@ type t =
    * expression. Note that the same field name can appear several time in the
    * definition but only the last occurrence will be present in the final
    * value (handy for refining the value of some field): *)
-  | Record of typ * (string * t) list
+  | Record of typ * (RamenName.field * t) list
   (* The same distinction applies to vectors.
    * Notice there are no list expressions though, for the same reason that
    * there is no such thing as a list immediate, but only vectors. Lists, ie
@@ -350,11 +350,18 @@ let string_of_const = function
   | _ -> None
 
 let float_of_const = function
-  | Const (_, v) -> RamenTypes.float_of_scalar v
+  | Const (_, v) ->
+      (* float_of_scalar and int_of_scalar returns an option because they
+       * accept nullable numeric values; they fail on non-numerics, while
+       * we want to merely return None here: *)
+      (try RamenTypes.float_of_scalar v
+      with Invalid_argument _ -> None)
   | _ -> None
 
 let int_of_const = function
-  | Const (_, v) -> RamenTypes.int_of_scalar v
+  | Const (_, v) ->
+      (try RamenTypes.int_of_scalar v
+      with Invalid_argument _ -> None)
   | _ -> None
 
 (* Return the set of all unique fields in the record expression, ordered
@@ -362,10 +369,10 @@ let int_of_const = function
 let fields_of_record kvs =
   let a =
     List.fold_left (fun s (k, _) ->
-      Set.String.add k s
-    ) Set.String.empty kvs |>
-    Set.String.to_array in
-  Array.fast_sort String.compare a ;
+      Set.add k s
+    ) Set.empty kvs |>
+    Set.to_array in
+  Array.fast_sort RamenName.compare a ;
   a
 
 let rec print ?(max_depth=max_int) with_types oc e =
@@ -386,11 +393,12 @@ let rec print ?(max_depth=max_int) with_types oc e =
     | Tuple (t, es) ->
       List.print ~first:"(" ~last:")" ~sep:"; " p oc es ;
       add_types t
-    | Record (t, es) ->
+    | Record (t, kvs) ->
       List.print ~first:"(" ~last:")" ~sep:"; "
         (fun oc (k, v) ->
-          Printf.fprintf oc "%a AZ %s" p v (ramen_quote k))
-        oc es ;
+          Printf.fprintf oc "%a AZ %s"
+            p v (ramen_quote (RamenName.string_of_field k)))
+        oc kvs ;
       add_types t
     | Vector (t, es) ->
       List.print ~first:"[" ~last:"]" ~sep:"; " p oc es ;
@@ -1497,12 +1505,13 @@ struct
      (afun2 "get" >>: fun (n, v) ->
         (match n with
         | Const _ ->
-            Option.may (fun n ->
-              if n < 0 then
-                raise (Reject "GET index must be positive")
-            ) (int_of_const n)
-        | Field (_, tup, _) when !tup = TupleUnknown ->
-            tup := Record
+            (match int_of_const n with
+            | Some n ->
+                if n < 0 then
+                  raise (Reject "GET index must be positive")
+            | None ->
+                if string_of_const n = None then
+                  raise (Reject "GET requires a numeric or string index"))
         | _ -> ()) ;
         StatelessFun2 (make_typ "get", Get, n, v)) |||
      (afun1v "print" >>: fun (e, es) ->
@@ -1702,7 +1711,7 @@ struct
   and highestest_prec m =
     (highestest_prec_no_parenthesis |||
      accept_units (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')') |||
-     tuple ||| vector
+     tuple ||| vector ||| record
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
@@ -1723,7 +1732,7 @@ struct
       char '(' -- opt_blanks -+
       repeat ~min:1 ~sep:RamenTypes.Parser.tup_sep (
         p +- RamenTypes.Parser.kv_sep ++ non_keyword >>:
-        fun (v, k) -> k, v) +-
+        fun (v, k) -> RamenName.field_of_string k, v) +-
       opt_blanks +- char ')' >>: fun kvs ->
         Record (make_typ "record", kvs)
     ) m
@@ -1975,8 +1984,10 @@ let units_of_expr params units_of_input units_of_output =
     | StatelessFun2 (_, Get, s, Record (_, kvs)) ->
         let s = string_of_const s |>
                 option_get "Get from record must have string index" in
-        (try list_rfind_map (fun (k, v) ->
-          if k = s then Some v else None) kvs |> uoe ~indent
+        (try
+          list_rfind_map (fun (k, v) ->
+            if RamenName.string_of_field k = s then Some v else None
+          ) kvs |> uoe ~indent
         with Not_found -> None)
     | StatelessFun2 (_, Percentile, _,
                      StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|

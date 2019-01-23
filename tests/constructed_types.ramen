@@ -4,7 +4,10 @@ DEFINE tuple_exercise AS
   FROM (SELECT sum 1 AS tick EVERY 1 SECOND)
   SELECT ( 1st ("one"; tick; sum tick) ;
            2nd(2nd (42; (1; 17); tick+1)) ) AS some_tup,
-         [ ("glop"; 42; "glop") ; ("pin"; 2; "pon") ] AS some_vec;
+         [ ("glop"; 42; "glop") ; ("pin"; 2; "pon") ] AS some_vec,
+         ( 1st some_tup AZ one;
+           2nd some_tup AZ seventeen;
+           seventeen + 1 AZ eighteen ) AS some_rec;
 
 DEFINE vector_exercise AS
   FROM tuple_exercise
@@ -12,3 +15,7 @@ DEFINE vector_exercise AS
          get(0, [one; "two"; "three"]) AS eins,
          get(1, [eins; string( get(4, [6;5;4;3; 2nd(get(1, some_vec)) ]) ); "drei"]) AS zwei,
          get(u8(zwei), [eins; zwei; "drei"]) AS drei;
+
+DEFINE record_exercice AS
+  FROM tuple_exercise
+  SELECT get("one", some_rec) ||"+"|| string(get("seventeen", some_rec)) AS achtzehn;
