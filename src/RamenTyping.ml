@@ -56,13 +56,23 @@ let t_of_num num =
   Printf.sprintf "t%d" num
 
 let t_of_expr e =
-  t_of_num ((typ_of e).uniq_num)
+  t_of_num e.E.uniq_num
 
 let n_of_num num =
   Printf.sprintf "n%d" num
 
 let n_of_expr e =
-  n_of_num((typ_of e).uniq_num)
+  n_of_num e.E.uniq_num
+
+let f_of_name field_names k =
+  try Hashtbl.find field_names k |> string_of_int
+  with Not_found ->
+    Printf.sprintf2 "Record field %a was forgotten from field_names?!"
+      RamenName.field_print k |>
+    failwith
+
+let expr_err e err = Err.Expr (e.E.uniq_num, err)
+let func_err fi err = Err.Func (fi, err)
 
 let emit_is_tuple id oc sz =
   Printf.fprintf oc "((_ is tuple%d) %s)" sz id
@@ -148,6 +158,28 @@ let emit_assert_id_is_bool ?name id oc b =
 let emit_assert_id_eq_typ ?name tuple_sizes records id oc t =
   emit_assert ?name oc (fun oc -> emit_id_eq_typ tuple_sizes records id oc t)
 
+let emit_is_subfield field_name field_expr oc rec_id sfs =
+  (* Locate that field in the record: *)
+  let pos =
+    try List.findi (fun _ sf -> sf.E.alias = field_name) sfs |> fst
+    with Not_found ->
+      Printf.sprintf2 "Cannot find field %a in record id:%d sfs:%a"
+        RamenName.field_print field_name
+        rec_id
+        (pretty_list_print (fun oc sf -> RamenName.field_print oc sf.alias))
+          sfs |>
+      failwith
+  and len = List.length sfs
+  in
+  let name = expr_err field_expr Err.InheritTypeFromRecord in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc "(= %s (record%d-e%d %s))"
+      (t_of_expr field_expr) len pos (t_of_num rec_id)) ;
+  let name = expr_err field_expr Err.InheritNullFromRecord in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc "(= %s (record%d-e%d %s))"
+      (t_of_expr field_expr) len pos (t_of_num rec_id))
+
 let emit_id_eq_smt2 id oc smt2 =
   Printf.fprintf oc "(= %s %s)" id smt2
 
@@ -201,9 +233,6 @@ let emit_assert_id_eq_any_of_typ ?name tuple_sizes records id oc lst =
   emit_assert ?name oc (fun oc ->
     Printf.fprintf oc "(or %a)"
       (List.print ~first:"" ~last:"" ~sep:" " (emit_id_eq_typ tuple_sizes records id)) lst)
-
-let expr_err e err = Err.Expr ((typ_of e).uniq_num, err)
-let func_err fi err = Err.Func (fi, err)
 
 (* Named constraint used when an argument type is constrained: *)
 let arg_is_nullable oc e =
@@ -300,42 +329,19 @@ let emit_assert_same e oc id1 id2 =
 
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
-let emit_constraints tuple_sizes records field_names out_fields oc e =
+let emit_constraints tuple_sizes records field_names
+                     in_type out_type param_type env_type oc what env e =
   let eid = t_of_expr e and nid = n_of_expr e in
   emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
+  let what =
+    Printf.sprintf "%s: Typing expression %d" what e.E.uniq_num in
   (* Then we also have specific rules according to the operation at hand: *)
-  match e with
-  | Field (_, tupref, field_name) ->
-      (* The type of an output field is taken from the out types.
-       * The type of a field originating from input/params/env/virtual
-       * fields has been set previously. *)
-      if RamenLang.tuple_has_type_output !tupref then (
-        let open RamenOperation in
-        match List.find (fun sf -> sf.alias = field_name) out_fields with
-        | exception Not_found ->
-            Printf.sprintf2 "Unknown output field %a (out is %a)"
-              RamenName.field_print field_name
-              (List.print (fun oc sf ->
-                RamenName.field_print oc sf.alias)) out_fields |>
-            failwith
-        | { expr ; _ } ->
-            emit_assert_id_eq_id eid oc (t_of_expr expr) ;
-            (* Some tuples are passed to callback via an option type, and
-             * are None each time they are undefined (beginning of worker
-             * or of group). Workers access those fields via a special
-             * functions, and all fields are forced nullable during typing.
-             *)
-            if !tupref = TupleOutPrevious then
-              let name = expr_err e Err.PrevNull in
-              emit_assert_is_true ~name oc nid
-            else
-              emit_assert_id_eq_id nid oc (n_of_expr expr))
-
-  | Const (_, VNull) ->
+  match e.E.text with
+  | Const VNull ->
       (* - "NULL" is nullable. *)
       arg_is_nullable oc e
 
-  | Const (_, x) ->
+  | Const x ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
       arg_has_type (RamenTypes.structure_of x) oc e ;
@@ -343,7 +349,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
 
   | Binding _ -> assert false (* Not supposed to appear here *)
 
-  | Tuple (_, es) ->
+  | Tuple es ->
       (* - The resulting type is a tuple which length, items type and
        *   nullability are given by es;
        * - The result is not nullable since it has a literal value. *)
@@ -358,32 +364,26 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       ) es ;
       emit_assert_is_false oc nid
 
-  | Record (_, kvs) ->
+  | Record (_, sfs) ->
       (* - The resulting type is a record which length, items type and
        *   nullability are given by the values in kvs;
        * - The result is not nullable since it has a literal value.
        * Note that for typing we type all expressions defined in [kvs]
        * regardless of them being private/shadowed. *)
-      let d = List.length kvs in
+      let d = List.length sfs in
       emit_assert oc (fun oc ->
         Printf.fprintf oc "((_ is record%d) %s)" d eid) ;
-      List.iteri (fun i (k, v) ->
-        let name_idx =
-          try Hashtbl.find field_names k
-          with Not_found ->
-            Printf.sprintf2 "Record field %a was forgotten from field_names"
-              RamenName.field_print k |>
-            failwith in
-        emit_assert_id_eq_smt2 (t_of_expr v) oc
+      List.iteri (fun i sf ->
+        emit_assert_id_eq_smt2 (t_of_expr sf.E.expr) oc
           (Printf.sprintf "(record%d-e%d %s)" d i eid) ;
-        emit_assert_id_eq_smt2 (n_of_expr v) oc
+        emit_assert_id_eq_smt2 (n_of_expr sf.E.expr) oc
           (Printf.sprintf "(record%d-n%d %s)" d i eid) ;
-        emit_assert_id_eq_smt2 (string_of_int name_idx) oc
+        emit_assert_id_eq_smt2 (f_of_name field_names sf.E.alias) oc
           (Printf.sprintf "(record%d-f%d %s)" d i eid)
-      ) kvs ;
+      ) sfs ;
       emit_assert_is_false oc nid
 
-  | Vector (_, es) ->
+  | Vector es ->
       (* Typing rules:
        * - Every element in es must have the same sort;
        * - Every element in es must have the same nullability (FIXME:
@@ -418,7 +418,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
                   (n_of_expr fst) eid)) ;
       emit_assert_is_false oc nid
 
-  | Case (_, cases, else_) ->
+  | Case (cases, else_) ->
       (* Typing rules:
        * - All conditions must have type bool;
        * - All consequents must be of the same sort (that of the case);
@@ -453,7 +453,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
             | None -> "true"
             | Some e -> n_of_expr e)))
 
-  | Coalesce (_, es) ->
+  | Stateless (SL1s (Coalesce, es)) ->
       (* Typing rules:
        * - Every alternative must be of the same sort and the result must
        *   not be smaller;
@@ -470,20 +470,20 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
         emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
       ) es ;
 
-  | StatelessFun0 (_, (Now|Random|EventStart|EventStop)) ->
+  | Stateless (SL0 (Now|Random|EventStart|EventStop)) ->
       (* - The result is a non nullable float *)
       emit_assert_id_eq_typ tuple_sizes records eid oc TFloat ;
       arg_is_not_nullable oc e
 
-  | StatelessFun1 (_, Defined, x) ->
+  | Stateless (SL1 (Defined, x)) ->
       (* - x must be nullable;
        * - The result is a non nullable bool. *)
       arg_is_nullable oc x ;
       emit_assert_id_eq_typ tuple_sizes records eid oc TBool ;
       arg_is_not_nullable oc e
 
-  | StatefulFun (_, _, _, (AggrSum x|AggrMin x|AggrMax x|AggrFirst x
-                          |AggrLast x|AggrAnd x| AggrOr x as aggr)) ->
+  | Stateful (_, _, SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
+                         |AggrLast|AggrAnd|AggrOr as aggr), x)) ->
       (* - if x is a list/vector then the result has the type of its elements;
        * - if x is a list/vector then the result is as nullable as its
        *   elements or the list itself;
@@ -506,15 +506,15 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           xtid eid xtid nid xnid xtid
           xtid xtid eid xtid nid (n_of_expr x)) ;
 
-      (match aggr with AggrSum _ ->
+      (match aggr with AggrSum ->
         (* - The result is numeric *)
         arg_is_numeric oc e
-      | AggrAnd _ | AggrOr _ ->
+      | AggrAnd | AggrOr ->
         (* - The result is a boolean *)
         emit_assert_id_eq_typ tuple_sizes records eid oc TBool
       | _ -> ())
 
-  | StatefulFun (_, _, _, AggrAvg x) ->
+  | Stateful (_, _, SF1 (AggrAvg, x)) ->
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
        * - The result is as nullable as x and its elements. *)
@@ -544,7 +544,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TFloat ;
       assert_imply (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Minus, x) ->
+  | Stateless (SL1 (Minus, x)) ->
       (* - The only argument must be numeric;
        * - The result must not be smaller than x;
        * - The result has same nullability than x;
@@ -554,7 +554,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       arg_is_signed oc e ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Age, x) ->
+  | Stateless (SL1 (Age, x)) ->
       (* - The only argument must be numeric;
        * - The result is a float;
        * - The result has same nullability than x. *)
@@ -562,7 +562,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Abs, x) ->
+  | Stateless (SL1 (Abs, x)) ->
       (* - The only argument must be numeric;
        * - The result has same type than x;
        * - The result has same nullability than x. *)
@@ -570,7 +570,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_le_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Not, x) ->
+  | Stateless (SL1 (Not, x)) ->
       (* - The only argument must be boolean;
        * - The result type is a boolean;
        * - The resulting nullability depends solely on that of x. *)
@@ -578,7 +578,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records eid oc TBool
 
-  | StatelessFun1 (_, Cast t, x) ->
+  | Stateless (SL1 (Cast t, x)) ->
       (* - The only argument (x) can be anything;
        * - The result type is as described by the chosen type;
        * - The result is nullable if we specifically choose to cast
@@ -591,7 +591,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
         emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records eid oc t.structure
 
-  | StatelessFun2 (_, Percentile, e1, e2) ->
+  | Stateless (SL2 (Percentile, e1, e2)) ->
       (* - e1 must be numeric;
        * - e2 must be a vector or list of anything, then the result is not
        *   smaller than the element type;
@@ -610,7 +610,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         oc nid
 
-  | StatelessFun2 (_, (Add|Mul|IDiv|Pow|Trunc), e1, e2) ->
+  | Stateless (SL2 ((Add|Mul|IDiv|Pow|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result is not smaller than e1 or e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
@@ -622,7 +622,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_le_id (t_of_expr e2) oc eid
       (* TODO: for IDiv, have a TInt type and make_int_typ when parsing *)
 
-  | StatelessFun2 (_, Sub, e1, e2) ->
+  | Stateless (SL2 (Sub, e1, e2)) ->
       (* Same as above, with the addition that the result is signed even
        * if both operands are unsigned: *)
       arg_is_numeric oc e1 ;
@@ -633,7 +633,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
       arg_is_signed oc e
 
-  | StatelessFun2 (_, (Reldiff|Div), e1, e2) ->
+  | Stateless (SL2 ((Reldiff|Div), e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result is a float. *)
       arg_is_numeric oc e1 ;
@@ -642,7 +642,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, (StartsWith|EndsWith), e1, e2) ->
+  | Stateless (SL2 ((StartsWith|EndsWith), e1, e2)) ->
       (* - e1 and e2 must be strings;
        * - The result is a bool;
        * - Result nullability propagates from arguments. *)
@@ -652,8 +652,8 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, Concat, e1, e2)
-  | GeneratorFun (_, Split (e1, e2)) ->
+  | Stateless (SL2 (Concat, e1, e2))
+  | Generator (Split (e1, e2)) ->
       (* - e1 and e2 must be strings;
        * - The result is also a string;
        * - Result nullability propagates from arguments. *)
@@ -663,7 +663,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, Strftime, e1, e2) ->
+  | Stateless (SL2 (Strftime, e1, e2)) ->
       (* - e1 must be a string and e2 a float (ideally, a time);
        * - Then result will be a string;
        * - Its nullability propagates from arguments. *)
@@ -673,7 +673,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun1 (_, Length, x) ->
+  | Stateless (SL1 (Length, x)) ->
       (* - x must be a string or a list;
        * - The result type is an U32;
        * - The result nullability is the same as that of x. *)
@@ -684,7 +684,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TU32 ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatelessFun1 (_, (Lower|Upper), x) ->
+  | Stateless (SL1 ((Lower|Upper), x)) ->
       (* - x must be a string;
        * - The result type is also a string;
        * - The result nullability is the same as that of x. *)
@@ -692,7 +692,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TString ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatelessFunMisc (_, Like (x, _)) ->
+  | Stateless (SL1 (Like _, x)) ->
       (* - x must be a string;
        * - The result is a bool;
        * - Nullability propagates from x to e. *)
@@ -700,7 +700,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TBool ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatelessFun1 (_, Strptime, x) ->
+  | Stateless (SL1 (Strptime, x)) ->
       (* - x must be a string;
        * - The Result is a float (a time);
        * - The result is always nullable (known from the parse). *)
@@ -708,7 +708,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TFloat ;
       emit_assert_is_true oc nid
 
-  | StatelessFun1 (_, Variant, x) ->
+  | Stateless (SL1 (Variant, x)) ->
       (* - x must be a string (the experiment name);
        * - The Result is a string (the name of the variant);
        * - The result is always nullable (if the experiment is not defined). *)
@@ -716,8 +716,8 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TString ;
       emit_assert_is_true oc nid
 
-  | StatelessFun2 (_, Mod, e1, e2)
-  | StatelessFun2 (_, (BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
+  | Stateless (SL2 (Mod, e1, e2))
+  | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
       (* - e1 and e2 must be any integer;
        * - The result must not be smaller that e1 nor e2;
        * - Nullability propagates. *)
@@ -728,7 +728,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, (Ge|Gt), e1, e2) ->
+  | Stateless (SL2 ((Ge|Gt), e1, e2)) ->
       (* - e1 and e2 must have the same sort;
        * - The result is a bool;
        * - Nullability propagates. *)
@@ -737,7 +737,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, Eq, e1, e2) ->
+  | Stateless (SL2 (Eq, e1, e2)) ->
       (* - e1 and e2 must be of the same sort;
        * - The result is a bool;
        * - Nullability propagates from arguments. *)
@@ -746,7 +746,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, (And|Or), e1, e2) ->
+  | Stateless (SL2 ((And|Or), e1, e2)) ->
       (* - e1 and e2 must be booleans;
        * - The result is also a boolean;
        * - Nullability propagates. *)
@@ -756,7 +756,48 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
-  | StatelessFun2 (_, Get, n, x) ->
+  | Variable var_name ->
+      (match RamenExpr.Env.lookup what env var_name with
+      | exception Not_found ->
+          RamenExpr.Env.unbound_var what env var_name
+
+      | TupleEnv ->
+          let env_type = option_get "not empty env_type" env_type in
+          emit_assert_id_eq_id eid oc env_type ;
+          arg_is_not_nullable oc e (* Although fields are of course *)
+
+      | TupleParam ->
+          let param_type = option_get "not empty param_type" param_type in
+          emit_assert_id_eq_id eid oc param_type ;
+          arg_is_not_nullable oc e
+
+      | TupleIn
+      | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
+      | TupleMergeGreatest ->
+          let in_type = option_get "not empty in_type" in_type in
+          emit_assert_id_eq_id eid oc in_type ;
+          arg_is_not_nullable oc e
+
+      | TupleRecord E.{ text = Record (_, sfs) ; uniq_num ; _ } ->
+          emit_is_subfield var_name e oc uniq_num sfs
+      | TupleRecord _ -> assert false
+
+      | TupleGroup | TupleOut ->
+          let out_type = option_get "not empty out_type" out_type in
+          emit_assert_id_eq_id eid oc out_type ;
+          arg_is_not_nullable oc e
+
+      | TupleOutPrevious ->
+          (* Some tuples are passed to callback via an option type,
+           * and are None each time they are undefined (beginning of
+           * worker or of group). Workers access those fields via a
+           * special functions and all fields are forced nullable
+           * during typing. *)
+          let out_type = option_get "not empty out_type" out_type in
+          emit_assert_id_eq_id eid oc out_type ;
+          arg_is_nullable oc e)
+
+  | Stateless (SL2 (Get, n, x)) ->
       (* Typing rules:
        * - either:
        *   - x must be a vector, a list or a tuple;
@@ -776,8 +817,9 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
        *     legit, ie there exist a record that we know of with such a
        *     field, and we know where to look for it in a record, which
        *     limits the possibilities to a few.
-       *   - x must be a record with a field named like that, and the
-       *     resulting type is that of that field;
+       *   - either x must be TupleEnv and then the result is a nullable
+       *     string, or x must be a record with a field named like that,
+       *     and then the resulting type is that of that field;
        *   - For the above to work we need to know a mapping from any legit
        *     field name to the list of possible tuple sizes and field
        *     position with the tuple: [records].
@@ -833,6 +875,10 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
               arg_is_string oc n ;
               emit_assert ~name oc (fun oc ->
                 let k = RamenName.field_of_string i in
+                (* So x must be a record, and that expression must have the
+                 * same type/nullability (and name) that some field of that
+                 * record. Hopefully we have greatly reduced the
+                 * possibilities: *)
                 (match Hashtbl.find_all records k with
                 | exception Not_found ->
                     Printf.sprintf2 "Subfield %S is still unknown!" i |>
@@ -853,7 +899,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
                             rec_size field_pos (t_of_expr x) name_idx
                         )) lst))))
 
-  | StatelessFun1 (_, (BeginOfRange|EndOfRange), x) ->
+  | Stateless (SL1 ((BeginOfRange|EndOfRange), x)) ->
       (* - x is any kind of cidr;
        * - The result is a bool;
        * - Nullability propagates from x. *)
@@ -869,7 +915,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           xid eid) ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatelessFunMisc (_, (Min es | Max es)) ->
+  | Stateless (SL1s ((Min|Max), es)) ->
       (* Typing rules:
        * - es must be a list of expressions of compatible types;
        * - the result type is the largest of them all;
@@ -883,12 +929,12 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
             (List.print ~first:"" ~last:"" ~sep:" " (fun oc e ->
               String.print oc (n_of_expr e))) es)
 
-  | StatelessFunMisc (_, Print es) ->
+  | Stateless (SL1s (Print, es)) ->
       (* The result must have the same type as the first parameter *)
       emit_assert_id_eq_id (t_of_expr (List.hd es)) oc eid ;
       emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
 
-  | StatefulFun (_, _, _, Lag (e1, e2)) ->
+  | Stateful (_, _, SF2 (Lag, e1, e2)) ->
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
@@ -899,8 +945,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | StatefulFun (_, _, _, MovingAvg (e1, e2, e3))
-  | StatefulFun (_, _, _, LinReg (e1, e2, e3)) ->
+  | Stateful (_, _, SF3 ((MovingAvg|LinReg), e1, e2, e3)) ->
       (* Typing rules:
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
@@ -931,7 +976,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
             emit_numeric xid) ;
       assert_imply (n_of_expr e3) oc nid
 
-  | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
+  | Stateful (_, _, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic
        * and probably get rid of this limitation. *)
@@ -947,7 +992,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
         arg_is_not_nullable oc e ;
       ) e4s
 
-  | StatefulFun (_, _, _, ExpSmooth (e1, e2)) ->
+  | Stateful (_, _, SF2 (ExpSmooth, e1, e2)) ->
       (* Typing rules:
        * - e1 must be a non-null float (and ideally, between 0 and 1), but
        *   we just ask for a numeric in order to also accept immediate
@@ -959,7 +1004,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       arg_is_not_nullable oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
-  | StatelessFun1 (_, (Exp|Log|Log10|Sqrt), x) ->
+  | Stateless (SL1 ((Exp|Log|Log10|Sqrt), x)) ->
       (* - x must be numeric;
        * - The result is a float;
        * - The result nullability is inherited from arguments *)
@@ -967,7 +1012,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_eq_typ tuple_sizes records eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, (Floor|Ceil|Round), x) ->
+  | Stateless (SL1 ((Floor|Ceil|Round), x)) ->
       (* - x must be numeric;
        * - The result is not smaller than x;
        * - Nullability propagates from argument. *)
@@ -975,24 +1020,24 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun1 (_, Hash, _x) ->
+  | Stateless (SL1 (Hash, _x)) ->
       (* - x can be anything. Notice that hash(NULL) is NULL;
        * - The result is an I64.
        * - Nullability propagates. *)
       emit_assert_id_eq_typ tuple_sizes records eid oc TI64 ;
       emit_assert_id_eq_id (n_of_expr e) oc nid
 
-  | StatelessFun1 (_, Sparkline, x) ->
+  | Stateless (SL1 (Sparkline, x)) ->
       (* - x must be a vector of non-null numerics;
        * - The result is a string;
        * - The result nullability itself propagates from x. *)
       let name = expr_err x Err.NumericVec in
       emit_assert_id_eq_typ ~name tuple_sizes records (t_of_expr x) oc
-        (TVec (0, { structure = TNum ; nullable = false })) ;
+        (TVec (0, T.make ~nullable:false TNum)) ;
       emit_assert_id_eq_typ tuple_sizes records eid oc TString ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatefulFun (_, _, _, Remember (fpr, tim, dur, es)) ->
+  | Stateful (_, _, SF4s (Remember, fpr, tim, dur, es)) ->
       (* Typing rules:
        * - fpr must be a non null (positive) float, so we take any numeric
        *   for now;
@@ -1013,7 +1058,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           (List.print ~first:" " ~last:"" ~sep:" " (fun oc e ->
             String.print oc (n_of_expr e))) es)
 
-  | StatefulFun (_, _, _, Distinct es) ->
+  | Stateful (_, _, Distinct es) ->
       (* - The es can be anything;
        * - The result is a boolean;
        * - The result is nullable if any of the es is nullable. *)
@@ -1024,7 +1069,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
             (List.print ~first:"" ~last:"" ~sep:" " (fun oc e ->
               String.print oc (n_of_expr e))) es)
 
-  | StatefulFun (_, _, _, Hysteresis (meas, accept, max)) ->
+  | Stateful (_, _, SF3 (Hysteresis, meas, accept, max)) ->
       (* - meas, accept and max must be numeric;
        * - The result is a boolean;
        * - The result is nullable if and only if any of meas, accept and
@@ -1037,8 +1082,8 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
         (Printf.sprintf "(or %s %s %s)"
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
 
-  | StatefulFun (_, _, _, Top { want_rank ; c ; max_size ; what ; by ; duration ;
-                                time }) ->
+  | Stateful (_, _, Top { want_rank ; c ; max_size ; what ; by ; duration ;
+                          time }) ->
       (* Typing rules:
        * - c must be numeric and not null;
        * - max_size, if set, must be numeric and not null ;
@@ -1072,7 +1117,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
               String.print oc (n_of_expr w))) what
             (n_of_expr by)))
 
-  | StatefulFun (_, _, n, Last (c, x, es)) ->
+  | Stateful (_, n, Last (c, x, es)) ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
        * - The type of the result is a list of items of the same type than x;
        * - If we skip nulls then those items are not nullable, otherwise
@@ -1093,7 +1138,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
 
-  | StatefulFun (_, _, n, Sample (c, x)) ->
+  | Stateful (_, n, SF2 (Sample, c, x)) ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
        * - c must not be nullable;
        * - The type of the result is a list of items of the same type than x;
@@ -1110,7 +1155,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           (if n then "false" else n_of_expr x)) ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
-  | StatefulFun (_, _, n, Past { what ; time ; max_age ; sample_size }) ->
+  | Stateful (_, n, Past { what ; time ; max_age ; sample_size }) ->
       (* - max_age must be a constant (TODO) numeric, greater than 0 (TODO);
        * - max_age must not be nullable;
        * - time must be a time (numeric);
@@ -1137,7 +1182,7 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           (if n then "false" else n_of_expr what)) ;
       arg_is_nullable oc e
 
-  | StatefulFun (_, _, n, Group g) ->
+  | Stateful (_, n, SF1 (Group, g)) ->
       (* - The result is a list which elements have the exact same type as g;
        * - If we skip nulls then the elements are not nullable, otherwise they
        *   are as nullable as g;
@@ -1154,16 +1199,16 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           (if n then "false" else n_of_expr g)) ;
       emit_assert_id_eq_id (n_of_expr g) oc nid
 
-  | StatefulFun (_, _, _, AggrHistogram (x, _, _, n)) ->
+  | Stateful (_, _, SF1 (AggrHistogram (_, _, n), x)) ->
       (* - x must be numeric;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
       arg_is_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records eid oc
-        (TVec (n+2, { structure = TU32 ; nullable = false })) ;
+        (TVec (n+2, T.make ~nullable:false TU32)) ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
-  | StatelessFun2 (_, In, e1, e2) ->
+  | Stateless (SL2 (In, e1, e2)) ->
       (* Typing rule:
        * - e2 can be a string, a cidr, a list or a vector;
        * - if e2 is a string, then e1 must be a string;
@@ -1196,21 +1241,27 @@ let emit_constraints tuple_sizes records field_names out_fields oc e =
           (t_of_expr e2) (t_of_expr e2)
           (t_of_expr e2) (t_of_expr e2))
 
-let emit_running_condition declare tuple_sizes records field_names oc e =
+let emit_running_condition declare tuple_sizes records field_names
+                           param_type env_type oc e =
   RamenExpr.iter declare e ;
   let name = Err.RunCondition in
   emit_assert_id_eq_typ ~name tuple_sizes records (t_of_expr e) oc TBool ;
   emit_assert_is_false ~name oc (n_of_expr e) ;
-  RamenExpr.iter (emit_constraints tuple_sizes records field_names [] oc) e
+  RamenExpr.Env.iter
+    (emit_constraints tuple_sizes records field_names
+                      None None param_type env_type oc "run condition")
+    RamenExpr.Env.[ env_param ; env_env ] e
 
-let emit_operation declare tuple_sizes records field_names fi oc op =
+let emit_operation declare tuple_sizes records field_names
+                   in_type out_type param_type env_type fi oc op =
   let open RamenOperation in
   (* Declare all variables: *)
   iter_expr declare op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
-  | Aggregate { fields ; where ; notifications ; commit_cond ; _ } ->
-      iter_expr (emit_constraints tuple_sizes records field_names fields oc) op ;
+  | Aggregate { where ; notifications ; commit_cond ; _ } ->
+      Env.iter (emit_constraints tuple_sizes records field_names
+                  in_type out_type param_type env_type oc) [] op ;
       (* Typing rules:
        * - Where must be a bool;
        * - Commit-when must also be a bool;
@@ -1233,7 +1284,8 @@ let emit_operation declare tuple_sizes records field_names fi oc op =
       ) notifications
 
   | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
-      iter_expr (emit_constraints tuple_sizes records field_names [] oc) op ;
+      Env.iter (emit_constraints tuple_sizes records field_names
+                  in_type out_type param_type env_type oc) [] op ;
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
         let name = func_err fi Err.(Preprocessor (ActualType "string")) in
@@ -1252,12 +1304,19 @@ let emit_operation declare tuple_sizes records field_names fi oc op =
 
   | _ -> ())
 
-let emit_program declare tuple_sizes records field_names oc funcs =
+let emit_program declare tuple_sizes records field_names
+                 in_types out_types param_type env_type oc funcs =
   (* Output all the constraints for all the operations: *)
   List.iteri (fun fi func ->
-    Printf.fprintf oc "\n; Constraints for function %s\n"
-      (RamenName.string_of_func func.F.name) ;
-    emit_operation declare tuple_sizes records field_names fi oc func.F.operation
+    let fq = F.fq_name func in
+    Printf.fprintf oc "\n; Constraints for function %a\n"
+      RamenName.fq_print fq ;
+    (* Not all functions have an input or output type but then it won't
+     * be used: *)
+    let in_type = List.assoc_opt fq in_types
+    and out_type = List.assoc_opt fq out_types in
+    emit_operation declare tuple_sizes records field_names
+      in_type out_type param_type env_type fi oc func.F.operation
   ) funcs
 
 let emit_minimize oc condition funcs =
@@ -1273,8 +1332,8 @@ let emit_minimize oc condition funcs =
                        0)))))))\n" ;
   let cost_of_expr e =
     let eid = t_of_expr e in
-    match (typ_of e).typ with
-    | None | Some { structure = (TAny | TNum) ; _ } ->
+    match e.E.typ with
+    | { structure = (TAny | TNum) ; _ } ->
         Printf.fprintf oc " (cost_of_number %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
@@ -1290,8 +1349,8 @@ let emit_minimize oc condition funcs =
        (ite (or (= i8 n) (= i16 n) (= i32 n) (= i64 n) (= i128 n)) 1 0))\n" ;
   let cost_of_expr e =
     let eid = t_of_expr e in
-    match (typ_of e).typ with
-    | None | Some { structure = (TAny | TNum) ; _ } ->
+    match e.E.typ with
+    | { structure = (TAny | TNum) ; _ } ->
         Printf.fprintf oc " (cost_of_sign %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
@@ -1305,166 +1364,295 @@ let emit_minimize oc condition funcs =
  * equates its type to the type of the expression computing the output
  * field (in case of Aggregates) or directly to the type of the output
  * field if it is a well known field (which has no expression). *)
-type id_or_type = Id of int | FieldType of RamenTuple.field_typ
+type id_or_type = Id of int | FieldType of T.t
 let id_or_type_of_field op name =
   let open RamenOperation in
-  let find_field_type =
-    List.find (fun ft -> ft.RamenTuple.name = name) in
+  let find_field_type typ =
+    T.fields_of_type typ |>
+    enum_rfind (fun (n, _) -> n = RamenName.string_of_field name) |>
+    snd in
   match op with
-  | Aggregate { fields ; _ } ->
-      let sf = List.find (fun sf -> sf.alias = name) fields in
-      Id (typ_of sf.expr).uniq_num
+  | Aggregate { output ; _ } ->
+      let sf =
+        E.fields_of_expression output |>
+        enum_rfind (fun sf -> sf.E.alias = name) in
+      Id sf.expr.E.uniq_num
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      FieldType (find_field_type fields)
+      let ft = List.find (fun ft -> ft.RamenTuple.name = name) fields in
+      FieldType ft.RamenTuple.typ
   | ListenFor { proto ; _ } ->
-      FieldType (find_field_type (RamenProtocols.tuple_typ_of_proto proto))
+      FieldType (find_field_type (RamenProtocols.typ_of_proto proto))
   | Instrumentation _ ->
-      FieldType (find_field_type RamenBinocle.tuple_typ)
+      FieldType (find_field_type RamenBinocle.typ)
   | Notifications _ ->
-      FieldType (find_field_type RamenNotification.tuple_typ)
+      FieldType (find_field_type RamenNotification.typ)
+
+let emit_out_types decls oc field_names funcs =
+  List.fold_left (fun (assoc, i as prev) func ->
+    match func.F.operation with
+    | Aggregate { output ; _ } ->
+        let fields = E.fields_of_expression output |>
+                     Array.of_enum in
+        let rec_id = "out_"^ string_of_int i in
+        let sz = Array.length fields in
+        Printf.fprintf decls
+          "; ====\n\
+           ; ==== Output record type for %a ====\n\
+           ; ====\n\
+           (declare-fun %s () Bool)\n\
+           (declare-fun %s () Type)\n"
+          RamenName.fq_print (F.fq_name func)
+          rec_id rec_id ;
+        emit_is_record rec_id oc sz ;
+        (* For typing this is not necessary to order the structure fields in
+         * any specific order, as we carry along the field names. Also, we
+         * need to keep private fields as we want to type them and they can
+         * be accessed via TupleOut as other fields can. *)
+        Array.iteri (fun j sf ->
+          (* Equates each field expression to its field: *)
+          let id = sf.E.expr.uniq_num in
+          Printf.fprintf oc
+            "; Output field %d (%a) equals expression %d\n"
+            i RamenName.field_print sf.alias id ;
+          emit_assert oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-e%d %s))"
+              (t_of_num id) sz j rec_id) ;
+          emit_assert oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-n%d %s))"
+              (n_of_num id) sz i rec_id) ;
+          emit_assert oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-f%d %s))"
+              (f_of_name field_names sf.alias) sz i rec_id)
+        ) fields ;
+        (F.fq_name func, rec_id) :: assoc, i + 1
+    | _ -> prev
+  ) ([], 0) funcs |> fst
 
 (* Reading already compiled parents, set the type of fields originating from
  * external parents, parameters and environment, once and for all.
  * Equals the input type of fields originating from internal parents to
- * those output fields. *)
-let emit_input_fields oc tuple_sizes records parents params condition funcs =
-  let set_fields ?func what env = function
-    | Field (_field_typ, tupref, field_name) as expr ->
-        (
-          if RamenName.is_virtual field_name then (
-            (* Type set during parsing *)
-          ) else if !tupref = TupleParam then (
-            (* Copy the scalar type from the default value: *)
-            match RamenTuple.params_find field_name params with
+ * those output fields.
+ * Build the list of keys used for params and end, and from there declare
+ * two records, which fields equates the types output above,  and return
+ * their id. *)
+let emit_in_types decls oc tuple_sizes records field_names parents params
+                  condition funcs =
+  (* Collect all the Get(name, x) where x is input, then params then env.
+   * Build a record type with those fields and declare their actual types. *)
+  let in_fields = Hashtbl.create 10
+  and param_fields = Hashtbl.create 10
+  and env_fields = Hashtbl.create 10
+  in
+  let get_sub_hash h func =
+    let func_name = Option.map F.fq_name func in
+    try Hashtbl.find h func_name
+    with Not_found ->
+      let h' = Hashtbl.create 10 in
+      Hashtbl.add h func_name h' ;
+      h' in
+  let register_input h func field_name structure nullable expr =
+    let h = get_sub_hash h func in
+    Hashtbl.modify_opt field_name (function
+      | None -> Some (Some (structure, nullable), [ expr.E.uniq_num ])
+      | Some (typ, ids) ->
+          assert (typ = None || typ = Some (structure, nullable)) ;
+          Some (Some (structure, nullable), expr.E.uniq_num :: ids)
+    ) h
+  and register_inherit func field_name id expr =
+    let h = get_sub_hash in_fields func in
+    Hashtbl.modify_opt field_name (function
+      | None -> Some (None, [ id ; expr.E.uniq_num ])
+      | Some (typ, ids) ->
+          Some (typ, id :: expr.E.uniq_num :: ids)
+    ) h
+  in
+  let program_iter f condition funcs =
+    Option.may (fun e ->
+      f ?func:None "run condition" RamenExpr.Env.[ env_param ; env_env ] e)
+      condition ;
+    List.iter (fun func ->
+      RamenOperation.Env.iter (f ?func:(Some func)) [] func.F.operation
+    ) funcs
+  in
+  program_iter (fun ?func what env e ->
+    match e.E.text with
+    | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
+                           E.{ text = Variable var_name ; _ })) ->
+        let field_name = RamenName.field_of_string s in
+        (match RamenExpr.Env.lookup what env var_name with
+        | exception Not_found ->
+            RamenExpr.Env.unbound_var what env var_name
+        | TupleEnv ->
+            register_input env_fields None field_name TString true e
+        | TupleParam ->
+            (match RamenTuple.params_find field_name params with
             | exception Not_found ->
                 Printf.sprintf2 "%s is using unknown parameter %a"
                   what RamenName.field_print field_name |>
                 failwith
             | param ->
-                emit_assert_id_eq_typ tuple_sizes records (t_of_expr expr) oc param.ptyp.typ.structure ;
-                emit_assert_id_is_bool (n_of_expr expr) oc param.ptyp.typ.nullable
-          ) else if !tupref = TupleEnv then (
-            emit_assert_id_eq_typ tuple_sizes records (t_of_expr expr) oc TString ;
-            arg_is_nullable oc expr
-          ) else if func <> None && RamenLang.tuple_has_type_input !tupref then (
-            let func = Option.get func in
-            let no_such_field pfunc =
-              Printf.sprintf2 "Parent %a of %s does not output a field \
-                               named %a (only: %a)"
-                RamenName.func_print pfunc.F.name
-                what
-                RamenName.field_print field_name
-                RamenTuple.print_typ_names
-                  (RamenOperation.out_type_of_operation pfunc.F.operation) |>
-              failwith
-            and aggr_types pfunc t prev =
-              let fn = pfunc.F.name in
-              match prev with
-              | None -> Some ([fn], t)
-              | Some (prev_fns, prev_t) ->
-                  if t <> prev_t then
-                    Printf.sprintf2
-                      "All parents of %s must agree on the type of field \
-                       %a (%a has %a but %s has %a)"
-                      what
-                      RamenName.field_print field_name
-                      (pretty_list_print (fun oc f ->
-                        String.print oc (RamenName.func_color f))) prev_fns
-                      RamenTypes.print_typ prev_t
-                      (RamenName.func_color fn)
-                      RamenTypes.print_typ t |>
-                    failwith ;
-                  Some ((fn::prev_fns), prev_t) in
-            (* Return either the type or a set of id to set this field
-             * type to: *)
-            let typ, same_as_ids =
-              let parents = Hashtbl.find_default parents func.F.name [] in
-              List.fold_left (fun (prev_typ, same_as_ids) pfunc ->
-                (* Is this parent part of local functions? *)
-                if pfunc.F.program_name = func.F.program_name then (
-                  (* Typing not finished? This parent is in this very
-                   * program then. Output the constraint to bind the
-                   * input type to the output type: *)
-                  (* Retrieve the id for the parent output fields: *)
-                  let pfunc =
-                    try
-                      List.find (fun f ->
-                        f.F.name = pfunc.F.name
-                      ) funcs
-                    with Not_found ->
-                      !logger.error "Cannot find parent %S in any of this \
-                                     program functions (have %a)"
-                        (RamenName.string_of_func pfunc.F.name)
-                        (pretty_list_print (fun oc f ->
-                          String.print oc (RamenName.string_of_func f.F.name))) funcs ;
-                      raise Not_found in
-                  match id_or_type_of_field pfunc.F.operation field_name with
-                  | exception Not_found -> no_such_field pfunc
-                  | Id p_id -> prev_typ, p_id::same_as_ids
-                  | FieldType ft ->
-                      aggr_types pfunc ft.typ prev_typ, same_as_ids
-                ) else (
-                  (* External parent: look for the exact type: *)
-                  let pser =
-                    RamenOperation.out_type_of_operation pfunc.F.operation |>
-                    RingBufLib.ser_tuple_typ_of_tuple_typ in
-                  match List.find (fun fld ->
-                          fld.RamenTuple.name = field_name
-                        ) pser with
-                    | exception Not_found -> no_such_field pfunc
-                    | ft ->
-                        assert (RamenTypes.is_typed ft.typ.structure) ;
-                        aggr_types pfunc ft.typ prev_typ, same_as_ids)
-              ) (None, []) parents in
-            Option.may (fun (_funcs, t) ->
-              emit_assert_id_eq_typ tuple_sizes records (t_of_expr expr) oc t.structure ;
-              emit_assert_id_is_bool (n_of_expr expr) oc t.nullable
-            ) typ ;
-            List.iter (fun id ->
-              let name = expr_err expr Err.InheritType in
-              emit_assert_id_eq_id ~name (t_of_expr expr) oc (t_of_num id) ;
-              let name = expr_err expr Err.InheritNull in
-              emit_assert_id_eq_id ~name (n_of_expr expr) oc (n_of_num id) ;
-            ) same_as_ids
-          ) else if !tupref = Record then (
-            (* Look for which record this is from in the environment: *)
-            let record_id, d, pos =
-              List.find_map (fun (typ, kvs) ->
-                try Some (
-                  typ.uniq_num,
-                  List.length kvs,
-                  List.findi (fun _ (k, _) -> k = field_name) kvs |> fst)
-                with Not_found -> None
-              ) env
-            in
-            let name = expr_err expr Err.InheritTypeFromRecord in
-            emit_assert ~name oc (fun oc ->
-              Printf.fprintf oc "(= %s (record%d-e%d %s))"
-                (t_of_expr expr) d pos (t_of_num record_id)) ;
-            let name = expr_err expr Err.InheritNullFromRecord in
-            emit_assert ~name oc (fun oc ->
-              Printf.fprintf oc "(= %s (record%d-e%d %s))"
-                (t_of_expr expr) d pos (t_of_num record_id))
-          )
-        ) ;
-        env
-    | Record (typ, kvs) ->
-        (typ, kvs) :: env
-    | _ ->
-        env
+                register_input param_fields None field_name
+                  param.ptyp.typ.structure param.ptyp.typ.nullable) e
+        | TupleIn
+        | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
+        | TupleMergeGreatest as tup_pref ->
+            (match func with
+            | None ->
+                Printf.sprintf2 "%s has no input (%s.%a)"
+                  what (string_of_prefix tup_pref)
+                  RamenName.field_print field_name |>
+                failwith ;
+            | Some func ->
+                let no_such_field pfunc =
+                  Printf.sprintf2 "Parent %a of %s does not output a field \
+                                   named %a (only: %a)"
+                    RamenName.func_print pfunc.F.name
+                    what
+                    RamenName.field_print field_name
+                    T.print_typ
+                      (RamenOperation.out_type_of_operation pfunc.F.operation) |>
+                  failwith
+                and aggr_types pfunc t prev =
+                  let fn = pfunc.F.name in
+                  match prev with
+                  | None -> Some ([fn], t)
+                  | Some (prev_fns, prev_t) ->
+                      if t <> prev_t then
+                        Printf.sprintf2
+                          "All parents of %s must agree on the type of field \
+                           %a (%a has %a but %s has %a)"
+                          what
+                          RamenName.field_print field_name
+                          (pretty_list_print (fun oc f ->
+                            String.print oc (RamenName.func_color f))) prev_fns
+                          RamenTypes.print_typ prev_t
+                          (RamenName.func_color fn)
+                          RamenTypes.print_typ t |>
+                        failwith ;
+                      Some ((fn::prev_fns), prev_t) in
+                (* Return either the type or a set of id to set this field
+                 * type to: *)
+                let typ, same_as_ids =
+                  let parents = Hashtbl.find_default parents func.F.name [] in
+                  List.fold_left (fun (prev_typ, same_as_ids) pfunc ->
+                    (* Is this parent part of local functions? *)
+                    if pfunc.F.program_name = func.F.program_name then (
+                      (* Retrieve the id for the parent output fields: *)
+                      (* FIXME: WhaaaaaaaaAAAAAAAT?
+                       *        What's wrong with the above pfunc!? *)
+                      let pfunc =
+                        try List.find (fun f -> f.F.name = pfunc.F.name) funcs
+                        with Not_found ->
+                          !logger.error "Cannot find parent %S in any of this \
+                                         program functions (have %a)"
+                            (RamenName.string_of_func pfunc.F.name)
+                            (pretty_list_print (fun oc f ->
+                              String.print oc (RamenName.string_of_func f.F.name))) funcs ;
+                          raise Not_found in
+                      match id_or_type_of_field pfunc.F.operation field_name with
+                      | exception Not_found -> no_such_field pfunc
+                      | Id p_id ->
+                          prev_typ, p_id::same_as_ids
+                      | FieldType typ ->
+                          aggr_types pfunc typ prev_typ, same_as_ids
+                    ) else (
+                      (* External parent: look for the exact type: *)
+                      let p_out =
+                        RamenOperation.fields_of_operation pfunc.F.operation in
+                      match Enum.find (fun sf ->
+                              sf.E.alias = field_name
+                            ) p_out with
+                        | exception Not_found -> no_such_field pfunc
+                        | sf ->
+                            assert (RamenTypes.is_typed sf.E.expr.typ.structure) ;
+                            aggr_types pfunc sf.expr.typ prev_typ, same_as_ids)
+                  ) (None, []) parents in
+                Option.may (fun (_funcs, t) ->
+                  register_input in_fields (Some func) field_name
+                    t.structure t.nullable e
+                ) typ ;
+                List.iter (fun id ->
+                  register_inherit (Some func) field_name id e
+                ) same_as_ids)
+        | _tup_ref -> (* Ignore non-inputs *) ())
+    | _ -> ()
+  ) condition funcs ;
+  (* For param_fields, env_fields and each function in in_fields, declare
+   * the structure for the first id of the list and make the other equal
+   * to it. *)
+  (* GIven a hash, emit all the declarations and return the assoc list of
+   * func fq_name and the identifier for the record type (that we must also
+   * declare): *)
+  let rec_num = ref 0 in
+  let declare_input input_name h =
+    Hashtbl.fold (fun fq_name h assoc ->
+      let rec_id = "in_" ^ string_of_int !rec_num in
+      incr rec_num ;
+      Printf.fprintf decls
+        "; ====\n\
+         ; ==== Input record type for %s ====\n\
+         ; ====\n\
+         (declare-fun %s () Bool)\n\
+         (declare-fun %s () Type)\n"
+        (match fq_name with None -> input_name
+                          | Some fq -> RamenName.string_of_fq fq)
+        rec_id rec_id ;
+      let sz = Hashtbl.length h in
+      emit_is_record rec_id oc sz ;
+      (* For typing this is not required to order the fields in any given
+       * order: *)
+      Hashtbl.keys h |> Enum.iteri (fun i k ->
+        let str_nul, ids = Hashtbl.find h k in
+        (* If we know the type of this record field, declare it: *)
+        Option.may (fun (structure, nullable) ->
+          Printf.fprintf oc
+            "; We know the type of field %d (%a) is %a (%snullable)\n"
+            i RamenName.field_print k
+            RamenTypes.print_structure structure
+            (if nullable then "" else "not ") ;
+          let id = Printf.sprintf "(record%d-e%d %s)" sz i rec_id in
+          emit_assert_id_eq_typ tuple_sizes records id oc structure ;
+          let id = Printf.sprintf "(record%d-n%d %s)" sz i rec_id in
+          emit_assert_id_is_bool id oc nullable ;
+          emit_assert oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-f%d %s))"
+              (f_of_name field_names k) sz i rec_id)
+        ) str_nul ;
+        (* We also know that some actual expressions equal this field: *)
+        List.iter (fun id ->
+          Printf.fprintf oc
+            "; Expression %d equals field %d (%a)\n"
+            id i RamenName.field_print k ;
+          let name = Err.(Expr (id, InheritTypeFromRecord)) in
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-e%d %s))"
+              (t_of_num id) sz i rec_id) ;
+          let name = Err.(Expr (id, InheritNullFromRecord)) in
+          emit_assert ~name oc (fun oc ->
+            Printf.fprintf oc "(= %s (record%d-n%d %s))"
+              (n_of_num id) sz i rec_id)
+        ) ids ;
+      ) ;
+      (fq_name, rec_id) :: assoc
+    ) h []
   in
-  Option.may
-    (fun cond ->
-      RamenExpr.fold_down (set_fields "Running condition") [] cond |>
-      ignore)
-    condition ;
-  List.iter (fun func ->
-    let what =
-      Printf.sprintf2 "Function %s" (RamenName.func_color func.F.name) in
-    RamenOperation.fold_expr ~expr_folder:RamenExpr.fold_down []
-      (set_fields ~func what) func.operation |>
-    ignore
-  ) funcs
+  (* We have one structure describing the input of each parent. *)
+  let in_types = declare_input "input" in_fields
+  and param_type = declare_input "params" param_fields
+  and env_type = declare_input "env" env_fields
+  in
+  (* In theory we have only one entry (for fq_name = None) for both params
+   * and env, since we've never registered func: *)
+  let opt_first = function
+    | [] -> None
+    | [_fq, x] -> Some x
+    | _ -> assert false in
+  let in_types =
+    List.map (fun (fq_opt, x) ->
+      option_get "in_types belong to a function" fq_opt, x) in_types
+  and param_type = opt_first param_type
+  and env_type = opt_first env_type in
+  in_types, param_type, env_type
 
 let structure_of_sort_identifier = function
   | "bool" -> TBool
@@ -1501,11 +1689,11 @@ let rec structure_of_term name_of_idx =
       let structure = structure_of_term name_of_idx typ
       and nullable = bool_of_term null in
       let n = int_of_constant c in
-      TVec (n, { structure ; nullable })
+      TVec (n, T.make ~nullable structure)
   | QualIdentifier ((Identifier "list", None), [ typ ; null ]) ->
       let structure = structure_of_term name_of_idx typ
       and nullable = bool_of_term null in
-      TList { structure ; nullable }
+      TList (T.make ~nullable structure)
   | QualIdentifier ((Identifier id, None), sub_terms)
     when String.starts_with id "tuple" ->
       (try Scanf.sscanf id "tuple%d%!" (fun sz ->
@@ -1519,8 +1707,9 @@ let rec structure_of_term name_of_idx =
           let rec loop ts = function
           | [] -> List.rev ts |> Array.of_list
           | e::n::rest ->
-              let t = { structure = structure_of_term name_of_idx e ;
-                        nullable = bool_of_term n } in
+              let nullable = bool_of_term n
+              and structure = structure_of_term name_of_idx e in
+              let t = T.make ~nullable structure in
               loop (t :: ts) rest
           | _ -> assert false in
           loop [] sub_terms in
@@ -1544,8 +1733,9 @@ let rec structure_of_term name_of_idx =
           let rec loop ts = function
           | [] -> List.rev ts |> Array.of_list
           | e::n::f::rest ->
-              let t = { structure = structure_of_term name_of_idx e ;
-                        nullable = bool_of_term n } in
+              let nullable = bool_of_term n
+              and structure = structure_of_term name_of_idx e in
+              let t = T.make ~nullable structure in
               let idx = int_of_term f in
               if idx < 0 || idx >= Array.length name_of_idx then
                 Printf.sprintf2 "Invalid field number %d (fields are: %a)"
@@ -1575,24 +1765,44 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
    * So we keep a set of already declared ids: *)
   let ids = ref Set.Int.empty in
   let expr_types = IO.output_string () in
-  let parent_types = IO.output_string () in
+  let io_types = IO.output_string () in
   let declare e =
-    let id = (typ_of e).uniq_num in
+    let id = e.E.uniq_num in
     if not (Set.Int.mem id !ids) then (
       ids := Set.Int.add id !ids ;
-      let eid = t_of_expr e in
       Printf.fprintf decls
         "; %a\n\
          (declare-fun %s () Bool)\n\
          (declare-fun %s () Type)\n"
         (RamenExpr.print true) e
         (n_of_expr e)
-        eid)
+        (t_of_expr e))
   in
-  (* Set the types for all fields from parents: *)
-  emit_input_fields parent_types tuple_sizes records parents params condition funcs ;
-  Option.may (emit_running_condition declare tuple_sizes records field_names expr_types) condition ;
-  emit_program declare tuple_sizes records field_names expr_types funcs ;
+  (* Declare a record for all output types of all local (Aggr) functions,
+   * that we can use to equate any Variable bound to TupleOut. The
+   * fields will be equal to the selected_field.expr, which are also
+   * used by the child, so this is all equivalent and the output record
+   * is a kind of "alias" for the actual fields. The only advantage
+   * is that we can now easily type `Get(x, "out")`. *)
+  let out_types =
+    emit_out_types decls io_types field_names funcs in
+  (* Declare relationships with all input types: *)
+  let in_types, param_type, env_type =
+    emit_in_types decls io_types tuple_sizes records field_names parents
+                  params condition funcs in
+  (* Now we have for each variable "in", "param", etc, a record to equate
+   * them to (and could easily be made a bit more generic than a record,
+   * changing only emit_in_types/emit_out_types. This was hard, but it's
+   * worth it given now typing Gets and Variables is much easier:
+   * Get("str", x) -> we just say that x is some record with some field str
+   * and for Variable("foo") we just look what "foo" is bound to and equal
+   * it. *)
+  Option.may
+    (emit_running_condition declare tuple_sizes records field_names
+                            param_type env_type expr_types)
+    condition ;
+  emit_program declare tuple_sizes records field_names
+               in_types out_types param_type env_type expr_types funcs ;
   if optimize then emit_minimize expr_types condition funcs ;
   let record_sizes =
     Hashtbl.fold (fun _ (_, sz, _) szs ->
@@ -1638,7 +1848,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
       Printf.fprintf oc ")")) record_sizes
     (IO.close_out decls)
     (IO.close_out expr_types)
-    (IO.close_out parent_types)
+    (IO.close_out io_types)
     post_scriptum
 
 let used_tuples_records funcs parents =
@@ -1655,41 +1865,55 @@ let used_tuples_records funcs parents =
   in
   let tuple_sizes =
     List.fold_left (fun sz func ->
-      RamenOperation.fold_expr sz (fun sz -> function
+      RamenOperation.fold_expr sz (fun sz e ->
+        match e.E.text with
         (* The only ways to get a tuple in an op are with a Tuple or a Record
          * expression: *)
-        | Tuple (_, ts) -> Set.Int.add (List.length ts) sz
-        | Record (_, kvs) ->
+        | Tuple ts -> Set.Int.add (List.length ts) sz
+        | Record (_, sfs) ->
             (* We must type all defined fields, including those that are
              * private or that are shadowed: *)
-            let d = List.length kvs in
+            let d = List.length sfs in
             (* For each possible field name we have to record that its a
              * legit field name for a record of that length at that
              * position: *)
-            List.iteri (fun i (k, _) -> register_field k d i) kvs ;
+            List.iteri (fun i sf -> register_field sf.E.alias d i) sfs ;
             sz ;
         | _ -> sz
       ) func.F.operation
     ) Set.Int.empty funcs in
-  (* We might also got tuples from our parents. We collect all their output
-   * fields even if it's not used anywhere for simplicity. *)
+  (* We might also get tuples and records from our parents. Collect all
+   * their output fields even if it's not used anywhere for simplicity. *)
   let tuple_sizes =
     Hashtbl.fold (fun _ fs s ->
       List.fold_left (fun s f ->
-        List.fold_left (fun s ft ->
-          let open RamenTypes in
-          match ft.RamenTuple.typ.structure with
+        RamenOperation.fields_of_operation f.F.operation |>
+        Enum.fold (fun s sf ->
+          match sf.E.expr.typ.structure with
           | TTuple ts -> Set.Int.add (Array.length ts) s
-          | TRecord ts->
+          | TRecord ts ->
               let d = Array.length ts in
               Array.iteri (fun i (k, _typ) ->
                 register_field (RamenName.field_of_string k) d i
               ) ts ;
               s
           | _ -> s
-        ) s (RamenOperation.out_type_of_operation f.F.operation)
+        ) s
       ) s fs
     ) parents tuple_sizes in
+  (* Finally, every output of all (Aggr) functions might also be a record: *)
+  List.iter (fun func ->
+    match func.F.operation with
+    | Aggregate { output ; _ } ->
+        let fields = E.fields_of_expression output |>
+                     Array.of_enum in
+        (* Keep user defined order and private fields: *)
+        let sz = Array.length fields in
+        Array.iteri (fun i sf ->
+          register_field sf.E.alias sz i ;
+        ) fields
+    | _ -> ()
+  ) funcs ;
   tuple_sizes, records, field_names
 
 let get_types parents condition funcs params fname =
@@ -1716,17 +1940,17 @@ let get_types parents condition funcs params fname =
             let structure = structure_of_term name_of_idx term in
             Hashtbl.modify_opt id (function
               | None ->
-                  Some { structure ; nullable = false (* by default *) }
-              | Some prev ->
-                  Some { prev with structure }
+                  Some (structure, false (* by default *))
+              | Some (_, nullable) ->
+                  Some (structure, nullable)
             ) h
         | [], NonParametricSort (Identifier "Bool"), "n" ->
             let nullable = bool_of_term term in
             Hashtbl.modify_opt id (function
               | None ->
-                  Some { structure = TAny (* by default *) ; nullable }
-              | Some prev ->
-                  Some { prev with nullable }
+                  Some (TAny (* by default *), nullable)
+              | Some (structure, _) ->
+                  Some (structure, nullable)
             ) h
         | [], NonParametricSort (Identifier sort), _ ->
             !logger.error "Result not about sort Type but %S?!" sort
@@ -1752,28 +1976,22 @@ let get_types parents condition funcs params fname =
  * expression. *)
 let set_io_tuples parents funcs h =
   let set_output func =
-    RamenOperation.out_type_of_operation func.F.operation |>
-    List.iter (fun ft ->
-      if not (RamenTypes.is_typed ft.RamenTuple.typ.structure) then (
-        match func.F.operation with
-        | RamenOperation.Aggregate { fields ; _ } ->
-            let id =
-              List.find_map (fun sf ->
-                if sf.RamenOperation.alias = ft.name then
-                  Some (typ_of sf.expr).uniq_num
-                else None) fields in
-            (match Hashtbl.find h id with
-            | exception Not_found ->
-                Printf.sprintf2 "Cannot find type for id %d, field %a"
-                  id RamenName.field_print ft.name |>
-                failwith
-            | typ ->
-                !logger.debug "Set output field %a.%a to %a"
-                  RamenName.func_print func.F.name
-                  RamenName.field_print ft.name
-                  RamenTypes.print_typ typ ;
-                ft.typ <- typ)
-        | _ -> assert false))
+    RamenOperation.fields_of_operation func.F.operation |>
+    Enum.iter (fun sf ->
+      if not (RamenTypes.is_typed sf.E.expr.typ.structure) then (
+        match Hashtbl.find h sf.E.expr.uniq_num with
+        | exception Not_found ->
+            Printf.sprintf2 "Cannot find type for id %d, field %a"
+              sf.E.expr.uniq_num RamenName.field_print sf.E.alias |>
+            failwith
+        | structure, nullable ->
+            !logger.debug "Set output field %a.%a to %a, %snullable"
+              RamenName.func_print func.F.name
+              RamenName.field_print sf.alias
+              RamenTypes.print_structure structure
+              (if nullable then "" else "not ") ;
+            sf.expr.typ.structure <- structure ;
+            sf.expr.typ.nullable <- nullable))
   and set_input func =
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun f ->
@@ -1791,7 +2009,7 @@ let set_io_tuples parents funcs h =
         let parent = List.hd parents in
         let pser =
           RamenOperation.out_type_of_operation parent.F.operation |>
-          RingBufLib.ser_tuple_typ_of_tuple_typ in
+          RingBufLib.ser_of_type in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
@@ -1811,14 +2029,17 @@ let set_io_tuples parents funcs h =
   Hashtbl.iter (fun _ -> set_output) funcs ;
   Hashtbl.iter (fun _ -> set_input) funcs
 
+(* FIXME: get_types and apply_types should be a single function doing both *)
 let apply_types parents condition funcs h =
   let apply e =
-    let t = typ_of e in
-    match Hashtbl.find h t.uniq_num with
+    match Hashtbl.find h e.E.uniq_num with
     | exception Not_found ->
         !logger.warning "No type for expression %a"
           (RamenExpr.print true) e
-    | typ -> t.typ <- Some typ in
+    | structure, nullable ->
+        e.E.typ.structure <- structure ;
+        e.E.typ.nullable <- nullable
+  in
   Option.may (RamenExpr.iter apply) condition ;
   Hashtbl.iter (fun _ func ->
     RamenOperation.iter_expr apply func.F.operation

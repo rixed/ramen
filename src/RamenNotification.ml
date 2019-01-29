@@ -5,29 +5,47 @@ open Stdint
 open RamenLog
 open RamenTuple
 open RamenNullable
+module T = RamenTypes
+module U = RamenUnits
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * the (un)serialization functions. *)
-let tuple_typ =
-  let open RamenTypes in
-  [ { name = RamenName.field_of_string "worker" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Time the notification was sent." ; aggr = None } ;
-    { name = RamenName.field_of_string "event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Time the event occurred." ; aggr = None } ;
-    { name = RamenName.field_of_string "name" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "firing" ; typ = { structure = TBool ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "certainty" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.dimensionless ;
-      doc = "How certain are we that there is a real problem." ; aggr = None } ;
-    { name = RamenName.field_of_string "parameters" ;
-      typ = { structure = TList { structure = TTuple [|
-                                    { structure = TString ;
-                                      nullable = false } ;
-                                    { structure = TString ;
-                                      nullable = false } |] ;
-                                  nullable = false } ;
-              nullable = false } ; units = None ;
-      doc = "List of arbitrary parameters associated with this notification." ; aggr = None } ]
+let typ =
+  T.(make (TRecord [|
+    "worker",
+      { structure = TString ; nullable = false ; units = None ; doc = "" ;
+        aggr = None } ;
+    "start",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ;
+        doc = "Time the notification was sent." ; aggr = None } ;
+    "event_time",
+      { structure = TFloat ; nullable = true ;
+        units = Some U.seconds_since_epoch ;
+        doc = "Time the event occurred." ; aggr = None } ;
+    "name",
+      { structure = TString ; nullable = false ; units = None ; doc = "" ;
+        aggr = None } ;
+    "firing",
+      { structure = TBool ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "certainty",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.dimensionless ;
+        doc = "How certain are we that there is a real problem." ;
+        aggr = None } ;
+    "parameters",
+      { structure = TList {
+          structure =
+            (let s = { structure = TString ; nullable = false ; doc = "" ;
+                       aggr = None ; units = None } in
+            TTuple [| s ; s |]) ;
+          nullable = false ; units = None ; doc = "" ; aggr = None } ;
+        nullable = false ; units = None ;
+        doc = "List of arbitrary parameters associated with this \
+               notification." ;
+        aggr = None } |]))
+
 
 (* Should the event time of a notification event the time it's been sent, or
  * the event time it refers to? It seems more logical to have it the time it's
@@ -47,12 +65,12 @@ open RingBuf
 open RingBufLib
 
 let nullmask_sz =
-  let sz = nullmask_bytes_of_tuple_type tuple_typ in
+  let sz = nullmask_bytes_of_type typ in
   assert (sz = notification_nullmask_sz) ; (* FIXME *)
   sz
 
 let fix_sz =
-  let sz = tot_fixsz tuple_typ in
+  let sz = fixsz_of_type typ in
   assert (sz = notification_fixsz) ; (* FIXME *)
   sz
 

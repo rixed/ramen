@@ -18,4 +18,4 @@ DEFINE vector_exercise AS
 
 DEFINE record_exercice AS
   FROM tuple_exercise
-  SELECT get("one", some_rec) ||"+"|| string(get("seventeen", some_rec)) AS achtzehn;
+  SELECT get("one", some_rec) ||"+"|| string(some_rec.seventeen) AS achtzehn;

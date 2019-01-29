@@ -4,6 +4,7 @@ open RamenHelpers
 open RamenTypes
 open Stdint
 open RingBuf
+module T = RamenTypes
 
 (* Note regarding nullmask and constructed types:
  * For list, we cannot know in advance the number of values so the nullmask
@@ -20,9 +21,13 @@ open RingBuf
 
 let nullmask_bytes_of_tuple_type ser =
   List.fold_left (fun s field_typ ->
-    if RamenName.is_private field_typ.RamenTuple.name then s
-    else s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
+    s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
   ) 0 ser |>
+  bytes_for_bits |>
+  round_up_to_rb_word
+
+let nullmask_bytes_of_type typ =
+  if typ.T.nullable then 1 else 0 |>
   bytes_for_bits |>
   round_up_to_rb_word
 
@@ -61,15 +66,12 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
-let ser_array_of_record ?(with_private=false) kvs =
-  let a =
-    Array.filter (fun (k, _) ->
-      with_private || k = "" || k.[0] <> '_'
-    ) kvs in
-  Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
+let ser_array_of_record kts =
+  let a = Array.copy kts in
+  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
   a
 
-let rec sersize_of_fixsz_typ = function
+let sersize_of_fixsz_typ = function
   | TFloat -> sersize_of_float
   | TBool -> sersize_of_bool
   | TU8 -> sersize_of_u8
@@ -90,6 +92,32 @@ let rec sersize_of_fixsz_typ = function
   (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
   | TString | TIp | TCidr | TTuple _ | TVec _ | TList _ | TRecord _
   | TNum | TAny | TEmpty -> assert false
+
+(* Every type has a fixed and variable size once serialized.
+ * This returns only the fixed part: *)
+let fixsz_of_type t =
+  match t.T.structure with
+  | T.TFloat -> sersize_of_float
+  | T.TBool -> sersize_of_bool
+  | T.TU8 -> sersize_of_u8
+  | T.TI8 -> sersize_of_i8
+  | T.TU16 -> sersize_of_u16
+  | T.TI16 -> sersize_of_i16
+  | T.TU32 -> sersize_of_u32
+  | T.TI32 -> sersize_of_i32
+  | T.TIpv4 -> sersize_of_ipv4
+  | T.TU64 -> sersize_of_u64
+  | T.TI64 -> sersize_of_i64
+  | T.TU128 -> sersize_of_u128
+  | T.TI128 -> sersize_of_i128
+  | T.TIpv6 -> sersize_of_ipv6
+  | T.TEth -> sersize_of_eth
+  | T.TCidrv4 -> sersize_of_cidrv4
+  | T.TCidrv6 -> sersize_of_cidrv6
+  (* FIXME: TVec (d, t) should be a fixsz typ if t is one. *)
+  | T.TString | T.TIp | T.TCidr
+  | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _
+  | T.TNum | T.TAny | T.TEmpty -> 0
 
 let rec sersize_of_value = function
   | VString s -> sersize_of_string s
@@ -127,8 +155,8 @@ and sersize_of_tuple vs =
   Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
 
 and sersize_of_record h =
-  (* We serialize records as we serialize output: in alphabetical order,
-   * without private fields: *)
+  (* Records are serialized in alphabetical order so that two functions
+   * with same fields output the same type: *)
   let vs = ser_array_of_record h |> Array.map snd in
   sersize_of_tuple vs
 
@@ -292,25 +320,35 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
 (* To allow a func to select only some fields from its parent and write only
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
+let field_name_cmp = String.compare
+
 let ser_tuple_field_cmp t1 t2 =
-  RamenName.compare t1.RamenTuple.name t2.RamenTuple.name
+  field_name_cmp (RamenName.string_of_field t1.RamenTuple.name)
+                 (RamenName.string_of_field t2.RamenTuple.name)
 
 let ser_tuple_typ_of_tuple_typ tuple_typ =
-  tuple_typ |>
-  List.filter (fun t -> not (RamenName.is_private t.RamenTuple.name)) |>
-  List.fast_sort ser_tuple_field_cmp
+  List.fast_sort ser_tuple_field_cmp tuple_typ
+
+(* Records are serialized with fields in alphabetical order so we can select
+ * some subfields with same names from different records: *)
+let ser_of_type t =
+  match t.structure with
+  | TRecord a ->
+      let a = Array.copy a in
+      let cmp (k1,_) (k2,_) = String.compare k1 k2 in
+      Array.fast_sort cmp a ;
+      { t with structure = TRecord a }
+  | _ -> t
 
 (* Given a tuple type and its serialized type, return a function that reorder
  * a tuple (as an array) into the same column order as in the tuple type: *)
 let reorder_tuple_to_user typ ser =
   (* Start by building the array of indices in the ser tuple of fields of
-   * the user (minus private) tuple. *)
+   * the user tuple. *)
   let indices =
-    List.filter_map (fun f ->
-      if RamenName.is_private f.RamenTuple.name then None
-      else Some (
-        List.findi (fun _ f' ->
-          f'.RamenTuple.name = f.name) ser |> fst)
+    List.map (fun f ->
+      List.findi (fun _ f' ->
+        f'.RamenTuple.name = f.RamenTuple.name) ser |> fst
     ) typ |>
     Array.of_list in
   (* Now reorder a list of scalar values in ser order into user order: *)

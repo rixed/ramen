@@ -3,21 +3,35 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
-module Expr = RamenExpr
+module E = RamenExpr
+module T = RamenTypes
+module O = RamenOperation
 open RamenLang
-open RamenTypes
+
+(* Tells if an expression is a direct Get from TupleIn: *)
+let is_forwarding_input ?specific_field ?(from=E.TupleIn) env e =
+  match e.E.text with
+  | E.(Stateless (SL2 (Get, { text = Const (VString fn) ; _ },
+                            { text = Variable var_name ; _ })))
+      when specific_field = None ||
+           specific_field = Some (RamenName.field_of_string fn) ->
+      (match E.Env.lookup "is_forwarding_input" env var_name with
+      | exception Not_found -> None
+      | tup_pref when tup_pref = from -> Some (RamenName.field_of_string fn)
+      | _ -> None)
+  | _ -> None
 
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation field =
   match operation with
-  | RamenOperation.Aggregate { fields ; _ } ->
+  | O.Aggregate { output = { text = Record (_, sfs) ; _ } ; _ } ->
       List.find_map (fun sf ->
-        match sf.RamenOperation.expr with
-        | Expr.Field (_, { contents = TupleIn }, fn) when fn = field ->
-            Some sf.alias
-        | _ ->
-            None
-      ) fields
+        if is_forwarding_input ~specific_field:field [] sf.E.expr <> None
+        then
+          Some sf.alias
+        else
+          None
+      ) sfs
   | _ -> raise Not_found
 
 let forwarded_field_or_param parent func field = function
@@ -33,7 +47,7 @@ let forwarded_field_or_param parent func field = function
 let infer_event_time func parent =
   let open RamenEventTime in
   try
-    RamenOperation.event_time_of_operation parent.F.operation |>
+    O.event_time_of_operation parent.F.operation |>
     Option.map (function ((f1, f1_src, f1_scale), duration) ->
       (forwarded_field_or_param parent func f1 !f1_src, f1_src, f1_scale),
       try
@@ -60,9 +74,9 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
-        RamenOperation.out_type_of_operation func.F.operation |>
-        List.find (fun ft ->
-          ft.RamenTuple.name = alias) in
+        O.field_types_of_operation func.F.operation |>
+        Enum.find (fun (k, _) -> k = RamenName.string_of_field alias) |>
+        snd in
       ft.doc <- doc)
   and set_aggr alias aggr =
     if aggr <> None then (
@@ -70,53 +84,50 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
-        RamenOperation.out_type_of_operation func.F.operation |>
-        List.find (fun ft ->
-          ft.RamenTuple.name = alias) in
+        O.field_types_of_operation func.F.operation |>
+        Enum.find (fun (k, _) -> k = RamenName.string_of_field alias) |>
+        snd in
       ft.aggr <- aggr)
   in
-  match func.F.operation with
-    | RamenOperation.Aggregate { fields ; _ } ->
-        List.iter (function
-        | RamenOperation.{
-            alias ; doc ; aggr ;
-            expr = Expr.Field (_, { contents = TupleIn }, fn) }
-            when doc = "" || aggr = None ->
-            (* Look for this field fn in parent: *)
-            let out_type = (List.hd parents).F.operation |>
-                           RamenOperation.out_type_of_operation in
-            (match List.find (fun ft -> ft.RamenTuple.name = fn) out_type with
-            | exception Not_found -> ()
-            | psf ->
-                if doc = "" then set_doc alias psf.doc ;
-                if aggr = None then set_aggr alias psf.aggr) ;
-        | RamenOperation.{
-            alias ; doc ; aggr ;
-            expr = Expr.Field (_, { contents = TupleParam }, fn) }
-            when doc = "" || aggr = None ->
+  let env =
+    E.Env.[ env_in ; env_group ; env_previous ; env_env ; env_param ] in
+  O.fields_of_operation func.F.operation //
+  (fun sf -> sf.doc = "" || sf.aggr = None) |>
+  Enum.fold (fun env sf ->
+    (match is_forwarding_input env sf.E.expr with
+    | None ->
+        (* Second chance: get doc from the params? *)
+        (match is_forwarding_input ~from:E.TupleParam env sf.expr with
+        | None -> ()
+        | Some fn ->
             (match List.find (fun param ->
                      param.RamenTuple.ptyp.name = fn
                    ) params with
             | exception Not_found -> ()
             | param ->
                 let p = param.RamenTuple.ptyp in
-                if doc = "" then set_doc alias p.doc ;
-                if aggr = None then set_aggr alias p.aggr)
-        | _ -> ()
-      ) fields
-  | _ -> ()
+                if sf.doc = "" then set_doc sf.alias p.doc ;
+                if sf.aggr = None then set_aggr sf.alias p.aggr))
+    | Some fn ->
+        (* Look for this field fn in parent: *)
+        (match (List.hd parents).F.operation |>
+               O.field_types_of_operation |>
+               Enum.find (fun (k, _) -> k = RamenName.string_of_field fn) |>
+               snd with
+        | exception Not_found -> ()
+        | ptyp ->
+            if sf.doc = "" then set_doc sf.alias ptyp.doc ;
+            if sf.aggr = None then set_aggr sf.alias ptyp.aggr)) ;
+    if E.is_generator sf.expr then env else
+      (sf.alias, E.TupleOut) :: env
+  ) env |> ignore
 
 let check_typed ~what e =
-  let open RamenExpr in
-  let typ = typ_of e in
-  match typ.typ with
-  | None | Some { structure = (TNum | TAny) ; _ } ->
-      Printf.sprintf2 "%s: Cannot complete typing of %s, \
-                       still of type %a"
-        what
-        (IO.to_string (print true) e)
-        RamenExpr.print_typ typ |>
-    failwith
+  match e.E.typ with
+  | { structure = (TNum | TAny) ; _ } ->
+      Printf.sprintf2 "%s: Cannot complete typing of %a"
+        what (E.print true) e |>
+      failwith
   | _ -> ()
 
 let finalize_func parents params func =
@@ -127,7 +138,7 @@ let finalize_func parents params func =
   let what =
     Printf.sprintf "In function %s "
       RamenName.(func_color func.F.name) in
-  RamenOperation.iter_expr (check_typed ~what) func.F.operation ;
+  O.iter_expr (check_typed ~what) func.F.operation ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
    * we can infer them from the parents (we consider only the first parent
@@ -135,23 +146,23 @@ let finalize_func parents params func =
    * from one): *)
   let parents = Hashtbl.find_default parents func.F.name [] in
   if parents <> [] &&
-     RamenOperation.event_time_of_operation func.operation = None
+     O.event_time_of_operation func.operation = None
   then (
     let inferred = infer_event_time func (List.hd parents) in
     func.operation <-
-      RamenOperation.operation_with_event_time func.operation inferred ;
+      O.operation_with_event_time func.operation inferred ;
     if inferred <> None then
       !logger.debug "Function %s can reuse event time from parents"
         (RamenName.string_of_func func.name)
   ) ;
   if parents <> [] &&
-     RamenOperation.factors_of_operation func.operation = []
+     O.factors_of_operation func.operation = []
   then (
     let inferred =
-      RamenOperation.factors_of_operation (List.hd parents).operation |>
+      O.factors_of_operation (List.hd parents).operation |>
       infer_factors func in
     func.operation <-
-      RamenOperation.operation_with_factors func.operation inferred ;
+      O.operation_with_factors func.operation inferred ;
     if inferred <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
         RamenName.func_print func.name
@@ -164,8 +175,8 @@ let finalize_func parents params func =
    * defined only if it is indeed defined. Do not perform this check in
    * [RamenOperation.check] to give us chance to infer the event time
    * definition: *)
-  if RamenOperation.use_event_time func.operation &&
-     RamenOperation.event_time_of_operation func.operation = None
+  if O.use_event_time func.operation &&
+     O.event_time_of_operation func.operation = None
   then
      failwith "Cannot use #start/#stop without event time" ;
   (* Seal everything: *)

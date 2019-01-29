@@ -1629,6 +1629,15 @@ let comb n m =
  *)
 
 (* TODO: should go in batteries *)
+let enum_rfind f e =
+  let last =
+    Enum.fold (fun last x ->
+      if f x then Some x else last
+    ) None e in
+  match last with
+  | None -> raise Not_found
+  | Some x -> x
+
 let option_map2 f o1 o2 =
   match o1, o2 with
   | None, _ | _, None -> None

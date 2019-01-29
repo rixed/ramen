@@ -20,21 +20,24 @@ type field_typ =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = RamenName.field_of_string "Seq" ;
-    typ = RamenTypes.{ structure = TU64 ; nullable = false } ;
+    typ = RamenTypes.{ structure = TU64 ; nullable = false ;
+                       units = None ; doc = "" ; aggr = None } ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = RamenName.field_of_string "Event start" ;
-    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    typ = RamenTypes.{ structure = TFloat ; nullable = true ;
+                       units = None ; doc = "" ; aggr = None } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = RamenName.field_of_string "Event stop" ;
-    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    typ = RamenTypes.{ structure = TFloat ; nullable = true ;
+                       units = None ; doc = "" ; aggr = None } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -129,24 +132,14 @@ module Parser =
 struct
   open RamenParsing
 
-  let default_aggr m =
-    let m = "default aggregate" :: m in
-    (
-      strinGs "aggregate" -- blanks -- strinG "using" -- blanks -+
-      identifier >>: fun aggr ->
-        match String.lowercase aggr with
-        (* Same list as in RamenTimeseries: *)
-        | "avg" | "sum" | "min" | "max" as x -> x
-        | x -> raise (Reject ("Unknown aggregation function "^ x))
-    ) m
-
   let field m =
     let m = "field declaration" :: m in
     (
       non_keyword +- blanks ++ RamenTypes.Parser.typ ++
       optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) ++
       optional ~def:"" (opt_blanks -+ quoted_string) ++
-      optional ~def:None (opt_blanks -+ some default_aggr) >>:
+      optional ~def:None (
+        opt_blanks -+ some RamenTypes.Parser.default_aggr) >>:
       fun ((((name, typ), units), doc), aggr) ->
         let name = RamenName.field_of_string name in
         { name ; typ ; units ; doc ; aggr }

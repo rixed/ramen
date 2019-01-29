@@ -2,7 +2,10 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
-module Expr = RamenExpr
+module E = RamenExpr
+module T = RamenTypes
+module O = RamenOperation
+module Versions = RamenVersions
 
 type conf =
   { log_level : log_level ;
@@ -34,7 +37,7 @@ struct
        * ancestor stored history: *)
       persistent : bool ;
       doc : string ;
-      mutable operation : RamenOperation.t ;
+      mutable operation : O.t ;
       in_type : RamenFieldMaskLib.in_type ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
@@ -52,7 +55,7 @@ struct
       { name : RamenName.func ;
         persistent : bool ;
         doc : string ;
-        operation : RamenOperation.t ;
+        operation : O.t ;
         signature : string }
       [@@ppp PPP_OCaml]
   end
@@ -66,7 +69,7 @@ struct
       signature = t.signature }
 
   let unserialized program_name (t : Serialized.t) =
-    let open RamenOperation in
+    let open O in
     { program_name ;
       name = t.name ;
       persistent = t.persistent ;
@@ -112,12 +115,12 @@ struct
      * condition does not imply we should disregard past data or consider the
      * function changed in any way. It's `ramen run` job to evaluate the
      * running condition independently. *)
-    let op_str = IO.to_string RamenOperation.print func.operation
-    and out_type = RamenOperation.out_type_of_operation func.operation in
+    let op_str = IO.to_string O.print func.operation
+    and out_type = O.out_type_of_operation func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^
     (* type_signature does not look at private fields: *)
-    ";OUT="^ RamenTuple.type_signature out_type ^
+    ";OUT="^ T.string_of_typ out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
     ";PRM="^ RamenTuple.params_type_signature params |>
     md5
@@ -126,8 +129,8 @@ struct
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
       (RamenName.string_of_func func.name)
       RamenFieldMaskLib.print_in_type func.in_type
-      RamenTuple.print_typ
-        (RamenOperation.out_type_of_operation func.operation)
+      T.print_typ
+        (O.out_type_of_operation func.operation)
 end
 
 module Program =
@@ -173,7 +176,7 @@ struct
         Printf.sprintf2 "%s%s=%a"
           param_envvar_prefix
           (RamenName.string_of_field n)
-          RamenTypes.print v) in
+          T.print v) in
     (* Then the experiment variants: *)
     let exps =
       RamenExperiments.all_experiments conf.persist_dir |>
@@ -199,10 +202,10 @@ struct
                       fname (Printexc.to_string e) in
           !logger.error "%s" err ;
           failwith err
-      | v when v <> RamenVersions.codegen ->
+      | v when v <> Versions.codegen ->
         let err = Printf.sprintf "Executable %s is for version %s \
                                   (I'm version %s)"
-                    fname v RamenVersions.codegen in
+                    fname v Versions.codegen in
         !logger.error "%s" err ;
         failwith err
       | _ ->
@@ -234,7 +237,7 @@ struct
 end
 
 let running_config_file conf =
-  conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
+  conf.persist_dir ^"/configuration/"^ Versions.graph_config ^"/rc"
 
 type worker_status = MustRun | Killed [@@ppp PPP_OCaml]
 
@@ -345,7 +348,7 @@ let make_conf
 
 (* Various directory names: *)
 
-let type_signature_hash = md5 % RamenTuple.type_signature
+let type_signature_hash = md5 % T.string_of_typ
 
 (* Each workers regularly snapshot its internal state in this file.
  * This data contains tuples and statefull function internal states, so
@@ -355,7 +358,7 @@ let type_signature_hash = md5 % RamenTuple.type_signature
  * version itself as we use stdlib's Marshaller for this: *)
 let worker_state conf func params =
   conf.persist_dir ^"/workers/states/"
-                   ^ RamenVersions.(worker_state ^"_"^ codegen)
+                   ^ Versions.(worker_state ^"_"^ codegen)
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    ^"/"^ func.signature
@@ -377,7 +380,7 @@ let worker_state conf func params =
 let in_ringbuf_name_base conf func =
   let sign = md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
   conf.persist_dir ^"/workers/ringbufs/"
-                   ^ RamenVersions.ringbuf
+                   ^ Versions.ringbuf
                    ^"/"^ Func.path func
                    ^"/"^ sign ^"/"
 
@@ -403,10 +406,10 @@ let in_ringbuf_names conf func =
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
 let archive_buf_name conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/ringbufs/"
-                   ^ RamenVersions.ringbuf
+                   ^ Versions.ringbuf
                    ^"/"^ Func.path func
                    ^"/"^ sign ^"/archive.b"
 
@@ -423,10 +426,10 @@ let archive_buf_name conf func =
  * the name of the directory containing a file per time slice (named
  * begin_end). *)
 let factors_of_function conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/factors/"
-                   ^ RamenVersions.factors
+                   ^ Versions.factors
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    (* arc extension for the GC. FIXME *)
@@ -438,10 +441,10 @@ let factors_of_function conf func =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/out_ref/"
-                   ^ RamenVersions.out_ref
+                   ^ Versions.out_ref
                    ^"/"^ Func.path func
                    ^"/"^ sign ^"/out_ref"
 
@@ -450,21 +453,21 @@ let out_ringbuf_names_ref conf func =
  * common to all running operations, low traffic, and archived. *)
 let report_ringbuf conf =
   conf.persist_dir ^"/instrumentation_ringbuf/"
-                   ^ RamenVersions.instrumentation_tuple ^"_"
-                   ^ RamenVersions.ringbuf
+                   ^ Versions.instrumentation_tuple ^"_"
+                   ^ Versions.ringbuf
                    ^"/ringbuf.r"
 
 let notify_ringbuf conf =
   conf.persist_dir ^"/notify_ringbuf/"
-                   ^ RamenVersions.notify_tuple ^"_"
-                   ^ RamenVersions.ringbuf
+                   ^ Versions.notify_tuple ^"_"
+                   ^ Versions.ringbuf
                    ^"/ringbuf.r"
 
 (* This is not a ringbuffer but a mere snapshot of the alerter state: *)
 let pending_notifications_file conf =
   conf.persist_dir ^"/pending_notifications_"
-                   ^ RamenVersions.pending_notify ^"_"
-                   ^ RamenVersions.notify_tuple
+                   ^ Versions.pending_notify ^"_"
+                   ^ Versions.notify_tuple
 
 (* For custom API, where to store alerting thresholds: *)
 let api_alerts_root conf =

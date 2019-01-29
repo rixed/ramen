@@ -12,10 +12,11 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenTypes
 open RamenTuple
 open RamenNullable
 open RamenConsts
+module T = RamenTypes
+module U = RamenUnits
 
 type graphite_metric =
   RamenIp.t nullable (* sender *) *
@@ -27,13 +28,34 @@ type graphite_metric =
 
 (* TODO: have pre-made common types such as
  * RamenTypes.string = { structure = TString ; nullable = false } ... *)
-let tuple_typ =
-  [ { name = RamenName.field_of_string "sender" ; typ = { structure = TIp ; nullable = true } ; units = None ; doc = "Where we received this metric from." ; aggr = None } ;
-    { name = RamenName.field_of_string "receipt_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "When this metric has been received." ; aggr = None } ;
-    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "Event time." ; aggr = None } ;
-    { name = RamenName.field_of_string "metric" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "The graphite metric path." ; aggr = None } ;
-    { name = RamenName.field_of_string "tags" ; typ = { structure = TList { structure = TTuple [| { structure = TString ; nullable = false } ; { structure = TString ; nullable = false } |] ; nullable = false } ; nullable = false } ; units = None ; doc = "Accompanying tags." ; aggr = None } ;
-    { name = RamenName.field_of_string "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "The metric value." ; aggr = None } ]
+let typ =
+  T.(make (TRecord [|
+    "sender",
+      { structure = TIp ; nullable = true ; units = None ;
+        doc = "Where we received this metric from." ; aggr = None } ;
+    "receipt_time",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ;
+        doc = "When this metric has been received." ; aggr = None } ;
+    "start",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ;
+        doc = "Event time." ; aggr = None } ;
+    "metric",
+      { structure = TString ; nullable = false ; units = None ;
+        doc = "The graphite metric path." ; aggr = None } ;
+    "tags",
+      { structure = TList {
+          structure =
+            (let s = T.{ structure = TString ; nullable = false ;
+                         units = None ; doc = "" ; aggr = None } in
+            TTuple [| s ; s |]) ;
+          nullable = false ; units = None ; doc = "" ; aggr = None } ;
+        nullable = false ; units = None ; doc = "Accompanying tags." ;
+        aggr = None } ;
+    "value",
+      { structure = TFloat ; nullable = false ; units = None ;
+        doc = "The metric value." ; aggr = None } |]))
 
 let event_time =
   let open RamenEventTime in

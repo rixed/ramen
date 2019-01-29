@@ -20,8 +20,12 @@ open RamenHelpers
  * all TAny types in an expression will be changed to a specific type that's
  * large enough to accommodate all the values at hand *)
 type t =
-  { structure : structure ;
-    nullable : bool } [@@ppp PPP_OCaml]
+  { mutable structure : structure ;
+    mutable nullable : bool ;
+    mutable units : RamenUnits.t option ;
+    mutable doc : string ;
+    mutable aggr : string option }
+  [@@ppp PPP_OCaml]
 
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)
@@ -35,6 +39,12 @@ and structure =
   | TList of t (* Variable length arrays, aka lists *)
   | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
+
+let can_have_units = function
+  | TFloat
+  | TU8 | TU16 | TU32 | TU64 | TU128
+  | TI8 | TI16 | TI32 | TI64 | TI128 -> true
+  | _ -> false
 
 let is_an_int = function
   | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
@@ -92,10 +102,40 @@ let rec print_structure oc = function
 
 and print_typ oc t =
   print_structure oc t.structure ;
-  if t.nullable then Char.print oc '?'
+  if t.nullable then Char.print oc '?' ;
+  if t.doc <> "" then Printf.fprintf oc " %S" t.doc ;
+  Option.may (fun units ->
+    Char.print oc ' ' ;
+    RamenUnits.print oc units
+  ) t.units ;
+  Option.may (fun aggr ->
+    Printf.fprintf oc "aggregate with %s" aggr
+  ) t.aggr
 
 let string_of_typ t = IO.to_string print_typ t
 let string_of_structure t = IO.to_string print_structure t
+
+(* Assume nullable unless told otherwisse; Typing will remove the useless
+ * nullable *)
+let make ?(nullable=true) ?units ?(doc="") ?aggr structure =
+  let units =
+    if can_have_units structure then
+      units
+    else (
+      if units <> None && units <> Some RamenUnits.dimensionless then
+        Printf.sprintf2 "Type %a can not have a unit"
+          print_structure structure |>
+        failwith ;
+      Some RamenUnits.dimensionless
+    )
+  in
+  { structure ; nullable ; units ; doc ; aggr }
+
+(* Often time we want to iter through the possible fields of a record: *)
+let fields_of_type t =
+  match t.structure with
+  | TRecord a -> Array.enum a
+  | _ -> Enum.empty ()
 
 (* stdint types are implemented as custom blocks, therefore are slower than
  * ints.  But we do not care as we merely represents code here, we do not run
@@ -165,10 +205,14 @@ let rec structure_of =
    * values, unless one of the value is actually null. *)
   | VTuple vs ->
       TTuple (Array.map (fun v ->
-        { structure = structure_of v ; nullable = v = VNull }) vs)
+        { structure = structure_of v ;
+          nullable = v = VNull ;
+          units = None ; doc = "" ; aggr = None }) vs)
   | VRecord vs ->
       TRecord (Array.map (fun (k, v) ->
-        k, { structure = structure_of v ; nullable = v = VNull }) vs)
+        k, { structure = structure_of v ;
+             nullable = v = VNull ;
+             units = None ; doc = "" ; aggr = None }) vs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
@@ -176,8 +220,9 @@ let rec structure_of =
    * 0-length array of t2<>t1). *)
   | VVec vs ->
       let sub_structure, sub_nullable = sub_types_of_array vs in
-      TVec (Array.length vs, { structure = sub_structure ;
-                               nullable = sub_nullable })
+      TVec (Array.length vs,
+            { structure = sub_structure ; nullable = sub_nullable ;
+              units = None ; doc = "" ; aggr = None })
   (* Note regarding empty lists:
    * If we receive from a parent a value from a
    * list of t1 that happens to be empty, we cannot use it in another context
@@ -185,7 +230,8 @@ let rec structure_of =
    * be assigned any type. *)
   | VList vs ->
       let sub_structure, sub_nullable = sub_types_of_array vs in
-      TList { structure = sub_structure ; nullable = sub_nullable }
+      TList { structure = sub_structure ; nullable = sub_nullable ;
+              units = None ; doc = "" ; aggr = None }
 
 (*
  * Printers
@@ -670,13 +716,11 @@ struct
     let m = "NULL" :: m in
     (strinG "null" >>: fun () -> VNull) m
 
-  (* TODO: consider functions as taking a single tuple *)
   let tup_sep =
-    opt_blanks -- char ';' -- opt_blanks
+    opt_blanks -- char ',' -- opt_blanks
 
-  (* For now we stay away from the special syntax for SELECT ("as"): *)
   let kv_sep =
-    blanks -- strinG "az" -- blanks
+    blanks -- strinG "as" -- blanks
 
   (* But in general when parsing user provided values (such as in parameters
    * or test files), we want to allow any literal: *)
@@ -763,6 +807,23 @@ struct
                                   (test_p p "[0; 1; 2]")
   *)
 
+  let default_aggr m =
+    let m = "default aggregate" :: m in
+    (
+      strinGs "aggregate" -- blanks -- strinG "using" -- blanks -+ (
+        (* Same list as in RamenTimeseries: *)
+        that_string "avg" ||| that_string "sum" |||
+        that_string "min" ||| that_string "max" |||
+        that_string "count"
+      )
+    ) m
+
+  let opt_question_mark =
+    optional ~def:false (char '?' >>: fun _ -> true)
+
+  let opt_doc =
+    optional ~def:"" (blanks -+ quoted_string)
+
   let rec typ m =
     let m = "type" :: m in
     (scalar_typ ||| tuple_typ ||| vector_typ ||| list_typ) m
@@ -770,10 +831,14 @@ struct
   and scalar_typ m =
     let m = "scalar type" :: m in
     let st n structure =
-      (strinG (n ^"?") >>: fun () ->
-        { structure ; nullable = true }) |||
-      (strinG n >>: fun () ->
-        { structure ; nullable = false })
+      strinG n -+ opt_question_mark ++ opt_doc ++ (
+        if can_have_units structure then (
+          optional ~def:None (blanks -+ some default_aggr) +-
+          opt_blanks ++ optional ~def:None (some RamenUnits.Parser.p)
+        ) else return (None, Some RamenUnits.dimensionless)
+      ) >>:
+      fun ((nullable, doc), (aggr, units)) ->
+        { structure ; nullable ; units ; aggr ; doc }
     in
     (
       (st "float" TFloat) |||
@@ -799,17 +864,15 @@ struct
       (st "cidr" TCidr)
     ) m
 
-  and opt_question_mark =
-    optional ~def:false (char '?' >>: fun _ -> true)
-
   and tuple_typ m =
     let m = "tuple type" :: m in
     (
       char '(' -- opt_blanks -+
-        several ~sep:tup_sep typ
-      +- opt_blanks +- char ')' ++
-      opt_question_mark >>: fun (ts, n) ->
-        { structure = TTuple (Array.of_list ts) ; nullable = n }
+      several ~sep:tup_sep typ +- opt_blanks +-
+      char ')' ++ opt_question_mark ++ opt_doc >>:
+      fun ((ts, nullable), doc) ->
+        { structure = TTuple (Array.of_list ts) ; nullable ; doc ;
+          units = None ; aggr = None }
     ) m
 
   and vector_typ m =
@@ -821,9 +884,11 @@ struct
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks ++
       pos_decimal_integer "vector dimensions" +-
       opt_blanks +- char ']' ++
-      opt_question_mark >>: fun ((t, d), n) ->
+      opt_question_mark ++ opt_doc >>:
+      fun (((t, d), nullable), doc) ->
         if d <= 0 then raise (Reject "Vector must have dimension > 0") ;
-        { structure = TVec (d, t) ; nullable = n }
+        { structure = TVec (d, t) ; nullable ; doc ; units = None ;
+          aggr = None }
     ) m
 
   and list_typ m =
@@ -833,8 +898,10 @@ struct
        * We need to start with the repetition count so that we can
        * then use [typ] without deadlooping. *)
       scalar_typ +- opt_blanks +- char '[' +- opt_blanks +- char ']' ++
-      opt_question_mark >>: fun (t, n) ->
-        { structure = TList t ; nullable = n }
+      opt_question_mark ++ opt_doc >>:
+      fun ((t, nullable), doc) ->
+        { structure = TList t ; nullable ; doc ; units = None ;
+          aggr = None }
     ) m
 
   (*$>*)

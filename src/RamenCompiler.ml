@@ -194,6 +194,7 @@ let compile conf get_parent ~exec_file source_file program_name =
               RamenName.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
+(*
     let patch_out_typ field units typ =
       match List.find (fun ft ->
               ft.RamenTuple.name = field
@@ -209,27 +210,25 @@ let compile conf get_parent ~exec_file source_file program_name =
             !logger.debug "Set type of field %a to %a"
               RamenName.field_print field
               (Option.print RamenUnits.print) units ;
-            ft.units <- units) in
+            ft.units <- units) in  *)
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
         RamenName.field_print name
         (RamenName.string_of_func func.F.name) ;
       let out_type =
-        RamenOperation.out_type_of_operation ~with_private:true
-                                             func.F.operation in
-      match List.find (fun ft ->
-              ft.RamenTuple.name = name
-            ) out_type with
-        | exception Not_found ->
-            !logger.error "In function %a: no such input field %a (have %a)"
-              RamenName.func_print func.F.name
-              RamenName.field_print name
-              RamenTuple.print_typ_names out_type ;
-            None
-        | ft ->
-            !logger.debug "found typed units: %a"
-              (Option.print RamenUnits.print) ft.units ;
-            ft.units in
+        RamenOperation.out_type_of_operation func.F.operation in
+      match T.fields_of_type out_type |>
+            enum_rfind (fun (n, _) -> n = RamenName.string_of_field name) with
+      | exception Not_found ->
+          !logger.error "In function %a: no such input field %a (have %a)"
+            RamenName.func_print func.F.name
+            RamenName.field_print name
+            T.print_typ out_type ;
+          None
+      | _, typ ->
+          !logger.debug "found typed units: %a"
+            (Option.print RamenUnits.print) typ.units ;
+          typ.units in
     (* Same as above, but look for the units in all funcs (and check they
      * use the same): *)
     let units_of_input func parents field =
@@ -246,8 +245,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         patch_in_typ field units func.F.in_type ;
       units in
     let set_expr_units uoi uoo what e =
-      let t = RamenExpr.typ_of e in
-      if t.RamenExpr.units = None then (
+      if e.E.typ.units = None then (
         let u =
           let ctx =
             Printf.sprintf "evaluating units of %s" what in
@@ -257,7 +255,7 @@ let compile conf get_parent ~exec_file source_file program_name =
           !logger.debug "Set units of %a to %a"
             (RamenExpr.print false) e
             RamenUnits.print (Option.get u) ;
-          t.units <- u ;
+          e.E.typ.units <- u ;
           true
         ) else false
       ) else false in
@@ -279,18 +277,16 @@ let compile conf get_parent ~exec_file source_file program_name =
       (* Now that we have found the units of some expressions, patch the
        * units in the out_type. This is made uglier than necessary because
        * out_types fields are reordered. *)
+       (* FIXME: WE SHOULD NOT NEED THIS
       if changed then (
         let out_type =
-          RamenOperation.out_type_of_operation ~with_private:true
-                                               func.F.operation in
-        match func.F.operation with
-        | RamenOperation.Aggregate { fields ; _ } ->
-            List.iter (fun sf ->
-              let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
-              if units <> None then
-                patch_out_typ sf.alias units out_type
-            ) fields
-        | _ -> ()) ;
+          RamenOperation.out_type_of_operation func.F.operation in
+        O.fields_of_operation func.F.operation |>
+        Enum.iter (fun sf ->
+          let units = sf.E.expr.typ.units in
+          if units <> None then
+            patch_out_typ sf.alias units out_type)) ;
+            *)
       changed
     in
     if not (reach_fixed_point (fun () ->

@@ -13,12 +13,13 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenTypes
 open RamenTuple
 open RamenNullable
+module T = RamenTypes
+module U = RamenUnits
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
- * wrap_collectd_decode in wrap_collectd.c and tuple_typ below! *)
+ * wrap_collectd_decode in wrap_collectd.c and typ below! *)
 type collectd_metric =
   string (* host *) * float (* start *) *
   string nullable (* plugin name *) * string nullable (* plugin instance *) *
@@ -27,18 +28,41 @@ type collectd_metric =
   (* And the values (up to 5: *)
   float * float nullable * float nullable * float nullable * float nullable
 
-let tuple_typ =
-  [ { name = RamenName.field_of_string "host" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "plugin" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "type_name" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "type_instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "value2" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "value3" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "value4" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "value5" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ]
+let typ =
+  T.(make (TRecord [|
+    "host",
+      { structure = TString ; nullable = false ; units = None ; doc = "" ;
+        aggr = None } ;
+    "start",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ; doc = "" ; aggr = None } ;
+    "plugin",
+      { structure = TString ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "instance",
+      { structure = TString ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "type_name",
+      { structure = TString ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "type_instance",
+      { structure = TString ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "value",
+      { structure = TFloat ; nullable = false ; units = None ; doc = "" ;
+        aggr = None } ;
+    "value2",
+      { structure = TFloat ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "value3",
+      { structure = TFloat ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } ;
+    "value4",
+      { structure = TFloat ; nullable = true ; units = None ; doc = "" ;
+         aggr = None } ;
+    "value5",
+      { structure = TFloat ; nullable = true ; units = None ; doc = "" ;
+        aggr = None } |]))
 
 let event_time =
   let open RamenEventTime in

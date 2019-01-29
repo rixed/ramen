@@ -1,3 +1,6 @@
+open Batteries
+module T = RamenTypes
+
 (* Network Protocols for collecting metrics *)
 type net_protocol = Collectd | NetflowV5 | Graphite
   [@@ppp PPP_OCaml]
@@ -7,10 +10,13 @@ let string_of_proto = function
   | NetflowV5 -> "NetflowV5"
   | Graphite -> "Graphite"
 
-let tuple_typ_of_proto = function
-  | Collectd -> RamenCollectd.tuple_typ
-  | NetflowV5 -> RamenNetflow.tuple_typ
-  | Graphite -> RamenGraphiteSink.tuple_typ
+let typ_of_proto = function
+  | Collectd -> RamenCollectd.typ
+  | NetflowV5 -> RamenNetflow.typ
+  | Graphite -> RamenGraphiteSink.typ
+
+let fields_of_proto =
+  T.fields_of_type % typ_of_proto
 
 let collector_of_proto = function
   | Collectd -> "RamenCollectd.collector"

@@ -14,45 +14,75 @@ open RamenTuple
 open RamenNullable
 open RamenHelpers
 open RamenConsts
+module T = RamenTypes
+module U = RamenUnits
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
-let tuple_typ =
-  [ { name = RamenName.field_of_string "worker" ; typ = { structure = TString ; nullable = false } ; units = Some RamenUnits.processes ; doc = "" ; aggr = None } ;
-    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "When those statistics have been collected (wall clock time)" ; aggr = None } ;
-    { name = RamenName.field_of_string "min_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Smallest event time emitted so far" ; aggr = None } ;
-    { name = RamenName.field_of_string "max_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "Largest event time emitted so far" ; aggr = None } ;
-    { name = RamenName.field_of_string "tuples_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = Metric.Docs.in_tuple_count ; aggr = None } ;
-    { name = RamenName.field_of_string "tuples_selected" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = Metric.Docs.selected_tuple_count ; aggr = None } ;
-    { name = RamenName.field_of_string "tuples_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.tuples ;
-      doc = Metric.Docs.out_tuple_count ; aggr = None } ;
-    { name = RamenName.field_of_string "groups" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.groups ;
-      doc = Metric.Docs.group_count ; aggr = None } ;
-    { name = RamenName.field_of_string "cpu" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds ;
-      doc = Metric.Docs.cpu_time ; aggr = None } ;
-    { name = RamenName.field_of_string "ram" ; typ = { structure = TU64 ; nullable = false } ; units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.ram_usage ; aggr = None } ;
-    { name = RamenName.field_of_string "max_ram" ; typ = { structure = TU64 ; nullable = false } ; units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.max_ram_usage ; aggr = None } ;
-    { name = RamenName.field_of_string "wait_in" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
-      doc = Metric.Docs.rb_wait_read ; aggr = None } ;
-    { name = RamenName.field_of_string "wait_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
-      doc = Metric.Docs.rb_wait_write ; aggr = None } ;
-    { name = RamenName.field_of_string "bytes_in" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.rb_read_bytes ; aggr = None } ;
-    { name = RamenName.field_of_string "bytes_out" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.rb_write_bytes ; aggr = None } ;
-    { name = RamenName.field_of_string "avg_out_bytes" ; typ = { structure = TU64 ; nullable = true } ; units = Some RamenUnits.bytes ;
-      doc = "Average size of a full output tuple." ; aggr = None } ;
-    { name = RamenName.field_of_string "last_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = Metric.Docs.last_out ; aggr = None } ;
-    { name = RamenName.field_of_string "startup_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
-      doc = "When this worker started to run for the last time." ; aggr = None } ]
+let typ =
+  T.(make (TRecord [|
+    "worker",
+      { structure = TString ; nullable = false ; units = Some U.processes ;
+        doc = "" ; aggr = None } ;
+    "start",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ;
+        doc = "When those statistics have been collected (wall clock \
+               time)" ;
+        aggr = None } ;
+    "min_event_time",
+      { structure = TFloat ; nullable = true ;
+        units = Some U.seconds_since_epoch ;
+        doc = "Smallest event time emitted so far" ; aggr = None } ;
+    "max_event_time",
+      { structure = TFloat ; nullable = true ;
+        units = Some U.seconds_since_epoch ;
+        doc = "Largest event time emitted so far" ; aggr = None } ;
+    "tuples_in",
+      { structure = TU64 ; nullable = true ; units = Some U.tuples ;
+        doc = Metric.Docs.in_tuple_count ; aggr = None } ;
+    "tuples_selected",
+      { structure = TU64 ; nullable = true ; units = Some U.tuples ;
+        doc = Metric.Docs.selected_tuple_count ; aggr = None } ;
+    "tuples_out",
+      { structure = TU64 ; nullable = true ; units = Some U.tuples ;
+        doc = Metric.Docs.out_tuple_count ; aggr = None } ;
+    "groups",
+      { structure = TU64 ; nullable = true ; units = Some U.groups ;
+        doc = Metric.Docs.group_count ; aggr = None } ;
+    "cpu",
+      { structure = TFloat ; nullable = false ; units = Some U.seconds ;
+        doc = Metric.Docs.cpu_time ; aggr = None } ;
+    "ram",
+      { structure = TU64 ; nullable = false ; units = Some U.bytes ;
+        doc = Metric.Docs.ram_usage ; aggr = None } ;
+    "max_ram",
+      { structure = TU64 ; nullable = false ; units = Some U.bytes ;
+        doc = Metric.Docs.max_ram_usage ; aggr = None } ;
+    "wait_in",
+      { structure = TFloat ; nullable = true ; units = Some U.seconds ;
+        doc = Metric.Docs.rb_wait_read ; aggr = None } ;
+    "wait_out",
+      { structure = TFloat ; nullable = true ; units = Some U.seconds ;
+        doc = Metric.Docs.rb_wait_write ; aggr = None } ;
+    "bytes_in",
+      { structure = TU64 ; nullable = true ; units = Some U.bytes ;
+        doc = Metric.Docs.rb_read_bytes ; aggr = None } ;
+    "bytes_out",
+      { structure = TU64 ; nullable = true ; units = Some U.bytes ;
+        doc = Metric.Docs.rb_write_bytes ; aggr = None } ;
+    "avg_out_bytes",
+      { structure = TU64 ; nullable = true ; units = Some U.bytes ;
+        doc = "Average size of a full output tuple." ; aggr = None } ;
+    "last_out",
+      { structure = TFloat ; nullable = true ;
+        units = Some U.seconds_since_epoch ;
+        doc = Metric.Docs.last_out ; aggr = None } ;
+    "startup_time",
+      { structure = TFloat ; nullable = false ;
+        units = Some U.seconds_since_epoch ;
+        doc = "When this worker started to run for the last time." ;
+        aggr = None } |]))
 
 let event_time =
   let open RamenEventTime in
@@ -64,9 +94,9 @@ let factors = [ RamenName.field_of_string "worker" ]
 open RingBuf
 open RingBufLib
 
-let nullmask_sz = nullmask_bytes_of_tuple_type tuple_typ
+let nullmask_sz = nullmask_bytes_of_type typ
 
-let fix_sz = tot_fixsz tuple_typ
+let fix_sz = fixsz_of_type typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)

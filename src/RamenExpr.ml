@@ -9,39 +9,13 @@ open Stdint
 open RamenLang
 open RamenHelpers
 open RamenLog
+module T = RamenTypes
 
 (*$inject
   open TestHelpers
   open RamenLang
   open Stdint
 *)
-
-(* Each expression come with a type attached. Starting at None, types are
- * set during compilation. *)
-type typ =
-  { mutable expr_name : string ;
-    (* To build var names, record field names or identify SAT variables: *)
-    uniq_num : int ;
-    mutable typ : RamenTypes.t option ;
-    mutable units : RamenUnits.t option }
-  [@@ppp PPP_OCaml]
-
-let print_typ oc typ =
-  Printf.fprintf oc "%s of %s"
-    typ.expr_name
-    (match typ.typ with
-    | None -> "unknown type"
-    | Some t -> "type "^ IO.to_string RamenTypes.print_typ t) ;
-  (match typ.units with
-  | None -> ()
-  | Some units ->
-      Printf.fprintf oc "%a" RamenUnits.print units)
-
-let uniq_num_seq = ref 0
-
-let make_typ ?typ ?units expr_name =
-  incr uniq_num_seq ;
-  { expr_name ; typ ; units ; uniq_num = !uniq_num_seq }
 
 (* Stateful function can have either a unique global state a one state per
  * aggregation group (local). Each function has its own default (functions
@@ -54,38 +28,58 @@ type state_lifespan = LocalState | GlobalState
 type skip_nulls = bool
   [@@ppp PPP_OCaml]
 
+(* Each expression come with a type and a uniq identifier attached (to build
+ * var names, record field names or identify SAT variables).
+ * Starting at Any, types are set during compilation. *)
+type t =
+  { text : text ;
+    uniq_num : int ;
+    mutable typ : T.t (* FIXME: doc should come back here *) }
+  [@@ppp PPP_OCaml]
+
 (* The type of an expression. Each is accompanied with a typ
  * (TODO: not for long!) *)
-type t =
+and text =
   (* TODO: Those should go into Stateless0: *)
   (* Immediate value: *)
-  | Const of typ * RamenTypes.value
+  | Const of T.value
   (* A tuple of expression (not to be confounded with an immediate tuple).
-   * (1; "two"; 3.0) is a RamenTypes.VTup (an immediate constant of type
-   * RamenTypes.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
+   * (1; "two"; 3.0) is a T.VTup (an immediate constant of type
+   * T.TTup...) whereas (3-2; "t"||"wo"; sqrt(9)) is an expression
    * (Tuple of...). *)
-  | Tuple of typ * t list
+  | Tuple of t list
   (* Literal records where fields are constant but values can be any other
    * expression. Note that the same field name can appear several time in the
    * definition but only the last occurrence will be present in the final
-   * value (handy for refining the value of some field): *)
-  | Record of typ * (RamenName.field * t) list
+   * value (handy for refining the value of some field).
+   * The bool indicates the presence of a STAR selector, which is always
+   * cleared after a program is parsed. *)
+  | Record of bool * selected_field list
   (* The same distinction applies to vectors.
    * Notice there are no list expressions though, for the same reason that
    * there is no such thing as a list immediate, but only vectors. Lists, ie
    * vectors which dimensions are variable, appear only at typing. *)
-  | Vector of typ * t list
-  (* A field from a tuple (or parameter, or environment, as special cases of
-   * "tuples": *)
-  | Field of typ * tuple_prefix ref * RamenName.field
-  (* Bindings are met only late in the game in the code generator. Refer to
-   * CodeGen_OCaml. *)
-  | Binding of typ * string
+  | Vector of t list
+  (* Variables can refer to a value in the environment. Most of the time it's
+   * going to be "in", "out", etc, which we treat as a fieldname of some
+   * opened record. Sometime it's just the field name of an opened immediate
+   * record (which is being constructed and not complete yet).
+   *
+   * This is unrelated to elision of the get in the syntax: when one write
+   * for instance "counter" instead of "in.counter" (or "get("counter", in)")
+   * then it is first parsed as a variable which name is counter, but early
+   * during compilation it is found that this variable is actually unbound
+   * and therefore the compiler will try to guess what this name is referring
+   * to, and will silently change this unbound variable into the proper  Get.
+   *)
+  | Variable of RamenName.field
+  (* Bindings are met only late in the game in the code generator. They are
+   * used at code generation time to pass around an ocaml identifier as an
+   * expression. *)
+  | Binding of string
   (* A conditional with all conditions and consequents, and finally an optional
    * "else" clause. *)
-  | Case of typ * case_alternative list * t option
-  (* A coalesce expression as a list of expression: *)
-  | Coalesce of typ * t list
+  | Case of case_alternative list * t option
   (* On functions, internal states, and aggregates:
    *
    * Functions come in three variety:
@@ -123,37 +117,30 @@ type t =
    * return the previous max within the group. Due to the fact that we
    * initialize an internal state only when the first value is met, we must
    * also get the inner function's value when initializing the outer one,
-   * which requires initializing in depth first order as well.
-   *
-   * Pure function can be used anywhere while stateful functions can only be
-   * used in clauses that have access to the group (ie. not the where_fast
-   * clause).
-   *
-   * In this list we call AggrX an aggregate function X to help distinguish
-   * with the non-aggregate variant. For instance AggrMax(data) is the max
-   * of data over the group, while Max(data1, data2) is the max of data1 and
-   * data2.
-   * We do not further denote pure or stateful functions. *)
-  | StatelessFun0 of typ * stateless_fun0
-  | StatelessFun1 of typ * stateless_fun1 * t
-  | StatelessFun2 of typ * stateless_fun2 * t * t
-  | StatelessFunMisc of typ * stateless_fun_misc
-  (* TODO: StatefulFun1, StatefulFun2, etc... *)
-  | StatefulFun of typ * state_lifespan * skip_nulls * stateful_fun
-  | GeneratorFun of typ * generator_fun
+   * which requires initializing in depth first order as well.  *)
+  | Stateless of stateless
+  | Stateful of (state_lifespan * skip_nulls * stateful)
+  | Generator of generator
   [@@ppp PPP_OCaml]
 
-and stateless_fun0 =
+and stateless =
+  | SL0 of stateless0
+  | SL1 of stateless1 * t
+  | SL1s of stateless1s * t list
+  | SL2 of stateless2 * t * t
+  [@@ppp PPP_OCaml]
+
+and stateless0 =
   | Now
   | Random
   | EventStart
   | EventStop
   [@@ppp PPP_OCaml]
 
-and stateless_fun1 =
+and stateless1 =
   (* TODO: Other functions: date_part... *)
   | Age
-  | Cast of RamenTypes.t
+  | Cast of T.t
   (* String functions *)
   | Length (* Also for lists *)
   | Lower
@@ -178,9 +165,26 @@ and stateless_fun1 =
   | Strptime
   (* Return the name of the variant we are in, or NULL: *)
   | Variant
+  (* a LIKE operator using globs, infix *)
+  | Like of string (* pattern (using %, _ and \) *)
   [@@ppp PPP_OCaml]
 
-and stateless_fun2 =
+and stateless1s =
+  (* Min/Max of the given values. Not like AggrMin/AggrMax, which are
+   * aggregate functions! The parser distinguish the cases due to the
+   * number of arguments: just 1 and that's the aggregate function, more
+   * and that's the min/max of the given arguments. *)
+  (* FIXME: those two are useless now that any aggregate function can be
+   * used on lists: *)
+  | Max
+  | Min
+  (* For debug: prints all its arguments, and output its first. *)
+  | Print
+  (* A coalesce expression as a list of expression: *)
+  | Coalesce
+  [@@ppp PPP_OCaml]
+
+and stateless2 =
   (* Binary Ops scalars *)
   | Add
   | Sub
@@ -219,42 +223,57 @@ and stateless_fun2 =
   | Percentile
   [@@ppp PPP_OCaml]
 
-and case_alternative =
-  { case_cond : t (* Must be bool *) ;
-    case_cons : t (* All alternatives must share a type *) }
+and stateful =
+  | SF1 of stateful1 * t
+  | SF2 of stateful2 * t * t
+  | SF3 of stateful3 * t * t * t
+  | SF4s of stateful4s * t * t * t * t list
+  (* Top-k operation *)
+  | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
+             by : t ; time : t ; duration : t }
+  (* Last based on time, with integrated sampling: *)
+  | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
+  (* Last N e1 [BY e2, e3...] - or by arrival.
+   * Note: BY followed by more than one expression will require to parentheses
+   * the whole expression to avoid ambiguous parsing. *)
+  (* Note: Should be in stateful3s but would be alone and PPP does not allow
+   * that (FIXME) *)
+  | Last of t * t * t list
+  (* Accurate version of the above, remembering all instances of the given
+   * tuple and returning a boolean. Only for when number of expected values
+   * is small, obviously: *)
+  (* Note: Should be in stateful1s but... See above. (FIXME) *)
+  | Distinct of t list
   [@@ppp PPP_OCaml]
 
-and stateless_fun_misc =
-  (* a LIKE operator using globs, infix *)
-  | Like of t * string (* expression then pattern (using %, _ and \) *)
-  (* Min/Max of the given values. Not like AggrMin/AggrMax, which are
-   * aggregate functions! The parser distinguish the cases due to the
-   * number of arguments: just 1 and that's the aggregate function, more
-   * and that's the min/max of the given arguments. *)
-  (* FIXME: those two are useless now that any aggregate function can be
-   * used on lists: *)
-  | Max of t list
-  | Min of t list
-  (* For debug: prints all its arguments, and output its first. *)
-  | Print of t list
-  [@@ppp PPP_OCaml]
-
-and stateful_fun =
+and stateful1 =
   (* TODO: Add stddev... *)
-  | AggrMin of t
-  | AggrMax of t
-  | AggrSum of t
-  | AggrAvg of t
-  | AggrAnd of t
-  | AggrOr  of t
+  | AggrMin
+  | AggrMax
+  | AggrSum
+  | AggrAvg
+  | AggrAnd
+  | AggrOr
   (* Returns the first/last value in the aggregation: *)
-  | AggrFirst of t
-  | AggrLast of t (* FIXME: Should be stateless *)
+  | AggrFirst
+  | AggrLast (* FIXME: Should be stateless *)
   (* FIXME: those float should be expressions so we could use params *)
-  | AggrHistogram of t * float * float * int
+  | AggrHistogram of float * float * int
+  (* Build a list with all values from the group *)
+  | Group
+  [@@ppp PPP_OCaml]
+
+and stateful2 =
   (* value retarded by k steps. If we have had less than k past values
    * then return NULL. *)
-  | Lag of t * t
+  | Lag
+  (* Simple exponential smoothing *)
+  | ExpSmooth (* coef between 0 and 1 and expression *)
+  (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
+  | Sample
+  [@@ppp PPP_OCaml]
+
+and stateful3 =
   (* If the current time is t, the seasonal, moving average of period p on k
    * seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence
    * of v(t).  This is because we want to compare v(t) with this season
@@ -263,14 +282,19 @@ and stateful_fun =
    * only on numbers).  For instance, a moving average of order 5 would be
    * period=1, count=5.
    * When we have not enough history then the result will be NULL. *)
-  | MovingAvg of t * t * t (* period, how many seasons to keep, expression *)
+  | MovingAvg (* period, how many seasons to keep, expression *)
   (* Simple linear regression *)
-  | LinReg of t * t * t (* as above: period, how many seasons to keep, expression *)
+  | LinReg (* as above: period, how many seasons to keep, expression *)
+  (* Hysteresis *)
+  | Hysteresis (* measured value, acceptable, maximum *)
+  [@@ppp PPP_OCaml]
+
+and stateful4s =
   (* TODO: in (most) functions below it should be doable to replace the
    * variadic lists of expressions by a single expression that's a tuple. *)
   (* Multiple linear regression - and our first variadic function (the
    * last parameter being a list of expressions to use for the predictors) *)
-  | MultiLinReg of t * t * t * t list
+  | MultiLinReg
   (* Rotating bloom filters. First parameter is the false positive rate we
    * aim at, second is an expression providing the "time", third a
    * "duration", and finally expressions whose values to remember. The function
@@ -280,787 +304,560 @@ and stateful_fun =
    * Note: If possible, it might save a lot of space to aim for a high false
    * positive rate and account for it in the surrounding calculations than to
    * aim for a low false positive rate. *)
-  | Remember of t * t * t * t list
-  (* Accurate version of the above, remembering all instances of the given
-   * tuple and returning a boolean. Only for when number of expected values
-   * is small, obviously: *)
-  | Distinct of t list
-  (* Simple exponential smoothing *)
-  | ExpSmooth of t * t (* coef between 0 and 1 and expression *)
-  (* Hysteresis *)
-  | Hysteresis of t * t * t (* measured value, acceptable, maximum *)
-  (* Top-k operation *)
-  | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
-             by : t ; time : t ; duration : t }
-  (* Last N e1 [BY e2, e3...] - or by arrival.
-   * Note: BY followed by more than one expression will require to parentheses
-   * the whole expression to avoid ambiguous parsing. *)
-  | Last of t (* N *) * t (* what *) * t list (* by *)
-  (* Sample(n, e) -> Keep max n values of e and return them as a list. *)
-  | Sample of t * t
-  (* Last based on time, with integrated sampling: *)
-  | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
-  (* Build a list with all values from the group *)
-  | Group of t
+  | Remember
   [@@ppp PPP_OCaml]
 
-and generator_fun =
+and generator =
   (* First function returning more than once (Generator). Here the typ is
    * type of a single value but the function is a generator and can return
    * from 0 to N such values. *)
   | Split of t * t
   [@@ppp PPP_OCaml]
 
+and selected_field =
+  { expr : t ;
+    alias : RamenName.field ;
+    doc : string ;
+    (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
+    aggr : string option }
+  [@@ppp PPP_OCaml]
+
+and case_alternative =
+  { case_cond : t (* Must be bool *) ;
+    case_cons : t (* All alternatives must share a type *) }
+  [@@ppp PPP_OCaml]
+
+let uniq_num_seq = ref 0
+
+let make ?(structure=T.TAny) ?nullable ?units ?doc text =
+  incr uniq_num_seq ;
+  { text ; uniq_num = !uniq_num_seq ;
+    typ = T.make ?nullable ?units ?doc structure }
+
 (* Constant expressions must be typed independently and therefore have
  * a distinct uniq_num for each occurrence: *)
-let expr_true () =
-  let typ = RamenTypes.{ nullable = false ; structure = TBool } in
-  Const (make_typ ~typ "true", VBool true)
+let null () =
+  make (Const T.VNull)
 
-let expr_false () =
-  let typ = RamenTypes.{ nullable = false ; structure = TBool } in
-  Const (make_typ ~typ "false", VBool false)
+let of_bool b =
+  make ~structure:T.TBool ~nullable:false (Const (T.VBool b))
 
-let expr_u8 ?units name n =
-  let typ = RamenTypes.{ nullable = false ; structure = TU8 } in
-  Const (make_typ ~typ ?units name, VU8 (Uint8.of_int n))
+let of_u8 ?units n =
+  make ~structure:T.TU8 ~nullable:false ?units
+    (Const (T.VU8 (Uint8.of_int n)))
 
-let expr_float ?units name n =
-  let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
-  Const (make_typ ~typ ?units name, VFloat n)
+let of_float ?units n =
+  make ~structure:T.TFloat ~nullable:false ?units (Const (T.VFloat n))
 
-let expr_zero () = expr_u8 "zero" 0
-let expr_one () = expr_u8 "one" 1
-let expr_1hour () = expr_float ~units:RamenUnits.seconds "1hour" 3600.
+let of_string s =
+  make ~structure:T.TString ~nullable:false (Const (VString s))
 
-let expr_string name s =
-  let typ = RamenTypes.{ nullable = false ; structure = TString } in
-  Const (make_typ ~typ name, VString s)
+let zero () = of_u8 0
+let one () = of_u8 1
+let one_hour () = of_float ~units:RamenUnits.seconds 3600.
 
-let of_float ?units v =
-  let typ = RamenTypes.{ nullable = false ; structure = TFloat } in
-  Const (make_typ ~typ ?units (string_of_float v), VFloat v)
-
-let is_true = function
-  | Const (_ , VBool true) -> true
+let is_true e =
+  match e.text with
+  | Const (VBool true) -> true
   | _ -> false
 
-let string_of_const = function
-  | Const (_ , VString s) -> Some s
+let string_of_const e =
+  match e.text with
+  | Const (VString s) -> Some s
   | _ -> None
 
-let float_of_const = function
-  | Const (_, v) ->
+let float_of_const e =
+  match e.text with
+  | Const v ->
       (* float_of_scalar and int_of_scalar returns an option because they
        * accept nullable numeric values; they fail on non-numerics, while
        * we want to merely return None here: *)
-      (try RamenTypes.float_of_scalar v
+      (try T.float_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
 
-let int_of_const = function
-  | Const (_, v) ->
-      (try RamenTypes.int_of_scalar v
+let int_of_const e =
+  match e.text with
+  | Const v ->
+      (try T.int_of_scalar v
       with Invalid_argument _ -> None)
   | _ -> None
+
+(* Often time we want to iter through the possible fields of a record: *)
+let fields_of_expression e =
+  match e.text with
+  | Record (_, sfs) -> List.enum sfs
+  | _ -> Enum.empty ()
 
 (* Return the set of all unique fields in the record expression, ordered
  * in serialization order: *)
-let fields_of_record kvs =
+let ser_array_of_record sfs =
   let a =
-    List.fold_left (fun s (k, _) ->
-      Set.add k s
-    ) Set.empty kvs |>
+    List.fold_left (fun s sf ->
+      Set.add sf.alias s
+    ) Set.empty sfs |>
     Set.to_array in
   Array.fast_sort RamenName.compare a ;
   a
 
 let rec print ?(max_depth=max_int) with_types oc e =
-  let add_types t =
-    if with_types then Printf.fprintf oc " [%a]" print_typ t
-  and st g n =
+  let st g n =
     (* TODO: do not display default *)
     (match g with LocalState -> " locally" | GlobalState -> " globally") ^
     (if n then " skip nulls" else " keep nulls")
   and print_args =
     List.print ~first:"(" ~last:")" ~sep:", " (print with_types)
   in
-  if max_depth <= 0 then Printf.fprintf oc "..." else
+  if max_depth <= 0 then
+    Printf.fprintf oc "..."
+  else (
     let p oc = print ~max_depth:(max_depth-1) with_types oc in
-    match e with
-    | Const (t, c) ->
-      RamenTypes.print oc c ; add_types t
-    | Tuple (t, es) ->
-      List.print ~first:"(" ~last:")" ~sep:"; " p oc es ;
-      add_types t
-    | Record (t, kvs) ->
-      List.print ~first:"(" ~last:")" ~sep:"; "
-        (fun oc (k, v) ->
-          Printf.fprintf oc "%a AZ %s"
-            p v (ramen_quote (RamenName.string_of_field k)))
-        oc kvs ;
-      add_types t
-    | Vector (t, es) ->
-      List.print ~first:"[" ~last:"]" ~sep:"; " p oc es ;
-      add_types t
-    | Field (t, tuple, field) ->
-      Printf.fprintf oc "%s.%s"
-        (string_of_prefix !tuple)
-        (RamenName.string_of_field field) ;
-      add_types t
-    | Binding (t, s) ->
-      String.print oc s ; add_types t
-    | Case (t, alts, else_) ->
-      let print_alt oc alt =
-        Printf.fprintf oc "WHEN %a THEN %a"
-          p alt.case_cond
-          p alt.case_cons
-      in
-      Printf.fprintf oc "CASE %a "
-       (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
-      Option.may (fun else_ ->
-        Printf.fprintf oc "ELSE %a "
-          p else_) else_ ;
-      Printf.fprintf oc "END" ;
-      add_types t
-    | Coalesce (t, es) ->
-      Printf.fprintf oc "COALESCE %a" print_args es ;
-      add_types t
-    | StatelessFun1 (t, Age, e) ->
-      Printf.fprintf oc "age (%a)" p e ; add_types t
-    | StatelessFun0 (t, Now) ->
-      Printf.fprintf oc "now" ; add_types t
-    | StatelessFun0 (t, Random) ->
-      Printf.fprintf oc "random" ; add_types t
-    | StatelessFun0 (t, EventStart) ->
-      Printf.fprintf oc "#start" ; add_types t
-    | StatelessFun0 (t, EventStop) ->
-      Printf.fprintf oc "#stop" ; add_types t
-    | StatelessFun1 (t, Cast typ, e) ->
-      Printf.fprintf oc "cast(%a, %a)"
-        RamenTypes.print_typ typ
-        p e ;
-      add_types t
-    | StatelessFun1 (t, Length, e) ->
-      Printf.fprintf oc "length (%a)" p e ; add_types t
-    | StatelessFun1 (t, Lower, e) ->
-      Printf.fprintf oc "lower (%a)" p e ; add_types t
-    | StatelessFun1 (t, Upper, e) ->
-      Printf.fprintf oc "upper (%a)" p e ; add_types t
-    | StatelessFun1 (t, Not, e) ->
-      Printf.fprintf oc "NOT (%a)" p e ; add_types t
-    | StatelessFun1 (t, Abs, e) ->
-      Printf.fprintf oc "ABS (%a)" p e ; add_types t
-    | StatelessFun1 (t, Minus, e) ->
-      Printf.fprintf oc "-(%a)" p e ; add_types t
-    | StatelessFun1 (t, Defined, e) ->
-      Printf.fprintf oc "(%a) IS NOT NULL" p e ;
-      add_types t
-    | StatelessFun2 (t, Add, e1, e2) ->
-      Printf.fprintf oc "(%a) + (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Sub, e1, e2) ->
-      Printf.fprintf oc "(%a) - (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Mul, e1, e2) ->
-      Printf.fprintf oc "(%a) * (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Div, e1, e2) ->
-      Printf.fprintf oc "(%a) / (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Reldiff, e1, e2) ->
-      Printf.fprintf oc "reldiff((%a), (%a))"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, IDiv, e1, e2) ->
-      Printf.fprintf oc "(%a) // (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Mod, e1, e2) ->
-      Printf.fprintf oc "(%a) %% (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Pow, e1, e2) ->
-      Printf.fprintf oc "(%a) ^ (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun1 (t, Exp, e) ->
-      Printf.fprintf oc "exp (%a)" p e ; add_types t
-    | StatelessFun1 (t, Log, e) ->
-      Printf.fprintf oc "log (%a)" p e ; add_types t
-    | StatelessFun1 (t, Log10, e) ->
-      Printf.fprintf oc "log10 (%a)" p e ; add_types t
-    | StatelessFun1 (t, Sqrt, e) ->
-      Printf.fprintf oc "sqrt (%a)" p e ; add_types t
-    | StatelessFun1 (t, Ceil, e) ->
-      Printf.fprintf oc "ceil (%a)" p e ; add_types t
-    | StatelessFun1 (t, Floor, e) ->
-      Printf.fprintf oc "floor (%a)" p e ; add_types t
-    | StatelessFun1 (t, Round, e) ->
-      Printf.fprintf oc "round (%a)" p e ; add_types t
-    | StatelessFun1 (t, Hash, e) ->
-      Printf.fprintf oc "hash (%a)" p e ; add_types t
-    | StatelessFun1 (t, Sparkline, e) ->
-      Printf.fprintf oc "sparkline (%a)" p e ;
-      add_types t
-    | StatelessFun2 (t, Trunc, e1, e2) ->
-      Printf.fprintf oc "truncate (%a, %a)"
-        p e1 p e2 ; add_types t
-    | StatelessFun2 (t, In, e1, e2) ->
-      Printf.fprintf oc "(%a) IN (%a)"
-        p e1 p e2 ; add_types t
-    | StatelessFun1 (t, (BeginOfRange|EndOfRange as op), e) ->
-      Printf.fprintf oc "%s of (%a)"
-        (if op = BeginOfRange then "begin" else "end")
-        p e ;
-      add_types t
-    | StatelessFun1 (t, Strptime, e) ->
-      Printf.fprintf oc "parse_time (%a)" p e ;
-      add_types t
-    | StatelessFun1 (t, Variant, e) ->
-      Printf.fprintf oc "variant (%a)" p e ;
-      add_types t
-    | StatelessFun2 (t, And, e1, e2) ->
-      Printf.fprintf oc "(%a) AND (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Or, e1, e2) ->
-      Printf.fprintf oc "(%a) OR (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Ge, e1, e2) ->
-      Printf.fprintf oc "(%a) >= (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Gt, e1, e2) ->
-      Printf.fprintf oc "(%a) > (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Eq, e1, e2) ->
-      Printf.fprintf oc "(%a) = (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Concat, e1, e2) ->
-      Printf.fprintf oc "(%a) || (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, StartsWith, e1, e2) ->
-      Printf.fprintf oc "(%a) STARTS WITH (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, EndsWith, e1, e2) ->
-      Printf.fprintf oc "(%a) ENDS WITH (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Strftime, e1, e2) ->
-      Printf.fprintf oc "format_time (%a, %a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, BitAnd, e1, e2) ->
-      Printf.fprintf oc "(%a) & (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, BitOr, e1, e2) ->
-      Printf.fprintf oc "(%a) | (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, BitXor, e1, e2) ->
-      Printf.fprintf oc "(%a) ^ (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, BitShift, e1, e2) ->
-      Printf.fprintf oc "(%a) << (%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Get, e1, e2) ->
-      Printf.fprintf oc "get(%a, %a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFun2 (t, Percentile, e1, e2) ->
-      Printf.fprintf oc "%ath percentile(%a)"
-        p e1 p e2 ;
-      add_types t
-    | StatelessFunMisc (t, Like (e, pat)) ->
-      Printf.fprintf oc "(%a) LIKE %S"
-        p e pat ;
-      add_types t
-    | StatelessFunMisc (t, Max es) ->
-      Printf.fprintf oc "GREATEST %a" print_args es ;
-      add_types t
-    | StatelessFunMisc (t, Min es) ->
-      Printf.fprintf oc "LEAST %a" print_args es ;
-      add_types t
-    | StatelessFunMisc (t, Print es) ->
-      Printf.fprintf oc "PRINT %a" print_args es ;
-      add_types t
-    | StatefulFun (t, g, n, AggrMin e) ->
-      Printf.fprintf oc "min%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrMax e) ->
-      Printf.fprintf oc "max%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrSum e) ->
-      Printf.fprintf oc "sum%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrAvg e) ->
-      Printf.fprintf oc "avg%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrAnd e) ->
-      Printf.fprintf oc "and%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrOr e) ->
-      Printf.fprintf oc "or%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrFirst e) ->
-      Printf.fprintf oc "first%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrLast e) ->
-      Printf.fprintf oc "last%s(%a)"
-        (st g n) p e ;
-      add_types t
-    | StatefulFun (t, g, n, AggrHistogram (what, min, max, num_buckets)) ->
-      Printf.fprintf oc "histogram%s(%a, %g, %g, %d)"
-        (st g n)
-        p what min max num_buckets ;
-      add_types t
-    | StatefulFun (t, g, n, Lag (e1, e2)) ->
-      Printf.fprintf oc "lag%s(%a, %a)"
-        (st g n)
-        p e1 p e2 ;
-      add_types t
-    | StatefulFun (t, g, n, MovingAvg (e1, e2, e3)) ->
-      Printf.fprintf oc "season_moveavg%s(%a, %a, %a)"
-        (st g n)
-        p e1
-        p e2 p e3 ;
-      add_types t
-    | StatefulFun (t, g, n, LinReg (e1, e2, e3)) ->
-      Printf.fprintf oc "season_fit%s(%a, %a, %a)"
-        (st g n)
-        p e1
-        p e2 p e3 ;
-      add_types t
-    | StatefulFun (t, g, n, MultiLinReg (e1, e2, e3, e4s)) ->
-      Printf.fprintf oc "season_fit_multi%s(%a, %a, %a, %a)"
-        (st g n)
-        p e1
-        p e2
-        p e3
-        print_args e4s ;
-      add_types t
-    | StatefulFun (t, g, n, Remember (fpr, tim, dur, es)) ->
-      Printf.fprintf oc "remember%s(%a, %a, %a, %a)"
-        (st g n)
-        p fpr
-        p tim
-        p dur
-        print_args es ;
-      add_types t
-    | StatefulFun (_, g, n, Distinct es) ->
-      Printf.fprintf oc "distinct%s(%a)"
-        (st g n)
-        print_args es
-    | StatefulFun (t, g, n, ExpSmooth (e1, e2)) ->
-      Printf.fprintf oc "smooth%s(%a, %a)"
-        (st g n) p e1 p e2 ;
-      add_types t
-    | StatefulFun (t, g, n, Hysteresis (meas, accept, max)) ->
-      Printf.fprintf oc "hysteresis%s(%a, %a, %a)"
-        (st g n)
-        p meas
-        p accept
-        p max ;
-      add_types t
-    | StatefulFun (t, g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
-                                  duration }) ->
-      Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
-        (if want_rank then "rank of" else "is")
-        (List.print ~first:"" ~last:"" ~sep:", " p) what
-        (fun oc -> function
-         | None -> Unit.print oc ()
-         | Some e -> Printf.fprintf oc " over %a" p e) max_size
-        p c
-        (st g n)
-        p by
-        p duration
-        p time ;
-      add_types t
-    | StatefulFun (t, g, n, Last (c, e, es)) ->
-      let print_by oc es =
-        if es <> [] then
-          Printf.fprintf oc " BY %a"
-            (List.print ~first:"" ~last:"" ~sep:", " p) es in
-      Printf.fprintf oc "LAST %a%s %a%a"
-        p c
-        (st g n)
-        p e
-        print_by es ;
-      add_types t
-    | StatefulFun (t, g, n, Sample (c, e)) ->
-      Printf.fprintf oc "SAMPLE%s(%a, %a)"
-        (st g n)
-        p c
-        p e ;
-      add_types t
-    | StatefulFun (t, g, n, Past { what ; time ; max_age ; sample_size }) ->
-      (match sample_size with
-      | None -> ()
-      | Some sz ->
-          Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
-      Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
-        p max_age
-        (st g n)
-        p what
-        p time ;
-      add_types t
-    | StatefulFun (t, g, n, Group e) ->
-      Printf.fprintf oc "GROUP%s %a"
-        (st g n)
-        p e ;
-      add_types t
+    (match e.text with
+    | Const c ->
+        T.print oc c
+    | Tuple es ->
+        List.print ~first:"(" ~last:")" ~sep:"; " p oc es
+    | Record (star, sfs) ->
+        Char.print oc '(' ;
+        List.print ~first:"" ~last:"" ~sep:", "
+          (fun oc sf ->
+            Printf.fprintf oc "%a AZ %s DOC %S"
+              p sf.expr
+              (ramen_quote (RamenName.string_of_field sf.alias))
+              sf.doc)
+          oc sfs ;
+        if star then String.print oc ", *" ;
+        Char.print oc ')'
+    | Vector es ->
+        List.print ~first:"[" ~last:"]" ~sep:"; " p oc es ;
+    | Variable name ->
+        Printf.fprintf oc "%s" (RamenName.string_of_field name) ;
+    | Binding s ->
+        String.print oc s
+    | Case (alts, else_) ->
+        let print_alt oc alt =
+          Printf.fprintf oc "WHEN %a THEN %a"
+            p alt.case_cond
+            p alt.case_cons
+        in
+        Printf.fprintf oc "CASE %a "
+         (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
+        Option.may (fun else_ ->
+          Printf.fprintf oc "ELSE %a "
+            p else_) else_ ;
+        Printf.fprintf oc "END"
+    | Stateless (SL1s (Coalesce, es)) ->
+        Printf.fprintf oc "COALESCE %a" print_args es
+    | Stateless (SL1 (Age, e)) ->
+        Printf.fprintf oc "age (%a)" p e
+    | Stateless (SL0 Now) ->
+        Printf.fprintf oc "now"
+    | Stateless (SL0 Random) ->
+        Printf.fprintf oc "random"
+    | Stateless (SL0 EventStart) ->
+        Printf.fprintf oc "#start"
+    | Stateless (SL0 EventStop) ->
+        Printf.fprintf oc "#stop"
+    | Stateless (SL1 (Cast typ, e)) ->
+        Printf.fprintf oc "cast(%a, %a)"
+          T.print_typ typ p e
+    | Stateless (SL1 (Length, e)) ->
+        Printf.fprintf oc "length (%a)" p e
+    | Stateless (SL1 (Lower, e)) ->
+        Printf.fprintf oc "lower (%a)" p e
+    | Stateless (SL1 (Upper, e)) ->
+        Printf.fprintf oc "upper (%a)" p e
+    | Stateless (SL1 (Not, e)) ->
+        Printf.fprintf oc "NOT (%a)" p e
+    | Stateless (SL1 (Abs, e)) ->
+        Printf.fprintf oc "ABS (%a)" p e
+    | Stateless (SL1 (Minus, e)) ->
+        Printf.fprintf oc "-(%a)" p e
+    | Stateless (SL1 (Defined, e)) ->
+        Printf.fprintf oc "(%a) IS NOT NULL" p e
+    | Stateless (SL2 (Add, e1, e2)) ->
+        Printf.fprintf oc "(%a) + (%a)" p e1 p e2
+    | Stateless (SL2 (Sub, e1, e2)) ->
+        Printf.fprintf oc "(%a) - (%a)" p e1 p e2
+    | Stateless (SL2 (Mul, e1, e2)) ->
+        Printf.fprintf oc "(%a) * (%a)" p e1 p e2
+    | Stateless (SL2 (Div, e1, e2)) ->
+        Printf.fprintf oc "(%a) / (%a)" p e1 p e2
+    | Stateless (SL2 (Reldiff, e1, e2)) ->
+        Printf.fprintf oc "reldiff((%a), (%a))" p e1 p e2
+    | Stateless (SL2 (IDiv, e1, e2)) ->
+        Printf.fprintf oc "(%a) // (%a)" p e1 p e2
+    | Stateless (SL2 (Mod, e1, e2)) ->
+        Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
+    | Stateless (SL2 (Pow, e1, e2)) ->
+        Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+    | Stateless (SL1 (Exp, e)) ->
+        Printf.fprintf oc "exp (%a)" p e
+    | Stateless (SL1 (Log, e)) ->
+        Printf.fprintf oc "log (%a)" p e
+    | Stateless (SL1 (Log10, e)) ->
+        Printf.fprintf oc "log10 (%a)" p e
+    | Stateless (SL1 (Sqrt, e)) ->
+        Printf.fprintf oc "sqrt (%a)" p e
+    | Stateless (SL1 (Ceil, e)) ->
+        Printf.fprintf oc "ceil (%a)" p e
+    | Stateless (SL1 (Floor, e)) ->
+        Printf.fprintf oc "floor (%a)" p e
+    | Stateless (SL1 (Round, e)) ->
+        Printf.fprintf oc "round (%a)" p e
+    | Stateless (SL1 (Hash, e)) ->
+        Printf.fprintf oc "hash (%a)" p e
+    | Stateless (SL1 (Sparkline, e)) ->
+        Printf.fprintf oc "sparkline (%a)" p e
+    | Stateless (SL2 (Trunc, e1, e2)) ->
+        Printf.fprintf oc "truncate (%a, %a)" p e1 p e2
+    | Stateless (SL2 (In, e1, e2)) ->
+        Printf.fprintf oc "(%a) IN (%a)" p e1 p e2
+    | Stateless (SL1 ((BeginOfRange|EndOfRange as op), e)) ->
+        Printf.fprintf oc "%s of (%a)"
+          (if op = BeginOfRange then "begin" else "end")
+          p e ;
+    | Stateless (SL1 (Strptime, e)) ->
+        Printf.fprintf oc "parse_time (%a)" p e
+    | Stateless (SL1 (Variant, e)) ->
+        Printf.fprintf oc "variant (%a)" p e
+    | Stateless (SL2 (And, e1, e2)) ->
+        Printf.fprintf oc "(%a) AND (%a)" p e1 p e2
+    | Stateless (SL2 (Or, e1, e2)) ->
+        Printf.fprintf oc "(%a) OR (%a)" p e1 p e2
+    | Stateless (SL2 (Ge, e1, e2)) ->
+        Printf.fprintf oc "(%a) >= (%a)" p e1 p e2
+    | Stateless (SL2 (Gt, e1, e2)) ->
+        Printf.fprintf oc "(%a) > (%a)" p e1 p e2
+    | Stateless (SL2 (Eq, e1, e2)) ->
+        Printf.fprintf oc "(%a) = (%a)" p e1 p e2
+    | Stateless (SL2 (Concat, e1, e2)) ->
+        Printf.fprintf oc "(%a) || (%a)" p e1 p e2
+    | Stateless (SL2 (StartsWith, e1, e2)) ->
+        Printf.fprintf oc "(%a) STARTS WITH (%a)" p e1 p e2
+    | Stateless (SL2 (EndsWith, e1, e2)) ->
+        Printf.fprintf oc "(%a) ENDS WITH (%a)" p e1 p e2
+    | Stateless (SL2 (Strftime, e1, e2)) ->
+        Printf.fprintf oc "format_time (%a, %a)" p e1 p e2
+    | Stateless (SL2 (BitAnd, e1, e2)) ->
+        Printf.fprintf oc "(%a) & (%a)" p e1 p e2
+    | Stateless (SL2 (BitOr, e1, e2)) ->
+        Printf.fprintf oc "(%a) | (%a)" p e1 p e2
+    | Stateless (SL2 (BitXor, e1, e2)) ->
+        Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+    | Stateless (SL2 (BitShift, e1, e2)) ->
+        Printf.fprintf oc "(%a) << (%a)" p e1 p e2
+    | Stateless (SL2 (Get, e1, e2)) ->
+        Printf.fprintf oc "get(%a, %a)" p e1 p e2
+    | Stateless (SL2 (Percentile, e1, e2)) ->
+        Printf.fprintf oc "%ath percentile(%a)" p e1 p e2
+    | Stateless (SL1 (Like pat, e)) ->
+        Printf.fprintf oc "(%a) LIKE %S" p e pat
+    | Stateless (SL1s (Max, es)) ->
+        Printf.fprintf oc "GREATEST %a" print_args es
+    | Stateless (SL1s (Min, es)) ->
+        Printf.fprintf oc "LEAST %a" print_args es
+    | Stateless (SL1s (Print, es)) ->
+        Printf.fprintf oc "PRINT %a" print_args es
+    | Stateful (g, n, SF1 (AggrMin, e)) ->
+        Printf.fprintf oc "min%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrMax, e)) ->
+        Printf.fprintf oc "max%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrSum, e)) ->
+        Printf.fprintf oc "sum%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrAvg, e)) ->
+        Printf.fprintf oc "avg%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrAnd, e)) ->
+        Printf.fprintf oc "and%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrOr, e)) ->
+        Printf.fprintf oc "or%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrFirst, e)) ->
+        Printf.fprintf oc "first%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrLast, e)) ->
+        Printf.fprintf oc "last%s(%a)" (st g n) p e
+    | Stateful (g, n, SF1 (AggrHistogram (min, max, num_buckets), e)) ->
+        Printf.fprintf oc "histogram%s(%a, %g, %g, %d)" (st g n)
+          p e min max num_buckets
+    | Stateful (g, n, SF2 (Lag, e1, e2)) ->
+        Printf.fprintf oc "lag%s(%a, %a)" (st g n) p e1 p e2
+    | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
+        Printf.fprintf oc "season_moveavg%s(%a, %a, %a)"
+          (st g n) p e1 p e2 p e3
+    | Stateful (g, n, SF3 (LinReg, e1, e2, e3)) ->
+        Printf.fprintf oc "season_fit%s(%a, %a, %a)"
+          (st g n) p e1 p e2 p e3
+    | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
+        Printf.fprintf oc "season_fit_multi%s(%a, %a, %a, %a)"
+          (st g n) p e1 p e2 p e3 print_args e4s
+    | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
+        Printf.fprintf oc "remember%s(%a, %a, %a, %a)"
+          (st g n) p fpr p tim p dur print_args es
+    | Stateful (g, n, Distinct es) ->
+        Printf.fprintf oc "distinct%s(%a)" (st g n) print_args es
+    | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
+        Printf.fprintf oc "smooth%s(%a, %a)" (st g n) p e1 p e2
+    | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
+        Printf.fprintf oc "hysteresis%s(%a, %a, %a)"
+          (st g n) p meas p accept p max
+    | Stateful (g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
+                            duration }) ->
+        Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
+          (if want_rank then "rank of" else "is")
+          (List.print ~first:"" ~last:"" ~sep:", " p) what
+          (fun oc -> function
+           | None -> Unit.print oc ()
+           | Some e -> Printf.fprintf oc " over %a" p e) max_size
+          p c (st g n) p by p duration p time
+    | Stateful (g, n, Last (c, e, es)) ->
+        let print_by oc es =
+          if es <> [] then
+            Printf.fprintf oc " BY %a"
+              (List.print ~first:"" ~last:"" ~sep:", " p) es in
+        Printf.fprintf oc "LAST %a%s %a%a"
+          p c (st g n) p e print_by es
+    | Stateful (g, n, SF2 (Sample, c, e)) ->
+      Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
+    | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
+        (match sample_size with
+        | None -> ()
+        | Some sz ->
+            Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
+        Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
+          p max_age (st g n) p what p time
+    | Stateful (g, n, SF1 (Group, e)) ->
+      Printf.fprintf oc "GROUP%s %a" (st g n) p e
 
-    | GeneratorFun (t, Split (e1, e2)) ->
-      Printf.fprintf oc "split(%a, %a)"
-        p e1 p e2 ;
-      add_types t
+    | Generator (Split (e1, e2)) ->
+      Printf.fprintf oc "split(%a, %a)" p e1 p e2
+    ) ;
+    if with_types then Printf.fprintf oc " [%a]" T.print_typ e.typ
+  )
 
-let typ_of = function
-  | Const (t, _) | Tuple (t, _) | Record (t, _) | Vector (t, _)
-  | Field (t, _, _) | Binding (t, _)
-  | StatelessFun0 (t, _) | StatelessFun1 (t, _, _)
-  | StatelessFun2 (t, _, _, _) | StatelessFunMisc (t, _)
-  | StatefulFun (t, _, _, _) | GeneratorFun (t, _) | Case (t, _, _)
-  | Coalesce (t, _) -> t
+let is_nullable e = e.typ.T.nullable
 
-let is_nullable e =
-  let t = typ_of e in
-  (Option.get t.typ).RamenTypes.nullable = true
-
-let is_const = function
+let is_const e =
+  match e.text with
   | Const _ -> true | _ -> false
 
 let is_a_string e =
-  (Option.get (typ_of e).typ).structure = TString
+  e.typ.T.structure = TString
 
 (* Tells if [e] (that must be typed) is a list or a vector, ie anything
  * which is represented with an OCaml array. *)
 let is_a_list e =
-  match (Option.get (typ_of e).typ).structure with
+  match e.typ.T.structure with
   | TList _ | TVec _ -> true
   | _ -> false
 
-let rec map f expr =
-  let m e = map f e in
-  match expr with
-  | Const _ | Field _ | Binding _ | StatelessFun0 _ -> f expr
-  | StatefulFun (t, g, n, AggrMin e) -> f (StatefulFun (t, g, n, AggrMin (m e)))
-  | StatefulFun (t, g, n, AggrMax e) -> f (StatefulFun (t, g, n, AggrMax (m e)))
-  | StatefulFun (t, g, n, AggrSum e) -> f (StatefulFun (t, g, n, AggrSum (m e)))
-  | StatefulFun (t, g, n, AggrAvg e) -> f (StatefulFun (t, g, n, AggrAvg (m e)))
-  | StatefulFun (t, g, n, AggrAnd e) -> f (StatefulFun (t, g, n, AggrAnd (m e)))
-  | StatefulFun (t, g, n, AggrOr e) -> f (StatefulFun (t, g, n, AggrOr (m e)))
-  | StatefulFun (t, g, n, AggrFirst e) -> f (StatefulFun (t, g, n, AggrFirst (m e)))
-  | StatefulFun (t, g, n, AggrLast e) -> f (StatefulFun (t, g, n, AggrLast (m e)))
-  | StatelessFun1 (t, o, e) -> f (StatelessFun1 (t, o, (m e)))
-  | StatelessFunMisc (t, Like (e, p)) -> f (StatelessFunMisc (t, Like (m e, p)))
-  | StatefulFun (t, g, n, AggrHistogram (e, a, b, c)) -> f (StatefulFun (t, g, n, AggrHistogram (m e, a, b, c)))
-  | StatefulFun (t, g, n, Group e) -> f (StatefulFun (t, g, n, Group (m e)))
-  | StatelessFun2 (t, o, e1, e2) -> f (StatelessFun2 (t, o, m e1, m e2))
-  | StatefulFun (t, g, n, Lag (e1, e2)) -> f (StatefulFun (t, g, n, Lag (m e1, m e2)))
-  | StatefulFun (t, g, n, ExpSmooth (e1, e2)) -> f (StatefulFun (t, g, n, ExpSmooth (m e1, m e2)))
-  | StatefulFun (t, g, n, Sample (e1, e2)) -> f (StatefulFun (t, g, n, Sample (m e1, m e2)))
-  | GeneratorFun (t, Split (e1, e2)) -> f (GeneratorFun (t, Split (m e1, m e2)))
-  | StatefulFun (t, g, n, MovingAvg (e1, e2, e3)) -> f (StatefulFun (t, g, n, MovingAvg (m e1, m e2, m e3)))
-  | StatefulFun (t, g, n, LinReg (e1, e2, e3)) -> f (StatefulFun (t, g, n, LinReg (m e1, m e2, m e3)))
-  | StatefulFun (t, g, n, Hysteresis (e1, e2, e3)) -> f (StatefulFun (t, g, n, Hysteresis (m e1, m e2, m e3)))
-  | StatefulFun (t, g, n, Remember (e1, e2, e3, e4s)) -> f (StatefulFun (t, g, n, Remember (m e1, m e2, m e3, List.map m e4s)))
-  | StatefulFun (t, g, n, MultiLinReg (e1, e2, e3, e4s)) -> f (StatefulFun (t, g, n, MultiLinReg (m e1, m e2, m e3, List.map m e4s)))
-  | StatefulFun (t, g, n, Top ({ c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s ; max_size = e_opt } as a)) ->
-      f (StatefulFun (t, g, n, Top { a with c = m e1 ; by = m e2 ; time = m e3 ; duration = m e4 ; what = List.map m e5s ; max_size = Option.map m e_opt }))
-  | StatefulFun (t, g, n, Last (c, e, es)) -> f (StatefulFun (t, g, n, Last (m c, m e, List.map m es)))
-  | StatefulFun (t, g, n, Past { what = e1 ; time = e2 ; max_age = e3 ; sample_size = e_opt }) ->
-      f (StatefulFun (t, g, n, Past { what = m e1 ; time = m e2 ; max_age = m e3 ; sample_size = Option.map m e_opt }))
-  | Case (t, alts, else_) ->
-      let alts = List.map (fun a -> { case_cond = m a.case_cond ; case_cons = m a.case_cons }) alts in
-      f (Case (t, alts, Option.map m else_))
-  | Tuple (t, es) -> f (Tuple (t, List.map m es))
-  | Record (t, kvs) -> f (Record (t, List.map (fun (k, e) -> k, m e) kvs))
-  | Vector (t, es) -> f (Vector (t, List.map m es))
-  | StatefulFun (t, g, n, Distinct es) -> f (StatefulFun (t, g, n, Distinct (List.map m es)))
-  | Coalesce (t, es) -> f (Coalesce (t, List.map m es))
-  | StatelessFunMisc (t, Max es) -> f (StatelessFunMisc (t, Max (List.map m es)))
-  | StatelessFunMisc (t, Min es) -> f (StatelessFunMisc (t, Min (List.map m es)))
-  | StatelessFunMisc (t, Print es) -> f (StatelessFunMisc (t, Print (List.map m es)))
+(* TODO: Should not be used but to populate the environments before folding
+ * over an operation: *)
+type tuple_prefix =
+  | TupleIn
+  | TupleGroup
+  | TupleOutPrevious
+  | TupleOut
+  (* Tuple usable in sort expressions *)
+  (* FIXME: unused, sadly *)
+  | TupleSortFirst
+  | TupleSortSmallest
+  | TupleSortGreatest
+  (* Largest tuple from the merged streams (smallest being TupleIn),
+   * usable in WHERE clause: *)
+  | TupleMergeGreatest
+  (* Parameters *)
+  | TupleParam
+  (* Environments for nullable string only parameters: *)
+  | TupleEnv
+  (* For when a field is from an opened record being build.
+   * The type of a variable bound to this record is the type of the record. *)
+  | TupleRecord of t
+  (* TODO: TupleOthers? *)
+  [@@ppp PPP_OCaml]
+
+let string_of_prefix = function
+  | TupleIn -> "in"
+  | TupleGroup -> "group"
+  | TupleOutPrevious -> "out.previous"
+  | TupleOut -> "out"
+  | TupleSortFirst -> "sort.first"
+  | TupleSortSmallest -> "sort.smallest"
+  | TupleSortGreatest -> "sort.greatest"
+  | TupleMergeGreatest -> "merge.greatest"
+  | TupleParam -> "param"
+  | TupleEnv -> "env"
+  | TupleRecord _ -> "record"
+
+let tuple_prefix_print oc p =
+  Printf.fprintf oc "%s" (string_of_prefix p)
+
+(* Tuple that has the fields of this func input type *)
+let tuple_has_type_input = function
+  | TupleIn
+  | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
+  | TupleMergeGreatest -> true
+  | _ -> false
+
+(* Tuple that has the fields of this func output type *)
+let tuple_has_type_output = function
+  | TupleOutPrevious | TupleOut -> true
+  | _ -> false
+
+let tuple_need_state = function
+  | TupleGroup -> true
+  | _ -> false
+
+let rec map f what env e =
+  (* Shorthands : *)
+  let m = map f what env
+  and h = f what env in
+  let mm = List.map m
+  and om = Option.map m in
+  match e.text with
+  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) -> h e
+
+  | Case (alts, else_) ->
+      h { e with text = Case (
+        List.map (fun a ->
+          { case_cond = m a.case_cond ; case_cons = m a.case_cons }
+        ) alts, om else_) }
+
+  | Tuple es -> h { e with text = Tuple (mm es) }
+
+  | Record (star, sfs) ->
+      let sfs' =
+        (* We have to enrich the env as usual: *)
+        List.fold_left (fun (sfs, env) sf ->
+          { sf with expr = map f what env sf.expr } :: sfs,
+          (* Notice we point to the record expression before the map, but
+           * that's ok because we are interested in the types mostly *)
+          (sf.alias, TupleRecord e) :: env
+        ) ([], env) sfs |> fst |> List.rev in
+      h { e with text = Record (star, sfs') }
+
+  | Vector es -> h { e with text = Vector (mm es) }
+
+  | Stateless (SL1 (o, e1)) ->
+      h { e with text = Stateless (SL1 (o, m e1)) }
+  | Stateless (SL1s (o, es)) ->
+      h { e with text = Stateless (SL1s (o, mm es)) }
+  | Stateless (SL2 (o, e1, e2)) ->
+      h { e with text = Stateless (SL2 (o, m e1, m e2)) }
+
+  | Stateful (g, n, SF1 (o, e1)) ->
+      h { e with text = Stateful (g, n, SF1 (o, m e1)) }
+  | Stateful (g, n, SF2 (o, e1, e2)) ->
+      h { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
+  | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
+      h { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
+  | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
+      h { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
+  | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
+      h { e with text = Stateful (g, n, Top { a with
+        c = m c ; by = m by ; time = m time ; duration = m duration ;
+        what = mm what ; max_size = om max_size }) }
+  | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
+      h { e with text = Stateful (g, n, Past {
+        what = m what ; time = m time ; max_age = m max_age ;
+        sample_size = om sample_size }) }
+  | Stateful (g, n, Last (c, e, es)) ->
+      h { e with text = Stateful (g, n, Last (m c, m e, mm es)) }
+  | Stateful (g, n, Distinct es) ->
+      h { e with text = Stateful (g, n, Distinct (mm es)) }
+
+  | Generator (Split (e1, e2)) ->
+      h { e with text = Generator (Split (m e1, m e2)) }
 
 (* Propagate values up the tree only, depth first. *)
-let fold_subexpressions f i = function
-  | Const _ | Field _ | Binding _
-  | StatelessFun0 _ ->
-      i
+let fold_subexpressions f i env e =
+  let g i = f i env in
+  let fl = List.fold_left g in
+  let om = Option.map_default (g i)
+  in
+  match e.text with
+  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) -> i
 
-  | StatefulFun (_, _, _, AggrMin e) | StatefulFun (_, _, _, AggrMax e)
-  | StatefulFun (_, _, _, AggrSum e) | StatefulFun (_, _, _, AggrAvg e)
-  | StatefulFun (_, _, _, AggrAnd e) | StatefulFun (_, _, _, AggrOr e)
-  | StatefulFun (_, _, _, AggrFirst e) | StatefulFun (_, _, _, AggrLast e)
-  | StatelessFun1 (_, _, e) | StatelessFunMisc (_, Like (e, _))
-  | StatefulFun (_, _, _, AggrHistogram (e, _, _, _))
-  | StatefulFun (_, _, _, Group e) ->
-      f i e
-
-  | StatelessFun2 (_, _, e1, e2)
-  | StatefulFun (_, _, _, Lag (e1, e2))
-  | StatefulFun (_, _, _, ExpSmooth (e1, e2))
-  | StatefulFun (_, _, _, Sample (e1, e2))
-  | GeneratorFun (_, Split (e1, e2)) ->
-      f (f i e1) e2
-
-  | StatefulFun (_, _, _, MovingAvg (e1, e2, e3))
-  | StatefulFun (_, _, _, LinReg (e1, e2, e3))
-  | StatefulFun (_, _, _, Hysteresis (e1, e2, e3)) ->
-      f (f (f i e1) e2) e3
-
-  | StatefulFun (_, _, _, Remember (e1, e2, e3, e4s))
-  | StatefulFun (_, _, _, MultiLinReg (e1, e2, e3, e4s)) ->
-      List.fold_left f i (e1::e2::e3::e4s)
-
-  | StatefulFun (_, _, _,
-      Top { c = e1 ; by = e2 ; time = e3 ; duration = e4 ; what = e5s ;
-            max_size = e_opt }) ->
-      let i = List.fold_left f i (e1::e2::e3::e4::e5s) in
-      Option.map_default (f i) i e_opt
-
-  | StatefulFun (_, _, _, Last (c, e, es)) ->
-      List.fold_left f i (c::e::es)
-
-  | StatefulFun (_, _, _,
-      Past { what = e1 ; time = e2 ; max_age = e3 ; sample_size = e_opt }) ->
-      let i = f (f (f i e1) e2) e3 in
-      Option.map_default (f i) i e_opt
-
-  | Case (_, alts, else_) ->
+  | Case (alts, else_) ->
       let i =
         List.fold_left (fun i a ->
-          f (f i a.case_cond) a.case_cons
+          g (g i a.case_cond) a.case_cons
         ) i alts in
-      Option.map_default (f i) i else_
+      om i else_
 
-  | Tuple (_, es)
-  | Vector (_, es)
-  | StatefulFun (_, _, _, Distinct es)
-  | Coalesce (_, es)
-  | StatelessFunMisc (_, (Max es|Min es|Print es)) ->
-      List.fold_left f i es
+  | Tuple es | Vector es -> fl i es
 
-  | Record (_, kvs) ->
-      List.fold_left (fun i (_, v) -> f i v) i kvs
+  | Record (_, sfs) ->
+      (* Environment is augmented with the new fields, one by one: *)
+      List.fold_left (fun (i, env) sf ->
+        f i env sf.expr,
+        (sf.alias, TupleRecord e) :: env
+      ) (i, env) sfs |> fst
+
+  | Stateless (SL1 (_, e1)) | Stateful (_, _, SF1 (_, e1)) -> g i e1
+
+  | Stateless (SL1s (_, e1s)) -> fl i e1s
+
+  | Stateless (SL2 (_, e1, e2))
+  | Stateful (_, _, SF2 (_, e1, e2)) -> g (g i e1) e2
+
+  | Stateful (_, _, SF3 (_, e1, e2, e3)) -> g (g (g i e1) e2) e3
+  | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
+      fl (g (g (g i e1) e2) e3) e4s
+
+  | Stateful (_, _, Top { c ; by ; time ; duration ; what ; max_size }) ->
+      om (fl i (c :: by :: time :: duration :: what)) max_size
+
+  | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
+      om (g (g (g i what) time) max_age) sample_size
+  | Stateful (_, _, Last (e1, e2, e3s)) -> fl (g (g i e1) e2) e3s
+  | Stateful (_, _, Distinct es) -> fl i es
+
+  | Generator (Split (e1, e2)) -> g (g i e1) e2
 
 (* Fold depth first, calling [f] bottom up: *)
 let rec fold_up f i e =
-  let i = fold_subexpressions (fold_up f) i e in
+  let i = fold_subexpressions (fun i _env e -> fold_up f i e) i [] e in
   f i e
 
-let rec fold_down f i e =
-  let i = f i e in
-  fold_subexpressions (fold_down f) i e
-
-(* Iterate bottom up by default as that's what most callers expect: *)
-let fold = fold_up
-
-let iter f = fold (fun () e -> f e) ()
+let iter f =
+  fold_up (fun () e -> f e) ()
 
 let unpure_iter f e =
-  fold (fun () -> function
-    | StatefulFun _ as e -> f e
-    | _ -> ()) () e |> ignore
+  fold_up (fun () e -> match e.text with
+    | Stateful _ -> f e
+    | _ -> ()
+  ) () e |> ignore
 
 let unpure_fold u f e =
-  fold (fun u -> function
-    | StatefulFun _ as e -> f u e
-    | _ -> u) u e
+  fold_up (fun u e -> match e.text with
+    | Stateful _ -> f u e
+    | _ -> u
+  ) u e
 
 (* Any expression that uses a generator is a generator: *)
-let is_generator =
-  fold (fun is e ->
-    is || match e with GeneratorFun _ -> true | _ -> false) false
-
-(* Unlike is_const, which merely compare the given expression with Const,
- * this looks recursively for values that can change from input to input. *)
-let is_constant e =
+let is_generator e =
   try
-    iter (function
-      | Field (_, tuple, _) when RamenLang.tuple_has_type_input !tuple ->
-          raise Exit
-      | StatelessFun0 (_, (Now | Random | EventStart | EventStop))
-      | StatelessFun1 (_, Age, _)
-      | StatefulFun _
-      | GeneratorFun _ ->
-          raise Exit
+    iter (fun e ->
+      match e.text with
+      | Generator _ -> raise Exit
       | _ -> ()) e ;
-    true
-  with Exit -> false
+    false
+  with Exit -> true
 
-(* FIXME: store the type and the expression separately! *)
-
-let rec map_type ?(recurs=true) f = function
-  | Const (t, a) -> Const (f t, a)
-  | Tuple (t, es) ->
-    Tuple (f t,
-           if recurs then List.map (map_type ~recurs f) es else es)
-  | Record (t, kvs) ->
-    Record (f t,
-            if recurs then
-              List.map (fun (k, v) -> k, map_type ~recurs f v) kvs
-            else kvs)
-  | Vector (t, es) ->
-    Vector (f t,
-            if recurs then List.map (map_type ~recurs f) es else es)
-  | Field (t, a, b) -> Field (f t, a, b)
-  | Binding _ as e -> e
-
-  | Case (t, alts, else_) ->
-    Case (f t,
-          (if recurs then List.map (fun alt ->
-             { case_cond = map_type ~recurs f alt.case_cond ;
-               case_cons = map_type ~recurs f alt.case_cons }) alts
-           else alts),
-          if recurs then Option.map (map_type ~recurs f) else_ else else_)
-  | Coalesce (t, es) ->
-    Coalesce (f t,
-              if recurs then List.map (map_type ~recurs f) es else es)
-
-  | StatefulFun (t, g, n, AggrMin a) ->
-    StatefulFun (f t, g, n, AggrMin (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrMax a) ->
-    StatefulFun (f t, g, n, AggrMax (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrSum a) ->
-    StatefulFun (f t, g, n, AggrSum (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrAvg a) ->
-    StatefulFun (f t, g, n, AggrAvg (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrAnd a) ->
-    StatefulFun (f t, g, n, AggrAnd (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrOr a) ->
-    StatefulFun (f t, g, n, AggrOr (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrFirst a) ->
-    StatefulFun (f t, g, n, AggrFirst (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrLast a) ->
-    StatefulFun (f t, g, n, AggrLast (if recurs then map_type ~recurs f a else a))
-  | StatefulFun (t, g, n, AggrHistogram (a, min, max, num_buckets)) ->
-    StatefulFun (f t, g, n, AggrHistogram (
-        (if recurs then map_type ~recurs f a else a), min, max, num_buckets))
-  | StatefulFun (t, g, n, Lag (a, b)) ->
-    StatefulFun (f t, g, n, Lag (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatefulFun (t, g, n, MovingAvg (a, b, c)) ->
-    StatefulFun (f t, g, n, MovingAvg (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b),
-        (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, n, LinReg (a, b, c)) ->
-    StatefulFun (f t, g, n, LinReg (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b),
-        (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, n, MultiLinReg (a, b, c, d)) ->
-    StatefulFun (f t, g, n, MultiLinReg (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b),
-        (if recurs then map_type ~recurs f c else c),
-        (if recurs then List.map (map_type ~recurs f) d else d)))
-  | StatefulFun (t, g, n, Remember (fpr, tim, dur, es)) ->
-    StatefulFun (f t, g, n, Remember (
-        (if recurs then map_type ~recurs f fpr else fpr),
-        (if recurs then map_type ~recurs f tim else tim),
-        (if recurs then map_type ~recurs f dur else dur),
-        (if recurs then List.map (map_type ~recurs f) es else es)))
-  | StatefulFun (t, g, n, Distinct es) ->
-    StatefulFun (f t, g, n, Distinct
-        (if recurs then List.map (map_type ~recurs f) es else es))
-  | StatefulFun (t, g, n, ExpSmooth (a, b)) ->
-    StatefulFun (f t, g, n, ExpSmooth (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
-  | StatefulFun (t, g, n, Hysteresis (a, b, c)) ->
-    StatefulFun (f t, g, n, Hysteresis (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b),
-        (if recurs then map_type ~recurs f c else c)))
-  | StatefulFun (t, g, n, Top { want_rank ; c ; max_size ; what ; by ;
-                                duration ; time }) ->
-    StatefulFun (f t, g, n, Top {
-      want_rank ;
-      c = (if recurs then map_type ~recurs f c else c) ;
-      max_size = (if recurs then Option.map (map_type ~recurs f) max_size else max_size) ;
-      duration = (if recurs then map_type ~recurs f duration else duration) ;
-      what = (if recurs then List.map (map_type ~recurs f) what else what) ;
-      by = (if recurs then map_type ~recurs f by else by) ;
-      time = (if recurs then map_type ~recurs f time else time) })
-  | StatefulFun (t, g, n, Last (c, e, es)) ->
-    StatefulFun (f t, g, n, Last (c,
-      (if recurs then map_type ~recurs f e else e),
-      (if recurs then List.map (map_type ~recurs f) es else es)))
-  | StatefulFun (t, g, n, Sample (c, e)) ->
-    StatefulFun (f t, g, n, Sample (c,
-      (if recurs then map_type ~recurs f e else e)))
-  | StatefulFun (t, g, n, Past { what ; time ; max_age ; sample_size}) ->
-    StatefulFun (f t, g, n, Past {
-      what = (if recurs then map_type ~recurs f what else what) ;
-      time = (if recurs then map_type ~recurs f time else time) ;
-      max_age = (if recurs then map_type ~recurs f max_age else max_age) ;
-      sample_size =
-        (if recurs then Option.map (map_type ~recurs f) sample_size
-                   else sample_size) })
-  | StatefulFun (t, g, n, Group e) ->
-    StatefulFun (f t, g, n, Group (if recurs then map_type ~recurs f e else e))
-
-  | StatelessFun0 (t, cst) ->
-    StatelessFun0 (f t, cst)
-
-  | StatelessFun1 (t, cst, a) ->
-    StatelessFun1 (f t, cst, (if recurs then map_type ~recurs f a else a))
-  | StatelessFun2 (t, cst, a, b) ->
-    StatelessFun2 (f t, cst,
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b))
-  | StatelessFunMisc (t, Like (e, p)) ->
-    StatelessFunMisc (f t, Like (
-        (if recurs then map_type ~recurs f e else e), p))
-  | StatelessFunMisc (t, Max es) ->
-    StatelessFunMisc (f t, Max
-      (if recurs then List.map (map_type ~recurs f) es else es))
-  | StatelessFunMisc (t, Min es) ->
-    StatelessFunMisc (f t, Min
-      (if recurs then List.map (map_type ~recurs f) es else es))
-  | StatelessFunMisc (t, Print es) ->
-    StatelessFunMisc (f t, Print
-      (if recurs then List.map (map_type ~recurs f) es else es))
-
-  | GeneratorFun (t, Split (a, b)) ->
-    GeneratorFun (f t, Split (
-        (if recurs then map_type ~recurs f a else a),
-        (if recurs then map_type ~recurs f b else b)))
+let rec map_type f e =
+  map (fun _what _env e ->
+    { e with typ = f e.typ }
+  ) "map_type" [] e
 
 (* We can share default values: *)
-let default_start =
-  StatelessFun0 (make_typ "#start", EventStart)
-let default_zero = expr_zero ()
-let default_one = expr_one ()
-let default_1hour = expr_1hour ()
+let default_start = make (Stateless (SL0 EventStart))
+let default_zero = zero ()
+let default_one = one ()
+let default_1hour = one_hour ()
 
 module Parser =
 struct
   type expr = t
+  let const_of_string = of_string
   (*$< Parser *)
   open RamenParsing
 
@@ -1069,20 +866,20 @@ struct
     let m = "constant" :: m in
     (
       (
-        RamenTypes.Parser.scalar ~min_int_width:32 >>:
+        T.Parser.scalar ~min_int_width:32 >>:
         fun c ->
           (* We'd like to consider all constants as dimensionless, but that'd
              be a pain (for instance, COALESCE(x, 0) would be invalid if x had
              a unit, while by leaving the const unit unspecified it has the
              unit of x.
           let units =
-            if RamenTypes.(is_a_num (structure_of c)) then
+            if T.(is_a_num (structure_of c)) then
               Some RamenUnits.dimensionless
             else None in*)
-          Const (make_typ "constant", c)
+          make (Const c)
       ) ||| (
         duration >>: fun x ->
-          Const (make_typ ~units:RamenUnits.seconds "constant", VFloat x)
+          make ~units:RamenUnits.seconds (Const (VFloat x))
       )
     ) m
 
@@ -1095,63 +892,77 @@ struct
   *)
 
   let null m =
-    (RamenTypes.Parser.null >>: fun v ->
-      (* Type of "NULL" is unknown yet *)
-      Const (make_typ "NULL", v)
-    ) m
-
-  let field m =
-    let m = "field" :: m in
     (
-      optional ~def:TupleUnknown parse_prefix ++ non_keyword >>:
-      fun (tuple, field) ->
-        (* This is important here that the type name is the raw field name,
-         * because we use the tuple field type name as their identifier (unless
-         * it's a virtual field (starting with #) of course since those are
-         * computed on the fly and have no corresponding variable in the
-         * tuple) *)
-        Field (make_typ field, ref tuple, RamenName.field_of_string field)
+      T.Parser.null >>:
+      fun v ->
+        make (Const v) (* Type of "NULL" is yet unknown *)
     ) m
 
-  (*$= field & ~printer:(test_printer (print false))
+  let variable m =
+    let m = "variable" :: m in
+    (
+      non_keyword >>:
+      fun (n) ->
+        make (Variable (RamenName.field_of_string n))
+    ) m
+
+  (*$= variable & ~printer:(test_printer (print false))
     (Ok (\
-      Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes"),\
+      Variable (typ, RamenName.field_of_string "bytes"),\
       (5, [])))\
-      (test_p field "bytes" |> replace_typ_in_expr)
+      (test_p variable "bytes" |> replace_typ_in_expr)
 
     (Ok (\
-      Field (typ, ref TupleIn, RamenName.field_of_string "bytes"),\
+      Variable (typ, RamenName.field_of_string "bytes"),\
       (8, [])))\
-      (test_p field "in.bytes" |> replace_typ_in_expr)
+      (test_p variable "in.bytes" |> replace_typ_in_expr)
 
     (Ok (\
-      Field (typ, ref TupleOut, RamenName.field_of_string "bytes"),\
+      Variable (typ, RamenName.field_of_string "bytes"),\
       (9, [])))\
-      (test_p field "out.bytes" |> replace_typ_in_expr)
+      (test_p variable "out.bytes" |> replace_typ_in_expr)
 
     (Bad (\
       NoSolution (\
         Some { where = ParsersMisc.Item ((1,8), '.');\
                what=["eof"]})))\
-      (test_p field "pasglop.bytes" |> replace_typ_in_expr)
+      (test_p variable "pasglop.bytes" |> replace_typ_in_expr)
   *)
 
-  let param m =
-    let m = "parameter" :: m in
-    (non_keyword >>: fun p ->
-      Field (make_typ p, ref TupleParam, RamenName.field_of_string p)) m
-
-  (*$= param & ~printer:(test_printer (print false))
-    (Ok (\
-      Field (typ, ref TupleParam, RamenName.field_of_string "glop"),\
-      (4, [])))\
-      (test_p param "glop" |> replace_typ_in_expr)
-  *)
+  let rec default_alias e =
+    let force_public field =
+      if String.length field = 0 || field.[0] <> '_' then field
+      else String.lchop field in
+    match e.text with
+    | Variable name
+        when not (RamenName.is_virtual name) ->
+        force_public (RamenName.string_of_field name)
+    (* Provide some default name for common aggregate functions: *)
+    | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrSum, e)) -> "sum_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrAvg, e)) -> "avg_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrAnd, e)) -> "and_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrOr, e)) -> "or_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrFirst, e)) -> "first_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrLast, e)) -> "last_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
+        default_alias e ^"_histogram"
+    | Stateless (SL2 (Percentile, { text = Const p ; _ }, e))
+      when T.is_round_integer p ->
+        Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
+    (* Some functions better leave no traces: *)
+    | Stateless (SL1s (Print, e::_)) -> default_alias e
+    | Stateless (SL1 (Cast _, e)) -> default_alias e
+    | Stateful (_, _, SF1 (Group, e)) -> default_alias e
+    | _ -> raise (Reject "must set alias")
 
   let state_lifespan m =
     let m = "state lifespan" :: m in
-    ((strinG "globally" >>: fun () -> GlobalState) |||
-     (strinG "locally" >>: fun () -> LocalState)) m
+    (
+      (strinG "globally" >>: fun () -> GlobalState) |||
+      (strinG "locally" >>: fun () -> LocalState)
+    ) m
 
   let skip_nulls m =
     let m = "skip nulls" :: m in
@@ -1172,43 +983,44 @@ struct
   let rec lowestest_prec_left_assoc m =
     let m = "logical OR operator" :: m in
     let op = strinG "or"
-    and reduce e1 _op e2 = StatelessFun2 (make_typ "or", Or, e1, e2) in
+    and reduce e1 _op e2 = make (Stateless (SL2 (Or, e1, e2))) in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)OR(y)" is OK) *)
     binary_ops_reducer ~op ~term:lowest_prec_left_assoc ~sep:blanks ~reduce m
 
   and lowest_prec_left_assoc m =
     let m = "logical AND operator" :: m in
     let op = strinG "and"
-    and reduce e1 _op e2 = StatelessFun2 (make_typ "and", And, e1, e2) in
+    and reduce e1 _op e2 = make (Stateless (SL2 (And, e1, e2))) in
     binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
 
   and conditional m =
     let m = "conditional expression" :: m in
-    (case ||| if_ ||| low_prec_left_assoc) m
+    (
+      case ||| if_ ||| low_prec_left_assoc
+    ) m
 
   and low_prec_left_assoc m =
     let m = "comparison operator" :: m in
-    let op = that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
-             that_string "=" ||| that_string "<>" ||| that_string "!=" |||
-             that_string "in" ||| that_string "like" |||
-             ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
+    let op =
+      that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
+      that_string "=" ||| that_string "<>" ||| that_string "!=" |||
+      that_string "in" ||| that_string "like" |||
+      ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
     and reduce e1 op e2 = match op with
-      | ">" -> StatelessFun2 (make_typ "comparison (>)", Gt, e1, e2)
-      | "<" -> StatelessFun2 (make_typ "comparison (<)", Gt, e2, e1)
-      | ">=" -> StatelessFun2 (make_typ "comparison (>=)", Ge, e1, e2)
-      | "<=" -> StatelessFun2 (make_typ "comparison (<=)", Ge, e2, e1)
-      | "=" -> StatelessFun2 (make_typ "equality", Eq, e1, e2)
+      | ">" -> make (Stateless (SL2 (Gt, e1, e2)))
+      | "<" -> make (Stateless (SL2 (Gt, e2, e1)))
+      | ">=" -> make (Stateless (SL2 (Ge, e1, e2)))
+      | "<=" -> make (Stateless (SL2 (Ge, e2, e1)))
+      | "=" -> make (Stateless (SL2 (Eq, e1, e2)))
       | "!=" | "<>" ->
-        StatelessFun1 (make_typ "not", Not,
-          StatelessFun2 (make_typ "equality", Eq, e1, e2))
-      | "in" -> StatelessFun2 (make_typ "in", In, e1, e2)
+          make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, e2))))))
+      | "in" -> make (Stateless (SL2 (In, e1, e2)))
       | "like" ->
-        (match string_of_const e2 with
-        | None -> raise (Reject "LIKE pattern must be a string constant")
-        | Some p ->
-          StatelessFunMisc (make_typ "like", Like (e1, p)))
-      | "starts" -> StatelessFun2 (make_typ "starts with", StartsWith, e1, e2)
-      | "ends" -> StatelessFun2 (make_typ "ends with", EndsWith, e1, e2)
+          (match string_of_const e2 with
+          | None -> raise (Reject "LIKE pattern must be a string constant")
+          | Some p -> make (Stateless (SL1 (Like p, e1))))
+      | "starts" -> make (Stateless (SL2 (StartsWith, e1, e2)))
+      | "ends" -> make (Stateless (SL2 (EndsWith, e1, e2)))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1217,31 +1029,35 @@ struct
     let op = that_string "+" ||| that_string "-" ||| that_string "||" |||
              that_string "|?"
     and reduce e1 op e2 = match op with
-      | "+" -> StatelessFun2 (make_typ "addition", Add, e1, e2)
-      | "-" -> StatelessFun2 (make_typ "subtraction", Sub, e1, e2)
-      | "||" -> StatelessFun2 (make_typ "concatenation", Concat, e1, e2)
-      | "|?" -> Coalesce (make_typ "default", [ e1 ; e2 ])
+      | "+" -> make (Stateless (SL2 (Add, e1, e2)))
+      | "-" -> make (Stateless (SL2 (Sub, e1, e2)))
+      | "||" -> make (Stateless (SL2 (Concat, e1, e2)))
+      | "|?" -> make (Stateless (SL1s (Coalesce, [ e1 ; e2 ])))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and high_prec_left_assoc m =
     let m = "arithmetic operator" :: m in
-    let op = that_string "*" ||| that_string "//" ||| that_string "/" ||| that_string "%"
+    let op = that_string "*" ||| that_string "//" ||| that_string "/" |||
+             that_string "%"
     and reduce e1 op e2 = match op with
-      | "*" -> StatelessFun2 (make_typ "multiplication", Mul, e1, e2)
+      | "*" -> make (Stateless (SL2 (Mul, e1, e2)))
       (* Note: We want the default division to output floats by default *)
       (* Note: We reject IP/INT because that's a CIDR *)
-      | "//" -> StatelessFun2 (make_typ "integer-division", IDiv, e1, e2)
-      | "%" -> StatelessFun2 (make_typ "modulo", Mod, e1, e2)
+      | "//" -> make (Stateless (SL2 (IDiv, e1, e2)))
+      | "%" -> make (Stateless (SL2 (Mod, e1, e2)))
       | "/" ->
-          (match e1, e2 with
-          | Const (_, c1), Const (_, c2) when
-              RamenTypes.(structure_of c1 |> is_an_ip) &&
-              RamenTypes.(structure_of c2 |> is_an_int) ->
+          (* "1.2.3.4/1" can be parsed both as a CIDR or a dubious division of
+           * an IP by a number. Reject that one: *)
+          (match e1.text, e2.text with
+          | Const c1, Const c2 when
+              T.(structure_of c1 |> is_an_ip) &&
+              T.(structure_of c2 |> is_an_int) ->
               raise (Reject "That's a CIDR")
           | _ ->
-              StatelessFun2 (make_typ "division", Div, e1, e2))
-      | _ -> assert false in
+              make (Stateless (SL2 (Div, e1, e2))))
+      | _ -> assert false
+    in
     binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_left_assoc m =
@@ -1249,23 +1065,51 @@ struct
     let op = that_string "&" ||| that_string "|" ||| that_string "#" |||
              that_string "<<" ||| that_string ">>"
     and reduce e1 op e2 = match op with
-      | "&" -> StatelessFun2 (make_typ "bitwise and", BitAnd, e1, e2)
-      | "|" -> StatelessFun2 (make_typ "bitwise or", BitOr, e1, e2)
-      | "#" -> StatelessFun2 (make_typ "bitwise xor", BitXor, e1, e2)
-      | "<<" -> StatelessFun2 (make_typ "bitwise shift", BitShift, e1, e2)
+      | "&" -> make (Stateless (SL2 (BitAnd, e1, e2)))
+      | "|" -> make (Stateless (SL2 (BitOr, e1, e2)))
+      | "#" -> make (Stateless (SL2 (BitXor, e1, e2)))
+      | "<<" -> make (Stateless (SL2 (BitShift, e1, e2)))
       | ">>" ->
-          let e2 = StatelessFun1 (make_typ "unary minus", Minus, e2) in
-          StatelessFun2 (make_typ "bitwise shift", BitShift, e1, e2)
+          let e2 = make (Stateless (SL1 (Minus, e2))) in
+          make (Stateless (SL2 (BitShift, e1, e2)))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_right_assoc m =
     let m = "arithmetic operator" :: m in
     let op = char '^'
-    and reduce e1 _ e2 =
-      StatelessFun2 (make_typ "exponentiation", Pow, e1, e2) in
+    and reduce e1 _ e2 = make (Stateless (SL2 (Pow, e1, e2))) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
+
+  and highest_prec_left_assoc m =
+    (
+      (afun1 "not" >>: fun e ->
+        make (Stateless (SL1 (Not, e)))) |||
+      (strinG "-" -- opt_blanks --
+        check (nay decimal_digit) -+ highestest_prec >>: fun e ->
+          make (Stateless (SL1 (Minus, e)))) |||
+      (highestest_prec ++
+        optional ~def:None (
+          blanks -- strinG "is" -- blanks -+
+          optional ~def:(Some false)
+                   (strinG "not" -- blanks >>: fun () -> Some true) +-
+          strinG "null") >>: function
+            | e, None -> e
+            | e, Some false ->
+                make (Stateless (SL1 (Not,
+                  make (Stateless (SL1 (Defined, e))))))
+            | e, Some true ->
+                make (Stateless (SL1 (Defined, e)))) |||
+      (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
+        fun e -> make (Stateless (SL1 (BeginOfRange, e)))) |||
+      (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
+        fun e -> make (Stateless (SL1 (EndOfRange, e)))) |||
+      (highestest_prec +- char '.' ++ non_keyword >>:
+        fun (e, s) ->
+          let s = make (Const (VString s)) in
+          make (Stateless (SL2 (Get, s, e))))
+    ) m
 
   (* "sf" stands for "stateful" *)
   and afunv_sf ?def_state a n m =
@@ -1362,148 +1206,136 @@ struct
   and afun3v n =
     afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
-  and highest_prec_left_assoc m =
-    (
-      (afun1 "not" >>: fun e ->
-        StatelessFun1 (make_typ "not", Not, e)) |||
-      (strinG "-" -- opt_blanks --
-        check (nay decimal_digit) -+ highestest_prec >>: fun e ->
-          StatelessFun1 (make_typ "unary minus", Minus, e)) |||
-      (highestest_prec ++
-        optional ~def:None (
-          blanks -- strinG "is" -- blanks -+
-          optional ~def:(Some false)
-                   (strinG "not" -- blanks >>: fun () -> Some true) +-
-          strinG "null") >>: function
-            | e, None -> e
-            | e, Some false ->
-              StatelessFun1 (make_typ "not", Not,
-                StatelessFun1 (make_typ "is_not_null", Defined, e))
-            | e, Some true ->
-              StatelessFun1 (make_typ "is_not_null", Defined, e)) |||
-      (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> StatelessFun1 (make_typ "begin of", BeginOfRange, e)) |||
-      (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> StatelessFun1 (make_typ "end of", EndOfRange, e))
-    ) m
-
   and func m =
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
-    ((afun1 "age" >>: fun e -> StatelessFun1 (make_typ "age function", Age, e)) |||
-     (afun1 "abs" >>: fun e -> StatelessFun1 (make_typ "absolute value", Abs, e)) |||
-     (afun1 "length" >>: fun e -> StatelessFun1 (make_typ "length", Length, e)) |||
-     (afun1 "lower" >>: fun e -> StatelessFun1 (make_typ "lower", Lower, e)) |||
-     (afun1 "upper" >>: fun e -> StatelessFun1 (make_typ "upper", Upper, e)) |||
-     (strinG "now" >>: fun () -> StatelessFun0 (make_typ "now", Now)) |||
-     (strinG "random" >>: fun () -> StatelessFun0 (make_typ "random", Random)) |||
-     (strinG "#start" >>: fun () -> StatelessFun0 (make_typ "#start", EventStart)) |||
-     (strinG "#stop" >>: fun () -> StatelessFun0 (make_typ "#stop", EventStop)) |||
-     (afun1 "exp" >>: fun e -> StatelessFun1 (make_typ "exponential", Exp, e)) |||
-     (afun1 "log" >>: fun e -> StatelessFun1 (make_typ "natural logarithm", Log, e)) |||
-     (afun1 "log10" >>: fun e -> StatelessFun1 (make_typ "common logarithm", Log10, e)) |||
-     (afun1 "sqrt" >>: fun e -> StatelessFun1 (make_typ "square root", Sqrt, e)) |||
-     (afun1 "ceil" >>: fun e -> StatelessFun1 (make_typ "ceil", Ceil, e)) |||
-     (afun1 "floor" >>: fun e -> StatelessFun1 (make_typ "floor", Floor, e)) |||
-     (afun1 "round" >>: fun e -> StatelessFun1 (make_typ "round", Round, e)) |||
-     (afun1 "truncate" >>: fun e ->
-        StatelessFun2 (make_typ "truncate", Trunc, e, expr_float "one" 1.)) |||
-     (afun2 "truncate" >>: fun (e1, e2) ->
-        StatelessFun2 (make_typ "truncate", Trunc, e1, e2)) |||
-     (afun1 "hash" >>: fun e -> StatelessFun1 (make_typ "hash", Hash, e)) |||
-     (afun1 "sparkline" >>: fun e -> StatelessFun1 (make_typ "sparkline", Sparkline, e)) |||
-     (afun1_sf ~def_state:LocalState "min" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "min aggregation", g, n, AggrMin e)) |||
-     (afun1_sf ~def_state:LocalState "max" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "max aggregation", g, n, AggrMax e)) |||
-     (afun1_sf ~def_state:LocalState "sum" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "sum aggregation", g, n, AggrSum e)) |||
-     (afun1_sf ~def_state:LocalState "avg" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "average", g, n, AggrAvg e)) |||
-     (afun1_sf ~def_state:LocalState "and" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "and aggregation", g, n, AggrAnd e)) |||
-     (afun1_sf ~def_state:LocalState "or" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "or aggregation", g, n, AggrOr e)) |||
-     (afun1_sf ~def_state:LocalState "first" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "first aggregation", g, n, AggrFirst e)) |||
-     (afun1_sf ~def_state:LocalState "last" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "last aggregation", g, n, AggrLast e)) |||
-     (afun1_sf ~def_state:LocalState "group" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
-     (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "group aggregation", g, n, Group e)) |||
-     ((const ||| param) +-
-      (optional ~def:() (strinG "th")) +- blanks ++
-      afun1 "percentile" >>: fun (p, e) ->
-        StatelessFun2 (make_typ "percentile", Percentile, p, e)) |||
-     (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "lag", g, n, Lag (e1, e2))) |||
-     (afun1_sf "lag" >>: fun ((g, n), e) ->
-        StatefulFun (make_typ "lag", g, n, Lag (expr_one (), e))) |||
+    (
+      (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |||
+      (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |||
+      (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |||
+      (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |||
+      (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |||
+      (strinG "now" >>: fun () -> make (Stateless (SL0 Now))) |||
+      (strinG "random" >>: fun () -> make (Stateless (SL0 Random))) |||
+      (strinG "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |||
+      (strinG "#stop" >>: fun () -> make (Stateless (SL0 EventStop))) |||
+      (afun1 "exp" >>: fun e -> make (Stateless (SL1 (Exp, e)))) |||
+      (afun1 "log" >>: fun e -> make (Stateless (SL1 (Log, e)))) |||
+      (afun1 "log10" >>: fun e -> make (Stateless (SL1 (Log10, e)))) |||
+      (afun1 "sqrt" >>: fun e -> make (Stateless (SL1 (Sqrt, e)))) |||
+      (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |||
+      (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |||
+      (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |||
+      (afun1 "truncate" >>: fun e ->
+         make (Stateless (SL2 (Trunc, e, of_float 1.)))) |||
+      (afun2 "truncate" >>: fun (e1, e2) ->
+         make (Stateless (SL2 (Trunc, e1, e2)))) |||
+      (afun1 "hash" >>: fun e -> make (Stateless (SL1 (Hash, e)))) |||
+      (afun1 "sparkline" >>: fun e -> make (Stateless (SL1 (Sparkline, e)))) |||
+      (afun1_sf ~def_state:LocalState "min" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrMin, e)))) |||
+      (afun1_sf ~def_state:LocalState "max" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrMax, e)))) |||
+      (afun1_sf ~def_state:LocalState "sum" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrSum, e)))) |||
+      (afun1_sf ~def_state:LocalState "avg" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrAvg, e)))) |||
+      (afun1_sf ~def_state:LocalState "and" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrAnd, e)))) |||
+      (afun1_sf ~def_state:LocalState "or" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrOr, e)))) |||
+      (afun1_sf ~def_state:LocalState "first" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrFirst, e)))) |||
+      (afun1_sf ~def_state:LocalState "last" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (AggrLast, e)))) |||
+      (afun1_sf ~def_state:LocalState "group" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (Group, e)))) |||
+      (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (Group, e)))) |||
+      (
+        (const ||| variable) +-
+        (optional ~def:() (strinG "th")) +- blanks ++
+        afun1 "percentile" >>:
+        fun (p, e) ->
+          make (Stateless (SL2 (Percentile, p, e)))
+      ) |||
+      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
+         make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
+      (afun1_sf "lag" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF2 (Lag, one (), e)))) |||
 
-     (* avg perform a division thus the float type *)
-     (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
-        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (e1, e2, e3))) |||
-     (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "season_moveavg", g, n, MovingAvg (expr_one (), e1, e2))) |||
-     (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
-        StatefulFun (make_typ "season_fit", g, n, LinReg (e1, e2, e3))) |||
-     (afun2_sf "fit" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "season_fit", g, n, LinReg (expr_one (), e1, e2))) |||
-     (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
-        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (e1, e2, e3, e4s))) |||
-     (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
-        StatefulFun (make_typ "season_fit_multi", g, n, MultiLinReg (expr_one (), e1, e2, e3s))) |||
-     (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
-        StatefulFun (make_typ "smooth", g, n, ExpSmooth (e1, e2))) |||
-     (afun1_sf "smooth" >>: fun ((g, n), e) ->
-        let alpha =
-          Const (make_typ "alpha", VFloat 0.5) in
-        StatefulFun (make_typ "smooth", g, n, ExpSmooth (alpha, e))) |||
-     (afun3_sf "remember" >>: fun ((g, n), tim, dur, e) ->
-        (* If we allowed a list of expressions here then it would be ambiguous
-         * with the following "3+v" signature: *)
-        let fpr = of_float 0.015 in
-        StatefulFun (make_typ "remember", g, n,
-                     Remember (fpr, tim, dur, [e]))) |||
-     (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
-        StatefulFun (make_typ "remember", g, n,
-                     Remember (fpr, tim, dur, es))) |||
-     (afun0v_sf ~def_state:LocalState "distinct" >>: fun ((g, n), es) ->
-         StatefulFun (make_typ "distinct", g, n, Distinct es)) |||
-     (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
-        StatefulFun (make_typ "hysteresis", g, n,
-                     Hysteresis (value, accept, max))) |||
-     (afun4_sf ~def_state:LocalState "histogram" >>:
-      fun ((g, n), what, min, max, num_buckets) ->
-        match float_of_const min,
-              float_of_const max,
-              int_of_const num_buckets with
-        | Some min, Some max, Some num_buckets ->
-            if num_buckets <= 0 then
-              raise (Reject "Histogram size must be positive") ;
-            StatefulFun (make_typ "histogram",
-                         g, n, AggrHistogram (what, min, max, num_buckets))
-        | _ -> raise (Reject "histogram dimensions must be constants")) |||
-     (afun2 "split" >>: fun (e1, e2) ->
-        GeneratorFun (make_typ "split", Split (e1, e2))) |||
-     (afun2 "format_time" >>: fun (e1, e2) ->
-        StatelessFun2 (make_typ "format_time", Strftime, e1, e2)) |||
-     (afun1 "parse_time" >>: fun e ->
-        StatelessFun1 (make_typ "parse_time", Strptime, e)) |||
-     (afun1 "variant" >>: fun e ->
-        StatelessFun1 (make_typ "variant", Variant, e)) |||
-     (* At least 2 args to distinguish from the aggregate functions: *)
-     (afun2v "max" >>: fun (e1, e2, e3s) ->
-        StatelessFunMisc (make_typ "max", Max (e1 :: e2 :: e3s))) |||
-     (afun1v "greatest" >>: fun (e, es) ->
-        StatelessFunMisc (make_typ "max", Max (e :: es))) |||
-     (afun2v "min" >>: fun (e1, e2, e3s) ->
-        StatelessFunMisc (make_typ "min", Min (e1 :: e2 :: e3s))) |||
-     (afun1v "least" >>: fun (e, es) ->
-        StatelessFunMisc (make_typ "min", Min (e :: es))) |||
-     (afun2 "get" >>: fun (n, v) ->
-        (match n with
+      (* avg perform a division thus the float type *)
+      (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
+         make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |||
+      (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
+         make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |||
+      (afun3_sf "season_fit" >>: fun ((g, n), e1, e2, e3) ->
+         make (Stateful (g, n, SF3 (LinReg, e1, e2, e3)))) |||
+      (afun2_sf "fit" >>: fun ((g, n), e1, e2) ->
+         make (Stateful (g, n, SF3 (LinReg, one (), e1, e2)))) |||
+      (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
+         make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |||
+      (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
+         make (Stateful (g, n, SF4s (MultiLinReg, one (), e1, e2, e3s)))) |||
+      (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
+         make (Stateful (g, n, SF2 (ExpSmooth, e1, e2)))) |||
+      (afun1_sf "smooth" >>: fun ((g, n), e) ->
+         let alpha = of_float 0.5 in
+         make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |||
+      (afun3_sf "remember" >>: fun ((g, n), tim, dur, e) ->
+         (* If we allowed a list of expressions here then it would be ambiguous
+          * with the following "3+v" signature: *)
+         let fpr = of_float 0.015 in
+         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |||
+      (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
+         make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |||
+      (afun0v_sf ~def_state:LocalState "distinct" >>: fun ((g, n), es) ->
+         make (Stateful (g, n, Distinct es))) |||
+      (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
+         make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |||
+      (afun4_sf ~def_state:LocalState "histogram" >>:
+       fun ((g, n), what, min, max, num_buckets) ->
+         match float_of_const min,
+               float_of_const max,
+               int_of_const num_buckets with
+         | Some min, Some max, Some num_buckets ->
+             if num_buckets <= 0 then
+               raise (Reject "Histogram size must be positive") ;
+             make (Stateful (g, n, SF1 (
+              AggrHistogram (min, max, num_buckets), what)))
+         | _ -> raise (Reject "histogram dimensions must be constants")) |||
+      (afun2 "split" >>: fun (e1, e2) ->
+         make (Generator (Split (e1, e2)))) |||
+      (afun2 "format_time" >>: fun (e1, e2) ->
+         make (Stateless (SL2 (Strftime, e1, e2)))) |||
+      (afun1 "parse_time" >>: fun e ->
+         make (Stateless (SL1 (Strptime, e)))) |||
+      (afun1 "variant" >>: fun e ->
+         make (Stateless (SL1 (Variant, e)))) |||
+      (* At least 2 args to distinguish from the aggregate functions: *)
+      (afun2v "max" >>: fun (e1, e2, e3s) ->
+         make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |||
+      (afun1v "greatest" >>: fun (e, es) ->
+         make (Stateless (SL1s (Max, e :: es)))) |||
+      (afun2v "min" >>: fun (e1, e2, e3s) ->
+         make (Stateless (SL1s (Min, e1 :: e2 :: e3s)))) |||
+      (afun1v "least" >>: fun (e, es) ->
+         make (Stateless (SL1s (Min, e :: es)))) |||
+      (afun1v "print" >>: fun (e, es) ->
+         make (Stateless (SL1s (Print, e :: es)))) |||
+      (afun2 "reldiff" >>: fun (e1, e2) ->
+        make (Stateless (SL2 (Reldiff, e1, e2)))) |||
+      (afun2_sf "sample" >>: fun ((g, n), c, e) ->
+         make (Stateful (g, n, SF2 (Sample, c, e)))) |||
+      k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past ||| get |||
+      changed_field
+    ) m
+
+  and get m =
+    let m = "get" :: m in
+    (
+      afun2 "get" >>: fun (n, v) ->
+        (match n.text with
         | Const _ ->
             (match int_of_const n with
             | Some n ->
@@ -1513,96 +1345,91 @@ struct
                 if string_of_const n = None then
                   raise (Reject "GET requires a numeric or string index"))
         | _ -> ()) ;
-        StatelessFun2 (make_typ "get", Get, n, v)) |||
-     (afun1v "print" >>: fun (e, es) ->
-        StatelessFunMisc (make_typ "print", Print (e :: es))) |||
-     (afun2 "reldiff" >>: fun (e1, e2) ->
-       StatelessFun2 (make_typ "reldiff", Reldiff, e1, e2)) |||
-     (afun2_sf "sample" >>: fun ((g, n), c, e) ->
-        StatefulFun (make_typ "sample", g, n, Sample (c, e))) |||
-     k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past |||
-     changed_field) m
+        make (Stateless (SL2 (Get, n, v)))
+    ) m
 
   (* Syntactic sugar for `x <> previous.x` *)
   and changed_field m =
     let m = "changed" :: m in
     (
-      afun1 "changed" >>: fun f ->
-        let prev_field =
-          match f with
-          | Field (typ, tuple_ref, name) ->
-              (* If tuple is still unknown and we figure out later that it's
-               * not output then the error message will be about that field
-               * not present in the output tuple. Not too bad. *)
-              if !tuple_ref <> TupleOut &&
-                 !tuple_ref <> TupleUnknown
-              then
-                raise (Reject "Changed operator is only valid for \
-                               fields of the output tuple") ;
-              Field (make_typ typ.expr_name, ref TupleOutPrevious, name)
-          | _ ->
-              raise (Reject "Changed operator is only valid for fields")
-        in
-        StatelessFun1 (make_typ "not", Not,
-          StatelessFun2 (make_typ "equality", Eq, f, prev_field))
+      afun1 "changed" >>:
+      fun f ->
+        match f.text with
+        | Variable name ->
+            (* If we figure out later that this variable is not an output
+             * field then the error message will be about that field
+             * not present in the output tuple. Not too bad. *)
+            let prev_f =
+              make (Stateless (SL2 (Get,
+                const_of_string (RamenName.string_of_field name),
+                make (Variable (RamenName.field_of_string "previous"))))) in
+            make (Stateless (SL1 (Not,
+              make (Stateless (SL2 (Eq, f, prev_f))))))
+        | _ ->
+            raise (Reject "Changed operator is only valid for fields")
     ) m
 
   and cast m =
     let m = "cast" :: m in
     let sep = check (char '(') ||| blanks in
-    (RamenTypes.Parser.scalar_typ +- sep ++
-     highestest_prec >>: fun (t, e) ->
-       (* The nullability of [value] should propagate to [type(value)],
-        * while [type?(value)] should be nullable no matter what. *)
-       let name = "cast to "^ IO.to_string RamenTypes.print_typ t in
-       StatelessFun1 (make_typ name, Cast t, e)
+    (
+      T.Parser.scalar_typ +- sep ++
+      highestest_prec >>:
+      fun (t, e) ->
+        (* The nullability of [value] should propagate to [type(value)],
+         * while [type?(value)] should be nullable no matter what. *)
+        make (Stateless (SL1 (Cast t, e)))
     ) m
 
   and k_moveavg m =
     let m = "k-moving average" :: m in
     let sep = check (char '(') ||| blanks in
-    ((unsigned_decimal_number >>: RamenTypes.Parser.narrowest_int_scalar) +-
-     (strinG "-moveavg" ||| strinG "-ma") ++
-     state_and_nulls +-
-     sep ++ highestest_prec >>: fun ((k, (g, n)), e) ->
-       if k = VNull then raise (Reject "Cannot use NULL here") ;
-       let k = Const (make_typ "moving average order", k) in
-       StatefulFun (make_typ "moveavg", g, n, MovingAvg (expr_one (), k, e))) m
+    (
+      (unsigned_decimal_number >>: T.Parser.narrowest_int_scalar) +-
+      (strinG "-moveavg" ||| strinG "-ma") ++
+      state_and_nulls +-
+      sep ++ highestest_prec >>:
+      fun ((k, (g, n)), e) ->
+        if k = VNull then raise (Reject "Cannot use NULL here") ;
+        let k = make (Const k) in
+        make (Stateful (g, n, SF3 (MovingAvg, one (), k, e)))
+    ) m
 
   and top_expr m =
     let m = "top expression" :: m in
-    (((strinG "rank" -- blanks -- strinG "of" >>: fun () -> true) |||
-      (strinG "is" >>: fun () -> false)) +- blanks ++
-     (* We can allow lowest precedence expressions here because of the
-      * keywords that follow: *)
-     several ~sep:list_sep p +- blanks +-
-     strinG "in" +- blanks +- strinG "top" +- blanks ++ (const ||| param) ++
-     optional ~def:None (
-      some (blanks -- strinG "over" -- blanks -+ p)) ++
-     state_and_nulls ++
-     optional ~def:default_one (
-       blanks -- strinG "by" -- blanks -+ highestest_prec) ++
-     optional ~def:None (
-       blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ some p) ++
-     optional ~def:None (
-       blanks -- strinG "for" --
-       optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
-       blanks -+ some (const ||| param)) >>:
-     fun (((((((want_rank, what), c), max_size),
-             (g, n)), by), time), duration) ->
-       let time, duration =
-         match time, duration with
-         (* If we asked for no time decay, use neutral values: *)
-         | None, None -> default_zero, default_1hour
-         | Some t, None -> t, default_1hour
-         | None, Some d -> default_start, d
-         | Some t, Some d -> t, d in
-       StatefulFun (
-         (if want_rank then make_typ "rank in top"
-                       (* same nullability as what+by+time: *)
-                       else make_typ "is in top"),
-         g, n,
-         Top { want_rank ; c ; max_size ; what ; by ; duration ; time })) m
+    (
+      (
+        (strinG "rank" -- blanks -- strinG "of" >>: fun () -> true) |||
+        (strinG "is" >>: fun () -> false)
+      ) +- blanks ++
+      (* We can allow lowest precedence expressions here because of the
+       * keywords that follow: *)
+      several ~sep:list_sep p +- blanks +-
+      strinG "in" +- blanks +- strinG "top" +- blanks ++ (const ||| variable) ++
+      optional ~def:None (
+        some (blanks -- strinG "over" -- blanks -+ p)) ++
+      state_and_nulls ++
+      optional ~def:default_one (
+        blanks -- strinG "by" -- blanks -+ highestest_prec) ++
+      optional ~def:None (
+        blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ some p) ++
+      optional ~def:None (
+        blanks -- strinG "for" --
+        optional ~def:() (blanks -- strinG "the" -- blanks -- strinG "last") --
+        blanks -+ some (const ||| variable)) >>:
+      fun (((((((want_rank, what), c), max_size),
+              (g, n)), by), time), duration) ->
+        let time, duration =
+          match time, duration with
+          (* If we asked for no time decay, use neutral values: *)
+          | None, None -> default_zero, default_1hour
+          | Some t, None -> t, default_1hour
+          | None, Some d -> default_start, d
+          | Some t, Some d -> t, d
+        in
+        make (Stateful (g, n, Top {
+          want_rank ; c ; max_size ; what ; by ; duration ; time }))
+    ) m
 
   and last m =
     let m = "last expression" :: m in
@@ -1612,11 +1439,10 @@ struct
       state_and_nulls +- opt_blanks ++ p ++
       optional ~def:[] (
         blanks -- strinG "by" -- blanks -+
-        several ~sep:list_sep p) >>: fun (((c, (g, n)), e), es) ->
-      (* We cannot check that c is_constant yet since fields have not
-       * been assigned yet. *)
-      (* The result is null when the number of input is less than c: *)
-      StatefulFun (make_typ "last", g, n, Last (c, e, es))
+        several ~sep:list_sep p) >>:
+      fun (((c, (g, n)), e), es) ->
+        (* The result is null when the number of input is less than c: *)
+        make (Stateful (g, n, Last (c, e, es)))
     ) m
 
   and sample m =
@@ -1637,8 +1463,7 @@ struct
       optional ~def:default_start
         (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
       fun ((((sample_size, max_age), (g, n)), what), time) ->
-        StatefulFun (make_typ "recent", g, n,
-                     Past { what ; time ; max_age ; sample_size })
+        make (Stateful (g, n, Past { what ; time ; max_age ; sample_size }))
     ) m
 
   and nth m =
@@ -1653,10 +1478,10 @@ struct
         else raise (Reject ("bad suffix "^ th ^" for "^ string_of_int n))
     and sep = check (char '(') ||| blanks in
     (
-      q +- sep ++ highestest_prec >>: fun (n, es) ->
-        let n = Const (make_typ "tuple index",
-                       RamenTypes.scalar_of_int (n - 1)) in
-        StatelessFun2 (make_typ "nth", Get, n, es)
+      q +- sep ++ highestest_prec >>:
+      fun (n, es) ->
+        let n = make (Const (T.scalar_of_int (n - 1))) in
+        make (Stateless (SL2 (Get, n, es)))
     ) m
 
   and case m =
@@ -1667,51 +1492,61 @@ struct
        blanks +- strinG "then" +- blanks ++ p >>:
        fun (cd, cs) -> { case_cond = cd ; case_cons = cs }) m
     in
-    (strinG "case" -- blanks -+
-     several ~sep:blanks alt +- blanks ++
-     optional ~def:None (
-       strinG "else" -- blanks -+ some p +- blanks) +-
-     strinG "end" >>: fun (alts, else_) ->
-       Case (make_typ "case", alts, else_)) m
+    (
+      strinG "case" -- blanks -+
+      several ~sep:blanks alt +- blanks ++
+      optional ~def:None (
+        strinG "else" -- blanks -+ some p +- blanks) +-
+      strinG "end" >>:
+      fun (alts, else_) -> make (Case (alts, else_))
+    ) m
 
   and if_ m =
     let m = "if" :: m in
-    ((strinG "if" -- blanks -+ p +-
-      blanks +- strinG "then" +- blanks ++ p ++
-      optional ~def:None (
-        blanks -- strinG "else" -- blanks -+
-        some p) >>:
-      fun ((case_cond, case_cons), else_) ->
-        Case (make_typ "conditional", [ { case_cond ; case_cons } ], else_)) |||
-     (afun2 "if" >>: fun (case_cond, case_cons) ->
-        Case (make_typ "conditional", [ { case_cond ; case_cons } ], None)) |||
-     (afun3 "if" >>: fun (case_cond, case_cons, else_) ->
-        Case (make_typ "conditional", [ { case_cond ; case_cons } ], Some else_))) m
+    (
+      (
+        strinG "if" -- blanks -+ p +-
+        blanks +- strinG "then" +- blanks ++ p ++
+        optional ~def:None (
+          blanks -- strinG "else" -- blanks -+
+          some p) >>:
+        fun ((case_cond, case_cons), else_) ->
+          make (Case ([ { case_cond ; case_cons } ], else_))
+      ) ||| (
+        afun2 "if" >>:
+        fun (case_cond, case_cons) ->
+          make (Case ([ { case_cond ; case_cons } ], None))
+      ) ||| (
+        afun3 "if" >>:
+        fun (case_cond, case_cons, else_) ->
+          make (Case ([ { case_cond ; case_cons } ], Some else_))
+      )
+    ) m
 
   and coalesce m =
     let m = "coalesce" :: m in
     (
       afun0v "coalesce" >>: function
-      | [] -> raise (Reject "empty COALESCE")
-      | [_] -> raise (Reject "COALESCE must have at least 2 arguments")
-      | r ->
-          Coalesce (make_typ "coalesce", r)
+        | [] -> raise (Reject "empty COALESCE")
+        | [_] -> raise (Reject "COALESCE must have at least 2 arguments")
+        | r -> make (Stateless (SL1s (Coalesce, r)))
     ) m
 
   and accept_units q =
     q ++ optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) >>:
-      function (e, None) -> e
-             | (e, units) -> (typ_of e).units <- units ; e
+    function e, None -> e
+           | e, units -> { e with typ = { e.typ with units } }
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| field ||| null) ||| func ||| coalesce
+      accept_units (const ||| variable ||| null) ||| func ||| coalesce
     ) m
 
   and highestest_prec m =
-    (highestest_prec_no_parenthesis |||
-     accept_units (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')') |||
-     tuple ||| vector ||| record
+    (
+      highestest_prec_no_parenthesis |||
+      accept_units (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')') |||
+      tuple ||| vector ||| record
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
@@ -1721,20 +1556,45 @@ struct
     let m = "tuple" :: m in
     (
       char '(' -- opt_blanks -+
-      repeat ~min:2 ~sep:RamenTypes.Parser.tup_sep p +-
-      opt_blanks +- char ')' >>: fun es ->
-        Tuple (make_typ "tuple", es)
+      repeat ~min:2 ~sep:T.Parser.tup_sep p +-
+      opt_blanks +- char ')' >>:
+      fun es -> make (Tuple es)
+    ) m
+
+  and record_field m =
+    let m = "record field" :: m in
+    (
+      p ++ optional ~def:(None, "") (
+        T.Parser.kv_sep -+ some non_keyword ++
+        optional ~def:"" (blanks -+ quoted_string)) ++
+      optional ~def:None (
+        blanks -+ some T.Parser.default_aggr) >>:
+      fun ((expr, (alias, doc)), aggr) ->
+        let alias =
+          Option.default_delayed (fun () -> default_alias expr) alias in
+        let alias = RamenName.field_of_string alias in
+        { expr ; alias ; doc ; aggr }
     ) m
 
   and record m =
     let m = "record" :: m in
     (
       char '(' -- opt_blanks -+
-      repeat ~min:1 ~sep:RamenTypes.Parser.tup_sep (
-        p +- RamenTypes.Parser.kv_sep ++ non_keyword >>:
-        fun (v, k) -> RamenName.field_of_string k, v) +-
-      opt_blanks +- char ')' >>: fun kvs ->
-        Record (make_typ "record", kvs)
+      several ~sep:T.Parser.tup_sep (
+        (star >>: fun _ -> None) |||
+        some record_field) +-
+      opt_blanks +- char ')' >>:
+      fun lst ->
+        let star, sfs =
+          List.fold_left (fun (star, sfs) -> function
+            | None ->
+                if star then
+                  !logger.warning "duplicate STAR selector has no effect" ;
+                true, sfs
+            | Some sf ->
+                star, sf :: sfs
+          ) (false, []) lst in
+        make (Record (star, sfs))
     ) m
 
   (* Empty vectors are disallowed so we cannot ignore the element type: *)
@@ -1742,11 +1602,12 @@ struct
     let m = "vector" :: m in
     (
       char '[' -- opt_blanks -+
-      several ~sep:RamenTypes.Parser.tup_sep p +-
-      opt_blanks +- char ']' >>: fun es ->
+      several ~sep:T.Parser.tup_sep p +-
+      opt_blanks +- char ']' >>:
+      fun es ->
         let num_items = List.length es in
         assert (num_items >= 1) ;
-        Vector (make_typ "vector", es)
+        make (Vector es)
     ) m
 
   and p m = lowestest_prec_left_assoc m
@@ -1764,7 +1625,7 @@ struct
       (test_p p "true" |> replace_typ_in_expr)
 
     (Ok (\
-      StatelessFun1 (typ, Not, StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"))),\
+      StatelessFun1 (typ, Not, StatelessFun1 (typ, Defined, Variable (typ, RamenName.field_of_string "zone_src"))),\
       (16, [])))\
       (test_p p "zone_src IS NULL" |> replace_typ_in_expr)
 
@@ -1772,15 +1633,15 @@ struct
       StatelessFun2 (typ, And, \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
-            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"))),\
-          StatelessFun2 (typ, Eq, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_src"),\
-                                  Field (typ, ref TupleUnknown, RamenName.field_of_string "z1"))), \
+            StatelessFun1 (typ, Defined, Variable (typ, RamenName.field_of_string "zone_src"))),\
+          StatelessFun2 (typ, Eq, Variable (typ, RamenName.field_of_string "zone_src"),\
+                                  Variable (typ, RamenName.field_of_string "z1"))), \
         StatelessFun2 (typ, Or, \
           StatelessFun1 (typ, Not, \
-            StatelessFun1 (typ, Defined, Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_dst"))),\
+            StatelessFun1 (typ, Defined, Variable (typ, RamenName.field_of_string "zone_dst"))),\
           StatelessFun2 (typ, Eq, \
-            Field (typ, ref TupleUnknown, RamenName.field_of_string "zone_dst"), \
-            Field (typ, ref TupleUnknown, RamenName.field_of_string "z2")))),\
+            Variable (typ, RamenName.field_of_string "zone_dst"), \
+            Variable (typ, RamenName.field_of_string "z2")))),\
       (75, [])))\
       (test_p p "(zone_src IS NULL or zone_src = z1) and \\
                  (zone_dst IS NULL or zone_dst = z2)" |> replace_typ_in_expr)
@@ -1788,36 +1649,36 @@ struct
     (Ok (\
       StatelessFun2 (typ, Div, \
         StatefulFun (typ, LocalState, true, AggrSum (\
-          Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes"))),\
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "avg_window")),\
+          Variable (typ, RamenName.field_of_string "bytes"))),\
+        Variable (typ, RamenName.field_of_string "avg_window")),\
       (22, [])))\
       (test_p p "(sum bytes)/avg_window" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, IDiv, \
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "start"),\
+        Variable (typ, RamenName.field_of_string "start"),\
         StatelessFun2 (typ, Mul, \
           Const (typ, VU32 (Uint32.of_int 1_000_000)),\
-          Field (typ, ref TupleUnknown, RamenName.field_of_string "avg_window"))),\
+          Variable (typ, RamenName.field_of_string "avg_window"))),\
       (33, [])))\
       (test_p p "start // (1_000_000 * avg_window)" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Percentile, \
-        Field (typ, ref TupleParam, RamenName.field_of_string "p"),\
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "bytes_per_sec")),\
+        Variable (typ, RamenName.field_of_string "p"),\
+        Variable (typ, RamenName.field_of_string "bytes_per_sec")),\
       (26, [])))\
       (test_p p "p percentile bytes_per_sec" |> replace_typ_in_expr)
 
     (Ok (\
       StatelessFun2 (typ, Gt, \
         StatefulFun (typ, LocalState, true, AggrMax (\
-          Field (typ, ref TupleIn, RamenName.field_of_string "start"))),\
+          Variable (typ, RamenName.field_of_string "start"))),\
         StatelessFun2 (typ, Add, \
-          Field (typ, ref TupleOut, RamenName.field_of_string "start"),\
+          Variable (typ, ref .field_of_string "start"),\
           StatelessFun2 (typ, Mul, \
             StatelessFun2 (typ, Mul, \
-              Field (typ, ref TupleUnknown, RamenName.field_of_string "obs_window"),\
+              Variable (typ, RamenName.field_of_string "obs_window"),\
               Const (typ, VFloat 1.15)),\
             Const (typ, VU32 (Uint32.of_int 1_000_000))))),\
       (58, [])))\
@@ -1826,24 +1687,24 @@ struct
 
     (Ok (\
       StatelessFun2 (typ, Mod, \
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "x"),\
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "y")),\
+        Variable (typ, RamenName.field_of_string "x"),\
+        Variable (typ, RamenName.field_of_string "y")),\
       (5, [])))\
       (test_p p "x % y" |> replace_typ_in_expr)
 
     (Ok ( \
       StatelessFun1 (typ, Abs, \
         StatelessFun2 (typ, Sub, \
-          Field (typ, ref TupleUnknown, RamenName.field_of_string "bps"), \
+          Variable (typ, RamenName.field_of_string "bps"), \
           StatefulFun (typ, GlobalState, true, Lag (\
             Const (typ, VU32 Uint32.one), \
-            Field (typ, ref TupleUnknown, RamenName.field_of_string "bps"))))), \
+            Variable (typ, RamenName.field_of_string "bps"))))), \
       (21, []))) \
       (test_p p "abs(bps - lag(1,bps))" |> replace_typ_in_expr)
 
     (Ok ( \
       StatefulFun (typ, GlobalState, true, Hysteresis (\
-        Field (typ, ref TupleUnknown, RamenName.field_of_string "value"),\
+        Variable (typ, RamenName.field_of_string "value"),\
         Const (typ, VU32 (Uint32.of_int 900)),\
         Const (typ, VU32 (Uint32.of_int 1000)))),\
       (28, [])))\
@@ -1867,28 +1728,110 @@ let parse =
   let print = print false in
   RamenParsing.string_parser ~what:"expression" ~print Parser.p
 
+(* Environment: some helper functions.
+ * Here the environment is composed of a stack of pairs from
+ * field name to tuple_prefix, giving us the origin of that
+ * field name at this point in the AST. *)
+module Env = struct
+  type binding = RamenName.field * tuple_prefix
+
+  let env_param = RamenName.field_of_string "param", TupleParam
+  let env_env = RamenName.field_of_string "env", TupleEnv
+  let env_in = RamenName.field_of_string "in", TupleIn
+  let env_out = RamenName.field_of_string "out", TupleOut
+  let env_group = RamenName.field_of_string "group", TupleGroup
+  let env_previous = RamenName.field_of_string "previous", TupleOutPrevious
+  let env_greatest = RamenName.field_of_string "greatest", TupleMergeGreatest
+  let env_smallest = RamenName.field_of_string "smallest", TupleSortSmallest
+  let env_first = RamenName.field_of_string "first", TupleSortFirst
+
+  let print_binding oc (name, pref) =
+    Printf.fprintf oc "%a.%a"
+      tuple_prefix_print pref
+      RamenName.field_print name
+
+  let unbound_var_msg what env name =
+    Printf.sprintf2 "%s: Unbound variable %a (environment is: %a)"
+      what
+      RamenName.field_print name
+      (pretty_list_print print_binding) env
+
+  let unbound_var what env name =
+    unbound_var_msg what env name |> failwith
+
+  let lookup what env name =
+    try List.assoc name env
+    with exn ->
+      !logger.debug "%s" (unbound_var_msg what env name) ;
+      raise exn
+
+  let rec fold f i env e =
+    let i = f i env e in
+    fold_subexpressions (fold f) i env e
+
+  let iter f env e =
+    fold (fun () env e -> f env e) () env e
+
+  (* Given an expression, return the same expression with lose variables
+   * "grounded" to param or in: *)
+  let ground_on params what env e =
+    map (fun what env e ->
+      match e.text with
+      | Variable name ->
+          let do_ground_on tup_pref =
+            make (Stateless (SL2 (Get,
+              of_string (RamenName.string_of_field name),
+              make (Variable (RamenName.field_of_string tup_pref)))))
+          in
+          (match lookup what env name with
+          | exception Not_found ->
+              (* First, look at this name in the declared parameters: *)
+              (match List.find (fun p ->
+                       p.RamenTuple.ptyp.name = name
+                     ) params with
+              | exception Not_found ->
+                  (* Assume input: *)
+                  do_ground_on "in"
+              | _ -> do_ground_on "param")
+          | _ ->
+              (* If we can find this variable in the environment (ie it's the
+               * field name of some opened record) then there is no reason
+               * to do anything. *)
+              e)
+      | _ -> e
+    ) what env e
+end
+
 (* Function to check an expression after typing, to check that we do not
  * use any IO tuple for init, non constants, etc, when not allowed. *)
+(* TODO: Also check that when we use a variable as the "constant" parameter
+ * of a percentile it is indeed constant (ie comes from params or env).
+ * TODO: same for the size and duration of a Top, *)
 let check =
-  let check_no_tuple what =
-    iter (function
-      (* params and env are available from everywhere: *)
-      | Field (_, tupref, name) when !tupref <> TupleParam &&
-                                     !tupref <> TupleEnv &&
-                                     !tupref <> Record ->
-          Printf.sprintf2 "%s is not allowed to use %s.%a"
-            what (string_of_prefix !tupref)
-            RamenName.field_print name |>
-          failwith
+  let check_no_io what env =
+    iter (fun e ->
+      match e.text with
+      | Variable name ->
+          (match Env.lookup what env name with
+          | exception Not_found -> Env.unbound_var what env name
+          (* params, env and opened records are available from everywhere *)
+          | TupleParam | TupleEnv | TupleRecord _ -> ()
+          | tup_pref ->
+              Printf.sprintf2 "%s is not allowed to access %s"
+                what (string_of_prefix tup_pref) |>
+              failwith)
       (* TODO: all other similar cases *)
       | _ -> ())
   in
-  iter (function
-    | StatefulFun (_, _, _, Past { max_age ; sample_size ; _ }) ->
-        check_no_tuple "duration of function past" max_age ;
-        Option.may (check_no_tuple "sample size of function past")
-          sample_size
-    | _ -> ())
+  fun what ->
+    Env.iter (fun env e ->
+      match e.text with
+      | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
+          let what' = what ^": duration of function past" in
+          check_no_io what' env max_age ;
+          let what' = what ^": sample size of function past" in
+          Option.may (check_no_io what' env) sample_size
+      | _ -> ())
 
 (* Return the expected units for a given expression.
  * Fail if the operation does not accept the arguments units.
@@ -1910,106 +1853,125 @@ let units_of_expr params units_of_input units_of_output =
         failwith
     | p -> p.RamenTuple.ptyp.units
   in
-  let rec uoe ~indent e =
+  let rec uoe ~indent ~env e =
     let char_of_indent = Char.chr (Char.code 'a' + indent) in
     let prefix = Printf.sprintf "%s%c. " (String.make (indent * 2) ' ')
                                          char_of_indent in
     !logger.debug "%sUnits of expression %a...?" prefix (print true) e ;
     let indent = indent + 1 in
-    let t = typ_of e in
-    if t.units <> None then t.units else
-    (match e with
-    | Const (_, v) ->
-        if RamenTypes.(is_a_num (structure_of v)) then t.units
+    if e.typ.units <> None then e.typ.units else
+    (match e.text with
+    | Const v ->
+        if T.(is_a_num (structure_of v)) then e.typ.units
         else None
-    | Field (_, tupref, name) ->
-        if tuple_has_type_input !tupref then
-          units_of_input name
-        else if tuple_has_type_output !tupref then
-          units_of_output name
-        else if !tupref = TupleParam then
-          units_of_params name
-        else None
-    | Case (_, cas, else_opt) ->
+    | Variable name ->
+        let what = "Computing units" in
+        (match Env.lookup what env name with
+        | exception Not_found ->
+            Env.unbound_var what env name
+        | origin ->
+            if tuple_has_type_input origin then
+              units_of_input name
+            else if tuple_has_type_output origin then
+              units_of_output name
+            else if origin = TupleParam then
+              units_of_params name
+            else None)
+    | Case (cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)
-        List.iter (fun ca -> check_no_units ~indent ca.case_cond) cas ;
-        let units_opt = Option.bind else_opt (uoe ~indent) in
+        List.iter (fun ca -> check_no_units ~indent ~env ca.case_cond) cas ;
+        let units_opt = Option.bind else_opt (uoe ~indent ~env) in
         List.map (fun ca -> ca.case_cons) cas |>
-        same_units ~indent "Conditional alternatives" units_opt
-    | Coalesce (_, es) ->
-        same_units ~indent "Coalesce alternatives" None es
-    | StatelessFun0 (_, (Now|EventStart|EventStop)) ->
+        same_units ~indent ~env "Conditional alternatives" units_opt
+    | Stateless (SL1s (Coalesce, es)) ->
+        same_units ~indent ~env "Coalesce alternatives" None es
+    | Stateless (SL0 (Now|EventStart|EventStop)) ->
         Some RamenUnits.seconds_since_epoch
-    | StatelessFun1 (_, Age, e) ->
-        check ~indent e RamenUnits.seconds_since_epoch ;
+    | Stateless (SL1 (Age, e)) ->
+        check ~indent ~env e RamenUnits.seconds_since_epoch ;
         Some RamenUnits.seconds
-    | StatelessFun1 (_, (Cast _|Abs|Minus|Ceil|Floor|Round), e)
-    | StatelessFun2 (_, Trunc, e, _) ->
-        uoe ~indent e
-    | StatelessFun1 (_, Length, e) ->
-        check_no_units ~indent e ;
+    | Stateless (SL1 ((Cast _|Abs|Minus|Ceil|Floor|Round), e))
+    | Stateless (SL2 (Trunc, e, _)) ->
+        uoe ~indent  ~env e
+    | Stateless (SL1 (Length, e)) ->
+        check_no_units ~indent ~env e ;
         Some RamenUnits.chars
-    | StatelessFun1 (_, Sqrt, e) ->
-        Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent e)
-    | StatelessFun2 (_, Add, e1, e2) ->
-        option_map2 RamenUnits.add (uoe ~indent e1) (uoe ~indent e2)
-    | StatelessFun2 (_, Sub, e1, e2) ->
-        option_map2 RamenUnits.sub (uoe ~indent e1) (uoe ~indent e2)
-    | StatelessFun2 (_, (Mul|Mod), e1, e2) ->
-        option_map2 RamenUnits.mul (uoe ~indent e1) (uoe ~indent e2)
-    | StatelessFun2 (_, (Div|IDiv), e1, e2) ->
-        option_map2 RamenUnits.div (uoe ~indent e1) (uoe ~indent e2)
-    | StatelessFun2 (_, Pow, e1, e2) ->
+    | Stateless (SL1 (Sqrt, e)) ->
+        Option.map (fun e -> RamenUnits.pow e 0.5) (uoe ~indent ~env e)
+    | Stateless (SL2 (Add, e1, e2)) ->
+        option_map2 RamenUnits.add (uoe ~indent ~env e1) (uoe ~indent ~env e2)
+    | Stateless (SL2 (Sub, e1, e2)) ->
+        option_map2 RamenUnits.sub (uoe ~indent ~env e1) (uoe ~indent ~env e2)
+    | Stateless (SL2 ((Mul|Mod), e1, e2)) ->
+        option_map2 RamenUnits.mul (uoe ~indent ~env e1) (uoe ~indent ~env e2)
+    | Stateless (SL2 ((Div|IDiv), e1, e2)) ->
+        option_map2 RamenUnits.div (uoe ~indent ~env e1) (uoe ~indent ~env e2)
+    | Stateless (SL2 (Pow, e1, e2)) ->
         (* Best effort in case the exponent is a constant, otherwise we
          * just don't know what the unit is. *)
-        option_map2 RamenUnits.pow (uoe ~indent e1) (float_of_const e2)
+        option_map2 RamenUnits.pow (uoe ~indent ~env e1) (float_of_const e2)
     (* Although shifts could be seen as mul/div, we'd rather consider
      * only dimensionless values receive this treatment, esp. since
      * it's not possible to distinguish between a mul and div. *)
-    | StatelessFun2 (_, (And|Or|Concat|StartsWith|EndsWith|
-                         BitAnd|BitOr|BitXor|BitShift), e1, e2) ->
-        check_no_units ~indent e1 ;
-        check_no_units ~indent e2 ;
+    | Stateless (SL2 ((And|Or|Concat|StartsWith|EndsWith|
+                       BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
+        check_no_units ~indent ~env e1 ;
+        check_no_units ~indent ~env e2 ;
         None
-    | StatelessFun2 (_, Get, e1, Vector (_, es)) ->
+    | Stateless (SL2 (Get, e1, { text = Vector es ; _ })) ->
         Option.bind (int_of_const e1) (fun n ->
-          List.at es n |> uoe ~indent)
-    | StatelessFun2 (_, Get, n, Tuple (_, es)) ->
+          List.at es n |> uoe ~indent ~env)
+    | Stateless (SL2 (Get, n, { text = Tuple es ; _ })) ->
         (* Not super useful. FIXME: use the solver. *)
         let n = int_of_const n |>
                 option_get "Get from tuple must have const index" in
-        (try List.at es n |> uoe ~indent
+        (try List.at es n |> uoe ~indent ~env
         with Invalid_argument _ -> None)
-    | StatelessFun2 (_, Get, s, Record (_, kvs)) ->
+    | Stateless (SL2 (Get, s, ({ text = Record (_, sfs) ; _ } as rec_exp))) ->
+        (* Not super useful neither and that's more annoying as records
+         * are replacing operation fields.
+         * FIXME: Compute and set the units after type-checking using the
+         *        solver. *)
         let s = string_of_const s |>
                 option_get "Get from record must have string index" in
-        (try
-          list_rfind_map (fun (k, v) ->
-            if RamenName.string_of_field k = s then Some v else None
-          ) kvs |> uoe ~indent
-        with Not_found -> None)
-    | StatelessFun2 (_, Percentile, _,
-                     StatefulFun (_, _, _, (Last (_, e, _)|Sample (_, e)|
-                                  Group e))) ->
-        uoe ~indent e
-    | StatelessFunMisc (_, Like (e, _)) ->
-        check_no_units ~indent e ;
+        (* Units of field k of this record is the units of this field
+         * values, evaluated with all the _previous_ fields in the env: *)
+        let rec find_last env last = function
+          | [] -> last
+          | sf :: rest ->
+              let last =
+                (* found a later occurrence of that field name: *)
+                if RamenName.string_of_field sf.alias = s then
+                  Some (sf.expr, env)
+                else last in
+              find_last ((sf.alias, TupleRecord rec_exp) :: env) last rest in
+        (match find_last env None sfs with
+        | None -> None
+        | Some (v, env) -> uoe ~indent ~env v)
+    | Stateless (SL2 (Percentile, _,
+                      { text = Stateful (_, _, Last ( _, e, _))
+                             | Stateful (_, _, SF2 (Sample, _, e))
+                             | Stateful (_, _, SF1 (Group, e)) ; _ })) ->
+        uoe ~indent ~env e
+    | Stateless (SL1 (Like _, e)) ->
+        check_no_units ~indent ~env e ;
         None
-    | StatelessFunMisc (_, (Max es|Min es)) ->
-        same_units ~indent "Min/Max alternatives" None es
-    | StatelessFunMisc (_, Print es) when es <> [] -> uoe ~indent (List.hd es)
-    | StatefulFun (_, _, _, (AggrMin e|AggrMax e|AggrAvg e|AggrFirst e|
-                             AggrLast e|Lag (_, e)|MovingAvg (_, _, e)|
-                             LinReg (_, _, e)|MultiLinReg (_, _, e, _)|
-                             ExpSmooth (_, e))) -> uoe ~indent e
-    | StatefulFun (_, _, _, AggrSum e) ->
-        let u = uoe ~indent e in
+    | Stateless (SL1s ((Max|Min), es)) ->
+        same_units ~indent ~env "Min/Max alternatives" None es
+    | Stateless (SL1s (Print, e::_)) ->
+        uoe ~indent ~env e
+    | Stateful (_, _, SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst|AggrLast), e))
+    | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
+    | Stateful (_, _, SF3 ((MovingAvg|LinReg), _, _, e)) ->
+        uoe ~indent ~env e
+    | Stateful ( _, _, SF1 (AggrSum, e)) ->
+        let u = uoe ~indent ~env e in
         check_not_rel e u ;
         u
-    | GeneratorFun (_, Split (e1, e2)) ->
-        check_no_units ~indent e1 ;
-        check_no_units ~indent e2 ;
+    | Generator (Split (e1, e2)) ->
+        check_no_units ~indent ~env e1 ;
+        check_no_units ~indent ~env e2 ;
         None
     | _ -> None) |>
     function
@@ -2018,8 +1980,8 @@ let units_of_expr params units_of_input units_of_output =
           res
       | None -> None
 
-  and check ~indent e u =
-    match uoe ~indent e with
+  and check ~indent ~env e u =
+    match uoe ~indent ~env e with
     | None -> ()
     | Some u' ->
         if not (RamenUnits.eq u u') then
@@ -2029,8 +1991,8 @@ let units_of_expr params units_of_input units_of_output =
             RamenUnits.print u' |>
           failwith
 
-  and check_no_units ~indent e =
-    match uoe ~indent e with
+  and check_no_units ~indent ~env e =
+    match uoe ~indent ~env e with
     | None -> ()
     | Some u ->
         Printf.sprintf2 "%a must have no units but has unit %a"
@@ -2047,9 +2009,8 @@ let units_of_expr params units_of_input units_of_output =
         failwith
     ) u
 
-  and same_units ~indent what i es =
-    List.enum es /@ (uoe ~indent) |>
+  and same_units ~indent ~env what i es =
+    List.enum es /@ (uoe ~indent ~env) |>
     RamenUnits.check_same_units ~what i
 
-  in uoe ~indent:0
-
+  in uoe ~indent:0 ~env:[]

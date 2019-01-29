@@ -15,6 +15,7 @@ open RamenLang
 open RamenHelpers
 open RamenLog
 module E = RamenExpr
+module T = RamenTypes
 
 (*$inject
   open TestHelpers
@@ -22,48 +23,19 @@ module E = RamenExpr
   open Stdint
 *)
 
-(* Represents an output field from the select clause
- * 'SELECT expr AS alias' *)
-type selected_field =
-  { expr : E.t ;
-    alias : RamenName.field ;
-    doc : string ;
-    (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
-    aggr : string option }
-  [@@ppp PPP_OCaml]
-
-let print_selected_field oc f =
-  let need_alias =
-    match f.expr with
-    | E.Field (_, tuple, field)
-      when !tuple = TupleIn && f.alias = field -> false
-    | _ -> true in
-  if need_alias then (
-    Printf.fprintf oc "%a AS %s"
-      (E.print false) f.expr
-      (RamenName.string_of_field f.alias) ;
-    if f.doc <> "" then Printf.fprintf oc " %S" f.doc
-  ) else (
-    E.print false oc f.expr ;
-    if f.doc <> "" then Printf.fprintf oc " DOC %S" f.doc
-  )
-
 (* Represents what happens to a group after its value is output: *)
 type flush_method =
   | Reset (* it can be deleted (tumbling windows) *)
   | Never (* or we may just keep the group as it is *)
   [@@ppp PPP_OCaml]
 
-let print_flush_method oc = function
-  | Reset ->
-    Printf.fprintf oc "FLUSH"
-  | Never ->
-    Printf.fprintf oc "KEEP"
-  [@@ppp PPP_OCaml]
+let print_flush_method oc m =
+  String.print oc (match m with Reset -> "FLUSH" | Never -> "KEEP")
 
 (* Represents an input CSV format specifications: *)
 type file_spec = { fname : E.t ; unlink : E.t }
   [@@ppp PPP_OCaml]
+
 type csv_specs =
   { separator : string ; null : string ; fields : RamenTuple.typ }
   [@@ppp PPP_OCaml]
@@ -80,15 +52,14 @@ let print_file_spec oc specs =
       specs.unlink
     (E.print false) specs.fname
 
-(* Type of an operation: *)
+(* Type of a function: *)
 
 type t =
   (* Aggregation of several tuples into one based on some key. Superficially
    * looks like a select but much more involved. Most clauses being optional,
    * this is really the Swiss-army knife for all data manipulation in Ramen: *)
   | Aggregate of {
-      fields : selected_field list ; (* Composition of the output tuple *)
-      and_all_others : bool ; (* also "select *" *)
+      output : E.t ;
       merge : merge ;
       (* Optional buffering of N tuples for sorting according to some
        * expression: *)
@@ -111,17 +82,20 @@ type t =
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
       factors : RamenName.field list }
+
   | ReadCSVFile of {
       where : file_spec ;
       what : csv_specs ;
       preprocessor : E.t option ;
       event_time : RamenEventTime.t option ;
       factors : RamenName.field list }
+
   | ListenFor of {
       net_addr : Unix.inet_addr ;
       port : int ;
       proto : RamenProtocols.net_protocol ;
       factors : RamenName.field list }
+
   (* For those factors, event time etc are hardcoded, and data sources
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
@@ -157,9 +131,8 @@ let rec print_data_source oc = function
 and print oc =
   let sep = ", " in
   function
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
-                notifications ; key ; commit_cond ; commit_before ;
-                flush_how ; from ; every ; _ } ->
+  | Aggregate { output ; merge ; sort ; where ; notifications ; key ;
+                commit_cond ; commit_before ; flush_how ; from ; every ; _ } ->
     if from <> [] then
       List.print ~first:"FROM " ~last:"" ~sep print_data_source oc from ;
     if merge.on <> [] then (
@@ -176,11 +149,7 @@ and print oc =
       Printf.fprintf oc " BY %a"
         (List.print ~first:"" ~last:"" ~sep:", " (E.print false)) b
     ) sort ;
-    if fields <> [] || not and_all_others then
-      Printf.fprintf oc " SELECT %a%s%s"
-        (List.print ~first:"" ~last:"" ~sep print_selected_field) fields
-        (if fields <> [] && and_all_others then sep else "")
-        (if and_all_others then "*" else "") ;
+    Printf.fprintf oc " SELECT %a" (E.print false) output ;
     if every > 0. then
       Printf.fprintf oc " EVERY %g SECONDS" every ;
     if not (E.is_true where) then
@@ -207,6 +176,7 @@ and print oc =
         Printf.fprintf oc " %s %a"
           (if commit_before then "BEFORE" else "AFTER")
           (E.print false) commit_cond)
+
   | ReadCSVFile { where = file_spec ; what = csv_specs ; preprocessor ; _} ->
     Printf.fprintf oc "%a %s %a"
       print_file_spec file_spec
@@ -214,15 +184,18 @@ and print oc =
          Printf.sprintf2 "PREPROCESS WITH %a" (E.print false) e
        ) "" preprocessor)
       print_csv_specs csv_specs
+
   | ListenFor { net_addr ; port ; proto } ->
     Printf.fprintf oc "LISTEN FOR %s ON %s:%d"
       (RamenProtocols.string_of_proto proto)
       (Unix.string_of_inet_addr net_addr)
       port
+
   | Instrumentation { from } ->
     Printf.fprintf oc "LISTEN FOR INSTRUMENTATION%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         print_data_source) from
+
   | Notifications { from } ->
     Printf.fprintf oc "LISTEN FOR NOTIFICATIONS%a"
       (List.print ~first:" FROM " ~last:"" ~sep:", "
@@ -231,41 +204,125 @@ and print oc =
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
 
-let fold_top_level_expr init f = function
-  | ListenFor _ | Instrumentation _ | Notifications _ -> init
-  | ReadCSVFile { where = { fname ; unlink } ; preprocessor ; _ } ->
-      let x =
-        Option.map_default (f init "CSV preprocessor") init preprocessor in
-      let x = f x "CSV filename" fname in
-      f x "CSV DELETE-IF clause" unlink
-  | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
-                notifications ; _ } ->
-      let x =
-        List.fold_left (fun prev sf ->
-            let what = Printf.sprintf "field %S" (RamenName.string_of_field sf.alias) in
-            f prev what sf.expr
-          ) init fields in
-      let x = List.fold_left (fun prev me ->
-            f prev "MERGE-ON clause" me
-          ) x merge.on in
-      let x = f x "WHERE clause" where in
-      let x = List.fold_left (fun prev ke ->
-            f prev "GROUP-BY clause" ke
-          ) x key in
-      let x = List.fold_left (fun prev notif ->
-            f prev "NOTIFY" notif
-          ) x notifications in
-      let x = f x "COMMIT clause" commit_cond in
-      let x = match sort with
-        | None -> x
-        | Some (_, u_opt, b) ->
-            let x = match u_opt with
-              | None -> x
-              | Some u -> f x "SORT-UNTIL clause" u in
-            List.fold_left (fun prev e ->
-              f prev "SORT-BY clause" e
-            ) x b in
-      x
+module Env = struct
+
+  open E.Env
+
+  (* Different top expressions start with a different environment: some
+   * expressions have access to In, other to Out, most have access to Params,
+   * etc. This is unrelated to short-hands (foo -> param.foo), which is
+   * another process of AST rewrite independent of the environment. *)
+
+  let map_top f env op =
+    match op with
+    | ListenFor _ | Instrumentation _ | Notifications _ -> op
+
+    | ReadCSVFile ({ where = { fname ; unlink } ; preprocessor ; _ } as o) ->
+        let env = env_env :: env_param :: env in
+        let preprocessor =
+          Option.map (f "CSV preprocessor" env) preprocessor in
+        let fname = f "CSV filename" env fname in
+        let unlink = f "CSV DELETE-IF clause" env unlink in
+        ReadCSVFile { o with where = { fname ; unlink } ; preprocessor }
+
+    | Aggregate ({ output ; merge ; sort ; where ; key ; commit_cond ;
+                   notifications ; _ } as o) ->
+        let env = env_env :: env_param :: env in
+        let output =
+          let env = env_in :: env_group :: env_previous :: env in
+          f "SELECT clause" env output in
+        let merge_on =
+          List.map (fun e ->
+            f "MERGE-ON clause" (env_in :: env) e
+          ) merge.on in
+        let where =
+          let env =
+            env_in :: env_group :: env_previous :: env_greatest :: env in
+          f "WHERE clause" env where in
+        let key =
+          List.map (fun e ->
+            f "GROUP-BY clause" (env_in :: env) e
+          ) key in
+        let notifications =
+          List.map (fun e ->
+            f "NOTIFY" (env_in :: env) e
+          ) notifications in
+        let commit_cond =
+          f "COMMIT clause" (env_in :: env_previous :: env_group :: env)
+            commit_cond in
+        let sort =
+          Option.map (fun (n, u_opt, b) ->
+            let u_opt =
+              Option.map (fun u ->
+                let env = env_first :: env_smallest :: env_greatest :: env in
+                f "SORT-UNTIL clause" env u
+              ) u_opt in
+            let b =
+              List.map (fun e -> f "SORT-BY clause" (env_in :: env) e) b in
+            n, u_opt, b
+          ) sort in
+        Aggregate { o with
+          output ; merge = { merge with on = merge_on } ; sort ; where ;
+          key ; commit_cond ; notifications }
+
+  let map f env op = map_top (E.map f) env op
+
+  let fold_top f i env = function
+    | ListenFor _ | Instrumentation _ | Notifications _ -> i
+    | ReadCSVFile { where = { fname ; unlink } ; preprocessor ; _ } ->
+        let env = env_env :: env_param :: env in
+        let i =
+          Option.map_default (f "CSV preprocessor" i env) i preprocessor in
+        let i = f "CSV filename" i env fname in
+        f "CSV DELETE-IF clause" i env unlink
+    | Aggregate { output ; merge ; sort ; where ; key ; commit_cond ;
+                  notifications ; _ } ->
+        let env = env_env :: env_param :: env in
+        let i =
+          let env = env_in :: env_group :: env_previous :: env in
+          f "SELECT clause" i env output in
+        let i =
+          List.fold_left (fun i e ->
+            f "MERGE-ON clause" i (env_in :: env) e
+          ) i merge.on in
+        let i =
+          let env =
+            env_in :: env_group :: env_previous :: env_greatest :: env in
+          f "WHERE clause" i env where in
+        let i =
+          List.fold_left (fun i e ->
+            f "GROUP-BY clause" i (env_in :: env) e
+          ) i key in
+        let i =
+          List.fold_left (fun i e ->
+            f "NOTIFY" i (env_in :: env) e
+          ) i notifications in
+        let i =
+          f "COMMIT clause" i (env_in :: env_previous :: env_group :: env)
+            commit_cond in
+        let i = match sort with
+          | None -> i
+          | Some (_, u_opt, b) ->
+              let i = match u_opt with
+                | None -> i
+                | Some u ->
+                    let env =
+                      env_first :: env_smallest :: env_greatest :: env in
+                    f "SORT-UNTIL clause" i env u in
+              List.fold_left (fun i e ->
+                f "SORT-BY clause" i (env_in :: env) e
+              ) i b in
+        i
+
+  (* Fold over all expressions, maintaining the dynamic environment: *)
+  let fold f = fold_top (fun what -> E.Env.fold (f what))
+
+  let iter f = fold_top (fun what () -> E.Env.iter (f what)) ()
+end
+
+(* Same as above but with no environment: *)
+let fold_top_level_expr i f op =
+  Env.fold_top (fun what i _env e -> f i what e) i [] op
 
 let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
 
@@ -274,35 +331,6 @@ let fold_expr ?(expr_folder=E.fold_up) init f =
 
 let iter_expr f op =
   fold_expr () (fun () e -> f e) op
-
-let map_top_level_expr f op =
-  match op with
-  | ListenFor _ | Instrumentation _ | Notifications _ -> op
-  | ReadCSVFile ({ where = { fname ; unlink } ; preprocessor ; _ } as a) ->
-      ReadCSVFile { a with
-        where = { fname = f fname ; unlink = f unlink } ;
-        preprocessor = Option.map f preprocessor }
-  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
-                  notifications ; _ } as a) ->
-      Aggregate { a with
-        fields =
-          List.map (fun sf ->
-            { sf with expr = f sf.expr }
-          ) fields ;
-        merge = { merge with on = List.map f merge.on } ;
-        where = f where ;
-        key = List.map f key ;
-        notifications = List.map f notifications ;
-        commit_cond = f commit_cond ;
-        sort =
-          Option.map (fun (i, u_opt, b) ->
-            i,
-            Option.map f u_opt,
-            List.map f b
-          ) sort }
-
-let map_expr f =
-  map_top_level_expr (E.map f)
 
 (* Various functions to inspect an operation: *)
 
@@ -315,8 +343,12 @@ let is_merging = function
 let event_time_of_operation op =
   let event_time, fields =
     match op with
-    | Aggregate { event_time ; fields ; _ } ->
-        event_time, List.map (fun sf -> sf.alias) fields
+    | Aggregate { event_time ; output ; _ } ->
+        event_time,
+        (match output.text with
+        | Record (_, sfs) ->
+            List.map (fun sf -> sf.E.alias) sfs
+        | _ -> [])
     | ReadCSVFile { event_time ; what ; _ } ->
         event_time, List.map (fun ft -> ft.RamenTuple.name) what.fields
     | ListenFor { proto ; _ } ->
@@ -383,350 +415,107 @@ let operation_with_factors op factors = match op with
   | Instrumentation _ -> op
   | Notifications _ -> op
 
-(* Return the (likely) untyped output tuple *)
-let out_type_of_operation ?(with_private=false) = function
-  | Aggregate { fields ; and_all_others ; _ } ->
-      assert (not and_all_others) ;
-      List.fold_left (fun lst sf ->
-        if not with_private && RamenName.is_private sf.alias then lst else
-        let expr_typ = RamenExpr.typ_of sf.expr in
-        RamenTuple.{
-          name = sf.alias ;
-          doc = sf.doc ;
-          aggr = sf.aggr ;
-          typ = expr_typ.typ |?
-                  { structure = TAny ; nullable = true } ;
-          units = expr_typ.units } :: lst
-      ) [] fields |> List.rev
+(* Return the (likely untyped) output tuple *)
+let out_type_of_operation = function
+  | Aggregate { output ; _ } ->
+      output.E.typ
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      fields
+      T.make ~nullable:false (T.TRecord (
+        List.enum fields /@
+        (fun ft -> RamenName.string_of_field ft.RamenTuple.name,
+                   ft.RamenTuple.typ) |>
+        Array.of_enum))
   | ListenFor { proto ; _ } ->
-      RamenProtocols.tuple_typ_of_proto proto
+      RamenProtocols.typ_of_proto proto
   | Instrumentation _ ->
-      RamenBinocle.tuple_typ
+      RamenBinocle.typ
   | Notifications _ ->
-      RamenNotification.tuple_typ
+      RamenNotification.typ
 
+(* Often time we want to iterate over the "fields" of the output record: *)
+let fields_of_operation = function
+  | Aggregate { output ; _ } ->
+      E.fields_of_expression output
+  | _ -> Enum.empty ()
+
+(* Often time we want to iterate over the "fields" of the output record: *)
+let field_types_of_operation =
+  T.fields_of_type % out_type_of_operation
+
+(* Returns the list of environment variables (as in: UNIX environment)
+ * that are used. We find this by looking for bindings to the "env" variable
+ * in the AST environment. Don't be confused. *)
 let envvars_of_operation op =
-  fold_expr Set.empty (fun s -> function
-    | Field (_, { contents = TupleEnv }, n) -> Set.add n s
-    | _ -> s) op |>
+  Env.fold (fun what s env e ->
+    match e.text with
+    (* Will skip over "env.foo.bar", while a warning would be nice. *)
+    | Stateless (SL2 (Get, { text = Const (VString field_name) ; _ },
+                           { text = Variable var_name ; _ })) ->
+        (match E.Env.lookup what env var_name with
+        | exception Not_found -> E.Env.unbound_var what env var_name
+        | TupleEnv -> Set.add (RamenName.field_of_string field_name) s
+        | _ -> s)
+    | _ -> s) Set.empty [] op |>
   Set.to_list
 
-(* Unless it's a param, assume TupleUnknow belongs to def: *)
-let prefix_def params def =
-  E.iter (function
-    | Field (_, ({ contents = TupleUnknown } as pref), name) ->
-        if RamenTuple.params_mem name params then
-          pref := TupleParam
-        else
-          pref := def
-    | _ -> ())
-
 let use_event_time op =
-  fold_expr false (fun b -> function
-    | StatelessFun0 (_, (EventStart|EventStop)) -> true
-    | _ -> b
-  ) op
+  try
+    iter_expr (fun e ->
+      match e.text with
+      | Stateless (SL0 (EventStart|EventStop)) -> raise Exit
+      | _ -> ()
+    ) op ;
+    false
+  with Exit -> true
 
 (* Check that the expression is valid, or return an error message.
- * Also perform some optimisation, numeric promotions, etc...
- * This is done after the parse rather than Rejecting the parsing
- * result for better error messages, and also because we need the
- * list of available parameters. *)
+ * Also perform some transformations such as grounding loose variables. *)
 let check params op =
   let check_pure clause =
     E.unpure_iter (fun _ ->
       failwith ("Stateful function not allowed in "^ clause))
-  and check_no_state state clause =
-    E.unpure_iter (function
-      | StatefulFun (_, s, _, _) when s = state ->
-          failwith ("Stateful function not allowed in "^ clause)
+  and check_no_group clause =
+    E.unpure_iter (fun e ->
+      match e.text with
+      | Stateful (LocalState, _, _) ->
+          failwith ("Aggregate function not allowed in "^ clause)
       | _ -> ())
-  and check_fields_from lst where =
-    let check_can_use tuple =
-      if not (List.mem tuple lst) then (
-        Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
-          (RamenLang.string_of_prefix tuple)
-          where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
-        failwith) in
-    E.iter (function
-      | E.Field (_, tuple, _) -> check_can_use !tuple
-      | E.StatelessFun0 (_, (EventStart | EventStop)) ->
-        (* Be conservative for now.
-         * TODO: Actually check the event time expressions.
-         * Also, we may not know yet the event time (if it's inferred from
-         * a parent).
-         * TODO: Perform those checks only after factors/time inference.
-         * And finally, we will do all this for nothing, as the fields are
-         * taken from output event when they are just transferred from input.
-         * So when the field used in the time expression can be computed only
-         * from the input tuple (with no use of another out field) we could
-         * as well recompute it - at least when it's just forwarded.
-         * But then we would need to be smarter in
-         * CodeGen_OCaml.emit_event_time will need more context (is out
-         * available) and how is it computed. So for now, let's assume any
-         * mention of #start/#stop is from out.  *)
-        check_can_use TupleOut
-      | _ -> ())
-  and check_field_exists field_names f =
-    if not (List.mem f field_names) then
-      Printf.sprintf2 "Field %a is not in output tuple (only %a)"
-        RamenName.field_print f
-        (pretty_list_print RamenName.field_print) field_names |>
-      failwith in
-  let check_event_time field_names (start_field, duration) =
-    let check_field (f, src, _scale) =
-      if RamenTuple.params_mem f params then
-        (* FIXME: check that the type is compatible with TFloat!
-         *        And not nullable! *)
-        src := RamenEventTime.Parameter
-      else
-        check_field_exists field_names f
-    in
-    check_field start_field ;
-    match duration with
-    | RamenEventTime.DurationConst _ -> ()
-    | RamenEventTime.DurationField f
-    | RamenEventTime.StopField f -> check_field f
-  and check_factors field_names =
-    List.iter (check_field_exists field_names)
-  and check_no_group = check_no_state LocalState
   in
+  (* Check the operation-related constraints: *)
   (match op with
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
-                commit_cond ; event_time ; notifications ; from ; every ;
-                factors ; _ } ->
-    (* Set of fields known to come from in (to help prefix_smart): *)
-    let fields_from_in = ref Set.empty in
-    iter_expr (function
-      | Field (_, { contents = TupleIn }, name) ->
-          fields_from_in := Set.add name !fields_from_in
-      | _ -> ()) op ;
-    let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
-      list_existsi (fun i' sf ->
-        sf.alias = name &&
-        Option.map_default (fun i -> i' < i) true i) fields in
-    (* Resolve TupleUnknown into either TupleParam (if the name is in
-     * params), TupleIn or TupleOut (depending on the presence of this alias
-     * in selected_fields -- optionally, only before position i). It will
-     * also keep track of opened records and look up there first. *)
-    let prefix_smart ?i e =
-      E.fold_down (fun env -> function
-        | Field (_, ({ contents = TupleUnknown } as pref), name) ->
-            (* First by lookup in the environment: *)
-            if List.exists (function
-              | E.Record (_, kvs) ->
-                  (* Notice that we look into _all_ fields, not only the
-                   * ones defined previously. Not sure if better or worse. *)
-                  List.exists (fun (k, _) -> k = name) kvs
-              | _ -> assert false) env
-            then (
-              (* Notice we do not keep a reference on the actual expression.
-               * That's much safer to look it up again whenever we need it,
-               * so that we are free to map the AST. *)
-              pref := Record ;
-              !logger.debug "Field %a though to belong to an opened record"
-                RamenName.field_print name
-            ) else (
-              (* Look into predefined records: *)
-              if RamenTuple.params_mem name params then
-                pref := TupleParam
-              else if Set.mem name !fields_from_in then
-                pref := TupleIn
-              else if is_selected_fields ?i name then
-                pref := TupleOut
-              else (
-                pref := TupleIn ;
-                fields_from_in := Set.add name !fields_from_in) ;
-              !logger.debug "Field %a thought to belong to %s"
-                RamenName.field_print name
-                (string_of_prefix !pref)
-            ) ;
-            env
-        | E.Record _ as e -> e :: env
-        | _ -> env
-      ) [] e |> ignore in
-    List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
-    List.iter (prefix_def params TupleIn) merge.on ;
-    Option.may (fun (_, u_opt, b) ->
-      List.iter (prefix_def params TupleIn) b ;
-      Option.may (prefix_def params TupleIn) u_opt) sort ;
-    prefix_smart where ;
-    List.iter (prefix_def params TupleIn) key ;
-    List.iter prefix_smart notifications ;
-    prefix_smart commit_cond ;
-    (* Check that we use the TupleGroup only for virtual fields: *)
-    iter_expr (function
-      | Field (_, { contents = TupleGroup }, name) ->
-        if not (RamenName.is_virtual name) then
-          Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
-            RamenName.field_print name |>
-          failwith
-      | _ -> ()) op ;
-    (* Now check what tuple prefixes are used: *)
-    List.fold_left (fun prev_aliases sf ->
-        check_fields_from
-          [ TupleParam; TupleEnv; TupleIn; TupleGroup;
-            TupleOut (* FIXME: only if defined earlier *);
-            TupleOutPrevious ; Record ] "SELECT clause" sf.expr ;
-        (* Check unicity of aliases *)
-        if List.mem sf.alias prev_aliases then
-          Printf.sprintf2 "Alias %a is not unique"
-            RamenName.field_print sf.alias |>
-          failwith ;
-        sf.alias :: prev_aliases
-      ) [] fields |> ignore;
-    if not and_all_others then (
-      let field_names = List.map (fun sf -> sf.alias) fields in
-      Option.may (check_event_time field_names) event_time ;
-      check_factors field_names factors
-    ) ;
+  | Aggregate { where ; key ; from ; every ; _ } ->
     (* Disallow group state in WHERE because it makes no sense: *)
     check_no_group "WHERE clause" where ;
-    check_fields_from
-      [ TupleParam; TupleEnv; TupleIn;
-        TupleGroup; TupleOutPrevious; TupleMergeGreatest ; Record ]
-      "WHERE clause" where ;
-    List.iter (fun k ->
-      check_pure "GROUP-BY clause" k ;
-      check_fields_from
-        [ TupleParam; TupleEnv; TupleIn ; Record ] "Group-By KEY" k
-    ) key ;
-    List.iter (fun name ->
-      check_fields_from [ TupleParam; TupleEnv; TupleIn; TupleOut; Record ]
-                        "notification" name
-    ) notifications ;
-    check_fields_from
-      [ TupleParam; TupleEnv; TupleIn;
-        TupleOut; TupleOutPrevious;
-        TupleGroup; Record ]
-      "COMMIT WHEN clause" commit_cond ;
-    Option.may (fun (_, until_opt, bys) ->
-      Option.may (fun until ->
-        check_fields_from
-          [ TupleParam; TupleEnv;
-            TupleSortFirst; TupleSortSmallest; TupleSortGreatest; Record ]
-          "SORT-UNTIL clause" until
-      ) until_opt ;
-      List.iter (fun by ->
-        check_fields_from
-          [ TupleParam; TupleEnv; TupleIn; Record ]
-          "SORT-BY clause" by
-      ) bys
-    ) sort ;
-    List.iter (fun e ->
-      check_fields_from
-        [ TupleParam; TupleEnv; TupleIn; Record ]
-        "MERGE-ON clause" e
-    ) merge.on ;
+    List.iter (check_pure "GROUP-BY clause") key ;
     if every > 0. && from <> [] then
-      failwith "Cannot have both EVERY and FROM" ;
-    (* Check that we do not use any fields from out that is generated: *)
-    let generators = List.filter_map (fun sf ->
-        if E.is_generator sf.expr then Some sf.alias else None
-      ) fields in
-    iter_expr (function
-        | Field (_, tuple_ref, name)
-          when !tuple_ref = TupleOutPrevious ->
-            if List.mem name generators then
-              Printf.sprintf2 "Cannot use a generated output field %a"
-                RamenName.field_print name |>
-              failwith
-        | _ -> ()) op
+      failwith "Cannot have both EVERY and FROM"
 
-  | ListenFor { proto ; factors ; _ } ->
-    let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
-    let field_names = List.map (fun t -> t.RamenTuple.name) tup_typ in
-    check_factors field_names factors
-
-  | ReadCSVFile { what ; where = { fname ; unlink } ; event_time ; factors ;
-                  preprocessor ; _ } ->
-    let field_names = List.map (fun t -> t.RamenTuple.name) what.fields in
-    Option.may (check_event_time field_names) event_time ;
-    check_factors field_names factors ;
-    (* Default to In if not a param, and then disallow In ):-) *)
-    Option.may (fun p ->
-      (* prefix_def will select Param if it is indeed in param, and only
-       * if not will it assume it's in env; which makes sense as that's the
-       * only two possible tuples here: *)
-      prefix_def params TupleEnv p ;
-      check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
-    ) preprocessor ;
-    prefix_def params TupleEnv fname ;
-    check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname ;
-    prefix_def params TupleEnv unlink ;
-    check_fields_from [ TupleParam; TupleEnv ] "DELETE-IF" unlink ;
+  | ReadCSVFile { where = { unlink ; _ } ; _ } ->
     check_pure "DELETE-IF" unlink
     (* FIXME: check the field type declarations use only scalar types *)
 
-  | Instrumentation _ | Notifications _ -> ()) ;
-  (* Now that we have inferred the IO tuples, run some additional checks on
-   * the expressions: *)
-  iter_expr RamenExpr.check op
+  | ListenFor _ | Instrumentation _ | Notifications _ -> ()) ;
+  (* Ground loose variables: *)
+  let op =
+    Env.map_top (fun what env e ->
+      E.Env.ground_on params what env e) [] op in
+  (* Check all expressions with proper environment: *)
+  Env.iter E.check [] op ;
+  op
 
 module Parser =
 struct
   (*$< Parser *)
   open RamenParsing
 
-  let rec default_alias =
-    let open E in
-    let force_public field =
-      if String.length field = 0 || field.[0] <> '_' then field
-      else String.lchop field in
-    function
-    | Field (_, _, field)
-        when not (RamenName.is_virtual field) ->
-        force_public (RamenName.string_of_field field)
-    (* Provide some default name for common aggregate functions: *)
-    | StatefulFun (_, _, _, AggrMin e) -> "min_"^ default_alias e
-    | StatefulFun (_, _, _, AggrMax e) -> "max_"^ default_alias e
-    | StatefulFun (_, _, _, AggrSum e) -> "sum_"^ default_alias e
-    | StatefulFun (_, _, _, AggrAvg e) -> "avg_"^ default_alias e
-    | StatefulFun (_, _, _, AggrAnd e) -> "and_"^ default_alias e
-    | StatefulFun (_, _, _, AggrOr e) -> "or_"^ default_alias e
-    | StatefulFun (_, _, _, AggrFirst e) -> "first_"^ default_alias e
-    | StatefulFun (_, _, _, AggrLast e) -> "last_"^ default_alias e
-    | StatefulFun (_, _, _, AggrHistogram (e, _, _, _)) -> default_alias e ^"_histogram"
-    | StatelessFun2 (_, Percentile, Const (_, p), e)
-      when RamenTypes.is_round_integer p ->
-      Printf.sprintf "%s_%sth" (default_alias e) (IO.to_string RamenTypes.print p)
-    (* Some functions better leave no traces: *)
-    | StatelessFunMisc (_, Print es) when es <> [] ->
-      default_alias (List.hd es)
-    | StatelessFun1 (_, Cast _, e)
-    | StatefulFun (_, _, _, Group e) ->
-      default_alias e
-    | _ -> raise (Reject "must set alias")
-
-  (* Either `expr` or `expr AS alias` or `expr AS alias "doc"`, or
-   * `expr doc "doc"`: *)
-  let selected_field m =
-    let m = "selected field" :: m in
-    (
-      E.Parser.p ++ (
-        optional ~def:(None, "") (
-          blanks -- strinG "as" -- blanks -+ some non_keyword ++
-          optional ~def:"" (blanks -+ quoted_string)) |||
-        (blanks -- strinG "doc" -- blanks -+ quoted_string >>:
-         fun doc -> None, doc)) ++
-      optional ~def:None (
-        blanks -+ some RamenTuple.Parser.default_aggr) >>:
-      fun ((expr, (alias, doc)), aggr) ->
-        let alias =
-          Option.default_delayed (fun () -> default_alias expr) alias in
-        let alias = RamenName.field_of_string alias in
-        { expr ; alias ; doc ; aggr }
-    ) m
-
   let event_time_clause m =
     let m = "event time clause" :: m in
     let scale m =
       let m = "scale event field" :: m in
-      (optional ~def:1. (
-        (optional ~def:() blanks -- star --
-         optional ~def:() blanks -+ number ))
+      (
+        optional ~def:1. (
+          optional ~def:() blanks -- star --
+          optional ~def:() blanks -+ number)
       ) m
     in (
       let open RamenEventTime in
@@ -753,21 +542,25 @@ struct
 
   let every_clause m =
     let m = "every clause" :: m in
-    (strinG "every" -- blanks -+ duration >>: fun every ->
-       if every < 0. then
-         raise (Reject "sleep duration must be greater than 0") ;
-       every) m
+    (
+      strinG "every" -- blanks -+ duration >>:
+      fun every ->
+        if every < 0. then
+          raise (Reject "sleep duration must be greater than 0") ;
+        every
+    ) m
 
   let select_clause m =
     let m = "select clause" :: m in
-    ((strinG "select" ||| strinG "yield") -- blanks -+
-     several ~sep:list_sep
-             ((star >>: fun _ -> None) |||
-              some selected_field)) m
+    (
+      (strinG "select" ||| strinG "yield") -- blanks -+ E.Parser.p
+    ) m
 
-  let event_time_start () =
-    let open RamenExpr in
-    Field (make_typ "start", ref TupleIn, RamenName.field_of_string "start")
+  (* Contrary to #start, which is out.start! *)
+  let in_start () =
+    E.(make (Stateless (SL2 (Get,
+      E.of_string "start",
+      make (Variable (RamenName.field_of_string "in"))))))
 
   let merge_clause m =
     let m = "merge clause" :: m in
@@ -786,7 +579,7 @@ struct
         (* We do not make it the default to avoid creating a new type at
          * every parsing attempt: *)
         let on =
-          if on = [] then [ event_time_start () ] else on in
+          if on = [] then [ in_start () ] else on in
         { last ; on ; timeout }
     ) m
 
@@ -803,18 +596,22 @@ struct
         several ~sep:list_sep E.Parser.p) >>:
       fun ((l, u), b) ->
         let b =
-          if b = [] then [ event_time_start () ] else b in
+          if b = [] then [ in_start () ] else b in
         l, u, b
     ) m
 
   let where_clause m =
     let m = "where clause" :: m in
-    ((strinG "where" ||| strinG "when") -- blanks -+ E.Parser.p) m
+    (
+      (strinG "where" ||| strinG "when") -- blanks -+ E.Parser.p
+    ) m
 
   let group_by m =
     let m = "group-by clause" :: m in
-    (strinG "group" -- blanks -- strinG "by" -- blanks -+
-     several ~sep:list_sep E.Parser.p) m
+    (
+      strinG "group" -- blanks -- strinG "by" -- blanks -+
+      several ~sep:list_sep E.Parser.p
+    ) m
 
   type commit_spec =
     | NotifySpec of E.t
@@ -826,61 +623,77 @@ struct
     (
       strinG "notify" -- blanks -+
       optional ~def:None (some E.Parser.p) >>: fun name ->
-        NotifySpec (name |? E.expr_string "alert_name" "Don't Panic!")
+        NotifySpec (name |? E.of_string "Don't Panic!")
     ) m
 
   let flush m =
     let m = "flush clause" :: m in
-    ((strinG "flush" >>: fun () -> Reset) |||
-     (strinG "keep" -- optional ~def:() (blanks -- strinG "all") >>:
-       fun () -> Never) >>:
-     fun s -> FlushSpec s) m
+    (
+      (strinG "flush" >>: fun () -> Reset) |||
+      (
+        strinG "keep" -- optional ~def:() (blanks -- strinG "all") >>:
+        fun () -> Never
+      ) >>:
+      fun s -> FlushSpec s
+    ) m
 
-  let dummy_commit m =
-    (strinG "commit" >>: fun () -> CommitSpec) m
+  let dummy_commit =
+    strinG "commit" >>: fun () -> CommitSpec
 
-  let default_commit_cond = E.expr_true ()
+  let default_commit_cond = E.of_bool true
 
   let commit_clause m =
     let m = "commit clause" :: m in
-    (several ~sep:list_sep_and ~what:"commit clauses"
-       (dummy_commit ||| notification_clause ||| flush) ++
-     optional ~def:(false, default_commit_cond)
-      (blanks -+
-       ((strinG "after" >>: fun _ -> false) |||
-        (strinG "before" >>: fun _ -> true)) +- blanks ++
-       E.Parser.p)) m
+    (
+      several ~sep:list_sep_and ~what:"commit clauses" (
+        dummy_commit ||| notification_clause ||| flush
+      ) ++
+      optional ~def:(false, default_commit_cond) (
+        blanks -+ (
+          (strinG "after" >>: fun _ -> false) |||
+          (strinG "before" >>: fun _ -> true)
+        ) +- blanks ++ E.Parser.p
+      )
+    ) m
 
-  let default_port_of_protocol = function
-    | RamenProtocols.Collectd -> 25826
-    | RamenProtocols.NetflowV5 -> 2055
-    | RamenProtocols.Graphite -> 2003
+  let default_port_of_protocol =
+    let open RamenProtocols in
+    function
+    | Collectd -> 25826
+    | NetflowV5 -> 2055
+    | Graphite -> 2003
 
   let net_protocol m =
     let m = "network protocol" :: m in
     (
       (strinG "collectd" >>: fun () -> RamenProtocols.Collectd) |||
-      ((strinG "netflow" ||| strinG "netflowv5") >>: fun () ->
-        RamenProtocols.NetflowV5) |||
-      (strinG "graphite" >>: fun () -> RamenProtocols.Graphite)
+      (
+        (strinG "netflow" ||| strinG "netflowv5") >>:
+        fun () -> RamenProtocols.NetflowV5
+      ) ||| (
+        strinG "graphite" >>: fun () -> RamenProtocols.Graphite
+      )
     ) m
 
   let network_address =
-    several ~sep:none (cond "inet address" (fun c ->
-      (c >= '0' && c <= '9') ||
-      (c >= 'a' && c <= 'f') ||
-      (c >= 'A' && c <= 'A') ||
-      c == '.' || c == ':') '0') >>:
-    fun s ->
-      let s = String.of_list s in
-      try Unix.inet_addr_of_string s
-      with Failure x -> raise (Reject x)
+    several ~sep:none (
+      cond "inet address" (fun c ->
+        (c >= '0' && c <= '9') ||
+        (c >= 'a' && c <= 'f') ||
+        (c >= 'A' && c <= 'A') ||
+        c == '.' || c == ':') '0') >>:
+      fun s ->
+        let s = String.of_list s in
+        try Unix.inet_addr_of_string s
+        with Failure x -> raise (Reject x)
 
   let inet_addr m =
     let m = "network address" :: m in
-    ((string "*" >>: fun () -> Unix.inet_addr_any) |||
-     (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
-     (network_address)) m
+    (
+      (string "*" >>: fun () -> Unix.inet_addr_any) |||
+      (string "[*]" >>: fun () -> Unix.inet6_addr_any) |||
+      network_address
+    ) m
 
   let host_port m =
     let m = "host and port" :: m in
@@ -888,39 +701,44 @@ struct
       inet_addr ++
       optional ~def:None (
         char ':' -+
-        some (decimal_integer_range ~min:0 ~max:65535 "port number"))
+        some (decimal_integer_range ~min:0 ~max:65535 "port number")
+      )
     ) m
 
   let listen_clause m =
     let m = "listen on operation" :: m in
-    (strinG "listen" -- blanks --
-     optional ~def:() (strinG "for" -- blanks) -+
-     net_protocol ++
-     optional ~def:None (
-       blanks --
-       optional ~def:() (strinG "on" -- blanks) -+
-       some host_port) >>:
-     fun (proto, addr_opt) ->
+    (
+      strinG "listen" -- blanks --
+      optional ~def:() (strinG "for" -- blanks) -+
+      net_protocol ++
+      optional ~def:None (
+        blanks --
+        optional ~def:() (strinG "on" -- blanks) -+
+        some host_port) >>:
+      fun (proto, addr_opt) ->
         let net_addr, port =
           match addr_opt with
           | None -> Unix.inet_addr_any, default_port_of_protocol proto
           | Some (addr, None) -> addr, default_port_of_protocol proto
           | Some (addr, Some port) -> addr, port in
-        net_addr, port, proto) m
+        net_addr, port, proto
+    ) m
 
   let instrumentation_clause m =
     let m = "read instrumentation operation" :: m in
-    (strinG "listen" -- blanks --
-     optional ~def:() (strinG "for" -- blanks) -+
-     (that_string "instrumentation" ||| that_string "notifications")) m
+    (
+      strinG "listen" -- blanks --
+      optional ~def:() (strinG "for" -- blanks) -+
+      (that_string "instrumentation" ||| that_string "notifications")
+    ) m
 
-let fields_schema m =
-  let m = "tuple schema" :: m in
-  (
-    char '(' -- opt_blanks -+
-      several ~sep:list_sep RamenTuple.Parser.field +-
-    opt_blanks +- char ')'
-  ) m
+  let fields_schema m =
+    let m = "tuple schema" :: m in
+    (
+      char '(' -- opt_blanks -+
+      several ~sep:list_sep RamenTuple.Parser.field +- opt_blanks +-
+      char ')'
+    ) m
 
   (* FIXME: It should be allowed to enter separator, null, preprocessor in
    * any order *)
@@ -928,26 +746,28 @@ let fields_schema m =
     let m = "read file operation" :: m in
     (
       strinG "read" -- blanks -+
-      optional ~def:(RamenExpr.expr_false ()) (
+      optional ~def:(E.of_bool false) (
         strinG "and" -- blanks -- strinG "delete" -- blanks -+
-        optional ~def:(RamenExpr.expr_true ()) (
+        optional ~def:(E.of_bool true) (
           strinG "if" -- blanks -+ E.Parser.p +- blanks)) +-
       strinGs "file" +- blanks ++
-      E.Parser.p >>: fun (unlink, fname) ->
-        { unlink ; fname }
+      E.Parser.p >>:
+      fun (unlink, fname) -> { unlink ; fname }
     ) m
 
   let csv_specs m =
     let m = "CSV format" :: m in
-    (optional ~def:"," (
-       strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
-     optional ~def:"" (
-       strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
-     fields_schema >>:
-     fun ((separator, null), fields) ->
-       if separator = null || separator = "" then
-         raise (Reject "Invalid CSV separator") ;
-       { separator ; null ; fields }) m
+    (
+      optional ~def:"," (
+        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+      optional ~def:"" (
+        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+      fields_schema >>:
+      fun ((separator, null), fields) ->
+        if separator = null || separator = "" then
+          raise (Reject "Invalid CSV separator") ;
+        { separator ; null ; fields }
+    ) m
 
   let preprocessor_clause m =
     let m = "file preprocessor" :: m in
@@ -959,11 +779,13 @@ let fields_schema m =
   let factor_clause m =
     let m = "factors" :: m
     and field = non_keyword >>: RamenName.field_of_string in
-    ((strinG "factor" ||| strinG "factors") -- blanks -+
-     several ~sep:list_sep_and field) m
+    (
+      (strinG "factor" ||| strinG "factors") -- blanks -+
+      several ~sep:list_sep_and field
+    ) m
 
   type select_clauses =
-    | SelectClause of selected_field option list
+    | SelectClause of E.t
     | MergeClause of merge
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
@@ -999,7 +821,9 @@ let fields_schema m =
         cond "quoted program identifier" ((<>) '\'') 'x') +-
       id_quote >>: fun s ->
       checked (String.of_list s) in
-    (unquoted ||| quoted) m
+    (
+      unquoted ||| quoted
+    ) m
 
   let rec from_clause m =
     let m = "from clause" :: m in
@@ -1030,35 +854,36 @@ let fields_schema m =
       (preprocessor_clause >>: fun c -> PreprocessorClause (Some c)) |||
       (csv_specs >>: fun c -> CsvSpecsClause c) |||
       (factor_clause >>: fun c -> FactorClause c) in
-    (several ~sep:blanks part >>: fun clauses ->
-      (* Used for its address: *)
-      let default_select_fields = []
-      and default_star = true
-      and default_merge = { last = 1 ; on = [] ; timeout = 0. }
-      and default_sort = None
-      and default_where = E.expr_true ()
-      and default_event_time = None
-      and default_key = []
-      and default_commit = ([], (false, default_commit_cond))
-      and default_from = []
-      and default_every = 0.
-      and default_listen = None
-      and default_instrumentation = ""
-      and default_ext_data = None
-      and default_preprocessor = None
-      and default_csv_specs = None
-      and default_factors = [] in
-      let default_clauses =
-        default_select_fields, default_star, default_merge, default_sort,
-        default_where, default_event_time, default_key,
-        default_commit, default_from, default_every,
-        default_listen, default_instrumentation, default_ext_data,
-        default_preprocessor, default_csv_specs, default_factors in
-      let select_fields, and_all_others, merge, sort, where,
+    (* Used for its address: *)
+    let default_select = E.null ()
+    and default_merge = { last = 1 ; on = [] ; timeout = 0. }
+    and default_sort = None
+    and default_where = E.of_bool true
+    and default_event_time = None
+    and default_key = []
+    and default_commit = ([], (false, default_commit_cond))
+    and default_from = []
+    and default_every = 0.
+    and default_listen = None
+    and default_instrumentation = ""
+    and default_ext_data = None
+    and default_preprocessor = None
+    and default_csv_specs = None
+    and default_factors = [] in
+    let default_clauses =
+      default_select, default_merge, default_sort,
+      default_where, default_event_time, default_key,
+      default_commit, default_from, default_every,
+      default_listen, default_instrumentation, default_ext_data,
+      default_preprocessor, default_csv_specs, default_factors in
+    (
+      several ~sep:blanks part >>:
+      fun clauses ->
+      let select, merge, sort, where,
           event_time, key, commit, from, every, listen, instrumentation,
           ext_data, preprocessor, csv_specs, factors =
         List.fold_left (
-          fun (select_fields, and_all_others, merge, sort, where,
+          fun (select, merge, sort, where,
                event_time, key, commit, from, every, listen,
                instrumentation, ext_data, preprocessor, csv_specs,
                factors) ->
@@ -1066,87 +891,79 @@ let fields_schema m =
              * replaces an old one (but the default), such as when two WHERE
              * clauses are given. *)
             function
-            | SelectClause fields_or_stars ->
-              let fields, and_all_others =
-                List.fold_left (fun (fields, and_all_others) -> function
-                    | Some f -> f::fields, and_all_others
-                    | None when not and_all_others -> fields, true
-                    | None -> raise (Reject "All fields (\"*\") included several times")
-                  ) ([], false) fields_or_stars in
-              (* The above fold_left inverted the field order. *)
-              let select_fields = List.rev fields in
-              select_fields, and_all_others, merge, sort, where,
+            | SelectClause select ->
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | MergeClause merge ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | SortClause sort ->
-              select_fields, and_all_others, merge, Some sort, where,
+              select, merge, Some sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | WhereClause where ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | EventTimeClause event_time ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               Some event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | GroupByClause key ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit', from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | FromClause from' ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, (List.rev_append from' from),
               every, listen, instrumentation, ext_data, preprocessor,
               csv_specs, factors
             | EveryClause every ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | ListenClause l ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, Some l,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | InstrumentationClause c ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen, c,
               ext_data, preprocessor, csv_specs, factors
             | ExternalDataClause c ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, Some c, preprocessor, csv_specs,
               factors
             | PreprocessorClause preprocessor ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
             | CsvSpecsClause c ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, Some c,
               factors
             | FactorClause factors ->
-              select_fields, and_all_others, merge, sort, where,
+              select, merge, sort, where,
               event_time, key, commit, from, every, listen,
               instrumentation, ext_data, preprocessor, csv_specs,
               factors
@@ -1160,7 +977,7 @@ let fields_schema m =
                        Do you mean COMMIT AFTER/BEFORE?") ;
       (* Distinguish between Aggregate, Read, ListenFor...: *)
       let not_aggregate =
-        select_fields == default_select_fields && sort == default_sort &&
+        select == default_select && sort == default_sort &&
         where == default_where && key == default_key &&
         commit == default_commit
       and not_listen = listen = None || from != default_from || every <> 0.
@@ -1180,10 +997,9 @@ let fields_schema m =
                 else raise (Reject "Several flush clauses")
           ) (None, []) commit_specs in
         let flush_how = flush_how |? Reset in
-        Aggregate { fields = select_fields ; and_all_others ; merge ; sort ;
-                    where ; event_time ; notifications ; key ;
-                    commit_before ; commit_cond ; flush_how ; from ;
-                    every ; factors }
+        Aggregate { output = select ; merge ; sort ; where ; event_time ;
+                    notifications ; key ; commit_before ; commit_cond ;
+                    flush_how ; from ; every ; factors }
       else if not_aggregate && not_csv && not_event_time &&
               not_instrumentation && listen <> None then
         let net_addr, port, proto = Option.get listen in
@@ -1223,7 +1039,7 @@ let fields_schema m =
         where = E.Const (typ, VBool true) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         flush_how = Reset ;\
         event_time = None ;\
@@ -1244,7 +1060,7 @@ let fields_schema m =
             Const (typ, VU32 Uint32.zero))) ;\
         event_time = None ; notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (26, [])))\
@@ -1264,7 +1080,7 @@ let fields_schema m =
         event_time = Some ((RamenName.field_of_string "t", ref RamenEventTime.OutputField, 10.), DurationConst 60.) ;\
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (86, [])))\
@@ -1287,7 +1103,7 @@ let fields_schema m =
         event_time = Some ((RamenName.field_of_string "t1", ref RamenEventTime.OutputField, 10.), \
                            StopField (RamenName.field_of_string "t2", ref RamenEventTime.OutputField, 10.)) ;\
         notifications = [] ; key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (75, [])))\
@@ -1304,7 +1120,7 @@ let fields_schema m =
         event_time = None ;\
         notifications = [ E.Const (typ, VString "ouch") ] ;\
         key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         flush_how = Reset ; from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] },\
       (22, [])))\
@@ -1399,7 +1215,7 @@ let fields_schema m =
         event_time = None ; \
         notifications = [] ;\
         key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ;\
         from = [NamedOperation (Some (RamenName.rel_program_of_string "foo"), RamenName.func_of_string "bar")] ;\
         flush_how = Reset ; every = 0. ; factors = [] },\
@@ -1471,7 +1287,7 @@ let fields_schema m =
         and_all_others = false ; merge = { on = []; timeout = 0.; last = 1 } ; sort = None ;\
         where = E.Const (typ, VBool true) ;\
         notifications = [] ; key = [] ;\
-        commit_cond = replace_typ (E.expr_true ()) ;\
+        commit_cond = replace_typ (E.of_bool true) ;\
         commit_before = false ; flush_how = Reset ; from = [] ;\
         factors = [] },\
         (29, [])))\

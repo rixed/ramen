@@ -9,6 +9,7 @@ open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module T = RamenTypes
 
 (*$inject
   open TestHelpers
@@ -57,7 +58,7 @@ let make_func ?(persistent=false) ?name ?(doc="") operation =
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;"
     RamenTuple.print_field_typ p.RamenTuple.ptyp
-    RamenTypes.print p.value
+    T.print p.value
 
 let print_func oc n =
   match n.name with
@@ -78,20 +79,11 @@ let print oc (params, run_cond, funcs) =
 
 (* Check that a syntactically valid program is actually valid: *)
 
-let check (params, run_cond, funcs) =
-  Option.may (fun run_cond ->
-    RamenOperation.prefix_def params TupleEnv run_cond ;
-    (* Check the running condition does not use any IO tuple: *)
-    RamenExpr.iter (function
-      | Field (_, tuple, _) when
-        tuple_has_type_input !tuple ||
-        tuple_has_type_output !tuple ->
-          Printf.sprintf "Running condition cannot use tuple %s"
-            (string_of_prefix !tuple) |>
-          failwith
-      | _ -> ()
-    ) run_cond
-  ) run_cond ;
+let checked (params, run_cond, funcs) =
+  let run_cond =
+    Option.map
+      (RamenExpr.Env.ground_on params "running condition" [])
+      run_cond in
   let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %s is not unique" name |> failwith in
@@ -100,33 +92,36 @@ let check (params, run_cond, funcs) =
       name_not_unique (RamenName.string_of_field p.ptyp.name) ;
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
-  List.fold_left (fun s n ->
+  let uniq_names = ref Set.empty in
+  params,
+  run_cond,
+  List.map (fun n ->
     (* Check the operation is OK: *)
-    (try RamenOperation.check params n.operation
-    with Failure msg ->
-      let open RamenTypingHelpers in
-      Printf.sprintf "In function %s: %s"
-        (RamenName.func_color (n.name |? anonymous))
-        msg |>
-      failwith) ;
-    (* While at it, we should not have any STAR left at that point: *)
-    assert (match n.operation with
-    | Aggregate { and_all_others = true ; _ } -> false
-    | _ -> true) ;
-    (* Finally, check that the name is valid and unique: *)
-    match n.name with
-    | Some name ->
-        let ns = RamenName.string_of_func name in
-        (* Names of defined functions cannot use '#' as we use it to delimit
-         * special suffixes (stats, notifs): *)
-        if String.contains ns '#' then
-          Printf.sprintf "Invalid dash in function name %s"
-            (RamenName.func_color name) |> failwith ;
-        (* Names must be unique: *)
-        if Set.mem name s then name_not_unique ns ;
-        Set.add name s
-    | None -> s ;
-  ) Set.empty funcs |> ignore
+    match RamenOperation.check params n.operation with
+    | exception Failure msg ->
+        let open RamenTypingHelpers in
+        Printf.sprintf "In function %s: %s"
+          (RamenName.func_color (n.name |? anonymous))
+          msg |>
+        failwith
+    | op ->
+        (* While at it, we should not have any STAR left at that point: *)
+        (* TODO: check op has no more record with STAR selector *)
+        (* Finally, check that the name is valid and unique: *)
+        (match n.name with
+        | Some name ->
+            let ns = RamenName.string_of_func name in
+            (* Names of defined functions cannot use '#' as we use it to delimit
+             * special suffixes (stats, notifs): *)
+            if String.contains ns '#' then
+              Printf.sprintf "Invalid dash in function name %s"
+                (RamenName.func_color name) |> failwith ;
+            (* Names must be unique: *)
+            if Set.mem name !uniq_names then name_not_unique ns ;
+            uniq_names := Set.add name !uniq_names
+        | None -> ()) ;
+        { n with operation = op }
+  ) funcs
 
 module Parser =
 struct
@@ -140,19 +135,18 @@ struct
         several ~sep:list_sep_and (
           non_keyword ++
           optional ~def:None (
-            blanks -+ some RamenTypes.Parser.typ) ++
+            blanks -+ some T.Parser.typ) ++
           optional ~def:None (
             blanks -+ some RamenUnits.Parser.p) ++
-          optional ~def:RamenTypes.VNull (
+          optional ~def:T.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            (RamenTypes.Parser.(p_ ~min_int_width:0 ||| null) |||
-             (duration >>: fun x -> RamenTypes.VFloat x))) ++
+            (T.Parser.(p_ ~min_int_width:0 ||| null) |||
+             (duration >>: fun x -> T.VFloat x))) ++
           optional ~def:"" quoted_string ++
-          optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
+          optional ~def:None (some T.Parser.default_aggr) >>:
           fun (((((name, typ_decl), units), value), doc), aggr) ->
             let name = RamenName.field_of_string name in
             let typ, value =
-              let open RamenTypes in
               match typ_decl with
               | None ->
                   if value = VNull then
@@ -165,14 +159,13 @@ struct
                   else
                     (* As usual, promote integers to 32 bits, preferably non
                      * signed, by default: *)
-                    (try { structure = TU32 ; nullable = false },
-                        enlarge_value TU32 value
+                    (try T.make ~nullable:false TU32,
+                         T.enlarge_value TU32 value
                     with Invalid_argument _ ->
-                      try { structure = TI32 ; nullable = false },
-                          enlarge_value TI32 value
+                      try T.make ~nullable:false TI32,
+                          T.enlarge_value TI32 value
                       with Invalid_argument _ ->
-                        { structure = structure_of value ;
-                          nullable = false },
+                        T.make ~nullable:false (T.structure_of value),
                         value)
               | Some typ ->
                   if value = VNull then
@@ -187,14 +180,14 @@ struct
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
-                    match enlarge_value typ.structure value with
+                    match T.enlarge_value typ.structure value with
                     | exception Invalid_argument _ ->
                         let e =
                           Printf.sprintf2
                             "In declaration of parameter %a, type is \
                              incompatible with value %a"
                             RamenName.field_print name
-                            print value in
+                            T.print value in
                         raise (Reject e)
                     | value -> typ, value
             in
@@ -379,7 +372,8 @@ let common_fields_of_from get_parent start_name funcs from =
           (* Sub-queries have been reified already *)
           assert false
       | GlobPattern _ ->
-          List.map (fun f -> f.RamenTuple.name) RamenBinocle.tuple_typ
+          T.fields_of_type RamenBinocle.typ /@ fst |>
+          List.of_enum
       | NamedOperation (None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
@@ -388,30 +382,36 @@ let common_fields_of_from get_parent start_name funcs from =
               failwith
           | par ->
               (match par.operation with
-              | Aggregate { fields ; and_all_others ; _ } ->
-                  if and_all_others then raise Exit ;
-                  List.map (fun sf -> sf.alias) fields
+              | Aggregate { output =
+                              { text = Record (star, sfs) ; _ } ; _ } ->
+                  if star then raise Exit ;
+                  List.map (fun sf ->
+                    RamenName.string_of_field sf.E.alias
+                  ) sfs
               | ReadCSVFile { what ; _ } ->
-                  List.map (fun f -> f.RamenTuple.name) what.fields
+                  List.map (fun f ->
+                    RamenName.string_of_field f.RamenTuple.name
+                  ) what.fields
               | ListenFor { proto ; _ } ->
-                  RamenProtocols.tuple_typ_of_proto proto |>
-                  List.map (fun f -> f.RamenTuple.name)
+                  RamenProtocols.fields_of_proto proto /@ fst |>
+                  List.of_enum
               | Instrumentation _ ->
-                  RamenBinocle.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.name)
+                  T.fields_of_type RamenBinocle.typ /@ fst |>
+                  List.of_enum
               | Notifications _ ->
-                  RamenNotification.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.name)))
+                  T.fields_of_type RamenNotification.typ /@ fst |>
+                  List.of_enum
+              | _ ->
+                  []))
       | NamedOperation (Some rel_pn, fn) ->
           let pn = RamenName.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
-          let par_out_type =
-            RamenOperation.out_type_of_operation par_func.F.operation in
-          List.map (fun ft ->
-            ft.RamenTuple.name
-          ) (RingBufLib.ser_tuple_typ_of_tuple_typ par_out_type)
+          RamenOperation.field_types_of_operation par_func.F.operation /@
+          fst |>
+          List.of_enum |>
+          List.fast_sort RingBufLib.field_name_cmp
     in
     let fields = Set.of_list fields in
     match common with
@@ -424,13 +424,13 @@ let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
     let expr =
-      RamenExpr.(Field (
-        make_typ (RamenName.string_of_field alias),
-        ref TupleIn, alias)) in
-    { expr ; alias ;
-      (* Those two will be inferred later, with non-star fields
-       * (See RamenTypingHelpers): *)
-      doc = "" ; aggr = None } in
+      E.(make (Stateless (SL2 (Get, of_string alias,
+                 make (Variable (RamenName.field_of_string "in")))))) in
+    let alias = RamenName.field_of_string alias in
+    E.{ alias ; expr ;
+        (* Those two will be inferred later, with non-star fields
+         * (See RamenTypingHelpers): *)
+        doc = "" ; aggr = None } in
   let new_funcs = ref funcs in
   let ok =
     (* If a function selects STAR from a parent that also selects STAR
@@ -439,7 +439,7 @@ let reify_star_fields get_parent program_name funcs =
       let changed, new_funcs' =
         List.fold_left (fun (changed, prev) func ->
           match func.operation with
-          | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
+          | Aggregate ({ output = { text = Record (true, sfs) ; _ } ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
               (match common_fields_of_from get_parent program_name !new_funcs from with
               | exception Exit -> changed, func :: prev
@@ -449,17 +449,20 @@ let reify_star_fields get_parent program_name funcs =
                    * way, they can be used in the specified fields. Still it
                    * would be better to inject them where the "*" was. This
                    * requires to keep that star as a token and get rid of
-                   * the "and_all_others" field of Aggregate. FIXME. *)
-                  let fields =
-                    Set.fold (fun name lst ->
-                      if RamenName.is_private name ||
-                         List.exists (fun sf -> sf.alias = name) fields
-                      then lst
-                      else input_field name :: lst
-                    ) common_fields fields in
+                   * the "star" field of Aggregate. FIXME. *)
+                  let sfs' =
+                    Set.fold (fun name sfs ->
+                      (* Do not inherit "private" fields *)
+                      let field_name = RamenName.field_of_string name in
+                      if RamenName.is_private field_name ||
+                         List.exists (fun sf -> sf.E.alias = field_name) sfs
+                      then sfs
+                      else input_field name :: sfs
+                    ) common_fields sfs in
                   true, { func with
-                    operation = Aggregate {
-                      op with fields ; and_all_others = false } } :: prev)
+                    operation = Aggregate { op with
+                      output = E.make (Record (false, sfs')) }
+                  } :: prev)
           | _ -> changed, func :: prev
         ) (false, []) !new_funcs in
       new_funcs := new_funcs' ;
@@ -484,4 +487,4 @@ let parse =
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in
     let t = params, run_cond, funcs in
-    check t ; t
+    checked t
