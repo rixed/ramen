@@ -9,6 +9,7 @@ open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module E = RamenExpr
 
 (*$inject
   open TestHelpers
@@ -55,24 +56,25 @@ let make_func ?(persistent=false) ?name ?(doc="") operation =
 (* Pretty-print a parsed program back to string: *)
 
 let print_param oc p =
-  Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;"
+  Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;\n"
     RamenTuple.print_field_typ p.RamenTuple.ptyp
     RamenTypes.print p.value
 
 let print_func oc n =
+  let with_types = false in (* TODO: a parameter *)
   match n.name with
   | None ->
       Printf.fprintf oc "%a;"
-        RamenOperation.print n.operation
+        (RamenOperation.print with_types ) n.operation
   | Some name ->
       Printf.fprintf oc "DEFINE '%s' AS %a;"
         (RamenName.string_of_func name)
-        RamenOperation.print n.operation
+        (RamenOperation.print with_types) n.operation
 
 let print oc (params, run_cond, funcs) =
-  List.print ~first:"" ~last:"" ~sep:"\n" print_param oc params ;
+  List.print ~first:"" ~last:"" ~sep:"" print_param oc params ;
   Option.may
-    (Printf.fprintf oc "RUN IF %a;" (RamenExpr.print false))
+    (Printf.fprintf oc "RUN IF %a;" (E.print false))
     run_cond ;
   List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
@@ -82,8 +84,9 @@ let check (params, run_cond, funcs) =
   Option.may (fun run_cond ->
     RamenOperation.prefix_def params TupleEnv run_cond ;
     (* Check the running condition does not use any IO tuple: *)
-    RamenExpr.iter (function
-      | Field (_, tuple, _) when
+    E.iter (fun e ->
+      match e.E.text with
+      | Field (tuple, _) when
         tuple_has_type_input !tuple ||
         tuple_has_type_output !tuple ->
           Printf.sprintf "Running condition cannot use tuple %s"
@@ -206,7 +209,7 @@ struct
     let m = "running condition" :: m in
     (
       optional ~def:() (strinG "run" -- blanks) --
-      strinG "if" -- blanks -+ RamenExpr.Parser.p
+      strinG "if" -- blanks -+ E.Parser.p
     ) m
 
   let anonymous_func m =
@@ -233,7 +236,7 @@ struct
   type definition =
     | DefFunc of func
     | DefParams of RamenTuple.params
-    | DefRunCond of RamenExpr.t
+    | DefRunCond of E.t
 
   let p m =
     let m = "program" :: m in
@@ -256,61 +259,24 @@ struct
         RamenTuple.params_sort params, run_cond, funcs
     ) m
 
-  (*$= p & ~printer:(test_printer print)
-   (Ok (([], None, [\
-    { name = Some (RamenName.func_of_string "bar") ;\
-      persistent = false ; doc = "" ;\
-      operation = \
-        Aggregate {\
-          fields = [\
-            { expr = RamenExpr.Const (typ, VU32 (Uint32.of_int 42)) ;\
-              alias = RamenName.field_of_string "the_answer" ; doc = "" ; aggr = None } ] ;\
-          and_all_others = false ;\
-          merge = { on = [] ; timeout = 0. ; last = 1 } ;\
-          sort = None ;\
-          where = RamenExpr.Const (typ, VBool true) ;\
-          notifications = [] ;\
-          key = [] ;\
-          commit_cond = RamenExpr.Const (typ, VBool true) ;\
-          commit_before = false ;\
-          flush_how = Reset ;\
-          event_time = None ;\
-          from = [NamedOperation (None, RamenName.func_of_string "foo")] ; every = 0. ; factors = [] } } ]),\
-      (46, [])))\
-      (test_p p "DEFINE bar AS SELECT 42 AS the_answer FROM foo" |>\
-       replace_typ_in_program)
+  (*$inject
+   let test_prog str =
+     (match test_p p str with
+     | Ok ((ps, _, fs), _) as x ->
+        check (ps, None, fs) ;
+        x
+     | x -> x) |>
+     TestHelpers.test_printer print
+  *)
+  (*$= test_prog & ~printer:BatPervasives.identity
+   "DEFINE 'bar' AS FROM foo SELECT 42 AS the_answer;" \
+      (test_prog "DEFINE bar AS SELECT 42 AS the_answer FROM foo")
 
-   (Ok (([ RamenTuple.{ \
-             ptyp = { name = RamenName.field_of_string "p1" ; \
-                      typ = { structure = TU32 ; nullable = false } ; \
-                      units = None ; doc = "" ; aggr = None } ;\
-             value = VU32 Uint32.zero } ;\
-           RamenTuple.{ \
-             ptyp = { name = RamenName.field_of_string "p2" ; \
-                      typ = { structure = TU32 ; nullable = false } ; \
-                      units = None ; doc = "" ; aggr = None } ;\
-             value = VU32 Uint32.zero } ], None, [\
-    { name = Some (RamenName.func_of_string "add") ;\
-      persistent = false ; doc = "" ;\
-      operation = \
-        Aggregate {\
-          fields = [\
-            { expr = RamenExpr.(\
-                StatelessFun2 (typ, Add,\
-                  Field (typ, ref TupleParam, RamenName.field_of_string "p1"),\
-                  Field (typ, ref TupleParam, RamenName.field_of_string "p2"))) ;\
-              alias = RamenName.field_of_string "res" ; doc = "" ; aggr = None } ] ;\
-          every = 0. ; event_time = None ;\
-          and_all_others = false ; merge = { on = [] ; timeout = 0. ; last = 1 }; sort = None ;\
-          where = RamenExpr.Const (typ, VBool true) ;\
-          notifications = [] ; key = [] ;\
-          commit_cond = RamenExpr.Const (typ, VBool true) ;\
-          commit_before = false ; flush_how = Reset ; from = [] ;\
-          factors = [] } } ]),\
-      (84, [])))\
-      (test_p p "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; DEFINE add AS YIELD p1 + p2 AS res" |>\
-       (function Ok ((ps, _, fs), _) as x -> check (ps, None, fs) ; x | x -> x) |>\
-       replace_typ_in_program)
+   "PARAMETER p1 U32 DEFAULTS TO 0;\n\\
+    PARAMETER p2 U32 DEFAULTS TO 0;\n\\
+    DEFINE 'add' AS  SELECT (param.p1) + (param.p2) AS res;" \
+      (test_prog "PARAMETERS p1 DEFAULTS TO 0 AND p2 DEFAULTS TO 0; \
+                  DEFINE add AS YIELD p1 + p2 AS res")
   *)
 
   (*$>*)
@@ -423,10 +389,7 @@ let common_fields_of_from get_parent start_name funcs from =
 let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
-    let expr =
-      RamenExpr.(Field (
-        make_typ (RamenName.string_of_field alias),
-        ref TupleIn, alias)) in
+    let expr = E.make (Field (ref TupleIn, alias)) in
     { expr ; alias ;
       (* Those two will be inferred later, with non-star fields
        * (See RamenTypingHelpers): *)

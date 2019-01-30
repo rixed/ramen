@@ -112,7 +112,7 @@ struct
      * condition does not imply we should disregard past data or consider the
      * function changed in any way. It's `ramen run` job to evaluate the
      * running condition independently. *)
-    let op_str = IO.to_string RamenOperation.print func.operation
+    let op_str = IO.to_string (RamenOperation.print false) func.operation
     and out_type = RamenOperation.out_type_of_operation func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^

@@ -36,6 +36,11 @@ and structure =
   | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
 
+(* Assume nullable unless told otherwisse; Typing will remove the useless
+ * nullables *)
+let make ?(nullable=true) structure =
+  { structure ; nullable }
+
 let is_an_int = function
   | TNum|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 -> true
   | _ -> false

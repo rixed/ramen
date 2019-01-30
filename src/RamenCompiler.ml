@@ -14,6 +14,7 @@ open RamenLog
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module E = RamenExpr
 open RamenTypingHelpers
 
 open Binocle
@@ -246,18 +247,17 @@ let compile conf get_parent ~exec_file source_file program_name =
         patch_in_typ field units func.F.in_type ;
       units in
     let set_expr_units uoi uoo what e =
-      let t = RamenExpr.typ_of e in
-      if t.RamenExpr.units = None then (
+      if e.E.units = None then (
         let u =
           let ctx =
             Printf.sprintf "evaluating units of %s" what in
           fail_with_context ctx (fun () ->
-            RamenExpr.units_of_expr parsed_params uoi uoo e) in
+            E.units_of_expr parsed_params uoi uoo e) in
         if u <> None then (
           !logger.debug "Set units of %a to %a"
-            (RamenExpr.print false) e
+            (E.print false) e
             RamenUnits.print (Option.get u) ;
-          t.units <- u ;
+          e.units <- u ;
           true
         ) else false
       ) else false in
@@ -286,9 +286,8 @@ let compile conf get_parent ~exec_file source_file program_name =
         match func.F.operation with
         | RamenOperation.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
-              let units = RamenExpr.(typ_of sf.RamenOperation.expr).units in
-              if units <> None then
-                patch_out_typ sf.alias units out_type
+              if sf.RamenOperation.expr.E.units <> None then
+                patch_out_typ sf.alias sf.expr.E.units out_type
             ) fields
         | _ -> ()) ;
       changed
@@ -332,7 +331,7 @@ let compile conf get_parent ~exec_file source_file program_name =
     ) compiler_funcs ;
     (* Also check that the running condition have been typed: *)
     Option.may (fun cond ->
-      RamenExpr.iter (check_typed ~what:"Running condition") cond
+      E.iter (check_typed ~what:"Running condition") cond
     ) condition ;
 
     (*
@@ -441,7 +440,7 @@ let compile conf get_parent ~exec_file source_file program_name =
          * info are also computed from the operation when we load a program. *)
         let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
         let condition =
-          Option.map (IO.to_string (RamenExpr.print false)) condition in
+          Option.map (IO.to_string (E.print false)) condition in
         let runconf =
           P.{ funcs ; params ; condition } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"

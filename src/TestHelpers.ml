@@ -1,5 +1,7 @@
 open Batteries
 open RamenParsing
+module E = RamenExpr
+module T = RamenTypes
 
 let test_printer res_printer = function
   | Ok (res, (_, [])) ->
@@ -40,79 +42,14 @@ let test_exn ?postproc p s =
   | Bad (Ambiguous lst) ->
       failwith ("Ambiguous: "^ string_of_int (List.length lst) ^" results")
 
-let test_op ?postproc p s =
-  match test_p ?postproc p s with
-  | Ok (res, _) as ok_res ->
-    let params =
-      [ RamenTuple.{
-          ptyp = { name = RamenName.field_of_string "avg_window" ;
-                   typ = { structure = RamenTypes.TI32 ;
-                           nullable = false } ;
-                   units = None ; doc = "" ; aggr = None } ;
-          value = RamenTypes.VI32 10l }] in
-    RamenOperation.check params res ; ok_res
-  | x -> x
-
-let typ =
-  RamenExpr.make_typ "replaced for tests"
-
-let replace_typ e =
-  RamenExpr.map_type (fun _ -> typ) e
-
-let replace_typ_in_expr = function
-  | Ok (expr, rest) -> Ok (replace_typ expr, rest)
-  | x -> x
-
-let replace_typ_in_operation =
-  let open RamenOperation in
-  function
-  | Aggregate { fields ; and_all_others ; merge ; sort ; where ; event_time ;
-                notifications ; key ; commit_before ;
-                commit_cond ; flush_how ; from ; every ; factors } ->
-    Aggregate {
-      fields =
-        List.map (fun sf ->
-          { sf with expr = replace_typ sf.expr }) fields ;
-      and_all_others ;
-      merge = { merge with on = List.map replace_typ merge.on } ;
-      sort =
-        Option.map (fun (n, u, b) ->
-          n, Option.map replace_typ u, List.map replace_typ b) sort ;
-      where = replace_typ where ;
-      event_time ;
-      notifications =
-        List.map replace_typ notifications ;
-      from ;
-      key = List.map replace_typ key ;
-      commit_cond = replace_typ commit_cond ;
-      commit_before = commit_before ;
-      flush_how ; every ; factors }
-
-  | ReadCSVFile csv ->
-      ReadCSVFile { csv with
-        preprocessor = Option.map replace_typ csv.preprocessor ;
-        where = { fname = replace_typ csv.where.fname ;
-                  unlink = replace_typ csv.where.unlink } }
-
-  | x -> x
-
-let replace_typ_in_op = function
-  | Ok (op, rest) -> Ok (replace_typ_in_operation op, rest)
-  | x -> x
-
-let replace_typ_in_program =
-  function
-  | Ok ((params, run_cond, prog), rest) ->
-    Ok ((
-      params,
-      run_cond,
-      List.map (fun func ->
-        RamenProgram.{
-          func with operation =
-            replace_typ_in_operation func.RamenProgram.operation }
-      ) prog),
-      rest)
-  | x -> x
+(* Same as above but output the pretty printed result to save us the many
+ * changing minute details of the Expr/Types data types: *)
+let test_expr ~printer p s =
+  let str = PConfig.stream_of_string s in
+  (p +- eof) [] None Parsers.no_error_correction str |>
+  to_result |>
+  strip_linecol |>
+  test_printer printer
 
 (* Given an alphabet of size [n], a zipf coefficient [s] (positive float, 0
  * being uniform and >1 being highly skewed), output an infinite text in

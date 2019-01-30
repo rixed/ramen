@@ -10,6 +10,7 @@ open RamenHttpHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module E = RamenExpr
 
 (* To help the client to make sense of the error we distinguish between those
  * kind of errors: *)
@@ -220,16 +221,17 @@ let group_keys_of_operation =
   function
   | Aggregate { fields ; key ; _ } ->
       let simple_keys =
-        List.filter_map (function
-          | RamenExpr.Field (_t, tuple_prefix, name) when
+        List.filter_map (fun e ->
+          match e.E.text with
+          | Field (tuple_prefix, name) when
               name <> RamenName.field_of_string "start" &&
               name <> RamenName.field_of_string "stop" ->
               Some (tuple_prefix, name)
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
-        match sf.expr with
-        | Field (_t, tuple_prefix, name) when
+        match sf.expr.text with
+        | Field (tuple_prefix, name) when
             List.mem (tuple_prefix, name) simple_keys ->
             Some sf.alias
         | _ -> None

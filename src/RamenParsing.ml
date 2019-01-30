@@ -65,9 +65,9 @@ let worDs s = worD s ||| worD (s ^"s")
  * with numerical escape sequence in base 10: *)
 let quoted_string = quoted_string ~base_num:10
 
-(*$= quoted_string & ~printer:(test_printer BatString.print)
-  (Ok ("→", (14, []))) \
-    (test_p quoted_string "\"\\226\\134\\146\"")
+(*$= quoted_string & ~printer:identity
+  "\226\134\146" \
+    (test_expr ~printer:BatString.print quoted_string "\"\\226\\134\\146\"")
  *)
 
 let slash = char ~what:"slash" '/'
@@ -146,13 +146,13 @@ let number m =
     float_scale >>: fun (n, scale) -> n *. scale
   ) m
 
-(*$= number & ~printer:(test_printer BatFloat.print)
-  (Ok (42., (2, [])))  (test_p ~postproc:Float.round number "42")
-  (Ok (42., (6, [])))  (test_p ~postproc:Float.round number "0.042k")
-  (Ok (42., (7, [])))  (test_p ~postproc:Float.round number "0.042 k")
-  (Ok (42., (10, []))) (test_p ~postproc:Float.round number "0.042 kilo")
-  (Ok (42., (6, [])))  (test_p ~postproc:Float.round number "42000m")
-  (Ok (42., (10, []))) (test_p ~postproc:Float.round number "42000milli")
+(*$= number & ~printer:identity
+  "42." (test_expr ~printer:BatFloat.print number "42")
+  "42." (test_expr ~printer:BatFloat.print number "0.042k")
+  "42." (test_expr ~printer:BatFloat.print number "0.042 k")
+  "42." (test_expr ~printer:BatFloat.print number "0.042 kilo")
+  "42." (test_expr ~printer:BatFloat.print number "42000m")
+  "42." (test_expr ~printer:BatFloat.print number "42000milli")
 *)
 
 let rec duration m =
@@ -193,19 +193,19 @@ let rec duration m =
     )
   ) m
 
-(*$= duration & ~printer:(test_printer BatFloat.print)
-  (Ok (42., (3, []))) \
-    (test_p duration "42s")
-  (Ok (123.4, (41, []))) \
-    (test_p duration "2 minutes, 3 seconds and 400 milliseconds")
-  (Ok (62., (4, []))) \
-    (test_p duration "1m2s")
-  (Ok (1.234, (26,[]))) \
-    (test_p duration "1 second, 234 milliseconds")
-  (Ok (121.5, (6,[]))) \
-    (test_p duration "2m1.5s")
-  (Ok (3720., (4,[]))) \
-    (test_p duration "1h2m")
+(*$= duration & ~printer:identity
+  "42." \
+    (test_expr ~printer:BatFloat.print duration "42s")
+  "123.4" \
+    (test_expr ~printer:BatFloat.print duration "2 minutes, 3 seconds and 400 milliseconds")
+  "62." \
+    (test_expr ~printer:BatFloat.print duration "1m2s")
+  "1.234" \
+    (test_expr ~printer:BatFloat.print duration "1 second, 234 milliseconds")
+  "121.5" \
+    (test_expr ~printer:BatFloat.print duration "2m1.5s")
+  "3720." \
+    (test_expr ~printer:BatFloat.print duration "1h2m")
 *)
 
 (* TODO: use more appropriate units *)

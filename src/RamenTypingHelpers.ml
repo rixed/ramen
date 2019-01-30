@@ -3,17 +3,17 @@ open RamenLog
 open RamenHelpers
 module C = RamenConf
 module F = C.Func
-module Expr = RamenExpr
+module E = RamenExpr
+module T = RamenTypes
 open RamenLang
-open RamenTypes
 
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation field =
   match operation with
   | RamenOperation.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
-        match sf.RamenOperation.expr with
-        | Expr.Field (_, { contents = TupleIn }, fn) when fn = field ->
+        match sf.RamenOperation.expr.E.text with
+        | E.Field ({ contents = TupleIn }, fn) when fn = field ->
             Some sf.alias
         | _ ->
             None
@@ -80,7 +80,7 @@ let infer_field_doc_aggr func parents params =
         List.iter (function
         | RamenOperation.{
             alias ; doc ; aggr ;
-            expr = Expr.Field (_, { contents = TupleIn }, fn) }
+            expr = E.{ text = Field ({ contents = TupleIn }, fn) ; _ } }
             when doc = "" || aggr = None ->
             (* Look for this field fn in parent: *)
             let out_type = (List.hd parents).F.operation |>
@@ -92,7 +92,7 @@ let infer_field_doc_aggr func parents params =
                 if aggr = None then set_aggr alias psf.aggr) ;
         | RamenOperation.{
             alias ; doc ; aggr ;
-            expr = Expr.Field (_, { contents = TupleParam }, fn) }
+            expr = E.{ text = Field ({ contents = TupleParam }, fn) ; _ } }
             when doc = "" || aggr = None ->
             (match List.find (fun param ->
                      param.RamenTuple.ptyp.name = fn
@@ -108,14 +108,13 @@ let infer_field_doc_aggr func parents params =
 
 let check_typed ~what e =
   let open RamenExpr in
-  let typ = typ_of e in
-  match typ.typ with
-  | None | Some { structure = (TNum | TAny) ; _ } ->
+  match e.E.typ.T.structure with
+  | TNum | TAny ->
       Printf.sprintf2 "%s: Cannot complete typing of %s, \
                        still of type %a"
         what
         (IO.to_string (print true) e)
-        RamenExpr.print_typ typ |>
+        T.print_typ e.typ |>
     failwith
   | _ -> ()
 

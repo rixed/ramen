@@ -16,35 +16,36 @@
 open Batteries
 open RamenHelpers
 open RamenLog
-module Expr = RamenExpr
+open RamenLang
+module E = RamenExpr
 open RamenFieldMask (* shared with codegen lib *)
 
 (* The expression recorded here is any one instance of its occurrence.
  * Typing will make sure all have the same type. *)
-type path = (path_comp * Expr.t) list
+type path = (path_comp * E.t) list
 and path_comp = Int of int | Name of string
 
+let print_path_comp oc = function
+  | Int i -> Printf.fprintf oc "[%d]" i
+  | Name n -> String.print oc n
+
 let print_path oc =
-  let print_path_comp oc = function
-    | Int i -> Printf.fprintf oc "[%d]" i
-    | Name n -> String.print oc n
-  in
-  List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
+  List.print ~first:"" ~last:"" ~sep:"."
+    (fun oc (p, _e) -> print_path_comp oc p) oc
 
 let path_comp_of_constant_expr e =
-  let open RamenLang in
   let fail () =
     Printf.sprintf2
       "Cannot find out path component of %a: \
        Only immediate integers and field names are supported"
-      (Expr.print false) e |>
+      (E.print false) e |>
     failwith in
-  match e with
-  | Expr.Const _ ->
-      (match Expr.int_of_const e with
+  match e.E.text with
+  | Const _ ->
+      (match E.int_of_const e with
       | Some i -> Int i
       | None ->
-          (match Expr.string_of_const e with
+          (match E.string_of_const e with
           | Some n -> Name n
           | None -> fail ()))
   | _ -> fail ()
@@ -59,8 +60,9 @@ let rec paths_of_expression_rev =
     match paths_of_expression e with
     | [], o -> o @ lst
     | t, o -> t :: (o @ lst) in
-  function
-  | Expr.(StatelessFun2 (_, Get, n, x)) as e ->
+  fun e ->
+  match e.E.text with
+  | Stateless (SL2 (Get, n, x)) ->
       (match paths_of_expression_rev x with
       | [], others ->
           let others = add_paths_to others n in
@@ -71,21 +73,20 @@ let rec paths_of_expression_rev =
           match path_comp_of_constant_expr n with
           | exception exn ->
               !logger.debug "Cannot evaluate constant value of %a: %s"
-                (Expr.print false) n (Printexc.to_string exn) ;
+                (E.print false) n (Printexc.to_string exn) ;
               p, others
           | c ->
               ((c, e) :: p), others)
-  | Expr.Field (_, tuple, name) as e
-    when RamenLang.tuple_has_type_input !tuple &&
-         not (RamenName.is_virtual name) ->
+  | Field (tuple, name)
+    when tuple_has_type_input !tuple ->
       if RamenName.is_private name then
         Printf.sprintf2 "Can not use input field %a, which is private."
           RamenName.field_print name |>
         failwith ;
       [ Name (RamenName.string_of_field name), e ], []
-  | e ->
+  | _ ->
       [],
-      Expr.fold_subexpressions (fun others e ->
+      E.fold_subexpressions (fun others e ->
         add_paths_to others e
       ) [] e
 
@@ -94,13 +95,15 @@ and paths_of_expression e =
   List.rev t, o
 
 (*$inject
-  let string_of_paths (t, o) =
+  let print_path_ oc =
+    List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
+  let string_of_paths_ (t, o) =
     Printf.sprintf2 "%a, %a"
-      print_path t (List.print print_path) o
+      print_path_ t (List.print print_path_) o
   let strip_expr (t, o) =
     List.map fst t, List.map (List.map fst) o
  *)
-(*$= paths_of_expression & ~printer:string_of_paths
+(*$= paths_of_expression & ~printer:string_of_paths_
   ([ Name "foo" ], []) \
     (RamenExpr.parse "in.foo" |> paths_of_expression |> strip_expr)
   ([ Name "foo" ; Int 3 ], []) \
@@ -122,7 +125,7 @@ let paths_of_operation =
 type tree =
   | Empty (* means uninitialized *)
   (* Either a scalar or a compound type that is manipulated as a whole: *)
-  | Leaf of Expr.t
+  | Leaf of E.t
   | Indices of tree Map.Int.t
   | Subfields of tree Map.String.t
 
@@ -156,7 +159,7 @@ and print_subfields oc m =
 
 and print_tree oc = function
   | Empty -> String.print oc "empty"
-  | Leaf e -> Printf.fprintf oc "<%s>" Expr.(typ_of e).expr_name
+  | Leaf e -> Printf.fprintf oc "<%a>" (E.print ~max_depth:1 false) e
   | Indices m -> print_indices oc m
   | Subfields m -> print_subfields oc m
 
@@ -197,8 +200,7 @@ let rec tree_of_path e = function
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
   let root_expr =
-    Expr.(Field (make_typ "in", ref RamenLang.TupleIn,
-                 RamenName.field_of_string "in")) in
+    E.make (Field (ref TupleIn, RamenName.field_of_string "in")) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -212,15 +214,19 @@ let tree_of_paths ps =
     IO.to_string print_tree (tree_of s)
  *)
 (*$= str_tree_of & ~printer:identity
-  "empty" (str_tree_of "0+0")
-  "{bar:<bar>,foo:<foo>}" (str_tree_of "in.foo + in.bar")
-  "{foo:{0:<get>,1:<get>}}" (str_tree_of "get(0,in.foo) + get(1,in.foo)")
-  "{bar:{1:<get>},foo:{0:<get>}}" (str_tree_of "get(0,in.foo) + get(1,in.bar)")
-  "{bar:{1:<get>,2:<get>},foo:{0:<get>}}" \
+  "empty" \
+    (str_tree_of "0+0")
+  "{bar:<in.bar>,foo:<in.foo>}" \
+    (str_tree_of "in.foo + in.bar")
+  "{foo:{0:<GET(..., ...)>,1:<GET(..., ...)>}}" \
+    (str_tree_of "get(0,in.foo) + get(1,in.foo)")
+  "{bar:{1:<GET(..., ...)>},foo:{0:<GET(..., ...)>}}" \
+    (str_tree_of "get(0,in.foo) + get(1,in.bar)")
+  "{bar:{1:<GET(..., ...)>,2:<GET(..., ...)>},foo:{0:<GET(..., ...)>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.bar) + get(2,in.bar)")
-  "{foo:{bar:<get>,baz:<get>}}" \
+  "{foo:{bar:<GET(..., ...)>,baz:<GET(..., ...)>}}" \
     (str_tree_of "get(\"bar\",in.foo) + get(\"baz\",in.foo)")
-  "{foo:{bar:{1:<get>},baz:<get>}}" \
+  "{foo:{bar:{1:<GET(..., ...)>},baz:<GET(..., ...)>}}" \
     (str_tree_of "get(1,get(\"bar\",in.foo)) + get(\"baz\",in.foo) + \
                   get(\"glop\",get(\"baz\",in.foo))")
  *)
@@ -364,13 +370,9 @@ let print_in_type oc =
 let in_type_of_operation op =
   let tree = tree_of_operation op in
   fold_tree [] (fun lst path e ->
-    let expr_typ = RamenExpr.typ_of e in
     { path = List.rev path ;
-      typ = expr_typ.typ |?
-              (* Actual types/units will be copied from parents after
-               * typing: *)
-              { structure = TAny ; nullable = true } ;
-      units = expr_typ.units } :: lst
+      typ = e.E.typ ;
+      units = e.E.units } :: lst
   ) tree |>
   List.rev
 
@@ -425,22 +427,22 @@ let subst_deep_fields in_type =
   (* As we are going to find the deeper dereference first in the AST, we
    * start by matching the end of the path (which has been inverted): *)
   let rec matches_expr path e =
-    match path, e with
+    match path, e.E.text with
     | [ Name n ],
-      Expr.(Field (_, tup, n'))
-        when RamenLang.tuple_has_type_input !tup &&
+      Field (tup, n')
+        when tuple_has_type_input !tup &&
              n' = RamenName.field_of_string n ->
         true
     | Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
-        Expr.(StatelessFun2 (_, Get, s, e')) ->
-          (match Expr.string_of_const s with
+        Stateless (SL2 (Get, s, e')) ->
+          (match E.string_of_const s with
           | Some n' when n' = n -> matches_expr path' e'
           | _ -> false)
     | Int i :: path',
-        Expr.(StatelessFun2 (_, Get, n, e')) ->
-          (match Expr.int_of_const n with
+        Stateless (SL2 (Get, n, e')) ->
+          (match E.int_of_const n with
           | Some i' when i' = i -> matches_expr path' e'
           | _ -> false)
     | _ -> false
@@ -453,7 +455,7 @@ let subst_deep_fields in_type =
     | exception Not_found -> e
     | in_field ->
         let name = id_of_path in_field.path |> RamenName.field_of_string in
-        Expr.(Field (typ_of e, ref RamenLang.TupleIn, name)))
+        { e with text = Field (ref TupleIn, name) })
 
 (* Return the fieldmask required to send out_typ to this operation: *)
 let fieldmask_of_operation ~out_typ op =

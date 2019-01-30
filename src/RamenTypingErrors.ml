@@ -119,7 +119,7 @@ let print funcs oc =
     try
       List.iter (fun func ->
         let print_expr e =
-          if (RamenExpr.typ_of e).uniq_num = i then
+          if e.E.uniq_num = i then
             raise (ReturnExpr (func.F.name, e)) in
         RamenOperation.iter_expr print_expr func.F.operation
       ) funcs ;
