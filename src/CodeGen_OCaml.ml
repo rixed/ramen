@@ -54,19 +54,6 @@ let var_name_of_record_field k =
   RamenName.string_of_field k ^ "_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
-let print_env oc =
-  pretty_list_print (fun oc (k, v) -> Printf.fprintf oc "%s=>%s" k v) oc
-
-let emit_binding env oc n =
-  match List.assoc n env with
-  | exception Not_found ->
-      Printf.sprintf2
-        "Cannot find a binding for %S in the environment (%a)"
-        n
-        print_env env |>
-      failwith
-  | binding -> String.print oc binding
-
 let list_print_as_tuple p = List.print ~first:"(" ~last:")" ~sep:", " p
 
 let array_print_as_tuple_i p oc a =
@@ -502,12 +489,56 @@ type arg_nullability_propagation =
 (*
  * Environments
  *
- * Every binding that is "opened", or readily available as an OCaml variable,
- * is stored in the environment stack.
- * So that when a stateful function is looking for its state or when we
- * encounter a special Binding expression we look into this environment to
- * find the OCaml variable to use.
+ * Although most of the times an expression only refers to sub-expressions,
+ * sometime an expression has also to refer to something extra: the field of an
+ * IO tuple (a parameter, an input value...) or its internal state, or to some
+ * value that has been precomputed higher up in the AST...
+ *
+ * Under what name to find those things is not constant, as for instance a
+ * function state might be accessible from the global_ or group_ variables from
+ * most places but is opened in the environment while these records are being
+ * build.
+ *
+ * Similarly, the field of an immediate record might be in scope before the
+ * record itself is accessible while it's being initialized. The same goes for
+ * the out tuple during the evaluation of the select clause.
+ *
+ * To find how under what name to access such values we maintain an environment
+ * stack of bound variables.  Every binding that is "opened", or readily
+ * available as an OCaml variable, is stored in this environment.  So that for
+ * instance when a stateful function is looking for its state this environment
+ * is looked up for the actual OCaml variable to use.
  *)
+
+type binding =
+  (* string is the name of the variable (in scope) holding that state ir
+   * field: *)
+  E.binding_key * string
+
+type env = binding list
+
+let print_env oc =
+  pretty_list_print (fun oc (k, v) ->
+    Printf.fprintf oc "%a=>%s"
+      E.print_binding_key k
+      v
+  ) oc
+
+let emit_binding env oc k =
+  let s =
+    match k with
+    | E.Direct s -> s
+    | k ->
+        (match List.assoc k env with
+        | exception Not_found ->
+            Printf.sprintf2
+              "Cannot find a binding for %a in the environment (%a)"
+              E.print_binding_key k
+              print_env env |>
+            failwith
+        | s -> s)
+  in
+  String.print oc s
 
 let name_of_state e =
   "state_"^ string_of_int e.E.uniq_num |>
@@ -524,8 +555,12 @@ let initial_environments =
     | Stateful (g, _, _) ->
         let n = name_of_state e in
         (match g with
-        | E.GlobalState -> (n, id_of_state GlobalState ^"."^ n) :: glo, loc
-        | E.LocalState -> glo, (n, id_of_state LocalState ^"."^ n) :: loc)
+        | E.GlobalState ->
+            (E.State e.uniq_num, id_of_state GlobalState ^"."^ n) :: glo,
+            loc
+        | E.LocalState ->
+            glo,
+            (E.State e.uniq_num, id_of_state LocalState ^"."^ n) :: loc)
     | _ -> prev)
 
 (* This printer wrap expression [e] into a converter according to its current
@@ -572,7 +607,7 @@ and update_state ~env ~opc ~nullable skip my_state
      * assignment, since we have already verified they are not null: *)
     Printf.fprintf oc "\t" ;
     (* Returns both the new expression and the new environment: *)
-    let denullify e (args, env) =
+    let denullify e args =
       if e.E.typ.nullable then (
         let var_name =
           Printf.sprintf "nonnull_%d_" e.E.uniq_num in
@@ -580,11 +615,10 @@ and update_state ~env ~opc ~nullable skip my_state
           (emit_expr ~context:Finalize ~opc ~env) e
           var_name ;
         (E.make ~structure:e.typ.structure ~nullable:false
-                (Binding var_name)) :: args,
-        (var_name, var_name) :: env
-      ) else (e :: args, env) in
-    let func_args, env = List.fold_right denullify es ([], env) in
-    let func_varargs, env = List.fold_right denullify vars ([], env) in
+                (Binding (Direct var_name))) :: args
+      ) else (e :: args) in
+    let func_args = List.fold_right denullify es [] in
+    let func_varargs = List.fold_right denullify vars [] in
     (* When skip_nulls the state is accompanied
      * by a boolean that's true iff some values have been seen (used when
      * finalizing).
@@ -689,12 +723,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* my_state will represent the variable holding the state of a stateful
    * function. *)
   let my_state =
-    { expr with text = Binding (name_of_state expr) } in
+    (* A state is always as nullable as its expression (see
+     * [otype_of_state]): *)
+    E.make ~nullable (Binding (State expr.E.uniq_num)) in
   match context, expr.text, expr.typ.structure with
   (* Non-functions *)
-  | Finalize, E.Binding n, _ ->
+  | Finalize, E.Binding k, _ ->
     (* Look for that name in the environment: *)
-    emit_binding env oc n
+    emit_binding env oc k
   | _, Const VNull, _ ->
     assert nullable ;
     Printf.fprintf oc "Null"
@@ -715,7 +751,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         Printf.fprintf oc "\tlet %s = %a in\n"
           var_name
           (emit_expr ~env ~context ~opc) v ;
-        (RamenName.string_of_field k, var_name) :: env
+        (E.RecordField (Record, k), var_name) :: env
       ) env kvs in
     (* finally, regroup those fields in a tuple: *)
     let es =
@@ -736,7 +772,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)"
         (RamenName.string_of_field field)
     | Record ->
-        emit_binding env oc (RamenName.string_of_field field)
+        emit_binding env oc (E.RecordField (Record, field))
     | _ ->
       String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Case (alts, else_), t ->
@@ -1233,7 +1269,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         | _ -> assert false in
       let e' =
         E.make ~nullable:item_typ.nullable ~structure:item_typ.structure
-               (Binding var_name) in
+               (Binding (Direct var_name)) in
       (* By reporting the skip-null flag we make sure that each update will
        * skip the nulls in the list - while the list itself will make the
        * whole expression null if it's null. *)
@@ -1259,7 +1295,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Printf.fprintf oc
       "Array.iter (fun %s -> %a) arr_ ;\n"
       var_name
-      (emit_expr ~env:((var_name,var_name)::env) ~context:UpdateState ~opc) expr' ;
+      (emit_expr ~env ~context:UpdateState ~opc) expr' ;
     (* And finalize that using the fake expression [expr'] to reach
      * the actual finalizer: *)
     emit_expr ~env ~context ~opc oc expr' ;
@@ -1640,8 +1676,8 @@ and emit_function
       ~nullable
       ?(args_as=Arg) ~env ~opc impl arg_typs es oc vt_specs_opt =
   let arg_typs = add_missing_types arg_typs es in
-  let num_args, env =
-    List.fold_left2 (fun (i, env) e (arg_typ, null_prop) ->
+  let num_args =
+    List.fold_left2 (fun i e (arg_typ, null_prop) ->
       let var_name = "x"^ string_of_int i ^"_" |>
                      RamenOCamlCompiler.make_valid_ocaml_identifier in
       if e.E.typ.nullable then (
@@ -1667,9 +1703,8 @@ and emit_function
               var_name
               (conv_to ~env ~context:Finalize ~opc arg_typ) e
       ) ;
-      i + 1,
-      (var_name, var_name) :: env (* FIXME: very likely useless *)
-    ) (0, env) es arg_typs
+      i + 1
+    ) 0 es arg_typs
   in
   let conv_nullable, close_parentheses =
     match impl_return_nullable, nullable with
@@ -2744,7 +2779,7 @@ let emit_state_init name state_lifespan ?(env=[]) other_params
           n
           (emit_expr ~context:InitState ~opc ~env) f ;
         (* Make this state available under that name for following exprs: *)
-        (name_of_state f, n) :: env) in
+        (E.State f.uniq_num, n) :: env) in
     (* And now build the state record from all those fields: *)
     Printf.fprintf oc "\t{" ;
     for_each_my_unpure_fun (fun f ->

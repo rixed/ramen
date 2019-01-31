@@ -66,7 +66,7 @@ and text =
   (* Bindings are met only late in the game in the code generator. They are
    * used at code generation time to pass around an ocaml identifier as an
    * expression. *)
-  | Binding of string
+  | Binding of binding_key
   (* A conditional with all conditions and consequents, and finally an optional
    * "else" clause. *)
   | Case of case_alternative list * t option
@@ -309,6 +309,29 @@ and case_alternative =
     case_cons : t (* All alternatives must share a type *) }
   [@@ppp PPP_OCaml]
 
+and binding_key =
+  (* Placeholder for the variable holding the state of this expression;
+   * Name of the actual variable to be found in the environment: *)
+  | State of int
+  (* Placeholder for the variable holding the value of that field; Again,
+   * name of the actual variable to be found in the environment: *)
+  | RecordField of tuple_prefix * RamenName.field
+  (* Placeholder for any variable that will be in scope when the Binding
+   * is evaluated; Can be emitted as-is, no need for looking up the
+   * environment: *)
+  | Direct of string
+  [@@ppp PPP_OCaml]
+
+let print_binding_key oc = function
+  | State n ->
+      Printf.fprintf oc "State of %d" n
+  | RecordField (pref, field) ->
+      Printf.fprintf oc "%s.%a"
+        (string_of_prefix pref)
+        RamenName.field_print field
+  | Direct s ->
+      Printf.fprintf oc "Direct %S" s
+
 let uniq_num_seq = ref 0
 
 let make ?(structure=T.TAny) ?nullable ?units text =
@@ -409,8 +432,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "%s.%s"
           (string_of_prefix !tuple)
           (RamenName.string_of_field name)
-    | Binding s ->
-        String.print oc s
+    | Binding k ->
+        Printf.fprintf oc "<BINDING FOR %a>"
+          print_binding_key k
     | Case (alts, else_) ->
         let print_alt oc alt =
           Printf.fprintf oc "WHEN %a THEN %a"
