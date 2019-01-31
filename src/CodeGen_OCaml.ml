@@ -548,20 +548,38 @@ let id_of_state = function
   | E.GlobalState -> "global_"
   | E.LocalState -> "group_"
 
-(* Returns all the bindings in global and group states: *)
+(* Returns all the bindings in global and group states as well as the
+ * environment for the env and param 'tuples': *)
 let initial_environments =
-  RamenOperation.fold_expr ([], []) (fun (glo, loc as prev) e ->
+  RamenOperation.fold_expr ([], [], [], []) (fun (glo, loc, env, param as prev) e ->
     match e.E.text with
     | Stateful (g, _, _) ->
         let n = name_of_state e in
         (match g with
         | E.GlobalState ->
-            (E.State e.uniq_num, id_of_state GlobalState ^"."^ n) :: glo,
-            loc
+            let v = id_of_state GlobalState ^"."^ n in
+            (E.State e.uniq_num, v) :: glo, loc, env, param
         | E.LocalState ->
-            glo,
-            (E.State e.uniq_num, id_of_state LocalState ^"."^ n) :: loc)
+            let v = id_of_state LocalState ^"."^ n in
+            glo, (E.State e.uniq_num, v) :: loc, env, param)
+    | Field ({ contents = TupleEnv }, f) ->
+        let v =
+          Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
+            (RamenName.string_of_field f) in
+        glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
+    | Field ({ contents = TupleParam }, f) ->
+        let v = id_of_field_name ~tuple:TupleParam f in
+        glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
     | _ -> prev)
+
+(* Takes an operation and convert convert all its Field expressions for the
+ * given tuple into a Binding to the environment: *)
+let subst_fields_for_binding pref =
+  RamenOperation.map_expr (fun e ->
+    match e.E.text with
+    | Field (tupref, f) when !tupref = pref ->
+        { e with text = Binding (RecordField (pref, f)) }
+    | _ -> e)
 
 (* This printer wrap expression [e] into a converter according to its current
  * type. to_typ is an option type: if None, no conversion is required
@@ -768,11 +786,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
       Printf.fprintf oc "(maybe_%s_ out_previous_opt_)"
         (RamenName.string_of_field field)
     | TupleEnv ->
+      assert false ;
       Printf.fprintf oc "(Sys.getenv_opt %S |> nullable_of_option)"
         (RamenName.string_of_field field)
     | Record ->
         emit_binding env oc (E.RecordField (Record, field))
     | _ ->
+      assert (!tuple <> TupleParam) ;
       String.print oc (id_of_field_name ~tuple:!tuple field))
   | Finalize, Case (alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
@@ -1219,7 +1239,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
                 (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | E.{ text = Field _ ;
+      | E.{ text = (Field _ | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
@@ -2512,7 +2532,7 @@ let emit_state_update_for_expr ~env ~what ~opc oc expr =
 
 let emit_where
       ?(with_group=false) ?(always_true=false)
-      global_env name in_typ ~opc oc expr =
+      ~env name in_typ ~opc oc expr =
   Printf.fprintf oc "let %s global_ %a %a out_previous_opt_ "
     name
     emit_in_tuple in_typ
@@ -2523,10 +2543,10 @@ let emit_where
   else (
     Printf.fprintf oc "=\n" ;
     (* Update the states used by this expression: *)
-    emit_state_update_for_expr ~env:global_env ~opc ~what:"where clause"
+    emit_state_update_for_expr ~env~opc ~what:"where clause"
                                oc expr ;
     Printf.fprintf oc "\t%a\n"
-      (emit_expr ~env:global_env ~context:Finalize ~opc) expr
+      (emit_expr ~env~context:Finalize ~opc) expr
   )
 
 let emit_field_selection
@@ -2537,7 +2557,7 @@ let emit_field_selection
        * fields already computed in minimal_typ). And no need to update
        * states at all. *)
       ~build_minimal
-      global_env group_env name in_typ
+      ~env name in_typ
       out_typ minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
@@ -2551,7 +2571,6 @@ let emit_field_selection
   if not build_minimal then
     Printf.fprintf oc "%a " (emit_tuple TupleOut) minimal_typ ;
   Printf.fprintf oc "=\n" ;
-  let env = List.rev_append group_env global_env in
   List.iter (fun sf ->
     if must_output_field sf.RamenOperation.alias then (
       if build_minimal then (
@@ -2598,7 +2617,7 @@ let emit_field_selection
  * while the minimal tuple was computed, but others have not. Let's do this
  * here: *)
 let emit_update_states
-      global_env group_env name in_typ
+      ~env name in_typ
       minimal_typ ~opc oc selected_fields =
   let field_in_minimal field_name =
     List.exists (fun ft ->
@@ -2609,7 +2628,6 @@ let emit_update_states
     name
     emit_in_tuple in_typ
     (emit_tuple TupleOut) minimal_typ ;
-  let env = List.rev_append group_env global_env in
   List.iter (fun sf ->
     if not (field_in_minimal sf.RamenOperation.alias) then (
       (* Update the states as required for this field, just before
@@ -2789,13 +2807,12 @@ let emit_state_init name state_lifespan ?(env=[]) other_params
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when global_env group_env name in_typ minimal_typ ~opc oc
+let emit_when ~env name in_typ minimal_typ ~opc oc
               when_expr =
   Printf.fprintf oc "let %s %a out_previous_opt_ group_ global_ %a =\n"
     name
     emit_in_tuple in_typ
     (emit_tuple TupleOut) minimal_typ ;
-  let env = List.rev_append group_env global_env in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause" oc when_expr ;
   Printf.fprintf oc "\t%a\n"
@@ -2811,8 +2828,10 @@ let when_to_check_group_for_expr expr =
   let need_all =
     try
       E.iter (fun e ->
-        match e.E.text with Field (tuple, _) when !tuple = TupleIn ->
-          raise Exit
+        match e.E.text with
+        | Field ({ contents = TupleIn }, _)
+        | Binding (RecordField (TupleIn, _)) ->
+            raise Exit
         | _ -> ()
       ) expr ;
       false
@@ -2890,7 +2909,9 @@ let expr_needs_group e =
     E.iter (fun e ->
       if (
         match e.E.text with
-        | Field (tuple, _) -> tuple_need_state !tuple
+        | Field ({ contents = tuple }, _)
+        | Binding (RecordField (tuple, _)) ->
+            tuple_need_state tuple
         | Stateful (LocalState, _, _) -> true
         | Stateless (SL0 (EventStart|EventStop)) ->
             (* This depends on the definition of the event time really.
@@ -2903,7 +2924,8 @@ let expr_needs_group e =
   with Exit ->
     true
 
-let emit_aggregate opc oc global_env group_env name in_typ =
+let emit_aggregate opc oc global_env group_env env_env param_env
+                   name in_typ =
   let out_typ = opc.tuple_typ in
   match opc.op with
   | Some RamenOperation.Aggregate
@@ -2920,7 +2942,8 @@ let emit_aggregate opc oc global_env group_env name in_typ =
            * expression *)
           E.iter (fun e ->
             match e.E.text with
-            | Field ({ contents = TupleOut }, fn) ->
+            | Field ({ contents = TupleOut }, fn)
+            | Binding (RecordField (TupleOut, fn)) ->
                 s := Set.add fn !s
             | _ -> ()
           ) sf.RamenOperation.expr)
@@ -2941,7 +2964,8 @@ let emit_aggregate opc oc global_env group_env name in_typ =
     let from_commit_cond =
       E.fold (fun s e ->
         match e.E.text with
-        | Field ({ contents = TupleOut }, fn) -> Set.add fn s
+        | Field ({ contents = TupleOut }, fn)
+        | Binding (RecordField (TupleOut, fn)) -> Set.add fn s
         | _ -> s
       ) Set.empty commit_cond
     and for_updates =
@@ -2949,7 +2973,8 @@ let emit_aggregate opc oc global_env group_env name in_typ =
         E.unpure_fold s (fun s e ->
           E.fold (fun s e ->
             match e.E.text with
-            | Field ({ contents = TupleOut }, fn) -> Set.add fn s
+            | Field ({ contents = TupleOut }, fn)
+            | Binding (RecordField (TupleOut, fn)) -> Set.add fn s
             | _ -> s
           ) s e
         ) sf.RamenOperation.expr
@@ -2990,26 +3015,29 @@ let emit_aggregate opc oc global_env group_env name in_typ =
    * despite this is forbidden in RamenOperation.check): *)
   let where_need_group = expr_needs_group where
   and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
-  and is_yield = from = [] in
+  and is_yield = from = []
+  (* Every functions have at least access to env + params: *)
+  and base_env = List.rev_append param_env env_env
+  in
   Printf.fprintf oc
     "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" E.GlobalState ["()"] ~where ~commit_cond ~opc) fields
-    (emit_state_init "group_init_" E.LocalState ~env:global_env ["global_"] ~where ~commit_cond ~opc) fields
+    (emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where ~commit_cond ~opc) fields
+    (emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env) ["global_"] ~where ~commit_cond ~opc) fields
     (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
     (if where_need_group then
-      emit_where global_env "where_fast_" ~always_true:true in_typ ~opc
+      emit_where ~env:(global_env @ base_env) "where_fast_" ~always_true:true in_typ ~opc
     else
-      emit_where global_env "where_fast_" in_typ ~opc) where
+      emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc) where
     (if not where_need_group then
-      emit_where global_env "where_slow_" ~with_group:true ~always_true:true in_typ ~opc
+      emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true ~always_true:true in_typ ~opc
     else
-      emit_where global_env "where_slow_" ~with_group:true in_typ ~opc) where
+      emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc) where
     (emit_key_of_input "key_of_input_" in_typ ~opc) key
     emit_maybe_fields out_typ
-    (emit_when global_env group_env "commit_cond_" in_typ minimal_typ ~opc) commit_cond
-    (emit_field_selection ~build_minimal:true global_env group_env "minimal_tuple_of_group_" in_typ out_typ minimal_typ ~opc) fields
-    (emit_field_selection ~build_minimal:false global_env group_env "out_tuple_of_minimal_tuple_" in_typ out_typ minimal_typ ~opc) fields
-    (emit_update_states global_env group_env "update_states_" in_typ minimal_typ ~opc) fields
+    (emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc) commit_cond
+    (emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ out_typ minimal_typ ~opc) fields
+    (emit_field_selection ~build_minimal:false ~env:(group_env @ global_env @ base_env) "out_tuple_of_minimal_tuple_" in_typ out_typ minimal_typ ~opc) fields
+    (emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc) fields
     (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_factors_of_tuple "factors_of_tuple_") opc
@@ -3112,10 +3140,34 @@ let emit_operation name func params_mod params oc =
   and consts = IO.output_string ()
   and tuple_typ =
     RamenOperation.out_type_of_operation ~with_private:true func.F.operation
-  and global_env, group_env = initial_environments func.F.operation
+  and global_env, group_env, env_env, param_env =
+    initial_environments func.F.operation
   in
   !logger.debug "Global environment will be: %a" print_env global_env ;
   !logger.debug "Group environment will be: %a" print_env group_env ;
+  !logger.debug "Unix-env environment will be: %a" print_env env_env ;
+  !logger.debug "Parameters environment will be: %a" print_env param_env ;
+  (* We won't be able to compile the Get operator that we have eluded to
+   * pass directly the referenced fields. So transform the operation code
+   * to replace those by the new deep Field: *)
+  !logger.debug "in_type: %a"
+    RamenFieldMaskLib.print_in_type func.F.in_type ;
+  let op = func.F.operation in
+  !logger.debug "Original operation: %a" (RamenOperation.print true) op ;
+  let op = RamenFieldMaskLib.subst_deep_fields func.F.in_type op in
+  !logger.debug "After substitutions for deep fields access: %a"
+    (RamenOperation.print true) op ;
+  (* We should now be able to replace any Field toward env/param with a
+   * Binding. The [subst_fields_for_binding] function takes an expression
+   * and does this change for any tuple_prefix. It could be reused when
+   * opening the other records. And then the [Field] expression won't be
+   * used anywhere in the code generation process. Then, we could also
+   * replace some Get the same way we did for fields and finally do away
+   * with the Field expression altogether. *)
+  let op = subst_fields_for_binding TupleEnv op |>
+           subst_fields_for_binding TupleParam in
+  !logger.debug "After substitutions for environment bindings: %a"
+    (RamenOperation.print true) op ;
   (match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; _ } ; _ } ->
@@ -3158,19 +3210,12 @@ let emit_operation name func params_mod params oc =
           typ = f.typ ; units = f.units ;
           doc = "" ; aggr = None }
       ) func.F.in_type in
-    (* We won't be able to compile the Get operator that we have eluded to
-     * pass directly the referenced fields. So transform the operation code
-     * to replace those by the new deep Field: *)
-    let op =
-      RamenFieldMaskLib.subst_deep_fields func.F.in_type func.F.operation in
-    !logger.debug "in_type: %a" RamenFieldMaskLib.print_in_type func.F.in_type ;
-    !logger.debug "BEFORE: %a" (RamenOperation.print true) func.F.operation ;
-    !logger.debug "AFTER: %a" (RamenOperation.print true) op ;
     let opc =
       { op = Some op ;
         event_time = RamenOperation.event_time_of_operation func.F.operation ;
         params ; consts ; tuple_typ } in
-    emit_aggregate opc code global_env group_env name in_type) ;
+    emit_aggregate opc code global_env group_env env_env param_env
+                   name in_type) ;
   Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                      \n(* Operation Implementation: *)\n\n%s\n"
     (IO.close_out consts) (IO.close_out code)
