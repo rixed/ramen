@@ -580,17 +580,16 @@ let rec conv_to ~env ~context ~opc to_typ oc e =
  * is set reliably. *)
 and update_state ~env ~opc ~nullable skip my_state
                  es ?(vars=[]) ?vars_to_typ
-                 ?(state_null_propagation=PropagateNull)
                  func_name ?args_as oc to_typ =
   let emit_func ~env args oc varargs =
     match vars_to_typ with
     | None ->
       emit_functionN ~env ~opc ~nullable ?args_as
-                     func_name ((None, state_null_propagation) :: to_typ) oc
+                     func_name ((None, PropagateNull) :: to_typ) oc
                      (my_state :: args)
     | Some vars_to_typ ->
       emit_functionNv ~env ~opc ~nullable func_name
-                      ((None, state_null_propagation) :: to_typ)
+                      ((None, PropagateNull) :: to_typ)
                       (my_state :: args)
                       vars_to_typ oc varargs
   in
