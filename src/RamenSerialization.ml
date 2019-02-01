@@ -125,8 +125,7 @@ let value_of_string t s =
 let write_record in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) f ->
-      let f_name = RamenFieldMaskLib.(id_of_path f.path) |>
-                   RamenName.field_of_string in
+      let f_name = RamenFieldMaskLib.(id_of_path f.path) in
       if f.RamenFieldMaskLib.typ.nullable then
         match Hashtbl.find tuple f_name with
         | exception Not_found ->

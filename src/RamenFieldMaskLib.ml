@@ -61,34 +61,40 @@ let rec paths_of_expression_rev =
     | [], o -> o @ lst
     | t, o -> t :: (o @ lst) in
   fun e ->
-  match e.E.text with
-  | Stateless (SL2 (Get, n, x)) ->
-      (match paths_of_expression_rev x with
-      | [], others ->
-          let others = add_paths_to others n in
-          (* [e] is actually not a pure piece of input *)
-          [], others
-      | p, others ->
-          let others = add_paths_to others n in
-          match path_comp_of_constant_expr n with
-          | exception exn ->
-              !logger.debug "Cannot evaluate constant value of %a: %s"
-                (E.print false) n (Printexc.to_string exn) ;
-              p, others
-          | c ->
-              ((c, e) :: p), others)
-  | Field (tuple, name)
-    when tuple_has_type_input !tuple ->
-      if RamenName.is_private name then
-        Printf.sprintf2 "Can not use input field %a, which is private."
-          RamenName.field_print name |>
-        failwith ;
-      [ Name (RamenName.string_of_field name), e ], []
-  | _ ->
-      [],
-      E.fold_subexpressions (fun others e ->
-        add_paths_to others e
-      ) [] e
+    let add_get_name n p others =
+      let others = add_paths_to others n in
+      match path_comp_of_constant_expr n with
+      | exception exn ->
+          !logger.debug "Cannot evaluate constant value of %a: %s"
+            (E.print false) n (Printexc.to_string exn) ;
+          p, others
+      | c ->
+          ((c, e) :: p), others
+    in
+    match e.E.text with
+    | Stateless (SL2 (Get, n, { text = Variable tuple ; _ }))
+      when tuple_has_type_input tuple ->
+        add_get_name n [] []
+    | Stateless (SL2 (Get, n, x)) ->
+        (match paths_of_expression_rev x with
+        | [], others ->
+            let others = add_paths_to others n in
+            (* [e] is actually not a pure piece of input *)
+            [], others
+        | p, others ->
+            add_get_name n p others)
+    | Field (tuple, name)
+      when tuple_has_type_input !tuple ->
+        if RamenName.is_private name then
+          Printf.sprintf2 "Can not use input field %a, which is private."
+            RamenName.field_print name |>
+          failwith ;
+        [ Name (RamenName.string_of_field name), e ], []
+    | _ ->
+        [],
+        E.fold_subexpressions (fun _ others e ->
+          add_paths_to others e
+        ) [] [] e
 
 and paths_of_expression e =
   let t, o = paths_of_expression_rev e in
@@ -348,18 +354,19 @@ let id_of_path p =
     match p with
     | Int i -> id ^"["^ string_of_int i ^"]"
     | Name s -> if id = "" then s else "."^ s
-  ) "" p
+  ) "" p |>
+  RamenName.field_of_string
 
 let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
-    id_of_path f.path ^ ":" ^
+    RamenName.string_of_field (id_of_path f.path) ^ ":" ^
     RamenTypes.string_of_typ f.typ
   ) ""
 
 let print_in_field oc f =
-  Printf.fprintf oc "%s %a"
-    (id_of_path f.path)
+  Printf.fprintf oc "%a %a"
+    RamenName.field_print (id_of_path f.path)
     RamenTypes.print_typ f.typ ;
   Option.may (RamenUnits.print oc) f.units
 
@@ -454,7 +461,7 @@ let subst_deep_fields in_type =
           ) in_type with
     | exception Not_found -> e
     | in_field ->
-        let name = id_of_path in_field.path |> RamenName.field_of_string in
+        let name = id_of_path in_field.path in
         { e with text = Field (ref TupleIn, name) })
 
 (* Return the fieldmask required to send out_typ to this operation: *)

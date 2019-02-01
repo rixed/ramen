@@ -118,7 +118,7 @@ let print funcs oc =
   let expr_of_id i =
     try
       List.iter (fun func ->
-        let print_expr e =
+        let print_expr _ e =
           if e.E.uniq_num = i then
             raise (ReturnExpr (func.F.name, e)) in
         RamenOperation.iter_expr print_expr func.F.operation

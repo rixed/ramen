@@ -149,7 +149,11 @@ let path_unquote s =
  *)
 
 
-(* TODO: add in batteries *)
+(* TODO: add to batteries *)
+let set_iteri f s =
+  Set.fold (fun e i -> f i e ; i + 1) s 0 |>
+  ignore
+
 let array_rfindi f a =
   let res = ref (-1) in
   try

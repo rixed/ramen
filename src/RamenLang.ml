@@ -31,12 +31,12 @@ let string_of_prefix = function
   | TupleUnknown -> "unknown"
   | TupleIn -> "in"
   | TupleGroup -> "group"
-  | TupleOutPrevious -> "out.previous"
+  | TupleOutPrevious -> "out_previous"
   | TupleOut -> "out"
-  | TupleSortFirst -> "sort.first"
-  | TupleSortSmallest -> "sort.smallest"
-  | TupleSortGreatest -> "sort.greatest"
-  | TupleMergeGreatest -> "merge.greatest"
+  | TupleSortFirst -> "sort_first"
+  | TupleSortSmallest -> "sort_smallest"
+  | TupleSortGreatest -> "sort_greatest"
+  | TupleMergeGreatest -> "merge_greatest"
   | TupleParam -> "param"
   | TupleEnv -> "env"
   | Record -> "record"
@@ -47,26 +47,27 @@ let tuple_prefix_print oc p =
 let parse_prefix m =
   let open RamenParsing in
   let m = "tuple prefix" :: m in
-  let prefix s = strinG (s ^ ".") in
+  let w s = ParseUsual.string ~case_sensitive:false s +-
+            nay legit_identifier_chars in
   (
-    (prefix "unknown" >>: fun () -> TupleUnknown) |||
-    (prefix "in" >>: fun () -> TupleIn) |||
-    (prefix "group" >>: fun () -> TupleGroup) |||
-    (prefix "out.previous" >>: fun () -> TupleOutPrevious) |||
-    (prefix "previous" >>: fun () -> TupleOutPrevious) |||
-    (prefix "out" >>: fun () -> TupleOut) |||
-    (prefix "sort.first" >>: fun () -> TupleSortFirst) |||
-    (prefix "sort.smallest" >>: fun () -> TupleSortSmallest) |||
-    (prefix "sort.greatest" >>: fun () -> TupleSortGreatest) |||
-    (prefix "merge.greatest" >>: fun () -> TupleMergeGreatest) |||
-    (prefix "smallest" >>: fun () -> TupleSortSmallest) |||
+    (w "unknown" >>: fun () -> TupleUnknown) |||
+    (w "in" >>: fun () -> TupleIn) |||
+    (w "group" >>: fun () -> TupleGroup) |||
+    (w "out_previous" >>: fun () -> TupleOutPrevious) |||
+    (w "previous" >>: fun () -> TupleOutPrevious) |||
+    (w "out" >>: fun () -> TupleOut) |||
+    (w "sort_first" >>: fun () -> TupleSortFirst) |||
+    (w "sort_smallest" >>: fun () -> TupleSortSmallest) |||
+    (w "sort_greatest" >>: fun () -> TupleSortGreatest) |||
+    (w "merge_greatest" >>: fun () -> TupleMergeGreatest) |||
+    (w "smallest" >>: fun () -> TupleSortSmallest) |||
     (* Note that since sort.greatest and merge.greatest cannot appear in
      * the same clauses we could convert one into the other (TODO) *)
-    (prefix "greatest" >>: fun () -> TupleSortGreatest) |||
-    (prefix "param" >>: fun () -> TupleParam) |||
-    (prefix "env" >>: fun () -> TupleEnv) |||
+    (w "greatest" >>: fun () -> TupleSortGreatest) |||
+    (w "param" >>: fun () -> TupleParam) |||
+    (w "env" >>: fun () -> TupleEnv) |||
     (* Not for public consumption: *)
-    (prefix "record" >>: fun () -> Record)
+    (w "record" >>: fun () -> Record)
   ) m
 
 (* Tuple that has the fields of this func input type *)

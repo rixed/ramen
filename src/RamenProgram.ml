@@ -84,7 +84,7 @@ let check (params, run_cond, funcs) =
   Option.may (fun run_cond ->
     RamenOperation.prefix_def params TupleEnv run_cond ;
     (* Check the running condition does not use any IO tuple: *)
-    E.iter (fun e ->
+    E.iter (fun _s e ->
       match e.E.text with
       | Field (tuple, _) when
         tuple_has_type_input !tuple ||

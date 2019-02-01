@@ -63,6 +63,14 @@ and text =
   (* A field from a tuple (or parameter, or environment, as special cases of
    * "tuples": *)
   | Field of tuple_prefix ref * RamenName.field
+  (* Variables refer to a value from the input or output of the function.
+   *
+   * This is unrelated to elision of the get in the syntax: when one write
+   * for instance "counter" instead of "in.counter" (or "get("counter", in)")
+   * then it is first parsed as a field from unknown tuple, before being
+   * grounded to the actual tuple or rejected. Later we will instead parse
+   * this as a Get from the unknown tuple variable. *)
+  | Variable of tuple_prefix
   (* Bindings are met only late in the game in the code generator. They are
    * used at code generation time to pass around an ocaml identifier as an
    * expression. *)
@@ -316,6 +324,9 @@ and binding_key =
   (* Placeholder for the variable holding the value of that field; Again,
    * name of the actual variable to be found in the environment: *)
   | RecordField of tuple_prefix * RamenName.field
+  (* Placeholder for the variable holding the value of the whole IO value;
+   * Name of the actual variable to be found in the environment: *)
+  | RecordValue of tuple_prefix
   (* Placeholder for any variable that will be in scope when the Binding
    * is evaluated; Can be emitted as-is, no need for looking up the
    * environment: *)
@@ -329,6 +340,8 @@ let print_binding_key oc = function
       Printf.fprintf oc "%s.%a"
         (string_of_prefix pref)
         RamenName.field_print field
+  | RecordValue pref ->
+      String.print oc (string_of_prefix pref)
   | Direct s ->
       Printf.fprintf oc "Direct %S" s
 
@@ -432,6 +445,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "%s.%s"
           (string_of_prefix !tuple)
           (RamenName.string_of_field name)
+    | Variable pref ->
+        Printf.fprintf oc "%s" (string_of_prefix pref) ;
     | Binding k ->
         Printf.fprintf oc "<BINDING FOR %a>"
           print_binding_key k
@@ -657,7 +672,7 @@ let rec map f e =
   let mm = List.map m
   and om = Option.map m in
   match e.text with
-  | Const _ | Field _ | Binding _ | Stateless (SL0 _) -> f e
+  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) -> f e
 
   | Case (alts, else_) ->
       f { e with text = Case (
@@ -703,13 +718,17 @@ let rec map f e =
   | Generator (Split (e1, e2)) ->
       f { e with text = Generator (Split (m e1, m e2)) }
 
-(* Propagate values up the tree only, depth first. *)
-let fold_subexpressions f i e =
+(* Run [f] on all sub-expressions in turn. *)
+let fold_subexpressions f s i e =
+  (* [s] is the stack of expressions to the AST root *)
+  let s = e :: s in
+  (* Shorthands: *)
+  let f = f s in
   let fl = List.fold_left f in
   let om i = Option.map_default (f i) i
   in
   match e.text with
-  | Const _ | Field _ | Binding _ | Stateless (SL0 _) -> i
+  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) -> i
 
   | Case (alts, else_) ->
       let i =
@@ -745,37 +764,36 @@ let fold_subexpressions f i e =
   | Generator (Split (e1, e2)) -> f (f i e1) e2
 
 (* Fold depth first, calling [f] bottom up: *)
-let rec fold_up f i e =
-  let i = fold_subexpressions (fold_up f) i e in
-  f i e
+let rec fold_up f s i e =
+  let i = fold_subexpressions (fold_up f) s i e in
+  f s i e
 
-let rec fold_down f i e =
-  let i = f i e in
-  fold_subexpressions (fold_down f) i e
+let rec fold_down f s i e =
+  let i = f s i e in
+  fold_subexpressions (fold_down f) s i e
 
 (* Iterate bottom up by default as that's what most callers expect: *)
 let fold = fold_up
 
 let iter f =
-  fold_up (fun () e -> f e) ()
-
+  fold (fun s () e -> f s e) [] ()
 
 let unpure_iter f e =
-  fold_up (fun () e -> match e.text with
-    | Stateful _ -> f e
+  fold (fun s () e -> match e.text with
+    | Stateful _ -> f s e
     | _ -> ()
-  ) () e |> ignore
+  ) [] () e |> ignore
 
-let unpure_fold u f e =
-  fold_up (fun u e -> match e.text with
-    | Stateful _ -> f u e
-    | _ -> u
-  ) u e
+let unpure_fold i f e =
+  fold (fun s i e -> match e.text with
+    | Stateful _ -> f s i e
+    | _ -> i
+  ) [] i e
 
 (* Any expression that uses a generator is a generator: *)
 let is_generator e =
   try
-    iter (fun e ->
+    iter (fun _s e ->
       match e.text with
       | Generator _ -> raise Exit
       | _ -> ()) e ;
@@ -832,10 +850,21 @@ struct
         make (Const v) (* Type of "NULL" is yet unknown *)
     ) m
 
+  let variable m =
+    let m = "variable" :: m in
+    (
+      parse_prefix >>:
+      fun (n) ->
+        make (Variable n)
+    ) m
+
   let field m =
     let m = "field" :: m in
     (
-      optional ~def:TupleUnknown parse_prefix ++ non_keyword >>:
+      optional ~def:TupleUnknown (parse_prefix +- char '.') ++
+      (* Avoid accepting "in" and friends as a field name, to let it be a
+       * variable. *)
+      (nay parse_prefix -+ non_keyword) >>:
       fun (tuple, field) ->
         (* This is important here that the type name is the raw field name,
          * because we use the tuple field type name as their identifier (unless
@@ -1490,7 +1519,8 @@ struct
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| field ||| null) ||| func ||| coalesce
+      accept_units (const ||| field ||| null) |||
+      variable ||| func ||| coalesce
     ) m
 
   and parenthesized p =
@@ -1597,8 +1627,8 @@ let parse =
 (* Function to check an expression after typing, to check that we do not
  * use any IO tuple for init, non constants, etc, when not allowed. *)
 let check =
-  let check_no_tuple what =
-    iter (fun e ->
+  let check_no_io what =
+    iter (fun _s e ->
       match e.text with
       (* params and env are available from everywhere: *)
       | Field (tupref, name) when !tupref <> TupleParam &&
@@ -1608,14 +1638,19 @@ let check =
             what (string_of_prefix !tupref)
             RamenName.field_print name |>
           failwith
+      | Variable pref when tuple_has_type_input pref ||
+                           tuple_has_type_output pref ->
+          Printf.sprintf2 "%s is not allowed to use %s"
+            what (string_of_prefix pref) |>
+          failwith
       (* TODO: all other similar cases *)
       | _ -> ())
   in
-  iter (fun e ->
+  iter (fun _s e ->
     match e.text with
     | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
-        check_no_tuple "duration of function past" max_age ;
-        Option.may (check_no_tuple "sample size of function past")
+        check_no_io "duration of function past" max_age ;
+        Option.may (check_no_io "sample size of function past")
           sample_size
     | _ -> ())
 

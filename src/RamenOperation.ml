@@ -283,13 +283,14 @@ let fold_top_level_expr init f = function
             ) x b in
       x
 
-let iter_top_level_expr f = fold_top_level_expr () (fun () -> f)
+let iter_top_level_expr f =
+  fold_top_level_expr () (fun () -> f)
 
-let fold_expr ?(expr_folder=E.fold_up) init f =
-  fold_top_level_expr init (fun i _ -> expr_folder f i)
+let fold_expr init f =
+  fold_top_level_expr init (fun i _ -> E.fold f [] i)
 
 let iter_expr f op =
-  fold_expr () (fun () e -> f e) op
+  fold_expr () (fun s () e -> f s e) op
 
 let map_top_level_expr f op =
   match op with
@@ -422,7 +423,7 @@ let out_type_of_operation ?(with_private=false) = function
       RamenNotification.tuple_typ
 
 let envvars_of_operation op =
-  fold_expr Set.empty (fun s e ->
+  fold_expr Set.empty (fun _ s e ->
     match e.E.text with
     | Field ({ contents = TupleEnv }, n) -> Set.add n s
     | _ -> s) op |>
@@ -430,7 +431,7 @@ let envvars_of_operation op =
 
 (* Unless it's a param, assume TupleUnknow belongs to def: *)
 let prefix_def params def =
-  E.iter (fun e ->
+  E.iter (fun _ e ->
     match e.E.text with
     | Field (({ contents = TupleUnknown } as pref), name) ->
         if RamenTuple.params_mem name params then
@@ -440,7 +441,7 @@ let prefix_def params def =
     | _ -> ())
 
 let use_event_time op =
-  fold_expr false (fun b e ->
+  fold_expr false (fun _ b e ->
     match e.E.text with
     | Stateless (SL0 (EventStart|EventStop)) -> true
     | _ -> b
@@ -453,10 +454,10 @@ let use_event_time op =
  * list of available parameters. *)
 let check params op =
   let check_pure clause =
-    E.unpure_iter (fun _ ->
+    E.unpure_iter (fun _ _ ->
       failwith ("Stateful function not allowed in "^ clause))
   and check_no_state state clause =
-    E.unpure_iter (fun e ->
+    E.unpure_iter (fun _ e ->
       match e.E.text with
       | Stateful (g, _, _) when g = state ->
           failwith ("Stateful function not allowed in "^ clause)
@@ -468,7 +469,7 @@ let check params op =
           (RamenLang.string_of_prefix tuple)
           where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
         failwith) in
-    E.iter (fun e ->
+    E.iter (fun _ e ->
       match e.E.text with
       | Field (tuple, _) -> check_can_use !tuple
       | Stateless (SL0 (EventStart|EventStop)) ->
@@ -518,7 +519,7 @@ let check params op =
                 factors ; _ } ->
     (* Set of fields known to come from in (to help prefix_smart): *)
     let fields_from_in = ref Set.empty in
-    iter_expr (fun e ->
+    iter_expr (fun _ e ->
       match e.E.text with
       | Field ({ contents = TupleIn }, name) ->
           fields_from_in := Set.add name !fields_from_in
@@ -532,7 +533,7 @@ let check params op =
      * in selected_fields -- optionally, only before position i). It will
      * also keep track of opened records and look up there first. *)
     let prefix_smart ?i e =
-      E.fold_down (fun env e ->
+      E.fold_down (fun _ env e ->
         match e.E.text with
         | Field (({ contents = TupleUnknown } as pref), name) ->
             (* First by lookup in the environment: *)
@@ -568,7 +569,7 @@ let check params op =
             env
         | Record _ -> e :: env
         | _ -> env
-      ) [] e |> ignore in
+      ) [] [] e |> ignore in
     List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
     List.iter (prefix_def params TupleIn) merge.on ;
     Option.may (fun (_, u_opt, b) ->
@@ -579,7 +580,7 @@ let check params op =
     List.iter prefix_smart notifications ;
     prefix_smart commit_cond ;
     (* Check that we use the TupleGroup only for virtual fields: *)
-    iter_expr (fun e ->
+    iter_expr (fun _ e ->
       match e.E.text with
       | Field ({ contents = TupleGroup }, name) ->
         if not (RamenName.is_virtual name) then
@@ -649,7 +650,7 @@ let check params op =
     let generators = List.filter_map (fun sf ->
         if E.is_generator sf.expr then Some sf.alias else None
       ) fields in
-    iter_expr (fun e ->
+    iter_expr (fun _ e ->
       match e.E.text with
       | Field (tuple_ref, name)
         when !tuple_ref = TupleOutPrevious ->
@@ -688,7 +689,7 @@ let check params op =
   | Instrumentation _ | Notifications _ -> ()) ;
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
-  iter_expr RamenExpr.check op
+  iter_expr (fun _ e -> RamenExpr.check e) op
 
 module Parser =
 struct

@@ -52,10 +52,13 @@ let that_string s =
 
 let strinGs s = strinG s ||| strinG (s ^"s")
 
+let legit_identifier_chars = letter ||| underscore ||| decimal_digit
+
 (* but word would match only if the string is not followed by other
- * letters: *)
+ * letters (trailing numbers are OK, and it's actually used by the
+ * duration parser): *)
 let word ?case_sensitive s =
-  ParseUsual.string ?case_sensitive s -- nay letter
+  ParseUsual.string ?case_sensitive s +- nay letter
 
 let worD = word ~case_sensitive:false
 
@@ -245,7 +248,7 @@ let keyword =
     (* Some functions with possibly no arguments that must not be
      * parsed as field names: *)
     strinG "now" ||| strinG "random"
-  ) -- check (nay (letter ||| underscore ||| decimal_digit))
+  ) -- check (nay legit_identifier_chars)
 
 let non_keyword =
   (check ~what:"no quoted identifier" (nay id_quote) -+

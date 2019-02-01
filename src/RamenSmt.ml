@@ -17,6 +17,9 @@ let emit_is_true id oc =
 let emit_is_false id oc =
   Printf.fprintf oc "(not %s)" id
 
+let emit_is_bool b =
+  if b then emit_is_true else emit_is_false
+
 (* a => b *)
 let emit_imply a oc b =
   Printf.fprintf oc "(=> %s %s)" a b

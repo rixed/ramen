@@ -106,7 +106,7 @@ let infer_field_doc_aggr func parents params =
       ) fields
   | _ -> ()
 
-let check_typed ~what e =
+let check_typed ~what _stack e =
   let open RamenExpr in
   match e.E.typ.T.structure with
   | TNum | TAny ->
