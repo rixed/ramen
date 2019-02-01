@@ -1668,11 +1668,11 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
           Printf.fprintf oc
             "; Expression %d equals field %d (%a)\n"
             id i RamenName.field_print k ;
-          let name = Err.(Expr (id, InheritTypeFromRecord)) in
+          let name = Err.(Expr (id, InheritTypeFromInput k)) in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-e%d %s))"
               (t_of_num id) sz i rec_tid) ;
-          let name = Err.(Expr (id, InheritNullFromRecord)) in
+          let name = Err.(Expr (id, InheritNullFromInput k)) in
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-n%d %s))"
               (n_of_num id) sz i rec_tid)

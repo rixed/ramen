@@ -36,10 +36,8 @@ type expr =
   | Unsigned
   | Numeric
   | ActualType of string
-  | InheritType
-  | InheritNull
-  | InheritTypeFromRecord
-  | InheritNullFromRecord
+  | InheritTypeFromInput of RamenName.field
+  | InheritNullFromInput of RamenName.field
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -83,10 +81,10 @@ let print_expr oc =
   | Unsigned -> p " must be an unsigned integer"
   | Numeric -> p " must be numeric"
   | ActualType t -> p " must be of type %s" t
-  | InheritType -> p " must match all parents output"
-  | InheritNull -> p " must match all parents nullability"
-  | InheritTypeFromRecord -> p " must match record type"
-  | InheritNullFromRecord -> p " must match record field nullability"
+  | InheritTypeFromInput f ->
+      p " must match type of input field %a" RamenName.field_print f
+  | InheritNullFromInput f ->
+      p " must match nullability of input field %a" RamenName.field_print f
 
 type func =
   | Clause of string * expr
