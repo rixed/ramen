@@ -351,9 +351,10 @@ type in_type = in_field list
 
 let id_of_path p =
   List.fold_left (fun id p ->
-    match p with
-    | Int i -> id ^"["^ string_of_int i ^"]"
-    | Name s -> if id = "" then s else "."^ s
+    id ^(
+      match p with
+      | Int i -> "["^ string_of_int i ^"]"
+      | Name s -> if id = "" then s else "."^ s)
   ) "" p |>
   RamenName.field_of_string
 
