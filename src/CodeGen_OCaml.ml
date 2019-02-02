@@ -2635,16 +2635,18 @@ let emit_field_selection
   let is_selected name =
     List.exists (fun sf -> sf.RamenOperation.alias = name) selected_fields in
   Printf.fprintf oc "\t(\n\t\t" ;
-  List.fold_left (fun i ft ->
-      if must_output_field ft.name then (
-        let tuple =
-          if is_selected ft.name then TupleOut else TupleIn in
-        Printf.fprintf oc "%s%s"
-          (if i > 0 then ",\n\t\t" else "")
-          (id_of_field_name ~tuple ft.name) ;
-        i + 1
-      ) else i
-    ) 0 opc.tuple_typ |> ignore ;
+  List.iteri (fun i ft ->
+    if must_output_field ft.name then (
+      let tuple =
+        if is_selected ft.name then TupleOut else TupleIn in
+      Printf.fprintf oc "%s%s"
+        (if i > 0 then ",\n\t\t" else "")
+        (id_of_field_name ~tuple ft.name)
+    ) else (
+      Printf.fprintf oc "%s()"
+        (if i > 0 then ", " else "")
+    )
+  ) opc.tuple_typ ;
   Printf.fprintf oc "\n\t)\n"
 
 (* Fields that are part of the minimal tuple have had their states updated
@@ -3012,22 +3014,25 @@ let emit_aggregate opc oc global_env group_env env_env param_env
    * input. Also for convenience any field that involves the print function.
    * Of course, any field required to compute a minimal field must also be
    * minimal. *)
+  let add_if_needs_out s e =
+    match e.E.text with
+    | Field ({ contents = TupleOut }, fn)
+    | Binding (RecordField (TupleOut, fn)) (* not supposed to happen *) ->
+        Set.add fn s
+    | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
+                           E.{ text = Variable TupleOut ; _ })) ->
+        Set.add (RamenName.field_of_string fn) s
+    | _ -> s in
   let minimal_fields =
     let from_commit_cond =
       E.fold (fun _ s e ->
-        match e.E.text with
-        | Field ({ contents = TupleOut }, fn)
-        | Binding (RecordField (TupleOut, fn)) -> Set.add fn s
-        | _ -> s
+        add_if_needs_out s e
       ) [] Set.empty commit_cond
     and for_updates =
       List.fold_left (fun s sf ->
         E.unpure_fold s (fun _ s e ->
           E.fold (fun _ s e ->
-            match e.E.text with
-            | Field ({ contents = TupleOut }, fn)
-            | Binding (RecordField (TupleOut, fn)) -> Set.add fn s
-            | _ -> s
+            add_if_needs_out s e
           ) [] s e
         ) sf.RamenOperation.expr
       ) Set.empty fields
@@ -3058,9 +3063,17 @@ let emit_aggregate opc oc global_env group_env env_env param_env
   in
   !logger.debug "minimal fields: %a"
     (Set.print RamenName.field_print) minimal_fields ;
+  (* Replace removed values with a dull type. Should not be accessed
+   * ever. This is because we want out and minimal to have the same
+   * ramen type, so that field access works on both. *)
   let minimal_typ =
-    List.filter (fun ft ->
-      Set.mem ft.RamenTuple.name minimal_fields
+    List.map (fun ft ->
+      if Set.mem ft.RamenTuple.name minimal_fields then
+        ft
+      else (* Replace it *)
+        RamenTuple.{ ft with
+          name = RamenName.field_of_string ("_not_minimal_"^ RamenName.string_of_field ft.name) ;
+          typ = T.{ ft.typ with structure = TEmpty } }
     ) out_typ in
   (* Tells whether we need the group to check the where clause (because it
    * uses the group tuple or build a group-wise aggregation on its own,
