@@ -440,6 +440,11 @@ let subst_deep_fields in_type =
         when tuple_has_type_input !tup &&
              n' = RamenName.field_of_string n ->
         true
+    | [ Name n ],
+      Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
+        (match E.string_of_const s with
+        | Some n' when n' = n -> true
+        | _ -> false)
     | Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
