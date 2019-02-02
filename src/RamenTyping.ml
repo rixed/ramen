@@ -1485,21 +1485,12 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       let h' = Hashtbl.create 10 in
       Hashtbl.add h func_name h' ;
       h' in
-  let register_input h func field structure nullable expr =
+  let register_input h func field e =
     let h = get_sub_hash h func in
-    Hashtbl.modify_opt field (function
-      | None -> Some (Some (structure, nullable), [ expr.E.uniq_num ])
-      | Some (typ, ids) ->
-          assert (typ = None || typ = Some (structure, nullable)) ;
-          Some (Some (structure, nullable), expr.E.uniq_num :: ids)
-    ) h
-  and register_inherit func field id expr =
-    let h = get_sub_hash in_fields func in
-    Hashtbl.modify_opt field (function
-      | None -> Some (None, [ id ; expr.E.uniq_num ])
-      | Some (typ, ids) ->
-          Some (typ, id :: expr.E.uniq_num :: ids)
-    ) h
+    (* When we know the type from a pre-compiled parent, a well-known
+     * output type, or because it's declared with parameters or a given
+     * because it's an envvar, then we set a hard constraint: *)
+    Hashtbl.replace h field e
   in
   let program_iter f condition funcs =
     Option.may (fun cond ->
@@ -1516,7 +1507,11 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   let register_io ?func what e prefix field =
     match prefix with
     | TupleEnv ->
-        register_input env_fields None field TString true e
+        emit_assert_id_eq_typ tuple_sizes records field_names
+          (t_of_expr e) oc TString ;
+        arg_is_nullable oc e ;
+        (* Also make this expression stands for this env field: *)
+        register_input env_fields None field e
     | TupleParam ->
         (match RamenTuple.params_find field params with
         | exception Not_found ->
@@ -1524,8 +1519,11 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
               what RamenName.field_print field |>
             failwith
         | param ->
-            register_input param_fields None field
-              param.ptyp.typ.structure param.ptyp.typ.nullable) e
+            emit_assert_id_eq_typ tuple_sizes records field_names
+              (t_of_expr e) oc param.ptyp.typ.structure ;
+            emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.nullable ;
+            (* Also make this expression stands for this param field: *)
+            register_input param_fields None field e)
     | TupleIn
     | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
     | TupleMergeGreatest as tup_pref ->
@@ -1583,6 +1581,10 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                         (pretty_list_print (fun oc f ->
                           String.print oc (RamenName.string_of_func f.F.name))) funcs ;
                       raise Not_found in
+                  (* When the parent is an aggr then we will just make its
+                   * output equal to this input (added to same_as_ids), but
+                   * when it has a well-known type then we will make this
+                   * type equal to that well known type. *)
                   match id_or_type_of_field pfunc.F.operation field with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id ->
@@ -1603,13 +1605,25 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       assert (RamenTypes.is_typed sf.typ.structure) ;
                       aggr_types pfunc sf.typ prev_typ, same_as_ids)
               ) (None, []) parents in
+            (* [typ] is the of that input, known either from a pre-compiled
+             * parent or a well-known output type of another function. We
+             * must equate [e] to this type: *)
             Option.may (fun (_funcs, t) ->
-              register_input in_fields (Some func) field
-                t.structure t.nullable e
+              emit_assert_id_eq_typ tuple_sizes records field_names
+                (t_of_expr e) oc t.structure ;
+              emit_assert_id_is_bool (n_of_expr e) oc t.nullable
             ) typ ;
+            (* If all we know is that [e] must have the same type as other
+             * expressions, we set soft constraints for all of them: *)
             List.iter (fun id ->
-              register_inherit (Some func) field id e
-            ) same_as_ids)
+              let name = expr_err e Err.InheritType in
+              emit_assert_id_eq_id ~name (t_of_expr e) oc (t_of_num id) ;
+              let name = expr_err e Err.InheritNull in
+              emit_assert_id_eq_id ~name (n_of_expr e) oc (n_of_num id)
+            ) same_as_ids ;
+            (* Also, make [e] stand for the input field [field] of this
+             * function: *)
+            register_input in_fields (Some func) field e)
     | _tup_ref -> (* Ignore non-inputs *) ()
   in
   program_iter (fun ?func what _ e ->
@@ -1636,47 +1650,31 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       let rec_tid = t_of_prefix TupleIn id
       and rec_nid = n_of_prefix TupleIn id in
       Printf.fprintf decls
-        "\n; Input record type for %s\n\n\
+        "\n; record type for %s\n\n\
          (declare-fun %s () Type)\n\
          (declare-fun %s () Bool)\n"
-        (match fq_name with None -> input_name
-                          | Some fq -> RamenName.string_of_fq fq)
+        (match fq_name with
+        | None -> input_name
+        | Some fq ->
+            Printf.sprintf2 "input of function %a" RamenName.fq_print fq)
         rec_tid rec_nid ;
       let sz = Hashtbl.length h in
       emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
       (* For typing this is not required to order the fields in any given
        * order: *)
-      Hashtbl.keys h |> Enum.iteri (fun i k ->
-        let str_nul, ids = Hashtbl.find h k in
-        (* If we know the type of this record field, declare it: *)
-        Option.may (fun (structure, nullable) ->
-          Printf.fprintf oc
-            "; We know the type of field %d (%a) is %a (%snullable)\n"
-            i RamenName.field_print k
-            RamenTypes.print_structure structure
-            (if nullable then "" else "not ") ;
-          let id = Printf.sprintf "(record%d-e%d %s)" sz i rec_tid in
-          emit_assert_id_eq_typ tuple_sizes records field_names id oc structure ;
-          let id = Printf.sprintf "(record%d-n%d %s)" sz i rec_tid in
-          emit_assert_id_is_bool id oc nullable ;
-          emit_assert oc (fun oc ->
-            Printf.fprintf oc "(= %s (record%d-f%d %s))"
-              (f_of_name field_names k) sz i rec_tid)
-        ) str_nul ;
-        (* We also know that some actual expressions equal this field: *)
-        List.iter (fun id ->
-          Printf.fprintf oc
-            "; Expression %d equals field %d (%a)\n"
-            id i RamenName.field_print k ;
-          let name = Err.(Expr (id, InheritTypeFromInput k)) in
-          emit_assert ~name oc (fun oc ->
-            Printf.fprintf oc "(= %s (record%d-e%d %s))"
-              (t_of_num id) sz i rec_tid) ;
-          let name = Err.(Expr (id, InheritNullFromInput k)) in
-          emit_assert ~name oc (fun oc ->
-            Printf.fprintf oc "(= %s (record%d-n%d %s))"
-              (n_of_num id) sz i rec_tid)
-        ) ids ;
+      Hashtbl.enum h |> Enum.iteri (fun i (k, e) ->
+        (* Make [e] stands for this field: *)
+        Printf.fprintf oc
+          "; Expression %a (%d) is field %d (%a)\n"
+          (E.print ~max_depth:2 false) e
+          e.E.uniq_num
+          i RamenName.field_print k ;
+        emit_assert oc (fun oc ->
+          Printf.fprintf oc "(= %s (record%d-e%d %s))"
+            (t_of_expr e) sz i rec_tid) ;
+        emit_assert oc (fun oc ->
+          Printf.fprintf oc "(= %s (record%d-n%d %s))"
+            (n_of_expr e) sz i rec_tid)
       ) ;
       (fq_name, id) :: assoc
     ) h []
