@@ -296,6 +296,8 @@ src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollect
 	@echo 'Linking runtime library $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
+src/codegen.a: src/codegen.cmxa
+
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
 # cut -c X- means to takes all from X, 1st char being 1, thus the leading _:
@@ -603,11 +605,11 @@ tests/changed.success: tests/changed.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
-err-check: src/ramen $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
+err-check: src/ramen bundle $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  src/ramen compile --quiet -L tests/errors $$f 2>&1 >/dev/null |\
+	  src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
 	  if ! diff -q $$f.err $$t ; then \
 	    echo "FAILURE: $$f" ;\
