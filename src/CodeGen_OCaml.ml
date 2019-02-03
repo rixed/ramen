@@ -582,7 +582,7 @@ let initial_environments =
         glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
     | _ -> prev)
 
-(* Takes an operation and convert convert all its Field expressions for the
+(* Takes an operation and convert all its Field expressions for the
  * given tuple into a Binding to the environment: *)
 let subst_fields_for_binding pref =
   RamenOperation.map_expr (fun e ->

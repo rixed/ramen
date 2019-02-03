@@ -1814,7 +1814,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     if not (Set.Int.mem id !ids) then (
       ids := Set.Int.add id !ids ;
       Printf.fprintf decls
-        "; %a\n\
+        "\n; %a\n\
          (declare-fun %s () Bool)\n\
          (declare-fun %s () Type)\n"
         (RamenExpr.print true) e
@@ -1897,11 +1897,16 @@ let used_tuples_records funcs parents =
         let n = Hashtbl.length field_names in
         Hashtbl.add field_names k n ;
         n in
+    !logger.debug
+      "Register field %a (%d) at position %d in a record of length %d"
+      RamenName.field_print k
+      n field_pos rec_sz ;
     Hashtbl.add records k (n, rec_sz, field_pos)
   in
   let tuple_sizes, params, envvars =
     List.fold_left (fun i func ->
-      RamenOperation.fold_expr i (fun _ (tuple_sizes, params, envvars) e ->
+      RamenOperation.fold_expr i
+        (fun _ (tuple_sizes, params, envvars as prev) e ->
         match e.E.text with
         (* The simplest ways to get a tuple in an op are with a Tuple or a
          * Record literal expression: *)
@@ -1915,7 +1920,7 @@ let used_tuples_records funcs parents =
              * legit field name for a record of that length at that
              * position: *)
             List.iteri (fun i (k, _) -> register_field k d i) kvs ;
-            tuple_sizes, params, envvars ;
+            prev
         (* But the parameters and the UNIX-env are treated as records as
          * well, so here is our chance to learn about them. Since we don't
          * know the length of those records before the end of the loop,
@@ -1926,10 +1931,10 @@ let used_tuples_records funcs parents =
             else if tuple = TupleEnv then
               tuple_sizes, params, (Set.add n envvars)
             else
-              tuple_sizes, params, envvars
-        (* TODO: Get *)
+              prev
+        (* TODO: Get from env/params*)
         | _ ->
-            tuple_sizes, params, envvars
+            prev
       ) func.F.operation
     ) (Set.Int.empty, Set.empty, Set.empty) funcs in
   let register_set s =
@@ -2035,9 +2040,15 @@ let get_types parents condition funcs params fname =
  * expression. *)
 let set_io_tuples parents funcs h =
   let set_output func =
+    !logger.debug "set_output of function %a"
+      RamenName.func_print func.F.name ;
     RamenOperation.out_type_of_operation ~with_private:true func.F.operation |>
     List.iter (fun ft ->
-      if not (RamenTypes.is_typed ft.RamenTuple.typ.structure) then (
+      !logger.debug "set_output of field %a"
+        RamenName.field_print ft.RamenTuple.name ;
+      if RamenTypes.is_typed ft.RamenTuple.typ.structure then (
+        !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
+      ) else (
         match func.F.operation with
         | RamenOperation.Aggregate { fields ; _ } ->
             let id =
@@ -2058,8 +2069,12 @@ let set_io_tuples parents funcs h =
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
+    !logger.debug "set_input of function %a"
+      RamenName.func_print func.F.name ;
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun f ->
+      !logger.debug "set_input for input %a"
+        RamenFieldMaskLib.print_in_field f ;
       (* For the in_type we have to check that all parents do export each
        * of the mentioned input fields: *)
       let f_name = RamenFieldMaskLib.(id_of_path f.path) in
@@ -2067,10 +2082,14 @@ let set_io_tuples parents funcs h =
         Printf.sprintf2 "Cannot use input field %a without any parent"
           RamenName.field_print f_name |>
         failwith ;
-      if not (RamenTypes.is_typed f.typ.structure) then (
+      if RamenTypes.is_typed f.typ.structure then (
+        !logger.debug "... already typed to %a" T.print_typ f.typ
+      ) else (
         (* We already know (from the solver) that all parents export the
          * same type. Copy from the first parent: *)
         let parent = List.hd parents in
+        !logger.debug "Copying from parent %a"
+          RamenName.func_print parent.F.name ;
         let pser =
           RamenOperation.out_type_of_operation ~with_private:true parent.F.operation |>
           RingBufLib.ser_tuple_typ_of_tuple_typ in

@@ -85,8 +85,7 @@ let add_ fname fd out_fname timeout chan fieldmask =
   let channels = Hashtbl.create 1 in
   Hashtbl.add channels chan timeout ;
   let file_spec =
-    RamenFieldMask.to_string fieldmask,
-    channels in
+    RamenFieldMask.to_string fieldmask, channels in
   let h =
     try read_ fname
     with Sys_error _ ->
@@ -95,7 +94,10 @@ let add_ fname fd out_fname timeout chan fieldmask =
   let rewrite file_spec =
     Hashtbl.replace h out_fname file_spec ;
     write_ fname fd h ;
-    !logger.debug "Adding %s to %s" out_fname fname in
+    !logger.debug "Adding %s to %s with fieldmask %a"
+      out_fname fname
+      RamenFieldMask.print fieldmask
+  in
   match Hashtbl.find h out_fname with
   | exception Not_found -> rewrite file_spec
   | prev_spec ->

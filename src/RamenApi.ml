@@ -214,8 +214,8 @@ let string_of_ext_type = function
   | Other -> "other"
 
 (* We look for all keys which are simple fields (but not start/stop), then look
- * for a output field forwarding that field, and return its name (in theory not
- * only fields but any expression yielding the same results.) *)
+ * for an output field forwarding that field, and return its name (in theory
+ * not only fields but any expression yielding the same results.) *)
 let group_keys_of_operation =
   let open RamenOperation in
   function
