@@ -63,6 +63,9 @@ and text =
   (* A field from a tuple (or parameter, or environment, as special cases of
    * "tuples": *)
   | Field of tuple_prefix ref * RamenName.field
+  (* Used when several successive Gets are replaced by a direct access to
+   * a cherry-picked value from input: *)
+  | Path of path_comp list
   (* Variables refer to a value from the input or output of the function.
    *
    * This is unrelated to elision of the get in the syntax: when one write
@@ -333,6 +336,9 @@ and binding_key =
   | Direct of string
   [@@ppp PPP_OCaml]
 
+and path_comp = Int of int | Name of string
+  [@@ppp PPP_OCaml]
+
 let print_binding_key oc = function
   | State n ->
       Printf.fprintf oc "State of %d" n
@@ -344,6 +350,13 @@ let print_binding_key oc = function
       String.print oc (string_of_prefix pref)
   | Direct s ->
       Printf.fprintf oc "Direct %S" s
+
+let print_path_comp oc = function
+  | Int i -> Printf.fprintf oc "[%d]" i
+  | Name n -> String.print oc n
+
+let print_path oc =
+  List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
 
 let uniq_num_seq = ref 0
 
@@ -445,6 +458,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "%s.%s"
           (string_of_prefix !tuple)
           (RamenName.string_of_field name)
+    | Path path ->
+        print_path oc path
     | Variable pref ->
         Printf.fprintf oc "%s" (string_of_prefix pref) ;
     | Binding k ->
@@ -672,7 +687,8 @@ let rec map f e =
   let mm = List.map m
   and om = Option.map m in
   match e.text with
-  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) -> f e
+  | Const _ | Field _ | Path _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+      f e
 
   | Case (alts, else_) ->
       f { e with text = Case (
@@ -728,7 +744,8 @@ let fold_subexpressions f s i e =
   let om i = Option.map_default (f i) i
   in
   match e.text with
-  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) -> i
+  | Const _ | Field _ | Path _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+      i
 
   | Case (alts, else_) ->
       let i =

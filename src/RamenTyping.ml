@@ -78,6 +78,88 @@ let f_of_name field_names k =
       RamenName.field_print k |>
     failwith
 
+let rec find_type_of_path_in_typ typ path =
+  let invalid_path () =
+    Printf.sprintf2 "Cannot find subpath %a in type %a"
+      E.print_path path
+      T.print_typ typ |>
+    failwith in
+  match path with
+  | [] -> typ
+  | E.Name field :: rest ->
+      (match typ.T.structure with
+      | T.TRecord kts ->
+          let _, t = Array.find (fun (k, _) -> k = field) kts in
+          find_type_of_path_in_typ t rest
+      | _ ->
+          invalid_path ())
+  | E.Int idx :: rest ->
+      (match typ.T.structure with
+      | T.TTuple ts ->
+          if idx >= Array.length ts then
+            Printf.sprintf2 "Cannot cherry-pick index %d in a tuple with \
+              only %d elements"
+              idx (Array.length ts) |>
+            failwith ;
+          find_type_of_path_in_typ ts.(idx) rest
+      | T.TVec (d, t) ->
+          if idx >= d then
+            Printf.sprintf2 "Cannot cherry-pick index %d in a vector of \
+              length %d"
+              idx d |>
+            failwith ;
+          find_type_of_path_in_typ t rest
+      | T.TList t ->
+          find_type_of_path_in_typ t rest
+      | _ ->
+          invalid_path ())
+
+let find_type_of_path_in_tuple_typ tuple_typ = function
+  | [] -> assert false
+  | E.Name field :: rest ->
+      let fld =
+        List.find (fun fld ->
+          RamenName.string_of_field fld.RamenTuple.name = field
+        ) tuple_typ in
+      find_type_of_path_in_typ fld.RamenTuple.typ rest
+  | E.Int _ :: _ ->
+      failwith "Cannot address parent output with an index (yet)"
+
+let rec find_expr_of_path e path =
+  let invalid_path () =
+    Printf.sprintf2 "Cannot find subpath %a in expression %a"
+      E.print_path path
+      (E.print ~max_depth:2 false) e |>
+    failwith
+  in
+  match path with
+  | [] -> e
+  | E.Name field :: rest ->
+      (match e.E.text with
+      | E.Record kvs ->
+          let _, e = List.find (fun (k, _) -> RamenName.string_of_field k = field) kvs in
+          find_expr_of_path e rest
+      | _ ->
+          invalid_path ())
+  | E.Int idx :: rest ->
+      (match e.E.text with
+      | E.Vector es
+      | E.Tuple es ->
+          (match List.at es idx with
+          | exception Invalid_argument _ -> raise Not_found
+          | e -> find_expr_of_path e rest)
+      | _ ->
+          invalid_path ())
+
+let find_expr_of_path_in_selected_fields fields = function
+  | [] -> assert false
+  | E.Name field :: rest ->
+      let sf = List.find (fun sf ->
+        RamenName.string_of_field sf.RamenOperation.alias = field) fields in
+      find_expr_of_path sf.RamenOperation.expr rest
+  | E.Int _ :: _ ->
+      failwith "Cannot address input with an index (yet)"
+
 let expr_err e err = Err.Expr (e.E.uniq_num, err)
 let func_err fi err = Err.Func (fi, err)
 
@@ -390,6 +472,8 @@ let emit_constraints tuple_sizes records field_names out_fields
   | Field _ ->
       (* The type of a field originating from input/params/env/virtual
        * fields has been set previously. *)
+      ()
+  | Path _ -> (* Similarly *)
       ()
 
   | Variable pref ->
@@ -1403,22 +1487,37 @@ let emit_minimize oc condition funcs =
  * field (in case of Aggregates) or directly to the type of the output
  * field if it is a well known field (which has no expression). *)
 type id_or_type = Id of int | FieldType of RamenTuple.field_typ
-let id_or_type_of_field op name =
+let id_or_type_of_field op path =
   let open RamenOperation in
-  let find_field_type =
-    List.find (fun ft -> ft.RamenTuple.name = name) in
+  let find_field_type what fields =
+    (* In the future, when [path] does have several components, look through
+     * all of them in turn in the TRecords as we do with the external parents *)
+    let field =
+      match path with [ E.Name n ] -> RamenName.field_of_string n
+      | _ ->
+          Printf.sprintf2 "Cherry-picking (%a) in well-known types (%s) is \
+                           not supported"
+            E.print_path path what |>
+          failwith
+    in
+    List.find (fun ft -> ft.RamenTuple.name = field) fields in
   match op with
   | Aggregate { fields ; _ } ->
-      let sf = List.find (fun sf -> sf.alias = name) fields in
-      Id sf.expr.E.uniq_num
+      (* In case [path] has several components, look through the
+       * Record expression to locate the actual expression which id we
+       * should equate to the callers' expression. *)
+      Id (find_expr_of_path_in_selected_fields fields path).E.uniq_num
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      FieldType (find_field_type fields)
+      FieldType (find_field_type "CSV" fields)
   | ListenFor { proto ; _ } ->
-      FieldType (find_field_type (RamenProtocols.tuple_typ_of_proto proto))
+      FieldType (find_field_type (RamenProtocols.string_of_proto proto)
+                                 (RamenProtocols.tuple_typ_of_proto proto))
   | Instrumentation _ ->
-      FieldType (find_field_type RamenBinocle.tuple_typ)
+      FieldType (find_field_type "instrumentation"
+                                 RamenBinocle.tuple_typ)
   | Notifications _ ->
-      FieldType (find_field_type RamenNotification.tuple_typ)
+      FieldType (find_field_type "notifications"
+                                 RamenNotification.tuple_typ)
 
 let emit_out_types decls oc field_names funcs =
   !logger.debug "Emitting SMT2 for output types" ;
@@ -1504,34 +1603,36 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       ignore
     ) funcs
   in
-  let register_io ?func what e prefix field =
+  let register_io ?func what e prefix path =
     match prefix with
     | TupleEnv ->
         emit_assert_id_eq_typ tuple_sizes records field_names
           (t_of_expr e) oc TString ;
         arg_is_nullable oc e ;
         (* Also make this expression stands for this env field: *)
-        register_input env_fields None field e
+        register_input env_fields None path e
     | TupleParam ->
+        let field =
+          match path with [ E.Name s ] -> RamenName.field_of_string s
+          | _ -> failwith "Cherry-picking from parameters not supported" in
         (match RamenTuple.params_find field params with
         | exception Not_found ->
             Printf.sprintf2 "%s is using unknown parameter %a"
-              what RamenName.field_print field |>
+              what E.print_path path |>
             failwith
         | param ->
             emit_assert_id_eq_typ tuple_sizes records field_names
               (t_of_expr e) oc param.ptyp.typ.structure ;
             emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.nullable ;
             (* Also make this expression stands for this param field: *)
-            register_input param_fields None field e)
+            register_input param_fields None path e)
     | TupleIn
     | TupleSortFirst | TupleSortSmallest | TupleSortGreatest
-    | TupleMergeGreatest as tup_pref ->
+    | TupleMergeGreatest ->
         (match func with
         | None ->
-            Printf.sprintf2 "%s has no input (%s.%a)"
-              what (string_of_prefix tup_pref)
-              RamenName.field_print field |>
+            Printf.sprintf2 "%s has no input %a"
+              what E.print_path path |>
             failwith ;
         | Some func ->
             let no_such_field pfunc =
@@ -1539,7 +1640,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                                named %a (only: %a) (in: %a)"
                 RamenName.func_print pfunc.F.name
                 what
-                RamenName.field_print field
+                E.print_path path
                 RamenTuple.print_typ
                   (RamenOperation.out_type_of_operation pfunc.F.operation)
                 (E.print false) e |>
@@ -1554,7 +1655,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       "All parents of %s must agree on the type of field \
                        %a (%a has %a but %s has %a)"
                       what
-                      RamenName.field_print field
+                      E.print_path path
                       (pretty_list_print (fun oc f ->
                         String.print oc (RamenName.func_color f))) prev_fns
                       RamenTypes.print_typ prev_t
@@ -1585,7 +1686,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                    * output equal to this input (added to same_as_ids), but
                    * when it has a well-known type then we will make this
                    * type equal to that well known type. *)
-                  match id_or_type_of_field pfunc.F.operation field with
+                  match id_or_type_of_field pfunc.F.operation path with
                   | exception Not_found -> no_such_field pfunc
                   | Id p_id ->
                       prev_typ, p_id::same_as_ids
@@ -1593,17 +1694,23 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       aggr_types pfunc typ.RamenTuple.typ prev_typ,
                       same_as_ids
                 ) else (
-                  (* External parent: look for the exact type (exclude private fields): *)
+                  (* External parent: look for the exact type (exclude private
+                   * fields): *)
                   let pser =
                     RamenOperation.out_type_of_operation pfunc.F.operation |>
                     RingBufLib.ser_tuple_typ_of_tuple_typ in
-                  match List.find (fun fld ->
-                          fld.RamenTuple.name = field
-                        ) pser with
+                  (* If [path] has several component then look for each
+                   * components one after the other, localizing the type
+                   * through the TRecords.
+                   * We have to treat differently the first path that must
+                   * match the selected field name, from the rest that must
+                   * match TRecord fields; TODO: have a single output value!
+                   *)
+                  match find_type_of_path_in_tuple_typ pser path with
                   | exception Not_found -> no_such_field pfunc
-                  | sf ->
-                      assert (RamenTypes.is_typed sf.typ.structure) ;
-                      aggr_types pfunc sf.typ prev_typ, same_as_ids)
+                  | typ ->
+                      assert (T.is_typed typ.T.structure) ;
+                      aggr_types pfunc typ prev_typ, same_as_ids)
               ) (None, []) parents in
             (* [typ] is the of that input, known either from a pre-compiled
              * parent or a well-known output type of another function. We
@@ -1623,17 +1730,19 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             ) same_as_ids ;
             (* Also, make [e] stand for the input field [field] of this
              * function: *)
-            register_input in_fields (Some func) field e)
+            register_input in_fields (Some func) path e)
     | _tup_ref -> (* Ignore non-inputs *) ()
   in
   program_iter (fun ?func what _ e ->
     match e.E.text with
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
-        let field = RamenName.field_of_string s in
-        register_io ?func what e prefix field
+        register_io ?func what e prefix [ Name s ]
     | Field (tupref, field) ->
-        register_io ?func what e !tupref field
+        register_io ?func what e !tupref
+          [ Name (RamenName.string_of_field field) ]
+    | Path path ->
+        register_io ?func what e TupleIn path
     | _ -> ()
   ) condition funcs ;
   (* For param_fields, env_fields and each function in in_fields, declare
@@ -1662,13 +1771,13 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
       (* For typing this is not required to order the fields in any given
        * order: *)
-      Hashtbl.enum h |> Enum.iteri (fun i (k, e) ->
+      Hashtbl.enum h |> Enum.iteri (fun i (path, e) ->
         (* Make [e] stands for this field: *)
         Printf.fprintf oc
           "; Expression %a (%d) is field %d (%a)\n"
           (E.print ~max_depth:2 false) e
           e.E.uniq_num
-          i RamenName.field_print k ;
+          i E.print_path path ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-e%d %s))"
             (t_of_expr e) sz i rec_tid) ;

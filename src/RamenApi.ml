@@ -7,6 +7,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
+open RamenLang
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -223,16 +224,23 @@ let group_keys_of_operation =
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
+          | Path [ E.Name name ] when
+              name <> "start" &&
+              name <> "stop" ->
+              Some (TupleIn, RamenName.field_of_string name)
           | Field (tuple_prefix, name) when
               name <> RamenName.field_of_string "start" &&
               name <> RamenName.field_of_string "stop" ->
-              Some (tuple_prefix, name)
+              Some (!tuple_prefix, name)
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
         match sf.expr.text with
+        | Path [ E.Name name ] when
+            List.mem (TupleIn, RamenName.field_of_string name) simple_keys ->
+            Some sf.alias
         | Field (tuple_prefix, name) when
-            List.mem (tuple_prefix, name) simple_keys ->
+            List.mem (!tuple_prefix, name) simple_keys ->
             Some sf.alias
         | _ -> None
       ) fields

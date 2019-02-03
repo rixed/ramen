@@ -589,6 +589,9 @@ let subst_fields_for_binding pref =
     match e.E.text with
     | Field (tupref, f) when !tupref = pref ->
         { e with text = Binding (RecordField (pref, f)) }
+    | Path path when pref = TupleIn ->
+        let f = RamenFieldMaskLib.id_of_path path in
+        { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
 
 let add_tuple_environment tuple typ env =
@@ -812,6 +815,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Field (tuple, field), _ ->
     !logger.error "Still some Field present in emitted code, for %s.%a"
       (string_of_prefix !tuple) RamenName.field_print field ;
+    assert false
+  | Finalize, Path path, _ ->
+    !logger.error "Still some Path present in emitted code, for %a"
+      E.print_path path ;
     assert false
   | Finalize, Case (alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
@@ -1258,7 +1265,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
                 (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | E.{ text = (Field _ | Binding (RecordField _)) ;
+      | E.{ text = (Field _ | Path _ | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
@@ -2875,6 +2882,7 @@ let when_to_check_group_for_expr expr =
       E.iter (fun _ e ->
         match e.E.text with
         | Field ({ contents = TupleIn }, _)
+        | Path _
         | Binding (RecordField (TupleIn, _)) ->
             raise Exit
         | _ -> ()
@@ -3228,16 +3236,6 @@ let emit_operation name func params_mod params oc =
   !logger.debug "Group environment will be: %a" print_env group_env ;
   !logger.debug "Unix-env environment will be: %a" print_env env_env ;
   !logger.debug "Parameters environment will be: %a" print_env param_env ;
-  (* We won't be able to compile the Get operator that we have eluded to
-   * pass directly the referenced fields. So transform the operation code
-   * to replace those by the new deep Field: *)
-  !logger.debug "in_type: %a"
-    RamenFieldMaskLib.print_in_type func.F.in_type ;
-  let op = func.F.operation in
-  !logger.debug "Original operation: %a" (RamenOperation.print true) op ;
-  let op = RamenFieldMaskLib.subst_deep_fields func.F.in_type op in
-  !logger.debug "After substitutions for deep fields access: %a"
-    (RamenOperation.print true) op ;
   (* As all exposed IO tuples are present in the environment, any Field can
    * now be replaced with a Binding. The [subst_fields_for_binding] function
    * takes an expression and does this change for any tuple_prefix. The
@@ -3248,7 +3246,7 @@ let emit_operation name func params_mod params oc =
   let op =
     List.fold_left (fun op tuple ->
       subst_fields_for_binding tuple op
-    ) op
+    ) func.F.operation
       [ TupleEnv ; TupleParam ; TupleIn ; TupleGroup ; TupleOutPrevious ;
         TupleOut ; TupleSortFirst ; TupleSortSmallest ; TupleSortGreatest ;
         TupleMergeGreatest ; Record ]

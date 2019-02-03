@@ -303,6 +303,25 @@ let compile conf get_parent ~exec_file source_file program_name =
       failwith "Cannot perform dimensional analysis" ;
 
     (*
+     * Before typing and generating code, transform the operation so that
+     * deep field that are cherry-picked appears "flat" in the input.
+     * We won't be able to type or generate code for the Get operator that
+     * is going to be eluded.
+     *)
+    Hashtbl.iter (fun fq func ->
+      !logger.debug "Substituting cherry-picked fields in %a"
+        RamenName.fq_print fq ;
+      !logger.debug "in_type: %a"
+        RamenFieldMaskLib.print_in_type func.F.in_type ;
+      let op = func.F.operation in
+      !logger.debug "Original operation: %a" (RamenOperation.print true) op ;
+      let op = RamenFieldMaskLib.subst_deep_fields func.F.in_type op in
+      !logger.debug "After substitutions for deep fields access: %a"
+        (RamenOperation.print true) op ;
+      func.operation <- op
+    ) compiler_funcs ;
+
+    (*
      * Finally, call the typer:
      *)
     let call_typer typer_name typer =
