@@ -710,19 +710,18 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
     emit_functionN ~env ~opc ~nullable ?impl_return_nullable ?args_as
                    func_name ((None, PropagateNull)::to_typ) oc (my_state::fin_args)
 
-(* The vectors TupleOutPrevious is optional: the commit when and
+(* The vectors TupleOutPrevious is nullable: the commit when and
  * select clauses of aggregate operations either have it or not.
  * Each time they need access to a field they call a function "maybe_XXX_"
- * with that optional tuple, which avoids propagating out_typ down to
- * emit_expr - but hopefully the compiler will inline this.
- * (TODO: have a context in a single place and inline it directly?) *)
+ * with that nullable tuple, which avoids propagating out_typ down to
+ * emit_expr - but hopefully the compiler will inline this. *)
 and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
     Printf.fprintf oc "let %s = function\n"
       ("maybe_"^ RamenName.string_of_field ft.name ^"_" |>
        RamenOCamlCompiler.make_valid_ocaml_identifier) ;
-    Printf.fprintf oc "  | None -> Null\n" ;
-    Printf.fprintf oc "  | Some %a -> %s%s\n\n"
+    Printf.fprintf oc "  | Null -> Null\n" ;
+    Printf.fprintf oc "  | NotNull %a -> %s%s\n\n"
       (emit_tuple TupleOut) out_typ
       (if ft.typ.nullable then "" else "NotNull ")
       (id_of_field_name ~tuple:TupleOut ft.name)

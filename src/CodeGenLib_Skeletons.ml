@@ -5,6 +5,7 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenNullable
 
 (* Health and Stats
  *
@@ -738,7 +739,7 @@ type ('local_state, 'tuple_in, 'minimal_out) group =
 (* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key) aggr_persist_state =
-  { mutable last_out_tuple : 'generator_out option ; (* last committed tuple generator *)
+  { mutable last_out_tuple : 'generator_out nullable ; (* last committed tuple generator *)
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
@@ -941,19 +942,19 @@ let aggregate
        * the stateful functions required for those fields, but not others. *)
       (minimal_tuple_of_aggr :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out)
       (* Update the states for all other fields. *)
       (update_states :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> unit)
       (* Build the generator_out tuple from the minimal_out and all the same
        * inputs as minimal_tuple_of_aggr, all of which must be saved in the
        * group so we can commit other groups as well as the current one. *)
       (out_tuple_of_minimal_tuple :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out nullable -> (* last_out *)
         'local_state -> 'global_state -> 'minimal_out -> 'generator_out)
       (merge_on : ('tuple_in, 'merge_on) merge_on_fun)
       (merge_last : int)
@@ -969,13 +970,13 @@ let aggregate
         'global_state ->
         'tuple_in -> (* current input *)
         'tuple_in -> (* merge.greatest (or current input if not merging) *)
-        'generator_out option -> (* previous.out *)
+        'generator_out nullable -> (* previous.out *)
         bool)
       (where_slow :
         'global_state ->
         'tuple_in -> (* current input *)
         'tuple_in -> (* merge.greatest (or current input if not merging) *)
-        'generator_out option -> (* previous.out *)
+        'generator_out nullable -> (* previous.out *)
         'local_state ->
         bool)
       (key_of_input : 'tuple_in -> 'key)
@@ -986,7 +987,7 @@ let aggregate
        * 'commit before'. *)
       (commit_cond :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* out_last *)
+        'generator_out nullable -> (* out_last *)
         'local_state ->
         'global_state ->
         'minimal_out -> (* current minimal out *)
@@ -1046,7 +1047,7 @@ let aggregate
     let with_state =
       let open CodeGenLib_State.Persistent in
       let init_state () =
-        { last_out_tuple = None ;
+        { last_out_tuple = Null ;
           global_state = global_state () ;
           groups =
             (* Try to make the state as small as possible: *)
@@ -1110,7 +1111,7 @@ let aggregate
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 g.current_out in
-            s.last_out_tuple <- Some out ;
+            s.last_out_tuple <- NotNull out ;
             outputer channel_id in_tuple out
         | true, None -> ()
         | true, Some previous_out ->
@@ -1118,7 +1119,7 @@ let aggregate
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
-            s.last_out_tuple <- Some out ;
+            s.last_out_tuple <- NotNull out ;
             outputer channel_id in_tuple out) ;
         (* Flush/Keep/Slide *)
         if do_flush then (

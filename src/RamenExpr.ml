@@ -576,6 +576,10 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
     | Stateless (SL2 (BitShift, e1, e2)) ->
         Printf.fprintf oc "(%a) << (%a)" p e1 p e2
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable pref ; _ }))
+      when not with_types ->
+        Printf.fprintf oc "%s.%s" (string_of_prefix pref) n
     | Stateless (SL2 (Get, e1, e2)) ->
         Printf.fprintf oc "GET(%a, %a)" p e1 p e2
     | Stateless (SL2 (Percentile, e1, e2)) ->
@@ -879,32 +883,12 @@ struct
   let field m =
     let m = "field" :: m in
     (
-      optional ~def:TupleUnknown (parse_prefix +- char '.') ++
       (* Avoid accepting "in" and friends as a field name, to let it be a
        * variable. *)
       (nay parse_prefix -+ non_keyword) >>:
-      fun (tuple, field) ->
-        (* This is important here that the type name is the raw field name,
-         * because we use the tuple field type name as their identifier (unless
-         * it's a virtual field (starting with #) of course since those are
-         * computed on the fly and have no corresponding variable in the
-         * tuple) *)
-        make (Stateless (SL1 (Path [ Name field ], make (Variable tuple))))
+      fun field ->
+        make (Stateless (SL1 (Path [ Name field ], make (Variable TupleUnknown))))
     ) m
-
-  (*$= field & ~printer:BatPervasives.identity
-    "unknown.bytes" \
-      (test_expr ~printer:(print false) field "bytes")
-
-    "in.bytes" \
-      (test_expr ~printer:(print false) field "in.bytes")
-
-    "out.bytes" \
-      (test_expr ~printer:(print false) field "out.bytes")
-
-    "No solution (Error at line 1, col 8 (near .): Cannot find eof)" \
-      (test_expr ~printer:(print false) field "pasglop.bytes")
-  *)
 
   let param m =
     let m = "parameter" :: m in
@@ -1093,32 +1077,35 @@ struct
       (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
         fun e -> make (Stateless (SL1 (BeginOfRange, e)))) |||
       (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> make (Stateless (SL1 (EndOfRange, e)))) |||
-      (* Temporarily disable parsing of well known tuples as Gets (we
-       * want them as Path for now): *)
-      (
-        ((nay parse_prefix -+ field) ||| parenthesized func ||| record) +-
-        char '.' ++ non_keyword >>:
-        fun (e, s) ->
-          let s = make (Const (VString s)) in
-          make (Stateless (SL2 (Get, s, e)))
-      )
+        fun e -> make (Stateless (SL1 (EndOfRange, e))))
+    ) m
+
+  and dotted_get m =
+    let m = "dotted dereference" :: m in
+    (
+      (variable ||| field ||| parenthesized func ||| record) +-
+      char '.' ++ non_keyword >>:
+      fun (e, s) ->
+        let s = make (Const (VString s)) in
+        make (Stateless (SL2 (Get, s, e)))
     ) m
 
   (* "sf" stands for "stateful" *)
   and afunv_sf ?def_state a n m =
     let sep = list_sep in
     let m = n :: m in
-    (strinG n -+
-     state_and_nulls ?def_state +-
-     opt_blanks +- char '(' +- opt_blanks ++
-     (if a > 0 then
-       repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
-       optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep p)
-      else
-       return [] ++
-       repeat ~what:"variadic arguments" ~sep p) +-
-     opt_blanks +- char ')') m
+    (
+      strinG n -+
+      state_and_nulls ?def_state +-
+      opt_blanks +- char '(' +- opt_blanks ++ (
+        if a > 0 then
+          repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
+          optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep p)
+        else
+          return [] ++
+          repeat ~what:"variadic arguments" ~sep p
+      ) +- opt_blanks +- char ')'
+    ) m
 
   and afun_sf ?def_state a n =
     afunv_sf ?def_state a n >>: fun (g, (a, r)) ->
@@ -1348,18 +1335,23 @@ struct
     (
       afun1 "changed" >>:
       fun f ->
+        let subst_expr pref n x =
+          (* If tuple is still unknown and we figure out later that it's
+           * not output then the error message will be about that field
+           * not present in the output tuple. Not too bad. *)
+          if pref <> TupleOut && pref <> TupleUnknown then
+            raise (Reject "Changed operator is only valid for \
+                           fields of the output tuple") ;
+          make (Stateless (SL2 (
+            Get, n, { x with text = Variable TupleOutPrevious })))
+        in
         let prev_field =
           match f.text with
-          | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
-              (* If tuple is still unknown and we figure out later that it's
-               * not output then the error message will be about that field
-               * not present in the output tuple. Not too bad. *)
-              if pref <> TupleOut &&
-                 pref <> TupleUnknown
-              then
-                raise (Reject "Changed operator is only valid for \
-                               fields of the output tuple") ;
-              make (Stateless (SL1 (Path path, make (Variable TupleOutPrevious))))
+          | Stateless (SL1 (Path [ Name f_name ], ({ text = Variable pref ; _ } as x))) ->
+              (* The only way to get a Path at this stage is to have entered a bare field name, which could be later found to belong to the out tuple. *)
+              subst_expr pref (const_of_string f_name) x
+          | Stateless (SL2 (Get, n, ({ text = Variable pref ; _ } as x))) ->
+              subst_expr pref n x
           | _ ->
               raise (Reject "Changed operator is only valid for fields")
         in
@@ -1538,7 +1530,7 @@ struct
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| field ||| null) |||
+      accept_units (const ||| field ||| dotted_get ||| null) |||
       variable ||| func ||| coalesce
     ) m
 

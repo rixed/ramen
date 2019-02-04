@@ -409,7 +409,7 @@ let emit_assert_same e oc id1 id2 =
   let name = expr_err e Err.Same in
   emit_assert ~name oc (fun oc -> emit_same id1 oc id2)
 
-let eq_to_out_type pref out_fields e oc path =
+let eq_to_out_type out_fields e oc path =
   (* The type of an output path is taken from the out types. *)
   let open RamenOperation in
   match find_expr_of_path_in_selected_fields out_fields path with
@@ -421,15 +421,7 @@ let eq_to_out_type pref out_fields e oc path =
       failwith
   | expr ->
       emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr expr) ;
-      (* Some tuples are passed to callback via an option type, and
-       * are None each time they are undefined (beginning of worker
-       * or of group). Workers access those fields via a special
-       * functions, and all fields are forced nullable during typing. *)
-      if pref = TupleOutPrevious then
-        let name = expr_err e Err.PrevNull in
-        emit_assert_is_true ~name oc (n_of_expr e)
-      else
-        emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr expr)
+      emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr expr)
 
 let eq_to_opened_record stack e oc path =
   (* Looking through the stack we will find which field of which record
@@ -485,7 +477,7 @@ let emit_constraints tuple_sizes records field_names out_fields
   match e.E.text with
   | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
     when tuple_has_type_output pref ->
-      eq_to_out_type pref out_fields e oc path
+      eq_to_out_type out_fields e oc path
 
   | Stateless (SL1 (Path path, { text = Variable Record ; _ })) ->
       eq_to_opened_record stack e oc path
@@ -498,7 +490,7 @@ let emit_constraints tuple_sizes records field_names out_fields
       ()
 
   | Variable pref ->
-      let id, pref =
+      let id, pref' =
         if tuple_has_type_input pref then
           option_get "Input record type must be defined" in_type, TupleIn
         else if tuple_has_type_output pref then
@@ -511,10 +503,16 @@ let emit_constraints tuple_sizes records field_names out_fields
           assert (pref = TupleEnv) ;
           option_get "Environment record type must be defined" env_type, pref
         ) in
-      let rec_tid = t_of_prefix pref id
-      and rec_nid = n_of_prefix pref id in
+      let rec_tid = t_of_prefix pref' id
+      and rec_nid = n_of_prefix pref' id in
       emit_assert_id_eq_id eid oc rec_tid ;
-      emit_assert_id_eq_id nid oc rec_nid
+      if pref = TupleOutPrevious then (
+        (* This one is actually always nullable *)
+        let name = expr_err e Err.PreviousVariableNull in
+        emit_assert_id_is_bool ~name nid oc true
+      ) else (
+        emit_assert_id_eq_id nid oc rec_nid
+      )
 
   | Const VNull ->
       (* - "NULL" is nullable. *)
