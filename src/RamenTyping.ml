@@ -941,8 +941,8 @@ let emit_constraints tuple_sizes records field_names out_fields
        * - either:
        *   - x must be a vector, a list or a tuple;
        *   - and n must be an unsigned;
-       *   - if x is a vector and n is a constant, then n must
-       *     be less than its length;
+       *   - if x is a vector and n is a constant, then n must be less than
+       *     its length;
        *   - if x is a tuple then n must be a constant less than the tuple
        *     length, and the resulting type is that of that element;
        *   - otherwise, the resulting type is the same as the list/vector
@@ -958,6 +958,8 @@ let emit_constraints tuple_sizes records field_names out_fields
        *     limits the possibilities to a few.
        *   - x must be a record with a field named like that, and the
        *     resulting type is that of that field;
+       *   - the result is nullable if that field is nullable or the record
+       *     itself is;
        *   - For the above to work we need to know a mapping from any legit
        *     field name to the list of possible tuple sizes and field
        *     position with the tuple: [records].
@@ -1009,30 +1011,31 @@ let emit_constraints tuple_sizes records field_names out_fields
                   (t_of_expr x) eid eid) ;
               arg_is_nullable oc e
           | Some i ->
-              let name = expr_err x Err.GettableByName in
               arg_is_string oc n ;
+              let k = RamenName.field_of_string i in
+              let rec_lst =
+                try Hashtbl.find_all records k
+                with Not_found ->
+                  Printf.sprintf2 "Subfield %S is still unknown!" i |>
+                  failwith in
+              assert (rec_lst <> []) ;
+              let name = expr_err x Err.GettableByName in
               emit_assert ~name oc (fun oc ->
-                let k = RamenName.field_of_string i in
-                (match Hashtbl.find_all records k with
-                | exception Not_found ->
-                    Printf.sprintf2 "Subfield %S is still unknown!" i |>
-                    failwith
-                | lst ->
-                    assert (lst <> []) ;
-                    Printf.fprintf oc
-                      "(or %a)"
-                      (List.print ~first:"" ~last:"" ~sep:" "
-                        (fun oc (name_idx, rec_size, field_pos) ->
-                          Printf.fprintf oc
-                            "(and ((_ is record%d) %s) \
-                                  (= (record%d-e%d %s) %s) \
-                                  (= (record%d-n%d %s) %s) \
-                                  (= (record%d-f%d %s) %d))"
-                            rec_size (t_of_expr x)
-                            rec_size field_pos (t_of_expr x) eid
-                            rec_size field_pos (t_of_expr x) nid
-                            rec_size field_pos (t_of_expr x) name_idx
-                        )) lst))))
+                Printf.fprintf oc
+                  "(or %a)"
+                  (List.print ~first:"" ~last:"" ~sep:" "
+                    (fun oc (name_idx, rec_size, field_pos) ->
+                      Printf.fprintf oc
+                        "(and ((_ is record%d) %s) \
+                              (= (record%d-e%d %s) %s) \
+                              (= (or %s (record%d-n%d %s)) %s) \
+                              (= (record%d-f%d %s) %d))"
+                        rec_size (t_of_expr x)
+                        rec_size field_pos (t_of_expr x) eid
+                        (n_of_expr x)
+                        rec_size field_pos (t_of_expr x) nid
+                        rec_size field_pos (t_of_expr x) name_idx
+                    )) rec_lst)))
 
   | Stateless (SL1 ((BeginOfRange|EndOfRange), x)) ->
       (* - x is any kind of cidr;
