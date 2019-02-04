@@ -425,10 +425,14 @@ let out_type_of_operation ?(with_private=false) = function
 let envvars_of_operation op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with
-    | Stateless (SL1 (Path [ Name n ], { text = Variable TupleEnv ; _ })) ->
+    | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
+        Set.add (E.id_of_path path) s
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable TupleEnv ; _ })) ->
         Set.add (RamenName.field_of_string n) s
     | _ -> s) op |>
-  Set.to_list
+  Set.to_list |>
+  List.fast_sort RamenName.compare
 
 let use_event_time op =
   fold_expr false (fun _ b e ->

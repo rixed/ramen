@@ -38,7 +38,6 @@ type expr =
   | ActualType of string
   | InheritType
   | InheritNull
-  | PreviousVariableNull
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -87,7 +86,6 @@ let print_expr oc =
   | ActualType t -> p " must be of type %s" t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
-  | PreviousVariableNull -> p " is always nullable"
 
 type func =
   | Clause of string * expr

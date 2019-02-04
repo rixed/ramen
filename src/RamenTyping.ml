@@ -503,16 +503,11 @@ let emit_constraints tuple_sizes records field_names out_fields
           assert (pref = TupleEnv) ;
           option_get "Environment record type must be defined" env_type, pref
         ) in
-      let rec_tid = t_of_prefix pref' id
-      and rec_nid = n_of_prefix pref' id in
-      emit_assert_id_eq_id eid oc rec_tid ;
-      if pref = TupleOutPrevious then (
-        (* This one is actually always nullable *)
-        let name = expr_err e Err.PreviousVariableNull in
-        emit_assert_id_is_bool ~name nid oc true
-      ) else (
-        emit_assert_id_eq_id nid oc rec_nid
-      )
+      emit_assert_id_eq_id eid oc (t_of_prefix pref' id) ;
+      (* This one is always nullable, others never: *)
+      let nullable = pref = TupleOutPrevious in
+      let name = expr_err e Err.(Nullability nullable) in
+      emit_assert_id_is_bool ~name nid oc nullable
 
   | Const VNull ->
       (* - "NULL" is nullable. *)
@@ -1559,6 +1554,8 @@ let emit_out_types decls oc field_names funcs =
           RamenName.fq_print (F.fq_name func)
           rec_tid rec_nid ;
         emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
+        (* All outputs are non null (but for previous_out, see Variable): *)
+        emit_assert_id_is_bool rec_nid oc false ;
         (* For typing this is not necessary to order the structure fields in
          * any specific way, as we carry along the field names. Also, we
          * need to keep private fields as we want to type them and they can
@@ -1609,12 +1606,13 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       let h' = Hashtbl.create 10 in
       Hashtbl.add h func_name h' ;
       h' in
-  let register_input h func field e =
+  let register_input h func path e =
     let h = get_sub_hash h func in
     (* When we know the type from a pre-compiled parent, a well-known
      * output type, or because it's declared with parameters or a given
      * because it's an envvar, then we set a hard constraint: *)
-    Hashtbl.replace h field e
+    let field_name = E.id_of_path path in
+    Hashtbl.replace h field_name e
   in
   let program_iter f condition funcs =
     Option.may (fun cond ->
@@ -1791,26 +1789,30 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         rec_tid rec_nid ;
       let sz = Hashtbl.length h in
       emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
-      (* For typing this is not required to order the fields in any given
-       * order: *)
-      Hashtbl.enum h |> Enum.iteri (fun i (path, e) ->
+      (* All inputs are non null: *)
+      emit_assert_id_is_bool rec_nid oc false ;
+      (* We need to set the fields in the right order as we also want to
+       * type the variables "in", "env", etc, themselves: *)
+      let in_order = Hashtbl.enum h |> Array.of_enum in
+      Array.fast_sort (fun (f1, _) (f2, _) ->
+        RamenName.compare f1 f2) in_order ;
+      Array.iteri (fun i (field, e) ->
         (* Make [e] stands for this field: *)
         Printf.fprintf oc
           "; Expression %a (%d) is field %d (%a)\n"
           (E.print ~max_depth:2 false) e
           e.E.uniq_num
-          i E.print_path path ;
+          i RamenName.field_print field ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-e%d %s))"
             (t_of_expr e) sz i rec_tid) ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-n%d %s))"
             (n_of_expr e) sz i rec_tid) ;
-        let f_name = RamenFieldMaskLib.(id_of_path path) in
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-f%d %s))"
-            (f_of_name field_names f_name) sz i rec_tid)
-      ) ;
+            (f_of_name field_names field) sz i rec_tid)
+      ) in_order ;
       (fq_name, id) :: assoc
     ) h []
   in
@@ -2042,6 +2044,14 @@ let used_tuples_records funcs parents =
     List.fold_left (fun i func ->
       RamenOperation.fold_expr i
         (fun _ (tuple_sizes, params, envvars as prev) e ->
+        let register_param_or_env tuple name =
+          if tuple = TupleParam then
+            tuple_sizes, (Set.add name params), envvars
+          else if tuple = TupleEnv then
+            tuple_sizes, params, (Set.add name envvars)
+          else
+            prev
+        in
         match e.E.text with
         (* The simplest ways to get a tuple in an op are with a Tuple or a
          * Record literal expression: *)
@@ -2061,14 +2071,10 @@ let used_tuples_records funcs parents =
          * know the length of those records before the end of the loop,
          * just remember the field names: *)
         | Stateless (SL1 (Path path, { text = Variable tuple ; _ })) ->
-            let n = RamenFieldMaskLib.id_of_path path in
-            if tuple = TupleParam then
-              tuple_sizes, (Set.add n params), envvars
-            else if tuple = TupleEnv then
-              tuple_sizes, params, (Set.add n envvars)
-            else
-              prev
-        (* TODO: Get from env/params*)
+            register_param_or_env tuple (E.id_of_path path)
+        | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
+                               { text = Variable tuple ; _ })) ->
+            register_param_or_env tuple (RamenName.field_of_string name)
         | _ ->
             prev
       ) func.F.operation
@@ -2109,7 +2115,7 @@ let used_tuples_records funcs parents =
     ) out_typ ;
     let sz = List.length func.in_type in
     List.iteri (fun i fm ->
-      let name = RamenFieldMaskLib.(id_of_path fm.path) in
+      let name = E.id_of_path fm.RamenFieldMaskLib.path in
       register_field name sz i
     ) func.in_type
   ) funcs ;
@@ -2213,7 +2219,7 @@ let set_io_tuples parents funcs h =
         RamenFieldMaskLib.print_in_field f ;
       (* For the in_type we have to check that all parents do export each
        * of the mentioned input fields: *)
-      let f_name = RamenFieldMaskLib.(id_of_path f.path) in
+      let f_name = E.id_of_path f.RamenFieldMaskLib.path in
       if parents = [] then
         Printf.sprintf2 "Cannot use input field %a without any parent"
           RamenName.field_print f_name |>

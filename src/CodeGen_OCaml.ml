@@ -557,34 +557,46 @@ let id_of_state = function
   | E.GlobalState -> "global_"
   | E.LocalState -> "group_"
 
+(* Return the environment corresponding to the used envvars: *)
+let env_of_envvars =
+  List.map (fun f ->
+    let v =
+      Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
+        (RamenName.string_of_field f) in
+    (* FIXME: RecordField should take a tuple and a _path_ not a field
+     * name *)
+    E.RecordField (TupleEnv, f), v)
+
+let env_of_params =
+  List.map (fun param ->
+    let f = param.RamenTuple.ptyp.name in
+    let v = id_of_field_name ~tuple:TupleParam f in
+    (* FIXME: RecordField should take a tuple and a _path_ not a field
+     * name *)
+    E.RecordField (TupleParam, f), v)
+
 (* Returns all the bindings in global and group states as well as the
  * environment for the env and param 'tuples': *)
-let initial_environments =
-  RamenOperation.fold_expr ([], [], [], [])
-    (fun _s (glo, loc, env, param as prev) e ->
-    match e.E.text with
-    | Stateful (g, _, _) ->
-        let n = name_of_state e in
-        (match g with
-        | E.GlobalState ->
-            let v = id_of_state GlobalState ^"."^ n in
-            (E.State e.uniq_num, v) :: glo, loc, env, param
-        | E.LocalState ->
-            let v = id_of_state LocalState ^"."^ n in
-            glo, (E.State e.uniq_num, v) :: loc, env, param)
-    | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
-        let f = RamenFieldMaskLib.id_of_path path in
-        let v =
-          Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
-            (RamenName.string_of_field f) in
-        (* FIXME: RecordField should take a tuple and a _path_ not a field
-         * name *)
-        glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
-    | Stateless (SL1 (Path path, { text = Variable TupleParam ; _ })) ->
-        let f = RamenFieldMaskLib.id_of_path path in
-        let v = id_of_field_name ~tuple:TupleParam f in
-        glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
-    | _ -> prev)
+let initial_environments op params envvars =
+  let init_env = E.RecordValue TupleEnv, "envs_"
+  and init_param = E.RecordValue TupleParam, "params_" in
+  let env_env = init_env :: env_of_envvars envvars
+  and param_env = init_param :: env_of_params params in
+  let glob_env, loc_env =
+    RamenOperation.fold_expr ([], []) (fun _s (glo, loc as prev) e ->
+      match e.E.text with
+      | Stateful (g, _, _) ->
+          let n = name_of_state e in
+          (match g with
+          | E.GlobalState ->
+              let v = id_of_state GlobalState ^"."^ n in
+              (E.State e.uniq_num, v) :: glo, loc
+          | E.LocalState ->
+              let v = id_of_state LocalState ^"."^ n in
+              glo, (E.State e.uniq_num, v) :: loc)
+      | _ -> prev
+    ) op in
+  glob_env, loc_env, env_env, param_env
 
 (* Takes an operation and convert all its Path expressions for the
  * given tuple into a Binding to the environment: *)
@@ -593,7 +605,7 @@ let subst_fields_for_binding pref =
     match e.E.text with
     | Stateless (SL1 (Path path, { text = Variable prefix ; }))
       when prefix = pref ->
-        let f = RamenFieldMaskLib.id_of_path path in
+        let f = E.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
 
@@ -3179,31 +3191,15 @@ let emit_parameters oc params =
         (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
          else ""))) params
 
-let emit_running_condition oc params cond =
+let emit_running_condition oc params envvars cond =
   let code = IO.output_string ()
   and consts = IO.output_string () in
   let opc =
     { op = None ; event_time = None ; params ; consts ; tuple_typ = [] } in
   (match cond with
   | Some cond ->
-      (* Collect env/params environment, in a way that's embarrassingly
-       * similar to what's done for operations: *)
-      let env =
-        E.fold (fun _ env e ->
-          match e.E.text with
-          | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
-              let f = RamenFieldMaskLib.id_of_path path in
-              let v =
-                Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
-                  (RamenName.string_of_field f) in
-              (E.RecordField (TupleEnv, f), v) :: env
-          | Stateless (SL1 (Path path, { text = Variable TupleParam ; _ })) ->
-              let f = RamenFieldMaskLib.id_of_path  path in
-              let v =
-                id_of_field_name ~tuple:TupleParam f in
-              (E.RecordField (TupleParam, f), v) :: env
-          | _ -> env
-        ) [] [] cond in
+      let env = List.rev_append (env_of_envvars envvars)
+                                (env_of_params params) in
       Printf.fprintf code "let run_condition_ () =\n\t%a\n\n"
         (emit_expr ~env ~context:Finalize ~opc) cond
   | None ->
@@ -3211,7 +3207,34 @@ let emit_running_condition oc params cond =
   Printf.fprintf oc "%s\n%s\n"
     (IO.close_out consts) (IO.close_out code)
 
-let emit_operation name func params_mod params oc =
+(* params and envs must be accessible as records (encoded as tuples)
+ * under names "params_" and "envs_". Note that since we can refer to
+ * the whole tuple "env" and "params", and that we type all functions
+ * in a program together, then these records must contain all fields
+ * used in the program, not only the fields used by the function being
+ * compiled. Therefore we must be given params and envvars by the
+ * compiler. *)
+let emit_params_env params_mod params envvars oc =
+  (* Collect all used envvars/params: *)
+  Printf.fprintf oc
+    "\n(* Parameters as a Ramen record: *)\n\
+     let params_ = %a\n\n"
+    (list_print_as_tuple (fun oc p ->
+      (* See emit_parameters *)
+      Printf.fprintf oc "%s.%s_%s_"
+        params_mod
+        (id_of_prefix TupleParam)
+        (RamenName.string_of_field p.ptyp.name)))
+      (RamenTuple.params_sort params) ;
+  Printf.fprintf oc
+    "\n(* Environment variables as a Ramen record: *)\n\
+     let envs_ = %a\n\n"
+    (list_print_as_tuple (fun oc n ->
+      Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
+        (RamenName.string_of_field n)))
+      envvars
+
+let emit_header func params_mod oc =
   Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
     open Batteries\n\
     open Stdint\n\
@@ -3220,7 +3243,9 @@ let emit_operation name func params_mod params oc =
     open %s\n"
     (RamenName.string_of_func func.F.name)
     (RamenOperation.print true) func.F.operation
-    params_mod ;
+    params_mod
+
+let emit_operation name func params envvars oc =
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
   let code = IO.output_string ()
@@ -3228,7 +3253,7 @@ let emit_operation name func params_mod params oc =
   and tuple_typ =
     RamenOperation.out_type_of_operation ~with_private:true func.F.operation
   and global_env, group_env, env_env, param_env =
-    initial_environments func.F.operation
+    initial_environments func.F.operation params envvars
   in
   !logger.debug "Global environment will be: %a" print_env global_env ;
   !logger.debug "Group environment will be: %a" print_env group_env ;
@@ -3288,7 +3313,7 @@ let emit_operation name func params_mod params oc =
     let in_type =
       List.map (fun f ->
         RamenTuple.{
-          name = RamenFieldMaskLib.(id_of_path f.path) ;
+          name = E.id_of_path f.RamenFieldMaskLib.path ;
           typ = f.typ ; units = f.units ;
           doc = "" ; aggr = None }
       ) func.F.in_type in
@@ -3333,14 +3358,16 @@ let emit_replay name func params oc =
 
 
 let compile conf worker_entry_point replay_entry_point func
-            obj_name params_mod params =
+            obj_name params_mod params envvars =
   let open RamenOperation in
   !logger.debug "Going to compile function %a: %a"
     RamenName.func_print func.F.name
     (RamenOperation.print true) func.F.operation ;
   let src_file =
     RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
-      emit_operation worker_entry_point func params_mod params oc ;
+      emit_header func params_mod oc ;
+      emit_params_env params_mod params envvars oc ;
+      emit_operation worker_entry_point func params envvars oc ;
       emit_replay replay_entry_point func params oc) in
   let what = "function "^ RamenName.func_color func.F.name in
   RamenOCamlCompiler.compile conf what src_file obj_name

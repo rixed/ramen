@@ -9,6 +9,7 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module E = RamenExpr
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
@@ -215,7 +216,7 @@ let check_is_subtype t1 t2 =
       RamenFieldMaskLib.find_type_of_path t2 f1.RamenFieldMaskLib.path in
     if f1.typ <> f2_typ then
       Printf.sprintf2 "Fields %a have different types"
-        RamenName.field_print (RamenFieldMaskLib.id_of_path f1.path) |>
+        RamenName.field_print (E.id_of_path f1.path) |>
       failwith
   ) t1
 

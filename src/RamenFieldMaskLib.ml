@@ -342,25 +342,16 @@ type in_field =
 
 type in_type = in_field list
 
-let id_of_path p =
-  List.fold_left (fun id p ->
-    id ^(
-      match p with
-      | E.Int i -> "["^ string_of_int i ^"]"
-      | E.Name s -> if id = "" then s else "."^ s)
-  ) "" p |>
-  RamenName.field_of_string
-
 let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
-    RamenName.string_of_field (id_of_path f.path) ^ ":" ^
+    RamenName.string_of_field (E.id_of_path f.path) ^ ":" ^
     RamenTypes.string_of_typ f.typ
   ) ""
 
 let print_in_field oc f =
   Printf.fprintf oc "%a %a"
-    RamenName.field_print (id_of_path f.path)
+    RamenName.field_print (E.id_of_path f.path)
     RamenTypes.print_typ f.typ ;
   Option.may (RamenUnits.print oc) f.units
 

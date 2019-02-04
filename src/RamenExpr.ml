@@ -358,6 +358,15 @@ let print_path_comp oc = function
 let print_path oc =
   List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
 
+let id_of_path p =
+  List.fold_left (fun id p ->
+    id ^(
+      match p with
+      | Int i -> "["^ string_of_int i ^"]"
+      | Name s -> if id = "" then s else "."^ s)
+  ) "" p |>
+  RamenName.field_of_string
+
 let uniq_num_seq = ref 0
 
 let make ?(structure=T.TAny) ?nullable ?units text =

@@ -4,6 +4,7 @@ open RingBufLib
 open RamenLog
 open RamenHelpers
 open RamenTypes
+module E = RamenExpr
 
 let verbose_serialization = false
 
@@ -125,7 +126,7 @@ let value_of_string t s =
 let write_record in_type rb tuple =
   let nullmask_sz, values = (* List of nullable * scalar *)
     List.fold_left (fun (null_i, lst) f ->
-      let f_name = RamenFieldMaskLib.(id_of_path f.path) in
+      let f_name = E.id_of_path f.RamenFieldMaskLib.path in
       if f.RamenFieldMaskLib.typ.nullable then
         match Hashtbl.find tuple f_name with
         | exception Not_found ->

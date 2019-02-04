@@ -399,6 +399,15 @@ let compile conf get_parent ~exec_file source_file program_name =
     RamenOCamlCompiler.compile conf what params_src_file params_obj_name ;
     let params_mod_name =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
+    (* We need to collect all envvars used in the whole program (same as
+     * the env tuple that's just been typed): *)
+    let envvars =
+      Hashtbl.fold (fun _ func envvars ->
+        List.rev_append
+          (RamenOperation.envvars_of_operation func.F.operation)
+          envvars
+      ) compiler_funcs [] |>
+      List.fast_sort RamenName.compare in
     (* Now one module per function: *)
     let src_name_of_func func =
       Filename.remove_extension source_file ^
@@ -412,7 +421,7 @@ let compile conf get_parent ~exec_file source_file program_name =
         (try
           CodeGen_OCaml.compile
             conf worker_entry_point replay_entry_point
-            func obj_name params_mod_name parsed_params
+            func obj_name params_mod_name parsed_params envvars
         with e ->
           !logger.error "Cannot generate code for %s: %s"
             (RamenName.string_of_func func.name)
@@ -450,7 +459,7 @@ let compile conf get_parent ~exec_file source_file program_name =
           (RamenName.string_of_program program_name)
           params_mod_name ;
         (* Emit the running condition: *)
-        CodeGen_OCaml.emit_running_condition oc params condition ;
+        CodeGen_OCaml.emit_running_condition oc params envvars condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. We
