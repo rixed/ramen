@@ -645,7 +645,7 @@ let emit_constraints tuple_sizes records field_names out_fields
       List.iteri (fun i x ->
         let name = expr_err x (Err.CoalesceAlt i) in
         emit_assert_id_le_id ~name (t_of_expr x) oc eid ;
-        let name = expr_err x (Err.CoalesceNullLast i) in
+        let name = expr_err x (Err.CoalesceNullLast (i, len)) in
         let is_last = i = len - 1 in
         emit_assert_id_is_bool ~name (n_of_expr x) oc (not is_last)
       ) es ;

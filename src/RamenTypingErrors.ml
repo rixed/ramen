@@ -23,7 +23,7 @@ type expr =
   | CaseElse
   | CaseNullProp
   | CoalesceAlt of int
-  | CoalesceNullLast of int
+  | CoalesceNullLast of int * int
   | GettableByInt
   | GettableByName
   | AnyCidr
@@ -68,8 +68,11 @@ let print_expr oc =
                        consequents"
   | CoalesceAlt a -> p ": alternative #%d of coalesce expression must have \
                         a type compatible with others" a
-  | CoalesceNullLast a -> p ": alternative #%d of coalesce expression must \
-                             be nullable iff it's the last one" a
+  | CoalesceNullLast (a, z) ->
+      if a = z-1 then
+        p ": last alternative of coalesce expression must not be nullable"
+      else
+        p ": alternative #%d/%d of coalesce expression must be nullable" (a+1) z
   | GettableByInt -> p " must be a vector, a list or a tuple"
   | GettableByName -> p " must be a record"
   | AnyCidr -> p " must be a CIDR"
