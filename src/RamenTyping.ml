@@ -505,16 +505,19 @@ let emit_constraints tuple_sizes records field_names out_fields
       ()
 
   | Variable pref ->
-      let id =
+      let id, pref =
         if tuple_has_type_input pref then
-          option_get "Input record type must be defined" in_type
+          option_get "Input record type must be defined" in_type, TupleIn
         else if tuple_has_type_output pref then
-          option_get "Output record type must be defined" out_type
+          option_get "Output record type must be defined" out_type, TupleOut
         else if pref = TupleParam then
-          option_get "Parameters record type must be defined" param_type
+          option_get "Params record type must be defined" param_type, pref
         else (
+          if pref <> TupleEnv then
+            !logger.error "got a variable for %s?!" (string_of_prefix pref) ;
           assert (pref = TupleEnv) ;
-          option_get "Environment record type must be defined" env_type) in
+          option_get "Environment record type must be defined" env_type, pref
+        ) in
       let rec_tid = t_of_prefix pref id
       and rec_nid = n_of_prefix pref id in
       emit_assert_id_eq_id eid oc rec_tid ;
