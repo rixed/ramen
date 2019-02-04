@@ -229,10 +229,6 @@ let group_keys_of_operation =
               name <> "start" &&
               name <> "stop" ->
               Some (pref, RamenName.field_of_string name)
-          | Field (tuple_prefix, name) when
-              name <> RamenName.field_of_string "start" &&
-              name <> RamenName.field_of_string "stop" ->
-              Some (!tuple_prefix, name)
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
@@ -240,9 +236,6 @@ let group_keys_of_operation =
         | Stateless (SL1 (Path [ E.Name name ], { text = Variable pref ; _ }))
           when
             List.mem (pref, RamenName.field_of_string name) simple_keys ->
-            Some sf.alias
-        | Field (tuple_prefix, name) when
-            List.mem (!tuple_prefix, name) simple_keys ->
             Some sf.alias
         | _ -> None
       ) fields

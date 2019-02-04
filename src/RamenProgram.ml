@@ -87,11 +87,11 @@ let checked (params, run_cond, funcs) =
     (* Check the running condition does not use any IO tuple: *)
     E.iter (fun _s e ->
       match e.E.text with
-      | Field (tuple, _) when
-        tuple_has_type_input !tuple ||
-        tuple_has_type_output !tuple ->
+      | Variable tuple when
+        tuple_has_type_input tuple ||
+        tuple_has_type_output tuple ->
           Printf.sprintf "Running condition cannot use tuple %s"
-            (string_of_prefix !tuple) |>
+            (string_of_prefix tuple) |>
           failwith
       | _ -> ())
   ) run_cond ;
@@ -394,7 +394,9 @@ let common_fields_of_from get_parent start_name funcs from =
 let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
-    let expr = E.make (Field (ref TupleIn, alias)) in
+    let expr =
+      let path = [ E.Name (RamenName.string_of_field alias) ] in
+      E.make (Stateless (SL1 (Path path, E.make (Variable TupleIn)))) in
     { expr ; alias ;
       (* Those two will be inferred later, with non-star fields
        * (See RamenTypingHelpers): *)

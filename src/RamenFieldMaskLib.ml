@@ -78,12 +78,6 @@ let rec paths_of_expression_rev =
             [], others
         | p, others ->
             add_get_name n p others)
-    | Field (tuple, name) when tuple_has_type_input !tuple ->
-        if RamenName.is_private name then
-          Printf.sprintf2 "Can not use input field %a, which is private."
-            RamenName.field_print name |>
-          failwith ;
-        [ E.Name (RamenName.string_of_field name), e ], []
     | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
       when tuple_has_type_input pref ->
         (* As the expression is only useful for the leaf element we can
@@ -206,7 +200,7 @@ let rec tree_of_path e = function
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
   let root_expr =
-    E.make (Field (ref TupleIn, RamenName.field_of_string "in")) in
+    E.make (Stateless (SL1 (Path [ Name "in" ], E.make (Variable TupleIn)))) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -440,11 +434,6 @@ let subst_deep_fields in_type =
    * start by matching the end of the path (which has been inverted): *)
   let rec matches_expr path e =
     match path, e.E.text with
-    | [ E.Name n ],
-      Field (tup, n')
-        when tuple_has_type_input !tup &&
-             n' = RamenName.field_of_string n ->
-        true
     | [ E.Name n ],
       Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
         (match E.string_of_const s with

@@ -483,24 +483,13 @@ let emit_constraints tuple_sizes records field_names out_fields
   emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e.E.text with
-  | Field ({ contents = pref }, field)
-    when tuple_has_type_output pref ->
-      let path = [ E.Name (RamenName.string_of_field field) ] in
-      eq_to_out_type pref out_fields e oc path
   | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
     when tuple_has_type_output pref ->
       eq_to_out_type pref out_fields e oc path
 
-  | Field ({ contents = Record }, field) ->
-      let path = [ E.Name (RamenName.string_of_field field) ] in
-      eq_to_opened_record stack e oc path
   | Stateless (SL1 (Path path, { text = Variable Record ; _ })) ->
       eq_to_opened_record stack e oc path
 
-  | Field _ ->
-      (* The type of a field originating from input/params/env/virtual
-       * fields has been set previously. *)
-      ()
   | Stateless (SL1 (Path _, _)) -> (* Similarly *)
       ()
 
@@ -1605,7 +1594,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   !logger.debug "Emitting SMT2 for input types, with field names = %a"
     (Hashtbl.print RamenName.field_print Int.print) field_names ;
   (* Build the input type of each func by collecting all the Get(name, x) or
-   * Field(x, name) where x is input-like. Then also build the type of the
+   * Path(x, name) where x is input-like. Then also build the type of the
    * params and env records.
    * Build a record type for each of those and return it. *)
   let in_fields = Hashtbl.create 10
@@ -1773,9 +1762,6 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
         register_io ?func what e prefix [ Name s ]
-    | Field (tupref, field) ->
-        register_io ?func what e !tupref
-          [ Name (RamenName.string_of_field field) ]
     | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
         register_io ?func what e pref path
     | _ -> ()
@@ -2073,13 +2059,6 @@ let used_tuples_records funcs parents =
          * well, so here is our chance to learn about them. Since we don't
          * know the length of those records before the end of the loop,
          * just remember the field names: *)
-        | Field ({ contents = tuple }, n) ->
-            if tuple = TupleParam then
-              tuple_sizes, (Set.add n params), envvars
-            else if tuple = TupleEnv then
-              tuple_sizes, params, (Set.add n envvars)
-            else
-              prev
         | Stateless (SL1 (Path path, { text = Variable tuple ; _ })) ->
             let n = RamenFieldMaskLib.id_of_path path in
             if tuple = TupleParam then

@@ -35,8 +35,6 @@ type selected_field =
 let print_selected_field with_types oc f =
   let need_alias =
     match f.expr.text with
-    | E.Field (tuple, field)
-      when !tuple = TupleIn && f.alias = field -> false
     | Stateless (SL1 (Path [ Name name ], { text = Variable TupleIn ; _ }))
       when f.alias = RamenName.field_of_string name -> false
     | _ -> true in
@@ -427,7 +425,6 @@ let out_type_of_operation ?(with_private=false) = function
 let envvars_of_operation op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with
-    | Field ({ contents = TupleEnv }, n) -> Set.add n s
     | Stateless (SL1 (Path [ Name n ], { text = Variable TupleEnv ; _ })) ->
         Set.add (RamenName.field_of_string n) s
     | _ -> s) op |>
@@ -444,13 +441,6 @@ let use_event_time op =
 let prefix_def params def e =
   E.map (fun _stack e ->
     match e.E.text with
-    | Field ({ contents = TupleUnknown }, name) ->
-        let pref =
-          if RamenTuple.params_mem name params then TupleParam
-          else def
-        in
-        let s = RamenName.string_of_field name in
-        E.make (Stateless (SL1 (Path [ Name s ], E.make (Variable pref))))
     | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
         let pref =
           match path with
@@ -526,9 +516,6 @@ let resolve_unknown_tuples params op =
       let prefix_smart ?i e =
         E.map (fun stack e ->
           match e.E.text with
-          | Field ({ contents = TupleUnknown }, name) ->
-              let name = RamenName.string_of_field name in
-              ground_unknown_tuple ?i stack [ Name name ]
           | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
               ground_unknown_tuple ?i stack path
           | _ -> e
@@ -537,8 +524,6 @@ let resolve_unknown_tuples params op =
     (* Set of fields known to come from in (to help prefix_smart): *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Field ({ contents = TupleIn }, name) ->
-          fields_from_in := Set.add name !fields_from_in
       | Stateless (SL1 (Path [ Name s ], { text = Variable TupleIn })) ->
           let name = RamenName.field_of_string s in
           fields_from_in := Set.add name !fields_from_in
@@ -604,7 +589,7 @@ let checked params op =
         failwith) in
     E.iter (fun _ e ->
       match e.E.text with
-      | Field (tuple, _) -> check_can_use !tuple
+      | Variable tuple -> check_can_use tuple
       | Stateless (SL0 (EventStart|EventStop)) ->
         (* Be conservative for now.
          * TODO: Actually check the event time expressions.
@@ -653,7 +638,8 @@ let checked params op =
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Field ({ contents = TupleGroup }, name) ->
+      | Stateless (SL1 (Path (Name name :: _), { text = Variable TupleGroup ; _ })) ->
+        let name = RamenName.field_of_string name in
         if not (RamenName.is_virtual name) then
           Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
             RamenName.field_print name |>
@@ -723,8 +709,10 @@ let checked params op =
       ) fields in
     iter_expr (fun _ e ->
       match e.E.text with
-      | Field (tuple_ref, name)
-        when !tuple_ref = TupleOutPrevious ->
+      | Stateless (SL1 (
+            Path (Name name :: _),
+            { text = Variable TupleOutPrevious ; _ })) ->
+          let name = RamenName.field_of_string name in
           if List.mem name generators then
             Printf.sprintf2 "Cannot use a generated output field %a"
               RamenName.field_print name |>
@@ -830,7 +818,7 @@ struct
 
   let event_time_start () =
     let open RamenExpr in
-    E.make (Field (ref TupleIn, RamenName.field_of_string "start"))
+    E.make (Stateless (SL1 (Path [ Name "start" ], E.make (Variable TupleIn))))
 
   let merge_clause m =
     let m = "merge clause" :: m in

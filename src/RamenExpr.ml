@@ -60,9 +60,6 @@ and text =
    * there is no such thing as a list immediate, but only vectors. Lists, ie
    * vectors which dimensions are variable, appear only at typing. *)
   | Vector of t list
-  (* A field from a tuple (or parameter, or environment, as special cases of
-   * "tuples": *)
-  | Field of tuple_prefix ref * RamenName.field
   (* Variables refer to a value from the input or output of the function.
    *
    * This is unrelated to elision of the get in the syntax: when one write
@@ -457,10 +454,6 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Char.print oc ')'
     | Vector es ->
         List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
-    | Field (tuple, name) ->
-        Printf.fprintf oc "%s.%s"
-          (string_of_prefix !tuple)
-          (RamenName.string_of_field name)
     | Stateless (SL1 (Path path, e)) ->
         Printf.fprintf oc "%a.%a"
           p e
@@ -694,7 +687,7 @@ let rec map f s e =
   let mm = List.map m
   and om = Option.map m in
   (match e.text with
-  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) ->
       e
 
   | Case (alts, else_) ->
@@ -752,7 +745,7 @@ let fold_subexpressions f s i e =
   let om i = Option.map_default (f i) i
   in
   match e.text with
-  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Const _ | Variable _ | Binding _ | Stateless (SL0 _) ->
       i
 
   | Case (alts, else_) ->
@@ -930,8 +923,6 @@ struct
       if String.length field = 0 || field.[0] <> '_' then field
       else String.lchop field in
     match e.text with
-    | Field (_, name) when not (RamenName.is_virtual name) ->
-        force_public (RamenName.string_of_field name)
     | Stateless (SL1 (Path [ Name name ], _))
       when not RamenName.(is_virtual (field_of_string name)) ->
         force_public name
@@ -1104,7 +1095,7 @@ struct
       (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
         fun e -> make (Stateless (SL1 (EndOfRange, e)))) |||
       (* Temporarily disable parsing of well known tuples as Gets (we
-       * want them as Field for now): *)
+       * want them as Path for now): *)
       (
         ((nay parse_prefix -+ field) ||| parenthesized func ||| record) +-
         char '.' ++ non_keyword >>:
@@ -1659,13 +1650,6 @@ let check =
     iter (fun _s e ->
       match e.text with
       (* params and env are available from everywhere: *)
-      | Field (tupref, name) when !tupref <> TupleParam &&
-                                  !tupref <> TupleEnv &&
-                                  !tupref <> Record ->
-          Printf.sprintf2 "%s is not allowed to use %s.%a"
-            what (string_of_prefix !tupref)
-            RamenName.field_print name |>
-          failwith
       | Variable pref when tuple_has_type_input pref ||
                            tuple_has_type_output pref ->
           Printf.sprintf2 "%s is not allowed to use %s"
@@ -1712,14 +1696,6 @@ let units_of_expr params units_of_input units_of_output =
     (match e.text with
     | Const v ->
         if T.(is_a_num (structure_of v)) then e.units
-        else None
-    | Field (tupref, name) ->
-        if tuple_has_type_input !tupref then
-          units_of_input name
-        else if tuple_has_type_output !tupref then
-          units_of_output name
-        else if !tupref = TupleParam then
-          units_of_params name
         else None
     | Stateless (SL1 (Path [ Name s ], { text = Variable pref ; _ })) ->
         let name = RamenName.field_of_string s in

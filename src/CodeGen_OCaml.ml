@@ -572,11 +572,6 @@ let initial_environments =
         | E.LocalState ->
             let v = id_of_state LocalState ^"."^ n in
             glo, (E.State e.uniq_num, v) :: loc, env, param)
-    | Field ({ contents = TupleEnv }, f) ->
-        let v =
-          Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
-            (RamenName.string_of_field f) in
-        glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
     | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
         let f = RamenFieldMaskLib.id_of_path path in
         let v =
@@ -585,22 +580,17 @@ let initial_environments =
         (* FIXME: RecordField should take a tuple and a _path_ not a field
          * name *)
         glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
-    | Field ({ contents = TupleParam }, f) ->
-        let v = id_of_field_name ~tuple:TupleParam f in
-        glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
     | Stateless (SL1 (Path path, { text = Variable TupleParam ; _ })) ->
         let f = RamenFieldMaskLib.id_of_path path in
         let v = id_of_field_name ~tuple:TupleParam f in
         glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
     | _ -> prev)
 
-(* Takes an operation and convert all its Field expressions for the
+(* Takes an operation and convert all its Path expressions for the
  * given tuple into a Binding to the environment: *)
 let subst_fields_for_binding pref =
   RamenOperation.map_expr (fun _stack e ->
     match e.E.text with
-    | Field (tupref, f) when !tupref = pref ->
-        { e with text = Binding (RecordField (pref, f)) }
     | Stateless (SL1 (Path path, { text = Variable prefix ; }))
       when prefix = pref ->
         let f = RamenFieldMaskLib.id_of_path path in
@@ -825,14 +815,11 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Vector es, _ ->
     list_print_as_vector (emit_expr ~env ~context ~opc) oc es
 
-  | Finalize, Field (tuple, field), _ ->
-    !logger.error "Still some Field present in emitted code, for %s.%a"
-      (string_of_prefix !tuple) RamenName.field_print field ;
-    assert false
   | Finalize, Stateless (SL1 (Path _, _)), _ ->
     !logger.error "Still some Path present in emitted code: %a"
       (E.print ~max_depth:2 false) expr ;
     assert false
+
   | Finalize, Case (alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
       (fun oc alt ->
@@ -1278,8 +1265,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
                 (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | E.{ text = (Field _ | Stateless (SL1 (Path _, _))
-                   | Binding (RecordField _)) ;
+      | E.{ text = (Stateless (SL1 (Path _, _)) | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
@@ -2895,7 +2881,6 @@ let when_to_check_group_for_expr expr =
     try
       E.iter (fun _ e ->
         match e.E.text with
-        | Field ({ contents = TupleIn }, _)
         | Stateless (SL1 (Path _, { text = Variable TupleIn ; _ }))
         | Binding (RecordField (TupleIn, _)) ->
             raise Exit
@@ -2985,7 +2970,7 @@ let expr_needs_group e =
     E.iter (fun _ e ->
       if (
         match e.E.text with
-        | Field ({ contents = tuple }, _)
+        | Variable tuple
         | Binding (RecordField (tuple, _)) ->
             tuple_need_state tuple
         | Stateful (LocalState, _, _) -> true
@@ -3018,7 +3003,6 @@ let emit_aggregate opc oc global_env group_env env_env param_env
            * expression *)
           E.iter (fun _ e ->
             match e.E.text with
-            | Field ({ contents = TupleOut }, fn)
             | Binding (RecordField (TupleOut, fn)) ->
                 s := Set.add fn !s
             | _ -> ()
@@ -3038,7 +3022,6 @@ let emit_aggregate opc oc global_env group_env env_env param_env
    * minimal. *)
   let add_if_needs_out s e =
     match e.E.text with
-    | Field ({ contents = TupleOut }, fn)
     | Binding (RecordField (TupleOut, fn)) (* not supposed to happen *) ->
         Set.add fn s
     | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
@@ -3209,12 +3192,14 @@ let emit_running_condition oc params cond =
       let env =
         E.fold (fun _ env e ->
           match e.E.text with
-          | Field ({ contents = TupleEnv }, f) ->
+          | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
+              let f = RamenFieldMaskLib.id_of_path path in
               let v =
                 Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
                   (RamenName.string_of_field f) in
               (E.RecordField (TupleEnv, f), v) :: env
-          | Field ({ contents = TupleParam }, f) ->
+          | Stateless (SL1 (Path path, { text = Variable TupleParam ; _ })) ->
+              let f = RamenFieldMaskLib.id_of_path  path in
               let v =
                 id_of_field_name ~tuple:TupleParam f in
               (E.RecordField (TupleParam, f), v) :: env
@@ -3250,12 +3235,12 @@ let emit_operation name func params_mod params oc =
   !logger.debug "Group environment will be: %a" print_env group_env ;
   !logger.debug "Unix-env environment will be: %a" print_env env_env ;
   !logger.debug "Parameters environment will be: %a" print_env param_env ;
-  (* As all exposed IO tuples are present in the environment, any Field can
+  (* As all exposed IO tuples are present in the environment, any Path can
    * now be replaced with a Binding. The [subst_fields_for_binding] function
    * takes an expression and does this change for any tuple_prefix. The
-   * [Field] expression is therefore not used anywhere in the code
+   * [Path] expression is therefore not used anywhere in the code
    * generation process. We could similarly replace some Get in addition to
-   * some Fields, and finally do away with the Field expression altogether.
+   * some Path.
    *)
   let op =
     List.fold_left (fun op tuple ->
