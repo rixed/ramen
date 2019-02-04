@@ -84,7 +84,8 @@ let rec paths_of_expression_rev =
             RamenName.field_print name |>
           failwith ;
         [ E.Name (RamenName.string_of_field name), e ], []
-    | Path path ->
+    | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
+      when tuple_has_type_input pref ->
         (* As the expression is only useful for the leaf element we can
          * repeat it for each component of the path: *)
         List.rev_map (fun comp -> comp, e) path, []
@@ -469,11 +470,12 @@ let subst_deep_fields in_type =
             matches_expr (List.rev in_field.path) e
           ) in_type with
     | exception Not_found -> e
-    | in_field ->
+    | { path ; _ } ->
         !logger.debug "Substituting expression %a with Path %a"
           (E.print ~max_depth:2 false) e
-          (List.print E.print_path_comp) in_field.path ;
-        { e with text = Path in_field.path })
+          (List.print E.print_path_comp) path ;
+        { e with text =
+            Stateless (SL1 (Path path, E.make (Variable TupleIn))) })
 
 (* Return the fieldmask required to send out_typ to this operation: *)
 let fieldmask_of_operation ~out_typ op =

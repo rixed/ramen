@@ -224,10 +224,11 @@ let group_keys_of_operation =
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
-          | Path [ E.Name name ] when
+          | Stateless (SL1 (Path [ E.Name name ], { text = Variable pref ; _ }))
+            when
               name <> "start" &&
               name <> "stop" ->
-              Some (TupleIn, RamenName.field_of_string name)
+              Some (pref, RamenName.field_of_string name)
           | Field (tuple_prefix, name) when
               name <> RamenName.field_of_string "start" &&
               name <> RamenName.field_of_string "stop" ->
@@ -236,8 +237,9 @@ let group_keys_of_operation =
         ) key in
       List.filter_map (fun sf ->
         match sf.expr.text with
-        | Path [ E.Name name ] when
-            List.mem (TupleIn, RamenName.field_of_string name) simple_keys ->
+        | Stateless (SL1 (Path [ E.Name name ], { text = Variable pref ; _ }))
+          when
+            List.mem (pref, RamenName.field_of_string name) simple_keys ->
             Some sf.alias
         | Field (tuple_prefix, name) when
             List.mem (!tuple_prefix, name) simple_keys ->

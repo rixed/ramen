@@ -589,7 +589,8 @@ let subst_fields_for_binding pref =
     match e.E.text with
     | Field (tupref, f) when !tupref = pref ->
         { e with text = Binding (RecordField (pref, f)) }
-    | Path path when pref = TupleIn ->
+    | Stateless (SL1 (Path path, { text = Variable prefix ; }))
+      when prefix = pref ->
         let f = RamenFieldMaskLib.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
@@ -816,9 +817,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
     !logger.error "Still some Field present in emitted code, for %s.%a"
       (string_of_prefix !tuple) RamenName.field_print field ;
     assert false
-  | Finalize, Path path, _ ->
-    !logger.error "Still some Path present in emitted code, for %a"
-      E.print_path path ;
+  | Finalize, Stateless (SL1 (Path _, _)), _ ->
+    !logger.error "Still some Path present in emitted code: %a"
+      (E.print ~max_depth:2 false) expr ;
     assert false
   | Finalize, Case (alts, else_), t ->
     List.print ~first:"(" ~last:"" ~sep:" else "
@@ -1265,7 +1266,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
                 (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | E.{ text = (Field _ | Path _ | Binding (RecordField _)) ;
+      | E.{ text = (Field _ | Stateless (SL1 (Path _, _))
+                   | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
@@ -2882,7 +2884,7 @@ let when_to_check_group_for_expr expr =
       E.iter (fun _ e ->
         match e.E.text with
         | Field ({ contents = TupleIn }, _)
-        | Path _
+        | Stateless (SL1 (Path _, { text = Variable TupleIn ; _ }))
         | Binding (RecordField (TupleIn, _)) ->
             raise Exit
         | _ -> ()

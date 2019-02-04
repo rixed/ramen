@@ -409,46 +409,42 @@ let emit_assert_same e oc id1 id2 =
   let name = expr_err e Err.Same in
   emit_assert ~name oc (fun oc -> emit_same id1 oc id2)
 
-(* Assuming all input/output/constants have been declared already, emit the
- * constraints connecting the parameter to the result: *)
-let emit_constraints tuple_sizes records field_names out_fields
-                     in_type out_type param_type env_type oc stack e =
-  let eid = t_of_expr e and nid = n_of_expr e in
-  emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
-  (* Then we also have specific rules according to the operation at hand: *)
-  match e.E.text with
-  | Field (tupref, field) when tuple_has_type_output !tupref ->
-      (* The type of an output field is taken from the out types. *)
-      let open RamenOperation in
-      (match List.find (fun sf -> sf.alias = field) out_fields with
-      | exception Not_found ->
-          Printf.sprintf2 "Unknown output field %a (out is %a)"
-            RamenName.field_print field
-            (List.print (fun oc sf ->
-              RamenName.field_print oc sf.alias)) out_fields |>
-          failwith
-      | { expr ; _ } ->
-          emit_assert_id_eq_id eid oc (t_of_expr expr) ;
-          (* Some tuples are passed to callback via an option type, and
-           * are None each time they are undefined (beginning of worker
-           * or of group). Workers access those fields via a special
-           * functions, and all fields are forced nullable during typing.
-           *)
-          if !tupref = TupleOutPrevious then
-            let name = expr_err e Err.PrevNull in
-            emit_assert_is_true ~name oc nid
-          else
-            emit_assert_id_eq_id nid oc (n_of_expr expr))
+let eq_to_out_type pref out_fields e oc path =
+  (* The type of an output path is taken from the out types. *)
+  let open RamenOperation in
+  match find_expr_of_path_in_selected_fields out_fields path with
+  | exception Not_found ->
+      Printf.sprintf2 "Unknown output path %a (out is %a)"
+        E.print_path path
+        (List.print (fun oc sf ->
+          RamenName.field_print oc sf.alias)) out_fields |>
+      failwith
+  | expr ->
+      emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr expr) ;
+      (* Some tuples are passed to callback via an option type, and
+       * are None each time they are undefined (beginning of worker
+       * or of group). Workers access those fields via a special
+       * functions, and all fields are forced nullable during typing. *)
+      if pref = TupleOutPrevious then
+        let name = expr_err e Err.PrevNull in
+        emit_assert_is_true ~name oc (n_of_expr e)
+      else
+        emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr expr)
 
-  | Field ({ contents = Record }, field) ->
-      (* Looking through the stack we will find which field of which record
-       * this is referring to. This type must be equaled to that field. *)
+let eq_to_opened_record stack e oc path =
+  (* Looking through the stack we will find which field of which record
+   * this is referring to. From there the next components of the path,
+   * if there are some, must be found traversing that field expression. *)
+  !logger.info "Expr %a (path %a) supposed to be equivalent to some opened record field"
+    (E.print ~max_depth:2 false) e
+    E.print_path path ;
+  match path with
+  | E.Name s :: path' ->
+      let field = RamenName.field_of_string s in
       (match List.find_map (fun e ->
               match e.E.text with
               | Record kvs ->
-                  (try Some (e,
-                             List.findi (fun _ (k, _) -> k = field) kvs,
-                             List.length kvs)
+                  (try Some (List.find (fun (k, _) -> k = field) kvs)
                   with Not_found -> None)
               | _ -> None
             ) stack with
@@ -457,23 +453,55 @@ let emit_constraints tuple_sizes records field_names out_fields
             RamenName.field_print field
             (pretty_list_print (E.print ~max_depth:1 false)) stack |>
           failwith
-      | rec_expr, (fi, _sf), sz ->
-          (* We should already know that rec_expr is a record but that
-           * does not hurt asserting again: *)
-          let rec_id = t_of_expr rec_expr in
-          emit_assert oc (fun oc -> emit_is_record rec_id  oc sz) ;
-          emit_assert_id_eq_smt2 eid oc
-            (Printf.sprintf "(record%d-e%d %s)" sz fi rec_id) ;
-          emit_assert_id_eq_smt2 nid oc
-            (Printf.sprintf "(record%d-n%d %s)" sz fi rec_id) ;
-          emit_assert_id_eq_smt2 (f_of_name field_names field) oc
-            (Printf.sprintf "(record%d-f%d %s)" sz fi rec_id))
+      | field_name, field_expr ->
+          !logger.info "Found some opened record in the environment with a field named %a"
+            RamenName.field_print field_name ;
+          !logger.info "Looking for path %a in that field (%a)"
+            E.print_path path'
+            (E.print ~max_depth:2 false) field_expr ;
+          (match find_expr_of_path field_expr path' with
+          | exception Not_found ->
+              Printf.sprintf2 "Cannot find path %a within field %a (%a)"
+                E.print_path path'
+                RamenName.field_print field_name
+                (E.print ~max_depth:2 false) field_expr |>
+              failwith
+          | path_target ->
+              emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr path_target) ;
+              emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr path_target)))
+  | _ ->
+      Printf.sprintf2
+        "Invalid path %a: must start with a name to address an opened record."
+        E.print_path path |>
+      failwith
+
+(* Assuming all input/output/constants have been declared already, emit the
+ * constraints connecting the parameter to the result: *)
+let emit_constraints tuple_sizes records field_names out_fields
+                     in_type out_type param_type env_type oc stack e =
+  let eid = t_of_expr e and nid = n_of_expr e in
+  emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
+  (* Then we also have specific rules according to the operation at hand: *)
+  match e.E.text with
+  | Field ({ contents = pref }, field)
+    when tuple_has_type_output pref ->
+      let path = [ E.Name (RamenName.string_of_field field) ] in
+      eq_to_out_type pref out_fields e oc path
+  | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
+    when tuple_has_type_output pref ->
+      eq_to_out_type pref out_fields e oc path
+
+  | Field ({ contents = Record }, field) ->
+      let path = [ E.Name (RamenName.string_of_field field) ] in
+      eq_to_opened_record stack e oc path
+  | Stateless (SL1 (Path path, { text = Variable Record ; _ })) ->
+      eq_to_opened_record stack e oc path
 
   | Field _ ->
       (* The type of a field originating from input/params/env/virtual
        * fields has been set previously. *)
       ()
-  | Path _ -> (* Similarly *)
+  | Stateless (SL1 (Path _, _)) -> (* Similarly *)
       ()
 
   | Variable pref ->
@@ -1741,8 +1769,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | Field (tupref, field) ->
         register_io ?func what e !tupref
           [ Name (RamenName.string_of_field field) ]
-    | Path path ->
-        register_io ?func what e TupleIn path
+    | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
+        register_io ?func what e pref path
     | _ -> ()
   ) condition funcs ;
   (* For param_fields, env_fields and each function in in_fields, declare

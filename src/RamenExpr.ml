@@ -63,9 +63,6 @@ and text =
   (* A field from a tuple (or parameter, or environment, as special cases of
    * "tuples": *)
   | Field of tuple_prefix ref * RamenName.field
-  (* Used when several successive Gets are replaced by a direct access to
-   * a cherry-picked value from input: *)
-  | Path of path_comp list
   (* Variables refer to a value from the input or output of the function.
    *
    * This is unrelated to elision of the get in the syntax: when one write
@@ -168,6 +165,12 @@ and stateless1 =
   | Variant
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
+  (* Reach a sub-element from [t]. [t] can be a Variable, a literal Record,
+   * Vector or Tuple, or another Path.
+   * A chain of path can be collapsed into one when the intermediary objects
+   * have no representation (cherry-picking individual fields instead instead
+   * of passing whole compound values) *)
+  | Path of path_comp list
   [@@ppp PPP_OCaml]
 
 and stateless1s =
@@ -458,10 +461,12 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "%s.%s"
           (string_of_prefix !tuple)
           (RamenName.string_of_field name)
-    | Path path ->
-        print_path oc path
+    | Stateless (SL1 (Path path, e)) ->
+        Printf.fprintf oc "%a.%a"
+          p e
+          print_path path
     | Variable pref ->
-        Printf.fprintf oc "%s" (string_of_prefix pref) ;
+        Printf.fprintf oc "%s" (string_of_prefix pref)
     | Binding k ->
         Printf.fprintf oc "<BINDING FOR %a>"
           print_binding_key k
@@ -687,7 +692,7 @@ let rec map f e =
   let mm = List.map m
   and om = Option.map m in
   match e.text with
-  | Const _ | Field _ | Path _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) ->
       f e
 
   | Case (alts, else_) ->
@@ -744,7 +749,7 @@ let fold_subexpressions f s i e =
   let om i = Option.map_default (f i) i
   in
   match e.text with
-  | Const _ | Field _ | Path _ | Variable _ | Binding _ | Stateless (SL0 _) ->
+  | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) ->
       i
 
   | Case (alts, else_) ->
