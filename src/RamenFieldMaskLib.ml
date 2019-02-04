@@ -436,9 +436,7 @@ let subst_deep_fields in_type =
     match path, e.E.text with
     | [ E.Name n ],
       Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
-        (match E.string_of_const s with
-        | Some n' when n' = n -> true
-        | _ -> false)
+        E.string_of_const s = Some n
     | path1,
       Stateless (SL1 (Path path2, { text = Variable TupleIn ; _ })) ->
         path1 = path2
@@ -446,14 +444,10 @@ let subst_deep_fields in_type =
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
         Stateless (SL2 (Get, s, e')) ->
-          (match E.string_of_const s with
-          | Some n' when n' = n -> matches_expr path' e'
-          | _ -> false)
+          E.string_of_const s = Some n && matches_expr path' e'
     | E.Int i :: path',
         Stateless (SL2 (Get, n, e')) ->
-          (match E.int_of_const n with
-          | Some i' when i' = i -> matches_expr path' e'
-          | _ -> false)
+          E.int_of_const n = Some i && matches_expr path' e'
     | _ -> false
   in
   RamenOperation.map_expr (fun _stack e ->

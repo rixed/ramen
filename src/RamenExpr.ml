@@ -162,11 +162,11 @@ and stateless1 =
   | Variant
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
-  (* Reach a sub-element from [t]. [t] can be a Variable, a literal Record,
-   * Vector or Tuple, or another Path.
-   * A chain of path can be collapsed into one when the intermediary objects
-   * have no representation (cherry-picking individual fields instead instead
-   * of passing whole compound values) *)
+  (* Reach a sub-element from [t], directly, with no intermediary Gets.
+   * [t] can be a Variable, a literal Record, Vector or Tuple, or another
+   * Path.
+   * A chain of Gets will be collapsed into one Path when the intermediary
+   * objects have no representation (due to cherry-picking) *)
   | Path of path_comp list
   [@@ppp PPP_OCaml]
 
