@@ -1783,7 +1783,11 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             (t_of_expr e) sz i rec_tid) ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-n%d %s))"
-            (n_of_expr e) sz i rec_tid)
+            (n_of_expr e) sz i rec_tid) ;
+        let f_name = RamenFieldMaskLib.(id_of_path path) in
+        emit_assert oc (fun oc ->
+          Printf.fprintf oc "(= %s (record%d-f%d %s))"
+            (f_of_name field_names f_name) sz i rec_tid)
       ) ;
       (fq_name, id) :: assoc
     ) h []
