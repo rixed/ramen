@@ -577,7 +577,19 @@ let initial_environments =
           Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
             (RamenName.string_of_field f) in
         glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
+    | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
+        let f = RamenFieldMaskLib.id_of_path path in
+        let v =
+          Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
+            (RamenName.string_of_field f) in
+        (* FIXME: RecordField should take a tuple and a _path_ not a field
+         * name *)
+        glo, loc, (E.RecordField (TupleEnv, f), v) :: env, param
     | Field ({ contents = TupleParam }, f) ->
+        let v = id_of_field_name ~tuple:TupleParam f in
+        glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
+    | Stateless (SL1 (Path path, { text = Variable TupleParam ; _ })) ->
+        let f = RamenFieldMaskLib.id_of_path path in
         let v = id_of_field_name ~tuple:TupleParam f in
         glo, loc, env, (E.RecordField (TupleParam, f), v) :: param
     | _ -> prev)
@@ -585,7 +597,7 @@ let initial_environments =
 (* Takes an operation and convert all its Field expressions for the
  * given tuple into a Binding to the environment: *)
 let subst_fields_for_binding pref =
-  RamenOperation.map_expr (fun e ->
+  RamenOperation.map_expr (fun _stack e ->
     match e.E.text with
     | Field (tupref, f) when !tupref = pref ->
         { e with text = Binding (RecordField (pref, f)) }

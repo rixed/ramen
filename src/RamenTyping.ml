@@ -504,6 +504,10 @@ let emit_constraints tuple_sizes records field_names out_fields
   | Stateless (SL1 (Path _, _)) -> (* Similarly *)
       ()
 
+  | Variable Record ->
+      (* Cannot appear on it's own, but within a path (typed with Path) *)
+      ()
+
   | Variable pref ->
       let id, pref =
         if tuple_has_type_input pref then
@@ -1783,18 +1787,18 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
    * func fq_name and the identifier for the record type (that we must also
    * declare): *)
   let rec_num = ref 0 in
-  let declare_input input_name h =
+  let declare_input pref h =
     Hashtbl.fold (fun fq_name h assoc ->
       let id = !rec_num in
       incr rec_num ;
-      let rec_tid = t_of_prefix TupleIn id
-      and rec_nid = n_of_prefix TupleIn id in
+      let rec_tid = t_of_prefix pref id
+      and rec_nid = n_of_prefix pref id in
       Printf.fprintf decls
         "\n; record type for %s\n\n\
          (declare-fun %s () Type)\n\
          (declare-fun %s () Bool)\n"
         (match fq_name with
-        | None -> input_name
+        | None -> string_of_prefix pref
         | Some fq ->
             Printf.sprintf2 "input of function %a" RamenName.fq_print fq)
         rec_tid rec_nid ;
@@ -1824,9 +1828,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     ) h []
   in
   (* We have one structure describing the input of each parent. *)
-  let in_types = declare_input "input" in_fields
-  and param_type = declare_input "params" param_fields
-  and env_type = declare_input "env" env_fields
+  let in_types = declare_input TupleIn in_fields
+  and param_type = declare_input TupleParam param_fields
+  and env_type = declare_input TupleEnv env_fields
   in
   (* In theory we have only one entry (for fq_name = None) for both params
    * and env, since we've never registered func: *)
@@ -2070,6 +2074,14 @@ let used_tuples_records funcs parents =
          * know the length of those records before the end of the loop,
          * just remember the field names: *)
         | Field ({ contents = tuple }, n) ->
+            if tuple = TupleParam then
+              tuple_sizes, (Set.add n params), envvars
+            else if tuple = TupleEnv then
+              tuple_sizes, params, (Set.add n envvars)
+            else
+              prev
+        | Stateless (SL1 (Path path, { text = Variable tuple ; _ })) ->
+            let n = RamenFieldMaskLib.id_of_path path in
             if tuple = TupleParam then
               tuple_sizes, (Set.add n params), envvars
             else if tuple = TupleEnv then

@@ -80,9 +80,10 @@ let print oc (params, run_cond, funcs) =
 
 (* Check that a syntactically valid program is actually valid: *)
 
-let check (params, run_cond, funcs) =
-  Option.may (fun run_cond ->
-    RamenOperation.prefix_def params TupleEnv run_cond ;
+let checked (params, run_cond, funcs) =
+  let run_cond =
+    Option.map (RamenOperation.prefix_def params TupleEnv) run_cond in
+  Option.may (
     (* Check the running condition does not use any IO tuple: *)
     E.iter (fun _s e ->
       match e.E.text with
@@ -92,8 +93,7 @@ let check (params, run_cond, funcs) =
           Printf.sprintf "Running condition cannot use tuple %s"
             (string_of_prefix !tuple) |>
           failwith
-      | _ -> ()
-    ) run_cond
+      | _ -> ())
   ) run_cond ;
   let anonymous = RamenName.func_of_string "<anonymous>" in
   let name_not_unique name =
@@ -103,33 +103,39 @@ let check (params, run_cond, funcs) =
       name_not_unique (RamenName.string_of_field p.ptyp.name) ;
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
-  List.fold_left (fun s n ->
-    (* Check the operation is OK: *)
-    (try RamenOperation.check params n.operation
-    with Failure msg ->
-      let open RamenTypingHelpers in
-      Printf.sprintf "In function %s: %s"
-        (RamenName.func_color (n.name |? anonymous))
-        msg |>
-      failwith) ;
-    (* While at it, we should not have any STAR left at that point: *)
-    assert (match n.operation with
-    | Aggregate { and_all_others = true ; _ } -> false
-    | _ -> true) ;
-    (* Finally, check that the name is valid and unique: *)
-    match n.name with
-    | Some name ->
-        let ns = RamenName.string_of_func name in
-        (* Names of defined functions cannot use '#' as we use it to delimit
-         * special suffixes (stats, notifs): *)
-        if String.contains ns '#' then
-          Printf.sprintf "Invalid dash in function name %s"
-            (RamenName.func_color name) |> failwith ;
-        (* Names must be unique: *)
-        if Set.mem name s then name_not_unique ns ;
-        Set.add name s
-    | None -> s ;
-  ) Set.empty funcs |> ignore
+  let funcs, _ =
+    List.fold_left (fun (funcs, names) n ->
+      (* Resolve unknown tuples in the operation: *)
+      let op =
+        (* Check the operation is OK: *)
+        try RamenOperation.checked params n.operation
+        with Failure msg ->
+          let open RamenTypingHelpers in
+          Printf.sprintf "In function %s: %s"
+            (RamenName.func_color (n.name |? anonymous))
+            msg |>
+          failwith in
+      (* While at it, we should not have any STAR left at that point: *)
+      assert (match op with
+      | Aggregate { and_all_others = true ; _ } -> false
+      | _ -> true) ;
+      (* Finally, check that the name is valid and unique: *)
+      let names =
+        match n.name with
+        | Some name ->
+            let ns = RamenName.string_of_func name in
+            (* Names of defined functions cannot use '#' as we use it to delimit
+             * special suffixes (stats, notifs): *)
+            if String.contains ns '#' then
+              Printf.sprintf "Invalid dash in function name %s"
+                (RamenName.func_color name) |> failwith ;
+            (* Names must be unique: *)
+            if Set.mem name names then name_not_unique ns ;
+            Set.add name names
+        | None -> names in
+      { n with operation = op } :: funcs, names
+    ) ([], Set.empty) funcs in
+  params, run_cond, funcs
 
 module Parser =
 struct
@@ -262,9 +268,8 @@ struct
   (*$inject
    let test_prog str =
      (match test_p p str with
-     | Ok ((ps, _, fs), _) as x ->
-        check (ps, None, fs) ;
-        x
+     | Ok (res, rem) ->
+        BatPervasives.Ok (checked res, rem)
      | x -> x) |>
      TestHelpers.test_printer print
   *)
@@ -447,4 +452,4 @@ let parse =
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_parent program_name funcs in
     let t = params, run_cond, funcs in
-    check t ; t
+    checked t

@@ -686,58 +686,61 @@ let is_a_list e =
   | TList _ | TVec _ -> true
   | _ -> false
 
-let rec map f e =
+let rec map f s e =
+  (* [s] is the stack of expressions to the AST root *)
+  let s' = e :: s in
   (* Shorthands : *)
-  let m = map f in
+  let m = map f s' in
   let mm = List.map m
   and om = Option.map m in
-  match e.text with
+  (match e.text with
   | Const _ | Field _ | Variable _ | Binding _ | Stateless (SL0 _) ->
-      f e
+      e
 
   | Case (alts, else_) ->
-      f { e with text = Case (
+      { e with text = Case (
         List.map (fun a ->
           { case_cond = m a.case_cond ; case_cons = m a.case_cons }
         ) alts, om else_) }
 
-  | Tuple es -> f { e with text = Tuple (mm es) }
+  | Tuple es -> { e with text = Tuple (mm es) }
 
   | Record kvs ->
-      f { e with text = Record (List.map (fun (k, e) -> k, m e) kvs) }
+      { e with text = Record (List.map (fun (k, e) -> k, m e) kvs) }
 
-  | Vector es -> f { e with text = Vector (mm es) }
+  | Vector es -> { e with text = Vector (mm es) }
 
   | Stateless (SL1 (o, e1)) ->
-      f { e with text = Stateless (SL1 (o, m e1)) }
+      { e with text = Stateless (SL1 (o, m e1)) }
   | Stateless (SL1s (o, es)) ->
-      f { e with text = Stateless (SL1s (o, mm es)) }
+      { e with text = Stateless (SL1s (o, mm es)) }
   | Stateless (SL2 (o, e1, e2)) ->
-      f { e with text = Stateless (SL2 (o, m e1, m e2)) }
+      { e with text = Stateless (SL2 (o, m e1, m e2)) }
 
   | Stateful (g, n, SF1 (o, e1)) ->
-      f { e with text = Stateful (g, n, SF1 (o, m e1)) }
+      { e with text = Stateful (g, n, SF1 (o, m e1)) }
   | Stateful (g, n, SF2 (o, e1, e2)) ->
-      f { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
+      { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
   | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
-      f { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
+      { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
-      f { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
+      { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
   | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
-      f { e with text = Stateful (g, n, Top { a with
+      { e with text = Stateful (g, n, Top { a with
         c = m c ; by = m by ; time = m time ; duration = m duration ;
         what = mm what ; max_size = om max_size }) }
   | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
-      f { e with text = Stateful (g, n, Past {
+      { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ;
         sample_size = om sample_size }) }
   | Stateful (g, n, Last (c, x, es)) ->
-      f { e with text = Stateful (g, n, Last (m c, m x, mm es)) }
+      { e with text = Stateful (g, n, Last (m c, m x, mm es)) }
   | Stateful (g, n, Distinct es) ->
-      f { e with text = Stateful (g, n, Distinct (mm es)) }
+      { e with text = Stateful (g, n, Distinct (mm es)) }
 
   | Generator (Split (e1, e2)) ->
-      f { e with text = Generator (Split (m e1, m e2)) }
+      { e with text = Generator (Split (m e1, m e2)) }) |>
+  f s
 
 (* Run [f] on all sub-expressions in turn. *)
 let fold_subexpressions f s i e =
@@ -893,7 +896,7 @@ struct
          * it's a virtual field (starting with #) of course since those are
          * computed on the fly and have no corresponding variable in the
          * tuple) *)
-        make (Field (ref tuple, RamenName.field_of_string field))
+        make (Stateless (SL1 (Path [ Name field ], make (Variable tuple))))
     ) m
 
   (*$= field & ~printer:BatPervasives.identity
@@ -915,7 +918,7 @@ struct
     (
       non_keyword >>:
       fun p ->
-        make (Field (ref TupleParam, RamenName.field_of_string p))
+        make (Stateless (SL1 (Path [ Name p ], make (Variable TupleParam))))
     ) m
 
   (*$= param & ~printer:BatPervasives.identity
@@ -929,6 +932,9 @@ struct
     match e.text with
     | Field (_, name) when not (RamenName.is_virtual name) ->
         force_public (RamenName.string_of_field name)
+    | Stateless (SL1 (Path [ Name name ], _))
+      when not RamenName.(is_virtual (field_of_string name)) ->
+        force_public name
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
     | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
@@ -1353,16 +1359,16 @@ struct
       fun f ->
         let prev_field =
           match f.text with
-          | Field (tuple_ref, name) ->
+          | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
               (* If tuple is still unknown and we figure out later that it's
                * not output then the error message will be about that field
                * not present in the output tuple. Not too bad. *)
-              if !tuple_ref <> TupleOut &&
-                 !tuple_ref <> TupleUnknown
+              if pref <> TupleOut &&
+                 pref <> TupleUnknown
               then
                 raise (Reject "Changed operator is only valid for \
                                fields of the output tuple") ;
-              make (Field (ref TupleOutPrevious, name))
+              make (Stateless (SL1 (Path path, make (Variable TupleOutPrevious))))
           | _ ->
               raise (Reject "Changed operator is only valid for fields")
         in
@@ -1715,6 +1721,15 @@ let units_of_expr params units_of_input units_of_output =
         else if !tupref = TupleParam then
           units_of_params name
         else None
+    | Stateless (SL1 (Path [ Name s ], { text = Variable pref ; _ })) ->
+        let name = RamenName.field_of_string s in
+        if tuple_has_type_input pref then
+          units_of_input name
+        else if tuple_has_type_output pref then
+          units_of_output name
+        else if pref = TupleParam then
+          units_of_params name
+        else None
     | Case (cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)
@@ -1760,10 +1775,15 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Get, e1, { text = Vector es ; _ })) ->
         Option.bind (int_of_const e1) (fun n ->
           List.at es n |> uoe ~indent)
+    | Stateless (SL1 (Path [ Int n ], { text = Vector es ; _ })) ->
+        List.at es n |> uoe ~indent
     | Stateless (SL2 (Get, n, { text = Tuple es ; _ })) ->
         (* Not super useful. FIXME: use the solver. *)
         let n = int_of_const n |>
                 option_get "Get from tuple must have const index" in
+        (try List.at es n |> uoe ~indent
+        with Invalid_argument _ -> None)
+    | Stateless (SL1 (Path [ Int n ], { text = Tuple es ; _ })) ->
         (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
     | Stateless (SL2 (Get, s, { text = Record kvs ; _ })) ->
@@ -1773,6 +1793,12 @@ let units_of_expr params units_of_input units_of_output =
          *        solver. *)
         let s = string_of_const s |>
                 option_get "Get from record must have string index" in
+        (try
+          list_rfind_map (fun (k, v) ->
+            if RamenName.string_of_field k = s then Some v else None
+          ) kvs |> uoe ~indent
+        with Not_found -> None)
+    | Stateless (SL1 (Path [ Name s ], { text = Record kvs ; _ })) ->
         (try
           list_rfind_map (fun (k, v) ->
             if RamenName.string_of_field k = s then Some v else None

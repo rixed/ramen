@@ -222,7 +222,7 @@ let tree_of_paths ps =
 (*$= str_tree_of & ~printer:identity
   "empty" \
     (str_tree_of "0+0")
-  "{bar:<in.bar>,foo:<in.foo>}" \
+  "{bar:<....bar>,foo:<....foo>}" \
     (str_tree_of "in.foo + in.bar")
   "{foo:{0:<GET(..., ...)>,1:<GET(..., ...)>}}" \
     (str_tree_of "get(0,in.foo) + get(1,in.foo)")
@@ -450,6 +450,9 @@ let subst_deep_fields in_type =
         (match E.string_of_const s with
         | Some n' when n' = n -> true
         | _ -> false)
+    | path1,
+      Stateless (SL1 (Path path2, { text = Variable TupleIn ; _ })) ->
+        path1 = path2
     | E.Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
@@ -464,7 +467,7 @@ let subst_deep_fields in_type =
           | _ -> false)
     | _ -> false
   in
-  RamenOperation.map_expr (fun e ->
+  RamenOperation.map_expr (fun _stack e ->
     match List.find (fun in_field ->
             assert (in_field.path <> []) ;
             matches_expr (List.rev in_field.path) e

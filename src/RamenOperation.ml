@@ -37,6 +37,8 @@ let print_selected_field with_types oc f =
     match f.expr.text with
     | E.Field (tuple, field)
       when !tuple = TupleIn && f.alias = field -> false
+    | Stateless (SL1 (Path [ Name name ], { text = Variable TupleIn ; _ }))
+      when f.alias = RamenName.field_of_string name -> false
     | _ -> true in
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
@@ -319,7 +321,7 @@ let map_top_level_expr f op =
           ) sort }
 
 let map_expr f =
-  map_top_level_expr (E.map f)
+  map_top_level_expr (E.map f [])
 
 (* Various functions to inspect an operation: *)
 
@@ -426,19 +428,10 @@ let envvars_of_operation op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with
     | Field ({ contents = TupleEnv }, n) -> Set.add n s
+    | Stateless (SL1 (Path [ Name n ], { text = Variable TupleEnv ; _ })) ->
+        Set.add (RamenName.field_of_string n) s
     | _ -> s) op |>
   Set.to_list
-
-(* Unless it's a param, assume TupleUnknow belongs to def: *)
-let prefix_def params def =
-  E.iter (fun _ e ->
-    match e.E.text with
-    | Field (({ contents = TupleUnknown } as pref), name) ->
-        if RamenTuple.params_mem name params then
-          pref := TupleParam
-        else
-          pref := def
-    | _ -> ())
 
 let use_event_time op =
   fold_expr false (fun _ b e ->
@@ -447,12 +440,152 @@ let use_event_time op =
     | _ -> b
   ) op
 
+(* Also used by [RamenProgram] to check running condition *)
+let prefix_def params def e =
+  E.map (fun _stack e ->
+    match e.E.text with
+    | Field ({ contents = TupleUnknown }, name) ->
+        let pref =
+          if RamenTuple.params_mem name params then TupleParam
+          else def
+        in
+        let s = RamenName.string_of_field name in
+        E.make (Stateless (SL1 (Path [ Name s ], E.make (Variable pref))))
+    | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
+        let pref =
+          match path with
+          | Name s :: _
+            when RamenTuple.params_mem (RamenName.field_of_string s) params ->
+              TupleParam
+          | _ -> def
+        in
+        E.make (Stateless (SL1 (Path path, E.make (Variable pref))))
+    | _ -> e
+  ) [] e
+
+(* Replace the expressions with [TupleUnknown] with their likely tuple. *)
+let resolve_unknown_tuples params op =
+  (* Unless it's a param (TODO: or an opened record), assume TupleUnknow
+   * belongs to def: *)
+  match op with
+  | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
+                 notifications ; _ } as aggr) ->
+      let fields_from_in = ref Set.empty in
+      let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
+        list_existsi (fun i' sf ->
+          sf.alias = name &&
+          Option.map_default (fun i -> i' < i) true i
+        ) fields in
+      let ground_unknown_tuple ?i stack path =
+        match path with
+        | [] | E.Int _ :: _ ->
+            Printf.sprintf2 "Cannot resolve unknown path %a"
+              E.print_path path |>
+            failwith
+        | E.Name name :: _ ->
+            let name = RamenName.field_of_string name in
+            (* First, lookup for an opened record: *)
+            if List.exists (fun e ->
+                 match e.E.text with
+                 | Record kvs ->
+                     (* Notice that we look into _all_ fields, not only the
+                      * ones defined previously. Not sure if better or
+                      * worse. *)
+                     List.exists (fun (k, _) -> k = name) kvs
+                 | _ -> false
+               ) stack
+            then (
+              (* Notice we do not keep a reference on the actual expression.
+               * That's much safer to look it up again whenever we need it,
+               * so that we are free to map the AST. *)
+              !logger.debug "Field %a though to belong to an opened record"
+                RamenName.field_print name ;
+              E.make (Stateless (SL1 (Path path, E.make (Variable Record))))
+            ) else (
+              let pref =
+                (* Look into predefined records: *)
+                if RamenTuple.params_mem name params then
+                  TupleParam
+                else if Set.mem name !fields_from_in then
+                  TupleIn
+                else if is_selected_fields ?i name then
+                  TupleOut
+                else (
+                  fields_from_in := Set.add name !fields_from_in ;
+                  TupleIn
+                ) in
+              !logger.debug "Field %a thought to belong to %s"
+                RamenName.field_print name
+                (string_of_prefix pref) ;
+              E.make (Stateless (SL1 (Path path, E.make (Variable pref))))
+            ) in
+      (* Resolve TupleUnknown into either TupleParam (if the name is in
+       * params), TupleIn or TupleOut (depending on the presence of this alias
+       * in selected_fields -- optionally, only before position i). It will
+       * also keep track of opened records and look up there first. *)
+      let prefix_smart ?i e =
+        E.map (fun stack e ->
+          match e.E.text with
+          | Field ({ contents = TupleUnknown }, name) ->
+              let name = RamenName.string_of_field name in
+              ground_unknown_tuple ?i stack [ Name name ]
+          | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
+              ground_unknown_tuple ?i stack path
+          | _ -> e
+        ) [] e
+    in
+    (* Set of fields known to come from in (to help prefix_smart): *)
+    iter_expr (fun _ e ->
+      match e.E.text with
+      | Field ({ contents = TupleIn }, name) ->
+          fields_from_in := Set.add name !fields_from_in
+      | Stateless (SL1 (Path [ Name s ], { text = Variable TupleIn })) ->
+          let name = RamenName.field_of_string s in
+          fields_from_in := Set.add name !fields_from_in
+      | _ -> ()) op ;
+    let fields =
+      List.mapi (fun i sf ->
+        { sf with expr = prefix_smart ~i sf.expr }
+      ) fields in
+    let merge =
+      { merge with
+          on = List.map (prefix_def params TupleIn) merge.on } in
+    let sort =
+      Option.map (fun (n, u_opt, b) ->
+        n,
+        Option.map (prefix_def params TupleIn) u_opt,
+        List.map (prefix_def params TupleIn) b
+      ) sort in
+    let where = prefix_smart where in
+    let key = List.map (prefix_def params TupleIn) key in
+    let commit_cond = prefix_smart commit_cond in
+    let notifications = List.map prefix_smart notifications in
+    Aggregate { aggr with
+      fields ; merge ; sort ; where ; key ; commit_cond ; notifications }
+
+  | ReadCSVFile ({ where ; preprocessor ; _ } as csv) ->
+    (* Default to In if not a param, and then disallow In >:-> *)
+    let preprocessor =
+      Option.map (fun p ->
+        (* prefix_def will select Param if it is indeed in param, and only
+         * if not will it assume it's in env; which makes sense as that's the
+         * only two possible tuples here: *)
+        prefix_def params TupleEnv p
+      ) preprocessor in
+    let where =
+      { fname = prefix_def params TupleEnv where.fname ;
+        unlink = prefix_def params TupleEnv where.unlink } in
+    ReadCSVFile { csv with preprocessor ; where }
+
+  | op -> op
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
  * result for better error messages, and also because we need the
  * list of available parameters. *)
-let check params op =
+let checked params op =
+  let op = resolve_unknown_tuples params op in
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful function not allowed in "^ clause))
@@ -517,68 +650,6 @@ let check params op =
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
                 factors ; _ } ->
-    (* Set of fields known to come from in (to help prefix_smart): *)
-    let fields_from_in = ref Set.empty in
-    iter_expr (fun _ e ->
-      match e.E.text with
-      | Field ({ contents = TupleIn }, name) ->
-          fields_from_in := Set.add name !fields_from_in
-      | _ -> ()) op ;
-    let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
-      list_existsi (fun i' sf ->
-        sf.alias = name &&
-        Option.map_default (fun i -> i' < i) true i) fields in
-    (* Resolve TupleUnknown into either TupleParam (if the name is in
-     * params), TupleIn or TupleOut (depending on the presence of this alias
-     * in selected_fields -- optionally, only before position i). It will
-     * also keep track of opened records and look up there first. *)
-    let prefix_smart ?i e =
-      E.fold_down (fun _ env e ->
-        match e.E.text with
-        | Field (({ contents = TupleUnknown } as pref), name) ->
-            (* First by lookup in the environment: *)
-            if List.exists (fun e ->
-              match e.E.text with
-              | Record kvs ->
-                  (* Notice that we look into _all_ fields, not only the
-                   * ones defined previously. Not sure if better or worse. *)
-                  List.exists (fun (k, _) -> k = name) kvs
-              | _ -> assert false) env
-            then (
-              (* Notice we do not keep a reference on the actual expression.
-               * That's much safer to look it up again whenever we need it,
-               * so that we are free to map the AST. *)
-              pref := Record ;
-              !logger.debug "Field %a though to belong to an opened record"
-                RamenName.field_print name
-            ) else (
-              (* Look into predefined records: *)
-              if RamenTuple.params_mem name params then
-                pref := TupleParam
-              else if Set.mem name !fields_from_in then
-                pref := TupleIn
-              else if is_selected_fields ?i name then
-                pref := TupleOut
-              else (
-                pref := TupleIn ;
-                fields_from_in := Set.add name !fields_from_in) ;
-              !logger.debug "Field %a thought to belong to %s"
-                RamenName.field_print name
-                (string_of_prefix !pref)
-            ) ;
-            env
-        | Record _ -> e :: env
-        | _ -> env
-      ) [] [] e |> ignore in
-    List.iteri (fun i sf -> prefix_smart ~i sf.expr) fields ;
-    List.iter (prefix_def params TupleIn) merge.on ;
-    Option.may (fun (_, u_opt, b) ->
-      List.iter (prefix_def params TupleIn) b ;
-      Option.may (prefix_def params TupleIn) u_opt) sort ;
-    prefix_smart where ;
-    List.iter (prefix_def params TupleIn) key ;
-    List.iter prefix_smart notifications ;
-    prefix_smart commit_cond ;
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (fun _ e ->
       match e.E.text with
@@ -671,17 +742,11 @@ let check params op =
     let field_names = List.map (fun t -> t.RamenTuple.name) what.fields in
     Option.may (check_event_time field_names) event_time ;
     check_factors field_names factors ;
-    (* Default to In if not a param, and then disallow In ):-) *)
+    (* Default to In if not a param, and then disallow In >:-> *)
     Option.may (fun p ->
-      (* prefix_def will select Param if it is indeed in param, and only
-       * if not will it assume it's in env; which makes sense as that's the
-       * only two possible tuples here: *)
-      prefix_def params TupleEnv p ;
       check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
     ) preprocessor ;
-    prefix_def params TupleEnv fname ;
     check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname ;
-    prefix_def params TupleEnv unlink ;
     check_fields_from [ TupleParam; TupleEnv ] "DELETE-IF" unlink ;
     check_pure "DELETE-IF" unlink
     (* FIXME: check the field type declarations use only scalar types *)
@@ -689,7 +754,8 @@ let check params op =
   | Instrumentation _ | Notifications _ -> ()) ;
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
-  iter_expr (fun _ e -> RamenExpr.check e) op
+  iter_expr (fun _ e -> RamenExpr.check e) op ;
+  op
 
 module Parser =
 struct
@@ -1206,7 +1272,7 @@ let fields_schema m =
   (*$inject
     let test_op s =
       (match test_p p s with
-      | Ok (res, _) as x ->
+      | Ok (res, rem) ->
         let params =
           [ RamenTuple.{
               ptyp = { name = RamenName.field_of_string "avg_window" ;
@@ -1214,8 +1280,9 @@ let fields_schema m =
                                nullable = false } ;
                        units = None ; doc = "" ; aggr = None } ;
               value = T.VI32 10l }] in
-        RamenOperation.check params res ;
-        x
+        BatPervasives.Ok (
+          RamenOperation.checked params res,
+          rem)
       | x -> x) |>
       TestHelpers.test_printer (RamenOperation.print false)
   *)
