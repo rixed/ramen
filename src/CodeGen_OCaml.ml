@@ -606,13 +606,13 @@ let initial_environments op params envvars =
 let subst_fields_for_binding pref =
   O.map_expr (fun _stack e ->
     match e.E.text with
-    | Stateless (SL1 (Path path, { text = Variable prefix ; }))
-      when prefix = pref ->
+    | Stateless (SL0 (Path path))
+      when pref = TupleIn ->
         let f = E.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable prefix ; }))
-      when prefix = pref ->
+      when pref = prefix ->
         let f = RamenName.field_of_string n in
         { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
@@ -834,7 +834,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Vector es, _ ->
     list_print_as_vector (emit_expr ~env ~context ~opc) oc es
 
-  | Finalize, Stateless (SL1 (Path _, _)), _ ->
+  | Finalize, Stateless (SL0 (Path _)), _ ->
     !logger.error "Still some Path present in emitted code: %a"
       (E.print ~max_depth:2 false) expr ;
     assert false
@@ -1284,7 +1284,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Printf.fprintf cc "Hashtbl.replace h_ (%a) ()"
                 (conv_to ~env ~context ~opc (Some larger_t)) e)) csts in
         emit_in csts_len csts_hash_init non_csts
-      | E.{ text = (Stateless (SL1 (Path _, _)) | Binding (RecordField _)) ;
+      | E.{ text = (Stateless (SL0 (Path _)) | Binding (RecordField _)) ;
             typ = { structure = (TVec (_, telem) | TList telem) ; _ } ; _ } ->
         let csts_len =
           Printf.sprintf2 "Array.length (%a)"
@@ -2899,7 +2899,7 @@ let when_to_check_group_for_expr expr =
     try
       E.iter (fun _ e ->
         match e.E.text with
-        | Stateless (SL1 (Path _, { text = Variable TupleIn ; _ }))
+        | Stateless (SL0 (Path _))
         | Binding (RecordField (TupleIn, _)) ->
             raise Exit
         | _ -> ()

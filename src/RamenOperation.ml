@@ -36,7 +36,7 @@ type selected_field =
 let print_selected_field with_types oc f =
   let need_alias =
     match f.expr.text with
-    | Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
+    | Stateless (SL0 (Path [ Name n ]))
       when f.alias = n -> false
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable TupleIn ; _ }))
@@ -427,8 +427,6 @@ let out_type_of_operation ?(with_private=false) = function
 let envvars_of_operation op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with
-    | Stateless (SL1 (Path path, { text = Variable TupleEnv ; _ })) ->
-        Set.add (E.id_of_path path) s
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable TupleEnv ; _ })) ->
         Set.add (RamenName.field_of_string n) s
@@ -454,10 +452,6 @@ let resolve_unknown_tuple resolver e =
           resolver stack n
     in
     match e.E.text with
-    | Stateless (SL1 (Path path, ({ text = Variable TupleUnknown ; _ } as x))) ->
-        let pref = resolver path in
-        { e with text =
-          Stateless (SL1 (Path path, { x with text = Variable pref })) }
     | Stateless (SL2 (Get, n, ({ text = Variable TupleUnknown ; _ } as x))) ->
         let pref =
           match E.int_of_const n with
@@ -540,7 +534,12 @@ let resolve_unknown_tuples params op =
     (* Set of fields known to come from in (to help prefix_smart): *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn })) ->
+      | Stateless (SL0 (Path [ Name n ])) ->
+          fields_from_in := Set.add n !fields_from_in
+      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                             { text = Variable tup }))
+        when tuple_has_type_input tup ->
+          let n = RamenName.field_of_string n in
           fields_from_in := Set.add n !fields_from_in
       | _ -> ()) op ;
     let fields =
@@ -653,11 +652,13 @@ let checked params op =
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Stateless (SL1 (Path (Name n :: _), { text = Variable TupleGroup ; _ })) ->
-        if not (RamenName.is_virtual n) then
-          Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
-            RamenName.field_print n |>
-          failwith
+      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                             { text = Variable TupleGroup ; _ })) ->
+          let n = RamenName.field_of_string n in
+          if not (RamenName.is_virtual n) then
+            Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
+              RamenName.field_print n |>
+            failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
     List.fold_left (fun prev_aliases sf ->
@@ -723,9 +724,9 @@ let checked params op =
       ) fields in
     iter_expr (fun _ e ->
       match e.E.text with
-      | Stateless (SL1 (
-            Path (Name n :: _),
-            { text = Variable TupleOutPrevious ; _ })) ->
+      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                             { text = Variable TupleOutPrevious ; _ })) ->
+          let n = RamenName.field_of_string n in
           if List.mem n generators then
             Printf.sprintf2 "Cannot use a generated output field %a"
               RamenName.field_print n |>
@@ -768,7 +769,7 @@ struct
       if String.length field = 0 || field.[0] <> '_' then field
       else String.lchop field in
     match e.E.text with
-    | Stateless (SL1 (Path [ Name name ], _))
+    | Stateless (SL0 (Path [ Name name ]))
       when not (RamenName.is_virtual name) ->
         force_public (name :> string)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
@@ -860,8 +861,8 @@ struct
               some selected_field)) m
 
   let event_time_start () =
-    let n = RamenName.field_of_string "start" in
-    E.make (Stateless (SL1 (Path [ Name n ], E.make (Variable TupleIn))))
+    E.make (Stateless (SL2 (Get, E.of_string "start",
+                                 E.make (Variable TupleIn))))
 
   let merge_clause m =
     let m = "merge clause" :: m in

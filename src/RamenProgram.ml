@@ -391,10 +391,10 @@ let common_fields_of_from get_parent start_name funcs from =
   ) None from |? Set.empty
 
 let reify_star_fields get_parent program_name funcs =
-  let input_field alias =
+  let input_field (alias : RamenName.field) =
     let expr =
-      let path = [ E.Name alias ] in
-      E.make (Stateless (SL1 (Path path, E.make (Variable TupleIn)))) in
+      let n = E.of_string (alias :> string) in
+      E.make (Stateless (SL2 (Get, n, E.make (Variable TupleIn)))) in
     O.{ expr ; alias ;
         (* Those two will be inferred later, with non-star fields
          * (See RamenTypingHelpers): *)

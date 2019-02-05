@@ -130,6 +130,15 @@ and stateless0 =
   | Random
   | EventStart
   | EventStop
+  (* Reach a sub-element from [t], directly, with no intermediary Gets.
+   * [t] can be a Variable, a literal Record, Vector or Tuple, or another
+   * Path.
+   * No Path is created at parse time. Only when compiling the function
+   * does the RamenFieldMaskLib.subst_deep_fields turn all input paths
+   * of that function (chains of Get expressions) into Path expressions ;
+   * only to be converted into a Binding in the environment once the
+   * typing is done. *)
+  | Path of path_comp list
   [@@ppp PPP_OCaml]
 
 and stateless1 =
@@ -162,12 +171,6 @@ and stateless1 =
   | Variant
   (* a LIKE operator using globs, infix *)
   | Like of string (* pattern (using %, _ and \) *)
-  (* Reach a sub-element from [t], directly, with no intermediary Gets.
-   * [t] can be a Variable, a literal Record, Vector or Tuple, or another
-   * Path.
-   * A chain of Gets will be collapsed into one Path when the intermediary
-   * objects have no representation (due to cherry-picking) *)
-  | Path of path_comp list
   [@@ppp PPP_OCaml]
 
 and stateless1s =
@@ -463,10 +466,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Char.print oc ')'
     | Vector es ->
         List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
-    | Stateless (SL1 (Path path, e)) ->
-        Printf.fprintf oc "%a.%a"
-          p e
-          print_path path
+    | Stateless (SL0 (Path path)) ->
+        Printf.fprintf oc "in.%a" print_path path
     | Variable pref ->
         Printf.fprintf oc "%s" (string_of_prefix pref)
     | Binding k ->
@@ -1340,12 +1341,6 @@ struct
         in
         let prev_field =
           match f.text with
-          | Stateless (SL1 (Path [ Name n ], { text = Variable pref ; _ })) ->
-              (* The only way to get a Path at this stage is to have entered
-               * a bare field name, which could be later found to belong to
-               * the out tuple. *)
-              let n = (n :> string) |> const_of_string in
-              subst_expr pref n
           | Stateless (SL2 (Get, n, { text = Variable pref ; _ })) ->
               subst_expr pref n
           | _ ->
@@ -1685,14 +1680,8 @@ let units_of_expr params units_of_input units_of_output =
     | Const v ->
         if T.(is_a_num (structure_of v)) then e.units
         else None
-    | Stateless (SL1 (Path [ Name n ], { text = Variable pref ; _ })) ->
-        if tuple_has_type_input pref then
-          units_of_input n
-        else if tuple_has_type_output pref then
-          units_of_output n
-        else if pref = TupleParam then
-          units_of_params n
-        else None
+    | Stateless (SL0 (Path [ Name n ])) -> (* Should not happen *)
+        units_of_input n
     | Case (cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
          * the same of unknown. *)
@@ -1738,15 +1727,10 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL2 (Get, e1, { text = Vector es ; _ })) ->
         Option.bind (int_of_const e1) (fun n ->
           List.at es n |> uoe ~indent)
-    | Stateless (SL1 (Path [ Int n ], { text = Vector es ; _ })) ->
-        List.at es n |> uoe ~indent
     | Stateless (SL2 (Get, n, { text = Tuple es ; _ })) ->
         (* Not super useful. FIXME: use the solver. *)
         let n = int_of_const n |>
                 option_get "Get from tuple must have const index" in
-        (try List.at es n |> uoe ~indent
-        with Invalid_argument _ -> None)
-    | Stateless (SL1 (Path [ Int n ], { text = Tuple es ; _ })) ->
         (try List.at es n |> uoe ~indent
         with Invalid_argument _ -> None)
     | Stateless (SL2 (Get, s, { text = Record kvs ; _ })) ->
@@ -1761,12 +1745,16 @@ let units_of_expr params units_of_input units_of_output =
             if k = s then Some v else None
           ) (kvs :> (string * t) list) |> uoe ~indent
         with Not_found -> None)
-    | Stateless (SL1 (Path [ Name s ], { text = Record kvs ; _ })) ->
-        (try
-          list_rfind_map (fun (k, v) ->
-            if k = s then Some v else None
-          ) kvs |> uoe ~indent
-        with Not_found -> None)
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable pref ; _ })) ->
+        let n = RamenName.field_of_string n in
+        if tuple_has_type_input pref then
+          units_of_input n
+        else if tuple_has_type_output pref then
+          units_of_output n
+        else if pref = TupleParam then
+          units_of_params n
+        else None
     | Stateless (SL2 (Percentile, _,
                       { text = Stateful (_, _, Last ( _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))

@@ -80,8 +80,7 @@ let rec paths_of_expression_rev =
             [], others
         | p, others ->
             add_get_name n p others)
-    | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
-      when tuple_has_type_input pref ->
+    | Stateless (SL0 (Path path)) ->
         (* As the expression is only useful for the leaf element we can
          * repeat it for each component of the path: *)
         List.rev_map (fun comp -> comp, e) path, []
@@ -205,9 +204,7 @@ let rec tree_of_path e = function
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
-  let root_expr =
-    E.make (Stateless (SL1 (Path [ Name (RamenName.field_of_string "in") ],
-                                 E.make (Variable TupleIn)))) in
+  let root_expr = E.make (Variable TupleIn) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -439,7 +436,7 @@ let subst_deep_fields in_type =
       Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
         E.string_of_const s = Some (n :> string)
     | path1,
-      Stateless (SL1 (Path path2, { text = Variable TupleIn ; _ })) ->
+      Stateless (SL0 (Path path2)) ->
         path1 = path2
     | E.Name n :: path',
         (* Here we assume that to deref a record one uses Get with a string
@@ -462,8 +459,8 @@ let subst_deep_fields in_type =
         !logger.debug "Substituting expression %a with Path %a"
           (E.print ~max_depth:2 false) e
           (List.print E.print_path_comp) path ;
-        { e with text =
-            Stateless (SL1 (Path path, E.make (Variable TupleIn))) })
+        (* This is where Path expressions are created: *)
+        { e with text = Stateless (SL0 (Path path)) })
 
 (* Return the fieldmask required to send out_typ to this operation: *)
 let fieldmask_of_operation ~out_typ op =

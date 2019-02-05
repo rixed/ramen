@@ -9,12 +9,16 @@ module O = RamenOperation
 open RamenLang
 
 (* Return the field alias in operation corresponding to the given input field: *)
-let forwarded_field operation field =
+let forwarded_field operation (field : RamenName.field) =
   match operation with
   | O.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
         match sf.O.expr.E.text with
-        | E.Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
+        | E.Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                                 { text = Variable TupleIn ; _ }))
+          when n = (field :> string) ->
+            Some sf.alias
+        | E.Stateless (SL0 (Path [ Name n ]))
           when n = field ->
             Some sf.alias
         | _ ->
@@ -82,7 +86,7 @@ let infer_field_doc_aggr func parents params =
         List.iter (function
         | O.{
             alias ; doc ; aggr ;
-            expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ })) ; _ }}
+            expr = E.{ text = Stateless (SL0 (Path [ Name n ])) ; _ }}
             when doc = "" || aggr = None ->
             (* Look for this field n in parent: *)
             let out_type = (List.hd parents).F.operation |>
@@ -93,9 +97,12 @@ let infer_field_doc_aggr func parents params =
                 if doc = "" then set_doc alias psf.doc ;
                 if aggr = None then set_aggr alias psf.aggr) ;
         | O.{
-            alias ; doc ; aggr ;
-            expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleParam ; _ })) ; _ }}
+            alias ; doc ; aggr ; expr = E.{
+              text = Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                                          { text = Variable TupleParam ; _ })) ;
+              _ } }
             when doc = "" || aggr = None ->
+            let n = RamenName.field_of_string n in
             (match List.find (fun param ->
                      param.RamenTuple.ptyp.name = n
                    ) params with

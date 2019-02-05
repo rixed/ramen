@@ -411,19 +411,6 @@ let emit_assert_same e oc id1 id2 =
   let name = expr_err e Err.Same in
   emit_assert ~name oc (fun oc -> emit_same id1 oc id2)
 
-let eq_to_out_type out_fields e oc path =
-  (* The type of an output path is taken from the out types. *)
-  match find_expr_of_path_in_selected_fields out_fields path with
-  | exception Not_found ->
-      Printf.sprintf2 "Unknown output path %a (out is %a)"
-        E.print_path path
-        (List.print (fun oc sf ->
-          RamenName.field_print oc sf.O.alias)) out_fields |>
-      failwith
-  | expr ->
-      emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr expr) ;
-      emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr expr)
-
 (* Look through the stack for the record this path is referring to. *)
 let locate_opened_record stack e path =
   !logger.info "Expr %a (path %a) supposed to be found in the environment"
@@ -486,27 +473,20 @@ let eq_to_opened_record stack e oc path =
 
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
-let emit_constraints tuple_sizes records field_names out_fields
+let emit_constraints tuple_sizes records field_names
                      in_type out_type param_type env_type oc stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
   emit_comment oc (IO.to_string (E.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e.E.text with
-  | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
-    when tuple_has_type_output pref ->
-      eq_to_out_type out_fields e oc path
-
-  | Stateless (SL1 (Path path, { text = Variable Record ; _ })) ->
-      eq_to_opened_record_field stack e oc path
-
-  | Stateless (SL1 (Path _, _)) ->
+  | Stateless (SL0 (Path _)) ->
       (* Input paths have been specified already in [emit_in_types]. *)
       ()
 
   | Variable Record ->
       (* This expression must be equated to the actual record expression
        * that we could find in the stack, shall we know the field name...
-       * So only Get or Path can do that. *)
+       * So only Get can do that. *)
       ()
 
   | Variable pref ->
@@ -1409,7 +1389,7 @@ let emit_running_condition declare tuple_sizes records field_names
   emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr e) oc TBool ;
   emit_assert_is_false ~name oc (n_of_expr e) ;
   E.iter (
-    emit_constraints tuple_sizes records field_names []
+    emit_constraints tuple_sizes records field_names
                      None None param_type env_type oc
   ) e
 
@@ -1420,9 +1400,9 @@ let emit_operation declare tuple_sizes records field_names
   O.iter_expr (fun _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
-  | Aggregate { fields ; where ; notifications ; commit_cond ; _ } ->
+  | Aggregate { where ; notifications ; commit_cond ; _ } ->
       O.iter_expr (
-        emit_constraints tuple_sizes records field_names fields
+        emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type oc
       ) op ;
       (* Typing rules:
@@ -1448,7 +1428,7 @@ let emit_operation declare tuple_sizes records field_names
 
   | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
       O.iter_expr (
-        emit_constraints tuple_sizes records field_names []
+        emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type oc
       ) op ;
       Option.may (fun p ->
@@ -1617,7 +1597,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   !logger.debug "Emitting SMT2 for input types, with field names = %a"
     (Hashtbl.print RamenName.field_print Int.print) field_names ;
   (* Build the input type of each func by collecting all the Get(name, x) or
-   * Path(x, name) where x is input-like. Then also build the type of the
+   * Path(path) where x is input-like. Then also build the type of the
    * params and env records.
    * Build a record type for each of those and return it. *)
   let in_fields = Hashtbl.create 10
@@ -1786,8 +1766,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
         register_io ?func what e prefix [ Name (RamenName.field_of_string s) ]
-    | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
-        register_io ?func what e pref path
+    | Stateless (SL0 (Path path)) ->
+        register_io ?func what e TupleIn path
     | _ -> ()
   ) condition funcs ;
   (* For param_fields, env_fields and each function in in_fields, declare
@@ -2095,8 +2075,6 @@ let used_tuples_records funcs parents =
          * well, so here is our chance to learn about them. Since we don't
          * know the length of those records before the end of the loop,
          * just remember the field names: *)
-        | Stateless (SL1 (Path path, { text = Variable tuple ; _ })) ->
-            register_param_or_env tuple (E.id_of_path path)
         | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
                                { text = Variable tuple ; _ })) ->
             register_param_or_env tuple (RamenName.field_of_string name)
