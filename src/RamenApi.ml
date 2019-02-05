@@ -224,6 +224,10 @@ let group_keys_of_operation = function
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
+          | Stateless (SL0 (Path [ E.Name n ]))
+            when n <> RamenName.field_of_string "start" &&
+                 n <> RamenName.field_of_string "stop" ->
+              Some (TupleIn, n)
           | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                  { text = Variable pref ; _ }))
             when n <> "start" && n <> "stop" ->
@@ -232,6 +236,9 @@ let group_keys_of_operation = function
         ) key in
       List.filter_map (fun sf ->
         match sf.O.expr.text with
+        | Stateless (SL0 (Path [ E.Name n ]))
+          when List.mem (TupleIn, n) simple_keys ->
+            Some sf.alias
         | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                { text = Variable pref ; _ }))
           when List.mem (pref, RamenName.field_of_string n) simple_keys ->
