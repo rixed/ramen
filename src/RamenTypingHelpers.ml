@@ -13,8 +13,8 @@ let forwarded_field operation field =
   | RamenOperation.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
         match sf.RamenOperation.expr.E.text with
-        | E.Stateless (SL1 (Path [ Name s ], { text = Variable TupleIn ; _ }))
-          when RamenName.field_of_string s = field ->
+        | E.Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
+          when n = field ->
             Some sf.alias
         | _ ->
             None
@@ -81,24 +81,22 @@ let infer_field_doc_aggr func parents params =
         List.iter (function
         | RamenOperation.{
             alias ; doc ; aggr ;
-            expr = E.{ text = Stateless (SL1 (Path [ Name s ], { text = Variable TupleIn ; _ })) ; _ }}
+            expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ })) ; _ }}
             when doc = "" || aggr = None ->
-            let fn = RamenName.field_of_string s in
-            (* Look for this field fn in parent: *)
+            (* Look for this field n in parent: *)
             let out_type = (List.hd parents).F.operation |>
                            RamenOperation.out_type_of_operation in
-            (match List.find (fun ft -> ft.RamenTuple.name = fn) out_type with
+            (match List.find (fun ft -> ft.RamenTuple.name = n) out_type with
             | exception Not_found -> ()
             | psf ->
                 if doc = "" then set_doc alias psf.doc ;
                 if aggr = None then set_aggr alias psf.aggr) ;
         | RamenOperation.{
             alias ; doc ; aggr ;
-            expr = E.{ text = Stateless (SL1 (Path [ Name s ], { text = Variable TupleParam ; _ })) ; _ }}
+            expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleParam ; _ })) ; _ }}
             when doc = "" || aggr = None ->
-            let fn = RamenName.field_of_string s in
             (match List.find (fun param ->
-                     param.RamenTuple.ptyp.name = fn
+                     param.RamenTuple.ptyp.name = n
                    ) params with
             | exception Not_found -> ()
             | param ->

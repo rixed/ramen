@@ -41,7 +41,7 @@ let path_comp_of_constant_expr e =
       | Some i -> E.Int i
       | None ->
           (match E.string_of_const e with
-          | Some n -> E.Name n
+          | Some n -> E.Name (RamenName.field_of_string n)
           | None -> fail ()))
   | _ -> fail ()
 
@@ -104,13 +104,15 @@ and paths_of_expression e =
     List.map fst t, List.map (List.map fst) o
  *)
 (*$= paths_of_expression & ~printer:string_of_paths_
-  ([ E.Name "foo" ], []) \
+  ([ E.Name (RamenName.field_of_string "foo") ], []) \
     (RamenExpr.parse "in.foo" |> paths_of_expression |> strip_expr)
-  ([ E.Name "foo" ; E.Int 3 ], []) \
+  ([ E.Name (RamenName.field_of_string "foo") ; E.Int 3 ], []) \
     (RamenExpr.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name "foo" ; E.Name "bar" ], []) \
+  ([ E.Name (RamenName.field_of_string "foo") ; \
+     E.Name (RamenName.field_of_string "bar") ], []) \
     (RamenExpr.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name "foo" ], [ [ E.Name "some_index" ; E.Int 2 ] ]) \
+  ([ E.Name (RamenName.field_of_string "foo") ], \
+     [ [ E.Name (RamenName.field_of_string "some_index") ; E.Int 2 ] ]) \
     (RamenExpr.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (RamenExpr.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
@@ -194,13 +196,16 @@ let rec merge_tree t1 t2 =
 
 let rec tree_of_path e = function
   | [] -> Leaf e
-  | (E.Name n, e) :: p -> Subfields (Map.String.singleton n (tree_of_path e p))
-  | (E.Int i, e) :: p -> Indices (Map.Int.singleton i (tree_of_path e p))
+  | (E.Name n, e) :: p ->
+      Subfields (Map.String.singleton (RamenName.string_of_field n) (tree_of_path e p))
+  | (E.Int i, e) :: p ->
+      Indices (Map.Int.singleton i (tree_of_path e p))
 
 let tree_of_paths ps =
   (* Return the tree of all input access paths mentioned: *)
   let root_expr =
-    E.make (Stateless (SL1 (Path [ Name "in" ], E.make (Variable TupleIn)))) in
+    E.make (Stateless (SL1 (Path [ Name (RamenName.field_of_string "in") ],
+                                 E.make (Variable TupleIn)))) in
   List.fold_left (fun t p ->
     merge_tree t (tree_of_path root_expr p)
   ) Empty ps
@@ -240,7 +245,9 @@ let fold_tree u f t =
         (* Note: Map will fold the keys in increasing order: *)
         Map.Int.fold (fun i t u -> loop u (E.Int i :: p) t) m u
     | Subfields m ->
-        Map.String.fold (fun n t u -> loop u (E.Name n :: p) t) m u in
+        Map.String.fold (fun n t u ->
+          loop u (E.Name (RamenName.field_of_string n) :: p) t
+        ) m u in
   loop u [] t
 
 (* Given the type of the parent output and the tree of paths used in the
@@ -389,12 +396,14 @@ let find_type_of_path parent_out path =
             invalid ())
     | E.Name n :: rest ->
         let invalid () =
-          Printf.sprintf2 "Invalid subfield %S into %a"
-            n RamenTypes.print_typ typ |>
+          Printf.sprintf2 "Invalid subfield %a into %a"
+            RamenName.field_print n
+            RamenTypes.print_typ typ |>
           failwith in
         (match typ.structure with
         | TRecord ts ->
-            (match array_rfind (fun (k, _) -> k = n) ts with
+            (match array_rfind (fun (k, _) ->
+              k = RamenName.string_of_field n) ts with
             | exception Not_found -> invalid ()
             | _, t -> locate_type t rest)
         | _ -> invalid ())
@@ -403,12 +412,11 @@ let find_type_of_path parent_out path =
   match path with
   | [] ->
       invalid_arg "find_type_of_path: empty path"
-  | E.Name name :: rest ->
-      let name = RamenName.field_of_string name in
-      (match List.find (fun ft -> ft.RamenTuple.name = name) parent_out with
+  | E.Name n :: rest ->
+      (match List.find (fun ft -> ft.RamenTuple.name = n) parent_out with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in %a"
-            RamenName.field_print name
+            RamenName.field_print n
             RamenTuple.print_typ parent_out |>
           failwith
       | ft ->
@@ -427,7 +435,7 @@ let subst_deep_fields in_type =
     match path, e.E.text with
     | [ E.Name n ],
       Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
-        E.string_of_const s = Some n
+        E.string_of_const s = Some (RamenName.string_of_field n)
     | path1,
       Stateless (SL1 (Path path2, { text = Variable TupleIn ; _ })) ->
         path1 = path2
@@ -435,7 +443,8 @@ let subst_deep_fields in_type =
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
         Stateless (SL2 (Get, s, e')) ->
-          E.string_of_const s = Some n && matches_expr path' e'
+          E.string_of_const s = Some (RamenName.string_of_field n) &&
+          matches_expr path' e'
     | E.Int i :: path',
         Stateless (SL2 (Get, n, e')) ->
           E.int_of_const n = Some i && matches_expr path' e'

@@ -395,7 +395,7 @@ let reify_star_fields get_parent program_name funcs =
   let open RamenOperation in
   let input_field alias =
     let expr =
-      let path = [ E.Name (RamenName.string_of_field alias) ] in
+      let path = [ E.Name alias ] in
       E.make (Stateless (SL1 (Path path, E.make (Variable TupleIn)))) in
     { expr ; alias ;
       (* Those two will be inferred later, with non-star fields

@@ -182,8 +182,7 @@ let compile conf get_parent ~exec_file source_file program_name =
               (* We won't manage to propagate units from a parent deep
                * fields. TBD when we have proper records, done with
                * RamenTuple.typ and units is part of RamenTypes.t. *)
-              f.RamenFieldMaskLib.path =
-                [ Name (RamenName.string_of_field field) ]
+              f.RamenFieldMaskLib.path = [ Name field ]
             ) typ with
       | exception Not_found ->
           !logger.warning "Cannot find field %a in %a"

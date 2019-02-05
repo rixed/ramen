@@ -86,10 +86,10 @@ let rec find_type_of_path_in_typ typ path =
     failwith in
   match path with
   | [] -> typ
-  | E.Name field :: rest ->
+  | E.Name n :: rest ->
       (match typ.T.structure with
       | T.TRecord kts ->
-          let _, t = Array.find (fun (k, _) -> k = field) kts in
+          let _, t = Array.find (fun (k, _) -> k = RamenName.string_of_field n) kts in
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
@@ -116,10 +116,10 @@ let rec find_type_of_path_in_typ typ path =
 
 let find_type_of_path_in_tuple_typ tuple_typ = function
   | [] -> assert false
-  | E.Name field :: rest ->
+  | E.Name n :: rest ->
       let fld =
         List.find (fun fld ->
-          RamenName.string_of_field fld.RamenTuple.name = field
+          fld.RamenTuple.name = n
         ) tuple_typ in
       find_type_of_path_in_typ fld.RamenTuple.typ rest
   | E.Int _ :: _ ->
@@ -134,10 +134,10 @@ let rec find_expr_of_path e path =
   in
   match path with
   | [] -> e
-  | E.Name field :: rest ->
+  | E.Name n :: rest ->
       (match e.E.text with
       | E.Record kvs ->
-          let _, e = List.find (fun (k, _) -> RamenName.string_of_field k = field) kvs in
+          let _, e = List.find (fun (k, _) -> k = n) kvs in
           find_expr_of_path e rest
       | _ ->
           invalid_path ())
@@ -153,9 +153,9 @@ let rec find_expr_of_path e path =
 
 let find_expr_of_path_in_selected_fields fields = function
   | [] -> assert false
-  | E.Name field :: rest ->
+  | E.Name n :: rest ->
       let sf = List.find (fun sf ->
-        RamenName.string_of_field sf.RamenOperation.alias = field) fields in
+        sf.RamenOperation.alias = n) fields in
       find_expr_of_path sf.RamenOperation.expr rest
   | E.Int _ :: _ ->
       failwith "Cannot address input with an index (yet)"
@@ -431,18 +431,17 @@ let eq_to_opened_record stack e oc path =
     (E.print ~max_depth:2 false) e
     E.print_path path ;
   match path with
-  | E.Name s :: path' ->
-      let field = RamenName.field_of_string s in
+  | E.Name n :: path' ->
       (match List.find_map (fun e ->
               match e.E.text with
               | Record kvs ->
-                  (try Some (List.find (fun (k, _) -> k = field) kvs)
+                  (try Some (List.find (fun (k, _) -> k = n) kvs)
                   with Not_found -> None)
               | _ -> None
             ) stack with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in scope (%a)"
-            RamenName.field_print field
+            RamenName.field_print n
             (pretty_list_print (E.print ~max_depth:1 false)) stack |>
           failwith
       | field_name, field_expr ->
@@ -1513,7 +1512,7 @@ let id_or_type_of_field op path =
     (* In the future, when [path] does have several components, look through
      * all of them in turn in the TRecords as we do with the external parents *)
     let field =
-      match path with [ E.Name n ] -> RamenName.field_of_string n
+      match path with [ E.Name n ] -> n
       | _ ->
           Printf.sprintf2 "Cherry-picking (%a) in well-known types (%s) is \
                            not supported"
@@ -1636,7 +1635,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         register_input env_fields None path e
     | TupleParam ->
         let field =
-          match path with [ E.Name s ] -> RamenName.field_of_string s
+          match path with [ E.Name n ] -> n
           | _ -> failwith "Cherry-picking from parameters not supported" in
         (match RamenTuple.params_find field params with
         | exception Not_found ->
@@ -1760,7 +1759,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     match e.E.text with
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
-        register_io ?func what e prefix [ Name s ]
+        register_io ?func what e prefix [ Name (RamenName.field_of_string s) ]
     | Stateless (SL1 (Path path, { text = Variable pref ; _ })) ->
         register_io ?func what e pref path
     | _ -> ()

@@ -35,8 +35,8 @@ type selected_field =
 let print_selected_field with_types oc f =
   let need_alias =
     match f.expr.text with
-    | Stateless (SL1 (Path [ Name name ], { text = Variable TupleIn ; _ }))
-      when f.alias = RamenName.field_of_string name -> false
+    | Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
+      when f.alias = n -> false
     | _ -> true in
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
@@ -448,8 +448,8 @@ let prefix_def params def e =
     | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
         let pref =
           match path with
-          | Name s :: _
-            when RamenTuple.params_mem (RamenName.field_of_string s) params ->
+          | Name n :: _
+            when RamenTuple.params_mem n params ->
               TupleParam
           | _ -> def
         in
@@ -476,8 +476,7 @@ let resolve_unknown_tuples params op =
             Printf.sprintf2 "Cannot resolve unknown path %a"
               E.print_path path |>
             failwith
-        | E.Name name :: _ ->
-            let name = RamenName.field_of_string name in
+        | E.Name n :: _ ->
             (* First, lookup for an opened record: *)
             if List.exists (fun e ->
                  match e.E.text with
@@ -485,7 +484,7 @@ let resolve_unknown_tuples params op =
                      (* Notice that we look into _all_ fields, not only the
                       * ones defined previously. Not sure if better or
                       * worse. *)
-                     List.exists (fun (k, _) -> k = name) kvs
+                     List.exists (fun (k, _) -> k = n) kvs
                  | _ -> false
                ) stack
             then (
@@ -493,23 +492,23 @@ let resolve_unknown_tuples params op =
                * That's much safer to look it up again whenever we need it,
                * so that we are free to map the AST. *)
               !logger.debug "Field %a though to belong to an opened record"
-                RamenName.field_print name ;
+                RamenName.field_print n ;
               E.make (Stateless (SL1 (Path path, E.make (Variable Record))))
             ) else (
               let pref =
                 (* Look into predefined records: *)
-                if RamenTuple.params_mem name params then
+                if RamenTuple.params_mem n params then
                   TupleParam
-                else if Set.mem name !fields_from_in then
+                else if Set.mem n !fields_from_in then
                   TupleIn
-                else if is_selected_fields ?i name then
+                else if is_selected_fields ?i n then
                   TupleOut
                 else (
-                  fields_from_in := Set.add name !fields_from_in ;
+                  fields_from_in := Set.add n !fields_from_in ;
                   TupleIn
                 ) in
               !logger.debug "Field %a thought to belong to %s"
-                RamenName.field_print name
+                RamenName.field_print n
                 (string_of_prefix pref) ;
               E.make (Stateless (SL1 (Path path, E.make (Variable pref))))
             ) in
@@ -528,9 +527,8 @@ let resolve_unknown_tuples params op =
     (* Set of fields known to come from in (to help prefix_smart): *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Stateless (SL1 (Path [ Name s ], { text = Variable TupleIn })) ->
-          let name = RamenName.field_of_string s in
-          fields_from_in := Set.add name !fields_from_in
+      | Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn })) ->
+          fields_from_in := Set.add n !fields_from_in
       | _ -> ()) op ;
     let fields =
       List.mapi (fun i sf ->
@@ -642,11 +640,10 @@ let checked params op =
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (fun _ e ->
       match e.E.text with
-      | Stateless (SL1 (Path (Name name :: _), { text = Variable TupleGroup ; _ })) ->
-        let name = RamenName.field_of_string name in
-        if not (RamenName.is_virtual name) then
+      | Stateless (SL1 (Path (Name n :: _), { text = Variable TupleGroup ; _ })) ->
+        if not (RamenName.is_virtual n) then
           Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
-            RamenName.field_print name |>
+            RamenName.field_print n |>
           failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
@@ -714,12 +711,11 @@ let checked params op =
     iter_expr (fun _ e ->
       match e.E.text with
       | Stateless (SL1 (
-            Path (Name name :: _),
+            Path (Name n :: _),
             { text = Variable TupleOutPrevious ; _ })) ->
-          let name = RamenName.field_of_string name in
-          if List.mem name generators then
+          if List.mem n generators then
             Printf.sprintf2 "Cannot use a generated output field %a"
-              RamenName.field_print name |>
+              RamenName.field_print n |>
             failwith
       | _ -> ()
     ) op
@@ -822,7 +818,8 @@ struct
 
   let event_time_start () =
     let open RamenExpr in
-    E.make (Stateless (SL1 (Path [ Name "start" ], E.make (Variable TupleIn))))
+    let n = RamenName.field_of_string "start" in
+    E.make (Stateless (SL1 (Path [ Name n ], E.make (Variable TupleIn))))
 
   let merge_clause m =
     let m = "merge clause" :: m in

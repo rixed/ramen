@@ -336,7 +336,7 @@ and binding_key =
   | Direct of string
   [@@ppp PPP_OCaml]
 
-and path_comp = Int of int | Name of string
+and path_comp = Int of int | Name of RamenName.field
   [@@ppp PPP_OCaml]
 
 let print_binding_key oc = function
@@ -353,7 +353,7 @@ let print_binding_key oc = function
 
 let print_path_comp oc = function
   | Int i -> Printf.fprintf oc "[%d]" i
-  | Name n -> String.print oc n
+  | Name n -> RamenName.field_print oc n
 
 let print_path oc =
   List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
@@ -363,7 +363,7 @@ let id_of_path p =
     id ^(
       match p with
       | Int i -> "["^ string_of_int i ^"]"
-      | Name s -> if id = "" then s else "."^ s)
+      | Name s -> (if id = "" then "" else ".")^ RamenName.string_of_field s)
   ) "" p |>
   RamenName.field_of_string
 
@@ -895,16 +895,18 @@ struct
       (* Avoid accepting "in" and friends as a field name, to let it be a
        * variable. *)
       (nay parse_prefix -+ non_keyword) >>:
-      fun field ->
-        make (Stateless (SL1 (Path [ Name field ], make (Variable TupleUnknown))))
+      fun n ->
+        let n = RamenName.field_of_string n in
+        make (Stateless (SL1 (Path [ Name n ], make (Variable TupleUnknown))))
     ) m
 
   let param m =
     let m = "parameter" :: m in
     (
       non_keyword >>:
-      fun p ->
-        make (Stateless (SL1 (Path [ Name p ], make (Variable TupleParam))))
+      fun n ->
+        let n = RamenName.field_of_string n in
+        make (Stateless (SL1 (Path [ Name n ], make (Variable TupleParam))))
     ) m
 
   (*$= param & ~printer:BatPervasives.identity
@@ -917,8 +919,8 @@ struct
       else String.lchop field in
     match e.text with
     | Stateless (SL1 (Path [ Name name ], _))
-      when not RamenName.(is_virtual (field_of_string name)) ->
-        force_public name
+      when not (RamenName.is_virtual name) ->
+        force_public (RamenName.string_of_field name)
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
     | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
@@ -1356,9 +1358,12 @@ struct
         in
         let prev_field =
           match f.text with
-          | Stateless (SL1 (Path [ Name f_name ], ({ text = Variable pref ; _ } as x))) ->
-              (* The only way to get a Path at this stage is to have entered a bare field name, which could be later found to belong to the out tuple. *)
-              subst_expr pref (const_of_string f_name) x
+          | Stateless (SL1 (Path [ Name n ], ({ text = Variable pref ; _ } as x))) ->
+              (* The only way to get a Path at this stage is to have entered
+               * a bare field name, which could be later found to belong to
+               * the out tuple. *)
+              let n = RamenName.string_of_field n |> const_of_string in
+              subst_expr pref n x
           | Stateless (SL2 (Get, n, ({ text = Variable pref ; _ } as x))) ->
               subst_expr pref n x
           | _ ->
@@ -1698,14 +1703,13 @@ let units_of_expr params units_of_input units_of_output =
     | Const v ->
         if T.(is_a_num (structure_of v)) then e.units
         else None
-    | Stateless (SL1 (Path [ Name s ], { text = Variable pref ; _ })) ->
-        let name = RamenName.field_of_string s in
+    | Stateless (SL1 (Path [ Name n ], { text = Variable pref ; _ })) ->
         if tuple_has_type_input pref then
-          units_of_input name
+          units_of_input n
         else if tuple_has_type_output pref then
-          units_of_output name
+          units_of_output n
         else if pref = TupleParam then
-          units_of_params name
+          units_of_params n
         else None
     | Case (cas, else_opt) ->
         (* We merely check that the units of the alternatives are either
@@ -1778,7 +1782,7 @@ let units_of_expr params units_of_input units_of_output =
     | Stateless (SL1 (Path [ Name s ], { text = Record kvs ; _ })) ->
         (try
           list_rfind_map (fun (k, v) ->
-            if RamenName.string_of_field k = s then Some v else None
+            if k = s then Some v else None
           ) kvs |> uoe ~indent
         with Not_found -> None)
     | Stateless (SL2 (Percentile, _,

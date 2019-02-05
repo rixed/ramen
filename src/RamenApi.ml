@@ -224,20 +224,22 @@ let group_keys_of_operation =
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
-          | Stateless (SL1 (Path [ E.Name name ], { text = Variable pref ; _ }))
-          | Stateless (SL2 (Get, { text = Const (VString name) ; _ }, { text = Variable pref ; _ }))
-            when
-              name <> "start" &&
-              name <> "stop" ->
-              Some (pref, RamenName.field_of_string name)
+          | Stateless (SL1 (Path [ E.Name n ], { text = Variable pref ; _ }))
+            when n <> RamenName.field_of_string "start" &&
+                 n <> RamenName.field_of_string "stop" ->
+              Some (pref, n)
+          | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, { text = Variable pref ; _ }))
+            when n <> "start" && n <> "stop" ->
+              Some (pref, RamenName.field_of_string n)
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
         match sf.expr.text with
-        | Stateless (SL1 (Path [ E.Name name ], { text = Variable pref ; _ }))
-        | Stateless (SL2 (Get, { text = Const (VString name) ; _ }, { text = Variable pref ; _ }))
-          when
-            List.mem (pref, RamenName.field_of_string name) simple_keys ->
+        | Stateless (SL1 (Path [ E.Name n ], { text = Variable pref ; _ }))
+          when List.mem (pref, n) simple_keys ->
+            Some sf.alias
+        | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, { text = Variable pref ; _ }))
+          when List.mem (pref, RamenName.field_of_string n) simple_keys ->
             Some sf.alias
         | _ -> None
       ) fields
