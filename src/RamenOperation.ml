@@ -755,7 +755,7 @@ let checked params op =
   | Instrumentation _ | Notifications _ -> ()) ;
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
-  iter_expr (fun _ e -> RamenExpr.check e) op ;
+  iter_expr (fun _ e -> E.check e) op ;
   op
 
 module Parser =
@@ -860,7 +860,6 @@ struct
               some selected_field)) m
 
   let event_time_start () =
-    let open RamenExpr in
     let n = RamenName.field_of_string "start" in
     E.make (Stateless (SL1 (Path [ Name n ], E.make (Variable TupleIn))))
 

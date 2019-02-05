@@ -12,6 +12,8 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
+module O = RamenOperation
+module T = RamenTypes
 
 (* To help the client to make sense of the error we distinguish between those
  * kind of errors: *)
@@ -135,7 +137,7 @@ let get_tables conf msg =
           List.iter (fun f ->
             let fqn = (F.fq_name f :> string)
             and event_time =
-              RamenOperation.event_time_of_operation f.F.operation in
+              O.event_time_of_operation f.F.operation in
             if event_time <> None && String.starts_with fqn req.prefix
             then Hashtbl.add tables fqn f.F.doc
           ) prog.P.funcs
@@ -217,10 +219,8 @@ let string_of_ext_type = function
 (* We look for all keys which are simple fields (but not start/stop), then look
  * for an output field forwarding that field, and return its name (in theory
  * not only fields but any expression yielding the same results.) *)
-let group_keys_of_operation =
-  let open RamenOperation in
-  function
-  | Aggregate { fields ; key ; _ } ->
+let group_keys_of_operation = function
+  | O.Aggregate { fields ; key ; _ } ->
       let simple_keys =
         List.filter_map (fun e ->
           match e.E.text with
@@ -234,7 +234,7 @@ let group_keys_of_operation =
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
-        match sf.expr.text with
+        match sf.O.expr.text with
         | Stateless (SL1 (Path [ E.Name n ], { text = Variable pref ; _ }))
           when List.mem (pref, n) simple_keys ->
             Some sf.alias
@@ -285,13 +285,13 @@ let units_of_column ft =
 let columns_of_func conf func =
   let h = Hashtbl.create 11 in
   let group_keys = group_keys_of_operation func.F.operation in
-  RamenOperation.out_type_of_operation func.F.operation |>
+  O.out_type_of_operation func.F.operation |>
   List.iter (fun ft ->
     if not (RamenName.is_private ft.RamenTuple.name) then
       let type_ = ext_type_of_typ ft.typ.structure in
       if type_ <> Other then
         let factors =
-          RamenOperation.factors_of_operation func.operation in
+          O.factors_of_operation func.operation in
         Hashtbl.add h ft.name {
           type_ = string_of_ext_type type_ ;
           units = units_of_column ft ;
@@ -400,7 +400,7 @@ let get_timeseries conf msg =
           let open RamenSerialization in
           try
             let out_type =
-              RamenOperation.out_type_of_operation func.F.operation in
+              O.out_type_of_operation func.F.operation in
             let _, ftyp = find_field out_type where.lhs in
             let v = value_of_string ftyp.typ where.rhs in
             (where.lhs, where.op, v) :: filters
@@ -420,7 +420,7 @@ let get_timeseries conf msg =
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =
-      Array.map (Array.map RamenTypes.to_string) column_labels in
+      Array.map (Array.map T.to_string) column_labels in
     let column_values = Array.create num_points [||] in
     Hashtbl.add values table { column_labels ; column_values } ;
     Enum.iteri (fun ti (t, data) ->
@@ -494,7 +494,7 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table programs table in
   try
-    RamenOperation.out_type_of_operation func.F.operation |>
+    O.out_type_of_operation func.F.operation |>
     List.find (fun t -> t.name = column)
   with Not_found ->
     Printf.sprintf "No column %s in table %s"
@@ -534,7 +534,7 @@ let generate_alert programs src_file (V1 { table ; column ; alert = a }) =
           let v = RamenSerialization.value_of_string ft.RamenTuple.typ w.rhs in
           Printf.fprintf oc "(%s %s %a)"
             (ramen_quote (w.lhs :> string)) w.op
-            RamenTypes.print v)
+            T.print v)
         oc filter
     and default_aggr_of_field fn =
       let ft = field_typ_of_column programs table fn in
@@ -728,7 +728,7 @@ let set_alerts conf msg =
             bad_request ;
           (* Also check that table has event time info: *)
           let func = func_of_table programs table in
-          if RamenOperation.event_time_of_operation func.F.operation = None
+          if O.event_time_of_operation func.F.operation = None
           then
             Printf.sprintf "Table %s has no event time information" table |>
             bad_request) ;

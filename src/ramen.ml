@@ -6,6 +6,7 @@ open Cmdliner
 open Batteries
 open RamenHelpers
 open RamenConsts
+module T = RamenTypes
 
 (*
  * Common options
@@ -337,13 +338,13 @@ let assignment =
                 sign (=), followed by the value.")
     | pname, pval ->
         let what = "value of command line parameter "^ pname in
-        (match RamenTypes.of_string ~what pval with
+        (match T.of_string ~what pval with
         | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt ((pname : RamenName.field), pval) =
     Format.fprintf fmt "%s=%s"
       (pname :> string)
-      (RamenTypes.to_string pval)
+      (T.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
 
@@ -541,14 +542,14 @@ let filter =
                 (=, <=, <, >, >=, etc), followed by the value.")
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
-        (match RamenTypes.of_string ~what pval with
+        (match T.of_string ~what pval with
         | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, op, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
   and print fmt ((pname : RamenName.field), op, pval) =
     Format.fprintf fmt "%s%s%s"
       (pname :> string)
       op
-      (RamenTypes.to_string pval)
+      (T.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER[=|>|<|>=|<=]VALUE" (parse, print)
 

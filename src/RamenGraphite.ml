@@ -23,12 +23,14 @@ open RamenHttpHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
+module T = RamenTypes
 
 type comp_section =
   | ProgPath
   | OpName of F.t
   | FactorAll of RamenName.field
-  | FactorValue of (RamenName.field * RamenTypes.value)
+  | FactorValue of (RamenName.field * T.value)
 (*  | FactorIgnore TODO *)
   | DataField of RamenName.field
 
@@ -97,14 +99,14 @@ let inverted_tree_of_programs
     let rec loop_data_field prev flt_idx operation =
       if end_of_filters flt_idx then Enum.singleton prev else
       let factors =
-        RamenOperation.factors_of_operation operation in
+        O.factors_of_operation operation in
       let ser =
-        RamenOperation.out_type_of_operation operation |>
+        O.out_type_of_operation operation |>
         RingBufLib.ser_tuple_typ_of_tuple_typ in
       (* TODO: sort alphabetically (only the remaining fields!) *)
       List.enum ser //@ (fun ft ->
         if (not only_num_fields ||
-            RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
+            T.is_a_num ft.RamenTuple.typ.structure) &&
            not (List.mem ft.RamenTuple.name factors)
         then
           let value = (ft.RamenTuple.name :> string) in
@@ -135,7 +137,7 @@ let inverted_tree_of_programs
                 else Set.empty
               else
                 Set.filter_map (fun v ->
-                  let value = RamenTypes.to_string ~quoting:false v in
+                  let value = T.to_string ~quoting:false v in
                   if filters_match flt_idx value then
                     Some { value ; section = FactorValue (factor, v) }
                   else None
@@ -159,7 +161,7 @@ let inverted_tree_of_programs
             if only_with_event_time then
               List.enum prog.P.funcs //
               (fun func ->
-                RamenOperation.event_time_of_operation func.F.operation <>
+                O.event_time_of_operation func.F.operation <>
                   None)
             else
               List.enum prog.P.funcs in
@@ -168,7 +170,7 @@ let inverted_tree_of_programs
             if filters_match flt_idx value then
               let comp = { value ; section = OpName func } in
               let factors =
-                RamenOperation.factors_of_operation func.F.operation in
+                O.factors_of_operation func.F.operation in
               loop_factor (comp :: prev) (flt_idx + 1) func factors else
             Enum.empty ()) |> Enum.flatten
     (* Loop over all path components of the program name: *)
@@ -513,7 +515,7 @@ let render conf headers body =
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
             Printf.fprintf oc "%a=%a"
               RamenName.field_print n
-              RamenTypes.print v))
+              T.print v))
             (List.filter (fun (fact_name, _fact_val) ->
               Set.mem fact_name with_factors
              ) target) in

@@ -7,10 +7,11 @@
  *)
 open Batteries
 open RamenHelpers
+module T = RamenTypes
 
 type field_typ =
   { mutable name : RamenName.field ;
-    mutable typ : RamenTypes.t ;
+    mutable typ : T.t ;
     mutable units : RamenUnits.t option ;
     mutable doc : string ;
     mutable aggr : string option ;
@@ -20,21 +21,21 @@ type field_typ =
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = RamenName.field_of_string "Seq" ;
-    typ = RamenTypes.{ structure = TU64 ; nullable = false } ;
+    typ = T.{ structure = TU64 ; nullable = false } ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
   { name = RamenName.field_of_string "Event start" ;
-    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    typ = T.{ structure = TFloat ; nullable = true } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
   { name = RamenName.field_of_string "Event stop" ;
-    typ = RamenTypes.{ structure = TFloat ; nullable = true } ;
+    typ = T.{ structure = TFloat ; nullable = true } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
     aggr = Some "max" }
@@ -45,7 +46,7 @@ type typ = field_typ list [@@ppp PPP_OCaml]
 let print_field_typ oc field =
   Printf.fprintf oc "%a %a"
     RamenName.field_print field.name
-    RamenTypes.print_typ field.typ ;
+    T.print_typ field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
 let print_typ oc =
@@ -59,7 +60,7 @@ let print_typ_names oc =
 (* Params form a special tuple with fixed values: *)
 
 type param =
-  { ptyp : field_typ ; value : RamenTypes.value }
+  { ptyp : field_typ ; value : T.value }
   [@@ppp PPP_OCaml]
 
 type params = param list [@@ppp PPP_OCaml]
@@ -67,7 +68,7 @@ type params = param list [@@ppp PPP_OCaml]
 let print_param oc p =
   Printf.fprintf oc "%a=%a"
     RamenName.field_print p.ptyp.name
-    RamenTypes.print p.value
+    T.print p.value
 
 let print_params oc =
   List.print (fun oc p -> print_param oc p) oc
@@ -92,7 +93,7 @@ let type_signature =
     else
       (if s = "" then "" else s ^ "_") ^
       (ft.name :> string) ^ ":" ^
-      RamenTypes.string_of_typ ft.typ
+      T.string_of_typ ft.typ
   ) ""
 
 let params_type_signature =
@@ -143,7 +144,7 @@ struct
   let field m =
     let m = "field declaration" :: m in
     (
-      non_keyword +- blanks ++ RamenTypes.Parser.typ ++
+      non_keyword +- blanks ++ T.Parser.typ ++
       optional ~def:None (opt_blanks -+ some RamenUnits.Parser.p) ++
       optional ~def:"" (opt_blanks -+ quoted_string) ++
       optional ~def:None (opt_blanks -+ some default_aggr) >>:

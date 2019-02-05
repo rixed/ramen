@@ -6,6 +6,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 open RamenNullable
+module T = RamenTypes
 
 (* Health and Stats
  *
@@ -183,7 +184,7 @@ type possible_values_index =
     (* Name of the previous file where that set was saved.
      * This file is renamed after every write. *)
     fname : string ;
-    mutable values : RamenTypes.value Set.t }
+    mutable values : T.value Set.t }
 
 (* Just a placeholder to init the initial array. *)
 let possible_values_empty =
@@ -210,7 +211,7 @@ let save_possible_values prev_fname pvs =
         !logger.warning "Stumbled upon preexisting index %s, merging..."
           pvs.fname ;
         RamenAdvLock.with_w_lock pvs.fname (fun fd ->
-          let prev_set : RamenTypes.value Set.t =
+          let prev_set : T.value Set.t =
             marshal_from_fd ~default:Set.empty pvs.fname fd in
           let s = Set.union prev_set pvs.values in
           (* Keep past values for the next write: *)
@@ -453,7 +454,7 @@ let outputer_of
             let pvs = factors_values.(i) in
             if not (Set.mem pv pvs.values) then ( (* FIXME: Set.update *)
               !logger.debug "new value for factor %s: %a"
-                factor RamenTypes.print pv ;
+                factor T.print pv ;
               let min_time = min start pvs.min_time
               and max_time = max stop pvs.max_time in
               let min_time, max_time, values, prev_fname =
@@ -935,7 +936,7 @@ let aggregate
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
-      (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
+      (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
       (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
@@ -1300,7 +1301,7 @@ let replay
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
-      (factors_of_tuple : 'tuple_out -> (string * RamenTypes.value) array)
+      (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in

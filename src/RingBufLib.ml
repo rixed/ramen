@@ -1,9 +1,10 @@
 open Batteries
 open RamenLog
 open RamenHelpers
-open RamenTypes
 open Stdint
 open RingBuf
+module T = RamenTypes
+open RamenTypes
 
 (* Note regarding nullmask and constructed types:
  * For list, we cannot know in advance the number of values so the nullmask
@@ -151,7 +152,6 @@ let has_fixed_size = function
 
 let tot_fixsz tuple_typ =
   List.fold_left (fun c t ->
-    let open RamenTypes in
     if not (has_fixed_size t.RamenTuple.typ.structure) then c else
     c + sersize_of_fixsz_typ t.typ.structure
   ) 0 tuple_typ

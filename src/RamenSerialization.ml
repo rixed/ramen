@@ -3,8 +3,9 @@ open RingBuf
 open RingBufLib
 open RamenLog
 open RamenHelpers
-open RamenTypes
+module T = RamenTypes
 module E = RamenExpr
+open RamenTypes
 
 let verbose_serialization = false
 
@@ -28,7 +29,7 @@ let read_array_of_values ser_tuple_typ =
             if verbose_serialization then
               !logger.debug "Importing a single value for %a at offset %d: %a"
                 RamenTuple.print_field_typ typ
-                offs RamenTypes.print value ;
+                offs T.print value ;
             let offs' = offs + RingBufLib.sersize_of_value value in
             Some value, offs', if typ.typ.nullable then b+1 else b
           ) in
@@ -66,7 +67,7 @@ let read_notifs ?while_ rb f =
 let value_of_string t s =
   let open RamenParsing in
   (* First parse the string as any immediate value: *)
-  let p = allow_surrounding_blanks RamenTypes.Parser.(p_ ||| null) in
+  let p = allow_surrounding_blanks T.Parser.(p_ ||| null) in
   let stream = stream_of_string s in
   match p ["value"] None Parsers.no_error_correction stream |>
         to_result with
@@ -81,7 +82,7 @@ let value_of_string t s =
       if vt = t.structure then v else
       let msg =
         Printf.sprintf2 "%S has type %a instead of expected %a"
-          s RamenTypes.print_structure vt RamenTypes.print_structure t.structure in
+          s T.print_structure vt T.print_structure t.structure in
       failwith msg
   | Bad (Ambiguous lst) ->
       match List.filter (fun (v, _c, _s) ->
@@ -93,8 +94,8 @@ let value_of_string t s =
               s
               (List.print ~first:"" ~last:"" ~sep:" or "
                 (fun oc (v, _c, _s) ->
-                  RamenTypes.print_structure oc (structure_of v))) lst
-              RamenTypes.print_typ t in
+                  T.print_structure oc (structure_of v))) lst
+              T.print_typ t in
           failwith msg
       | [v, _, _] -> v
       | lst ->
@@ -102,7 +103,7 @@ let value_of_string t s =
             Printf.sprintf2 "%S is ambiguous: is it %a?"
               s
               (List.print ~first:"" ~last:"" ~sep:", or "
-                (fun oc (v, _, _) -> RamenTypes.print oc v)) lst in
+                (fun oc (v, _, _) -> T.print oc v)) lst in
           failwith msg
 
 (*$inject open Stdint *)
@@ -139,7 +140,7 @@ let write_record in_type rb tuple =
         match Hashtbl.find tuple f_name with
         | exception Not_found ->
             null_i,
-            (None, RamenTypes.any_value_of_type f.typ.structure) :: lst
+            (None, T.any_value_of_type f.typ.structure) :: lst
         | s ->
             null_i,
             (None, value_of_string f.typ s) :: lst
@@ -201,7 +202,7 @@ let filter_tuple_by ser where =
         (try enlarge_value to_structure v
         with e ->
           !logger.error "Cannot enlarge %a to %a (ser = %a)"
-            RamenTypes.print v
+            T.print v
             RamenTuple.print_field_typ t
             RamenTuple.print_typ ser ;
           raise e) in

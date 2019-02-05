@@ -5,6 +5,7 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
 
 (*
  * Stopping a worker from running.
@@ -122,7 +123,7 @@ let check_links ?(force=false) program_name prog running_programs =
                   (* We want to err if a parent is incompatible (unless
                    * --force). *)
                   let par_out_type =
-                    RamenOperation.out_type_of_operation par.F.operation in
+                    O.out_type_of_operation par.F.operation in
                   try RamenProcesses.check_is_subtype func.F.in_type
                                                       par_out_type
                   with Failure m when force -> (* or let it fail *)
@@ -155,7 +156,7 @@ let check_links ?(force=false) program_name prog running_programs =
                   F.print_parent parent
               | f -> (* so func is depending on f, let's see: *)
                 let out_type =
-                  RamenOperation.out_type_of_operation f.F.operation in
+                  O.out_type_of_operation f.F.operation in
                 try RamenProcesses.check_is_subtype func.F.in_type
                                                     out_type
                 with Failure m when force -> (* or let it fail *)

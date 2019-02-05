@@ -2,7 +2,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
-module Expr = RamenExpr
+module O = RamenOperation
 
 type conf =
   { log_level : log_level ;
@@ -34,7 +34,7 @@ struct
        * ancestor stored history: *)
       persistent : bool ;
       doc : string ;
-      mutable operation : RamenOperation.t ;
+      mutable operation : O.t ;
       in_type : RamenFieldMaskLib.in_type ;
       (* The signature identifies the code but not the actual parameters.
        * Those signatures are used to distinguish sets of ringbufs
@@ -52,7 +52,7 @@ struct
       { name : RamenName.func ;
         persistent : bool ;
         doc : string ;
-        operation : RamenOperation.t ;
+        operation : O.t ;
         signature : string }
       [@@ppp PPP_OCaml]
   end
@@ -66,7 +66,6 @@ struct
       signature = t.signature }
 
   let unserialized program_name (t : Serialized.t) =
-    let open RamenOperation in
     { program_name ;
       name = t.name ;
       persistent = t.persistent ;
@@ -74,9 +73,9 @@ struct
       operation = t.operation ;
       signature = t.signature ;
       in_type = RamenFieldMaskLib.in_type_of_operation t.operation ;
-      parents = parents_of_operation t.operation ;
-      merge_inputs = is_merging t.operation ;
-      envvars = envvars_of_operation t.operation }
+      parents = O.parents_of_operation t.operation ;
+      merge_inputs = O.is_merging t.operation ;
+      envvars = O.envvars_of_operation t.operation }
 
   (* TODO: takes a func instead of child_prog? *)
   let program_of_parent_prog child_prog = function
@@ -112,8 +111,8 @@ struct
      * condition does not imply we should disregard past data or consider the
      * function changed in any way. It's `ramen run` job to evaluate the
      * running condition independently. *)
-    let op_str = IO.to_string (RamenOperation.print false) func.operation
-    and out_type = RamenOperation.out_type_of_operation func.operation in
+    let op_str = IO.to_string (O.print false) func.operation
+    and out_type = O.out_type_of_operation func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^
     (* type_signature does not look at private fields: *)
@@ -127,7 +126,7 @@ struct
       (func.name :> string)
       RamenFieldMaskLib.print_in_type func.in_type
       RamenTuple.print_typ
-        (RamenOperation.out_type_of_operation func.operation)
+        (O.out_type_of_operation func.operation)
 end
 
 module Program =
@@ -403,7 +402,7 @@ let in_ringbuf_names conf func =
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
 let archive_buf_name conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
@@ -423,7 +422,7 @@ let archive_buf_name conf func =
  * the name of the directory containing a file per time slice (named
  * begin_end). *)
 let factors_of_function conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/factors/"
                    ^ RamenVersions.factors
@@ -438,7 +437,7 @@ let factors_of_function conf func =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = RamenOperation.out_type_of_operation func.Func.operation |>
+  let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/out_ref/"
                    ^ RamenVersions.out_ref

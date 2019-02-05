@@ -15,6 +15,7 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
+module O = RamenOperation
 open RamenTypingHelpers
 
 open Binocle
@@ -104,7 +105,6 @@ let compile conf get_parent ~exec_file source_file
       let op = parsed_func.RamenProgram.operation in
       let name = Option.get parsed_func.name in
       let me_func =
-        let open RamenOperation in
         F.{ program_name ;
             name ;
             persistent = parsed_func.persistent ;
@@ -112,9 +112,9 @@ let compile conf get_parent ~exec_file source_file
             operation = op ;
             in_type = RamenFieldMaskLib.in_type_of_operation op ;
             signature = "" ;
-            parents = parents_of_operation op ;
-            merge_inputs = is_merging op ;
-            envvars = envvars_of_operation op } in
+            parents = O.parents_of_operation op ;
+            merge_inputs = O.is_merging op ;
+            envvars = O.envvars_of_operation op } in
       let fq_name = RamenName.fq program_name name in
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
@@ -128,7 +128,7 @@ let compile conf get_parent ~exec_file source_file
     (* Hash from function name to Func.t list of parents: *)
     let compiler_parents = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
-      RamenOperation.parents_of_operation
+      O.parents_of_operation
         parsed_func.RamenProgram.operation |>
       List.map (fun parent ->
         (* parent is the name as it appears in the source, can be FQed,
@@ -216,7 +216,7 @@ let compile conf get_parent ~exec_file source_file
         RamenName.field_print name
         (func.F.name :> string) ;
       let out_type =
-        RamenOperation.out_type_of_operation ~with_private:true
+        O.out_type_of_operation ~with_private:true
                                              func.F.operation in
       match List.find (fun ft ->
               ft.RamenTuple.name = name
@@ -267,7 +267,7 @@ let compile conf get_parent ~exec_file source_file
       let uoi = units_of_input func parents in
       let uoo = units_of_output func in
       let changed =
-        RamenOperation.fold_top_level_expr false (fun changed what e ->
+        O.fold_top_level_expr false (fun changed what e ->
           let what =
             Printf.sprintf "%s in function %s" what
               (RamenName.func_color func.F.name) in
@@ -281,12 +281,12 @@ let compile conf get_parent ~exec_file source_file
        * out_types fields are reordered. *)
       if changed then (
         let out_type =
-          RamenOperation.out_type_of_operation ~with_private:true
+          O.out_type_of_operation ~with_private:true
                                                func.F.operation in
         match func.F.operation with
-        | RamenOperation.Aggregate { fields ; _ } ->
+        | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
-              if sf.RamenOperation.expr.E.units <> None then
+              if sf.O.expr.E.units <> None then
                 patch_out_typ sf.alias sf.expr.E.units out_type
             ) fields
         | _ -> ()) ;
@@ -314,10 +314,10 @@ let compile conf get_parent ~exec_file source_file
       !logger.debug "in_type: %a"
         RamenFieldMaskLib.print_in_type func.F.in_type ;
       let op = func.F.operation in
-      !logger.debug "Original operation: %a" (RamenOperation.print true) op ;
+      !logger.debug "Original operation: %a" (O.print true) op ;
       let op = RamenFieldMaskLib.subst_deep_fields func.F.in_type op in
       !logger.debug "After substitutions for deep fields access: %a"
-        (RamenOperation.print true) op ;
+        (O.print true) op ;
       func.operation <- op
     ) compiler_funcs ;
 
@@ -403,7 +403,7 @@ let compile conf get_parent ~exec_file source_file
     let envvars =
       Hashtbl.fold (fun _ func envvars ->
         List.rev_append
-          (RamenOperation.envvars_of_operation func.F.operation)
+          (O.envvars_of_operation func.F.operation)
           envvars
       ) compiler_funcs [] |>
       List.fast_sort RamenName.compare in

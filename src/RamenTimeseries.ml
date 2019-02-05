@@ -9,6 +9,8 @@ open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
+module T = RamenTypes
 
 (* Building time series with points at regular times *)
 
@@ -80,7 +82,7 @@ let get conf num_points since until where factors
       Printf.fprintf oc "%a %s %a"
         RamenName.field_print field
         op
-        RamenTypes.print value)) where
+        T.print value)) where
     (List.print RamenName.field_print) factors ;
   let num_data_fields = List.length data_fields
   and num_factors = List.length factors in
@@ -139,7 +141,7 @@ let get conf num_points since until where factors
         try Hashtbl.find per_factor_buckets k
         with Not_found ->
           !logger.debug "New time series for column key %a"
-            (Array.print RamenTypes.print) k ;
+            (Array.print T.print) k ;
           let buckets = make_buckets num_points num_data_fields in
           Hashtbl.add per_factor_buckets k buckets ;
           buckets in
@@ -154,7 +156,7 @@ let get conf num_points since until where factors
         (* We assume that the value is "intensive" rather than "extensive",
          * and so contribute the same amount to each buckets of the interval,
          * instead of distributing the value (TODO: extensive values) *)
-        let v = RamenTypes.float_of_scalar tuple.(num_factors + i) in
+        let v = T.float_of_scalar tuple.(num_factors + i) in
         Option.may (fun v ->
           let v, bi1, bi2, r =
             if bi1 = bi2 then (
@@ -226,7 +228,7 @@ let possible_values conf ?since ?until func factor =
     RamenName.field_print factor
     RamenName.func_print func.F.name ;
   let factors =
-    RamenOperation.factors_of_operation func.F.operation in
+    O.factors_of_operation func.F.operation in
   if not (List.mem factor factors) then
     invalid_arg "get_possible_values: not a factor" ;
   let dir =
@@ -243,7 +245,7 @@ let possible_values conf ?since ?until func factor =
       then Some (dir ^"/"^ fname) else None
     with (Not_found | Failure _) -> None) |>
   Enum.fold (fun s fname ->
-    let s' : RamenTypes.value Set.t =
+    let s' : T.value Set.t =
       RamenAdvLock.with_r_lock
         fname (marshal_from_fd ~default:Set.empty fname) in
     Set.union s s') Set.empty

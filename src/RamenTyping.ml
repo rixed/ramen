@@ -51,6 +51,8 @@ module F = C.Func
 module P = C.Program
 module Err = RamenTypingErrors
 module E = RamenExpr
+module O = RamenOperation
+module T = RamenTypes
 open RamenTypes (* RamenTypes.Pub? *)
 
 let t_of_num num =
@@ -155,8 +157,8 @@ let find_expr_of_path_in_selected_fields fields = function
   | [] -> assert false
   | E.Name n :: rest ->
       let sf = List.find (fun sf ->
-        sf.RamenOperation.alias = n) fields in
-      find_expr_of_path sf.RamenOperation.expr rest
+        sf.O.alias = n) fields in
+      find_expr_of_path sf.O.expr rest
   | E.Int _ :: _ ->
       failwith "Cannot address input with an index (yet)"
 
@@ -371,7 +373,7 @@ let empty_record_fields : (RamenName.field, int * int * int) Hashtbl.t =
 let empty_field_names : (RamenName.field, int) Hashtbl.t = Hashtbl.create 0
 
 let arg_has_type typ oc e =
-  let name = IO.to_string RamenTypes.print_structure typ in
+  let name = IO.to_string T.print_structure typ in
   let name = expr_err e (Err.ActualType name) in
   emit_assert ~name oc (fun oc ->
     emit_id_eq_typ empty_tuple_sizes empty_record_fields empty_field_names
@@ -411,13 +413,12 @@ let emit_assert_same e oc id1 id2 =
 
 let eq_to_out_type out_fields e oc path =
   (* The type of an output path is taken from the out types. *)
-  let open RamenOperation in
   match find_expr_of_path_in_selected_fields out_fields path with
   | exception Not_found ->
       Printf.sprintf2 "Unknown output path %a (out is %a)"
         E.print_path path
         (List.print (fun oc sf ->
-          RamenName.field_print oc sf.alias)) out_fields |>
+          RamenName.field_print oc sf.O.alias)) out_fields |>
       failwith
   | expr ->
       emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr expr) ;
@@ -488,7 +489,7 @@ let eq_to_opened_record stack e oc path =
 let emit_constraints tuple_sizes records field_names out_fields
                      in_type out_type param_type env_type oc stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
-  emit_comment oc (IO.to_string (RamenExpr.print false) e) ;
+  emit_comment oc (IO.to_string (E.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e.E.text with
   | Stateless (SL1 (Path path, { text = Variable pref ; _ }))
@@ -535,7 +536,7 @@ let emit_constraints tuple_sizes records field_names out_fields
   | Const x ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      arg_has_type (RamenTypes.structure_of x) oc e ;
+      arg_has_type (T.structure_of x) oc e ;
       arg_is_not_nullable oc e
 
   | Binding _ -> assert false (* Not supposed to appear here *)
@@ -777,7 +778,7 @@ let emit_constraints tuple_sizes records field_names out_fields
        *   toward a nullable type, or merely propagates.
        * Note that some cast are actually not implemented so would fail
        * when generating code. *)
-      if t.RamenTypes.nullable then
+      if t.T.nullable then
         emit_assert_is_true oc nid
       else
         emit_assert_id_eq_id nid oc (n_of_expr x) ;
@@ -1403,11 +1404,11 @@ let emit_running_condition declare tuple_sizes records field_names
                            param_type env_type oc e =
   !logger.debug "Emit SMT2 for running condition" ;
   Printf.fprintf oc "\n; Running Condition\n\n" ;
-  RamenExpr.iter (fun _ e -> declare e) e ;
+  E.iter (fun _ e -> declare e) e ;
   let name = Err.RunCondition in
   emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr e) oc TBool ;
   emit_assert_is_false ~name oc (n_of_expr e) ;
-  RamenExpr.iter (
+  E.iter (
     emit_constraints tuple_sizes records field_names []
                      None None param_type env_type oc
   ) e
@@ -1415,13 +1416,12 @@ let emit_running_condition declare tuple_sizes records field_names
 (* FIXME: we should have only the records accessible from this operation *)
 let emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type fi oc op =
-  let open RamenOperation in
   (* Declare all variables: *)
-  iter_expr (fun _ e -> declare e) op ;
+  O.iter_expr (fun _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
   | Aggregate { fields ; where ; notifications ; commit_cond ; _ } ->
-      iter_expr (
+      O.iter_expr (
         emit_constraints tuple_sizes records field_names fields
                          in_type out_type param_type env_type oc
       ) op ;
@@ -1447,7 +1447,7 @@ let emit_operation declare tuple_sizes records field_names
       ) notifications
 
   | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
-      iter_expr (
+      O.iter_expr (
         emit_constraints tuple_sizes records field_names []
                          in_type out_type param_type env_type oc
       ) op ;
@@ -1505,9 +1505,9 @@ let emit_minimize oc condition funcs =
         Printf.fprintf oc " (cost_of_number %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (RamenExpr.iter cost_of_expr) condition ;
+  Option.may (E.iter cost_of_expr) condition ;
   List.iter (fun func ->
-    RamenOperation.iter_expr cost_of_expr func.F.operation
+    O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
   Printf.fprintf oc "))\n" ;
   (* And, separately, number of signed values: *)
@@ -1522,9 +1522,9 @@ let emit_minimize oc condition funcs =
         Printf.fprintf oc " (cost_of_sign %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (RamenExpr.iter cost_of_expr) condition ;
+  Option.may (E.iter cost_of_expr) condition ;
   List.iter (fun func ->
-    RamenOperation.iter_expr cost_of_expr func.F.operation
+    O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
   Printf.fprintf oc "))\n"
 
@@ -1534,7 +1534,6 @@ let emit_minimize oc condition funcs =
  * field if it is a well known field (which has no expression). *)
 type id_or_type = Id of int | FieldType of RamenTuple.field_typ
 let id_or_type_of_field op path =
-  let open RamenOperation in
   let find_field_type what fields =
     (* In the future, when [path] does have several components, look through
      * all of them in turn in the TRecords as we do with the external parents *)
@@ -1548,20 +1547,20 @@ let id_or_type_of_field op path =
     in
     List.find (fun ft -> ft.RamenTuple.name = field) fields in
   match op with
-  | Aggregate { fields ; _ } ->
+  | O.Aggregate { fields ; _ } ->
       (* In case [path] has several components, look through the
        * Record expression to locate the actual expression which id we
        * should equate to the callers' expression. *)
       Id (find_expr_of_path_in_selected_fields fields path).E.uniq_num
-  | ReadCSVFile { what = { fields ; _ } ; _ } ->
+  | O.ReadCSVFile { what = { fields ; _ } ; _ } ->
       FieldType (find_field_type "CSV" fields)
-  | ListenFor { proto ; _ } ->
+  | O.ListenFor { proto ; _ } ->
       FieldType (find_field_type (RamenProtocols.string_of_proto proto)
                                  (RamenProtocols.tuple_typ_of_proto proto))
-  | Instrumentation _ ->
+  | O.Instrumentation _ ->
       FieldType (find_field_type "instrumentation"
                                  RamenBinocle.tuple_typ)
-  | Notifications _ ->
+  | O.Notifications _ ->
       FieldType (find_field_type "notifications"
                                  RamenNotification.tuple_typ)
 
@@ -1588,7 +1587,7 @@ let emit_out_types decls oc field_names funcs =
          * be accessed via TupleOut as other fields can. *)
         List.iteri (fun j sf ->
           (* Equates each field expression to its field: *)
-          let id = sf.RamenOperation.expr.uniq_num in
+          let id = sf.O.expr.uniq_num in
           Printf.fprintf oc
             "; Output field %d (%a) equals expression %d\n"
             j RamenName.field_print sf.alias id ;
@@ -1642,13 +1641,13 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   in
   let program_iter f condition funcs =
     Option.may (fun cond ->
-        RamenExpr.iter (f ?func:None "Running condition") cond |>
+        E.iter (f ?func:None "Running condition") cond |>
         ignore
     ) condition ;
     List.iter (fun func ->
       let what =
         Printf.sprintf2 "Function %s" (RamenName.func_color func.F.name) in
-      RamenOperation.iter_expr (f ?func:(Some func) what) func.operation |>
+      O.iter_expr (f ?func:(Some func) what) func.operation |>
       ignore
     ) funcs
   in
@@ -1691,7 +1690,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 what
                 E.print_path path
                 RamenTuple.print_typ
-                  (RamenOperation.out_type_of_operation pfunc.F.operation)
+                  (O.out_type_of_operation pfunc.F.operation)
                 (E.print false) e |>
               failwith
             and aggr_types pfunc t prev =
@@ -1707,9 +1706,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       E.print_path path
                       (pretty_list_print (fun oc f ->
                         String.print oc (RamenName.func_color f))) prev_fns
-                      RamenTypes.print_typ prev_t
+                      T.print_typ prev_t
                       (RamenName.func_color fn)
-                      RamenTypes.print_typ t |>
+                      T.print_typ t |>
                     failwith ;
                   Some ((fn::prev_fns), prev_t) in
             (* Return either the type or a set of id to set this field
@@ -1746,7 +1745,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   (* External parent: look for the exact type (exclude private
                    * fields): *)
                   let pser =
-                    RamenOperation.out_type_of_operation pfunc.F.operation |>
+                    O.out_type_of_operation pfunc.F.operation |>
                     RingBufLib.ser_tuple_typ_of_tuple_typ in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
@@ -1980,7 +1979,7 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
         "\n; %a\n\
          (declare-fun %s () Bool)\n\
          (declare-fun %s () Type)\n"
-        (RamenExpr.print true) e
+        (E.print true) e
         (n_of_expr e)
         (t_of_expr e))
   in
@@ -2068,7 +2067,7 @@ let used_tuples_records funcs parents =
   in
   let tuple_sizes, params, envvars =
     List.fold_left (fun i func ->
-      RamenOperation.fold_expr i
+      O.fold_expr i
         (fun _ (tuple_sizes, params, envvars as prev) e ->
         let register_param_or_env tuple name =
           if tuple = TupleParam then
@@ -2116,7 +2115,6 @@ let used_tuples_records funcs parents =
     Hashtbl.fold (fun _ fs s ->
       List.fold_left (fun s f ->
         List.fold_left (fun s ft ->
-          let open RamenTypes in
           match ft.RamenTuple.typ.structure with
           | TTuple ts -> Set.Int.add (Array.length ts) s
           | TRecord ts->
@@ -2126,13 +2124,13 @@ let used_tuples_records funcs parents =
               ) ts ;
               s
           | _ -> s
-        ) s (RamenOperation.out_type_of_operation ~with_private:true f.F.operation)
+        ) s (O.out_type_of_operation ~with_private:true f.F.operation)
       ) s fs
     ) parents tuple_sizes in
   (* Finally, every input and output of all functions might also be a
    * record: *)
   List.iter (fun func ->
-    let out_typ = RamenOperation.out_type_of_operation ~with_private:true
+    let out_typ = O.out_type_of_operation ~with_private:true
                                                        func.F.operation in
     (* Keep user defined order and private fields: *)
     let sz = List.length out_typ in
@@ -2210,18 +2208,18 @@ let set_io_tuples parents funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
       RamenName.func_print func.F.name ;
-    RamenOperation.out_type_of_operation ~with_private:true func.F.operation |>
+    O.out_type_of_operation ~with_private:true func.F.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         RamenName.field_print ft.RamenTuple.name ;
-      if RamenTypes.is_typed ft.RamenTuple.typ.structure then (
+      if T.is_typed ft.RamenTuple.typ.structure then (
         !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
       ) else (
         match func.F.operation with
-        | RamenOperation.Aggregate { fields ; _ } ->
+        | O.Aggregate { fields ; _ } ->
             let id =
               List.find_map (fun sf ->
-                if sf.RamenOperation.alias = ft.name then
+                if sf.O.alias = ft.name then
                   Some sf.expr.E.uniq_num
                 else None) fields in
             (match Hashtbl.find h id with
@@ -2233,7 +2231,7 @@ let set_io_tuples parents funcs h =
                 !logger.debug "Set output field %a.%a to %a"
                   RamenName.func_print func.F.name
                   RamenName.field_print ft.name
-                  RamenTypes.print_typ typ ;
+                  T.print_typ typ ;
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
@@ -2250,7 +2248,7 @@ let set_io_tuples parents funcs h =
         Printf.sprintf2 "Cannot use input field %a without any parent"
           RamenName.field_print f_name |>
         failwith ;
-      if RamenTypes.is_typed f.typ.structure then (
+      if T.is_typed f.typ.structure then (
         !logger.debug "... already typed to %a" T.print_typ f.typ
       ) else (
         (* We already know (from the solver) that all parents export the
@@ -2259,7 +2257,7 @@ let set_io_tuples parents funcs h =
         !logger.debug "Copying from parent %a"
           RamenName.func_print parent.F.name ;
         let pser =
-          RamenOperation.out_type_of_operation ~with_private:true parent.F.operation |>
+          O.out_type_of_operation ~with_private:true parent.F.operation |>
           RingBufLib.ser_tuple_typ_of_tuple_typ in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
@@ -2271,7 +2269,7 @@ let set_io_tuples parents funcs h =
             !logger.debug "Set input field %a.%a to %a"
               RamenName.func_print func.F.name
               RamenName.field_print f_name
-              RamenTypes.print_typ typ ;
+              T.print_typ typ ;
             f.typ <- typ)
     ) func.in_type
   in
@@ -2286,10 +2284,10 @@ let apply_types parents condition funcs h =
     match Hashtbl.find h e.E.uniq_num with
     | exception Not_found ->
         !logger.warning "No type for expression %a"
-          (RamenExpr.print true) e
+          (E.print true) e
     | typ -> e.E.typ <- typ in
-  Option.may (RamenExpr.iter apply) condition ;
+  Option.may (E.iter apply) condition ;
   Hashtbl.iter (fun _ func ->
-    RamenOperation.iter_expr apply func.F.operation
+    O.iter_expr apply func.F.operation
   ) funcs ;
   set_io_tuples parents funcs h

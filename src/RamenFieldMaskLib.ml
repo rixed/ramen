@@ -18,6 +18,8 @@ open RamenHelpers
 open RamenLog
 open RamenLang
 module E = RamenExpr
+module O = RamenOperation
+module T = RamenTypes
 open RamenFieldMask (* shared with codegen lib *)
 
 (* The expression recorded here is any one instance of its occurrence.
@@ -105,20 +107,20 @@ and paths_of_expression e =
  *)
 (*$= paths_of_expression & ~printer:string_of_paths_
   ([ E.Name (RamenName.field_of_string "foo") ], []) \
-    (RamenExpr.parse "in.foo" |> paths_of_expression |> strip_expr)
+    (E.parse "in.foo" |> paths_of_expression |> strip_expr)
   ([ E.Name (RamenName.field_of_string "foo") ; E.Int 3 ], []) \
-    (RamenExpr.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
+    (E.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
   ([ E.Name (RamenName.field_of_string "foo") ; \
      E.Name (RamenName.field_of_string "bar") ], []) \
-    (RamenExpr.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
+    (E.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
   ([ E.Name (RamenName.field_of_string "foo") ], \
      [ [ E.Name (RamenName.field_of_string "some_index") ; E.Int 2 ] ]) \
-    (RamenExpr.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
-  ([], []) (RamenExpr.parse "0+0" |> paths_of_expression |> strip_expr)
+    (E.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
+  ([], []) (E.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
 
 let paths_of_operation =
-  RamenOperation.fold_top_level_expr [] (fun ps _what e ->
+  O.fold_top_level_expr [] (fun ps _what e ->
     let t, o = paths_of_expression e in
     let o = if t = [] then o else t :: o in
     List.rev_append o ps)
@@ -212,7 +214,7 @@ let tree_of_paths ps =
 
 (*$inject
   let tree_of s =
-    let t, o = RamenExpr.parse s |> paths_of_expression in
+    let t, o = E.parse s |> paths_of_expression in
     let paths = if t = [] then o else t :: o in
     tree_of_paths paths
   let str_tree_of s =
@@ -260,7 +262,7 @@ let rec fieldmask_for_output typ t =
   | Subfields m -> fieldmask_for_output_subfields typ m
   | _ -> failwith "Input type must be a record"
 
-and rec_fieldmask : 'b 'c. RamenTypes.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
+and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
                            RamenFieldMask.mask =
   fun typ finder key map ->
     match finder key map with
@@ -344,7 +346,7 @@ let tree_of_operation =
  * type that's not transmitted as a whole): *)
 type in_field =
   { path : E.path_comp list (* from root to leaf *);
-    mutable typ : RamenTypes.t ;
+    mutable typ : T.t ;
     mutable units : RamenUnits.t option }
 
 type in_type = in_field list
@@ -353,13 +355,13 @@ let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
     (E.id_of_path f.path :> string) ^":"^
-    RamenTypes.string_of_typ f.typ
+    T.string_of_typ f.typ
   ) ""
 
 let print_in_field oc f =
   Printf.fprintf oc "%a %a"
     RamenName.field_print (E.id_of_path f.path)
-    RamenTypes.print_typ f.typ ;
+    T.print_typ f.typ ;
   Option.may (RamenUnits.print oc) f.units
 
 let print_in_type oc =
@@ -381,9 +383,9 @@ let find_type_of_path parent_out path =
     | E.Int i :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid path index %d into %a"
-            i RamenTypes.print_typ typ |>
+            i T.print_typ typ |>
           failwith in
-        (match typ.RamenTypes.structure with
+        (match typ.T.structure with
         | TVec (d, t) ->
             if i >= d then invalid () ;
             locate_type t rest
@@ -398,7 +400,7 @@ let find_type_of_path parent_out path =
         let invalid () =
           Printf.sprintf2 "Invalid subfield %a into %a"
             RamenName.field_print n
-            RamenTypes.print_typ typ |>
+            T.print_typ typ |>
           failwith in
         (match typ.structure with
         | TRecord ts ->
@@ -450,7 +452,7 @@ let subst_deep_fields in_type =
           E.int_of_const n = Some i && matches_expr path' e'
     | _ -> false
   in
-  RamenOperation.map_expr (fun _stack e ->
+  O.map_expr (fun _stack e ->
     match List.find (fun in_field ->
             assert (in_field.path <> []) ;
             matches_expr (List.rev in_field.path) e

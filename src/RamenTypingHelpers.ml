@@ -5,14 +5,15 @@ module C = RamenConf
 module F = C.Func
 module E = RamenExpr
 module T = RamenTypes
+module O = RamenOperation
 open RamenLang
 
 (* Return the field alias in operation corresponding to the given input field: *)
 let forwarded_field operation field =
   match operation with
-  | RamenOperation.Aggregate { fields ; _ } ->
+  | O.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
-        match sf.RamenOperation.expr.E.text with
+        match sf.O.expr.E.text with
         | E.Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
           when n = field ->
             Some sf.alias
@@ -34,7 +35,7 @@ let forwarded_field_or_param parent func field = function
 let infer_event_time func parent =
   let open RamenEventTime in
   try
-    RamenOperation.event_time_of_operation parent.F.operation |>
+    O.event_time_of_operation parent.F.operation |>
     Option.map (function ((f1, f1_src, f1_scale), duration) ->
       (forwarded_field_or_param parent func f1 !f1_src, f1_src, f1_scale),
       try
@@ -61,7 +62,7 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
-        RamenOperation.out_type_of_operation func.F.operation |>
+        O.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.doc <- doc)
@@ -71,27 +72,27 @@ let infer_field_doc_aggr func parents params =
         RamenName.func_print func.F.name
         RamenName.field_print alias ;
       let ft =
-        RamenOperation.out_type_of_operation func.F.operation |>
+        O.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.aggr <- aggr)
   in
   match func.F.operation with
-    | RamenOperation.Aggregate { fields ; _ } ->
+    | O.Aggregate { fields ; _ } ->
         List.iter (function
-        | RamenOperation.{
+        | O.{
             alias ; doc ; aggr ;
             expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ })) ; _ }}
             when doc = "" || aggr = None ->
             (* Look for this field n in parent: *)
             let out_type = (List.hd parents).F.operation |>
-                           RamenOperation.out_type_of_operation in
+                           O.out_type_of_operation in
             (match List.find (fun ft -> ft.RamenTuple.name = n) out_type with
             | exception Not_found -> ()
             | psf ->
                 if doc = "" then set_doc alias psf.doc ;
                 if aggr = None then set_aggr alias psf.aggr) ;
-        | RamenOperation.{
+        | O.{
             alias ; doc ; aggr ;
             expr = E.{ text = Stateless (SL1 (Path [ Name n ], { text = Variable TupleParam ; _ })) ; _ }}
             when doc = "" || aggr = None ->
@@ -127,7 +128,7 @@ let finalize_func parents params func =
   let what =
     Printf.sprintf "In function %s "
       RamenName.(func_color func.F.name) in
-  RamenOperation.iter_expr (check_typed ~what) func.F.operation ;
+  O.iter_expr (check_typed ~what) func.F.operation ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
    * we can infer them from the parents (we consider only the first parent
@@ -135,23 +136,23 @@ let finalize_func parents params func =
    * from one): *)
   let parents = Hashtbl.find_default parents func.F.name [] in
   if parents <> [] &&
-     RamenOperation.event_time_of_operation func.operation = None
+     O.event_time_of_operation func.operation = None
   then (
     let inferred = infer_event_time func (List.hd parents) in
     func.operation <-
-      RamenOperation.operation_with_event_time func.operation inferred ;
+      O.operation_with_event_time func.operation inferred ;
     if inferred <> None then
       !logger.debug "Function %s can reuse event time from parents"
         (func.name :> string)
   ) ;
   if parents <> [] &&
-     RamenOperation.factors_of_operation func.operation = []
+     O.factors_of_operation func.operation = []
   then (
     let inferred =
-      RamenOperation.factors_of_operation (List.hd parents).operation |>
+      O.factors_of_operation (List.hd parents).operation |>
       infer_factors func in
     func.operation <-
-      RamenOperation.operation_with_factors func.operation inferred ;
+      O.operation_with_factors func.operation inferred ;
     if inferred <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
         RamenName.func_print func.name
@@ -164,8 +165,8 @@ let finalize_func parents params func =
    * defined only if it is indeed defined. Do not perform this check in
    * [RamenOperation.check] to give us chance to infer the event time
    * definition: *)
-  if RamenOperation.use_event_time func.operation &&
-     RamenOperation.event_time_of_operation func.operation = None
+  if O.use_event_time func.operation &&
+     O.event_time_of_operation func.operation = None
   then
      failwith "Cannot use #start/#stop without event time" ;
   (* Seal everything: *)

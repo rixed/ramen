@@ -8,6 +8,8 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
+module T = RamenTypes
 
 let () =
   Printexc.register_printer (function
@@ -282,10 +284,10 @@ let info _conf params program_name_opt bin_file opt_func_name () =
       TermTable.print_head (i+1) "Input type") ;
     TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type ;
     let out_type =
-      RamenOperation.out_type_of_operation func.operation in
+      O.out_type_of_operation func.operation in
     TermTable.print_head (i+1) "Output type" ;
     TermTable.print (i+2) "%a" RamenTuple.print_typ out_type ;
-    RamenOperation.event_time_of_operation func.operation |>
+    O.event_time_of_operation func.operation |>
     Option.may (fun et ->
       TermTable.print_head (i+1) "Event time" ;
       TermTable.print (i+2) "%a" RamenEventTime.print et) ;
@@ -763,7 +765,7 @@ let timeseries_ conf fq data_fields
   let head =
     Array.fold_left (fun res sc ->
       let v =
-        Array.enum sc /@ RamenTypes.to_string |>
+        Array.enum sc /@ T.to_string |>
         List.of_enum |>
         String.concat "." in
       if single_data_field then
@@ -821,11 +823,11 @@ let timerange conf fq () =
        * Nothing better to do in case of error than to exit. *)
       let bname = C.archive_buf_name conf func in
       let typ =
-        RamenOperation.out_type_of_operation func.F.operation in
+        O.out_type_of_operation func.F.operation in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
       let params = prog.P.params in
       let event_time =
-        RamenOperation.event_time_of_operation func.operation in
+        O.event_time_of_operation func.operation in
       RamenSerialization.time_range bname ser params event_time
     in
     match mi_ma with
@@ -887,7 +889,7 @@ let graphite_expand conf for_render since until query () =
           Printf.fprintf oc "%a:" RamenName.field_print factor ;
           match opt_val with
           | None -> String.print oc "*"
-          | Some v -> RamenTypes.print oc v)) fvals)
+          | Some v -> T.print oc v)) fvals)
 
 (*
  * `ramen archivist`

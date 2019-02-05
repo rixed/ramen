@@ -10,6 +10,8 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
+module O = RamenOperation
+module T = RamenTypes
 
 (*$inject
   open TestHelpers
@@ -36,7 +38,7 @@ module E = RamenExpr
 type func =
   { name : RamenName.func option (* optional during parsing only *) ;
     doc : string ;
-    operation : RamenOperation.t ;
+    operation : O.t ;
     persistent : bool }
 
 type t = RamenTuple.param list * func list
@@ -58,18 +60,18 @@ let make_func ?(persistent=false) ?name ?(doc="") operation =
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;\n"
     RamenTuple.print_field_typ p.RamenTuple.ptyp
-    RamenTypes.print p.value
+    T.print p.value
 
 let print_func oc n =
   let with_types = false in (* TODO: a parameter *)
   match n.name with
   | None ->
       Printf.fprintf oc "%a;"
-        (RamenOperation.print with_types ) n.operation
+        (O.print with_types ) n.operation
   | Some name ->
       Printf.fprintf oc "DEFINE '%s' AS %a;"
         (name :> string)
-        (RamenOperation.print with_types) n.operation
+        (O.print with_types) n.operation
 
 let print oc (params, run_cond, funcs) =
   List.print ~first:"" ~last:"" ~sep:"" print_param oc params ;
@@ -82,7 +84,7 @@ let print oc (params, run_cond, funcs) =
 
 let checked (params, run_cond, funcs) =
   let run_cond =
-    Option.map (RamenOperation.prefix_def params TupleEnv) run_cond in
+    Option.map (O.prefix_def params TupleEnv) run_cond in
   Option.may (
     (* Check the running condition does not use any IO tuple: *)
     E.iter (fun _s e ->
@@ -108,7 +110,7 @@ let checked (params, run_cond, funcs) =
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
-        try RamenOperation.checked params n.operation
+        try O.checked params n.operation
         with Failure msg ->
           let open RamenTypingHelpers in
           Printf.sprintf "In function %s: %s"
@@ -149,19 +151,19 @@ struct
         several ~sep:list_sep_and (
           non_keyword ++
           optional ~def:None (
-            blanks -+ some RamenTypes.Parser.typ) ++
+            blanks -+ some T.Parser.typ) ++
           optional ~def:None (
             blanks -+ some RamenUnits.Parser.p) ++
-          optional ~def:RamenTypes.VNull (
+          optional ~def:T.VNull (
             blanks -- strinGs "default" -- blanks -- strinG "to" -- blanks -+
-            (RamenTypes.Parser.(p_ ~min_int_width:0 ||| null) |||
-             (duration >>: fun x -> RamenTypes.VFloat x))) ++
+            (T.Parser.(p_ ~min_int_width:0 ||| null) |||
+             (duration >>: fun x -> T.VFloat x))) ++
           optional ~def:"" quoted_string ++
           optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
           fun (((((name, typ_decl), units), value), doc), aggr) ->
             let name = RamenName.field_of_string name in
             let typ, value =
-              let open RamenTypes in
+              let open T in
               match typ_decl with
               | None ->
                   if value = VNull then
@@ -220,7 +222,7 @@ struct
 
   let anonymous_func m =
     let m = "anonymous func" :: m in
-    (RamenOperation.Parser.p >>: make_func) m
+    (O.Parser.p >>: make_func) m
 
   let named_func m =
     let m = "function" :: m in
@@ -230,7 +232,7 @@ struct
       function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
-      RamenOperation.Parser.p >>:
+      O.Parser.p >>:
       fun (((persistent, name), doc), op) ->
         make_func ~persistent ~name ~doc op
     ) m
@@ -301,17 +303,15 @@ let reify_subquery =
 (* Returns a list of additional funcs and the list of parents that
  * contains only NamedOperations and GlobPattern: *)
 let expurgate from =
-  let open RamenOperation in
   List.fold_left (fun (new_funcs, from) -> function
-    | SubQuery q ->
+    | O.SubQuery q ->
         let new_func = reify_subquery q in
         (new_func :: new_funcs),
-        NamedOperation (None, Option.get new_func.name) :: from
-    | (GlobPattern _ | NamedOperation _) as f -> new_funcs, f :: from
+        O.NamedOperation (None, Option.get new_func.name) :: from
+    | (O.GlobPattern _ | O.NamedOperation _) as f -> new_funcs, f :: from
   ) ([], []) from
 
 let reify_subqueries funcs =
-  let open RamenOperation in
   List.fold_left (fun fs func ->
     match func.operation with
     | Aggregate ({ from ; _ } as f) ->
@@ -342,16 +342,15 @@ let name_unnamed =
 
 (* Exits when we met a parent which output type is not stable: *)
 let common_fields_of_from get_parent start_name funcs from =
-  let open RamenOperation in
   List.fold_left (fun common data_source ->
     let fields =
       match data_source with
-      | SubQuery _ ->
+      | O.SubQuery _ ->
           (* Sub-queries have been reified already *)
           assert false
-      | GlobPattern _ ->
+      | O.GlobPattern _ ->
           List.map (fun f -> f.RamenTuple.name) RamenBinocle.tuple_typ
-      | NamedOperation (None, fn) ->
+      | O.NamedOperation (None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
               Printf.sprintf "While expanding STAR, cannot find parent %s"
@@ -361,7 +360,7 @@ let common_fields_of_from get_parent start_name funcs from =
               (match par.operation with
               | Aggregate { fields ; and_all_others ; _ } ->
                   if and_all_others then raise Exit ;
-                  List.map (fun sf -> sf.alias) fields
+                  List.map (fun sf -> sf.O.alias) fields
               | ReadCSVFile { what ; _ } ->
                   List.map (fun f -> f.RamenTuple.name) what.fields
               | ListenFor { proto ; _ } ->
@@ -373,13 +372,13 @@ let common_fields_of_from get_parent start_name funcs from =
               | Notifications _ ->
                   RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.name)))
-      | NamedOperation (Some rel_pn, fn) ->
+      | O.NamedOperation (Some rel_pn, fn) ->
           let pn = RamenName.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
           let par_out_type =
-            RamenOperation.out_type_of_operation par_func.F.operation in
+            O.out_type_of_operation par_func.F.operation in
           List.map (fun ft ->
             ft.RamenTuple.name
           ) (RingBufLib.ser_tuple_typ_of_tuple_typ par_out_type)
@@ -392,15 +391,14 @@ let common_fields_of_from get_parent start_name funcs from =
   ) None from |? Set.empty
 
 let reify_star_fields get_parent program_name funcs =
-  let open RamenOperation in
   let input_field alias =
     let expr =
       let path = [ E.Name alias ] in
       E.make (Stateless (SL1 (Path path, E.make (Variable TupleIn)))) in
-    { expr ; alias ;
-      (* Those two will be inferred later, with non-star fields
-       * (See RamenTypingHelpers): *)
-      doc = "" ; aggr = None } in
+    O.{ expr ; alias ;
+        (* Those two will be inferred later, with non-star fields
+         * (See RamenTypingHelpers): *)
+        doc = "" ; aggr = None } in
   let new_funcs = ref funcs in
   let ok =
     (* If a function selects STAR from a parent that also selects STAR
@@ -423,7 +421,7 @@ let reify_star_fields get_parent program_name funcs =
                   let fields =
                     Set.fold (fun name lst ->
                       if RamenName.is_private name ||
-                         List.exists (fun sf -> sf.alias = name) fields
+                         List.exists (fun sf -> sf.O.alias = name) fields
                       then lst
                       else input_field name :: lst
                     ) common_fields fields in

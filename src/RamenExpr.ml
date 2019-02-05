@@ -1557,8 +1557,8 @@ struct
     let m = "record" :: m in
     (
       char '(' -- opt_blanks -+
-      repeat ~min:1 ~sep:RamenTypes.Parser.tup_sep (
-        p +- RamenTypes.Parser.kv_sep ++ non_keyword >>:
+      repeat ~min:1 ~sep:T.Parser.tup_sep (
+        p +- T.Parser.kv_sep ++ non_keyword >>:
         fun (v, k) -> RamenName.field_of_string k, v) +-
       opt_blanks +- char ')' >>:
       fun kvs ->

@@ -1,6 +1,7 @@
 (* See RamenNames.mli *)
 open Batteries
 open RamenHelpers
+module T = RamenTypes
 
 type 'a t = string [@@ppp PPP_OCaml] [@@ppp PPP_JSON]
 
@@ -105,8 +106,8 @@ let rel_program_print_quoted = String.print_quoted
  * ("{p1=n1;p2=v2;...}"), if short enough;
  * - The MD5 hash of the above, otherwise.  *)
 
-type param = string * RamenTypes.value [@@ppp PPP_OCaml]
-type params = (field, RamenTypes.value) Hashtbl.t [@@ppp PPP_OCaml]
+type param = string * T.value [@@ppp PPP_OCaml]
+type params = (field, T.value) Hashtbl.t [@@ppp PPP_OCaml]
 
 let params_sort =
   let param_compare (a, _) (b, _) = String.compare a b in
@@ -114,7 +115,7 @@ let params_sort =
 
 let string_of_params params =
   let print_param oc (n, v) =
-    Printf.fprintf oc "%s=%a" n RamenTypes.print v in
+    Printf.fprintf oc "%s=%a" n T.print v in
   Hashtbl.enum params |>
   List.of_enum |>
   params_sort |>

@@ -13,6 +13,7 @@ open RamenSmt
 module C = RamenConf
 module F = C.Func
 module E = RamenExpr
+module O = RamenOperation
 
 type expr =
   | Nullability of bool
@@ -56,7 +57,7 @@ let expr_of_id funcs i =
       let print_expr stack e =
         if e.E.uniq_num = i then
           raise (ReturnExpr (func.F.name, stack, e)) in
-      RamenOperation.iter_expr print_expr func.F.operation
+      O.iter_expr print_expr func.F.operation
     ) funcs ;
     assert false
   with ReturnExpr (f, s, e) -> f, s, e

@@ -6,6 +6,8 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
+module T = RamenTypes
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -25,7 +27,7 @@ let read_well_known (fq : RamenName.fq) where suffix bname typ () =
     let where =
       if fq_str = suffix then where else
       let fq = String.rchop ~n:(String.length suffix) fq_str in
-      let w = RamenName.field_of_string "worker", "=", RamenTypes.VString fq in
+      let w = RamenName.field_of_string "worker", "=", T.VString fq in
       w :: where in
     let filter = RamenSerialization.filter_tuple_by ser where in
     Some (bname, filter, typ, ser)
@@ -62,9 +64,9 @@ let read_output conf ?duration (fq : RamenName.fq) where =
                     RamenProcesses.start_export conf ?duration func in
                   prog, func, bname) in
           let out_type =
-            RamenOperation.out_type_of_operation func.F.operation
+            O.out_type_of_operation func.F.operation
           and event_time =
-            RamenOperation.event_time_of_operation func.F.operation in
+            O.event_time_of_operation func.F.operation in
           let ser =
             RingBufLib.ser_tuple_typ_of_tuple_typ out_type in
           let filter = RamenSerialization.filter_tuple_by ser where in
@@ -318,7 +320,7 @@ let replay conf ?(while_=always) fq field_names where since until
   (* First, make sure the operation actually exist: *)
   let programs = C.with_rlock conf identity in
   let _mre, prog, func = C.find_func_or_fail programs fq in
-  let out_type = RamenOperation.out_type_of_operation func.F.operation in
+  let out_type = O.out_type_of_operation func.F.operation in
   let field_names = check_field_names out_type field_names in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type in
   let head_idx, head_typ =
@@ -420,7 +422,7 @@ let replay conf ?(while_=always) fq field_names where since until
           (not (Set.is_empty !eofs) || not (Set.Int.is_empty !pids)) &&
           while_ () in
         let event_time =
-          RamenOperation.event_time_of_operation func.F.operation in
+          O.event_time_of_operation func.F.operation in
         let event_time_of_tuple = match event_time with
           | None ->
               if with_event_time then
@@ -454,8 +456,8 @@ let replay conf ?(while_=always) fq field_names where since until
                   let cols =
                     Array.map (fun idx ->
                       match idx with
-                      | -2 -> RamenTypes.VFloat t2
-                      | -1 -> RamenTypes.VFloat t1
+                      | -2 -> T.VFloat t2
+                      | -1 -> T.VFloat t1
                       | idx -> tuple.(idx)
                     ) head_idx in
                   on_tuple t1 t2 cols

@@ -6,6 +6,8 @@ open RamenNullable
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module O = RamenOperation
+module T = RamenTypes
 
 type tuple_spec = (RamenName.field, string) Hashtbl.t [@@ppp PPP_OCaml]
 
@@ -132,7 +134,7 @@ let filter_spec_of_spec fq ser spec =
   (fun (field, value) ->
     let idx, field_typ = field_index_of_name fq ser field in
     let typ = field_typ.RamenTuple.typ in
-    match RamenTypes.of_string ~typ value with
+    match T.of_string ~typ value with
     | Result.Ok v -> idx, v
     | Result.Bad e -> fail_and_quit e) |>
   List.of_enum, ref []
@@ -151,8 +153,8 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
       let ok = err < 1e-7 in
       if ok then miss else (
         !logger.debug "found %a instead of %a (err=%f)"
-          RamenTypes.print actual
-          RamenTypes.print expected
+          T.print actual
+          T.print expected
           err ;
         (idx, actual, err)::miss)
     ) [] spec in
@@ -168,10 +170,10 @@ let file_spec_print ser best_miss oc (idx, value) =
   let n = field_name_of_index ser idx in
   Printf.fprintf oc "%a => %a"
     RamenName.field_print n
-    RamenTypes.print value ;
+    T.print value ;
   match List.find (fun (idx', _, _) -> idx = idx') best_miss with
   | exception Not_found -> ()
-  | _, a, _ -> Printf.fprintf oc " (had %a)" RamenTypes.print a
+  | _, a, _ -> Printf.fprintf oc " (had %a)" T.print a
 
 let tuple_spec_print ser oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
@@ -183,7 +185,7 @@ let tuple_print ser oc vs =
     if i > 0 then String.print oc "; " ;
     Printf.fprintf oc "%a => %a"
       RamenName.field_print ft.RamenTuple.name
-      RamenTypes.print vs.(i)
+      T.print vs.(i)
   ) ser ;
   String.print oc " }"
 
@@ -387,7 +389,7 @@ let check_test_spec conf test =
             failwith ;
         | func ->
             let out_type =
-              RamenOperation.out_type_of_operation func.F.operation in
+              O.out_type_of_operation func.F.operation in
             Hashtbl.iter (fun field_name _ ->
               if not (List.exists (fun ft ->
                         ft.RamenTuple.name = field_name

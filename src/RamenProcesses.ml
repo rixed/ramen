@@ -10,6 +10,7 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
+module O = RamenOperation
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
@@ -203,7 +204,7 @@ let input_ringbuf_fname conf parent child =
 
 let make_fieldmask parent child =
   let out_typ =
-    RamenOperation.out_type_of_operation parent.F.operation |>
+    O.out_type_of_operation parent.F.operation |>
     RingBufLib.ser_tuple_typ_of_tuple_typ in
   RamenFieldMaskLib.fieldmask_of_operation ~out_typ child.F.operation
 
@@ -344,7 +345,7 @@ let start_export ?(duration=Default.export_duration) conf func =
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let ser =
-    RamenOperation.out_type_of_operation func.F.operation |>
+    O.out_type_of_operation func.F.operation |>
     RingBufLib.ser_tuple_typ_of_tuple_typ in
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
@@ -491,7 +492,7 @@ let really_try_start conf now must_run proc =
             failwith
     ) proc.func.parents in
   let check_linkage p c =
-    let out_type = RamenOperation.out_type_of_operation p.F.operation in
+    let out_type = O.out_type_of_operation p.F.operation in
     try check_is_subtype c.F.in_type out_type
     with Failure msg ->
       Printf.sprintf2
