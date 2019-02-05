@@ -1346,26 +1346,25 @@ struct
     (
       afun1 "changed" >>:
       fun f ->
-        let subst_expr pref n x =
+        let subst_expr pref n =
           (* If tuple is still unknown and we figure out later that it's
            * not output then the error message will be about that field
            * not present in the output tuple. Not too bad. *)
           if pref <> TupleOut && pref <> TupleUnknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
-          make (Stateless (SL2 (
-            Get, n, { x with text = Variable TupleOutPrevious })))
+          make (Stateless (SL2 ( Get, n, make (Variable TupleOutPrevious))))
         in
         let prev_field =
           match f.text with
-          | Stateless (SL1 (Path [ Name n ], ({ text = Variable pref ; _ } as x))) ->
+          | Stateless (SL1 (Path [ Name n ], { text = Variable pref ; _ })) ->
               (* The only way to get a Path at this stage is to have entered
                * a bare field name, which could be later found to belong to
                * the out tuple. *)
               let n = (n :> string) |> const_of_string in
-              subst_expr pref n x
-          | Stateless (SL2 (Get, n, ({ text = Variable pref ; _ } as x))) ->
-              subst_expr pref n x
+              subst_expr pref n
+          | Stateless (SL2 (Get, n, { text = Variable pref ; _ })) ->
+              subst_expr pref n
           | _ ->
               raise (Reject "Changed operator is only valid for fields")
         in
