@@ -1601,7 +1601,7 @@ struct
     "13{secs^2}" \
       (test_expr ~printer:(print false) p "13i32{secs^2}")
 
-     "13{secs^2}" \
+    "13{secs^2}" \
       (test_expr ~printer:(print false) p "13i32 {secs ^ 2}")
 
     "true" \
