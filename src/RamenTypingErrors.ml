@@ -12,6 +12,7 @@ open RamenTypingHelpers
 open RamenSmt
 module C = RamenConf
 module F = C.Func
+module E = RamenExpr
 
 type expr =
   | Nullability of bool
@@ -48,7 +49,19 @@ let string_of_index c t =
   if c = t - 1 then "last " else
   string_of_int (c + 1) ^ ordinal_suffix (c + 1) ^ " "
 
-let print_expr oc =
+let expr_of_id funcs i =
+  let exception ReturnExpr of RamenName.func * E.t list * E.t in
+  try
+    List.iter (fun func ->
+      let print_expr stack e =
+        if e.E.uniq_num = i then
+          raise (ReturnExpr (func.F.name, stack, e)) in
+      RamenOperation.iter_expr print_expr func.F.operation
+    ) funcs ;
+    assert false
+  with ReturnExpr (f, s, e) -> f, s, e
+
+let print_expr funcs oc =
   let p fmt = Printf.fprintf oc fmt in
   function
   | Nullability false -> p " must not be nullable"
@@ -100,8 +113,9 @@ type func =
   | Unlink of expr
     [@@ppp PPP_OCaml]
 
-let print_func oc =
+let print_func funcs oc =
   let p fmt = Printf.fprintf oc fmt in
+  let print_expr = print_expr funcs in
   function
   | Clause (c, e) -> p "clause %s%a" c print_expr e
   | Notif (i, e) -> p "notification #%d%a" i print_expr e
@@ -116,33 +130,36 @@ type t = Expr of int * expr
        | RunCondition
          [@@ppp PPP_OCaml]
 
-exception ReturnExpr of RamenName.func * RamenExpr.t
+let print_stack oc stack =
+  let rec rewind max_depth last = function
+    | [] -> last
+    | e :: stack ->
+        if max_depth = 0 then last
+        else rewind (max_depth - 1) (Some e) stack
+  in
+  match rewind 1 None stack with
+  | Some e ->
+      Printf.fprintf oc "In %a: " (E.print ~max_depth:3 false) e
+  | None ->
+      ()
+
 let print funcs oc =
-  let expr_of_id i =
-    try
-      List.iter (fun func ->
-        let print_expr _ e =
-          if e.E.uniq_num = i then
-            raise (ReturnExpr (func.F.name, e)) in
-        RamenOperation.iter_expr print_expr func.F.operation
-      ) funcs ;
-      assert false
-    with ReturnExpr (f, e) -> f, e
-  and func_of_id i = List.at funcs i
+  let func_of_id i = List.at funcs i
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->
-      let func_name, expr = expr_of_id i in
-      p "In function %s: expression %s%a"
+      let func_name, stack, expr = expr_of_id funcs i in
+      p "In function %s: %aexpression %s%a"
         (RamenName.func_color func_name)
+        print_stack stack
         (RamenName.expr_color
-          (IO.to_string (RamenExpr.print ~max_depth:3 false) expr))
-        print_expr e
+          (IO.to_string (E.print ~max_depth:3 false) expr))
+        (print_expr funcs) e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
       p "In function %s: %a"
         (RamenName.func_color func_name)
-        print_func e
+        (print_func funcs) e
   | RunCondition -> p "running condition must be a non nullable boolean."
 
 (* When annotating an assertion we must always use a unique name, even if we
