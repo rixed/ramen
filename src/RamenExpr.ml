@@ -892,7 +892,12 @@ struct
   let param m =
     let m = "parameter" :: m in
     (
-      non_keyword >>:
+      (* You can choose any tuple as long as it's TupleParam: *)
+      optional ~def:() (
+        parse_prefix +- char '.' >>:
+        fun p ->
+          if p <> TupleParam then raise (Reject "not a param")
+      ) -+ non_keyword >>:
       fun n ->
         let n = RamenName.field_of_string n in
         make (Stateless (SL1 (Path [ Name n ], make (Variable TupleParam))))
@@ -901,6 +906,8 @@ struct
   (*$= param & ~printer:BatPervasives.identity
     "param.glop" \
       (test_expr ~printer:(print false) param "glop")
+    "param.glop" \
+      (test_expr ~printer:(print false) param "param.glop")
   *)
 
   let state_lifespan m =
