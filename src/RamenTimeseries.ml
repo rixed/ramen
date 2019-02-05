@@ -72,9 +72,9 @@ let bucket_count b =
  * for all fields *)
 type bucket_time = Begin | Middle | End
 let get conf num_points since until where factors
-        ?consolidation ?(bucket_time=Middle) fq data_fields =
+        ?consolidation ?(bucket_time=Middle) (fq : RamenName.fq) data_fields =
   !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
-    (RamenName.string_of_fq fq)
+    (fq :> string)
     (List.print RamenName.field_print) data_fields
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%a %s %a"
@@ -231,7 +231,7 @@ let possible_values conf ?since ?until func factor =
     invalid_arg "get_possible_values: not a factor" ;
   let dir =
     C.factors_of_function conf func
-      ^"/"^ path_quote (RamenName.string_of_field factor) in
+      ^"/"^ path_quote (factor :> string) in
   (try Sys.files_of dir
   with Sys_error _ -> Enum.empty ()) //@
   (fun fname ->

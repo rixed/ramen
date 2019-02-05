@@ -56,11 +56,11 @@ and retention =
 let user_conf_file conf =
   conf_dir conf ^ "/config"
 
-let retention_of_fq user_conf fq =
+let retention_of_fq user_conf (fq : RamenName.fq) =
   try
     Hashtbl.enum user_conf.retentions |>
     Enum.find_map (fun (pat, ret) ->
-      if Globs.matches pat (RamenName.string_of_fq fq) then Some ret
+      if Globs.matches pat (fq :> string) then Some ret
       else None)
   with Not_found -> { duration = 0. ; query_freq = 0. }
 
@@ -113,9 +113,9 @@ let get_user_conf fname per_func_stats =
       (* No worker, then do not save anything: *)
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
-      Hashtbl.iter (fun fq s ->
+      Hashtbl.iter (fun (fq : RamenName.fq) s ->
         if s.parents = [] then
-          let pat = Globs.(compile (escape (RamenName.string_of_fq fq))) in
+          let pat = Globs.(compile (escape (fq :> string))) in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
   assert (Hashtbl.length user_conf.retentions > 0) ;
@@ -347,8 +347,8 @@ let list_print oc =
 let hashkeys_print p =
   Hashtbl.print ~first:"" ~last:"" ~sep:" " ~kvsep:"" p (fun _ _ -> ())
 
-let const pref fq =
-  pref ^ scramble (RamenName.string_of_fq fq)
+let const pref (fq : RamenName.fq) =
+  pref ^ scramble (fq :> string)
 
 let perc = const "perc_"
 let cost i fq = (const "cost_" fq) ^"_"^ string_of_int i
@@ -365,13 +365,13 @@ let recall_size s = Int64.to_float s.bytes /. s.running_time
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100: *)
 let emit_all_vars durations oc per_func_stats =
-  Hashtbl.iter (fun fq s ->
+  Hashtbl.iter (fun (fq : RamenName.fq) s ->
     Printf.fprintf oc
       "; Storage share of %s (compute cost: %f, recall size: %f)\n\
        (declare-const %s Int)\n\
        (assert (>= %s 0))\n\
        (assert (<= %s 100)) ; should not be required but helps\n"
-      (RamenName.string_of_fq fq)
+      (fq :> string)
       (compute_cost s) (recall_size s)
       (perc fq) (perc fq) (perc fq) ;
     List.iteri (fun i _ ->
@@ -396,11 +396,11 @@ let emit_query_costs user_conf durations oc per_func_stats =
   String.print oc "\n" ;
   (* Now for each of these durations, instruct the solver what the query
    * cost will be: *)
-  Hashtbl.iter (fun fq s ->
+  Hashtbl.iter (fun (fq : RamenName.fq) s ->
     Printf.fprintf oc "; Query cost of %s (parents: %a)\n"
-      (RamenName.string_of_fq fq)
-      (list_print (fun oc p ->
-        String.print oc (RamenName.string_of_fq p))) s.parents ;
+      (fq :> string)
+      (list_print (fun oc (p : RamenName.fq) ->
+        String.print oc (p :> string))) s.parents ;
     List.iteri (fun i d ->
       let recall_size = recall_size s in
       let recall_cost =
@@ -437,7 +437,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
   ) per_func_stats
 
 let emit_no_invalid_cost user_conf durations oc per_func_stats =
-  Hashtbl.iter (fun fq _ ->
+  Hashtbl.iter (fun (fq : RamenName.fq) _ ->
     let retention = retention_of_fq user_conf fq in
     if retention.duration > 0. then (
       (* Which index is that? *)
@@ -448,7 +448,7 @@ let emit_no_invalid_cost user_conf durations oc per_func_stats =
 
 let emit_total_query_costs user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
-    (hashkeys_print (fun oc fq ->
+    (hashkeys_print (fun oc (fq : RamenName.fq) ->
       let retention = retention_of_fq user_conf fq in
       if retention.duration > 0. then
         (* Which index is that? *)

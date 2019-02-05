@@ -113,11 +113,10 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
         Some s) ignore in
   let fq_name = function
     | NotRunning (pn, fn) ->
-        red (RamenName.string_of_program pn ^"/"^
-             RamenName.string_of_func fn)
+        red ((pn :> string) ^"/"^ (fn :> string))
     | ProgramError (pn, e) ->
-        red (RamenName.string_of_program pn ^": "^ e)
-    | Running func -> RamenName.string_of_fq (F.fq_name func) in
+        red ((pn :> string) ^": "^ e)
+    | Running func -> (F.fq_name func :> string) in
   let line_of_link i p c =
     let parent = fq_name p and child = fq_name c in
     let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =

@@ -40,8 +40,8 @@ let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
 
 (* Tuple deconstruction as a function parameter: *)
-let id_of_field_name ?(tuple=TupleIn) x =
-  (match RamenName.string_of_field x with
+let id_of_field_name ?(tuple=TupleIn) (x : RamenName.field) =
+  (match (x :> string) with
   (* Note: we have a '#count' for the sort tuple. *)
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
   | field -> id_of_prefix tuple ^"_"^ field ^"_") |>
@@ -50,8 +50,8 @@ let id_of_field_name ?(tuple=TupleIn) x =
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.name
 
-let var_name_of_record_field k =
-  RamenName.string_of_field k ^ "_" |>
+let var_name_of_record_field (k : RamenName.field) =
+  (k :> string) ^ "_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
 let list_print_as_tuple ?as_ p oc lst =
@@ -558,22 +558,24 @@ let id_of_state = function
   | E.LocalState -> "group_"
 
 (* Return the environment corresponding to the used envvars: *)
-let env_of_envvars =
-  List.map (fun f ->
+let env_of_envvars envvars =
+  List.map (fun (f : RamenName.field) ->
     let v =
       Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
-        (RamenName.string_of_field f) in
+        (f :> string) in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (TupleEnv, f), v)
+    E.RecordField (TupleEnv, f), v
+  ) envvars
 
-let env_of_params =
+let env_of_params params =
   List.map (fun param ->
     let f = param.RamenTuple.ptyp.name in
     let v = id_of_field_name ~tuple:TupleParam f in
     (* FIXME: RecordField should take a tuple and a _path_ not a field
      * name *)
-    E.RecordField (TupleParam, f), v)
+    E.RecordField (TupleParam, f), v
+  ) params
 
 (* Returns all the bindings in global and group states as well as the
  * environment for the env and param 'tuples': *)
@@ -620,10 +622,10 @@ let add_tuple_environment tuple typ env =
       match tuple with
       | TupleEnv ->
           Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
-            (RamenName.string_of_field ft.RamenTuple.name)
+            (ft.RamenTuple.name :> string)
       | TupleOutPrevious ->
           Printf.sprintf2 "(maybe_%s_ out_previous_)"
-            (RamenName.string_of_field ft.name)
+            (ft.name :> string)
       | _ -> id_of_field_typ ~tuple ft in
     (E.RecordField (tuple, ft.name), v) :: env
   ) env typ
@@ -730,7 +732,7 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
 and emit_maybe_fields oc out_typ =
   List.iter (fun ft ->
     Printf.fprintf oc "let %s = function\n"
-      ("maybe_"^ RamenName.string_of_field ft.name ^"_" |>
+      ("maybe_"^ (ft.name :> string) ^"_" |>
        RamenOCamlCompiler.make_valid_ocaml_identifier) ;
     Printf.fprintf oc "  | Null -> Null\n" ;
     Printf.fprintf oc "  | NotNull %a -> %s%s\n\n"
@@ -757,7 +759,7 @@ and emit_event_time oc opc =
         Printf.fprintf oc "(%a %s_%s_)"
           (conv_from_to ~nullable:false) (param.ptyp.typ.structure, TFloat)
           (id_of_prefix TupleParam)
-          (RamenName.string_of_field field_name)
+          (field_name :> string)
   in
   Printf.fprintf oc "let start_ = %a *. %a "
     (field_value_to_float !sta_src) sta_field
@@ -809,7 +811,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * refer to the previous one. And we must, for each expression, evaluate
      * it in a context where this record is opened. *)
     let _env =
-      List.fold_left (fun env (k, v) ->
+      List.fold_left (fun env ((k : RamenName.field), v) ->
         let var_name = var_name_of_record_field k in
         Printf.fprintf oc "\tlet %s = %a in\n"
           var_name
@@ -2228,7 +2230,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
     Printf.fprintf oc
       "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n"
       (i+1)
-      (RamenName.string_of_field field_typ.name) ;
+      (field_typ.name :> string) ;
     Printf.fprintf oc "\t\t\traise exn))%s\n" sep ;
   ) tuple_typ ;
   Printf.fprintf oc "\t)\n"
@@ -2255,7 +2257,7 @@ let emit_factors_of_tuple name oc opc =
     let typ =
       (List.find (fun t -> t.RamenTuple.name = factor) opc.tuple_typ).typ in
     Printf.fprintf oc "\t%S, %a %s ;\n"
-      (RamenName.string_of_field factor)
+      (factor :> string)
       emit_value typ
       (id_of_field_name ~tuple:TupleOut factor)
   ) factors ;
@@ -2623,7 +2625,7 @@ let emit_field_selection
       if build_minimal then (
         (* Update the states as required for this field, just before
          * computing the field actual value. *)
-        let what = RamenName.string_of_field sf.RamenOperation.alias in
+        let what = (sf.RamenOperation.alias :> string) in
         emit_state_update_for_expr ~env ~opc ~what oc sf.RamenOperation.expr ;
       ) ;
       if not build_minimal && field_in_minimal sf.alias then (
@@ -2631,7 +2633,7 @@ let emit_field_selection
         env
       ) else (
         Printf.fprintf oc "\t(* Output field %s of type %a *)\n"
-          (RamenName.string_of_field sf.RamenOperation.alias)
+          (sf.RamenOperation.alias :> string)
           T.print_typ sf.expr.E.typ ;
         let var_name =
           id_of_field_name ~tuple:TupleOut sf.RamenOperation.alias in
@@ -2690,7 +2692,7 @@ let emit_update_states
     if not (field_in_minimal sf.RamenOperation.alias) then (
       (* Update the states as required for this field, just before
        * computing the field actual value. *)
-      let what = RamenName.string_of_field sf.RamenOperation.alias in
+      let what = (sf.RamenOperation.alias :> string) in
       emit_state_update_for_expr ~env ~opc ~what oc sf.RamenOperation.expr)
   ) selected_fields ;
   Printf.fprintf oc "\t()\n"
@@ -2944,7 +2946,7 @@ let emit_notification_tuple ~env ~opc oc notif =
       (fun oc ft ->
         let id = id_of_field_name ~tuple:TupleOut ft.RamenTuple.name in
         Printf.fprintf oc "%S, "
-          (RamenName.string_of_field ft.RamenTuple.name) ;
+          (ft.RamenTuple.name :> string) ;
         if ft.typ.nullable then
           Printf.fprintf oc
             "(match %s with Null -> %S \
@@ -3088,7 +3090,7 @@ let emit_aggregate opc oc global_env group_env env_env param_env
         ft
       else (* Replace it *)
         RamenTuple.{ ft with
-          name = RamenName.field_of_string ("_not_minimal_"^ RamenName.string_of_field ft.name) ;
+          name = RamenName.field_of_string ("_not_minimal_"^ (ft.name :> string)) ;
           typ = T.{ ft.typ with structure = TEmpty } }
     ) out_typ in
   (* Tells whether we need the group to check the where clause (because it
@@ -3167,13 +3169,13 @@ let emit_parameters oc params =
       "let %s_%s_ =\n\
        \tlet parser_ x_ = %s(%a) in\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
-      (id_of_prefix TupleParam) (RamenName.string_of_field p.ptyp.name)
+      (id_of_prefix TupleParam) (p.ptyp.name :> string)
       (if p.ptyp.typ.nullable then
         "if looks_like_null x_ then Null else NotNull "
        else "") (emit_value_of_string p.ptyp.typ.structure) "x_"
       (if p.ptyp.typ.nullable && p.value <> VNull
        then "NotNull " else "")
-      emit_type p.value (RamenName.string_of_field p.ptyp.name)
+      emit_type p.value (p.ptyp.name :> string)
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
@@ -3183,9 +3185,9 @@ let emit_parameters oc params =
       let glob_name =
         Printf.sprintf "%s_%s_"
           (id_of_prefix TupleParam)
-          (RamenName.string_of_field p.ptyp.name) in
+          (p.ptyp.name :> string) in
       Printf.fprintf oc "\t| %S -> (%a) %s%s\n"
-        (RamenName.string_of_field p.ptyp.name)
+        (p.ptyp.name :> string)
         (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
         glob_name
         (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
@@ -3224,14 +3226,14 @@ let emit_params_env params_mod params envvars oc =
       Printf.fprintf oc "%s.%s_%s_"
         params_mod
         (id_of_prefix TupleParam)
-        (RamenName.string_of_field p.ptyp.name)))
+        (p.ptyp.name :> string)))
       (RamenTuple.params_sort params) ;
   Printf.fprintf oc
     "\n(* Environment variables as a Ramen record: *)\n\
      let envs_ = %a\n\n"
-    (list_print_as_tuple (fun oc n ->
+    (list_print_as_tuple (fun oc (n : RamenName.field) ->
       Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
-        (RamenName.string_of_field n)))
+        (n :> string)))
       envvars
 
 let emit_header func params_mod oc =
@@ -3241,7 +3243,7 @@ let emit_header func params_mod oc =
     open RamenHelpers\n\
     open RamenNullable\n\
     open %s\n"
-    (RamenName.string_of_func func.F.name)
+    (func.F.name :> string)
     (RamenOperation.print true) func.F.operation
     params_mod
 

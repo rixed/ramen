@@ -169,8 +169,8 @@ type running_process =
 
 let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (parents=%a)"
-    (RamenName.string_of_program proc.func.F.program_name)
-    (RamenName.string_of_func proc.func.F.name)
+    (proc.func.F.program_name :> string)
+    (proc.func.F.name :> string)
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf mre func =
@@ -194,8 +194,8 @@ let input_ringbuf_fname conf parent child =
           ) child.parents with
     | exception Not_found ->
         !logger.error "Operation %S is not a child of %S"
-          (RamenName.string_of_func child.name)
-          (RamenName.string_of_func parent.name) ;
+          (child.name :> string)
+          (parent.name :> string) ;
         invalid_arg "input_ringbuf_fname"
     | i, _ ->
         C.in_ringbuf_name_merging conf child i
@@ -281,7 +281,7 @@ let rescue_worker conf func params =
    * to move it away: *)
   !logger.info "Worker %s is deadlooping. Deleting its state file and \
                 input ringbuffers."
-    (RamenName.string_of_fq (F.fq_name func)) ;
+    ((F.fq_name func) :> string) ;
   let state_file = C.worker_state conf func params in
   move_file_away state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
@@ -296,8 +296,8 @@ let process_workers_terminations conf running =
     Option.may (fun pid ->
       let what =
         Printf.sprintf "Operation %s/%s (pid %d)"
-          (RamenName.string_of_program proc.func.F.program_name)
-          (RamenName.string_of_func proc.func.name)
+          (proc.func.F.program_name :> string)
+          (proc.func.name :> string)
           pid in
       (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
       | exception exn ->
@@ -369,7 +369,7 @@ let really_start conf proc parents children =
    * block.
    * Each time a new worker is started or stopped the parents outrefs
    * are updated. *)
-  let fq_str = RamenName.string_of_fq (F.fq_name proc.func) in
+  let fq_str = (F.fq_name proc.func :> string) in
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
@@ -411,7 +411,7 @@ let really_start conf proc parents children =
     (* To know what to log: *)
     "is_test="^ string_of_bool conf.C.test ;
     (* Used to choose the function to perform: *)
-    "name="^ RamenName.string_of_func (proc.func.F.name) ;
+    "name="^ (proc.func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
     "output_ringbufs_ref="^ out_ringbuf_ref ;
     "report_ringbuf="^ C.report_ringbuf conf ;
@@ -444,9 +444,9 @@ let really_start conf proc parents children =
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
     List.enum proc.func.envvars //@
-    (fun n ->
-      let n = RamenName.string_of_field n in
-      try Some (n ^"="^ Sys.getenv n) with Not_found -> None) |>
+    (fun (n : RamenName.field) ->
+      try Some ((n :> string) ^"="^ Sys.getenv (n :> string))
+      with Not_found -> None) |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args = [| worker_argv0 ; fq_str |] in
@@ -486,7 +486,7 @@ let really_try_start conf now must_run proc =
             ) parents in
           if not has_parent then
             Printf.sprintf2 "Parent of %s is missing: %a"
-              (RamenName.string_of_fq (F.fq_name proc.func))
+              (F.fq_name proc.func :> string)
               F.print_parent parent |>
             failwith
     ) proc.func.parents in
@@ -497,9 +497,9 @@ let really_try_start conf now must_run proc =
       Printf.sprintf2
         "Input type of %s (%a) is not compatible with \
          output type of %s (%a): %s"
-        (RamenName.string_of_fq (F.fq_name c))
+        (F.fq_name c :> string)
         RamenFieldMaskLib.print_in_type c.in_type
-        (RamenName.string_of_fq (F.fq_name p))
+        (F.fq_name p :> string)
         RamenTuple.print_typ_names out_type
         msg |>
       failwith in
@@ -556,13 +556,13 @@ let try_kill conf must_run proc =
   if proc.last_killed = 0. then (
     (* Ask politely: *)
     info_or_test conf "Terminating worker %s (pid %d)"
-      (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
+      (F.fq_name proc.func :> string) pid ;
     log_and_ignore_exceptions ~what:"Terminating worker"
       (Unix.kill pid) Sys.sigterm ;
     proc.last_killed <- now ;
   ) else if now -. proc.last_killed > 10. then (
     !logger.warning "Killing worker %s (pid %d) with bigger guns"
-      (RamenName.string_of_fq (F.fq_name proc.func)) pid ;
+      (F.fq_name proc.func :> string) pid ;
     log_and_ignore_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;
@@ -589,7 +589,7 @@ let check_out_ref conf must_run running =
       Hashtbl.iter (fun fname _ ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
-            (RamenName.string_of_fq (F.fq_name proc.func)) fname ;
+            (F.fq_name proc.func :> string) fname ;
           log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
             IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
             RamenOutRef.remove out_ref fname RamenChannel.live) ())
@@ -604,8 +604,8 @@ let check_out_ref conf must_run running =
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"
-            (RamenName.string_of_fq (F.fq_name par_func))
-            (RamenName.string_of_fq (F.fq_name proc.func)) ;
+            (F.fq_name par_func :> string)
+            (F.fq_name proc.func :> string) ;
           log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
             let fname = input_ringbuf_fname conf par_func proc.func
             and fieldmask = make_fieldmask par_func proc.func in

@@ -197,7 +197,7 @@ let rec merge_tree t1 t2 =
 let rec tree_of_path e = function
   | [] -> Leaf e
   | (E.Name n, e) :: p ->
-      Subfields (Map.String.singleton (RamenName.string_of_field n) (tree_of_path e p))
+      Subfields (Map.String.singleton (n :> string) (tree_of_path e p))
   | (E.Int i, e) :: p ->
       Indices (Map.Int.singleton i (tree_of_path e p))
 
@@ -279,7 +279,7 @@ and rec_fieldmask : 'b 'c. RamenTypes.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
 and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
   List.enum typ /@ (fun ft ->
-    let name = RamenName.string_of_field ft.RamenTuple.name in
+    let name = (ft.RamenTuple.name :> string) in
     rec_fieldmask ft.typ Map.String.find name m) |>
   Array.of_enum
 
@@ -352,7 +352,7 @@ type in_type = in_field list
 let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^
-    RamenName.string_of_field (E.id_of_path f.path) ^ ":" ^
+    (E.id_of_path f.path :> string) ^":"^
     RamenTypes.string_of_typ f.typ
   ) ""
 
@@ -403,7 +403,7 @@ let find_type_of_path parent_out path =
         (match typ.structure with
         | TRecord ts ->
             (match array_rfind (fun (k, _) ->
-              k = RamenName.string_of_field n) ts with
+              k = (n :> string)) ts with
             | exception Not_found -> invalid ()
             | _, t -> locate_type t rest)
         | _ -> invalid ())
@@ -435,7 +435,7 @@ let subst_deep_fields in_type =
     match path, e.E.text with
     | [ E.Name n ],
       Stateless (SL2 (Get, s, { text = Variable TupleIn ; _ })) ->
-        E.string_of_const s = Some (RamenName.string_of_field n)
+        E.string_of_const s = Some (n :> string)
     | path1,
       Stateless (SL1 (Path path2, { text = Variable TupleIn ; _ })) ->
         path1 = path2
@@ -443,7 +443,7 @@ let subst_deep_fields in_type =
         (* Here we assume that to deref a record one uses Get with a string
          * index. *)
         Stateless (SL2 (Get, s, e')) ->
-          E.string_of_const s = Some (RamenName.string_of_field n) &&
+          E.string_of_const s = Some (n :> string) &&
           matches_expr path' e'
     | E.Int i :: path',
         Stateless (SL2 (Get, n, e')) ->

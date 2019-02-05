@@ -203,7 +203,8 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
     Location.report_exception (ppf ()) exn ;
     cannot_link program_name (Printexc.to_string exn)
 
-let link_external conf program_name inc_dirs obj_files src_file bin_file =
+let link_external conf (program_name : RamenName.program)
+                  inc_dirs obj_files src_file bin_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
@@ -226,13 +227,12 @@ let link_external conf program_name inc_dirs obj_files src_file bin_file =
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
   let cmd_name =
-    "Compilation+Link of "^ RamenName.string_of_program program_name in
+    "Compilation+Link of "^ (program_name :> string) in
   match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
   | None ->
       cannot_link program_name "Cannot run command"
   | Some (Unix.WEXITED 0) ->
-      !logger.debug "Compiled %s with: %s"
-        (RamenName.string_of_program program_name) cmd ;
+      !logger.debug "Compiled %s with: %s" (program_name :> string) cmd ;
   | Some status ->
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)

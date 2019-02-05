@@ -10,9 +10,9 @@ type field_source = OutputField | Parameter [@@ppp PPP_OCaml]
 
 type field = RamenName.field * field_source ref * float [@@ppp PPP_OCaml]
 
-let string_of_field (n, _, s) =
+let string_of_field ((n : RamenName.field), _, s) =
   let string_of_scale f = if f = 1. then "" else "*"^ string_of_float f in
-  RamenName.string_of_field n ^ string_of_scale s
+  (n :> string) ^ string_of_scale s
 
 type event_start = field [@@ppp PPP_OCaml]
 

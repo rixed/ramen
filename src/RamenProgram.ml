@@ -68,7 +68,7 @@ let print_func oc n =
         (RamenOperation.print with_types ) n.operation
   | Some name ->
       Printf.fprintf oc "DEFINE '%s' AS %a;"
-        (RamenName.string_of_func name)
+        (name :> string)
         (RamenOperation.print with_types) n.operation
 
 let print oc (params, run_cond, funcs) =
@@ -100,7 +100,7 @@ let checked (params, run_cond, funcs) =
     Printf.sprintf "Name %s is not unique" name |> failwith in
   List.fold_left (fun s p ->
     if Set.mem p.RamenTuple.ptyp.name s then
-      name_not_unique (RamenName.string_of_field p.ptyp.name) ;
+      name_not_unique (p.ptyp.name :> string) ;
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
   let funcs, _ =
@@ -123,7 +123,7 @@ let checked (params, run_cond, funcs) =
       let names =
         match n.name with
         | Some name ->
-            let ns = RamenName.string_of_func name in
+            let ns = (name :> string) in
             (* Names of defined functions cannot use '#' as we use it to delimit
              * special suffixes (stats, notifs): *)
             if String.contains ns '#' then
@@ -355,7 +355,7 @@ let common_fields_of_from get_parent start_name funcs from =
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
               Printf.sprintf "While expanding STAR, cannot find parent %s"
-                (RamenName.string_of_func fn) |>
+                (fn :> string) |>
               failwith
           | par ->
               (match par.operation with

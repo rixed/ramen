@@ -84,20 +84,20 @@ struct
     | Some rel_prog ->
         RamenName.(program_of_rel_program child_prog rel_prog)
 
-  let print_parent oc = function
+  let print_parent oc (parent : parent) =
+    match parent with
     | None, f ->
-        String.print oc (RamenName.string_of_func f)
+        String.print oc (f :> string)
     | Some p, f ->
         Printf.fprintf oc "%s/%s"
-          (RamenName.string_of_rel_program p)
-          (RamenName.string_of_func f)
+          (p :> string) (f :> string)
 
   (* Only for debug or keys, not for paths! *)
   let fq_name f = RamenName.fq f.program_name f.name
 
   let path f =
     RamenName.path_of_program f.program_name
-    ^"/"^ RamenName.string_of_func f.name
+    ^"/"^ (f.name :> string)
 
   let signature func params =
     (* We'd like to be formatting independent so that operation text can be
@@ -124,7 +124,7 @@ struct
 
   let dump_io func =
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
-      (RamenName.string_of_func func.name)
+      (func.name :> string)
       RamenFieldMaskLib.print_in_type func.in_type
       RamenTuple.print_typ
         (RamenOperation.out_type_of_operation func.operation)
@@ -169,10 +169,10 @@ struct
     (* First the params: *)
     let env =
       Hashtbl.enum params /@
-      (fun (n, v) ->
+      (fun ((n : RamenName.field), v) ->
         Printf.sprintf2 "%s%s=%a"
           param_envvar_prefix
-          (RamenName.string_of_field n)
+          (n :> string)
           RamenTypes.print v) in
     (* Then the experiment variants: *)
     let exps =

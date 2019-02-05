@@ -16,8 +16,8 @@ let () =
 
 (* Some ringbuf are always available and their type known:
  * instrumentation, notifications. *)
-let read_well_known fq where suffix bname typ () =
-  let fq_str = RamenName.string_of_fq fq in
+let read_well_known (fq : RamenName.fq) where suffix bname typ () =
+  let fq_str = (fq :> string) in
   if fq_str = suffix || String.ends_with fq_str suffix then
     (* For well-known tuple types, serialized tuple is as given (no
      * private fields, no reordering of fields): *)
@@ -34,7 +34,7 @@ let read_well_known fq where suffix bname typ () =
 (* Returns the ringbuf name, a bool indicating if it's a temporary export or not,
  * the filter corresponding to [where], the tuple type, the tuple serialized type,
  * the parameters and event time of [fq]: *)
-let read_output conf ?duration fq where =
+let read_output conf ?duration (fq : RamenName.fq) where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where ("#"^ SpecialFunctions.stats)
@@ -55,7 +55,7 @@ let read_output conf ?duration fq where =
             C.with_rlock conf (fun programs ->
               match C.find_func programs fq with
               | exception Not_found ->
-                  failwith ("Function "^ RamenName.string_of_fq fq ^
+                  failwith ("Function "^ (fq :> string) ^
                             " does not exist")
               | _mre, prog, func ->
                   let bname =
@@ -387,11 +387,11 @@ let replay conf ?(while_=always) fq field_names where since until
         let _, pids, eofs =
           Set.fold (fun sfq (i, pids, eofs) ->
             let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
-            let args = [| replay_argv0 ; RamenName.string_of_fq sfq |]
+            let args = [| replay_argv0 ; (sfq :> string) |]
             and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
             let env =
-              [| "name="^ RamenName.string_of_func sfunc.F.name ;
-                 "fq_name="^ RamenName.string_of_fq sfq ;
+              [| "name="^ (sfunc.F.name :> string) ;
+                 "fq_name="^ (sfq :> string) ;
                  "log_level="^ string_of_log_level conf.C.log_level ;
                  "output_ringbufs_ref="^ out_ringbuf_ref ;
                  "rb_archive="^ C.archive_buf_name conf sfunc ;

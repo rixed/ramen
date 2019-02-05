@@ -41,7 +41,7 @@ let print_selected_field with_types oc f =
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
       (E.print with_types) f.expr
-      (RamenName.string_of_field f.alias) ;
+      (f.alias :> string) ;
     if f.doc <> "" then Printf.fprintf oc " %S" f.doc
   ) else (
     E.print with_types oc f.expr ;
@@ -145,10 +145,9 @@ and data_source =
 let rec print_data_source with_types oc = function
   | NamedOperation (Some rel_p, f) ->
       Printf.fprintf oc "%s/%s"
-        (RamenName.string_of_rel_program rel_p)
-        (RamenName.string_of_func f)
+        (rel_p :> string) (f :> string)
   | NamedOperation (None, f) ->
-      String.print oc (RamenName.string_of_func f)
+      String.print oc (f :> string)
   | SubQuery q ->
       Printf.fprintf oc "(%a)" (print with_types) q
   | GlobPattern s ->
@@ -257,8 +256,7 @@ let fold_top_level_expr init f = function
                 notifications ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            let what = Printf.sprintf "field %S"
-                         (RamenName.string_of_field sf.alias) in
+            let what = Printf.sprintf "field %S" (sf.alias :> string) in
             f prev what sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->

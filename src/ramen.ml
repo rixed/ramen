@@ -340,9 +340,9 @@ let assignment =
         (match RamenTypes.of_string ~what pval with
         | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
-  and print fmt (pname, pval) =
+  and print fmt ((pname : RamenName.field), pval) =
     Format.fprintf fmt "%s=%s"
-      (RamenName.string_of_field pname)
+      (pname :> string)
       (RamenTypes.to_string pval)
   in
   Arg.conv ~docv:"IDENTIFIER=VALUE" (parse, print)
@@ -378,8 +378,8 @@ let bin_file =
 
 let program =
   let parse s = Pervasives.Ok (RamenName.program_of_string s)
-  and print fmt p =
-    Format.fprintf fmt "%s" (RamenName.string_of_program p)
+  and print fmt (p : RamenName.program) =
+    Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
@@ -456,8 +456,8 @@ let kill =
 
 let func_name =
   let parse s = Pervasives.Ok (RamenName.func_of_string s)
-  and print fmt p =
-    Format.fprintf fmt "%s" (RamenName.string_of_func p)
+  and print fmt (p : RamenName.func) =
+    Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
@@ -544,9 +544,9 @@ let filter =
         (match RamenTypes.of_string ~what pval with
         | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, op, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
-  and print fmt (pname, op, pval) =
+  and print fmt ((pname : RamenName.field), op, pval) =
     Format.fprintf fmt "%s%s%s"
-      (RamenName.string_of_field pname)
+      (pname :> string)
       op
       (RamenTypes.to_string pval)
   in
@@ -637,8 +637,8 @@ let tail =
 
 let fq_name =
   let parse s = Pervasives.Ok (RamenName.fq_of_string s)
-  and print fmt p =
-    Format.fprintf fmt "%s" (RamenName.string_of_fq p)
+  and print fmt (p : RamenName.fq) =
+    Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
 
@@ -649,8 +649,8 @@ let function_name p =
 
 let field =
   let parse s = Pervasives.Ok (RamenName.field_of_string s)
-  and print fmt s =
-    Format.fprintf fmt "%s" (RamenName.string_of_field s)
+  and print fmt (s : RamenName.field)  =
+    Format.fprintf fmt "%s" (s :> string)
   in
   Arg.conv ~docv:"FIELD" (parse, print)
 

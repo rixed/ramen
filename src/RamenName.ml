@@ -23,8 +23,6 @@ let field_of_string s =
 let field_print = String.print
 let field_print_quoted = String.print_quoted (* TODO: or just use color *)
 
-external string_of_field : field -> string = "%identity"
-
 let starts_with c f =
   String.length f > 0 && f.[0] = c
 
@@ -50,8 +48,6 @@ let func_of_string s =
 let func_print = String.print
 let func_print_quoted = String.print_quoted
 
-external string_of_func : func -> string = "%identity"
-
 (* Program names *)
 
 type program = [`Program] t
@@ -69,8 +65,6 @@ let program_of_string s =
   if has_dotnames s then
     failwith "Program names cannot include directory dotnames" else
   simplified_path s
-
-external string_of_program : program -> string = "%identity"
 
 (* Make sure a path component is shorter that max_dir_len: *)
 let max_dir_len = 255
@@ -95,8 +89,6 @@ let rel_program_ppp_ocaml = t_ppp_ocaml
 let rel_program_of_string s =
   if s = "" then invalid_arg "relative program name"
   else s
-
-external string_of_rel_program : rel_program -> string = "%identity"
 
 let program_of_rel_program start rel_program =
   (* TODO: for now we just support "../" prefix: *)
@@ -139,8 +131,6 @@ let fq_ppp_ocaml = t_ppp_ocaml
 
 external fq_of_string : string -> fq = "%identity"
 
-external string_of_fq : fq -> string = "%identity"
-
 let fq prog func = prog ^"/"^ func
 
 let fq_print = String.print
@@ -165,7 +155,6 @@ type base_unit = [`BaseUnit] t
 let base_unit_ppp_ocaml = t_ppp_ocaml
 
 external base_unit_of_string : string -> base_unit = "%identity"
-external string_of_base_unit : base_unit -> string = "%identity"
 let base_unit_print = String.print
 let base_unit_print_quoted = String.print_quoted
 

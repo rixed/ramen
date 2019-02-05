@@ -223,7 +223,7 @@ let test_output conf fq output_spec end_flag =
         assert (chan = RamenChannel.live) ;
         if filter tuple then (
           !logger.debug "Read a tuple out of operation %S"
-            (RamenName.string_of_fq fq) ;
+            (fq :> string) ;
           tuples_to_find :=
             List.filter (fun filter_spec ->
               not (filter_of_tuple_spec filter_spec tuple)
@@ -255,7 +255,7 @@ let test_output conf fq output_spec end_flag =
     if success then "" else
     (Printf.sprintf "Enumerated %d tuple%s from %s"
       num_tuples (if num_tuples > 0 then "s" else "")
-      (RamenName.string_of_fq fq)) ^
+      (fq :> string)) ^
     (if !tuples_to_not_find <> [] then
       " and found "^
         (err_string_of_tuples tuple_print) !tuples_to_not_find
@@ -284,7 +284,7 @@ let test_until conf count end_flag fq spec =
       assert (chan = RamenChannel.live) ;
       if filter tuple && filter_of_tuple_spec filter_spec tuple then (
         !logger.info "Got terminator tuple from function %S"
-          (RamenName.string_of_fq fq) ;
+          (fq :> string) ;
         got_it := true ;
         Atomic.Counter.incr count)
     | _ -> ())
@@ -462,7 +462,7 @@ let run_test conf notify_rb dirname test =
       | exception Not_found ->
           let msg =
             Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
-              (RamenName.string_of_fq input.operation)
+              (input.operation :> string)
               (Enum.print RamenName.fq_print) (Hashtbl.keys workers) in
           fail_and_quit msg
       | func, rbr ->

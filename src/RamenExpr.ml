@@ -363,7 +363,7 @@ let id_of_path p =
     id ^(
       match p with
       | Int i -> "["^ string_of_int i ^"]"
-      | Name s -> (if id = "" then "" else ".")^ RamenName.string_of_field s)
+      | Name s -> (if id = "" then "" else ".")^ (s :> string))
   ) "" p |>
   RamenName.field_of_string
 
@@ -458,8 +458,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
           (fun oc (k, e) ->
             Printf.fprintf oc "%a AZ %s"
               p e
-              (ramen_quote (RamenName.string_of_field k)))
-          oc kvs ;
+              (ramen_quote k))
+          oc (kvs :> (string * t) list);
         Char.print oc ')'
     | Vector es ->
         List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
@@ -920,7 +920,7 @@ struct
     match e.text with
     | Stateless (SL1 (Path [ Name name ], _))
       when not (RamenName.is_virtual name) ->
-        force_public (RamenName.string_of_field name)
+        force_public (name :> string)
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
     | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
@@ -1362,7 +1362,7 @@ struct
               (* The only way to get a Path at this stage is to have entered
                * a bare field name, which could be later found to belong to
                * the out tuple. *)
-              let n = RamenName.string_of_field n |> const_of_string in
+              let n = (n :> string) |> const_of_string in
               subst_expr pref n x
           | Stateless (SL2 (Get, n, ({ text = Variable pref ; _ } as x))) ->
               subst_expr pref n x
@@ -1776,8 +1776,8 @@ let units_of_expr params units_of_input units_of_output =
                 option_get "Get from record must have string index" in
         (try
           list_rfind_map (fun (k, v) ->
-            if RamenName.string_of_field k = s then Some v else None
-          ) kvs |> uoe ~indent
+            if k = s then Some v else None
+          ) (kvs :> (string * t) list) |> uoe ~indent
         with Not_found -> None)
     | Stateless (SL1 (Path [ Name s ], { text = Record kvs ; _ })) ->
         (try

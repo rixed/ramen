@@ -57,7 +57,8 @@ let parent_from_programs programs pn =
  * [get_parent] is a function that returns the P.t of a given
  * RamenName.program, used to get the output types of pre-existing
  * functions. *)
-let compile conf get_parent ~exec_file source_file program_name =
+let compile conf get_parent ~exec_file source_file
+            (program_name : RamenName.program) =
   let program_code = read_whole_file source_file in
   (*
    * If all goes well, many temporary files are going to be created. Here
@@ -85,7 +86,7 @@ let compile conf get_parent ~exec_file source_file program_name =
      * turning the program_code into a list of RamenProgram.fun:
      *)
     !logger.info "Parsing program %s"
-      (RamenName.string_of_program program_name) ;
+      (program_name :> string) ;
     let parsed_params, condition, parsed_funcs =
       RamenProgram.parse get_parent program_name program_code in
     (*
@@ -97,7 +98,7 @@ let compile conf get_parent ~exec_file source_file program_name =
      * the functions as a hash of FQ-names to operation and new Func.t.
      *)
     !logger.info "Typing program %s"
-      (RamenName.string_of_program program_name) ;
+      (program_name :> string) ;
     let compiler_funcs = Hashtbl.create 7 in
     List.iter (fun parsed_func ->
       let op = parsed_func.RamenProgram.operation in
@@ -213,7 +214,7 @@ let compile conf get_parent ~exec_file source_file program_name =
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
         RamenName.field_print name
-        (RamenName.string_of_func func.F.name) ;
+        (func.F.name :> string) ;
       let out_type =
         RamenOperation.out_type_of_operation ~with_private:true
                                              func.F.operation in
@@ -368,8 +369,7 @@ let compile conf get_parent ~exec_file source_file program_name =
      * language then the OCaml casing would have to pass them a few helper
      * functions.
      *)
-    !logger.info "Compiling program %s"
-      (RamenName.string_of_program program_name) ;
+    !logger.info "Compiling program %s" (program_name :> string) ;
     (* Given a file name, make it a valid module name: *)
     let make_valid_for_module fname =
       let dirname, basename =
@@ -391,7 +391,7 @@ let compile conf get_parent ~exec_file source_file program_name =
           open Stdint\n\
           open RamenHelpers\n\
           open RamenNullable\n"
-          (RamenName.string_of_program program_name) ;
+          (program_name :> string) ;
         CodeGen_OCaml.emit_parameters oc parsed_params) in
     add_temp_file params_src_file ;
     let what = "program "^ (RamenName.program_color program_name) in
@@ -423,7 +423,7 @@ let compile conf get_parent ~exec_file source_file program_name =
             func obj_name params_mod_name parsed_params envvars
         with e ->
           !logger.error "Cannot generate code for %s: %s"
-            (RamenName.string_of_func func.name)
+            (func.name :> string)
             (Printexc.to_string e) ;
           raise e) ;
         add_temp_file obj_name ;
@@ -455,7 +455,7 @@ let compile conf get_parent ~exec_file source_file program_name =
           open RamenHelpers\n\
           open RamenNullable\n\
           open %s\n\n"
-          (RamenName.string_of_program program_name)
+          (program_name :> string)
           params_mod_name ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition oc params envvars condition ;
@@ -483,7 +483,7 @@ let compile conf get_parent ~exec_file source_file program_name =
                            Filename.basename |>
                            String.capitalize_ascii in
             Printf.fprintf oc"\t\t%S, %s.%s ;\n"
-              (RamenName.string_of_func func.F.name)
+              (func.F.name :> string)
               mod_name
               entry_point
           ) compiler_funcs ;

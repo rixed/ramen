@@ -378,14 +378,14 @@ let ps conf short pretty with_header sort_col top pattern all () =
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
     C.with_rlock conf (fun programs ->
-      Hashtbl.iter (fun program_name (mre, _get_rc) ->
+      Hashtbl.iter (fun (program_name : RamenName.program) (mre, _get_rc) ->
         if (all || mre.C.status = C.MustRun) &&
            Globs.matches pattern
-             (RamenName.string_of_program program_name)
+             (program_name :> string)
         then (
           let s = Hashtbl.find_default h program_name RamenPs.no_stats in
           print
-            [| Some (ValStr (RamenName.string_of_program program_name)) ;
+            [| Some (ValStr (program_name :> string)) ;
                Some (ValStr (RamenName.string_of_params mre.C.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
@@ -434,13 +434,13 @@ let ps conf short pretty with_header sort_col top pattern all () =
         | prog ->
           List.iter (fun func ->
             let fq = RamenName.fq program_name func.F.name in
-            if Globs.matches pattern (RamenName.string_of_fq fq) then
+            if Globs.matches pattern (fq :> string) then
               let s = Hashtbl.find_default stats fq RamenPs.no_stats
               and num_children = Hashtbl.find_all children_of_func
                                    (func.F.program_name, func.F.name) |>
                                    List.length in
               print
-                [| Some (ValStr (RamenName.string_of_fq fq)) ;
+                [| Some (ValStr (fq :> string)) ;
                    int_or_na s.in_count ;
                    int_or_na s.selected_count ;
                    int_or_na s.out_count ;
@@ -532,7 +532,7 @@ let parse_func_name_of_code conf what func_name_or_code =
          DEFINE '%s' AS %a\n"
         (print_as_date ?rel:None ?right_justified:None) (Unix.time ())
         what
-        (RamenName.string_of_func func_name)
+        (func_name :> string)
         (List.print ~first:"" ~last:"" ~sep:" " String.print)
           func_name_or_code ;
       close_out oc ;
@@ -560,7 +560,7 @@ let parse_func_name_of_code conf what func_name_or_code =
 
 let head_of_types ~with_units head_typ =
   Array.map (fun t ->
-    RamenName.string_of_field t.RamenTuple.name ^
+    (t.RamenTuple.name :> string) ^
        (if with_units then
          Option.map_default RamenUnits.to_string "" t.units
        else "")
@@ -663,8 +663,9 @@ let tail_ conf fq field_names with_header with_units sep null raw
 let purge_transient conf to_purge () =
   if to_purge <> [] then
     let patterns =
-      List.map Globs.(compile % escape % RamenName.string_of_program)
-               to_purge in
+      List.map (fun (p : RamenName.program) ->
+        Globs.(compile (escape (p :> string)))
+      ) to_purge in
     let nb_kills = RamenRun.kill conf ~purge:true patterns in
     !logger.debug "Killed %d programs" nb_kills
 
@@ -766,13 +767,10 @@ let timeseries_ conf fq data_fields
         List.of_enum |>
         String.concat "." in
       if single_data_field then
-        (if v = "" then
-          List.hd data_fields |> RamenName.string_of_field
-         else v) :: res
+        (if v = "" then (List.hd data_fields :> string) else v) :: res
       else
-        List.fold_left (fun res df ->
-          let df = RamenName.string_of_field df in
-          (df ^(if v = "" then "" else "("^ v ^")")) :: res
+        List.fold_left (fun res (df : RamenName.field) ->
+          ((df :> string) ^ (if v = "" then "" else "("^ v ^")")) :: res
         ) res data_fields
     ) [] columns |> List.rev in
   let head = "Time" :: head |> Array.of_list in

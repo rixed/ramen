@@ -113,8 +113,8 @@ let complete_running_function persist_dir =
     (fun prog ->
       List.enum prog.P.funcs |>
       Enum.map (fun func ->
-        RamenName.string_of_program func.F.program_name ^"/"^
-        RamenName.string_of_func func.F.name)) |>
+        (func.F.program_name :> string) ^"/"^
+        (func.F.name :> string))) |>
     Enum.flatten
   ) /@
   empty_help |> List.of_enum
@@ -124,7 +124,7 @@ let complete_running_program persist_dir =
   Hashtbl.enum (C.with_rlock conf identity) //@
   (fun (p, (mre, _)) ->
     if mre.C.status = C.MustRun then
-      Some (RamenName.string_of_program p)
+      Some (p :> string)
     else None) /@
   empty_help |> List.of_enum
 

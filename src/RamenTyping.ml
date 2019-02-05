@@ -89,7 +89,7 @@ let rec find_type_of_path_in_typ typ path =
   | E.Name n :: rest ->
       (match typ.T.structure with
       | T.TRecord kts ->
-          let _, t = Array.find (fun (k, _) -> k = RamenName.string_of_field n) kts in
+          let _, t = Array.find (fun (k, _) -> k = (n :> string)) kts in
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
@@ -1700,9 +1700,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                     with Not_found ->
                       !logger.error "Cannot find parent %S in any of this \
                                      program functions (have %a)"
-                        (RamenName.string_of_func pfunc.F.name)
+                        (pfunc.F.name :> string)
                         (pretty_list_print (fun oc f ->
-                          String.print oc (RamenName.string_of_func f.F.name))) funcs ;
+                          String.print oc (f.F.name :> string))) funcs ;
                       raise Not_found in
                   (* When the parent is an aggr then we will just make its
                    * output equal to this input (added to same_as_ids), but
@@ -2132,8 +2132,8 @@ let get_types parents condition funcs params fname =
      * Note: To avoid circular deps TRecord field names are strings: *)
     let name_of_idx =
       Array.create (Hashtbl.length field_names) "" in
-    Hashtbl.iter (fun k idx ->
-      name_of_idx.(idx) <- RamenName.string_of_field k
+    Hashtbl.iter (fun (k : RamenName.field) idx ->
+      name_of_idx.(idx) <- (k :> string)
     ) field_names ;
     assert (Array.for_all (fun n -> n <> "") name_of_idx) ;
     let emit = emit_smt2 parents tuple_sizes records field_names

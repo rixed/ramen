@@ -36,7 +36,7 @@ let check_orphans killed_prog_names programs =
              ) func.F.parents
           then
             !logger.warning "Operation %s, will be left without parents"
-              (RamenName.string_of_fq (F.fq_name func))
+              (F.fq_name func :> string)
         ) prog.P.funcs)
   ) programs
 
@@ -44,15 +44,15 @@ let check_orphans killed_prog_names programs =
 let kill_locked ?(purge=false) program_names programs =
   let killed_prog_names =
     Hashtbl.enum programs //
-    (fun (n, mre) ->
+    (fun ((n : RamenName.program), mre) ->
       (mre.C.status <> C.Killed || purge) &&
       List.exists (fun p ->
-        Globs.matches p (RamenName.string_of_program n)
+        Globs.matches p (n :> string)
       ) program_names) /@
     fst |>
     List.of_enum in
   let running_killed_prog_names =
-    List.filter (fun n ->
+    List.filter (fun (n : RamenName.program) ->
       let mre = Hashtbl.find programs n in
       mre.C.status <> C.Killed
     ) killed_prog_names in
@@ -97,8 +97,8 @@ let check_links ?(force=false) program_name prog running_programs =
           if not (Set.mem par_prog !already_warned1) then (
             !logger.warning "Operation %s depends on program %s, \
                              which is not running."
-              (RamenName.string_of_func func.F.name)
-              (RamenName.string_of_program par_prog) ;
+              (func.F.name :> string)
+              (par_prog :> string) ;
             already_warned1 := Set.add par_prog !already_warned1)
         | mre ->
             (match P.of_bin par_prog mre.C.params mre.C.bin with
@@ -112,10 +112,10 @@ let check_links ?(force=false) program_name prog running_programs =
                     !logger.error
                       "Operation %s depends on operation %s/%s, which is \
                        not part of the running program %s."
-                      (RamenName.string_of_func func.F.name)
-                      (RamenName.string_of_program par_prog)
-                      (RamenName.string_of_func par_func)
-                      (RamenName.string_of_program par_prog) ;
+                      (func.F.name :> string)
+                      (par_prog :> string)
+                      (par_func :> string)
+                      (par_prog :> string) ;
                     already_warned2 :=
                       Set.add (par_prog, par_func) !already_warned2)
                 | par ->
@@ -151,7 +151,7 @@ let check_links ?(force=false) program_name prog running_programs =
                 !logger.warning
                   "Operation %s, currently stalled, will still be missing \
                    its parent %a"
-                  (RamenName.string_of_fq (F.fq_name func))
+                  (F.fq_name func :> string)
                   F.print_parent parent
               | f -> (* so func is depending on f, let's see: *)
                 let out_type =
@@ -189,8 +189,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         log_and_ignore_exceptions ~what:"Killing disabled program"
           (fun () ->
             let program_name =
-              RamenName.string_of_program program_name |>
-              Globs.(compile % escape) in
+              Globs.(compile (escape (program_name :> string))) in
             let nb_killed =
               kill_locked ?purge [ program_name ] programs in
             if nb_killed > 0 then !logger.info "...and has been killed") ()
@@ -203,7 +202,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         | mre ->
           if mre.C.status = C.MustRun then
             Printf.sprintf "A program named %s is already running"
-              (RamenName.string_of_program program_name) |>
+              (program_name :> string) |>
             failwith) ;
       (* TODO: Make sure this key is authoritative on a program name: *)
       Hashtbl.replace programs program_name

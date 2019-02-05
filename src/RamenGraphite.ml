@@ -83,17 +83,15 @@ let inverted_tree_of_programs
     factor_expansion = All ||
     factor_expansion = OnlyLast && filter_is_last flt_idx
   in
-  let cmp_names (n1, _) (n2, _) =
-    let n1 = RamenName.string_of_program n1
-    and n2 = RamenName.string_of_program n2 in
-    String.compare n1 n2 in
   let programs = Hashtbl.enum programs |> Array.of_enum in
-  Array.fast_sort cmp_names programs ;
+  let cmp ((n1 : RamenName.program), _) ((n2 : RamenName.program), _) =
+    String.compare (n1 :> string) (n2 :> string) in
+  Array.fast_sort cmp programs ;
   (* For each of these programs, we will build an enumeration of lists from
    * leaves to root (empty if the filter is not matched): *)
   Array.enum programs /@
   (fun (program_name, (_mre, get_rc)) ->
-    let program_name = RamenName.string_of_program program_name in
+    let program_name = (program_name :> string) in
     (* Enumerate all data fields (numeric that is not a factor) as
      * leaves: *)
     let rec loop_data_field prev flt_idx operation =
@@ -109,7 +107,7 @@ let inverted_tree_of_programs
             RamenTypes.is_a_num ft.RamenTuple.typ.structure) &&
            not (List.mem ft.RamenTuple.name factors)
         then
-          let value = RamenName.string_of_field ft.RamenTuple.name in
+          let value = (ft.RamenTuple.name :> string) in
           (* If we asked for some extra components then that's also a fail: *)
           if end_of_filters (flt_idx + 1) &&
              filters_match flt_idx value then
@@ -166,7 +164,7 @@ let inverted_tree_of_programs
             else
               List.enum prog.P.funcs in
           funcs /@ (fun func ->
-            let value = RamenName.string_of_func func.F.name in
+            let value = (func.F.name :> string) in
             if filters_match flt_idx value then
               let comp = { value ; section = OpName func } in
               let factors =
@@ -506,11 +504,11 @@ let render conf headers body =
   !logger.debug "kept factors = %a"
     (Set.print RamenName.field_print) with_factors ;
   let resp =
-    List.map (fun (data_field, target, datapoints) ->
+    List.map (fun ((data_field : RamenName.field), target, datapoints) ->
       let target =
         Printf.sprintf2 "%s%a"
           (if with_data_field then
-            RamenName.string_of_field data_field ^" "
+            (data_field :> string) ^" "
            else "")
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
             Printf.fprintf oc "%a=%a"

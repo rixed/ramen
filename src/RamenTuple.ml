@@ -54,7 +54,7 @@ let print_typ oc =
 
 let print_typ_names oc =
   pretty_list_print (fun oc t ->
-    String.print_quoted oc (RamenName.string_of_field t.name)) oc
+    String.print_quoted oc (t.name :> string)) oc
 
 (* Params form a special tuple with fixed values: *)
 
@@ -91,7 +91,7 @@ let type_signature =
     if RamenName.is_private ft.name then s
     else
       (if s = "" then "" else s ^ "_") ^
-      RamenName.string_of_field ft.name ^ ":" ^
+      (ft.name :> string) ^ ":" ^
       RamenTypes.string_of_typ ft.typ
   ) ""
 

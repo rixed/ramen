@@ -142,7 +142,7 @@ let finalize_func parents params func =
       RamenOperation.operation_with_event_time func.operation inferred ;
     if inferred <> None then
       !logger.debug "Function %s can reuse event time from parents"
-        (RamenName.string_of_func func.name)
+        (func.name :> string)
   ) ;
   if parents <> [] &&
      RamenOperation.factors_of_operation func.operation = []
