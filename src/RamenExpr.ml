@@ -899,8 +899,7 @@ struct
           if p <> TupleParam then raise (Reject "not a param")
       ) -+ non_keyword >>:
       fun n ->
-        let n = RamenName.field_of_string n in
-        make (Stateless (SL1 (Path [ Name n ], make (Variable TupleParam))))
+        make (Stateless (SL2 (Get, const_of_string n, make (Variable TupleParam))))
     ) m
 
   (*$= param & ~printer:BatPervasives.identity
