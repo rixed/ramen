@@ -114,6 +114,7 @@ RAMEN_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
@@ -381,6 +382,7 @@ TESTABLE_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenOrc.ml \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenOperation.ml \
@@ -426,6 +428,7 @@ LINKED_FOR_TESTS = \
 	src/RamenIp.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
+	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
@@ -501,15 +504,23 @@ ringbuf_test.opt: \
 	src/RamenAdvLock.cmx \
 	src/RamenChannel.cmx \
 	src/RamenParsing.cmx \
-	src/RamenEthAddr.cmx src/RamenIpv4.cmx src/RamenIpv6.cmx src/RamenIp.cmx \
+	src/RamenEthAddr.cmx \
+	src/RamenIpv4.cmx \
+	src/RamenIpv6.cmx \
+	src/RamenIp.cmx \
 	src/RamenTypeConverters.cmx \
 	src/RamenTypes.cmx \
+	src/RamenOrc.cmx \
 	src/RamenName.cmx \
 	src/RamenFieldMask.cmx \
 	src/RamenOutRef.cmx \
 	src/RamenUnits.cmx \
-	src/RamenTuple.cmx src/RamenVersions.cmx src/RingBuf.cmx src/RingBufLib.cmx \
-	src/ringbuf_test.cmx src/libringbuf.a src/libcollectd.a src/libnetflow.a
+	src/RamenTuple.cmx \
+	src/RamenVersions.cmx \
+	src/RingBuf.cmx \
+	src/RingBufLib.cmx \
+	src/ringbuf_test.cmx \
+	src/libringbuf.a src/libcollectd.a src/libnetflow.a
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 

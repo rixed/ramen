@@ -40,6 +40,16 @@ let stop_typ =
     doc = "Event stop" ;
     aggr = Some "max" }
 
+(* Until we have a single output value, mimic outputting a record: *)
+let to_orc typ =
+  let open RamenOrc in
+  Struct (
+    List.enum typ /@
+    (fun ft ->
+      (ft.name :> string),
+      of_structure ft.typ.T.structure) |>
+   Array.of_enum)
+
 (* TODO: have an array instead? *)
 type typ = field_typ list [@@ppp PPP_OCaml]
 
