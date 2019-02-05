@@ -15,6 +15,7 @@ open RamenLang
 open RamenHelpers
 open RamenLog
 module E = RamenExpr
+module T = RamenTypes
 
 (*$inject
   open TestHelpers
@@ -37,6 +38,9 @@ let print_selected_field with_types oc f =
     match f.expr.text with
     | Stateless (SL1 (Path [ Name n ], { text = Variable TupleIn ; _ }))
       when f.alias = n -> false
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable TupleIn ; _ }))
+      when (f.alias :> string) = n -> false
     | _ -> true in
   if need_alias then (
     Printf.fprintf oc "%a AS %s"
@@ -439,21 +443,43 @@ let use_event_time op =
     | _ -> b
   ) op
 
-(* Also used by [RamenProgram] to check running condition *)
-let prefix_def params def e =
-  E.map (fun _stack e ->
+let resolve_unknown_tuple resolver e =
+  E.map (fun stack e ->
+    let resolver = function
+      | [] | E.Int _ :: _ as path -> (* Int is TODO *)
+          Printf.sprintf2 "Cannot resolve unknown path %a"
+            E.print_path path |>
+          failwith
+      | E.Name n :: _ ->
+          resolver stack n
+    in
     match e.E.text with
-    | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
+    | Stateless (SL1 (Path path, ({ text = Variable TupleUnknown ; _ } as x))) ->
+        let pref = resolver path in
+        { e with text =
+          Stateless (SL1 (Path path, { x with text = Variable pref })) }
+    | Stateless (SL2 (Get, n, ({ text = Variable TupleUnknown ; _ } as x))) ->
         let pref =
-          match path with
-          | Name n :: _
-            when RamenTuple.params_mem n params ->
-              TupleParam
-          | _ -> def
-        in
-        E.make (Stateless (SL1 (Path path, E.make (Variable pref))))
+          match E.int_of_const n with
+          | Some n -> resolver [ Int n ]
+          | None ->
+              (match E.string_of_const n with
+              | Some n ->
+                  let n = RamenName.field_of_string n in
+                  resolver [ Name n ]
+              | None ->
+                  Printf.sprintf2 "Cannot resolve unknown tuple in %a"
+                    (E.print false) e |>
+                  failwith) in
+        { e with text =
+          Stateless (SL2 (Get, n, { x with text = Variable pref })) }
     | _ -> e
   ) [] e
+
+(* Also used by [RamenProgram] to check running condition *)
+let prefix_def params def =
+  resolve_unknown_tuple (fun _stack n ->
+    if RamenTuple.params_mem n params then TupleParam else def)
 
 (* Replace the expressions with [TupleUnknown] with their likely tuple. *)
 let resolve_unknown_tuples params op =
@@ -468,59 +494,48 @@ let resolve_unknown_tuples params op =
           sf.alias = name &&
           Option.map_default (fun i -> i' < i) true i
         ) fields in
-      let ground_unknown_tuple ?i stack path =
-        match path with
-        | [] | E.Int _ :: _ ->
-            Printf.sprintf2 "Cannot resolve unknown path %a"
-              E.print_path path |>
-            failwith
-        | E.Name n :: _ ->
-            (* First, lookup for an opened record: *)
-            if List.exists (fun e ->
-                 match e.E.text with
-                 | Record kvs ->
-                     (* Notice that we look into _all_ fields, not only the
-                      * ones defined previously. Not sure if better or
-                      * worse. *)
-                     List.exists (fun (k, _) -> k = n) kvs
-                 | _ -> false
-               ) stack
-            then (
-              (* Notice we do not keep a reference on the actual expression.
-               * That's much safer to look it up again whenever we need it,
-               * so that we are free to map the AST. *)
-              !logger.debug "Field %a though to belong to an opened record"
-                RamenName.field_print n ;
-              E.make (Stateless (SL1 (Path path, E.make (Variable Record))))
-            ) else (
-              let pref =
-                (* Look into predefined records: *)
-                if RamenTuple.params_mem n params then
-                  TupleParam
-                else if Set.mem n !fields_from_in then
-                  TupleIn
-                else if is_selected_fields ?i n then
-                  TupleOut
-                else (
-                  fields_from_in := Set.add n !fields_from_in ;
-                  TupleIn
-                ) in
-              !logger.debug "Field %a thought to belong to %s"
-                RamenName.field_print n
-                (string_of_prefix pref) ;
-              E.make (Stateless (SL1 (Path path, E.make (Variable pref))))
-            ) in
       (* Resolve TupleUnknown into either TupleParam (if the name is in
        * params), TupleIn or TupleOut (depending on the presence of this alias
        * in selected_fields -- optionally, only before position i). It will
        * also keep track of opened records and look up there first. *)
-      let prefix_smart ?i e =
-        E.map (fun stack e ->
-          match e.E.text with
-          | Stateless (SL1 (Path path, { text = Variable TupleUnknown ; _ })) ->
-              ground_unknown_tuple ?i stack path
-          | _ -> e
-        ) [] e
+      let prefix_smart ?i =
+        resolve_unknown_tuple (fun stack n ->
+          (* First, lookup for an opened record: *)
+          if List.exists (fun e ->
+               match e.E.text with
+               | Record kvs ->
+                   (* Notice that we look into _all_ fields, not only the
+                    * ones defined previously. Not sure if better or
+                    * worse. *)
+                   List.exists (fun (k, _) -> k = n) kvs
+               | _ -> false
+             ) stack
+          then (
+            (* Notice we do not keep a reference on the actual expression.
+             * That's much safer to look it up again whenever we need it,
+             * so that we are free to map the AST. *)
+            !logger.debug "Field %a though to belong to an opened record"
+              RamenName.field_print n ;
+            Record
+          ) else (
+            let pref =
+              (* Look into predefined records: *)
+              if RamenTuple.params_mem n params then
+                TupleParam
+              else if Set.mem n !fields_from_in then
+                TupleIn
+              else if is_selected_fields ?i n then
+                TupleOut
+              else (
+                fields_from_in := Set.add n !fields_from_in ;
+                TupleIn
+              ) in
+            !logger.debug "Field %a thought to belong to %s"
+              RamenName.field_print n
+              (string_of_prefix pref) ;
+            pref
+          )
+        )
     in
     (* Set of fields known to come from in (to help prefix_smart): *)
     iter_expr (fun _ e ->
@@ -748,6 +763,37 @@ struct
   (*$< Parser *)
   open RamenParsing
 
+  let rec default_alias e =
+    let force_public field =
+      if String.length field = 0 || field.[0] <> '_' then field
+      else String.lchop field in
+    match e.E.text with
+    | Stateless (SL1 (Path [ Name name ], _))
+      when not (RamenName.is_virtual name) ->
+        force_public (name :> string)
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
+      when not (RamenName.is_virtual (RamenName.field_of_string n)) ->
+        force_public n
+    (* Provide some default name for common aggregate functions: *)
+    | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrSum, e)) -> "sum_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrAvg, e)) -> "avg_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrAnd, e)) -> "and_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrOr, e)) -> "or_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrFirst, e)) -> "first_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrLast, e)) -> "last_"^ default_alias e
+    | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
+        default_alias e ^"_histogram"
+    | Stateless (SL2 (Percentile, { text = Const p ; _ }, e))
+      when T.is_round_integer p ->
+        Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
+    (* Some functions better leave no traces: *)
+    | Stateless (SL1s (Print, e::_)) -> default_alias e
+    | Stateless (SL1 (Cast _, e)) -> default_alias e
+    | Stateful (_, _, SF1 (Group, e)) -> default_alias e
+    | _ -> raise (Reject "must set alias")
+
   (* Either `expr` or `expr AS alias` or `expr AS alias "doc"`, or
    * `expr doc "doc"`: *)
   let selected_field m =
@@ -763,8 +809,7 @@ struct
         blanks -+ some RamenTuple.Parser.default_aggr) >>:
       fun ((expr, (alias, doc)), aggr) ->
         let alias =
-          Option.default_delayed (fun () ->
-            E.Parser.default_alias expr) alias in
+          Option.default_delayed (fun () -> default_alias expr) alias in
         let alias = RamenName.field_of_string alias in
         { expr ; alias ; doc ; aggr }
     ) m

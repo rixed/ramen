@@ -38,6 +38,7 @@ type expr =
   | ActualType of string
   | InheritType
   | InheritNull
+  | OpenedRecordIs of int (* expression uniq_num *)
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -86,6 +87,9 @@ let print_expr oc =
   | ActualType t -> p " must be of type %s" t
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
+  | OpenedRecordIs i ->
+      let _func_name, _stack, e = expr_of_id funcs i in
+      p " refers to record %a" (E.print ~max_depth:2 false) e
 
 type func =
   | Clause of string * expr

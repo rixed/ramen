@@ -889,17 +889,6 @@ struct
         make (Variable n)
     ) m
 
-  let field m =
-    let m = "field" :: m in
-    (
-      (* Avoid accepting "in" and friends as a field name, to let it be a
-       * variable. *)
-      (nay parse_prefix -+ non_keyword) >>:
-      fun n ->
-        let n = RamenName.field_of_string n in
-        make (Stateless (SL1 (Path [ Name n ], make (Variable TupleUnknown))))
-    ) m
-
   let param m =
     let m = "parameter" :: m in
     (
@@ -913,33 +902,6 @@ struct
     "param.glop" \
       (test_expr ~printer:(print false) param "glop")
   *)
-  let rec default_alias e =
-    let force_public field =
-      if String.length field = 0 || field.[0] <> '_' then field
-      else String.lchop field in
-    match e.text with
-    | Stateless (SL1 (Path [ Name name ], _))
-      when not (RamenName.is_virtual name) ->
-        force_public (name :> string)
-    (* Provide some default name for common aggregate functions: *)
-    | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrSum, e)) -> "sum_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrAvg, e)) -> "avg_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrAnd, e)) -> "and_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrOr, e)) -> "or_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrFirst, e)) -> "first_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrLast, e)) -> "last_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
-        default_alias e ^"_histogram"
-    | Stateless (SL2 (Percentile, { text = Const p ; _ }, e))
-      when T.is_round_integer p ->
-        Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
-    (* Some functions better leave no traces: *)
-    | Stateless (SL1s (Print, e::_)) -> default_alias e
-    | Stateless (SL1 (Cast _, e)) -> default_alias e
-    | Stateful (_, _, SF1 (Group, e)) -> default_alias e
-    | _ -> raise (Reject "must set alias")
 
   let state_lifespan m =
     let m = "state lifespan" :: m in
@@ -1094,12 +1056,27 @@ struct
   and dotted_get m =
     let m = "dotted dereference" :: m in
     (
-      (variable ||| field ||| parenthesized func ||| record) +-
-      char '.' ++ non_keyword >>:
-      fun (e, s) ->
-        let s = make (Const (VString s)) in
-        make (Stateless (SL2 (Get, s, e)))
+      (
+        some (variable ||| parenthesized func ||| record) +-
+        char '.' ++ non_keyword
+      ) ||| (
+        (return None) ++ (nay parse_prefix -+ non_keyword)
+      ) >>:
+      fun (e_opt, n) ->
+        let e = match e_opt with
+          | Some e -> e
+          | None -> make (Variable TupleUnknown)
+        in
+        let n = make (Const (VString n)) in
+        make (Stateless (SL2 (Get, n, e)))
     ) m
+
+  (*$= dotted_get & ~printer:BatPervasives.identity
+    "in.glop" \
+      (test_expr ~printer:(print false) dotted_get "in.glop")
+    "unknown.glop" \
+      (test_expr ~printer:(print false) dotted_get "glop")
+  *)
 
   (* "sf" stands for "stateful" *)
   and afunv_sf ?def_state a n m =
@@ -1543,7 +1520,7 @@ struct
 
   and highestest_prec_no_parenthesis m =
     (
-      accept_units (const ||| field ||| dotted_get ||| null) |||
+      accept_units (const ||| dotted_get ||| null) |||
       variable ||| func ||| coalesce
     ) m
 

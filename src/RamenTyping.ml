@@ -423,11 +423,9 @@ let eq_to_out_type out_fields e oc path =
       emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr expr) ;
       emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr expr)
 
-let eq_to_opened_record stack e oc path =
-  (* Looking through the stack we will find which field of which record
-   * this is referring to. From there the next components of the path,
-   * if there are some, must be found traversing that field expression. *)
-  !logger.info "Expr %a (path %a) supposed to be equivalent to some opened record field"
+(* Look through the stack for the record this path is referring to. *)
+let locate_opened_record stack e path =
+  !logger.info "Expr %a (path %a) supposed to be found in the environment"
     (E.print ~max_depth:2 false) e
     E.print_path path ;
   match path with
@@ -435,7 +433,10 @@ let eq_to_opened_record stack e oc path =
       (match List.find_map (fun e ->
               match e.E.text with
               | Record kvs ->
-                  (try Some (List.find (fun (k, _) -> k = n) kvs)
+                  (try Some (List.find_map (fun (k, v) ->
+                              if k = n then Some (e, k, v, path')
+                              else None
+                            ) kvs)
                   with Not_found -> None)
               | _ -> None
             ) stack with
@@ -444,27 +445,43 @@ let eq_to_opened_record stack e oc path =
             RamenName.field_print n
             (pretty_list_print (E.print ~max_depth:1 false)) stack |>
           failwith
-      | field_name, field_expr ->
-          !logger.info "Found some opened record in the environment with a field named %a"
-            RamenName.field_print field_name ;
-          !logger.info "Looking for path %a in that field (%a)"
-            E.print_path path'
-            (E.print ~max_depth:2 false) field_expr ;
-          (match find_expr_of_path field_expr path' with
-          | exception Not_found ->
-              Printf.sprintf2 "Cannot find path %a within field %a (%a)"
-                E.print_path path'
-                RamenName.field_print field_name
-                (E.print ~max_depth:2 false) field_expr |>
-              failwith
-          | path_target ->
-              emit_assert_id_eq_id (t_of_expr e) oc (t_of_expr path_target) ;
-              emit_assert_id_eq_id (n_of_expr e) oc (n_of_expr path_target)))
+      | ret ->
+          !logger.info "Found some opened record in the environment with path %a"
+            E.print_path path ;
+          ret)
   | _ ->
       Printf.sprintf2
         "Invalid path %a: must start with a name to address an opened record."
         E.print_path path |>
       failwith
+
+let eq_to_opened_record_field stack e oc path =
+  let rec_expr, field_name, field_expr, path =
+    locate_opened_record stack e path in
+  !logger.debug "Looking for path %a in that field (%a)"
+    E.print_path path
+    (E.print ~max_depth:2 false) field_expr ;
+  match find_expr_of_path field_expr path with
+  | exception Not_found ->
+      Printf.sprintf2 "Cannot find path %a within field %a (%a)"
+        E.print_path path
+        RamenName.field_print field_name
+        (E.print ~max_depth:2 false) field_expr |>
+      failwith
+  | path_target ->
+      let name =
+        expr_err e Err.(OpenedRecordIs rec_expr.E.uniq_num) in
+      emit_assert_id_eq_id ~name (t_of_expr e) oc
+        (t_of_expr path_target) ;
+      emit_assert_id_eq_id ~name (n_of_expr e) oc
+        (n_of_expr path_target)
+
+let eq_to_opened_record stack e oc path =
+  let rec_expr, _, _, _= locate_opened_record stack e path in
+  let name =
+    expr_err e Err.(OpenedRecordIs rec_expr.E.uniq_num) in
+  emit_assert_id_eq_id ~name (t_of_expr rec_expr) oc (t_of_expr e) ;
+  emit_assert_id_eq_id ~name (n_of_expr rec_expr) oc (n_of_expr e)
 
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
@@ -479,13 +496,16 @@ let emit_constraints tuple_sizes records field_names out_fields
       eq_to_out_type out_fields e oc path
 
   | Stateless (SL1 (Path path, { text = Variable Record ; _ })) ->
-      eq_to_opened_record stack e oc path
+      eq_to_opened_record_field stack e oc path
 
-  | Stateless (SL1 (Path _, _)) -> (* Similarly *)
+  | Stateless (SL1 (Path _, _)) ->
+      (* Input paths have been specified already in [emit_in_types]. *)
       ()
 
   | Variable Record ->
-      (* Cannot appear on it's own, but within a path (typed with Path) *)
+      (* This expression must be equated to the actual record expression
+       * that we could find in the stack, shall we know the field name...
+       * So only Get or Path can do that. *)
       ()
 
   | Variable pref ->
@@ -1027,7 +1047,14 @@ let emit_constraints tuple_sizes records field_names out_fields
                         (n_of_expr x)
                         rec_size field_pos (t_of_expr x) nid
                         rec_size field_pos (t_of_expr x) name_idx
-                    )) rec_lst)))
+                    )) rec_lst) ;
+              (* Note: the above assertions merely equals the n-th field
+               * to [x]. In case [x] is a Record variable then we won't tell
+               * what record expression this variable refers to. To do this
+               * requires the knowledge of the field name, ie [k], so it's a
+               * good place to do this though. Let's therefore do it here: *)
+              if x.text = Variable Record then
+                eq_to_opened_record stack x oc [ Name k ]))
 
   | Stateless (SL1 ((BeginOfRange|EndOfRange), x)) ->
       (* - x is any kind of cidr;

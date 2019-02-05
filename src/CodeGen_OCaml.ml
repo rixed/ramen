@@ -609,6 +609,11 @@ let subst_fields_for_binding pref =
       when prefix = pref ->
         let f = E.id_of_path path in
         { e with text = Binding (RecordField (pref, f)) }
+    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                           { text = Variable prefix ; }))
+      when prefix = pref ->
+        let f = RamenName.field_of_string n in
+        { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
 
 let add_tuple_environment tuple typ env =
