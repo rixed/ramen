@@ -9,8 +9,9 @@ QTEST    = qtest
 Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
 override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
-override CFLAGS        += --std=gnu11 -g -O2 -Wall -W -Wno-parentheses -fPIC
-override CPPFLAGS      += --std=gnu11 -D_GNU_SOURCE \
+override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
+override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
+override CPPFLAGS      += -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
                           -DHAVE_INT128 -I $(shell ocamlfind query stdint)
 
@@ -274,6 +275,16 @@ src/libnetflow.a: src/netflow/v5.o
 	@echo 'Building netflow library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
+
+ifeq (@HAVE_ORC@,1)
+src/orc/orc_test.cc: src/ramen
+	@echo 'Testing ORC with $@'
+	@src/ramen _test_orc > $@
+
+src/orc/orc_test: src/orc/orc_test.cc
+	@echo 'building test program $@'
+	@$(CXX) -std=c++17 -o $@ $< -lorc -lhdfspp_static -llz4 -lprotobuf -lsnappy -lz -lsasl2 -lcrypto -I '$(shell ocamlc -where)'
+endif
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the

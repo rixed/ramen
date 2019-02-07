@@ -934,6 +934,13 @@ let autocomplete =
     info ~doc:CliInfo.autocomplete "_completion")
 
 (*
+ * DEBUG
+ *)
+
+let test_orc =
+  Term.((const RamenOrc.test), info ~doc:"" "_test_orc")
+
+(*
  * Command line evaluation
  *)
 
@@ -963,7 +970,8 @@ let () =
         notify ; compile ; run ; kill ; archivist ;
         tail ; replay ; timeseries ; timerange ; ps ;
         test ; dequeue ; summary ; repair ; links ;
-        variants ; stats ; autocomplete ; expand
+        variants ; stats ; autocomplete ; expand ;
+        test_orc
       ]) with
   | `Error _ -> exit 1
   | `Version | `Help -> exit 0

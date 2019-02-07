@@ -332,3 +332,10 @@ let emit_heading oc =
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
   p "};" ;
   p ""
+
+let test () =
+  let rtyp = T.(
+    make (TRecord [| "x", make TI8 ; "y", make ~nullable:false TU64 |])) in
+  emit_heading stdout ;
+  emit_batch_value "test" rtyp stdout ;
+  Printf.printf "\nint main(void) { return 0; }\n"
