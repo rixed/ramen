@@ -157,6 +157,12 @@ let batch_type_of_structure = batch_type_of % of_structure
  * spaces like normal people: *)
 let indent_of i = String.make (i*2) ' '
 
+let gensym =
+  let seq = ref 0 in
+  fun pref ->
+    incr seq ;
+    pref ^"_"^ string_of_int !seq
+
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC: *)
 let emit_conv_of_ocaml st val_var oc =
   let scaled_int s =
@@ -237,54 +243,74 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let vb4 = batch_type_of_structure T.TIpv4
       and vb6 = batch_type_of_structure T.TIpv6 in
       p "if (Tag_val(%s) == 0) { /* IPv4 */" val_var ;
-      p "  %s *v4s = dynamic_cast<%s>(%s->children[0]);" vb4 vb4 vb_var ;
+      let vbs = gensym "ips" in
+      p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
       p "  %s->tags[%s] = 0;" vb_var i_var ;
-      p "  %s->offsets[%s] = v4s->numElements;" vb_var i_var ;
-      emit_store_data (indent+1) "v4s" "v4s->numElements" T.TIpv4 val_var oc ;
-      p "  v4s->numElements ++;" ;
+      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      emit_store_data (indent+1) vbs (vbs ^"->numElements") T.TIpv4 val_var oc ;
+      p "  %s->numElements ++;" vbs ;
       p "} else {" ;
-      p "  %s *v6s = dynamic_cast<%s>(%s->children[1]);" vb6 vb6 vb_var ;
+      p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
-      p "  %s->offsets[%s] = v6s->numElements;" vb_var i_var ;
-      emit_store_data (indent+1) "v6s" "v6s->numElements" T.TIpv6 val_var oc ;
-      p "  v6s->numElements ++;" ;
+      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      emit_store_data (indent+1) vbs (vbs ^"->numElements") T.TIpv6 val_var oc ;
+      p "  %s->numElements ++;" vbs ;
       p "}"
   | T.TCidrv4 ->
       (* A structure of IPv4 and mask. Write each field recursively. *)
-      let ip_vb = Printf.sprintf "%s->fields[0]" vb_var
-      and ip_val = Printf.sprintf "Field(%s, 0)" val_var in
-      emit_store_data indent ip_vb i_var T.TIpv4 ip_val oc ;
-      let msk_vb = Printf.sprintf "%s->fields[1]" vb_var
-      and msk_val = Printf.sprintf "Field(%s, 1)" val_var in
-      emit_store_data indent msk_vb i_var T.TNum msk_val oc
+      let ip_vb = batch_type_of_structure T.TIpv4 in
+      let ips = gensym "ips" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
+      let ip_val = Printf.sprintf "Field(%s, 0)" val_var in
+      emit_store_data indent ips i_var T.TIpv4 ip_val oc ;
+      let msk_vb = batch_type_of_structure T.TNum in
+      let msks = gensym "msks" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
+      let msk_val = Printf.sprintf "Field(%s, 1)" val_var in
+      emit_store_data indent msks i_var T.TNum msk_val oc
   | T.TCidrv6 ->
       (* A structure of IPv6 and mask. Write each field recursively. *)
-      let ip_vb = Printf.sprintf "%s->fields[0]" vb_var
-      and ip_val = Printf.sprintf "Field(%s, 0)" val_var in
-      emit_store_data indent ip_vb i_var T.TIpv6 ip_val oc ;
-      let msk_vb = Printf.sprintf "%s->fields[1]" vb_var
-      and msk_val = Printf.sprintf "Field(%s, 1)" val_var in
-      emit_store_data indent msk_vb i_var T.TNum msk_val oc
+      let ip_vb = batch_type_of_structure T.TIpv6 in
+      let ips = gensym "ips" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
+      let ip_val = Printf.sprintf "Field(%s, 0)" val_var in
+      emit_store_data indent ips i_var T.TIpv6 ip_val oc ;
+      let msk_vb = batch_type_of_structure T.TNum in
+      let msks = gensym "msks" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
+      let msk_val = Printf.sprintf "Field(%s, 1)" val_var in
+      emit_store_data indent msks i_var T.TNum msk_val oc
   | T.TCidr ->
       (* Another union with tag 0 for v4 and tag 1 for v6: *)
       let vb4 = batch_type_of_structure T.TCidrv4
       and vb6 = batch_type_of_structure T.TCidrv6 in
+      let vbs = gensym "vbs" in
       p "if (Tag_val(%s) == 0) { /* CIDRv4 */" val_var ;
-      p "  %s *v4s = dynamic_cast<%s>(%s->children[0]);" vb4 vb4 vb_var ;
+      p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
       p "  %s->tags[%s] = 0;" vb_var i_var ;
-      p "  %s->offsets[%s] = v4s->numElements;" vb_var i_var ;
+      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      let ip_vb = batch_type_of_structure T.TIpv4 in
+      let ips = gensym "ips" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
+      let msk_vb = batch_type_of_structure T.TNum in
+      let msks = gensym "msks" in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
-      emit_store_data (indent+1) "v4s->fields[0]" "v4s->numElements" T.TIpv4 (fld 0) oc ;
-      emit_store_data (indent+1) "v4s->fields[1]" "v4s->numElements" T.TNum (fld 1) oc ;
-      p "  v4s->numElements ++;" ;
+      emit_store_data (indent+1) ips (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
+      emit_store_data (indent+1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+      p "  %s->numElements ++;" vbs ;
       p "} else { /* CIDRv6 */" ;
-      p "  %s *v6s = dynamic_cast<%s>(%s->children[1]);" vb6 vb6 vb_var ;
+      p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
-      p "  %s->offsets[%s] = v6s->numElements;" vb_var i_var ;
+      p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      let ip_vb = batch_type_of_structure T.TIpv6 in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vbs ;
+      let msk_vb = batch_type_of_structure T.TNum in
+      p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
-      emit_store_data (indent+1) "v6s->fields[0]" "v6s->numElements" T.TIpv6 (fld 0) oc ;
-      emit_store_data (indent+1) "v6s->fields[1]" "v6s->numElements" T.TNum (fld 1) oc ;
-      p "  v6s->numElements ++;" ;
+      emit_store_data (indent+1) ips (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
+      emit_store_data (indent+1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+      p "  %s->numElements ++;" vbs ;
       p "}"
 
 (* Helper to call a function [f] on every scalar subtypes of the given Ramen
@@ -299,9 +325,10 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
     | Some v when rtyp.T.nullable ->
         p indent "if (Is_block(%s)) { /* Not null */" v ;
         (* The first non const constructor is "NotNull of ...": *)
-        p (indent+1) "%s = Field(%s, 0);" v v ;
+        let non_null = gensym "non_null" in
+        p (indent+1) "auto %s = Field(%s, 0);" non_null v ;
         let rtyp' = { rtyp with nullable = false } in
-        loop (indent+1) depth rtyp' batch_val val_var field_name ;
+        loop (indent+1) depth rtyp' batch_val (Some non_null) field_name ;
         p indent "} else { /* Null */" ;
         if depth > 0 || not skip_root then
           f (indent+1) rtyp batch_val ~is_list:false None field_name ;
@@ -309,13 +336,18 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
     | _ ->
         let iter_struct =
           Enum.iteri (fun i (k, t) ->
-            let batch_val = Printf.sprintf "%s->fields[%d]" batch_val i
-            and val_var =
+            p indent "{ /* Structure/Tuple item %s */" k ;
+            let btyp = batch_type_of_structure t.T.structure in
+            let arr_item = gensym "arr_item" in
+            p indent "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
+              btyp arr_item btyp batch_val i ;
+            let val_var =
               Option.map (fun v ->
                 Printf.sprintf "Field(%s, %d)" v i) val_var
             and field_name =
               if field_name = "" then k else field_name ^"."^ k in
-            loop indent (depth+1) t batch_val val_var field_name
+            loop (indent+1) (depth+1) t arr_item val_var field_name ;
+            p indent "}"
           ) in
         (match rtyp.T.structure with
         | T.TEmpty | T.TAny ->
@@ -372,36 +404,40 @@ let rec emit_add_value_in_batch
     (fun indent rtyp batch_val ~is_list val_var field_name ->
       p indent "{ /* Write the value%s for %s (of type %a) */"
         (if is_list then "s" else "") field_name T.print_typ rtyp ;
-      emit_get_vb (indent+1) "vb" rtyp batch_val oc ;
+      let vb = gensym "vb" in
       (match val_var with
       | None -> (* When the value is NULL *)
           (* liborc initializes hasNulls to false and notNull to all ones: *)
-          p (indent+1) "vb->hasNulls = true;" ;
-          p (indent+1) "vb->notNull[%s] = 0;" i_var
+          emit_get_vb (indent+1) vb rtyp batch_val oc ;
+          p (indent+1) "%s->hasNulls = true;" vb ;
+          p (indent+1) "%s->notNull[%s] = 0;" vb i_var
       | Some val_var ->
           if is_list then (
-            (* For lists, out value is still the list. We have to write
-             * the current size of vb->elements into vb->offsets[`i_var],
-             * and then append the actual list values to elements. But as
-             * those values can have any type including a compound type, we
-             * must recurse. *)
-            p (indent+1) "bi_lst = vb->elements->numElements;" ;
-            p (indent+1) "vb->offsets[%s] = bi_lst;" i_var ;
-            let eb = batch_type_of_structure rtyp.T.structure in
-            p (indent+1) "%s *eb = dynamic_cast<%s>(vb->elements)" eb eb ;
+            (* For lists, our value is still the list and [batch_val] is
+             * still the [ListVectorBatch]. We have to write the current
+             * size of [batch_val->elements] into
+             * [batch_val->offsets(`i_var)], and then append the actual list
+             * values to [batch_val->elements]. But as those values can have
+             * any type including a compound type, we must recurse. *)
+            emit_get_vb (indent+1) vb rtyp (batch_val ^"->elements.get()") oc ;
+            let bi_lst = gensym "bi_lst" in
+            p (indent+1) "auto const %s = %s->numElements;" bi_lst vb ;
+            p (indent+1) "%s->offsets[%s] = %s;" batch_val i_var bi_lst ;
             (* FIXME: handle arrays of unboxed values *)
             p (indent+1) "unsigned i;" ;
-            p (indent+1) "for (i=0; i < Wosize_val(%s); i++) {"
-              val_var ;
-            p (indent+1) "  v_lst = Field(%s, i);" val_var ;
-            emit_add_value_in_batch (indent+2) (Some "v_lst") "eb" "bi_lst"
-                                    rtyp (field_name ^".elmt") oc ;
+            p (indent+1) "for (i=0; i < Wosize_val(%s); i++) {" val_var ;
+            let v_lst = gensym "v_lst" in
+            p (indent+1) "  auto %s = Field(%s, i);" v_lst val_var ;
+            emit_add_value_in_batch
+              (indent+2) (Some v_lst) vb (bi_lst^"+i") rtyp
+              (field_name ^".elmt") oc ;
             p (indent+1) "}" ;
             (* Must set numElements of the list itself: *)
-            p (indent+1) "vb->elements->numElements += i;"
-          ) else
-            emit_store_data (indent+1) "vb" i_var rtyp.T.structure val_var
-                            oc) ;
+            p (indent+1) "%s->numElements += i;" vb
+          ) else (
+            emit_get_vb (indent+1) vb rtyp batch_val oc ;
+            emit_store_data (indent+1) vb i_var rtyp.T.structure val_var oc
+          )) ;
       p indent "}")
 
 (* Now let's turn to set_numElements_recursively, which sets the numElements
@@ -411,7 +447,7 @@ let rec emit_add_value_in_batch
  * we have to copy [root->numElements], also in [bi], in any other
  * subvectors. *)
 let rec emit_set_numElements
-          indent rtyp batch_val field_name oc =
+          indent rtyp batch_val i_var field_name oc =
   let p indent fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
   iter_scalars indent ~skip_root:true oc rtyp batch_val None field_name
     (fun indent _rtyp batch_val ~is_list _val_var field_name ->
@@ -419,8 +455,8 @@ let rec emit_set_numElements
        * own numElemebnts (ie number of offsets). *)
       ignore is_list ;
       p indent "{ /* Set numElements for %s */\n" field_name ;
-      emit_get_vb indent "vb" rtyp batch_val oc ;
-      p (indent+1) "vb->numElements = bi;\n" ;
+      emit_get_vb (indent+1) "vb" rtyp batch_val oc ;
+      p (indent+1) "vb->numElements = %s;\n" i_var ;
       p indent "}\n")
 
 (* Write a function named [func_name] that receives a "handler" and an OCaml
@@ -436,7 +472,7 @@ let emit_batch_value func_name rtyp oc =
   p "  uint64_t const bi = root->numElements;" ;
   emit_add_value_in_batch 1 (Some "val") "root" "bi" rtyp "" oc ;
   p "  if (++root->numElements >= root->capacity) {" ;
-  emit_set_numElements 2 rtyp "root" "" oc ;
+  emit_set_numElements 2 rtyp "root" "bi" "" oc ;
   p "    handler->flush_batch();" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
   p "  }" ;
@@ -456,6 +492,8 @@ let emit_heading oc =
   p "#include <cassert>" ;
   p "#include <caml/mlvalues.h>" ;
   p "#include <orc/OrcFile.hh>" ;
+  p "typedef __int128_t int128_t;" ;
+  p "typedef __uint128_t uint128_t;" ;
   p "using namespace std;" ;
   p "using namespace orc;" ;
   p "" ;
@@ -495,10 +533,25 @@ let emit_heading oc =
 let test () =
   let rtyp = T.(
     make (TRecord [|
-      "i8", make TI8 ;
       "u16", make TU16 ;
-      "u64", make ~nullable:false TU64 ;
-      |])) in
+      "i32", make ~nullable:false TI32 ;
+      "ip4", make ~nullable:false TIpv4 ;
+      "ip6", make TIpv6 ;
+      "ip", make ~nullable:false TIp ;
+      "cidr4", make TCidrv4 ;
+      "cidr6", make ~nullable:false TCidrv6 ;
+      "tuple", make (TTuple [| make ~nullable:false TI8 ; make TI32 |]) ;
+      "list", make (TList (make TString)) ;
+      "complex", make (TRecord [|
+        "i8", make TI8 ;
+        "str", make ~nullable:false TString ;
+        "tuple", make (TTuple [|
+          make ~nullable:false
+            (TList (make ~nullable:false (TVec (3, make TU64)))) ;
+          make ~nullable:false TCidr
+        |])
+      |])
+    |])) in
   emit_heading stdout ;
   emit_batch_value "test" rtyp stdout ;
   Printf.printf "\nint main(void) { return 0; }\n"
