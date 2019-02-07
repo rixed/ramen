@@ -183,32 +183,47 @@ let indent_of i = String.make (i*2) ' '
  * type [rtyp], while providing the corresponding [batch_val] (C++ expression
  * holding the ORC batch) and [val_var] (C++ expression holding the OCaml
  * value), and also [field_name] for cosmetics) *)
-let iter_scalars ?(skip_root=false) rtyp batch_val val_var field_name f =
-  let rec loop depth rtyp batch_val val_var field_name =
-    match rtyp.T.structure with
-    | T.TEmpty | T.TNum | T.TAny ->
-        assert false
-    | T.TBool
-    | T.TU8 | T.TU16 | T.TU32 | T.TU64
-    | T.TI8 | T.TI16 | T.TI32 | T.TI64
-    | T.TEth ->
+let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var field_name f =
+  let p indent fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let rec loop indent depth rtyp batch_val val_var field_name =
+    match val_var with
+    | Some v when rtyp.T.nullable ->
+        p indent "if (Is_block(%s)) { /* Not null */" v ;
+        (* The first non const constructor is "NotNull of ...": *)
+        p (indent+1) "%s = Field(%s, 0);" v v ;
+        let rtyp' = { rtyp with nullable = false } in
+        loop (indent+1) depth rtyp' batch_val val_var field_name ;
+        p indent "} else { /* Null */" ;
         if depth > 0 || not skip_root then
-          f rtyp batch_val val_var field_name
-    | T.TU128 | T.TI128
-    | T.TIpv4 | T.TIpv6 | T.TIp
-    | T.TCidrv4 | T.TCidrv6 | T.TCidr
-    | T.TFloat | T.TString | T.TList _ | T.TTuple _ | T.TVec _ ->
-        todo "emit_add_value_in_batch"
-    | T.TRecord kts ->
-        Array.iteri (fun i (k, t) ->
-          let batch_val = Printf.sprintf "%s->fields[%d]" batch_val i
-          and val_var = Printf.sprintf "Field(%s, %d)" val_var i
-          and field_name =
-            if field_name = "" then k else field_name ^"."^ k in
-          loop (depth+1) t batch_val val_var field_name
-        ) kts
+          f (indent+1) rtyp batch_val None field_name ;
+        p indent "}"
+    | _ ->
+        (match rtyp.T.structure with
+        | T.TEmpty | T.TNum | T.TAny ->
+            assert false
+        | T.TBool
+        | T.TU8 | T.TU16 | T.TU32 | T.TU64
+        | T.TI8 | T.TI16 | T.TI32 | T.TI64
+        | T.TEth ->
+            if depth > 0 || not skip_root then
+              f indent rtyp batch_val val_var field_name
+        | T.TU128 | T.TI128
+        | T.TIpv4 | T.TIpv6 | T.TIp
+        | T.TCidrv4 | T.TCidrv6 | T.TCidr
+        | T.TFloat | T.TString | T.TList _ | T.TTuple _ | T.TVec _ ->
+            todo "iter_scalars"
+        | T.TRecord kts ->
+            Array.iteri (fun i (k, t) ->
+              let batch_val = Printf.sprintf "%s->fields[%d]" batch_val i
+              and val_var =
+                Option.map (fun v ->
+                  Printf.sprintf "Field(%s, %d)" v i) val_var
+              and field_name =
+                if field_name = "" then k else field_name ^"."^ k in
+              loop indent (depth+1) t batch_val val_var field_name
+            ) kts)
   in
-  loop 0 rtyp batch_val val_var field_name
+  loop indent 0 rtyp batch_val val_var field_name
 
 (* From the writers we need only two functions:
  *
@@ -233,20 +248,26 @@ let emit_get_vb indent vb_val rtyp batch_val oc =
  * ColumnVectorBatch [batch_val]: *)
 let rec emit_add_value_in_batch
           indent val_var batch_val rtyp field_name oc =
-  let p indent fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
-  iter_scalars rtyp batch_val val_var field_name
-    (fun rtyp batch_val val_var field_name ->
-      p indent "{ /* Write the value for %s (of type %a) */\n"
+  let p indent fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  iter_scalars indent oc rtyp batch_val val_var field_name
+    (fun indent rtyp batch_val val_var field_name ->
+      p indent "{ /* Write the value for %s (of type %a) */"
         field_name T.print_typ rtyp ;
       emit_get_vb (indent+1) "vb" rtyp batch_val oc ;
-      let arr_name =
-        (* For some reason Decimal*Vector uses values rather than data: *)
-        match of_structure rtyp.T.structure with
-        | Decimal _ -> "values"
-        | _ -> "data" in
-      p (indent+1) "vb->%s[bi] = %t;\n"
-        arr_name (emit_conv_of_ocaml rtyp val_var) ;
-      p indent "}\n")
+      (match val_var with
+      | None -> (* When the value is NULL *)
+          (* liborc initializes hasNulls to false and notNull to all ones: *)
+          p (indent+1) "vb->hasNulls = true;" ;
+          p (indent+1) "vb->notNull[bi] = 0;"
+      | Some val_var ->
+        let arr_name =
+          (* For some reason Decimal*Vector uses values rather than data: *)
+          match of_structure rtyp.T.structure with
+          | Decimal _ -> "values"
+          | _ -> "data" in
+        p (indent+1) "vb->%s[bi] = %t;"
+          arr_name (emit_conv_of_ocaml rtyp val_var)) ;
+      p indent "}")
 
 (* Now let's turn to set_numElements_recursively, which sets the numElements
  * count in all involved vectors beside the root one.  It seams unfortunate
@@ -257,8 +278,8 @@ let rec emit_add_value_in_batch
 let rec emit_set_numElements
           indent rtyp batch_val field_name oc =
   let p indent fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
-  iter_scalars ~skip_root:true rtyp batch_val "" field_name
-    (fun _rtyp batch_val _val_var field_name ->
+  iter_scalars indent ~skip_root:true oc rtyp batch_val None field_name
+    (fun indent _rtyp batch_val _val_var field_name ->
       p indent "{ /* Set numElements for %s */\n" field_name ;
       emit_get_vb indent "vb" rtyp batch_val oc ;
       p (indent+1) "vb->numElements = bi;\n" ;
@@ -275,7 +296,7 @@ let emit_batch_value func_name rtyp oc =
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
   p "  uint64_t const bi = root->numElements;" ;
-  emit_add_value_in_batch 1 "val" "root" rtyp "" oc ;
+  emit_add_value_in_batch 1 (Some "val") "root" rtyp "" oc ;
   p "  if (++root->numElements >= root->capacity) {" ;
   emit_set_numElements 2 rtyp "root" "" oc ;
   p "    handler->flush_batch();" ; (* might destroy the writer... *)
