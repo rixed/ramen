@@ -241,6 +241,10 @@ let is_alpha s =
     true
   with Exit -> false
 
+(* Helper to build the indentation in front of printed lines. We just use 2
+ * spaces like normal people: *)
+let indent_of i = String.make (i*2) ' '
+
 let with_time f k =
   let start = Unix.gettimeofday () in
   let res = f () in

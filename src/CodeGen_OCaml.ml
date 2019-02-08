@@ -143,45 +143,55 @@ let id_of_typ = function
   | TList _ -> "list"
   | TNum | TAny | TEmpty -> assert false
 
-let rec emit_value_of_string typ oc var =
-  match typ with
-  | TVec (_, t) | TList t ->
-      Printf.fprintf oc
-        "split_string ~sep:';' ~opn:'[' ~cls:']' %s |>\n\
-         Array.map (fun x_ -> %a)"
-        var
-        (emit_value_of_string t.structure) "x_"
-  | TTuple ts ->
-      (* FIXME: same as above re. [split_on_char]: *)
-      Printf.fprintf oc
-        "let s_ =\n\
-           split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
-         if Array.length s_ <> %d then failwith (\
-           Printf.sprintf \"Bad arity for tuple %%s, expected %d items\" \
-             %s) ;\n\
-         %a"
-         var (Array.length ts) (Array.length ts) var
-         (array_print_as_tuple_i (fun oc i t ->
-           emit_value_of_string t.structure oc
-             ("s_.("^ string_of_int i ^")"))) ts
-  | TRecord kts ->
-      (* FIXME: same as above re. [split_on_char]: *)
-      (* TODO: we should instead also expect to find field names and then
-       * reorder. *)
-      Printf.fprintf oc
-        "let s_ =\n\
-           split_string ~sep:';' ~opn:'(' ~cls:')' %s in\n\
-         if Array.length s_ <> %d then failwith (\
-           Printf.sprintf \"Bad arity for record %%s, expected %d items\" \
-             %s) ;\n\
-         %a"
-         var (Array.length kts) (Array.length kts) var
-         (array_print_as_tuple_i (fun oc i (_k, t) ->
-           emit_value_of_string t.structure oc
-             ("s_.("^ string_of_int i ^")"))) kts
-  | typ ->
-      Printf.fprintf oc "RamenTypeConverters.%s_of_string %s"
-        (id_of_typ typ) var
+let rec emit_value_of_string indent t str_var emit_is_null oc =
+  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  if t.T.nullable then (
+    p "if %a then Null else NotNull (" emit_is_null str_var ;
+    let t = { t with nullable = false } in
+    emit_value_of_string (indent+1) t str_var emit_is_null oc ;
+    p ")"
+  ) else (
+    match t.T.structure with
+    | TVec (_, t) | TList t ->
+        (* FIXME: see https://github.com/rixed/ramen/issues/669 *)
+        p "split_string ~sep:';' ~opn:'[' ~cls:']' %s |>" str_var ;
+        p "Array.map (fun x_ ->" ;
+        emit_value_of_string (indent+1) t "x_" emit_is_null oc ;
+        p ")"
+    | TTuple ts ->
+        let d = Array.length ts in
+        p "let s_ = split_string ~sep:';' ~opn:'(' ~cls:')' %s in" str_var ;
+        p "if Array.length s_ <> %d then failwith (" d ;
+        p "  Printf.sprintf \"Bad arity for tuple %%s, expected %d items\"" d ;
+        p "    %s) ;" str_var ;
+        p "(" ;
+        Array.iteri (fun i t ->
+          let str_var = "s_.("^ string_of_int i ^")" in
+          p "  (" ;
+          emit_value_of_string (indent+2) t str_var emit_is_null oc ;
+          p "  )%s" (if i < d-1 then "," else "")
+        ) ts ;
+        p ")"
+    | TRecord kts ->
+        (* TODO: we should instead also expect to find field names and then
+         * reorder. *)
+        let d = Array.length kts in
+        p "let s_ = split_string ~sep:';' ~opn:'(' ~cls:')' %s in" str_var ;
+        p "if Array.length s_ <> %d then failwith (" d ;
+        p "  Printf.sprintf \"Bad arity for record %%s, expected %d items\"" d ;
+        p "    %s) ;" str_var ;
+        p "(" ;
+        Array.iteri (fun i (_k, t) ->
+          let str_var = "s_.("^ string_of_int i ^")" in
+          p "  (" ;
+          emit_value_of_string (indent+2) t str_var emit_is_null oc ;
+          p "  )%s" (if i < d-1 then "," else "")
+        ) kts ;
+        p ")"
+    | _ ->
+        p "RamenTypeConverters.%s_of_string %s"
+          (id_of_typ t.T.structure) str_var
+  )
 
 let emit_float oc f =
   (* printf "%F" would not work for infinity:
@@ -2222,16 +2232,10 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   List.iteri (fun i field_typ ->
     let sep = if i < num_fields - 1 then "," else "" in
     Printf.fprintf oc "\t\t(try (\n" ;
-    if field_typ.typ.nullable then (
-      Printf.fprintf oc "\t\t\t(let s_ = strs_.(%d) in\n" i ;
-      Printf.fprintf oc "\t\t\tif s_ = %S then Null else NotNull (%a))\n"
-        csv_null
-        (emit_value_of_string field_typ.typ.structure) "s_"
-    ) else (
-      let s_var = Printf.sprintf "strs_.(%d)" i in
-      Printf.fprintf oc "\t\t\t%a\n"
-        (emit_value_of_string field_typ.typ.structure) s_var
-    ) ;
+    let str_var = "strs_.("^ string_of_int i ^")" in
+    let emit_is_null oc str_var =
+      Printf.fprintf oc "%s = %S" str_var csv_null in
+    emit_value_of_string 3 field_typ.typ str_var emit_is_null oc ;
     Printf.fprintf oc "\t\t) with exn -> (\n" ;
     Printf.fprintf oc
       "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n"
@@ -3170,16 +3174,18 @@ let emit_parameters oc params =
   List.iter (fun p ->
     (* FIXME: nullable parameters *)
     Printf.fprintf oc
-      "let %s_%s_ =\n\
-       \tlet parser_ x_ = %s(%a) in\n\
+      "let %s =\n\
+       \tlet parser_ x_ =\n"
+      (id_of_field_name ~tuple:TupleParam p.ptyp.name) ;
+    let emit_is_null oc str_var =
+      Printf.fprintf oc "looks_like_null %s" str_var in
+    emit_value_of_string 2 p.ptyp.typ "x_" emit_is_null oc ;
+    Printf.fprintf oc
+      "\tin\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
-      (id_of_prefix TupleParam) (p.ptyp.name :> string)
-      (if p.ptyp.typ.nullable then
-        "if looks_like_null x_ then Null else NotNull "
-       else "") (emit_value_of_string p.ptyp.typ.structure) "x_"
-      (if p.ptyp.typ.nullable && p.value <> VNull
-       then "NotNull " else "")
-      emit_type p.value (p.ptyp.name :> string)
+      (if p.ptyp.typ.nullable && p.value <> VNull then "NotNull " else "")
+      emit_type
+      p.value (p.ptyp.name :> string)
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)

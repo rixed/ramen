@@ -370,19 +370,12 @@ let compile conf get_parent ~exec_file source_file
      * functions.
      *)
     !logger.info "Compiling program %s" (program_name :> string) ;
-    (* Given a file name, make it a valid module name: *)
-    let make_valid_for_module fname =
-      let dirname, basename =
-        try String.rsplit ~by:"/" fname
-        with Not_found -> ".", fname in
-      let basename = RamenOCamlCompiler.to_module_name basename in
-      dirname ^"/"^ basename
-    in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
     let params_obj_name =
-      make_valid_for_module (Filename.remove_extension source_file) ^
-      "_params_"^ RamenVersions.codegen ^".cmx" in
+      (Filename.remove_extension source_file) ^
+      "_params_"^ RamenVersions.codegen ^".cmx" |>
+      RamenOCamlCompiler.make_valid_for_module in
     mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
       RamenOCamlCompiler.with_code_file_for params_obj_name conf (fun oc ->
@@ -412,7 +405,7 @@ let compile conf get_parent ~exec_file source_file
       Filename.remove_extension source_file ^
       "_"^ func.F.signature ^
       "_"^ RamenVersions.codegen |>
-      make_valid_for_module in
+      RamenOCamlCompiler.make_valid_for_module in
     let obj_files =
       Hashtbl.fold (fun _ func lst ->
         let obj_name = src_name_of_func func ^".cmx" in
@@ -444,8 +437,9 @@ let compile conf get_parent ~exec_file source_file
      * above).
      *)
     let casing_obj_name =
-      make_valid_for_module (Filename.remove_extension source_file) ^
-      "_casing_"^ RamenVersions.codegen ^".cmx" in
+      (Filename.remove_extension source_file) ^
+      "_casing_"^ RamenVersions.codegen ^".cmx" |>
+      RamenOCamlCompiler.make_valid_for_module in
     let ocaml_file =
       RamenOCamlCompiler.with_code_file_for casing_obj_name conf (fun oc ->
         let params = parsed_params in

@@ -153,10 +153,6 @@ let batch_type_of = function
 
 let batch_type_of_structure = batch_type_of % of_structure
 
-(* Helper to build the indentation in front of printed lines. We just use 2
- * spaces like normal people: *)
-let indent_of i = String.make (i*2) ' '
-
 let gensym =
   let seq = ref 0 in
   fun pref ->

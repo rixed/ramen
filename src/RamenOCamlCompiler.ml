@@ -274,6 +274,14 @@ let to_module_name =
     in
     s ^ ext
 
+(* Given a file name, make it a valid module name: *)
+let make_valid_for_module fname =
+  let dirname, basename =
+    try String.rsplit ~by:"/" fname
+    with Not_found -> ".", fname in
+  let basename = to_module_name basename in
+  dirname ^"/"^ basename
+
 (* obj name must not conflict with any external module. *)
 let with_code_file_for obj_name conf f =
   assert (obj_name <> "") ;
