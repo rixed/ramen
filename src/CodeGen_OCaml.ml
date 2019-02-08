@@ -295,7 +295,7 @@ let string_of_context = function
   | Finalize -> "Finalize"
   | Generator -> "Generator"
 
-let rec otype_of_type oc = function
+let rec otype_of_structure oc = function
   | TFloat -> String.print oc "float"
   | TString -> String.print oc "string"
   | TBool -> String.print oc "bool"
@@ -317,18 +317,21 @@ let rec otype_of_type oc = function
   | TCidrv6 -> String.print oc "(uint128 * int)"
   | TCidr -> String.print oc "RamenIp.Cidr.t"
   | TTuple ts ->
-      (* TODO: take into account t.nullable *)
       Array.print ~first:"(" ~last:")" ~sep:" * "
-        (fun oc t -> otype_of_type oc t.structure)
+        (fun oc t -> otype_of_type oc t)
         oc ts
   | TRecord kts ->
       let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
                Array.map snd in
-      otype_of_type oc (TTuple ts)
+      otype_of_structure oc (TTuple ts)
   | TVec (_, t) | TList t ->
-      (* TODO: take into account t.nullable *)
-      Printf.fprintf oc "%a array" otype_of_type t.structure
+      Printf.fprintf oc "%a array" otype_of_type t
   | TNum | TAny | TEmpty -> assert false
+
+and otype_of_type oc t =
+  Printf.fprintf oc "%a%s"
+    otype_of_structure t.T.structure
+    (if t.T.nullable then " nullable" else "")
 
 let omod_of_type = function
   | TFloat -> "Float"
@@ -336,7 +339,7 @@ let omod_of_type = function
   | TBool -> "Bool"
   | TU8 | TU16 | TU32 | TU64 | TU128
   | TI8 | TI16 | TI32 | TI64 | TI128 as t ->
-    String.capitalize (IO.to_string otype_of_type t)
+    String.capitalize (IO.to_string otype_of_structure t)
   | TEth -> "RamenEthAddr"
   | TIpv4 -> "RamenIpv4"
   | TIpv6 -> "RamenIpv6"
@@ -377,13 +380,13 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | TString, (TFloat|TBool) ->
       Printf.fprintf oc "%s.of_%a"
         (omod_of_type to_typ)
-        otype_of_type from_typ
+        otype_of_structure from_typ
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128),
         (TFloat|TString)
     | (TFloat|TBool), (TString|TFloat) ->
       Printf.fprintf oc "%s.to_%a"
         (omod_of_type from_typ)
-        otype_of_type to_typ
+        otype_of_structure to_typ
     | TBool, (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128) ->
       Printf.fprintf oc "(%s.of_int %% Bool.to_int)"
         (omod_of_type to_typ)
@@ -2753,15 +2756,15 @@ let fold_unpure_fun_my_lifespan lifespan selected_fields
 
 let otype_of_state e =
   let t = e.E.typ.structure |>
-          IO.to_string otype_of_type in
+          IO.to_string otype_of_structure in
   let print_expr_structure oc e =
     e.E.typ.structure |> (* nullable taken care of below *)
-    IO.to_string otype_of_type |>
+    IO.to_string otype_of_structure |>
     String.print oc in
   let nullable = if e.typ.nullable then " nullable" else "" in
   let print_expr_typ ~skip_null oc e =
     Printf.fprintf oc "%a%s"
-      otype_of_type e.E.typ.structure
+      otype_of_structure e.E.typ.structure
       (if e.typ.nullable && not skip_null then " nullable" else "")
   in
   match e.text with
