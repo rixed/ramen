@@ -3375,10 +3375,11 @@ let compile conf worker_entry_point replay_entry_point func
     RamenName.func_print func.F.name
     (O.print true) func.F.operation ;
   let src_file =
-    RamenOCamlCompiler.with_code_file_for obj_name conf (fun oc ->
-      emit_header func params_mod oc ;
-      emit_params_env params_mod params envvars oc ;
-      emit_operation worker_entry_point func params envvars oc ;
-      emit_replay replay_entry_point func params oc) in
+    RamenOCamlCompiler.with_code_file_for
+      obj_name conf.C.keep_temp_files (fun oc ->
+        emit_header func params_mod oc ;
+        emit_params_env params_mod params envvars oc ;
+        emit_operation worker_entry_point func params envvars oc ;
+        emit_replay replay_entry_point func params oc) in
   let what = "function "^ RamenName.func_color func.F.name in
   RamenOCamlCompiler.compile conf what src_file obj_name

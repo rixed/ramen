@@ -283,7 +283,7 @@ let make_valid_for_module fname =
   dirname ^"/"^ basename
 
 (* obj name must not conflict with any external module. *)
-let with_code_file_for obj_name conf f =
+let with_code_file_for obj_name keep_temp_files f =
   assert (obj_name <> "") ;
   let basename =
     Filename.(remove_extension (basename obj_name)) ^".ml" in
@@ -292,7 +292,7 @@ let with_code_file_for obj_name conf f =
   let fname = Filename.dirname obj_name ^"/"^ basename in
   mkdir_all ~is_file:true fname ;
   (* If keep-temp-file is set, reuse preexisting source code : *)
-  if conf.C.keep_temp_files &&
+  if keep_temp_files &&
      file_check ~min_size:1 ~has_perms:0o400 fname = FileOk
   then
     !logger.info "Reusing source file %S" fname

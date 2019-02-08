@@ -378,7 +378,8 @@ let compile conf get_parent ~exec_file source_file
       RamenOCamlCompiler.make_valid_for_module in
     mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
-      RamenOCamlCompiler.with_code_file_for params_obj_name conf (fun oc ->
+      RamenOCamlCompiler.with_code_file_for
+        params_obj_name conf.C.keep_temp_files (fun oc ->
         Printf.fprintf oc "(* Parameter values for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
@@ -441,7 +442,8 @@ let compile conf get_parent ~exec_file source_file
       "_casing_"^ RamenVersions.codegen ^".cmx" |>
       RamenOCamlCompiler.make_valid_for_module in
     let ocaml_file =
-      RamenOCamlCompiler.with_code_file_for casing_obj_name conf (fun oc ->
+      RamenOCamlCompiler.with_code_file_for
+        casing_obj_name conf.C.keep_temp_files (fun oc ->
         let params = parsed_params in
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n\
           open Batteries\n\
