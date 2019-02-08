@@ -3384,5 +3384,7 @@ let compile conf worker_entry_point replay_entry_point func
         emit_params_env params_mod params envvars oc ;
         emit_operation worker_entry_point func params envvars oc ;
         emit_replay replay_entry_point func params oc) in
+  let debug = conf.C.log_level = Debug in
   let what = "function "^ RamenName.func_color func.F.name in
-  RamenOCamlCompiler.compile conf what src_file obj_name
+  RamenOCamlCompiler.compile ~debug ~keep_temp_files:conf.C.keep_temp_files
+                             what src_file obj_name

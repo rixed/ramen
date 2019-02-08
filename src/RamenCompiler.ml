@@ -388,8 +388,11 @@ let compile conf get_parent ~exec_file source_file
           (program_name :> string) ;
         CodeGen_OCaml.emit_parameters oc parsed_params) in
     add_temp_file params_src_file ;
+    let debug = conf.C.log_level = Debug
+    and keep_temp_files = conf.C.keep_temp_files in
     let what = "program "^ (RamenName.program_color program_name) in
-    RamenOCamlCompiler.compile conf what params_src_file params_obj_name ;
+    RamenOCamlCompiler.compile
+      ~debug ~keep_temp_files what params_src_file params_obj_name ;
     let params_mod_name =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
     (* We need to collect all envvars used in the whole program (same as
@@ -441,7 +444,7 @@ let compile conf get_parent ~exec_file source_file
       (Filename.remove_extension source_file) ^
       "_casing_"^ RamenVersions.codegen ^".cmx" |>
       RamenOCamlCompiler.make_valid_for_module in
-    let ocaml_file =
+    let src_file =
       RamenOCamlCompiler.with_code_file_for
         casing_obj_name conf.C.keep_temp_files (fun oc ->
         let params = parsed_params in
@@ -490,6 +493,8 @@ let compile conf get_parent ~exec_file source_file
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.
      *)
-    RamenOCamlCompiler.link conf program_name obj_files ocaml_file exec_file ;
-    add_temp_file ocaml_file
+    let what = "program "^ RamenName.program_color program_name in
+    RamenOCamlCompiler.link ~debug ~keep_temp_files ~what ~obj_files
+                            ~src_file ~exec_file ;
+    add_temp_file src_file
   ) () (* and finally, delete temp files! *)

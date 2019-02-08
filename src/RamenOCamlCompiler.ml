@@ -23,14 +23,13 @@ end
 (* Compiler accumulate some options in there so we have to manually clean
  * it in between two compilations :-< *)
 let reset () =
-  let open Clflags in
-  objfiles := [] ;
-  ccobjs := [] ;
-  dllibs := [] ;
-  all_ccopts := [] ;
-  all_ppx := [] ;
-  open_modules := [] ;
-  dllpaths := []
+  Clflags.objfiles := [] ;
+  Clflags.ccobjs := [] ;
+  Clflags.dllibs := [] ;
+  Clflags.all_ccopts := [] ;
+  Clflags.all_ppx := [] ;
+  Clflags.open_modules := [] ;
+  Clflags.dllpaths := []
 
 (* Return a formatter outputting in the logger *)
 let ppf () =
@@ -64,48 +63,46 @@ let cannot_compile what status =
     what status |>
   failwith
 
-let cannot_link program_name status =
-  Printf.sprintf "Cannot generate binary for program %s: %s"
-    (RamenName.program_color program_name) status |>
+let cannot_link what status =
+  Printf.sprintf "Cannot generate binary for %s: %s" what status |>
   failwith
 
 (* Takes a source file and produce an object file: *)
 
-let compile_internal conf what src_file obj_file =
-  let open Clflags in
+let compile_internal ~debug ~keep_temp_files what src_file obj_file =
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Compiling %S" src_file ;
   reset () ;
-  native_code := true ;
-  annotations := true ;
-  use_linscan := true ; (* https://caml.inria.fr/mantis/view.php?id=7899 *)
-  debug := conf.C.log_level = Debug ;
-  verbose := !debug ;
-  no_std_include := true ;
+  Clflags.native_code := true ;
+  Clflags.annotations := true ;
+  Clflags.use_linscan := true ; (* https://caml.inria.fr/mantis/view.php?id=7899 *)
+  Clflags.debug := debug ;
+  Clflags.verbose := debug ;
+  Clflags.no_std_include := true ;
   !logger.debug "Use bundled libraries from %S" !bundle_dir ;
   (* Also include in incdir the directory where the obj_file will be,
    * since other modules (params...) might have been compiled there
    * already: *)
   let obj_dir = Filename.dirname obj_file in
-  include_dirs :=
+  Clflags.include_dirs :=
     obj_dir ::
     List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.incdirs ;
-  dlcode := true ;
-  keep_asm_file := conf.C.keep_temp_files ;
+  Clflags.dlcode := true ;
+  Clflags.keep_asm_file := keep_temp_files ;
   (* equivalent to -O2: *)
-  if conf.C.log_level = Debug then (
-    default_simplify_rounds := 1 ;
-    use_inlining_arguments_set o1_arguments
+  if debug then (
+    Clflags.default_simplify_rounds := 1 ;
+    Clflags.(use_inlining_arguments_set o1_arguments)
   ) else (
-    default_simplify_rounds := 2 ;
-    use_inlining_arguments_set o2_arguments ;
-    use_inlining_arguments_set ~round:0 o1_arguments
+    Clflags.default_simplify_rounds := 2 ;
+    Clflags.(use_inlining_arguments_set o2_arguments) ;
+    Clflags.(use_inlining_arguments_set ~round:0 o1_arguments)
   ) ;
-  compile_only := true ;
-  link_everything := false ;
+  Clflags.compile_only := true ;
+  Clflags.link_everything := false ;
   Warnings.parse_options false warnings ;
 
-  output_name := Some obj_file ;
+  Clflags.output_name := Some obj_file ;
 
   Asmlink.reset () ;
   try
@@ -115,7 +112,7 @@ let compile_internal conf what src_file obj_file =
     Location.report_exception (ppf ()) exn ;
     cannot_compile what (Printexc.to_string exn)
 
-let compile_external conf what src_file obj_file =
+let compile_external ~debug ~keep_temp_files what src_file obj_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
@@ -126,8 +123,8 @@ let compile_external conf what src_file obj_file =
                      -o %s -package ramen -I %s -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.log_level = Debug then " -g" else "")
-      (if conf.C.keep_temp_files then " -S" else "")
+      (if debug then " -g" else "")
+      (if keep_temp_files then " -S" else "")
       (shell_quote warnings)
       (Filename.dirname obj_file)
       (shell_quote obj_file)
@@ -145,10 +142,10 @@ let compile_external conf what src_file obj_file =
        * report to the GUI: *)
       cannot_compile what (string_of_process_status status)
 
-let compile conf what src_file obj_file =
+let compile ?(debug=false) ?(keep_temp_files=false) what src_file obj_file =
   mkdir_all ~is_file:true obj_file ;
   (if !use_external_compiler then compile_external else compile_internal)
-    conf what src_file obj_file
+    ~debug ~keep_temp_files what src_file obj_file
 
 (* Function to take some object files, a source file, and produce an
  * executable: *)
@@ -156,37 +153,37 @@ let compile conf what src_file obj_file =
 let is_ocaml_objfile fname =
   String.ends_with fname ".cmx" || String.ends_with fname ".cmxa"
 
-let link_internal conf program_name inc_dirs obj_files src_file bin_file =
-  let open Clflags in
+let link_internal ~debug ~keep_temp_files
+                  ~what ~inc_dirs ~obj_files ~src_file ~exec_file =
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Linking %S" src_file ;
   reset () ;
-  native_code := true ;
-  annotations := true ;
-  use_linscan := true ;
-  debug := conf.C.log_level = Debug ;
-  verbose := !debug ;
-  no_std_include := true ;
+  Clflags.native_code := true ;
+  Clflags.annotations := true ;
+  Clflags.use_linscan := true ;
+  Clflags.debug := debug ;
+  Clflags.verbose := debug ;
+  Clflags.no_std_include := true ;
   !logger.debug "Use bundled libraries from %S" !bundle_dir ;
-  include_dirs :=
+  Clflags.include_dirs :=
     List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.incdirs @
     Set.to_list inc_dirs ;
-  dlcode := true ;
-  keep_asm_file := conf.C.keep_temp_files ;
+  Clflags.dlcode := true ;
+  Clflags.keep_asm_file := keep_temp_files ;
   (* equivalent to -O2: *)
-  if conf.C.log_level = Debug then (
-    default_simplify_rounds := 1 ;
-    use_inlining_arguments_set o1_arguments
+  if debug then (
+    Clflags.default_simplify_rounds := 1 ;
+    Clflags.(use_inlining_arguments_set o1_arguments)
   ) else (
-    default_simplify_rounds := 2 ;
-    use_inlining_arguments_set o2_arguments ;
-    use_inlining_arguments_set ~round:0 o1_arguments
+    Clflags.default_simplify_rounds := 2 ;
+    Clflags.(use_inlining_arguments_set o2_arguments) ;
+    Clflags.(use_inlining_arguments_set ~round:0 o1_arguments)
   ) ;
-  compile_only := false ;
-  link_everything := false ;
+  Clflags.compile_only := false ;
+  Clflags.link_everything := false ;
   Warnings.parse_options false warnings ;
 
-  output_name := Some bin_file ;
+  Clflags.output_name := Some exec_file ;
 
   (* Internal compiler wants .o files elsewhere then in objfiles: *)
   let objfiles, ccobjs =
@@ -214,13 +211,13 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
       (Filename.remove_extension src_file) ;
     (* Now link *)
     Compmisc.init_path true ;
-    Asmlink.link (ppf ()) objfiles bin_file
+    Asmlink.link (ppf ()) objfiles exec_file
   with exn ->
     Location.report_exception (ppf ()) exn ;
-    cannot_link program_name (Printexc.to_string exn)
+    cannot_link what (Printexc.to_string exn)
 
-let link_external conf (program_name : RamenName.program)
-                  inc_dirs obj_files src_file bin_file =
+let link_external ~debug ~keep_temp_files
+                  ~what ~inc_dirs ~obj_files ~src_file ~exec_file =
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
@@ -231,31 +228,31 @@ let link_external conf (program_name : RamenName.program)
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote path)
       (shell_quote ocamlpath)
-      (if conf.C.log_level = Debug then " -g" else "")
-      (if conf.C.keep_temp_files then " -S" else "")
+      (if debug then " -g" else "")
+      (if keep_temp_files then " -S" else "")
       (IO.to_string
         (Set.print ~first:"" ~last:"" ~sep:" " (fun oc f ->
           Printf.fprintf oc "-I %s" (shell_quote f))) inc_dirs)
-      (shell_quote bin_file)
+      (shell_quote exec_file)
       (IO.to_string
         (List.print ~first:"" ~last:"" ~sep:" " (fun oc f ->
           Printf.fprintf oc "%s" (shell_quote f))) obj_files)
       (shell_quote src_file) in
   (* TODO: return an array of arguments and get rid of the shell *)
-  let cmd_name =
-    "Compilation+Link of "^ (program_name :> string) in
+  let cmd_name = "Compilation+Link of "^ what in
   match run_coprocess ~max_count:max_simult_compilations cmd_name cmd with
   | None ->
-      cannot_link program_name "Cannot run command"
+      cannot_link what "Cannot run command"
   | Some (Unix.WEXITED 0) ->
-      !logger.debug "Compiled %s with: %s" (program_name :> string) cmd ;
+      !logger.debug "Compiled %s with: %s" what cmd ;
   | Some status ->
       (* As this might well be an installation problem, makes this error
        * report to the GUI: *)
-      cannot_link program_name (string_of_process_status status)
+      cannot_link what (string_of_process_status status)
 
-let link conf program_name obj_files src_file bin_file =
-  mkdir_all ~is_file:true bin_file ;
+let link ?(debug=false) ?(keep_temp_files=false)
+         ~what ~obj_files ~src_file ~exec_file =
+  mkdir_all ~is_file:true exec_file ;
   (* Look for cmi files in the same dirs where the cmx are: *)
   let inc_dirs, obj_files =
     List.fold_left (fun (s, l) obj_file ->
@@ -266,7 +263,8 @@ let link conf program_name obj_files src_file bin_file =
         s, obj_file :: l
     ) (Set.empty, []) obj_files in
   (if !use_external_compiler then link_external else link_internal)
-    conf program_name inc_dirs obj_files src_file bin_file
+    ~debug ~keep_temp_files
+    ~what ~inc_dirs ~obj_files ~src_file ~exec_file
 
 
 (* Helpers: *)
