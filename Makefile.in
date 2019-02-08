@@ -46,7 +46,7 @@ INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
 	$(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
-	src/libringbuf.a src/libcollectd.a src/libnetflow.a
+	src/libringbuf.a src/libcollectd.a src/libnetflow.a src/liborchelp.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) META
 
 bin_dir ?= /usr/bin/
@@ -90,11 +90,9 @@ all: $(INSTALLED) bundle
 	@echo 'Building documentation $@'
 	@asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
 
-doc: \
-	docs/tutorial.html docs/manual.html docs/roadmap.html
+doc: docs/tutorial.html docs/manual.html docs/roadmap.html
 
-docs/tutorial.html: \
-	docs/tutorial_group_by.svg docs/sample_chart1.svg
+docs/tutorial.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
 
 # Dependencies
 
@@ -192,6 +190,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenFieldMask.ml \
@@ -232,6 +231,56 @@ LIBCOLLECTD_SOURCES = \
 LIBNETFLOW_SOURCES = \
 	src/netflow/v5.c
 
+ifeq (@HAVE_ORC@,1)
+LIBORC_SOURCES = src/orc/wrappers.cc
+else
+LIBORC_SOURCES =
+endif
+
+ORCWRITER_SOURCES = \
+	src/RamenVersions.ml \
+	src/RamenConsts.ml \
+	src/RamenLog.ml \
+	src/RamenNullable.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpers.ml \
+	src/RamenExperiments.ml \
+	src/Globs.ml \
+	src/RamenAdvLock.ml \
+	src/RamenChannel.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenTypes.ml \
+	src/RamenOrc.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenEventTime.ml \
+	src/RamenUnits.ml \
+	src/RamenCollectd.ml \
+	src/RamenNetflow.ml \
+	src/RamenGraphiteSink.ml \
+	src/RamenProtocols.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenTuple.ml \
+	src/RamenLang.ml \
+	src/RingBuf.ml \
+	src/RingBufLib.ml \
+	src/RamenBinocle.ml \
+	src/RamenNotification.ml \
+	src/RamenExpr.ml \
+	src/RamenOperation.ml \
+	src/RamenFieldMaskLib.ml \
+	src/RamenConf.ml \
+	src/RamenSerialization.ml \
+	src/RamenCompilConfig.ml \
+	src/RamenDepLibs.ml \
+	src/RamenOCamlCompiler.ml \
+	src/CodeGen_OCaml.ml \
+	src/orc/orc_writer.ml
+
 TESTONLY_SOURCES = \
 	src/TestHelpers.ml
 
@@ -239,7 +288,7 @@ SOURCES = \
 	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
 	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) \
-	$(TESTONLY_SOURCES) \
+	$(ORCWRITER_SOURCES) $(LIBORC_SOURCES) $(TESTONLY_SOURCES) \
 	src/ringbuf_test.ml
 
 dep:
@@ -276,15 +325,10 @@ src/libnetflow.a: src/netflow/v5.o
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
-ifeq (@HAVE_ORC@,1)
-src/orc/orc_test.cc: src/ramen
-	@echo 'Testing ORC with $@'
-	@src/ramen _test_orc > $@
-
-src/orc/orc_test: src/orc/orc_test.cc
-	@echo 'building test program $@'
-	@$(CXX) -std=c++17 -o $@ $< -lorc -lhdfspp_static -llz4 -lprotobuf -lsnappy -lz -lsasl2 -lcrypto -I '$(shell ocamlc -where)'
-endif
+src/liborchelp.a: $(LIBORC_SOURCES:.cc=.o)
+	@echo 'Building orc helper library'
+	@sleep 1 # ar truncate mtime !?
+	@$(AR) rs $@ $^ >/dev/null
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
@@ -296,15 +340,39 @@ MOREFLAGS = \
 	-cclib -lcollectd \
 	-cclib -lnetflow
 
+ifeq (@HAVE_ORC@,1)
+MOREFLAGS += \
+	-cclib -lorc \
+	-cclib -lhdfspp_static \
+	-cclib -llz4 \
+	-cclib -lprotobuf \
+	-cclib -lsnappy \
+	-cclib -lz \
+	-cclib -lsasl2 \
+	-cclib -lcrypto \
+	-cclib -lorchelp \
+	-cclib -lstdc++
+
+src/orc/orc_writer: \
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(ORCWRITER_SOURCES))) \
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(ORCWRITER_SOURCES))) \
+		src/libringbuf.a src/libcollectd.a \
+		src/libnetflow.a src/liborchelp.a \
+		src/liborchelp.a \
+		bundle
+	@echo 'Linking $@'
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+endif
+
 src/ramen: \
-	$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
-	$(patsubst %.ml,%.cmx,$(filter %.ml, $(RAMEN_SOURCES))) \
-	src/libringbuf.a src/libcollectd.a \
-	src/libnetflow.a
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RAMEN_SOURCES))) \
+		src/libringbuf.a src/libcollectd.a \
+		src/libnetflow.a src/liborchelp.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
-src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a
+src/codegen.cmxa: $(CODEGENLIB_SOURCES:.ml=.cmx) src/libringbuf.a src/libcollectd.a src/libnetflow.a src/liborchelp.a
 	@echo 'Linking runtime library $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -504,34 +572,37 @@ src/all_tests.ml: $(TESTABLE_SOURCES)
 	@$(QTEST) --shuffle -o $@ extract $^
 
 all_tests.opt: \
-	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
-	$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
+		src/libringbuf.a src/libcollectd.a src/libnetflow.a src/liborchelp.a \
+		$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
 	@echo 'Building unit tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
-	src/RamenLog.cmx src/RamenConsts.cmx \
-	src/RamenAtomic.cmx src/RamenHelpers.cmx \
-	src/RamenAdvLock.cmx \
-	src/RamenChannel.cmx \
-	src/RamenParsing.cmx \
-	src/RamenEthAddr.cmx \
-	src/RamenIpv4.cmx \
-	src/RamenIpv6.cmx \
-	src/RamenIp.cmx \
-	src/RamenTypeConverters.cmx \
-	src/RamenTypes.cmx \
-	src/RamenOrc.cmx \
-	src/RamenName.cmx \
-	src/RamenFieldMask.cmx \
-	src/RamenOutRef.cmx \
-	src/RamenUnits.cmx \
-	src/RamenTuple.cmx \
-	src/RamenVersions.cmx \
-	src/RingBuf.cmx \
-	src/RingBufLib.cmx \
-	src/ringbuf_test.cmx \
-	src/libringbuf.a src/libcollectd.a src/libnetflow.a
+		src/RamenLog.cmx src/RamenConsts.cmx \
+		src/RamenAtomic.cmx src/RamenHelpers.cmx \
+		src/RamenAdvLock.cmx \
+		src/RamenChannel.cmx \
+		src/RamenParsing.cmx \
+		src/RamenEthAddr.cmx \
+		src/RamenIpv4.cmx \
+		src/RamenIpv6.cmx \
+		src/RamenIp.cmx \
+		src/RamenTypeConverters.cmx \
+		src/RamenTypes.cmx \
+		src/RamenOrc.cmx \
+		src/RamenName.cmx \
+		src/RamenFieldMask.cmx \
+		src/RamenOutRef.cmx \
+		src/RamenUnits.cmx \
+		src/RamenTuple.cmx \
+		src/RamenVersions.cmx \
+		src/RingBuf.cmx \
+		src/RingBufLib.cmx \
+		src/ringbuf_test.cmx \
+		src/libringbuf.a \
+		src/libcollectd.a \
+		src/libnetflow.a \
+		src/liborchelp.a
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -794,7 +865,7 @@ clean: clean-temp
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/ramen src/codegen.cmxa src/RamenFileNotify.ml src/libringbuf.a
-	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
+	@$(RM) src/libcollectd.a src/libnetflow.a src/liborchelp.a src/codegen.a
 	@find tests -name '*.success' -delete
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp

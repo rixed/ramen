@@ -69,3 +69,4 @@ tests/results
 site/man/*.groff
 site/favicon.ico
 site/menuicon.png
+src/orc/orc_writer

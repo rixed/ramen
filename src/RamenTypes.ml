@@ -21,7 +21,8 @@ open RamenHelpers
  * large enough to accommodate all the values at hand *)
 type t =
   { structure : structure ;
-    nullable : bool } [@@ppp PPP_OCaml]
+    nullable : bool [@ppp_default false] }
+  [@@ppp PPP_OCaml]
 
 and structure =
   | TEmpty (* There is no value of this type. Used to denote bad types. *)

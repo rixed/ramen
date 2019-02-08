@@ -455,39 +455,42 @@ let rec emit_set_numElements
       p (indent+1) "vb->numElements = %s;\n" i_var ;
       p indent "}\n")
 
-(* Write a function named [func_name] that receives a "handler" and an OCaml
- * Value of a given type [rtyp] and batch it.
+(* Write an OCaml callable function named [func_name] that receives a
+ * "handler" and an OCaml value of a given type [rtyp] and batch it.
  * Notice that we want the handler created with the fname and type, but
  * without creating a file nor a batch before values are actually added. *)
 let emit_batch_value func_name rtyp oc =
   let p fmt = Printf.fprintf oc (fmt ^^ "\n") in
-  p "void %s(Handler *handler, value val)" func_name ;
+  p "extern \"C\" CAMLprim value %s(value hder_, value v_)" func_name ;
   p "{" ;
+  p "  CAMLparam2(hder_, v_);" ;
+  p "  Handler *handler = Handler_val(hder_);" ;
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
   p "  uint64_t const bi = root->numElements;" ;
-  emit_add_value_in_batch 1 (Some "val") "root" "bi" rtyp "" oc ;
+  emit_add_value_in_batch 1 (Some "v_") "root" "bi" rtyp "" oc ;
   p "  if (++root->numElements >= root->capacity) {" ;
   emit_set_numElements 2 rtyp "root" "bi" "" oc ;
   p "    handler->flush_batch();" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
   p "  }" ;
+  p "  CAMLreturn(Val_unit);" ;
   p "}"
 
 (* ...where flush_batch check for handle->num_batches and close the file and
  * reset handler->ri when the limit is reached.  *)
 
-(*
- * Compiling C++ at runtime against ORC and its dependencies is hard enough,
- * we can spare ourselves the chore of also having to build a helper C++
- * lib, especially since so little extra code is needed beyond what's
- * generated. So let's add it here instead: *)
-let emit_heading oc =
+let emit_intro oc =
   let p fmt = Printf.fprintf oc (fmt ^^ "\n") in
   p "/* This code is automatically generated. Edition is futile. */" ;
   p "#include <cassert>" ;
-  p "#include <caml/mlvalues.h>" ;
   p "#include <orc/OrcFile.hh>" ;
+  p "extern \"C\" {" ;
+  p "#  include <caml/mlvalues.h>" ;
+  p "#  include <caml/memory.h>" ;
+  p "#  include <caml/alloc.h>" ;
+  p "#  include <caml/custom.h>" ;
+  p "}" ;
   p "typedef __int128_t int128_t;" ;
   p "typedef __uint128_t uint128_t;" ;
   p "using namespace std;" ;
@@ -495,59 +498,21 @@ let emit_heading oc =
   p "" ;
   p "class Handler {" ;
   p "    string fname;" ;
+  p "    unique_ptr<Type> type;" ;
   p "    unsigned const batch_size;" ;
   p "    unsigned const max_batches;" ;
   p "    unsigned num_batches;" ;
-  p "    Type *type;" ;
   p "  public:" ;
-  p "    Handler(string fn, unsigned bsz, unsigned mb, Type *t) :" ;
-  p "      fname(fn), batch_size(bsz), max_batches(mb), type(t)," ;
-  p "      num_batches(0) {};" ;
-  p "    ~Handler() { flush_batch(); };" ;
-  p "    void start_write() {" ;
-  p "      unique_ptr<OutputStream> outStream = writeLocalFile(fname);" ;
-  p "      WriterOptions options;" ;
-  p "      writer = createWriter(*type, outStream.get(), options);" ;
-  p "      batch = writer->createRowBatch(batch_size);" ;
-  p "      assert(batch);" ;
-  p "    }" ;
-  p "    void flush_batch() {" ;
-  p "      writer->add(*batch);" ;
-  p "      if (++num_batches >= max_batches) {" ;
-  p "        writer->close();" ;
-  p "        writer.reset();" ;
-  (* and then we keep using the batch created by the first writer. This is
-   * not a problem, as writer->createRowBatch just call the proper
-   * createRowBatch for that Type. *)
-  p "      }" ;
-  p "    }" ;
+  p "    Handler(string fn, string schema, unsigned bsz, unsigned mb);" ;
+  p "    ~Handler();" ;
+  p "    void start_write();" ;
+  p "    void flush_batch();" ;
   p "    unique_ptr<Writer> writer;" ;
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
   p "};" ;
+  p "" ;
+  p "#define Handler_val(v) (*((class Handler **)Data_custom_val(v)))" ;
   p ""
 
-let test () =
-  let rtyp = T.(
-    make (TRecord [|
-      "u16", make TU16 ;
-      "i32", make ~nullable:false TI32 ;
-      "ip4", make ~nullable:false TIpv4 ;
-      "ip6", make TIpv6 ;
-      "ip", make ~nullable:false TIp ;
-      "cidr4", make TCidrv4 ;
-      "cidr6", make ~nullable:false TCidrv6 ;
-      "tuple", make (TTuple [| make ~nullable:false TI8 ; make TI32 |]) ;
-      "list", make (TList (make TString)) ;
-      "complex", make (TRecord [|
-        "i8", make TI8 ;
-        "str", make ~nullable:false TString ;
-        "tuple", make (TTuple [|
-          make ~nullable:false
-            (TList (make ~nullable:false (TVec (3, make TU64)))) ;
-          make ~nullable:false TCidr
-        |])
-      |])
-    |])) in
-  emit_heading stdout ;
-  emit_batch_value "test" rtyp stdout ;
-  Printf.printf "\nint main(void) { return 0; }\n"
+let emit_outro oc =
+  ignore oc
