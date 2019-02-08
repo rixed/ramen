@@ -153,6 +153,9 @@ let compile conf what src_file obj_file =
 (* Function to take some object files, a source file, and produce an
  * executable: *)
 
+let is_ocaml_objfile fname =
+  String.ends_with fname ".cmx" || String.ends_with fname ".cmxa"
+
 let link_internal conf program_name inc_dirs obj_files src_file bin_file =
   let open Clflags in
   let backend = (module Backend : Backend_intf.S) in
@@ -185,12 +188,25 @@ let link_internal conf program_name inc_dirs obj_files src_file bin_file =
 
   output_name := Some bin_file ;
 
+  (* Internal compiler wants .o files elsewhere then in objfiles: *)
+  let objfiles, ccobjs =
+    List.fold_left (fun (mls, cs) obj_file ->
+      if is_ocaml_objfile obj_file then
+        obj_file :: mls, cs
+      else (* Let's assume it's then a legitimate object file *)
+        mls, obj_file :: cs
+    ) ([], []) obj_files in
+  let objfiles = List.rev objfiles and ccobjs = List.rev ccobjs in
+
+  (* Now add the bundled libs and finally the main cmx: *)
   let cmx_file = Filename.remove_extension src_file ^ ".cmx" in
   let objfiles =
     List.map (fun d -> !bundle_dir ^"/"^ d) RamenDepLibs.objfiles @
-    obj_files @ [ cmx_file ] in
+    objfiles @ [ cmx_file ] in
 
   !logger.debug "objfiles = %a" (List.print String.print) objfiles ;
+  !logger.debug "ccobjs = %a" (List.print String.print) ccobjs ;
+  Clflags.ccobjs := ccobjs ;
 
   Asmlink.reset () ;
   try
@@ -242,9 +258,12 @@ let link conf program_name obj_files src_file bin_file =
   mkdir_all ~is_file:true bin_file ;
   (* Look for cmi files in the same dirs where the cmx are: *)
   let inc_dirs, obj_files =
-    List.fold_left (fun (s, l) cmx ->
-      Set.add (Filename.dirname cmx) s,
-      Filename.basename cmx :: l
+    List.fold_left (fun (s, l) obj_file ->
+      if is_ocaml_objfile obj_file then
+        Set.add (Filename.dirname obj_file) s,
+        Filename.basename obj_file :: l
+      else
+        s, obj_file :: l
     ) (Set.empty, []) obj_files in
   (if !use_external_compiler then link_external else link_internal)
     conf program_name inc_dirs obj_files src_file bin_file
