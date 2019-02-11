@@ -1,0 +1,30 @@
+#!/bin/sh
+
+STATS="$1"
+
+# Timestamps to consider for KSQL tests:  14:32:58 to 14:33:21
+#     "      "      "     "  ramen tests: 13:09:15 to 13:09:34
+
+case "$STATS" in
+  (ksql)
+    fst="1549805578" # 14:32:58
+    lst="1549805601" # 14:33:21
+    ;;
+  (ramen)
+    fst="1549800555"  # 13:09:15
+    lst="1549800574"  # 13:09:34
+    ;;
+  (*)
+    print "stats must be ksql|ramen"
+    exit 1
+    ;;
+esac
+
+atop -r "$STATS.atop" -P CPU,MEM,DSK | sed -e 1,2d |
+  awk '
+    BEGIN{first=1; i=0; c=0}
+    ($1=="SEP"){if (first==0 && i==1) { print c,free,wrt; }; first=0;}
+    ($1=="CPU"){t=$3; if(t>='$fst' && t<='$lst'){c+=$9+$10+$11+$13+$14+$15+$16+$17; i=1;}else{i=0}}
+    ($1=="MEM"){t=$3; if(t>='$fst' && t<='$lst'){free=$9; shd=$16; res=$17; swp=$18; i=1;}else{i=0}}
+    ($1=="DSK"){t=$3; if(t>='$fst' && t<='$lst'){wrt+=$12}else{i=0}}
+  '
