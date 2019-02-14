@@ -399,7 +399,9 @@ let rec emit_add_value_in_batch
   iter_scalars indent oc rtyp batch_val val_var field_name
     (fun indent rtyp batch_val ~is_list val_var field_name ->
       p indent "{ /* Write the value%s for %s (of type %a) */"
-        (if is_list then "s" else "") field_name T.print_typ rtyp ;
+        (if is_list then "s" else "")
+        (if field_name <> "" then field_name else "root value")
+        T.print_typ rtyp ;
       let vb = gensym "vb" in
       (match val_var with
       | None -> (* When the value is NULL *)
