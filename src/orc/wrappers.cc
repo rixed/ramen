@@ -25,7 +25,7 @@ class Handler {
     Handler(string fn, string schema, unsigned bsz, unsigned mb);
     ~Handler();
     void start_write();
-    void flush_batch();
+    void flush_batch(bool);
     unique_ptr<Writer> writer;
     unique_ptr<ColumnVectorBatch> batch;
 };
@@ -38,7 +38,7 @@ Handler::Handler(string fn, string schema, unsigned bsz, unsigned mb) :
 
 Handler::~Handler()
 {
-  flush_batch();
+  flush_batch(false);
 };
 
 void Handler::start_write()
@@ -50,15 +50,19 @@ void Handler::start_write()
   assert(batch);
 }
 
-void Handler::flush_batch()
+void Handler::flush_batch(bool more_to_come)
 {
-  writer->add(*batch);
-  if (++num_batches >= max_batches) {
-    writer->close();
-    writer.reset();
-    /* and then we keep using the batch created by the first writer. This is
-     * not a problem, as writer->createRowBatch just call the proper
-     * createRowBatch for that Type. */
+  if (writer) {
+    cerr << "Adding the batch\n";
+    writer->add(*batch);
+    if (!more_to_come || ++num_batches >= max_batches) {
+      cerr << "closing writer\n";
+      writer->close(); // XXX
+      writer.reset();
+      /* and then we keep using the batch created by the first writer. This is
+       * not a problem, as writer->createRowBatch just call the proper
+       * createRowBatch for that Type. */
+    }
   }
 }
 
@@ -86,4 +90,15 @@ extern "C" value orc_handler_create(value path_, value schema_, value batch_sz_,
   res = caml_alloc_custom(&handler_ops, sizeof *hder, 0, 1);
   Handler_val(res) = hder;
   CAMLreturn(res);
+}
+
+extern "C" value orc_handler_close(value hder_)
+{
+  CAMLparam1(hder_);
+  Handler *handler = Handler_val(hder_);
+  if (handler) {
+    Handler_val(hder_) = nullptr;
+    delete handler;
+  }
+  CAMLreturn(Val_unit);
 }

@@ -473,7 +473,7 @@ let emit_batch_value func_name rtyp oc =
   emit_add_value_in_batch 1 (Some "v_") "root" "bi" rtyp "" oc ;
   p "  if (++root->numElements >= root->capacity) {" ;
   emit_set_numElements 2 rtyp "root" "bi" "" oc ;
-  p "    handler->flush_batch();" ; (* might destroy the writer... *)
+  p "    handler->flush_batch(true);" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
   p "  }" ;
   p "  CAMLreturn(Val_unit);" ;
@@ -508,7 +508,7 @@ let emit_intro oc =
   p "    Handler(string fn, string schema, unsigned bsz, unsigned mb);" ;
   p "    ~Handler();" ;
   p "    void start_write();" ;
-  p "    void flush_batch();" ;
+  p "    void flush_batch(bool);" ;
   p "    unique_ptr<Writer> writer;" ;
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
   p "};" ;

@@ -89,6 +89,9 @@ let main =
       let p fmt = Printf.fprintf oc (fmt^^"\n") in
       p "open Batteries" ;
       p "open Stdint" ;
+      p "open RamenHelpers" ;
+      p "open RamenNullable" ;
+      p "open RamenLog" ;
       p "" ;
       p "let value_of_string str =" ;
       let emit_is_null oc = Printf.fprintf oc "looks_like_null %S" in
@@ -100,6 +103,8 @@ let main =
       p "" ;
       p "external orc_write : handler -> %s -> unit = %S"
         xtyp orc_write_func ;
+      (* Destructor do not seems to be called when the OCaml program exists: *)
+      p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
       p "" ;
       p "(* Parameters: path * schema * row per batch * batches per file *)" ;
       p "external create_handler : string -> string -> int -> int -> handler =" ;
@@ -108,9 +113,12 @@ let main =
       p "let main =" ;
       p "  let orc_fname = Sys.argv.(1) in" ;
       p "  let handler = create_handler orc_fname %S 1000 100 in" schema ;
-      p "  forever (fun () ->" ;
-      p "    read_line () |> value_of_string |> orc_write handler" ;
-      p "  ) ()") in
+      p "  try forever (fun () ->" ;
+      p "        read_line () |> value_of_string |> orc_write handler" ;
+      p "      ) ()" ;
+      p "  with End_of_file ->" ;
+      p "    !logger.info \"Exiting...\" ;" ;
+      p "    orc_close handler") in
   !logger.info "Generated OCaml support module in %s" ml_src_file ;
   (*
    * Link!
