@@ -46,6 +46,7 @@ void Handler::start_write()
 {
   outStream = writeLocalFile(fname);
   WriterOptions options;
+  options.setRowIndexStride(0); // To disable indexing
   writer = createWriter(*type, outStream.get(), options);
   batch = writer->createRowBatch(batch_size);
   assert(batch);
