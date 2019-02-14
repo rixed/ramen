@@ -26,6 +26,7 @@ class Handler {
     ~Handler();
     void start_write();
     void flush_batch(bool);
+    unique_ptr<OutputStream> outStream;
     unique_ptr<Writer> writer;
     unique_ptr<ColumnVectorBatch> batch;
 };
@@ -43,7 +44,7 @@ Handler::~Handler()
 
 void Handler::start_write()
 {
-  unique_ptr<OutputStream> outStream = writeLocalFile(fname);
+  outStream = writeLocalFile(fname);
   WriterOptions options;
   writer = createWriter(*type, outStream.get(), options);
   batch = writer->createRowBatch(batch_size);

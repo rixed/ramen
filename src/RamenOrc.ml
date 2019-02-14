@@ -509,6 +509,7 @@ let emit_intro oc =
   p "    ~Handler();" ;
   p "    void start_write();" ;
   p "    void flush_batch(bool);" ;
+  p "    unique_ptr<OutputStream> outStream;" ;
   p "    unique_ptr<Writer> writer;" ;
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
   p "};" ;
