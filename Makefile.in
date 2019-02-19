@@ -68,7 +68,8 @@ all: $(INSTALLED) bundle
 # Generic rules
 
 .SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all check func-check unit-check cli-check err-check \
+.PHONY: clean clean-temp all \
+        check func-check unit-check cli-check err-check arc-check orc-check \
         dep install uninstall reinstall bundle doc deb tarball \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
@@ -341,6 +342,7 @@ MOREFLAGS = \
 	-cclib -lnetflow
 
 ifeq (@HAVE_ORC@,1)
+
 MOREFLAGS += \
 	-cclib -lorc \
 	-cclib -lhdfspp_static \
@@ -362,6 +364,34 @@ src/orc/orc_writer: \
 		bundle
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+
+orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/*.data)
+	@echo 'Checking ORC writes...'
+	@exit_code=0 ;\
+	 for t in $(wildcard tests/orc/*.type); do \
+	   base="$$(basename $$t .type)" ;\
+	   echo "  Checking $$base" ;\
+	   typ=$$(cat "$$t") ;\
+	   data="$$(dirname $$t)/$$base.data" ;\
+	   writer="/tmp/$$base" ;\
+	   orc="/tmp/$$base.orc" ;\
+	   csv="/tmp/$$base.csv" ;\
+	   src/orc/orc_writer "$$writer" "$$typ" &&\
+	   "$$writer" "$$orc" < "$$data" &&\
+	   orc-contents "$$orc" > "$$csv" &&\
+	   if ! diff -q "$$data" "$$csv"; then \
+	     echo "FAILURE: $$data and $$csv differ:" ;\
+	     diff "$$data" "$$csv" ;\
+	     exit_code=1 ;\
+	   fi ;\
+	 done ;\
+	 exit $$exit_code
+
+else
+
+orc-check:
+	@echo 'Skipping ORC tests'
+
 endif
 
 src/ramen: \
