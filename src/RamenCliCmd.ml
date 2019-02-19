@@ -287,7 +287,7 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     TermTable.print_head (i+1) "Output type" ;
     TermTable.print (i+2) "Ramen: %a" RamenTuple.print_typ out_type ;
     TermTable.print (i+2) "ORC: %a"
-      RamenOrc.print (RamenTuple.to_orc out_type) ;
+      RamenOrc.print (RamenOrc.of_tuple out_type) ;
     O.event_time_of_operation func.operation |>
     Option.may (fun et ->
       TermTable.print_head (i+1) "Event time" ;

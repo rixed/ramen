@@ -219,7 +219,8 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         emit_parse_tuple indent ts oc
     | TRecord kts ->
         (* TODO: read field labels and reorder *)
-        let ts = Array.map snd kts in
+        let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
+                 Array.map snd in
         emit_parse_tuple indent ts oc
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"

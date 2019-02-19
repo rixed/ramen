@@ -125,6 +125,7 @@ let rec of_structure = function
   | T.TVec (_, t) | T.TList t ->
       Array (of_structure t.T.structure)
   | T.TRecord kts ->
+      let kts = RingBufLib.ser_array_of_record ~with_private:true kts in
       Struct (
         Array.map (fun (k, t) ->
           k, of_structure t.T.structure) kts)
@@ -136,6 +137,15 @@ let rec of_structure = function
     (BatIO.to_string print (of_structure \
       (T.TRecord [| "pas:glop", T.make T.TI32 |])))
 *)
+
+(* Until we have a single output value, mimic outputting a record: *)
+let of_tuple typ =
+  Struct (
+    List.enum typ /@
+    (fun ft ->
+      (ft.RamenTuple.name :> string),
+      of_structure ft.typ.T.structure) |>
+   Array.of_enum)
 
 (* Map ORC types into the C++ class used to batch this type: *)
 let batch_type_of = function
@@ -362,7 +372,9 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
             Enum.mapi (fun i t -> string_of_int i, t) |>
             iter_struct
         | T.TRecord kts ->
-            Array.enum kts |> iter_struct
+            RingBufLib.ser_array_of_record ~with_private:true kts |>
+            Array.enum |>
+            iter_struct
         | T.TList t | T.TVec (_, t) ->
             (* Regardless of [t], we treat a list as a "scalar"., because
              * that's how it looks like for ORC: each new list value is

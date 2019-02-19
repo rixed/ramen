@@ -113,7 +113,6 @@ RAMEN_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
@@ -127,6 +126,7 @@ RAMEN_SOURCES = \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
+	src/RamenOrc.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
@@ -190,7 +190,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenFieldMask.ml \
@@ -203,6 +202,7 @@ CODEGENLIB_SOURCES = \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
 	src/RingBufLib.ml \
+	src/RamenOrc.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenBloomFilter.ml \
@@ -254,7 +254,6 @@ ORCWRITER_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
@@ -268,6 +267,7 @@ ORCWRITER_SOURCES = \
 	src/RamenLang.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
+	src/RamenOrc.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
@@ -461,7 +461,6 @@ TESTABLE_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenOrc.ml \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenOperation.ml \
@@ -478,6 +477,7 @@ TESTABLE_SOURCES = \
 	src/RamenSortBuf.ml \
 	src/RamenGraphite.ml \
 	src/RingBufLib.ml \
+	src/RamenOrc.ml \
 	src/RamenSerialization.ml \
 	src/RamenSmtParser.ml \
 	src/RamenUnits.ml \
@@ -507,7 +507,6 @@ LINKED_FOR_TESTS = \
 	src/RamenIp.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
-	src/RamenOrc.ml \
 	src/RamenName.mli \
 	src/RamenName.ml \
 	src/RamenEventTime.ml \
@@ -524,6 +523,7 @@ LINKED_FOR_TESTS = \
 	src/RamenWatchdog.ml \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
+	src/RamenOrc.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenOperation.ml \
@@ -589,7 +589,6 @@ ringbuf_test.opt: \
 		src/RamenIp.cmx \
 		src/RamenTypeConverters.cmx \
 		src/RamenTypes.cmx \
-		src/RamenOrc.cmx \
 		src/RamenName.cmx \
 		src/RamenFieldMask.cmx \
 		src/RamenOutRef.cmx \
@@ -598,6 +597,7 @@ ringbuf_test.opt: \
 		src/RamenVersions.cmx \
 		src/RingBuf.cmx \
 		src/RingBufLib.cmx \
+		src/RamenOrc.cmx \
 		src/ringbuf_test.cmx \
 		src/libringbuf.a \
 		src/libcollectd.a \
