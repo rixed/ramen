@@ -15,15 +15,15 @@ typedef __uint128_t uint128_t;
 using namespace std;
 using namespace orc;
 
-class Handler {
+class LazyWriter {
     string fname;
     unique_ptr<Type> type;
     unsigned const batch_size;
     unsigned const max_batches;
     unsigned num_batches;
   public:
-    Handler(string fn, string schema, unsigned bsz, unsigned mb);
-    ~Handler();
+    LazyWriter(string fn, string schema, unsigned bsz, unsigned mb);
+    ~LazyWriter();
     void start_write();
     void flush_batch(bool);
     unique_ptr<OutputStream> outStream;
@@ -31,18 +31,18 @@ class Handler {
     unique_ptr<ColumnVectorBatch> batch;
 };
 
-Handler::Handler(string fn, string schema, unsigned bsz, unsigned mb) :
+LazyWriter::LazyWriter(string fn, string schema, unsigned bsz, unsigned mb) :
   fname(fn), type(Type::buildTypeFromString(schema)),
   batch_size(bsz), max_batches(mb), num_batches(0)
 {
 }
 
-Handler::~Handler()
+LazyWriter::~LazyWriter()
 {
   flush_batch(false);
 };
 
-void Handler::start_write()
+void LazyWriter::start_write()
 {
   outStream = writeLocalFile(fname);
   WriterOptions options;
@@ -52,7 +52,7 @@ void Handler::start_write()
   assert(batch);
 }
 
-void Handler::flush_batch(bool more_to_come)
+void LazyWriter::flush_batch(bool more_to_come)
 {
   if (writer) {
     writer->add(*batch);
@@ -66,7 +66,7 @@ void Handler::flush_batch(bool more_to_come)
   }
 }
 
-#define Handler_val(v) (*((class Handler **)Data_custom_val(v)))
+#define Handler_val(v) (*((class LazyWriter **)Data_custom_val(v)))
 
 static struct custom_operations handler_ops = {
   "org.happyleptic.ramen.orc.handler",
@@ -86,7 +86,7 @@ extern "C" value orc_handler_create(value path_, value schema_, value batch_sz_,
   char const *schema = String_val(schema_);
   unsigned batch_sz = Long_val(batch_sz_);
   unsigned max_batches = Long_val(max_batches_);
-  Handler *hder = new Handler(path, schema, batch_sz, max_batches);
+  LazyWriter *hder = new LazyWriter(path, schema, batch_sz, max_batches);
   res = caml_alloc_custom(&handler_ops, sizeof *hder, 0, 1);
   Handler_val(res) = hder;
   CAMLreturn(res);
@@ -95,7 +95,7 @@ extern "C" value orc_handler_create(value path_, value schema_, value batch_sz_,
 extern "C" value orc_handler_close(value hder_)
 {
   CAMLparam1(hder_);
-  Handler *handler = Handler_val(hder_);
+  LazyWriter *handler = Handler_val(hder_);
   if (handler) {
     Handler_val(hder_) = nullptr;
     delete handler;

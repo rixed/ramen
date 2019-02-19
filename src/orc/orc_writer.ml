@@ -2,7 +2,7 @@
  * Requires the string representation of a ramen type as a command line
  * argument, then writes and compiles an ORC writer for that format, then
  * reads from stdin string representation of ramen values and write them,
- * until EOF when it exits (C++ Handler being deleted and therefore the
+ * until EOF when it exits (C++ LazyWriter being deleted and therefore the
  * ORC file flushed). *)
 open Batteries
 open RamenHelpers

@@ -478,7 +478,7 @@ let emit_batch_value func_name rtyp oc =
   p "extern \"C\" CAMLprim value %s(value hder_, value v_)" func_name ;
   p "{" ;
   p "  CAMLparam2(hder_, v_);" ;
-  p "  Handler *handler = Handler_val(hder_);" ;
+  p "  LazyWriter *handler = Handler_val(hder_);" ;
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
   p "  uint64_t const bi = root->numElements;" ;
@@ -510,15 +510,15 @@ let emit_intro oc =
   p "using namespace std;" ;
   p "using namespace orc;" ;
   p "" ;
-  p "class Handler {" ;
+  p "class LazyWriter {" ;
   p "    string fname;" ;
   p "    unique_ptr<Type> type;" ;
   p "    unsigned const batch_size;" ;
   p "    unsigned const max_batches;" ;
   p "    unsigned num_batches;" ;
   p "  public:" ;
-  p "    Handler(string fn, string schema, unsigned bsz, unsigned mb);" ;
-  p "    ~Handler();" ;
+  p "    LazyWriter(string fn, string schema, unsigned bsz, unsigned mb);" ;
+  p "    ~LazyWriter();" ;
   p "    void start_write();" ;
   p "    void flush_batch(bool);" ;
   p "    unique_ptr<OutputStream> outStream;" ;
@@ -526,7 +526,7 @@ let emit_intro oc =
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
   p "};" ;
   p "" ;
-  p "#define Handler_val(v) (*((class Handler **)Data_custom_val(v)))" ;
+  p "#define Handler_val(v) (*((class LazyWriter **)Data_custom_val(v)))" ;
   p ""
 
 let emit_outro oc =
