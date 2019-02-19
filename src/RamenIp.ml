@@ -12,11 +12,16 @@ let to_string = function
 
 let print oc n = String.print oc (to_string n)
 
-let of_string n =
-  try V4 (RamenIpv4.of_string n)
-  with _ -> V6 (RamenIpv6.of_string n)
+let of_string s o =
+  try
+    let ip, o = RamenIpv4.of_string s o in
+    V4 ip, o
+  with _ ->
+    let ip, o = RamenIpv6.of_string s 0 in
+    V6 ip, o
 
-let of_unix_addr = of_string % Unix.string_of_inet_addr
+let of_unix_addr s =
+  fst (of_string (Unix.string_of_inet_addr s) 0)
 
 module Cidr =
 struct
@@ -30,9 +35,13 @@ struct
 
   let print oc t = String.print oc (to_string t)
 
-  let of_string n =
-    try V4 (RamenIpv4.Cidr.of_string n)
-    with _ -> V6 (RamenIpv6.Cidr.of_string n)
+  let of_string s o =
+    try
+      let cidr, o = RamenIpv4.Cidr.of_string s o in
+      V4 cidr, o
+    with _ ->
+      let cidr, o = RamenIpv6.Cidr.of_string s o in
+      V6 cidr, o
 end
 
 let first = function

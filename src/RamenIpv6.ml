@@ -129,11 +129,55 @@ struct
     ) m
 end
 
-let of_string = RamenParsing.of_string_exn Parser.p
+let of_string s o =
+  let is_double_colon o had_none =
+    let r = s.[o] = ':' && o < String.length s - 1 && s.[o+1] = ':' in
+    if r && had_none then
+      failwith "Cannot have several '::' in IPv6" ;
+    r in
+  let is_colon o =
+    o < String.length s && s.[o] = ':' in
+  let rec loop had_none l prevs o =
+    if l >= 8 then had_none, l, prevs, o else
+    if o >= String.length s then had_none, l, prevs, o else
+    let i, o = unsigned_of_hexstring s o in
+    let l, prevs = l + 1, Some i :: prevs in
+    if o >= String.length s then had_none, l, prevs, o else
+    if is_double_colon o had_none then (
+      loop true l (None :: prevs) (o + 2)
+    ) else (
+      if is_colon o then loop had_none l prevs (o + 1)
+      else had_none, l, prevs, o
+    ) in
+  let had_none, l, ns, o =
+    if is_double_colon o false then
+      loop true 0 [ None ] (o + 2)
+    else
+      loop false 0 [] o
+    in
+  (* Check we either have 8 components or we had the double colon: *)
+  if (not had_none && l = 0) || l > (if had_none then 7 else 8) then
+    failwith "Invalid IPv6 address" ;
+  (* Complete the None: *)
+  let ip =
+    let rec loop ls num_zeros ip = function
+    | [] ->
+        assert (num_zeros = 0) ;
+        ip
+    | None :: rest as lst ->
+        if num_zeros > 0 then
+          loop (ls + 16) (num_zeros - 1) ip lst
+        else
+          loop ls 0 ip rest
+    | Some n :: rest ->
+        let ip = Uint128.(shift_left (of_int n) ls |> add ip) in
+        loop (ls + 16) num_zeros ip rest in
+    loop 0 (8 - l) Uint128.zero ns in
+  ip, o
 
-(*$= of_string & ~printer:(BatIO.to_string print)
-   (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428329") \
-     (of_string "2001:db8::ff00:42:8329")
+(*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
+   (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428329", 22) \
+     (of_string "2001:db8::ff00:42:8329" 0)
  *)
 
 module Cidr =
@@ -183,13 +227,16 @@ struct
        and_to_len len net, len) m
   end
 
-  let of_string = RamenParsing.of_string_exn Parser.p
+  let of_string s o =
+    let (net, len), o = RamenIpv4.cidr_of_string of_string 128 s o in
+    (and_to_len len net, len), o
 
-  (*$= of_string & ~printer:(BatIO.to_string print)
-     (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120) \
-       (of_string "2001:db8::ff00:42:8300/120")
-     (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120) \
-       (of_string "2001:db8::ff00:42:8342/120")
-   *)
+  (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
+     ((Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120), 26) \
+       (of_string "2001:db8::ff00:42:8300/120" 0)
+     ((Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428300", 120), 26) \
+       (of_string "2001:db8::ff00:42:8342/120" 0)
+  *)
+
   (*$>*)
 end

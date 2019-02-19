@@ -1,6 +1,7 @@
 (* Function related to IPv4 addresses *)
 open Batteries
 open Stdint
+open RamenHelpers
 
 let to_string =
   let mask = Uint32.of_int 255 in
@@ -30,6 +31,7 @@ let to_string =
         s.[si] <- char_of (n mod 10) ; si + 1 in
       si) 0 ns |> ignore ;
     Bytes.to_string s
+
 (*$= to_string & ~printer:(fun x -> x)
   "123.45.67.89" \
     (to_string (Stdint.Uint32.of_string "0x7B2D4359"))
@@ -53,14 +55,58 @@ struct
          ) (Uint32.zero, 24) lst |> fst) m
 end
 
-let of_string = RamenParsing.of_string_exn Parser.p
-(*$= of_string & ~printer:(BatIO.to_string print)
-   (Stdint.Uint32.of_int32 0x01020304l) (of_string "1.2.3.4")
+(* Fast parser from string for reading CSVs, command line etc... *)
+let of_string s o =
+  let check_dot o =
+    if o >= String.length s then
+      failwith "Missing dot in IPv4 at end of string" ;
+    if s.[o] <> '.' then
+      Printf.sprintf "Missing dot in IPv4 at ofset %d" o |>
+      failwith
+  and check_digit n =
+    if n < 0 || n > 255 then
+      Printf.sprintf "Invalid %d in IPv4" n |>
+      failwith
+  in
+  let o = string_skip_blanks s o in
+  let n1, o = unsigned_of_string s o in
+  check_dot o ;
+  let n2, o = unsigned_of_string s (o + 1) in
+  check_dot o ;
+  let n3, o = unsigned_of_string s (o + 1) in
+  check_dot o ;
+  let n4, o = unsigned_of_string s (o + 1) in
+  check_digit n1 ; check_digit n2 ; check_digit n3 ; check_digit n4 ;
+  let open Uint32 in
+  (
+    shift_left (of_int n1) 24 |>
+    add (of_int (n2 lsl 16)) |>
+    add (of_int (n3 lsl 8)) |>
+    add (of_int n4)
+  ), o
+
+(*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
+   (Stdint.Uint32.of_int32 0x01020304l, 7)  (of_string "1.2.3.4" 0)
+   (Stdint.Uint32.of_int32 0x0b0c0d0el, 11) (of_string "11.12.13.14" 0)
  *)
+
 (*$T
-   try (ignore (of_string "1.2.3.400")) ; false \
-   with RamenParsing.P.ParseError _ -> true
+   try (ignore (of_string "1.2.3.400" 0)) ; false \
+   with Failure _ -> true
  *)
+
+(* Helper to parse ip/mask: *)
+let cidr_of_string p max s o =
+  let ip, o = p s o in
+  if o >= String.length s || s.[o] <> '/' then
+    Printf.sprintf "Missing netmask at offset %d" o |>
+    failwith ;
+  let mask, o' = unsigned_of_string s (o + 1) in
+  if mask > max then
+    Printf.sprintf "Invalid netmask /%d at offset %d" mask o |>
+    failwith ;
+  (ip, mask), o'
+
 
 module Cidr =
 struct
@@ -97,15 +143,21 @@ struct
        and_to_len len net, len) m
   end
 
-  let of_string = RamenParsing.of_string_exn Parser.p
-  (*$= of_string & ~printer:(BatIO.to_string print)
-     (Stdint.Uint32.of_int32 0x0A0A0100l, 24) (of_string "10.10.1.0/24")
-     (Stdint.Uint32.of_int32 0x0A0A0100l, 24) (of_string "10.10.1.42/24")
-   *)
+  let of_string s o =
+    let (net, len), o = cidr_of_string of_string 32 s o in
+    (and_to_len len net, len), o
+
+  (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
+     ((Stdint.Uint32.of_int32 0x0A0A0100l, 24), 12) \
+        (of_string "10.10.1.0/24" 0)
+     ((Stdint.Uint32.of_int32 0x0A0A0100l, 24), 13) \
+        (of_string "10.10.1.42/24" 0)
+  *)
 
   let to_string (net, len) =
     let net = Uint32.(logand (netmask_of_len len) net) in
     to_string net ^"/"^ string_of_int len
+
   (*$= to_string & ~printer:(fun x -> x)
      "192.168.10.0/24" \
        (to_string (Stdint.Uint32.of_string "0xC0A80A00", 24))

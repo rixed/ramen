@@ -224,13 +224,63 @@ let on_error k f =
 
 let print_dump oc x = dump x |> String.print oc
 
+let string_sub_eq ?(case_sensitive=true) s1 o1 s2 o2 len =
+  let rec loop o1 o2 len =
+    len <= 0 ||
+    (
+      (
+        let c1 = s1.[o1] and c2 = s2.[o2] in
+        c1 = c2 ||
+        not case_sensitive && Char.(lowercase_ascii c1 = lowercase_ascii c2)
+      ) &&
+      loop (o1 + 1) (o2 + 1) (len - 1)
+    ) in
+  (o1 + len <= String.length s1) &&
+  (o2 + len <= String.length s2) &&
+  loop o1 o2 len
+
+(*$= string_sub_eq & ~printer:string_of_bool
+  true (string_sub_eq "glop glop" 0 "glop" 0 4)
+  true (string_sub_eq "glop glop" 0 "XglopX" 1 4)
+  false (string_sub_eq "glop glop" 0 "glup" 0 4)
+  false (string_sub_eq "glop glop" 0 "pas glop pas glop" 0 17)
+*)
+
+let string_is_term fins s o =
+  o >= String.length s ||
+  (let c = s.[o] in List.exists ((=) c) fins)
+
+(*$= string_is_term & ~printer:string_of_bool
+  true (string_is_term [] "" 0)
+  true (string_is_term [] "xx" 2)
+  true (string_is_term [';';','] "," 0)
+  true (string_is_term [';';','] "x;x" 1)
+  true (string_is_term [';';','] "x,x" 1)
+  false (string_is_term [] "xx" 1)
+  false (string_is_term [';';','] "xx" 1)
+  false (string_is_term [';';','] "x;x" 0)
+  false (string_is_term [';';','] "x,x" 2)
+*)
+
+let check_parse_all l (x, o) =
+  if o = l then x else
+    Printf.sprintf "Garbage at offset %d/%d" o l |>
+    failwith
+
 let looks_like_true s =
   s = "1" || (
     String.length s > 1 &&
     let lc = Char.lowercase s.[0] in lc = 'y' || lc = 't')
 
-let looks_like_null s =
-  String.lowercase_ascii s = "null"
+let looks_like_null ?(offs=0) s =
+  string_sub_eq ~case_sensitive:false s offs "null" 0 4
+
+(*$= looks_like_null & ~printer:string_of_bool
+  true (looks_like_null "null")
+  true (looks_like_null "NULL")
+  true (looks_like_null "nuLL")
+  false (looks_like_null "")
+*)
 
 let is_alpha s =
   try
@@ -1550,6 +1600,65 @@ let split_string ~sep ~opn ~cls s =
   [| "pas"; "glop" |] \
     (split_string ~sep:';' ~opn:'(' ~cls:')' "(  pas ;  glop)  ")
 *)
+
+(* Helper functions: return a positive int from a string: *)
+let unsigned_of_string s o =
+  let rec loop n o =
+    if o >= String.length s then n, o else
+    let d = Char.code s.[o] - Char.code '0' in
+    if d < 0 || d > 9 then n, o else
+      loop (n * 10 + d) (o + 1) in
+  loop 0 o
+
+(*$= unsigned_of_string & ~printer:(IO.to_string (Tuple2.print Int.print Int.print))
+  (4, 1)   (unsigned_of_string "4" 0)
+  (4, 2)   (unsigned_of_string "x4" 1)
+  (4, 2)   (unsigned_of_string "x4y" 1)
+  (417, 3) (unsigned_of_string "417" 0)
+  (417, 4) (unsigned_of_string "x417" 1)
+  (417, 4) (unsigned_of_string "x417y" 1)
+*)
+
+let unsigned_of_hexstring s o =
+  let rec loop n o =
+    if o >= String.length s then n, o else
+    let d = Char.code s.[o] in
+    if d >= Char.code '0' && d <= Char.code '9' then
+      loop (n * 16 + d - Char.code '0') (o + 1) else
+    if d >= Char.code 'a' && d <= Char.code 'f' then
+      loop (n * 16 + 10 + d - Char.code 'a') (o + 1) else
+    if d >= Char.code 'A' && d <= Char.code 'F' then
+      loop (n * 16 + 10 + d - Char.code 'A') (o + 1) else
+    n, o in
+  loop 0 o
+
+(*$= unsigned_of_hexstring & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatInt.print BatInt.print))
+  (4, 1)      (unsigned_of_hexstring "4" 0)
+  (0xC, 1)    (unsigned_of_hexstring "c" 0)
+  (0xC, 1)    (unsigned_of_hexstring "C" 0)
+  (4, 2)      (unsigned_of_hexstring "x4" 1)
+  (0xC, 2)    (unsigned_of_hexstring "xC" 1)
+  (4, 2)      (unsigned_of_hexstring "x4y" 1)
+  (0xC, 2)    (unsigned_of_hexstring "xCy" 1)
+  (0x4F7, 3)  (unsigned_of_hexstring "4F7" 0)
+  (0x4F7, 4)  (unsigned_of_hexstring "x4F7" 1)
+  (0x4F7, 4)  (unsigned_of_hexstring "x4F7y" 1)
+  (0x8329, 4) (unsigned_of_hexstring "8329" 0)
+*)
+
+let string_skip_blanks_until c s o =
+  let rec loop o =
+    if o > String.length s then raise Not_found ;
+    if s.[o] = c then o else
+    if Char.is_whitespace s.[o] then loop (o + 1) else
+    Printf.sprintf "Unexpected %C while looking for %C" s.[o] c |>
+    failwith in
+  loop o
+
+let rec string_skip_blanks s o =
+  if o < String.length s && Char.is_whitespace s.[o] then
+    string_skip_blanks s (o + 1)
+  else o
 
 let fail_with_context ctx f =
   try f () with e ->

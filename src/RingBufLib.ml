@@ -599,7 +599,11 @@ let normalize_notif_parameters params =
       let n' = String.lowercase_ascii n in
       try
         if n' = "firing" then
-          Some (RamenTypeConverters.bool_of_string v), certainty, params
+          let b, o = RamenTypeConverters.bool_of_string v 0 in
+          let o = string_skip_blanks v o in
+          if o <> String.length v then
+            !logger.warning "Junk at end of firing value %S" v ;
+          Some b, certainty, params
         else if n' = "certainty" then
           firing, float_of_string (String.trim v), params
         else

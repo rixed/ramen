@@ -10,13 +10,14 @@ open RamenConsts
 (* Get parameters from the environment.
  * This function is called at module initialization time to get the (constant)
  * value of a parameter (with default value in [def]): *)
-let parameter_value ~def scalar_parser name =
+let parameter_value ~def parser name =
   let envvar = param_envvar_prefix ^ name in
   !logger.debug "Looking for envvar %S" envvar ;
   match Sys.getenv envvar with
   | exception Not_found -> def
   | s ->
-      try scalar_parser s
+      try
+        check_parse_all (String.length s) (parser s)
       with e ->
         let what =
           Printf.sprintf "Cannot parse value %s for parameter %s: %s"

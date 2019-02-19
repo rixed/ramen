@@ -143,54 +143,87 @@ let id_of_typ = function
   | TList _ -> "list"
   | TNum | TAny | TEmpty -> assert false
 
-let rec emit_value_of_string indent t str_var emit_is_null oc =
+let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
   let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
   if t.T.nullable then (
-    p "if %a then Null else NotNull (" emit_is_null str_var ;
+    p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
+    p "if is_null_ then Null, o_ else" ;
+    p "let x_, o_ =" ;
     let t = { t with nullable = false } in
-    emit_value_of_string (indent+1) t str_var emit_is_null oc ;
-    p ")"
+    emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins oc ;
+    p "in" ;
+    p "NotNull x_, o_"
   ) else (
+    let emit_parse_list indent t oc =
+      let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+      p "let rec read_next_ prevs_ o_ =" ;
+      p "  let o_ = string_skip_blanks %s o_ in" str_var ;
+      p "  if o_ >= String.length %s then" str_var ;
+      p "    failwith \"List interrupted by end of string\" ;" ;
+      p "  if %s.[o_] = ']' then prevs_, o_ + 1 else" str_var ;
+      p "  let x_, o_ =" ;
+      emit_value_of_string
+        (indent + 2) t str_var "o_" emit_is_null (';' :: ']' :: fins) oc ;
+      p "  in" ;
+      p "  let prevs_ = x_ :: prevs_ in" ;
+      p "  let o_ = string_skip_blanks %s o_ in" str_var ;
+      p "  if o_ >= String.length %s then" str_var ;
+      p "    failwith \"List interrupted by end of string\" ;" ;
+      p "  if %s.[o_] = ';' then read_next_ prevs_ (o_ + 1) else"
+        str_var ;
+      p "  if %s.[o_] = ']' then prevs_, o_+1 else" str_var ;
+      p "  Printf.sprintf \"Unexpected %%C while parsing a list\"" ;
+      p "    %s.[o_] |> failwith in" str_var ;
+      p "let offs_ = string_skip_blanks_until '[' %s %s + 1 in"
+        str_var offs_var ;
+      p "let lst_, offs_ = read_next_ [] offs_ in" ;
+      p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
+      p "if offs_ < String.length %s then" str_var ;
+      p "  Printf.sprintf \"Junk at end of string\" |> failwith ;" ;
+      p "Array.of_list (List.rev lst_), offs_" in
+    let emit_parse_tuple indent ts oc =
+      (* Look for '(' *)
+      p "let offs_ = string_skip_blanks_until '(' %s %s + 1 in"
+        str_var offs_var ;
+      p "if offs_ >= String.length %s then" str_var ;
+      p "  failwith \"Tuple interrupted by end of string\" ;" ;
+      for i = 0 to Array.length ts - 1 do
+        p "let x%d_, offs_ =" i ;
+        let term = if i = Array.length ts - 1 then ')' else ';' in
+        emit_value_of_string
+          indent ts.(i) str_var "offs_" emit_is_null (term :: fins) oc ;
+        p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
+        p "if %s.[offs_] <> ';' then" str_var ;
+        p "  Printf.sprintf \"Expected separator ';' at offset %%d\" offs_ |>" ;
+        p "  failwith ;"
+      done ;
+      p "let offs_ = string_skip_blanks_until ')' %s offs_ + 1 in"
+        str_var ;
+      Printf.fprintf oc "%s%a, offs_\n"
+        (indent_of indent)
+        (array_print_as_tuple_i (fun oc i _ ->
+          Printf.fprintf oc "%sx%d_" (if i > 0 then "," else "") i)) ts
+    in
     match t.T.structure with
-    | TVec (_, t) | TList t ->
-        (* FIXME: see https://github.com/rixed/ramen/issues/669 *)
-        p "split_string ~sep:';' ~opn:'[' ~cls:']' %s |>" str_var ;
-        p "Array.map (fun x_ ->" ;
-        emit_value_of_string (indent+1) t "x_" emit_is_null oc ;
-        p ")"
+    | TVec (d, t) ->
+        p "let lst_, offs_ as res_ =" ;
+        emit_parse_list (indent + 1) t oc ;
+        p "in" ;
+        p "if Array.length lst_ <> %d then" d ;
+        p "  Printf.sprintf \"Was expecting %d values but got %%d\" |>" d ;
+        p "    (Array.length lst_) |> failwith ;" ;
+        p "res_"
+    | TList t ->
+        emit_parse_list indent t oc
     | TTuple ts ->
-        let d = Array.length ts in
-        p "let s_ = split_string ~sep:';' ~opn:'(' ~cls:')' %s in" str_var ;
-        p "if Array.length s_ <> %d then failwith (" d ;
-        p "  Printf.sprintf \"Bad arity for tuple %%s, expected %d items\"" d ;
-        p "    %s) ;" str_var ;
-        p "(" ;
-        Array.iteri (fun i t ->
-          let str_var = "s_.("^ string_of_int i ^")" in
-          p "  (" ;
-          emit_value_of_string (indent+2) t str_var emit_is_null oc ;
-          p "  )%s" (if i < d-1 then "," else "")
-        ) ts ;
-        p ")"
+        emit_parse_tuple indent ts oc
     | TRecord kts ->
-        (* TODO: we should instead also expect to find field names and then
-         * reorder. *)
-        let d = Array.length kts in
-        p "let s_ = split_string ~sep:';' ~opn:'(' ~cls:')' %s in" str_var ;
-        p "if Array.length s_ <> %d then failwith (" d ;
-        p "  Printf.sprintf \"Bad arity for record %%s, expected %d items\"" d ;
-        p "    %s) ;" str_var ;
-        p "(" ;
-        Array.iteri (fun i (_k, t) ->
-          let str_var = "s_.("^ string_of_int i ^")" in
-          p "  (" ;
-          emit_value_of_string (indent+2) t str_var emit_is_null oc ;
-          p "  )%s" (if i < d-1 then "," else "")
-        ) kts ;
-        p ")"
+        (* TODO: read field labels and reorder *)
+        let ts = Array.map snd kts in
+        emit_parse_tuple indent ts oc
     | _ ->
-        p "RamenTypeConverters.%s_of_string %s"
-          (id_of_typ t.T.structure) str_var
+        p "RamenTypeConverters.%s_of_string %s %s"
+          (id_of_typ t.T.structure) str_var offs_var
   )
 
 let emit_float oc f =
@@ -2229,24 +2262,31 @@ let rec emit_indent oc n =
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
 let emit_tuple_of_strings name csv_null oc tuple_typ =
-  Printf.fprintf oc "let %s strs_ =\n" name ;
-  Printf.fprintf oc "\t(\n" ;
+  let p fmt = Printf.fprintf oc (fmt^^"\n") in
+  p "let %s strs_ =" name ;
+  p "  (" ;
   let num_fields = List.length tuple_typ in
   List.iteri (fun i field_typ ->
     let sep = if i < num_fields - 1 then "," else "" in
-    Printf.fprintf oc "\t\t(try (\n" ;
     let str_var = "strs_.("^ string_of_int i ^")" in
-    let emit_is_null oc str_var =
-      Printf.fprintf oc "%s = %S" str_var csv_null in
-    emit_value_of_string 3 field_typ.typ str_var emit_is_null oc ;
-    Printf.fprintf oc "\t\t) with exn -> (\n" ;
-    Printf.fprintf oc
-      "\t\t\t!RamenLog.logger.RamenLog.error \"Cannot parse field %d: %s\" ;\n"
+    p "    (try check_parse_all (String.length %s) (" str_var ;
+    let emit_is_null fins str_var offs_var oc =
+      Printf.fprintf oc
+        "if string_sub_eq %s %s %S 0 %d && \
+            string_is_term %a %s (%s + %d) then \
+          true, %s + %d else false, %s"
+        str_var offs_var csv_null (String.length csv_null)
+        (List.print Char.print) fins str_var offs_var (String.length csv_null)
+        offs_var (String.length csv_null) offs_var in
+    emit_value_of_string 3 field_typ.typ str_var "0" emit_is_null [] oc ;
+    p "    ) with exn -> (" ;
+    p "      !RamenLog.logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
       (i+1)
       (field_typ.name :> string) ;
-    Printf.fprintf oc "\t\t\traise exn))%s\n" sep ;
+    p "        %s (Printexc.to_string exn) ;" str_var ;
+    p "      raise exn))%s" sep ;
   ) tuple_typ ;
-  Printf.fprintf oc "\t)\n"
+  p "  )"
 
 let emit_time_of_tuple name oc opc =
   let open RamenEventTime in
@@ -3178,11 +3218,17 @@ let emit_parameters oc params =
     (* FIXME: nullable parameters *)
     Printf.fprintf oc
       "let %s =\n\
-       \tlet parser_ x_ =\n"
+       \tlet parser_ s_ =\n"
       (id_of_field_name ~tuple:TupleParam p.ptyp.name) ;
-    let emit_is_null oc str_var =
-      Printf.fprintf oc "looks_like_null %s" str_var in
-    emit_value_of_string 2 p.ptyp.typ "x_" emit_is_null oc ;
+    let emit_is_null fins str_var offs_var oc =
+      Printf.fprintf oc
+        "if looks_like_null ~offs:%s %s && \
+            string_is_term %a %s (%s + 4) then \
+         true, %s + 4 else false, %s"
+        offs_var str_var
+        (List.print Char.print) fins str_var offs_var
+        offs_var offs_var in
+    emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] oc ;
     Printf.fprintf oc
       "\tin\n\
        \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
