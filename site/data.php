@@ -124,6 +124,6 @@ $info_pages = [
         'title' => 'Projection of deep compound types' ],
       'blog/2019-02.html' => [
         'date' => 'February 2019',
-        'title' => 'First benchmark against KSQL' ] ] ],
+        'title' => 'Benchmark against KSQL' ] ] ],
 ];
 ?>

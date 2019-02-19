@@ -1,6 +1,6 @@
 <? include 'header.php' ?>
 
-<h1>The cost of not using the right tool; a comparison with KafkaSQL</h1>
+<h1>Benchmark against KafkaSQL</h1>
 <p class="date">2019-02-10</p>
 
 <h2>The Challenge</h2>
