@@ -207,7 +207,7 @@ let emit_conv_of_ocaml st val_var oc =
       Printf.fprintf oc "String_val(%s)" val_var
   | T.TIp | T.TCidrv4 | T.TCidrv6 | T.TCidr
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
-      (* Compound types have no values by themselves *)
+      (* Compound types have no values of their own *)
       ()
 
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC

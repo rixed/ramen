@@ -151,7 +151,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
     p "let x_, o_ =" ;
     let t = { t with nullable = false } in
     emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins oc ;
-    p "in" ;
+    p "  in" ;
     p "NotNull x_, o_"
   ) else (
     let emit_parse_list indent t oc =
@@ -164,7 +164,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
       p "  let x_, o_ =" ;
       emit_value_of_string
         (indent + 2) t str_var "o_" emit_is_null (';' :: ']' :: fins) oc ;
-      p "  in" ;
+      p "    in" ;
       p "  let prevs_ = x_ :: prevs_ in" ;
       p "  let o_ = string_skip_blanks %s o_ in" str_var ;
       p "  if o_ >= String.length %s then" str_var ;
