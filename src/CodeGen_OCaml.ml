@@ -189,20 +189,32 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
       p "  failwith \"Tuple interrupted by end of string\" ;" ;
       for i = 0 to Array.length ts - 1 do
         p "let x%d_, offs_ =" i ;
-        let term = if i = Array.length ts - 1 then ')' else ';' in
+        let fins = ';' :: fins in
+        let fins = if i = Array.length ts - 1 then ')' :: fins else fins in
         emit_value_of_string
-          indent ts.(i) str_var "offs_" emit_is_null (term :: fins) oc ;
+          (indent + 1) ts.(i) str_var "offs_" emit_is_null fins oc ;
+        p "  in" ;
         p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
-        p "if %s.[offs_] <> ';' then" str_var ;
-        p "  Printf.sprintf \"Expected separator ';' at offset %%d\" offs_ |>" ;
-        p "  failwith ;"
+        p "let offs_ =" ;
+        if i = Array.length ts - 1 then (
+          (* Last separator is optional *)
+          p "  if offs_ < String.length %s && %s.[offs_] = ';' then"
+            str_var str_var ;
+          p "    offs_ + 1 else offs_ in"
+        ) else (
+          p "  if offs_ >= String.length %s || %s.[offs_] <> ';' then"
+            str_var str_var ;
+          p "    Printf.sprintf \"Expected separator ';' at offset %%d\" offs_ |>" ;
+          p "    failwith" ;
+          p "  else offs_ + 1 in"
+        )
       done ;
       p "let offs_ = string_skip_blanks_until ')' %s offs_ + 1 in"
         str_var ;
       Printf.fprintf oc "%s%a, offs_\n"
         (indent_of indent)
         (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "%sx%d_" (if i > 0 then "," else "") i)) ts
+          Printf.fprintf oc "x%d_" i)) ts
     in
     match t.T.structure with
     | TVec (d, t) ->

@@ -1648,7 +1648,7 @@ let unsigned_of_hexstring s o =
 
 let string_skip_blanks_until c s o =
   let rec loop o =
-    if o > String.length s then raise Not_found ;
+    if o >= String.length s then raise Not_found ;
     if s.[o] = c then o else
     if Char.is_whitespace s.[o] then loop (o + 1) else
     Printf.sprintf "Unexpected %C while looking for %C" s.[o] c |>
