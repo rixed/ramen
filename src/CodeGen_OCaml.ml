@@ -222,6 +222,11 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
                  Array.map snd in
         emit_parse_tuple indent ts oc
+    | TString ->
+        (* This one is a bit harder than the others due to optional quoting,
+         * and could benefit from [fins]: *)
+        p "RamenTypeConverters.string_of_string ~fins:%a %s %s"
+          (List.print char_print_quoted) fins str_var offs_var
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
           (id_of_typ t.T.structure) str_var offs_var
@@ -2277,7 +2282,8 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
             string_is_term %a %s (%s + %d) then \
           true, %s + %d else false, %s"
         str_var offs_var csv_null (String.length csv_null)
-        (List.print Char.print) fins str_var offs_var (String.length csv_null)
+        (List.print char_print_quoted) fins
+        str_var offs_var (String.length csv_null)
         offs_var (String.length csv_null) offs_var in
     emit_value_of_string 3 field_typ.typ str_var "0" emit_is_null [] oc ;
     p "    ) with exn -> (" ;
@@ -3227,7 +3233,7 @@ let emit_parameters oc params =
             string_is_term %a %s (%s + 4) then \
          true, %s + 4 else false, %s"
         offs_var str_var
-        (List.print Char.print) fins str_var offs_var
+        (List.print char_print_quoted) fins str_var offs_var
         offs_var offs_var in
     emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] oc ;
     Printf.fprintf oc

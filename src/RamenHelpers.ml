@@ -2034,3 +2034,5 @@ let array_print_i ?first ?last ?sep p oc a =
   let i = ref 0 in
   Array.print ?first ?last ?sep (fun oc x ->
     p !i oc x ; incr i) oc a
+
+let char_print_quoted oc = Printf.fprintf oc "%C"
