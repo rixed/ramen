@@ -30,6 +30,9 @@ jobs:
           name: Behavioral tests
           command: make cli-check
       - run:
+          name: Archiving tests
+          command: make arc-check
+      - run:
 # Functional tests are not 100% reproductible:
           name: Functional tests
           command: make func-check || make func-check
