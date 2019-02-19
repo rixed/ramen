@@ -55,11 +55,9 @@ void Handler::start_write()
 void Handler::flush_batch(bool more_to_come)
 {
   if (writer) {
-    cerr << "Adding the batch\n";
     writer->add(*batch);
     if (!more_to_come || ++num_batches >= max_batches) {
-      cerr << "closing writer\n";
-      writer->close(); // XXX
+      writer->close();
       writer.reset();
       /* and then we keep using the batch created by the first writer. This is
        * not a problem, as writer->createRowBatch just call the proper
