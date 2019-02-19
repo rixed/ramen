@@ -566,9 +566,26 @@ let update_storage_allocation conf =
        allocate more disk space."
   in
   run_smt2 ~fname ~emit ~parse_result ~unsat ;
-  (* Scale it up to 100% and convert to bytes: *)
+  (* It might happen that the solution is empty if no mentioned functions had
+   * stats or if the solver decided that all functions were equally important
+   * and give them each 0% of storage.
+   * In that case, we'd rather have each function share the available space: *)
   let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
-  assert (tot_perc <= 100) ;
+  let solution, tot_perc =
+    if tot_perc = 0 then (
+      !logger.warning
+        "No solution due to lack of stats(?), sharing available space" ;
+      (* Next scale will scale this properly *)
+      let solution =
+        Hashtbl.filter_map (fun _ s ->
+          if s.is_running then Some 1 else None
+        ) per_func_stats in
+      (* Have to recompute [tot_perc]: *)
+      let tot_perc =
+        Hashtbl.fold (fun _ p s -> s + p) solution 0 in
+      solution, tot_perc
+    ) else solution, tot_perc in
+  (* Scale it up to 100% and convert to bytes: *)
   let scale =
     if tot_perc > 0 then
       float_of_int user_conf.size_limit /. float_of_int tot_perc

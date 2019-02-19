@@ -1,6 +1,6 @@
 {
   "f" => {
-    parents = [];
+    parents = []; is_running = true;
     running_time = 600; tuples = 6000; bytes = 600000; cpu = 1;
   };
 }
