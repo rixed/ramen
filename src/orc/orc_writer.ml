@@ -36,7 +36,8 @@ let test () =
 
 let main =
   init_logger Debug ;
-  let ramen_type = Sys.argv.(1) in
+  let exec_file = Sys.argv.(1) in
+  let ramen_type = Sys.argv.(2) in
   let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
   !logger.info "Parsing type %s"
     (IO.to_string T.print_typ rtyp |> abbrev 130) ;
@@ -133,7 +134,6 @@ let main =
    * Link!
    *)
   let obj_files = [ cc_dst ] in
-  let exec_file = Filename.remove_extension ml_src_file in
   RamenOCamlCompiler.link ~debug:true ~keep_temp_files ~what:"ORC writer"
                           ~obj_files ~src_file:ml_src_file ~exec_file ;
   !logger.info "Good luck!"
