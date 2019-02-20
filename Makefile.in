@@ -367,7 +367,7 @@ src/orc/orc_writer: \
 
 orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/*.data)
 	@echo 'Checking ORC writes...'
-	@exit_code=0 ;\
+	@failed="" ;\
 	 for t in $(wildcard tests/orc/*.type); do \
 	   base="$$(basename $$t .type)" ;\
 	   echo "  Checking $$base" ;\
@@ -377,15 +377,18 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	   orc="/tmp/$$base.orc" ;\
 	   csv="/tmp/$$base.csv" ;\
 	   src/orc/orc_writer "$$writer" "$$typ" &&\
-	   "$$writer" "$$orc" < "$$data" &&\
-	   orc-contents "$$orc" > "$$csv" &&\
+	   "$$writer" write "$$orc" < "$$data" &&\
+	   "$$writer" read  "$$orc" > "$$csv" &&\
 	   if ! diff -q "$$data" "$$csv"; then \
 	     echo "FAILURE: $$data and $$csv differ:" ;\
 	     diff "$$data" "$$csv" ;\
-	     exit_code=1 ;\
+	     failed="$$failed $$base" ;\
 	   fi ;\
 	 done ;\
-	 exit $$exit_code
+	 if test -n "$$failed"; then \
+	   echo "FAILURE:$$failed" ;\
+	   exit 1 ;\
+	 fi
 
 else
 
