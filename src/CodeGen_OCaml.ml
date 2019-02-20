@@ -399,9 +399,6 @@ let omod_of_type = function
   | TTuple _ | TRecord _ | TVec _ | TList _ | TNum | TAny | TEmpty ->
       assert false
 
-(* When we do have to convert a null value into a string: *)
-let string_of_null = "?null?"
-
 (* Given a function name and an output type, return the actual function
  * returning that type, and the types each input parameters must be converted
  * into, if any. None means we need no conversion whatsoever (useful for

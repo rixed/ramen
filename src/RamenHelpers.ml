@@ -272,8 +272,12 @@ let looks_like_true s =
     String.length s > 1 &&
     let lc = Char.lowercase s.[0] in lc = 'y' || lc = 't')
 
+(* When we do have to convert a null value into a string: *)
+let string_of_null = "null"
+
 let looks_like_null ?(offs=0) s =
-  string_sub_eq ~case_sensitive:false s offs "null" 0 4
+  string_sub_eq ~case_sensitive:false s offs string_of_null 0
+                (String.length string_of_null)
 
 (*$= looks_like_null & ~printer:string_of_bool
   true (looks_like_null "null")
