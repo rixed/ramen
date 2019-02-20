@@ -179,7 +179,7 @@ let emit_conv_of_ocaml st val_var oc =
     (* Signed small integers are shifted all the way to the left: *)
     Printf.fprintf oc
       "(((intnat)Long_val(%s)) >> \
-        (numeric_limits<intnat>::digits - %d))"
+        (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
   match st with
   | T.TEmpty | T.TAny ->
@@ -547,7 +547,7 @@ let rec emit_read_value_from_batch
     p "%s = Val_long((intnat)%s->data[%s] << %s);"
       res_var batch_var row_var
       (if shift > 0 then
-        "(numeric_limits<intnat>::digits - "^ string_of_int shift ^")"
+        "(CHAR_BIT * sizeof(intnat) - "^ string_of_int shift ^" - 1)"
       else "0") ;
   and emit_read_struct kts =
     (* For structs, we build an OCaml tuple in the same order
@@ -702,6 +702,7 @@ let emit_intro oc =
   p "#include <cassert>" ;
   p "#include <orc/OrcFile.hh>" ;
   p "extern \"C\" {" ;
+  p "#  include <limits.h> /* CHAR_BIT */" ;
   p "#  include <caml/mlvalues.h>" ;
   p "#  include <caml/memory.h>" ;
   p "#  include <caml/alloc.h>" ;
