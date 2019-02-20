@@ -1,5 +1,4 @@
 // vim: ft=cpp bs=2 ts=2 sts=2 sw=2 expandtab
-/* This code is automatically generated. Edition is futile. */
 #include <cassert>
 extern "C" {
 #  include <caml/mlvalues.h>
