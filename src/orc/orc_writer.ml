@@ -39,7 +39,7 @@ let main =
   let exec_file = Sys.argv.(1) in
   let ramen_type = Sys.argv.(2) in
   let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
-  !logger.info "Parsing type %s"
+  !logger.info "Generating an ORC writer for Ramen type %s"
     (IO.to_string T.print_typ rtyp |> abbrev 130) ;
   (* We need to generate two things from this type:
    * - a string parser (using [CodeGen_OCaml.emit_value_of_string])
@@ -135,5 +135,4 @@ let main =
    *)
   let obj_files = [ cc_dst ] in
   RamenOCamlCompiler.link ~debug:true ~keep_temp_files ~what:"ORC writer"
-                          ~obj_files ~src_file:ml_src_file ~exec_file ;
-  !logger.info "Good luck!"
+                          ~obj_files ~src_file:ml_src_file ~exec_file
