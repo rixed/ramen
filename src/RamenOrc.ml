@@ -448,7 +448,11 @@ let rec emit_add_value_in_batch
               (field_name ^".elmt") oc ;
             p (indent+1) "}" ;
             (* Must set numElements of the list itself: *)
-            p (indent+1) "%s->numElements += i;" vb
+            p (indent+1) "%s->numElements += i;" vb ;
+            (* Liborc also expects us to set the offsets of the next element
+             * in case this one is the last (offsets size is capa+1) *)
+            p (indent+1) "%s->offsets[%s + 1] = %s + i;"
+              batch_val i_var bi_lst
           ) else (
             emit_get_vb (indent+1) vb rtyp batch_val oc ;
             emit_store_data (indent+1) vb i_var rtyp.T.structure val_var oc
