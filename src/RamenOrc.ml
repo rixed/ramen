@@ -506,6 +506,196 @@ let emit_write_value func_name rtyp oc =
 (* ...where flush_batch check for handle->num_batches and close the file and
  * reset handler->ri when the limit is reached.  *)
 
+(*
+ * Reading ORC files
+ *)
+
+(* Emits the code to read row [row_var] (an uint64_t) from [batch_var] (a
+ * pointer to a ColumnVectorBatch), that's of RamenTypes.t [rtyp].
+ * The result must be set in the (uninitialized) value [res_var].
+ * [depth] is the recursion depth (ie. indent + const) that gives us the
+ * name of the OCaml temp value we can use. *)
+let rec emit_read_value_from_batch
+    indent depth orig_batch_var row_var res_var rtyp oc =
+  let p fmt = emit oc indent fmt in
+  let tmp_var = "tmp" ^ string_of_int depth in
+  (* Start with casting the batch to the proper type corresponding to [rtyp]
+   * structure: *)
+  let batch_var = gensym "batch" in
+  emit_get_vb indent batch_var rtyp orig_batch_var oc ;
+  let emit_read_array t len_var =
+    p "%s = caml_alloc(%s, 0);" res_var len_var ;
+    let idx_var = gensym "idx" in
+    p "for (uint64_t %s = 0; %s < %s; %s++) {"
+      idx_var idx_var len_var idx_var ;
+    let elmts_var = batch_var ^"->elements.get()" in
+    let elmt_idx_var = gensym "row" in
+    p "  uint64_t %s = %s->offsets[%s] + %s;"
+      elmt_idx_var batch_var row_var idx_var ;
+    emit_read_value_from_batch
+      (indent+1) (depth+1) elmts_var elmt_idx_var tmp_var t oc ;
+    p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
+    p "}"
+  and emit_read_boxed ops custom_sz =
+    (* See READ_BOXED in ringbuf/wrapper.c *)
+    p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
+    p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
+      res_var batch_var row_var custom_sz
+  and emit_read_unboxed shift =
+    (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
+     * i16 are normal ints shifted all the way to the left. *)
+    p "%s = Val_long((intnat)%s->data[%s] << %s);"
+      res_var batch_var row_var
+      (if shift > 0 then
+        "(numeric_limits<intnat>::digits - "^ string_of_int shift ^")"
+      else "0") ;
+  and emit_read_struct kts =
+    (* For structs, we build an OCaml tuple in the same order
+     * as that of the ORC fields: *)
+    p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
+    Enum.iteri (fun i (k, t) ->
+      p "/* Field %s */" k ;
+      (* Use our tmp var to store the result of reading the i-th field: *)
+      let field_var = gensym "field" in
+      let field_batch_var =
+        Printf.sprintf "%s->fields[%d]" batch_var i in
+      emit_get_vb indent field_var t field_batch_var oc ;
+      emit_read_value_from_batch
+        indent (depth+1) field_var row_var tmp_var t oc ;
+      p "Store_field(%s, %d, %s);" res_var i tmp_var ;
+    ) kts
+  in
+  let emit_read_nonnull indent =
+    let p fmt = emit oc indent fmt in
+    match rtyp.T.structure with
+    | T.TI8 -> emit_read_unboxed 8
+    | T.TI16 -> emit_read_unboxed 16
+    | T.TI32 -> emit_read_boxed "caml_int32_ops" 4
+    | T.TI64 -> emit_read_boxed "caml_int64_ops" 8
+    | T.TI128 -> emit_read_boxed "caml_int128_ops" 16
+    | T.TU8 -> emit_read_unboxed 0
+    | T.TU16 -> emit_read_unboxed 0
+    | T.TU32 -> emit_read_boxed "uint32_ops" 4
+    | T.TU64 -> emit_read_boxed "uint64_ops" 8
+    | T.TU128 -> emit_read_boxed "uint128_ops" 16
+    | T.TBool ->
+        p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
+    | T.TFloat ->
+        p "%s = caml_copy_double(%s->data[%s]);" res_var batch_var row_var
+    | T.TString ->
+        p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
+          res_var batch_var row_var batch_var row_var
+    | T.TList t ->
+        (* "ListVectorBatch" is the type of the batch.
+         * The [elements] field will have all list items concatenated and
+         * the [offsets] data buffer at row [row_var] will have the row
+         * number of the starting element.
+         * We can therefore get the size of that list, alloc an array for
+         * [res_var] and then read each of the value into it (recursing). *)
+        let len_var = gensym "len" in
+        (* It seems that the offsets of the last+1 element is set to the
+         * end of the elements, so this works also for the last element: *)
+        p "int64_t %s =" len_var ;
+        p "  %s->offsets[%s + 1] - %s->offsets[%s];"
+          batch_var row_var batch_var row_var ;
+        p "if (%s < 0) {" len_var ;
+        p "  cerr << \"Invalid list of \" << %s << \" entries at row \""
+          len_var ;
+        p "       << %s << \"\\n\";" row_var ;
+        p "  cerr << \"offsets are \" << %s->offsets[%s]"
+          batch_var row_var ;
+        p "       << \" and then \" << %s->offsets[%s + 1] << \"\\n\";"
+          batch_var row_var ;
+        (* TODO: raise an OCaml exception instead *)
+        p "  assert(false);" ;
+        p "}" ;
+        emit_read_array t ("((uint64_t)"^ len_var ^")") ;
+    | T.TVec (d, t) ->
+        emit_read_array t (string_of_int d)
+    | T.TTuple ts ->
+        Array.enum ts |>
+        Enum.mapi (fun i t -> string_of_int i, t) |>
+        emit_read_struct
+    | T.TRecord kts ->
+        Array.enum kts |>
+        emit_read_struct
+    | _ ->
+        p "cerr << \"This type is not supported\\n\";" ;
+        p "assert(false);"
+  in
+  (* If the type is nullable, check the null column (we can do this even
+   * before getting the proper column vector. Convention: if we have no
+   * notNull buffer then that means we have no nulls (it is assumed that
+   * NULLs are rare in the wild): *)
+  if rtyp.T.nullable then (
+    p "if (%s->hasNulls && !%s->notNull[%s]) {"
+      orig_batch_var orig_batch_var row_var ;
+    p "  %s = Val_long(0); /* RamenNullable.Null */" res_var ;
+    p "} else {" ;
+    emit_read_nonnull (indent + 1) ;
+    (* We must wrap res into a NotNull block (tag 0). Since we are back
+     * from emit_read_nonnull we are free to reuse our tmp value: *)
+    p "  %s = caml_alloc_small(1, 0);" tmp_var ;
+    p "  Field(%s, 0) = %s;" tmp_var res_var ;
+    p "  %s = %s;" res_var tmp_var ;
+    p "}"
+  ) else (
+    (* Value is not nullable *)
+    emit_read_nonnull indent
+  )
+
+(* Generate an OCaml callable function named [func_name] that receive a
+ * file name, a batch size and an OCaml callback and read that file, calling
+ * back OCaml code with each row as an OCaml value: *)
+let emit_read_values func_name rtyp oc =
+  let p fmt = emit oc 0 fmt in
+  let max_depth = 5 (* TODO *) in
+  p "extern \"C\" value %s(value path_, value batch_sz_, value cb_)" func_name ;
+  p "{" ;
+  p "  CAMLparam3(path_, batch_sz_, cb_);" ;
+  p "  CAMLlocal1(res);" ;
+  let rec localN n =
+    if n < max_depth then
+      let c = min 5 (max_depth - n) in
+      p "  CAMLlocal%d(%a);" c
+        (Enum.print ~sep:", " (fun oc n -> Printf.fprintf oc "tmp%d" n))
+          (Enum.range n ~until:(n + c - 1)) ;
+      localN (n + c) in
+  localN 0 ;
+  p "  char const *path = String_val(path_);" ;
+  p "  unsigned batch_sz = Long_val(batch_sz_);" ;
+  p "  unique_ptr<InputStream> in_file = readLocalFile(path);" ;
+  p "  ReaderOptions options;" ;
+  p "  unique_ptr<Reader> reader = createReader(move(in_file), options);" ;
+  p "  RowReaderOptions row_options;" ;
+  p "  unique_ptr<RowReader> row_reader =" ;
+  p "    reader->createRowReader(row_options);" ;
+  p "  unique_ptr<ColumnVectorBatch> batch =" ;
+  p "    row_reader->createRowBatch(batch_sz);" ;
+  p "  unsigned num_lines = 0;" ;
+  p "  unsigned num_errors = 0;" ;
+  p "  while (row_reader->next(*batch)) {" ;
+  p "    for (uint64_t row = 0; row < batch->numElements; row++) {" ;
+  emit_read_value_from_batch 3 0 "batch.get()" "row" "res" rtyp oc ;
+  p "      res = caml_callback_exn(cb_, res);" ;
+  p "      if (Is_exception_result(res)) {" ;
+  p "        res = Extract_exception(res);" ;
+  p "        // Print only the first 10 such exceptions:" ;
+  p "        if (num_errors++ < 10) {" ;
+  p "          cerr << \"Exception while reading ORC file \" << path" ;
+  p "               << \": to_be_printed\\n\";" ;
+  p "        }" ;
+  p "      }" ;
+  p "      num_lines ++;" ;
+  p "    }" ;
+  p "  }" ;
+  p "  // Return the number of lines and errors:" ;
+  p "  res = caml_alloc(2, 0);" ;
+  p "  Store_field(res, 0, Val_long(num_lines));" ;
+  p "  Store_field(res, 1, Val_long(num_errors));" ;
+  p "  CAMLreturn(res);" ;
+  p "}"
+
 let emit_intro oc =
   let p fmt = emit oc 0 fmt in
   p "/* This code is automatically generated. Edition is futile. */" ;
@@ -516,6 +706,13 @@ let emit_intro oc =
   p "#  include <caml/memory.h>" ;
   p "#  include <caml/alloc.h>" ;
   p "#  include <caml/custom.h>" ;
+  p "#  include <caml/callback.h>" ;
+  p "extern struct custom_operations uint128_ops;" ;
+  p "extern struct custom_operations uint64_ops;" ;
+  p "extern struct custom_operations uint32_ops;" ;
+  p "extern struct custom_operations int128_ops;" ;
+  p "extern struct custom_operations caml_int64_ops;" ;
+  p "extern struct custom_operations caml_int32_ops;" ;
   p "}" ;
   p "typedef __int128_t int128_t;" ;
   p "typedef __uint128_t uint128_t;" ;
