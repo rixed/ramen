@@ -79,7 +79,7 @@ static struct custom_operations handler_ops = {
 
 extern "C" value orc_handler_create(value path_, value schema_, value batch_sz_, value max_batches_)
 {
-  CAMLparam2(path_, schema_);
+  CAMLparam4(path_, schema_, batch_sz_, max_batches_);
   CAMLlocal1(res);
   char const *path = String_val(path_);
   char const *schema = String_val(schema_);
