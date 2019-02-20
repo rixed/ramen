@@ -178,8 +178,8 @@ let emit_conv_of_ocaml st val_var oc =
   let scaled_int s =
     (* Signed small integers are shifted all the way to the left: *)
     Printf.fprintf oc
-      "(((intnat)(%s)) >> \
-        (Long_val(numeric_limits<intnat>::digits - %d)))"
+      "(((intnat)Long_val(%s)) >> \
+        (numeric_limits<intnat>::digits - %d))"
       val_var s in
   match st with
   | T.TEmpty | T.TAny ->
