@@ -344,6 +344,7 @@ MOREFLAGS = \
 ifeq (@HAVE_ORC@,1)
 
 MOREFLAGS += \
+	-cclib -lorchelp \
 	-cclib -lorc \
 	-cclib -lhdfspp_static \
 	-cclib -llz4 \
@@ -352,7 +353,6 @@ MOREFLAGS += \
 	-cclib -lz \
 	-cclib -lsasl2 \
 	-cclib -lcrypto \
-	-cclib -lorchelp \
 	-cclib -lstdc++
 
 src/orc/orc_writer: \
