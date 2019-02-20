@@ -3010,6 +3010,18 @@ let emit_merge_on name in_typ ~opc oc es =
     (List.print ~first:"(" ~last:")" ~sep:", "
        (emit_expr ~env ~context:Finalize ~opc)) es
 
+let emit_string_of_value indent typ val_var oc =
+  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  if typ.T.nullable then (
+    p "(match %s with Null -> %S" val_var string_of_null ;
+    p "| NotNull v_ -> %a v_)"
+      (conv_from_to ~nullable:false) (typ.structure, TString)
+  ) else (
+    p "%a %s"
+      (conv_from_to ~nullable:false) (typ.structure, TString)
+      val_var
+  )
+
 let emit_notification_tuple ~env ~opc oc notif =
   let print_expr = emit_expr ~env ~context:Finalize ~opc in
   Printf.fprintf oc
@@ -3020,16 +3032,7 @@ let emit_notification_tuple ~env ~opc oc notif =
         let id = id_of_field_name ~tuple:TupleOut ft.RamenTuple.name in
         Printf.fprintf oc "%S, "
           (ft.RamenTuple.name :> string) ;
-        if ft.typ.nullable then
-          Printf.fprintf oc
-            "(match %s with Null -> %S \
-             | NotNull v_ -> %a v_)\n"
-            id string_of_null
-            (conv_from_to ~nullable:false) (ft.typ.structure, TString)
-        else
-          Printf.fprintf oc "%a %s"
-            (conv_from_to ~nullable:false) (ft.typ.structure, TString)
-            id)) opc.tuple_typ
+        emit_string_of_value 1 ft.typ id oc)) opc.tuple_typ
 
 (* We want a function that, when given the worker name, current time and the
  * output tuple, will return the list of RamenNotification.tuple to send: *)

@@ -1,18 +1,22 @@
 // vim: ft=cpp bs=2 ts=2 sts=2 sw=2 expandtab
 #include <cassert>
+#include <orc/OrcFile.hh>
 extern "C" {
 #  include <caml/mlvalues.h>
 #  include <caml/memory.h>
 #  include <caml/alloc.h>
 #  include <caml/custom.h>
 }
-#include <orc/OrcFile.hh>
 
 typedef __int128_t int128_t;
 typedef __uint128_t uint128_t;
 
 using namespace std;
 using namespace orc;
+
+/*
+ * Writing ORC files
+ */
 
 class LazyWriter {
     string fname;

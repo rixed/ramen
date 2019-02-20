@@ -210,10 +210,15 @@ let emit_conv_of_ocaml st val_var oc =
       (* Compound types have no values of their own *)
       ()
 
+(* Helper to emit code at a given level: *)
+
+let emit oc indent fmt =
+  Printf.fprintf oc ("%s" ^^ fmt ^^ "\n") (indent_of indent)
+
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var st val_var oc =
-  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let p fmt = emit oc indent fmt in
   (* Most of the time we just store a single value in an array: *)
   let a arr_name =
     p "%s->%s[%s] = %t;"
@@ -332,7 +337,7 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
         p indent "if (Is_block(%s)) { /* Not null */" v ;
         (* The first non const constructor is "NotNull of ...": *)
         let non_null = gensym "non_null" in
-        p (indent+1) "auto %s = Field(%s, 0);" non_null v ;
+        p (indent+1) "value %s = Field(%s, 0);" non_null v ;
         let rtyp' = { rtyp with nullable = false } in
         loop (indent+1) depth rtyp' batch_val (Some non_null) field_name ;
         p indent "} else { /* Null */" ;
@@ -376,9 +381,9 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
             Array.enum |>
             iter_struct
         | T.TList t | T.TVec (_, t) ->
-            (* Regardless of [t], we treat a list as a "scalar"., because
+            (* Regardless of [t], we treat a list as a "scalar". because
              * that's how it looks like for ORC: each new list value is
-             * added to the [offsets] vector, while the list item are on
+             * added to the [offsets] vector, while the list items are on
              * the side pushed to the global [elements] vector-batch. *)
             f indent t batch_val ~is_list:true val_var field_name)
   in
@@ -399,9 +404,9 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
 
 (* Cast [batch_val] into a vector for the given type, named vb: *)
 let emit_get_vb indent vb_val rtyp batch_val oc =
-  let p fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
+  let p fmt = emit oc indent fmt in
   let btyp = batch_type_of_structure rtyp.T.structure in
-  p "%s *%s = dynamic_cast<%s *>(%s);\n" btyp vb_val btyp batch_val
+  p "%s *%s = dynamic_cast<%s *>(%s);" btyp vb_val btyp batch_val
 
 (* Write a single OCaml value [val_val] of the given RamenType into the
  * ColumnVectorBatch [batch_val]: *)
@@ -437,7 +442,7 @@ let rec emit_add_value_in_batch
             p (indent+1) "unsigned i;" ;
             p (indent+1) "for (i=0; i < Wosize_val(%s); i++) {" val_var ;
             let v_lst = gensym "v_lst" in
-            p (indent+1) "  auto %s = Field(%s, i);" v_lst val_var ;
+            p (indent+1) "  value %s = Field(%s, i);" v_lst val_var ;
             emit_add_value_in_batch
               (indent+2) (Some v_lst) vb (bi_lst^"+i") rtyp
               (field_name ^".elmt") oc ;
@@ -469,12 +474,12 @@ let rec emit_set_numElements
       p (indent+1) "vb->numElements = %s;\n" i_var ;
       p indent "}\n")
 
-(* Write an OCaml callable function named [func_name] that receives a
+(* Generate an OCaml callable function named [func_name] that receives a
  * "handler" and an OCaml value of a given type [rtyp] and batch it.
  * Notice that we want the handler created with the fname and type, but
  * without creating a file nor a batch before values are actually added. *)
 let emit_batch_value func_name rtyp oc =
-  let p fmt = Printf.fprintf oc (fmt ^^ "\n") in
+  let p fmt = emit oc 0 fmt in
   p "extern \"C\" CAMLprim value %s(value hder_, value v_)" func_name ;
   p "{" ;
   p "  CAMLparam2(hder_, v_);" ;
@@ -495,7 +500,7 @@ let emit_batch_value func_name rtyp oc =
  * reset handler->ri when the limit is reached.  *)
 
 let emit_intro oc =
-  let p fmt = Printf.fprintf oc (fmt ^^ "\n") in
+  let p fmt = emit oc 0 fmt in
   p "/* This code is automatically generated. Edition is futile. */" ;
   p "#include <cassert>" ;
   p "#include <orc/OrcFile.hh>" ;
