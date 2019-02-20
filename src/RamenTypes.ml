@@ -34,6 +34,21 @@ and structure =
   | TTuple of t array
   | TVec of int * t (* Fixed length arrays *)
   | TList of t (* Variable length arrays, aka lists *)
+  (* Note regarding field order:
+   * Order is significant in two places:
+   * - when defining the fields, the value of previous fields can be used;
+   * - when converting to string it is more polite to the user to present
+   *   the fields in the order of definition;
+   * - marginally useful: in the generated code, store the fields in the
+   *   definition order for simplicity.
+   * But for serialization in the ringbuffers we need to order them in such
+   * a way that several parents with different records can be selected from
+   * and serialize a subset of their fields in the same order.
+   * Therefore when serializing a record to a ringbuffer we handle the
+   * fields in alphabetical order, and when unserializing we also read
+   * them in alphabetical order (note that no copy is involved of course).
+   * when storing records in an ORC file we are free to serialize in any
+   * order, so preserve the definition order. *)
   | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
 

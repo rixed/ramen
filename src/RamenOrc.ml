@@ -125,7 +125,7 @@ let rec of_structure = function
   | T.TVec (_, t) | T.TList t ->
       Array (of_structure t.T.structure)
   | T.TRecord kts ->
-      let kts = RingBufLib.ser_array_of_record ~with_private:true kts in
+      (* Keep the order of definition: *)
       Struct (
         Array.map (fun (k, t) ->
           k, of_structure t.T.structure) kts)
@@ -377,9 +377,8 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_val val_var
             Enum.mapi (fun i t -> string_of_int i, t) |>
             iter_struct
         | T.TRecord kts ->
-            RingBufLib.ser_array_of_record ~with_private:true kts |>
-            Array.enum |>
-            iter_struct
+            (* FIXME: we should not store private fields *)
+            Array.enum kts |> iter_struct
         | T.TList t | T.TVec (_, t) ->
             (* Regardless of [t], we treat a list as a "scalar". because
              * that's how it looks like for ORC: each new list value is

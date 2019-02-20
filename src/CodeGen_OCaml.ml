@@ -231,8 +231,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         emit_parse_tuple indent ts oc
     | TRecord kts ->
         (* TODO: read field labels and reorder *)
-        let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
-                 Array.map snd in
+        let ts = Array.map snd kts in
         emit_parse_tuple indent ts oc
     | TString ->
         (* This one is a bit harder than the others due to optional quoting,
@@ -372,8 +371,7 @@ let rec otype_of_structure oc = function
         (fun oc t -> otype_of_type oc t)
         oc ts
   | TRecord kts ->
-      let ts = RingBufLib.ser_array_of_record ~with_private:true kts |>
-               Array.map snd in
+      let ts = Array.map snd kts in
       otype_of_structure oc (TTuple ts)
   | TVec (_, t) | TList t ->
       Printf.fprintf oc "%a array" otype_of_type t
