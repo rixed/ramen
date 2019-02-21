@@ -157,7 +157,8 @@ let of_string s o =
     in
   (* Check we either have 8 components or we had the double colon: *)
   if (not had_zeros && l <> 8) || l > (if had_zeros then 7 else 8) then
-    failwith "Invalid IPv6 address" ;
+    Printf.sprintf "Invalid IPv6 address at %d" o |>
+    failwith ;
   (* Complete the None: *)
   let ip =
     let rec loop ls num_zeros ip = function
@@ -178,6 +179,10 @@ let of_string s o =
 (*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
    (Stdint.Uint128.of_string "0x20010DB8000000000000FF0000428329", 22) \
      (of_string "2001:db8::ff00:42:8329" 0)
+   (Stdint.Uint128.of_string "0xffffffffffffffffffffffffffffffff", 39) \
+     (of_string "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff" 0)
+   (Stdint.Uint128.of_string "0x00010000000000000000000000000000", 3) \
+     (of_string "1::" 0)
  *)
 
 module Cidr =

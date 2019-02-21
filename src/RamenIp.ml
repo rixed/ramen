@@ -17,7 +17,7 @@ let of_string s o =
     let ip, o = RamenIpv4.of_string s o in
     V4 ip, o
   with _ ->
-    let ip, o = RamenIpv6.of_string s 0 in
+    let ip, o = RamenIpv6.of_string s o in
     V6 ip, o
 
 let of_unix_addr s =
