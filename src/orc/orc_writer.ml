@@ -104,7 +104,7 @@ let main =
             string_is_term %a %s (%s + 4) then \
          true, %s + 4 else false, %s"
         offs_var str_var
-        (List.print Char.print) fins str_var offs_var
+        (List.print char_print_quoted) fins str_var offs_var
         offs_var offs_var in
       CodeGen_OCaml.emit_value_of_string 2 rtyp "str" "0" emit_is_null [] oc ;
       p "  )" ;
