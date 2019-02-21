@@ -543,11 +543,11 @@ let rec emit_read_value_from_batch
       (indent + 1) (depth + 1) elmts_var elmt_idx_var tmp_var t oc ;
     p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
     p "}"
-  and emit_read_boxed ops custom_sz =
+  and emit_read_boxed ?(data="data") ops custom_sz =
     (* See READ_BOXED in ringbuf/wrapper.c *)
     p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
-    p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
-      res_var batch_var row_var custom_sz
+    p "memcpy(Data_custom_val(%s), &%s->%s[%s], %d);"
+      res_var batch_var data row_var custom_sz
   and emit_read_unboxed shift =
     (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
      * i16 are normal ints shifted all the way to the left. *)
