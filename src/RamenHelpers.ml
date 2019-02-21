@@ -1049,17 +1049,6 @@ let string_of_duration d =
   if d = 0. then s else
   s ^ nice_string_of_float d ^ "s"
 
-let string_remove c s =
-  let len = String.length s in
-  let buf = Buffer.create len in
-  for i = 0 to len-1 do
-    if s.[i] <> c then Buffer.add_char buf s.[i]
-  done ;
-  Buffer.contents buf
-(*$= string_remove & ~printer:identity
-  "1234" (string_remove ':' "::12:34")
- *)
-
 let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
   let open Unix in
   (* FIXME: it seems that binding that socket makes cohttp leak descriptors

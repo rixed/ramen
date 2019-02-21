@@ -61,7 +61,7 @@ let of_string s o =
     if o >= String.length s then
       failwith "Missing dot in IPv4 at end of string" ;
     if s.[o] <> '.' then
-      Printf.sprintf "Missing dot in IPv4 at ofset %d" o |>
+      Printf.sprintf "Missing dot in IPv4 at offset %d" o |>
       failwith
   and check_digit n =
     if n < 0 || n > 255 then
