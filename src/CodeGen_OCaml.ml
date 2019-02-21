@@ -421,6 +421,7 @@ let rec conv_from_to
     ?(string_not_null=false) ~nullable from_typ to_typ oc =
   (* Emitted code must be prefixable by "nullable_map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
+    if from_typ = to_typ then Printf.fprintf oc "identity" else
     match conv with
     | (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128|TString|TFloat),
         (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128)
@@ -511,7 +512,6 @@ let rec conv_from_to
         print_structure to_typ |>
       failwith
   in
-  if from_typ = to_typ then Printf.fprintf oc "identity" else
   (* In general, when we convert a nullable thing into another type, then
    * if the result is also nullable. But sometime we want to have a non
    * nullable string representation of any values, where we want null values

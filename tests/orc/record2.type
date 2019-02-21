@@ -1,6 +1,8 @@
 {
   nullable = false ;
   structure = TRecord [|
+    ("str", { nullable = false ; structure = TString }) ;
+    ("strn", { nullable = true ; structure = TString }) ;
     ("u8", { nullable = false ; structure = TU8 }) ;
     ("u8n", { nullable = true ; structure = TU8 }) ;
     ("u16", { nullable = false ; structure = TU16 }) ;
