@@ -599,9 +599,10 @@ let rec emit_read_value_from_batch
         indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
       p "Store_field(%s, 0, %s);" res_var tmp_var ;
       (* Same for the mask: *)
+      let msks_var = Printf.sprintf "%s->fields[1]" batch_var in
       let msktyp = T.make ~nullable:false T.TNum in
       emit_read_value_from_batch
-        indent (depth + 1) ips_var row_var tmp_var msktyp oc ;
+        indent (depth + 1) msks_var row_var tmp_var msktyp oc ;
       p "Store_field(%s, 1, %s);" res_var tmp_var
     and emit_case tag st =
       let iptyp = T.make ~nullable:false st in

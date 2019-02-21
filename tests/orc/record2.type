@@ -29,5 +29,7 @@
     ("ip6n", { nullable = true ; structure = TIpv6 }) ;
     ("ip", { nullable = false ; structure = TIp }) ;
     ("ipn", { nullable = true ; structure = TIp }) ;
+    ("cidr4", { nullable = false ; structure = TCidrv4 }) ;
+    ("cidr4n", { nullable = true ; structure = TCidrv4 }) ;
   |]
 }
