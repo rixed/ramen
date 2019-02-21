@@ -262,36 +262,36 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
       p "  %s->tags[%s] = 0;" vb_var i_var ;
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      emit_store_data (indent+1) vbs (vbs ^"->numElements") T.TIpv4 val_var oc ;
+      emit_store_data
+        (indent + 1) vbs (vbs ^"->numElements") T.TIpv4 val_var oc ;
       p "  %s->numElements ++;" vbs ;
       p "} else {" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
-      emit_store_data (indent+1) vbs (vbs ^"->numElements") T.TIpv6 val_var oc ;
+      emit_store_data
+        (indent + 1) vbs (vbs ^"->numElements") T.TIpv6 val_var oc ;
       p "  %s->numElements ++;" vbs ;
       p "}"
   | T.TCidrv4 ->
       (* A structure of IPv4 and mask. Write each field recursively. *)
       let ip_vb = batch_type_of_structure T.TIpv4 in
-      let ips = gensym "ips" in
+      let ips = gensym "ips" and msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
       let ip_var = Printf.sprintf "Field(%s, 0)" val_var in
       emit_store_data indent ips i_var T.TIpv4 ip_var oc ;
       let msk_vb = batch_type_of_structure T.TNum in
-      let msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
       let msk_var = Printf.sprintf "Field(%s, 1)" val_var in
       emit_store_data indent msks i_var T.TNum msk_var oc
   | T.TCidrv6 ->
       (* A structure of IPv6 and mask. Write each field recursively. *)
       let ip_vb = batch_type_of_structure T.TIpv6 in
-      let ips = gensym "ips" in
+      let ips = gensym "ips" and msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[0]);" ip_vb ips ip_vb vb_var ;
       let ip_var = Printf.sprintf "Field(%s, 0)" val_var in
       emit_store_data indent ips i_var T.TIpv6 ip_var oc ;
       let msk_vb = batch_type_of_structure T.TNum in
-      let msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vb_var ;
       let msk_var = Printf.sprintf "Field(%s, 1)" val_var in
       emit_store_data indent msks i_var T.TNum msk_var oc
@@ -311,8 +311,10 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let msks = gensym "msks" in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
-      emit_store_data (indent+1) ips (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
-      emit_store_data (indent+1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+      emit_store_data
+        (indent + 1) ips (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
+      emit_store_data
+        (indent + 1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
       p "  %s->numElements ++;" vbs ;
       p "} else { /* CIDRv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
@@ -323,8 +325,10 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let msk_vb = batch_type_of_structure T.TNum in
       p "%s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       let fld n = Printf.sprintf "Field(%s, %d)" val_var n in
-      emit_store_data (indent+1) ips (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
-      emit_store_data (indent+1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+      emit_store_data
+        (indent + 1) ips (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
+      emit_store_data
+        (indent + 1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
       p "  %s->numElements ++;" vbs ;
       p "}"
 
@@ -341,12 +345,12 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
         p indent "if (Is_block(%s)) { /* Not null */" v ;
         (* The first non const constructor is "NotNull of ...": *)
         let non_null = gensym "non_null" in
-        p (indent+1) "value %s = Field(%s, 0);" non_null v ;
+        p (indent + 1) "value %s = Field(%s, 0);" non_null v ;
         let rtyp' = { rtyp with nullable = false } in
-        loop (indent+1) depth rtyp' batch_var (Some non_null) field_name ;
+        loop (indent + 1) depth rtyp' batch_var (Some non_null) field_name ;
         p indent "} else { /* Null */" ;
         if depth > 0 || not skip_root then
-          f (indent+1) rtyp batch_var ~is_list:false None field_name ;
+          f (indent + 1) rtyp batch_var ~is_list:false None field_name ;
         p indent "}"
     | _ ->
         let iter_struct =
@@ -361,7 +365,7 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
                 Printf.sprintf "Field(%s, %d)" v i) val_var
             and field_name =
               if field_name = "" then k else field_name ^"."^ k in
-            loop (indent+1) (depth+1) t arr_item val_var field_name ;
+            loop (indent + 1) (depth + 1) t arr_item val_var field_name ;
             p indent "}"
           ) in
         (match rtyp.T.structure with
@@ -415,10 +419,10 @@ let emit_get_vb indent vb_var rtyp batch_var oc =
  * ColumnVectorBatch [batch_var]: *)
 let rec emit_add_value_in_batch
           indent val_var batch_var i_var rtyp field_name oc =
-  let p indent fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
   iter_scalars indent oc rtyp batch_var val_var field_name
     (fun indent rtyp batch_var ~is_list val_var field_name ->
-      p indent "{ /* Write the value%s for %s (of type %a) */"
+      p "{ /* Write the value%s for %s (of type %a) */"
         (if is_list then "s" else "")
         (if field_name <> "" then field_name else "root value")
         T.print_typ rtyp ;
@@ -426,9 +430,9 @@ let rec emit_add_value_in_batch
       (match val_var with
       | None -> (* When the value is NULL *)
           (* liborc initializes hasNulls to false and notNull to all ones: *)
-          emit_get_vb (indent+1) vb rtyp batch_var oc ;
-          p (indent+1) "%s->hasNulls = true;" vb ;
-          p (indent+1) "%s->notNull[%s] = 0;" vb i_var
+          emit_get_vb (indent + 1) vb rtyp batch_var oc ;
+          p "  %s->hasNulls = true;" vb ;
+          p "  %s->notNull[%s] = 0;" vb i_var
       | Some val_var ->
           if is_list then (
             (* For lists, our value is still the list and [batch_var] is
@@ -437,30 +441,33 @@ let rec emit_add_value_in_batch
              * [batch_var->offsets(`i_var)], and then append the actual list
              * values to [batch_var->elements]. But as those values can have
              * any type including a compound type, we must recurse. *)
-            emit_get_vb (indent+1) vb rtyp (batch_var ^"->elements.get()") oc ;
+            emit_get_vb
+              (indent + 1) vb rtyp (batch_var ^"->elements.get()") oc ;
             let bi_lst = gensym "bi_lst" in
-            p (indent+1) "auto const %s = %s->numElements;" bi_lst vb ;
-            p (indent+1) "%s->offsets[%s] = %s;" batch_var i_var bi_lst ;
+            p "  auto const %s = %s->numElements;" bi_lst vb ;
+            p "  %s->offsets[%s] = %s;" batch_var i_var bi_lst ;
             (* FIXME: handle arrays of unboxed values *)
-            p (indent+1) "unsigned i;" ;
-            p (indent+1) "for (i=0; i < Wosize_val(%s); i++) {" val_var ;
+            p "  unsigned i;" ;
+            p "  for (i=0; i < Wosize_val(%s); i++) {" val_var ;
             let v_lst = gensym "v_lst" in
-            p (indent+1) "  value %s = Field(%s, i);" v_lst val_var ;
+            p "    value %s = Field(%s, i);" v_lst val_var ;
             emit_add_value_in_batch
-              (indent+2) (Some v_lst) vb (bi_lst^"+i") rtyp
+              (indent + 2) (Some v_lst) vb (bi_lst^"+i") rtyp
               (field_name ^".elmt") oc ;
-            p (indent+1) "}" ;
+            p "  }" ;
             (* Must set numElements of the list itself: *)
-            p (indent+1) "%s->numElements += i;" vb ;
+            p "  %s->numElements += i;" vb ;
             (* Liborc also expects us to set the offsets of the next element
              * in case this one is the last (offsets size is capa+1) *)
-            p (indent+1) "%s->offsets[%s + 1] = %s + i;"
+            p "  %s->offsets[%s + 1] = %s + i;"
               batch_var i_var bi_lst
           ) else (
-            emit_get_vb (indent+1) vb rtyp batch_var oc ;
-            emit_store_data (indent+1) vb i_var rtyp.T.structure val_var oc
-          )) ;
-      p indent "}")
+            emit_get_vb (indent + 1) vb rtyp batch_var oc ;
+            emit_store_data
+              (indent + 1) vb i_var rtyp.T.structure val_var oc
+          )
+      ) ;
+      p "}")
 
 (* Now let's turn to set_numElements_recursively, which sets the numElements
  * count in all involved vectors beside the root one.  It seams unfortunate
@@ -470,16 +477,16 @@ let rec emit_add_value_in_batch
  * subvectors. *)
 let rec emit_set_numElements
           indent rtyp batch_var i_var field_name oc =
-  let p indent fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
+  let p fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
   iter_scalars indent ~skip_root:true oc rtyp batch_var None field_name
     (fun indent _rtyp batch_var ~is_list _val_var field_name ->
       (* We do not have anything to do for a list beyond setting its
        * own numElemebnts (ie number of offsets). *)
       ignore is_list ;
-      p indent "{ /* Set numElements for %s */\n" field_name ;
-      emit_get_vb (indent+1) "vb" rtyp batch_var oc ;
-      p (indent+1) "vb->numElements = %s;\n" i_var ;
-      p indent "}\n")
+      p "{ /* Set numElements for %s */\n" field_name ;
+      emit_get_vb (indent + 1) "vb" rtyp batch_var oc ;
+      p "  vb->numElements = %s;\n" i_var ;
+      p "}\n")
 
 (* Generate an OCaml callable function named [func_name] that receives a
  * "handler" and an OCaml value of a given type [rtyp] and batch it.
@@ -533,7 +540,7 @@ let rec emit_read_value_from_batch
     p "  uint64_t %s = %s->offsets[%s] + %s;"
       elmt_idx_var batch_var row_var idx_var ;
     emit_read_value_from_batch
-      (indent+1) (depth+1) elmts_var elmt_idx_var tmp_var t oc ;
+      (indent + 1) (depth + 1) elmts_var elmt_idx_var tmp_var t oc ;
     p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
     p "}"
   and emit_read_boxed ops custom_sz =
@@ -561,7 +568,7 @@ let rec emit_read_value_from_batch
         Printf.sprintf "%s->fields[%d]" batch_var i in
       emit_get_vb indent field_var t field_batch_var oc ;
       emit_read_value_from_batch
-        indent (depth+1) field_var row_var tmp_var t oc ;
+        indent (depth + 1) field_var row_var tmp_var t oc ;
       p "Store_field(%s, %d, %s);" res_var i tmp_var ;
     ) kts
   in
@@ -586,8 +593,7 @@ let rec emit_read_value_from_batch
         p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
           res_var batch_var row_var batch_var row_var
     | T.TList t ->
-        (* "ListVectorBatch" is the type of the batch.
-         * The [elements] field will have all list items concatenated and
+        (* The [elements] field will have all list items concatenated and
          * the [offsets] data buffer at row [row_var] will have the row
          * number of the starting element.
          * We can therefore get the size of that list, alloc an array for
