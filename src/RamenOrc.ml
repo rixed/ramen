@@ -84,7 +84,14 @@ let rec print oc = function
 
 (* Generate the ORC type corresponding to a Ramen type. Note that for ORC
  * every value can be NULL so there is no nullability in the type.
- * In the other way around that is not a conversion but a cast. *)
+ * In the other way around that is not a conversion but a cast.
+ * ORC has no unsigned integer types. We could upgrade all unsigned types
+ * to the next bigger signed type, but that would not be very efficient for
+ * storing values. Also, we could not do this for uint128 as the largest
+ * Decimal supported must fit an int128.
+ * Therefore, we encode unsigned as signed. This is no problem when Ramen
+ * read them back, as it always know the exact type, but could cause some
+ * issues when importing the files in Hive etc. *)
 let rec of_structure = function
   | T.TEmpty | T.TAny -> assert false
   (* We use TNum to denotes a normal OCaml integer. We use some to encode
@@ -93,16 +100,14 @@ let rec of_structure = function
   | T.TFloat -> Double
   | T.TString -> String
   | T.TBool -> Boolean
-  | T.TU8 -> SmallInt (* Upgrade as ORC integers are all signed *)
-  | T.TU16 -> Int
-  | T.TU32 -> BigInt
-  | T.TU64 -> Decimal { precision = 20 ; scale = 0 }
-  | T.TU128 -> Decimal { precision = 39 ; scale = 0 }
-  | T.TI8 -> TinyInt
-  | T.TI16 -> SmallInt
-  | T.TI32 -> Int
-  | T.TI64 -> BigInt
-  | T.TI128 -> Decimal { precision = 39 ; scale = 0 }
+  | T.TI8 | T.TU8 -> TinyInt
+  | T.TI16 | T.TU16 -> SmallInt
+  | T.TI32 | T.TU32 -> Int
+  | T.TI64 | T.TU64 -> BigInt
+  (* 128 bits would be 39 digits, but liborc would fail on 39.
+   * It will happily store 128 bits inside its 128 bits value though.
+   * Not all other ORC readers might perform that well unfortunately. *)
+  | T.TI128 | T.TU128 -> Decimal { precision = 38 ; scale = 0 }
   | T.TEth -> BigInt
   (* We store IPv4/6 in the smallest numeric type that fits.
    * For TIp, we use a union. *)
@@ -223,28 +228,30 @@ let emit oc indent fmt =
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var st val_var oc =
   let p fmt = emit oc indent fmt in
-  (* Most of the time we just store a single value in an array: *)
-  let a arr_name =
-    p "%s->%s[%s] = %t;"
-      vb_var arr_name i_var (emit_conv_of_ocaml st val_var)
-  in
   match st with
   | T.TEmpty | T.TAny
   (* Never called on recursive types (dealt with iter_scalars): *)
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
       assert false
-  | T.TBool -> a "data"
-  | T.TNum | T.TU8 | T.TU16 -> a "data"
-  | T.TU32 | T.TIpv4 -> a "data"
-  | T.TU64 -> a "values"
-  | T.TU128 | T.TIpv6 -> a "values"
-  | T.TEth -> a "data"
-  | T.TI8 -> a "data"
-  | T.TI16 -> a "data"
-  | T.TI32 -> a "data"
-  | T.TI64 -> a "data"
-  | T.TI128 -> a "values"
-  | T.TFloat -> a "data"
+  | T.TEth | T.TIpv4 | T.TBool | T.TNum | T.TFloat
+  | T.TI8 | T.TU8 | T.TI16 | T.TU16
+  | T.TI32 | T.TU32 | T.TI64 | T.TU64 ->
+      (* Most of the time we just store a single value in an array: *)
+      p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var)
+  | T.TI128 ->
+      (* ORC Int128 is a custom thing which constructor will accept only a
+       * int16_t for the low bits, or two int64_t for high and low bits.
+       * Initializing from an int128_t will /silently/ cast it to a single
+       * int64_t and initialize the Int128 with garbage. *)
+      let tmp_var = gensym "i128" in
+      p "int128_t const %s = %t;" tmp_var (emit_conv_of_ocaml st val_var) ;
+      p "%s->values[%s] = Int128((int64_t)(%s >> 64), (int64_t)%s);"
+        vb_var i_var tmp_var tmp_var
+  | T.TU128 | T.TIpv6 ->
+      let tmp_var = gensym "u128" in
+      p "uint128_t const %s = %t;" tmp_var (emit_conv_of_ocaml st val_var) ;
+      p "%s->values[%s] = Int128((int64_t)(%s >> 64U), (int64_t)%s);"
+        vb_var i_var tmp_var tmp_var
   | T.TString ->
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
@@ -543,19 +550,21 @@ let rec emit_read_value_from_batch
       (indent + 1) (depth + 1) elmts_var elmt_idx_var tmp_var t oc ;
     p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
     p "}"
-  and emit_read_boxed ?(data="data") ops custom_sz =
+  and emit_read_boxed ops custom_sz =
     (* See READ_BOXED in ringbuf/wrapper.c *)
     p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
-    p "memcpy(Data_custom_val(%s), &%s->%s[%s], %d);"
-      res_var batch_var data row_var custom_sz
-  and emit_read_unboxed shift =
+    p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
+      res_var batch_var row_var custom_sz
+  and emit_read_unboxed_signed shift =
     (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
      * i16 are normal ints shifted all the way to the left. *)
-    p "%s = Val_long((intnat)%s->data[%s] << %s);"
-      res_var batch_var row_var
-      (if shift > 0 then
-        "(CHAR_BIT * sizeof(intnat) - "^ string_of_int shift ^" - 1)"
-      else "0") ;
+    p "%s = Val_long((intnat)%s->data[%s] << \
+                     (CHAR_BIT * sizeof(intnat) - %d - 1));"
+      res_var batch_var row_var shift
+  and emit_read_unboxed_unsigned typ_name =
+    (* Same as above, but we have to take care that liborc extended the sign
+     * of our unsigned value: *)
+    p "%s = Val_long((%s)%s->data[%s]);" res_var typ_name batch_var row_var
   and emit_read_struct kts =
     (* For structs, we build an OCaml tuple in the same order
      * as that of the ORC fields: *)
@@ -606,6 +615,16 @@ let rec emit_read_value_from_batch
       typ_name batch_var row_var ;
     p "    assert(false);" ;  (* TODO: raise an OCaml exception *)
     p "    break;"
+  and emit_read_i128 signed =
+    p "%s = caml_alloc_custom(&%s, 16, 0, 1);"
+      res_var (if signed then "int128_ops" else "uint128_ops") ;
+    let i128_var = gensym "i128" and i_var = gensym "i128" in
+    p "Int128 *%s = &%s->values[%s];" i128_var batch_var row_var ;
+    let std_typ = if signed then "int128_t" else "uint128_t" in
+    p "%s const %s =" std_typ i_var ;
+    p "  ((%s)%s->getHighBits() << 64%s) | (%s->getLowBits());"
+      std_typ i128_var (if signed then "U" else "") i128_var ;
+    p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
   in
   let emit_read_nonnull indent =
     let p fmt = emit oc indent fmt in
@@ -613,16 +632,16 @@ let rec emit_read_value_from_batch
     | T.TEmpty | T.TAny -> assert false
     | T.TNum ->
         p "%s = Val_long(%s->data[%s]);" res_var batch_var row_var
-    | T.TI8 -> emit_read_unboxed 8
-    | T.TI16 -> emit_read_unboxed 16
+    | T.TI8 -> emit_read_unboxed_signed 8
+    | T.TI16 -> emit_read_unboxed_signed 16
     | T.TI32 -> emit_read_boxed "caml_int32_ops" 4
     | T.TI64 -> emit_read_boxed "caml_int64_ops" 8
-    | T.TI128 -> emit_read_boxed ~data:"values" "int128_ops" 16
-    | T.TU8 -> emit_read_unboxed 0
-    | T.TU16 -> emit_read_unboxed 0
+    | T.TU8 -> emit_read_unboxed_unsigned "uint8_t"
+    | T.TU16 -> emit_read_unboxed_unsigned "uint16_t"
     | T.TU32 | T.TIpv4 -> emit_read_boxed "uint32_ops" 4
-    | T.TU64 | T.TEth -> emit_read_boxed ~data:"values" "uint64_ops" 8
-    | T.TU128 | T.TIpv6 -> emit_read_boxed ~data:"values" "uint128_ops" 16
+    | T.TU64 | T.TEth -> emit_read_boxed "uint64_ops" 8
+    | T.TI128 -> emit_read_i128 true
+    | T.TU128 | T.TIpv6 -> emit_read_i128 false
     | T.TBool ->
         p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
     | T.TFloat ->

@@ -1,0 +1,7 @@
+{
+  nullable = false ;
+  structure = TRecord [|
+    ("age", { nullable = false ; structure = TU8 }) ;
+    ("name", { nullable = false ; structure = TString })
+  |]
+}

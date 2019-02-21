@@ -1,0 +1,25 @@
+{
+  nullable = false ;
+  structure = TRecord [|
+    ("u8", { nullable = false ; structure = TU8 }) ;
+    ("u8n", { nullable = true ; structure = TU8 }) ;
+    ("u16", { nullable = false ; structure = TU16 }) ;
+    ("u16n", { nullable = true ; structure = TU16 }) ;
+    ("u32", { nullable = false ; structure = TU32 }) ;
+    ("u32n", { nullable = true ; structure = TU32 }) ;
+    ("u64", { nullable = false ; structure = TU64 }) ;
+    ("u64n", { nullable = true ; structure = TU64 }) ;
+    ("u128", { nullable = false ; structure = TU128 }) ;
+    ("u128n", { nullable = true ; structure = TU128 }) ;
+    ("i8", { nullable = false ; structure = TI8 }) ;
+    ("i8n", { nullable = true ; structure = TI8 }) ;
+    ("i16", { nullable = false ; structure = TI16 }) ;
+    ("i16n", { nullable = true ; structure = TI16 }) ;
+    ("i32", { nullable = false ; structure = TI32 }) ;
+    ("i32n", { nullable = true ; structure = TI32 }) ;
+    ("i64", { nullable = false ; structure = TI64 }) ;
+    ("i64n", { nullable = true ; structure = TI64 }) ;
+    ("i128", { nullable = false ; structure = TI128 }) ;
+    ("i128n", { nullable = true ; structure = TI128 }) ;
+  |]
+}
