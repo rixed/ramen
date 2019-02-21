@@ -286,14 +286,8 @@ let looks_like_null ?(offs=0) s =
   false (looks_like_null "")
 *)
 
-let is_alpha s =
-  try
-    for i = 0 to String.length s - 1 do
-      if (s.[i] < 'a' || s.[i] > 'z') &&
-         (s.[i] < 'A' || s.[i] > 'Z') then raise Exit
-    done ;
-    true
-  with Exit -> false
+let is_alphanum c =
+  Char.(is_letter c || is_digit c)
 
 (* Helper to build the indentation in front of printed lines. We just use 2
  * spaces like normal people: *)

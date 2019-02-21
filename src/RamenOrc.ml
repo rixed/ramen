@@ -34,12 +34,14 @@ type t =
   | Struct of (string * t) array
   | Map of (t * t)
 
-(* Orc types string format use colon as a separator, therefore we must
- * encode it somehow (note: there is no escape mecanism that I know of
- * for ORC schema strings, but we can make trade our dots with ORC's
- * comas. *)
+(* Orc types string format use colon as a separator, and liborc accepts only
+ * alphanums and underscores, then optionally a dot followed by some
+ * alphabetic (no nums). Otherwise it will throw:
+ * std::logic_error: Unrecognized character.
+ * Better replace everything that's not alphanum by an underscore: *)
 let print_label oc str =
-  String.print oc (String.nreplace ~sub:":" ~by:"." ~str)
+  String.map (fun c -> if is_alphanum c then c else '_') str |>
+  String.print oc
 
 (* Output the schema of the type.
  * Similar to https://github.com/apache/orc/blob/529bfcedc10402c58d9269c2c95919cba6c4b93f/c%2B%2B/src/TypeImpl.cc#L157
@@ -138,7 +140,7 @@ let rec of_structure = function
 (*$= of_structure & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
     (BatIO.to_string print (of_structure T.TCidrv4))
-  "struct<pas.glop:int>" \
+  "struct<pas_glop:int>" \
     (BatIO.to_string print (of_structure \
       (T.TRecord [| "pas:glop", T.make T.TI32 |])))
 *)
