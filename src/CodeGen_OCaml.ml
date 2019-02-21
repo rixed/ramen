@@ -417,7 +417,8 @@ let omod_of_type = function
  * string. *)
 (* This only returns the function name (or code) but does not emit the
  * call to that function. *)
-let rec conv_from_to ~nullable oc (from_typ, to_typ) =
+let rec conv_from_to
+    ?(string_not_null=false) ~nullable from_typ to_typ oc =
   (* Emitted code must be prefixable by "nullable_map": *)
   let rec print_non_null oc (from_typ, to_typ as conv) =
     match conv with
@@ -450,17 +451,17 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
     | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
     | TList t_from, TList t_to
          when t_from.nullable = t_to.nullable ->
-      Printf.fprintf oc "(fun v_ -> Array.map (%a) v_)"
-        (conv_from_to ~nullable:t_from.nullable)
-          (t_from.structure, t_to.structure)
+      Printf.fprintf oc "(fun v_ -> Array.map (%t) v_)"
+        (conv_from_to ~string_not_null ~nullable:t_from.nullable
+                      t_from.structure t_to.structure)
      | TList t_from, TList t_to
           when nullable && t_from.nullable && not t_to.nullable ->
       Printf.fprintf oc
         "(fun v_ -> Array.map (function \
             | Null -> raise ImNull \
-            | NotNull x_ -> %a x_) v_)"
-        (conv_from_to ~nullable:t_from.nullable)
-          (t_from.structure, t_to.structure)
+            | NotNull x_ -> %t x_) v_)"
+        (conv_from_to ~string_not_null ~nullable:t_from.nullable
+                      t_from.structure t_to.structure)
     | TVec (_, t_from), TList t_to ->
       print_non_null oc (TList t_from, TList t_to)
     | TVec (d_from, t_from), TVec (d_to, t_to)
@@ -471,13 +472,14 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
       Printf.fprintf oc
         "(fun v_ -> \
           \"[\"^ (\
-            Array.enum v_ /@ (%a) |> \
+            Array.enum v_ /@ (%t) |> \
               Enum.fold (fun res_ s_ -> \
                 (if String.length res_ = 0 then \"\" else res_^\";\") ^ \
                 (%s s_) \
               ) \"\") \
             ^\"]\")"
-        (conv_from_to ~nullable:t.nullable) (t.structure, TString)
+        (conv_from_to ~string_not_null ~nullable:t.nullable
+                      t.structure TString)
         (if t.nullable then
            Printf.sprintf "RamenNullable.default %S" string_of_null else "")
     | TTuple ts, TString ->
@@ -487,8 +489,9 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
           (array_print_as_tuple_i (fun oc i _ ->
             Printf.fprintf oc "x%d_" i)) ts
           (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc t ->
-            Printf.fprintf oc "(%a) x%d_"
-              (conv_from_to ~nullable:t.nullable) (t.structure, TString) !i ;
+            Printf.fprintf oc "(%t) x%d_"
+              (conv_from_to ~string_not_null ~nullable:t.nullable
+                            t.structure TString) !i ;
             incr i)) ts
     | TRecord ts, TString ->
       (* TODO: also print the field names? *)
@@ -498,8 +501,9 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
           (array_print_as_tuple_i (fun oc i _ ->
             Printf.fprintf oc "x%d_" i)) ts
           (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (_k, t) ->
-            Printf.fprintf oc "(%a) x%d_"
-              (conv_from_to ~nullable:t.nullable) (t.structure, TString) !i ;
+            Printf.fprintf oc "(%t) x%d_"
+              (conv_from_to ~string_not_null ~nullable:t.nullable
+                            t.structure TString) !i ;
             incr i)) ts
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
@@ -507,11 +511,19 @@ let rec conv_from_to ~nullable oc (from_typ, to_typ) =
         print_structure to_typ |>
       failwith
   in
-  if from_typ = to_typ then Printf.fprintf oc "identity"
-  else
-    Printf.fprintf oc "(%s%a)"
-      (if nullable then "nullable_map " else "")
-      print_non_null (from_typ, to_typ)
+  if from_typ = to_typ then Printf.fprintf oc "identity" else
+  (* In general, when we convert a nullable thing into another type, then
+   * if the result is also nullable. But sometime we want to have a non
+   * nullable string representation of any values, where we want null values
+   * to appear as "null": *)
+  match nullable, to_typ, string_not_null with
+  | false, _, _ -> print_non_null oc (from_typ, to_typ)
+  | true, TString, true ->
+      Printf.fprintf oc "(default %S %% nullable_map %a)"
+        string_of_null print_non_null (from_typ, to_typ)
+  | true, _, _ ->
+      Printf.fprintf oc "(nullable_map %a)"
+        print_non_null (from_typ, to_typ)
 
 let wrap_nullable ~nullable oc f =
   (* TODO: maybe catch ImNull? *)
@@ -701,8 +713,8 @@ let add_tuple_environment tuple typ env =
 let rec conv_to ~env ~context ~opc to_typ oc e =
   match e.E.typ.structure, to_typ with
   | a, Some b ->
-    Printf.fprintf oc "(%a) (%a)"
-      (conv_from_to ~nullable:e.typ.nullable) (a, b)
+    Printf.fprintf oc "(%t) (%a)"
+      (conv_from_to ~nullable:e.typ.nullable a b)
       (emit_expr ~context ~opc ~env) e
   | _, None -> (* No conversion required *)
     (emit_expr ~context ~opc ~env) oc e
@@ -818,14 +830,13 @@ and emit_event_time oc opc =
         (* This must not fail if RamenOperation.check did its job *)
         let f = List.find (fun t -> t.name = field_name) opc.tuple_typ in
         Printf.fprintf oc
-          (if f.typ.nullable then "((%a) %s |! 0.)" else "(%a) %s")
-          (conv_from_to ~nullable:f.typ.nullable)
-          (f.typ.structure, TFloat)
+          (if f.typ.nullable then "((%t) %s |! 0.)" else "(%t) %s")
+          (conv_from_to ~nullable:f.typ.nullable f.typ.structure TFloat)
           (id_of_field_name ~tuple:TupleOut field_name)
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
-        Printf.fprintf oc "(%a %s_%s_)"
-          (conv_from_to ~nullable:false) (param.ptyp.typ.structure, TFloat)
+        Printf.fprintf oc "(%t %s_%s_)"
+          (conv_from_to ~nullable:false param.ptyp.typ.structure TFloat)
           (id_of_prefix TupleParam)
           (field_name :> string)
   in
@@ -868,9 +879,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
     assert nullable ;
     Printf.fprintf oc "Null"
   | _, Const c, _ ->
-    Printf.fprintf oc "%s(%a %a)"
+    Printf.fprintf oc "%s(%t %a)"
       (if nullable then "NotNull " else "")
-      (conv_from_to ~nullable:false) (structure_of c, expr.typ.structure)
+      (conv_from_to ~nullable:false (structure_of c) expr.typ.structure)
       emit_type c
   | Finalize, Tuple es, _ ->
     list_print_as_tuple (emit_expr ~env ~context ~opc) oc es
@@ -974,8 +985,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
       [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)), (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI128 as t) ->
     (* For all others we exponentiate via floats: *)
-    Printf.fprintf oc "(%a %a)"
-      (conv_from_to ~nullable) (TFloat, t)
+    Printf.fprintf oc "(%t %a)"
+      (conv_from_to ~nullable TFloat t)
       (emit_functionN ~env ~opc ~nullable "( ** )"
         [Some TFloat, PropagateNull; Some TFloat, PropagateNull])  [e1; e2]
 
@@ -1221,9 +1232,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * propagates nullability from the argument? *)
     let add_nullable = not from.nullable && to_typ.nullable in
     if add_nullable then Printf.fprintf oc "NotNull (" ;
-    Printf.fprintf oc "(%a) (%a)"
-      (conv_from_to ~nullable:from.nullable)
-        (from.structure, to_typ.structure)
+    Printf.fprintf oc "(%t) (%a)"
+      (conv_from_to ~nullable:from.nullable from.structure to_typ.structure)
       (emit_expr ~env ~context ~opc) e ;
     if add_nullable then Printf.fprintf oc ")" ;
     if to_typ.nullable then String.print oc " with _ -> Null)"
@@ -1241,10 +1251,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
     | [] -> ()
     | e::es ->
         Printf.fprintf oc
-          "(let x0_ = %a in CodeGenLib.print (%s(%a x0_)::%a) ; x0_)"
+          "(let x0_ = %a in CodeGenLib.print (%s(%t x0_)::%a) ; x0_)"
           (emit_expr ~env ~context ~opc) e
           (if e.E.typ.nullable then "" else "NotNull ")
-          (conv_from_to ~nullable:e.typ.nullable) (e.E.typ.structure, TString)
+          (conv_from_to ~nullable:e.typ.nullable e.E.typ.structure TString)
           (List.print (fun oc e ->
              Printf.fprintf oc "%s(%a)"
                (if e.E.typ.nullable then "" else "NotNull ")
@@ -1353,9 +1363,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
             (emit_expr ~env ~context ~opc) e2
         and csts_hash_init larger_t =
           Printf.sprintf2
-            "Array.iter (fun e_ -> Hashtbl.replace h_ ((%a) e_) ()) (%a)"
-            (conv_from_to ~nullable:telem.nullable)
-              (telem.structure, larger_t)
+            "Array.iter (fun e_ -> Hashtbl.replace h_ (%t e_) ()) (%a)"
+            (conv_from_to ~nullable:telem.nullable telem.structure larger_t)
             (emit_expr ~env ~context ~opc) e2 in
         emit_in csts_len csts_hash_init []
       | _ -> assert false)
@@ -1429,8 +1438,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | InitState, Stateful (_, _, SF1 (AggrAnd, _)), (TBool as t) ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%a true"
-        (conv_from_to ~nullable:false) (TBool, t))
+      Printf.fprintf oc "%t true"
+        (conv_from_to ~nullable:false TBool t))
   | UpdateState, Stateful (_, n, SF1 (AggrAnd, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "(&&)" oc [ Some TBool, PropagateNull ]
@@ -1438,8 +1447,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
     finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   | InitState, Stateful (_, _, SF1 (AggrOr, _)), (TBool as t) ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%a false"
-        (conv_from_to ~nullable:false) (TBool, t))
+      Printf.fprintf oc "%t false"
+        (conv_from_to ~nullable:false TBool t))
   | UpdateState, Stateful (_, n, SF1 (AggrOr, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ e ]
       "(||)" oc [ Some TBool, PropagateNull ]
@@ -1449,8 +1458,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | InitState, Stateful (_, _, SF1 (AggrSum, _)),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%a Uint8.zero"
-        (conv_from_to ~nullable:false) (TU8, t))
+      Printf.fprintf oc "%t Uint8.zero"
+        (conv_from_to ~nullable:false TU8 t))
   | UpdateState, Stateful (_, n, SF1 (AggrSum, e)),
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     update_state ~env ~opc ~nullable n my_state [ e ]
@@ -1552,8 +1561,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | InitState, Stateful (_, _, SF2 (ExpSmooth, _a, _)), (TFloat as t) ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%a Uint8.zero"
-        (conv_from_to ~nullable:false) (TU8, t))
+      Printf.fprintf oc "%t Uint8.zero"
+        (conv_from_to ~nullable:false TU8 t))
   | UpdateState, Stateful (_, n, SF2 (ExpSmooth, a, e)), _ ->
     update_state ~env ~opc ~nullable n my_state [ a ; e ]
       "CodeGenLib.smooth" oc
@@ -1585,8 +1594,8 @@ and emit_expr_ ~env ~context ~opc oc expr =
 
   | InitState, Stateful (_, _, SF3 (Hysteresis, _, _, _)), t ->
     wrap_nullable ~nullable oc (fun oc ->
-      Printf.fprintf oc "%a true" (* Initially within bounds *)
-        (conv_from_to ~nullable:false) (TBool, t))
+      Printf.fprintf oc "%t true" (* Initially within bounds *)
+        (conv_from_to ~nullable:false TBool t))
   | UpdateState, Stateful (_, n, SF3 (Hysteresis, meas, accept, max)), TBool ->
     (* TODO: shouldn't we promote everything to the most accurate of those types? *)
     let t = meas.E.typ.structure in
@@ -3007,15 +3016,10 @@ let emit_merge_on name in_typ ~opc oc es =
 
 let emit_string_of_value indent typ val_var oc =
   let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
-  if typ.T.nullable then (
-    p "(match %s with Null -> %S" val_var string_of_null ;
-    p "| NotNull v_ -> %a v_)"
-      (conv_from_to ~nullable:false) (typ.structure, TString)
-  ) else (
-    p "%a %s"
-      (conv_from_to ~nullable:false) (typ.structure, TString)
-      val_var
-  )
+  p "%t %s"
+    (conv_from_to ~string_not_null:true ~nullable:typ.T.nullable
+                  typ.structure TString)
+    val_var
 
 let emit_notification_tuple ~env ~opc oc notif =
   let print_expr = emit_expr ~env ~context:Finalize ~opc in
@@ -3265,9 +3269,10 @@ let emit_parameters oc params =
         Printf.sprintf "%s_%s_"
           (id_of_prefix TupleParam)
           (p.ptyp.name :> string) in
-      Printf.fprintf oc "\t| %S -> (%a) %s%s\n"
+      Printf.fprintf oc "\t| %S -> %t %s%s\n"
         (p.ptyp.name :> string)
-        (conv_from_to ~nullable:p.ptyp.typ.nullable) (p.ptyp.typ.structure, TString)
+        (conv_from_to ~nullable:p.ptyp.typ.nullable
+                      p.ptyp.typ.structure TString)
         glob_name
         (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
          else ""))) params
