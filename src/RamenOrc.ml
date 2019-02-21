@@ -97,7 +97,7 @@ let rec print oc = function
 let rec of_structure = function
   | T.TEmpty | T.TAny -> assert false
   (* We use TNum to denotes a normal OCaml integer. We use some to encode
-   * Cidrs for instance. *)
+   * Cidr masks for instance. *)
   | T.TNum -> Int
   | T.TFloat -> Double
   | T.TString -> String
@@ -598,12 +598,14 @@ let rec emit_read_value_from_batch
       emit_read_value_from_batch
         indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
       p "Store_field(%s, 0, %s);" res_var tmp_var ;
-      (* Same for the mask: *)
+      (* Same for the mask. Notice that we declare it as TinyInt, so we have
+       * to deal with liborc having sign-extended it already (same as U8 and
+       * U16): *)
       let msks_var = Printf.sprintf "%s->fields[1]" batch_var in
       let msktyp = T.make ~nullable:false T.TNum in
       emit_read_value_from_batch
         indent (depth + 1) msks_var row_var tmp_var msktyp oc ;
-      p "Store_field(%s, 1, %s);" res_var tmp_var
+      p "Store_field(%s, 1, Val_long((uint8_t)Long_val(%s)));" res_var tmp_var
     and emit_case tag st =
       let iptyp = T.make ~nullable:false st in
       p "  case %d: /* %a */" tag T.print_structure st ;
