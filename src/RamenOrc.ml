@@ -604,21 +604,25 @@ let rec emit_read_value_from_batch
     and emit_case tag st =
       let iptyp = T.make ~nullable:false st in
       p "  case %d: /* %a */" tag T.print_structure st ;
+      p "    {" ;
       let ips_var = gensym "ips" in
       let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
-      emit_get_vb (indent + 2) ips_var iptyp chld_var oc ;
+      emit_get_vb (indent + 3) ips_var iptyp chld_var oc ;
       let offs_var = Printf.sprintf "%s->offsets[%s]" batch_var row_var in
       emit_read_value_from_batch
-        (indent + 2) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
-      p "    %s = caml_alloc_small(1, %d);" res_var tag ;
-      p "    Field(%s, 0) = %s;" res_var tmp_var ;
-      p "    break;"
+        (indent + 3) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
+      p "      %s = caml_alloc_small(1, %d);" res_var tag ;
+      p "      Field(%s, 0) = %s;" res_var tmp_var ;
+      p "      break;" ;
+      p "    }"
     and emit_default typ_name =
       p "  default: /* Invalid */" ;
-      p "    cerr << \"Invalid tag for %s: \" << %s->tags[%s] << \"\\n\";"
+      p "    {" ;
+      p "      cerr << \"Invalid tag for %s: \" << %s->tags[%s] << \"\\n\";"
         typ_name batch_var row_var ;
-      p "    assert(false);" ;  (* TODO: raise an OCaml exception *)
-      p "    break;"
+      p "      assert(false);" ;  (* TODO: raise an OCaml exception *)
+      p "      break;" ;
+      p "    }"
     and emit_read_i128 signed =
       p "%s = caml_alloc_custom(&%s, 16, 0, 1);"
         res_var (if signed then "int128_ops" else "uint128_ops") ;
