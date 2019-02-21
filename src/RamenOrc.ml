@@ -114,7 +114,7 @@ let rec of_structure = function
   (* We store IPv4/6 in the smallest numeric type that fits.
    * For TIp, we use a union. *)
   | T.TIpv4 -> Int
-  | T.TIpv6 -> Decimal { precision = 39 ; scale = 0 }
+  | T.TIpv6 -> Decimal { precision = 38 ; scale = 0 }
   | T.TIp ->
       UnionType [| of_structure T.TIpv4 ; of_structure T.TIpv6 |]
   (* For CIDR we use a structure of an IP and a mask: *)
