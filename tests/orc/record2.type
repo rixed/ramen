@@ -21,5 +21,13 @@
     ("i64n", { nullable = true ; structure = TI64 }) ;
     ("i128", { nullable = false ; structure = TI128 }) ;
     ("i128n", { nullable = true ; structure = TI128 }) ;
+    ("eth", { nullable = false ; structure = TEth }) ;
+    ("ethn", { nullable = true ; structure = TEth }) ;
+    ("ip4", { nullable = false ; structure = TIpv4 }) ;
+    ("ip4n", { nullable = true ; structure = TIpv4 }) ;
+    ("ip6", { nullable = false ; structure = TIpv6 }) ;
+    ("ip6n", { nullable = true ; structure = TIpv6 }) ;
+    ("ip", { nullable = false ; structure = TIp }) ;
+    ("ipn", { nullable = true ; structure = TIp }) ;
   |]
 }

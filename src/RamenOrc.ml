@@ -271,15 +271,17 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
       p "  %s->tags[%s] = 0;" vb_var i_var ;
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      let ip_var = Printf.sprintf "Field(%s, 0)" val_var in
       emit_store_data
-        (indent + 1) vbs (vbs ^"->numElements") T.TIpv4 val_var oc ;
+        (indent + 1) vbs (vbs ^"->numElements") T.TIpv4 ip_var oc ;
       p "  %s->numElements ++;" vbs ;
-      p "} else {" ;
+      p "} else { /* IPv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
+      let ip_var = Printf.sprintf "Field(%s, 0)" val_var in
       emit_store_data
-        (indent + 1) vbs (vbs ^"->numElements") T.TIpv6 val_var oc ;
+        (indent + 1) vbs (vbs ^"->numElements") T.TIpv6 ip_var oc ;
       p "  %s->numElements ++;" vbs ;
       p "}"
   | T.TCidrv4 ->
