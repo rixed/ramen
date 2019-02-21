@@ -45,3 +45,27 @@ struct
      (* FIXME: Add to_int{32,64} in stdlib *)
      Num.to_string |> Uint48.of_string) m
 end
+
+(* Fast (hum) parser from string for reading CSVs, command line, etc... *)
+let of_string s o =
+  let invalid o =
+    Printf.sprintf "Invalid ethernet address at offset %d" o |>
+    failwith in
+  let rec loop a n o =
+    if n >= 6 then a, o else (
+      if o >= String.length s then invalid o ;
+      let i, o = unsigned_of_hexstring s o in
+      let o =
+        if n < 5 && o < String.length s then (
+          if s.[o] <> ':' then invalid o ;
+          o + 1
+        ) else o in
+      loop Uint48.(shift_left a 8 + of_int i) (n + 1) o
+    ) in
+  loop Uint48.zero 0 o
+
+(*$= of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print print BatInt.print))
+  (Stdint.Uint48.of_int64 0x12_34_56_78_9a_bcL, 17) (of_string "12:34:56:78:9a:bc" 0)
+  (Stdint.Uint48.of_int64 0x12_34_56_78_9a_bcL, 17) (of_string "12:34:56:78:9A:BC" 0)
+  (Stdint.Uint48.of_int64 0x01_00_00_00_00_00L, 17) (of_string "01:00:00:00:00:00" 0)
+*)

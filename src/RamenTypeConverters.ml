@@ -126,11 +126,7 @@ let i128_of_string = integer_of_string Int128.of_string
 
 let null_of_string _ o = (), o
 
-let eth_of_string s o =
-  (* FIXME: without string copy *)
-  let s = "0x"^ RamenHelpers.string_remove ':' s in
-  integer_of_string Uint48.of_string s o
-
+let eth_of_string = RamenEthAddr.of_string
 let ip4_of_string = RamenIpv4.of_string
 let ip6_of_string = RamenIpv6.of_string
 let ip_of_string = RamenIp.of_string
