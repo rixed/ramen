@@ -33,5 +33,7 @@
     ("cidr4n", { nullable = true ; structure = TCidrv4 }) ;
     ("cidr6", { nullable = false ; structure = TCidrv6 }) ;
     ("cidr6n", { nullable = true ; structure = TCidrv6 }) ;
+    ("cidr", { nullable = false ; structure = TCidr }) ;
+    ("cidrn", { nullable = true ; structure = TCidr }) ;
   |]
 }

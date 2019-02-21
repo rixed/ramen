@@ -304,8 +304,12 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
   | T.TCidr ->
       (* Another union with tag 0 for v4 and tag 1 for v6: *)
       let vb4 = batch_type_of_structure T.TCidrv4
-      and vb6 = batch_type_of_structure T.TCidrv6 in
-      let vbs = gensym "vbs" in
+      and vb6 = batch_type_of_structure T.TCidrv6
+      and vbs = gensym "vbs"
+      (* Whatever the tag (v4 or v6), the values to write are the first and
+       * second fields of the first field of the Cidr: *)
+      and ip_var = Printf.sprintf "Field(%s, 0)" (fld 0)
+      and msk_var = Printf.sprintf "Field(%s, 1)" (fld 0) in
       p "if (Tag_val(%s) == 0) { /* CIDRv4 */" val_var ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[0]);" vb4 vbs vb4 vb_var ;
       p "  %s->tags[%s] = 0;" vb_var i_var ;
@@ -317,9 +321,9 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let msks = gensym "msks" in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       emit_store_data
-        (indent + 1) ips (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
+        (indent + 1) ips (vbs ^"->numElements") T.TIpv4 ip_var oc ;
       emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+        (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
       p "  %s->numElements ++;" vbs ;
       p "} else { /* CIDRv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
@@ -330,9 +334,9 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       let msk_vb = batch_type_of_structure T.TNum in
       p "  %s *%s = dynamic_cast<%s *>(%s->fields[1]);" msk_vb msks msk_vb vbs ;
       emit_store_data
-        (indent + 1) ips (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
+        (indent + 1) ips (vbs ^"->numElements") T.TIpv6 ip_var oc ;
       emit_store_data
-        (indent + 1) msks (vbs ^"->numElements") T.TNum (fld 1) oc ;
+        (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
       p "  %s->numElements ++;" vbs ;
       p "}"
 
