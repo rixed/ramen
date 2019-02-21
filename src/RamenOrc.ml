@@ -539,97 +539,97 @@ let rec emit_read_value_from_batch
    * structure: *)
   let batch_var = gensym "batch" in
   emit_get_vb indent batch_var rtyp orig_batch_var oc ;
-  let emit_read_array t len_var =
-    p "%s = caml_alloc(%s, 0);" res_var len_var ;
-    let idx_var = gensym "idx" in
-    p "for (uint64_t %s = 0; %s < %s; %s++) {"
-      idx_var idx_var len_var idx_var ;
-    let elmts_var = batch_var ^"->elements.get()" in
-    let elmt_idx_var = gensym "row" in
-    p "  uint64_t %s = %s->offsets[%s] + %s;"
-      elmt_idx_var batch_var row_var idx_var ;
-    emit_read_value_from_batch
-      (indent + 1) (depth + 1) elmts_var elmt_idx_var tmp_var t oc ;
-    p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
-    p "}"
-  and emit_read_boxed ops custom_sz =
-    (* See READ_BOXED in ringbuf/wrapper.c *)
-    p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
-    p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
-      res_var batch_var row_var custom_sz
-  and emit_read_unboxed_signed shift =
-    (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
-     * i16 are normal ints shifted all the way to the left. *)
-    p "%s = Val_long((intnat)%s->data[%s] << \
-                     (CHAR_BIT * sizeof(intnat) - %d - 1));"
-      res_var batch_var row_var shift
-  and emit_read_unboxed_unsigned typ_name =
-    (* Same as above, but we have to take care that liborc extended the sign
-     * of our unsigned value: *)
-    p "%s = Val_long((%s)%s->data[%s]);" res_var typ_name batch_var row_var
-  and emit_read_struct kts =
-    (* For structs, we build an OCaml tuple in the same order
-     * as that of the ORC fields: *)
-    p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
-    Enum.iteri (fun i (k, t) ->
-      p "/* Field %s */" k ;
-      (* Use our tmp var to store the result of reading the i-th field: *)
-      let field_var = gensym "field" in
-      let field_batch_var =
-        Printf.sprintf "%s->fields[%d]" batch_var i in
-      emit_get_vb indent field_var t field_batch_var oc ;
-      emit_read_value_from_batch
-        indent (depth + 1) field_var row_var tmp_var t oc ;
-      p "Store_field(%s, %d, %s);" res_var i tmp_var ;
-    ) kts
-  and emit_read_cidr ip_st =
-    (* Cf. emit_store_data for a description of the encoding *)
-    (* Result is a tuple with ip and mask: *)
-    p "%s = caml_alloc(2, 0);" res_var ;
-    let ips_var = Printf.sprintf "%s->fields[0]" batch_var in
-    let iptyp = T.make ~nullable:false ip_st in
-    (* Fetch the IP in tmp_var (when you do not understand why we cannot
-     * fetch directly into Field(res, 0) address, it's better if you stay
-     * away from this code) *)
-    emit_read_value_from_batch
-      indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
-    p "Store_field(%s, 0, %s);" res_var tmp_var ;
-    (* Same for the mask: *)
-    let msktyp = T.make ~nullable:false T.TNum in
-    emit_read_value_from_batch
-      indent (depth + 1) ips_var row_var tmp_var msktyp oc ;
-    p "Store_field(%s, 1, %s);" res_var tmp_var
-  and emit_case tag st =
-    let iptyp = T.make ~nullable:false st in
-    p "  case %d: /* %a */" tag T.print_structure st ;
-    let ips_var = gensym "ips" in
-    let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
-    emit_get_vb (indent + 2) ips_var iptyp chld_var oc ;
-    let offs_var = Printf.sprintf "%s->offsets[%s]" batch_var row_var in
-    emit_read_value_from_batch
-      (indent + 2) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
-    p "    %s = caml_alloc_small(1, %d);" res_var tag ;
-    p "    Field(%s, 0) = %s;" res_var tmp_var ;
-    p "    break;"
-  and emit_default typ_name =
-    p "  default: /* Invalid */" ;
-    p "    cerr << \"Invalid tag for %s: \" << %s->tags[%s] << \"\\n\";"
-      typ_name batch_var row_var ;
-    p "    assert(false);" ;  (* TODO: raise an OCaml exception *)
-    p "    break;"
-  and emit_read_i128 signed =
-    p "%s = caml_alloc_custom(&%s, 16, 0, 1);"
-      res_var (if signed then "int128_ops" else "uint128_ops") ;
-    let i128_var = gensym "i128" and i_var = gensym "i128" in
-    p "Int128 *%s = &%s->values[%s];" i128_var batch_var row_var ;
-    let std_typ = if signed then "int128_t" else "uint128_t" in
-    p "%s const %s =" std_typ i_var ;
-    p "  ((%s)%s->getHighBits() << 64%s) | (%s->getLowBits());"
-      std_typ i128_var (if signed then "U" else "") i128_var ;
-    p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
-  in
   let emit_read_nonnull indent =
     let p fmt = emit oc indent fmt in
+    let emit_read_array t len_var =
+      p "%s = caml_alloc(%s, 0);" res_var len_var ;
+      let idx_var = gensym "idx" in
+      p "for (uint64_t %s = 0; %s < %s; %s++) {"
+        idx_var idx_var len_var idx_var ;
+      let elmts_var = batch_var ^"->elements.get()" in
+      let elmt_idx_var = gensym "row" in
+      p "  uint64_t %s = %s->offsets[%s] + %s;"
+        elmt_idx_var batch_var row_var idx_var ;
+      emit_read_value_from_batch
+        (indent + 1) (depth + 1) elmts_var elmt_idx_var tmp_var t oc ;
+      p "  caml_modify(&Field(%s, %s), %s);" res_var idx_var tmp_var ;
+      p "}"
+    and emit_read_boxed ops custom_sz =
+      (* See READ_BOXED in ringbuf/wrapper.c *)
+      p "%s = caml_alloc_custom(&%s, %d, 0, 1);" res_var ops custom_sz ;
+      p "memcpy(Data_custom_val(%s), &%s->data[%s], %d);"
+        res_var batch_var row_var custom_sz
+    and emit_read_unboxed_signed shift =
+      (* See READ_UNBOXED_INT in ringbuf/wrapper.c, remembering than i8 and
+       * i16 are normal ints shifted all the way to the left. *)
+      p "%s = Val_long((intnat)%s->data[%s] << \
+                       (CHAR_BIT * sizeof(intnat) - %d - 1));"
+        res_var batch_var row_var shift
+    and emit_read_unboxed_unsigned typ_name =
+      (* Same as above, but we have to take care that liborc extended the sign
+       * of our unsigned value: *)
+      p "%s = Val_long((%s)%s->data[%s]);" res_var typ_name batch_var row_var
+    and emit_read_struct kts =
+      (* For structs, we build an OCaml tuple in the same order
+       * as that of the ORC fields: *)
+      p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
+      Enum.iteri (fun i (k, t) ->
+        p "/* Field %s */" k ;
+        (* Use our tmp var to store the result of reading the i-th field: *)
+        let field_var = gensym "field" in
+        let field_batch_var =
+          Printf.sprintf "%s->fields[%d]" batch_var i in
+        emit_get_vb indent field_var t field_batch_var oc ;
+        emit_read_value_from_batch
+          indent (depth + 1) field_var row_var tmp_var t oc ;
+        p "Store_field(%s, %d, %s);" res_var i tmp_var ;
+      ) kts
+    and emit_read_cidr ip_st =
+      (* Cf. emit_store_data for a description of the encoding *)
+      (* Result is a tuple with ip and mask: *)
+      p "%s = caml_alloc(2, 0);" res_var ;
+      let ips_var = Printf.sprintf "%s->fields[0]" batch_var in
+      let iptyp = T.make ~nullable:false ip_st in
+      (* Fetch the IP in tmp_var (when you do not understand why we cannot
+       * fetch directly into Field(res, 0) address, it's better if you stay
+       * away from this code) *)
+      emit_read_value_from_batch
+        indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
+      p "Store_field(%s, 0, %s);" res_var tmp_var ;
+      (* Same for the mask: *)
+      let msktyp = T.make ~nullable:false T.TNum in
+      emit_read_value_from_batch
+        indent (depth + 1) ips_var row_var tmp_var msktyp oc ;
+      p "Store_field(%s, 1, %s);" res_var tmp_var
+    and emit_case tag st =
+      let iptyp = T.make ~nullable:false st in
+      p "  case %d: /* %a */" tag T.print_structure st ;
+      let ips_var = gensym "ips" in
+      let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
+      emit_get_vb (indent + 2) ips_var iptyp chld_var oc ;
+      let offs_var = Printf.sprintf "%s->offsets[%s]" batch_var row_var in
+      emit_read_value_from_batch
+        (indent + 2) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
+      p "    %s = caml_alloc_small(1, %d);" res_var tag ;
+      p "    Field(%s, 0) = %s;" res_var tmp_var ;
+      p "    break;"
+    and emit_default typ_name =
+      p "  default: /* Invalid */" ;
+      p "    cerr << \"Invalid tag for %s: \" << %s->tags[%s] << \"\\n\";"
+        typ_name batch_var row_var ;
+      p "    assert(false);" ;  (* TODO: raise an OCaml exception *)
+      p "    break;"
+    and emit_read_i128 signed =
+      p "%s = caml_alloc_custom(&%s, 16, 0, 1);"
+        res_var (if signed then "int128_ops" else "uint128_ops") ;
+      let i128_var = gensym "i128" and i_var = gensym "i128" in
+      p "Int128 *%s = &%s->values[%s];" i128_var batch_var row_var ;
+      let std_typ = if signed then "int128_t" else "uint128_t" in
+      p "%s const %s =" std_typ i_var ;
+      p "  ((%s)%s->getHighBits() << 64%s) | (%s->getLowBits());"
+        std_typ i128_var (if signed then "U" else "") i128_var ;
+      p "memcpy(Data_custom_val(%s), &%s, 16);" res_var i_var
+    in
     match rtyp.T.structure with
     | T.TEmpty | T.TAny -> assert false
     | T.TNum ->
