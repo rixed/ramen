@@ -130,33 +130,33 @@ struct
 end
 
 let of_string s o =
-  let is_double_colon o had_none =
+  let is_double_colon o had_zeros =
     let r = s.[o] = ':' && o < String.length s - 1 && s.[o+1] = ':' in
-    if r && had_none then
+    if r && had_zeros then
       failwith "Cannot have several '::' in IPv6" ;
     r in
   let is_colon o =
     o < String.length s && s.[o] = ':' in
-  let rec loop had_none l prevs o =
-    if l >= 8 then had_none, l, prevs, o else
-    if o >= String.length s then had_none, l, prevs, o else
+  let rec loop had_zeros l prevs o =
+    if l >= 8 then had_zeros, l, prevs, o else
+    if o >= String.length s then had_zeros, l, prevs, o else
     let i, o = unsigned_of_hexstring s o in
     let l, prevs = l + 1, Some i :: prevs in
-    if o >= String.length s then had_none, l, prevs, o else
-    if is_double_colon o had_none then (
+    if o >= String.length s then had_zeros, l, prevs, o else
+    if is_double_colon o had_zeros then (
       loop true l (None :: prevs) (o + 2)
     ) else (
-      if is_colon o then loop had_none l prevs (o + 1)
-      else had_none, l, prevs, o
+      if is_colon o then loop had_zeros l prevs (o + 1)
+      else had_zeros, l, prevs, o
     ) in
-  let had_none, l, ns, o =
+  let had_zeros, l, ns, o =
     if is_double_colon o false then
       loop true 0 [ None ] (o + 2)
     else
       loop false 0 [] o
     in
   (* Check we either have 8 components or we had the double colon: *)
-  if (not had_none && l = 0) || l > (if had_none then 7 else 8) then
+  if (not had_zeros && l <> 8) || l > (if had_zeros then 7 else 8) then
     failwith "Invalid IPv6 address" ;
   (* Complete the None: *)
   let ip =
