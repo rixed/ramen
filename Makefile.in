@@ -381,18 +381,20 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	     "$$writer" write "$$orc" < "$$data" &&\
 	     "$$writer" read  "$$orc" > "$$csv" ;\
 	   ) then \
-	     echo "FAILURE: Cannot generate code for $$base" ;\
+	     echo "\033[1;31mFAILURE\033[0m: Cannot generate code for $$base" ;\
 	     failed="$$failed $$base" ;\
 	   else \
-	     if ! diff -q "$$data" "$$csv"; then \
-	       echo "FAILURE: $$data and $$csv differ:" ;\
+	     if diff -q "$$data" "$$csv"; then \
+	       echo "\033[1;32mSUCCESS\033[0m" ;\
+	     else \
+	       echo "\033[1;31mFAILURE\033[0m: $$data and $$csv differ:" ;\
 	       diff "$$data" "$$csv" ;\
 	       failed="$$failed $$base" ;\
 	     fi ;\
 	   fi ;\
 	 done ;\
 	 if test -n "$$failed"; then \
-	   echo "FAILURE:$$failed" ;\
+	   echo "\033[1;31mFAILURE\033[0m:$$failed" ;\
 	   exit 1 ;\
 	 fi
 
@@ -744,12 +746,12 @@ err-check: src/ramen bundle $(wildcard tests/errors/*.ramen) $(wildcard tests/er
 	  src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
 	  if ! diff -q $$f.err $$t ; then \
-	    echo "FAILURE: $$f" ;\
+	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    exit 1 ;\
 	  fi ;\
 	  $(RM) $$t ;\
 	done ;\
-	echo SUCCESS
+	echo "\033[1;32mSUCCESS\033[0m"
 
 RAMEN_ARCHIVIST_TESTS = $(wildcard tests/archivist/*.allocs)
 
@@ -761,11 +763,11 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	  d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
 	  src/ramen archivist --persist-dir $$d --no-stats --no-reconf --stdout ;\
 	  if ! diff -q $$f $$d/archivist/v*/allocs ; then \
-	    echo "FAILURE: $$f" ;\
+	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    exit 1 ;\
 	  fi ;\
 	done ;\
-	echo SUCCESS
+	echo "\033[1;32mSUCCESS\033[0m"
 
 # Installation
 
