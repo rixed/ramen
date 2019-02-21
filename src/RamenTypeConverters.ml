@@ -85,13 +85,15 @@ let float_of_string s o =
   let o = string_skip_blanks s o in
   (* FIXME: same without string copy (via C?) *)
   let s' = String.lchop ~n:o s in
-  Scanf.sscanf s' "%f%s" (fun f s'' ->
-    f, String.length s - String.length s'')
+  Scanf.sscanf s' "%f%n" (fun f n -> f, o + n)
 
 (*$= float_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatFloat.print BatInt.print))
-  (1.2, 3) (float_of_string "1.2" 0)
-  (1.2, 3) (float_of_string "1.2x" 0)
-  (1.2, 4) (float_of_string "x1.2y" 1)
+  (1.2, 3)  (float_of_string "1.2" 0)
+  (1.2, 3)  (float_of_string "1.2x" 0)
+  (1.2, 4)  (float_of_string "x1.2y" 1)
+  (-1.2, 5) (float_of_string "x-1.2y z" 1)
+  (-0.1, 6) (float_of_string "x-1e-1y z" 1)
+  (0.1, 5)  (float_of_string "x.1e0y z" 1)
 *)
 
 let rec integer_of_string p s o =
