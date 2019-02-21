@@ -376,13 +376,19 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	   writer="/tmp/$$base" ;\
 	   orc="/tmp/$$base.orc" ;\
 	   csv="/tmp/$$base.csv" ;\
-	   src/orc/orc_writer "$$writer" "$$typ" &&\
-	   "$$writer" write "$$orc" < "$$data" &&\
-	   "$$writer" read  "$$orc" > "$$csv" &&\
-	   if ! diff -q "$$data" "$$csv"; then \
-	     echo "FAILURE: $$data and $$csv differ:" ;\
-	     diff "$$data" "$$csv" ;\
+	   if ! (\
+	     src/orc/orc_writer "$$writer" "$$typ" &&\
+	     "$$writer" write "$$orc" < "$$data" &&\
+	     "$$writer" read  "$$orc" > "$$csv" ;\
+	   ) then \
+	     echo "FAILURE: Cannot generate code for $$base" ;\
 	     failed="$$failed $$base" ;\
+	   else \
+	     if ! diff -q "$$data" "$$csv"; then \
+	       echo "FAILURE: $$data and $$csv differ:" ;\
+	       diff "$$data" "$$csv" ;\
+	       failed="$$failed $$base" ;\
+	     fi ;\
 	   fi ;\
 	 done ;\
 	 if test -n "$$failed"; then \
