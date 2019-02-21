@@ -571,20 +571,58 @@ let rec emit_read_value_from_batch
         indent (depth + 1) field_var row_var tmp_var t oc ;
       p "Store_field(%s, %d, %s);" res_var i tmp_var ;
     ) kts
+  and emit_read_cidr ip_st =
+    (* Cf. emit_store_data for a description of the encoding *)
+    (* Result is a tuple with ip and mask: *)
+    p "%s = caml_alloc(2, 0);" res_var ;
+    let ips_var = Printf.sprintf "%s->fields[0]" batch_var in
+    let iptyp = T.make ~nullable:false ip_st in
+    (* Fetch the IP in tmp_var (when you do not understand why we cannot
+     * fetch directly into Field(res, 0) address, it's better if you stay
+     * away from this code) *)
+    emit_read_value_from_batch
+      indent (depth + 1) ips_var row_var tmp_var iptyp oc ;
+    p "Store_field(%s, 0, %s);" res_var tmp_var ;
+    (* Same for the mask: *)
+    let msktyp = T.make ~nullable:false T.TNum in
+    emit_read_value_from_batch
+      indent (depth + 1) ips_var row_var tmp_var msktyp oc ;
+    p "Store_field(%s, 1, %s);" res_var tmp_var
+  and emit_case tag st =
+    let iptyp = T.make ~nullable:false st in
+    p "  case %d: /* %a */" tag T.print_structure st ;
+    let ips_var = gensym "ips" in
+    let chld_var = Printf.sprintf "%s->children[%d]" batch_var tag in
+    emit_get_vb (indent + 2) ips_var iptyp chld_var oc ;
+    let offs_var = Printf.sprintf "%s->offsets[%s]" batch_var row_var in
+    emit_read_value_from_batch
+      (indent + 2) (depth + 1) ips_var offs_var tmp_var iptyp oc ;
+    p "    %s = caml_alloc_small(1, %d);" res_var tag ;
+    p "    Field(%s, 0) = %s;" res_var tmp_var ;
+    p "    break;"
+  and emit_default typ_name =
+    p "  default: /* Invalid */" ;
+    p "    cerr << \"Invalid tag for %s: \" << %s->tags[%s] << \"\\n\";"
+      typ_name batch_var row_var ;
+    p "    assert(false);" ;  (* TODO: raise an OCaml exception *)
+    p "    break;"
   in
   let emit_read_nonnull indent =
     let p fmt = emit oc indent fmt in
     match rtyp.T.structure with
+    | T.TEmpty | T.TAny -> assert false
+    | T.TNum ->
+        p "%s = Val_long(%s->data[%s]);" res_var batch_var row_var
     | T.TI8 -> emit_read_unboxed 8
     | T.TI16 -> emit_read_unboxed 16
     | T.TI32 -> emit_read_boxed "caml_int32_ops" 4
     | T.TI64 -> emit_read_boxed "caml_int64_ops" 8
-    | T.TI128 -> emit_read_boxed "caml_int128_ops" 16
+    | T.TI128 -> emit_read_boxed ~data:"values" "int128_ops" 16
     | T.TU8 -> emit_read_unboxed 0
     | T.TU16 -> emit_read_unboxed 0
-    | T.TU32 -> emit_read_boxed "uint32_ops" 4
-    | T.TU64 -> emit_read_boxed "uint64_ops" 8
-    | T.TU128 -> emit_read_boxed "uint128_ops" 16
+    | T.TU32 | T.TIpv4 -> emit_read_boxed "uint32_ops" 4
+    | T.TU64 | T.TEth -> emit_read_boxed ~data:"values" "uint64_ops" 8
+    | T.TU128 | T.TIpv6 -> emit_read_boxed ~data:"values" "uint128_ops" 16
     | T.TBool ->
         p "%s = Val_bool(%s->data[%s]);" res_var batch_var row_var
     | T.TFloat ->
@@ -592,6 +630,24 @@ let rec emit_read_value_from_batch
     | T.TString ->
         p "%s = caml_alloc_initialized_string(%s->length[%s], %s->data[%s]);"
           res_var batch_var row_var batch_var row_var
+    | T.TIp ->
+        (* Cf. emit_store_data for a description of the encoding *)
+        p "switch (%s->tags[%s]) {" batch_var row_var ;
+        emit_case 0 T.TIpv4 ;
+        emit_case 1 T.TIpv6 ;
+        emit_default "TIp" ;
+        p "}"
+    | T.TCidrv4 ->
+        emit_read_cidr T.TIpv4
+    | T.TCidrv6 ->
+        emit_read_cidr T.TIpv6
+    | T.TCidr ->
+        (* Cf. emit_store_data for a description of the encoding *)
+        p "switch (%s->tags[%s]) {" batch_var row_var ;
+        emit_case 0 T.TCidrv4 ;
+        emit_case 1 T.TCidrv6 ;
+        emit_default "TCidr" ;
+        p "}"
     | T.TList t ->
         (* The [elements] field will have all list items concatenated and
          * the [offsets] data buffer at row [row_var] will have the row
@@ -625,9 +681,6 @@ let rec emit_read_value_from_batch
     | T.TRecord kts ->
         Array.enum kts |>
         emit_read_struct
-    | _ ->
-        p "cerr << \"This type is not supported\\n\";" ;
-        p "assert(false);"
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no
