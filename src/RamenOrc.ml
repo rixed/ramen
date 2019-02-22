@@ -348,6 +348,10 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
 let iter_scalars indent oc rtyp batch_var val_var field_name f =
   let rec loop indent depth rtyp batch_var val_var field_name =
     let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+    let is_list =
+      match rtyp.T.structure with
+      | T.TList _ | T.TVec _ -> true
+      | _ -> false in
     match val_var with
     | Some v when rtyp.T.nullable ->
         p "if (Is_block(%s)) { /* Not null */" v ;
@@ -357,7 +361,7 @@ let iter_scalars indent oc rtyp batch_var val_var field_name f =
         let rtyp' = { rtyp with nullable = false } in
         loop (indent + 1) depth rtyp' batch_var (Some non_null) field_name ;
         p "} else { /* Null */" ;
-        f (indent + 1) rtyp batch_var ~is_list:false None field_name ;
+        f (indent + 1) rtyp batch_var ~is_list None field_name ;
         p "}"
     | _ ->
         let iter_struct tuple_with_1_element kts =
@@ -391,7 +395,7 @@ let iter_scalars indent oc rtyp batch_var val_var field_name f =
         | T.TIpv4 | T.TIpv6 | T.TIp
         | T.TCidrv4 | T.TCidrv6 | T.TCidr
         | T.TNum | T.TEth | T.TFloat | T.TString ->
-            f indent rtyp batch_var ~is_list:false val_var field_name
+            f indent rtyp batch_var ~is_list val_var field_name
         | T.TTuple ts ->
             Array.enum ts |>
             Enum.mapi (fun i t -> string_of_int i, t) |>
@@ -404,7 +408,7 @@ let iter_scalars indent oc rtyp batch_var val_var field_name f =
              * that's how it looks like for ORC: each new list value is
              * added to the [offsets] vector, while the list items are on
              * the side pushed to the global [elements] vector-batch. *)
-            f indent t batch_var ~is_list:true val_var field_name)
+            f indent t batch_var ~is_list val_var field_name)
   in
   loop indent 0 rtyp batch_var val_var field_name
 
@@ -442,7 +446,13 @@ let rec emit_add_value_to_batch
       | None -> (* When the value is NULL *)
           (* liborc initializes hasNulls to false and notNull to all ones: *)
           p "  %s->hasNulls = true;" batch_var ;
-          p "  %s->notNull[%s] = 0;" batch_var i_var
+          p "  %s->notNull[%s] = 0;" batch_var i_var ;
+          if is_list then (
+            (* Regardless of the value being NULL or not, when we have a
+             * list we must initialize the offsets value. *)
+            p "  %s->offsets[%s + 1] = %s->offsets[%s];"
+              batch_var i_var batch_var i_var
+          )
       | Some val_var ->
           if is_list then (
             (* For lists, our value is still the list and [batch_var] is

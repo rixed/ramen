@@ -1,0 +1,4 @@
+{
+  nullable = true;
+  structure = TList { structure = TString }
+}
