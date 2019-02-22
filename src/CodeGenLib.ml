@@ -17,7 +17,7 @@ let parameter_value ~def parser name =
   | exception Not_found -> def
   | s ->
       try
-        check_parse_all (String.length s) (parser s)
+        check_parse_all s (parser s)
       with e ->
         let what =
           Printf.sprintf "Cannot parse value %s for parameter %s: %s"

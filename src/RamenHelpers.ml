@@ -262,9 +262,31 @@ let string_is_term fins s o =
   false (string_is_term [';';','] "x,x" 2)
 *)
 
-let check_parse_all l (x, o) =
+let abbrev len s =
+  if String.length s <= len then s else
+  String.sub s 0 (len-3) ^"..."
+
+let string_skip_blanks_until c s o =
+  let rec loop o =
+    if o >= String.length s then raise Not_found ;
+    if s.[o] = c then o else
+    if Char.is_whitespace s.[o] then loop (o + 1) else
+    Printf.sprintf "Unexpected %C while looking for %C at offset %d"
+      s.[o] c o |>
+    failwith in
+  loop o
+
+let rec string_skip_blanks s o =
+  if o < String.length s && Char.is_whitespace s.[o] then
+    string_skip_blanks s (o + 1)
+  else o
+
+let check_parse_all s (x, o) =
+  let l = String.length s in
+  let o = string_skip_blanks s o in
   if o = l then x else
-    Printf.sprintf "Garbage at offset %d/%d" o l |>
+    Printf.sprintf "Junk at end of string (offset %d/%d): %S"
+      o l (String.lchop ~n:o s |> abbrev 10) |>
     failwith
 
 let looks_like_true s =
@@ -1280,10 +1302,6 @@ let save_in_file ~compute ~serialize ~deserialize fname =
       String.print oc (serialize v) ;
       v)
 
-let abbrev len s =
-  if String.length s <= len then s else
-  String.sub s 0 (len-3) ^"..."
-
 let abbrev_path ?(max_length=20) ?(known_prefix="") path =
   let known_prefix =
     if String.length known_prefix > 0 &&
@@ -1632,20 +1650,6 @@ let unsigned_of_hexstring s o =
   (0x4F7, 4)  (unsigned_of_hexstring "x4F7y" 1)
   (0x8329, 4) (unsigned_of_hexstring "8329" 0)
 *)
-
-let string_skip_blanks_until c s o =
-  let rec loop o =
-    if o >= String.length s then raise Not_found ;
-    if s.[o] = c then o else
-    if Char.is_whitespace s.[o] then loop (o + 1) else
-    Printf.sprintf "Unexpected %C while looking for %C" s.[o] c |>
-    failwith in
-  loop o
-
-let rec string_skip_blanks s o =
-  if o < String.length s && Char.is_whitespace s.[o] then
-    string_skip_blanks s (o + 1)
-  else o
 
 let fail_with_context ctx f =
   try f () with e ->

@@ -97,7 +97,7 @@ let main =
       p "open RamenLog" ;
       p "" ;
       p "let value_of_string str =" ;
-      p "  check_parse_all (String.length str) (" ;
+      p "  check_parse_all str (" ;
       let emit_is_null fins str_var offs_var oc =
         Printf.fprintf oc
           "if looks_like_null ~offs:%s %s &&

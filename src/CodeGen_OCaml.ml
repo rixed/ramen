@@ -177,9 +177,6 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
       p "let offs_ = string_skip_blanks_until '[' %s %s + 1 in"
         str_var offs_var ;
       p "let lst_, offs_ = read_next_ [] offs_ in" ;
-      p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
-      p "if offs_ < String.length %s then" str_var ;
-      p "  Printf.sprintf \"Junk at end of string\" |> failwith ;" ;
       p "Array.of_list (List.rev lst_), offs_" in
     let emit_parse_tuple indent ts oc =
       (* Look for '(' *)
@@ -2294,7 +2291,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
   List.iteri (fun i field_typ ->
     let sep = if i < num_fields - 1 then "," else "" in
     let str_var = "strs_.("^ string_of_int i ^")" in
-    p "    (try check_parse_all (String.length %s) (" str_var ;
+    p "    (try check_parse_all %s (" str_var ;
     let emit_is_null fins str_var offs_var oc =
       Printf.fprintf oc
         "if string_sub_eq %s %s %S 0 %d && \
