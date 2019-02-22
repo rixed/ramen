@@ -436,13 +436,11 @@ let rec emit_add_value_in_batch
         (if is_list then "s" else "")
         (if field_name <> "" then field_name else "root value")
         T.print_typ rtyp ;
-      let vb = gensym "vb" in
       (match val_var with
       | None -> (* When the value is NULL *)
           (* liborc initializes hasNulls to false and notNull to all ones: *)
-          emit_get_vb (indent + 1) vb rtyp batch_var oc ;
-          p "  %s->hasNulls = true;" vb ;
-          p "  %s->notNull[%s] = 0;" vb i_var
+          p "  %s->hasNulls = true;" batch_var ;
+          p "  %s->notNull[%s] = 0;" batch_var i_var
       | Some val_var ->
           if is_list then (
             (* For lists, our value is still the list and [batch_var] is
@@ -451,6 +449,7 @@ let rec emit_add_value_in_batch
              * [batch_var->offsets(`i_var)], and then append the actual list
              * values to [batch_var->elements]. But as those values can have
              * any type including a compound type, we must recurse. *)
+            let vb = gensym "vb" in
             emit_get_vb
               (indent + 1) vb rtyp (batch_var ^"->elements.get()") oc ;
             let bi_lst = gensym "bi_lst" in
@@ -474,9 +473,8 @@ let rec emit_add_value_in_batch
             p "  %s->offsets[%s + 1] = %s + %s;"
               batch_var i_var bi_lst idx_var
           ) else (
-            emit_get_vb (indent + 1) vb rtyp batch_var oc ;
             emit_store_data
-              (indent + 1) vb i_var rtyp.T.structure val_var oc
+              (indent + 1) batch_var i_var rtyp.T.structure val_var oc
           )
       ) ;
       p "}")
@@ -487,8 +485,7 @@ let rec emit_add_value_in_batch
  * think of any way those counters would not share the same value. Therefore
  * we have to copy [root->numElements], also in [bi], in any other
  * subvectors. *)
-let rec emit_set_numElements
-          indent rtyp batch_var i_var field_name oc =
+let emit_set_numElements indent rtyp batch_var i_var field_name oc =
   let p fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
   iter_scalars indent ~skip_root:true oc rtyp batch_var None field_name
     (fun indent _rtyp batch_var ~is_list _val_var field_name ->
