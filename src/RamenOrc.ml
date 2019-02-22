@@ -256,6 +256,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "%s->values[%s] = Int128((int64_t)(%s >> 64U), (int64_t)%s);"
         vb_var i_var tmp_var tmp_var
   | T.TString ->
+      p "assert(String_tag == Tag_val(%s));" val_var ;
       p "%s->data[%s] = %t;" vb_var i_var (emit_conv_of_ocaml st val_var) ;
       p "%s->length[%s] = caml_string_length(%s);" vb_var i_var val_var
   | T.TIp ->
@@ -274,14 +275,14 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
       emit_store_data
         (indent + 1) vbs (vbs ^"->numElements") T.TIpv4 (fld 0) oc ;
-      p "  %s->numElements ++;" vbs ;
+      p "  %s->numElements++;" vbs ;
       p "} else { /* IPv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
       p "  %s->offsets[%s] = %s->numElements;" vb_var i_var vbs ;
       emit_store_data
         (indent + 1) vbs (vbs ^"->numElements") T.TIpv6 (fld 0) oc ;
-      p "  %s->numElements ++;" vbs ;
+      p "  %s->numElements++;" vbs ;
       p "}"
   | T.TCidrv4 ->
       (* A structure of IPv4 and mask. Write each field recursively. *)
@@ -324,7 +325,7 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
         (indent + 1) ips (vbs ^"->numElements") T.TIpv4 ip_var oc ;
       emit_store_data
         (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
-      p "  %s->numElements ++;" vbs ;
+      p "  %s->numElements++;" vbs ;
       p "} else { /* CIDRv6 */" ;
       p "  %s *%s = dynamic_cast<%s *>(%s->children[1]);" vb6 vbs vb6 vb_var ;
       p "  %s->tags[%s] = 1;" vb_var i_var ;
@@ -337,15 +338,14 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
         (indent + 1) ips (vbs ^"->numElements") T.TIpv6 ip_var oc ;
       emit_store_data
         (indent + 1) msks (vbs ^"->numElements") T.TNum msk_var oc ;
-      p "  %s->numElements ++;" vbs ;
+      p "  %s->numElements++;" vbs ;
       p "}"
 
 (* Helper to call a function [f] on every scalar subtypes of the given Ramen
  * type [rtyp], while providing the corresponding [batch_var] (C++ expression
  * holding the ORC batch) and [val_var] (C++ expression holding the OCaml
  * value), and also [field_name] for cosmetics) *)
-let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
-                 field_name f =
+let iter_scalars indent oc rtyp batch_var val_var field_name f =
   let rec loop indent depth rtyp batch_var val_var field_name =
     let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
     match val_var with
@@ -357,11 +357,10 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
         let rtyp' = { rtyp with nullable = false } in
         loop (indent + 1) depth rtyp' batch_var (Some non_null) field_name ;
         p "} else { /* Null */" ;
-        if depth > 0 || not skip_root then
-          f (indent + 1) rtyp batch_var ~is_list:false None field_name ;
+        f (indent + 1) rtyp batch_var ~is_list:false None field_name ;
         p "}"
     | _ ->
-        let iter_struct tuple_with_1_element =
+        let iter_struct tuple_with_1_element kts =
           Enum.iteri (fun i (k, t) ->
             p "{ /* Structure/Tuple item %s */" k ;
             let btyp = batch_type_of_structure t.T.structure in
@@ -373,11 +372,15 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
                 (* OCaml has no such tuples. Value is then unboxed. *)
                 if tuple_with_1_element then v
                 else Printf.sprintf "Field(%s, %d)" v i) val_var
-            and field_name =
+            and field_name' =
               if field_name = "" then k else field_name ^"."^ k in
-            loop (indent + 1) (depth + 1) t arr_item val_var field_name ;
-            p "}"
-          ) in
+            loop (indent + 1) (depth + 1) t arr_item val_var field_name' ;
+            p "}" ;
+          ) kts ;
+          (* We are not going to call [f] on the record itself (only on its
+           * fields) so we have to increment numElements here: *)
+          p "%s->numElements++;" batch_var
+        in
         (match rtyp.T.structure with
         | T.TEmpty | T.TAny ->
             assert false
@@ -388,8 +391,7 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
         | T.TIpv4 | T.TIpv6 | T.TIp
         | T.TCidrv4 | T.TCidrv6 | T.TCidr
         | T.TNum | T.TEth | T.TFloat | T.TString ->
-            if depth > 0 || not skip_root then
-              f indent rtyp batch_var ~is_list:false val_var field_name
+            f indent rtyp batch_var ~is_list:false val_var field_name
         | T.TTuple ts ->
             Array.enum ts |>
             Enum.mapi (fun i t -> string_of_int i, t) |>
@@ -427,7 +429,7 @@ let emit_get_vb indent vb_var rtyp batch_var oc =
 
 (* Write a single OCaml value [val_var] of the given RamenType into the
  * ColumnVectorBatch [batch_var]: *)
-let rec emit_add_value_in_batch
+let rec emit_add_value_to_batch
           indent val_var batch_var i_var rtyp field_name oc =
   iter_scalars indent oc rtyp batch_var val_var field_name
     (fun indent rtyp batch_var ~is_list val_var field_name ->
@@ -458,16 +460,14 @@ let rec emit_add_value_in_batch
             (* FIXME: handle arrays of unboxed values *)
             let idx_var = gensym "idx" in
             p "  unsigned %s;" idx_var ;
-            p "  for (%s = 0; %s < Wosize_val(%s); %s ++) {"
+            p "  for (%s = 0; %s < Wosize_val(%s); %s++) {"
               idx_var idx_var val_var idx_var ;
             let v_lst = gensym "v_lst" in
             p "    value %s = Field(%s, %s);" v_lst val_var idx_var ;
-            emit_add_value_in_batch
+            emit_add_value_to_batch
               (indent + 2) (Some v_lst) vb (bi_lst ^"+"^ idx_var) rtyp
               (field_name ^".elmt") oc ;
             p "  }" ;
-            (* Must set numElements of the list itself: *)
-            p "  %s->numElements += %s;" vb idx_var ;
             (* Liborc also expects us to set the offsets of the next element
              * in case this one is the last (offsets size is capa+1) *)
             p "  %s->offsets[%s + 1] = %s + %s;"
@@ -477,25 +477,9 @@ let rec emit_add_value_in_batch
               (indent + 1) batch_var i_var rtyp.T.structure val_var oc
           )
       ) ;
+      (* Also increase numElements: *)
+      p "  %s->numElements++;" batch_var ;
       p "}")
-
-(* Now let's turn to set_numElements_recursively, which sets the numElements
- * count in all involved vectors beside the root one.  It seams unfortunate
- * that there are one count per vector instead of a single one as I cannot
- * think of any way those counters would not share the same value. Therefore
- * we have to copy [root->numElements], also in [bi], in any other
- * subvectors. *)
-let emit_set_numElements indent rtyp batch_var i_var field_name oc =
-  let p fmt = Printf.fprintf oc ("%s"^^fmt) (indent_of indent) in
-  iter_scalars indent ~skip_root:true oc rtyp batch_var None field_name
-    (fun indent _rtyp batch_var ~is_list _val_var field_name ->
-      (* We do not have anything to do for a list beyond setting its
-       * own numElemebnts (ie number of offsets). *)
-      ignore is_list ;
-      p "{ /* Set numElements for %s */\n" field_name ;
-      emit_get_vb (indent + 1) "vb" rtyp batch_var oc ;
-      p "  vb->numElements = %s;\n" i_var ;
-      p "}\n")
 
 (* Generate an OCaml callable function named [func_name] that receives a
  * "handler" and an OCaml value of a given type [rtyp] and batch it.
@@ -509,10 +493,8 @@ let emit_write_value func_name rtyp oc =
   p "  LazyWriter *handler = Handler_val(hder_);" ;
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
-  p "  uint64_t const bi = root->numElements;" ;
-  emit_add_value_in_batch 1 (Some "v_") "root" "bi" rtyp "" oc ;
-  p "  if (++root->numElements >= root->capacity) {" ;
-  emit_set_numElements 2 rtyp "root" "bi" "" oc ;
+  emit_add_value_to_batch 1 (Some "v_") "root" "root->numElements" rtyp "" oc ;
+  p "  if (root->numElements >= root->capacity) {" ;
   p "    handler->flush_batch(true);" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
   p "  }" ;
@@ -777,7 +759,7 @@ let emit_read_values func_name rtyp oc =
   p "               << \": to_be_printed\\n\";" ;
   p "        }" ;
   p "      }" ;
-  p "      num_lines ++;" ;
+  p "      num_lines++;" ;
   p "    }" ;
   p "  }" ;
   p "  // Return the number of lines and errors:" ;
