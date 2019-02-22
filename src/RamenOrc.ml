@@ -396,7 +396,7 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
             iter_struct (Array.length ts = 1)
         | T.TRecord kts ->
             (* FIXME: we should not store private fields *)
-            Array.enum kts |> iter_struct false
+            Array.enum kts |> iter_struct (Array.length kts = 1)
         | T.TList t | T.TVec (_, t) ->
             (* Regardless of [t], we treat a list as a "scalar". because
              * that's how it looks like for ORC: each new list value is
@@ -712,7 +712,7 @@ let rec emit_read_value_from_batch
         emit_read_struct (Array.length ts = 1)
     | T.TRecord kts ->
         Array.enum kts |>
-        emit_read_struct false
+        emit_read_struct (Array.length kts = 1)
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no
