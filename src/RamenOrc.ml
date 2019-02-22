@@ -361,7 +361,7 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
           f (indent + 1) rtyp batch_var ~is_list:false None field_name ;
         p "}"
     | _ ->
-        let iter_struct =
+        let iter_struct tuple_with_1_element =
           Enum.iteri (fun i (k, t) ->
             p "{ /* Structure/Tuple item %s */" k ;
             let btyp = batch_type_of_structure t.T.structure in
@@ -370,7 +370,9 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
               btyp arr_item btyp batch_var i ;
             let val_var =
               Option.map (fun v ->
-                Printf.sprintf "Field(%s, %d)" v i) val_var
+                (* OCaml has no such tuples. Value is then unboxed. *)
+                if tuple_with_1_element then v
+                else Printf.sprintf "Field(%s, %d)" v i) val_var
             and field_name =
               if field_name = "" then k else field_name ^"."^ k in
             loop (indent + 1) (depth + 1) t arr_item val_var field_name ;
@@ -391,10 +393,10 @@ let iter_scalars indent ?(skip_root=false) oc rtyp batch_var val_var
         | T.TTuple ts ->
             Array.enum ts |>
             Enum.mapi (fun i t -> string_of_int i, t) |>
-            iter_struct
+            iter_struct (Array.length ts = 1)
         | T.TRecord kts ->
             (* FIXME: we should not store private fields *)
-            Array.enum kts |> iter_struct
+            Array.enum kts |> iter_struct false
         | T.TList t | T.TVec (_, t) ->
             (* Regardless of [t], we treat a list as a "scalar". because
              * that's how it looks like for ORC: each new list value is
@@ -570,10 +572,12 @@ let rec emit_read_value_from_batch
       (* Same as above, but we have to take care that liborc extended the sign
        * of our unsigned value: *)
       p "%s = Val_long((%s)%s->data[%s]);" res_var typ_name batch_var row_var
-    and emit_read_struct kts =
+    and emit_read_struct tuple_with_1_element kts =
       (* For structs, we build an OCaml tuple in the same order
-       * as that of the ORC fields: *)
-      p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
+       * as that of the ORC fields; unless that's a tuple with onle 1
+       * element, in which case we return directly the unboxed var. *)
+      if not tuple_with_1_element then
+        p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
       Enum.iteri (fun i (k, t) ->
         p "/* Field %s */" k ;
         (* Use our tmp var to store the result of reading the i-th field: *)
@@ -583,7 +587,10 @@ let rec emit_read_value_from_batch
         emit_get_vb indent field_var t field_batch_var oc ;
         emit_read_value_from_batch
           indent (depth + 1) field_var row_var tmp_var t oc ;
-        p "Store_field(%s, %d, %s);" res_var i tmp_var ;
+        if tuple_with_1_element then
+          p "%s = %s; // Single element tuple is unboxed" res_var tmp_var
+        else
+          p "Store_field(%s, %d, %s);" res_var i tmp_var
       ) kts
     and emit_read_cidr ip_st =
       (* Cf. emit_store_data for a description of the encoding *)
@@ -705,10 +712,10 @@ let rec emit_read_value_from_batch
     | T.TTuple ts ->
         Array.enum ts |>
         Enum.mapi (fun i t -> string_of_int i, t) |>
-        emit_read_struct
+        emit_read_struct (Array.length ts = 1)
     | T.TRecord kts ->
         Array.enum kts |>
-        emit_read_struct
+        emit_read_struct false
   in
   (* If the type is nullable, check the null column (we can do this even
    * before getting the proper column vector. Convention: if we have no
