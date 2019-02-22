@@ -452,7 +452,7 @@ let rec emit_add_value_in_batch
             emit_get_vb
               (indent + 1) vb rtyp (batch_var ^"->elements.get()") oc ;
             let bi_lst = gensym "bi_lst" in
-            p "  auto const %s = %s->numElements;" bi_lst vb ;
+            p "  uint64_t const %s = %s->numElements;" bi_lst vb ;
             p "  %s->offsets[%s] = %s;" batch_var i_var bi_lst ;
             (* FIXME: handle arrays of unboxed values *)
             p "  unsigned i;" ;
@@ -688,12 +688,11 @@ let rec emit_read_value_from_batch
         p "  %s->offsets[%s + 1] - %s->offsets[%s];"
           batch_var row_var batch_var row_var ;
         p "if (%s < 0) {" len_var ;
-        p "  cerr << \"Invalid list of \" << %s << \" entries at row \""
-          len_var ;
-        p "       << %s << \"\\n\";" row_var ;
-        p "  cerr << \"offsets are \" << %s->offsets[%s]"
+        p "  cerr << \"Invalid list of \" << %s << \" entries at row \" << %s"
+          len_var row_var ;
+        p "       << \"(offsets are \" << %s->offsets[%s]"
           batch_var row_var ;
-        p "       << \" and then \" << %s->offsets[%s + 1] << \"\\n\";"
+        p "       << \" and then \" << %s->offsets[%s + 1] << \")\\n\";"
           batch_var row_var ;
         (* TODO: raise an OCaml exception instead *)
         p "  assert(false);" ;
