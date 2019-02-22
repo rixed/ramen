@@ -455,20 +455,22 @@ let rec emit_add_value_in_batch
             p "  uint64_t const %s = %s->numElements;" bi_lst vb ;
             p "  %s->offsets[%s] = %s;" batch_var i_var bi_lst ;
             (* FIXME: handle arrays of unboxed values *)
-            p "  unsigned i;" ;
-            p "  for (i=0; i < Wosize_val(%s); i++) {" val_var ;
+            let idx_var = gensym "idx" in
+            p "  unsigned %s;" idx_var ;
+            p "  for (%s = 0; %s < Wosize_val(%s); %s ++) {"
+              idx_var idx_var val_var idx_var ;
             let v_lst = gensym "v_lst" in
-            p "    value %s = Field(%s, i);" v_lst val_var ;
+            p "    value %s = Field(%s, %s);" v_lst val_var idx_var ;
             emit_add_value_in_batch
-              (indent + 2) (Some v_lst) vb (bi_lst^"+i") rtyp
+              (indent + 2) (Some v_lst) vb (bi_lst ^"+"^ idx_var) rtyp
               (field_name ^".elmt") oc ;
             p "  }" ;
             (* Must set numElements of the list itself: *)
-            p "  %s->numElements += i;" vb ;
+            p "  %s->numElements += %s;" vb idx_var ;
             (* Liborc also expects us to set the offsets of the next element
              * in case this one is the last (offsets size is capa+1) *)
-            p "  %s->offsets[%s + 1] = %s + i;"
-              batch_var i_var bi_lst
+            p "  %s->offsets[%s + 1] = %s + %s;"
+              batch_var i_var bi_lst idx_var
           ) else (
             emit_get_vb (indent + 1) vb rtyp batch_var oc ;
             emit_store_data
