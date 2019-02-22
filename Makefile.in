@@ -381,7 +381,7 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	     "$$writer" write "$$orc" < "$$data" &&\
 	     "$$writer" read  "$$orc" > "$$csv" ;\
 	   ) then \
-	     echo "\033[1;31mFAILURE\033[0m: Cannot generate code for $$base" ;\
+	     echo "\033[1;31mFAILURE\033[0m: Cannot create CSV file for $$base" ;\
 	     failed="$$failed $$base" ;\
 	   else \
 	     if diff -q "$$data" "$$csv"; then \
