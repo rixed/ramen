@@ -478,7 +478,7 @@ let rec conv_from_to
             ^\"]\")"
         (conv_from_to ~string_not_null ~nullable:t.nullable
                       t.structure TString)
-        (if t.nullable then
+        (if not string_not_null && t.nullable then
            Printf.sprintf "RamenNullable.default %S" string_of_null else "")
     | TTuple ts, TString ->
       let i = ref 0 in
