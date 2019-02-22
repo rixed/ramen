@@ -68,9 +68,9 @@ all: $(INSTALLED) bundle
 # Generic rules
 
 .SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all \
+.PHONY: clean clean-temp all dep bundle doc deb tarball \
         check func-check unit-check cli-check err-check arc-check orc-check \
-        dep install uninstall reinstall bundle doc deb tarball \
+        install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
 %.cmi: %.mli
@@ -361,7 +361,7 @@ src/orc/orc_writer: \
 		src/libringbuf.a src/libcollectd.a \
 		src/libnetflow.a src/liborchelp.a \
 		src/liborchelp.a \
-		bundle
+		bundle/date
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -665,7 +665,7 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	tests/fixtures/n123.ramen
 
-%.x: %.ramen bundle src/ramen src/codegen.cmxa
+%.x: %.ramen bundle/date src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
 	@src/ramen compile --bundle=bundle -L . $< -o $@
 
@@ -739,7 +739,7 @@ tests/changed.success: tests/changed.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
-err-check: src/ramen bundle $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
+err-check: src/ramen bundle/date $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
