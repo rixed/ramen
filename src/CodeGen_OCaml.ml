@@ -452,8 +452,8 @@ let rec conv_from_to
       Printf.fprintf oc "(fun v_ -> Array.map (%t) v_)"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
-     | TList t_from, TList t_to
-          when nullable && t_from.nullable && not t_to.nullable ->
+    | TList t_from, TList t_to
+         when nullable && t_from.nullable && not t_to.nullable ->
       Printf.fprintf oc
         "(fun v_ -> Array.map (function \
             | Null -> raise ImNull \
