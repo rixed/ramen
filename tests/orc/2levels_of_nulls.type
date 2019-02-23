@@ -1,0 +1,9 @@
+{
+  nullable = true;
+  structure = TRecord [|
+    ("name", {
+      nullable = true;
+      structure = TTuple [| { structure = TString } |] 
+    })
+  |]
+}

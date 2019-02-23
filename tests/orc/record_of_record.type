@@ -1,0 +1,9 @@
+{
+  structure = TRecord [|
+    ("name", { structure = TRecord [|
+      ("first", { structure = TString });
+      ("last", { structure = TString })
+    |] });
+    ("dates", { structure = TList { structure = TI16 } })
+  |]
+}

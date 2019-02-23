@@ -1,0 +1,20 @@
+{
+  nullable = true;
+  structure = TRecord [|
+    ("name", {
+      structure = TRecord [|
+        ("first", { structure = TList { structure = TString }});
+        ("last", { structure = TList { structure = TString } ;
+                   nullable = true })
+      |] });
+    ("birthdate", {
+      structure = TRecord [|
+        ("year", { structure = TI32 });
+        ("month", { structure = TTuple [|
+          { structure = TString };
+          { structure = TU8 };
+        |] })
+      |]
+    })
+  |]
+}

@@ -1,5 +1,3 @@
 {
-  structure = TTuple [|
-    { structure = TU8 }
-  |]
+  structure = TTuple [| { structure = TU8 } |]
 }

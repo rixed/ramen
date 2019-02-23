@@ -1,0 +1,1 @@
+{ structure = TList { structure = TString } }

@@ -1,0 +1,19 @@
+{
+  nullable = true;
+  structure = TList {
+    structure = TList {
+      structure = TList {
+        structure = TRecord [|
+          ("fst", { structure = TU8 ; nullable = true });
+          ("snd", {
+            structure = TList {
+              structure = TRecord [|
+                ("trd", { structure = TU8 })
+              |]
+            }
+          });
+        |]
+      }
+    }
+  }
+}

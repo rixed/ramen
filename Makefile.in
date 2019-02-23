@@ -349,6 +349,7 @@ MOREFLAGS += \
 	-cclib -lhdfspp_static \
 	-cclib -llz4 \
 	-cclib -lprotobuf \
+	-cclib -lzstd \
 	-cclib -lsnappy \
 	-cclib -lz \
 	-cclib -lsasl2 \

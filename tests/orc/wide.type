@@ -1,0 +1,3 @@
+{
+  structure = TList { structure = TU8 ; nullable = true }
+}

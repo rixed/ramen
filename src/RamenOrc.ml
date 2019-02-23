@@ -7,6 +7,8 @@ open Batteries
 open RamenHelpers
 module T = RamenTypes
 
+let debug = false
+
 (*$inject
    module T = RamenTypes
 *)
@@ -341,77 +343,6 @@ let rec emit_store_data indent vb_var i_var st val_var oc =
       p "  %s->numElements++;" vbs ;
       p "}"
 
-(* Helper to call a function [f] on every scalar subtypes of the given Ramen
- * type [rtyp], while providing the corresponding [batch_var] (C++ expression
- * holding the ORC batch) and [val_var] (C++ expression holding the OCaml
- * value), and also [field_name] for cosmetics) *)
-let iter_scalars indent oc rtyp batch_var val_var field_name f =
-  let rec loop indent depth rtyp batch_var val_var field_name =
-    let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
-    let is_list =
-      match rtyp.T.structure with
-      | T.TList _ | T.TVec _ -> true
-      | _ -> false in
-    match val_var with
-    | Some v when rtyp.T.nullable ->
-        p "if (Is_block(%s)) { /* Not null */" v ;
-        (* The first non const constructor is "NotNull of ...": *)
-        let non_null = gensym "non_null" in
-        p "  value %s = Field(%s, 0);" non_null v ;
-        let rtyp' = { rtyp with nullable = false } in
-        loop (indent + 1) depth rtyp' batch_var (Some non_null) field_name ;
-        p "} else { /* Null */" ;
-        f (indent + 1) rtyp batch_var ~is_list None field_name ;
-        p "}"
-    | _ ->
-        let iter_struct tuple_with_1_element kts =
-          Enum.iteri (fun i (k, t) ->
-            p "{ /* Structure/Tuple item %s */" k ;
-            let btyp = batch_type_of_structure t.T.structure in
-            let arr_item = gensym "arr_item" in
-            p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
-              btyp arr_item btyp batch_var i ;
-            let val_var =
-              Option.map (fun v ->
-                (* OCaml has no such tuples. Value is then unboxed. *)
-                if tuple_with_1_element then v
-                else Printf.sprintf "Field(%s, %d)" v i) val_var
-            and field_name' =
-              if field_name = "" then k else field_name ^"."^ k in
-            loop (indent + 1) (depth + 1) t arr_item val_var field_name' ;
-            p "}" ;
-          ) kts ;
-          (* We are not going to call [f] on the record itself (only on its
-           * fields) so we have to increment numElements here: *)
-          p "%s->numElements++;" batch_var
-        in
-        (match rtyp.T.structure with
-        | T.TEmpty | T.TAny ->
-            assert false
-        | T.TBool
-        | T.TU8 | T.TU16 | T.TU32 | T.TU64
-        | T.TI8 | T.TI16 | T.TI32 | T.TI64
-        | T.TU128 | T.TI128
-        | T.TIpv4 | T.TIpv6 | T.TIp
-        | T.TCidrv4 | T.TCidrv6 | T.TCidr
-        | T.TNum | T.TEth | T.TFloat | T.TString ->
-            f indent rtyp batch_var ~is_list val_var field_name
-        | T.TTuple ts ->
-            Array.enum ts |>
-            Enum.mapi (fun i t -> string_of_int i, t) |>
-            iter_struct (Array.length ts = 1)
-        | T.TRecord kts ->
-            (* FIXME: we should not store private fields *)
-            Array.enum kts |> iter_struct (Array.length kts = 1)
-        | T.TList t | T.TVec (_, t) ->
-            (* Regardless of [t], we treat a list as a "scalar". because
-             * that's how it looks like for ORC: each new list value is
-             * added to the [offsets] vector, while the list items are on
-             * the side pushed to the global [elements] vector-batch. *)
-            f indent t batch_var ~is_list val_var field_name)
-  in
-  loop indent 0 rtyp batch_var val_var field_name
-
 (* From the writers we need only two functions:
  *
  * The first one to "register interest" in a ORC files writer for a given
@@ -434,62 +365,136 @@ let emit_get_vb indent vb_var rtyp batch_var oc =
 (* Write a single OCaml value [val_var] of the given RamenType into the
  * ColumnVectorBatch [batch_var]: *)
 let rec emit_add_value_to_batch
-          indent val_var batch_var i_var rtyp field_name oc =
-  iter_scalars indent oc rtyp batch_var val_var field_name
-    (fun indent rtyp batch_var ~is_list val_var field_name ->
-      let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
-      p "{ /* Write the value%s for %s (of type %a) */"
-        (if is_list then "s" else "")
-        (if field_name <> "" then field_name else "root value")
-        T.print_typ rtyp ;
-      (match val_var with
-      | None -> (* When the value is NULL *)
-          (* liborc initializes hasNulls to false and notNull to all ones: *)
-          p "  %s->hasNulls = true;" batch_var ;
-          p "  %s->notNull[%s] = 0;" batch_var i_var ;
-          if is_list then (
-            (* Regardless of the value being NULL or not, when we have a
-             * list we must initialize the offsets value. *)
-            p "  %s->offsets[%s + 1] = %s->offsets[%s];"
-              batch_var i_var batch_var i_var
-          )
-      | Some val_var ->
-          if is_list then (
-            (* For lists, our value is still the list and [batch_var] is
-             * still the [ListVectorBatch]. We have to write the current
-             * size of [batch_var->elements] into
-             * [batch_var->offsets(`i_var)], and then append the actual list
-             * values to [batch_var->elements]. But as those values can have
-             * any type including a compound type, we must recurse. *)
-            let vb = gensym "vb" in
-            emit_get_vb
-              (indent + 1) vb rtyp (batch_var ^"->elements.get()") oc ;
-            let bi_lst = gensym "bi_lst" in
-            p "  uint64_t const %s = %s->numElements;" bi_lst vb ;
-            p "  %s->offsets[%s] = %s;" batch_var i_var bi_lst ;
-            (* FIXME: handle arrays of unboxed values *)
-            let idx_var = gensym "idx" in
-            p "  unsigned %s;" idx_var ;
-            p "  for (%s = 0; %s < Wosize_val(%s); %s++) {"
-              idx_var idx_var val_var idx_var ;
-            let v_lst = gensym "v_lst" in
-            p "    value %s = Field(%s, %s);" v_lst val_var idx_var ;
-            emit_add_value_to_batch
-              (indent + 2) (Some v_lst) vb (bi_lst ^"+"^ idx_var) rtyp
-              (field_name ^".elmt") oc ;
-            p "  }" ;
-            (* Liborc also expects us to set the offsets of the next element
-             * in case this one is the last (offsets size is capa+1) *)
-            p "  %s->offsets[%s + 1] = %s + %s;"
-              batch_var i_var bi_lst idx_var
-          ) else (
-            emit_store_data
-              (indent + 1) batch_var i_var rtyp.T.structure val_var oc
-          )
+          indent depth val_var batch_var i_var rtyp field_name oc =
+  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let add_to_batch indent rtyp val_var =
+    let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+    let iter_struct tuple_with_1_element kts =
+      Enum.iteri (fun i (k, t) ->
+        p "{ /* Structure/Tuple item %s */" k ;
+        let btyp = batch_type_of_structure t.T.structure in
+        let arr_item = gensym "arr_item" in
+        p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
+          btyp arr_item btyp batch_var i ;
+        let val_var =
+          Option.map (fun v ->
+            (* OCaml has no such tuples. Value is then unboxed. *)
+            if tuple_with_1_element then v
+            else Printf.sprintf "Field(%s, %d)" v i
+          ) val_var
+        and field_name =
+          if field_name = "" then k else field_name ^"."^ k
+        (* When a structure value is NULL the fields of the
+         * StructVectorBatch are untouched, thus we cannot use the
+         * row counter to index a nullable structure field. *)
+        and i_var =
+          Printf.sprintf "%s->numElements" arr_item in
+        emit_add_value_to_batch
+          (indent + 1) (depth + 1) val_var arr_item i_var t field_name oc ;
+        p "}"
+      ) kts
+    in
+    match rtyp.T.structure with
+    | T.TEmpty | T.TAny ->
+        assert false
+    | T.TBool
+    | T.TU8 | T.TU16 | T.TU32 | T.TU64
+    | T.TI8 | T.TI16 | T.TI32 | T.TI64
+    | T.TU128 | T.TI128
+    | T.TIpv4 | T.TIpv6 | T.TIp
+    | T.TCidrv4 | T.TCidrv6 | T.TCidr
+    | T.TNum | T.TEth | T.TFloat | T.TString ->
+        Option.may (fun v ->
+          p "/* Write the value for %s (of type %a) */"
+            (if field_name <> "" then field_name else "root value")
+            T.print_typ rtyp ;
+          emit_store_data
+            indent batch_var i_var rtyp.T.structure v oc
+        ) val_var
+
+    | T.TTuple ts ->
+        if val_var <> None then
+          Array.enum ts |>
+          Enum.mapi (fun i t -> string_of_int i, t) |>
+          iter_struct (Array.length ts = 1)
+    | T.TRecord kts ->
+        (* FIXME: we should not store private fields *)
+        if val_var <> None then
+          Array.enum kts |> iter_struct (Array.length kts = 1)
+    | T.TList t | T.TVec (_, t) ->
+        (* Regardless of [t], we treat a list as a "scalar" because
+         * that's how it looks like for ORC: each new list value is
+         * added to the [offsets] vector, while the list items are on
+         * the side pushed to the global [elements] vector-batch. *)
+        Option.may (fun v ->
+          p "/* Write the values for %s (of type %a) */"
+            (if field_name <> "" then field_name else "root value")
+            T.print_typ t ;
+          let vb = gensym "vb" in
+          emit_get_vb
+            indent vb t (batch_var ^"->elements.get()") oc ;
+          let bi_lst = gensym "bi_lst" in
+          p "uint64_t const %s = %s->numElements;" bi_lst vb ;
+          (* FIXME: handle arrays of unboxed values *)
+          let idx_var = gensym "idx" in
+          p "unsigned %s;" idx_var ;
+          p "for (%s = 0; %s < Wosize_val(%s); %s++) {"
+            idx_var idx_var v idx_var ;
+          let v_lst = gensym "v_lst" in
+          p "  value %s = Field(%s, %s);" v_lst v idx_var ;
+          emit_add_value_to_batch
+            (indent + 1) 0 (Some v_lst) vb (bi_lst ^"+"^ idx_var) t
+            (field_name ^".elmt") oc ;
+          p "}"
+        ) val_var ;
+
+        (* Regardless of the value being NULL or not, when we have a
+         * list we must initialize the offsets value. *)
+        let nb_vals =
+          match val_var with
+          | None -> "0"
+          | Some v -> Printf.sprintf "Wosize_val(%s)" v in
+        p "%s->offsets[%s + 1] = %s->offsets[%s] + %s;"
+          batch_var i_var batch_var i_var nb_vals ;
+        if debug then (
+          p "cerr << \"%s.offsets[\" << %s << \"+1]=\"" field_name i_var ;
+          p "     << %s->offsets[%s + 1] << \"\\n\";" batch_var i_var)
+  in
+  (match val_var with
+  | Some v when rtyp.T.nullable ->
+      (* Only generate that code in the "not null" branches: *)
+      p "if (Is_block(%s)) { /* Not null */" v ;
+      (* The first non const constructor is "NotNull of ...": *)
+      let non_null = gensym "non_null" in
+      p "  value %s = Field(%s, 0);" non_null v ;
+      let rtyp' = { rtyp with nullable = false } in
+      add_to_batch (indent + 1) rtyp' (Some non_null) ;
+      p "} else { /* Null */" ;
+      (* liborc initializes hasNulls to false and notNull to all ones: *)
+      if debug then
+        p "  cerr << \"%s[\" << %s << \"] is null\\n\";"
+          field_name i_var ;
+      p "  %s->hasNulls = true;" batch_var ;
+      p "  %s->notNull[%s] = 0;" batch_var i_var ;
+      add_to_batch (indent + 1) rtyp None ;
+      p "}"
+  | _ ->
+      if val_var = None then (
+        (* A field above us was null. We have to set all subfields to null
+         * recursively, that's how bad liborc API is: *)
+        if debug then
+          p "cerr << \"%s[\" << %s << \"] is null\\n\";"
+            field_name i_var ;
+        p "%s->hasNulls = true;" batch_var ;
+        p "%s->notNull[%s] = 0;" batch_var i_var
       ) ;
-      (* Also increase numElements: *)
-      p "  %s->numElements++;" batch_var ;
-      p "}")
+      add_to_batch indent rtyp val_var
+  ) ;
+  (* Also increase numElements: *)
+  p "%s->numElements++;" batch_var ;
+  if debug then
+    p "cerr << \"%s->numElements=\" << %s->numElements << \"\\n\";"
+      field_name batch_var
 
 (* Generate an OCaml callable function named [func_name] that receives a
  * "handler" and an OCaml value of a given type [rtyp] and batch it.
@@ -503,7 +508,8 @@ let emit_write_value func_name rtyp oc =
   p "  LazyWriter *handler = Handler_val(hder_);" ;
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
-  emit_add_value_to_batch 1 (Some "v_") "root" "root->numElements" rtyp "" oc ;
+  emit_add_value_to_batch
+    1 0 (Some "v_") "root" "root->numElements" rtyp "" oc ;
   p "  if (root->numElements >= root->capacity) {" ;
   p "    handler->flush_batch(true);" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
@@ -732,7 +738,7 @@ let rec emit_read_value_from_batch
  * back OCaml code with each row as an OCaml value: *)
 let emit_read_values func_name rtyp oc =
   let p fmt = emit oc 0 fmt in
-  let max_depth = 5 (* TODO *) in
+  let max_depth = 7 (* TODO *) in
   p "extern \"C\" value %s(value path_, value batch_sz_, value cb_)" func_name ;
   p "{" ;
   p "  CAMLparam3(path_, batch_sz_, cb_);" ;

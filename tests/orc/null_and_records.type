@@ -1,0 +1,7 @@
+{
+  nullable = true;
+  structure = TRecord [|
+    ("first", { structure = TI8 });
+    ("second", { structure = TString });
+  |]
+}
