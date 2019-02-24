@@ -50,7 +50,11 @@ IMAGES = \
 	blog/RamenVsKsql_ram.svg \
 	blog/RamenVsKsql_io.svg
 
-all: $(PAGES) $(MANPAGES) $(IMAGES)
+OTHERS = \
+	blog/ksql.atop \
+	blog/ramen.atop
+
+all: $(PAGES) $(MANPAGES) $(IMAGES) $(OTHERS)
 
 favicon.ico: icon.png
 	@echo 'Building $@'
@@ -161,7 +165,7 @@ man/archivist.groff: ../src/ramen
 
 doc_dir ?= $(PWD)/../../ramen-docs
 
-install: $(PAGES) $(MANPAGES) $(IMAGES) style.css
+install: $(PAGES) $(MANPAGES) $(IMAGES) $(OTHERS) style.css
 	@echo 'Installing pages into $(prefix)$(doc_dir)'
 	@install -d '$(prefix)$(doc_dir)'
 	for f in $^ ; do \

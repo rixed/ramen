@@ -8,6 +8,7 @@
 <li>Tunnel ringbuffers from host to host;</li>
 <li><code>SELECT FROM host:path ...</code>;</li>
 </ul>
+<p>All of the above ETA: summer 2019</p>
 
 <h2>Language</h2>
 
@@ -32,7 +33,7 @@
 <h2>Storage</h2>
 
 <ul>
-<li>storage and retrieval in ORC format;</li>
+<li>storage and retrieval in ORC format (in the work right now);</li>
 <li>data degradation as lossy compression?</li>
 </ul>
 
@@ -40,6 +41,7 @@
 
 <ul>
 <li>Support for graphite functions when extracting a time series;</li>
+<li>Send alerts to Kafka;</li>
 </ul>
 
 <h2>Ingestion</h2>
