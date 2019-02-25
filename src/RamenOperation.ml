@@ -424,6 +424,16 @@ let out_type_of_operation ?(with_private=false) = function
   | Notifications _ ->
       RamenNotification.tuple_typ
 
+(* Same as above, but return the output type as a TRecord (the way it's
+ * supposed to be!) *)
+let out_record_of_operation op =
+  T.make ~nullable:false
+    (T.TRecord (
+      (out_type_of_operation op |> List.enum) /@
+      (fun ft ->
+        (ft.RamenTuple.name :> string), ft.typ) |>
+      Array.of_enum))
+
 let envvars_of_operation op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with

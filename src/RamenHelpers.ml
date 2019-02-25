@@ -198,6 +198,18 @@ let rec list_fold_left2 f init l1 l2 =
   | h1::r1, h2::r2 -> list_fold_left2 f (f init h1 h2) r1 r2
   | _ -> init
 
+(* Remove the dups (according to [cmp] without altering the order of
+ * elements: *)
+(* FIXME: a RamenSet that takes a [cmp] function, since that's not in
+ * Batteries. *)
+let list_remove_dups _cmp lst =
+  let rec loop s prev = function
+  | [] -> List.rev prev
+  | x::rest ->
+      if Set.mem x s then loop s prev rest
+      else loop (Set.add x s) (x::prev) rest in
+  loop Set.empty [] lst
+
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)
