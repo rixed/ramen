@@ -10,30 +10,6 @@ open RamenLog
 module T = RamenTypes
 module Orc = RamenOrc
 
-let test () =
-  let rtyp = T.(
-    make (TRecord [|
-      "u16", make TU16 ;
-      "i32", make ~nullable:false TI32 ;
-      "ip4", make ~nullable:false TIpv4 ;
-      "ip6", make TIpv6 ;
-      "ip", make ~nullable:false TIp ;
-      "cidr4", make TCidrv4 ;
-      "cidr6", make ~nullable:false TCidrv6 ;
-      "tuple", make (TTuple [| make ~nullable:false TI8 ; make TI32 |]) ;
-      "list", make (TList (make TString)) ;
-      "complex", make (TRecord [|
-        "i8", make TI8 ;
-        "str", make ~nullable:false TString ;
-        "tuple", make (TTuple [|
-          make ~nullable:false
-            (TList (make ~nullable:false (TVec (3, make TU64)))) ;
-          make ~nullable:false TCidr
-        |])
-      |])
-    |])) in
-  Orc.emit_write_value "test" rtyp stdout
-
 let main =
   init_logger Debug ;
   let exec_file = Sys.argv.(1) in
@@ -120,7 +96,7 @@ let main =
         xtyp orc_write_func ;
       p "external orc_read : string -> int -> (%s -> unit) -> (int * int) = %S"
         xtyp orc_read_func ;
-      (* Destructor do not seems to be called when the OCaml program exists: *)
+      (* Destructor do not seems to be called when the OCaml program exits: *)
       p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
       p "" ;
       p "(* Parameters: path * schema * row per batch * batches per file *)" ;

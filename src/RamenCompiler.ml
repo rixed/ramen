@@ -17,19 +17,20 @@ module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
 open RamenTypingHelpers
+open RamenConsts
 
 open Binocle
 
 let stats_typing_time =
   RamenBinocle.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir
-      RamenConsts.Metric.Names.compiler_typing_time
+      Metric.Names.compiler_typing_time
       "Time spent typing ramen programs, per typer" Histogram.powers_of_two)
 
 let stats_typing_count =
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir
-      RamenConsts.Metric.Names.compiler_typing_count
+      Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
 let worker_entry_point = "worker"
@@ -372,6 +373,9 @@ let compile conf get_parent ~exec_file source_file
      * functions.
      *)
     !logger.info "Compiling program %s" (program_name :> string) ;
+    let debug = conf.C.log_level = Debug
+    and keep_temp_files = conf.C.keep_temp_files in
+    let what = "program "^ (RamenName.program_color program_name) in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
     let params_obj_name =
@@ -390,9 +394,6 @@ let compile conf get_parent ~exec_file source_file
           (program_name :> string) ;
         CodeGen_OCaml.emit_parameters oc parsed_params) in
     add_temp_file params_src_file ;
-    let debug = conf.C.log_level = Debug
-    and keep_temp_files = conf.C.keep_temp_files in
-    let what = "program "^ (RamenName.program_color program_name) in
     RamenOCamlCompiler.compile
       ~debug ~keep_temp_files what params_src_file params_obj_name ;
     let params_mod_name =
