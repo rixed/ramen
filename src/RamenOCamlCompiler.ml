@@ -119,7 +119,7 @@ let compile_external ~debug ~keep_temp_files what src_file obj_file =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -linscan -thread -annot -w %s \
+           ocamlfind ocamlopt%s%s -linscan -thread -bin-annot -w %s \
                      -o %s -package ramen -I %s -c %s"
       (shell_quote path)
       (shell_quote ocamlpath)
@@ -159,7 +159,7 @@ let link_internal ~debug ~keep_temp_files
   !logger.info "Linking %S" src_file ;
   reset () ;
   Clflags.native_code := true ;
-  Clflags.annotations := true ;
+  Clflags.binary_annotations := true ;
   Clflags.use_linscan := true ;
   Clflags.debug := debug ;
   Clflags.verbose := debug ;

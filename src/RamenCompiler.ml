@@ -73,6 +73,8 @@ let compile conf get_parent ~exec_file source_file
     add_single_temp_file (change_ext ".cmi" f) ;
     add_single_temp_file (change_ext ".o" f) ;
     add_single_temp_file (change_ext ".s" f) ;
+    add_single_temp_file (change_ext ".cmt" f) ;
+    add_single_temp_file (change_ext ".cmti" f) ;
     add_single_temp_file (change_ext ".annot" f) in
   let del_temp_files () =
     if not conf.C.keep_temp_files then

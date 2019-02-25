@@ -8,7 +8,7 @@ OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 QTEST    = qtest
 Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
-override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
+override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -bin-annot -S
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
@@ -67,7 +67,7 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .annot .top .html .adoc .ramen .x .test .success
+.SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
 .PHONY: clean clean-temp all dep bundle doc deb tarball \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
@@ -77,7 +77,7 @@ all: $(INSTALLED) bundle
 	@echo 'Compiling $@ (interface)'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
-%.cmx %.annot: %.ml
+%.cmx %.cmt: %.ml
 	@echo 'Compiling $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
 
@@ -894,13 +894,14 @@ clean-temp:
 	@echo 'Cleaning ramen compiler temp files'
 	@for d in tests examples ; do\
 	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
-	                -o -name '*.annot' -o -name '*.x'  -o -name '*.s' \
-	                -o -name '*.cmi' -\) -delete ;\
+	                -o -name '*.annot' -o -name '*.cmt' -o -name '*.cmti' \
+	                -o -name '*.x' \ -o -name '*.s' -o -name '*.cmi' -\) \
+	            -delete ;\
 	 done
 
 clean: clean-temp
 	@echo 'Cleaning all build files'
-	@$(RM) src/*.s src/*.annot src/*.o src/*.mlppp
+	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o src/*.mlppp
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
 	@$(RM) src/ringbuf/*.o
 	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
