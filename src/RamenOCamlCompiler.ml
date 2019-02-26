@@ -74,7 +74,7 @@ let compile_internal ~debug ~keep_temp_files what src_file obj_file =
   !logger.info "Compiling %S" src_file ;
   reset () ;
   Clflags.native_code := true ;
-  Clflags.annotations := true ;
+  Clflags.binary_annotations := true ;
   Clflags.use_linscan := true ; (* https://caml.inria.fr/mantis/view.php?id=7899 *)
   Clflags.debug := debug ;
   Clflags.verbose := debug ;
