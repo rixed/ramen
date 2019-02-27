@@ -900,7 +900,7 @@ clean-temp:
 	@for d in tests examples ; do\
 	   find $$d -\( -name '*.ml' -o -name '*.cmx' -o -name '*.o' \
 	                -o -name '*.annot' -o -name '*.cmt' -o -name '*.cmti' \
-	                -o -name '*.x' \ -o -name '*.s' -o -name '*.cmi' -\) \
+	                -o -name '*.x' -o -name '*.s' -o -name '*.cmi' -\) \
 	            -delete ;\
 	 done
 
