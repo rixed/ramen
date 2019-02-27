@@ -938,7 +938,7 @@ let aggregate
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
@@ -1298,7 +1298,8 @@ let read_whole_archive ?(while_=always) read_tuplez rb k =
           k tuple, true
       | DataTuple chn, _ ->
           (* This should not happen as we archive only the live channel: *)
-          !logger.warning "Read a tuple from channel %d in archive?" chn ;
+          !logger.warning "Read a tuple from channel %a in archive?"
+            RamenChannel.print chn ;
           (), true
       | _ -> (), true))
 
@@ -1318,7 +1319,7 @@ let replay
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int) =
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int) =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in
@@ -1410,7 +1411,7 @@ let convert
       orc_read csv_write orc_write orc_make_handler orc_close
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
   let open Unix in
   if in_fname = out_fname then

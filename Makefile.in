@@ -114,6 +114,7 @@ RAMEN_SOURCES = \
 	src/RamenExperiments.ml \
 	src/RamenBitmask.ml \
 	src/RamenAdvLock.ml \
+	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -191,6 +192,7 @@ CODEGENLIB_SOURCES = \
 	src/Globs.ml \
 	src/RamenAdvLock.ml \
 	src/RamenWatchdog.ml \
+	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -255,6 +257,7 @@ ORCWRITER_SOURCES = \
 	src/RamenExperiments.ml \
 	src/Globs.ml \
 	src/RamenAdvLock.ml \
+	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
@@ -563,6 +566,7 @@ LINKED_FOR_TESTS = \
 	src/HeavyHitters.ml \
 	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
+	src/RamenChannel.mli \
 	src/RamenChannel.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \

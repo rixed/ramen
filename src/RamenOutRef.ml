@@ -155,7 +155,8 @@ let remove_channel fname chan =
       not (Hashtbl.is_empty channels)
     ) h ;
     write_ fname fd h) ;
-  !logger.debug "Removed chan %d from %s" chan fname
+  !logger.debug "Removed chan %a from %s"
+    RamenChannel.print chan fname
 
 (*$inject open Batteries *)
 
@@ -169,9 +170,9 @@ let remove_channel fname chan =
   add outref_fname "dest1" [|RamenFieldMask.Copy|] ;
   assert_bool "dest1 is now in outref" (mem outref_fname "dest1" now) ;
 
-  add outref_fname "dest2" ~channel:1 [|RamenFieldMask.Copy|] ;
+  add outref_fname "dest2" ~channel:(RamenChannel.of_int 1) [|RamenFieldMask.Copy|] ;
   assert_bool "dest2 is now in outref" (mem outref_fname "dest1" now) ;
-  remove_channel outref_fname 1 ;
+  remove_channel outref_fname (RamenChannel.of_int 1) ;
   assert_bool "no more chan 1" (not (mem outref_fname "dest2" now)) ;
 
   (* If all went well: *)

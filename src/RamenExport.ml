@@ -347,7 +347,7 @@ let replay conf ?(while_=always) fq field_names where since until
     let ret = finally (fun () -> RingBuf.unload rb) (fun () ->
       (* Pick a channel. They are cheap, we do not care if we fail
        * in the next step: *)
-      let channel = RamenChannel.make conf in
+      let channel = RamenChannel.make () in
       (* Ask to export only the fields we want. From now on we'd better
        * not fail and retry as we would hammer the out_ref with temp
        * ringbufs.
@@ -446,8 +446,8 @@ let replay conf ?(while_=always) fq field_names where since until
                 !logger.error "Received EndOfReplay from unknown replayer %d"
                   replay_id
             ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel
+              !logger.error "Received EndOfReplay for channel %a not %a"
+                RamenChannel.print chan RamenChannel.print channel
           | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
             if chan = channel then (
               if filter tuple then (
@@ -464,8 +464,8 @@ let replay conf ?(while_=always) fq field_names where since until
                 ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
               ) else !logger.debug "tuple filtered out"
             ) else
-              !logger.error "Received EndOfReplay for channel %d not %d"
-                chan channel
+              !logger.error "Received EndOfReplay for channel %a not %a"
+                RamenChannel.print chan RamenChannel.print channel
           | _ ->
               !logger.error "Received an unknown message in tx") ;
         (* Signal the end of the replay: *)
