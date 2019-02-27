@@ -1477,8 +1477,9 @@ let convert
         (fun tuple ->
           let sz = head_sz + sersize_of_tuple all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in
-          let sz' = serialize_tuple all_fields tx RamenChannel.live tuple in
-          assert (sz' <= sz))
+          RingBufLib.(write_message_header tx 0 head) ;
+          let offs = serialize_tuple all_fields tx head_sz tuple in
+          assert (offs <= sz))
   in
   reader writer ;
   Option.may RingBuf.unload !out_rb ;
