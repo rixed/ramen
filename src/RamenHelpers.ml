@@ -198,7 +198,7 @@ let rec list_fold_left2 f init l1 l2 =
   | h1::r1, h2::r2 -> list_fold_left2 f (f init h1 h2) r1 r2
   | _ -> init
 
-(* Remove the dups (according to [cmp] without altering the order of
+(* Remove the dups (according to [cmp]) without altering the order of
  * elements: *)
 (* FIXME: a RamenSet that takes a [cmp] function, since that's not in
  * Batteries. *)
@@ -326,6 +326,10 @@ let is_alphanum c =
 (* Helper to build the indentation in front of printed lines. We just use 2
  * spaces like normal people: *)
 let indent_of i = String.make (i*2) ' '
+
+(* Helper to emit code at a given level: *)
+let emit oc indent fmt =
+  Printf.fprintf oc ("%s" ^^ fmt ^^ "\n") (indent_of indent)
 
 let with_time f k =
   let start = Unix.gettimeofday () in

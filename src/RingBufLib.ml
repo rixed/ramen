@@ -19,11 +19,11 @@ open RamenTypes
  * constructed type. Maybe we should do the same for the whole output
  * tuple BTW. *)
 
-let nullmask_bytes_of_tuple_type ser =
+let nullmask_bytes_of_tuple_type typ =
   List.fold_left (fun s field_typ ->
     if RamenName.is_private field_typ.RamenTuple.name then s
     else s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
-  ) 0 ser |>
+  ) 0 typ |>
   bytes_for_bits |>
   round_up_to_rb_word
 
@@ -115,7 +115,7 @@ let rec sersize_of_value = function
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
   | VTuple vs -> sersize_of_tuple vs
-  | VRecord vs -> sersize_of_record vs
+  | VRecord kvs -> sersize_of_record kvs
   | VVec vs -> sersize_of_vector vs
   | VList vs -> sersize_of_list vs
 
@@ -178,7 +178,7 @@ let rec write_value tx offs = function
   | VCidrv6 c -> write_cidr6 tx offs c
   | VCidr c -> write_cidr tx offs c
   | VTuple vs -> write_tuple tx offs vs
-  | VRecord vs -> write_record tx offs vs
+  | VRecord kvs -> write_record tx offs kvs
   | VVec vs -> write_vector tx offs vs
   | VList vs -> write_list tx offs vs
   | VNull -> assert false
@@ -299,48 +299,6 @@ let ser_tuple_typ_of_tuple_typ tuple_typ =
   tuple_typ |>
   List.filter (fun t -> not (RamenName.is_private t.RamenTuple.name)) |>
   List.fast_sort ser_tuple_field_cmp
-
-(* Given a tuple type and its serialized type, return a function that reorder
- * a tuple (as an array) into the same column order as in the tuple type: *)
-let reorder_tuple_to_user typ ser =
-  (* Start by building the array of indices in the ser tuple of fields of
-   * the user (minus private) tuple. *)
-  let indices =
-    List.filter_map (fun f ->
-      if RamenName.is_private f.RamenTuple.name then None
-      else Some (
-        List.findi (fun _ f' ->
-          f'.RamenTuple.name = f.name) ser |> fst)
-    ) typ |>
-    Array.of_list in
-  (* Now reorder a list of scalar values in ser order into user order: *)
-  (* TODO: an inplace version *)
-  fun vs ->
-    Array.map (fun idx -> vs.(idx)) indices
-
-let skip_list ~out_type ~in_type =
-  let ser_out = ser_tuple_typ_of_tuple_typ out_type
-  and ser_in = ser_tuple_typ_of_tuple_typ in_type in
-  let rec loop v = function
-    | [], [] -> List.rev v
-    | _::os', [] -> loop (false :: v) (os', [])
-    | o::os', (i::is' as is) ->
-      let c = ser_tuple_field_cmp o i in
-      if c < 0 then
-        (* not interested in o *)
-        loop (false :: v) (os', is)
-      else if c = 0 then
-        (* we want o *)
-        loop (true :: v) (os', is')
-      else (
-        (* not possible: i must be in o *)
-        Printf.sprintf2 "Field %a is not in its parent output"
-          RamenName.field_print i.name |>
-        failwith)
-    | [], _ ->
-      failwith "More inputs than parent outputs?"
-  in
-  loop [] (ser_out, ser_in)
 
 let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
   retry_for_ringbuf ?while_ ?delay_rec ?max_retry_time

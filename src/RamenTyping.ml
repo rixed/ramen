@@ -91,7 +91,8 @@ let rec find_type_of_path_in_typ typ path =
   | E.Name n :: rest ->
       (match typ.T.structure with
       | T.TRecord kts ->
-          let _, t = Array.find (fun (k, _) -> k = (n :> string)) kts in
+          let _, t =
+            Array.find (fun (k, _) -> k = (n :> string)) kts in
           find_type_of_path_in_typ t rest
       | _ ->
           invalid_path ())
@@ -2097,7 +2098,7 @@ let used_tuples_records funcs parents =
           | TTuple ts -> Set.Int.add (Array.length ts) s
           | TRecord ts->
               let d = Array.length ts in
-              Array.iteri (fun i (k, _typ) ->
+              Array.iteri (fun i (k, _) ->
                 register_field (RamenName.field_of_string k) d i
               ) ts ;
               s

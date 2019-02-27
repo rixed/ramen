@@ -110,31 +110,30 @@ let compare_miss bad1 bad2 =
       Float.compare (tot_err bad1) (tot_err bad2)
   | c -> c
 
-let field_index_of_name fq ser field =
+let field_index_of_name fq typ field =
   try
     List.findi (fun _ ftyp ->
       ftyp.RamenTuple.name = field
-    ) ser
+    ) typ
   with Not_found ->
     Printf.sprintf2 "Unknown field %a in %a, which has only %a"
       RamenName.field_print field
       RamenName.fq_print fq
-      RamenTuple.print_typ_names ser |>
+      RamenTuple.print_typ_names typ |>
     fail_and_quit
 
-let field_name_of_index ser idx =
-  (List.nth ser idx).RamenTuple.name
+let field_name_of_index typ idx =
+  (List.nth typ idx).RamenTuple.name
 
 (* The configuration file gives us tuple spec as a hash, which is
  * convenient to serialize, but for filtering it's more convenient to
  * have a list of field index to values, and a best_miss. While at it
  * replace the given string by an actual RamenTypes.value: *)
-let filter_spec_of_spec fq ser spec =
+let filter_spec_of_spec fq typ spec =
   Hashtbl.enum spec /@
   (fun (field, value) ->
-    let idx, field_typ = field_index_of_name fq ser field in
-    let typ = field_typ.RamenTuple.typ in
-    match T.of_string ~typ value with
+    let idx, field_typ = field_index_of_name fq typ field in
+    match T.of_string ~typ:field_typ.RamenTuple.typ value with
     | Result.Ok v -> idx, v
     | Result.Bad e -> fail_and_quit e) |>
   List.of_enum, ref []
@@ -165,9 +164,9 @@ let filter_of_tuple_spec (spec, best_miss) tuple =
     false
   )
 
-let file_spec_print ser best_miss oc (idx, value) =
+let file_spec_print typ best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
-  let n = field_name_of_index ser idx in
+  let n = field_name_of_index typ idx in
   Printf.fprintf oc "%a => %a"
     RamenName.field_print n
     T.print value ;
@@ -175,18 +174,18 @@ let file_spec_print ser best_miss oc (idx, value) =
   | exception Not_found -> ()
   | _, a, _ -> Printf.fprintf oc " (had %a)" T.print a
 
-let tuple_spec_print ser oc (spec, best_miss) =
+let tuple_spec_print typ oc (spec, best_miss) =
   List.fast_sort (fun (i1, _) (i2, _) -> Int.compare i1 i2) spec |>
-  List.print ~first:"{ " ~last:" }" (file_spec_print ser !best_miss) oc
+  List.print ~first:"{ " ~last:" }" (file_spec_print typ !best_miss) oc
 
-let tuple_print ser oc vs =
+let tuple_print typ oc vs =
   String.print oc "{ " ;
   List.iteri (fun i ft ->
     if i > 0 then String.print oc "; " ;
     Printf.fprintf oc "%a => %a"
       RamenName.field_print ft.RamenTuple.name
       T.print vs.(i)
-  ) ser ;
+  ) typ ;
   String.print oc " }"
 
 let test_output conf fq output_spec end_flag =
@@ -269,10 +268,10 @@ let test_output conf fq output_spec end_flag =
 
 (* Wait for the given tuple: *)
 let test_until conf count end_flag fq spec =
-  let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
+  let bname, _is_temp_export, filter, _typ, typ, _params, _event_time =
     RamenExport.read_output conf fq [] in
-  let filter_spec = filter_spec_of_spec fq ser spec in
-  let unserialize = RamenSerialization.read_array_of_values ser in
+  let filter_spec = filter_spec_of_spec fq typ spec in
+  let unserialize = RamenSerialization.read_array_of_values typ in
   let got_it = ref false in
   let while_ () =
     not !got_it &&

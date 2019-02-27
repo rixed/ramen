@@ -34,6 +34,7 @@ type op_context =
   { op : O.t option ;
     event_time : RamenEventTime.t option ;
     (* The type of the output tuple in user order *)
+    (* FIXME: make is a TRecord to simplify code generation: *)
     tuple_typ : RamenTuple.field_typ list ;
     params : RamenTuple.params ;
     consts : string Batteries.IO.output }

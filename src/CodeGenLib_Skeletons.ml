@@ -338,13 +338,14 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
                 out_rb.fname RamenChannel.print dest_channel
           )) ()
 
+(* FIXME: when the output type is a single value, just [| Copy |]: *)
+let all_fields = Array.make 100 RamenFieldMask.Copy
+
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple =
-  (* FIXME: when the output type is a single value, just [| Copy |]: *)
-  let rec all_fields = Array.make 100 RamenFieldMask.Copy in
   let out_h = ref (Hashtbl.create 15) (* Hash from fname to rb*file_spec*)
   and out_rbs = ref []  (* list of outputers *) in
   let max_num_fields = 100 (* FIXME *) in
@@ -1317,7 +1318,8 @@ let replay
         mkdir_all logdir ;
         init_logger ~logdir log_level
       )) ;
-  let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+  let rb_ref_out_fname =
+    getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
   and rb_archive = getenv ~def:"/tmp/archive.b" "rb_archive"
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string

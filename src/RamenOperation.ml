@@ -14,6 +14,7 @@ open Batteries
 open RamenLang
 open RamenHelpers
 open RamenLog
+open RamenConsts
 module E = RamenExpr
 module T = RamenTypes
 
@@ -1044,7 +1045,7 @@ let fields_schema m =
 
   let csv_specs m =
     let m = "CSV format" :: m in
-    (optional ~def:"," (
+    (optional ~def:Default.csv_separator (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:"" (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++

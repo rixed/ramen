@@ -47,6 +47,7 @@ examples/**/*.ml
 tests/**/*.ml
 tests/*.ml
 tests/*.success
+tests/*.cc
 examples/prometheus-alertmanager.yml
 wrap.sh
 *.tgz

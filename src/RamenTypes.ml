@@ -52,7 +52,7 @@ and structure =
   | TRecord of (string * t) array
   [@@ppp PPP_OCaml]
 
-(* Assume nullable unless told otherwisse; Typing will remove the useless
+(* Assume nullable unless told otherwise; Typing will remove the useless
  * nullables *)
 let make ?(nullable=true) structure =
   { structure ; nullable }
@@ -187,9 +187,9 @@ let rec structure_of =
   | VTuple vs ->
       TTuple (Array.map (fun v ->
         { structure = structure_of v ; nullable = v = VNull }) vs)
-  | VRecord vs ->
+  | VRecord kvs ->
       TRecord (Array.map (fun (k, v) ->
-        k, { structure = structure_of v ; nullable = v = VNull }) vs)
+        k, { structure = structure_of v ; nullable = v = VNull }) kvs)
   (* Note regarding type of zero length arrays:
    * Vec of size 0 are not super interesting, and can be of any type,
    * ideally all the time (ie if a parent exports a value of type 0-length
@@ -239,12 +239,12 @@ let rec print_custom ?(null="NULL") ?(quoting=true) oc = function
   | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
   (* For now, mimic the "value AS name" syntax: *)
-  | VRecord vs ->
+  | VRecord kvs ->
       Array.print ~first:"{" ~last:"}" ~sep:"," (fun oc (k, v) ->
         Printf.fprintf oc "%a AS %s"
           (print_custom ~null ~quoting) v
           (ramen_quote k)
-      ) oc vs
+      ) oc kvs
   | VVec vs   -> Array.print ~first:"[" ~last:"]" ~sep:";"
                    (print_custom ~null ~quoting) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
@@ -427,10 +427,10 @@ let rec enlarge_value t v =
         (* Assume we won't try to enlarge to an unknown type: *)
         VTuple (
           Array.map2 (fun t v -> enlarge_value t.structure v) ts vs)
-    | VRecord vs, TRecord ts ->
+    | VRecord kvs, TRecord kts ->
         VRecord (
           Array.map (fun (k, t) ->
-            match Array.find (fun (k', _) -> k = k') vs with
+            match Array.find (fun (k', _) -> k = k') kvs with
             | exception Not_found ->
                 Printf.sprintf2
                   "value %a (%s) cannot be enlarged into %s: \
@@ -440,8 +440,8 @@ let rec enlarge_value t v =
                   (string_of_structure t.structure)
                   k |>
                 invalid_arg
-            | k, v -> k, enlarge_value t.structure v
-          ) ts)
+            | _, v -> k, enlarge_value t.structure v
+          ) kts)
     | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.structure) vs)
     | (VVec vs | VList vs), TList t ->

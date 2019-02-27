@@ -297,6 +297,8 @@ struct
    * sampling with this large reservoir size: (TODO: have a different
    * implementation of `past` with unlimited capacity): *)
   let past_sample_size = 10_000
+
+  let csv_separator = ","
 end
 
 module SpecialFunctions =

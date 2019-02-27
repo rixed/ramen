@@ -223,11 +223,6 @@ let emit_conv_of_ocaml st val_var oc =
       (* Compound types have no values of their own *)
       ()
 
-(* Helper to emit code at a given level: *)
-
-let emit oc indent fmt =
-  Printf.fprintf oc ("%s" ^^ fmt ^^ "\n") (indent_of indent)
-
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC
  * and write it in the vector buffer: *)
 let rec emit_store_data indent vb_var i_var st val_var oc =

@@ -11,7 +11,11 @@ let verbose_serialization = false
 
 (* Read all fields one by one. Not the real thing.
  * Slow unserializer used for command line tools such as `ramen tail`. *)
-let read_array_of_values ser_tuple_typ =
+let read_array_of_values tuple_typ =
+  (* TODO: RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ
+   * for now caller must know the ser type as some types are special
+   * (instrumentation, well known etc). FIXME. *)
+  let ser_tuple_typ = tuple_typ in
   let tuple_len = List.length ser_tuple_typ in
   let nullmask_size = nullmask_bytes_of_tuple_type ser_tuple_typ in
   fun tx start_offs ->
