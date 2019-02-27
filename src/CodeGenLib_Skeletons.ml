@@ -581,7 +581,7 @@ let read_csv_file
       filename separator ;
     let of_string line =
       let strings = strings_of_csv separator line in
-      tuple_of_strings (Array.of_list strings)
+      tuple_of_strings strings
     in
     let outputer =
       outputer_of
@@ -1443,7 +1443,7 @@ let convert
           read_lines fd |>
           Enum.iter (fun line ->
             let strings = strings_of_csv Default.csv_separator line in
-            match tuple_of_strings (Array.of_list strings) with
+            match tuple_of_strings strings with
             | exception e ->
               !logger.error "Cannot parse line %S: %s"
                 line (Printexc.to_string e)

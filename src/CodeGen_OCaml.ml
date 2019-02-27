@@ -68,6 +68,11 @@ let list_print_as_tuple ?as_ p oc lst =
   else
     List.print ~first:"(" ~last ~sep:", " p oc lst
 
+let list_print_as_tuple_i ?as_ p oc lst =
+  let i = ref 0 in
+  list_print_as_tuple ?as_ (fun oc x ->
+    p oc !i x ; incr i) oc lst
+
 let array_print_as_tuple_i p oc a =
   let i = ref 0 in
   Array.print ~first:"(" ~last:")" ~sep:", " (fun oc x ->
@@ -2310,33 +2315,38 @@ let rec emit_indent oc n =
 (* Emit a function that, given an array of strings (corresponding to a line of
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
-let emit_tuple_of_strings indent name csv_null oc tuple_typ =
+let emit_tuple_of_strings indent name csv_null oc typ =
   let p fmt = emit oc indent fmt in
+  let typ =
+    List.filter (fun ft -> not (RamenName.is_private ft.name)) typ in
+  let emit_is_null fins str_var offs_var oc =
+    Printf.fprintf oc
+      "if string_sub_eq %s %s %S 0 %d && \
+          string_is_term %a %s (%s + %d) then \
+        true, %s + %d else false, %s"
+      str_var offs_var csv_null (String.length csv_null)
+      (List.print char_print_quoted) fins
+      str_var offs_var (String.length csv_null)
+      offs_var (String.length csv_null) offs_var in
   p "let %s strs_ =" name ;
-  p "  (" ;
-  let num_fields = List.length tuple_typ in
-  List.iteri (fun i field_typ ->
-    let sep = if i < num_fields - 1 then "," else "" in
-    let str_var = "strs_.("^ string_of_int i ^")" in
-    p "    (try check_parse_all %s (" str_var ;
-    let emit_is_null fins str_var offs_var oc =
-      Printf.fprintf oc
-        "if string_sub_eq %s %s %S 0 %d && \
-            string_is_term %a %s (%s + %d) then \
-          true, %s + %d else false, %s"
-        str_var offs_var csv_null (String.length csv_null)
-        (List.print char_print_quoted) fins
-        str_var offs_var (String.length csv_null)
-        offs_var (String.length csv_null) offs_var in
-    emit_value_of_string 3 field_typ.typ str_var "0" emit_is_null [] oc ;
+  List.iteri (fun i ft ->
+    p "  let val_%d, strs_ =" i ;
+    p "    let s_ = " ;
+    p "      try List.hd strs_" ;
+    p "      with Failure _ ->" ;
+    p "        Printf.sprintf \"Expected more values than %d\" |>" i ;
+    p "        failwith in" ;
+    p "    (try check_parse_all s_ (" ;
+    emit_value_of_string 3 ft.typ "s_" "0" emit_is_null [] oc ;
     p "    ) with exn -> (" ;
     p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
-      (i+1)
-      (field_typ.name :> string) ;
-    p "        %s (Printexc.to_string exn) ;" str_var ;
-    p "      raise exn))%s" sep ;
-  ) tuple_typ ;
-  p "  )"
+      (i+1) (ft.name :> string) ;
+    p "        s_ (Printexc.to_string exn) ;" ;
+    p "      raise exn)), List.tl strs_ in" ;
+  ) typ ;
+  p "  %a\n"
+    (list_print_as_tuple_i (fun oc i _ ->
+      Printf.fprintf oc "val_%d" i)) typ
 
 let emit_time_of_tuple name oc opc =
   let open RamenEventTime in
