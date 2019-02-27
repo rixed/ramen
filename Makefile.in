@@ -8,7 +8,7 @@ OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 QTEST    = qtest
 Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
-override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -bin-annot -S
+override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
