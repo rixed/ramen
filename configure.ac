@@ -27,7 +27,7 @@ AC_TRY_LINK([#include <orc/Common.hh>], [orc::CompressionKind dummy],
   [AC_SUBST([HAVE_ORC], 1)]
   [AC_DEFINE(HAVE_ORC, 1, [Do we have liborc?])]
   ,
-  [AC_MSG_WARN([liborc is not installed.])]
+  [AC_MSG_WARN([liborc is not installed. Support for ORC files will be disabled.])]
   [AC_SUBST([HAVE_ORC], 0)])
 LDFLAGS=$SAVED_LDFLAGS
 

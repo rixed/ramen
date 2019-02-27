@@ -3479,8 +3479,8 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "type handler = unit" ;
     p "let no_orc_support () =" ;
     p "  failwith \"ORC format support was not compiled in\"" ;
-    p "let %s _ _ = no_orc_support ()" orc_write_func ;
-    p "let %s _ _ _ = no_orc_support ()" orc_read_func ;
+    p "let orc_write _ _ = no_orc_support ()" ;
+    p "let orc_read _ _ _ = no_orc_support ()" ;
     p "let orc_close () = ()" ;
     p "let orc_make_handler _ _ _ _ = ()\n" ;
   )
