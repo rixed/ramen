@@ -1461,7 +1461,7 @@ let convert
   and writer =
     match out_fmt with
     | CodeGenLib_Casing.CSV ->
-        let fd = openfile out_fname [O_WRONLY] 0o644 in
+        let fd = openfile out_fname [O_CREAT;O_EXCL;O_WRONLY] 0o644 in
         out_fd := Some fd ;
         csv_write fd
     | CodeGenLib_Casing.ORC ->
