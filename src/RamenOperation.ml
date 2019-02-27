@@ -407,15 +407,17 @@ let operation_with_factors op factors = match op with
 let out_type_of_operation ?(with_private=false) = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ;
-      List.fold_left (fun lst sf ->
-        if not with_private && RamenName.is_private sf.alias then lst else
-        RamenTuple.{
-          name = sf.alias ;
-          doc = sf.doc ;
-          aggr = sf.aggr ;
-          typ = sf.expr.typ ;
-          units = sf.expr.units } :: lst
-      ) [] fields |> List.rev
+      let out_typ =
+        List.fold_left (fun lst sf ->
+          RamenTuple.{
+            name = sf.alias ;
+            doc = sf.doc ;
+            aggr = sf.aggr ;
+            typ = sf.expr.typ ;
+            units = sf.expr.units } :: lst
+        ) [] fields |> List.rev in
+      if with_private then out_typ
+      else RamenTuple.filter_out_private out_typ
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
       fields
   | ListenFor { proto ; _ } ->
@@ -430,8 +432,8 @@ let out_type_of_operation ?(with_private=false) = function
 let out_record_of_operation op =
   T.make ~nullable:false
     (T.TRecord (
-      (out_type_of_operation op |> List.enum) /@
-      (fun ft ->
+      (out_type_of_operation op |> List.enum) |>
+      Enum.map (fun ft ->
         (ft.RamenTuple.name :> string), ft.typ) |>
       Array.of_enum))
 

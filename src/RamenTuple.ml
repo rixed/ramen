@@ -96,6 +96,26 @@ let type_signature =
       T.string_of_typ ft.typ
   ) ""
 
+let rec filter_out_private_record_field = function
+  | T.{ structure = TRecord kts ; nullable } ->
+      let kts =
+        Array.filter_map (fun (k, t) ->
+          if RamenName.(is_private (field_of_string k)) then None
+          else
+            filter_out_private_record_field t |>
+            Option.map (fun t -> k, t)
+        ) kts in
+      if Array.length kts = 0 then None
+      else Some T.{ structure = T.TRecord kts ; nullable }
+  | t -> Some t
+
+let filter_out_private =
+  List.filter_map (fun ft ->
+    if RamenName.is_private ft.name then None
+    else
+      filter_out_private_record_field ft.typ |>
+      Option.map (fun t -> { ft with typ = t }))
+
 let params_type_signature =
   type_signature % List.map (fun p -> p.ptyp) % params_sort
 

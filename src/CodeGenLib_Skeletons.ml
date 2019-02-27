@@ -1287,6 +1287,21 @@ let aggregate
     tuple_reader on_tup on_else)
 
 
+let read_whole_archive ?(while_=always) read_tuplez rb k =
+  if while_ () then
+    RingBufLib.(read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
+      match read_tuplez tx with
+      | exception e ->
+          print_exception ~what:"reading a tuple from archive" e,
+          false (* Skip the rest of that file for safety *)
+      | DataTuple chn, Some tuple when chn = RamenChannel.live ->
+          k tuple, true
+      | DataTuple chn, _ ->
+          (* This should not happen as we archive only the live channel: *)
+          !logger.warning "Read a tuple from channel %d in archive?" chn ;
+          (), true
+      | _ -> (), true))
+
 (* Special node that reads the output history instead of computing it.
  * Takes from the env the ringbuf location and the since/until dates to
  * replay, as well as the channel id. Then it must follow the instructions
@@ -1348,25 +1363,13 @@ let replay
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
   let time_overlap t1 t2 = since < t2 && until >= t1 in
-  let rec loop_tuples rb =
-    if while_ () then
-      RingBufLib.read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
-        match read_tuple tx with
-        | exception e ->
-            print_exception ~what:"reading a tuple from archive" e,
-            false (* Skip the rest of that file for safety *)
-        | DataTuple chn, Some tuple when chn = RamenChannel.live ->
-            CodeGenLib_IO.on_each_input_pre () ;
-            incr num_replayed_tuples ;
-            (* As tuples are not ordered in the archive file we have
-             * to read it all: *)
-            outputer (RingBufLib.DataTuple channel_id) (Some tuple), true
-        | DataTuple chn, _ ->
-            (* This should not happen as we archive only the live channel: *)
-            !logger.warning "Read a tuple from channel %d (mine is %d)"
-              chn channel_id ;
-            (), true
-        | _ -> (), true) in
+  let loop_tuples rb =
+    read_whole_archive ~while_ read_tuple rb (fun tuple ->
+      CodeGenLib_IO.on_each_input_pre () ;
+      incr num_replayed_tuples ;
+      (* As tuples are not ordered in the archive file we have
+       * to read it all: *)
+      outputer (RingBufLib.DataTuple channel_id) (Some tuple)) in
   let loop_tuples_of_file fname =
     !logger.debug "Reading archive %S" fname ;
     match RingBuf.load fname with
@@ -1401,3 +1404,68 @@ let replay
   !logger.debug "Finished after having replayed %d tuples"
     !num_replayed_tuples ;
   exit (!quit |? ExitCodes.terminated)
+
+let convert
+      in_fmt in_fname out_fmt out_fname
+      orc_read csv_write orc_write orc_make_handler orc_close
+      (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
+      (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> RamenChannel.t -> 'tuple_out -> int)
+      tuple_of_strings =
+  let open Unix in
+  if in_fname = out_fname then
+    failwith "Input and output files must be distinct" ;
+  let orc_handler = ref None
+  and out_rb = ref None and in_rb = ref None
+  and in_fd = ref None and out_fd = ref None
+  in
+  let reader =
+    match in_fmt with
+    | CodeGenLib_Casing.CSV ->
+        let fd = openfile in_fname [O_RDONLY] 0o644 in
+        in_fd := Some fd ;
+        (fun k ->
+          read_lines fd |>
+          Enum.iter (fun line ->
+            let strings = strings_of_csv Default.csv_separator line in
+            match tuple_of_strings (Array.of_list strings) with
+            | exception e ->
+              !logger.error "Cannot parse line %S: %s"
+                line (Printexc.to_string e)
+            | tuple ->
+              k tuple))
+    | CodeGenLib_Casing.ORC ->
+        (fun f ->
+          let num_lines, num_errs = orc_read in_fname 1000 f in
+          if num_errs <> 0 then
+            !logger.error "%d/%d errors" num_errs num_lines)
+    | CodeGenLib_Casing.RB ->
+        let rb = RingBuf.load in_fname in
+        in_rb := Some rb ;
+        read_whole_archive read_tuple rb
+  and writer =
+    match out_fmt with
+    | CodeGenLib_Casing.CSV ->
+        let fd = openfile out_fname [O_WRONLY] 0o644 in
+        out_fd := Some fd ;
+        csv_write fd
+    | CodeGenLib_Casing.ORC ->
+        let hdr = orc_make_handler out_fname in
+        orc_handler := Some hdr ;
+        orc_write hdr
+    | CodeGenLib_Casing.RB ->
+        RingBuf.create ~wrap:false out_fname ;
+        let rb = RingBuf.load out_fname in
+        out_rb := Some rb ;
+        let head = RingBufLib.DataTuple RamenChannel.live in
+        let head_sz = RingBufLib.message_header_sersize head in
+        (fun tuple ->
+          let sz = head_sz + sersize_of_tuple all_fields tuple in
+          let tx = RingBuf.enqueue_alloc rb sz in
+          let sz' = serialize_tuple all_fields tx RamenChannel.live tuple in
+          assert (sz' <= sz))
+  in
+  reader writer ;
+  Option.may RingBuf.unload !out_rb ;
+  Option.may RingBuf.unload !in_rb ;
+  Option.may orc_close !orc_handler

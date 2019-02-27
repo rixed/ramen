@@ -1726,8 +1726,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                   (* External parent: look for the exact type (exclude private
                    * fields): *)
                   let pser =
-                    O.out_type_of_operation pfunc.F.operation |>
-                    RingBufLib.ser_tuple_typ_of_tuple_typ in
+                    O.out_type_of_operation ~with_private:false
+                      pfunc.F.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
                    * through the TRecords.
@@ -2236,8 +2236,7 @@ let set_io_tuples parents funcs h =
         !logger.debug "Copying from parent %a"
           RamenName.func_print parent.F.name ;
         let pser =
-          O.out_type_of_operation ~with_private:true parent.F.operation |>
-          RingBufLib.ser_tuple_typ_of_tuple_typ in
+          O.out_type_of_operation ~with_private:true parent.F.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"

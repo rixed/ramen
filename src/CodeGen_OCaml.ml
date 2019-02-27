@@ -23,6 +23,7 @@ module F = C.Func
 module E = RamenExpr
 module T = RamenTypes
 module O = RamenOperation
+module Orc = RamenOrc
 open RamenConsts
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
 
@@ -72,6 +73,9 @@ let array_print_as_tuple_i p oc a =
   Array.print ~first:"(" ~last:")" ~sep:", " (fun oc x ->
     p oc !i x ; incr i) oc a
 
+let array_print_as_tuple p oc a =
+  array_print_as_tuple_i (fun oc _ x -> p oc x) oc a
+
 let list_print_as_vector p = List.print ~first:"[|" ~last:"|]" ~sep:"; " p
 let list_print_as_product p = List.print ~first:"(" ~last:")" ~sep:" * " p
 
@@ -90,33 +94,31 @@ let emit_sersize_of_fixsz_typ oc typ =
   let sz = RingBufLib.sersize_of_fixsz_typ typ in
   Int.print oc sz
 
-let rec emit_sersize_of_not_null_scalar tx_var offs_var oc = function
+let emit_sersize_of_not_null_scalar indent tx_var offs_var oc typ =
+  let p fmt = emit oc indent fmt in
+  match typ with
   | TString ->
-    Printf.fprintf oc "\
-      %d + RingBuf.round_up_to_rb_word(RingBuf.read_word %s %s)"
-      RingBuf.rb_word_bytes tx_var offs_var
+      p "%d + RingBuf.round_up_to_rb_word (RingBuf.read_word %s %s)"
+        RingBuf.rb_word_bytes tx_var offs_var
   | TIp ->
-    Printf.fprintf oc "RingBuf.(rb_word_bytes + \
-                         round_up_to_rb_word(\
-                           match RingBuf.read_word %s %s with \
-                             0 -> %a | 1 -> %a \
-                           | x -> invalid_byte_for \"IP\" x))"
-      tx_var offs_var
-      emit_sersize_of_fixsz_typ TIpv4
-      emit_sersize_of_fixsz_typ TIpv6
+      p "RingBuf.(rb_word_bytes +" ;
+      p "  round_up_to_rb_word(" ;
+      p "    match RingBuf.read_word %s %s with" tx_var offs_var ;
+      p "    | 0 -> %a" emit_sersize_of_fixsz_typ TIpv4 ;
+      p "    | 1 -> %a" emit_sersize_of_fixsz_typ TIpv6 ;
+      p "    | x -> invalid_byte_for \"IP\" x))"
   | TCidr ->
-    Printf.fprintf oc "RingBuf.(rb_word_bytes + \
-                         round_up_to_rb_word(\
-                           match RingBuf.read_u8 %s %s |> Uint8.to_int with \
-                             4 -> %a | 6 -> %a \
-                           | x -> invalid_byte_for \"CIDR\" x))"
-      tx_var offs_var
-      emit_sersize_of_fixsz_typ TCidrv4
-      emit_sersize_of_fixsz_typ TCidrv6
-
-  | TTuple _ | TRecord _ | TVec _ | TList _ -> assert false
-
-  | t -> emit_sersize_of_fixsz_typ oc t
+      p "RingBuf.(rb_word_bytes +" ;
+      p "  round_up_to_rb_word(" ;
+      p "    match RingBuf.read_u8 %s %s |> Uint8.to_int with"
+        tx_var offs_var ;
+      p "    | 4 -> %a" emit_sersize_of_fixsz_typ TCidrv4 ;
+      p "    | 6 -> %a" emit_sersize_of_fixsz_typ TCidrv6 ;
+      p "    | x -> invalid_byte_for \"CIDR\" x))"
+  | TTuple _ | TRecord _ | TVec _ | TList _ ->
+      assert false
+  | t ->
+      p "%a" emit_sersize_of_fixsz_typ t
 
 let id_of_typ = function
   | TFloat  -> "float"
@@ -146,7 +148,7 @@ let id_of_typ = function
   | TNum | TAny | TEmpty -> assert false
 
 let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
-  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let p fmt = emit oc indent fmt in
   if t.T.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
@@ -157,7 +159,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
     p "NotNull x_, o_"
   ) else (
     let emit_parse_list indent t oc =
-      let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+      let p fmt = emit oc indent fmt in
       p "let rec read_next_ prevs_ o_ =" ;
       p "  let o_ = string_skip_blanks %s o_ in" str_var ;
       p "  if o_ >= String.length %s then" str_var ;
@@ -221,7 +223,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         emit_parse_list (indent + 1) t oc ;
         p "in" ;
         p "if Array.length lst_ <> %d then" d ;
-        p "  Printf.sprintf \"Was expecting %d values but got %%d\" |>" d ;
+        p "  Printf.sprintf \"Was expecting %d values but got %%d\"" d ;
         p "    (Array.length lst_) |> failwith ;" ;
         p "res_"
     | TList t ->
@@ -229,7 +231,8 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
     | TTuple ts ->
         emit_parse_tuple indent ts oc
     | TRecord kts ->
-        (* TODO: read field labels and reorder *)
+        (* TODO: read field labels and reorder.
+         * For now we will expect fields in user definition order: *)
         let ts = Array.map snd kts in
         emit_parse_tuple indent ts oc
     | TString ->
@@ -277,19 +280,12 @@ let rec emit_value oc typ =
         (array_print_i (fun i oc typ ->
           Printf.fprintf oc "(%a x%d_)" emit_value typ i)) ts
   | TRecord kts ->
-      (* We represent records as OCaml tuples, in serialization order for
-       * simplicity and efficiency. When reading the code we would like to
-       * have those in declaration order, but it's not easy to keep that
-       * declaration order around. Also it would make the code more
-       * complicated as two record types differing only by definition order
-       * are really the same record. *)
-      let a = RingBufLib.ser_array_of_record ~with_private:true kts in
-      Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length a) ;
+      Printf.fprintf oc "(let h_ = Hashtbl.create %d " (Array.length kts) ;
       Printf.fprintf oc "and %a = x_ in "
         (array_print_as_tuple_i (fun oc i _ ->
-          Printf.fprintf oc "x%d_" i)) a ;
+          Printf.fprintf oc "x%d_" i)) kts ;
       Array.iter (fun (k, t) ->
-        Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) a ;
+        Printf.fprintf oc "Hashtbl.add h_ %S %a ;" k emit_value t) kts ;
       Printf.fprintf oc "RamenTypes.VRecord h_)"
   | TVec (_d, t) ->
       Printf.fprintf oc "RamenTypes.VVec (Array.map %a x_)" emit_value t
@@ -324,10 +320,11 @@ let rec emit_type oc =
                  Printf.fprintf oc "(Uint128.of_string %S, %d)" (Uint128.to_string n) l
   | VCidr (RamenIp.Cidr.V4 n) -> emit_type oc (VCidrv4 n)
   | VCidr (RamenIp.Cidr.V6 n) -> emit_type oc (VCidrv6 n)
-  | VTuple vs -> Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
+  | VTuple vs ->
+      Array.print ~first:"(" ~last:")" ~sep:", " emit_type oc vs
   | VRecord kvs ->
-      let vs = RingBufLib.ser_array_of_record ~with_private:true kvs |>
-               Array.map snd in
+      (* A record internal value is a tuple with fields in definition order: *)
+      let vs = Array.map snd kvs in
       emit_type oc (VTuple vs)
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
@@ -370,6 +367,8 @@ let rec otype_of_structure oc = function
         (fun oc t -> otype_of_type oc t)
         oc ts
   | TRecord kts ->
+      (* A record internal representation is a tuple with field in the
+       * definition order: *)
       let ts = Array.map snd kts in
       otype_of_structure oc (TTuple ts)
   | TVec (_, t) | TList t ->
@@ -494,17 +493,16 @@ let rec conv_from_to
                             t.structure TString) !i ;
             incr i)) ts
     | TRecord ts, TString ->
-      (* TODO: also print the field names? *)
-      let i = ref 0 in
+      (* TODO: also print the field names?
+       * For now the fields are printed in the definition order: *)
       Printf.fprintf oc
         "(fun %a -> \"(\"^ %a ^\")\")"
           (array_print_as_tuple_i (fun oc i _ ->
             Printf.fprintf oc "x%d_" i)) ts
-          (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (_k, t) ->
+          (array_print_i ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun i oc (_, t) ->
             Printf.fprintf oc "(%t) x%d_"
               (conv_from_to ~string_not_null ~nullable:t.nullable
-                            t.structure TString) !i ;
-            incr i)) ts
+                            t.structure TString) i)) ts
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
         print_structure from_typ
@@ -1109,7 +1107,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
         let s = E.string_of_const n |>
                 option_get "Get from structure must have const str index" in
         let pos_of_field =
-          try array_rfindi (fun (k, _t) -> k = s) kts
+          try array_rfindi (fun (k, _) -> k = s) kts
           with Not_found ->
             Printf.sprintf2 "Invalid field name %S (have %a)"
               s
@@ -1887,48 +1885,56 @@ and emit_functionNv ?impl_return_nullable ~nullable
   emit_function ?impl_return_nullable ~nullable
                 ~env ~opc impl arg_typs es oc (Some (vt, ves))
 
-let rec emit_sersize_of_var typ nullable oc var =
+let rec emit_sersize_of_var indent typ nullable oc var =
+  let p fmt = emit oc indent fmt in
   if nullable then (
-    Printf.fprintf oc
-      "\n\t\t\t(match %s with Null -> 0 | NotNull %s -> %a)"
-      var var
-      (emit_sersize_of_var typ false) var
+    p "(" ;
+    p "  match %s with Null -> 0" var ;
+    p "  | NotNull %s ->" var ;
+    emit_sersize_of_var (indent + 3) typ false oc var ;
+    p ")"
   ) else (
-    let emit_for_tuple ts =
-      let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-      Printf.fprintf oc "\t\t\t(let %a = %s in\n"
-        (array_print_as_tuple_i (fun oc i _ ->
-          let item_var = var ^"_"^ string_of_int i in
-          String.print oc item_var)) ts
+    let emit_for_record kts =
+      let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
+      let item_var k = "item_"^ k |>
+                       RamenOCamlCompiler.make_valid_ocaml_identifier in
+      p "(" ;
+      p "  let %a = %s in"
+        (array_print_as_tuple (fun oc (k, _) ->
+          String.print oc (item_var k))) kts
         var ;
-      Array.iteri (fun i t ->
-        let item_var = var ^"_"^ string_of_int i in
-        Printf.fprintf oc "%a + "
-          (emit_sersize_of_var t.structure t.nullable) item_var
-      ) ts ;
-      Printf.fprintf oc "%d)" nullmask_sz
+      (* sersize does not depend on the order of fields so we can consider
+       * them in definition order: *)
+      Array.iter (fun (k, t) ->
+        emit_sersize_of_var (indent + 1) t.structure t.nullable oc (item_var k);
+        p "    +"
+      ) kts ;
+      p "  %d" nullmask_sz ;
+      p ")"
     in
     match typ with
     | TTuple ts ->
-        emit_for_tuple ts
+        let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+        emit_for_record kts
     | TRecord kts ->
-        let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
-        emit_for_tuple ts
+        emit_for_record kts
     | TVec (d, t) ->
         let nullmask_sz = RingBufLib.nullmask_sz_of_vector d in
         for i = 0 to d-1 do
           let item_var = var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t(let %s = %s.(%d) in %a) + "
-            item_var var i
-            (emit_sersize_of_var t.structure t.nullable) item_var
+          p "(" ;
+          p "  let %s = %s.(%d) in" item_var var i ;
+          emit_sersize_of_var
+            (indent + 1) t.structure t.nullable oc item_var ;
+          p ") +"
         done ;
-        Int.print oc nullmask_sz
+        p "%d" nullmask_sz
     | TString ->
-      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_string %s)" var
+      p "(RingBufLib.sersize_of_string %s)" var
     | TIp ->
-      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_ip %s)" var
+      p "(RingBufLib.sersize_of_ip %s)" var
     | TCidr ->
-      Printf.fprintf oc "\t\t\t(RingBufLib.sersize_of_cidr %s)" var
+      p "(RingBufLib.sersize_of_cidr %s)" var
     | TList t ->
       (* So var is the name of an array of some values of type t, which can
        * be a constructed type which sersize can't be known statically.
@@ -1936,205 +1942,225 @@ let rec emit_sersize_of_var typ nullable oc var =
        * the values and for each, know or compute its size, etc. This is
        * what we do here, but in cases where t has a well known sersize we
        * could generate much faster code of course: *)
-      Printf.fprintf oc "(Array.fold_left (fun s_ v_ ->\n\
-        \t\t\t\ts_ + %a)\n\
-        \t\t\t\t(%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s)"
-        (emit_sersize_of_var t.structure t.nullable) "v_"
+      p "(" ;
+      p "  Array.fold_left (fun s_ v_ -> s_ +" ;
+      emit_sersize_of_var (indent + 2) t.structure t.nullable oc "v_" ;
+      p "  ) (%d + RingBufLib.nullmask_sz_of_vector (Array.length %s)) %s"
         (* start from the size prefix and nullmask: *)
-        RingBufLib.sersize_of_u32 var
-        var
-    | _ -> emit_sersize_of_fixsz_typ oc typ
+        RingBufLib.sersize_of_u32 var var ;
+      p ")"
+    | _ ->
+      p "%a" emit_sersize_of_fixsz_typ typ
   )
 
 (* Given the name of a variable with the fieldmask, emit a given code for
- * every values to be sent.
+ * every values to be sent, in serialization order.
  * We suppose that the output value is in out_var.
- * Each code block return a value that is finally returned into out_var. *)
-let rec emit_for_serialized_fields typ copy skip fm_var val_var oc out_var =
-  if is_scalar typ.structure then
-    Printf.fprintf oc
-      "let %s =\n\
-         if %s = RamenFieldMask.Copy then (%a) else (\
-         assert (%s = RamenFieldMask.Skip) ; %a) in\n"
-      out_var
-      fm_var
-      copy (val_var, typ)
-      fm_var
-      skip (val_var, typ)
-  else
-    let emit_for_tuple ts =
-      Printf.fprintf oc
-        "let %s = match %s with\n\
-        | RamenFieldMask.Copy -> %a\n\
-        | RamenFieldMask.Skip -> %a\n\
-        | RamenFieldMask.Rec fm_ ->\n"
-        out_var fm_var
-        copy (val_var, typ)
-        skip (val_var, typ) ;
+ * Each code block returns a value that is finally returned into out_var. *)
+
+
+(* Actually, we do not need that to be that complicated.
+ * We could return to Record being just a k+{t,v}.
+ * And each time we need to iterate over fields in serialization order we
+ * could then compute the array of indexes (index of the first in ser order,
+ * then index of the second, and so on). In the generated code this does not
+ * change anything but the indexes in the fm.(xxx) are not 0, 1, etc any more
+ * but follow serialization order. As fields are accessed via names everything
+ * else is quite simple. XXX XXX XXX XXX XXX XXX XXX XXX *)
+
+let rec emit_for_serialized_fields
+          indent typ copy skip fm_var val_var oc out_var =
+  let p fmt = emit oc indent fmt in
+  if is_scalar typ.structure then (
+    p "let %s =" out_var ;
+    p "  if %s = RamenFieldMask.Copy then (" fm_var ;
+    copy (indent + 2) oc (val_var, typ) ;
+    p "  ) else (" ;
+    p "    assert (%s = RamenFieldMask.Skip) ;" fm_var ;
+    skip (indent + 2) oc (val_var, typ) ;
+    p "  ) in"
+  ) else (
+    let emit_for_record kts =
+      p "let %s =" out_var ;
+      p "  match %s with" fm_var ;
+      p "  | RamenFieldMask.Copy ->" ;
+      copy (indent + 3) oc (val_var, typ) ;
+      p "  | RamenFieldMask.Skip ->" ;
+      skip (indent + 3) oc (val_var, typ) ;
+      p "  | RamenFieldMask.Rec fm_ ->" ;
       (* Destructure the tuple, propagating Nulls: *)
-      Printf.fprintf oc
-        "let %a = "
-        (array_print_i ~first:"" ~last:"" ~sep:"," (fun j oc _ ->
-          Printf.fprintf oc "tup_%d_" j)) ts ;
+      let item_var k = Printf.sprintf "tup_" ^ k |>
+                       RamenOCamlCompiler.make_valid_ocaml_identifier in
+      p "      let %a ="
+        (Array.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
+          String.print oc (item_var k))) kts ;
       if typ.nullable then
-        Array.print ~first:"" ~last:"" ~sep:","
-                    (fun oc _ -> String.print oc "Null") oc ts
+        p "        %a in"
+          (Array.print ~first:"" ~last:"" ~sep:", "
+                      (fun oc _ -> String.print oc "Null")) kts
       else
-        String.print oc val_var ;
-      Printf.fprintf oc
-        " in\n
-         %a
-         %s in"
-        (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
-          let val_var = Printf.sprintf "tup_%d_" j
-          and fm_var = Printf.sprintf "fm_.(%d)" j in
-          emit_for_serialized_fields t copy skip fm_var val_var oc
-                                     out_var)) ts
-        out_var
+        p "        %s in" val_var ;
+      let ser = RingBufLib.ser_order kts in
+      Array.iter (fun ((k, t), i) ->
+        let fm_var = Printf.sprintf "fm_.(%d)" i in
+        emit_for_serialized_fields
+          (indent + 3) t copy skip fm_var (item_var k) oc out_var
+      ) ser ;
+      p "%s in" out_var
     in
     match typ.structure with
     | TVec (_, t) | TList t ->
-        Printf.fprintf oc
-          "let %s = match %s with\n\
-          | RamenFieldMask.Copy -> %a\n\
-          | RamenFieldMask.Skip -> %a\n\
-          | RamenFieldMask.Rec fm_ ->\n"
-          out_var fm_var
-          copy (val_var, typ)
-          skip (val_var, typ) ;
-        Printf.fprintf oc
-          "Array.fold_lefti (fun %s i_ fm_ ->\n"
-          out_var ;
+        p "let %s =" out_var ;
+        p "  match %s with" fm_var ;
+        p "  | RamenFieldMask.Copy ->" ;
+        copy (indent + 3) oc (val_var, typ) ;
+        p "  | RamenFieldMask.Skip ->" ;
+        skip (indent + 3) oc (val_var, typ) ;
+        p "  | RamenFieldMask.Rec fm_ ->" ;
+        p "      Array.fold_lefti (fun %s i_ fm_ ->" out_var ;
         (* When we want to serialize subfields of a value that is null, we
          * have to serialize each subfield as null: *)
-        if typ.nullable then
-          Printf.fprintf oc
-            "match %s with Null -> %a | NotNull %s ->\n"
-            val_var skip (val_var, typ) val_var ;
-        if t.nullable then
+        let indent =
+          if typ.nullable then (
+            p "        match %s with Null ->" val_var ;
+            skip (indent + 5) oc (val_var, typ) ;
+            p "        | NotNull %s ->" val_var ;
+            indent + 5
+          ) else indent + 3 in
+        let p fmt = emit oc indent fmt in
+        if t.nullable then (
           (* For arrays but especially lists of nullable elements, make it
            * possible to fetch beyond the boundaries of the list: *)
-          Printf.fprintf oc
-            "let x_ = try %s.(i_) with Invalid_argument -> Null in\n"
-            val_var
-        else
-          Printf.fprintf oc "let x_ = %s.(i_) in\n" val_var ;
-        Printf.fprintf oc
-          "%a\n\
-           %s
-          ) %s fm_ in\n"
-          (emit_for_serialized_fields t copy skip "fm_" "x_") out_var
-          out_var
-          out_var
+          p "  let x_ =" ;
+          p "    try %s.(i_)" val_var ;
+          p "    with Invalid_argument -> Null in"
+        ) else (
+          p "  let x_ = %s.(i_) in" val_var
+        ) ;
+        emit_for_serialized_fields
+          (indent + 1) t copy skip "fm_" "x_" oc out_var ;
+        p "  %s" out_var ;
+        p ") %s fm_ in" out_var
     | TTuple ts ->
-        emit_for_tuple ts
+        let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+        emit_for_record kts
     | TRecord kts ->
-        let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
-        emit_for_tuple ts
+        emit_for_record kts
     | _ -> assert false (* no other non-scalar types *)
+  )
 
-let emit_for_serialized_fields_of_output ser_typ copy skip fm_var oc out_var =
+let emit_for_serialized_fields_of_output
+      indent typ copy skip fm_var oc out_var =
+  let p fmt = emit oc indent fmt in
+  (* It is important we only the first layer of fields is reordered and that
+   * deeper records are unaltered: *)
+  RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iteri (fun i field ->
-    Printf.fprintf oc "\n\t\t(* Field %a *)\n"
-      RamenName.field_print field.RamenTuple.name ;
+    p "(* Field %a *)" RamenName.field_print field.RamenTuple.name ;
     let val_var = id_of_field_typ ~tuple:TupleOut field in
     let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
-    emit_for_serialized_fields field.typ copy skip fm_var val_var oc out_var
-  ) ser_typ
+    emit_for_serialized_fields indent field.typ copy skip fm_var val_var
+                               oc out_var)
 
 (* Same as the above [emit_for_serialized_fields] but for when we do not know
  * the actual value, just its type. *)
-let rec emit_for_serialized_fields_no_value typ copy skip fm_var oc out_var =
-  if is_scalar typ.structure then
-    Printf.fprintf oc
-      "let %s =\n\
-         if %s = RamenFieldMask.Copy then (%a) else (\
-         assert (%s = RamenFieldMask.Skip) ; %a) in\n"
-      out_var
-      fm_var
-      copy typ
-      fm_var
-      skip typ
-  else
-    let emit_for_tuple ts =
-      Printf.fprintf oc
-        "let %s = match %s with\n\
-        | RamenFieldMask.Copy -> %a\n\
-        | RamenFieldMask.Skip -> %a\n\
-        | RamenFieldMask.Rec fm_ ->\n\
-            %a
-            %s in"
-        out_var
-        fm_var
-        copy typ
-        skip typ
-        (array_print_i ~first:"" ~last:"" ~sep:"\n" (fun j oc t ->
-          let fm_var = Printf.sprintf "fm_.(%d)" j in
-          emit_for_serialized_fields_no_value t copy skip fm_var oc out_var)) ts
-        out_var
+let rec emit_for_serialized_fields_no_value
+    indent typ copy skip fm_var oc out_var =
+  let p fmt = emit oc indent fmt in
+  if is_scalar typ.structure then (
+    p "let %s =" out_var ;
+    p "  if %s = RamenFieldMask.Copy then (" fm_var ;
+    copy (indent + 2) oc typ ;
+    p "  ) else (" ;
+    p "    assert (%s = RamenFieldMask.Skip) ;" fm_var ;
+    skip (indent + 2) oc typ ;
+    p "  ) in"
+  ) else (
+    let emit_for_record kts =
+      p "let %s =" out_var ;
+      p "  match %s with" fm_var ;
+      p "  | RamenFieldMask.Copy ->" ;
+      copy (indent + 3) oc typ ;
+      p "  | RamenFieldMask.Skip ->" ;
+      skip (indent + 3) oc typ ;
+      p "  | RamenFieldMask.Rec fm_ ->" ;
+      let ser = RingBufLib.ser_order kts in
+      Array.print ~first:"" ~last:"" ~sep:"\n" (fun oc ((_, t), i) ->
+        let fm_var = Printf.sprintf "fm_.(%d)" i in
+        emit_for_serialized_fields_no_value
+          (indent + 3) t copy skip fm_var oc out_var
+      ) oc ser ;
+      p "      %s in" out_var
     in
     match typ.structure with
     | TVec (_, t) | TList t ->
-        Printf.fprintf oc
-          "let %s = match %s with\n\
-          | RamenFieldMask.Copy -> %a\n\
-          | RamenFieldMask.Skip -> %a\n\
-          | RamenFieldMask.Rec fm_ ->\n\
-              Array.fold_lefti (fun %s i_ fm_ ->\n\
-                %a\n\
-                %s
-              ) %s fm_ in\n"
-          out_var fm_var
-          copy typ
-          skip typ
-          out_var
-          (emit_for_serialized_fields_no_value t copy skip "fm_") out_var
-          out_var
-          out_var
+        p "let %s =" out_var ;
+        p "  match %s with" fm_var ;
+        p "  | RamenFieldMask.Copy ->" ;
+        copy (indent + 3) oc typ ;
+        p "  | RamenFieldMask.Skip ->" ;
+        skip (indent + 3) oc typ ;
+        p "  | RamenFieldMask.Rec fm_ ->" ;
+        p "      Array.fold_lefti (fun %s i_ fm_ ->" out_var ;
+        emit_for_serialized_fields_no_value
+          (indent + 4) t copy skip "fm_" oc out_var ;
+        p "        %s" out_var ;
+        p "      ) %s fm_ in" out_var
     | TTuple ts ->
-        emit_for_tuple ts
-    | TRecord ts ->
-        Array.map snd ts |> emit_for_tuple
+        let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+        emit_for_record kts
+    | TRecord kts ->
+        emit_for_record kts
     | _ -> assert false (* no other non-scalar types *)
+  )
 
-let emit_for_serialized_fields_of_output_no_value ser_typ copy skip fm_var oc out_var =
+let emit_for_serialized_fields_of_output_no_value
+      indent typ copy skip fm_var oc out_var =
+  let p fmt = emit oc indent fmt in
+  (* It is important we only the first layer of fields is reordered and that
+   * deeper records are unaltered: *)
+  RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iteri (fun i field ->
-    Printf.fprintf oc "\n\t\t(* Field %a *)\n"
-      RamenName.field_print field.RamenTuple.name ;
+    p "(* Field %a *)" RamenName.field_print field.RamenTuple.name ;
     let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
-    emit_for_serialized_fields_no_value field.typ copy skip fm_var oc out_var
-  ) ser_typ
+    emit_for_serialized_fields_no_value
+      indent field.typ copy skip fm_var oc out_var)
 
-let emit_compute_nullmask_size fm_var oc ser_typ =
-  let copy oc typ =
-    String.print oc (if typ.nullable then "b_+1" else "b_") in
-  let skip oc _ = String.print oc "b_" in
-  Printf.fprintf oc "\t\tlet b_ = 0 in\n" ;
+let emit_compute_nullmask_size indent fm_var oc typ =
+  let p fmt = emit oc indent fmt in
+  let copy indent oc typ =
+    emit oc indent "%s" (if typ.nullable then "b_+1" else "b_")
+  and skip indent oc _ =
+    emit oc indent "b_" in
+  p "let b_ = 0 in" ;
   emit_for_serialized_fields_of_output_no_value
-    ser_typ copy skip fm_var oc "b_" ;
-  Printf.fprintf oc "\t\tRingBuf.(round_up_to_rb_word (bytes_for_bits b_))"
+    indent typ copy skip fm_var oc "b_" ;
+  p "RingBuf.(round_up_to_rb_word (bytes_for_bits b_))"
 
 (* The actual nullmask size will depend on the fieldmask which is known
  * only at runtime: *)
-let emit_sersize_of_tuple name oc tuple_typ =
-  (* We want the sersize of the serialized version of course: *)
-  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
+let emit_sersize_of_tuple indent name oc typ =
+  let p fmt = emit oc indent fmt in
   (* Like for serialize_tuple, we receive first the fieldmask and then the
    * actual tuple, so we can compute the nullmask in advance: *)
-  Printf.fprintf oc "let %s fieldmask_ =\n" name ;
-  Printf.fprintf oc "\tlet nullmask_bytes_ = %a in\n"
-    (emit_compute_nullmask_size "fieldmask_") ser_typ ;
-  Printf.fprintf oc "\tassert (nullmask_bytes_ <= %d) ;\n"
-    (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
-  Printf.fprintf oc "\tfun %a ->\n"
-    (emit_tuple TupleOut) tuple_typ ;
-  Printf.fprintf oc "\t\tlet sz_ = nullmask_bytes_ in\n" ;
-  let copy oc (out_var, typ) =
-    Printf.fprintf oc "sz_ + %a"
-      (emit_sersize_of_var typ.structure typ.nullable) out_var
-  and skip oc _ = String.print oc "sz_" in
-  emit_for_serialized_fields_of_output ser_typ copy skip "fieldmask_" oc "sz_" ;
-  String.print oc "\tsz_\n"
+  p "(* Compute the serialized size of a tuple of type:" ;
+  p "     %a" RamenTuple.print_typ typ ;
+  p "*)" ;
+  p "let %s fieldmask_ =" name ;
+  p "  let nullmask_bytes_ =" ;
+  emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
+  p "    in" ;
+  p "  assert (nullmask_bytes_ <= %d) ;"
+    (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
+  p "  fun %a ->" (emit_tuple TupleOut) typ ;
+  p "    let sz_ = nullmask_bytes_ in" ;
+  let copy indent oc (out_var, typ) =
+    emit oc indent "sz_ +" ;
+    emit_sersize_of_var (indent + 1) typ.structure typ.nullable oc out_var
+  and skip indent oc _ = emit oc indent "sz_" in
+  emit_for_serialized_fields_of_output
+    (indent + 2) typ copy skip "fieldmask_" oc "sz_" ;
+  p "    sz_\n"
 
 (* The function that will serialize the fields of the tuple at the given
  * addresses. The first argument is the recursive fieldmask of the fields
@@ -2156,125 +2182,124 @@ let emit_sersize_of_tuple name oc tuple_typ =
  * For list values, we start with the number of elements.
  * Then, for lists, vectors and tuples we have a small local nullmask
  * (for tuples, even for fields that are not nullable, FIXME). *)
-let emit_serialize_tuple name oc tuple_typ =
-  (* Serialize in tuple_typ.name order: *)
-  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ tuple_typ in
-  Printf.fprintf oc "let %s fieldmask_ =\n" name ;
-  Printf.fprintf oc "\tlet nullmask_bytes_ = %a in\n"
-    (emit_compute_nullmask_size "fieldmask_") ser_typ ;
-  Printf.fprintf oc "\tfun tx_ start_offs_ %a ->\n"
-    (emit_tuple TupleOut) tuple_typ ;
+let emit_serialize_tuple indent name oc typ =
+  let p fmt = emit oc indent fmt in
+  p "let %s fieldmask_ =" name ;
+  p "  let nullmask_bytes_ =" ;
+  emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
+  p "    in" ;
+  p "  fun tx_ start_offs_ %a ->" (emit_tuple TupleOut) typ ;
   if verbose_serialization then
-    Printf.fprintf oc
-      "\t\t!RamenLog.logger.RamenLog.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;\n" ;
-
-  (* callbacks [copy] and [skip] have to return the offset and null index
+    p "    !logger.debug \"Serialize a tuple, nullmask_bytes=%%d\" nullmask_bytes_ ;" ;
+  (* Callbacks [copy] and [skip] have to return the offset and null index
    * but we have several offsets and several null index (when copying full
    * compund types) ; we therefore enforce the rule that those variables
    * are always called "offs_" and "nulli_". *)
-  Printf.fprintf oc "\t\tlet offs_ = start_offs_ + nullmask_bytes_\n\
-                     \t\tand nulli_ = 0 in\n" ;
+  p "    let offs_ = start_offs_ + nullmask_bytes_" ;
+  p "    and nulli_ = 0 in" ;
   (*
    * Write a full value, updating offs_var and nulli_var:
    * [start_var]: where we write the value (and where the nullmask is, for
    *              values with a nullmask).
    *)
-  let rec emit_write start_var val_var nullable oc typ =
+  let rec emit_write indent start_var val_var nullable oc typ =
+    let p fmt = emit oc indent fmt in
     if nullable then (
       (* Write either nothing (since the nullmask is initialized with 0) or
        * the nullmask bit and the value *)
-      Printf.fprintf oc "\t\t\t\t(match %s with\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t| Null -> offs_, nulli_ + 1\n" ;
-      Printf.fprintf oc "\t\t\t\t| NotNull %s ->\n" val_var ;
-      Printf.fprintf oc "\t\t\t\t\tRingBuf.set_bit tx_ %s nulli_ ;\n" start_var ;
-      Printf.fprintf oc "\t\t\t\t\tlet offs_, nulli_ = %a in\n\
-                         \t\t\t\t\toffs_, nulli_ + 1)\n"
-        (emit_write start_var val_var false) typ
+      p "(match %s with" val_var ;
+      p "| Null -> offs_, nulli_ + 1" ;
+      p "| NotNull %s ->" val_var ;
+      p "    RingBuf.set_bit tx_ %s nulli_ ;" start_var ;
+      p "    let offs_, nulli_ =" ;
+      emit_write (indent + 3) start_var val_var false oc typ ;
+      p "      in" ;
+      p "     offs_, nulli_ + 1)"
     ) else (
-      let emit_write_array dim_var t =
+      let emit_write_array indent dim_var t =
+        let p fmt = emit oc indent fmt in
         if verbose_serialization then
-          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing an array of size %%d at offset %%d\" %s offs_ ;\n" dim_var ;
-        Printf.fprintf oc
-          "\t\t\t(let nullmask_bytes_ = RingBufLib.nullmask_sz_of_vector %s in\n"
+          p "!logger.debug \"Serializing an array of size %%d at offset %%d\" %s offs_ ;" dim_var ;
+        p "(" ;
+        p "  let nullmask_bytes_ = RingBufLib.nullmask_sz_of_vector %s in"
           dim_var ;
-        Printf.fprintf oc
-          "\t\t\tRingBuf.zero_bytes tx_ offs_ nullmask_bytes_ ;\n" ;
-        Printf.fprintf oc
-          "\t\t\tlet start_arr_ = offs_ in\n\
-           \t\t\tlet offs_ = offs_ + nullmask_bytes_ in\n" ;
-        Printf.fprintf oc
-          "\t\t\tlet offs_, _ =\n\
-           \t\t\t\tArray.fold_left (fun (offs_, nulli_) v_ ->\n\
-           \t\t\t\t\t%a\n\
-           \t\t\t\t) (offs_, 0) %s in\n\
-           \t\t\toffs_, nulli_)\n"
-          (emit_write "start_arr_" "v_" t.nullable) t.structure
-          val_var
-      and emit_write_tuple ts =
+        p "  RingBuf.zero_bytes tx_ offs_ nullmask_bytes_ ;" ;
+        p "  let start_arr_ = offs_ in" ;
+        p "  let offs_ = offs_ + nullmask_bytes_ in" ;
+        p "  let offs_, _ =" ;
+        p "    Array.fold_left (fun (offs_, nulli_) v_ ->" ;
+        emit_write (indent + 3) "start_arr_" "v_" t.nullable oc t.structure ;
+        p "    ) (offs_, 0) %s in" val_var ;
+        p "  offs_, nulli_" ;
+        p ")"
+      and emit_write_record indent kts =
+        let p fmt = emit oc indent fmt in
         if verbose_serialization then
-          Printf.fprintf oc "\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;\n" (Array.length ts) ;
-        Printf.fprintf oc "\t\t\tlet %a = %s in\n"
-          (array_print_as_tuple_i (fun oc i _ ->
-            let item_var = val_var ^"_"^ string_of_int i in
-            String.print oc item_var)) ts
+          p "!logger.debug \"Serializing a tuple of %d elements at offset %%d\" offs_ ;" (Array.length kts) ;
+        let item_var k = val_var ^"_"^ k |>
+                         RamenOCamlCompiler.make_valid_ocaml_identifier in
+        p "let %a = %s in"
+          (array_print_as_tuple (fun oc (k, _) ->
+            String.print oc (item_var k))) kts
           val_var ;
-        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
+        let nullmask_sz = RingBufLib.nullmask_sz_of_record kts in
         if nullmask_sz > 0 then
-          Printf.fprintf oc "\t\t\tRingBuf.zero_bytes tx_ offs_ %d ;\n"
-            nullmask_sz ;
-        Printf.fprintf oc
-          "\t\t\tlet start_tup_ = offs_\n\
-           \t\t\tand offs_ = offs_ + %d (* nullmask *) in\n"
-          nullmask_sz ;
-        Array.iteri (fun i t ->
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\t\t\tlet offs_, _ = (let nulli_ = 0 in %a) in\n"
-            (emit_write "start_tup_" item_var t.nullable) t.structure
-        ) ts ;
-        Printf.fprintf oc "\t\t\t\toffs_, nulli_"
+          p "RingBuf.zero_bytes tx_ offs_ %d ;" nullmask_sz ;
+        p "let start_tup_ = offs_" ;
+        p "and offs_ = offs_ + %d (* nullmask *) in" nullmask_sz ;
+        (* We must obviously serialize in serialization order: *)
+        let ser = RingBufLib.ser_order kts in
+        Array.iter (fun ((k, t), _) ->
+          p "let offs_, _ =" ;
+          p "  let nulli_ = 0 in" ;
+          emit_write (indent + 1) "start_tup_" (item_var k) t.nullable oc
+                     t.structure ;
+          p "  in"
+        ) ser ;
+        p "offs_, nulli_"
       in
       match typ with
       (* Constructed types: *)
       | TTuple ts ->
-          emit_write_tuple ts
+          let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+          emit_write_record indent kts
 
       | TRecord kts ->
-          let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
-          emit_write_tuple ts
+          emit_write_record indent kts
 
       | TVec (d, t) ->
-          emit_write_array (string_of_int d) t
+          emit_write_array indent (string_of_int d) t
 
       | TList t ->
-          Printf.fprintf oc "\t\t\tlet d_ = Array.length %s in\n" val_var ;
-          Printf.fprintf oc "\t\t\tRingBuf.write_u32 tx_ offs_ (Uint32.of_int d_) ;\n" ;
-          Printf.fprintf oc "\t\t\tlet offs_ = offs_ + RingBufLib.sersize_of_u32 in\n" ;
-          emit_write_array "d_" t
+          p "let d_ = Array.length %s in" val_var ;
+          p "RingBuf.write_u32 tx_ offs_ (Uint32.of_int d_) ;" ;
+          p "let offs_ = offs_ + RingBufLib.sersize_of_u32 in" ;
+          emit_write_array indent "d_" t
 
       (* Scalar types: *)
       | t ->
           if verbose_serialization then
-            Printf.fprintf oc "\t\t\t\t!RamenLog.logger.RamenLog.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;\n" val_var val_var ;
-          Printf.fprintf oc "\t\t\t\tRingBuf.write_%s tx_ offs_ %s ;\n"
-            (id_of_typ t) val_var ;
-          Printf.fprintf oc "\t\t\t\toffs_ + %a, nulli_\n"
-            (emit_sersize_of_var t false) val_var
+            p "!logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) offs_ ;" val_var val_var ;
+          p "RingBuf.write_%s tx_ offs_ %s ;" (id_of_typ t) val_var ;
+          p "offs_ +" ;
+          emit_sersize_of_var (indent + 1) t false oc val_var ;
+          p "  , nulli_"
     ) in
   (* Start by zeroing the nullmask *)
-  Printf.fprintf oc
-    "\t\tif nullmask_bytes_ > 0 then\n\
-     \t\t\tRingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ;\n" ;
+  p "    if nullmask_bytes_ > 0 then" ;
+  p "      RingBuf.zero_bytes tx_ start_offs_ nullmask_bytes_ ;" ;
   (* All nullable values found in the fieldmask will have its nullbit in the
    * global nullmask at start_offs: *)
-  let copy oc (out_var, typ) =
-    emit_write "start_offs_" out_var typ.nullable oc typ.structure
-  and skip oc _ =
+  let copy indent oc (out_var, typ) =
+    emit_write indent "start_offs_" out_var typ.nullable oc typ.structure
+  and skip indent oc _ =
     (* We must return offs and null_idx as [copy] does (unchanged here,
      * since the field is not serialized). *)
-    Printf.fprintf oc "offs_, nulli_"
+    emit oc indent "offs_, nulli_"
   in
-  emit_for_serialized_fields_of_output ser_typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
-  String.print oc "\toffs_\n"
+  emit_for_serialized_fields_of_output
+    (indent + 2) typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
+  p "  offs_\n"
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -2285,8 +2310,8 @@ let rec emit_indent oc n =
 (* Emit a function that, given an array of strings (corresponding to a line of
  * CSV) will return the tuple defined by [tuple_typ] or raises
  * some exception *)
-let emit_tuple_of_strings name csv_null oc tuple_typ =
-  let p fmt = Printf.fprintf oc (fmt^^"\n") in
+let emit_tuple_of_strings indent name csv_null oc tuple_typ =
+  let p fmt = emit oc indent fmt in
   p "let %s strs_ =" name ;
   p "  (" ;
   let num_fields = List.length tuple_typ in
@@ -2305,7 +2330,7 @@ let emit_tuple_of_strings name csv_null oc tuple_typ =
         offs_var (String.length csv_null) offs_var in
     emit_value_of_string 3 field_typ.typ str_var "0" emit_is_null [] oc ;
     p "    ) with exn -> (" ;
-    p "      !RamenLog.logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
+    p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
       (i+1)
       (field_typ.name :> string) ;
     p "        %s (Printexc.to_string exn) ;" str_var ;
@@ -2354,6 +2379,7 @@ let emit_read_csv_file opc oc name csv_fname unlink
     | None -> "\"\""
     | Some p -> const_string_of p
   and csv_fname = const_string_of csv_fname
+  and p fmt = emit oc 0 fmt
   in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
@@ -2362,22 +2388,18 @@ let emit_read_csv_file opc oc name csv_fname unlink
    * - reading a CSV string into a tuple type (when nullable fields are option type)
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
-  Printf.fprintf oc
-     "%a\n%a\n%a\n%a\n%a\n\
-     let %s () =\n\
-       \tlet unlink_ = %a in
-       \tCodeGenLib_Skeletons.read_csv_file %s\n\
-       \t\tunlink_ %S sersize_of_tuple_ time_of_tuple_\n\
-       \t\tfactors_of_tuple_ serialize_tuple_\n\
-       \t\ttuple_of_strings_ %s field_of_params_\n"
-    (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
-    (emit_time_of_tuple "time_of_tuple_") opc
-    (emit_factors_of_tuple "factors_of_tuple_") opc
-    (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
-    (emit_tuple_of_strings "tuple_of_strings_" csv_null) opc.tuple_typ
-    name
-    (emit_expr ~env:[] ~context:Finalize ~opc) unlink
-    csv_fname csv_separator preprocessor
+  emit_sersize_of_tuple 0 "sersize_of_tuple_" oc opc.tuple_typ ;
+  emit_time_of_tuple "time_of_tuple_" oc opc ;
+  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
+  emit_serialize_tuple 0 "serialize_tuple_" oc opc.tuple_typ ;
+  emit_tuple_of_strings 0 "tuple_of_strings_" csv_null oc opc.tuple_typ ;
+  p "let %s () =" name ;
+  p "  let unlink_ = %a in"
+    (emit_expr ~env:[] ~context:Finalize ~opc) unlink ;
+  p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
+  p "    unlink_ %S sersize_of_tuple_ time_of_tuple_" csv_separator ;
+  p "    factors_of_tuple_ serialize_tuple_" ;
+  p "    tuple_of_strings_ %s field_of_params_\n" preprocessor
 
 let emit_listen_on opc oc name net_addr port proto =
   let open RamenProtocols in
@@ -2389,10 +2411,10 @@ let emit_listen_on opc oc name net_addr port proto =
       \t\t(%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)\n\
       \t\t%S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_\n\
       \t\tserialize_tuple_\n"
-    (emit_sersize_of_tuple "sersize_of_tuple_") tuple_typ
+    (emit_sersize_of_tuple 0 "sersize_of_tuple_") tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_factors_of_tuple "factors_of_tuple_") opc
-    (emit_serialize_tuple "serialize_tuple_") tuple_typ
+    (emit_serialize_tuple 0 "serialize_tuple_") tuple_typ
     name
     collector
     (Unix.string_of_inet_addr net_addr) port
@@ -2406,10 +2428,10 @@ let emit_well_known opc oc name from
       \tCodeGenLib_Skeletons.read_well_known %a\n\
       \t\tsersize_of_tuple_ time_of_tuple_ factors_of_tuple_\n\
       \t\tserialize_tuple_ %s %S %s\n"
-    (emit_sersize_of_tuple "sersize_of_tuple_") opc.tuple_typ
+    (emit_sersize_of_tuple 0 "sersize_of_tuple_") opc.tuple_typ
     (emit_time_of_tuple "time_of_tuple_") opc
     (emit_factors_of_tuple "factors_of_tuple_") opc
-    (emit_serialize_tuple "serialize_tuple_") opc.tuple_typ
+    (emit_serialize_tuple 0 "serialize_tuple_") opc.tuple_typ
     name
     (List.print (fun oc ds ->
       Printf.fprintf oc "%S" (
@@ -2418,122 +2440,120 @@ let emit_well_known opc oc name from
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. *)
-let emit_read_tuple name ?(is_yield=false) oc typ =
-  (* Deserialize in in_tuple_typ.name order: *)
-  let ser_typ = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
-  Printf.fprintf oc "let %s tx_ =\n" name ;
-  if is_yield then (
-    (* Yield produce only tuples for the live channel: *)
-    Printf.fprintf oc "\
-      \tlet m_ = RingBufLib.(DataTuple RamenChannel.live) in\n\
-      \tlet start_offs_ = 0 in\n"
-  ) else (
-    Printf.fprintf oc "
-      \tmatch RingBufLib.read_message_header tx_ 0 with\n\
-      \t|RingBufLib.EndOfReplay _ as m_ -> m_, None\n\
-      \t|RingBufLib.DataTuple _ as m_ ->\n\
-      \t\tlet start_offs_ = RingBufLib.message_header_sersize m_ in\n"
-  ) ;
-  Printf.fprintf oc
-    "\tlet offs_ = start_offs_ + %d in\n"
-    (RingBufLib.nullmask_bytes_of_tuple_type ser_typ) ;
-  if verbose_serialization then
-    Printf.fprintf oc "\t!RamenLog.logger.RamenLog.debug \"Deserializing a tuple\" ;\n" ;
-  (*
-   * All the following emit_* functions Return value, offset:
-   *)
-  let rec emit_read_array tx_var offs_var dim_var oc t =
-    Printf.fprintf oc
-      "\t\tlet arr_start_ = %s\n\
-       \t\tand offs_arr_ = ref (%s + (RingBufLib.nullmask_sz_of_vector %s)) in\n"
-      offs_var
-      offs_var dim_var ;
-    Printf.fprintf oc
-      "\t\tArray.init %s (fun bi_ ->\n\
-       \t\t\tlet v_, o_ = %a in\n\
-       \t\t\toffs_arr_ := o_ ; v_), !offs_arr_\n"
-      dim_var
-      (emit_read_value tx_var "arr_start_" "!offs_arr_" "v_" t.nullable "bi_") t.structure
-  and emit_read_value tx_var start_offs_var offs_var val_var
-                      nullable nulli_var oc structure =
-    if nullable then (
-      Printf.fprintf oc "\
-        \t\tif RingBuf.get_bit %s %s %s then (\n\
-        \t\tlet %s, %s =\n\
-        \t%a in\n
-        \t\tNotNull %s, %s\n
-        \t\t) else Null, %s"
-        tx_var start_offs_var nulli_var
-        val_var offs_var
-        (emit_read_value tx_var start_offs_var offs_var val_var false nulli_var) structure
-        val_var offs_var
-        offs_var
+let emit_read_tuple indent name ?(is_yield=false) oc typ =
+  let p fmt = emit oc indent fmt in
+  p "(* Deserialize a tuple of type:" ;
+  p "     %a" RamenTuple.print_typ typ ;
+  p "*)" ;
+  p "let %s tx_ =" name ;
+  let indent =
+    if is_yield then (
+      (* Yield produce only tuples for the live channel: *)
+      p "  let m_ = RingBufLib.(DataTuple RamenChannel.live) in" ;
+      p "  let start_offs_ = 0 in" ;
+      indent + 1
     ) else (
-      let emit_for_tuple ts =
-        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple ts in
-        Printf.fprintf oc "\t\tlet tuple_start_ = %s and offs_tup_ = %s + %d in\n"
+      p "  match RingBufLib.read_message_header tx_ 0 with" ;
+      p "  | RingBufLib.EndOfReplay _ as m_ -> m_, None" ;
+      p "  | RingBufLib.DataTuple _ as m_ ->" ;
+      p "      let start_offs_ = RingBufLib.message_header_sersize m_ in" ;
+      indent + 3
+    ) in
+  let p fmt = emit oc indent fmt in
+  p "  let offs_ = start_offs_ + %d in"
+    (RingBufLib.nullmask_bytes_of_tuple_type typ) ;
+  if verbose_serialization then
+    p "  !logger.debug \"Deserializing a tuple\" ;" ;
+  (*
+   * All the following emit_* functions Return (value, offset):
+   *)
+  let rec emit_read_array indent tx_var offs_var dim_var oc t =
+    let p fmt = emit oc indent fmt in
+    p "let arr_start_ = %s" offs_var ;
+    p "and offs_arr_ = ref (%s + (RingBufLib.nullmask_sz_of_vector %s)) in"
+      offs_var dim_var ;
+    p "Array.init %s (fun bi_ ->" dim_var ;
+    p "  let v_, o_ =" ;
+    emit_read_value (indent + 1) tx_var "arr_start_" "!offs_arr_" "v_"
+                    t.nullable "bi_" oc t.structure ;
+    p "    in" ;
+    p "  offs_arr_ := o_ ; v_" ;
+    p "), !offs_arr_"
+  and emit_read_value indent tx_var start_offs_var offs_var val_var
+                      nullable nulli_var oc structure =
+    let p fmt = emit oc indent fmt in
+    if nullable then (
+      p "if RingBuf.get_bit %s %s %s then ("
+        tx_var start_offs_var nulli_var ;
+      p "  let %s, %s =" val_var offs_var ;
+      emit_read_value (indent + 2) tx_var start_offs_var offs_var val_var
+                      false nulli_var oc structure ;
+      p "    in" ;
+      p "  NotNull %s, %s" val_var offs_var ;
+      p ") else Null, %s" offs_var
+    ) else (
+      let emit_for_record kts =
+        let nullmask_sz = RingBufLib.nullmask_sz_of_tuple kts in
+        p "let tuple_start_ = %s and offs_tup_ = %s + %d in"
           offs_var offs_var nullmask_sz ;
-        Array.iteri (fun i t ->
-          let item_var = val_var ^"_"^ string_of_int i in
-          Printf.fprintf oc "\t\tlet bi_ = %d in\n\
-                             \t\tlet %s, offs_tup_ = %a in\n"
-            i
-            item_var
-            (emit_read_value tx_var "tuple_start_" "offs_tup_" item_var t.nullable "bi_") t.structure
-        ) ts ;
-        Printf.fprintf oc "\t%a, offs_tup_"
-          (array_print_as_tuple_i (fun oc i _ ->
-            let item_var = val_var ^"_"^ string_of_int i in
-            String.print oc item_var)) ts
+        let item_var k = "field_"^ k ^"_" |>
+                         RamenOCamlCompiler.make_valid_ocaml_identifier in
+        let ser = RingBufLib.ser_order kts in
+        Array.iteri (fun i ((k, t), _) ->
+          p "let bi_ = %d in" i ;
+          p "let %s, offs_tup_ =" (item_var k) ;
+          emit_read_value (indent + 1) tx_var "tuple_start_" "offs_tup_"
+                          (item_var k) t.nullable "bi_" oc t.structure ;
+          p "  in"
+        ) ser ;
+        p "%a, offs_tup_"
+          (array_print_as_tuple (fun oc (k, _) ->
+            String.print oc (item_var k))) kts
       in
       match structure with
-      (* Constructed types are prefixed with a nullmask and then read item by
-       * item: *)
+      (* Constructed types are prefixed with a nullmask and then read item
+       * by item: *)
       | TTuple ts ->
-          emit_for_tuple ts
+          Array.mapi (fun i t -> string_of_int i, t) ts |>
+          emit_for_record
 
       | TRecord kts ->
-          let ts = RingBufLib.ser_array_of_record kts |> Array.map snd in
-          if Array.length ts <> Array.length kts then
-            Printf.sprintf2 "Cannot deserialize a record of type %a \
-                             which has private/shadowed fields"
-              T.print_structure structure |>
-            failwith ;
-          emit_for_tuple ts
+          emit_for_record  kts
 
       | TVec (d, t) ->
-          emit_read_array tx_var offs_var (string_of_int d) oc t
+          emit_read_array indent tx_var offs_var (string_of_int d) oc t
 
       | TList t ->
           (* List are like vectors but prefixed with the actual number of
            * elements: *)
-          Printf.fprintf oc
-            "\t\tlet d_, offs_lst_ = Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in\n"
+          p "let d_, offs_lst_ =" ;
+          p "  Uint32.to_int (RingBuf.read_u32 %s %s), %s + %d in"
             tx_var offs_var offs_var RingBufLib.sersize_of_u32 ;
-          emit_read_array tx_var "offs_lst_" "d_" oc t
+          emit_read_array indent tx_var "offs_lst_" "d_" oc t
 
       (* Non constructed types: *)
       | _ ->
-          Printf.fprintf oc "\
-            \t\tRingBuf.read_%s %s %s, %s + %a"
-            (id_of_typ structure) tx_var offs_var
-            offs_var (emit_sersize_of_not_null_scalar tx_var offs_var) structure
+          p "RingBuf.read_%s %s %s, %s +"
+            (id_of_typ structure) tx_var offs_var offs_var ;
+          emit_sersize_of_not_null_scalar (indent + 1) tx_var offs_var oc
+                                          structure
     )
   in
-  let _ = List.fold_left (fun nulli field ->
-      let id = id_of_field_typ ~tuple:TupleIn field in
-      Printf.fprintf oc "\tlet bi_ = %d in\n\
-                         \tlet %s, offs_ =\n%a in\n"
-        nulli
-        id
-        (emit_read_value "tx_" "start_offs_" "offs_" id field.typ.nullable "bi_")
-          field.typ.structure ;
-      nulli + (if field.typ.nullable then 1 else 0)
-    ) 0 ser_typ in
+  (* It is important we only the first layer of fields is reordered and that
+   * deeper records are unaltered: *)
+  RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
+  List.fold_left (fun nulli ft ->
+    let id = id_of_field_typ ~tuple:TupleIn ft in
+    p "  let bi_ = %d in" nulli ;
+    p "  let %s, offs_ =" id ;
+    emit_read_value (indent + 2) "tx_" "start_offs_" "offs_" id
+                    ft.typ.nullable "bi_" oc ft.typ.structure ;
+    p "    in" ;
+    nulli + (if ft.typ.nullable then 1 else 0)
+  ) 0 |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
-  Printf.fprintf oc "\tm_, Some %a\n"
-    (emit_tuple TupleIn) typ
+  p "  m_, Some %a\n" (emit_tuple TupleIn) typ
 
 (* We know that somewhere in expr we have one or several generators.
  * First we transform the AST to move the generators to the root,
@@ -2697,6 +2717,7 @@ let emit_field_selection
       add_tuple_environment TupleOut minimal_typ env
     ) else env in
   Printf.fprintf oc "=\n" ;
+  let p fmt = emit oc 0 fmt in
   List.fold_left (fun env sf ->
     if must_output_field sf.O.alias then (
       if build_minimal then (
@@ -2709,17 +2730,16 @@ let emit_field_selection
         (* We already have this binding *)
         env
       ) else (
-        Printf.fprintf oc "\t(* Output field %s of type %a *)\n"
+        p "  (* Output field %s of type %a *)"
           (sf.O.alias :> string)
           T.print_typ sf.expr.E.typ ;
         let var_name =
           id_of_field_name ~tuple:TupleOut sf.O.alias in
         if E.is_generator sf.O.expr then (
           (* So that we have a single out_typ both before and after tuples generation *)
-          Printf.fprintf oc "\tlet %s = () in\n" var_name
+          p "  let %s = () in" var_name
         ) else (
-          Printf.fprintf oc "\tlet %s = %a in\n"
-            var_name
+          p "  let %s = %a in" var_name
             (emit_expr ~env ~context:Finalize ~opc)
               sf.O.expr) ;
         (* Make that field available in the environment for later users: *)
@@ -2731,20 +2751,20 @@ let emit_field_selection
    * not selected_fields: *)
   let is_selected name =
     List.exists (fun sf -> sf.O.alias = name) selected_fields in
-  Printf.fprintf oc "\t(\n\t\t" ;
+  p " (" ;
   List.iteri (fun i ft ->
     if must_output_field ft.name then (
       let tuple =
         if is_selected ft.name then TupleOut else TupleIn in
-      Printf.fprintf oc "%s%s"
-        (if i > 0 then ",\n\t\t" else "")
+      p "  %s%s"
+        (if i > 0 then ", " else "  ")
         (id_of_field_name ~tuple ft.name)
     ) else (
-      Printf.fprintf oc "%s()"
-        (if i > 0 then ", " else "")
+      p "  %s()"
+        (if i > 0 then ", " else "  ")
     )
   ) opc.tuple_typ ;
-  Printf.fprintf oc "\n\t)\n"
+  p "  )\n"
 
 (* Fields that are part of the minimal tuple have had their states updated
  * while the minimal tuple was computed, but others have not. Let's do this
@@ -3014,7 +3034,7 @@ let emit_merge_on name in_typ ~opc oc es =
        (emit_expr ~env ~context:Finalize ~opc)) es
 
 let emit_string_of_value indent typ val_var oc =
-  let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
+  let p fmt = emit oc indent fmt in
   p "%t %s"
     (conv_from_to ~string_not_null:true ~nullable:typ.T.nullable
                   typ.structure TString)
@@ -3176,55 +3196,48 @@ let emit_aggregate opc oc global_env group_env env_env param_env
   (* Every functions have at least access to env + params: *)
   and base_env = List.rev_append param_env env_env
   in
-  Printf.fprintf oc
-    "%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n%a\n"
-    (emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where ~commit_cond ~opc) fields
-    (emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env) ["global_"] ~where ~commit_cond ~opc) fields
-    (emit_read_tuple "read_in_tuple_" ~is_yield) in_typ
-    (if where_need_group then
-      emit_where ~env:(global_env @ base_env) "where_fast_" ~always_true:true in_typ ~opc
-    else
-      emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc) where
-    (if not where_need_group then
-      emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true ~always_true:true in_typ ~opc
-    else
-      emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc) where
-    (emit_key_of_input "key_of_input_" in_typ ~opc) key
-    emit_maybe_fields out_typ
-    (emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc) commit_cond
-    (emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ minimal_typ ~opc) fields
-    (emit_field_selection ~build_minimal:false ~env:(group_env @ global_env @ base_env) "out_tuple_of_minimal_tuple_" in_typ minimal_typ ~opc) fields
-    (emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc) fields
-    (emit_sersize_of_tuple "sersize_of_tuple_") out_typ
-    (emit_time_of_tuple "time_of_tuple_") opc
-    (emit_factors_of_tuple "factors_of_tuple_") opc
-    (emit_serialize_tuple "serialize_tuple_") out_typ
-    (emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc) fields
-    (emit_merge_on "merge_on_" in_typ ~opc) merge.on
-    (emit_sort_expr "sort_until_" in_typ ~opc) (match sort with Some (_, Some u, _) -> [u] | _ -> [])
-    (emit_sort_expr "sort_by_" in_typ ~opc) (match sort with Some (_, _, b) -> b | None -> [])
-    (emit_get_notifications "get_notifications_" in_typ out_typ ~opc) notifications ;
-  Printf.fprintf oc "let %s () =\n\
-      \tCodeGenLib_Skeletons.aggregate\n\
-      \t\tread_in_tuple_ sersize_of_tuple_ time_of_tuple_\n\
-      \t\tfactors_of_tuple_ serialize_tuple_\n\
-      \t\tgenerate_tuples_\n\
-      \t\tminimal_tuple_of_group_\n\
-      \t\tupdate_states_\n\
-      \t\tout_tuple_of_minimal_tuple_\n\
-      \t\tmerge_on_ %d %F %d sort_until_ sort_by_\n\
-      \t\twhere_fast_ where_slow_ key_of_input_ %b\n\
-      \t\tcommit_cond_ %b %b %s\n\
-      \t\tglobal_init_ group_init_\n\
-      \t\tget_notifications_ %f\n"
-    name
-    merge.last merge.timeout
-    (match sort with None -> 0 | Some (n, _, _) -> n)
-    (key = [])
-    commit_before
-    (flush_how <> Never)
-    when_to_check_for_commit
-    every
+  emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where ~commit_cond ~opc oc fields ;
+  emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env) ["global_"] ~where ~commit_cond ~opc oc fields ;
+  emit_read_tuple 0 "read_in_tuple_" ~is_yield oc in_typ ;
+  if where_need_group then
+    emit_where ~env:(global_env @ base_env) "where_fast_" ~always_true:true in_typ ~opc oc where
+  else
+    emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc oc where ;
+  if not where_need_group then
+    emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true ~always_true:true in_typ ~opc oc where
+  else
+    emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc oc where ;
+  emit_key_of_input "key_of_input_" in_typ ~opc oc key ;
+  emit_maybe_fields oc out_typ ;
+  emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc oc commit_cond ;
+  emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ minimal_typ ~opc oc fields ;
+  emit_field_selection ~build_minimal:false ~env:(group_env @ global_env @ base_env) "out_tuple_of_minimal_tuple_" in_typ minimal_typ ~opc oc fields ;
+  emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc oc fields ;
+  emit_sersize_of_tuple 0 "sersize_of_tuple_" oc out_typ ;
+  emit_time_of_tuple "time_of_tuple_" oc opc ;
+  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
+  emit_serialize_tuple 0 "serialize_tuple_" oc out_typ ;
+  emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc oc fields ;
+  emit_merge_on "merge_on_" in_typ ~opc oc merge.on ;
+  emit_sort_expr "sort_until_" in_typ ~opc oc (match sort with Some (_, Some u, _) -> [u] | _ -> []) ;
+  emit_sort_expr "sort_by_" in_typ ~opc oc (match sort with Some (_, _, b) -> b | None -> []) ;
+  emit_get_notifications "get_notifications_" in_typ out_typ ~opc oc notifications ;
+  let p fmt = emit oc 0 fmt in
+  p "let %s () =" name ;
+  p "  CodeGenLib_Skeletons.aggregate" ;
+  p "    read_in_tuple_ sersize_of_tuple_ time_of_tuple_" ;
+  p "    factors_of_tuple_ serialize_tuple_" ;
+  p "    generate_tuples_" ;
+  p "    minimal_tuple_of_group_" ;
+  p "    update_states_" ;
+  p "    out_tuple_of_minimal_tuple_" ;
+  p "    merge_on_ %d %F %d sort_until_ sort_by_" merge.last merge.timeout
+    (match sort with None -> 0 | Some (n, _, _) -> n) ;
+  p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
+  p "    commit_cond_ %b %b %s"
+    commit_before (flush_how <> Never) when_to_check_for_commit ;
+  p "    global_init_ group_init_" ;
+  p "    get_notifications_ %f" every
   | _ -> assert false
 
 let sanitize_ocaml_fname s =
@@ -3325,6 +3338,8 @@ let emit_header func params_mod oc =
     open Stdint\n\
     open RamenHelpers\n\
     open RamenNullable\n\
+    open RamenLog\n\
+    open RamenConsts\n\
     open %s\n"
     (func.F.name :> string)
     (O.print true) func.F.operation
@@ -3418,28 +3433,25 @@ let emit_replay name func params oc =
   (* We cannot reuse the sersize_of_tuple_, time_of_tuple_ or
    * serialize_tuple_ that has been emitted for aggregate as emit_read_tuple
    * returns a version of out_typ with no private fields, and that's what
-   * we need to pass to those functions as well. So here we merely pretend
-   * the out_typ is the serialized version of out_type (no private fields
-   * _and_ serialization order) *)
-  let ser_out_typ =
-    O.out_type_of_operation func.F.operation |>
-    RingBufLib.ser_tuple_typ_of_tuple_typ in
+   * we need to pass to those functions as well. We keep the internal
+   * representation in user order though but remove the private fields: *)
+  let p fmt = emit oc 0 fmt in
+  let tuple_typ =
+    O.out_type_of_operation ~with_private:false func.F.operation in
   let consts = IO.output_string () in
   let opc =
     { op = Some func.F.operation ;
       event_time = O.event_time_of_operation func.F.operation ;
-      params ; consts ; tuple_typ = ser_out_typ } in
-  emit_read_tuple "read_out_tuple_" oc ser_out_typ ;
-  emit_sersize_of_tuple "sersize_of_ser_tuple_" oc ser_out_typ ;
-  emit_time_of_tuple "time_of_ser_tuple_" oc opc ;
+      params ; consts ; tuple_typ } in
+  emit_read_tuple 0 "read_out_tuple_" oc tuple_typ ;
+  emit_sersize_of_tuple 0 "sersize_of_pub_tuple_" oc tuple_typ ;
+  emit_time_of_tuple "time_of_pub_tuple_" oc opc ;
   emit_factors_of_tuple "factors_of_tuple_" oc opc ;
-  emit_serialize_tuple "serialize_ser_tuple_" oc ser_out_typ ;
-  Printf.fprintf oc
-    "let %s () =\n\
-       \tCodeGenLib_Skeletons.replay read_out_tuple_\n\
-       \t\tsersize_of_ser_tuple_ time_of_ser_tuple_ factors_of_tuple_\n\
-       \t\tserialize_ser_tuple_\n"
-    name
+  emit_serialize_tuple 0 "serialize_pub_tuple_" oc tuple_typ ;
+  p "let %s () =" name ;
+  p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
+  p "    sersize_of_pub_tuple_ time_of_pub_tuple_ factors_of_tuple_" ;
+  p "    serialize_pub_tuple_\n"
 
 let emit_orc_wrapper func orc_write_func orc_read_func oc =
   let p fmt = Printf.fprintf oc (fmt^^"\n") in
@@ -3459,8 +3471,8 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     (* Destructor do not seems to be called when the OCaml program exits: *)
     p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
     p "" ;
-    p "(* Parameters: path * schema * row per batch * batches per file *)" ;
-    p "external orc_make_handler : string -> string -> int -> int -> handler =" ;
+    p "(* Parameters: schema * row per batch * batches per file * path *)" ;
+    p "external orc_make_handler : string -> int -> int -> string -> handler =" ;
     p "  \"orc_handler_create\""
   ) else (
     !logger.debug "ORC support not compiled in!" ;
@@ -3470,11 +3482,37 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "let %s _ _ = no_orc_support ()" orc_write_func ;
     p "let %s _ _ _ = no_orc_support ()" orc_read_func ;
     p "let orc_close () = ()" ;
-    p "let orc_make_handler _ _ _ _ = ()"
+    p "let orc_make_handler _ _ _ _ = ()\n" ;
   )
 
-let compile conf worker_entry_point replay_entry_point func
-            obj_name params_mod orc_write_func orc_read_func
+(* Given the names of ORC reader/writer, build a universal conversion
+ * function from/to CSV/RB/ORC named [name] and that takes the in and out
+ * formats and file names (see [per_func_info] in CodeGenLib_Casing: *)
+let emit_convert name func oc =
+  let p fmt = Printf.fprintf oc (fmt^^"\n") in
+  let rtyp = O.out_record_of_operation func.F.operation in
+  let schema = Orc.of_structure rtyp.T.structure |>
+               IO.to_string Orc.print in
+  p "let %s in_fmt_ in_fname_ out_fmt_ out_fname_ =" name ;
+  (* We need out own tuple_of_strings_ because that for the CSV reader uses
+   * a custom CSV separator/null string. *)
+  O.out_type_of_operation ~with_private:false func.F.operation |>
+  emit_tuple_of_strings 1 "my_tuple_of_strings_" string_of_null oc ;
+  p "  and make_handler = orc_make_handler %S" schema ;
+  p "    orc_write_rows_per_batch orc_write_batches_per_file" ;
+  p "  and csv_write fd v =" ;
+  p "    let str =" ;
+  emit_string_of_value 3 rtyp "v" oc ;
+  p "      in" ;
+  p "    write_whole_string fd (str ^ \"\\n\")" ;
+  p "  in" ;
+  p "  CodeGenLib_Skeletons.convert" ;
+  p "    in_fmt_ in_fname_ out_fmt_ out_fname_" ;
+  p "    orc_read csv_write orc_write make_handler orc_close" ;
+  p "    read_out_tuple_ sersize_of_pub_tuple_ serialize_pub_tuple_" ;
+  p "    my_tuple_of_strings_"
+
+let compile conf func obj_name params_mod orc_write_func orc_read_func
             params envvars =
   !logger.debug "Going to compile function %a: %a"
     RamenName.func_print func.F.name
@@ -3486,7 +3524,8 @@ let compile conf worker_entry_point replay_entry_point func
         emit_params_env params_mod params envvars oc ;
         emit_operation worker_entry_point func params envvars oc ;
         emit_replay replay_entry_point func params oc ;
-        emit_orc_wrapper func orc_write_func orc_read_func oc) in
+        emit_orc_wrapper func orc_write_func orc_read_func oc ;
+        emit_convert convert_entry_point func oc) in
   let debug = conf.C.log_level = Debug in
   let what = "function "^ RamenName.func_color func.F.name in
   RamenOCamlCompiler.compile ~debug ~keep_temp_files:conf.C.keep_temp_files

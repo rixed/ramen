@@ -6,10 +6,10 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Format of the list of running programs: *)
-let graph_config = "v15" (* last: status instead of killed *)
+let graph_config = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v56" (* last: Get/Field/Path big overhaul *)
+let codegen = "v57" (* last: changed {T,V}Record format *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v6" (* last: addition of average tuple size *)
@@ -18,7 +18,7 @@ let instrumentation_tuple = "v6" (* last: addition of average tuple size *)
 let notify_tuple = "v6" (* last: firing is now optional *)
 
 (* Pending notification format (marshalled on disc) *)
-let pending_notify = "v6" (* last: refactor schema *)
+let pending_notify = "v7" (* last: changed {T,V}Record format *)
 
 (* Ringbuf formats *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
@@ -27,7 +27,7 @@ let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 let out_ref = "v6" (* last: recursive fieldmasks *)
 
 (* Workers state format *)
-let worker_state = "v10" (* last: remove dead state member *)
+let worker_state = "v11" (* last: changed {T,V}Record format *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version

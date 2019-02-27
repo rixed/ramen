@@ -34,9 +34,6 @@ let stats_typing_count =
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let worker_entry_point = "worker"
-let replay_entry_point = "replay"
-
 let init use_external_compiler bundle_dir max_simult_compils smt_solver =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
   RamenOCamlCompiler.bundle_dir := bundle_dir ;
@@ -466,8 +463,7 @@ let compile conf get_parent ~exec_file source_file
         mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
-            conf worker_entry_point replay_entry_point
-            func obj_name params_mod_name orc_write_func orc_read_func
+            conf func obj_name params_mod_name orc_write_func orc_read_func
             parsed_params envvars
         with e ->
           !logger.error "Cannot generate code for %s: %s"
@@ -524,20 +520,23 @@ let compile conf get_parent ~exec_file source_file
         Printf.fprintf oc
           "let () = CodeGenLib_Casing.run %S rc_marsh_ run_condition_\n"
             RamenVersions.codegen ;
-        let func_list entry_point =
-          Printf.fprintf oc "\t[\n" ;
-          Hashtbl.iter (fun _ func ->
-            let mod_name = src_name_of_func func |>
-                           Filename.basename |>
-                           String.capitalize_ascii in
-            Printf.fprintf oc"\t\t%S, %s.%s ;\n"
-              (func.F.name :> string)
-              mod_name
-              entry_point
-          ) compiler_funcs ;
-          Printf.fprintf oc "\t]\n" in
-        func_list worker_entry_point ;
-        func_list replay_entry_point) in
+        Printf.fprintf oc "\t[\n" ;
+        Hashtbl.iter (fun _ func ->
+          let mod_name = src_name_of_func func |>
+                         Filename.basename |>
+                         String.capitalize_ascii in
+          Printf.fprintf oc
+            "\t\t%S,\n\
+             \t\t\t{ worker_entry_point = %s.%s ;\n\
+             \t\t\t  replay_entry_point = %s.%s ;\n\
+             \t\t\t  convert_archive = %s.%s } ;\n"
+            (func.F.name :> string)
+            mod_name worker_entry_point
+            mod_name replay_entry_point
+            mod_name convert_entry_point
+        ) compiler_funcs ;
+        Printf.fprintf oc "\t]\n"
+      ) in
     (*
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.

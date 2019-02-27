@@ -30,6 +30,12 @@ let nullmask_bytes_of_tuple_type typ =
 let nullmask_sz_of_tuple ts =
   Array.length ts |> bytes_for_bits |> round_up_to_rb_word
 
+let nullmask_sz_of_record kts =
+  Array.filter_map (fun (k, t) ->
+    if RamenName.(is_private (field_of_string k)) then None
+    else Some t
+  ) kts |> nullmask_sz_of_tuple
+
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
 
@@ -62,12 +68,35 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
-let ser_array_of_record ?(with_private=false) kvs =
+let filter_out_private =
+  Array.filter (fun (k, _) ->
+    not RamenName.(is_private (field_of_string k)))
+
+let rec ser_array_of_record_typ ?(with_private=false) kts =
   let a =
-    Array.filter (fun (k, _) ->
-      with_private || k = "" || k.[0] <> '_'
-    ) kvs in
+    Array.filter_map (fun (k, t as kt) ->
+      if with_private || k = "" || k.[0] <> '_' then (
+        match t with
+        | { structure = TRecord kts ; nullable } ->
+            let kts = ser_array_of_record_typ ~with_private kts in
+            if Array.length kts = 0 then None
+            else Some (k, { structure = TRecord kts ; nullable })
+        | _ -> Some kt
+      ) else None
+    ) kts in
+  assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
   Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
+  a
+
+(* Given a kvs (or kts), return an array of (k,i) in serializing order
+ * (where the i indicates the position in the original array) *)
+let ser_order kts =
+  let a =
+    array_filter_mapi (fun i (k, _ as v) ->
+      if RamenName.(is_private (field_of_string k)) then None
+      else Some (v, i)
+    ) kts in
+  Array.fast_sort (fun ((k1,_),_) ((k2,_),_) -> String.compare k1 k2) a ;
   a
 
 let rec sersize_of_fixsz_typ = function
@@ -127,10 +156,10 @@ and sersize_of_tuple vs =
   let nullmask_sz = nullmask_sz_of_tuple vs in
   Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
 
-and sersize_of_record h =
+and sersize_of_record kvs =
   (* We serialize records as we serialize output: in alphabetical order,
    * without private fields: *)
-  let vs = ser_array_of_record h |> Array.map snd in
+  let vs = filter_out_private kvs |> Array.map snd in
   sersize_of_tuple vs
 
 and sersize_of_vector vs =
@@ -198,8 +227,8 @@ and write_tuple tx offs vs =
   ) (offs + nullmask_sz) vs |>
   ignore
 
-and write_record tx offs h =
-  let vs = ser_array_of_record h |> Array.map snd in
+and write_record tx offs kvs =
+  let vs = filter_out_private kvs |> Array.map snd in
   write_tuple tx offs vs
 
 and write_vector tx = write_tuple tx
@@ -253,13 +282,14 @@ and read_tuple ts tx offs =
     read_constructed_value tx t offs o bi
   ) ts
 
-and read_record ts tx offs =
+and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
    * serialized order: *)
-  let ts = ser_array_of_record ts in
-  let vs = read_tuple (Array.map snd ts) tx offs in
+  let ser = ser_order kts in
+  let ts = Array.map (fun ((_, t),_) -> t) ser in
+  let vs = read_tuple ts tx offs in
   assert (Array.length vs = Array.length ts) ;
-  Array.map2 (fun (k, _t) v -> k, v) ts vs
+  Array.map2 (fun (((k, _), _)) v -> k, v) ser vs
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
@@ -295,9 +325,20 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
 let ser_tuple_field_cmp t1 t2 =
   RamenName.compare t1.RamenTuple.name t2.RamenTuple.name
 
-let ser_tuple_typ_of_tuple_typ tuple_typ =
+(* Reorder only the first layer of RamenTuple fields: *)
+let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
   tuple_typ |>
-  List.filter (fun t -> not (RamenName.is_private t.RamenTuple.name)) |>
+  List.filter_map (fun ft ->
+    if RamenName.is_private ft.RamenTuple.name then None else
+    if not recursive then Some ft else
+    match ft.typ.structure with
+    | TRecord kts ->
+        let kts = ser_array_of_record_typ kts in
+        if Array.length kts = 0 then None
+        else
+          Some { ft with typ = { ft.typ with structure = TRecord kts } }
+    | _ -> Some ft
+  ) |>
   List.fast_sort ser_tuple_field_cmp
 
 let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =

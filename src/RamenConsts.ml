@@ -239,6 +239,8 @@ struct
   let get_info = "1nf0"
   let wants_to_run = "r34dy?"
   let print_version = "version"
+  let dump_archive = "dump"
+  let convert_archive = "convert"
 end
 
 module ExitCodes =
@@ -337,3 +339,13 @@ let min_delay_between_full_out_measurement = 3.
 
 (* Max age of the archivist stat file before it's rebuilt: *)
 let max_archivist_stat_file_age = 3. *. 60.
+
+(* Well known entry points in generated code: *)
+let worker_entry_point = "worker"
+let replay_entry_point = "replay"
+let convert_entry_point = "convert"
+
+(* When writing an ORC file, how many lines are bufferized before we flush
+ * to the file: *)
+let orc_write_rows_per_batch = 1000
+let orc_write_batches_per_file = 1000

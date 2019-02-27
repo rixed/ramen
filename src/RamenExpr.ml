@@ -427,16 +427,12 @@ let int_of_const e =
       with Invalid_argument _ -> None)
   | _ -> None
 
-(* Return the set of all unique fields in the record expression, ordered
- * in serialization order: *)
+(* Return the set of all unique fields in the record expression, preserving
+ * the order: *)
 let fields_of_record kvs =
-  let a =
-    List.fold_left (fun s (k, _) ->
-      Set.add k s
-    ) Set.empty kvs |>
-    Set.to_array in
-  Array.fast_sort RamenName.compare a ;
-  a
+  List.enum kvs /@ fst |>
+  remove_dups RamenName.compare |>
+  Array.of_enum
 
 let rec print ?(max_depth=max_int) with_types oc e =
   let st g n =

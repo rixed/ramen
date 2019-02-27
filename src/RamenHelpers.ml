@@ -170,6 +170,9 @@ let array_rfind f a =
   let i = array_rfindi f a in
   a.(i)
 
+let array_filter_mapi f a =
+  Array.enum a |> Enum.mapi f |> Enum.filter_map identity |> Array.of_enum
+
 let list_rfind_map f l =
   List.rev l |> List.find_map f
 
@@ -202,13 +205,19 @@ let rec list_fold_left2 f init l1 l2 =
  * elements: *)
 (* FIXME: a RamenSet that takes a [cmp] function, since that's not in
  * Batteries. *)
-let list_remove_dups _cmp lst =
-  let rec loop s prev = function
-  | [] -> List.rev prev
-  | x::rest ->
-      if Set.mem x s then loop s prev rest
-      else loop (Set.add x s) (x::prev) rest in
-  loop Set.empty [] lst
+let remove_dups _cmp =
+  let s = ref Set.empty in
+  Enum.filter (fun x ->
+    if Set.mem x !s then false else (
+      s := Set.add x !s ;
+      true))
+
+let list_remove_dups cmp lst =
+  List.enum lst |> remove_dups cmp |> List.of_enum
+
+(*$= list_remove_dups & ~printer:(IO.to_string (List.print Int.print))
+  [1;2;3] (list_remove_dups Int.compare [1;1;2;3;1;3;2])
+*)
 
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
@@ -452,6 +461,10 @@ let file_is_older_than ~on_err age fname =
     print_exception e ;
     on_err
 
+let write_whole_string fd str =
+  let len = String.length str in
+  Unix.single_write_substring fd str 0 len |> ignore
+
 let rec ensure_file_exists ?(contents="") ?min_size fname =
   mkdir_all ~is_file:true fname ;
   (* If needed, create the file with the initial content, atomically: *)
@@ -475,8 +488,7 @@ let rec ensure_file_exists ?(contents="") ?min_size fname =
             (fun () -> close fd)
             (fun () ->
               if contents <> "" then (
-                let len = String.length contents in
-                single_write_substring fd contents 0 len |> ignore)) ())
+                write_whole_string fd contents)) ())
   | FileTooSmall ->
       (* Not my business, wait until the file length is at least min_size,
        * which realistically should not take more than 1s: *)

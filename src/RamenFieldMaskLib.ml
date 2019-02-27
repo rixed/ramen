@@ -286,11 +286,10 @@ and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match typ.structure with
   | TRecord kts ->
-      let ser_kts = RingBufLib.ser_array_of_record kts in
       Rec (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
-        ) ser_kts)
+        ) kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
         print_typ typ
