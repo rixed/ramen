@@ -3519,8 +3519,8 @@ let emit_convert name func oc =
   p "  CodeGenLib_Skeletons.convert" ;
   p "    in_fmt_ in_fname_ out_fmt_ out_fname_" ;
   p "    orc_read csv_write orc_write make_handler orc_close" ;
-  p "    read_out_tuple_ sersize_of_pub_tuple_ serialize_pub_tuple_" ;
-  p "    my_tuple_of_strings_"
+  p "    read_out_tuple_ sersize_of_pub_tuple_ time_of_pub_tuple_" ;
+  p "    serialize_pub_tuple_ my_tuple_of_strings_"
 
 let compile conf func obj_name params_mod orc_write_func orc_read_func
             params envvars =

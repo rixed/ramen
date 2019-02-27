@@ -1411,6 +1411,7 @@ let convert
       orc_read csv_write orc_write orc_make_handler orc_close
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
+      (time_of_tuple : 'tuple_out -> (float * float) option)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
@@ -1475,10 +1476,13 @@ let convert
         let head = RingBufLib.DataTuple RamenChannel.live in
         let head_sz = RingBufLib.message_header_sersize head in
         (fun tuple ->
+          let start_stop = time_of_tuple tuple in
+          let start, stop = start_stop |? (0., 0.) in
           let sz = head_sz + sersize_of_tuple all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in
           RingBufLib.(write_message_header tx 0 head) ;
           let offs = serialize_tuple all_fields tx head_sz tuple in
+          RingBuf.enqueue_commit tx start stop ;
           assert (offs <= sz))
   in
   reader writer ;
