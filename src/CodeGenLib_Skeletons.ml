@@ -1413,6 +1413,20 @@ let convert
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
+  let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
+  (match getenv "log" with
+  | exception _ ->
+      init_logger log_level
+  | logdir ->
+      if logdir = "syslog" then
+        init_syslog log_level
+      else (
+        mkdir_all logdir ;
+        init_logger ~logdir log_level
+      )) ;
+  !logger.debug "Going to convert from %s to %s"
+    (CodeGenLib_Casing.string_of_format in_fmt)
+    (CodeGenLib_Casing.string_of_format out_fmt) ;
   let open Unix in
   if in_fname = out_fname then
     failwith "Input and output files must be distinct" ;

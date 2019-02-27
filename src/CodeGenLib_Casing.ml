@@ -23,7 +23,7 @@ let format_of_filename s =
 type per_func_info =
   { worker_entry_point : unit -> unit ;
     replay_entry_point : unit -> unit ;
-    convert_archive :
+    convert_entry_point :
       convert_format -> string -> convert_format -> string -> unit }
 
 let run codegen_version rc_marsh run_condition per_funcname =
@@ -62,9 +62,8 @@ let run codegen_version rc_marsh run_condition per_funcname =
     let in_format = format_of_filename in_
     and out_format = out_format |? format_of_filename out
     in
-    Printf.printf "convert from %s to %s\n"
-      (string_of_format in_format)
-      (string_of_format out_format)
+    let e = assoc_or_fail func_name per_funcname in
+    e.convert_entry_point in_format in_ out_format out
   in
   (* If we are called "ramen worker:" then we must run: *)
   if Sys.argv.(0) = worker_argv0 then
@@ -72,7 +71,8 @@ let run codegen_version rc_marsh run_condition per_funcname =
   else if Sys.argv.(0) = replay_argv0 then
     run_from_list (fun e -> e.replay_entry_point ())
   else match Sys.argv.(1) with
-  | exception Invalid_argument _ -> help ()
+  | exception Invalid_argument _ ->
+      help ()
   | s when s = WorkerCommands.get_info ->
       print_string rc_marsh
   | s when s = WorkerCommands.wants_to_run ->

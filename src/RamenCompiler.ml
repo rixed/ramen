@@ -529,7 +529,7 @@ let compile conf get_parent ~exec_file source_file
             "\t\t%S,\n\
              \t\t\t{ worker_entry_point = %s.%s ;\n\
              \t\t\t  replay_entry_point = %s.%s ;\n\
-             \t\t\t  convert_archive = %s.%s } ;\n"
+             \t\t\t  convert_entry_point = %s.%s } ;\n"
             (func.F.name :> string)
             mod_name worker_entry_point
             mod_name replay_entry_point
