@@ -384,9 +384,6 @@ let rec emit_add_value_to_batch
           ) val_var
         and field_name =
           if field_name = "" then k else field_name ^"."^ k
-        (* When a structure value is NULL the fields of the
-         * StructVectorBatch are untouched, thus we cannot use the
-         * row counter to index a nullable structure field. *)
         and i_var =
           Printf.sprintf "%s->numElements" arr_item in
         emit_add_value_to_batch
@@ -413,14 +410,12 @@ let rec emit_add_value_to_batch
         ) val_var
 
     | T.TTuple ts ->
-        if val_var <> None then
-          Array.enum ts |>
-          Enum.mapi (fun i t -> string_of_int i, t) |>
-          iter_struct (Array.length ts = 1)
+        Array.enum ts |>
+        Enum.mapi (fun i t -> string_of_int i, t) |>
+        iter_struct (Array.length ts = 1)
     | T.TRecord kts ->
         (* FIXME: we should not store private fields *)
-        if val_var <> None then
-          Array.enum kts |> iter_struct (Array.length kts = 1)
+        Array.enum kts |> iter_struct (Array.length kts = 1)
     | T.TList t | T.TVec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is
@@ -480,8 +475,7 @@ let rec emit_add_value_to_batch
       p "}"
   | _ ->
       if val_var = None then (
-        (* A field above us was null. We have to set all subfields to null
-         * recursively, that's how bad liborc API is: *)
+        (* A field above us was null. We have to set all subfields to null. *)
         if debug then
           p "cerr << \"%s[\" << %s << \"] is null\\n\";"
             field_name i_var ;

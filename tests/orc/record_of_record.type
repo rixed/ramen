@@ -1,4 +1,5 @@
 {
+  nullable = true ;
   structure = TRecord [|
     ("name", { structure = TRecord [|
       ("first", { structure = TString });
