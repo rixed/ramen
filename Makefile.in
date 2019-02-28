@@ -321,23 +321,23 @@ src/RamenFileNotify.ml: $(FILE_NOTIFIER)
 	@ln -sf $(notdir $<) $@
 	@touch $@
 
-src/libringbuf.a: src/ringbuf/ringbuf.o src/ringbuf/wrappers.o
+src/libringbuf.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBRINGBUF_SOURCES)))
 	@echo 'Building ringbuf library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
-src/libcollectd.a: src/collectd/collectd.o src/collectd/wrappers.o
+src/libcollectd.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBCOLLECTD_SOURCES)))
 	@echo 'Building collectd library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
-src/libnetflow.a: src/netflow/v5.o
+src/libnetflow.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBNETFLOW_SOURCES)))
 	@echo 'Building netflow library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
 ifeq (@HAVE_ORC@,1)
-src/liborchelp.a: $(LIBORC_SOURCES:.cc=.o)
+src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@echo 'Building orc helper library'
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
