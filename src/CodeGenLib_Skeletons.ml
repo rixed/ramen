@@ -259,23 +259,20 @@ type 'a out_rb =
     rb : RingBuf.t ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
-    fieldmask : RamenFieldMask.fieldmask ;
-    mutable channels : (RamenChannel.t, float) Hashtbl.t ;
-    (* When we last checked this is still in the out_ref: *)
-    mutable last_check_outref : float ;
     mutable last_successful_output : float ;
     mutable quarantine_until : float ;
     mutable quarantine_delay : float ;
     rate_limit_log_writes : unit -> bool ;
     rate_limit_log_drops : unit -> bool }
 
-let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
+let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
+              dest_channel start_stop head tuple_opt =
   (* Check that we are still supposed to write in there, but now
    * more frequently than once every 3 secs (how long we are
    * ready to block on a dead child): *)
   let still_in_outref now =
-    if now < out_rb.last_check_outref +. 3. then true else (
-      out_rb.last_check_outref <- now ;
+    if now < !last_check_outref +. 3. then true else (
+      last_check_outref := now ;
       RamenOutRef.mem rb_ref_out_fname out_rb.fname now)
   in
   if dest_channel <> RamenChannel.live && out_rb.rate_limit_log_writes () then
@@ -314,7 +311,7 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
       | _ -> false)
     ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
     (fun () ->
-      match Hashtbl.find out_rb.channels dest_channel with
+      match Hashtbl.find file_spec.RamenOutRef.channels dest_channel with
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
@@ -338,6 +335,42 @@ let rb_writer rb_ref_out_fname out_rb dest_channel start_stop head tuple_opt =
                 out_rb.fname RamenChannel.print dest_channel
           )) ()
 
+let writer_of_spec serialize_tuple sersize_of_tuple
+                   orc_make_handler orc_write orc_close
+                   fname spec =
+  let open RamenOutRef in
+  match spec.file_type with
+  | RingBuf ->
+      let rb = RingBuf.load fname in
+      (* Since we never output empty tuples (sersize_of_tuple would
+       * fail): *)
+      assert (Array.length spec.fieldmask > 0) ;
+      let out_rb =
+        { fname ; rb ;
+          tup_serializer = serialize_tuple spec.fieldmask ;
+          tup_sizer = sersize_of_tuple spec.fieldmask ;
+          last_successful_output = 0. ;
+          quarantine_until = 0. ;
+          quarantine_delay = 0. ;
+          rate_limit_log_writes = rate_limit 1 1. ;
+          rate_limit_log_drops = rate_limit 1 1. } in
+      (fun rb_ref_out_fname file_spec last_check_outref dest_channel
+           start_stop head tuple_opt ->
+          try rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
+                        dest_channel start_stop head tuple_opt
+          with
+            (* It is OK, just skip it. Next tuple we will reread fnames
+             * if it has changed. *)
+            | RingBuf.NoMoreRoom -> ()
+            (* retry_for_ringbuf failing because the recipient is no more in
+             * our out_ref: *)
+            | Exit -> ()),
+      (fun () -> RingBuf.unload rb)
+  | Orc { with_index ; batch_size ; num_batches } ->
+      let hdr = orc_make_handler fname in
+      (fun _ _ _ _ _ _ _ -> todo "orc_write"),
+      (fun () -> orc_close hdr)
+
 (* FIXME: when the output type is a single value, just [| Copy |]: *)
 let all_fields = Array.make 100 RamenFieldMask.Copy
 
@@ -345,9 +378,9 @@ let all_fields = Array.make 100 RamenFieldMask.Copy
  * will change dynamically as children are added/removed. *)
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple =
-  let out_h = ref (Hashtbl.create 15) (* Hash from fname to rb*file_spec*)
-  and out_rbs = ref []  (* list of outputers *) in
+      serialize_tuple orc_make_handler orc_write orc_close =
+  let out_h = ref (Hashtbl.create 15)
+  and outputers = ref [] in
   let max_num_fields = 100 (* FIXME *) in
   let factors_values = Array.make max_num_fields possible_values_empty in
   let factors_dir = getenv ~def:"/tmp/factors" "factors_dir" in
@@ -376,10 +409,12 @@ let outputer_of
         ) else None
       ) else None
   in
-  let update_out_rbs () =
+  let update_outputers () =
     (* Get out_specs if they've changed: *)
     get_out_fnames () |>
     Option.may (fun out_specs ->
+      (* Warn whenever the output specs become empty (ie worker computes for
+       * nothing and should actually be stopped). *)
       if Hashtbl.is_empty out_specs then (
         if not (Hashtbl.is_empty !out_h) then (
           !logger.debug "OutRef is now empty!" ;
@@ -393,44 +428,38 @@ let outputer_of
       out_h :=
         hashtbl_merge !out_h out_specs (fun fname prev new_ ->
           match prev, new_ with
-          | None, Some file_spec ->
-              !logger.debug "Mapping %S" fname ;
-              (match RingBuf.load fname with
-              | exception e ->
-                  !logger.error "Cannot open ringbuf %s: %s"
-                    fname (Printexc.to_string e) ;
-                  None
-              | rb ->
-                  (* Since we never output empty tuples (sersize_of_tuple would fail): *)
-                  assert (Array.length file_spec.RamenOutRef.fieldmask > 0) ;
-                  Some {
-                    fname ; rb ;
-                    tup_serializer =
-                      serialize_tuple file_spec.RamenOutRef.fieldmask ;
-                    tup_sizer =
-                      sersize_of_tuple file_spec.RamenOutRef.fieldmask ;
-                    fieldmask = file_spec.RamenOutRef.fieldmask ;
-                    channels = file_spec.RamenOutRef.channels ;
-                    last_check_outref = Unix.gettimeofday () ;
-                    last_successful_output = 0. ;
-                    quarantine_until = 0. ;
-                    quarantine_delay = 0. ;
-                    rate_limit_log_writes = rate_limit 1 1. ;
-                    rate_limit_log_drops = rate_limit 1 1. })
-          | Some out_rb, None ->
-              !logger.debug "Unmapping %S" fname ;
-              RingBuf.unload out_rb.rb ;
+          | None, Some new_spec ->
+              !logger.debug "Starts outputting to %S" fname ;
+              (* The show must go on: *)
+              let what = Printf.sprintf "mmapping ringbuf %s" fname in
+              default_on_exception None ~what (fun () ->
+                let writer, closer =
+                  writer_of_spec serialize_tuple sersize_of_tuple
+                                 orc_make_handler orc_write orc_close
+                                 fname new_spec in
+                Some (
+                  new_spec,
+                  (* last_check_outref: When was it last checked that this
+                   * is still in the out_ref: *)
+                  ref (Unix.gettimeofday ()),
+                  writer, closer)) ()
+          | Some (_, _, _, closer), None ->
+              !logger.debug "Stop outputting to %S" fname ;
+              closer () ;
               None
-          | Some out_rb, Some file_spec ->
-              (* Or the fname would have changed: *)
-              assert (file_spec.RamenOutRef.fieldmask = out_rb.fieldmask) ;
-              if out_rb.channels <> file_spec.RamenOutRef.channels then (
+          | Some (cur_spec, last_check_outref, writer, closer) as cur,
+            Some new_spec ->
+              RamenOutRef.check_spec_change fname cur_spec new_spec ;
+              last_check_outref := Unix.gettimeofday () ;
+              (* The only allowed change is channels: *)
+              if cur_spec.channels <> new_spec.channels then (
                 !logger.debug "Updating %S" fname ;
-                out_rb.channels <- file_spec.RamenOutRef.channels) ;
-              out_rb.last_check_outref <- Unix.gettimeofday () ;
-              Some out_rb
-          | None, None -> assert false)) ;
-      out_rbs := Hashtbl.values !out_h |> List.of_enum
+                Some ({ cur_spec with channels = new_spec.channels },
+                      last_check_outref, writer, closer)
+              ) else cur
+          | None, None ->
+              assert false)) ;
+      outputers := Hashtbl.values !out_h |> List.of_enum
   in
   fun head tuple_opt ->
     let dest_channel = RingBufLib.channel_of_message_header head in
@@ -480,18 +509,13 @@ let outputer_of
           ) start_stop) ;
         start_stop
       | None -> None in
-    update_out_rbs () ;
-    List.iter (fun out_rb ->
-      try rb_writer rb_ref_out_fname out_rb dest_channel start_stop head
-                    tuple_opt
-      with
-        (* It is OK, just skip it. Next tuple we will reread fnames
-         * if it has changed. *)
-        | RingBuf.NoMoreRoom -> ()
-        (* retry_for_ringbuf failing because the recipient is no more in
-         * our out_ref: *)
-        | Exit -> ()
-    ) !out_rbs
+    update_outputers () ;
+    List.iter (fun (file_spec, last_check_outref, writer, _) ->
+      (* Also pass file_spec to keep the writer posted about channel
+       * changes: *)
+      writer rb_ref_out_fname file_spec last_check_outref dest_channel
+             start_stop head tuple_opt
+    ) !outputers
 
 type worker_conf =
   { log_level : log_level ;
@@ -562,8 +586,9 @@ let worker_start worker_name get_binocle_tuple k =
 
 let read_csv_file
     filename do_unlink separator sersize_of_tuple
-    time_of_tuple factors_of_tuple serialize_tuple tuple_of_strings
-    preprocessor field_of_params =
+    time_of_tuple factors_of_tuple serialize_tuple
+    tuple_of_strings preprocessor field_of_params
+    orc_make_handler orc_write orc_close =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -586,7 +611,8 @@ let read_csv_file
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
+        serialize_tuple orc_make_handler orc_write orc_close
+        (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
     CodeGenLib_IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
@@ -605,7 +631,8 @@ let read_csv_file
 let listen_on
       (collector : ?while_:(unit -> bool) -> ('a -> unit) -> unit)
       proto_name
-      sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple =
+      sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
+      orc_make_handler orc_write orc_close =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -616,7 +643,8 @@ let listen_on
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple (RingBufLib.DataTuple RamenChannel.live) in
+        serialize_tuple orc_make_handler orc_write orc_close
+        (RingBufLib.DataTuple RamenChannel.live) in
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
@@ -629,7 +657,8 @@ let listen_on
 
 let read_well_known
       from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
-      unserialize_tuple ringbuf_envvar worker_time_of_tuple =
+      unserialize_tuple ringbuf_envvar worker_time_of_tuple
+      orc_make_handler orc_write orc_close =
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
@@ -642,7 +671,7 @@ let read_well_known
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple in
+        serialize_tuple orc_make_handler orc_write orc_close in
     let globs = List.map Globs.compile from in
     let match_from worker =
       from = [] ||
@@ -1001,7 +1030,8 @@ let aggregate
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
         'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
-      (every : float) =
+      (every : float)
+      orc_make_handler orc_write orc_close =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
     IntGauge.make Metric.Names.group_count
@@ -1031,7 +1061,7 @@ let aggregate
     let msg_outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple in
+        serialize_tuple orc_make_handler orc_write orc_close in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -1319,7 +1349,8 @@ let replay
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
-      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int) =
+      (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
+      orc_make_handler orc_write orc_close =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in
@@ -1358,7 +1389,7 @@ let replay
   let outputer =
     outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple in
+      serialize_tuple orc_make_handler orc_write orc_close in
   let num_replayed_tuples = ref 0 in
   let while_ () = !quit = None in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
@@ -1408,7 +1439,7 @@ let replay
 
 let convert
       in_fmt in_fname out_fmt out_fname
-      orc_read csv_write orc_write orc_make_handler orc_close
+      orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
       (time_of_tuple : 'tuple_out -> (float * float) option)

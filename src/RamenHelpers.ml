@@ -239,6 +239,10 @@ let log_and_ignore_exceptions ?what f x =
   with Exit -> ()
      | e -> print_exception ?what e
 
+let default_on_exception def ?what f x =
+  try f x
+  with e -> print_exception ?what e ; def
+
 let on_error k f =
   try f ()
   with e -> k () ; raise e

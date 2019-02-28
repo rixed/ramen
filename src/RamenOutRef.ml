@@ -173,6 +173,21 @@ let remove_channel fname chan =
   !logger.debug "Removed chan %a from %s"
     RamenChannel.print chan fname
 
+let check_spec_change fname old new_ =
+  (* Or the fname should have changed: *)
+  if new_.file_type <> old.file_type then
+    Printf.sprintf "Output file %S changed file type \
+                    from %s to %s while in use" fname
+      (PPP.to_string file_type_ppp_ocaml old.file_type)
+      (PPP.to_string file_type_ppp_ocaml new_.file_type) |>
+    failwith ;
+  if new_.fieldmask <> old.fieldmask then
+    Printf.sprintf2 "Output file %S changed field mask \
+                     from %a to %a while in use" fname
+      RamenFieldMask.print old.fieldmask
+      RamenFieldMask.print new_.fieldmask |>
+    failwith
+
 (*$inject open Batteries *)
 
 (*$R
