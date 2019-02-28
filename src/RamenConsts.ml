@@ -301,6 +301,15 @@ struct
   let past_sample_size = 10_000
 
   let csv_separator = ","
+
+  (* Size (in 4-bytes words) or ringbuffer files. But see
+   * https://github.com/rixed/ramen/issues/591 *)
+  let ringbuffer_word_length = 1_000_000
+
+  (* When writing an ORC file, how many lines are buffered before we flush
+   * to the file: *)
+  let orc_rows_per_batch = 1000
+  let orc_batches_per_file = 1000
 end
 
 module SpecialFunctions =
@@ -344,8 +353,3 @@ let max_archivist_stat_file_age = 3. *. 60.
 let worker_entry_point = "worker"
 let replay_entry_point = "replay"
 let convert_entry_point = "convert"
-
-(* When writing an ORC file, how many lines are bufferized before we flush
- * to the file: *)
-let orc_write_rows_per_batch = 1000
-let orc_write_batches_per_file = 1000

@@ -1,6 +1,7 @@
 open Batteries
 open Stdint
 open RamenHelpers
+open RamenConsts
 
 exception NoMoreRoom
 exception Empty
@@ -17,7 +18,7 @@ let prepend_rb_name f fname =
 external create_ : string -> bool -> int -> string -> unit =
   "wrap_ringbuf_create"
 
-let create ?(wrap=true) ?(words=1_000_000) fname =
+let create ?(wrap=true) ?(words=Default.ringbuffer_word_length) fname =
   mkdir_all ~is_file:true fname ;
   prepend_rb_name (create_ RamenVersions.ringbuf wrap words) fname
 

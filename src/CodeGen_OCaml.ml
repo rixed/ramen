@@ -3509,7 +3509,7 @@ let emit_convert name func oc =
   O.out_type_of_operation ~with_private:false func.F.operation |>
   emit_tuple_of_strings 1 "my_tuple_of_strings_" string_of_null oc ;
   p "  and make_handler = orc_make_handler %S" schema ;
-  p "    orc_write_rows_per_batch orc_write_batches_per_file" ;
+  p "    Default.orc_rows_per_batch Default.orc_batches_per_file" ;
   p "  and csv_write fd v =" ;
   p "    let str =" ;
   emit_string_of_value 3 rtyp "v" oc ;
