@@ -13,6 +13,7 @@
 
 #include "ringbuf.h"
 #include "../config.h"
+#include "archive.h"
 
 extern inline uint32_t ringbuf_file_num_entries(struct ringbuf_file const *rb, uint32_t, uint32_t);
 extern inline uint32_t ringbuf_file_num_free(struct ringbuf_file const *rb, uint32_t, uint32_t);

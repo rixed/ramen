@@ -5,7 +5,7 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_CONFIG_HEADERS([src/config.h])
 
-AC_CHECK_FUNCS([fdatasync])
+AC_CHECK_FUNCS([fdatasync renamex_np renameat2])
 
 AC_PROG_OCAML
 if test "$OCAMLC" = "no"; then

@@ -3032,12 +3032,13 @@ ac_config_headers="$ac_config_headers src/config.h"
 
 
 
-for ac_func in fdatasync
+for ac_func in fdatasync renamex_np renameat2
 do :
-  ac_fn_c_check_func "$LINENO" "fdatasync" "ac_cv_func_fdatasync"
-if test "x$ac_cv_func_fdatasync" = xyes; then :
+  as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
+ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
+if eval test \"x\$"$as_ac_var"\" = x"yes"; then :
   cat >>confdefs.h <<_ACEOF
-#define HAVE_FDATASYNC 1
+#define `$as_echo "HAVE_$ac_func" | $as_tr_cpp` 1
 _ACEOF
 
 fi
@@ -4200,8 +4201,8 @@ $as_echo "#define HAVE_ORC 1" >>confdefs.h
 
 
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: liborc is not installed." >&5
-$as_echo "$as_me: WARNING: liborc is not installed." >&2;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: liborc is not installed. Support for ORC files will be disabled." >&5
+$as_echo "$as_me: WARNING: liborc is not installed. Support for ORC files will be disabled." >&2;}
   HAVE_ORC=0
 
 fi

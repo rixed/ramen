@@ -3474,7 +3474,7 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "   emit_write_value: *)" ;
     p "type handler" ;
     p "" ;
-    p "external orc_write : handler -> %a -> unit = %S"
+    p "external orc_write : handler -> %a -> float -> float -> unit = %S"
       otype_of_type rtyp
       orc_write_func ;
     p "external orc_read : string -> int -> (%a -> unit) -> (int * int) = %S"
@@ -3484,17 +3484,17 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
     p "" ;
     p "(* Parameters: schema * row per batch * batches per file * path *)" ;
-    p "external orc_make_handler : string -> int -> int -> string -> handler =" ;
+    p "external orc_make_handler : string -> string -> bool -> int -> int -> handler =" ;
     p "  \"orc_handler_create\""
   ) else (
     !logger.debug "ORC support not compiled in!" ;
     p "type handler = unit" ;
     p "let no_orc_support () =" ;
     p "  failwith \"ORC format support was not compiled in\"" ;
-    p "let orc_write _ _ = no_orc_support ()" ;
+    p "let orc_write _ _ _ _ = no_orc_support ()" ;
     p "let orc_read _ _ _ = no_orc_support ()" ;
     p "let orc_close () = ()" ;
-    p "let orc_make_handler _ _ _ _ = ()" ;
+    p "let orc_make_handler _ _ _ _ _ = ()" ;
   ) ;
   p ""
 
@@ -3503,10 +3503,7 @@ let emit_make_orc_handler name func oc =
   let rtyp = O.out_record_of_operation func.F.operation in
   let schema = Orc.of_structure rtyp.T.structure |>
                IO.to_string Orc.print in
-  p "let %s fname_ =" name ;
-  p "  orc_make_handler %S" schema ;
-  p "    Default.orc_rows_per_batch Default.orc_batches_per_file" ;
-  p "    fname_"
+  p "let %s = orc_make_handler %S" name schema
 
 (* Given the names of ORC reader/writer, build a universal conversion
  * function from/to CSV/RB/ORC named [name] and that takes the in and out

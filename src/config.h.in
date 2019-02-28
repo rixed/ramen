@@ -6,6 +6,12 @@
 /* Do we have liborc? */
 #undef HAVE_ORC
 
+/* Define to 1 if you have the `renameat2' function. */
+#undef HAVE_RENAMEAT2
+
+/* Define to 1 if you have the `renamex_np' function. */
+#undef HAVE_RENAMEX_NP
+
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
 

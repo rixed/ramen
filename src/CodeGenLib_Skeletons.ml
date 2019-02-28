@@ -367,8 +367,14 @@ let writer_of_spec serialize_tuple sersize_of_tuple
             | Exit -> ()),
       (fun () -> RingBuf.unload rb)
   | Orc { with_index ; batch_size ; num_batches } ->
-      let hdr = orc_make_handler fname in
-      (fun _ _ _ _ _ _ _ -> todo "orc_write"),
+      let hdr = orc_make_handler fname with_index batch_size num_batches in
+      (fun rb_ref_out_fname file_spec last_check_outref dest_channel
+           start_stop head tuple_opt ->
+        match head, tuple_opt with
+        | RingBufLib.DataTuple chn, Some tuple when chn = dest_channel ->
+            let start, stop = start_stop |? (0., 0.) in
+            orc_write hdr tuple start stop
+        | _ -> ()),
       (fun () -> orc_close hdr)
 
 (* FIXME: when the output type is a single value, just [| Copy |]: *)
@@ -1497,9 +1503,16 @@ let convert
         out_fd := Some fd ;
         csv_write fd
     | CodeGenLib_Casing.ORC ->
-        let hdr = orc_make_handler out_fname in
+        let with_index = false (* CLI parameters for those *)
+        and batch_size = 1000
+        and num_batches = 1000 in
+        let hdr =
+          orc_make_handler out_fname with_index batch_size num_batches in
         orc_handler := Some hdr ;
-        orc_write hdr
+        (fun tuple ->
+          let start_stop = time_of_tuple tuple in
+          let start, stop = start_stop |? (0., 0.) in
+          orc_write hdr tuple start stop)
     | CodeGenLib_Casing.RB ->
         RingBuf.create ~wrap:false out_fname ;
         let rb = RingBuf.load out_fname in

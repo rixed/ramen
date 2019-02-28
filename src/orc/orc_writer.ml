@@ -2,7 +2,7 @@
  * Requires the string representation of a ramen type as a command line
  * argument, then writes and compiles an ORC writer for that format, then
  * reads from stdin string representation of ramen values and write them,
- * until EOF when it exits (C++ LazyWriter being deleted and therefore the
+ * until EOF when it exits (C++ OrcHandler being deleted and therefore the
  * ORC file flushed). *)
 open Batteries
 open RamenHelpers
@@ -92,7 +92,7 @@ let main =
       p "   emit_write_value: *)" ;
       p "type handler" ;
       p "" ;
-      p "external orc_write : handler -> %s -> unit = %S"
+      p "external orc_write : handler -> %s -> float -> float -> unit = %S"
         xtyp orc_write_func ;
       p "external orc_read : string -> int -> (%s -> unit) -> (int * int) = %S"
         xtyp orc_read_func ;
@@ -122,7 +122,8 @@ let main =
       p "        orc_make_handler %S batch_size num_batches orc_fname in"
         schema ;
       p "      (try forever (fun () ->" ;
-      p "            read_line () |> value_of_string |> orc_write handler" ;
+      p "            let tuple = read_line () |> value_of_string in" ;
+      p "            orc_write handler tuple 0. 0." ;
       p "          ) ()" ;
       p "      with End_of_file ->" ;
       p "        !logger.info \"Exiting...\" ;" ;

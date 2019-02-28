@@ -229,6 +229,8 @@ CODEGENLIB_SOURCES = \
 	src/CodeGenLib.ml
 
 LIBRINGBUF_SOURCES = \
+	src/ringbuf/archive.h \
+	src/ringbuf/archive.c \
 	src/ringbuf/ringbuf.h \
 	src/ringbuf/ringbuf.c \
 	src/ringbuf/wrappers.c

@@ -491,10 +491,11 @@ let rec emit_add_value_to_batch
  * without creating a file nor a batch before values are actually added. *)
 let emit_write_value func_name rtyp oc =
   let p fmt = emit oc 0 fmt in
-  p "extern \"C\" CAMLprim value %s(value hder_, value v_)" func_name ;
+  p "extern \"C\" CAMLprim value %s(" func_name ;
+  p "    value hder_, value v_, value start_, value stop_)" ;
   p "{" ;
-  p "  CAMLparam2(hder_, v_);" ;
-  p "  LazyWriter *handler = Handler_val(hder_);" ;
+  p "  CAMLparam4(hder_, v_, start_, stop_);" ;
+  p "  OrcHandler *handler = Handler_val(hder_);" ;
   p "  if (! handler->writer) handler->start_write();" ;
   emit_get_vb 1 "root" rtyp "handler->batch.get()" oc ;
   emit_add_value_to_batch
@@ -503,6 +504,11 @@ let emit_write_value func_name rtyp oc =
   p "    handler->flush_batch(true);" ; (* might destroy the writer... *)
   p "    root->numElements = 0;" ;  (* ... but not the batch! *)
   p "  }" ;
+  p "  // Since we survived, update this file timestamps:" ;
+  p "  double start = Double_val(start_);" ;
+  p "  double stop = Double_val(stop_);" ;
+  p "  if (start < handler->start) handler->start = start;" ;
+  p "  if (stop > handler->stop) handler->stop = stop;" ;
   p "  CAMLreturn(Val_unit);" ;
   p "}"
 
@@ -798,23 +804,25 @@ let emit_intro oc =
   p "using namespace std;" ;
   p "using namespace orc;" ;
   p "" ;
-  p "class LazyWriter {" ;
-  p "    string fname;" ;
+  p "class OrcHandler {" ;
   p "    unique_ptr<Type> type;" ;
+  p "    string fname;" ;
+  p "    bool const with_index;" ;
   p "    unsigned const batch_size;" ;
   p "    unsigned const max_batches;" ;
   p "    unsigned num_batches;" ;
   p "  public:" ;
-  p "    LazyWriter(string fn, string schema, unsigned bsz, unsigned mb);" ;
-  p "    ~LazyWriter();" ;
+  p "    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb);" ;
+  p "    ~OrcHandler();" ;
   p "    void start_write();" ;
   p "    void flush_batch(bool);" ;
   p "    unique_ptr<OutputStream> outStream;" ;
   p "    unique_ptr<Writer> writer;" ;
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
+  p "    double start, stop;" ;
   p "};" ;
   p "" ;
-  p "#define Handler_val(v) (*((class LazyWriter **)Data_custom_val(v)))" ;
+  p "#define Handler_val(v) (*((class OrcHandler **)Data_custom_val(v)))" ;
   p ""
 
 let emit_outro oc =
