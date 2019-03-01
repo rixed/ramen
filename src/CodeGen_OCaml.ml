@@ -2485,7 +2485,8 @@ let emit_read_tuple indent name ?(is_yield=false) oc typ =
       offs_var dim_var ;
     p "Array.init %s (fun bi_ ->" dim_var ;
     p "  let v_, o_ =" ;
-    emit_read_value (indent + 1) tx_var "arr_start_" "!offs_arr_" "v_"
+    p "    let offs_arr_ = !offs_arr_ in" ;
+    emit_read_value (indent + 1) tx_var "arr_start_" "offs_arr_" "v_"
                     t.nullable "bi_" oc t.structure ;
     p "    in" ;
     p "  offs_arr_ := o_ ; v_" ;
