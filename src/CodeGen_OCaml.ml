@@ -2331,7 +2331,7 @@ let emit_tuple_of_strings indent name csv_null oc typ =
   p "let %s strs_ =" name ;
   List.iteri (fun i ft ->
     p "  let val_%d, strs_ =" i ;
-    p "    let s_ = " ;
+    p "    let s_ =" ;
     p "      try List.hd strs_" ;
     p "      with Failure _ ->" ;
     p "        Printf.sprintf \"Expected more values than %d\" |>" i ;
