@@ -1,0 +1,19 @@
+{
+  programs = {
+    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" };
+    "past" => { bin = "past.x" };
+  };
+  outputs = {
+    "past/f" => {
+      present = [
+        { "year" => "2010" ; "min_recent_n" => "12" ;
+          "max_recent_n" => "24" ; "avg_recent_n" => "18" } ;
+        { "year" => "2011" ; "min_recent_n" => "17" ;
+          "max_recent_n" => "24" ; "avg_recent_n" => "20" } ;
+      ]
+    };
+    "past/f2" => {
+      present = [ { "len" => "10" } ];
+    }
+  }
+}

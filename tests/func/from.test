@@ -1,0 +1,7 @@
+{
+  programs = { "from" => { bin = "from.x" } };
+  outputs = {
+    "from/f" => {
+      present = [
+        { "one" => "1"; "two" => "2" } ]}}
+}

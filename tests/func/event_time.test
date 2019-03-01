@@ -1,0 +1,6 @@
+{
+  programs = { "event_time" => { bin = "event_time.x" } };
+  outputs = {
+    "event_time/boring" => {
+      present = [ { "n" => "5"; "m" => "50.1" } ]}}
+}

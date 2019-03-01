@@ -1,0 +1,9 @@
+{
+  programs = {
+    "fit_multi" => { bin = "fit_multi.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "fit_multi/f" => {
+      present = [ { "h_pred" => "281.898168902" } ]}}
+}

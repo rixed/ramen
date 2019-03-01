@@ -1,5 +1,0 @@
--- vim: ft=sql expandtab
-
-DEFINE f AS
-  FROM tests/fixtures/cars/csv SELECT
-  fit_multi (30, horsepower, CO |? 0.5, CO2 |? 300) AS h_pred;

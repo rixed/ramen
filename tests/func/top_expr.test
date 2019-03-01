@@ -1,0 +1,12 @@
+{
+  programs = {
+    "top_expr" => { bin = "top_expr.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "top_expr/f" => {
+      present = [
+        { "approx_manufacturer" => "\"BMW\"" };
+        { "approx_manufacturer" => "\"Toyota\"" };
+        { "approx_manufacturer" => "\"other\"" } ]}}
+}

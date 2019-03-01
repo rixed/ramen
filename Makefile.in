@@ -690,15 +690,15 @@ cli-check:
 	@mkdir -p tests/results/cli-check
 	@cd tests && cucumber -f pretty -f junit -o results/cli-check/junit.xml
 
-RAMEN_TESTS = $(wildcard tests/*.test)
+RAMEN_TESTS = $(wildcard tests/func/*.test)
 
 RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
-	tests/fixtures/n123.ramen
+	$(wildcard tests/func/fixtures/*.ramen)
 
 %.x: %.ramen bundle/date src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --bundle=bundle -L . $< -o $@
+	@src/ramen compile --bundle=bundle -L . -L tests/func $< -o $@
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
@@ -706,67 +706,67 @@ RAMEN_TESTS_SOURCES = \
 	@src/ramen test $< && touch $@
 
 # One day we will have `ramen makedep`:
-tests/lag.x: tests/fixtures/n123.x
-tests/count_lines.x: tests/fixtures/n123.x
-tests/params.x: tests/fixtures/earthquakes.x
-tests/sort.x: tests/fixtures/earthquakes.x
-tests/fit_multi.x: tests/fixtures/cars.x
-tests/top_expr.x: tests/fixtures/cars.x
-tests/season.x: tests/fixtures/earthquakes.x
-tests/previous_and_null.x: tests/fixtures/n123.x
-tests/fun_with_funcs.x: tests/fixtures/cars.x
-tests/case.x: tests/fixtures/n123.x
-tests/commit_before.x: tests/fixtures/n123.x tests/fixtures/cars.x
-tests/basic_aggr.x: tests/fixtures/n123.x tests/fixtures/cars.x
-tests/moveavg.x: tests/fixtures/n123.x
-tests/tuples.x: tests/fixtures/n123.x
-tests/groups.x: tests/fixtures/cars.x
-tests/port_scan.x: tests/fixtures/port_scan.x
-tests/ip.x: tests/fixtures/mixture.x
-tests/histogram.x: tests/fixtures/cars.x
-tests/last.x: tests/fixtures/earthquakes.x tests/fixtures/cars.x
-tests/sample.x: tests/fixtures/n123.x
-tests/merge.x: tests/fixtures/n123.x
-tests/patterns.x: tests/fixtures/cars.x
-tests/past.x: tests/fixtures/earthquakes.x
-tests/lag.success: tests/lag.x tests/fixtures/n123.x
-tests/count_lines.success: tests/count_lines.x tests/fixtures/n123.x
-tests/params.success: tests/params.x tests/fixtures/earthquakes.x
-tests/sort.success: tests/sort.x tests/fixtures/earthquakes.x
-tests/fit_multi.success: tests/fit_multi.x tests/fixtures/cars.x
-tests/top_expr.success: tests/top_expr.x tests/fixtures/cars.x
-tests/season.success: tests/season.x tests/fixtures/earthquakes.x
-tests/merge.success: tests/merge.x tests/fixtures/n123.x
-tests/from.success: tests/from.x
-tests/previous_and_null.success: tests/previous_and_null.x tests/fixtures/n123.x
-tests/fun_with_funcs.success: tests/fun_with_funcs.x tests/fixtures/cars.x
-tests/case.success: tests/case.x tests/fixtures/n123.x
-tests/commit_before.success: tests/commit_before.x tests/fixtures/n123.x tests/fixtures/cars.x
-tests/word_count.success: tests/word_count.x
-tests/word_split.success: tests/word_split.x
-tests/basic_aggr.success: tests/basic_aggr.x tests/fixtures/n123.x tests/fixtures/cars.x
-tests/list_aggr.success: tests/list_aggr.x
-tests/moveavg.success: tests/moveavg.x tests/fixtures/n123.x
-tests/tuples.success: tests/tuples.x tests/fixtures/n123.x
-tests/port_scan.success: tests/port_scan.x tests/fixtures/port_scan.x
-tests/ip.success: tests/ip.x tests/fixtures/mixture.x
-tests/min_max.success: tests/min_max.x
-tests/nulls.success: tests/nulls.x
-tests/constructed_types.success: tests/constructed_types.x
-tests/histogram.success: tests/histogram.x tests/fixtures/cars.x
-tests/strings.success: tests/strings.x
-tests/in.success: tests/in.x
-tests/time.success: tests/time.x
-tests/last.success: tests/last.x tests/fixtures/earthquakes.x tests/fixtures/cars.x
-tests/event_time.success: tests/event_time.x
-tests/sample.success: tests/sample.x tests/fixtures/n123.x
-tests/stress.success: tests/stress.x
-tests/bits.success: tests/bits.x
-tests/groups.success: tests/groups.x
-tests/patterns.success: tests/patterns.x tests/fixtures/cars.x
-tests/past.success: tests/past.x tests/fixtures/earthquakes.x
-tests/casts.success: tests/casts.x
-tests/changed.success: tests/changed.x
+tests/func/lag.x: tests/func/fixtures/n123.x
+tests/func/count_lines.x: tests/func/fixtures/n123.x
+tests/func/params.x: tests/func/fixtures/earthquakes.x
+tests/func/sort.x: tests/func/fixtures/earthquakes.x
+tests/func/fit_multi.x: tests/func/fixtures/cars.x
+tests/func/top_expr.x: tests/func/fixtures/cars.x
+tests/func/season.x: tests/func/fixtures/earthquakes.x
+tests/func/previous_and_null.x: tests/func/fixtures/n123.x
+tests/func/fun_with_funcs.x: tests/func/fixtures/cars.x
+tests/func/case.x: tests/func/fixtures/n123.x
+tests/func/commit_before.x: tests/func/fixtures/n123.x tests/func/fixtures/cars.x
+tests/func/basic_aggr.x: tests/func/fixtures/n123.x tests/func/fixtures/cars.x
+tests/func/moveavg.x: tests/func/fixtures/n123.x
+tests/func/tuples.x: tests/func/fixtures/n123.x
+tests/func/groups.x: tests/func/fixtures/cars.x
+tests/func/port_scan.x: tests/func/fixtures/port_scan.x
+tests/func/ip.x: tests/func/fixtures/mixture.x
+tests/func/histogram.x: tests/func/fixtures/cars.x
+tests/func/last.x: tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
+tests/func/sample.x: tests/func/fixtures/n123.x
+tests/func/merge.x: tests/func/fixtures/n123.x
+tests/func/patterns.x: tests/func/fixtures/cars.x
+tests/func/past.x: tests/func/fixtures/earthquakes.x
+tests/func/lag.success: tests/func/lag.x tests/func/fixtures/n123.x
+tests/func/count_lines.success: tests/func/count_lines.x tests/func/fixtures/n123.x
+tests/func/params.success: tests/func/params.x tests/func/fixtures/earthquakes.x
+tests/func/sort.success: tests/func/sort.x tests/func/fixtures/earthquakes.x
+tests/func/fit_multi.success: tests/func/fit_multi.x tests/func/fixtures/cars.x
+tests/func/top_expr.success: tests/func/top_expr.x tests/func/fixtures/cars.x
+tests/func/season.success: tests/func/season.x tests/func/fixtures/earthquakes.x
+tests/func/merge.success: tests/func/merge.x tests/func/fixtures/n123.x
+tests/func/from.success: tests/func/from.x
+tests/func/previous_and_null.success: tests/func/previous_and_null.x tests/func/fixtures/n123.x
+tests/func/fun_with_funcs.success: tests/func/fun_with_funcs.x tests/func/fixtures/cars.x
+tests/func/case.success: tests/func/case.x tests/func/fixtures/n123.x
+tests/func/commit_before.success: tests/func/commit_before.x tests/func/fixtures/n123.x tests/func/fixtures/cars.x
+tests/func/word_count.success: tests/func/word_count.x
+tests/func/word_split.success: tests/func/word_split.x
+tests/func/basic_aggr.success: tests/func/basic_aggr.x tests/func/fixtures/n123.x tests/func/fixtures/cars.x
+tests/func/list_aggr.success: tests/func/list_aggr.x
+tests/func/moveavg.success: tests/func/moveavg.x tests/func/fixtures/n123.x
+tests/func/tuples.success: tests/func/tuples.x tests/func/fixtures/n123.x
+tests/func/port_scan.success: tests/func/port_scan.x tests/func/fixtures/port_scan.x
+tests/func/ip.success: tests/func/ip.x tests/func/fixtures/mixture.x
+tests/func/min_max.success: tests/func/min_max.x
+tests/func/nulls.success: tests/func/nulls.x
+tests/func/constructed_types.success: tests/func/constructed_types.x
+tests/func/histogram.success: tests/func/histogram.x tests/func/fixtures/cars.x
+tests/func/strings.success: tests/func/strings.x
+tests/func/in.success: tests/func/in.x
+tests/func/time.success: tests/func/time.x
+tests/func/last.success: tests/func/last.x tests/func/fixtures/earthquakes.x tests/func/fixtures/cars.x
+tests/func/event_time.success: tests/func/event_time.x
+tests/func/sample.success: tests/func/sample.x tests/func/fixtures/n123.x
+tests/func/stress.success: tests/func/stress.x
+tests/func/bits.success: tests/func/bits.x
+tests/func/groups.success: tests/func/groups.x
+tests/func/patterns.success: tests/func/patterns.x tests/func/fixtures/cars.x
+tests/func/past.success: tests/func/past.x tests/func/fixtures/earthquakes.x
+tests/func/casts.success: tests/func/casts.x
+tests/func/changed.success: tests/func/changed.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 

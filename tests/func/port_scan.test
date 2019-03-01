@@ -1,0 +1,11 @@
+{
+  programs = {
+    "port_scan" => { bin = "port_scan.x" };
+    "fixtures/port_scan" => { bin = "fixtures/port_scan.x" }
+  };
+  outputs = {
+    "port_scan/detect" => {
+      present = [
+        { "src" => "10.100.25.14";
+          "dst" => "10.100.18.12" } ] }}
+}

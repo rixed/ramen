@@ -1,0 +1,13 @@
+{
+  programs = {
+    "min_max" => { bin = "min_max.x" }
+  };
+  outputs = {
+    "min_max/aggr" => {
+      present = [
+        { "min_bit" => "false"; "max_bit" => "true";
+          "min_small_int" => "0"; "max_small_int" => "9";
+          "min_glop" => "\"glop\""; "max_glop" => "\"glop\"";
+          "min_nullable_string" => "NULL";
+          "max_nullable_string" => "NULL" } ]}}
+}

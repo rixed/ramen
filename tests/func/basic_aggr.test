@@ -1,0 +1,31 @@
+{
+  programs = {
+    "basic_aggr" => { bin = "basic_aggr.x" };
+    "fixtures/n123" => { bin = "fixtures/n123.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "basic_aggr/f1" => {
+      timeout = 15;
+      present = [
+        { "min_horsepower" => "1";
+          "max_horsepower" => "946";
+          "sum_horsepower" => "1262598";
+          "sum_horsepower_2" => "1262598";
+          "avg_horsepower" => "278.16655651";
+          "avg_horsepower_2" => "278.16655651";
+          "first_horsepower" => "552";
+          "last_horsepower" => "313";
+          "horsepower_10th" => "140";
+          "horsepower_95th" => "553";
+          "manufacturers" => "30" ;
+          "sum_CO" => "1653" ;
+          "sum_CO_null" => "NULL" } ]};
+    "basic_aggr/a1" => { present = [{ "and_b" => "true"}] };
+    "basic_aggr/a2" => { present = [{ "and_b" => "true"}] };
+    "basic_aggr/a3" => { present = [{ "and_b" => "false"}] };
+    "basic_aggr/o1" => { present = [{ "not_b" => "false"}] };
+    "basic_aggr/o2" => { present = [{ "not_b" => "false"}] };
+    "basic_aggr/o3" => { present = [{ "not_b" => "true"}] };
+    "basic_aggr/f2" => { present = [{ "n" => "3" }] }}
+}

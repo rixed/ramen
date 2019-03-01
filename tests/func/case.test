@@ -1,0 +1,18 @@
+{
+  programs = {
+    "case" => { bin = "case.x" };
+    "fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
+  outputs = {
+    "case/f" => {
+      present = [
+        { "bigness" => "\"lo\""; "literal" => "\"one\"";
+          "some_u64" => "1"; "some_nullable_thing" => "6";
+          "minus_smth" => "-1"; "real_name" => "\"one\"" };
+        { "bigness" => "\"meh\""; "literal" => "\"more\"";
+          "some_u64" => "2"; "some_nullable_thing" => "666";
+          "minus_smth" => "-2"; "real_name" => "\"two\"" };
+        { "bigness" => "\"hi\""; "literal" => "\"more\"";
+          "some_u64" => "9999999999999999999"; "some_nullable_thing" => "NULL";
+          "minus_smth" => "-2"; "real_name" => "\"three\"" } ]}}
+}

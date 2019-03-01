@@ -1,7 +1,0 @@
-{
-  programs = { "tests/from" => { bin = "from.x" } };
-  outputs = {
-    "tests/from/f" => {
-      present = [
-        { "one" => "1"; "two" => "2" } ]}}
-}

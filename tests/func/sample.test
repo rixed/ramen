@@ -1,0 +1,11 @@
+{
+  programs = {
+    "sample" => { bin = "sample.x" };
+    "fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
+  outputs = {
+    "sample/f" => {
+      present = [ { "trou" => "true"; "two" => "2" } ]
+    }
+  }
+}

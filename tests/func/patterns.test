@@ -1,0 +1,8 @@
+{
+  programs = {
+    "patterns" => { bin = "patterns.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "patterns/f" => { present = [ { "count" => "118" } ] } };
+}

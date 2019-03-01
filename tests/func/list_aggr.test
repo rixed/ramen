@@ -1,0 +1,12 @@
+{
+  programs = {
+    "list_aggr" => { bin = "list_aggr.x" }
+  };
+  outputs = {
+    "list_aggr/f1" => {
+      present = [
+        { "s1" => "6"; "s2" => "6"; "s3" => "NULL" }
+      ]
+    };
+  }
+}

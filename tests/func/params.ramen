@@ -1,0 +1,14 @@
+-- vim: ft=sql expandtab
+
+PARAMETER sel_year  U16 DEFAULTS TO 0;
+PARAMETER sel_year2 U16? DEFAULTS TO 0;
+PARAMETER sel_year3 I8?;
+PARAMETER sel_years U16[] DEFAULTS TO [0; 1; 2];
+
+DEFINE p AS
+  FROM fixtures/earthquakes/csv
+  SELECT n WHERE
+    year = sel_year OR
+    year = sel_year2 |? 0 OR
+    year = sel_year3 |? 0 OR
+    year IN sel_years;

@@ -1,8 +1,0 @@
-{
-  programs = {
-    "tests/patterns" => { bin = "patterns.x" };
-    "tests/fixtures/cars" => { bin = "fixtures/cars.x" }
-  };
-  outputs = {
-    "tests/patterns/f" => { present = [ { "count" => "118" } ] } };
-}

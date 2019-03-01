@@ -1,0 +1,17 @@
+{
+  programs = {
+    "changed" => { bin = "changed.x" }
+  };
+  outputs = {
+    "changed/g" => {
+      present = [
+        { "answer" => "\"yes\"" };
+        { "answer" => "\"no\"" };
+      ];
+      absent = [
+        { "answer" => "\"yes\"" ; "prev" => "\"yes\"" };
+        { "answer" => "\"no\"" ; "prev" => "\"no\"" }
+      ]
+    }
+  }
+}

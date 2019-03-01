@@ -1,0 +1,8 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM fixtures/n123/csv
+  SELECT
+    10*n AS ten_n,
+    n AS count
+  WHERE n=3;

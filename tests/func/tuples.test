@@ -1,0 +1,11 @@
+{
+  programs = {
+    "tuples" => { bin = "tuples.x" };
+    "fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
+  outputs = {
+    "tuples/f1" => {
+      present = [ { "max_n" => "3"; "max_n_p1" => "4" } ]};
+    "tuples/f2" => {
+      present = [ { "max_np1" => "4" } ]}}
+}

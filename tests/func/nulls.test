@@ -1,0 +1,15 @@
+{
+  programs = {
+    "nulls" => { bin = "nulls.x" };
+  } ;
+  outputs = {
+    "nulls/t6" => {
+      present = [
+        { "is_true" => "true";
+          "is_null1" => "NULL";
+          "is_false" => "false";
+          "is_null2" => "NULL" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+-- vim: ft=sql expandtab
+
+-- FIXME: in the test we need a "last", "first", "successive" in addition to
+-- "present" and "absent". Here we need "last".
+
+DEFINE f AS
+  FROM fixtures/earthquakes/csv
+  SORT LAST 96 BY -n, year
+  SELECT year;

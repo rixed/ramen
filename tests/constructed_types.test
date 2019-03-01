@@ -1,9 +1,0 @@
-{
-  programs = { "tests/constructed_types" => { bin = "constructed_types.x" } };
-  outputs = {
-    "tests/constructed_types/vector_exercise" => {
-      present = [ { "eins" => "\"one\"";
-                    "zwei" => "\"2\"";
-                    "drei" => "\"drei\"" } ] }
-  }
-}

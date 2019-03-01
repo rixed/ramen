@@ -1,0 +1,30 @@
+-- vim: ft=sql expandtab
+
+-- Check we can refer to fields from out defined erlier:
+DEFINE f1 AS
+  FROM fixtures/n123/csv
+  SELECT max n, max_n+1 AS max_n_p1
+  COMMIT AFTER sum 1 = 3;
+
+-- We also can do an aggregate function within another one:
+DEFINE f2 AS
+  FROM fixtures/n123/csv
+  SELECT max (1 + max n) as max_np1
+  COMMIT AFTER sum 1 = 3;
+
+-- Here max(np1) is not correct because we cannot init a stateful function with
+-- member of out tuple, even when declared earlier.  In theory, we'd like init
+-- to be able to build the fields of out that it needs (here, to compute
+-- in.n+1). This would probably require to have the same function compute the
+-- out tuple and the init aggr, field by field, which requires a redesign of the
+-- aggregation function. So for now all we want is to detect this case and
+-- return an error whenever the argument of a stateful function requires a tuple
+-- that is not available to the group_init function (aka all but the in tuple).
+-- This is the exact same restriction for the commit/flush clause as their state
+-- are initialized and updated at the same time as the select clause states of
+-- course.  Notice that we can access inner functions states (so for instance,
+-- "max (1 + max)" works).  What we can't access is fields from the out tuple.
+--DEFINE f3 AS
+--  FROM fixtures/n123/csv
+--  SELECT n+1 as np1, max np1
+--  COMMIT AFTER max np1 > 2;

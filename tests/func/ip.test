@@ -1,0 +1,32 @@
+{
+  programs = {
+    "ip" => { bin = "ip.x" };
+    "fixtures/mixture" => { bin = "fixtures/mixture.x" }
+  };
+  outputs = {
+    "ip/f1" => {
+      present = [ { "cidr" => "192.168.0.0/16" } ];
+      absent = [ { "cidr" => "2001:4100::/24" } ] };
+    "ip/f2" => {
+      present = [ { "cidr" => "2001:4100::/24" } ];
+      absent = [ { "cidr" => "192.168.0.0/16" } ] };
+    "ip/f3" => {
+      present = [ { "count" => "1" } ] };
+    "ip/f4" => {
+      present = [ { "count" => "1" } ] };
+    "ip/f5" => {
+      present = [ { "count" => "2" } ] };
+    "ip/f1n" => {
+      present = [ { "cidr" => "192.168.0.0/16" } ];
+      absent = [ { "cidr" => "2001:4100::/24" } ] };
+    "ip/f2n" => {
+      present = [ { "cidr" => "2001:4100::/24" } ];
+      absent = [ { "cidr" => "192.168.0.0/16" } ] };
+    "ip/f3n" => {
+      present = [ { "count" => "1" } ] };
+    "ip/f4n" => {
+      present = [ { "count" => "1" } ] };
+    "ip/f5n" => {
+      present = [ { "count" => "2" } ] };
+  }
+}

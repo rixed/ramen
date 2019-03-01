@@ -1,0 +1,10 @@
+{
+  programs = {
+    "count_lines" => { bin = "count_lines.x" };
+    "fixtures/n123" => { bin = "fixtures/n123.x" }
+  };
+  outputs = {
+    "count_lines/f" => {
+      present = [
+        { "ten_n" => "30"; "count" => "3" } ]}}
+}

@@ -1,0 +1,14 @@
+{
+  programs = {
+    "groups" => { bin = "groups.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "groups/f" => {
+      timeout = 15;
+      present = [
+        { "avg_horsepower" => "278.16655651" }
+      ]
+    }
+  }
+}

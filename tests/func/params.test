@@ -1,0 +1,12 @@
+{
+  programs = {
+    "params" => {
+      bin = "params.x";
+      params = { "sel_years" => VVec [| VU16 1976 |] }
+    };
+    "fixtures/earthquakes" => { bin = "fixtures/earthquakes.x" }
+  };
+  outputs = {
+    "params/p" => {
+      present = [ { "n" => "14" } ]}}
+}

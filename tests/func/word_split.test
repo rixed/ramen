@@ -1,0 +1,24 @@
+{
+  programs = { "word_split" => { bin = "word_split.x" } };
+  outputs = {
+    "word_split/f1" => {
+      present = [
+        { "s1" => "\"glop\""; "s2" => "\"glop\"" };
+        { "s1" => "\"pas\""; "s2" => "\"glop\"" } ]};
+    "word_split/f2" => {
+      present = [
+        { "s1" => "\"bar\""; "s2" => "\"glop\"" };
+        { "s1" => "\"bar\""; "s2" => "\"pas\"" };
+        { "s1" => "\"foo\""; "s2" => "\"glop\"" };
+        { "s1" => "\"foo\""; "s2" => "\"pas\"" } ]};
+    "word_split/f3" => {
+      present = [
+        { "s1" => "\"glop glop\""; "s2" => "\"pas glop\"" };
+        { "s1" => "\"glop glop\""; "s2" => "\"pas pas\"" };
+        { "s1" => "\"pas glop\""; "s2" => "\"pas glop\"" };
+        { "s1" => "\"pas glop\""; "s2" => "\"pas pas\"" } ]};
+    "word_split/f4" => {
+      present = [
+        { "s1" => "\"pas glop\"" };
+        { "s1" => "\"pas glop\"" } ]}}
+}

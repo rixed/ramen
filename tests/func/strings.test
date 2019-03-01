@@ -1,0 +1,13 @@
+{
+  programs = { "strings" => { bin = "strings.x" } };
+  outputs = {
+    "strings/f1" => {
+      present = [
+				{ "t1" => "true"; "t2" => "true"; "t3" => "true" ;
+				  "t4" => "\"multi\\nline\""; "t5" => "10"  } ];
+      absent = [
+        { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
+      ]
+    }
+  }
+}

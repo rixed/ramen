@@ -45,9 +45,8 @@ debtmp/
 *.smt2.no_opt
 examples/**/*.ml
 tests/**/*.ml
-tests/*.ml
-tests/*.success
-tests/*.cc
+tests/func/*.success
+tests/func/*.cc
 examples/prometheus-alertmanager.yml
 wrap.sh
 *.tgz

@@ -1,0 +1,17 @@
+{
+  programs = {
+    "casts" => { bin = "casts.x" }
+  };
+  outputs = {
+    "casts/f" => {
+      present = [
+        {
+          "forty_two_1"=>"42";
+          "forty_two_2"=>"42";
+          "forty_two_3"=>"NULL";
+          "forty_two_4"=>"\"42\"";
+        }
+      ]
+    }
+  }
+}
