@@ -77,8 +77,16 @@ let orc_codec debug orc_write_func orc_read_func prefix_name func =
  * the running configuration: *)
 
 let parent_from_lib_path lib_path pn =
-  P.bin_of_program_name lib_path pn |>
-  P.of_bin pn (Hashtbl.create 0)
+  let try_path ~errors_ok p =
+    P.bin_of_program_name p pn |>
+    P.of_bin ~errors_ok pn (Hashtbl.create 0) in
+  let rec loop = function
+    | [] -> try_path ~errors_ok:false "./"
+    | [p] -> try_path ~errors_ok:false p
+    | p :: rest ->
+        (try try_path ~errors_ok:true p
+        with _ -> loop rest) in
+  loop lib_path
 
 let parent_from_programs programs pn =
   let mre, get_rc = Hashtbl.find programs pn in

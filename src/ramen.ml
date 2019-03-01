@@ -365,7 +365,7 @@ let lib_path =
   let env = Term.env_info "RAMEN_PATH" in
   let i = Arg.info ~doc:CliInfo.lib_path
                    ~env [ "lib-path" ; "L" ] in
-  Arg.(value (opt (some string) None i))
+  Arg.(value (opt_all string [] i))
 
 let src_files =
   let i = Arg.info ~doc:CliInfo.src_files

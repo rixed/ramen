@@ -188,7 +188,9 @@ struct
     with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
 
-  let of_bin =
+  let of_bin ?(errors_ok=false) =
+    let log fmt =
+      (if errors_ok then !logger.debug else !logger.error) fmt in
     (* Cache of path to date of last read and program *)
     let reread_data (program_name, fname) : t =
       !logger.debug "Reading config from %s..." fname ;
@@ -196,13 +198,13 @@ struct
       | exception e ->
           let err = Printf.sprintf "Cannot get version from %s: %s"
                       fname (Printexc.to_string e) in
-          !logger.error "%s" err ;
+          log "%s" err ;
           failwith err
       | v when v <> RamenVersions.codegen ->
         let err = Printf.sprintf "Executable %s is for version %s \
                                   (I'm version %s)"
                     fname v RamenVersions.codegen in
-        !logger.error "%s" err ;
+        log "%s" err ;
         failwith err
       | _ ->
           (try info_of_bin program_name fname with e ->
@@ -213,8 +215,7 @@ struct
     and age_of_data (_, fname) =
       try mtime_of_file fname
       with e ->
-        !logger.error "Cannot get mtime of %s: %s"
-          fname (Printexc.to_string e) ;
+        log "Cannot get mtime of %s: %s" fname (Printexc.to_string e) ;
         0.
     in
     let get_prog = cached "of_bin" reread_data age_of_data in

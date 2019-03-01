@@ -170,13 +170,12 @@ let compile conf lib_path use_external_compiler bundle_dir
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   let get_parent =
-    match lib_path with
-    | None ->
+    if lib_path = [] then
       let programs = C.with_rlock conf identity in
       RamenCompiler.parent_from_programs programs
-    | Some p ->
-      let lib_path = absolute_path_of p in
-      RamenCompiler.parent_from_lib_path lib_path in
+    else
+      List.map absolute_path_of lib_path |>
+      RamenCompiler.parent_from_lib_path in
   let all_ok = ref true in
   let compile_file source_file =
     let program_name_opt =
@@ -184,15 +183,17 @@ let compile conf lib_path use_external_compiler bundle_dir
         program_name_opt
       else
         (* Try to get an idea from the lib-path: *)
-        Option.bind lib_path (fun p ->
-          try
+        match lib_path with
+        | p::_ ->
+          (try
             Filename.remove_extension source_file |>
             rel_path_from (absolute_path_of p) |>
             RamenName.program_of_string |>
             Option.some
           with Failure s ->
             !logger.debug "%s" s ;
-            None) in
+            None)
+        | [] -> None in
     let program_name =
       match program_name_opt with
       | Some p -> p
