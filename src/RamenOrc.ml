@@ -409,8 +409,8 @@ let rec emit_add_value_to_batch
         Enum.mapi (fun i t -> string_of_int i, t) |>
         iter_struct (Array.length ts = 1)
     | T.TRecord kts ->
-        (* FIXME: we should not store private fields *)
-        Array.enum kts |> iter_struct (Array.length kts = 1)
+        Array.enum kts |>
+        iter_struct (Array.length kts = 1)
     | T.TList t | T.TVec (_, t) ->
         (* Regardless of [t], we treat a list as a "scalar" because
          * that's how it looks like for ORC: each new list value is

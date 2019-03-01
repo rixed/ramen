@@ -24,9 +24,10 @@ let read_array_of_values tuple_typ =
         RamenTuple.print_typ ser_tuple_typ ;
     let tuple = Array.make tuple_len VNull in
     List.fold_lefti (fun (offs, b) i typ ->
-        assert (not (RamenName.is_private typ.RamenTuple.name)) ;
         let value, offs', b' =
-          if typ.typ.nullable && not (get_bit tx start_offs b) then (
+          if typ.RamenTuple.typ.nullable &&
+             not (get_bit tx start_offs b)
+          then (
             None, offs, b+1
           ) else (
             let value = RingBufLib.read_value tx offs typ.typ.structure in

@@ -14,7 +14,6 @@ val field_of_string : string -> field
 val field_print : 'a BatInnerIO.output -> field -> unit
 val field_print_quoted : 'a BatInnerIO.output -> field -> unit
 val field_color : field -> string
-val is_private : field -> bool
 val is_virtual : field -> bool
 
 type func = [`Function] t

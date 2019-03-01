@@ -115,7 +115,6 @@ struct
     and out_type = O.out_type_of_operation func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^
-    (* type_signature does not look at private fields: *)
     ";OUT="^ RamenTuple.type_signature out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
     ";PRM="^ RamenTuple.params_type_signature params |>

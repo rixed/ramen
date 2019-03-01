@@ -542,7 +542,7 @@ let emit_constraints tuple_sizes records field_names
        *   nullability are given by the values in kvs;
        * - The result is not nullable since it has a literal value.
        * Note that for typing we type all expressions defined in [kvs]
-       * regardless of them being private/shadowed. *)
+       * even if they end up being shadowed. *)
       let d = List.length kvs in
 
       emit_assert oc (fun oc -> emit_is_record eid oc d) ;
@@ -1563,9 +1563,7 @@ let emit_out_types decls oc field_names funcs =
         (* All outputs are non null (but for previous_out, see Variable): *)
         emit_assert_id_is_bool rec_nid oc false ;
         (* For typing this is not necessary to order the structure fields in
-         * any specific way, as we carry along the field names. Also, we
-         * need to keep private fields as we want to type them and they can
-         * be accessed via TupleOut as other fields can. *)
+         * any specific way, as we carry along the field names. *)
         List.iteri (fun j sf ->
           (* Equates each field expression to its field: *)
           let id = sf.O.expr.uniq_num in
@@ -1723,11 +1721,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       aggr_types pfunc typ.RamenTuple.typ prev_typ,
                       same_as_ids
                 ) else (
-                  (* External parent: look for the exact type (exclude private
-                   * fields): *)
+                  (* External parent: look for the exact type *)
                   let pser =
-                    O.out_type_of_operation ~with_private:false
-                      pfunc.F.operation in
+                    O.out_type_of_operation pfunc.F.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
                    * through the TRecords.
@@ -2065,7 +2061,7 @@ let used_tuples_records funcs parents =
             (Set.Int.add (List.length ts) tuple_sizes), params, envvars
         | Record kvs ->
             (* We must type all defined fields, including those that are
-             * private or that are shadowed: *)
+             * shadowed: *)
             let d = List.length kvs in
             (* For each possible field name we have to record that its a
              * legit field name for a record of that length at that
@@ -2103,15 +2099,14 @@ let used_tuples_records funcs parents =
               ) ts ;
               s
           | _ -> s
-        ) s (O.out_type_of_operation ~with_private:true f.F.operation)
+        ) s (O.out_type_of_operation f.F.operation)
       ) s fs
     ) parents tuple_sizes in
   (* Finally, every input and output of all functions might also be a
    * record: *)
   List.iter (fun func ->
-    let out_typ = O.out_type_of_operation ~with_private:true
-                                                       func.F.operation in
-    (* Keep user defined order and private fields: *)
+    let out_typ = O.out_type_of_operation func.F.operation in
+    (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->
       register_field ft.RamenTuple.name sz i ;
@@ -2187,7 +2182,7 @@ let set_io_tuples parents funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
       RamenName.func_print func.F.name ;
-    O.out_type_of_operation ~with_private:true func.F.operation |>
+    O.out_type_of_operation func.F.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         RamenName.field_print ft.RamenTuple.name ;
@@ -2236,7 +2231,7 @@ let set_io_tuples parents funcs h =
         !logger.debug "Copying from parent %a"
           RamenName.func_print parent.F.name ;
         let pser =
-          O.out_type_of_operation ~with_private:true parent.F.operation in
+          O.out_type_of_operation parent.F.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"

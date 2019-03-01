@@ -2318,8 +2318,6 @@ let rec emit_indent oc n =
  * some exception *)
 let emit_tuple_of_strings indent name csv_null oc typ =
   let p fmt = emit oc indent fmt in
-  let typ =
-    List.filter (fun ft -> not (RamenName.is_private ft.name)) typ in
   let emit_is_null fins str_var offs_var oc =
     Printf.fprintf oc
       "if string_sub_eq %s %s %S 0 %d && \
@@ -2359,17 +2357,15 @@ let emit_time_of_tuple name oc opc =
   | Some _ -> Printf.fprintf oc "Some (%a)" emit_event_time opc) ;
   String.print oc "\n\n"
 
-let emit_factors_of_tuple name oc opc =
-  let factors =
-    match opc.op with
-    | Some op -> O.factors_of_operation op
-    | None -> [] in
+let emit_factors_of_tuple name func oc =
+  let typ = O.out_type_of_operation func.F.operation in
+  let factors = O.factors_of_operation func.F.operation in
   Printf.fprintf oc "let %s %a = [|\n"
     name
-    (emit_tuple TupleOut) opc.tuple_typ ;
+    (emit_tuple TupleOut) typ ;
   List.iter (fun factor ->
     let typ =
-      (List.find (fun t -> t.RamenTuple.name = factor) opc.tuple_typ).typ in
+      (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
     Printf.fprintf oc "\t%S, %a %s ;\n"
       (factor :> string)
       emit_value typ
@@ -2401,7 +2397,6 @@ let emit_read_csv_file opc oc name csv_fname unlink
    * - given a pointer toward the ring buffer, serialize the tuple *)
   emit_sersize_of_tuple 0 "sersize_of_tuple_" oc opc.tuple_typ ;
   emit_time_of_tuple "time_of_tuple_" oc opc ;
-  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
   emit_serialize_tuple 0 "serialize_tuple_" oc opc.tuple_typ ;
   emit_tuple_of_strings 0 "tuple_of_strings_" csv_null oc opc.tuple_typ ;
   p "let %s () =" name ;
@@ -2420,7 +2415,6 @@ let emit_listen_on opc oc name net_addr port proto =
   let collector = collector_of_proto proto in
   emit_sersize_of_tuple 0 "sersize_of_tuple_" oc tuple_typ ;
   emit_time_of_tuple "time_of_tuple_" oc opc ;
-  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
   emit_serialize_tuple 0 "serialize_tuple_" oc tuple_typ ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.listen_on" ;
@@ -2438,7 +2432,6 @@ let emit_well_known opc oc name from
   let p fmt = emit oc 0 fmt in
   emit_sersize_of_tuple 0 "sersize_of_tuple_" oc opc.tuple_typ ;
   emit_time_of_tuple "time_of_tuple_" oc opc ;
-  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
   emit_serialize_tuple 0 "serialize_tuple_" oc opc.tuple_typ ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.read_well_known %a"
@@ -3228,7 +3221,6 @@ let emit_aggregate opc oc global_env group_env env_env param_env
   emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc oc fields ;
   emit_sersize_of_tuple 0 "sersize_of_tuple_" oc out_typ ;
   emit_time_of_tuple "time_of_tuple_" oc opc ;
-  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
   emit_serialize_tuple 0 "serialize_tuple_" oc out_typ ;
   emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc oc fields ;
   emit_merge_on "merge_on_" in_typ ~opc oc merge.on ;
@@ -3365,7 +3357,7 @@ let emit_operation name func params envvars oc =
   let code = IO.output_string ()
   and consts = IO.output_string ()
   and tuple_typ =
-    O.out_type_of_operation ~with_private:true func.F.operation
+    O.out_type_of_operation func.F.operation
   and global_env, group_env, env_env, param_env =
     initial_environments func.F.operation params envvars
   in
@@ -3443,29 +3435,14 @@ let emit_operation name func params envvars oc =
 
 (* A function that reads the history and write it according to some out_ref
  * under a given chanel: *)
-let emit_replay name func params oc =
-  (* We cannot reuse the sersize_of_tuple_, time_of_tuple_ or
-   * serialize_tuple_ that has been emitted for aggregate as emit_read_tuple
-   * returns a version of out_typ with no private fields, and that's what
-   * we need to pass to those functions as well. We keep the internal
-   * representation in user order though but remove the private fields: *)
+let emit_replay name func oc =
   let p fmt = emit oc 0 fmt in
-  let tuple_typ =
-    O.out_type_of_operation ~with_private:false func.F.operation in
-  let consts = IO.output_string () in
-  let opc =
-    { op = Some func.F.operation ;
-      event_time = O.event_time_of_operation func.F.operation ;
-      params ; consts ; tuple_typ } in
+  let tuple_typ = O.out_type_of_operation func.F.operation in
   emit_read_tuple 0 "read_out_tuple_" oc tuple_typ ;
-  emit_sersize_of_tuple 0 "sersize_of_pub_tuple_" oc tuple_typ ;
-  emit_time_of_tuple "time_of_pub_tuple_" oc opc ;
-  emit_factors_of_tuple "factors_of_tuple_" oc opc ;
-  emit_serialize_tuple 0 "serialize_pub_tuple_" oc tuple_typ ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
-  p "    sersize_of_pub_tuple_ time_of_pub_tuple_ factors_of_tuple_" ;
-  p "    serialize_pub_tuple_" ;
+  p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
+  p "    serialize_tuple_" ;
   p "    orc_make_handler_ orc_write orc_close\n"
 
 let emit_orc_wrapper func orc_write_func orc_read_func oc =
@@ -3516,7 +3493,7 @@ let emit_convert name func oc =
   p "let %s in_fmt_ in_fname_ out_fmt_ out_fname_ =" name ;
   (* We need out own tuple_of_strings_ because that for the CSV reader uses
    * a custom CSV separator/null string. *)
-  O.out_type_of_operation ~with_private:false func.F.operation |>
+  O.out_type_of_operation func.F.operation |>
   emit_tuple_of_strings 1 "my_tuple_of_strings_" string_of_null oc ;
   p "  in" ;
   p "  let csv_write fd v =" ;
@@ -3528,8 +3505,8 @@ let emit_convert name func oc =
   p "  CodeGenLib_Skeletons.convert" ;
   p "    in_fmt_ in_fname_ out_fmt_ out_fname_" ;
   p "    orc_read csv_write orc_make_handler_ orc_write orc_close" ;
-  p "    read_out_tuple_ sersize_of_pub_tuple_ time_of_pub_tuple_" ;
-  p "    serialize_pub_tuple_ my_tuple_of_strings_\n"
+  p "    read_out_tuple_ sersize_of_tuple_ time_of_tuple_" ;
+  p "    serialize_tuple_ my_tuple_of_strings_\n"
 
 let compile conf func obj_name params_mod orc_write_func orc_read_func
             params envvars =
@@ -3542,9 +3519,10 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
         emit_header func params_mod oc ;
         emit_params_env params_mod params envvars oc ;
         emit_orc_wrapper func orc_write_func orc_read_func oc ;
+        emit_factors_of_tuple "factors_of_tuple_" func oc ;
         emit_make_orc_handler "orc_make_handler_" func oc ;
         emit_operation worker_entry_point func params envvars oc ;
-        emit_replay replay_entry_point func params oc ;
+        emit_replay replay_entry_point func oc ;
         emit_convert convert_entry_point func oc) in
   let debug = conf.C.log_level = Debug in
   let what = "function "^ RamenName.func_color func.F.name in

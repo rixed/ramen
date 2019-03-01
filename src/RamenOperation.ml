@@ -404,20 +404,17 @@ let operation_with_factors op factors = match op with
   | Notifications _ -> op
 
 (* Return the (likely) untyped output tuple *)
-let out_type_of_operation ?(with_private=false) = function
+let out_type_of_operation = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ;
-      let out_typ =
-        List.fold_left (fun lst sf ->
-          RamenTuple.{
-            name = sf.alias ;
-            doc = sf.doc ;
-            aggr = sf.aggr ;
-            typ = sf.expr.typ ;
-            units = sf.expr.units } :: lst
-        ) [] fields |> List.rev in
-      if with_private then out_typ
-      else RamenTuple.filter_out_private out_typ
+      List.fold_left (fun lst sf ->
+        RamenTuple.{
+          name = sf.alias ;
+          doc = sf.doc ;
+          aggr = sf.aggr ;
+          typ = sf.expr.typ ;
+          units = sf.expr.units } :: lst
+      ) [] fields |> List.rev
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
       fields
   | ListenFor { proto ; _ } ->
@@ -778,16 +775,13 @@ struct
   open RamenParsing
 
   let rec default_alias e =
-    let force_public field =
-      if String.length field = 0 || field.[0] <> '_' then field
-      else String.lchop field in
     match e.E.text with
     | Stateless (SL0 (Path [ Name name ]))
       when not (RamenName.is_virtual name) ->
-        force_public (name :> string)
+        (name :> string)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
       when not (RamenName.is_virtual (RamenName.field_of_string n)) ->
-        force_public n
+        n
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
     | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e

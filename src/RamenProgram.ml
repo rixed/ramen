@@ -420,8 +420,7 @@ let reify_star_fields get_parent program_name funcs =
                    * the "and_all_others" field of Aggregate. FIXME. *)
                   let fields =
                     Set.fold (fun name lst ->
-                      if RamenName.is_private name ||
-                         List.exists (fun sf -> sf.O.alias = name) fields
+                      if List.exists (fun sf -> sf.O.alias = name) fields
                       then lst
                       else input_field name :: lst
                     ) common_fields fields in

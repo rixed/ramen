@@ -21,8 +21,7 @@ open RamenTypes
 
 let nullmask_bytes_of_tuple_type typ =
   List.fold_left (fun s field_typ ->
-    if RamenName.is_private field_typ.RamenTuple.name then s
-    else s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
+    s + (if field_typ.RamenTuple.typ.nullable then 1 else 0)
   ) 0 typ |>
   bytes_for_bits |>
   round_up_to_rb_word
@@ -31,10 +30,8 @@ let nullmask_sz_of_tuple ts =
   Array.length ts |> bytes_for_bits |> round_up_to_rb_word
 
 let nullmask_sz_of_record kts =
-  Array.filter_map (fun (k, t) ->
-    if RamenName.(is_private (field_of_string k)) then None
-    else Some t
-  ) kts |> nullmask_sz_of_tuple
+  Array.map snd kts |>
+  nullmask_sz_of_tuple
 
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
@@ -68,21 +65,15 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
-let filter_out_private =
-  Array.filter (fun (k, _) ->
-    not RamenName.(is_private (field_of_string k)))
-
-let rec ser_array_of_record_typ ?(with_private=false) kts =
+let rec ser_array_of_record_typ kts =
   let a =
     Array.filter_map (fun (k, t as kt) ->
-      if with_private || k = "" || k.[0] <> '_' then (
-        match t with
-        | { structure = TRecord kts ; nullable } ->
-            let kts = ser_array_of_record_typ ~with_private kts in
-            if Array.length kts = 0 then None
-            else Some (k, { structure = TRecord kts ; nullable })
-        | _ -> Some kt
-      ) else None
+      match t with
+      | { structure = TRecord kts ; nullable } ->
+          let kts = ser_array_of_record_typ kts in
+          if Array.length kts = 0 then None
+          else Some (k, { structure = TRecord kts ; nullable })
+      | _ -> Some kt
     ) kts in
   assert (a != kts) ; (* Just checking filter_map don't try to outsmart us *)
   Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
@@ -91,11 +82,7 @@ let rec ser_array_of_record_typ ?(with_private=false) kts =
 (* Given a kvs (or kts), return an array of (k,i) in serializing order
  * (where the i indicates the position in the original array) *)
 let ser_order kts =
-  let a =
-    array_filter_mapi (fun i (k, _ as v) ->
-      if RamenName.(is_private (field_of_string k)) then None
-      else Some (v, i)
-    ) kts in
+  let a = Array.mapi (fun i v -> v, i) kts in
   Array.fast_sort (fun ((k1,_),_) ((k2,_),_) -> String.compare k1 k2) a ;
   a
 
@@ -157,10 +144,8 @@ and sersize_of_tuple vs =
   Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
 
 and sersize_of_record kvs =
-  (* We serialize records as we serialize output: in alphabetical order,
-   * without private fields: *)
-  let vs = filter_out_private kvs |> Array.map snd in
-  sersize_of_tuple vs
+  (* We serialize records as we serialize output: in alphabetical order *)
+  Array.map snd kvs |> sersize_of_tuple
 
 and sersize_of_vector vs =
   (* Vectors are serialized in field order, unserializer will also know
@@ -228,8 +213,7 @@ and write_tuple tx offs vs =
   ignore
 
 and write_record tx offs kvs =
-  let vs = filter_out_private kvs |> Array.map snd in
-  write_tuple tx offs vs
+  Array.map snd kvs |> write_tuple tx offs
 
 and write_vector tx = write_tuple tx
 
@@ -329,9 +313,8 @@ let ser_tuple_field_cmp t1 t2 =
 let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
   tuple_typ |>
   List.filter_map (fun ft ->
-    if RamenName.is_private ft.RamenTuple.name then None else
     if not recursive then Some ft else
-    match ft.typ.structure with
+    match ft.RamenTuple.typ.structure with
     | TRecord kts ->
         let kts = ser_array_of_record_typ kts in
         if Array.length kts = 0 then None

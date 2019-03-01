@@ -22,7 +22,7 @@ let read_well_known (fq : RamenName.fq) where suffix bname typ () =
   let fq_str = (fq :> string) in
   if fq_str = suffix || String.ends_with fq_str suffix then
     (* For well-known tuple types, serialized tuple is as given (no
-     * private fields, no reordering of fields): *)
+     * reordering of fields): *)
     let ser = typ in
     let where =
       if fq_str = suffix then where else

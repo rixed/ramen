@@ -289,18 +289,17 @@ let columns_of_func conf func =
   let group_keys = group_keys_of_operation func.F.operation in
   O.out_type_of_operation func.F.operation |>
   List.iter (fun ft ->
-    if not (RamenName.is_private ft.RamenTuple.name) then
-      let type_ = ext_type_of_typ ft.typ.structure in
-      if type_ <> Other then
-        let factors =
-          O.factors_of_operation func.operation in
-        Hashtbl.add h ft.name {
-          type_ = string_of_ext_type type_ ;
-          units = units_of_column ft ;
-          doc = ft.doc ;
-          factor = List.mem ft.name factors ;
-          group_key = List.mem ft.name group_keys ;
-          alerts = alerts_of_column conf func ft.name }) ;
+    let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
+    if type_ <> Other then
+      let factors =
+        O.factors_of_operation func.operation in
+      Hashtbl.add h ft.name {
+        type_ = string_of_ext_type type_ ;
+        units = units_of_column ft ;
+        doc = ft.doc ;
+        factor = List.mem ft.name factors ;
+        group_key = List.mem ft.name group_keys ;
+        alerts = alerts_of_column conf func ft.name }) ;
   h
 
 let columns_of_table conf table =
@@ -396,9 +395,6 @@ let get_timeseries conf msg =
         let prog = get_rc () in
         let func = List.find (fun f -> f.F.name = func_name) prog.funcs in
         List.fold_left (fun filters where ->
-          if RamenName.is_private where.lhs then
-            bad_request ("Cannot filter through private field "^
-                         (where.lhs :> string)) ;
           let open RamenSerialization in
           try
             let out_type =

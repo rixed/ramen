@@ -242,11 +242,10 @@ let compile conf get_parent ~exec_file source_file
               ft.RamenTuple.name = field
             ) typ with
       | exception Not_found ->
-          if not (RamenName.is_private field) then (
-            !logger.error "Cannot find field %a in %a"
-              RamenName.field_print field
-              RamenTuple.print_typ typ ;
-            assert false)
+          !logger.error "Cannot find field %a in %a"
+            RamenName.field_print field
+            RamenTuple.print_typ typ ;
+          assert false
       | ft ->
           if ft.units = None then (
             !logger.debug "Set type of field %a to %a"
@@ -258,8 +257,7 @@ let compile conf get_parent ~exec_file source_file
         RamenName.field_print name
         (func.F.name :> string) ;
       let out_type =
-        O.out_type_of_operation ~with_private:true
-                                             func.F.operation in
+        O.out_type_of_operation func.F.operation in
       match List.find (fun ft ->
               ft.RamenTuple.name = name
             ) out_type with
@@ -323,8 +321,7 @@ let compile conf get_parent ~exec_file source_file
        * out_types fields are reordered. *)
       if changed then (
         let out_type =
-          O.out_type_of_operation ~with_private:true
-                                               func.F.operation in
+          O.out_type_of_operation func.F.operation in
         match func.F.operation with
         | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
