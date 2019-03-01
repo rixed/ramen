@@ -228,11 +228,19 @@ let result_print p_ok p_err oc = function
   | Result.Ok x -> Printf.fprintf oc "Ok(%a)" p_ok x
   | Result.Bad x -> Printf.fprintf oc "Bad(%a)" p_err x
 
-let log_exceptions ?what f x =
-  try f x
+let on_error k f =
+  try f ()
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
+    k () ;
+    Printexc.raise_with_backtrace e bt
+
+let log_exceptions ?what f =
+  try f ()
+  with e ->
+    let backtrace = Printexc.get_raw_backtrace () in
     if e <> Exit then print_exception ?what e ;
-    raise e
+    Printexc.raise_with_backtrace e backtrace
 
 let log_and_ignore_exceptions ?what f x =
   try f x
@@ -242,10 +250,6 @@ let log_and_ignore_exceptions ?what f x =
 let default_on_exception def ?what f x =
   try f x
   with e -> print_exception ?what e ; def
-
-let on_error k f =
-  try f ()
-  with e -> k () ; raise e
 
 let print_dump oc x = dump x |> String.print oc
 
@@ -2057,5 +2061,15 @@ let array_print_i ?first ?last ?sep p oc a =
   let i = ref 0 in
   Array.print ?first ?last ?sep (fun oc x ->
     p !i oc x ; incr i) oc a
+
+let finally handler f x =
+  let r =
+    try f x
+    with e ->
+      let bt = Printexc.get_raw_backtrace () in
+      handler () ;
+      Printexc.raise_with_backtrace e bt in
+  handler () ;
+  r
 
 let char_print_quoted oc = Printf.fprintf oc "%C"
