@@ -2038,7 +2038,7 @@ let rec emit_for_serialized_fields
            * possible to fetch beyond the boundaries of the list: *)
           p "  let x_ =" ;
           p "    try %s.(i_)" val_var ;
-          p "    with Invalid_argument -> Null in"
+          p "    with Invalid_argument _ -> Null in"
         ) else (
           p "  let x_ = %s.(i_) in" val_var
         ) ;
