@@ -708,7 +708,8 @@ let add_tuple_environment tuple typ env =
       | TupleOutPrevious ->
           Printf.sprintf2 "(maybe_%s_ out_previous_)"
             (ft.name :> string)
-      | _ -> id_of_field_typ ~tuple ft in
+      | _ ->
+          id_of_field_typ ~tuple ft in
     (E.RecordField (tuple, ft.name), v) :: env
   ) env typ
 

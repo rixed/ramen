@@ -69,7 +69,7 @@ and text =
    * this as a Get from the unknown tuple variable. *)
   | Variable of tuple_prefix
   (* Bindings are met only late in the game in the code generator. They are
-   * used at code generation time to pass around an ocaml identifier as an
+   * used at code generation time to pass around an OCaml identifier as an
    * expression. *)
   | Binding of binding_key
   (* A conditional with all conditions and consequents, and finally an optional

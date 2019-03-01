@@ -466,7 +466,7 @@ let eq_to_opened_record_field stack e oc path =
         (n_of_expr path_target)
 
 let eq_to_opened_record stack e oc path =
-  let rec_expr, _, _, _= locate_opened_record stack e path in
+  let rec_expr, _, _, _ = locate_opened_record stack e path in
   let name =
     expr_err e Err.(OpenedRecordIs rec_expr.E.uniq_num) in
   emit_assert_id_eq_id ~name (t_of_expr rec_expr) oc (t_of_expr e) ;
@@ -520,7 +520,7 @@ let emit_constraints tuple_sizes records field_names
       arg_has_type (T.structure_of x) oc e ;
       arg_is_not_nullable oc e
 
-  | Binding _ -> assert false (* Not supposed to appear here *)
+  | Binding _ -> assert false (* Not supposed to appear that soon *)
 
   | Tuple es ->
       (* - The resulting type is a tuple which length, items type and
