@@ -1964,16 +1964,6 @@ let rec emit_sersize_of_var indent typ nullable oc var =
  * We suppose that the output value is in out_var.
  * Each code block returns a value that is finally returned into out_var. *)
 
-
-(* Actually, we do not need that to be that complicated.
- * We could return to Record being just a k+{t,v}.
- * And each time we need to iterate over fields in serialization order we
- * could then compute the array of indexes (index of the first in ser order,
- * then index of the second, and so on). In the generated code this does not
- * change anything but the indexes in the fm.(xxx) are not 0, 1, etc any more
- * but follow serialization order. As fields are accessed via names everything
- * else is quite simple. XXX XXX XXX XXX XXX XXX XXX XXX *)
-
 let rec emit_for_serialized_fields
           indent typ copy skip fm_var val_var oc out_var =
   let p fmt = emit oc indent fmt in
@@ -2123,8 +2113,8 @@ let rec emit_for_serialized_fields_no_value
 let emit_for_serialized_fields_of_output_no_value
       indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  (* It is important we only the first layer of fields is reordered and that
-   * deeper records are unaltered: *)
+  (* TODO: a fake record for emit_for_serialized_fields_no_value,
+   * with out_var = a whole tuple. *)
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iteri (fun i field ->
     p "(* Field %a *)" RamenName.field_print field.RamenTuple.name ;
@@ -2181,13 +2171,14 @@ let emit_sersize_of_tuple indent name oc typ =
  * can check for overflow.
  *
  * Format:
- * First comes the header (writen by the caller, not our concern here)
+ * First comes the header (written by the caller, not our concern here)
  * Then comes the nullmask for the toplevel "structure", with one bit per
  * nullable value that will be copied.
  * Then the values.
  * For list values, we start with the number of elements.
  * Then, for lists, vectors and tuples we have a small local nullmask
  * (for tuples, even for fields that are not nullable, FIXME). *)
+
 let emit_serialize_tuple indent name oc typ =
   let p fmt = emit oc indent fmt in
   p "let %s fieldmask_ =" name ;
@@ -2314,7 +2305,7 @@ let rec emit_indent oc n =
   )
 
 (* Emit a function that, given an array of strings (corresponding to a line of
- * CSV) will return the tuple defined by [tuple_typ] or raises
+ * CSV) will return the tuple defined by [typ] or raises
  * some exception *)
 let emit_tuple_of_strings indent name csv_null oc typ =
   let p fmt = emit oc indent fmt in

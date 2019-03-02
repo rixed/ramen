@@ -79,7 +79,7 @@ let rec ser_array_of_record_typ kts =
   Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
   a
 
-(* Given a kvs (or kts), return an array of (k,i) in serializing order
+(* Given a kvs (or kts), return an array of (k, i) in serializing order
  * (where the i indicates the position in the original array) *)
 let ser_order kts =
   let a = Array.mapi (fun i v -> v, i) kts in
