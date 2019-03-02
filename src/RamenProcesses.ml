@@ -204,8 +204,7 @@ let input_ringbuf_fname conf parent child =
 
 let make_fieldmask parent child =
   let out_typ =
-    O.out_type_of_operation parent.F.operation |>
-    RingBufLib.ser_tuple_typ_of_tuple_typ in
+    O.out_type_of_operation parent.F.operation in
   RamenFieldMaskLib.fieldmask_of_operation ~out_typ child.F.operation
 
 let check_is_subtype t1 t2 =
@@ -344,9 +343,7 @@ let start_export ?(duration=Default.export_duration) conf func =
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
-  let ser =
-    O.out_type_of_operation func.F.operation |>
-    RingBufLib.ser_tuple_typ_of_tuple_typ in
+  let out_typ = O.out_type_of_operation func.F.operation in
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
    * a cli-test that relies on the spec not being present in the out_ref
@@ -354,7 +351,7 @@ let start_export ?(duration=Default.export_duration) conf func =
   if duration <> 0. then (
     let timeout =
       if duration < 0. then 0. else Unix.gettimeofday () +. duration in
-    let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
+    let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
     RamenOutRef.add out_ref ~timeout bname fieldmask
   ) ;
   bname

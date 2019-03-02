@@ -173,6 +173,9 @@ let array_rfind f a =
 let array_filter_mapi f a =
   Array.enum a |> Enum.mapi f |> Enum.filter_map identity |> Array.of_enum
 
+let list_filter_mapi f a =
+  List.enum a |> Enum.mapi f |> Enum.filter_map identity |> List.of_enum
+
 let list_rfind_map f l =
   List.rev l |> List.find_map f
 

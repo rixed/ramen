@@ -80,9 +80,14 @@ let rec ser_array_of_record_typ kts =
   a
 
 (* Given a kvs (or kts), return an array of (k, i) in serializing order
- * (where the i indicates the position in the original array) *)
+ * (where the i indicates the position in the original array). Skip over
+ * private fields. *)
 let ser_order kts =
-  let a = Array.mapi (fun i v -> v, i) kts in
+  let a =
+    array_filter_mapi (fun i (k, _ as v) ->
+      if RamenName.(is_private (field_of_string k)) then None
+      else Some (v, i)
+    ) kts in
   Array.fast_sort (fun ((k1,_),_) ((k2,_),_) -> String.compare k1 k2) a ;
   a
 
@@ -306,21 +311,23 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
 (* To allow a func to select only some fields from its parent and write only
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
-let ser_tuple_field_cmp t1 t2 =
+let ser_tuple_field_cmp (t1, _) (t2, _) =
   RamenName.compare t1.RamenTuple.name t2.RamenTuple.name
 
-(* Reorder only the first layer of RamenTuple fields: *)
+(* Reorder RamenTuple fields and skip private fields. Also return as a
+ * second component the original position: *)
 let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
   tuple_typ |>
-  List.filter_map (fun ft ->
-    if not recursive then Some ft else
-    match ft.RamenTuple.typ.structure with
+  list_filter_mapi (fun i ft ->
+    if RamenName.is_private ft.RamenTuple.name then None else
+    if not recursive then Some (ft, i) else
+    match ft.typ.structure with
     | TRecord kts ->
         let kts = ser_array_of_record_typ kts in
         if Array.length kts = 0 then None
         else
-          Some { ft with typ = { ft.typ with structure = TRecord kts } }
-    | _ -> Some ft
+          Some ({ ft with typ = { ft.typ with structure = TRecord kts } }, i)
+    | _ -> Some (ft, i)
   ) |>
   List.fast_sort ser_tuple_field_cmp
 

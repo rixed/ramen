@@ -100,13 +100,11 @@ let inverted_tree_of_programs
       if end_of_filters flt_idx then Enum.singleton prev else
       let factors =
         O.factors_of_operation operation in
-      let ser =
-        O.out_type_of_operation operation |>
-        RingBufLib.ser_tuple_typ_of_tuple_typ in
+      let out_typ = O.out_type_of_operation operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
-      List.enum ser //@ (fun ft ->
-        if (not only_num_fields ||
-            T.is_a_num ft.RamenTuple.typ.structure) &&
+      List.enum out_typ //@ (fun ft ->
+        if not (RamenName.is_private ft.RamenTuple.name) &&
+           (not only_num_fields || T.is_a_num ft.RamenTuple.typ.structure) &&
            not (List.mem ft.RamenTuple.name factors)
         then
           let value = (ft.RamenTuple.name :> string) in

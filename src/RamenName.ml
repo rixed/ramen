@@ -28,6 +28,7 @@ let starts_with c f =
   String.length f > 0 && f.[0] = c
 
 let is_virtual = starts_with '#'
+let is_private = starts_with '_'
 
 
 (* Function names *)

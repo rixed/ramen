@@ -15,6 +15,7 @@ val field_print : 'a BatInnerIO.output -> field -> unit
 val field_print_quoted : 'a BatInnerIO.output -> field -> unit
 val field_color : field -> string
 val is_virtual : field -> bool
+val is_private : field -> bool
 
 type func = [`Function] t
 val func_ppp_ocaml : func PPP.t

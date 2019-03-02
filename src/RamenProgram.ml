@@ -377,11 +377,8 @@ let common_fields_of_from get_parent start_name funcs from =
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
-          let par_out_type =
-            O.out_type_of_operation par_func.F.operation in
-          List.map (fun ft ->
-            ft.RamenTuple.name
-          ) (RingBufLib.ser_tuple_typ_of_tuple_typ par_out_type)
+          O.out_type_of_operation par_func.F.operation |>
+          List.map (fun f -> f.RamenTuple.name)
     in
     let fields = Set.of_list fields in
     match common with

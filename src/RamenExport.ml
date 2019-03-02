@@ -68,7 +68,8 @@ let read_output conf ?duration (fq : RamenName.fq) where =
           and event_time =
             O.event_time_of_operation func.F.operation in
           let ser =
-            RingBufLib.ser_tuple_typ_of_tuple_typ out_type in
+            RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+            List.map fst in
           let filter = RamenSerialization.filter_tuple_by ser where in
           bname, true, filter, out_type, ser, prog.P.params, event_time)
 
@@ -322,7 +323,8 @@ let replay conf ?(while_=always) fq field_names where since until
   let _mre, prog, func = C.find_func_or_fail programs fq in
   let out_type = O.out_type_of_operation func.F.operation in
   let field_names = check_field_names out_type field_names in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+            List.map fst in
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names ser in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"

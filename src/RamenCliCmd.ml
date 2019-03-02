@@ -588,7 +588,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
     then Some 10 else last in
   let flush = flush || continuous in
   let next = if continuous then Some max_int else next in
-  let bname, is_temp_export, filter, typ, ser, params, event_time =
+  let bname, is_temp_export, filter, _typ, ser, params, event_time =
     RamenExport.read_output conf ~duration fq where
   in
   (* Find out which seqnums we want to scan: *)
@@ -610,7 +610,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
   !logger.debug "Will display tuples from %a (incl) to %a (excl)"
     (Option.print Int.print) mi
     (Option.print Int.print) ma ;
-  let field_names = RamenExport.check_field_names typ field_names in
+  let field_names = RamenExport.check_field_names ser field_names in
   let head_idx, head_typ =
     RamenExport.header_of_type ~with_event_time field_names ser in
   let open TermTable in
@@ -826,7 +826,8 @@ let timerange conf fq () =
       let bname = C.archive_buf_name conf func in
       let typ =
         O.out_type_of_operation func.F.operation in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ in
+      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ |>
+                List.map fst in
       let params = prog.P.params in
       let event_time =
         O.event_time_of_operation func.operation in
