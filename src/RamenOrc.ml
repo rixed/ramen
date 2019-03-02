@@ -2,6 +2,11 @@
  *
  * No comprehensive doc for ORC but see:
  * http://hadooptutorial.info/hive-data-types-examples/
+ *
+ * Note: in all this private fields are not taken into account.
+ * This is because it is easier to deal with them in the ocaml code than the
+ * C++ code (especially reading them back as `any cheap value`). This must
+ * therefore be wrapped in an OCaml generated code that remove/add them.
  *)
 open Batteries
 open RamenHelpers

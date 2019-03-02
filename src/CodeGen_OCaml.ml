@@ -1966,6 +1966,36 @@ let rec emit_sersize_of_var indent typ nullable oc var =
       p "%a" emit_sersize_of_fixsz_typ typ
   )
 
+let rec filter_out_private t =
+  match t.T.structure with
+  | T.TRecord kts ->
+      let kts =
+        Array.filter_map (fun (k, t') ->
+          if RamenName.(is_private (field_of_string k)) then None
+          else (
+            filter_out_private t' |> Option.map (fun t' -> k, t')
+          )
+        ) kts in
+      if Array.length kts = 0 then None
+      else Some T.{ t with structure = TRecord kts }
+  | T.TTuple ts ->
+      let ts = Array.filter_map filter_out_private ts in
+      if Array.length ts = 0 then None
+      else Some T.{ t with structure = TTuple ts }
+  | T.TVec (d, t') ->
+      filter_out_private t' |>
+      Option.map (fun t' -> T.{ t with structure = TVec (d, t') })
+  | T.TList t' ->
+      filter_out_private t' |>
+      Option.map (fun t' -> T.{ t with structure = TList t' })
+  | _ -> Some t
+
+(* Simpler, temp version of the above: *)
+let filter_out_private_from_tup tup =
+  List.filter (fun ft ->
+    not (RamenName.is_private ft.RamenTuple.name)
+  ) tup
+
 (* Given the name of a variable with the fieldmask, emit a given code for
  * every values to be sent, in serialization order.
  * We suppose that the output value is in out_var.
@@ -1979,6 +2009,9 @@ let rec emit_sersize_of_var indent typ nullable oc var =
  * They are also present in fieldmasks. But the serialization skips over them
  * when writing, and replace them by any cheap value when reading (so that
  * we do not need a distinct type for records with or without private fields).
+ * This is achieved thanks to the two wrapper functions [pub_of_out_] and
+ * [out_of_pub_].
+ *
  * The purpose of all this is to be able to have convenient scratch variables
  * to factorize some intermediary computation, for free.
  *
@@ -2069,18 +2102,13 @@ let rec emit_for_serialized_fields
 let emit_for_serialized_fields_of_output
       indent typ copy skip fm_var oc out_var =
   let p fmt = emit oc indent fmt in
-  (* It is important we only the first layer of fields is reordered and that
-   * deeper records are unaltered: *)
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iter (fun (ft, i) ->
     p "(* Field %a *)" RamenName.field_print ft.RamenTuple.name ;
-    if RamenName.is_private ft.name then
-      p "(* Skipped *)"
-    else
-      let val_var = id_of_field_typ ~tuple:TupleOut ft in
-      let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
-      emit_for_serialized_fields indent ft.typ copy skip fm_var val_var
-                                 oc out_var)
+    let val_var = id_of_field_typ ~tuple:TupleOut ft in
+    let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
+    emit_for_serialized_fields indent ft.typ copy skip fm_var val_var
+                               oc out_var)
 
 (* Same as the above [emit_for_serialized_fields] but for when we do not know
  * the actual value, just its type. *)
@@ -2142,12 +2170,9 @@ let emit_for_serialized_fields_of_output_no_value
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iter (fun (ft, i) ->
     p "(* Field %a *)" RamenName.field_print ft.RamenTuple.name ;
-    if RamenName.is_private ft.name then
-      p "(* Skipped *)"
-    else
-      let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
-      emit_for_serialized_fields_no_value
-        indent ft.typ copy skip fm_var oc out_var)
+    let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
+    emit_for_serialized_fields_no_value
+      indent ft.typ copy skip fm_var oc out_var)
 
 let emit_compute_nullmask_size indent fm_var oc typ =
   let p fmt = emit oc indent fmt in
@@ -2164,12 +2189,13 @@ let emit_compute_nullmask_size indent fm_var oc typ =
  * only at runtime: *)
 let emit_sersize_of_tuple indent name oc typ =
   let p fmt = emit oc indent fmt in
+  let typ = filter_out_private_from_tup typ in
   (* Like for serialize_tuple, we receive first the fieldmask and then the
    * actual tuple, so we can compute the nullmask in advance: *)
   p "(* Compute the serialized size of a tuple of type:" ;
   p "     %a" RamenTuple.print_typ typ ;
   p "*)" ;
-  p "let %s fieldmask_ =" name ;
+  p "let %s_of_pub_ fieldmask_ =" name ;
   p "  let nullmask_bytes_ =" ;
   emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
   p "    in" ;
@@ -2183,7 +2209,10 @@ let emit_sersize_of_tuple indent name oc typ =
   and skip indent oc _ = emit oc indent "sz_" in
   emit_for_serialized_fields_of_output
     (indent + 2) typ copy skip "fieldmask_" oc "sz_" ;
-  p "    sz_\n"
+  p "    sz_" ;
+  p "let %s fieldmask_ =" name ;
+  p "  let f_ = %s_of_pub_ fieldmask_ in" name ;
+  p "  fun out_ -> f_ (pub_of_out_ out_)\n"
 
 (* The function that will serialize the fields of the tuple at the given
  * addresses. The first argument is the recursive fieldmask of the fields
@@ -2208,7 +2237,8 @@ let emit_sersize_of_tuple indent name oc typ =
 
 let emit_serialize_tuple indent name oc typ =
   let p fmt = emit oc indent fmt in
-  p "let %s fieldmask_ =" name ;
+  let typ = filter_out_private_from_tup typ in
+  p "let %s_of_pub_ fieldmask_ =" name ;
   p "  let nullmask_bytes_ =" ;
   emit_compute_nullmask_size (indent + 2) "fieldmask_" oc typ ;
   p "    in" ;
@@ -2323,7 +2353,11 @@ let emit_serialize_tuple indent name oc typ =
   in
   emit_for_serialized_fields_of_output
     (indent + 2) typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
-  p "  offs_\n"
+  p "  offs_" ;
+  p "let %s fieldmask_ =" name ;
+  p "  let f_ = %s_of_pub_ fieldmask_ in" name ;
+  p "  fun tx_ offs_ out_ ->" ;
+  p "    f_ tx_ offs_ (pub_of_out_ out_)\n"
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -2530,16 +2564,6 @@ let emit_read_tuple indent name ?(is_yield=false) ~opc typ =
                           (item_var k) t.nullable "bi_" t.structure ;
           p "  in"
         ) ser ;
-        (* We also need to have some replacement value for the private ones
-         * that have not been saved (and that won't be used for anything: *)
-        Array.iter (fun (k, t) ->
-          if RamenName.(is_private (field_of_string k)) then (
-            (* TODO: write it in opc.consts and refer it from there? *)
-            let e = any_constant_of_expr_type t in
-            p "let %s = %a in"
-              (item_var k)
-              (emit_expr ~env:[] ~context:Finalize ~opc) e)
-        ) kts ;
         p "%a, offs_tup_"
           (array_print_as_tuple (fun oc (k, _) ->
             String.print oc (item_var k))) kts
@@ -2585,15 +2609,6 @@ let emit_read_tuple indent name ?(is_yield=false) ~opc typ =
     p "  in" ;
     nulli + (if ft.typ.nullable then 1 else 0)
   ) 0 |> ignore ;
-  (* We also need to have some replacement value for the private ones
-   * that have not been saved (and that won't be used for anything: *)
-  List.iter (fun ft ->
-    if RamenName.(is_private ft.RamenTuple.name) then (
-      let e = any_constant_of_expr_type ft.typ in
-      p "let %s = %a in"
-        (id_of_field_typ ~tuple:TupleIn ft)
-        (emit_expr ~env:[] ~context:Finalize ~opc) e)
-  ) typ ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)
   p "  m_, Some %a\n" (emit_tuple TupleIn) typ
@@ -3418,34 +3433,124 @@ let emit_operation
  * under a given chanel: *)
 let emit_replay name func opc =
   let p fmt = emit opc.code 0 fmt in
-  let typ = O.out_type_of_operation func.F.operation in
-  emit_read_tuple 0 "read_out_tuple_" ~opc typ ;
+  let typ = O.out_type_of_operation func.F.operation |>
+            filter_out_private_from_tup in
+  emit_read_tuple 0 "read_pub_tuple_" ~opc typ ;
+  p "let read_out_tuple_ tx =" ;
+  p "  let hdr_, tup_ = read_pub_tuple_ tx in" ;
+  p "  hdr_, Option.map out_of_pub_ tup_\n" ;
   p "let %s () =" name ;
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
   p "    serialize_tuple_" ;
   p "    orc_make_handler_ orc_write orc_close\n"
 
+(* Generator for functions [out_of_pub_] and [pub_of_out_],
+ * that convert from/to the output type with or without private
+ * types. *)
+type private_op = NoOp | Remove | Inject
+let emit_priv_pub opc =
+  let op = option_get "must have function" opc.op in
+  let rtyp = O.out_record_of_operation op in
+  let rec emit_transform indent trim var typ oc =
+    let transform_record indent kts =
+      let p fmt = emit oc indent fmt in
+      p "let %a = %s in"
+        (Enum.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
+          Printf.fprintf oc "%s_%s_" var k))
+          (Array.enum kts // fun (k, _) ->
+            trim || not RamenName.(is_private (field_of_string k)))
+        var ;
+      Array.fold_left (fun i (k, t) ->
+        let var' = Printf.sprintf "%s_%s_" var k in
+        if trim then (
+          (* remove all private fields, recursively: *)
+          if RamenName.(is_private (field_of_string k)) then i
+          else (
+            if i > 0 then p "," ;
+            p "(" ;
+            emit_transform (indent + 1) trim var' t oc ;
+            p ")" ;
+            i + 1
+          )
+        ) else (
+          if i > 0 then p "," ;
+          if RamenName.(is_private (field_of_string k)) then (
+            (* add private value that was missing: *)
+            let e = any_constant_of_expr_type t in
+            Printf.fprintf opc.consts
+              "let dummy_for_private_%s_ = %a"
+              var' (emit_expr ~env:[] ~context:Finalize ~opc) e ;
+            p "dummy_for_private_%s_" var'
+          ) else (
+            p "%s_%s_" var k
+          ) ;
+          i + 1
+        )
+      ) 0 kts |> ignore
+    in
+    let p fmt = emit opc.code 0 fmt in
+    let indent, var =
+      if typ.T.nullable then (
+        let var' = "notnull_"^ var in
+        p "(match %s with" var ;
+        p "| Null -> Null" ;
+        p "| NotNull %s -> NotNull (" var' ;
+        indent + 1, var'
+      ) else indent, var in
+    let p fmt = emit oc indent fmt in
+    (match typ.T.structure with
+    | T.TRecord kts ->
+        transform_record indent kts ;
+    | T.TTuple ts ->
+        let kts = Array.mapi (fun i t -> string_of_int i, t) ts in
+        transform_record indent kts
+    | T.TVec (_, t) | T.TList t ->
+        p "Array.map (fun v_ ->" ;
+        emit_transform (indent + 1) trim "v_" t oc ;
+        p ") %s" var
+    | _ ->
+        p "%s" var) ;
+    if typ.T.nullable then p "))"
+  in
+  (* print_record_as_tuple will explode all subrecords, naming subfields
+   * with full path from the root so that the next [print_record_as_tuple]
+   * will be able to reuse them. *)
+  let p fmt = emit opc.code 0 fmt in
+  p "let pub_of_out_ out_ =" ;
+  emit_transform 1 true "out_" rtyp opc.code ;
+  p "let out_of_pub_ pub_ =" ;
+  emit_transform 1 false "pub_" rtyp opc.code ;
+  p ""
+
 let emit_orc_wrapper func orc_write_func orc_read_func oc =
   let p fmt = emit oc 0 fmt in
   let rtyp = O.out_record_of_operation func.F.operation in
+  let pub = filter_out_private rtyp |>
+            option_get "no support for void types" in
   if RamenCompilConfig.have_orc then (
     p "(* A handler to be passed to the function generated by" ;
     p "   emit_write_value: *)" ;
     p "type handler" ;
     p "" ;
-    p "external orc_write : handler -> %a -> float -> float -> unit = %S"
-      otype_of_type rtyp
+    p "external orc_write_pub : handler -> %a -> float -> float -> unit = %S"
+      otype_of_type pub
       orc_write_func ;
-    p "external orc_read : string -> int -> (%a -> unit) -> (int * int) = %S"
-      otype_of_type rtyp
+    p "external orc_read_pub : string -> int -> (%a -> unit) -> (int * int) = %S"
+      otype_of_type pub
       orc_read_func ;
     (* Destructor do not seems to be called when the OCaml program exits: *)
     p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
     p "" ;
     p "(* Parameters: schema * row per batch * batches per file * path *)" ;
     p "external orc_make_handler : string -> string -> bool -> int -> int -> handler =" ;
-    p "  \"orc_handler_create\""
+    p "  \"orc_handler_create\"" ;
+    p "" ;
+    (* Now a  wrapper that trims private fields off: *)
+    p "let orc_write hdr_ t_ start_ stop_ =" ;
+    p "  orc_write_pub hdr_ (pub_of_out_ t_) start_ stop_" ;
+    p "let orc_read fname_ batch_sz_ k_ =" ;
+    p "  orc_read_pub fname_ batch_sz_ (fun t_ -> k_ (out_of_pub_ t_))" ;
   ) else (
     !logger.debug "ORC support not compiled in!" ;
     p "type handler = unit" ;
@@ -3531,7 +3636,8 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
       obj_name conf.C.keep_temp_files (fun oc ->
         emit_header func params_mod oc ;
         emit_params_env params_mod params envvars oc ;
-        emit_orc_wrapper func orc_write_func orc_read_func oc ;
+        emit_priv_pub opc ;
+        emit_orc_wrapper func orc_write_func orc_read_func opc.code ;
         emit_make_orc_handler "orc_make_handler_" func opc.code ;
         emit_factors_of_tuple "factors_of_tuple_" func opc.code ;
         emit_operation worker_entry_point func
