@@ -466,6 +466,12 @@ let rec conv_from_to
             | NotNull x_ -> %t x_) v_)"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
+    | TList t_from, TList t_to
+         when not t_from.nullable && t_to.nullable ->
+      Printf.fprintf oc
+        "(fun v_ -> Array.map (fun x_ -> NotNull (%t x_)) v_)"
+        (conv_from_to ~string_not_null ~nullable:false
+                      t_from.structure t_to.structure)
     | TVec (_, t_from), TList t_to ->
       print_non_null oc (TList t_from, TList t_to)
     | TVec (d_from, t_from), TVec (d_to, t_to)
