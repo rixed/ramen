@@ -471,10 +471,12 @@ let compile conf get_parent ~exec_file source_file
             conf func obj_name params_mod_name orc_write_func orc_read_func
             parsed_params envvars
         with e ->
-          !logger.error "Cannot generate code for %s: %s"
-            (func.name :> string)
-            (Printexc.to_string e) ;
-          raise e) ;
+          let bt = Printexc.get_raw_backtrace () in
+          let exn =
+            Failure (
+              Printf.sprintf2 "Cannot generate code for %s: %s"
+                (func.name :> string) (Printexc.to_string e)) in
+          Printexc.raise_with_backtrace exn bt) ;
         add_temp_file obj_name ;
         obj_name :: obj_files
       ) compiler_funcs [ params_obj_name ] in
