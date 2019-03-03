@@ -361,8 +361,7 @@ let print_in_field oc f =
   Option.may (RamenUnits.print oc) f.units
 
 let print_in_type oc =
-  (List.print ~first:"(" ~last:")" ~sep:", "
-    (fun oc t -> print_in_field oc t)) oc
+  (List.print ~first:"(" ~last:")" ~sep:", " print_in_field) oc
 
 let in_type_of_operation op =
   let tree = tree_of_operation op in

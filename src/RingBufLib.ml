@@ -65,12 +65,12 @@ let sersize_of_cidr = function
   | RamenIp.Cidr.V4 _ -> rb_word_bytes + sersize_of_cidrv4
   | RamenIp.Cidr.V6 _ -> rb_word_bytes + sersize_of_cidrv6
 
-let rec ser_array_of_record_typ kts =
+let rec ser_array_of_record kts =
   let a =
     Array.filter_map (fun (k, t as kt) ->
       match t with
       | { structure = TRecord kts ; nullable } ->
-          let kts = ser_array_of_record_typ kts in
+          let kts = ser_array_of_record kts in
           if Array.length kts = 0 then None
           else Some (k, { structure = TRecord kts ; nullable })
       | _ -> Some kt
@@ -323,7 +323,7 @@ let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
     if not recursive then Some (ft, i) else
     match ft.typ.structure with
     | TRecord kts ->
-        let kts = ser_array_of_record_typ kts in
+        let kts = ser_array_of_record kts in
         if Array.length kts = 0 then None
         else
           Some ({ ft with typ = { ft.typ with structure = TRecord kts } }, i)
