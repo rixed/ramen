@@ -2859,11 +2859,11 @@ let emit_update_states
 (* Similar to emit_field_selection but with less options, no concept of star and no
  * naming of the fields as the fields from out, since that's not the out tuple
  * we are constructing: *)
-let emit_key_of_input name in_typ ~opc exprs =
+let emit_key_of_input name in_typ ~env ~opc exprs =
   Printf.fprintf opc.code "let %s %a =\n\t("
     name
     (emit_tuple ~with_alias:true TupleIn) in_typ ;
-  let env = add_tuple_environment TupleIn in_typ [] in
+  let env = add_tuple_environment TupleIn in_typ env in
   List.iteri (fun i expr ->
       Printf.fprintf opc.code "%s\n\t\t%a"
         (if i > 0 then "," else "")
@@ -3267,7 +3267,7 @@ let emit_aggregate opc global_env group_env env_env param_env
     emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true ~always_true:true in_typ ~opc where
   else
     emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc where ;
-  emit_key_of_input "key_of_input_" in_typ ~opc key ;
+  emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env) ~opc key ;
   emit_maybe_fields opc.code out_typ ;
   emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc commit_cond ;
   emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ minimal_typ ~opc fields ;
