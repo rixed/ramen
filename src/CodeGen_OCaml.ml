@@ -534,21 +534,24 @@ let rec conv_from_to
               (conv_from_to ~string_not_null ~nullable:t.nullable
                             t.structure TString) !i ;
             incr i)) ts
-    | TRecord ts, TString ->
+    | TRecord kts, TString ->
       (* TODO: also print the field names?
        * For now the fields are printed in the definition order: *)
       (* Note: when printing records, private fields disappear *)
-      let ts' =
+      let kts' =
         Array.filter (fun (k, _) ->
-          not (RamenName.(is_private (field_of_string k)))) ts in
+          not (RamenName.(is_private (field_of_string k)))) kts in
+      let arg_var k =
+        RamenOCamlCompiler.make_valid_ocaml_identifier ("rec_"^ k) in
       Printf.fprintf oc
         "(fun %a -> \"(\"^ %a ^\")\")"
-          (array_print_as_tuple_i (fun oc i _ ->
-            Printf.fprintf oc "x%d_" i)) ts
-          (array_print_i ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun i oc (_, t) ->
-            Printf.fprintf oc "(%t) x%d_"
+          (array_print_as_tuple (fun oc (k, _) ->
+            String.print oc (arg_var k))) kts
+          (Array.print ~first:"" ~last:"" ~sep:" ^\";\"^ " (fun oc (k, t) ->
+            Printf.fprintf oc "(%t) %s"
               (conv_from_to ~string_not_null ~nullable:t.nullable
-                            t.structure TString) i)) ts'
+                            t.structure TString)
+              (arg_var k))) kts'
     | _ ->
       Printf.sprintf2 "Cannot find converter from type %a to type %a"
         print_structure from_typ

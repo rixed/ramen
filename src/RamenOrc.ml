@@ -139,10 +139,14 @@ let rec of_structure = function
   | T.TVec (_, t) | T.TList t ->
       Array (of_structure t.T.structure)
   | T.TRecord kts ->
-      (* Keep the order of definition: *)
+      (* Keep the order of definition but ignore private fields
+       * that are going to be skipped over when serializing.
+       * (TODO: also ignore shadowed fields): *)
       Struct (
-        Array.map (fun (k, t) ->
-          k, of_structure t.T.structure) kts)
+        Array.filter_map (fun (k, t) ->
+          if RamenName.(is_private (field_of_string k)) then None else
+          Some (k, of_structure t.T.structure)
+        ) kts)
 
 (*$= of_structure & ~printer:BatPervasives.identity
   "struct<ip:int,mask:tinyint>" \
