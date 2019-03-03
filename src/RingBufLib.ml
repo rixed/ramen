@@ -68,6 +68,7 @@ let sersize_of_cidr = function
 let rec ser_array_of_record kts =
   let a =
     Array.filter_map (fun (k, t as kt) ->
+      if RamenName.(is_private (field_of_string k)) then None else
       match t with
       | { structure = TRecord kts ; nullable } ->
           let kts = ser_array_of_record kts in

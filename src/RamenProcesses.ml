@@ -204,7 +204,7 @@ let input_ringbuf_fname conf parent child =
 
 let make_fieldmask parent child =
   let out_typ =
-    O.out_type_of_operation parent.F.operation in
+    O.out_type_of_operation ~with_private:false parent.F.operation in
   RamenFieldMaskLib.fieldmask_of_operation ~out_typ child.F.operation
 
 let check_is_subtype t1 t2 =
@@ -343,7 +343,8 @@ let start_export ?(duration=Default.export_duration) conf func =
   RingBuf.create ~wrap:false bname ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
-  let out_typ = O.out_type_of_operation func.F.operation in
+  let out_typ =
+    O.out_type_of_operation ~with_private:false func.F.operation in
   (* Negative durations, yielding a timestamp of 0, means no timeout ;
    * while duration = 0 means to actually not export anything (and we have
    * a cli-test that relies on the spec not being present in the out_ref
@@ -489,7 +490,8 @@ let really_try_start conf now must_run proc =
             failwith
     ) proc.func.parents in
   let check_linkage p c =
-    let out_type = O.out_type_of_operation p.F.operation in
+    let out_type =
+      O.out_type_of_operation ~with_private:false p.F.operation in
     try check_is_subtype c.F.in_type out_type
     with Failure msg ->
       Printf.sprintf2

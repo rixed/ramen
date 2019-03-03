@@ -286,7 +286,8 @@ let info _conf params program_name_opt bin_file opt_func_name () =
       ) func.parents ;
       TermTable.print_head (i+1) "Input type" ;
       TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type) ;
-    let out_type = O.out_type_of_operation func.operation in
+    let out_type =
+      O.out_type_of_operation ~with_private:false func.operation in
     TermTable.print_head (i+1) "Output type" ;
     TermTable.print (i+2) "Ramen: %a" RamenTuple.print_typ out_type ;
     TermTable.print (i+2) "ORC: %a"

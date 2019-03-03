@@ -277,19 +277,21 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
  * those, the mask is trivially ordered by index. *)
 and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
-  List.enum typ /@ (fun ft ->
-    let name = (ft.RamenTuple.name :> string) in
-    rec_fieldmask ft.typ Map.String.find name m) |>
+  List.enum typ //@ (fun ft ->
+    if RamenName.is_private ft.RamenTuple.name then None else
+    let name = (ft.name :> string) in
+    Some (rec_fieldmask ft.typ Map.String.find name m)) |>
   Array.of_enum
 
 and fieldmask_of_subfields typ m =
   let open RamenTypes in
   match typ.structure with
   | TRecord kts ->
+      let ser_kts = RingBufLib.ser_array_of_record kts in
       Rec (
         Array.map (fun (k, typ) ->
           rec_fieldmask typ Map.String.find k m
-        ) kts)
+        ) ser_kts)
   | _ ->
       Printf.sprintf2 "Type %a does not allow subfields %a"
         print_typ typ
