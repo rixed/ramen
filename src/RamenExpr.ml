@@ -231,6 +231,7 @@ and stateful =
   | SF1 of stateful1 * t
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
+  | SF3s of stateful3s * t * t * t list
   | SF4s of stateful4s * t * t * t * t list
   (* Top-k operation *)
   | Top of { want_rank : bool ; c : t ; max_size : t option ; what : t list ;
@@ -240,9 +241,6 @@ and stateful =
   (* Last N e1 [BY e2, e3...] - or by arrival.
    * Note: BY followed by more than one expression will require to parentheses
    * the whole expression to avoid ambiguous parsing. *)
-  (* Note: Should be in stateful3s but would be alone and PPP does not allow
-   * that (FIXME) *)
-  | Last of t * t * t list
   (* Accurate version of the above, remembering all instances of the given
    * tuple and returning a boolean. Only for when number of expected values
    * is small, obviously: *)
@@ -291,6 +289,12 @@ and stateful3 =
   | LinReg (* as above: period, how many seasons to keep, expression *)
   (* Hysteresis *)
   | Hysteresis (* measured value, acceptable, maximum *)
+  [@@ppp PPP_OCaml]
+
+and stateful3s =
+  | Last
+  (* FIXME: PPP does not support single constructors: *)
+  | DontLeaveMeAlone
   [@@ppp PPP_OCaml]
 
 and stateful4s =
@@ -647,15 +651,17 @@ let rec print ?(max_depth=max_int) with_types oc e =
            | None -> Unit.print oc ()
            | Some e -> Printf.fprintf oc " over %a" p e) max_size
           p c (st g n) p by p duration p time
-    | Stateful (g, n, Last (c, e, es)) ->
+    | Stateful (g, n, SF3s (Last, c, e, es)) ->
         let print_by oc es =
           if es <> [] then
             Printf.fprintf oc " BY %a"
               (List.print ~first:"" ~last:"" ~sep:", " p) es in
         Printf.fprintf oc "LAST %a%s %a%a"
           p c (st g n) p e print_by es
+    | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _)) ->
+        assert false
     | Stateful (g, n, SF2 (Sample, c, e)) ->
-      Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
+        Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
     | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
         (match sample_size with
         | None -> ()
@@ -664,10 +670,10 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
           p max_age (st g n) p what p time
     | Stateful (g, n, SF1 (Group, e)) ->
-      Printf.fprintf oc "GROUP%s %a" (st g n) p e
+        Printf.fprintf oc "GROUP%s %a" (st g n) p e
 
     | Generator (Split (e1, e2)) ->
-      Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
+        Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
     ) ;
     Option.may (RamenUnits.print oc) e.units ;
     if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ
@@ -726,6 +732,8 @@ let rec map f s e =
       { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
   | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
       { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
+  | Stateful (g, n, SF3s (o, c, x, es)) ->
+      { e with text = Stateful (g, n, SF3s (o, m c, m x, mm es)) }
   | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
       { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
   | Stateful (g, n, Top ({ c ; by ; time ; duration ; what ; max_size } as a)) ->
@@ -736,8 +744,6 @@ let rec map f s e =
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ;
         sample_size = om sample_size }) }
-  | Stateful (g, n, Last (c, x, es)) ->
-      { e with text = Stateful (g, n, Last (m c, m x, mm es)) }
   | Stateful (g, n, Distinct es) ->
       { e with text = Stateful (g, n, Distinct (mm es)) }
 
@@ -778,6 +784,7 @@ let fold_subexpressions f s i e =
   | Stateful (_, _, SF2 (_, e1, e2)) -> f (f i e1) e2
 
   | Stateful (_, _, SF3 (_, e1, e2, e3)) -> f (f (f i e1) e2) e3
+  | Stateful (_, _, SF3s (_, e1, e2, e3s)) -> fl (f (f i e1) e2) e3s
   | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
       fl (f (f (f i e1) e2) e3) e4s
 
@@ -786,7 +793,6 @@ let fold_subexpressions f s i e =
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
-  | Stateful (_, _, Last (e1, e2, e3s)) -> fl (f (f i e1) e2) e3s
   | Stateful (_, _, Distinct es) -> fl i es
 
   | Generator (Split (e1, e2)) -> f (f i e1) e2
@@ -1420,7 +1426,7 @@ struct
         several ~sep:list_sep p) >>:
       fun (((c, (g, n)), e), es) ->
         (* The result is null when the number of input is less than c: *)
-        make (Stateful (g, n, Last (c, e, es)))
+        make (Stateful (g, n, SF3s (Last, c, e, es)))
     ) m
 
   and sample m =
@@ -1752,7 +1758,7 @@ let units_of_expr params units_of_input units_of_output =
           units_of_params n
         else None
     | Stateless (SL2 (Percentile, _,
-                      { text = Stateful (_, _, Last ( _, e, _))
+                      { text = Stateful (_, _, SF3s (Last,  _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))
                              | Stateful (_, _, SF1 (Group, e)) ; _ })) ->
         uoe ~indent e

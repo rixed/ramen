@@ -1256,7 +1256,7 @@ let emit_constraints tuple_sizes records field_names
               String.print oc (n_of_expr w))) what
             (n_of_expr by)))
 
-  | Stateful (_, n, Last (c, x, es)) ->
+  | Stateful (_, n, SF3s (Last, c, x, es)) ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
        * - The type of the result is a list of items of the same type than x;
        * - If we skip nulls then those items are not nullable, otherwise
@@ -1276,6 +1276,9 @@ let emit_constraints tuple_sizes records field_names
           (if n then "false" else n_of_expr x)) ;
       List.iter (arg_is_not_nullable oc) es ;
       arg_is_nullable oc e
+
+  | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _)) ->
+      assert false
 
   | Stateful (_, n, SF2 (Sample, c, x)) ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
