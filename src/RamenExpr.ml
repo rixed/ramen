@@ -123,6 +123,7 @@ and stateless =
   | SL1 of stateless1 * t
   | SL1s of stateless1s * t list
   | SL2 of stateless2 * t * t
+  | SL3 of stateless3 * t * t * t
   [@@ppp PPP_OCaml]
 
 and stateless0 =
@@ -225,6 +226,11 @@ and stateless2 =
   | Strftime
   (* TODO: several percentiles. Requires multi values returns. *)
   | Percentile
+  [@@ppp PPP_OCaml]
+
+and stateless3 =
+  | SubString
+  | DontBeLonely
   [@@ppp PPP_OCaml]
 
 and stateful =
@@ -530,6 +536,8 @@ let rec print ?(max_depth=max_int) with_types oc e =
         Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
     | Stateless (SL2 (Pow, e1, e2)) ->
         Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+    | Stateless (SL3 (SubString, e1, e2, e3)) ->
+        Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
     | Stateless (SL1 (Exp, e)) ->
         Printf.fprintf oc "EXP (%a)" p e
     | Stateless (SL1 (Log, e)) ->
@@ -658,8 +666,6 @@ let rec print ?(max_depth=max_int) with_types oc e =
               (List.print ~first:"" ~last:"" ~sep:", " p) es in
         Printf.fprintf oc "LAST %a%s %a%a"
           p c (st g n) p e print_by es
-    | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _)) ->
-        assert false
     | Stateful (g, n, SF2 (Sample, c, e)) ->
         Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
     | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
@@ -674,6 +680,9 @@ let rec print ?(max_depth=max_int) with_types oc e =
 
     | Generator (Split (e1, e2)) ->
         Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
+    | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
+    | Stateless (SL3 (DontBeLonely, _, _, _)) ->
+        assert false
     ) ;
     Option.may (RamenUnits.print oc) e.units ;
     if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ
@@ -725,6 +734,8 @@ let rec map f s e =
       { e with text = Stateless (SL1s (o, mm es)) }
   | Stateless (SL2 (o, e1, e2)) ->
       { e with text = Stateless (SL2 (o, m e1, m e2)) }
+  | Stateless (SL3 (o, e1, e2, e3)) ->
+      { e with text = Stateless (SL3 (o, m e1, m e2, m e3)) }
 
   | Stateful (g, n, SF1 (o, e1)) ->
       { e with text = Stateful (g, n, SF1 (o, m e1)) }
@@ -783,7 +794,9 @@ let fold_subexpressions f s i e =
   | Stateless (SL2 (_, e1, e2))
   | Stateful (_, _, SF2 (_, e1, e2)) -> f (f i e1) e2
 
+  | Stateless (SL3 (_, e1, e2, e3))
   | Stateful (_, _, SF3 (_, e1, e2, e3)) -> f (f (f i e1) e2) e3
+
   | Stateful (_, _, SF3s (_, e1, e2, e3s)) -> fl (f (f i e1) e2) e3s
   | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
       fl (f (f (f i e1) e2) e3) e4s
@@ -1304,7 +1317,9 @@ struct
       (afun2 "reldiff" >>: fun (e1, e2) ->
         make (Stateless (SL2 (Reldiff, e1, e2)))) |||
       (afun2_sf "sample" >>: fun ((g, n), c, e) ->
-         make (Stateful (g, n, SF2 (Sample, c, e)))) |||
+        make (Stateful (g, n, SF2 (Sample, c, e)))) |||
+      (afun3 "substring" >>: fun (s, a, b) ->
+        make (Stateless (SL3 (SubString, s, a, b)))) |||
       k_moveavg ||| cast ||| top_expr ||| nth ||| last ||| past ||| get |||
       changed_field
     ) m

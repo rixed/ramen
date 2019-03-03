@@ -1384,6 +1384,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable "CodeGenLib.percentile"
       [Some TFloat, PropagateNull; None, PropagateNull] oc [p; lst]
 
+  | Finalize, Stateless (SL3 (SubString, s, a, b)), _ ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"
+      [ Some TString, PropagateNull ;
+        Some TI32, PropagateNull ;
+        Some TI32, PropagateNull ] oc [s; a; b]
+
   (*
    * Stateful functions
    *

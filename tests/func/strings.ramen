@@ -7,5 +7,10 @@ DEFINE f1 AS
     not ("pas glop" starts with "glop") as t3,
     "multi
 line" as t4,
-    length t4 as t5
+    length t4 as t5,
+    substring("glop", 0, 4) as t6,
+    substring("glop", 0, 10) as t7,
+    substring("glop", -4, 4) as t8,
+    substring("pas glop", 4, 8) as t9,
+    substring("pas glop pas glop", -13, -9) as t10
   EVERY 1 SECOND;

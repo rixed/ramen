@@ -102,6 +102,16 @@ let percentile p arr =
     round_to_int (p *. float_of_int (Array.length arr - 1)) in
   arr.(idx)
 
+let substring s a b =
+  let a = Int32.to_int a
+  and b = Int32.to_int b in
+  let l = String.length s in
+  let a, b = min a l, min b l in
+  let a = if a < 0 then a + l else a
+  and b = if b < 0 then b + l else b in
+  if a >= b then "" else
+  String.sub s a (b - a)
+
 let smooth prev alpha x = x *. alpha +. prev *. (1. -. alpha)
 
 let split by what k =

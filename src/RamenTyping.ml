@@ -1073,6 +1073,24 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_id (t_of_expr (List.hd es)) oc eid ;
       emit_assert_id_eq_id (n_of_expr (List.hd es)) oc nid
 
+  | Stateless (SL3 (SubString, s, a, b)) ->
+      (* - s must be a string;
+       * - a and b must be integers (may be negative);
+       * - the result is a string;
+       * - nullability comes solely from the arguments - in particular, if
+       *   a and b does not delimit a valid substring the result will be a
+       *   non null empty string. *)
+      arg_is_string oc s ;
+      arg_is_integer oc a ;
+      arg_is_integer oc b ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf2 "(or %s %s %s)"
+          (n_of_expr s) (n_of_expr a) (n_of_expr b))
+
+  | Stateless (SL3 (DontBeLonely, _, _, _)) ->
+      assert false
+
   | Stateful (_, _, SF2 (Lag, e1, e2)) ->
       (* Typing rules:
        * - e1 must be an unsigned;
