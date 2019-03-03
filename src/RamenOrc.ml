@@ -371,24 +371,28 @@ let rec emit_add_value_to_batch
     let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
     let iter_struct tuple_with_1_element kts =
       Enum.iteri (fun i (k, t) ->
-        p "{ /* Structure/Tuple item %s */" k ;
-        let btyp = batch_type_of_structure t.T.structure in
-        let arr_item = gensym "arr_item" in
-        p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
-          btyp arr_item btyp batch_var i ;
-        let val_var =
-          Option.map (fun v ->
-            (* OCaml has no such tuples. Value is then unboxed. *)
-            if tuple_with_1_element then v
-            else Printf.sprintf "Field(%s, %d)" v i
-          ) val_var
-        and field_name =
-          if field_name = "" then k else field_name ^"."^ k
-        and i_var =
-          Printf.sprintf "%s->numElements" arr_item in
-        emit_add_value_to_batch
-          (indent + 1) (depth + 1) val_var arr_item i_var t field_name oc ;
-        p "}"
+        (* Skip over private fields.
+         * TODO: also skip over shadowed fields! *)
+        if not (RamenName.(is_private (field_of_string k))) then (
+          p "{ /* Structure/Tuple item %s */" k ;
+          let btyp = batch_type_of_structure t.T.structure in
+          let arr_item = gensym "arr_item" in
+          p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
+            btyp arr_item btyp batch_var i ;
+          let val_var =
+            Option.map (fun v ->
+              (* OCaml has no such tuples. Value is then unboxed. *)
+              if tuple_with_1_element then v
+              else Printf.sprintf "Field(%s, %d)" v i
+            ) val_var
+          and field_name =
+            if field_name = "" then k else field_name ^"."^ k
+          and i_var =
+            Printf.sprintf "%s->numElements" arr_item in
+          emit_add_value_to_batch
+            (indent + 1) (depth + 1) val_var arr_item i_var t field_name oc ;
+          p "}"
+        )
       ) kts
     in
     match rtyp.T.structure with

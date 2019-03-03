@@ -80,16 +80,14 @@ let rec ser_array_of_record kts =
   Array.fast_sort (fun (k1,_) (k2,_) -> String.compare k1 k2) a ;
   a
 
-(* Given a kvs (or kts), return an array of (k, i) in serializing order
- * (where the i indicates the position in the original array). Skip over
- * private fields. *)
+(* Given a kvs (or kts), return an array of (k, v) in serializing order and
+ * without private fields. *)
 let ser_order kts =
   let a =
-    array_filter_mapi (fun i (k, _ as v) ->
-      if RamenName.(is_private (field_of_string k)) then None
-      else Some (v, i)
+    Array.filter (fun (k, _) ->
+      not (RamenName.(is_private (field_of_string k)))
     ) kts in
-  Array.fast_sort (fun ((k1,_),_) ((k2,_),_) -> String.compare k1 k2) a ;
+  Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
   a
 
 let rec sersize_of_fixsz_typ = function
@@ -276,10 +274,10 @@ and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
    * serialized order: *)
   let ser = ser_order kts in
-  let ts = Array.map (fun ((_, t),_) -> t) ser in
+  let ts = Array.map (fun (_, t) -> t) ser in
   let vs = read_tuple ts tx offs in
   assert (Array.length vs = Array.length ts) ;
-  Array.map2 (fun (((k, _), _)) v -> k, v) ser vs
+  Array.map2 (fun (k, _) v -> k, v) ser vs
 
 and read_vector d t tx offs =
   let nullmask_sz = nullmask_sz_of_vector d in
@@ -319,17 +317,18 @@ let ser_tuple_field_cmp (t1, _) (t2, _) =
  * second component the original position: *)
 let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
   tuple_typ |>
-  list_filter_mapi (fun i ft ->
-    if RamenName.is_private ft.RamenTuple.name then None else
-    if not recursive then Some (ft, i) else
+  List.fold_left (fun (lst, i as prev) ft ->
+    if RamenName.is_private ft.RamenTuple.name then prev else
+    if not recursive then (ft, i)::lst, i + 1 else
     match ft.typ.structure with
     | TRecord kts ->
         let kts = ser_array_of_record kts in
-        if Array.length kts = 0 then None
+        if Array.length kts = 0 then prev
         else
-          Some ({ ft with typ = { ft.typ with structure = TRecord kts } }, i)
-    | _ -> Some (ft, i)
-  ) |>
+          ({ ft with typ = { ft.typ with structure = TRecord kts } }, i)::lst,
+          i + 1
+    | _ -> (ft, i)::lst, i + 1
+  ) ([], 0) |> fst |>
   List.fast_sort ser_tuple_field_cmp
 
 let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
