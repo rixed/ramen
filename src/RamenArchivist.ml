@@ -602,7 +602,8 @@ let update_storage_allocation conf =
  * exporting at some point.
  *)
 
-let update_workers_export conf =
+let update_workers_export ?(export_duration=Default.archivist_export_duration)
+                          conf =
   let programs = C.with_rlock conf identity in (* Best effort *)
   load_allocs conf |>
   Hashtbl.iter (fun fq max_size ->
@@ -613,14 +614,15 @@ let update_workers_export conf =
           (Printexc.to_string e)
     | _mre, _prog, func ->
         if max_size > 0 then
-          let duration = Default.archivist_export_duration in
-          RamenProcesses.start_export ~duration conf func |> ignore)
+          RamenProcesses.start_export
+            ~duration:export_duration conf func |> ignore)
 
 (*
  * CLI
  *)
 
-let run_once conf ?while_ no_stats no_allocs no_reconf =
+let run_once conf ?while_ ?export_duration
+             no_stats no_allocs no_reconf =
   (* Start by gathering (more) workers stats: *)
   if not no_stats then (
     !logger.info "Updating workers stats" ;
@@ -633,15 +635,19 @@ let run_once conf ?while_ no_stats no_allocs no_reconf =
   (* Now update the archiving configuration of running workers: *)
   if not no_reconf then (
     !logger.info "Updating workers export configuration" ;
-    update_workers_export conf)
+    update_workers_export ?export_duration conf)
 
 let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
+  (* Export instructions are only valid for twice as long as the archivist
+   * loop. Consequence to keep in mind: if the archivist is not running then
+   * exports will soon stop! *)
+  let export_duration = sleep_time *. 2. in
   let watchdog =
     let timeout = sleep_time *. 2. in
     RamenWatchdog.make ~timeout "Archiver" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    run_once conf ?while_ no_stats no_allocs no_reconf ;
+    run_once conf ?while_ ~export_duration no_stats no_allocs no_reconf ;
     RamenWatchdog.reset watchdog ;
     Unix.sleepf (jitter sleep_time)) ()
 
