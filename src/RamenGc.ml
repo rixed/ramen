@@ -86,7 +86,7 @@ let cleanup_once conf dry_run del_ratio =
     (* Older files come first in [arc_files].
      * Now find the allocated size for this worker: *)
     let rec loop i sum_sz num_to_del to_del =
-      if i = 0 then num_to_del, to_del else
+      if i < 0 then num_to_del, to_del else
       let _, _, _, _, fpath as f = arc_files.(i) in
       let sum_sz = sum_sz + file_size fpath in
       let num_to_del, to_del =
