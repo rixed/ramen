@@ -79,7 +79,8 @@ let retention_of_fq user_conf (fq : RamenName.fq) =
  *)
 
 type func_stats =
-  { running_time : float [@ppp_default 0.] ;
+  { startup_time : float ; (* To distinguish from present run *)
+    running_time : float [@ppp_default 0.] ;
     tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
     bytes : int64 [@ppp_default 0L] ;
     cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
@@ -96,10 +97,6 @@ type func_stats =
 
 let archives_print oc =
   List.print (Tuple2.print Float.print Float.print) oc
-
-let func_stats_empty () =
-  { running_time = 0. ; tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ;
-    parents = [] ; archives = [] ; is_running = false }
 
 let get_user_conf fname per_func_stats =
   let default = "{size_limit=1073741824}" in
@@ -121,10 +118,8 @@ let get_user_conf fname per_func_stats =
   assert (Hashtbl.length user_conf.retentions > 0) ;
   user_conf
 
-(* Returns the func_stat resulting of adding the RamenPs.stats to the
- * previous func_stat [a]. Those stats are added because it's another
- * run, so values in [s] are not already accumulated: *)
-let add_ps_stats a s now =
+(* Build a func_stats from a unique stats received for the first time: *)
+let func_stats_of_stat s now =
   let etime_diff =
     match s.RamenPs.min_etime, s.max_etime with
     | Some t1, Some t2 -> t2 -. t1
@@ -134,11 +129,22 @@ let add_ps_stats a s now =
     | None, _ | _, None -> Uint64.zero
     | Some b, Some c -> Uint64.(b * c)
   in
-  { running_time = a.running_time +. etime_diff ;
-    tuples = Int64.add a.tuples Uint64.(to_int64 (s.out_count |? zero)) ;
-    bytes = Int64.add a.bytes Uint64.(to_int64 bytes) ;
-    cpu = a.cpu +. s.cpu ;
-    ram = Int64.add a.ram Uint64.(to_int64 s.max_ram) ;
+  { startup_time = s.RamenPs.startup_time ;
+    running_time = etime_diff ;
+    tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
+    bytes = Uint64.(to_int64 bytes) ;
+    cpu = s.RamenPs.cpu ;
+    ram = Uint64.(to_int64 s.max_ram) ;
+    parents = [] ; archives = [] ; is_running = true }
+
+(* Adds two func_stats together, favoring a *)
+let add_ps_stats a b =
+  { startup_time = a.startup_time ;
+    running_time = a.running_time +. b.running_time ;
+    tuples = Int64.add a.tuples b.tuples ;
+    bytes = Int64.add a.bytes b.bytes ;
+    cpu = a.cpu +. b.cpu ;
+    ram = Int64.add a.ram b.ram ;
     parents = a.parents ; archives = a.archives ; is_running = a.is_running }
 
 (* Those stats are saved on disk: *)
@@ -222,7 +228,7 @@ let enrich_stats conf per_func_stats =
           let fq = RamenName.fq func.F.program_name func.F.name in
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
-          | s, _ ->
+          | s ->
               s.is_running <- mre.C.status = MustRun ;
               update_parents s program_name func ;
               update_archives conf s func
@@ -231,38 +237,55 @@ let enrich_stats conf per_func_stats =
 (* tail -f the #notifs stream and update per_func_stats: *)
 let update_worker_stats ?while_ conf =
   (* When running we keep both the stats and the last received health report
-   * as well as the last startup_time (to detect restarts): *)
+   * as well as the last startup_time (to detect restarts). We start by
+   * loading the file as the current stats. We will shift it into the total
+   * if we receive a new startup_time: *)
   let per_func_stats :
-    (RamenName.fq, (func_stats * (float * RamenPs.t) option)) Hashtbl.t =
+    (RamenName.fq, (func_stats option * func_stats)) Hashtbl.t =
     load_stats conf |>
-    Hashtbl.map (fun _fq s -> s, None)
+    Hashtbl.map (fun _fq s -> None, s)
   in
   let now = Unix.gettimeofday () in
   RamenPs.read_stats ?while_ conf |>
   Hashtbl.iter (fun fq s ->
     Hashtbl.modify_opt fq (function
       | None ->
-          Some (func_stats_empty (), Some (s.RamenPs.startup_time, s))
-      | Some (tot, None) ->
-          Some (tot, Some (s.RamenPs.startup_time, s))
-      | Some (tot, Some (startup_time, _)) ->
-          if s.RamenPs.startup_time = startup_time then (
-            Some (tot, Some (startup_time, s))
+          Some (None, func_stats_of_stat s now)
+      | Some (tot, cur) ->
+          if Distance.float s.RamenPs.startup_time cur.startup_time < 1.
+          then (
+            (* Just replace cur: *)
+            Some (tot, func_stats_of_stat s now)
           ) else (
             (* Worker has restarted. We assume it's still mostly the
              * same operation. Maybe consider the function signature
              * (and add it to the stats?) *)
-            let tot = add_ps_stats tot s now in
-            Some (tot, Some (s.RamenPs.startup_time, s))
+            let print_date = print_as_date ?rel:None ?right_justified:None in
+            !logger.warning
+              "Merging stats of a new instance of worker %a that started \
+               at %a with the previous run that started at %a"
+              RamenName.fq_print fq
+              print_date s.RamenPs.startup_time
+              print_date cur.startup_time ;
+            let tot =
+              match tot with
+              | None ->
+                  (* If we had no tot yet, now we have one: *)
+                  cur
+              | Some tot ->
+                  (* Accumulate tot + cur and let s be the new cur: *)
+                  add_ps_stats tot cur in
+            Some (Some tot, func_stats_of_stat s now)
           )
     ) per_func_stats
   ) ;
-  enrich_stats conf per_func_stats ;
-  Hashtbl.map (fun _fq -> function
-    | tot, None -> tot
-    | tot, Some (_, last) -> add_ps_stats tot last now
-  ) per_func_stats |>
-  save_stats conf
+  let stats =
+    Hashtbl.map (fun _fq -> function
+      | Some tot, s -> add_ps_stats tot s
+      | None, s -> s
+    ) per_func_stats in
+  enrich_stats conf stats ;
+  save_stats conf stats
 
 (*
  * Optimising storage:
