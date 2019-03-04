@@ -65,8 +65,17 @@ let the_big_one =
        - httpd, alerter and other daemons do nothing.\n" ;
     Variant.make "on" "Run ramen normally." |]
 
+let archive_in_orc =
+  make [|
+    Variant.make "let's rather not"
+      "All archives are written as non-wrapping ringbuffers as usual.\n" ;
+    Variant.make ~share:0. "Let's write ORC"
+      "All archives are written in ORC format. Non ORC non-wrapping\
+       ringbufs are still possible but will not be archived.\n" |]
+
 let all_internal_experiments =
-  [ "TheBigOne", the_big_one ]
+  [ "TheBigOne", the_big_one ;
+    "ArchiveInORC", archive_in_orc ]
 
 (*
  * Helpers

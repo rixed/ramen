@@ -109,15 +109,16 @@ static uint64_t uint64_of_version(char const *str)
   return v;
 }
 
-CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_, value fname_)
+CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value archive_, value tot_words_, value fname_)
 {
   CAMLparam4(version_, wrap_, fname_, tot_words_);
   char *version_str = String_val(version_);
   uint64_t version = uint64_of_version(version_str);
   bool wrap = Bool_val(wrap_);
+  bool archive = Bool_val(archive_);
   char *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
-  enum ringbuf_error err = ringbuf_create(version, wrap, tot_words, fname);
+  enum ringbuf_error err = ringbuf_create(version, wrap, archive, tot_words, fname);
   if (RB_OK != err) caml_failwith("Cannot create ring buffer");
   CAMLreturn(Val_unit);
 }

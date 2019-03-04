@@ -99,8 +99,10 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
 {
   int ret = -1;
 
+  char dirname[PATH_MAX] = "./";
+  dirname_of_fname(dirname, sizeof(dirname), bname);
   char fname[PATH_MAX];
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.arc/max", bname) >= PATH_MAX) {
+  if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
     fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
     goto err0;
   }
@@ -143,9 +145,11 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
 {
   int ret = -1;
 
-  char fname[PATH_MAX];
   // Save the new sequence number:
-  if ((size_t)snprintf(fname, PATH_MAX, "%s.arc/max", bname) >= PATH_MAX) {
+  char dirname[PATH_MAX] = "./";
+  dirname_of_fname(dirname, sizeof(dirname), bname);
+  char fname[PATH_MAX];
+  if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
     fprintf(stderr, "Archive max seq file name truncated: '%s'\n", fname);
     goto err0;
   }
@@ -246,7 +250,7 @@ static int unlock(int lock_fd)
 
 // Keep existing files as much as possible:
 extern int ringbuf_create_locked(
-  uint64_t version, bool wrap, char const *fname, uint32_t num_words)
+    uint64_t version, bool wrap, bool archive, char const *fname, uint32_t num_words)
 {
   int ret = -1;
   struct ringbuf_file rbf;
@@ -267,6 +271,7 @@ extern int ringbuf_create_locked(
 
     rbf.version = version;
     rbf.num_words = num_words;
+    // Uh?! Why atomic to write in local rbf?
     atomic_init(&rbf.prod_head, 0);
     atomic_init(&rbf.prod_tail, 0);
     atomic_init(&rbf.cons_head, 0);
@@ -275,12 +280,13 @@ extern int ringbuf_create_locked(
     atomic_init(&rbf.tmin, 0.);
     atomic_init(&rbf.tmax, 0.);
     rbf.wrap = wrap;
+    rbf.archive = archive;
 
     if (0 != really_write(fd, &rbf, sizeof(rbf), fname)) {
       goto err3;
     }
     if (! wrap && 0 != fsync(fd)) {
-      fprintf(stderr, "Cannot fsync ringbug file '%s': %s\n",
+      fprintf(stderr, "Cannot fsync ringbuf file '%s': %s\n",
               fname, strerror(errno));
       // best effort
     }
@@ -310,7 +316,8 @@ err0:
   return ret;
 }
 
-extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t num_words, char const *fname)
+extern enum ringbuf_error ringbuf_create(
+    uint64_t version, bool wrap, bool archive, uint32_t num_words, char const *fname)
 {
   enum ringbuf_error err = RB_ERR_FAILURE;
 
@@ -319,7 +326,7 @@ extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t n
   int lock_fd = lock(fname, LOCK_EX, false);
   if (lock_fd < 0) goto err0;
 
-  if (0 != ringbuf_create_locked(version, wrap, fname, num_words)) {
+  if (0 != ringbuf_create_locked(version, wrap, archive, fname, num_words)) {
     goto err1;
   }
 
@@ -468,32 +475,50 @@ static int rotate_file_locked(struct ringbuf *rb)
   uint64_t last_seq = rb->rbf->first_seq + rb->rbf->num_allocs;
   if (0 != write_max_seqnum(rb->fname, last_seq)) goto err0;
 
-  // Name the archive according to tuple seqnum included and also with the
-  // time range (will be only 0 if no time info is available):
-  char arc_fname[PATH_MAX];
-  if ((size_t)snprintf(arc_fname, PATH_MAX,
-                       "%s.arc/%016"PRIx64"_%016"PRIx64"_%a_%a.b",
-                       rb->fname, rb->rbf->first_seq, last_seq,
-                       rb->rbf->tmin, rb->rbf->tmax) >= PATH_MAX) {
-    fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
-    goto err0;
-  }
+  if (rb->rbf->archive) {
+    // Name the archive according to tuple seqnum included and also with the
+    // time range (will be only 0 if no time info is available):
+    char dirname[PATH_MAX] = "./";
+    dirname_of_fname(dirname, sizeof(dirname), rb->fname);
+    char arc_fname[PATH_MAX];
+    if ((size_t)snprintf(arc_fname, PATH_MAX,
+                         "%s/arc/%016"PRIx64"_%016"PRIx64"_%a_%a.b",
+                         dirname, rb->rbf->first_seq, last_seq,
+                         rb->rbf->tmin, rb->rbf->tmax) >= PATH_MAX) {
+      fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
+      goto err0;
+    }
 
-  // Rename the current rb into the archival name.
-  //printf("Rename the current rb (%s) into the archive (%s)\n",
-  //       rb->fname, arc_fname);
-  if (0 != rename(rb->fname, arc_fname)) {
-    fprintf(stderr, "Cannot rename full buffer '%s' into '%s': %s\n",
-            rb->fname, arc_fname, strerror(errno));
-    goto err0;
-  }
+    // Rename the current rb into the archival name.
+    //printf("Rename the current rb (%s) into the archive (%s)\n",
+    //       rb->fname, arc_fname);
 
-  // Regardless of how this rotation went, we must not release the lock without
-  // having created a new archive file:
-  //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
-  if (0 != ringbuf_create_locked(rb->rbf->version, rb->rbf->wrap,
-                                 rb->fname, rb->rbf->num_words)) {
-    goto err0;
+    // If the archive flag was set, do actually archive that file
+    if (0 != rename(rb->fname, arc_fname)) {
+      fprintf(stderr, "Cannot rename full buffer '%s' into '%s': %s\n",
+              rb->fname, arc_fname, strerror(errno));
+      goto err0;
+    }
+
+    // Regardless of how this rotation went, we must not release the lock without
+    // having created a new archive file:
+    //printf("Create a new buffer file under the same old name '%s'\n", rb->fname);
+    if (0 != ringbuf_create_locked(
+               rb->rbf->version, rb->rbf->wrap, rb->rbf->archive, rb->fname,
+               rb->rbf->num_words)) {
+      goto err0;
+    }
+
+  } else {
+    // If the file must not be archived, then just empty it:
+    rb->rbf->first_seq = last_seq;
+    atomic_init(&rb->rbf->prod_head, 0);
+    atomic_init(&rb->rbf->prod_tail, 0);
+    atomic_init(&rb->rbf->cons_head, 0);
+    atomic_init(&rb->rbf->cons_tail, 0);
+    atomic_init(&rb->rbf->num_allocs, 0);
+    atomic_init(&rb->rbf->tmin, 0.);
+    atomic_init(&rb->rbf->tmax, 0.);
   }
 
   ret = 0;

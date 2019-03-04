@@ -3,6 +3,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module O = RamenOperation
+module OutRef = RamenOutRef
 
 type conf =
   { log_level : log_level ;
@@ -401,13 +402,17 @@ let in_ringbuf_names conf func =
  * timeseries commands.
  * We want those files to be identified by the name of the operation and
  * the output type of the operation. *)
-let archive_buf_name conf func =
+let archive_buf_name ~file_type conf func =
+  let ext =
+    match file_type with
+    | OutRef.RingBuf -> "b"
+    | OutRef.Orc _ -> "orc" in
   let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
   conf.persist_dir ^"/workers/ringbufs/"
                    ^ RamenVersions.ringbuf
                    ^"/"^ Func.path func
-                   ^"/"^ sign ^"/archive.b"
+                   ^"/"^ sign ^"/archive."^ ext
 
 (* Every function with factors will have a file sequence storing possible
  * values encountered for that time range. This is so that we can quickly

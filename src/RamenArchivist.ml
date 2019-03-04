@@ -11,6 +11,7 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module OutRef = RamenOutRef
 
 let conf_dir conf =
   conf.C.persist_dir ^"/archivist/"
@@ -182,7 +183,10 @@ let update_parents s program_name func =
     ) func.F.parents
 
 let update_archives conf s func =
-  let bname = C.archive_buf_name conf func in
+  (* We are going to scan the current archive, which is always in RingBuf
+   * format. arc_dir_of_bname would return the same directory for an Orc
+   * file anyway: *)
+  let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
   let lst =
     RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
     (fun (_seq_mi, _seq_ma, t1, t2, _f) ->
@@ -636,9 +640,17 @@ let update_workers_export ?(export_duration=Default.archivist_export_duration)
           RamenName.fq_print fq
           (Printexc.to_string e)
     | _mre, _prog, func ->
+        let file_type =
+          if RamenExperiments.archive_in_orc.variant = 0 then
+            OutRef.RingBuf
+          else
+            OutRef.Orc {
+              with_index = false ;
+              batch_size = Default.orc_rows_per_batch ;
+              num_batches = Default.orc_batches_per_file } in
         if max_size > 0 then
-          RamenProcesses.start_export
-            ~duration:export_duration conf func |> ignore)
+          RamenProcesses.start_export ~archive:true
+            ~file_type ~duration:export_duration conf func |> ignore)
 
 (*
  * CLI

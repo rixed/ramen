@@ -8,6 +8,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module OutRef = RamenOutRef
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -52,7 +53,15 @@ let read_output conf ?duration (fq : RamenName.fq) where =
           bname, false, filter, typ, ser, [], RamenNotification.event_time
       | None ->
           (* Normal case: Create the non-wrapping RingBuf (under a standard
-           * name given by RamenConf *)
+           * name given by RamenConf. If that worker is already archiving
+           * in ORC format we won't use the ORC until it's complete and
+           * moved into the archive anyway. What we want to avoid though,
+           * is to archive the same tuples twice. Hopefully a worker cannot
+           * switch between ORC and RingBuf archiving (since it's controlled
+           * by an experiment). Therefore the ORC experiment also disable
+           * archival of non-ORC files altogether. Which does not mean that
+           * archives of other format must not be read, as on the long term
+           * format can indeed switch (worker would restart in between). *)
           let prog, func, bname =
             C.with_rlock conf (fun programs ->
               match C.find_func programs fq with
@@ -61,7 +70,8 @@ let read_output conf ?duration (fq : RamenName.fq) where =
                             " does not exist")
               | _mre, prog, func ->
                   let bname =
-                    RamenProcesses.start_export conf ?duration func in
+                    RamenProcesses.start_export
+                      conf ~file_type:OutRef.RingBuf ?duration func in
                   prog, func, bname) in
           let out_type =
             O.out_type_of_operation func.F.operation
@@ -361,13 +371,13 @@ let replay conf ?(while_=always) fq field_names where since until
       let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
       let timeout = Unix.gettimeofday () +. 300. in
       let out_ref = C.out_ringbuf_names_ref conf func in
-      RamenOutRef.add out_ref ~timeout ~channel rb_name fieldmask ;
+      OutRef.add out_ref ~timeout ~channel rb_name fieldmask ;
       let clean_links () =
-        RamenOutRef.remove out_ref rb_name channel ;
+        OutRef.remove out_ref rb_name channel ;
         Set.iter (fun (pfq, _fq) ->
           let _mre, _prog, pfunc = C.find_func_or_fail programs pfq in
           let out_ref = C.out_ringbuf_names_ref conf pfunc in
-          RamenOutRef.remove_channel out_ref channel
+          OutRef.remove_channel out_ref channel
         ) links in
       finally clean_links (fun () ->
         (* We just have connected the function we want to read to the replay
@@ -379,7 +389,7 @@ let replay conf ?(while_=always) fq field_names where since until
           let out_ref = C.out_ringbuf_names_ref conf pfunc in
           let fname = RamenProcesses.input_ringbuf_fname conf pfunc cfunc
           and fieldmask = RamenProcesses.make_fieldmask pfunc cfunc in
-          RamenOutRef.add out_ref ~timeout ~channel fname fieldmask
+          OutRef.add out_ref ~timeout ~channel fname fieldmask
         ) links ;
         (* Do not start the replay at once or the worker won't have reread
          * its out-ref. TODO: signal it. *)
@@ -398,7 +408,14 @@ let replay conf ?(while_=always) fq field_names where since until
                  "fq_name="^ (sfq :> string) ;
                  "log_level="^ string_of_log_level conf.C.log_level ;
                  "output_ringbufs_ref="^ out_ringbuf_ref ;
-                 "rb_archive="^ C.archive_buf_name conf sfunc ;
+                 "rb_archive="^
+                   (* We pass the name of the current ringbuf archive if
+                    * there is one, that will be read after the archive
+                    * directory. Notice that if we cannot read the current
+                    * ORC file before it's archived, nothing prevent a
+                    * worker to write both a non-wrapping, non-archive
+                    * worthy ringbuf in addition to an ORC file. *)
+                   C.archive_buf_name ~file_type:OutRef.RingBuf conf sfunc ;
                  "since="^ string_of_float since ;
                  "until="^ string_of_float until ;
                  "channel_id="^ RamenChannel.to_string channel ;

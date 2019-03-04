@@ -10,6 +10,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module OutRef = RamenOutRef
 
 let () =
   Printexc.register_printer (function
@@ -825,8 +826,10 @@ let timerange conf fq () =
     let _mre, prog, func = C.find_func_or_fail programs fq in
     let mi_ma =
       (* We need the func to know its buffer location.
-       * Nothing better to do in case of error than to exit. *)
-      let bname = C.archive_buf_name conf func in
+       * Nothing better to do in case of error than to exit.
+       * The archive dir is going to be scanned, then this file in case
+       * it exists: *)
+      let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
       let typ =
         O.out_type_of_operation func.F.operation in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ |>

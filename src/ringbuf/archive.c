@@ -46,23 +46,32 @@ static void fill_with_printable_random(char *dst, size_t sz)
   *dst = '\0';
 }
 
+// Either overwrite dirname with the directory name of fname, or leave
+// it untouched.
+void dirname_of_fname(char *dirname, size_t sz, char const *fname)
+{
+  // Build the name of the archive from the dirname of fname:
+  char const *last_slash = NULL;
+  for (char const *c = fname; *c != '\0'; c++) {
+    if (*c == '/') last_slash = c;
+  }
+  if (last_slash) {
+    size_t len = last_slash - fname;
+    if (len < sz) {
+      memcpy(dirname, fname, len);
+      dirname[len] = '\0';
+    }
+  }
+}
+
 int ramen_archive(char const *fname, double start, double stop)
 {
   int ret = -1;
 
   printf("Archiving file %s\n", fname);
 
-  // Build the name of the archive from the dirname of fname:
-  char const *last_slash = NULL;
-  for (char const *c = fname; *c != '\0'; c++) {
-    if (*c == '/') last_slash = c;
-  }
   char dirname[PATH_MAX] = "./";
-  if (last_slash) {
-    size_t len = last_slash - fname;
-    memcpy(dirname, fname, len);
-    dirname[len] = '\0';
-  }
+  dirname_of_fname(dirname, sizeof(dirname), fname);
 
   char arc_fname[PATH_MAX];
   char rnd[6+1];

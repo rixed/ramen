@@ -136,7 +136,10 @@ let cleanup_once conf dry_run del_ratio =
           fname RamenName.fq_print fq ;
         0
     | _mre, _prog, func ->
-        let arc_dir = C.archive_buf_name conf func ^".arc" in
+        (* TODO: RingBufLib.arc_dir_of_func ... to avoid selecting an
+         * arbitrary file_type: *)
+        let arc_dir = C.archive_buf_name ~file_type:RingBuf conf func |>
+                      RingBufLib.arc_dir_of_bname in
         if same_files arc_dir fname then (
           !logger.info
             "Archive directory %s is still the current archive for %a"

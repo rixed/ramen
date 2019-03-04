@@ -15,12 +15,13 @@ let prepend_rb_name f fname =
   try f fname
   with Failure msg -> failwith (fname ^": "^ msg)
 
-external create_ : string -> bool -> int -> string -> unit =
+external create_ : string -> bool -> bool -> int -> string -> unit =
   "wrap_ringbuf_create"
 
-let create ?(wrap=true) ?(words=Default.ringbuffer_word_length) fname =
+let create ?(wrap=true) ?(archive=false)
+           ?(words=Default.ringbuffer_word_length) fname =
   mkdir_all ~is_file:true fname ;
-  prepend_rb_name (create_ RamenVersions.ringbuf wrap words) fname
+  prepend_rb_name (create_ RamenVersions.ringbuf wrap archive words) fname
 
 type stats = {
   capacity : int ; (* in words *)

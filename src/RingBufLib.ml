@@ -378,7 +378,8 @@ let with_enqueue_tx rb sz f =
    * indicating if an entry is valid or not. *)
   enqueue_commit tx tmin tmax
 
-let arc_dir_of_bname fname = fname ^".arc"
+let arc_dir_of_bname fname =
+  Filename.dirname fname ^"/arc"
 
 let int_of_hex s = int_of_string ("0x"^ s)
 
@@ -390,13 +391,17 @@ let parse_archive_file_name fname =
   let ma, rest = String.split ~by:"_" rest in
   let tmi, rest = String.split ~by:"_" rest in
   let tma, rest = String.rsplit ~by:"." rest in
-  if rest <> "b" then failwith ("not an archive file ("^ rest ^")") ;
+  if rest <> "b" && rest <> "orc" then
+    failwith ("not an archive file ("^ fname ^")") ;
   int_of_hex mi, int_of_hex ma,
   strtod tmi, strtod tma
 (*$= parse_archive_file_name & ~printer:BatPervasives.dump
   (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
     (parse_archive_file_name \
       "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b")
+  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
+    (parse_archive_file_name \
+      "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.orc")
  *)
 
 let filter_arc_files dir =

@@ -11,6 +11,7 @@ module F = C.Func
 module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
+module OutRef = RamenOutRef
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
@@ -338,9 +339,11 @@ let run_worker ?and_stop bin args env =
   run_background ~cwd ?and_stop cmd args env
 
 (* Returns the buffer name: *)
-let start_export ?(duration=Default.export_duration) conf func =
-  let bname = C.archive_buf_name conf func in
-  RingBuf.create ~wrap:false bname ;
+let start_export ?(archive=false) ?(file_type=OutRef.RingBuf)
+                 ?(duration=Default.export_duration) conf func =
+  let bname = C.archive_buf_name ~file_type conf func in
+  if file_type = OutRef.RingBuf then
+    RingBuf.create ~wrap:false ~archive bname ;
   (* Add that name to the function out-ref *)
   let out_ref = C.out_ringbuf_names_ref conf func in
   let out_typ =
@@ -353,7 +356,7 @@ let start_export ?(duration=Default.export_duration) conf func =
     let timeout =
       if duration < 0. then 0. else Unix.gettimeofday () +. duration in
     let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ in
-    RamenOutRef.add out_ref ~timeout bname fieldmask
+    OutRef.add out_ref ~timeout ~file_type bname fieldmask
   ) ;
   bname
 
@@ -388,7 +391,7 @@ let really_start conf proc parents children =
     (* The destination ringbuffer must exist before it's referenced in an
      * out-ref, or the worker might err and throw away the tuples: *)
     RingBuf.create fname ;
-    RamenOutRef.add out_ringbuf_ref fname fieldmask
+    OutRef.add out_ringbuf_ref fname fieldmask
   ) children ;
   (* Always export for a little while at the beginning *)
   let _bname =
@@ -459,7 +462,7 @@ let really_start conf proc parents children =
       C.out_ringbuf_names_ref conf p in
     let fname = input_ringbuf_fname conf p proc.func
     and fieldmask = make_fieldmask p proc.func in
-    RamenOutRef.add out_ref fname fieldmask
+    OutRef.add out_ref fname fieldmask
   ) parents
 
 (* Try to start the given proc.
@@ -544,7 +547,7 @@ let try_kill conf must_run proc =
     let parent_out_ref =
       C.out_ringbuf_names_ref conf p in
     List.iter (fun this_in ->
-      RamenOutRef.remove parent_out_ref this_in RamenChannel.live
+      OutRef.remove parent_out_ref this_in RamenChannel.live
     ) input_ringbufs
   ) parents ;
   (* If it's still stopped, unblock first: *)
@@ -585,14 +588,14 @@ let check_out_ref conf must_run running =
      * ringbuf not in this set: *)
     if proc.pid <> None then (
       let out_ref = C.out_ringbuf_names_ref conf proc.func in
-      let outs = RamenOutRef.read_live out_ref in
+      let outs = OutRef.read_live out_ref in
       Hashtbl.iter (fun fname _ ->
         if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
           !logger.error "Operation %s outputs to %s, which is not read, fixing"
             (F.fq_name proc.func :> string) fname ;
           log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
             IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-            RamenOutRef.remove out_ref fname RamenChannel.live) ())
+            OutRef.remove out_ref fname RamenChannel.live) ())
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
@@ -600,7 +603,7 @@ let check_out_ref conf must_run running =
       let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
       List.iter (fun par_func ->
         let out_ref = C.out_ringbuf_names_ref conf par_func in
-        let outs = RamenOutRef.read_live out_ref in
+        let outs = OutRef.read_live out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"
@@ -609,7 +612,7 @@ let check_out_ref conf must_run running =
           log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
             let fname = input_ringbuf_fname conf par_func proc.func
             and fieldmask = make_fieldmask par_func proc.func in
-            RamenOutRef.add out_ref fname fieldmask) ())
+            OutRef.add out_ref fname fieldmask) ())
       ) par_funcs
     )
   ) running
