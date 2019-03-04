@@ -121,7 +121,7 @@ let cleanup_once conf dry_run del_ratio =
   in
   let programs = C.with_rlock conf identity in
   let allocs = RamenArchivist.load_allocs conf in
-  let get_alloced_worker rel_fname =
+  let get_alloced_worker fname rel_fname =
     (* We need to retrieve the FQ of that worker and then check if this
      * directory is still the current one, and then look for allocated
      * space (assuming 0 for unknown worker or version).
@@ -133,29 +133,30 @@ let cleanup_once conf dry_run del_ratio =
     | exception Not_found ->
         !logger.info
           "Archive directory %s belongs to unknown function %a"
-          rel_fname RamenName.fq_print fq ;
+          fname RamenName.fq_print fq ;
         0
     | _mre, _prog, func ->
         let arc_dir = C.archive_buf_name conf func ^".arc" in
-        if arc_dir = rel_fname then (
+        if same_files arc_dir fname then (
           !logger.info
-            "Archive directory %s is current archive for %a"
-            rel_fname RamenName.fq_print fq ;
+            "Archive directory %s is still the current archive for %a"
+            fname RamenName.fq_print fq ;
           Hashtbl.find allocs fq
         ) else (
-          !logger.info
-            "Archive directory %s is an old archive for %a"
-            rel_fname RamenName.fq_print fq ;
+          !logger.warning
+            "Archive directory %s seems to be an old archive for %a \
+             (which now uses %s). Will delete its content slowly."
+            fname RamenName.fq_print fq arc_dir ;
           0
         ) in
-  let get_alloced_special _rel_fname = 150_000_000 (* TODO *) in
+  let get_alloced_special _fname _rel_fname = 150_000_000 (* TODO *) in
   let on_dir get_alloced fname rel_fname =
     (* FIXME: what if a function or program name ends with ".arc"?
      * We should leave the GC explore freely under persist_dir, looking
      * for .gc files giving it instructions (max size and/or max age,
      * and/or account to given FQ. *)
     if String.ends_with rel_fname ".arc" then (
-      match get_alloced rel_fname with
+      match get_alloced fname rel_fname with
       | exception e ->
           (* Better not delete anything *)
           let what =
@@ -163,6 +164,7 @@ let cleanup_once conf dry_run del_ratio =
               rel_fname in
           print_exception ~what e
       | alloced ->
+          !logger.debug "%s is allocated %d bytes" rel_fname alloced ;
           clean_seq_archives fname alloced
     )
   in

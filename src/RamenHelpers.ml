@@ -720,7 +720,7 @@ let marshal_from_fd ?default fname fd =
           fname (Printexc.to_string e) ;
         d)
 
-let same_files a b =
+let same_file_content a b =
   let same_file_size () =
     try
       file_size a = file_size b
@@ -736,7 +736,7 @@ let same_files a b =
  * [dst] might not exist but the directory does.
  * Returns true iff the file was moved. *)
 let replace_if_different ~src ~dst =
-  if same_files src dst then (
+  if same_file_content src dst then (
     Unix.unlink src ;
     false
   ) else (
@@ -782,6 +782,13 @@ let replace_if_different ~src ~dst =
   (* Cleanup: *)
   safe_unlink src ; safe_unlink dst ; Unix.rmdir tmpdir
 *)
+
+let same_files a b =
+  a = b || (
+    let sa = safe_stat a
+    and sb = safe_stat b in
+    Unix.(sa.st_dev = sb.st_dev && sa.st_ino = sb.st_ino)
+  )
 
 (*
  * Some Unix utilities
