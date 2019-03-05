@@ -101,8 +101,8 @@ let main =
       (* Destructor do not seems to be called when the OCaml program exits: *)
       p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
       p "" ;
-      p "(* Parameters: schema * path * row per batch * batches per file *)" ;
-      p "external orc_make_handler : string -> string -> int -> int -> bool -> handler =" ;
+      p "(* Parameters: schema * path * index * row per batch * batches per file * archive *)" ;
+      p "external orc_make_handler : string -> string -> bool -> int -> int -> bool -> handler =" ;
       p "  \"orc_handler_create_bytecode_lol\" \"orc_handler_create\"" ;
       p "" ;
       p "let main =" ;
@@ -121,7 +121,7 @@ let main =
       p "        \"Read %%d lines (%%d errors)\" lines errs" ;
       p "  | \"write\" | \"w\" ->" ;
       p "      let handler =" ;
-      p "        orc_make_handler %S orc_fname batch_size num_batches in"
+      p "        orc_make_handler %S orc_fname false batch_size num_batches false in"
         schema ;
       p "      (try forever (fun () ->" ;
       p "            let tuple = read_line () |> value_of_string in" ;

@@ -3544,7 +3544,7 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     (* Destructor do not seems to be called when the OCaml program exits: *)
     p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
     p "" ;
-    p "(* Parameters: schema * row per batch * batches per file * path *)" ;
+    p "(* Parameters: schema * path * index * row per batch * batches per file * archive *)" ;
     p "external orc_make_handler : string -> string -> bool -> int -> int -> bool -> handler =" ;
     p "  \"orc_handler_create_bytecode_lol\" \"orc_handler_create\"" ;
     p "" ;
