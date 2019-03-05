@@ -216,6 +216,51 @@ static int unlock(int lock_fd)
   return 0;
 }
 
+static int ensure_is_archiving(char const *fname)
+{
+  int ret = -1;
+
+  int fd = open(fname, O_RDWR, 0);
+  if (fd < 0) {
+    fprintf(stderr, "Cannot open mmap file '%s' to check archive flag: %s\n",
+            fname, strerror(errno));
+    fflush(stderr);
+    goto err0;
+  }
+
+  struct ringbuf_file *rbf =
+     mmap(NULL, sizeof(*rbf), PROT_READ|PROT_WRITE, MAP_SHARED, fd, (off_t)0);
+  if (rbf == MAP_FAILED) {
+    fprintf(stderr, "Cannot mmap file '%s' to check archive flag: %s\n",
+            fname, strerror(errno));
+    fflush(stderr);
+    goto err1;
+  }
+
+  // The caller has the lock so no race with the ringbuf creator is possible:
+  if (! rbf->archive) {
+    fprintf(stderr, "Forcing archiving on '%s'\n", fname);
+  }
+  rbf->archive = 1;
+
+  if (0 != munmap(rbf, sizeof(*rbf))) {
+    fprintf(stderr, "Cannot munmap: %s\n", strerror(errno));
+    fflush(stderr);
+    goto err1;
+  }
+
+  ret = 0;
+
+err1:
+  if (close(fd) < 0) {
+    fprintf(stderr, "Cannot close ring-buffer(3) '%s': %s\n",
+            fname, strerror(errno));
+    // so be it
+  }
+err0:
+  return ret;
+}
+
 // Keep existing files as much as possible:
 extern int ringbuf_create_locked(
     uint64_t version, bool wrap, bool archive, char const *fname, uint32_t num_words)
@@ -260,7 +305,12 @@ extern int ringbuf_create_locked(
     }
   } else {
     if (errno == EEXIST) {
-      ret = 0;
+      /* If we want to archive, and the RB have been created already, then the
+       * flag might be missing and we want to add it. Another solution would
+       * be to create another file, under a different name, for archiving,
+       * but that would be a bit wasteful. */
+      if (archive) ret = ensure_is_archiving(fname);
+      else ret = 0;
     } else {
       fprintf(stderr, "Cannot open ring-buffer '%s': %s\n", fname, strerror(errno));
     }
