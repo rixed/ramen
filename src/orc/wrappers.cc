@@ -26,8 +26,9 @@ class OrcHandler {
     unsigned const batch_size;
     unsigned const max_batches;
     unsigned num_batches;
+    bool archive;
   public:
-    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb);
+    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb, bool arc);
     ~OrcHandler();
     void start_write();
     void flush_batch(bool);
@@ -37,9 +38,9 @@ class OrcHandler {
     double start, stop;
 };
 
-OrcHandler::OrcHandler(string sch, string fn, bool wi, unsigned bsz, unsigned mb) :
+OrcHandler::OrcHandler(string sch, string fn, bool wi, unsigned bsz, unsigned mb, bool arc) :
   type(Type::buildTypeFromString(sch)), fname(fn), with_index(wi),
-  batch_size(bsz), max_batches(mb), num_batches(0)
+  batch_size(bsz), max_batches(mb), num_batches(0), archive(arc)
 {
 }
 
@@ -67,7 +68,7 @@ void OrcHandler::flush_batch(bool more_to_come)
       writer.reset();
       batch.reset();
       outStream.reset();
-      ramen_archive(fname.c_str(), start, stop);
+      if (archive) ramen_archive(fname.c_str(), start, stop);
       /* We could keep using the batch created by the first writer,
        * as writer->createRowBatch just call the proper createRowBatch for
        * that Type. */
@@ -87,17 +88,19 @@ static struct custom_operations handler_ops = {
   custom_compare_ext_default
 };
 
-extern "C" value orc_handler_create(value schema_, value path_, value with_index_, value batch_sz_, value max_batches_)
+extern "C" value orc_handler_create(value schema_, value path_, value with_index_, value batch_sz_, value max_batches_, value archive_)
 {
   CAMLparam5(schema_, path_, with_index_, batch_sz_, max_batches_);
+  CAMLxparam1(archive_);
   CAMLlocal1(res);
   char const *schema = String_val(schema_);
   char const *path = String_val(path_);
   bool with_index = Bool_val(with_index_);
   unsigned batch_sz = Long_val(batch_sz_);
   unsigned max_batches = Long_val(max_batches_);
+  bool archive = Bool_val(archive_);
   OrcHandler *hder =
-    new OrcHandler(schema, path, with_index, batch_sz, max_batches);
+    new OrcHandler(schema, path, with_index, batch_sz, max_batches, archive);
   res = caml_alloc_custom(&handler_ops, sizeof *hder, 0, 1);
   Handler_val(res) = hder;
   CAMLreturn(res);

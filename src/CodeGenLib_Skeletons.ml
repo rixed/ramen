@@ -367,7 +367,8 @@ let writer_of_spec serialize_tuple sersize_of_tuple
             | Exit -> ()),
       (fun () -> RingBuf.unload rb)
   | Orc { with_index ; batch_size ; num_batches } ->
-      let hdr = orc_make_handler fname with_index batch_size num_batches in
+      let hdr =
+        orc_make_handler fname with_index batch_size num_batches true in
       (fun rb_ref_out_fname file_spec last_check_outref dest_channel
            start_stop head tuple_opt ->
         match head, tuple_opt with
@@ -1506,8 +1507,8 @@ let convert
         let with_index = false (* CLI parameters for those *)
         and batch_size = 1000
         and num_batches = 1000 in
-        let hdr =
-          orc_make_handler out_fname with_index batch_size num_batches in
+        let hdr = orc_make_handler out_fname with_index batch_size
+                                   num_batches false in
         orc_handler := Some hdr ;
         (fun tuple ->
           let start_stop = time_of_tuple tuple in

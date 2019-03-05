@@ -102,8 +102,8 @@ let main =
       p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
       p "" ;
       p "(* Parameters: schema * path * row per batch * batches per file *)" ;
-      p "external orc_make_handler : string -> string -> int -> int -> handler =" ;
-      p "  \"orc_handler_create\"" ;
+      p "external orc_make_handler : string -> string -> int -> int -> bool -> handler =" ;
+      p "  \"orc_handler_create_bytecode_lol\" \"orc_handler_create\"" ;
       p "" ;
       p "let main =" ;
       p "  let syntax () =" ;

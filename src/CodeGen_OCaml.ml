@@ -3545,8 +3545,8 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
     p "" ;
     p "(* Parameters: schema * row per batch * batches per file * path *)" ;
-    p "external orc_make_handler : string -> string -> bool -> int -> int -> handler =" ;
-    p "  \"orc_handler_create\"" ;
+    p "external orc_make_handler : string -> string -> bool -> int -> int -> bool -> handler =" ;
+    p "  \"orc_handler_create_bytecode_lol\" \"orc_handler_create\"" ;
     p "" ;
     (* A wrapper that inject missing private fields: *)
     p "let orc_read fname_ batch_sz_ k_ =" ;
@@ -3559,7 +3559,7 @@ let emit_orc_wrapper func orc_write_func orc_read_func oc =
     p "let orc_write _ _ _ _ = no_orc_support ()" ;
     p "let orc_read _ _ _ = no_orc_support ()" ;
     p "let orc_close () = ()" ;
-    p "let orc_make_handler _ _ _ _ _ = ()" ;
+    p "let orc_make_handler _ _ _ _ _ _ = ()" ;
   ) ;
   p ""
 

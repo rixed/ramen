@@ -827,8 +827,9 @@ let emit_intro oc =
   p "    unsigned const batch_size;" ;
   p "    unsigned const max_batches;" ;
   p "    unsigned num_batches;" ;
+  p "    bool archive;" ;
   p "  public:" ;
-  p "    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb);" ;
+  p "    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb, bool arc);" ;
   p "    ~OrcHandler();" ;
   p "    void start_write();" ;
   p "    void flush_batch(bool);" ;
