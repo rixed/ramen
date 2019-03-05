@@ -47,10 +47,12 @@ let run codegen_version rc_marsh run_condition per_funcname =
     try List.assoc name lst
     with Not_found ->
       Printf.eprintf
-        "Unknown operation %S.\n\
+        "Unknown operation %S (possible operations are %a).\n\
          Trying to run a Ramen program? Try `ramen run %s`\n"
-        name Sys.executable_name ;
-        exit 1 in
+        name
+        (pretty_enum_print String.print_quoted) (List.enum lst /@ fst)
+        Sys.executable_name ;
+      exit 1 in
   let run_from_list k =
     (* Call a function from lst according to envvar "name" *)
     match Sys.getenv "name" with

@@ -21,8 +21,8 @@ let main =
    * - a string parser (using [CodeGen_OCaml.emit_value_of_string])
    * - a ORC writer (using [Orc.emit_write_value]).
    * Then we compile this into a program that write stdin into an ORC file. *)
-  let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
-  !logger.info "Corresponding runtime type: %s" xtyp ;
+  !logger.info "Corresponding runtime type: %a"
+    CodeGen_OCaml.otype_of_type rtyp ;
   let otyp = Orc.of_structure rtyp.T.structure in
   let schema = IO.to_string Orc.print otyp in
   !logger.info "Corresponding ORC type: %s" schema ;
@@ -92,10 +92,12 @@ let main =
       p "   emit_write_value: *)" ;
       p "type handler" ;
       p "" ;
-      p "external orc_write : handler -> %s -> float -> float -> unit = %S"
-        xtyp orc_write_func ;
-      p "external orc_read : string -> int -> (%s -> unit) -> (int * int) = %S"
-        xtyp orc_read_func ;
+      p "external orc_write : handler -> %a -> float -> float -> unit = %S"
+        CodeGen_OCaml.otype_of_type rtyp
+        orc_write_func ;
+      p "external orc_read : string -> int -> (%a -> unit) -> (int * int) = %S"
+        CodeGen_OCaml.otype_of_type rtyp
+        orc_read_func ;
       (* Destructor do not seems to be called when the OCaml program exits: *)
       p "external orc_close : handler -> unit = \"orc_handler_close\"" ;
       p "" ;
