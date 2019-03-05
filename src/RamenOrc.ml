@@ -374,20 +374,22 @@ let rec emit_add_value_to_batch
   let add_to_batch indent rtyp val_var =
     let p fmt = Printf.fprintf oc ("%s"^^fmt^^"\n") (indent_of indent) in
     let iter_struct tuple_with_1_element kts =
-      Enum.iteri (fun i (k, t) ->
+      Enum.fold (fun (oi, xi) (k, t) ->
         (* Skip over private fields.
          * TODO: also skip over shadowed fields! *)
-        if not (RamenName.(is_private (field_of_string k))) then (
+        if RamenName.(is_private (field_of_string k)) then
+          oi, xi + 1
+        else (
           p "{ /* Structure/Tuple item %s */" k ;
           let btyp = batch_type_of_structure t.T.structure in
           let arr_item = gensym "arr_item" in
           p "  %s *%s = dynamic_cast<%s *>(%s->fields[%d]);"
-            btyp arr_item btyp batch_var i ;
+            btyp arr_item btyp batch_var oi ;
           let val_var =
             Option.map (fun v ->
               (* OCaml has no such tuples. Value is then unboxed. *)
               if tuple_with_1_element then v
-              else Printf.sprintf "Field(%s, %d)" v i
+              else Printf.sprintf "Field(%s, %d)" v xi
             ) val_var
           and field_name =
             if field_name = "" then k else field_name ^"."^ k
@@ -395,9 +397,10 @@ let rec emit_add_value_to_batch
             Printf.sprintf "%s->numElements" arr_item in
           emit_add_value_to_batch
             (indent + 1) (depth + 1) val_var arr_item i_var t field_name oc ;
-          p "}"
+          p "}" ;
+          oi + 1, xi + 1
         )
-      ) kts
+      ) (0, 0) kts |> ignore
     in
     match rtyp.T.structure with
     | T.TEmpty | T.TAny ->
