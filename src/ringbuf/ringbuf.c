@@ -25,38 +25,6 @@ extern inline ssize_t ringbuf_dequeue(struct ringbuf *rb, uint32_t *data, size_t
 extern inline ssize_t ringbuf_read_first(struct ringbuf *rb, struct ringbuf_tx *tx);
 extern inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx);
 
-// Create the directories required to create that file:
-static int mkdir_for_file(char *fname)
-{
-  int ret = -1;
-
-  size_t len = strlen(fname);
-  ssize_t last_slash;
-  for (last_slash = len - 1; last_slash >= 0 && fname[last_slash] != '/'; last_slash--) ;
-
-  if (last_slash <= 0) return 0; // no dir to create (or root)
-
-  fname[last_slash] = '\0';
-  if (0 != mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR)) {
-    int ret = -1;
-    if (ENOENT == errno) {
-      if (mkdir_for_file(fname) < 0) goto err1;
-      ret = mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR);
-    }
-    if (ret != 0) {
-      fprintf(stderr, "Cannot create directory '%s': %s\n", fname, strerror(errno));
-      goto err1;
-    }
-  }
-
-  ret = 0;
-err1:
-  fname[last_slash] = '/';
-  fflush(stdout);
-  fflush(stderr);
-  return ret;
-}
-
 static ssize_t really_read(int fd, void *d, size_t sz, char const *fname /* printed */)
 {
   size_t rs = 0;
@@ -99,7 +67,7 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
 {
   int ret = -1;
 
-  char dirname[PATH_MAX] = "./";
+  char dirname[PATH_MAX] = ".";
   dirname_of_fname(dirname, sizeof(dirname), bname);
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
@@ -146,7 +114,7 @@ static int write_max_seqnum(char const *bname, uint64_t seqnum)
   int ret = -1;
 
   // Save the new sequence number:
-  char dirname[PATH_MAX] = "./";
+  char dirname[PATH_MAX] = ".";
   dirname_of_fname(dirname, sizeof(dirname), bname);
   char fname[PATH_MAX];
   if ((size_t)snprintf(fname, PATH_MAX, "%s/arc/max", dirname) >= PATH_MAX) {
@@ -478,7 +446,7 @@ static int rotate_file_locked(struct ringbuf *rb)
   if (rb->rbf->archive) {
     // Name the archive according to tuple seqnum included and also with the
     // time range (will be only 0 if no time info is available):
-    char dirname[PATH_MAX] = "./";
+    char dirname[PATH_MAX] = ".";
     dirname_of_fname(dirname, sizeof(dirname), rb->fname);
     char arc_fname[PATH_MAX];
     if ((size_t)snprintf(arc_fname, PATH_MAX,

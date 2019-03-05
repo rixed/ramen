@@ -29,6 +29,42 @@
 # endif
 #endif
 
+// Create the directories required to create that file:
+int mkdir_for_file(char *fname)
+{
+  int ret = -1;
+
+  size_t len = strlen(fname);
+  ssize_t last_slash;
+  for (last_slash = len - 1; last_slash >= 0 && fname[last_slash] != '/'; last_slash--) ;
+
+  if (last_slash <= 0) return 0; // no dir to create (or root)
+
+  fname[last_slash] = '\0';
+  if (0 != mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR)) {
+    if (EEXIST == errno) {
+      // Assume that's a directory
+    } else {
+      int ret = -1;
+      if (ENOENT == errno) {
+        if (mkdir_for_file(fname) < 0) goto err1;
+        ret = mkdir(fname, S_IRUSR|S_IWUSR|S_IXUSR);
+      }
+      if (ret != 0) {
+        fprintf(stderr, "Cannot create directory '%s': %s\n", fname, strerror(errno));
+        goto err1;
+      }
+    }
+  }
+
+  ret = 0;
+err1:
+  fname[last_slash] = '/';
+  fflush(stdout);
+  fflush(stderr);
+  return ret;
+}
+
 static void fill_with_printable_random(char *dst, size_t sz)
 {
   assert(sz > 0); // or we couldn't nul-term dst
@@ -70,7 +106,7 @@ int ramen_archive(char const *fname, double start, double stop)
 
   printf("Archiving file %s\n", fname);
 
-  char dirname[PATH_MAX] = "./";
+  char dirname[PATH_MAX] = ".";
   dirname_of_fname(dirname, sizeof(dirname), fname);
 
   char arc_fname[PATH_MAX];
@@ -87,6 +123,8 @@ int ramen_archive(char const *fname, double start, double stop)
 
     printf("Rename the current output (%s) into the archive (%s)\n",
            fname, arc_fname);
+
+    if (0 != mkdir_for_file(arc_fname)) goto err0;
 
     if (0 ==
 #ifdef HAVE_RENAMEX_NP
