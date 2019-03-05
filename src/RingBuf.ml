@@ -26,6 +26,7 @@ let create ?(wrap=true) ?(archive=false)
 type stats = {
   capacity : int ; (* in words *)
   wrap : bool ;
+  archive : bool ;
   alloced_words : int ; (* in words *)
   alloc_count : int ;
   t_min : float ; (* Will be 0 when unset *)

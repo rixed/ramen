@@ -155,19 +155,20 @@ CAMLprim value wrap_ringbuf_stats(value rb_)
   struct ringbuf_file *rbf = rb->rbf;
   CAMLlocal1(ret);
   // See type stats in RingBuf.ml
-  ret = caml_alloc_tuple(12);
+  ret = caml_alloc_tuple(13);
   Field(ret, 0) = Val_long(rbf->num_words);
   Field(ret, 1) = Val_bool(rbf->wrap);
-  Field(ret, 2) = Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head));
-  Field(ret, 3) = Val_long(rbf->num_allocs);
-  Field(ret, 4) = caml_copy_double(rbf->tmin);
-  Field(ret, 5) = caml_copy_double(rbf->tmax);
-  Field(ret, 6) = Val_long(rb->mmapped_size);
-  Field(ret, 7) = Val_long(rbf->prod_head);
-  Field(ret, 8) = Val_long(rbf->prod_tail);
-  Field(ret, 9) = Val_long(rbf->cons_head);
-  Field(ret, 10) = Val_long(rbf->cons_tail);
-  Field(ret, 11) = Val_long(rbf->first_seq);
+  Field(ret, 2) = Val_bool(rbf->archive);
+  Field(ret, 3) = Val_long(ringbuf_file_num_entries(rbf, rbf->prod_tail, rbf->cons_head));
+  Field(ret, 4) = Val_long(rbf->num_allocs);
+  Field(ret, 5) = caml_copy_double(rbf->tmin);
+  Field(ret, 6) = caml_copy_double(rbf->tmax);
+  Field(ret, 7) = Val_long(rb->mmapped_size);
+  Field(ret, 8) = Val_long(rbf->prod_head);
+  Field(ret, 9) = Val_long(rbf->prod_tail);
+  Field(ret, 10) = Val_long(rbf->cons_head);
+  Field(ret, 11) = Val_long(rbf->cons_tail);
+  Field(ret, 12) = Val_long(rbf->first_seq);
   CAMLreturn(ret);
 }
 
