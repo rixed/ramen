@@ -285,6 +285,8 @@ ORCWRITER_SOURCES = \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
+	src/RamenFieldMask.ml \
+	src/RamenOutRef.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
