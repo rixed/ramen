@@ -8,5 +8,6 @@
 int mkdir_for_file(char *fname);
 int ramen_archive(char const *fname, double start, double stop);
 void dirname_of_fname(char *dirname, size_t sz, char const *fname);
+char const *extension_of_fname(char const *fname);
 
 #endif

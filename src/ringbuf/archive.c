@@ -76,7 +76,7 @@ static void fill_with_printable_random(char *dst, size_t sz)
   int r = 0;
   while (--sz > 0) {
     if (r <= 255) r = rand();
-    *dst = printable[ r % sizeof(printable) ];
+    *dst++ = printable[ r % sizeof(printable) ];
     r >>= 8;
   }
   *dst = '\0';
@@ -100,6 +100,17 @@ void dirname_of_fname(char *dirname, size_t sz, char const *fname)
   }
 }
 
+char const *extension_of_fname(char const *fname)
+{
+  char const *ret = NULL;
+  for (char const *c = fname; *c != '\0'; c++) {
+    if (*c == '/') ret = NULL;
+    else if (*c == '.') ret = c;
+  }
+
+  return ret ? ret : "";
+}
+
 int ramen_archive(char const *fname, double start, double stop)
 {
   int ret = -1;
@@ -112,11 +123,12 @@ int ramen_archive(char const *fname, double start, double stop)
   char arc_fname[PATH_MAX];
   char rnd[6+1];
   unsigned nb_tries = 0;
+  char const *ext = extension_of_fname(fname);
 
   while (1) {
     fill_with_printable_random(rnd, sizeof(rnd));
-    if ((size_t)snprintf(arc_fname, sizeof(arc_fname), "%s/arc/%a_%a_%s",
-          dirname, start, stop, rnd) >= PATH_MAX) {
+    if ((size_t)snprintf(arc_fname, sizeof(arc_fname), "%s/arc/%a_%a_%s%s",
+          dirname, start, stop, rnd, ext) >= PATH_MAX) {
       fprintf(stderr, "Archive file name truncated: '%s'\n", arc_fname);
       goto err0;
     }
