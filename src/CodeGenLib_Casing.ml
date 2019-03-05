@@ -14,8 +14,7 @@ let format_of_filename s =
   match Filename.extension s with
   | ".orc" -> ORC
   | ".csv" -> CSV
-  | ".r" -> RB
-  | ".rb" -> RB
+  | ".r" | ".b" -> RB
   | e -> failwith ("unknown format for extension "^ e)
 
 (* The [per_funcname] association list received by the [run] function use
