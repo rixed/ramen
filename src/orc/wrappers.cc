@@ -27,21 +27,26 @@ class OrcHandler {
     unsigned const max_batches;
     unsigned num_batches;
     bool archive;
+    std::vector<char> strs;
   public:
     OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb, bool arc);
     ~OrcHandler();
     void start_write();
     void flush_batch(bool);
+    char *keep_string(char const *, size_t len);
     unique_ptr<OutputStream> outStream;
     unique_ptr<Writer> writer;
     unique_ptr<ColumnVectorBatch> batch;
     double start, stop;
 };
 
+#define MAX_STRS_SIZE 999999
+
 OrcHandler::OrcHandler(string sch, string fn, bool wi, unsigned bsz, unsigned mb, bool arc) :
   type(Type::buildTypeFromString(sch)), fname(fn), with_index(wi),
   batch_size(bsz), max_batches(mb), num_batches(0), archive(arc)
 {
+  strs.reserve(MAX_STRS_SIZE);  // FIXME: something better than a vector
 }
 
 OrcHandler::~OrcHandler()
@@ -63,6 +68,7 @@ void OrcHandler::flush_batch(bool more_to_come)
 {
   if (writer) {
     writer->add(*batch);
+    strs.clear();
     if (!more_to_come || ++num_batches >= max_batches) {
       writer->close();
       writer.reset();
@@ -74,6 +80,16 @@ void OrcHandler::flush_batch(bool more_to_come)
        * that Type. */
     }
   }
+}
+
+/// strs must not reallocate!
+char *OrcHandler::keep_string(char const *s, size_t len)
+{
+  assert(strs.size() + len <= strs.capacity());
+  size_t const pos = strs.size();
+  while (*s != '\0') strs.push_back(*s++);
+  strs.push_back('\0');
+  return &strs[pos];
 }
 
 #define Handler_val(v) (*((class OrcHandler **)Data_custom_val(v)))

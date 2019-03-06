@@ -193,40 +193,47 @@ let gensym =
 
 (* Convert from OCaml value to a corresponding C++ value suitable for ORC: *)
 let emit_conv_of_ocaml st val_var oc =
+  let p fmt = Printf.fprintf oc fmt in
   let scaled_int s =
     (* Signed small integers are shifted all the way to the left: *)
-    Printf.fprintf oc
-      "(((intnat)Long_val(%s)) >> \
+    p "(((intnat)Long_val(%s)) >> \
         (CHAR_BIT * sizeof(intnat) - %d - 1))"
       val_var s in
   match st with
   | T.TEmpty | T.TAny ->
       assert false
   | T.TBool ->
-      Printf.fprintf oc "Bool_val(%s)" val_var
+      p "Bool_val(%s)" val_var
   | T.TNum | T.TU8 | T.TU16 ->
-      Printf.fprintf oc "Long_val(%s)" val_var
+      p "Long_val(%s)" val_var
   | T.TU32 | T.TIpv4 ->
       (* Assuming the custom val is suitably aligned: *)
-      Printf.fprintf oc "(*(uint32_t*)Data_custom_val(%s))" val_var
+      p "(*(uint32_t*)Data_custom_val(%s))" val_var
   | T.TU64 | T.TEth ->
-      Printf.fprintf oc "(*(uint64_t*)Data_custom_val(%s))" val_var
+      p "(*(uint64_t*)Data_custom_val(%s))" val_var
   | T.TU128 | T.TIpv6 ->
-      Printf.fprintf oc "(*(uint128_t*)Data_custom_val(%s))" val_var
+      p "(*(uint128_t*)Data_custom_val(%s))" val_var
   | T.TI8 ->
       scaled_int 8
   | T.TI16 ->
       scaled_int 16
   | T.TI32 ->
-      Printf.fprintf oc "(*(int32_t*)Data_custom_val(%s))" val_var
+      p "(*(int32_t*)Data_custom_val(%s))" val_var
   | T.TI64 ->
-      Printf.fprintf oc "(*(int64_t*)Data_custom_val(%s))" val_var
+      p "(*(int64_t*)Data_custom_val(%s))" val_var
   | T.TI128 ->
-      Printf.fprintf oc "(*(int128_t*)Data_custom_val(%s))" val_var
+      p "(*(int128_t*)Data_custom_val(%s))" val_var
   | T.TFloat ->
-      Printf.fprintf oc "Double_val(%s)" val_var
+      p "Double_val(%s)" val_var
   | T.TString ->
-      Printf.fprintf oc "String_val(%s)" val_var
+      (* String_val return a pointer to the string, that the StringVectorBatch
+       * will store. Obviously, we want it to store a non-relocatable copy and
+       * then free it... FIXME *)
+      (* Note: we pass the OCaml string length. the string might be actually
+       * nul terminated before that, but that's not supposed to happen and
+       * would not cause problems other than the string appear shorter. *)
+      p "handler->keep_string(String_val(%s), caml_string_length(%s))"
+        val_var val_var
   | T.TIp | T.TCidrv4 | T.TCidrv6 | T.TCidr
   | T.TTuple _ | T.TVec _ | T.TList _ | T.TRecord _ ->
       (* Compound types have no values of their own *)
@@ -828,11 +835,13 @@ let emit_intro oc =
   p "    unsigned const max_batches;" ;
   p "    unsigned num_batches;" ;
   p "    bool archive;" ;
+  p "    std::vector<char> strs;" ;
   p "  public:" ;
   p "    OrcHandler(string schema, string fn, bool with_index, unsigned bsz, unsigned mb, bool arc);" ;
   p "    ~OrcHandler();" ;
   p "    void start_write();" ;
   p "    void flush_batch(bool);" ;
+  p "    char *keep_string(char const *, size_t);" ;
   p "    unique_ptr<OutputStream> outStream;" ;
   p "    unique_ptr<Writer> writer;" ;
   p "    unique_ptr<ColumnVectorBatch> batch;" ;
