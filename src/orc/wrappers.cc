@@ -68,8 +68,10 @@ void OrcHandler::flush_batch(bool more_to_come)
 {
   if (writer) {
     writer->add(*batch);
+    batch->clear();
     strs.clear();
     if (!more_to_come || ++num_batches >= max_batches) {
+      num_batches = 0;
       writer->close();
       writer.reset();
       batch.reset();
