@@ -1505,8 +1505,8 @@ let convert
         csv_write fd
     | CodeGenLib_Casing.ORC ->
         let with_index = false (* CLI parameters for those *)
-        and batch_size = 1000
-        and num_batches = 1000 in
+        and batch_size = Default.orc_rows_per_batch
+        and num_batches = Default.orc_batches_per_file in
         let hdr = orc_make_handler out_fname with_index batch_size
                                    num_batches false in
         orc_handler := Some hdr ;
