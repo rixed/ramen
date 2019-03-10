@@ -48,7 +48,7 @@ let repair_and_warn what rb =
 (* Prepare ringbuffer for notifications *)
 let prepare_notifs conf =
   let rb_name = C.notify_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name ;
+  RingBuf.create ~wrap:false ~archive:true rb_name ;
   let notify_rb = RingBuf.load rb_name in
   repair_and_warn "notifications" notify_rb ;
   notify_rb
@@ -56,7 +56,7 @@ let prepare_notifs conf =
 (* Prepare ringbuffer for reports. *)
 let prepare_reports conf =
   let rb_name = C.report_ringbuf conf in
-  RingBuf.create ~wrap:false rb_name ;
+  RingBuf.create ~wrap:false ~archive:true rb_name ;
   let report_rb = RingBuf.load rb_name in
   repair_and_warn "instrumentation" report_rb ;
   report_rb
@@ -339,7 +339,7 @@ let run_worker ?and_stop bin args env =
   run_background ~cwd ?and_stop cmd args env
 
 (* Returns the buffer name: *)
-let start_export ?(archive=false) ?(file_type=OutRef.RingBuf)
+let start_export ?(archive=true) ?(file_type=OutRef.RingBuf)
                  ?(duration=Default.export_duration) conf func =
   let bname = C.archive_buf_name ~file_type conf func in
   if file_type = OutRef.RingBuf then
@@ -396,7 +396,7 @@ let really_start conf proc parents children =
   (* Always export for a little while at the beginning *)
   let _bname =
     let duration = conf.initial_export_duration in
-    start_export ~duration conf proc.func in
+    start_export ~archive:true ~duration conf proc.func in
   (* Now actually start the binary *)
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a

@@ -629,7 +629,8 @@ let tail_ conf fq field_names with_header with_units sep null raw
       let _mre, _prog, func =
         C.with_rlock conf (fun programs ->
           C.find_func_or_fail programs fq) in
-      let _ = RamenProcesses.start_export conf ~duration func in
+      let _ =
+        RamenProcesses.start_export conf ~archive:true ~duration func in
       (* Start by sleeping as we've just set the temp export above: *)
       Unix.sleepf (max 1. (duration -. 1.)) ;
       reset_export_timeout () in

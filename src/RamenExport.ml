@@ -70,7 +70,7 @@ let read_output conf ?duration (fq : RamenName.fq) where =
                             " does not exist")
               | _mre, prog, func ->
                   let bname =
-                    RamenProcesses.start_export
+                    RamenProcesses.start_export ~archive:true
                       conf ~file_type:OutRef.RingBuf ?duration func in
                   prog, func, bname) in
           let out_type =
