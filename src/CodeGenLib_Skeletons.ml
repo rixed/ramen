@@ -1428,7 +1428,7 @@ let replay
     if while_ () then
       match Enum.get_exn files with
       | exception Enum.No_more_elements -> ()
-      | _s1, _s2, t1, t2, fname ->
+      | _s1, _s2, t1, t2, arc_typ, fname ->
           if time_overlap t1 t2 then (
             loop_tuples_of_file fname ;
             loop_files ())

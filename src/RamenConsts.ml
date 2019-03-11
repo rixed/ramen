@@ -147,6 +147,7 @@ struct
      amount of time and restart"
   let dry_run = "Just display what would be deleted"
   let del_ratio = "Only delete that ratio of in-excess archive files"
+  let compress_older = "Convert to ORC archive files older than this"
   let autoreload =
     "Should workers be automatically reloaded when the \
      binary changes? And if so, how frequently to check"
@@ -194,7 +195,7 @@ struct
     "specify which fields to use as factors/categorical variables"
   let with_event_time = "Prepend tuples with their event time"
   let function_name = "Operation unique name"
-  let duration =
+  let timeout =
     "Operation will stop archiving its output after that duration if \
      nobody ask for it"
   let since = "Timestamp of the first point"
@@ -283,6 +284,9 @@ struct
 
   (* Do not delete all excess files at once but only that ratio: *)
   let del_ratio = 0.3
+
+  (* Archive in ringbuf format older than that will be converted into ORC *)
+  let compress_older = 6. *. 3600.
 
   (* How frequently should the archivist reallocate disk space and
    * reconfigure workers archival behavior: *)

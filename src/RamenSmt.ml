@@ -57,8 +57,8 @@ let run_solver smt2_file =
   let shell = "/bin/sh" in
   let args = [| shell ; "-c" ; cmd |] in
   (* Now summon the solver: *)
-  with_subprocess shell args (fun (_oc, ic, ec) ->
-    let output = read_whole_channel ic
+  with_subprocess shell args (fun (_ic, oc, ec) ->
+    let output = read_whole_channel oc
     and errors = read_whole_channel ec in
     !logger.debug "Solver is done." ;
     let p =

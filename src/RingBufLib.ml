@@ -386,20 +386,26 @@ let int_of_hex s = int_of_string ("0x"^ s)
 external strtod : string -> float = "wrap_strtod"
 external kill_myself : int -> unit = "wrap_raise"
 
+type arc_type = RingBuf | Orc
+
 let parse_archive_file_name fname =
   let mi, rest = String.split ~by:"_" fname in
   let ma, rest = String.split ~by:"_" rest in
   let tmi, rest = String.split ~by:"_" rest in
   let tma, rest = String.rsplit ~by:"." rest in
-  if rest <> "b" && rest <> "orc" then
-    failwith ("not an archive file ("^ fname ^")") ;
+  let type_ =
+    match rest with
+    | "b" -> RingBuf
+    | "orc" -> Orc
+    | _ ->
+        failwith ("not an archive file ("^ fname ^")") in
   int_of_hex mi, int_of_hex ma,
-  strtod tmi, strtod tma
+  strtod tmi, strtod tma, type_
 (*$= parse_archive_file_name & ~printer:BatPervasives.dump
-  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
+  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30, RingBuf) \
     (parse_archive_file_name \
       "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b")
-  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30) \
+  (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30, Orc) \
     (parse_archive_file_name \
       "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.orc")
  *)
@@ -408,14 +414,14 @@ let filter_arc_files dir =
   Enum.filter_map (fun fname ->
     match parse_archive_file_name fname with
     | exception (Not_found | Failure _) -> None
-    | mi, ma, t1, t2 -> Some (mi, ma, t1, t2, dir ^"/"^ fname))
+    | mi, ma, t1, t2, typ -> Some (mi, ma, t1, t2, typ, dir ^"/"^ fname))
 
 let arc_files_of dir =
   (try Sys.files_of dir
   with Sys_error _ -> Enum.empty ()) |>
   filter_arc_files dir
 
-let arc_file_compare (s1, _, _, _, _) (s2, _, _, _, _) =
+let arc_file_compare (s1, _, _, _, _, _) (s2, _, _, _, _, _) =
   Int.compare s1 s2
 
 let seq_range bname =
@@ -428,7 +434,7 @@ let seq_range bname =
   let dir = arc_dir_of_bname bname in
   let mi_ma =
     arc_files_of dir |>
-    Enum.fold (fun mi_ma (from, to_, _t1, _t2, _fname) ->
+    Enum.fold (fun mi_ma (from, to_, _t1, _t2, _typ, _fname) ->
       match mi_ma with
       | None -> Some (from, to_)
       | Some (mi, ma) -> Some (min mi from, max ma to_)

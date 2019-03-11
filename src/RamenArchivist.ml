@@ -189,7 +189,7 @@ let update_archives conf s func =
   let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
   let lst =
     RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
-    (fun (_seq_mi, _seq_ma, t1, t2, _f) ->
+    (fun (_seq_mi, _seq_ma, t1, t2, _typ, _f) ->
       if Float.(is_nan t1 || is_nan t2) then None else Some (t1, t2)) |>
     List.of_enum in
   (* We might also have a current archive: *)

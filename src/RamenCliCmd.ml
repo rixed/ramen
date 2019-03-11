@@ -318,7 +318,8 @@ let info _conf params program_name_opt bin_file opt_func_name () =
  * Delete old or unused files.
  *)
 
-let gc conf dry_run del_ratio loop daemonize to_stdout to_syslog () =
+let gc conf dry_run del_ratio compress_older loop daemonize
+       to_stdout to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -335,11 +336,11 @@ let gc conf dry_run del_ratio loop daemonize to_stdout to_syslog () =
     Option.may mkdir_all logdir ;
     init_logger ?logdir conf.C.log_level) ;
   if loop <= 0. then
-    RamenGc.cleanup_once conf dry_run del_ratio
+    RamenGc.cleanup_once conf dry_run del_ratio compress_older
   else (
     check_binocle_errors () ;
     if daemonize then do_daemonize () ;
-    RamenGc.cleanup_loop conf dry_run del_ratio loop)
+    RamenGc.cleanup_loop conf dry_run del_ratio compress_older loop)
 
 (*
  * `ramen ps`

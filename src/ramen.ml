@@ -153,12 +153,28 @@ let del_ratio =
                    [ "del-ratio" ] in
   Arg.(value (opt float Default.del_ratio i))
 
+let duration docv =
+  let p = RamenParsing.(string_parser ~what:("parsing "^ docv)
+                                      ~print:Float.print duration) in
+  let parse s = Pervasives.Ok (p s)
+  and print fmt d =
+    IO.to_string RamenParsing.print_duration d |>
+    Format.pp_print_string fmt
+  in
+  Arg.conv ~docv (parse, print)
+
+let compress_older =
+  let i = Arg.info ~doc:CliInfo.compress_older
+                   [ "compress-older" ] in
+  Arg.(value (opt (duration "TIMEOUT") Default.compress_older i))
+
 let gc =
   Term.(
     (const RamenCliCmd.gc
       $ copts
       $ dry_run
       $ del_ratio
+      $ compress_older
       $ loop
       $ daemonize
       $ to_stdout
@@ -584,10 +600,10 @@ let with_event_time =
                    ["with-event-times"; "with-times"; "event-times"; "t"] in
   Arg.(value (flag i))
 
-let duration =
-  let i = Arg.info ~doc:CliInfo.duration
-                   ["timeout"] in
-  Arg.(value (opt float 300. i))
+let timeout =
+  let i = Arg.info ~doc:CliInfo.timeout
+                   [ "timeout" ] in
+  Arg.(value (opt (duration "TIMEOUT") 300. i))
 
 let with_units =
   let i = Arg.info ~doc:CliInfo.with_units
@@ -623,7 +639,7 @@ let tail =
       $ since
       $ until
       $ with_event_time
-      $ duration
+      $ timeout
       $ pretty
       $ flush
       $ external_compiler

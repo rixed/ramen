@@ -6,7 +6,11 @@ open Str
 open Unix
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
+module F = C.Func
+module P = C.Program
+module OutRef = RamenOutRef
 
 let get_log_file () =
   gettimeofday () |> localtime |> log_file
@@ -43,13 +47,14 @@ let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
       )
     ) files
 
-let cleanup_once conf dry_run del_ratio =
+let cleanup_old_versions conf dry_run =
   (* Have a list of directories and regexps and current version,
    * Iter through this list for file matching the regexp and that are also
    * directories.
    * If this direntry matches the current version, touch it.
    * If not, and if it hasn't been touched for X days, assume that's an old
    * one and delete it. *)
+  !logger.debug "Cleaning old versions..." ;
   let to_clean =
     [ "log", date_regexp, get_log_file () ;
       "log/workers", v_regexp, get_log_file () ;
@@ -61,9 +66,11 @@ let cleanup_once conf dry_run del_ratio =
       "workers/states", v_regexp, RamenVersions.worker_state ;
       "workers/factors", v_regexp, RamenVersions.factors ]
   in
-  !logger.info "Cleaning old unused files..." ;
-  List.iter (cleanup_dir_old conf dry_run) to_clean ;
-  (* Clean old archives *)
+  List.iter (cleanup_dir_old conf dry_run) to_clean
+
+let cleanup_old_archives conf programs dry_run del_ratio =
+  (* Delete old archive files *)
+  !logger.debug "Deleting old archives..." ;
   let arcdir =
     conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
   and factordir =
@@ -87,7 +94,7 @@ let cleanup_once conf dry_run del_ratio =
      * Now find the allocated size for this worker: *)
     let rec loop i sum_sz num_to_del to_del =
       if i < 0 then num_to_del, to_del else
-      let _, _, _, _, fpath as f = arc_files.(i) in
+      let _, _, _, _, _, fpath as f = arc_files.(i) in
       let sum_sz = sum_sz + file_size fpath in
       let num_to_del, to_del =
         if sum_sz <= alloced then num_to_del, to_del
@@ -101,7 +108,7 @@ let cleanup_once conf dry_run del_ratio =
     let num_to_del = round_to_int (float_of_int num_to_del *. del_ratio) in
     let rec del n = function
       | [] -> ()
-      | (_, _, _, _, fpath) :: to_del->
+      | (_, _, _, _, _, fpath) :: to_del->
           if n > 0 then (
             (* TODO: also check that we do not delete younger data than
              * planned. Ie. allocs must also tell the retention for each
@@ -119,7 +126,6 @@ let cleanup_once conf dry_run del_ratio =
           ) in
     del num_to_del to_del
   in
-  let programs = C.with_rlock conf identity in
   let allocs = RamenArchivist.load_allocs conf in
   let get_alloced_worker fname rel_fname =
     (* We need to retrieve the FQ of that worker and then check if this
@@ -176,12 +182,58 @@ let cleanup_once conf dry_run del_ratio =
   dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
   dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
-let cleanup_loop conf dry_run del_ratio sleep_time =
+(* TODO: instrumentation for number of successful/failed compressions *)
+
+let compress_archive bin (func_name : RamenName.func) rb_name =
+  let orc_name = Filename.remove_extension rb_name ^".orc" in
+  let args = [| bin ; WorkerCommands.convert_archive ;
+                (func_name :> string) ; rb_name ; orc_name |] in
+  with_subprocess ~expected_status:0 bin args (fun (_ic, oc, ec) ->
+    let output = read_whole_channel oc
+    and errors = read_whole_channel ec in
+    if errors = "" then (
+      !logger.debug "Compressed %s into %s" rb_name orc_name ;
+      ignore_exceptions safe_unlink rb_name
+    ) else
+      !logger.error "Cannot compress archive %s with %s: %s"
+        rb_name bin errors ;
+    if output <> "" then !logger.debug "Output: %s" output)
+
+let compress_old_archives conf programs dry_run compress_older =
+  (* Compress archives of every functions we can find in the RC file (running
+   * or not) from ringbuf to ORC: *)
+  !logger.debug "Compressing archives..." ;
+  Hashtbl.iter (fun pname (mre, get_rc) ->
+    let prog = get_rc () in
+    List.iter (fun func ->
+      C.archive_buf_name ~file_type:OutRef.RingBuf conf func |>
+      RingBufLib.arc_dir_of_bname |>
+      RingBufLib.arc_files_of |>
+      Enum.iter (fun (_from, _to, _t1, _t2, arc_typ, fname) ->
+        if arc_typ = RingBufLib.RingBuf &&
+           file_is_older_than ~on_err:false compress_older fname
+        then (
+          !logger.debug "Compressing %s%s"
+            fname (if dry_run then " (NOPE)" else "") ;
+          if not dry_run then compress_archive mre.C.bin func.F.name fname
+        ))
+    ) prog.P.funcs
+  ) programs
+
+let cleanup_once conf dry_run del_ratio compress_older =
+  !logger.info "Cleaning old unused files..." ;
+  cleanup_old_versions conf dry_run ;
+  let programs = C.with_rlock conf identity in
+  if RamenExperiments.archive_in_orc.variant > 0 then
+    compress_old_archives conf programs dry_run compress_older ;
+  cleanup_old_archives conf programs dry_run del_ratio
+
+let cleanup_loop conf dry_run del_ratio compress_older sleep_time =
   let watchdog =
     let timeout = sleep_time *. 2. in
     RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    cleanup_once conf dry_run del_ratio ;
+    cleanup_once conf dry_run del_ratio compress_older ;
     RamenWatchdog.reset watchdog ;
     sleepf (jitter sleep_time)) ()

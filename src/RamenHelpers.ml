@@ -607,6 +607,8 @@ let read_whole_thing read =
   in
   loop (Bytes.create (5 * read_chunk)) 0
 
+(* FIXME: read_whole_channels that read several simultaneously! *)
+
 let read_whole_channel ic =
   read_whole_thing (Legacy.input ic)
 
