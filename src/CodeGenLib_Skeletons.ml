@@ -1357,7 +1357,7 @@ let replay
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
-      orc_make_handler orc_write orc_close =
+      orc_make_handler orc_write orc_read orc_close =
   let worker_name = getenv ~def:"?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in
@@ -1402,14 +1402,15 @@ let replay
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
   let time_overlap t1 t2 = since < t2 && until >= t1 in
+  let output_tuple tuple =
+    CodeGenLib_IO.on_each_input_pre () ;
+    incr num_replayed_tuples ;
+    (* As tuples are not ordered in the archive file we have
+     * to read it all: *)
+    outputer (RingBufLib.DataTuple channel_id) (Some tuple) in
   let loop_tuples rb =
-    read_whole_archive ~while_ read_tuple rb (fun tuple ->
-      CodeGenLib_IO.on_each_input_pre () ;
-      incr num_replayed_tuples ;
-      (* As tuples are not ordered in the archive file we have
-       * to read it all: *)
-      outputer (RingBufLib.DataTuple channel_id) (Some tuple)) in
-  let loop_tuples_of_file fname =
+    read_whole_archive ~while_ read_tuple rb output_tuple in
+  let loop_tuples_of_ringbuf fname =
     !logger.debug "Reading archive %S" fname ;
     match RingBuf.load fname with
     | exception e ->
@@ -1430,14 +1431,21 @@ let replay
       | exception Enum.No_more_elements -> ()
       | _s1, _s2, t1, t2, arc_typ, fname ->
           if time_overlap t1 t2 then (
-            loop_tuples_of_file fname ;
-            loop_files ())
+            match arc_typ with
+            | RingBufLib.RingBuf ->
+                loop_tuples_of_ringbuf fname
+            | RingBufLib.Orc ->
+                let num_lines, num_errs =
+                  orc_read fname Default.orc_rows_per_batch output_tuple in
+                if num_errs <> 0 then
+                  !logger.error "%d/%d errors" num_errs num_lines) ;
+          loop_files ()
   in
   !logger.debug "Reading the past archives..." ;
   loop_files () ;
   (* Finish with the current archive: *)
   !logger.debug "Reading current archive" ;
-  loop_tuples_of_file rb_archive ;
+  loop_tuples_of_ringbuf rb_archive ;
   (* Before quitting, signal the end of this replay: *)
   outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
   !logger.debug "Finished after having replayed %d tuples"

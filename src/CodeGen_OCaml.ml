@@ -3448,7 +3448,7 @@ let emit_replay name func opc =
   p "  CodeGenLib_Skeletons.replay read_out_tuple_" ;
   p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
   p "    serialize_tuple_" ;
-  p "    orc_make_handler_ orc_write orc_close\n"
+  p "    orc_make_handler_ orc_write orc_read orc_close\n"
 
 (* Generator for function [out_of_pub_] that add missing private fields. *)
 let emit_priv_pub opc =
