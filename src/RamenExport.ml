@@ -88,7 +88,12 @@ let read_output conf ?duration (fq : RamenName.fq) where =
 let header_of_type ?(with_event_time=false) field_names typ =
   let h =
     List.map (fun n ->
-      List.findi (fun _ t -> t.RamenTuple.name = n) typ
+      try List.findi (fun _ t -> t.RamenTuple.name = n) typ
+      with Not_found ->
+        Printf.sprintf2 "Unknown field name %a (have %a)"
+          RamenName.field_print n
+          (pretty_list_print RamenTuple.print_field_typ) typ |>
+        failwith
     ) field_names in
   let h =
     if with_event_time then
@@ -102,8 +107,8 @@ let header_of_type ?(with_event_time=false) field_names typ =
 let check_field_names typ field_names =
   (* Asking for no field names is asking for all: *)
   if field_names = [] then
-    List.map (fun t ->
-      t.RamenTuple.name
+    List.filter_map (fun t ->
+      if RamenName.is_private t.RamenTuple.name then None else Some t.name
     ) typ
   else (
     List.iter (fun f ->
