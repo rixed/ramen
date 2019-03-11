@@ -593,6 +593,7 @@ let rec emit_read_value_from_batch
         p "%s = caml_alloc_tuple(%s->fields.size());" res_var batch_var ;
       Enum.iteri (fun i (k, t) ->
         p "/* Field %s */" k ;
+        if debug then p "cerr << \"Field %s\" << endl;" k ;
         (* Use our tmp var to store the result of reading the i-th field: *)
         let field_var = gensym "field" in
         let field_batch_var =
@@ -727,7 +728,8 @@ let rec emit_read_value_from_batch
         Enum.mapi (fun i t -> string_of_int i, t) |>
         emit_read_struct (Array.length ts = 1)
     | T.TRecord kts ->
-        Array.enum kts |>
+        Array.enum kts //
+        (fun (k, _) -> not RamenName.(is_private (field_of_string k))) |>
         emit_read_struct (Array.length kts = 1)
   in
   (* If the type is nullable, check the null column (we can do this even
