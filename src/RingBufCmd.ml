@@ -37,7 +37,7 @@ let summary conf max_bytes files () =
     let s = stats rb in
     (* The file header: *)
     Printf.printf "%s:\n\
-                   Flags:%s%s\n\
+                   Flags:%s\n\
                    seq range: %d..%d (%d)\n\
                    time range: %f..%f (%.1fs)\n\
                    %d/%d words used (%3.1f%%)\n\
@@ -46,7 +46,6 @@ let summary conf max_bytes files () =
                    consumers range: %d..%d\n"
       file
       (if s.wrap then " Wrap" else "")
-      (if s.archive then " Archive" else "")
       s.first_seq (s.first_seq + s.alloc_count - 1) s.alloc_count
       s.t_min s.t_max (s.t_max -. s.t_min)
       s.alloced_words s.capacity

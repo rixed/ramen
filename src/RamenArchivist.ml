@@ -649,7 +649,7 @@ let update_workers_export ?(export_duration=Default.archivist_export_duration)
               batch_size = Default.orc_rows_per_batch ;
               num_batches = Default.orc_batches_per_file } in
         if max_size > 0 then
-          RamenProcesses.start_export ~archive:true
+          RamenProcesses.start_export
             ~file_type ~duration:export_duration conf func |> ignore)
 
 (*

@@ -38,7 +38,6 @@ struct ringbuf_file {
   // Fixed length of the ring buffer. mmapped file must be >= this.
   uint32_t num_words;
   uint32_t wrap:1;  // Does the ring buffer act as a ring?
-  uint32_t archive:1;  // If non wrapping, should it be archived once full?
   /* Pointers to entries. We use uint32 indexes so that we do not have
    * to worry too much about modulos. */
   /* Bytes that are being added by producers lie between prod_tail and
@@ -278,7 +277,7 @@ inline ssize_t ringbuf_read_next(struct ringbuf *rb, struct ringbuf_tx *tx)
 }
 
 /* Create a new ring buffer of the specified size. */
-extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, bool archive, uint32_t tot_words, char const *fname);
+extern enum ringbuf_error ringbuf_create(uint64_t version, bool wrap, uint32_t tot_words, char const *fname);
 
 /* Mmap the ring buffer present in that file. Fails if the file does not exist
  * already. Returns NULL on error. */
