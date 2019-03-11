@@ -203,7 +203,7 @@ let compress_old_archives conf programs dry_run compress_older =
   (* Compress archives of every functions we can find in the RC file (running
    * or not) from ringbuf to ORC: *)
   !logger.debug "Compressing archives..." ;
-  Hashtbl.iter (fun pname (mre, get_rc) ->
+  Hashtbl.iter (fun _ (mre, get_rc) ->
     let prog = get_rc () in
     List.iter (fun func ->
       C.archive_buf_name ~file_type:OutRef.RingBuf conf func |>
