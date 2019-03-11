@@ -1,0 +1,48 @@
+-- vim: ft=sql expandtab spell spelllang=en
+-- Basic time aggregates of HTTP logs.
+-- The coarser the retention and the longer we expect this to be available in
+-- the future.
+
+PARAMETERS
+  time_period {seconds} DEFAULTS TO 60s,
+  clock_jitter {seconds} DEFAULTS TO 1s;
+
+DEFINE http AS
+  FROM logs/http
+  -- start, stop, request_size response_size, method, code, url
+  SELECT
+    -- Times
+    MIN start,
+    MAX stop,
+    stop - start AS _rt,
+    TRUNCATE(start, time_period) AS start,
+    start + time_period AS stop,
+
+    -- The key
+    SUM 1 AS count,
+    method,
+    code,
+    SUBSTRING(url, 0, 10) AS url,
+
+    MIN _rt,
+    MAX _rt,
+    AVG _rt,
+    95th PERCENTILE (SAMPLE(1000, _rt)) AS rt_95th,
+    99th PERCENTILE (SAMPLE(1000, _rt)) AS rt_99th,
+
+    MIN request_size,
+    MAX request_size,
+    AVG request_size,
+    95th PERCENTILE (SAMPLE(1000, request_size)) AS req_size_95th,
+    99th PERCENTILE (SAMPLE(1000, request_size)) AS req_size_99th,
+
+    MIN response_size,
+    MAX response_size,
+    AVG response_size,
+    95th PERCENTILE (SAMPLE(1000, response_size)) AS resp_size_95th,
+    99th PERCENTILE (SAMPLE(1000, response_size)) AS resp_size_99th
+
+  GROUP BY
+    start // time_period, method, code, SUBSTRING(url, 0, 10)
+  COMMIT AFTER
+    in.start > out.stop + 2 * clock_jitter;

@@ -1,0 +1,59 @@
+-- vim: ft=sql expandtab spell spelllang=en
+-- In this file we simulate a fictive web shop monitoring
+
+PARAMETERS
+  start_of_time {seconds(rel)} DEFAULTS TO 191631600,
+  hit_rate {hits*seconds^-1} DEFAULTS TO 5,
+  clock_jitter {seconds} DEFAULTS TO 5s;
+
+-- And God said, Let there be HTTP: and there was HTTP
+-- _ _ _ X _ _ _ X _ X X _ X X
+DEFINE http AS
+  SELECT
+    -- Timing
+    -- We use a fake clock, that is not perfectly monotonous
+    RANDOM * 2 * clock_jitter - clock_jitter AS _clock_jitter,
+    1 / hit_rate AS _avg_dt,
+    RANDOM * 2 * _avg_dt AS _dt,
+    (previous.start |? start_of_time) + _clock_jitter + _dt AS start, -- X
+    RANDOM * 2ms AS _resp_time,
+    start + _resp_time AS stop,
+
+    -- Request
+    u8(RANDOM * 15) AS _request,
+    CASE
+      WHEN _request = 0 THEN "/contact.html"
+      WHEN _request = 1 THEN "/shop.html"
+      WHEN _request = 2 THEN "/robots.txt"
+      WHEN _request = 3 THEN "/favicon.ico"
+      WHEN _request = 4 THEN "/style.css"
+      WHEN _request = 5 THEN "/view.php?id=" || string(u32(RANDOM * 99999))
+      WHEN _request IN [6; 7; 8] THEN "/listing.html"
+      ELSE "/index.html"
+    END AS url, -- X
+    u8(RANDOM * 100) AS _method,
+    CASE
+      WHEN _method = 0 THEN "PUT"
+      WHEN _method = 1 THEN "DELETE"
+      WHEN _method = 2 THEN "CONNECT"
+      WHEN _method = 3 THEN "TRACE"
+      WHEN _method = 4 THEN "PATCH"
+      WHEN _method < 10 THEN "OPTIONS"
+      WHEN _method < 20 THEN "HEAD"
+      WHEN _method < 30 THEN "POST"
+      ELSE "GET"
+    END AS method, -- X
+    u32(RANDOM * 10_000) AS request_size, -- X
+
+    -- Response
+    u8(RANDOM * 20) AS _code_grp,
+    CASE
+      WHEN _code_grp = 0 THEN 100 + u8(RANDOM * 3)
+      WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 3)
+      WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 3)
+      WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 3)
+      ELSE 200
+    END AS code, -- X
+    u32(RANDOM * 100_000) AS response_size -- X
+
+  FACTORS method, code;

@@ -1,0 +1,145 @@
+#!/bin/sh
+# Test Ramen's long term storage features
+
+set -e
+
+top_src=$(dirname $0)/../../
+
+# At exit
+
+_AT_EXIT="echo bye"
+at_exit() {
+  _AT_EXIT="$*; $_AT_EXIT"
+}
+at_exit_() {
+  eval "$_AT_EXIT" || true
+}
+trap at_exit_ EXIT INT TERM
+
+# Logs
+
+debug=yes
+
+log() {
+  if test "$debug" = yes; then
+    echo "$*" 1>&2
+  fi
+}
+
+fail() {
+  echo "$*" 1>&2
+  exit 1
+}
+
+# Monitor disk usage
+
+tot_sz() {
+  func=$1
+  if test -d "$RAMEN_DIR/workers/ringbufs/"; then
+    dir=$(find "$RAMEN_DIR/workers/ringbufs/v8/$func/" -name arc -type d)
+    if test -n "$dir"; then
+      du -s -k "$dir" | awk '{print $1}'
+    else
+      echo 0
+    fi
+  else
+    echo 0
+  fi
+}
+
+# Locate the required tools
+
+find_bin() {
+  tool=$1; shift
+  log "looking for '$tool' (in '$*')"
+
+  while test -n "$*"; do
+    p=$1; shift
+    if test -x "$p/$tool"; then
+      log "...found in $p"
+      echo "$p/$tool"
+      return
+    fi
+  done
+
+  if test -n "$(which $tool)"; then
+    which "$tool"
+    return
+  fi
+
+  fail "Cannot find $tool"
+}
+
+ramen="$top_src/src/ramen"
+export RAMEN_LIBS="$top_src/bundle"
+
+# Locate the optional tools
+# TODO: if there is atop, run it
+
+# Prepare for a fresh RAMEN_DIR
+export RAMEN_DIR=$(mktemp -d)
+#at_exit "echo 'Cleaning ramen dir $RAMEN_DIR'; rm -rf '$RAMEN_DIR'"
+echo "Will use RAMEN_DIR=$RAMEN_DIR"
+
+# Write the configuration
+# 100MB of max total disk space, with retention for the various aggregation
+# levels (1min for 12 hours, 10 mins for 3 days, 1 hour for 30 days).
+mkdir -p "$RAMEN_DIR/archivist/v2/"
+cat > "$RAMEN_DIR/archivist/v2/config" <<EOF
+{
+  size_limit = 100000000;
+  retentions = {
+    "1min/http" => { duration = 43200 };
+    "10mins/http" => { duration = 259200 };
+    "1hour/http" => { duration = 2592000 };
+  }
+}
+EOF
+
+# Compile the test programs
+"$ramen" compile -S tests/storage/logs.ramen
+"$ramen" compile -S -L tests/storage/ tests/storage/aggr.ramen
+
+# Run everything
+
+while sleep 60; do
+  for func in 1min/http 10mins/http 1hour/http; do
+    echo "$func,$(date +%s),$(tot_sz $func)" >> $RAMEN_DIR/tot_sz.csv
+  done
+done &
+sz_monitor_pid=$!
+at_exit "echo 'Stopping monitoring disk size'; kill '$sz_monitor_pid'"
+
+"$ramen" supervisor &
+supervisor_pid=$!
+at_exit "echo 'Killing ramen supervisor'; kill '$supervisor_pid'"
+
+"$ramen" gc --loop 100 --del-ratio 0.9 &
+gc_pid=$!
+at_exit "echo 'Killing ramen gc'; kill '$gc_pid'"
+
+"$ramen" archivist --loop 60 &
+archivist_pid=$!
+at_exit "echo 'Killing ramen archivist'; kill '$archivist_pid'"
+
+export RAMEN_REPORT_PERIOD=5
+"$ramen" run tests/storage/logs.x --as logs
+"$ramen" run tests/storage/aggr.x --as 1min   -p time_period=60
+"$ramen" run tests/storage/aggr.x --as 10mins -p time_period=600
+"$ramen" run tests/storage/aggr.x --as 1hour  -p time_period=3600
+
+# Wait until we have "enough" data
+echo "Waiting for the kills..."
+
+# Tests end the 3rd of March around noon
+end_of_test=194700000
+
+while true; do
+  "$ramen" ps 1min/http | awk '{print $8}'
+  sleep 60
+done
+
+wait
+
+echo "Stopping the experiment..."
+kill "$supervisor_pid"
