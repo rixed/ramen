@@ -263,11 +263,13 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
         Array.of_enum in
       Array.fast_sort arc_file_compare entries ;
       let usr, next_seq =
-        Array.fold_left (fun (usr, _) (from, _to, _t1, _t2, typ, fname) ->
-          (* TODO: take into account typ *)
-          let rb = load fname in
-          finally (fun () -> unload rb)
-            (fold_rb from rb) usr
+        Array.fold_left (fun (usr, _ as prev)
+                             (from, _to, _t1, _t2, arc_typ, fname) ->
+          if arc_typ = RingBufLib.RingBuf then
+            let rb = load fname in
+            finally (fun () -> unload rb)
+              (fold_rb from rb) usr
+          else prev
         ) (init, 0 (* unused if there are some entries *)) entries in
       !logger.debug "After archives, next_seq is %d" next_seq ;
       (* Of course by the time we reach here, new archives might have been
@@ -411,9 +413,10 @@ let fold_time_range ?(while_=always) bname typ params event_time since until ini
       match Enum.get_exn entries with
       | exception Enum.No_more_elements -> usr
       | _s1, _s2, _t1, _t2, arc_typ, fname ->
-          fold_buffer_with_time ~while_ ~early_stop:false
-                                fname typ params event_time usr f |>
-          loop
+          if arc_typ = RingBufLib.RingBuf then
+            fold_buffer_with_time ~while_ ~early_stop:false
+                                  fname typ params event_time usr f ;
+          loop ()
     else usr
   in
   let usr = loop init in

@@ -369,7 +369,7 @@ let writer_of_spec serialize_tuple sersize_of_tuple
   | Orc { with_index ; batch_size ; num_batches } ->
       let hdr =
         orc_make_handler fname with_index batch_size num_batches true in
-      (fun rb_ref_out_fname file_spec last_check_outref dest_channel
+      (fun _rb_ref_out_fname _file_spec _last_check_outref dest_channel
            start_stop head tuple_opt ->
         match head, tuple_opt with
         | RingBufLib.DataTuple chn, Some tuple when chn = dest_channel ->
