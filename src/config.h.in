@@ -3,9 +3,6 @@
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
 
-/* Do we have liborc? */
-#undef HAVE_ORC
-
 /* Define to 1 if you have the `renameat2' function. */
 #undef HAVE_RENAMEAT2
 

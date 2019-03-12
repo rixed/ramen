@@ -1,6 +1,7 @@
 # Configuration
 
 VERSION = @PACKAGE_VERSION@
+BUNDLE_DIR = bundle
 
 DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
@@ -8,11 +9,13 @@ OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 QTEST    = qtest
 Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
-override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
+
+override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
+                          -I $(BUNDLE_DIR)/include \
                           -DHAVE_INT128 -I $(shell ocamlfind query stdint)
 
 ifdef NDEBUG
@@ -42,18 +45,12 @@ PACKAGES = \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3
 
-ifeq (@HAVE_ORC@,1)
-ORCHELPER_LIB = src/liborchelp.a
-else
-ORCHELPER_LIB =
-endif
-
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
 	$(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
-	$(ORCHELPER_LIB)
+	src/liborchelp.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) META
 
 bin_dir ?= /usr/bin/
@@ -75,7 +72,7 @@ all: $(INSTALLED) bundle
 # Generic rules
 
 .SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all dep bundle doc deb tarball \
+.PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
         check func-check unit-check cli-check err-check arc-check orc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
@@ -243,11 +240,7 @@ LIBCOLLECTD_SOURCES = \
 LIBNETFLOW_SOURCES = \
 	src/netflow/v5.c
 
-ifeq (@HAVE_ORC@,1)
 LIBORC_SOURCES = src/orc/wrappers.cc
-else
-LIBORC_SOURCES =
-endif
 
 ORCWRITER_SOURCES = \
 	src/RamenVersions.ml \
@@ -340,12 +333,25 @@ src/libnetflow.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBNETFLOW_SOURCES)))
 	@sleep 1 # ar truncate mtime !?
 	@$(AR) rs $@ $^ >/dev/null
 
-ifeq (@HAVE_ORC@,1)
 src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@echo 'Building orc helper library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
-endif
+	$(AR) rs $@ $^ >/dev/null
+
+.gitmodules:
+	@git submodule init
+
+submodules/orc/NOTICE: .gitmodules
+	@echo "Getting submodules"
+	@git submodule update
+	@touch $@
+
+$(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
+	@echo 'Building liborc'
+	@mkdir -p submodules/orc/build
+	@cd submodules/orc/build &&\
+	 cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	 make install
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
@@ -355,11 +361,7 @@ MOREFLAGS = \
 	-cclib -lstdint_stubs \
 	-cclib -lringbuf \
 	-cclib -lcollectd \
-	-cclib -lnetflow
-
-ifeq (@HAVE_ORC@,1)
-
-MOREFLAGS += \
+	-cclib -lnetflow \
 	-cclib -lorchelp \
 	-cclib -lorc \
 	-cclib -lhdfspp_static \
@@ -378,8 +380,9 @@ src/orc/orc_writer: \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
-		$(ORCHELPER_LIB) \
-		bundle/date
+		src/liborchelp.a \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -416,20 +419,15 @@ orc-check: src/orc/orc_writer $(wildcard tests/orc/*.type) $(wildcard tests/orc/
 	   exit 1 ;\
 	 fi
 
-else
-
-orc-check:
-	@echo 'Skipping ORC tests'
-
-endif
-
 src/ramen: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
 		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RAMEN_SOURCES))) \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
-		$(ORCHELPER_LIB)
+		src/liborchelp.a \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -438,7 +436,7 @@ src/codegen.cmxa: \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
-		$(ORCHELPER_LIB)
+		src/liborchelp.a
 	@echo 'Linking runtime library $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -456,40 +454,49 @@ META:
 	@echo 'archive(native) = "codegen.cmxa"' >> $@
 	@echo 'requires = "$(META_REQUIRES)"' >> $@
 
-BUNDLE_DIR = bundle
+bundle: $(BUNDLE_DIR)/ramen/codegen.a $(BUNDLE_DIR)/lib/liborc.a
 
-bundle: bundle/date
-
-bundle/date: $(INSTALLED_LIB)
-	@echo 'Bundling libs together into $(BUNDLE_DIR)'
-	@$(RM) -r '$(BUNDLE_DIR)'
+$(BUNDLE_DIR)/date:
+	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
+	@$(RM) -rf '$(BUNDLE_DIR)'
 	@mkdir -p '$(BUNDLE_DIR)'
-	@set -e ;\
+	@touch $@
+
+$(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
+	@echo 'Bundling libs together into $(BUNDLE_DIR)'
+	$(RM) -rf '$(BUNDLE_DIR).tmp'
+	mkdir '$(BUNDLE_DIR).tmp'
+	set -e ;\
 	 deps=$$( \
 	   for p in $(META_REQUIRES) ; do \
 	     ocamlfind query -recursive -predicates native -format '%d' $$p ;\
 	   done | sort -u | grep -v /findlib) ;\
-	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR)/' ; done
-	@mkdir $(BUNDLE_DIR)/ramen
-	@cp $(INSTALLED_LIB) $(BUNDLE_DIR)/ramen
-	@find '$(BUNDLE_DIR)' -type f -not '-(' \
+	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
+	mkdir $(BUNDLE_DIR).tmp/ramen
+	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
+	find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
 	    -name '*.so' -o -name '*.o' \
 	  '-)' -delete
-	@find '$(BUNDLE_DIR)' -empty -delete
-	@# Delete some of the biggest unused files:
-	@$(RM) $(BUNDLE_DIR)/batteries/batteriesExceptionless.cm*
-	@$(RM) -r $(BUNDLE_DIR)/ocaml/compiler-libs
-	@$(RM) -r $(BUNDLE_DIR)/ocaml/camlp4
-	@$(RM) -r $(BUNDLE_DIR)/ocaml/ocamldoc
-	@$(RM) -r $(BUNDLE_DIR)/ocaml/thread
-	@$(RM) -r $(BUNDLE_DIR)/ocaml/ocplib*
-	@$(RM) $(BUNDLE_DIR)/ocaml/camlinternalFormat.*
-	@$(RM) $(BUNDLE_DIR)/ocaml/*spacetime*
+	find '$(BUNDLE_DIR).tmp' -empty -delete
+	# Delete some of the biggest unused files:
+	$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
+	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
+	$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
+	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
 	@# to clear a clang warning:
-	@mkdir $(BUNDLE_DIR)/num
-	@mkdir $(BUNDLE_DIR)/bytes
-	@touch $@
+	mkdir $(BUNDLE_DIR).tmp/num
+	mkdir $(BUNDLE_DIR).tmp/bytes
+	@# Delete everything that's not from liborc:
+	mkdir -p '$(BUNDLE_DIR)'
+	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not -name lib -exec rm -rf '{}' \;
+	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
+	$(RM) -r $(BUNDLE_DIR).tmp
+	touch $@
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
@@ -517,11 +524,6 @@ src/RamenDepLibs.ml:
 src/RamenCompilConfig.ml:
 	@echo '(* Generated by Makefile - edition is futile *)' > $@
 	@echo 'let default_bundle_dir = "$(lib_dir)/$(BUNDLE_DIR)/"' >> $@
-ifeq (@HAVE_ORC@,1)
-	@echo 'let have_orc = true' >> $@
-else
-	@echo 'let have_orc = false' >> $@
-endif
 
 # Tests
 
@@ -646,7 +648,7 @@ all_tests.opt: \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
-		$(ORCHELPER_LIB) \
+		src/liborchelp.a \
 		$(LINKED_FOR_TESTS:.ml=.cmx) src/all_tests.ml
 	@echo 'Building unit tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
@@ -676,7 +678,7 @@ ringbuf_test.opt: \
 		src/libringbuf.a \
 		src/libcollectd.a \
 		src/libnetflow.a \
-		$(ORCHELPER_LIB)
+		src/liborchelp.a
 	@echo 'Building ringbuf tests into $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -698,7 +700,7 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	$(wildcard tests/func/fixtures/*.ramen)
 
-%.x: %.ramen bundle/date src/ramen src/codegen.cmxa
+%.x: %.ramen $(BUNDLE_DIR)/ramen/codegen.a src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
 	@src/ramen compile --bundle=bundle -L . -L tests/func $< -o $@
 
@@ -772,7 +774,12 @@ tests/func/changed.success: tests/func/changed.x
 
 func-check: $(RAMEN_TESTS:.test=.success)
 
-err-check: src/ramen bundle/date $(wildcard tests/errors/*.ramen) $(wildcard tests/errors/*.err)
+err-check: \
+		src/ramen \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/lib/liborc.a \
+		$(wildcard tests/errors/*.ramen) \
+		$(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
@@ -822,7 +829,7 @@ install-bundle: bundle
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
 	@install -d $(DESTDIR)$(lib_dir)
-	@cd examples/programs && \
+	@cd examples/programs &&\
 	 find . -type f -name '*.ramen' \
 	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
 	   -exec sh -c 'cp {} $(DESTDIR)$(sample_dir)/$$(dirname {})' \;
@@ -851,7 +858,11 @@ deb: ramen.$(VERSION).deb
 
 tarball: ramen.$(VERSION).tgz
 
-ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
+ramen.$(VERSION).deb: \
+		$(INSTALLED) \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/lib/liborc.a \
+		debian.control
 	@echo 'Building debian package $@'
 	@sudo rm -rf debtmp
 	@install -d debtmp/usr/bin
@@ -867,7 +878,10 @@ ramen.$(VERSION).deb: $(INSTALLED) bundle/date debian.control
 	@dpkg --build debtmp
 	@mv debtmp.deb $@
 
-ramen.$(VERSION).tgz: $(INSTALLED_BIN) bundle/date
+ramen.$(VERSION).tgz: \
+		$(INSTALLED_BIN) \
+		$(BUNDLE_DIR)/ramen/codegen.a \
+		$(BUNDLE_DIR)/lib/liborc.a
 	@echo 'Building tarball $@'
 	@$(RM) -r tmp/ramen
 	@install -d tmp/ramen
@@ -935,14 +949,15 @@ clean: clean-temp
 	@echo 'Cleaning all build files'
 	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o src/*.mlppp
 	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
-	@$(RM) src/ringbuf/*.o
+	@$(RM) src/ringbuf/*.o src/orc/*.o
 	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
+	@$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
 	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@$(RM) src/RamenFileNotify.ml RamenCompilConfig.ml
-	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a
-	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a $(ORCHELPER_LIB)
+	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
+	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a src/liborchelp.a
 	@find tests -name '*.success' -delete
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp

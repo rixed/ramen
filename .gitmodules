@@ -1,0 +1,3 @@
+[submodule "submodules/orc"]
+	path = submodules/orc
+	url = https://github.com/rixed/orc.git

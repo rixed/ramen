@@ -254,6 +254,9 @@ let link_external ~debug ~keep_temp_files
 let link ?(debug=false) ?(keep_temp_files=false)
          ~what ~obj_files ~src_file ~exec_file =
   mkdir_all ~is_file:true exec_file ;
+  (* We have a few C libraries in bundle_dir/lib that will be searched by the
+   * C linker: *)
+  let inc_dirs = Set.singleton (!bundle_dir ^"/lib") in
   (* Look for cmi files in the same dirs where the cmx are: *)
   let inc_dirs, obj_files =
     List.fold_left (fun (s, l) obj_file ->
@@ -262,7 +265,7 @@ let link ?(debug=false) ?(keep_temp_files=false)
         Filename.basename obj_file :: l
       else
         s, obj_file :: l
-    ) (Set.empty, []) obj_files in
+    ) (inc_dirs, []) obj_files in
   (if !use_external_compiler then link_external else link_internal)
     ~debug ~keep_temp_files
     ~what ~inc_dirs ~obj_files ~src_file ~exec_file
