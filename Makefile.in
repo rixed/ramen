@@ -338,13 +338,14 @@ src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@sleep 1 # ar truncate mtime !?
 	$(AR) rs $@ $^ >/dev/null
 
-.gitmodules:
-	@git submodule init
-
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
+	@git submodule init
 	@git submodule update
 	@touch $@
+
+# We need the ORC include files to be installed for that one:
+src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
 
 $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'

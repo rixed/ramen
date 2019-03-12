@@ -13,9 +13,13 @@ RUN apt-get --yes update && \
       aspcud \
       bzip2 \
       ca-certificates \
+      cmake \
       coreutils \
       curl \
+      g++ \
       git \
+      libsasl2-dev \
+      libssl-dev \
       m4 \
       make \
       ocaml-nox \
