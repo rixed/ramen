@@ -117,9 +117,15 @@ let build conf ?(force_rebuild=false) get_parent program_name src_file
     | (to_type, check, builder) :: rest ->
         let target_file = base_file ^"."^ to_type in
         mkdir_all ~is_file:true target_file ;
-        if force_rebuild || check src_file target_file then
-          builder conf get_parent program_name src_file target_file
-        else
+        if force_rebuild || check src_file target_file then (
+          (* Make the target appear in the FS as atomically as possible as
+           * we might be overwriting a running worker, which would be
+           * confusing for the supervisor. Note that RamenCompiler actually
+           * pays no attention to the target file name. *)
+          let tmp_file = target_file ^"_tmp" in
+          builder conf get_parent program_name src_file tmp_file ;
+          Unix.rename tmp_file target_file
+        ) else
           !logger.debug "%S is still up to date" target_file ;
         loop target_file rest
   in
