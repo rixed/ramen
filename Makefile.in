@@ -336,7 +336,7 @@ src/libnetflow.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBNETFLOW_SOURCES)))
 src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@echo 'Building orc helper library'
 	@sleep 1 # ar truncate mtime !?
-	$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs $@ $^ >/dev/null
 
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
