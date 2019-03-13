@@ -353,6 +353,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@cd submodules/orc/build &&\
 	 cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
 	 make install
+	@touch $@
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
