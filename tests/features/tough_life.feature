@@ -25,7 +25,7 @@ Feature: behavior under harsh conditions
       """
       define f as select "two" as v every 1s;
       """
-    And I wait 4 seconds
+    And I wait 8 seconds
     Then program dir/p1 must be running
     And I run ramen with arguments tail -l 1 dir/p1/f
     Then ramen must mention "two" on stdout.
