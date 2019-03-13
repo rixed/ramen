@@ -361,10 +361,10 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 MOREFLAGS = \
 	-package "$(PACKAGES)" \
 	-cclib -lstdint_stubs \
+	-cclib -lorchelp \
 	-cclib -lringbuf \
 	-cclib -lcollectd \
 	-cclib -lnetflow \
-	-cclib -lorchelp \
 	-cclib -lorc \
 	-cclib -lhdfspp_static \
 	-cclib -llz4 \
