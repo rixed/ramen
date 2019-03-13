@@ -767,10 +767,11 @@ let synchronize_running conf autoreload_delay =
             if last_mod <> None && must_reread then (
               (* Reread the content of that file *)
               let programs = C.with_rlock conf identity in
-              (* The run file gives us the programs (and how to run them), but we
-               * want [must_run] to be a hash of functions. Also, we want the
-               * workers identified by their signature so that if the type of a
-               * worker change but not its name we see a different worker. *)
+              (* The run file gives us the programs (and how to run them), but
+               * we want [must_run] to be a hash of functions. Also, we want
+               * the workers identified by their signature so that if the type
+               * of a worker changes but not its name we see a different
+               * worker. *)
               Hashtbl.clear must_run ;
               Hashtbl.iter (fun program_name (mre, get_rc) ->
                 if mre.C.status = C.MustRun then (

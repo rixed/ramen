@@ -466,41 +466,41 @@ $(BUNDLE_DIR)/date:
 
 $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	@echo 'Bundling libs together into $(BUNDLE_DIR)'
-	$(RM) -rf '$(BUNDLE_DIR).tmp'
-	mkdir '$(BUNDLE_DIR).tmp'
-	set -e ;\
+	@$(RM) -rf '$(BUNDLE_DIR).tmp'
+	@mkdir '$(BUNDLE_DIR).tmp'
+	@set -e ;\
 	 deps=$$( \
 	   for p in $(META_REQUIRES) ; do \
 	     ocamlfind query -recursive -predicates native -format '%d' $$p ;\
 	   done | sort -u | grep -v /findlib) ;\
 	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
-	mkdir $(BUNDLE_DIR).tmp/ramen
-	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
-	find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
+	@mkdir $(BUNDLE_DIR).tmp/ramen
+	@cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
+	@find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
 	    -name '*.so' -o -name '*.o' \
 	  '-)' -delete
-	find '$(BUNDLE_DIR).tmp' -empty -delete
-	# Delete some of the biggest unused files:
-	$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
-	$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
-	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
+	@find '$(BUNDLE_DIR).tmp' -empty -delete
+	@# Delete some of the biggest unused files:
+	@$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
+	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
+	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
+	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
+	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
+	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
+	@$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
+	@$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
 	@# to clear a clang warning:
-	mkdir $(BUNDLE_DIR).tmp/num
-	mkdir $(BUNDLE_DIR).tmp/bytes
+	@mkdir $(BUNDLE_DIR).tmp/num
+	@mkdir $(BUNDLE_DIR).tmp/bytes
 	@# Delete everything that's not from liborc:
-	mkdir -p '$(BUNDLE_DIR)'
-	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
+	@mkdir -p '$(BUNDLE_DIR)'
+	@find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
 	    -name lib -o -name include \
 		'-)' -exec rm -rf '{}' \;
-	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
-	$(RM) -r $(BUNDLE_DIR).tmp
-	touch $@
+	@mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
+	@$(RM) -r $(BUNDLE_DIR).tmp
+	@touch $@
 
 # Bootstrapping this is a bit special as ocamlfind needs to know the ramen
 # package first. Therefore this file is included with the source package for
