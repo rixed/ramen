@@ -494,7 +494,9 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	mkdir $(BUNDLE_DIR).tmp/bytes
 	@# Delete everything that's not from liborc:
 	mkdir -p '$(BUNDLE_DIR)'
-	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not -name lib -exec rm -rf '{}' \;
+	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
+	    -name lib -o -name include \
+		'-)' -exec rm -rf '{}' \;
 	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
 	$(RM) -r $(BUNDLE_DIR).tmp
 	touch $@

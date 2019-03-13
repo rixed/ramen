@@ -45,8 +45,9 @@ let main =
   let cpp_command src dst =
     let _, where = Unix.run_and_read "ocamlc -where" in
     let where = String.trim where in
-    Printf.sprintf "g++ -g -std=c++17 -W -Wall -c -I %S -o %S %S"
-      where dst src in
+    let inc = !RamenOCamlCompiler.bundle_dir ^"/include" in
+    Printf.sprintf "g++ -g -std=c++17 -W -Wall -c -I %S -I %S -o %S %S"
+      where inc dst src in
   let cc_dst = change_ext ".o" cc_src_file in
   let cmd = cpp_command cc_src_file cc_dst in
   let status = Unix.system cmd in
