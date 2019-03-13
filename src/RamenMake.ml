@@ -60,7 +60,7 @@ let target_is_older src_file target_file =
 let target_is_obsolete target_file =
   match P.version_of_bin target_file with
   | exception e ->
-      !logger.debug "Cannot get version from %s: %s"
+      !logger.warning "Cannot get version from %s: %s, assuming obsolescence"
         target_file (Printexc.to_string e) ;
       true
   | v ->

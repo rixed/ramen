@@ -834,7 +834,8 @@ let set_signals sigs behavior =
   ) sigs
 
 let string_of_process_status = function
-  | Unix.WEXITED 127 -> "shell couldn't be executed"
+  | Unix.WEXITED 126 -> "couldn't execve after fork"
+  | Unix.WEXITED 127 -> "couldn't be executed"
   | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
   | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
   | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
@@ -855,7 +856,7 @@ let rec waitall_once ?expected_status ~what pids =
   Set.Int.filter (fun pid ->
     let complain is_err status =
       (if is_err then !logger.error else !logger.debug)
-        "%s %s" what (string_of_process_status status) in
+        "%s: %s" what (string_of_process_status status) in
     let flags = [ WUNTRACED ] in
     let flags =
       if set_int_is_singleton pids then flags
@@ -906,13 +907,13 @@ let with_subprocess ?expected_status ?env cmd args k =
       let move_fd s d =
         dup2 ~cloexec:false s d ;
         close s in
+      move_fd his_err stderr ;
       move_fd his_in stdin ;
       move_fd his_out stdout ;
-      move_fd his_err stderr ;
       execve cmd args env
     with e ->
       Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
-      sys_exit 127)
+      sys_exit 126)
   | pid -> (* Parent *)
     close his_in ; close his_out ; close his_err ;
     let close_all () =
@@ -932,7 +933,11 @@ let with_subprocess ?expected_status ?env cmd args k =
          in_channel_of_descr my_err)
 
 let with_stdout_from_command ?expected_status ?env cmd args k =
-  with_subprocess ?expected_status ?env cmd args (fun (_ic, oc, _ec) -> k oc)
+  with_subprocess ?expected_status ?env cmd args (fun (_ic, oc, ec) ->
+    let dump_stderr () =
+      let last_words = read_whole_channel ec in
+      if last_words <> "" then !logger.warning "%s: %s" cmd last_words in
+    finally dump_stderr k oc)
 
 (*$= with_stdout_from_command & ~printer:identity
   "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \
