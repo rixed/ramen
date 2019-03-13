@@ -48,8 +48,12 @@ type check = string -> string -> bool
  * Fails if src_file does not exist. *)
 let target_is_older src_file target_file =
   let st = mtime_of_file src_file in
-  let wait_source_in_past () =
-    while st >= Unix.time () do Unix.sleepf 0.2 done in
+  let rec wait_source_in_past () =
+    let now = Unix.gettimeofday () in
+    if st >= now then (
+      Unix.sleepf (max 0.01 (st -. now)) ;
+      wait_source_in_past ()
+    ) in
   match mtime_of_file target_file with
   | exception Unix.(Unix_error (ENOENT, _, _)) ->
       wait_source_in_past () ;
