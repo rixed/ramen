@@ -3043,28 +3043,49 @@ let emit_when ~env name in_typ minimal_typ ~opc when_expr =
   Printf.fprintf opc.code "\t%a\n"
     (emit_expr ~env ~context:Finalize ~opc) when_expr
 
+(* Similarly but with different signatures: *)
+let emit_cond0_in ~env name in_typ ?to_typ ~opc e =
+  Printf.fprintf opc.code "let %s %a global_ =\n"
+    name
+    (emit_tuple ~with_alias:true TupleIn) in_typ ;
+  let env =
+    add_tuple_environment TupleIn in_typ env in
+  (* Update the states used by this expression: *)
+  emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, in" e ;
+  Printf.fprintf opc.code "\t%a\n\n"
+    (conv_to ~env ~context:Finalize ~opc to_typ) e
+
+let emit_cond0_out ~env name minimal_typ ?to_typ ~opc e =
+  Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ =\n"
+    name
+    (emit_tuple ~with_alias:true TupleOut) minimal_typ ;
+  let env =
+    add_tuple_environment TupleOut minimal_typ env |>
+    add_tuple_environment TupleOutPrevious opc.typ in
+  (* Update the states used by this expression: *)
+  emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, out" e ;
+  Printf.fprintf opc.code "\t%a\n\n"
+    (conv_to ~env ~context:Finalize ~opc to_typ) e
+
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
  * selected input tuple (still quite slow), or only when this group is
  * modified (fast). Users should limit all/selected tuple to aggregations
  * with few groups only. *)
-let when_to_check_group_for_expr expr =
-  (* Tells whether the commit condition needs the all or the selected tuple *)
-  let need_all =
-    try
-      E.iter (fun _ e ->
-        match e.E.text with
-        | Stateless (SL0 (Path _))
-        | Binding (RecordField (TupleIn, _)) ->
-            raise Exit
-        | _ -> ()
-      ) expr ;
-      false
-    with Exit ->
-      true
-  in
-  if need_all then "CodeGenLib_Skeletons.ForAll"
-  else "CodeGenLib_Skeletons.ForInGroup"
+let check_commit_for_all expr =
+  (* Tells whether the commit condition applies to all or only to the
+   * selected group: *)
+  try
+    E.iter (fun _ e ->
+      match e.E.text with
+      | Stateless (SL0 (Path _))
+      | Binding (RecordField (TupleIn, _)) ->
+          raise Exit
+      | _ -> ()
+    ) expr ;
+    false
+  with Exit ->
+    true
 
 let emit_sort_expr name in_typ ~opc es_opt =
   Printf.fprintf opc.code "let %s sort_count_ %a %a %a %a =\n"
@@ -3154,6 +3175,83 @@ let expr_needs_group e =
     false
   with Exit ->
     true
+
+let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
+  let no_optim = "None", commit_cond in
+  (* Takes an expression and if that expression is equivalent to
+   * f(in) op g(out) then returns [f], [neg], [op], [g] where [neg] if true
+   * if [op] is meant to be negated (remember Lt is Not Gt), or raise
+   * Not_found: *)
+  let rec defined_order = function
+    | E.{ text = Stateless (SL2 ((Gt|Ge as op), l, r)) } ->
+        let dep_only_on lst e =
+          let open RamenOperation in
+          try check_depends_only_on lst e ; true
+          with DependsOnInvalidTuple _ -> false
+        and no_local_state e =
+          try
+            E.unpure_iter (fun _ -> function
+              | E.{ text = Stateful (LocalState, _, _) } ->
+                  raise Exit
+              | _ -> ()) e ;
+            true
+          with Exit ->false
+        in
+        if dep_only_on [ TupleIn ] l &&
+           no_local_state l &&
+           dep_only_on [ TupleOut; TupleOutPrevious ] r
+        then l, false, op, r
+        else if dep_only_on [ TupleOut; TupleOutPrevious ] l &&
+                dep_only_on [ TupleIn ] r &&
+                no_local_state r
+        then r, true, op, r
+        else raise Not_found
+    | E.{ text = Stateless (SL1 (Not, e)) } ->
+        let l, neg, op, r = defined_order e in
+        l, not neg, op, r
+    | _ -> raise Not_found
+  in
+  let es = E.as_nary E.And commit_cond in
+  (* TODO: take the best possible sub-condition not the first one: *)
+  let rec loop rest = function
+    | [] -> no_optim
+    | e :: es ->
+        (match defined_order e with
+        | exception Not_found -> loop (e :: rest) es
+        | f, neg, op, g ->
+            (* We will convert both [f] and [g] into the bigger numeric type
+             * as [emit_function] would do: *)
+            let to_typ = large_enough_for f.typ.structure g.typ.structure in
+            let may_neg e =
+              (* Let's add an unary minus in front of [e] it we are supposed
+               * to neg the Greater operator, and type it by hand: *)
+              if neg then
+                E.make ~structure:e.E.typ.structure ~nullable:e.typ.nullable
+                       ?units:e.units (Stateless (SL1 (Minus, e)))
+              else e in
+            let cmp = omod_of_type to_typ ^".compare" in
+            let cmp =
+              match f.typ.nullable, g.typ.nullable with
+              | false, false -> cmp
+              | true, true -> "(compare_nullable "^ cmp ^")"
+              | true, false -> "(compare_nullable_left "^ cmp ^")"
+              | false, true -> "(compare_nullable_right "^ cmp ^")" in
+            let cond_in = "commit_cond_in_"
+            and cond_out = "commit_cond_out_" in
+            emit_cond0_in ~env cond_in in_typ ~opc
+                          ~to_typ (may_neg f) ;
+            emit_cond0_out ~env cond_out minimal_typ ~opc
+                           ~to_typ (may_neg g) ;
+            let cond0 =
+              Printf.sprintf "(Some (%s, %s, %s, %b))"
+              cond_in cond_out cmp (op = Ge) in
+            let cond =
+              E.of_nary ~structure:commit_cond.typ.structure
+                        ~nullable:commit_cond.typ.nullable
+                        ~units:commit_cond.units
+                        E.And (List.rev_append rest es) in
+            cond0, cond) in
+    loop [] es
 
 let emit_aggregate opc global_env group_env env_env param_env
                    name in_typ =
@@ -3254,10 +3352,15 @@ let emit_aggregate opc global_env group_env env_env param_env
    * uses the group tuple or build a group-wise aggregation on its own,
    * despite this is forbidden in RamenOperation.check): *)
   let where_need_group = expr_needs_group where
-  and when_to_check_for_commit = when_to_check_group_for_expr commit_cond
+  and check_commit_for_all = check_commit_for_all commit_cond
   and is_yield = from = []
   (* Every functions have at least access to env + params: *)
-  and base_env = List.rev_append param_env env_env
+  and base_env = List.rev_append param_env env_env in
+  let commit_cond0, commit_cond_rest =
+    let env = group_env @ global_env @ base_env in
+    if check_commit_for_all then
+      optimize_commit_cond in_typ minimal_typ ~env ~opc commit_cond
+    else "None", commit_cond
   in
   emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where ~commit_cond ~opc fields ;
   emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env) ["global_"] ~where ~commit_cond ~opc fields ;
@@ -3272,7 +3375,7 @@ let emit_aggregate opc global_env group_env env_env param_env
     emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc where ;
   emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env) ~opc key ;
   emit_maybe_fields opc.code out_typ ;
-  emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc commit_cond ;
+  emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc commit_cond_rest ;
   emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ minimal_typ ~opc fields ;
   emit_field_selection ~build_minimal:false ~env:(group_env @ global_env @ base_env) "out_tuple_of_minimal_tuple_" in_typ minimal_typ ~opc fields ;
   emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc fields ;
@@ -3296,8 +3399,8 @@ let emit_aggregate opc global_env group_env env_env param_env
   p "    merge_on_ %d %F %d sort_until_ sort_by_" merge.last merge.timeout
     (match sort with None -> 0 | Some (n, _, _) -> n) ;
   p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
-  p "    commit_cond_ %b %b %s"
-    commit_before (flush_how <> Never) when_to_check_for_commit ;
+  p "    commit_cond_ %s %b %b %b"
+    commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
   p "    global_init_ group_init_" ;
   p "    get_notifications_ %f" every ;
   p "    orc_make_handler_ orc_write orc_close\n"

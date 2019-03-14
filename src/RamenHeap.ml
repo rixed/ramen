@@ -56,3 +56,12 @@ let rec rem cmp x = function
       if c < 0 then makeT y (rem cmp x l) r else
       if c = 0 && x = y then merge cmp l r else
       makeT y l (rem cmp x r)
+
+(* Same as above, but use physical equality to locate the item to remove: *)
+let rec rem_phys cmp x = function
+  | E -> E
+  | T (_, y, l, r) ->
+      let c = cmp x y in
+      if c < 0 then makeT y (rem_phys cmp x l) r else
+      if c = 0 && x == y then merge cmp l r else
+      makeT y l (rem_phys cmp x r)

@@ -847,6 +847,47 @@ let is_generator e =
     false
   with Exit -> true
 
+(* When optimising it is useful to consider an expression as a sequence of
+ * ANDs or ORs. This function takes an expression and a stateless binary
+ * operator and returns the list of all sub-expressions that would be the
+ * arguments of that operator if it were n-ary. Note that this list always
+ * at least includes one elements (if only one then that's the expression
+ * that was passed). *)
+let rec as_nary op = function
+  | { text = Stateless (SL2 (o, e1, e2)) } when o = op ->
+      List.rev_append (as_nary op e1) (as_nary op e2)
+  | e -> [ e ]
+
+(*$inject
+  let test_as_nary str =
+    let e = parse str in
+    let lst = as_nary And e |>
+              List.fast_sort compare in
+    BatPrintf.sprintf2 "AND%a"
+      (BatList.print ~first:"(" ~last:")" (print false)) lst
+*)
+(*$= test_as_nary & ~printer:BatPervasives.identity
+  "AND(false; false; true)" (test_as_nary "true AND false AND false")
+  "AND(false; false; true)" (test_as_nary "(true AND false) AND false")
+  "AND(false; false; true)" (test_as_nary "true AND (false AND false)")
+  "AND(false)" (test_as_nary "false")
+  "AND((1) + (1))" (test_as_nary "1+1")
+*)
+
+(* In the other way around, to rebuild the cascading expression from a
+ * list of sub-expressions and an operator. Useful after we have extracted
+ * a sub-expression from the list returned by [as_nary]: *)
+let of_nary ~structure ~nullable ~units op lst =
+  let rec loop = function
+    | [] ->
+        (match op with
+        | And -> of_bool true
+        | Or -> of_bool false
+        | _ -> todo "of_nary for any operation")
+    | x::rest ->
+        make ~structure ~nullable ?units
+             (Stateless (SL2 (op, x, loop rest))) in
+  loop lst
 
 module Parser =
 struct

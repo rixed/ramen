@@ -48,3 +48,19 @@ let nullable_of_option = function
 let option_of_nullable = function
   | Null -> None
   | NotNull x -> Some x
+
+let compare_nullable cmp a b =
+  match a, b with
+  | Null, _ -> -1
+  | _, Null -> 1
+  | a, b -> cmp a b
+
+let compare_nullable_left cmp a b =
+  match a with
+  | Null -> -1
+  | a -> cmp a b
+
+let compare_nullable_right cmp a b =
+  match b with
+  | Null -> 1
+  | b -> cmp a b

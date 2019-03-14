@@ -758,7 +758,7 @@ let notify rb worker event_time (name, parameters) =
   RingBufLib.write_notif ~delay_rec:sleep_out rb
     (worker, !CodeGenLib_IO.now, event_time, name, firing, certainty, parameters)
 
-type ('local_state, 'tuple_in, 'minimal_out) group =
+type ('local_state, 'tuple_in, 'minimal_out, 'group_order) group =
   { (* used to compute the actual selected field when outputing the
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
@@ -771,31 +771,30 @@ type ('local_state, 'tuple_in, 'minimal_out) group =
      * expressions such as "SELECT in.foo + 95th percentile bar"? *)
     mutable current_out : 'minimal_out ;
     mutable previous_out : 'minimal_out option ;
-    mutable local_state : 'local_state (* the record of aggregation values aka the group or local state *)
+    (* The record of aggregation values aka the group or local state: *)
+    mutable local_state : 'local_state ;
+    (* The current value for the second operand of commit_cond0, if in
+     * use: *)
+    mutable g0 : 'group_order option
   }
 
 (* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
-type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key) aggr_persist_state =
+type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key, 'group_order) aggr_persist_state =
   { mutable last_out_tuple : 'generator_out nullable ; (* last committed tuple generator *)
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
-      ('key, ('local_state, 'tuple_in, 'minimal_out) group) Hashtbl.t ;
+      ('key, ('local_state, 'tuple_in, 'minimal_out, 'group_order) group) Hashtbl.t ;
+    (* The optional heap of groups used to speed up commit condition checks
+     * on all groups: *)
+    mutable groups_heap :
+      ('local_state, 'tuple_in, 'minimal_out, 'group_order) group RamenHeap.t ;
     (* Input sort buffer and related tuples: *)
     mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t ;
     (* We have one such state per channel, that we timeout when a
      * channel is unseen for too long: *)
     mutable last_used : float }
-
-(* TODO: instead of a single point, have 3 conditions for committing
- * (and 3 more for flushing) the groups; So that we could maybe split a
- * complex expression in smaller (faster) sub-conditions? But beware
- * of committing several times the same tuple. *)
-type when_to_check_group = ForAll | ForInGroup
-let string_of_when_to_check_group = function
-  | ForAll -> "every group at every tuple"
-  | ForInGroup -> "the group that's updated by a tuple"
 
 type 'tuple_in sort_until_fun =
   Uint64.t (* sort.#count *) ->
@@ -1030,9 +1029,26 @@ let aggregate
         'global_state ->
         'minimal_out -> (* current minimal out *)
         bool)
-      commit_before
-      do_flush
-      (when_to_check_for_commit : when_to_check_group)
+      (* Optional optimisation: groups can be ordered by group_order, and
+       * then an additional commit condition is that [commit_cond_in] must
+       * yield a greater (or equal) value than the value according to which
+       * groups are ordered. Makes it possible to check a commit condition
+       * on many groups quickly: *)
+      (commit_cond0 :
+        (
+          (* Returns the value of the first operand: *)
+          ('tuple_in -> 'global_state -> 'group_order) *
+          (* Returns the value of the second operand: *)
+          ('minimal_out -> 'generator_out nullable -> 'local_state ->
+           'global_state -> 'group_order) *
+          (* Compare two such values: *)
+          ('group_order -> 'group_order -> int) *
+          (* True if the commit condition is true even when equals: *)
+          bool
+        ) option)
+      (commit_before : bool)
+      (do_flush : bool)
+      (check_commit_for_all : bool)
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
@@ -1042,7 +1058,9 @@ let aggregate
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =
     IntGauge.make Metric.Names.group_count
-                  Metric.Docs.group_count in
+                  Metric.Docs.group_count
+  and cmp_g0 cmp g1 g2 =
+    cmp (option_get "g0" g1.g0) (option_get "g0" g2.g0) in
   IntGauge.set stats_group_count 0 ;
   let worker_name = getenv ~def:"?" "fq_name" in
   let get_binocle_tuple () =
@@ -1054,8 +1072,6 @@ let aggregate
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
   worker_start worker_name get_binocle_tuple (fun conf ->
-    let when_str = string_of_when_to_check_group when_to_check_for_commit in
-    !logger.debug "We will commit/flush for... %s" when_str ;
     let rb_in_fnames =
       let rec loop lst i =
         match Sys.getenv ("input_ringbuf_"^ string_of_int i) with
@@ -1091,6 +1107,7 @@ let aggregate
           groups =
             (* Try to make the state as small as possible: *)
             Hashtbl.create (if is_single_key then 1 else 701) ;
+          groups_heap = RamenHeap.empty ;
           sort_buf = RamenSortBuf.empty ;
           last_used = Unix.time () } in
       let live_state =
@@ -1139,6 +1156,11 @@ let aggregate
         Option.map_default ((==) g) false !already_output_aggr in
       (* Tells if the group must be committed/flushed: *)
       let must_commit g =
+        Option.map_default (fun (f0, _, cmp, eq) ->
+          let f0 = f0 in_tuple s.global_state in
+          let c = cmp f0 (option_get "g0" g.g0) in
+          c > 0 || c = 0 && eq
+        ) true commit_cond0 &&
         commit_cond in_tuple s.last_out_tuple g.local_state
                     s.global_state g.current_out
       in
@@ -1173,7 +1195,16 @@ let aggregate
              * for the states owned by minimum-out, where_slow and the
              * commit condition we can replay (TODO): *)
             g.local_state <- group_init s.global_state
-          ) else Hashtbl.remove s.groups k
+          ) else (
+            Hashtbl.remove s.groups k ;
+            (* We remove the entry from the heap right now. Alternatively,
+             * we could keep the gorup in there with a del flag in the group
+             * so that it's popped from the heap when it surfaces: *)
+            Option.may (fun (_, _, cmp, _) ->
+              let cmp = cmp_g0 cmp in
+              s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap
+            ) commit_cond0 ;
+          )
         )
       in
       (* Now that this is all in place, here are the next steps:
@@ -1214,9 +1245,17 @@ let aggregate
                 last_in = in_tuple ;
                 current_out ;
                 previous_out = None ;
-                local_state } in
+                local_state ;
+                g0 =
+                  Option.map (fun (_, g0, _, _) ->
+                    g0 current_out Null local_state s.global_state
+                  ) commit_cond0 } in
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
+              Option.may (fun (_, _, cmp, _) ->
+                let cmp = cmp_g0 cmp in
+                s.groups_heap <- RamenHeap.add cmp g s.groups_heap
+              ) commit_cond0 ;
               Some (k, g)
             ) else None (* in-tuple does not pass where_slow *)
           | g ->
@@ -1233,6 +1272,17 @@ let aggregate
               g.current_out <-
                 minimal_tuple_of_aggr
                   g.last_in s.last_out_tuple g.local_state s.global_state ;
+              Option.may (fun (_, g0, cmp, _) ->
+                let g0 = g0 g.current_out s.last_out_tuple g.local_state
+                            s.global_state in
+                if g.g0 <> Some g0 then (
+                  (* Relocate that group in the heap: *)
+                  let cmp = cmp_g0 cmp in
+                  let heap = RamenHeap.rem_phys cmp g s.groups_heap in
+                  g.g0 <- Some g0 ;
+                  s.groups_heap <- RamenHeap.add cmp g heap
+                )
+              ) commit_cond0 ;
               Some (k, g)
             ) else None (* in-tuple does not pass where_slow *)
           ) else None (* in-tuple does not pass where_fast *) in
@@ -1254,7 +1304,7 @@ let aggregate
       | None -> () (* in_tuple failed filtering *)) ;
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
-      if when_to_check_for_commit = ForAll then (
+      if check_commit_for_all then (
         (* FIXME: prevent commit_before in that case *)
         let to_commit =
           (* FIXME: What if commit-when update the global state? We are
