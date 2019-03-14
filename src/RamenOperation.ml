@@ -589,6 +589,33 @@ let resolve_unknown_tuples params op =
 
   | op -> op
 
+exception DependsOnInvalidTuple of tuple_prefix
+let check_depends_only_on lst =
+  let check_can_use tuple =
+    if not (List.mem tuple lst) then
+      raise (DependsOnInvalidTuple tuple)
+  in
+  E.iter (fun _ e ->
+    match e.E.text with
+    | Variable tuple -> check_can_use tuple
+    | Stateless (SL0 (EventStart|EventStop)) ->
+      (* Be conservative for now.
+       * TODO: Actually check the event time expressions.
+       * Also, we may not know yet the event time (if it's inferred from
+       * a parent).
+       * TODO: Perform those checks only after factors/time inference.
+       * And finally, we will do all this for nothing, as the fields are
+       * taken from output event when they are just transferred from input.
+       * So when the field used in the time expression can be computed only
+       * from the input tuple (with no use of another out field) we could
+       * as well recompute it - at least when it's just forwarded.
+       * But then we would need to be smarter in
+       * CodeGen_OCaml.emit_event_time will need more context (is out
+       * available) and how is it computed. So for now, let's assume any
+       * mention of #start/#stop is from out.  *)
+      check_can_use TupleOut
+    | _ -> ())
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
@@ -605,33 +632,13 @@ let checked params op =
       | Stateful (g, _, _) when g = state ->
           failwith ("Stateful function not allowed in "^ clause)
       | _ -> ())
-  and check_fields_from lst where =
-    let check_can_use tuple =
-      if not (List.mem tuple lst) then (
-        Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
-          (RamenLang.string_of_prefix tuple)
-          where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
-        failwith) in
-    E.iter (fun _ e ->
-      match e.E.text with
-      | Variable tuple -> check_can_use tuple
-      | Stateless (SL0 (EventStart|EventStop)) ->
-        (* Be conservative for now.
-         * TODO: Actually check the event time expressions.
-         * Also, we may not know yet the event time (if it's inferred from
-         * a parent).
-         * TODO: Perform those checks only after factors/time inference.
-         * And finally, we will do all this for nothing, as the fields are
-         * taken from output event when they are just transferred from input.
-         * So when the field used in the time expression can be computed only
-         * from the input tuple (with no use of another out field) we could
-         * as well recompute it - at least when it's just forwarded.
-         * But then we would need to be smarter in
-         * CodeGen_OCaml.emit_event_time will need more context (is out
-         * available) and how is it computed. So for now, let's assume any
-         * mention of #start/#stop is from out.  *)
-        check_can_use TupleOut
-      | _ -> ())
+  and check_fields_from lst where e =
+    try check_depends_only_on lst e
+    with DependsOnInvalidTuple tuple ->
+      Printf.sprintf2 "Tuple %s not allowed in %s (only %a)"
+        (RamenLang.string_of_prefix tuple)
+        where (pretty_list_print RamenLang.tuple_prefix_print) lst |>
+      failwith
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
       Printf.sprintf2 "Field %a is not in output tuple (only %a)"

@@ -847,11 +847,6 @@ let is_generator e =
     false
   with Exit -> true
 
-(* We can share default values: *)
-let default_start = make (Stateless (SL0 EventStart))
-let default_zero = zero ()
-let default_one = one ()
-let default_1hour = one_hour ()
 
 module Parser =
 struct
@@ -859,6 +854,12 @@ struct
   let const_of_string = of_string
   (*$< Parser *)
   open RamenParsing
+
+  (* We can share default values: *)
+  let default_start = make (Stateless (SL0 EventStart))
+  let default_zero = zero ()
+  let default_one = one ()
+  let default_1hour = one_hour ()
 
   (* Single things *)
   let const m =

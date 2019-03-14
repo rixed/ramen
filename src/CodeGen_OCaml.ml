@@ -1211,6 +1211,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* And and Or does not inherit nullability from their arguments the way
    * other functions does: given only one value we may be able to find out
    * the result without looking at the other one (that can then be NULL). *)
+  (* FIXME: anyway, we would like AND and OR to shortcut the evaluation of
+   * their argument when the result is known, so we must not use
+   * [emit_functionN] but craft our own version here. *)
   | Finalize, Stateless (SL2 (And, e1, e2)), TBool ->
     if nullable then
       emit_functionN ~env ~opc ~nullable "CodeGenLib.and_opt"
