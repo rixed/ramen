@@ -7,11 +7,21 @@
  * comparison function returns 0).
  * Smallest elements are nearest to the root.
  * When two elements compare equal the relative order is not specified. *)
+open Batteries
+
 type 'a t = E | T of (* rank *) int * 'a * 'a t * 'a t
 
 let empty = E
 let is_empty = function E -> true | _ -> false
 let singleton x = T (1, x, E, E)
+
+let rec print p oc = function
+  | E -> String.print oc "∅"
+  | T (_, x, l, r) ->
+      Printf.fprintf oc "[ %a <- %a -> %a ]"
+        (print p) l
+        p x
+        (print p) r
 
 let rank = function
     | E -> 0
