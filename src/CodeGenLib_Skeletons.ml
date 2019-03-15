@@ -85,7 +85,7 @@ let stats_avg_full_out_bytes =
 let measure_full_out =
   let sum = ref 0 and count = ref 0 in
   fun sz ->
-    !logger.debug "measured fully fledged out tuple of size %d" sz ;
+    !logger.debug "Measured fully fledged out tuple of size %d" sz ;
     let prev_sum = !sum in
     sum := !sum + sz ;
     if !sum < prev_sum then (
@@ -490,7 +490,7 @@ let outputer_of
             assert (i < Array.length factors_values) ;
             let pvs = factors_values.(i) in
             if not (Set.mem pv pvs.values) then ( (* FIXME: Set.update *)
-              !logger.debug "new value for factor %s: %a"
+              !logger.debug "New value for factor %s: %a"
                 factor T.print pv ;
               let min_time = min start pvs.min_time
               and max_time = max stop pvs.max_time in

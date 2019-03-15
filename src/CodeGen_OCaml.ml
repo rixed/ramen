@@ -39,7 +39,8 @@ type op_context =
     typ : RamenTuple.typ ;
     params : RamenTuple.params ;
     code : string Batteries.IO.output ;
-    consts : string Batteries.IO.output }
+    consts : string Batteries.IO.output ;
+    func_name : RamenName.func option }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
@@ -3214,11 +3215,20 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
   let es = E.as_nary E.And commit_cond in
   (* TODO: take the best possible sub-condition not the first one: *)
   let rec loop rest = function
-    | [] -> no_optim
+    | [] ->
+        !logger.warning "Cannot find a way to optimise the commit \
+                         condition of function %a"
+          RamenName.func_print (option_get "func_name" opc.func_name) ;
+        no_optim
     | e :: es ->
         (match defined_order e with
-        | exception Not_found -> loop (e :: rest) es
+        | exception Not_found ->
+            !logger.debug "Expression %a does not define an ordering"
+              (E.print false) e ;
+            loop (e :: rest) es
         | f, neg, op, g ->
+            !logger.debug "Expression %a defines an ordering"
+              (E.print false) e ;
             (* We will convert both [f] and [g] into the bigger numeric type
              * as [emit_function] would do: *)
             let to_typ = large_enough_for f.typ.structure g.typ.structure in
@@ -3459,7 +3469,8 @@ let emit_running_condition oc params envvars cond =
   let code = IO.output_string ()
   and consts = IO.output_string () in
   let opc =
-    { op = None ; event_time = None ; params ; code ; consts ; typ = [] } in
+    { op = None ; event_time = None ; func_name = None ;
+      params ; code ; consts ; typ = [] } in
   (match cond with
   | Some cond ->
       let env = List.rev_append (env_of_envvars envvars)
@@ -3727,8 +3738,8 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
   !logger.debug "After substitutions for environment bindings: %a"
     (O.print true) op ;
   let opc =
-    { op = Some op ; params ; code ; consts ; typ ;
-      event_time = O.event_time_of_operation func.F.operation } in
+    { op = Some op ; func_name = Some func.F.name ; params ; code ; consts ;
+      typ ; event_time = O.event_time_of_operation func.F.operation } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.keep_temp_files (fun oc ->
