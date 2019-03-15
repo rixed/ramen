@@ -758,8 +758,10 @@ let notify rb worker event_time (name, parameters) =
   RingBufLib.write_notif ~delay_rec:sleep_out rb
     (worker, !CodeGenLib_IO.now, event_time, name, firing, certainty, parameters)
 
-type ('local_state, 'tuple_in, 'minimal_out, 'group_order) group =
-  { (* used to compute the actual selected field when outputing the
+type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
+  { (* The key value of this group: *)
+    key : 'key ;
+    (* used to compute the actual selected field when outputing the
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate. *)
@@ -785,11 +787,11 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
-      ('key, ('local_state, 'tuple_in, 'minimal_out, 'group_order) group) Hashtbl.t ;
+      ('key, ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group) Hashtbl.t ;
     (* The optional heap of groups used to speed up commit condition checks
      * on all groups: *)
     mutable groups_heap :
-      ('local_state, 'tuple_in, 'minimal_out, 'group_order) group RamenHeap.t ;
+      ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group RamenHeap.t ;
     (* Input sort buffer and related tuples: *)
     mutable sort_buf : ('sort_key, 'tuple_in) RamenSortBuf.t ;
     (* We have one such state per channel, that we timeout when a
@@ -1164,7 +1166,7 @@ let aggregate
         commit_cond in_tuple s.last_out_tuple g.local_state
                     s.global_state g.current_out
       in
-      let commit_and_flush (k, g) =
+      let commit_and_flush g =
         (* Output the tuple *)
         (match commit_before, g.previous_out with
         | false, _ ->
@@ -1196,7 +1198,7 @@ let aggregate
              * commit condition we can replay (TODO): *)
             g.local_state <- group_init s.global_state
           ) else (
-            Hashtbl.remove s.groups k ;
+            Hashtbl.remove s.groups g.key ;
             (* We remove the entry from the heap right now. Alternatively,
              * we could keep the gorup in there with a del flag in the group
              * so that it's popped from the heap when it surfaces: *)
@@ -1220,7 +1222,7 @@ let aggregate
        * Note that steps 3 and 4 have two implementations, depending on
        * whether the group is a new one or not. *)
       (* 1. Filtering (fast path) *)
-      let k_aggr_opt = (* maybe the key and group that has been updated: *)
+      let aggr_opt = (* maybe the key and group that has been updated: *)
         if where_fast s.global_state in_tuple merge_greatest s.last_out_tuple
         then (
           (* 2. Retrieve the group *)
@@ -1241,6 +1243,7 @@ let aggregate
                 minimal_tuple_of_aggr
                   in_tuple s.last_out_tuple local_state s.global_state in
               let g = {
+                key = k ;
                 first_in = in_tuple ;
                 last_in = in_tuple ;
                 current_out ;
@@ -1256,7 +1259,7 @@ let aggregate
                 let cmp = cmp_g0 cmp in
                 s.groups_heap <- RamenHeap.add cmp g s.groups_heap
               ) commit_cond0 ;
-              Some (k, g)
+              Some g
             ) else None (* in-tuple does not pass where_slow *)
           | g ->
             (* The group already exists. *)
@@ -1283,11 +1286,11 @@ let aggregate
                   s.groups_heap <- RamenHeap.add cmp g heap
                 )
               ) commit_cond0 ;
-              Some (k, g)
+              Some g
             ) else None (* in-tuple does not pass where_slow *)
           ) else None (* in-tuple does not pass where_fast *) in
-      (match k_aggr_opt with
-      | Some (k, g) ->
+      (match aggr_opt with
+      | Some g ->
         (* 5. Post-condition to commit and flush *)
         if channel_id = RamenChannel.live then
           IntCounter.add stats_selected_tuple_count 1 ;
@@ -1296,7 +1299,7 @@ let aggregate
                         g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
-          commit_and_flush (k, g)
+          commit_and_flush g
         ) ;
         if commit_before then
           update_states g.last_in s.last_out_tuple
@@ -1310,10 +1313,33 @@ let aggregate
           (* FIXME: What if commit-when update the global state? We are
            * going to update it several times here. We should prevent this
            * clause to access the global state. *)
-          Hashtbl.fold (fun k g l ->
-            if not (already_output g) && must_commit g
-            then (k, g)::l else l
-          ) s.groups [] in
+          match commit_cond0 with
+          | Some (f0, _, cmp, eq) ->
+              let f0 = f0 in_tuple s.global_state in
+              let to_commit = ref [] in
+              (try
+                RamenHeap.fold_left (cmp_g0 cmp) (fun () g ->
+                  let g0 = option_get "g0" g.g0 in
+                  let c = cmp f0 g0 in
+                  if c > 0 || c = 0 && eq then (
+                    if not (already_output g) &&
+                       commit_cond in_tuple s.last_out_tuple g.local_state
+                                   s.global_state g.current_out
+                    then to_commit := g :: !to_commit
+                  ) else
+                    (* No way we will find another true pre-condition *)
+                    raise Exit
+                ) () s.groups_heap
+              with Exit -> ()) ;
+              (* Better pop the min first: *)
+              List.rev !to_commit
+          | None ->
+              Hashtbl.fold (fun _ g to_commit ->
+                if not (already_output g) &&
+                   commit_cond in_tuple s.last_out_tuple g.local_state
+                               s.global_state g.current_out
+                then g :: to_commit else to_commit
+              ) s.groups [] in
         List.iter commit_and_flush to_commit
       ) ;
       s

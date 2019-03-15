@@ -27,7 +27,7 @@ let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 let out_ref = "v7" (* last: ORC as a possible output type *)
 
 (* Workers state format *)
-let worker_state = "v11" (* last: changed {T,V}Record format *)
+let worker_state = "v12" (* last: added group key + heap *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
