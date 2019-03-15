@@ -9,48 +9,64 @@
  * When two elements compare equal the relative order is not specified. *)
 open Batteries
 
-type 'a t = E | T of (* rank *) int * 'a * 'a t * 'a t
+type 'a t =
+  E | T of { value : 'a ; rank : int ; left : 'a t ; right : 'a t }
 
 let empty = E
-let is_empty = function E -> true | _ -> false
-let singleton x = T (1, x, E, E)
+
+let is_empty = function
+  | E -> true
+  | _ -> false
+
+let singleton value =
+  T { value ; rank = 1 ; left = E ; right = E }
 
 let rec print p oc = function
   | E -> String.print oc "∅"
-  | T (_, x, l, r) ->
+  | T t ->
       Printf.fprintf oc "[ %a <- %a -> %a ]"
-        (print p) l
-        p x
-        (print p) r
+        (print p) t.left
+        p t.value
+        (print p) t.right
 
 let rank = function
-    | E -> 0
-    | T (r, _, _, _) -> r
+  | E -> 0
+  | T t -> t.rank
 
-let makeT v l r =
-    let rank_l, rank_r = rank l, rank r in
-    if rank_l >= rank_r then T (rank_l + 1, v, l, r)
-    else T (rank_r + 1, v, r, l)
+let makeT value left right =
+  let rank_l, rank_r = rank left, rank right in
+  if rank_l >= rank_r then
+    T { value ; rank = rank_l + 1 ; left ; right }
+  else
+    T { value ; rank = rank_r + 1 ; left = right ; right = left }
 
 let rec merge cmp a b = match a with
-    | E -> b
-    | T (_, x, a_l, a_r) -> (match b with
-        | E -> a
-        | T (_, y, b_l, b_r) ->
-            if cmp x y < 0 then makeT x a_l (merge cmp a_r b)
-            else makeT y b_l (merge cmp a b_r))
+  | E -> b
+  | T ta -> (match b with
+      | E -> a
+      | T tb ->
+          if cmp ta.value tb.value < 0 then
+            makeT ta.value ta.left (merge cmp ta.right b)
+          else
+            makeT tb.value tb.left (merge cmp tb.right a))
 
-let add cmp x a = merge cmp a (singleton x)
+let add cmp x a =
+  merge cmp a (singleton x)
 
-let min = function E -> raise Not_found | T (_, x, _, _) -> x
+let min = function
+  | E -> raise Not_found
+  | T t -> t.value
 
-let min_opt t = try Some (min t) with Not_found -> None
+let min_opt t =
+  try Some (min t)
+  with Not_found -> None
 
 let del_min cmp = function
   | E -> raise Not_found
-  | T (_, _, l, r) -> merge cmp l r
+  | T t -> merge cmp t.left t.right
 
-let pop_min cmp h = min h, del_min cmp h
+let pop_min cmp t =
+  min t, del_min cmp t
 
 (* Iterate over items, smallest to greatest: *)
 let rec fold_left cmp f init = function
@@ -61,22 +77,26 @@ let rec fold_left cmp f init = function
 
 let rec rem cmp x = function
   | E -> E
-  | T (_, y, l, r) ->
-      if x = y && cmp x y = 0 then merge cmp l r else
-      makeT y (rem cmp x l) (rem cmp x r)
+  | T t ->
+      if x = t.value && cmp x t.value = 0 then
+        merge cmp t.left t.right
+      else
+        makeT t.value (rem cmp x t.left) (rem cmp x t.right)
 
 (* Same as above, but use physical equality to locate the item to remove: *)
 let rec rem_phys cmp x = function
   | E -> E
-  | T (_, y, l, r) ->
-      if x == y then merge cmp l r else
-      makeT y (rem_phys cmp x l) (rem_phys cmp x r)
+  | T t ->
+      if x == t.value then
+        merge cmp t.left t.right
+      else
+        makeT t.value (rem_phys cmp x t.left) (rem_phys cmp x t.right)
 
 (* Returns the number of items in that heap. Slow and non recursive, for
  * debugging only: *)
 let length t =
   let rec loop s = function
     | E -> s
-    | T (_, _, l, r) ->
-        loop (loop (1 + s) l) r in
+    | T t ->
+        loop (loop (1 + s) t.left) t.right in
   loop 0 t
