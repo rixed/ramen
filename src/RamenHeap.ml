@@ -36,9 +36,9 @@ let rank = function
 let makeT value left right =
   let rank_l, rank_r = rank left, rank right in
   if rank_l >= rank_r then
-    T { value ; rank = rank_l + 1 ; left ; right }
+    T { value ; rank = rank_r + 1 ; left ; right }
   else
-    T { value ; rank = rank_r + 1 ; left = right ; right = left }
+    T { value ; rank = rank_l + 1 ; left = right ; right = left }
 
 let rec merge cmp a b = match a with
   | E -> b
