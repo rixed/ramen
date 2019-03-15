@@ -62,16 +62,21 @@ let rec fold_left cmp f init = function
 let rec rem cmp x = function
   | E -> E
   | T (_, y, l, r) ->
-      let c = cmp x y in
-      if c < 0 then makeT y (rem cmp x l) r else
-      if c = 0 && x = y then merge cmp l r else
-      makeT y l (rem cmp x r)
+      if x = y && cmp x y = 0 then merge cmp l r else
+      makeT y (rem cmp x l) (rem cmp x r)
 
 (* Same as above, but use physical equality to locate the item to remove: *)
 let rec rem_phys cmp x = function
   | E -> E
   | T (_, y, l, r) ->
-      let c = cmp x y in
-      if c < 0 then makeT y (rem_phys cmp x l) r else
-      if c = 0 && x == y then merge cmp l r else
-      makeT y l (rem_phys cmp x r)
+      if x == y then merge cmp l r else
+      makeT y (rem_phys cmp x l) (rem_phys cmp x r)
+
+(* Returns the number of items in that heap. Slow and non recursive, for
+ * debugging only: *)
+let length t =
+  let rec loop s = function
+    | E -> s
+    | T (_, _, l, r) ->
+        loop (loop (1 + s) l) r in
+  loop 0 t
