@@ -102,7 +102,7 @@ let last = function
 
 let smallest = function
   | None -> invalid_arg "smallest"
-  | Some t -> snd (LL.get (RamenHeap.min t.heap))
+  | Some t -> snd (LL.get (RamenHeap.min cmp_nodes t.heap))
 
 let greatest = function
   | None -> invalid_arg "greatest"

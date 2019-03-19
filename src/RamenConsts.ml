@@ -38,6 +38,7 @@ struct
     let perf_where_slow = "perf_where_slow"
     let perf_update_group = "perf_update_group"
     let perf_commit_incoming = "perf_commit_incoming"
+    let perf_commit_others_find = "perf_commit_others_find"
     let perf_commit_others = "perf_commit_others"
 
     (* Metrics reported by the supervisor: *)
@@ -116,8 +117,12 @@ struct
        tuple."
     let perf_commit_incoming =
       "Average time spent committing the incoming tuple."
+    let perf_commit_others_find =
+      "Average time spent looking for other tuples to commit, for each \
+       incoming one."
     let perf_commit_others =
-      "Average time spent committing other tuples for each incoming one."
+      "Average time spent actually committing other tuples, for each \
+       incoming one."
     let profile = "Performance measurements."
   end
 end

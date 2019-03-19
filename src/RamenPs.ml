@@ -17,6 +17,7 @@ struct
       where_slow : Binocle.Perf.t ;
       update_group : Binocle.Perf.t ;
       commit_incoming : Binocle.Perf.t ;
+      commit_others_find : Binocle.Perf.t ;
       commit_others : Binocle.Perf.t }
 
   let zero =
@@ -27,6 +28,7 @@ struct
       where_slow = z () ;
       update_group = z () ;
       commit_incoming = z () ;
+      commit_others_find = z () ;
       commit_others = z () }
 
   let add p1 p2 =
@@ -41,6 +43,8 @@ struct
       where_slow = add_prof p1.where_slow p2.where_slow ;
       update_group = add_prof p1.update_group p2.update_group ;
       commit_incoming = add_prof p1.commit_incoming p2.commit_incoming ;
+      commit_others_find =
+        add_prof p1.commit_others_find p2.commit_others_find ;
       commit_others = add_prof p1.commit_others p2.commit_others }
 end
 
@@ -113,18 +117,20 @@ let read_stats ?while_ conf =
     (* FIXME: make it RamenBinocle job to deserialize this properly: *)
     assert (fst kvs.(0) = "commit_incoming") ;
     assert (fst kvs.(1) = "commit_others") ;
-    assert (fst kvs.(2) = "find_group") ;
-    assert (fst kvs.(3) = "tot_per_tuple") ;
-    assert (fst kvs.(4) = "update_group") ;
-    assert (fst kvs.(5) = "where_fast") ;
-    assert (fst kvs.(6) = "where_slow") ;
+    assert (fst kvs.(2) = "commit_others_find") ;
+    assert (fst kvs.(3) = "find_group") ;
+    assert (fst kvs.(4) = "tot_per_tuple") ;
+    assert (fst kvs.(5) = "update_group") ;
+    assert (fst kvs.(6) = "where_fast") ;
+    assert (fst kvs.(7) = "where_slow") ;
     Profile.{
-      tot_per_tuple = get_perf (snd kvs.(3)) ;
-      where_fast = get_perf (snd kvs.(5)) ;
-      find_group = get_perf (snd kvs.(2)) ;
-      where_slow = get_perf (snd kvs.(6)) ;
-      update_group = get_perf (snd kvs.(4)) ;
+      tot_per_tuple = get_perf (snd kvs.(4)) ;
+      where_fast = get_perf (snd kvs.(6)) ;
+      find_group = get_perf (snd kvs.(3)) ;
+      where_slow = get_perf (snd kvs.(7)) ;
+      update_group = get_perf (snd kvs.(5)) ;
       commit_incoming = get_perf (snd kvs.(0)) ;
+      commit_others_find = get_perf (snd kvs.(2)) ;
       commit_others = get_perf (snd kvs.(1)) }
     [@@ocaml.warning "-8"]
   in

@@ -17,13 +17,11 @@ let merge cmp (h1, c1) (h2, c2) = merge cmp h1 h2, c1 + c2
 
 let add cmp x (h, c) = add cmp x h, c + 1
 
-let min (h, _) = min h
+let min cmp (h, _) = min cmp h
 
-let min_opt (h, _) = min_opt h
+let min_opt cmp (h, _) = min_opt cmp h
 
 let del_min cmp (h, c) = del_min cmp h, c - 1
-
-let pop_min cmp t = min t, del_min cmp t
 
 let fold_left cmp f init (h, _) = fold_left cmp f init h
 

@@ -101,6 +101,10 @@ let stats_perf_update_group =
 let stats_perf_commit_incoming =
   Perf.make Metric.Names.perf_commit_incoming Metric.Docs.perf_commit_incoming
 
+let stats_perf_commit_others_find =
+  Perf.make Metric.Names.perf_commit_others_find
+            Metric.Docs.perf_commit_others_find
+
 let stats_perf_commit_others =
   Perf.make Metric.Names.perf_commit_others Metric.Docs.perf_commit_others
 
@@ -184,6 +188,7 @@ let get_binocle_tuple worker ic sc gc =
      "where_slow", Perf.get stats_perf_where_slow |> sp ;
      "update_group", Perf.get stats_perf_update_group |> sp ;
      "commit_incoming", Perf.get stats_perf_commit_incoming |> sp ;
+     "commit_others_find", Perf.get stats_perf_commit_others_find |> sp ;
      "commit_others", Perf.get stats_perf_commit_others |> sp |],
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
@@ -955,7 +960,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
       wait_for_tuples (Unix.gettimeofday ()) ;
       match
         Array.fold_lefti (fun mi_ma i to_merge ->
-          match mi_ma, RamenSzHeap.min_opt to_merge.tuples with
+          match mi_ma, RamenSzHeap.min_opt tuples_cmp to_merge.tuples with
           | None, Some t ->
               Some (i, t, t)
           | Some (j, tmi, tma) as prev, Some t ->
@@ -1256,12 +1261,13 @@ let aggregate
           ) else (
             Hashtbl.remove s.groups g.key ;
             (* We remove the entry from the heap right now. Alternatively,
-             * we could keep the gorup in there with a del flag in the group
-             * so that it's popped from the heap when it surfaces: *)
-            Option.may (fun (_, _, cmp, _) ->
-              let cmp = cmp_g0 cmp in
-              s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap
-            ) commit_cond0 ;
+             * we could keep the group in there with a del flag in the group
+             * so that it's popped from the heap when it surfaces. But
+             * may_relocate_group_in_heap is then much harder: *)
+            Option.may (fun _ ->
+              if not (RamenHeap.rem_phys g s.groups_heap) then
+                !logger.error "Cannot delete group from heap(2) ?!" ;
+            ) commit_cond0
           )
         )
       in
@@ -1382,8 +1388,10 @@ let aggregate
           | Some (f0, _, cmp, eq) ->
               let f0 = f0 in_tuple s.global_state in
               let to_commit = ref [] in
+              let num_scanned = ref 0 in
               (try
                 RamenHeap.fold_left (cmp_g0 cmp) (fun () g ->
+                  incr num_scanned ;
                   let g0 = option_get "g0" g.g0 in
                   let c = cmp f0 g0 in
                   if c > 0 || c = 0 && eq then (
@@ -1397,6 +1405,10 @@ let aggregate
                     raise Exit
                 ) () s.groups_heap
               with Exit -> ()) ;
+              let l = Hashtbl.length s.groups in
+              if l > 10 && !num_scanned > l/4 then
+                !logger.warning "Scanned %d/%d groups in the heap (%d to commit)"
+                  !num_scanned l (List.length !to_commit) ;
               (* Better pop the min first: *)
               List.rev !to_commit
           | None ->
@@ -1406,10 +1418,11 @@ let aggregate
                                s.global_state g.current_out
                 then g :: to_commit else to_commit
               ) s.groups [] in
-        List.iter commit_and_flush to_commit
+        perf := Perf.add_and_transfer stats_perf_commit_others_find !perf ;
+        List.iter commit_and_flush to_commit ;
+        (* FIXME: use the channel_id as a label! *)
+        Perf.add stats_perf_commit_others (Perf.stop !perf) ;
       ) ;
-      (* FIXME: use the channel_id as a label! *)
-      Perf.add stats_perf_commit_others (Perf.stop !perf) ;
       s
     in
     (* The event loop: *)

@@ -302,7 +302,7 @@ module Past = struct
 
   let add state x t =
     let rec out_the_olds h =
-      match RamenHeap.min h with
+      match RamenHeap.min cmp h with
       | exception Not_found -> h
       | _, t' ->
           if t -. t' < state.max_age then h else
@@ -320,10 +320,9 @@ module Past = struct
         | Some prev ->
           (* When the reservoir was initially empty it will replace
            * any_value with time 0., which is not in the heap.
-           * Therefore it is OK for rem to fail: *)
-          let values =
-            try RamenHeap.rem cmp prev state.values
-            with Not_found -> state.values in
+           * Therefore it is OK that rem fails silently: *)
+          (* TODO: try to make RamenHeap.rem destructive *)
+          let values = RamenHeap.rem cmp prev state.values in
           add values)
 
   (* Must return an optional vector of max_length values: *)

@@ -616,7 +616,7 @@ let send_next conf max_fpr now =
     pendings.set <- PendingSet.remove p pendings.set ;
     pendings.dirty <- true
   in
-  match RamenHeap.min pendings.heap with
+  match RamenHeap.min heap_pending_cmp pendings.heap with
   | exception Not_found -> false
   | p ->
       if p.schedule_time > now then (
