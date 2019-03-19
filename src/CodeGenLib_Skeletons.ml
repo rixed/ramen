@@ -1388,10 +1388,8 @@ let aggregate
           | Some (f0, _, cmp, eq) ->
               let f0 = f0 in_tuple s.global_state in
               let to_commit = ref [] in
-              let num_scanned = ref 0 in
               (try
                 RamenHeap.fold_left (cmp_g0 cmp) (fun () g ->
-                  incr num_scanned ;
                   let g0 = option_get "g0" g.g0 in
                   let c = cmp f0 g0 in
                   if c > 0 || c = 0 && eq then (
@@ -1405,10 +1403,6 @@ let aggregate
                     raise Exit
                 ) () s.groups_heap
               with Exit -> ()) ;
-              let l = Hashtbl.length s.groups in
-              if l > 10 && !num_scanned > l/4 then
-                !logger.warning "Scanned %d/%d groups in the heap (%d to commit)"
-                  !num_scanned l (List.length !to_commit) ;
               (* Better pop the min first: *)
               List.rev !to_commit
           | None ->
