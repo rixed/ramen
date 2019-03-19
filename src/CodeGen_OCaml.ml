@@ -487,21 +487,21 @@ let rec conv_from_to
     | TU64, TEth -> Printf.fprintf oc "Uint48.of_uint64"
     | TList t_from, TList t_to
          when t_from.nullable = t_to.nullable ->
-      Printf.fprintf oc "(fun v_ -> Array.map (%t) v_)"
+      Printf.fprintf oc "Array.map (%t)"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
     | TList t_from, TList t_to
          when nullable && t_from.nullable && not t_to.nullable ->
       Printf.fprintf oc
-        "(fun v_ -> Array.map (function \
+        "Array.map (function \
             | Null -> raise ImNull \
-            | NotNull x_ -> %t x_) v_)"
+            | NotNull x_ -> %t x_)"
         (conv_from_to ~string_not_null ~nullable:t_from.nullable
                       t_from.structure t_to.structure)
     | TList t_from, TList t_to
          when not t_from.nullable && t_to.nullable ->
       Printf.fprintf oc
-        "(fun v_ -> Array.map (fun x_ -> NotNull (%t x_)) v_)"
+        "Array.map (fun x_ -> NotNull (%t x_))"
         (conv_from_to ~string_not_null ~nullable:false
                       t_from.structure t_to.structure)
     | TVec (_, t_from), TList t_to ->
@@ -1108,8 +1108,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       [None, PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (Sparkline, e)), TString ->
     emit_functionN ~env ~opc ~nullable "sparkline"
-      [Some (TVec (0, T.make ~nullable:false TFloat)),
-       PropagateNull] oc [e]
+      [Some (TVec (0, T.make ~nullable:false TFloat)), PropagateNull] oc [e]
   | Finalize, Stateless (SL1 (BeginOfRange, e)), TIpv4 ->
     emit_functionN ~env ~opc ~nullable "RamenIpv4.Cidr.first"
       [Some TCidrv4, PropagateNull] oc [e]
