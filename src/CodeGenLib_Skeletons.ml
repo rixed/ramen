@@ -82,6 +82,29 @@ let stats_avg_full_out_bytes =
   IntGauge.make Metric.Names.avg_full_out_bytes
     Metric.Docs.avg_full_out_bytes
 
+(* Perf counters: *)
+let stats_perf_per_tuple =
+  Perf.make Metric.Names.perf_per_tuple Metric.Docs.perf_per_tuple
+
+let stats_perf_where_fast =
+  Perf.make Metric.Names.perf_where_fast Metric.Docs.perf_where_fast
+
+let stats_perf_find_group =
+  Perf.make Metric.Names.perf_find_group Metric.Docs.perf_find_group
+
+let stats_perf_where_slow =
+  Perf.make Metric.Names.perf_where_slow Metric.Docs.perf_where_slow
+
+let stats_perf_update_group =
+  Perf.make Metric.Names.perf_update_group Metric.Docs.perf_update_group
+
+let stats_perf_commit_incoming =
+  Perf.make Metric.Names.perf_commit_incoming Metric.Docs.perf_commit_incoming
+
+let stats_perf_commit_others =
+  Perf.make Metric.Names.perf_commit_others Metric.Docs.perf_commit_others
+
+
 let measure_full_out =
   let sum = ref 0 and count = ref 0 in
   fun sz ->
@@ -133,7 +156,17 @@ let get_binocle_tuple worker ic sc gc =
     match FloatGauge.get stats_event_time with
     | None -> None, None
     | Some (mi, _, ma) -> Some mi, Some ma
-  and time = Unix.gettimeofday () in
+  and time = Unix.gettimeofday ()
+  and perf p =
+    p.Binocle.Perf.count, p.Binocle.Perf.system, p.Binocle.Perf.user in
+  let sp p =
+    let count, system, user =
+      Option.map_default perf (0, 0., 0.) p in
+    T.VRecord
+      [| "count", VU32 (Uint32.of_int count) ;
+         "system", VFloat system ;
+         "user", VFloat user |]
+  in
   worker, time,
   min_event_time, max_event_time,
   ic, sc,
@@ -142,6 +175,16 @@ let get_binocle_tuple worker ic sc gc =
   FloatCounter.get stats_cpu,
   (* Assuming we call update_stats before this: *)
   ram, max_ram,
+  (* Start measurements as a single record: *)
+  (* FIXME: make RamenBinocle the only place where this record is defined,
+   * instead of there, here, in RamenPs. *)
+  [| "tot_per_tuple", Perf.get stats_perf_per_tuple |> sp ;
+     "where_fast", Perf.get stats_perf_where_fast |> sp ;
+     "find_group", Perf.get stats_perf_find_group |> sp ;
+     "where_slow", Perf.get stats_perf_where_slow |> sp ;
+     "update_group", Perf.get stats_perf_update_group |> sp ;
+     "commit_incoming", Perf.get stats_perf_commit_incoming |> sp ;
+     "commit_others", Perf.get stats_perf_commit_others |> sp |],
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
@@ -151,7 +194,7 @@ let get_binocle_tuple worker ic sc gc =
   startup_time
 
 let send_stats
-    rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
+    rb (_, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ as tuple) =
   let open RingBuf in
   let head = RingBufLib.DataTuple RamenChannel.live in
   let sersize =
@@ -1222,9 +1265,12 @@ let aggregate
        * Note that steps 3 and 4 have two implementations, depending on
        * whether the group is a new one or not. *)
       (* 1. Filtering (fast path) *)
-      let aggr_opt = (* maybe the key and group that has been updated: *)
+      let perf = ref (Perf.start ()) in
+      let aggr_opt =
+        (* maybe the key and group that has been updated: *)
         if where_fast s.global_state in_tuple merge_greatest s.last_out_tuple
         then (
+          perf := Perf.add_and_transfer stats_perf_where_fast !perf ;
           (* 2. Retrieve the group *)
           if channel_id = RamenChannel.live then
             IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
@@ -1234,10 +1280,12 @@ let aggregate
           | exception Not_found ->
             (* The group does not exist for that key. *)
             let local_state = group_init s.global_state in
+            perf := Perf.add_and_transfer stats_perf_find_group !perf ;
             (* 3. Filtering (slow path) - for new group *)
             if where_slow s.global_state in_tuple merge_greatest
                           s.last_out_tuple local_state
             then (
+              perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
               (* 4. Compute new minimal_out (and new group) *)
               let current_out =
                 minimal_tuple_of_aggr
@@ -1259,15 +1307,21 @@ let aggregate
                 let cmp = cmp_g0 cmp in
                 s.groups_heap <- RamenHeap.add cmp g s.groups_heap
               ) commit_cond0 ;
+              perf := Perf.add_and_transfer stats_perf_update_group !perf ;
               Some g
-            ) else None (* in-tuple does not pass where_slow *)
+            ) else ( (* in-tuple does not pass where_slow *)
+              perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
+              None
+            )
           | g ->
             (* The group already exists. *)
+            perf := Perf.add_and_transfer stats_perf_find_group !perf ;
             (* 3. Filtering (slow path) - for existing group *)
             if where_slow s.global_state in_tuple merge_greatest
                           s.last_out_tuple g.local_state
             then (
               (* 4. Compute new current_out (and update the group) *)
+              perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving g *)
               g.last_in <- in_tuple ;
@@ -1286,9 +1340,16 @@ let aggregate
                   s.groups_heap <- RamenHeap.add cmp g heap
                 )
               ) commit_cond0 ;
+              perf := Perf.add_and_transfer stats_perf_update_group !perf ;
               Some g
-            ) else None (* in-tuple does not pass where_slow *)
-          ) else None (* in-tuple does not pass where_fast *) in
+            ) else ( (* in-tuple does not pass where_slow *)
+              perf := Perf.add_and_transfer stats_perf_where_slow !perf ;
+              None
+            )
+          ) else ( (* in-tuple does not pass where_fast *)
+            perf := Perf.add_and_transfer stats_perf_where_fast !perf ;
+            None
+          ) in
       (match aggr_opt with
       | Some g ->
         (* 5. Post-condition to commit and flush *)
@@ -1305,6 +1366,7 @@ let aggregate
           update_states g.last_in s.last_out_tuple
                         g.local_state s.global_state g.current_out
       | None -> () (* in_tuple failed filtering *)) ;
+      perf := Perf.add_and_transfer stats_perf_commit_incoming !perf ;
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
       if check_commit_for_all then (
@@ -1342,6 +1404,8 @@ let aggregate
               ) s.groups [] in
         List.iter commit_and_flush to_commit
       ) ;
+      (* FIXME: use the channel_id as a label! *)
+      Perf.add stats_perf_commit_others (Perf.stop !perf) ;
       s
     in
     (* The event loop: *)
@@ -1357,6 +1421,7 @@ let aggregate
           merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
                     merge_timeout read_tuple rb_ins
     and on_tup tx_size channel_id in_tuple merge_greatest =
+      let perf_per_tuple = Perf.start () in
       if channel_id <> RamenChannel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
           RamenChannel.print channel_id ;
@@ -1393,7 +1458,9 @@ let aggregate
             s.sort_buf <- sb ;
             aggregate_one channel_id s min_in merge_greatest
           else
-            s)
+            s) ;
+        if channel_id = RamenChannel.live then
+          Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple) ;
     and on_else head =
       msg_outputer head None
     in

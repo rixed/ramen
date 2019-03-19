@@ -7,6 +7,43 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 
+(* FIXME: Make RamenBinocle the only place where this record is defined *)
+module Profile =
+struct
+  type t =
+    { tot_per_tuple : Binocle.Perf.t ;
+      where_fast : Binocle.Perf.t ;
+      find_group : Binocle.Perf.t ;
+      where_slow : Binocle.Perf.t ;
+      update_group : Binocle.Perf.t ;
+      commit_incoming : Binocle.Perf.t ;
+      commit_others : Binocle.Perf.t }
+
+  let zero =
+    let z () = Binocle.Perf.{ count = 0 ; user = 0. ; system = 0. } in
+    { tot_per_tuple = z () ;
+      where_fast = z () ;
+      find_group = z () ;
+      where_slow = z () ;
+      update_group = z () ;
+      commit_incoming = z () ;
+      commit_others = z () }
+
+  let add p1 p2 =
+    let add_prof p1 p2 =
+      Binocle.Perf.{
+        count = p1.count + p2.count ;
+        user = p1.user +. p2.user ;
+        system = p1.system +. p2.system } in
+    { tot_per_tuple = add_prof p1.tot_per_tuple p2.tot_per_tuple ;
+      where_fast = add_prof p1.where_fast p2.where_fast ;
+      find_group = add_prof p1.find_group p2.find_group ;
+      where_slow = add_prof p1.where_slow p2.where_slow ;
+      update_group = add_prof p1.update_group p2.update_group ;
+      commit_incoming = add_prof p1.commit_incoming p2.commit_incoming ;
+      commit_others = add_prof p1.commit_others p2.commit_others }
+end
+
 type t =
   { min_etime : float option ;
     max_etime : float option ;
@@ -17,6 +54,7 @@ type t =
     cpu : float ;
     ram : Uint64.t ;
     max_ram : Uint64.t ;
+    profile : Profile.t ;
     wait_in : float option ;
     wait_out : float option ;
     bytes_in : Uint64.t option ;
@@ -29,6 +67,7 @@ let no_stats =
   { min_etime = None ; max_etime = None ; in_count = None ;
     selected_count = None ; out_count = None ; group_count = None ;
     cpu = 0. ; ram = Uint64.zero ; max_ram = Uint64.zero ;
+    profile = Profile.zero ;
     wait_in = None ; wait_out = None ; bytes_in = None ; bytes_out = None ;
     avg_full_bytes = None ; last_out = None ; startup_time = 0. }
 
@@ -56,10 +95,38 @@ let read_stats ?while_ conf =
    * `ramen ps` accept that option too? *)
   let since = until -. 2. *. RamenConsts.Default.report_period in
   let get_string = function VString s -> s [@@ocaml.warning "-8"]
+  and get_u32 = function VU32 n -> n [@@ocaml.warning "-8"]
   and get_u64 = function VU64 n -> n [@@ocaml.warning "-8"]
   and get_nu64 = function VNull -> None | VU64 n -> Some n [@@ocaml.warning "-8"]
   and get_float = function VFloat f -> f [@@ocaml.warning "-8"]
-  and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"]
+  and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"] in
+  let get_perf = function VRecord kvs ->
+    assert (fst kvs.(0) = "count") ;
+    assert (fst kvs.(1) = "system") ;
+    assert (fst kvs.(2) = "user") ;
+    Binocle.Perf.{
+      count = get_u32 (snd kvs.(0)) |> Uint32.to_int ;
+      user = get_float (snd kvs.(2)) ;
+      system = get_float (snd kvs.(1)) }
+    [@@ocaml.warning "-8"] in
+  let get_profile = function VRecord kvs ->
+    (* FIXME: make it RamenBinocle job to deserialize this properly: *)
+    assert (fst kvs.(0) = "commit_incoming") ;
+    assert (fst kvs.(1) = "commit_others") ;
+    assert (fst kvs.(2) = "find_group") ;
+    assert (fst kvs.(3) = "tot_per_tuple") ;
+    assert (fst kvs.(4) = "update_group") ;
+    assert (fst kvs.(5) = "where_fast") ;
+    assert (fst kvs.(6) = "where_slow") ;
+    Profile.{
+      tot_per_tuple = get_perf (snd kvs.(3)) ;
+      where_fast = get_perf (snd kvs.(5)) ;
+      find_group = get_perf (snd kvs.(2)) ;
+      where_slow = get_perf (snd kvs.(6)) ;
+      update_group = get_perf (snd kvs.(4)) ;
+      commit_incoming = get_perf (snd kvs.(0)) ;
+      commit_others = get_perf (snd kvs.(1)) }
+    [@@ocaml.warning "-8"]
   in
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until () (fun () tuple _t1 _t2 ->
@@ -75,13 +142,14 @@ let read_stats ?while_ conf =
         cpu = get_float tuple.(8) ;
         ram = get_u64 tuple.(9) ;
         max_ram = get_u64 tuple.(10) ;
-        wait_in = get_nfloat tuple.(11) ;
-        wait_out = get_nfloat tuple.(12) ;
-        bytes_in = get_nu64 tuple.(13) ;
-        bytes_out = get_nu64 tuple.(14) ;
-        avg_full_bytes = get_nu64 tuple.(15) ;
-        last_out = get_nfloat tuple.(16) ;
-        startup_time = get_float tuple.(17) }
+        profile = get_profile tuple.(11) ;
+        wait_in = get_nfloat tuple.(12) ;
+        wait_out = get_nfloat tuple.(13) ;
+        bytes_in = get_nu64 tuple.(14) ;
+        bytes_out = get_nu64 tuple.(15) ;
+        avg_full_bytes = get_nu64 tuple.(16) ;
+        last_out = get_nfloat tuple.(17) ;
+        startup_time = get_float tuple.(18) }
     in
     (* Keep only the latest stat line per worker: *)
     Hashtbl.modify_opt (RamenName.fq_of_string worker) (function
@@ -112,6 +180,7 @@ let add_stats s1 s2 =
     (* It's more useful to see the sum of all max than the max of all max,
      * as it gives an estimate of the worse that could happen: *)
     max_ram = Uint64.add s1.max_ram s2.max_ram ;
+    profile = Profile.add s1.profile s2.profile ;
     wait_in = add_nfloat s1.wait_in s2.wait_in ;
     wait_out = add_nfloat s1.wait_out s2.wait_out ;
     bytes_in = add_nu64 s1.bytes_in s2.bytes_in ;

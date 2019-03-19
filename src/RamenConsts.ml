@@ -32,6 +32,13 @@ struct
     let last_out = "last_out"
     let event_time = "event_time"
     let avg_full_out_bytes = "avg_full_out_bytes"
+    let perf_per_tuple = "perf_per_tuple"
+    let perf_where_fast = "perf_where_fast"
+    let perf_find_group = "perf_find_group"
+    let perf_where_slow = "perf_where_slow"
+    let perf_update_group = "perf_update_group"
+    let perf_commit_incoming = "perf_commit_incoming"
+    let perf_commit_others = "perf_commit_others"
 
     (* Metrics reported by the supervisor: *)
     let worker_crashes = "workers_crashes"
@@ -95,6 +102,23 @@ struct
       "Last, minimum and maximum (since startup) event time emitted \
        (for the live channel only)."
     let avg_full_out_bytes = "Average size of a fully-fledged out tuple."
+    let perf_per_tuple = "Average time spent processing an incoming tuples."
+    let perf_where_fast =
+      "Average time spent executing the (fast) WHERE clause for each \
+       incoming tuple."
+    let perf_find_group =
+      "Average time spent looking for the group for each incoming tuple."
+    let perf_where_slow =
+      "Average time spent executing the (slow) WHERE clause for each \
+       incoming tuple."
+    let perf_update_group =
+      "Average time spent updating the aggregate group for each incoming \
+       tuple."
+    let perf_commit_incoming =
+      "Average time spent committing the incoming tuple."
+    let perf_commit_others =
+      "Average time spent committing other tuples for each incoming one."
+    let profile = "Performance measurements."
   end
 end
 
@@ -115,6 +139,7 @@ struct
   let timerange =
     "Retrieve the available time range of an operation output"
   let ps = "Display info about running programs"
+  let profile = "Display profiling information about running programs"
   let test = "Test a configuration against one or several tests"
   let dequeue = "Dequeue a message from a ringbuffer"
   let summary = "Dump info about a ring-buffer"

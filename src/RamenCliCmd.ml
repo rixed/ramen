@@ -370,7 +370,7 @@ let sort_col_of_string spec str =
             String.print_quoted oc s)) l |>
         failwith)
 
-let ps conf short pretty with_header sort_col top pattern all () =
+let ps_ profile conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
   let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
@@ -379,9 +379,14 @@ let ps conf short pretty with_header sort_col top pattern all () =
   let open TermTable in
   if short then
     let head =
-      [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-         "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-         "volume out" |]  in
+      if profile then
+        [| "program" ; "CPU" ; "wait in" ; "wait out" ;
+           "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
+           "update_group" ; "commit_incoming" ; "commit_others" |]
+      else
+        [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+           "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
+           "volume out" |]  in
     let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     (* For --short, we sum everything by program: *)
@@ -389,11 +394,22 @@ let ps conf short pretty with_header sort_col top pattern all () =
     C.with_rlock conf (fun programs ->
       Hashtbl.iter (fun (program_name : RamenName.program) (mre, _get_rc) ->
         if (all || mre.C.status = C.MustRun) &&
-           Globs.matches pattern
-             (program_name :> string)
+           Globs.matches pattern (program_name :> string)
         then (
           let s = Hashtbl.find_default h program_name RamenPs.no_stats in
-          print
+          (if profile then
+            [| Some (ValStr (program_name :> string)) ;
+               Some (ValFlt s.cpu) ;
+               flt_or_na s.wait_in ;
+               flt_or_na s.wait_out ;
+               perf s.profile.tot_per_tuple ;
+               perf s.profile.where_fast ;
+               perf s.profile.find_group ;
+               perf s.profile.where_slow ;
+               perf s.profile.update_group ;
+               perf s.profile.commit_incoming ;
+               perf s.profile.commit_others |]
+          else
             [| Some (ValStr (program_name :> string)) ;
                Some (ValStr (RamenName.string_of_params mre.C.params)) ;
                int_or_na s.in_count ;
@@ -406,18 +422,24 @@ let ps conf short pretty with_header sort_col top pattern all () =
                Some (ValInt (Uint64.to_int s.ram)) ;
                Some (ValInt (Uint64.to_int s.max_ram)) ;
                flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
-               flt_or_na (Option.map Uint64.to_float s.bytes_out) |]
+               flt_or_na (Option.map Uint64.to_float s.bytes_out) |]) |>
+          print
         )
       ) programs) ;
     print [||]
   else
     (* Otherwise we want to display all we can about individual workers *)
     let head =
-      [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-         "last out" ; "min event time" ; "max event time" ; "CPU" ;
-         "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-         "volume out" ; "avg out sz" ; "startup time" ; "#parents" ; "#children" ;
-         "signature" |] in
+      if profile then
+        [| "operation" ; "CPU" ; "wait in" ; "wait out" ;
+           "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
+           "update_group" ; "commit_incoming" ; "commit_others" |]
+      else
+        [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
+           "last out" ; "min event time" ; "max event time" ; "CPU" ;
+           "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
+           "volume out" ; "avg out sz" ; "startup time" ;
+           "#parents" ; "#children" ; "signature" |] in
     let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     C.with_rlock conf (fun programs ->
@@ -444,11 +466,23 @@ let ps conf short pretty with_header sort_col top pattern all () =
           List.iter (fun func ->
             let fq = RamenName.fq program_name func.F.name in
             if Globs.matches pattern (fq :> string) then
-              let s = Hashtbl.find_default stats fq RamenPs.no_stats
-              and num_children = Hashtbl.find_all children_of_func
-                                   (func.F.program_name, func.F.name) |>
-                                   List.length in
-              print
+              let s = Hashtbl.find_default stats fq RamenPs.no_stats in
+              (if profile then
+                [| Some (ValStr (fq :> string)) ;
+                   Some (ValFlt s.cpu) ;
+                   flt_or_na s.wait_in ;
+                   flt_or_na s.wait_out ;
+                   perf s.profile.tot_per_tuple ;
+                   perf s.profile.where_fast ;
+                   perf s.profile.find_group ;
+                   perf s.profile.where_slow ;
+                   perf s.profile.update_group ;
+                   perf s.profile.commit_incoming ;
+                   perf s.profile.commit_others |]
+               else
+                let num_children = Hashtbl.find_all children_of_func
+                                     (func.F.program_name, func.F.name) |>
+                                     List.length in
                 [| Some (ValStr (fq :> string)) ;
                    int_or_na s.in_count ;
                    int_or_na s.selected_count ;
@@ -468,10 +502,14 @@ let ps conf short pretty with_header sort_col top pattern all () =
                    Some (ValDate s.startup_time) ;
                    Some (ValInt (List.length func.F.parents)) ;
                    Some (ValInt num_children) ;
-                   Some (ValStr func.signature) |]
+                   Some (ValStr func.signature) |]) |>
+              print
           ) prog.P.funcs
       ) programs) ;
       print [||]
+
+let ps = ps_ false
+let profile = ps_ true
 
 (*
  * `ramen tail`

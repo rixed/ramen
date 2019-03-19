@@ -800,6 +800,19 @@ let ps =
       $ all),
     info ~doc:CliInfo.ps "ps")
 
+let profile =
+  Term.(
+    (const RamenCliCmd.profile
+      $ copts
+      $ short
+      $ pretty
+      $ with_header
+      $ sort_col
+      $ top
+      $ pattern
+      $ all),
+    info ~doc:CliInfo.profile "_profile")
+
 (*
  * Start the HTTP daemon (graphite impersonator)
  *)
@@ -977,7 +990,8 @@ let () =
       Term.eval_choice ~catch:false default [
         supervisor ; gc ; httpd ; alerter ; info ;
         notify ; compile ; run ; kill ; archivist ;
-        tail ; replay ; timeseries ; timerange ; ps ;
+        tail ; replay ; timeseries ; timerange ;
+        ps ; profile ;
         test ; dequeue ; summary ; repair ; links ;
         variants ; stats ; autocomplete ; expand
       ]) with

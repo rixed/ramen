@@ -24,6 +24,12 @@ let flt_or_na = Option.map (fun f -> ValFlt f)
 let date_or_na = Option.map (fun t -> ValDate t)
 let duration_or_na = Option.map (fun t -> ValDuration t)
 let str_or_na = Option.map (fun s -> ValStr s)
+let perf p =
+  let open Binocle.Perf in
+  if p.count <= 0 then None else
+  let c = float_of_int p.count in
+  let usr = p.user /. c and sys = p.system /. c in
+  Some (ValStr (Printf.sprintf "%g + %g (%d)" usr sys p.count))
 
 let newline flush =
   Char.print stdout '\n' ;

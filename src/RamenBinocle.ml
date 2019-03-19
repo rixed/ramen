@@ -14,6 +14,23 @@ open RamenTuple
 open RamenNullable
 open RamenHelpers
 open RamenConsts
+module T = RamenTypes
+
+let profile_typ =
+  T.{ nullable = false ;
+      structure = TRecord [|
+        "count",  { nullable = false ; structure = TU32 } ;
+        "user",   { nullable = false ; structure = TFloat } ;
+        "system", { nullable = false ; structure = TFloat } |] }
+
+let profile_fields =
+  [| "tot_per_tuple", profile_typ ;
+     "where_fast", profile_typ ;
+     "find_group", profile_typ ;
+     "where_slow", profile_typ ;
+     "update_group", profile_typ ;
+     "commit_incoming", profile_typ ;
+     "commit_others", profile_typ |]
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
@@ -39,6 +56,8 @@ let tuple_typ =
       doc = Metric.Docs.ram_usage ; aggr = None } ;
     { name = RamenName.field_of_string "max_ram" ; typ = { structure = TU64 ; nullable = false } ; units = Some RamenUnits.bytes ;
       doc = Metric.Docs.max_ram_usage ; aggr = None } ;
+    { name = RamenName.field_of_string "profile" ; typ = { nullable = false ; structure = TRecord profile_fields } ; units = None ;
+      doc = Metric.Docs.profile ; aggr = None } ;
     { name = RamenName.field_of_string "wait_in" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
       doc = Metric.Docs.rb_wait_read ; aggr = None } ;
     { name = RamenName.field_of_string "wait_out" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds ;
@@ -70,12 +89,15 @@ let fix_sz = tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
-  nullmask_sz + fix_sz + sersize_of_string worker
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, profile, _, _, _, _, _, _, _) =
+  nullmask_sz +
+  fix_sz +
+  sersize_of_string worker +
+  sersize_of_record profile
 
 let serialize tx start_offs
               (worker, start, min_etime, max_etime, ic, sc, oc, gc, cpu,
-               ram, max_ram, wi, wo, bi, bo, os, lo, stime) =
+               ram, max_ram, profile, wi, wo, bi, bo, os, lo, stime) =
   zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -112,6 +134,9 @@ let serialize tx start_offs
   let offs =
     write_u64 tx offs max_ram ;
     offs + sersize_of_u64 in
+  let offs =
+    write_record tx offs profile ;
+    offs + sersize_of_record profile in
   let offs = write_nullable_float offs 6 wi in
   let offs = write_nullable_float offs 7 wo in
   let offs = write_nullable_u64 offs 8 bi in
@@ -152,6 +177,8 @@ let unserialize tx start_offs =
   let offs = offs + sersize_of_u64 in
   let max_ram = read_u64 tx offs in
   let offs = offs + sersize_of_u64 in
+  let profile = read_record profile_fields tx offs in
+  let offs = offs + sersize_of_record profile in
   let wi, offs = read_nullable_float 6 offs in
   let wo, offs = read_nullable_float 7 offs in
   let bi, offs = read_nullable_u64 8 offs in
@@ -162,7 +189,7 @@ let unserialize tx start_offs =
   let offs = offs + sersize_of_float in
   let t =
     worker, start, min_etime, max_etime, ic, sc , oc, gc, cpu, ram, max_ram,
-    wi, wo, bi, bo, os, lo, stime in
+    profile, wi, wo, bi, bo, os, lo, stime in
   assert (offs <= start_offs + max_sersize_of_tuple t) ;
   t
 
