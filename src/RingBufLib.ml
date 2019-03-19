@@ -164,7 +164,7 @@ and sersize_of_list vs =
 let has_fixed_size = function
   | TString
   (* Technically, those could have a fixed size, but we always treat them as
-   * variable: *)
+   * variable. FIXME: *)
   | TTuple _ | TRecord _ | TVec _ | TList _ -> false
   | _ -> true
 
@@ -272,7 +272,8 @@ and read_tuple ts tx offs =
 
 and read_record kts tx offs =
   (* Return the array of fields and types we are supposed to have, in
-   * serialized order: *)
+   * serialized order. Private fields will not be present in the returned
+   * kvs. *)
   let ser = ser_order kts in
   let ts = Array.map (fun (_, t) -> t) ser in
   let vs = read_tuple ts tx offs in

@@ -15,7 +15,7 @@ DEFINE http AS
     RANDOM * 2 * clock_jitter - clock_jitter AS _clock_jitter,
     1 / hit_rate AS _avg_dt,
     RANDOM * 2 * _avg_dt AS _dt,
-    (previous.start |? start_of_time) + _clock_jitter + _dt AS start, -- X
+    (previous.start |? start_of_time) + _clock_jitter + _dt AS start,
     RANDOM * 2ms AS _resp_time,
     start + _resp_time AS stop,
 
@@ -30,7 +30,7 @@ DEFINE http AS
       WHEN _request = 5 THEN "/view.php?id=" || string(u32(RANDOM * 99999))
       WHEN _request IN [6; 7; 8] THEN "/listing.html"
       ELSE "/index.html"
-    END AS url, -- X
+    END AS url,
     u8(RANDOM * 100) AS _method,
     CASE
       WHEN _method = 0 THEN "PUT"
@@ -42,8 +42,8 @@ DEFINE http AS
       WHEN _method < 20 THEN "HEAD"
       WHEN _method < 30 THEN "POST"
       ELSE "GET"
-    END AS method, -- X
-    u32(RANDOM * 10_000) AS request_size, -- X
+    END AS method,
+    u32(RANDOM * 10_000) AS request_size,
 
     -- Response
     u8(RANDOM * 20) AS _code_grp,
@@ -53,7 +53,7 @@ DEFINE http AS
       WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 3)
       WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 3)
       ELSE 200
-    END AS code, -- X
-    u32(RANDOM * 100_000) AS response_size -- X
+    END AS code,
+    u32(RANDOM * 100_000) AS response_size
 
   FACTORS method, code;
