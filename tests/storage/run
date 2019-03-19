@@ -97,8 +97,8 @@ cat > "$RAMEN_DIR/archivist/v2/config" <<EOF
 EOF
 
 # Compile the test programs
-"$ramen" compile -S tests/storage/logs.ramen
-"$ramen" compile -S -L tests/storage/ tests/storage/aggr.ramen
+"$ramen" compile tests/storage/logs.ramen
+"$ramen" compile -L tests/storage/ tests/storage/aggr.ramen
 
 # Run everything
 

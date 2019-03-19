@@ -1387,8 +1387,9 @@ let aggregate
                   let g0 = option_get "g0" g.g0 in
                   let c = cmp f0 g0 in
                   if c > 0 || c = 0 && eq then (
-                    if not (already_output g) &&
-                       commit_cond in_tuple s.last_out_tuple g.local_state
+                    (* Or it's been removed from the heap already: *)
+                    assert (not (already_output g)) ;
+                    if commit_cond in_tuple s.last_out_tuple g.local_state
                                    s.global_state g.current_out
                     then to_commit := g :: !to_commit
                   ) else
