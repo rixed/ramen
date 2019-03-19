@@ -872,20 +872,20 @@ let of_string ?what ?typ s =
             p_ ~min_int_width:0 ||| null) in
   let stream = stream_of_string s in
   let m = [ what ] in
-  (match p m None Parsers.no_error_correction stream |>
+  match p m None Parsers.no_error_correction stream |>
         to_result with
   | Bad e ->
       let err =
         IO.to_string (print_bad_result print) e in
       Result.Bad err
   | Ok (v, _) ->
-      let v =
-        match typ with
-        | None -> v
-        | Some typ ->
-            if v = VNull then VNull (* TODO: check typ.nullable *) else
-            enlarge_value typ.structure v in
-      Result.Ok v)
+      (match typ with
+      | None -> Result.Ok v
+      | Some typ ->
+          if v = VNull then Result.Ok VNull (* TODO: check typ.nullable *)
+          else (
+            try Result.Ok (enlarge_value typ.structure v)
+            with exn -> Result.Bad (Printexc.to_string exn)))
 
 (*$= of_string & ~printer:(BatIO.to_string (result_print print BatString.print))
   (BatResult.Ok (VI8 (Int8.of_int 42))) \

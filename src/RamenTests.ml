@@ -133,7 +133,9 @@ let filter_spec_of_spec fq typ spec =
   Hashtbl.enum spec /@
   (fun (field, value) ->
     let idx, field_typ = field_index_of_name fq typ field in
-    match T.of_string ~typ:field_typ.RamenTuple.typ value with
+    let what = Printf.sprintf2 "value %S for field %a"
+                               value RamenName.field_print field in
+    match T.of_string ~what ~typ:field_typ.RamenTuple.typ value with
     | Result.Ok v -> idx, v
     | Result.Bad e -> fail_and_quit e) |>
   List.of_enum, ref []
