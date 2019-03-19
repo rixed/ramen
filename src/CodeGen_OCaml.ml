@@ -952,8 +952,9 @@ and emit_expr_ ~env ~context ~opc oc expr =
       List.of_enum in
     list_print_as_tuple String.print oc es
 
-  | Finalize, Vector es, _ ->
-    list_print_as_vector (emit_expr ~env ~context ~opc) oc es
+  | Finalize, Vector es, TVec (_, t) ->
+    list_print_as_vector (conv_to ~env ~context ~opc (Some t.T.structure))
+                         oc es
 
   | Finalize, Stateless (SL0 (Path _)), _ ->
     !logger.error "Still some Path present in emitted code: %a"
