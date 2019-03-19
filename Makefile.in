@@ -950,19 +950,9 @@ clean-temp:
 	            -delete ;\
 	 done
 
-clean: clean-temp
+clean-dist: clean clean-temp
 	@echo 'Cleaning all build files'
-	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o src/*.mlppp
-	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
-	@$(RM) src/ringbuf/*.o src/orc/*.o
-	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
-	@$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
-	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
-	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
-	@$(RM) src/RamenFileNotify.ml RamenCompilConfig.ml
-	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
-	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a src/liborchelp.a
 	@find tests -name '*.success' -delete
 	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
@@ -970,3 +960,16 @@ clean: clean-temp
 	@$(RM) ramen.*.deb ramen.*.tgz
 	@$(RM) $(PAGES)
 	@$(RM) META
+
+clean:
+	@echo 'Cleaning result'
+	@$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o src/*.mlppp
+	@$(RM) *.opt src/all_tests.* perf.data* gmon.out
+	@$(RM) src/ringbuf/*.o src/orc/*.o
+	@$(RM) src/*.cmx src/*.cmxa src/*.cmxs src/*.cmi
+	@$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
+	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
+	@$(RM) .depend src/*.opt src/*.byte
+	@$(RM) src/RamenFileNotify.ml RamenCompilConfig.ml
+	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
+	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a src/liborchelp.a
