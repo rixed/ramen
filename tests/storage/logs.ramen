@@ -3,7 +3,7 @@
 
 PARAMETERS
   start_of_time {seconds(rel)} DEFAULTS TO 191631600,
-  hit_rate {hits*seconds^-1} DEFAULTS TO 5,
+  hit_rate {hits*seconds^-1} DEFAULTS TO 10,
   clock_jitter {seconds} DEFAULTS TO 5s;
 
 -- And God said, Let there be HTTP: and there was HTTP
@@ -48,10 +48,10 @@ DEFINE http AS
     -- Response
     u8(RANDOM * 20) AS _code_grp,
     CASE
-      WHEN _code_grp = 0 THEN 100 + u8(RANDOM * 10)
-      WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 10)
-      WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 10)
-      WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 10)
+      WHEN _code_grp = 0 THEN 100 + u8(RANDOM * 50)
+      WHEN _code_grp = 1 THEN 300 + u8(RANDOM * 50)
+      WHEN _code_grp = 2 THEN 400 + u8(RANDOM * 50)
+      WHEN _code_grp = 3 THEN 500 + u8(RANDOM * 50)
       ELSE 200
     END AS code,
     u32(RANDOM * 100_000) AS response_size
