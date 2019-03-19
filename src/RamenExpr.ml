@@ -224,7 +224,7 @@ and stateless2 =
   | In
   (* Takes format then time: *)
   | Strftime
-  (* TODO: several percentiles. Requires multi values returns. *)
+  (* Takes a list/vector of expressions and a vector of desired percentiles *)
   | Percentile
   [@@ppp PPP_OCaml]
 
@@ -601,7 +601,7 @@ let rec print ?(max_depth=max_int) with_types oc e =
     | Stateless (SL2 (Get, e1, e2)) ->
         Printf.fprintf oc "GET(%a, %a)" p e1 p e2
     | Stateless (SL2 (Percentile, e1, e2)) ->
-        Printf.fprintf oc "%a PERCENTILE(%a)" p e1 p e2
+        Printf.fprintf oc "%a PERCENTILE(%a)" p e2 p e1
     | Stateless (SL1 (Like pat, e)) ->
         Printf.fprintf oc "(%a) LIKE %S" p e pat
     | Stateless (SL1s (Max, es)) ->
@@ -989,6 +989,19 @@ struct
       optional ~def:def_skipnulls (blanks -+ skip_nulls)
     ) m
 
+  (* Empty vectors are disallowed so we cannot ignore the element type: *)
+  let vector p m =
+    let m = "vector" :: m in
+    (
+      char '[' -- opt_blanks -+
+      several ~sep:T.Parser.tup_sep p +-
+      opt_blanks +- char ']' >>:
+      fun es ->
+        let num_items = List.length es in
+        assert (num_items >= 1) ;
+        make (Vector es)
+    ) m
+
   (* operators with lowest precedence *)
   let rec lowestest_prec_left_assoc m =
     let m = "logical OR operator" :: m in
@@ -1286,11 +1299,13 @@ struct
       (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Group, e)))) |||
       (
-        (const ||| param) +-
-        (optional ~def:() (strinG "th")) +- blanks ++
+        let perc =
+          (const ||| param) +-
+          (optional ~def:() (strinG "th")) in
+        (perc ||| vector perc) +- blanks ++
         afun1 "percentile" >>:
-        fun (p, e) ->
-          make (Stateless (SL2 (Percentile, p, e)))
+        fun (ps, e) ->
+          make (Stateless (SL2 (Percentile, e, ps)))
       ) |||
       (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
@@ -1591,7 +1606,7 @@ struct
     (
       highestest_prec_no_parenthesis |||
       accept_units (parenthesized p) |||
-      tuple ||| vector ||| record
+      tuple ||| vector p ||| record
     ) m
 
   (* Empty tuples and tuples of arity 1 are disallowed in order not to
@@ -1617,19 +1632,6 @@ struct
       opt_blanks +- char ')' >>:
       fun kvs ->
         make (Record kvs)
-    ) m
-
-  (* Empty vectors are disallowed so we cannot ignore the element type: *)
-  and vector m =
-    let m = "vector" :: m in
-    (
-      char '[' -- opt_blanks -+
-      several ~sep:T.Parser.tup_sep p +-
-      opt_blanks +- char ']' >>:
-      fun es ->
-        let num_items = List.length es in
-        assert (num_items >= 1) ;
-        make (Vector es)
     ) m
 
   and p m = lowestest_prec_left_assoc m
@@ -1814,10 +1816,10 @@ let units_of_expr params units_of_input units_of_output =
         else if pref = TupleParam then
           units_of_params n
         else None
-    | Stateless (SL2 (Percentile, _,
+    | Stateless (SL2 (Percentile,
                       { text = Stateful (_, _, SF3s (Last,  _, e, _))
                              | Stateful (_, _, SF2 (Sample, _, e))
-                             | Stateful (_, _, SF1 (Group, e)) ; _ })) ->
+                             | Stateful (_, _, SF1 (Group, e)) ; _ }, _)) ->
         uoe ~indent e
     | Stateless (SL1 (Like _, e)) ->
         check_no_units ~indent e ;

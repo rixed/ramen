@@ -94,13 +94,19 @@ let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
 (* Compute the p percentile of an array of anything: *)
-let percentile p arr =
-  assert (p >= 0.0 && p <= 100.0) ;
+let percentile ps arr =
+  assert (Array.for_all (fun p -> p >= 0.0 && p <= 100.0) ps) ;
   Array.fast_sort Pervasives.compare arr ;
-  let p = p *. 0.01 in
-  let idx =
-    round_to_int (p *. float_of_int (Array.length arr - 1)) in
-  arr.(idx)
+  Array.map (fun p ->
+    let p = p *. 0.01 in
+    let idx =
+      round_to_int (p *. float_of_int (Array.length arr - 1)) in
+    arr.(idx)
+  ) ps
+
+(* Mono-valued variant of the above: *)
+let percentile_single p arr =
+  (percentile [| p |] arr).(0)
 
 let substring s a b =
   let a = Int32.to_int a

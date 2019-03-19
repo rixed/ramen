@@ -27,20 +27,17 @@ DEFINE http AS
     MIN _rt,
     MAX _rt,
     AVG _rt,
-    95th PERCENTILE (SAMPLE(1000, _rt)) AS rt_95th,
-    99th PERCENTILE (SAMPLE(1000, _rt)) AS rt_99th,
+    [95th; 99th] PERCENTILE (SAMPLE(1000, _rt)) AS rt_perc,
 
     MIN request_size,
     MAX request_size,
     AVG request_size,
-    95th PERCENTILE (SAMPLE(1000, request_size)) AS req_size_95th,
-    99th PERCENTILE (SAMPLE(1000, request_size)) AS req_size_99th,
+    [95th; 99th] PERCENTILE (SAMPLE(1000, request_size)) AS req_size_perc,
 
     MIN response_size,
     MAX response_size,
     AVG response_size,
-    95th PERCENTILE (SAMPLE(1000, response_size)) AS resp_size_95th,
-    99th PERCENTILE (SAMPLE(1000, response_size)) AS resp_size_99th
+    [95th; 99th] PERCENTILE (SAMPLE(1000, response_size)) AS resp_size_perc
 
   GROUP BY
     start // time_period, method, code, SUBSTRING(url, 0, 10)

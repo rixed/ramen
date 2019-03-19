@@ -1421,9 +1421,15 @@ and emit_expr_ ~env ~context ~opc oc expr =
       | _ -> assert false)
     | _ -> assert false)
 
-  | Finalize, Stateless (SL2 (Percentile, p, lst)), _ ->
+  | Finalize, Stateless (SL2 (Percentile, lst, percs)), TVec _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.percentile"
-      [Some TFloat, PropagateNull; None, PropagateNull] oc [p; lst]
+      [Some (TVec (0, T.make ~nullable:false TFloat)), PropagateNull;
+       None, PropagateNull] oc
+      [percs; lst]
+  | Finalize, Stateless (SL2 (Percentile, lst, percs)), _ ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.percentile_single"
+      [Some TFloat, PropagateNull; None, PropagateNull] oc
+      [percs; lst]
 
   | Finalize, Stateless (SL3 (SubString, s, a, b)), _ ->
     emit_functionN ~env ~opc ~nullable "CodeGenLib.substring"

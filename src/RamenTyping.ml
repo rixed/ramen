@@ -766,23 +766,56 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
-      (* - e1 must be numeric;
-       * - e2 must be a vector or list of anything, then the result is not
-       *   smaller than the element type;
-       * - the result is nullable if either e1 or e2 is. *)
-      arg_is_numeric oc e1 ;
+      (* - e1 must be a vector or list of anything;
+       * - the result is as nullable as e1 elements;
+       * - if e2 is an immediate vector, then:
+       *   - e2 must be a non nullable vector of non-nullable numeric
+       *     constants;
+       *   - the result is a vector of the same length as e2;
+       *   - the result element type is the same as the element type of e1;
+       *   - the result elements are not nullable.
+       * - otherwise, e2 is a single value:
+       *   - e2 must be a non-nullable numeric constant;
+       *   - the result type is the same as the element type of e1;
+       *   - the result elements are not nullable. *)
+      let ret_vec =
+        match e2 with { text = E.Vector _ ; _ } -> true | _ -> false in
+      assert_imply (n_of_expr e1) oc nid ;
       emit_assert oc (fun oc ->
-        let eid2 = t_of_expr e2 in
-        let lst_type = "(list-type "^ eid2 ^")"
-        and vec_type = "(vector-type "^ eid2 ^")" in
+        let eid1 = t_of_expr e1 in
+        let eid' = if ret_vec then "(vector-type "^ eid ^")"
+                   else eid in
         Printf.fprintf oc
-          "(or (and ((_ is list) %s) %a (or (not (list-nullable %s)) %s)) \
-               (and ((_ is vector) %s) %a (or (not (vector-nullable %s)) %s)))"
-          eid2 (emit_id_le_smt2 lst_type) eid eid2 nid
-          eid2 (emit_id_le_smt2 vec_type) eid eid2 nid) ;
-      assert_imply
-        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
-        oc nid
+          "(or (and ((_ is list) %s) \
+                    (= %s (list-type %s)) \
+                    (or (not (list-nullable %s)) %s)) \
+               (and ((_ is vector) %s) \
+                    (= %s (vector-type %s)) \
+                    (or (not (vector-nullable %s)) %s)))"
+          eid1
+            eid' eid1
+            eid1 nid
+          eid1
+            eid' eid1
+            eid1 nid) ;
+      if ret_vec then (
+        let name = expr_err e2 Err.NumericVec in
+        emit_assert ~name oc (fun oc ->
+          Printf.fprintf oc
+            "(and ((_ is vector) %s) (not (vector-nullable %s)) %a)"
+            (t_of_expr e2)
+            (t_of_expr e2)
+            emit_numeric ("(vector-type "^ t_of_expr e2 ^")")) ;
+        emit_assert oc (fun oc ->
+          Printf.fprintf oc
+            "(and ((_ is vector) %s) \
+                  (= (vector-dim %s) (vector-dim %s)) \
+                  (not (vector-nullable %s)))"
+                  eid
+                  eid (t_of_expr e2)
+                  eid)
+      ) else arg_is_numeric oc e2 ;
+      arg_is_not_nullable oc e2
 
   | Stateless (SL2 ((Add|Mul|IDiv|Pow|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;

@@ -15,6 +15,7 @@ DEFINE f1 AS
     last horsepower,
     10th percentile (group horsepower) as horsepower_10th,
     95th percentile (group horsepower) as horsepower_95th,
+    [ 10th; 95th ] percentile (group horsepower) as horsepower_perc,
     sum u16(distinct manufacturer) as manufacturers,
     round(sum CO) AS sum_CO,
     sum keep null CO as sum_CO_null

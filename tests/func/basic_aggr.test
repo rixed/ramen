@@ -18,6 +18,7 @@
           "last_horsepower" => "313";
           "horsepower_10th" => "140";
           "horsepower_95th" => "553";
+          "horsepower_perc" => "[140;553]";
           "manufacturers" => "30" ;
           "sum_CO" => "1653" ;
           "sum_CO_null" => "NULL" } ]};

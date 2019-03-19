@@ -802,6 +802,8 @@ struct
     | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
         default_alias e ^"_histogram"
     | Stateless (SL2 (Percentile, { text = Const p ; _ }, e))
+    | Stateless (SL2 (Percentile, e,
+        { text = Vector [ { text = Const p ; _ } ] ; _ }))
       when T.is_round_integer p ->
         Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
     (* Some functions better leave no traces: *)
