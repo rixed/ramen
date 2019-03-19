@@ -1207,8 +1207,20 @@ let aggregate
           c > 0 || c = 0 && eq
         ) true commit_cond0 &&
         commit_cond in_tuple s.last_out_tuple g.local_state
-                    s.global_state g.current_out
-      in
+                    s.global_state g.current_out in
+      let may_relocate_group_in_heap g =
+        Option.may (fun (_, g0, cmp, _) ->
+          let g0 = g0 g.current_out s.last_out_tuple g.local_state
+                      s.global_state in
+          if g.g0 <> Some g0 then (
+            (* Relocate that group in the heap: *)
+            let cmp = cmp_g0 cmp in
+            if not (RamenHeap.rem_phys g s.groups_heap) then
+              !logger.error "Cannot delete group from heap!?" ;
+            g.g0 <- Some g0 ;
+            s.groups_heap <- RamenHeap.add cmp g s.groups_heap
+          )
+        ) commit_cond0 in
       let commit_and_flush g =
         (* Output the tuple *)
         (match commit_before, g.previous_out with
@@ -1239,7 +1251,8 @@ let aggregate
              * can: for other fields than minimum-out we can reset, and
              * for the states owned by minimum-out, where_slow and the
              * commit condition we can replay (TODO): *)
-            g.local_state <- group_init s.global_state
+            g.local_state <- group_init s.global_state ;
+            may_relocate_group_in_heap g
           ) else (
             Hashtbl.remove s.groups g.key ;
             (* We remove the entry from the heap right now. Alternatively,
@@ -1329,17 +1342,7 @@ let aggregate
               g.current_out <-
                 minimal_tuple_of_aggr
                   g.last_in s.last_out_tuple g.local_state s.global_state ;
-              Option.may (fun (_, g0, cmp, _) ->
-                let g0 = g0 g.current_out s.last_out_tuple g.local_state
-                            s.global_state in
-                if g.g0 <> Some g0 then (
-                  (* Relocate that group in the heap: *)
-                  let cmp = cmp_g0 cmp in
-                  let heap = RamenHeap.rem_phys cmp g s.groups_heap in
-                  g.g0 <- Some g0 ;
-                  s.groups_heap <- RamenHeap.add cmp g heap
-                )
-              ) commit_cond0 ;
+              may_relocate_group_in_heap g ;
               perf := Perf.add_and_transfer stats_perf_update_group !perf ;
               Some g
             ) else ( (* in-tuple does not pass where_slow *)
