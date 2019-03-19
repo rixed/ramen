@@ -342,6 +342,11 @@ let rec can_enlarge ~from ~to_ =
       can_enlarge ~from:t1.structure ~to_:t2.structure
   | TList t1, TList t2 ->
       can_enlarge ~from:t1.structure ~to_:t2.structure
+  (* For convenience, make it possible to enlarge a scalar into a one
+   * element vector or tuple: *)
+  | t1, TVec ((0|1), t2) -> can_enlarge t1 t2.structure
+  | t1, TTuple [| t2 |] -> can_enlarge t1 t2.structure
+  (* Other non scalar conversions are not possible: *)
   | TTuple _, _ | _, TTuple _
   | TVec _, _ | _, TVec _
   | TList _, _ | _, TList _
@@ -469,6 +474,14 @@ let rec enlarge_value t v =
       VI64 (Int64.of_uint64 x)
   | VU128 x, TI128 when Uint128.(compare x (of_string "170141183460469231731687303715884105728")) < 0 ->
       VI128 (Int128.of_uint128 x)
+  (* For convenience, make it possible to enlarge a scalar into a one element
+   * vector or tuple: *)
+  | v, TVec ((0|1), t)
+    when can_enlarge ~from:(structure_of v) ~to_:t.structure ->
+      VVec [| enlarge_value t.structure v |]
+  | v, TTuple [| t |]
+    when can_enlarge ~from:(structure_of v) ~to_:t.structure ->
+      VTuple [| enlarge_value t.structure v |]
   | _ -> loop v
 
 (* Return a type that is large enough for both s1 and s2, assuming
