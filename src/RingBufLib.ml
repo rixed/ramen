@@ -217,7 +217,9 @@ and write_tuple tx offs vs =
   ignore
 
 and write_record tx offs kvs =
-  Array.map snd kvs |> write_tuple tx offs
+  ser_order kvs |>
+  Array.map snd |>
+  write_tuple tx offs
 
 and write_vector tx = write_tuple tx
 
