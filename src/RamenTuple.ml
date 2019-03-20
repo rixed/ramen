@@ -8,9 +8,10 @@
 open Batteries
 open RamenHelpers
 module T = RamenTypes
+module N = RamenName
 
 type field_typ =
-  { mutable name : RamenName.field ;
+  { mutable name : N.field ;
     mutable typ : T.t ;
     mutable units : RamenUnits.t option ;
     mutable doc : string ;
@@ -20,21 +21,21 @@ type field_typ =
 
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
-  { name = RamenName.field_of_string "Seq" ;
+  { name = N.field "Seq" ;
     typ = T.{ structure = TU64 ; nullable = false } ;
     units = Some RamenUnits.dimensionless ;
     doc = "Sequence number" ;
     aggr = None }
 
 let start_typ =
-  { name = RamenName.field_of_string "Event start" ;
+  { name = N.field "Event start" ;
     typ = T.{ structure = TFloat ; nullable = true } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event start" ;
     aggr = Some "min" }
 
 let stop_typ =
-  { name = RamenName.field_of_string "Event stop" ;
+  { name = N.field "Event stop" ;
     typ = T.{ structure = TFloat ; nullable = true } ;
     units = Some RamenUnits.seconds_since_epoch ;
     doc = "Event stop" ;
@@ -45,7 +46,7 @@ type typ = field_typ list [@@ppp PPP_OCaml]
 
 let print_field_typ oc field =
   Printf.fprintf oc "%a %a"
-    RamenName.field_print field.name
+    N.field_print field.name
     T.print_typ field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
@@ -67,7 +68,7 @@ type params = param list [@@ppp PPP_OCaml]
 
 let print_param oc p =
   Printf.fprintf oc "%a=%a"
-    RamenName.field_print p.ptyp.name
+    N.field_print p.ptyp.name
     T.print p.value
 
 let print_params oc =
@@ -75,7 +76,7 @@ let print_params oc =
 
 let params_sort params =
   let param_compare p1 p2 =
-    RamenName.compare p1.ptyp.name p2.ptyp.name in
+    N.compare p1.ptyp.name p2.ptyp.name in
   List.fast_sort param_compare params
 
 let params_find n = List.find (fun p -> p.ptyp.name = n)
@@ -109,7 +110,7 @@ let overwrite_params ps1 ps2 =
           if not p1.ptyp.typ.nullable then
             Printf.sprintf2 "Parameter %a is not nullable so cannot \
                              be set to NULL"
-              RamenName.field_print p1.ptyp.name |>
+              N.field_print p1.ptyp.name |>
             failwith
           else
             { p1 with value = VNull }
@@ -117,7 +118,7 @@ let overwrite_params ps1 ps2 =
           | exception Invalid_argument _ ->
               Printf.sprintf2 "Parameter %a of type %a can not be \
                                promoted into a %a"
-                RamenName.field_print p1.ptyp.name
+                N.field_print p1.ptyp.name
                 print_structure (structure_of p2_val)
                 print_typ p1.ptyp.typ |>
               failwith
@@ -147,7 +148,7 @@ struct
       optional ~def:"" (opt_blanks -+ quoted_string) ++
       optional ~def:None (opt_blanks -+ some default_aggr) >>:
       fun ((((name, typ), units), doc), aggr) ->
-        let name = RamenName.field_of_string name in
+        let name = N.field name in
         { name ; typ ; units ; doc ; aggr }
     ) m
 end

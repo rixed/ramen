@@ -1,6 +1,7 @@
 (* Event time.
  *)
 open Batteries
+module N = RamenName
 
 (* Event time info *)
 
@@ -8,9 +9,9 @@ open Batteries
  * tuple or from parameters: *)
 type field_source = OutputField | Parameter [@@ppp PPP_OCaml]
 
-type field = RamenName.field * field_source ref * float [@@ppp PPP_OCaml]
+type field = N.field * field_source ref * float [@@ppp PPP_OCaml]
 
-let string_of_field ((n : RamenName.field), _, s) =
+let string_of_field ((n : N.field), _, s) =
   let string_of_scale f = if f = 1. then "" else "*"^ string_of_float f in
   (n :> string) ^ string_of_scale s
 

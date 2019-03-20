@@ -4,6 +4,7 @@ open RamenHelpers
 open RamenConsts
 module O = RamenOperation
 module OutRef = RamenOutRef
+module N = RamenName
 
 type conf =
   { log_level : log_level ;
@@ -24,12 +25,12 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type parent =
-    RamenName.rel_program option * RamenName.func
+    N.rel_program option * N.func
     [@@ppp PPP_OCaml]
 
   type t =
-    { program_name : RamenName.program ;
-      name : RamenName.func ;
+    { program_name : N.program ;
+      name : N.func ;
       (* A function which history we might want to query in the future
        * so make sure it is either stored or can be computed again from
        * ancestor stored history: *)
@@ -46,11 +47,11 @@ struct
       parents : parent list ;
       merge_inputs : bool ;
       (* List of envvar used in that function: *)
-      envvars : RamenName.field list }
+      envvars : N.field list }
 
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
-      { name : RamenName.func ;
+      { name : N.func ;
         persistent : bool ;
         doc : string ;
         operation : O.t ;
@@ -82,7 +83,7 @@ struct
   let program_of_parent_prog child_prog = function
     | None -> child_prog
     | Some rel_prog ->
-        RamenName.(program_of_rel_program child_prog rel_prog)
+        N.(program_of_rel_program child_prog rel_prog)
 
   let print_parent oc (parent : parent) =
     match parent with
@@ -93,10 +94,10 @@ struct
           (p :> string) (f :> string)
 
   (* Only for debug or keys, not for paths! *)
-  let fq_name f = RamenName.fq f.program_name f.name
+  let fq_name f = N.fq_of_program f.program_name f.name
 
   let path f =
-    RamenName.path_of_program f.program_name
+    N.path_of_program f.program_name
     ^"/"^ (f.name :> string)
 
   let signature func params =
@@ -168,7 +169,7 @@ struct
     (* First the params: *)
     let env =
       Hashtbl.enum params /@
-      (fun ((n : RamenName.field), v) ->
+      (fun ((n : N.field), v) ->
         Printf.sprintf2 "%s%s=%a"
           param_envvar_prefix
           (n :> string)
@@ -230,7 +231,7 @@ struct
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    lib_path ^"/"^ RamenName.path_of_program program_name ^".x"
+    lib_path ^"/"^ N.path_of_program program_name ^".x"
 end
 
 let running_config_file conf =
@@ -253,14 +254,14 @@ type must_run_entry =
     (* Full path to the worker's binary: *)
     bin : string ;
     (* "Command line" for that worker: *)
-    params : RamenName.params [@ppp_default Hashtbl.create 0] ;
+    params : N.params [@ppp_default Hashtbl.create 0] ;
     (* Optionally, file from which this worker can be (re)build (see RamenMake).
      * When it is rebuild, relative parents are found using the program name that's
      * the key in the running config. *)
     src_file : string [@ppp_default ""] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
-type must_run_file = (RamenName.program, must_run_entry) Hashtbl.t
+type must_run_file = (N.program, must_run_entry) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 (* For tests we don't store the rc_file on disk but in there: *)
@@ -316,7 +317,7 @@ let last_conf_mtime conf =
   running_config_file conf |> mtime_of_file_def 0.
 
 let find_func programs fq =
-  let program_name, func_name = RamenName.fq_parse fq in
+  let program_name, func_name = N.fq_parse fq in
   let mre, get_rc =
     Hashtbl.find programs program_name in
   let prog = get_rc () in
@@ -326,7 +327,7 @@ let find_func_or_fail programs fq =
   try find_func programs fq
   with Not_found ->
     Printf.sprintf2 "Unknown function %a"
-      RamenName.fq_print fq |>
+      N.fq_print fq |>
     failwith
 
 let make_conf
@@ -359,7 +360,7 @@ let worker_state conf func params =
                    ^"/"^ Config.version
                    ^"/"^ Func.path func
                    ^"/"^ func.signature
-                   ^"/"^ RamenName.signature_of_params params
+                   ^"/"^ N.signature_of_params params
                    ^"/snapshot"
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
@@ -487,4 +488,4 @@ let make_transient_program () =
   and pid = Unix.getpid ()
   and rnd = Random.int max_int_for_random in
   Legacy.Printf.sprintf "tmp/_%h_%d.%d" now rnd pid |>
-  RamenName.program_of_string
+  N.program

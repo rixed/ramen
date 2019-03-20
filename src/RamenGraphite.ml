@@ -25,14 +25,15 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 
 type comp_section =
   | ProgPath
   | OpName of F.t
-  | FactorAll of RamenName.field
-  | FactorValue of (RamenName.field * T.value)
+  | FactorAll of N.field
+  | FactorValue of (N.field * T.value)
 (*  | FactorIgnore TODO *)
-  | DataField of RamenName.field
+  | DataField of N.field
 
 type comp =
   { value : string ; (* The value as a raw string (unquoted) *)
@@ -86,7 +87,7 @@ let inverted_tree_of_programs
     factor_expansion = OnlyLast && filter_is_last flt_idx
   in
   let programs = Hashtbl.enum programs |> Array.of_enum in
-  let cmp ((n1 : RamenName.program), _) ((n2 : RamenName.program), _) =
+  let cmp ((n1 : N.program), _) ((n2 : N.program), _) =
     String.compare (n1 :> string) (n2 :> string) in
   Array.fast_sort cmp programs ;
   (* For each of these programs, we will build an enumeration of lists from
@@ -103,7 +104,7 @@ let inverted_tree_of_programs
       let out_typ = O.out_type_of_operation operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
       List.enum out_typ //@ (fun ft ->
-        if not (RamenName.is_private ft.RamenTuple.name) &&
+        if not (N.is_private ft.RamenTuple.name) &&
            (not only_num_fields || T.is_a_num ft.RamenTuple.typ.structure) &&
            not (List.mem ft.RamenTuple.name factors)
         then
@@ -502,9 +503,9 @@ let render conf headers body =
       else None) |>
     Set.of_enum in
   !logger.debug "kept factors = %a"
-    (Set.print RamenName.field_print) with_factors ;
+    (Set.print N.field_print) with_factors ;
   let resp =
-    List.map (fun ((data_field : RamenName.field), target, datapoints) ->
+    List.map (fun ((data_field : N.field), target, datapoints) ->
       let target =
         Printf.sprintf2 "%s%a"
           (if with_data_field then
@@ -512,7 +513,7 @@ let render conf headers body =
            else "")
           (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
             Printf.fprintf oc "%a=%a"
-              RamenName.field_print n
+              N.field_print n
               T.print v))
             (List.filter (fun (fact_name, _fact_val) ->
               Set.mem fact_name with_factors

@@ -28,12 +28,13 @@ open RamenLog
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
 
 (* Raise any exception on failure: *)
 type builder =
   C.conf ->
-  (RamenName.program -> RamenProgram.P.t) ->
-  RamenName.program -> string -> string -> unit
+  (N.program -> RamenProgram.P.t) ->
+  N.program -> string -> string -> unit
 
 (* Tells if the target must be rebuilt from the source: *)
 type check = string -> string -> bool

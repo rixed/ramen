@@ -9,7 +9,7 @@ module O = RamenOperation
 open RamenLang
 
 (* Return the field alias in operation corresponding to the given input field: *)
-let forwarded_field operation (field : RamenName.field) =
+let forwarded_field operation (field : N.field) =
   match operation with
   | O.Aggregate { fields ; _ } ->
       List.find_map (fun sf ->
@@ -63,8 +63,8 @@ let infer_field_doc_aggr func parents params =
   let set_doc alias doc =
     if doc <> "" then (
       !logger.debug "Function %a can reuse parent doc for %a"
-        RamenName.func_print func.F.name
-        RamenName.field_print alias ;
+        N.func_print func.F.name
+        N.field_print alias ;
       let ft =
         O.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
@@ -73,8 +73,8 @@ let infer_field_doc_aggr func parents params =
   and set_aggr alias aggr =
     if aggr <> None then (
       !logger.debug "Function %a can reuse parent default aggr for %a"
-        RamenName.func_print func.F.name
-        RamenName.field_print alias ;
+        N.func_print func.F.name
+        N.field_print alias ;
       let ft =
         O.out_type_of_operation func.F.operation |>
         List.find (fun ft ->
@@ -102,7 +102,7 @@ let infer_field_doc_aggr func parents params =
                                           { text = Variable TupleParam ; _ })) ;
               _ } }
             when doc = "" || aggr = None ->
-            let n = RamenName.field_of_string n in
+            let n = N.field n in
             (match List.find (fun param ->
                      param.RamenTuple.ptyp.name = n
                    ) params with
@@ -134,7 +134,7 @@ let finalize_func parents params func =
   (* Check that all expressions have indeed be typed: *)
   let what =
     Printf.sprintf "In function %s "
-      RamenName.(func_color func.F.name) in
+      (N.func_color func.F.name) in
   O.iter_expr (check_typed ~what) func.F.operation ;
   (* Not quite home and dry yet.
    * If no event time info or factors have been given then maybe
@@ -162,8 +162,8 @@ let finalize_func parents params func =
       O.operation_with_factors func.operation inferred ;
     if inferred <> [] then
       !logger.debug "Function %a can reuse factors %a from parents"
-        RamenName.func_print func.name
-        (List.print RamenName.field_print) inferred
+        N.func_print func.name
+        (List.print N.field_print) inferred
   ) ;
   if parents <> [] then (
     infer_field_doc_aggr func parents params ;

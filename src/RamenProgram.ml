@@ -36,7 +36,7 @@ module T = RamenTypes
  * *)
 
 type func =
-  { name : RamenName.func option (* optional during parsing only *) ;
+  { name : N.func option (* optional during parsing only *) ;
     doc : string ;
     operation : O.t ;
     persistent : bool }
@@ -50,7 +50,7 @@ let make_name =
   let seq = ref ~-1 in
   fun () ->
     incr seq ;
-    RamenName.func_of_string ("f"^ string_of_int !seq)
+    N.func ("f"^ string_of_int !seq)
 
 let make_func ?(persistent=false) ?name ?(doc="") operation =
   { name ; doc ; operation ; persistent }
@@ -97,7 +97,7 @@ let checked (params, run_cond, funcs) =
           failwith
       | _ -> ())
   ) run_cond ;
-  let anonymous = RamenName.func_of_string "<anonymous>" in
+  let anonymous = N.func "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %s is not unique" name |> failwith in
   List.fold_left (fun s p ->
@@ -114,7 +114,7 @@ let checked (params, run_cond, funcs) =
         with Failure msg ->
           let open RamenTypingHelpers in
           Printf.sprintf "In function %s: %s"
-            (RamenName.func_color (n.name |? anonymous))
+            (N.func_color (n.name |? anonymous))
             msg |>
           failwith in
       (* While at it, we should not have any STAR left at that point: *)
@@ -130,7 +130,7 @@ let checked (params, run_cond, funcs) =
              * special suffixes (stats, notifs): *)
             if String.contains ns '#' then
               Printf.sprintf "Invalid dash in function name %s"
-                (RamenName.func_color name) |> failwith ;
+                (N.func_color name) |> failwith ;
             (* Names must be unique: *)
             if Set.mem name names then name_not_unique ns ;
             Set.add name names
@@ -161,7 +161,7 @@ struct
           optional ~def:"" quoted_string ++
           optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
           fun (((((name, typ_decl), units), value), doc), aggr) ->
-            let name = RamenName.field_of_string name in
+            let name = N.field name in
             let typ, value =
               let open T in
               match typ_decl with
@@ -171,7 +171,7 @@ struct
                       Printf.sprintf2
                         "Declaration of parameter %a must either specify \
                          the type or a non-null default value"
-                        RamenName.field_print name in
+                        N.field_print name in
                     raise (Reject e)
                   else
                     (* As usual, promote integers to 32 bits, preferably non
@@ -194,7 +194,7 @@ struct
                         Printf.sprintf2
                           "Parameter %a is not nullable, therefore it must have \
                            a default value"
-                          RamenName.field_print name in
+                          N.field_print name in
                       raise (Reject e)
                   else
                     (* Scale the parsed type up to the declaration: *)
@@ -204,7 +204,7 @@ struct
                           Printf.sprintf2
                             "In declaration of parameter %a, type is \
                              incompatible with value %a"
-                            RamenName.field_print name
+                            N.field_print name
                             print value in
                         raise (Reject e)
                     | value -> typ, value
@@ -296,7 +296,7 @@ end
 let reify_subquery =
   let seqnum = ref 0 in
   fun op ->
-    let name = RamenName.func_of_string ("_"^ string_of_int !seqnum) in
+    let name = N.func ("_"^ string_of_int !seqnum) in
     incr seqnum ;
     make_func ~name op
 
@@ -373,7 +373,7 @@ let common_fields_of_from get_parent start_name funcs from =
                   RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.name)))
       | O.NamedOperation (Some rel_pn, fn) ->
-          let pn = RamenName.program_of_rel_program start_name rel_pn in
+          let pn = N.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
@@ -388,7 +388,7 @@ let common_fields_of_from get_parent start_name funcs from =
   ) None from |? Set.empty
 
 let reify_star_fields get_parent program_name funcs =
-  let input_field (alias : RamenName.field) =
+  let input_field (alias : N.field) =
     let expr =
       let n = E.of_string (alias :> string) in
       E.make (Stateless (SL2 (Get, n, E.make (Variable TupleIn)))) in

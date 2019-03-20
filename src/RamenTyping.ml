@@ -77,7 +77,7 @@ let f_of_name field_names k =
   try Hashtbl.find field_names k |> string_of_int
   with Not_found ->
     Printf.sprintf2 "Record field %a was forgotten from field_names?!"
-      RamenName.field_print k |>
+      N.field_print k |>
     failwith
 
 let rec find_type_of_path_in_typ typ path =
@@ -224,7 +224,7 @@ let rec emit_id_eq_typ tuple_sizes records field_names id oc = function
       Printf.fprintf oc "(and %a" (emit_is_record id) d ;
       (* Also emit what is known about the field types *)
       Array.iteri (fun i (k, t) ->
-        let k = RamenName.field_of_string k in
+        let k = N.field k in
         emit_id_eq_typ tuple_sizes records field_names
           (Printf.sprintf "(record%d-e%d %s)" d i id) oc t.T.structure ;
         emit_is_bool t.T.nullable
@@ -369,9 +369,9 @@ let arg_is_numeric oc e =
     emit_numeric oc (t_of_expr e))
 
 let empty_tuple_sizes = Set.Int.empty
-let empty_record_fields : (RamenName.field, int * int * int) Hashtbl.t =
+let empty_record_fields : (N.field, int * int * int) Hashtbl.t =
   Hashtbl.create 0
-let empty_field_names : (RamenName.field, int) Hashtbl.t = Hashtbl.create 0
+let empty_field_names : (N.field, int) Hashtbl.t = Hashtbl.create 0
 
 let arg_has_type typ oc e =
   let name = IO.to_string T.print_structure typ in
@@ -431,7 +431,7 @@ let locate_opened_record stack e path =
             ) stack with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in scope (%a)"
-            RamenName.field_print n
+            N.field_print n
             (pretty_list_print (E.print ~max_depth:1 false)) stack |>
           failwith
       | ret ->
@@ -454,7 +454,7 @@ let eq_to_opened_record_field stack e oc path =
   | exception Not_found ->
       Printf.sprintf2 "Cannot find path %a within field %a (%a)"
         E.print_path path
-        RamenName.field_print field_name
+        N.field_print field_name
         (E.print ~max_depth:2 false) field_expr |>
       failwith
   | path_target ->
@@ -1039,7 +1039,7 @@ let emit_constraints tuple_sizes records field_names
               arg_is_nullable oc e
           | Some i ->
               arg_is_string oc n ;
-              let k = RamenName.field_of_string i in
+              let k = N.field i in
               let rec_lst =
                 try Hashtbl.find_all records k
                 with Not_found ->
@@ -1507,9 +1507,9 @@ let emit_program declare tuple_sizes records field_names
   (* Output all the constraints for all the operations: *)
   List.iteri (fun fi func ->
     let fq = F.fq_name func in
-    !logger.debug "Emit SMT2 for function %a" RamenName.fq_print fq ;
+    !logger.debug "Emit SMT2 for function %a" N.fq_print fq ;
     Printf.fprintf oc "\n; Constraints for function %a\n"
-      RamenName.fq_print fq ;
+      N.fq_print fq ;
     (* Not all functions have an input or output type but then it won't
      * be used: *)
     let in_type = List.assoc_opt fq in_types
@@ -1609,7 +1609,7 @@ let emit_out_types decls oc field_names funcs =
           "\n; Output record type for %a\n\n\
            (declare-fun %s () Type)\n\
            (declare-fun %s () Bool)\n"
-          RamenName.fq_print (F.fq_name func)
+          N.fq_print (F.fq_name func)
           rec_tid rec_nid ;
         emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
         (* All outputs are non null (but for previous_out, see Variable): *)
@@ -1621,7 +1621,7 @@ let emit_out_types decls oc field_names funcs =
           let id = sf.O.expr.uniq_num in
           Printf.fprintf oc
             "; Output field %d (%a) equals expression %d\n"
-            j RamenName.field_print sf.alias id ;
+            j N.field_print sf.alias id ;
           emit_assert oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-e%d %s))"
               (t_of_num id) sz j rec_tid) ;
@@ -1646,7 +1646,7 @@ let emit_out_types decls oc field_names funcs =
 let emit_in_types decls oc tuple_sizes records field_names parents params
                   condition funcs =
   !logger.debug "Emitting SMT2 for input types, with field names = %a"
-    (Hashtbl.print RamenName.field_print Int.print) field_names ;
+    (Hashtbl.print N.field_print Int.print) field_names ;
   (* Build the input type of each func by collecting all the Get(name, x) or
    * Path(path) where x is input-like. Then also build the type of the
    * params and env records.
@@ -1677,7 +1677,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     ) condition ;
     List.iter (fun func ->
       let what =
-        Printf.sprintf2 "Function %s" (RamenName.func_color func.F.name) in
+        Printf.sprintf2 "Function %s" (N.func_color func.F.name) in
       O.iter_expr (f ?func:(Some func) what) func.operation |>
       ignore
     ) funcs
@@ -1717,7 +1717,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             let no_such_field pfunc =
               Printf.sprintf2 "Parent %a of %s does not output a field \
                                named %a (only: %a) (in: %a)"
-                RamenName.func_print pfunc.F.name
+                N.func_print pfunc.F.name
                 what
                 E.print_path path
                 RamenTuple.print_typ
@@ -1736,9 +1736,9 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                       what
                       E.print_path path
                       (pretty_list_print (fun oc f ->
-                        String.print oc (RamenName.func_color f))) prev_fns
+                        String.print oc (N.func_color f))) prev_fns
                       T.print_typ prev_t
-                      (RamenName.func_color fn)
+                      (N.func_color fn)
                       T.print_typ t |>
                     failwith ;
                   Some ((fn::prev_fns), prev_t) in
@@ -1814,7 +1814,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     match e.E.text with
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
-        register_io ?func what e prefix [ Name (RamenName.field_of_string s) ]
+        register_io ?func what e prefix [ Name (N.field s) ]
     | Stateless (SL0 (Path path)) ->
         register_io ?func what e TupleIn path
     | _ -> ()
@@ -1839,7 +1839,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         (match fq_name with
         | None -> string_of_prefix pref
         | Some fq ->
-            Printf.sprintf2 "input of function %a" RamenName.fq_print fq)
+            Printf.sprintf2 "input of function %a" N.fq_print fq)
         rec_tid rec_nid ;
       let sz = Hashtbl.length h in
       emit_assert oc (fun oc -> emit_is_record rec_tid oc sz) ;
@@ -1849,14 +1849,14 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
        * type the variables "in", "env", etc, themselves: *)
       let in_order = Hashtbl.enum h |> Array.of_enum in
       Array.fast_sort (fun (f1, _) (f2, _) ->
-        RamenName.compare f1 f2) in_order ;
+        N.compare f1 f2) in_order ;
       Array.iteri (fun i (field, e) ->
         (* Make [e] stands for this field: *)
         Printf.fprintf oc
           "; Expression %a (%d) is field %d (%a)\n"
           (E.print ~max_depth:2 false) e
           e.E.uniq_num
-          i RamenName.field_print field ;
+          i N.field_print field ;
         emit_assert oc (fun oc ->
           Printf.fprintf oc "(= %s (record%d-e%d %s))"
             (t_of_expr e) sz i rec_tid) ;
@@ -2090,7 +2090,7 @@ let used_tuples_records funcs parents =
         n in
     !logger.debug
       "Register field %a (%d) at position %d in a record of length %d"
-      RamenName.field_print k
+      N.field_print k
       n field_pos rec_sz ;
     Hashtbl.add records k (n, rec_sz, field_pos)
   in
@@ -2126,7 +2126,7 @@ let used_tuples_records funcs parents =
          * just remember the field names: *)
         | Stateless (SL2 (Get, { text = Const (VString name) ; _ },
                                { text = Variable tuple ; _ })) ->
-            register_param_or_env tuple (RamenName.field_of_string name)
+            register_param_or_env tuple (N.field name)
         | _ ->
             prev
       ) func.F.operation
@@ -2147,7 +2147,7 @@ let used_tuples_records funcs parents =
           | TRecord ts->
               let d = Array.length ts in
               Array.iteri (fun i (k, _) ->
-                register_field (RamenName.field_of_string k) d i
+                register_field (N.field k) d i
               ) ts ;
               s
           | _ -> s
@@ -2183,7 +2183,7 @@ let get_types parents condition funcs params fname =
      * Note: To avoid circular deps TRecord field names are strings: *)
     let name_of_idx =
       Array.create (Hashtbl.length field_names) "" in
-    Hashtbl.iter (fun (k : RamenName.field) idx ->
+    Hashtbl.iter (fun (k : N.field) idx ->
       name_of_idx.(idx) <- (k :> string)
     ) field_names ;
     assert (Array.for_all (fun n -> n <> "") name_of_idx) ;
@@ -2233,11 +2233,11 @@ let get_types parents condition funcs params fname =
 let set_io_tuples parents funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
-      RamenName.func_print func.F.name ;
+      N.func_print func.F.name ;
     O.out_type_of_operation func.F.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
-        RamenName.field_print ft.RamenTuple.name ;
+        N.field_print ft.RamenTuple.name ;
       if T.is_typed ft.RamenTuple.typ.structure then (
         !logger.debug "...already typed to %a" T.print_typ ft.RamenTuple.typ
       ) else (
@@ -2251,18 +2251,18 @@ let set_io_tuples parents funcs h =
             (match Hashtbl.find h id with
             | exception Not_found ->
                 Printf.sprintf2 "Cannot find type for id %d, field %a"
-                  id RamenName.field_print ft.name |>
+                  id N.field_print ft.name |>
                 failwith
             | typ ->
                 !logger.debug "Set output field %a.%a to %a"
-                  RamenName.func_print func.F.name
-                  RamenName.field_print ft.name
+                  N.func_print func.F.name
+                  N.field_print ft.name
                   T.print_typ typ ;
                 ft.typ <- typ)
         | _ -> assert false))
   and set_input func =
     !logger.debug "set_input of function %a"
-      RamenName.func_print func.F.name ;
+      N.func_print func.F.name ;
     let parents = Hashtbl.find_default parents func.F.name [] in
     List.iter (fun f ->
       !logger.debug "set_input for input %a"
@@ -2272,7 +2272,7 @@ let set_io_tuples parents funcs h =
       let f_name = E.id_of_path f.RamenFieldMaskLib.path in
       if parents = [] then
         Printf.sprintf2 "Cannot use input field %a without any parent"
-          RamenName.field_print f_name |>
+          N.field_print f_name |>
         failwith ;
       if T.is_typed f.typ.structure then (
         !logger.debug "... already typed to %a" T.print_typ f.typ
@@ -2281,19 +2281,19 @@ let set_io_tuples parents funcs h =
          * same type. Copy from the first parent: *)
         let parent = List.hd parents in
         !logger.debug "Copying from parent %a"
-          RamenName.func_print parent.F.name ;
+          N.func_print parent.F.name ;
         let pser =
           O.out_type_of_operation parent.F.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
-              RamenName.field_print f_name
-              (RamenName.func_color parent.F.name) |>
+              N.field_print f_name
+              (N.func_color parent.F.name) |>
             failwith
         | typ ->
             !logger.debug "Set input field %a.%a to %a"
-              RamenName.func_print func.F.name
-              RamenName.field_print f_name
+              N.func_print func.F.name
+              N.field_print f_name
               T.print_typ typ ;
             f.typ <- typ)
     ) func.in_type

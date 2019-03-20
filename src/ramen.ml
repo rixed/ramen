@@ -7,6 +7,7 @@ open Batteries
 open RamenHelpers
 open RamenConsts
 module T = RamenTypes
+module N = RamenName
 
 (*
  * Common options
@@ -355,9 +356,9 @@ let assignment =
     | pname, pval ->
         let what = "value of command line parameter "^ pname in
         (match T.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, v)
+        | Result.Ok v -> Pervasives.Ok (N.field pname, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
-  and print fmt ((pname : RamenName.field), pval) =
+  and print fmt ((pname : N.field), pval) =
     Format.fprintf fmt "%s=%s"
       (pname :> string)
       (T.to_string pval)
@@ -394,8 +395,8 @@ let bin_file =
   Arg.(required (pos 0 (some string) None i))
 
 let program =
-  let parse s = Pervasives.Ok (RamenName.program_of_string s)
-  and print fmt (p : RamenName.program) =
+  let parse s = Pervasives.Ok (N.program s)
+  and print fmt (p : N.program) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
@@ -472,8 +473,8 @@ let kill =
     info ~doc:CliInfo.kill "kill")
 
 let func_name =
-  let parse s = Pervasives.Ok (RamenName.func_of_string s)
-  and print fmt (p : RamenName.func) =
+  let parse s = Pervasives.Ok (N.func s)
+  and print fmt (p : N.func) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
@@ -559,9 +560,9 @@ let filter =
     | pname, op, pval ->
         let what = "value of command line parameter "^ pname in
         (match T.of_string ~what pval with
-        | Result.Ok v -> Pervasives.Ok (RamenName.field_of_string pname, op, v)
+        | Result.Ok v -> Pervasives.Ok (N.field pname, op, v)
         | Result.Bad e -> Pervasives.Error (`Msg e))
-  and print fmt ((pname : RamenName.field), op, pval) =
+  and print fmt ((pname : N.field), op, pval) =
     Format.fprintf fmt "%s%s%s"
       (pname :> string)
       op
@@ -653,8 +654,8 @@ let tail =
  *)
 
 let fq_name =
-  let parse s = Pervasives.Ok (RamenName.fq_of_string s)
-  and print fmt (p : RamenName.fq) =
+  let parse s = Pervasives.Ok (N.fq s)
+  and print fmt (p : N.fq) =
     Format.fprintf fmt "%s" (p :> string)
   in
   Arg.conv ~docv:"FUNCTION" (parse, print)
@@ -665,8 +666,8 @@ let function_name p =
   Arg.(required (pos p (some fq_name) None i))
 
 let field =
-  let parse s = Pervasives.Ok (RamenName.field_of_string s)
-  and print fmt (s : RamenName.field)  =
+  let parse s = Pervasives.Ok (N.field s)
+  and print fmt (s : N.field)  =
     Format.fprintf fmt "%s" (s :> string)
   in
   Arg.conv ~docv:"FIELD" (parse, print)

@@ -12,7 +12,7 @@ type field = [`Fiield] t
 let field_ppp_ocaml = t_ppp_ocaml
 let field_ppp_json = t_ppp_json
 
-let field_of_string s =
+let field s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
    * Slashes have to be forbidden because we rsplit to get program names. *)
   if s = "" ||
@@ -37,7 +37,7 @@ type func = [`Function] t
 
 let func_ppp_ocaml = t_ppp_ocaml
 
-let func_of_string s =
+let func s =
   (* New lines have to be forbidden because of the out_ref ringbuf files.
    * Slashes have to be forbidden because we rsplit to get program names. *)
   if s = "" ||
@@ -55,7 +55,7 @@ type program = [`Program] t
 
 let program_ppp_ocaml = t_ppp_ocaml
 
-let program_of_string s =
+let program s =
   let rec remove_heading_slashes s =
     if String.length s > 0 && s.[0] = '/' then
       remove_heading_slashes (String.lchop s)
@@ -87,7 +87,7 @@ type rel_program = [`RelProgram] t
 
 let rel_program_ppp_ocaml = t_ppp_ocaml
 
-let rel_program_of_string s =
+let rel_program s =
   if s = "" then invalid_arg "relative program name"
   else s
 
@@ -130,9 +130,9 @@ type fq = [`FQ] t
 
 let fq_ppp_ocaml = t_ppp_ocaml
 
-external fq_of_string : string -> fq = "%identity"
+external fq : string -> fq = "%identity"
 
-let fq prog func = prog ^"/"^ func
+let fq_of_program prog func = prog ^"/"^ func
 
 let fq_print = String.print
 let fq_print_quoted = String.print_quoted
@@ -143,11 +143,11 @@ let fq_parse ?default_program s =
   match String.rsplit ~by:"/" s with
   | exception Not_found ->
       (match default_program with
-      | Some l -> l, func_of_string s
+      | Some l -> l, func s
       | None ->
           Printf.sprintf "Cannot find function %S" s |>
           failwith)
-  | p, f -> (program_of_string p, func_of_string f)
+  | p, f -> (program p, func f)
 
 (* Base units *)
 
@@ -155,7 +155,7 @@ type base_unit = [`BaseUnit] t
 
 let base_unit_ppp_ocaml = t_ppp_ocaml
 
-external base_unit_of_string : string -> base_unit = "%identity"
+external base_unit : string -> base_unit = "%identity"
 let base_unit_print = String.print
 let base_unit_print_quoted = String.print_quoted
 

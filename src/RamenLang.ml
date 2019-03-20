@@ -3,6 +3,7 @@ open Batteries
 open Stdint
 open RamenHelpers
 open RamenLog
+module N = RamenName
 
 type tuple_prefix =
   | TupleUnknown (* Either Record, In, Out, or Param*)
@@ -104,7 +105,7 @@ let program_name ?(quoted=false) m =
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
-    fun (c, s) -> RamenName.rel_program_of_string (String.of_list (c :: s))
+    fun (c, s) -> N.rel_program (String.of_list (c :: s))
   ) m
 
 let func_name ?(quoted=false) m =
@@ -118,7 +119,7 @@ let func_name ?(quoted=false) m =
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat_greedy ~sep:none ~what any_char >>:
-    fun (c, s) -> RamenName.func_of_string (String.of_list (c :: s))
+    fun (c, s) -> N.func (String.of_list (c :: s))
   ) m
 
 let function_name =

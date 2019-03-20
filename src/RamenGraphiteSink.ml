@@ -16,6 +16,7 @@ open RamenTypes
 open RamenTuple
 open RamenNullable
 open RamenConsts
+module N = RamenName
 
 type graphite_metric =
   RamenIp.t nullable (* sender *) *
@@ -28,21 +29,21 @@ type graphite_metric =
 (* TODO: have pre-made common types such as
  * RamenTypes.string = { structure = TString ; nullable = false } ... *)
 let tuple_typ =
-  [ { name = RamenName.field_of_string "sender" ; typ = { structure = TIp ; nullable = true } ; units = None ; doc = "Where we received this metric from." ; aggr = None } ;
-    { name = RamenName.field_of_string "receipt_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "When this metric has been received." ; aggr = None } ;
-    { name = RamenName.field_of_string "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "Event time." ; aggr = None } ;
-    { name = RamenName.field_of_string "metric" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "The graphite metric path." ; aggr = None } ;
-    { name = RamenName.field_of_string "tags" ; typ = { structure = TList { structure = TTuple [| { structure = TString ; nullable = false } ; { structure = TString ; nullable = false } |] ; nullable = false } ; nullable = false } ; units = None ; doc = "Accompanying tags." ; aggr = None } ;
-    { name = RamenName.field_of_string "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "The metric value." ; aggr = None } ]
+  [ { name = N.field "sender" ; typ = { structure = TIp ; nullable = true } ; units = None ; doc = "Where we received this metric from." ; aggr = None } ;
+    { name = N.field "receipt_time" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "When this metric has been received." ; aggr = None } ;
+    { name = N.field "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "Event time." ; aggr = None } ;
+    { name = N.field "metric" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "The graphite metric path." ; aggr = None } ;
+    { name = N.field "tags" ; typ = { structure = TList { structure = TTuple [| { structure = TString ; nullable = false } ; { structure = TString ; nullable = false } |] ; nullable = false } ; nullable = false } ; units = None ; doc = "Accompanying tags." ; aggr = None } ;
+    { name = N.field "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "The metric value." ; aggr = None } ]
 
 let event_time =
   let open RamenEventTime in
-  Some ((RamenName.field_of_string "start", ref OutputField, 1.),
+  Some ((N.field "start", ref OutputField, 1.),
         DurationConst 0.)
 
 let factors =
-  [ RamenName.field_of_string "sender" ;
-    RamenName.field_of_string "metric" ]
+  [ N.field "sender" ;
+    N.field "metric" ]
 
 let print oc (_sender, _recept_time, start, metric, tags, value) =
   Printf.fprintf oc "%s%s%a %s %s"

@@ -23,6 +23,7 @@ module F = C.Func
 module E = RamenExpr
 module T = RamenTypes
 module O = RamenOperation
+module N = RamenName
 module Orc = RamenOrc
 open RamenConsts
 open RamenTypes (* FIXME: RamenTypes.Pub ? *)
@@ -40,13 +41,13 @@ type op_context =
     params : RamenTuple.params ;
     code : string Batteries.IO.output ;
     consts : string Batteries.IO.output ;
-    func_name : RamenName.func option }
+    func_name : N.func option }
 
 let id_of_prefix tuple =
   String.nreplace (string_of_prefix tuple) "." "_"
 
 (* Tuple deconstruction as a function parameter: *)
-let id_of_field_name ?(tuple=TupleIn) (x : RamenName.field) =
+let id_of_field_name ?(tuple=TupleIn) (x : N.field) =
   (match (x :> string) with
   (* Note: we have a '#count' for the sort tuple. *)
   | "#count" -> "virtual_"^ id_of_prefix tuple ^"_count_"
@@ -56,7 +57,7 @@ let id_of_field_name ?(tuple=TupleIn) (x : RamenName.field) =
 let id_of_field_typ ?tuple field_typ =
   id_of_field_name ?tuple field_typ.RamenTuple.name
 
-let var_name_of_record_field (k : RamenName.field) =
+let var_name_of_record_field (k : N.field) =
   (k :> string) ^ "_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
@@ -409,7 +410,7 @@ let rec filter_out_private t =
   | T.TRecord kts ->
       let kts =
         Array.filter_map (fun (k, t') ->
-          if RamenName.(is_private (field_of_string k)) then None
+          if N.(is_private (field k)) then None
           else (
             filter_out_private t' |> Option.map (fun t' -> k, t')
           )
@@ -431,7 +432,7 @@ let rec filter_out_private t =
 (* Simpler, temp version of the above: *)
 let filter_out_private_from_tup tup =
   List.filter (fun ft ->
-    not (RamenName.is_private ft.RamenTuple.name)
+    not (N.is_private ft.RamenTuple.name)
   ) tup
 
 (* Given a function name and an output type, return the actual function
@@ -541,7 +542,7 @@ let rec conv_from_to
       (* Note: when printing records, private fields disappear *)
       let kts' =
         Array.filter (fun (k, _) ->
-          not (RamenName.(is_private (field_of_string k)))) kts in
+          not (N.(is_private (field k)))) kts in
       let arg_var k =
         RamenOCamlCompiler.make_valid_ocaml_identifier ("rec_"^ k) in
       Printf.fprintf oc
@@ -681,7 +682,7 @@ let id_of_state = function
 
 (* Return the environment corresponding to the used envvars: *)
 let env_of_envvars envvars =
-  List.map (fun (f : RamenName.field) ->
+  List.map (fun (f : N.field) ->
     let v =
       Printf.sprintf2 "(Sys.getenv_opt %S |> nullable_of_option)"
         (f :> string) in
@@ -734,7 +735,7 @@ let subst_fields_for_binding pref =
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable prefix ; }))
       when pref = prefix ->
-        let f = RamenName.field_of_string n in
+        let f = N.field n in
         { e with text = Binding (RecordField (pref, f)) }
     | _ -> e)
 
@@ -938,7 +939,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
      * refer to the previous one. And we must, for each expression, evaluate
      * it in a context where this record is opened. *)
     let _env =
-      List.fold_left (fun env ((k : RamenName.field), v) ->
+      List.fold_left (fun env ((k : N.field), v) ->
         let var_name = var_name_of_record_field k in
         Printf.fprintf oc "\tlet %s = %a in\n"
           var_name
@@ -2126,8 +2127,8 @@ let emit_for_serialized_fields_of_output
   let p fmt = emit oc indent fmt in
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iter (fun (ft, i) ->
-    if not (RamenName.is_private ft.name) then (
-      p "(* Field %a *)" RamenName.field_print ft.RamenTuple.name ;
+    if not (N.is_private ft.name) then (
+      p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
       let val_var = id_of_field_typ ~tuple:TupleOut ft in
       let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
       emit_for_serialized_fields indent ft.typ copy skip fm_var val_var
@@ -2192,8 +2193,8 @@ let emit_for_serialized_fields_of_output_no_value
    * with out_var = a whole tuple. *)
   RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
   List.iter (fun (ft, i) ->
-    if not (RamenName.is_private ft.name) then (
-      p "(* Field %a *)" RamenName.field_print ft.RamenTuple.name ;
+    if not (N.is_private ft.name) then (
+      p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
       let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
       emit_for_serialized_fields_no_value
         indent ft.typ copy skip fm_var oc out_var))
@@ -3224,7 +3225,7 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
     | [] ->
         !logger.warning "Cannot find a way to optimise the commit \
                          condition of function %a"
-          RamenName.func_print (option_get "func_name" opc.func_name) ;
+          N.func_print (option_get "func_name" opc.func_name) ;
         no_optim
     | e :: es ->
         (match defined_order e with
@@ -3310,7 +3311,7 @@ let emit_aggregate opc global_env group_env env_env param_env
         Set.add fn s
     | Stateless (SL2 (Get, E.{ text = Const (VString fn) ; _ },
                            E.{ text = Variable TupleOut ; _ })) ->
-        Set.add (RamenName.field_of_string fn) s
+        Set.add (N.field fn) s
     | _ -> s in
   let minimal_fields =
     let from_commit_cond =
@@ -3351,7 +3352,7 @@ let emit_aggregate opc global_env group_env env_env param_env
     fetch_recursively
   in
   !logger.debug "minimal fields: %a"
-    (Set.print RamenName.field_print) minimal_fields ;
+    (Set.print N.field_print) minimal_fields ;
   (* Replace removed values with a dull type. Should not be accessed
    * ever. This is because we want out and minimal to have the same
    * ramen type, so that field access works on both. *)
@@ -3361,7 +3362,7 @@ let emit_aggregate opc global_env group_env env_env param_env
         ft
       else (* Replace it *)
         RamenTuple.{ ft with
-          name = RamenName.field_of_string ("_not_minimal_"^ (ft.name :> string)) ;
+          name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
           typ = T.{ ft.typ with structure = TEmpty } }
     ) out_typ in
   (* Tells whether we need the group to check the where clause (because it
@@ -3510,7 +3511,7 @@ let emit_params_env params_mod params envvars oc =
   Printf.fprintf oc
     "\n(* Environment variables as a Ramen record: *)\n\
      let envs_ = %a\n\n"
-    (list_print_as_tuple (fun oc (n : RamenName.field) ->
+    (list_print_as_tuple (fun oc (n : N.field) ->
       Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
         (n :> string)))
       envvars
@@ -3584,13 +3585,13 @@ let emit_priv_pub opc =
         (Enum.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
           Printf.fprintf oc "%s_%s_" var k))
           (Array.enum kts // fun (k, _) ->
-            trim || not RamenName.(is_private (field_of_string k)))
+            trim || not N.(is_private (field k)))
         var ;
       Array.fold_left (fun i (k, t) ->
         let var' = Printf.sprintf "%s_%s_" var k in
         if trim then (
           (* remove all private fields, recursively: *)
-          if RamenName.(is_private (field_of_string k)) then i
+          if N.(is_private (field k)) then i
           else (
             if i > 0 then p "," ;
             p "(" ;
@@ -3600,7 +3601,7 @@ let emit_priv_pub opc =
           )
         ) else (
           if i > 0 then p "," ;
-          if RamenName.(is_private (field_of_string k)) then (
+          if N.(is_private (field k)) then (
             (* add private value that was missing: *)
             let e = any_constant_of_expr_type t in
             Printf.fprintf opc.consts
@@ -3712,7 +3713,7 @@ let emit_convert name func oc =
 let compile conf func obj_name params_mod orc_write_func orc_read_func
             params envvars =
   !logger.debug "Going to compile function %a: %a"
-    RamenName.func_print func.F.name
+    N.func_print func.F.name
     (O.print true) func.F.operation ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
@@ -3764,6 +3765,6 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
           (IO.close_out consts) (IO.close_out code)
       ) in
   let debug = conf.C.log_level = Debug in
-  let what = "function "^ RamenName.func_color func.F.name in
+  let what = "function "^ N.func_color func.F.name in
   RamenOCamlCompiler.compile ~debug ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name

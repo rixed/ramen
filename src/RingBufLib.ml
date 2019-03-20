@@ -4,6 +4,7 @@ open RamenHelpers
 open Stdint
 open RingBuf
 module T = RamenTypes
+module N = RamenName
 open RamenTypes
 
 (* Note regarding nullmask and constructed types:
@@ -68,7 +69,7 @@ let sersize_of_cidr = function
 let rec ser_array_of_record kts =
   let a =
     Array.filter_map (fun (k, t as kt) ->
-      if RamenName.(is_private (field_of_string k)) then None else
+      if N.(is_private (field k)) then None else
       match t with
       | { structure = TRecord kts ; nullable } ->
           let kts = ser_array_of_record kts in
@@ -85,7 +86,7 @@ let rec ser_array_of_record kts =
 let ser_order kts =
   let a =
     Array.filter (fun (k, _) ->
-      not (RamenName.(is_private (field_of_string k)))
+      not (N.(is_private (field k)))
     ) kts in
   Array.fast_sort (fun (k1, _) (k2, _) -> String.compare k1 k2) a ;
   a
@@ -314,14 +315,14 @@ let retry_for_ringbuf ?(wait_for_more=true) ?while_ ?delay_rec ?max_retry_time f
  * a skip list in the out_ref (to makes serialization easier not out_ref
  * smaller) we serialize all fields in the same order: *)
 let ser_tuple_field_cmp (t1, _) (t2, _) =
-  RamenName.compare t1.RamenTuple.name t2.RamenTuple.name
+  N.compare t1.RamenTuple.name t2.RamenTuple.name
 
 (* Reorder RamenTuple fields and skip private fields. Also return as a
  * second component the original position: *)
 let ser_tuple_typ_of_tuple_typ ?(recursive=true) tuple_typ =
   tuple_typ |>
   List.fold_left (fun (lst, i as prev) ft ->
-    if RamenName.is_private ft.RamenTuple.name then prev else
+    if N.is_private ft.RamenTuple.name then prev else
     if not recursive then (ft, i)::lst, i + 1 else
     match ft.typ.structure with
     | TRecord kts ->

@@ -6,6 +6,7 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
+module N = RamenName
 
 (*
  * Stopping a worker from running.
@@ -13,7 +14,7 @@ module O = RamenOperation
 
 let check_orphans killed_prog_names programs =
   !logger.debug "Checking orphans of %a..."
-    (pretty_list_print RamenName.program_print) killed_prog_names ;
+    (pretty_list_print N.program_print) killed_prog_names ;
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name mre ->
     if mre.C.status = MustRun &&
@@ -32,7 +33,7 @@ let check_orphans killed_prog_names programs =
                | None, _ -> false (* does not depend upon a killed program *)
                | Some par_rel_prog, _ ->
                   let par_prog =
-                    RamenName.(program_of_rel_program func.F.program_name par_rel_prog) in
+                    N.program_of_rel_program func.F.program_name par_rel_prog in
                   List.mem par_prog killed_prog_names
              ) func.F.parents
           then
@@ -45,7 +46,7 @@ let check_orphans killed_prog_names programs =
 let kill_locked ?(purge=false) program_names programs =
   let killed_prog_names =
     Hashtbl.enum programs //
-    (fun ((n : RamenName.program), mre) ->
+    (fun ((n : N.program), mre) ->
       (mre.C.status <> C.Killed || purge) &&
       List.exists (fun p ->
         Globs.matches p (n :> string)
@@ -53,7 +54,7 @@ let kill_locked ?(purge=false) program_names programs =
     fst |>
     List.of_enum in
   let running_killed_prog_names =
-    List.filter (fun (n : RamenName.program) ->
+    List.filter (fun (n : N.program) ->
       let mre = Hashtbl.find programs n in
       mre.C.status <> C.Killed
     ) killed_prog_names in
@@ -91,7 +92,7 @@ let check_links ?(force=false) program_name prog running_programs =
     List.iter (function
       | None, _ -> ()
       | Some par_rel_prog, par_func ->
-        let par_prog = RamenName.program_of_rel_program func.F.program_name
+        let par_prog = N.program_of_rel_program func.F.program_name
                                                         par_rel_prog in
         (match Hashtbl.find running_programs par_prog with
         | exception Not_found ->
@@ -169,7 +170,7 @@ let no_params = Hashtbl.create 0
 
 let default_program_name bin_file =
   Filename.(remove_extension (basename bin_file)) |>
-  RamenName.program_of_string
+  N.program
 
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)
@@ -185,7 +186,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
     let can_run = P.wants_to_run conf bin params in
     if not can_run then (
       !logger.info "Program %a is disabled"
-        RamenName.program_print program_name ;
+        N.program_print program_name ;
       if kill_if_disabled then
         log_and_ignore_exceptions ~what:"Killing disabled program"
           (fun () ->

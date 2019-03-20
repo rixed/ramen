@@ -10,6 +10,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 module OutRef = RamenOutRef
 
 let () =
@@ -189,7 +190,7 @@ let compile conf lib_path use_external_compiler bundle_dir
           (try
             Filename.remove_extension source_file |>
             rel_path_from (absolute_path_of p) |>
-            RamenName.program_of_string |>
+            N.program |>
             Option.some
           with Failure s ->
             !logger.debug "%s" s ;
@@ -271,7 +272,7 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     TermTable.print_string 1 run_cond
   ) prog.condition ;
   let info_func i func =
-   TermTable.print i "%s" (RamenName.func_color func.F.name) ;
+   TermTable.print i "%s" (N.func_color func.F.name) ;
     if func.doc <> "" then TermTable.print_abstract i func.doc ;
     TermTable.print_head (i+1) "Parents" ;
     if func.parents = [] then (
@@ -279,11 +280,11 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     ) else (
       List.iter (function
         | None, f ->
-            TermTable.print (i+2) "%s" (RamenName.func_color f)
+            TermTable.print (i+2) "%s" (N.func_color f)
         | Some rp, f ->
             TermTable.print (i+2) "%s/%s"
-              (RamenName.rel_program_color rp)
-              (RamenName.func_color f)
+              (N.rel_program_color rp)
+              (N.func_color f)
       ) func.parents ;
       TermTable.print_head (i+1) "Input type" ;
       TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type) ;
@@ -308,7 +309,7 @@ let info _conf params program_name_opt bin_file opt_func_name () =
                func.F.name = func_name) prog.funcs with
       | exception Not_found ->
           Printf.sprintf2 "No such function %a"
-            RamenName.func_print func_name |>
+            N.func_print func_name |>
           failwith
       | func -> info_func 0 func)
 
@@ -393,7 +394,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
     C.with_rlock conf (fun programs ->
-      Hashtbl.iter (fun (program_name : RamenName.program) (mre, _get_rc) ->
+      Hashtbl.iter (fun (program_name : N.program) (mre, _get_rc) ->
         if (all || mre.C.status = C.MustRun) &&
            Globs.matches pattern (program_name :> string)
         then (
@@ -413,7 +414,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.commit_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
-               Some (ValStr (RamenName.string_of_params mre.C.params)) ;
+               Some (ValStr (N.string_of_params mre.C.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
                int_or_na s.out_count ;
@@ -467,7 +468,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
         | exception _ -> (* which has been logged already *) ()
         | prog ->
           List.iter (fun func ->
-            let fq = RamenName.fq program_name func.F.name in
+            let fq = N.fq_of_program program_name func.F.name in
             if Globs.matches pattern (fq :> string) then
               let s = Hashtbl.find_default stats fq RamenPs.no_stats in
               (if profile then
@@ -551,8 +552,8 @@ let parse_func_name_of_code conf what func_name_or_code =
   let parse_as_names () =
     match func_name_or_code with
     | func_name :: field_names ->
-        let fq = RamenName.fq_of_string func_name
-        and field_names = List.map RamenName.field_of_string field_names in
+        let fq = N.fq func_name
+        and field_names = List.map N.field field_names in
         let ret = fq, field_names, [] in
         (* First, is it any of the special ringbuf? *)
         if String.ends_with func_name ("#"^ SpecialFunctions.stats) ||
@@ -566,7 +567,7 @@ let parse_func_name_of_code conf what func_name_or_code =
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
     let program_name = C.make_transient_program () in
-    let func_name = RamenName.func_of_string "f" in
+    let func_name = N.func "f" in
     let programs = C.with_rlock conf identity in (* best effort *)
     let get_parent = RamenCompiler.parent_from_programs programs in
     let oc, src_file =
@@ -593,7 +594,7 @@ let parse_func_name_of_code conf what func_name_or_code =
       let debug = conf.C.log_level = Debug in
       RamenRun.run conf ~report_period:0. ~src_file ~debug
                    exec_file (Some program_name)) ;
-    let fq = RamenName.fq program_name func_name in
+    let fq = N.fq_of_program program_name func_name in
     fq, [], [ program_name ]
   in
   try
@@ -714,7 +715,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
 let purge_transient conf to_purge () =
   if to_purge <> [] then
     let patterns =
-      List.map (fun (p : RamenName.program) ->
+      List.map (fun (p : N.program) ->
         Globs.(compile (escape (p :> string)))
       ) to_purge in
     let nb_kills = RamenRun.kill conf ~purge:true patterns in
@@ -820,7 +821,7 @@ let timeseries_ conf fq data_fields
       if single_data_field then
         (if v = "" then (List.hd data_fields :> string) else v) :: res
       else
-        List.fold_left (fun res (df : RamenName.field) ->
+        List.fold_left (fun res (df : N.field) ->
           ((df :> string) ^ (if v = "" then "" else "("^ v ^")")) :: res
         ) res data_fields
     ) [] columns |> List.rev in
@@ -935,10 +936,10 @@ let graphite_expand conf for_render since until query () =
     RamenGraphite.targets_for_render conf ?since ?until [ query ] |>
     Enum.iter (fun (_func, fq, fvals, data_field) ->
       Printf.printf "%a %a with %a"
-        RamenName.fq_print fq
-        RamenName.field_print data_field
+        N.fq_print fq
+        N.field_print data_field
         (Set.print (fun oc (factor, opt_val) ->
-          Printf.fprintf oc "%a:" RamenName.field_print factor ;
+          Printf.fprintf oc "%a:" N.field_print factor ;
           match opt_val with
           | None -> String.print oc "*"
           | Some v -> T.print oc v)) fvals)

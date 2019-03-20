@@ -6,6 +6,7 @@ open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
 
 (* FIXME: Make RamenBinocle the only place where this record is defined *)
 module Profile =
@@ -158,7 +159,7 @@ let read_stats ?while_ conf =
         startup_time = get_float tuple.(18) }
     in
     (* Keep only the latest stat line per worker: *)
-    Hashtbl.modify_opt (RamenName.fq_of_string worker) (function
+    Hashtbl.modify_opt (N.fq worker) (function
       | None -> Some (time, stats)
       | Some (time', _) as prev ->
           if time' > time then prev else Some (time, stats)
@@ -200,7 +201,7 @@ let add_stats s1 s2 =
 let per_program stats =
   let h = Hashtbl.create 17 in
   Hashtbl.iter (fun fq stats ->
-    let program, _ = RamenName.fq_parse fq in
+    let program, _ = N.fq_parse fq in
     Hashtbl.modify_opt program (function
       | None -> Some stats
       | Some stats' -> Some (add_stats stats' stats)

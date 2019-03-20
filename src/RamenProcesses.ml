@@ -11,6 +11,7 @@ module F = C.Func
 module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
+module N = RamenName
 module OutRef = RamenOutRef
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
@@ -155,7 +156,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
 (* Description of a running worker.
  * Not persisted on disk. *)
 type running_process =
-  { params : RamenName.params ;
+  { params : N.params ;
     bin : string ;
     func : C.Func.t ;
     log_level : log_level ;
@@ -217,7 +218,7 @@ let check_is_subtype t1 t2 =
       RamenFieldMaskLib.find_type_of_path t2 f1.RamenFieldMaskLib.path in
     if f1.typ <> f2_typ then
       Printf.sprintf2 "Fields %a have different types"
-        RamenName.field_print (E.id_of_path f1.path) |>
+        N.field_print (E.id_of_path f1.path) |>
       failwith
   ) t1
 
@@ -446,7 +447,7 @@ let really_start conf proc parents children =
   (* Also add all envvars that are defined and used in the operation: *)
   let more_env =
     List.enum proc.func.envvars //@
-    (fun (n : RamenName.field) ->
+    (fun (n : N.field) ->
       try Some ((n :> string) ^"="^ Sys.getenv (n :> string))
       with Not_found -> None) |>
     Enum.append more_env in
@@ -481,7 +482,7 @@ let really_try_start conf now must_run proc =
           () (* Parent runs in the very program we want to start *)
        | Some rel_p_prog, p_func as parent ->
           let p_prog =
-            RamenName.(program_of_rel_program proc.func.program_name rel_p_prog) in
+            N.(program_of_rel_program proc.func.program_name rel_p_prog) in
           let has_parent =
             List.exists (fun func ->
               func.F.program_name = p_prog && func.F.name = p_func

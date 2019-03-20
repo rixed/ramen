@@ -10,6 +10,7 @@ open RamenLang
 open RamenHelpers
 open RamenLog
 module T = RamenTypes
+module N = RamenName
 
 (*$inject
   open TestHelpers
@@ -54,7 +55,7 @@ and text =
    * value (handy for refining the value of some field).
    * The bool indicates the presence of a STAR selector, which is always
    * cleared after a program is parsed. *)
-  | Record of (RamenName.field * t) list
+  | Record of (N.field * t) list
   (* The same distinction applies to vectors.
    * Notice there are no list expressions though, for the same reason that
    * there is no such thing as a list immediate, but only vectors. Lists, ie
@@ -339,7 +340,7 @@ and binding_key =
   | State of int
   (* Placeholder for the variable holding the value of that field; Again,
    * name of the actual variable to be found in the environment: *)
-  | RecordField of tuple_prefix * RamenName.field
+  | RecordField of tuple_prefix * N.field
   (* Placeholder for the variable holding the value of the whole IO value;
    * Name of the actual variable to be found in the environment: *)
   | RecordValue of tuple_prefix
@@ -349,7 +350,7 @@ and binding_key =
   | Direct of string
   [@@ppp PPP_OCaml]
 
-and path_comp = Int of int | Name of RamenName.field
+and path_comp = Int of int | Name of N.field
   [@@ppp PPP_OCaml]
 
 let print_binding_key oc = function
@@ -358,7 +359,7 @@ let print_binding_key oc = function
   | RecordField (pref, field) ->
       Printf.fprintf oc "%s.%a"
         (string_of_prefix pref)
-        RamenName.field_print field
+        N.field_print field
   | RecordValue pref ->
       String.print oc (string_of_prefix pref)
   | Direct s ->
@@ -366,7 +367,7 @@ let print_binding_key oc = function
 
 let print_path_comp oc = function
   | Int i -> Printf.fprintf oc "[%d]" i
-  | Name n -> RamenName.field_print oc n
+  | Name n -> N.field_print oc n
 
 let print_path oc =
   List.print ~first:"" ~last:"" ~sep:"." print_path_comp oc
@@ -378,7 +379,7 @@ let id_of_path p =
       | Int i -> "["^ string_of_int i ^"]"
       | Name s -> (if id = "" then "" else ".")^ (s :> string))
   ) "" p |>
-  RamenName.field_of_string
+  N.field
 
 let uniq_num_seq = ref 0
 
@@ -441,7 +442,7 @@ let int_of_const e =
  * the order: *)
 let fields_of_record kvs =
   List.enum kvs /@ fst |>
-  remove_dups RamenName.compare |>
+  remove_dups N.compare |>
   Array.of_enum
 
 let rec print ?(max_depth=max_int) with_types oc e =
@@ -1628,7 +1629,7 @@ struct
       char '(' -- opt_blanks -+
       repeat ~min:1 ~sep:T.Parser.tup_sep (
         p +- T.Parser.kv_sep ++ non_keyword >>:
-        fun (v, k) -> RamenName.field_of_string k, v) +-
+        fun (v, k) -> N.field k, v) +-
       opt_blanks +- char ')' >>:
       fun kvs ->
         make (Record kvs)
@@ -1726,7 +1727,7 @@ let units_of_expr params units_of_input units_of_output =
           ) params with
     | exception Not_found ->
         Printf.sprintf2 "Unknown parameter %a while looking for units"
-          RamenName.field_print name |>
+          N.field_print name |>
         failwith
     | p -> p.RamenTuple.ptyp.units
   in
@@ -1808,7 +1809,7 @@ let units_of_expr params units_of_input units_of_output =
         with Not_found -> None)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable pref ; _ })) ->
-        let n = RamenName.field_of_string n in
+        let n = N.field n in
         if tuple_has_type_input pref then
           units_of_input n
         else if tuple_has_type_output pref then

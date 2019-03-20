@@ -4,6 +4,7 @@ open RamenHelpers
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
 
 (* Dequeue command *)
 
@@ -91,8 +92,8 @@ let repair conf files () =
 
 type func_status =
   | Running of F.t
-  | NotRunning of RamenName.program * RamenName.func
-  | ProgramError of RamenName.program * string
+  | NotRunning of N.program * N.func
+  | ProgramError of N.program * string
 
 let links conf no_abbrev show_all as_tree pretty with_header sort_col top
           pattern () =

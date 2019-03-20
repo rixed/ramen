@@ -11,6 +11,7 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
 module OutRef = RamenOutRef
 
 let conf_dir conf =
@@ -57,7 +58,7 @@ and retention =
 let user_conf_file conf =
   conf_dir conf ^ "/config"
 
-let retention_of_fq user_conf (fq : RamenName.fq) =
+let retention_of_fq user_conf (fq : N.fq) =
   try
     Hashtbl.enum user_conf.retentions |>
     Enum.find_map (fun (pat, ret) ->
@@ -86,7 +87,7 @@ type func_stats =
     bytes : int64 [@ppp_default 0L] ;
     cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
     ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
-    mutable parents : RamenName.fq list ;
+    mutable parents : N.fq list ;
     (* Also gather available history per running workers, to speed up
      * establishing query plans: *)
     mutable archives : (float * float) list [@ppp_default []] ;
@@ -111,7 +112,7 @@ let get_user_conf fname per_func_stats =
       (* No worker, then do not save anything: *)
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
-      Hashtbl.iter (fun (fq : RamenName.fq) s ->
+      Hashtbl.iter (fun (fq : N.fq) s ->
         if s.parents = [] then
           let pat = Globs.(compile (escape (fq :> string))) in
           Hashtbl.add user_conf.retentions pat save_short
@@ -150,7 +151,7 @@ let add_ps_stats a b =
 
 (* Those stats are saved on disk: *)
 
-type per_func_stats_ser = (RamenName.fq, func_stats) Hashtbl.t
+type per_func_stats_ser = (N.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 let stat_fname conf = conf_dir conf ^ "/stats"
@@ -179,7 +180,7 @@ let update_parents s program_name func =
     List.map (fun (pprog, pfunc) ->
       let pprog =
         F.program_of_parent_prog program_name pprog in
-      RamenName.fq pprog pfunc
+      N.fq_of_program pprog pfunc
     ) func.F.parents
 
 let update_archives conf s func =
@@ -229,7 +230,7 @@ let enrich_stats conf per_func_stats =
     | exception _ -> ()
     | prog ->
         List.iter (fun func ->
-          let fq = RamenName.fq func.F.program_name func.F.name in
+          let fq = N.fq_of_program func.F.program_name func.F.name in
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
           | s ->
@@ -245,7 +246,7 @@ let update_worker_stats ?while_ conf =
    * loading the file as the current stats. We will shift it into the total
    * if we receive a new startup_time: *)
   let per_func_stats :
-    (RamenName.fq, (func_stats option * func_stats)) Hashtbl.t =
+    (N.fq, (func_stats option * func_stats)) Hashtbl.t =
     load_stats conf |>
     Hashtbl.map (fun _fq s -> None, s)
   in
@@ -268,7 +269,7 @@ let update_worker_stats ?while_ conf =
             !logger.warning
               "Merging stats of a new instance of worker %a that started \
                at %a with the previous run that started at %a"
-              RamenName.fq_print fq
+              N.fq_print fq
               print_date s.RamenPs.startup_time
               print_date cur.startup_time ;
             let tot =
@@ -374,7 +375,7 @@ let list_print oc =
 let hashkeys_print p =
   Hashtbl.print ~first:"" ~last:"" ~sep:" " ~kvsep:"" p (fun _ _ -> ())
 
-let const pref (fq : RamenName.fq) =
+let const pref (fq : N.fq) =
   pref ^ scramble (fq :> string)
 
 let perc = const "perc_"
@@ -392,7 +393,7 @@ let recall_size s = Int64.to_float s.bytes /. s.running_time
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100: *)
 let emit_all_vars durations oc per_func_stats =
-  Hashtbl.iter (fun (fq : RamenName.fq) s ->
+  Hashtbl.iter (fun (fq : N.fq) s ->
     Printf.fprintf oc
       "; Storage share of %s (compute cost: %f, recall size: %f)\n\
        (declare-const %s Int)\n\
@@ -423,10 +424,10 @@ let emit_query_costs user_conf durations oc per_func_stats =
   String.print oc "\n" ;
   (* Now for each of these durations, instruct the solver what the query
    * cost will be: *)
-  Hashtbl.iter (fun (fq : RamenName.fq) s ->
+  Hashtbl.iter (fun (fq : N.fq) s ->
     Printf.fprintf oc "; Query cost of %s (parents: %a)\n"
       (fq :> string)
-      (list_print (fun oc (p : RamenName.fq) ->
+      (list_print (fun oc (p : N.fq) ->
         String.print oc (p :> string))) s.parents ;
     List.iteri (fun i d ->
       let recall_size = recall_size s in
@@ -464,7 +465,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
   ) per_func_stats
 
 let emit_no_invalid_cost user_conf durations oc per_func_stats =
-  Hashtbl.iter (fun (fq : RamenName.fq) _ ->
+  Hashtbl.iter (fun (fq : N.fq) _ ->
     let retention = retention_of_fq user_conf fq in
     if retention.duration > 0. then (
       (* Which index is that? *)
@@ -475,7 +476,7 @@ let emit_no_invalid_cost user_conf durations oc per_func_stats =
 
 let emit_total_query_costs user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
-    (hashkeys_print (fun oc (fq : RamenName.fq) ->
+    (hashkeys_print (fun oc (fq : N.fq) ->
       let retention = retention_of_fq user_conf fq in
       if retention.duration > 0. then
         (* Which index is that? *)
@@ -485,7 +486,7 @@ let emit_total_query_costs user_conf durations oc per_func_stats =
           ceil_to_int (retention.query_freq *. secs_per_day) in
         !logger.info
           "Must be able to query %a for a duration %s, at %d queries per day"
-          RamenName.fq_print fq
+          N.fq_print fq
           (string_of_duration retention.duration)
           queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
@@ -509,7 +510,7 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
           match Hashtbl.find per_func_stats pfq with
           | exception Not_found ->
               Printf.sprintf2 "No statistics about %a"
-                RamenName.fq_print pfq |>
+                N.fq_print pfq |>
               failwith (* No better idea *)
           | s ->
               Hashtbl.add h pfq s
@@ -551,7 +552,7 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
  * to size.
  *)
 
-type per_func_allocs_ser = (RamenName.fq, int) Hashtbl.t
+type per_func_allocs_ser = (N.fq, int) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 let save_allocs conf allocs =
@@ -573,13 +574,13 @@ let update_storage_allocation conf =
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
     try Scanf.sscanf sym "perc_%s%!" (fun s ->
-      let fq = unscramble s |> RamenName.fq_of_string in
+      let fq = unscramble s |> N.fq in
       match vars, sort, term with
       | [], NonParametricSort (Identifier "Int"),
         ConstantTerm perc ->
           let perc = int_of_constant perc in
           if perc <> 0 then !logger.info "%a: %d%%"
-            RamenName.fq_print fq perc ;
+            N.fq_print fq perc ;
           Hashtbl.replace solution fq perc
       | _ ->
           !logger.warning "  of some sort...?")
@@ -637,7 +638,7 @@ let update_workers_export ?(export_duration=Default.archivist_export_duration)
     match C.find_func programs fq with
     | exception e ->
         !logger.debug "Cannot find function %a: %s, skipping"
-          RamenName.fq_print fq
+          N.fq_print fq
           (Printexc.to_string e)
     | _mre, _prog, func ->
         let file_type =

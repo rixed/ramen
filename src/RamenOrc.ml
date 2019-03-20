@@ -11,6 +11,7 @@
 open Batteries
 open RamenHelpers
 module T = RamenTypes
+module N = RamenName
 
 let debug = false
 
@@ -144,7 +145,7 @@ let rec of_structure = function
        * (TODO: also ignore shadowed fields): *)
       Struct (
         Array.filter_map (fun (k, t) ->
-          if RamenName.(is_private (field_of_string k)) then None else
+          if N.(is_private (field k)) then None else
           Some (k, of_structure t.T.structure)
         ) kts)
 
@@ -384,7 +385,7 @@ let rec emit_add_value_to_batch
       Enum.fold (fun (oi, xi) (k, t) ->
         (* Skip over private fields.
          * TODO: also skip over shadowed fields! *)
-        if RamenName.(is_private (field_of_string k)) then
+        if N.(is_private (field k)) then
           oi, xi + 1
         else (
           p "{ /* Structure/Tuple item %s */" k ;
@@ -729,7 +730,7 @@ let rec emit_read_value_from_batch
         emit_read_struct (Array.length ts = 1)
     | T.TRecord kts ->
         Array.enum kts //
-        (fun (k, _) -> not RamenName.(is_private (field_of_string k))) |>
+        (fun (k, _) -> not N.(is_private (field k))) |>
         emit_read_struct (Array.length kts = 1)
   in
   (* If the type is nullable, check the null column (we can do this even

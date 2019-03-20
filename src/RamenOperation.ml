@@ -28,7 +28,7 @@ module T = RamenTypes
  * 'SELECT expr AS alias' *)
 type selected_field =
   { expr : E.t ;
-    alias : RamenName.field ;
+    alias : N.field ;
     doc : string ;
     (* FIXME: Have a variant and use it in RamenTimeseries as well. *)
     aggr : string option }
@@ -115,18 +115,18 @@ type t =
       every : float ;
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
-      factors : RamenName.field list }
+      factors : N.field list }
   | ReadCSVFile of {
       where : file_spec ;
       what : csv_specs ;
       preprocessor : E.t option ;
       event_time : RamenEventTime.t option ;
-      factors : RamenName.field list }
+      factors : N.field list }
   | ListenFor of {
       net_addr : Unix.inet_addr ;
       port : int ;
       proto : RamenProtocols.net_protocol ;
-      factors : RamenName.field list }
+      factors : N.field list }
   (* For those factors, event time etc are hardcoded, and data sources
    * can not be sub-queries: *)
   | Instrumentation of { from : data_source list }
@@ -142,7 +142,7 @@ and merge =
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
-  | NamedOperation of (RamenName.rel_program option * RamenName.func)
+  | NamedOperation of (N.rel_program option * N.func)
   | SubQuery of t
   | GlobPattern of string
   [@@ppp PPP_OCaml]
@@ -346,7 +346,7 @@ let event_time_of_operation op =
     | Notifications _ ->
         RamenNotification.event_time, []
   and event_time_from_fields fields =
-    let fos = RamenName.field_of_string in
+    let fos = N.field in
     let start = fos "start"
     and stop = fos "stop"
     and duration = fos "duration" in
@@ -408,7 +408,7 @@ let out_type_of_operation ?(with_private=true) = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ;
       List.fold_left (fun lst sf ->
-        if not with_private && RamenName.is_private sf.alias then lst else
+        if not with_private && N.is_private sf.alias then lst else
         RamenTuple.{
           name = sf.alias ;
           doc = sf.doc ;
@@ -440,10 +440,10 @@ let envvars_of_operation op =
     match e.E.text with
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable TupleEnv ; _ })) ->
-        Set.add (RamenName.field_of_string n) s
+        Set.add (N.field n) s
     | _ -> s) op |>
   Set.to_list |>
-  List.fast_sort RamenName.compare
+  List.fast_sort N.compare
 
 let use_event_time op =
   fold_expr false (fun _ b e ->
@@ -470,7 +470,7 @@ let resolve_unknown_tuple resolver e =
           | None ->
               (match E.string_of_const n with
               | Some n ->
-                  let n = RamenName.field_of_string n in
+                  let n = N.field n in
                   resolver [ Name n ]
               | None ->
                   Printf.sprintf2 "Cannot resolve unknown tuple in %a"
@@ -520,7 +520,7 @@ let resolve_unknown_tuples params op =
              * That's much safer to look it up again whenever we need it,
              * so that we are free to map the AST. *)
             !logger.debug "Field %a though to belong to an opened record"
-              RamenName.field_print n ;
+              N.field_print n ;
             Record
           ) else (
             let pref =
@@ -536,7 +536,7 @@ let resolve_unknown_tuples params op =
                 TupleIn
               ) in
             !logger.debug "Field %a thought to belong to %s"
-              RamenName.field_print n
+              N.field_print n
               (string_of_prefix pref) ;
             pref
           )
@@ -550,7 +550,7 @@ let resolve_unknown_tuples params op =
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                              { text = Variable tup }))
         when tuple_has_type_input tup ->
-          let n = RamenName.field_of_string n in
+          let n = N.field n in
           fields_from_in := Set.add n !fields_from_in
       | _ -> ()) op ;
     let fields =
@@ -642,8 +642,8 @@ let checked params op =
   and check_field_exists field_names f =
     if not (List.mem f field_names) then
       Printf.sprintf2 "Field %a is not in output tuple (only %a)"
-        RamenName.field_print f
-        (pretty_list_print RamenName.field_print) field_names |>
+        N.field_print f
+        (pretty_list_print N.field_print) field_names |>
       failwith in
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
@@ -672,10 +672,10 @@ let checked params op =
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                              { text = Variable TupleGroup ; _ })) ->
-          let n = RamenName.field_of_string n in
-          if not (RamenName.is_virtual n) then
+          let n = N.field n in
+          if not (N.is_virtual n) then
             Printf.sprintf2 "Tuple group has only virtual fields (no %a)"
-              RamenName.field_print n |>
+              N.field_print n |>
             failwith
       | _ -> ()) op ;
     (* Now check what tuple prefixes are used: *)
@@ -687,7 +687,7 @@ let checked params op =
         (* Check unicity of aliases *)
         if List.mem sf.alias prev_aliases then
           Printf.sprintf2 "Alias %a is not unique"
-            RamenName.field_print sf.alias |>
+            N.field_print sf.alias |>
           failwith ;
         sf.alias :: prev_aliases
       ) [] fields |> ignore;
@@ -744,10 +744,10 @@ let checked params op =
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                              { text = Variable TupleOutPrevious ; _ })) ->
-          let n = RamenName.field_of_string n in
+          let n = N.field n in
           if List.mem n generators then
             Printf.sprintf2 "Cannot use a generated output field %a"
-              RamenName.field_print n |>
+              N.field_print n |>
             failwith
       | _ -> ()
     ) op
@@ -785,10 +785,10 @@ struct
   let rec default_alias e =
     match e.E.text with
     | Stateless (SL0 (Path [ Name name ]))
-      when not (RamenName.is_virtual name) ->
+      when not (N.is_virtual name) ->
         (name :> string)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
-      when not (RamenName.is_virtual (RamenName.field_of_string n)) ->
+      when not (N.is_virtual (N.field n)) ->
         n
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
@@ -827,7 +827,7 @@ struct
       fun ((expr, (alias, doc)), aggr) ->
         let alias =
           Option.default_delayed (fun () -> default_alias expr) alias in
-        let alias = RamenName.field_of_string alias in
+        let alias = N.field alias in
         { expr ; alias ; doc ; aggr }
     ) m
 
@@ -847,7 +847,7 @@ struct
         (blanks -- optional ~def:() ((strinG "and" ||| strinG "with") -- blanks) --
          strinG "duration" -- blanks -+ (
            (non_keyword ++ scale >>: fun (n, s) ->
-              let n = RamenName.field_of_string n in
+              let n = N.field n in
               DurationField (n, ref OutputField, s)) |||
            (duration >>: fun n -> DurationConst n)) |||
          blanks -- strinG "and" -- blanks --
@@ -855,10 +855,10 @@ struct
           strinG "ends" ||| strinG "ending") -- blanks --
          strinG "at" -- blanks -+
            (non_keyword ++ scale >>: fun (n, s) ->
-              let n = RamenName.field_of_string n in
+              let n = N.field n in
               StopField (n, ref OutputField, s)))) >>:
       fun ((sta, sca), dur) ->
-        let sta = RamenName.field_of_string sta in
+        let sta = N.field sta in
         (sta, ref OutputField, sca), dur
     ) m
 
@@ -1069,7 +1069,7 @@ let fields_schema m =
 
   let factor_clause m =
     let m = "factors" :: m
-    and field = non_keyword >>: RamenName.field_of_string in
+    and field = non_keyword >>: N.field in
     ((strinG "factor" ||| strinG "factors") -- blanks -+
      several ~sep:list_sep_and field) m
 
@@ -1079,7 +1079,7 @@ let fields_schema m =
     | SortClause of (int * E.t option (* until *) * E.t list (* by *))
     | WhereClause of E.t
     | EventTimeClause of RamenEventTime.t
-    | FactorClause of RamenName.field list
+    | FactorClause of N.field list
     | GroupByClause of E.t list
     | CommitClause of (commit_spec list * (bool (* before *) * E.t))
     | FromClause of data_source list
@@ -1323,7 +1323,7 @@ let fields_schema m =
       | Ok (res, rem) ->
         let params =
           [ RamenTuple.{
-              ptyp = { name = RamenName.field_of_string "avg_window" ;
+              ptyp = { name = N.field "avg_window" ;
                        typ = { structure = T.TI32 ;
                                nullable = false } ;
                        units = None ; doc = "" ; aggr = None } ;

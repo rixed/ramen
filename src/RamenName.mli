@@ -10,7 +10,7 @@ val t_ppp_json : 'a t PPP.t
 type field = [`Field] t
 val field_ppp_ocaml : field PPP.t
 val field_ppp_json : field PPP.t
-val field_of_string : string -> field
+val field : string -> field
 val field_print : 'a BatInnerIO.output -> field -> unit
 val field_print_quoted : 'a BatInnerIO.output -> field -> unit
 val field_color : field -> string
@@ -19,21 +19,21 @@ val is_private : field -> bool
 
 type func = [`Function] t
 val func_ppp_ocaml : func PPP.t
-val func_of_string : string -> func
+val func : string -> func
 val func_print : 'a BatInnerIO.output -> func -> unit
 val func_print_quoted : 'a BatInnerIO.output -> func -> unit
 val func_color : func -> string
 
 type program = [`Program] t
 val program_ppp_ocaml : program PPP.t
-val program_of_string : string -> program
+val program : string -> program
 val program_color : program -> string
 val program_print : 'a BatInnerIO.output -> program -> unit
 val program_print_quoted : 'a BatInnerIO.output -> program -> unit
 
 type rel_program = [`RelProgram] t
 val rel_program_ppp_ocaml : rel_program PPP.t
-val rel_program_of_string : string -> rel_program
+val rel_program : string -> rel_program
 val program_of_rel_program : program -> rel_program -> program
 val rel_program_print : 'a BatInnerIO.output -> rel_program -> unit
 val rel_program_print_quoted : 'a BatInnerIO.output -> rel_program -> unit
@@ -54,8 +54,8 @@ val path_of_program : program -> string
 (* For logs, not paths! *)
 type fq = [`FQ] t
 val fq_ppp_ocaml : fq PPP.t
-val fq_of_string : string -> fq
-val fq : program -> func -> fq
+val fq : string -> fq
+val fq_of_program : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit
 val fq_print_quoted : 'a BatInnerIO.output -> fq -> unit
 val fq_parse : ?default_program:program -> fq -> program * func
@@ -66,7 +66,7 @@ val fq_color : fq -> string
  * (not reducible to others) *)
 type base_unit = [`BaseUnit] t
 val base_unit_ppp_ocaml : base_unit PPP.t
-val base_unit_of_string : string -> base_unit
+val base_unit : string -> base_unit
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
 

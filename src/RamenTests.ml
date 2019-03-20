@@ -8,13 +8,14 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 
-type tuple_spec = (RamenName.field, string) Hashtbl.t [@@ppp PPP_OCaml]
+type tuple_spec = (N.field, string) Hashtbl.t [@@ppp PPP_OCaml]
 
 module Input = struct
   type spec =
     { pause : float [@ppp_default 0.] ;
-      operation : RamenName.fq ;
+      operation : N.fq ;
       tuple : tuple_spec }
     [@@ppp PPP_OCaml]
 end
@@ -36,11 +37,11 @@ module Notifs = struct
 end
 
 type test_spec =
-  { programs : (RamenName.program, program_spec) Hashtbl.t ;
+  { programs : (N.program, program_spec) Hashtbl.t ;
     inputs : Input.spec list [@ppp_default []] ;
-    outputs : (RamenName.fq, Output.spec) Hashtbl.t
+    outputs : (N.fq, Output.spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
-    until : (RamenName.fq, tuple_spec) Hashtbl.t
+    until : (N.fq, tuple_spec) Hashtbl.t
       [@ppp_default Hashtbl.create 0] ;
     (* Notifications likely useless now that we can tests #notifs: *)
     notifications : Notifs.spec
@@ -50,7 +51,7 @@ type test_spec =
 and program_spec =
   { bin : string [@ppp_default ""] ;
     code : string [@ppp_default ""] ;
-    params : RamenName.params [@ppp_default Hashtbl.create 0] }
+    params : N.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields
@@ -117,8 +118,8 @@ let field_index_of_name fq typ field =
     ) typ
   with Not_found ->
     Printf.sprintf2 "Unknown field %a in %a, which has only %a"
-      RamenName.field_print field
-      RamenName.fq_print fq
+      N.field_print field
+      N.fq_print fq
       RamenTuple.print_typ_names typ |>
     fail_and_quit
 
@@ -134,7 +135,7 @@ let filter_spec_of_spec fq typ spec =
   (fun (field, value) ->
     let idx, field_typ = field_index_of_name fq typ field in
     let what = Printf.sprintf2 "value %S for field %a"
-                               value RamenName.field_print field in
+                               value N.field_print field in
     match T.of_string ~what ~typ:field_typ.RamenTuple.typ value with
     | Result.Ok v -> idx, v
     | Result.Bad e -> fail_and_quit e) |>
@@ -170,7 +171,7 @@ let file_spec_print typ best_miss oc (idx, value) =
   (* Retrieve actual field name: *)
   let n = field_name_of_index typ idx in
   Printf.fprintf oc "%a => %a"
-    RamenName.field_print n
+    N.field_print n
     T.print value ;
   match List.find (fun (idx', _, _) -> idx = idx') best_miss with
   | exception Not_found -> ()
@@ -185,7 +186,7 @@ let tuple_print typ oc vs =
   List.iteri (fun i ft ->
     if i > 0 then String.print oc "; " ;
     Printf.fprintf oc "%a => %a"
-      RamenName.field_print ft.RamenTuple.name
+      N.field_print ft.RamenTuple.name
       T.print vs.(i)
   ) typ ;
   String.print oc " }"
@@ -365,7 +366,7 @@ let check_test_spec conf test =
         maybe_f prog_name s
       ) test.programs Set.empty in
     fold_funcs s (fun s fq tuples ->
-      let prog_name, func_name = RamenName.fq_parse fq in
+      let prog_name, func_name = N.fq_parse fq in
       (* Check the existence of program first: *)
       let s = maybe_f prog_name s in
       List.iter (per_func prog_name func_name) tuples ;
@@ -377,7 +378,7 @@ let check_test_spec conf test =
       ~per_prog:(fun pn ->
         if not (Hashtbl.mem programs pn) then
           Printf.sprintf "Unknown program %s"
-            (RamenName.program_color pn) |>
+            (N.program_color pn) |>
           failwith)
       ~per_func:(fun pn fn tuple ->
         let _mre, get_rc = Hashtbl.find programs pn in
@@ -385,8 +386,8 @@ let check_test_spec conf test =
         match List.find (fun func -> func.F.name = fn) prog.P.funcs with
         | exception Not_found ->
             Printf.sprintf "Unknown function %s in program %s"
-              (RamenName.func_color fn)
-              (RamenName.program_color pn) |>
+              (N.func_color fn)
+              (N.program_color pn) |>
             failwith ;
         | func ->
             let out_type =
@@ -396,8 +397,8 @@ let check_test_spec conf test =
                         ft.RamenTuple.name = field_name
                       ) out_type) then
                 Printf.sprintf2 "Unknown field %a in %a (have %a)"
-                  RamenName.field_print_quoted field_name
-                  RamenName.fq_print_quoted (RamenName.fq pn fn)
+                  N.field_print_quoted field_name
+                  N.fq_print_quoted (N.fq_of_program pn fn)
                   RamenTuple.print_typ_names out_type |>
                 failwith
             ) tuple))
@@ -405,10 +406,10 @@ let check_test_spec conf test =
 let bin_of_program conf get_parent program_name program_code =
   let exec_file =
     C.test_literal_programs_root conf ^"/"^
-    RamenName.path_of_program program_name ^".x"
+    N.path_of_program program_name ^".x"
   and source_file =
     C.test_literal_programs_root conf ^"/"^
-    RamenName.path_of_program program_name ^".ramen" in
+    N.path_of_program program_name ^".ramen" in
   File.with_file_out ~mode:[`create; `text ; `trunc] source_file (fun oc ->
     String.print oc program_code) ;
   RamenCompiler.compile conf get_parent ~exec_file
@@ -437,7 +438,7 @@ let run_test conf notify_rb dirname test =
           let get_parent n =
             match Hashtbl.find test.programs n with
             | exception Not_found ->
-                Printf.sprintf "Cannot find program %s" (RamenName.program_color n) |>
+                Printf.sprintf "Cannot find program %s" (N.program_color n) |>
                 fail_and_quit
             | par -> P.of_bin n par.params par.bin
           in
@@ -466,7 +467,7 @@ let run_test conf notify_rb dirname test =
           let msg =
             Printf.sprintf2 "Unknown operation: %S (must be one of: %a)"
               (input.operation :> string)
-              (Enum.print RamenName.fq_print) (Hashtbl.keys workers) in
+              (Enum.print N.fq_print) (Hashtbl.keys workers) in
           fail_and_quit msg
       | func, rbr ->
           if !rbr = None then (
@@ -591,7 +592,7 @@ let run conf server_url api graphite
   let stats = RamenPs.read_stats conf in
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
-      RamenName.fq_print
+      N.fq_print
       (fun oc s ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s"
           s.RamenPs.cpu (Uint64.to_string s.max_ram)))

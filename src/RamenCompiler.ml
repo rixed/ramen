@@ -16,6 +16,7 @@ module F = C.Func
 module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
+module N = RamenName
 module Orc = RamenOrc
 open RamenTypingHelpers
 open RamenConsts
@@ -96,10 +97,10 @@ let parent_from_programs programs pn =
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
- * RamenName.program, used to get the output types of pre-existing
+ * N.program, used to get the output types of pre-existing
  * functions. *)
 let compile conf get_parent ~exec_file source_file
-            (program_name : RamenName.program) =
+            (program_name : N.program) =
   let program_code = read_whole_file source_file in
   (*
    * If all goes well, many temporary files are going to be created. Here
@@ -158,7 +159,7 @@ let compile conf get_parent ~exec_file source_file
             parents = O.parents_of_operation op ;
             merge_inputs = O.is_merging op ;
             envvars = O.envvars_of_operation op } in
-      let fq_name = RamenName.fq program_name name in
+      let fq_name = N.fq_of_program program_name name in
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;
     (* Now we have two types of parents: those from this program, that
@@ -184,22 +185,23 @@ let compile conf get_parent ~exec_file source_file
           match parent with
           | None, func_name -> program_name, func_name
           | Some rel_prog, func_name ->
-              RamenName.program_of_rel_program program_name rel_prog,
+              N.program_of_rel_program program_name rel_prog,
               func_name in
-        let parent_name = RamenName.fq parent_prog_name parent_func_name in
+        let parent_name =
+          N.fq_of_program parent_prog_name parent_func_name in
         try Hashtbl.find compiler_funcs parent_name
         with Not_found ->
           if parent_prog_name = program_name then
             Printf.sprintf2
               "Cannot find parent function %a in current program"
-              RamenName.fq_print parent_name |>
+              N.fq_print parent_name |>
             failwith ;
           !logger.debug "Found external reference to function %a"
             F.print_parent parent ;
           match get_parent parent_prog_name with
           | exception Not_found ->
               Printf.sprintf2 "Cannot find parent program %a"
-                RamenName.program_print parent_prog_name |>
+                N.program_print parent_prog_name |>
               failwith
           | par_rc ->
               try
@@ -208,8 +210,8 @@ let compile conf get_parent ~exec_file source_file
                 ) par_rc.P.funcs
               with Not_found ->
                 Printf.sprintf2 "No function %a in parent program %a"
-                  RamenName.func_print parent_func_name
-                  RamenName.program_print parent_prog_name |>
+                  N.func_print parent_func_name
+                  N.program_print parent_prog_name |>
                 failwith
       ) |>
       Hashtbl.add compiler_parents
@@ -230,12 +232,12 @@ let compile conf get_parent ~exec_file source_file
             ) typ with
       | exception Not_found ->
           !logger.warning "Cannot find field %a in %a"
-            RamenName.field_print field
+            N.field_print field
             RamenFieldMaskLib.print_in_type typ
       | ft ->
           if ft.units = None then (
             !logger.debug "Set type of field %a to %a"
-              RamenName.field_print field
+              N.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
     let patch_out_typ field units typ =
@@ -244,18 +246,18 @@ let compile conf get_parent ~exec_file source_file
             ) typ with
       | exception Not_found ->
           !logger.error "Cannot find field %a in %a"
-            RamenName.field_print field
+            N.field_print field
             RamenTuple.print_typ typ ;
           assert false
       | ft ->
           if ft.units = None then (
             !logger.debug "Set type of field %a to %a"
-              RamenName.field_print field
+              N.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
-        RamenName.field_print name
+        N.field_print name
         (func.F.name :> string) ;
       let out_type =
         O.out_type_of_operation func.F.operation in
@@ -264,8 +266,8 @@ let compile conf get_parent ~exec_file source_file
             ) out_type with
         | exception Not_found ->
             !logger.error "In function %a: no such input field %a (have %a)"
-              RamenName.func_print func.F.name
-              RamenName.field_print name
+              N.func_print func.F.name
+              N.field_print name
               RamenTuple.print_typ_names out_type ;
             None
         | ft ->
@@ -277,8 +279,8 @@ let compile conf get_parent ~exec_file source_file
     let units_of_input func parents field =
       let what =
         Printf.sprintf2 "Field %a in parents of %a"
-          RamenName.field_print field
-          RamenName.func_print func.F.name in
+          N.field_print field
+          N.func_print func.F.name in
       let units =
         (List.enum parents /@
          (fun f -> units_of_output f field)) |>
@@ -311,7 +313,7 @@ let compile conf get_parent ~exec_file source_file
         O.fold_top_level_expr false (fun changed what e ->
           let what =
             Printf.sprintf "%s in function %s" what
-              (RamenName.func_color func.F.name) in
+              (N.func_color func.F.name) in
           !logger.debug "Set units of operation expression %s" what ;
           set_expr_units uoi uoo what e || changed
         ) func.F.operation in
@@ -350,7 +352,7 @@ let compile conf get_parent ~exec_file source_file
      *)
     Hashtbl.iter (fun fq func ->
       !logger.debug "Substituting cherry-picked fields in %a"
-        RamenName.fq_print fq ;
+        N.fq_print fq ;
       !logger.debug "in_type: %a"
         RamenFieldMaskLib.print_in_type func.F.in_type ;
       let op = func.F.operation in
@@ -412,7 +414,7 @@ let compile conf get_parent ~exec_file source_file
     !logger.info "Compiling program %s" (program_name :> string) ;
     let debug = conf.C.log_level = Debug
     and keep_temp_files = conf.C.keep_temp_files in
-    let what = "program "^ (RamenName.program_color program_name) in
+    let what = "program "^ (N.program_color program_name) in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
     let params_obj_name =
@@ -443,7 +445,7 @@ let compile conf get_parent ~exec_file source_file
           (O.envvars_of_operation func.F.operation)
           envvars
       ) compiler_funcs [] |>
-      List.fast_sort RamenName.compare in
+      List.fast_sort N.compare in
     let src_name_of_func func =
       Filename.remove_extension source_file ^
       "_"^ func.F.signature ^
@@ -547,7 +549,7 @@ let compile conf get_parent ~exec_file source_file
      * Compile the casing and link it with everything, giving a single
      * executable that can perform all the operations of this ramen program.
      *)
-    let what = "program "^ RamenName.program_color program_name in
+    let what = "program "^ N.program_color program_name in
     RamenOCamlCompiler.link ~debug ~keep_temp_files ~what ~obj_files
                             ~src_file ~exec_file ;
     add_temp_file src_file

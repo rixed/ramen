@@ -11,6 +11,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 
 (* Building time series with points at regular times *)
 
@@ -74,16 +75,16 @@ let bucket_count b =
  * for all fields *)
 type bucket_time = Begin | Middle | End
 let get conf num_points since until where factors
-        ?consolidation ?(bucket_time=Middle) (fq : RamenName.fq) data_fields =
+        ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields =
   !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
     (fq :> string)
-    (List.print RamenName.field_print) data_fields
+    (List.print N.field_print) data_fields
     (List.print (fun oc (field, op, value) ->
       Printf.fprintf oc "%a %s %a"
-        RamenName.field_print field
+        N.field_print field
         op
         T.print value)) where
-    (List.print RamenName.field_print) factors ;
+    (List.print N.field_print) factors ;
   let num_data_fields = List.length data_fields
   and num_factors = List.length factors in
   (* Prepare the buckets in which to aggregate the data fields: *)
@@ -107,7 +108,7 @@ let get conf num_points since until where factors
    * the factors *)
   let tuple_fields = List.rev_append factors data_fields in
   !logger.debug "tuple_fields = %a"
-    (List.print RamenName.field_print) tuple_fields ;
+    (List.print N.field_print) tuple_fields ;
   (* Must not add event time in front of factors: *)
   RamenExport.replay conf fq tuple_fields where since until
                      ~with_event_time:false (fun head ->
@@ -225,8 +226,8 @@ let compute_num_points time_step num_points since until =
 
 let possible_values conf ?since ?until func factor =
   !logger.debug "Retrieving possible values for factor %a of %a"
-    RamenName.field_print factor
-    RamenName.func_print func.F.name ;
+    N.field_print factor
+    N.func_print func.F.name ;
   let factors =
     O.factors_of_operation func.F.operation in
   if not (List.mem factor factors) then

@@ -20,6 +20,7 @@ open RamenLang
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 open RamenFieldMask (* shared with codegen lib *)
 
 (* The expression recorded here is any one instance of its occurrence.
@@ -43,7 +44,7 @@ let path_comp_of_constant_expr e =
       | Some i -> E.Int i
       | None ->
           (match E.string_of_const e with
-          | Some n -> E.Name (RamenName.field_of_string n)
+          | Some n -> E.Name (N.field n)
           | None -> fail ()))
   | _ -> fail ()
 
@@ -105,15 +106,15 @@ and paths_of_expression e =
     List.map fst t, List.map (List.map fst) o
  *)
 (*$= paths_of_expression & ~printer:string_of_paths_
-  ([ E.Name (RamenName.field_of_string "foo") ], []) \
+  ([ E.Name (N.field "foo") ], []) \
     (E.parse "in.foo" |> paths_of_expression |> strip_expr)
-  ([ E.Name (RamenName.field_of_string "foo") ; E.Int 3 ], []) \
+  ([ E.Name (N.field "foo") ; E.Int 3 ], []) \
     (E.parse "get(3, in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name (RamenName.field_of_string "foo") ; \
-     E.Name (RamenName.field_of_string "bar") ], []) \
+  ([ E.Name (N.field "foo") ; \
+     E.Name (N.field "bar") ], []) \
     (E.parse "get(\"bar\", in.foo)" |> paths_of_expression |> strip_expr)
-  ([ E.Name (RamenName.field_of_string "foo") ], \
-     [ [ E.Name (RamenName.field_of_string "some_index") ; E.Int 2 ] ]) \
+  ([ E.Name (N.field "foo") ], \
+     [ [ E.Name (N.field "some_index") ; E.Int 2 ] ]) \
     (E.parse "get(get(2, in.some_index), in.foo)" |> paths_of_expression |> strip_expr)
   ([], []) (E.parse "0+0" |> paths_of_expression |> strip_expr)
  *)
@@ -245,7 +246,7 @@ let fold_tree u f t =
         Map.Int.fold (fun i t u -> loop u (E.Int i :: p) t) m u
     | Subfields m ->
         Map.String.fold (fun n t u ->
-          loop u (E.Name (RamenName.field_of_string n) :: p) t
+          loop u (E.Name (N.field n) :: p) t
         ) m u in
   loop u [] t
 
@@ -278,7 +279,7 @@ and rec_fieldmask : 'b 'c. T.t -> ('b -> 'c -> tree) -> 'b -> 'c ->
 and fieldmask_for_output_subfields typ m =
   (* TODO: check if we should copy the whole thing *)
   List.enum typ //@ (fun ft ->
-    if RamenName.is_private ft.RamenTuple.name then None else
+    if N.is_private ft.RamenTuple.name then None else
     let name = (ft.name :> string) in
     Some (rec_fieldmask ft.typ Map.String.find name m)) |>
   Array.of_enum
@@ -323,7 +324,7 @@ and fieldmask_of_indices typ m =
   let make_typ t = RamenTypes.{ structure = t ; nullable = false }
   let make_tup_typ =
     List.map (fun (n, t) ->
-      RamenTuple.{ name = RamenName.field_of_string n ;
+      RamenTuple.{ name = N.field n ;
                    typ = RamenTypes.{ structure = t ; nullable = false } ;
                    units = None ; doc = "" ; aggr = None })
   let tup1 = make_tup_typ [ "f1", RamenTypes.TString ;
@@ -358,7 +359,7 @@ let in_type_signature =
 
 let print_in_field oc f =
   Printf.fprintf oc "%a %a"
-    RamenName.field_print (E.id_of_path f.path)
+    N.field_print (E.id_of_path f.path)
     T.print_typ f.typ ;
   Option.may (RamenUnits.print oc) f.units
 
@@ -396,7 +397,7 @@ let find_type_of_path parent_out path =
     | E.Name n :: rest ->
         let invalid () =
           Printf.sprintf2 "Invalid subfield %a into %a"
-            RamenName.field_print n
+            N.field_print n
             T.print_typ typ |>
           failwith in
         (match typ.structure with
@@ -415,7 +416,7 @@ let find_type_of_path parent_out path =
       (match List.find (fun ft -> ft.RamenTuple.name = n) parent_out with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in %a"
-            RamenName.field_print n
+            N.field_print n
             RamenTuple.print_typ parent_out |>
           failwith
       | ft ->

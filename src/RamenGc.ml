@@ -10,6 +10,7 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
 module OutRef = RamenOutRef
 
 let get_log_file () =
@@ -134,12 +135,12 @@ let cleanup_old_archives conf programs dry_run del_ratio =
      * See src/ringbuf/ringbuf.c, function rotate_file_locked for details
      * on how those files are named. *)
     let fq = Filename.dirname rel_fname |> Filename.dirname |>
-             RamenName.fq_of_string in
+             N.fq in
     match C.find_func programs fq with
     | exception Not_found ->
         !logger.info
           "Archive directory %s belongs to unknown function %a"
-          fname RamenName.fq_print fq ;
+          fname N.fq_print fq ;
         0
     | _mre, _prog, func ->
         (* TODO: RingBufLib.arc_dir_of_func ... to avoid selecting an
@@ -149,13 +150,13 @@ let cleanup_old_archives conf programs dry_run del_ratio =
         if same_files arc_dir fname then (
           !logger.info
             "Archive directory %s is still the current archive for %a"
-            fname RamenName.fq_print fq ;
+            fname N.fq_print fq ;
           Hashtbl.find allocs fq
         ) else (
           !logger.warning
             "Archive directory %s seems to be an old archive for %a \
              (which now uses %s). Will delete its content slowly."
-            fname RamenName.fq_print fq arc_dir ;
+            fname N.fq_print fq arc_dir ;
           0
         ) in
   let get_alloced_special _fname _rel_fname = 150_000_000 (* TODO *) in
@@ -184,7 +185,7 @@ let cleanup_old_archives conf programs dry_run del_ratio =
 
 (* TODO: instrumentation for number of successful/failed compressions *)
 
-let compress_archive bin (func_name : RamenName.func) rb_name =
+let compress_archive bin (func_name : N.func) rb_name =
   let orc_name = Filename.remove_extension rb_name ^".orc" in
   let args = [| bin ; WorkerCommands.convert_archive ;
                 (func_name :> string) ; rb_name ; orc_name |] in

@@ -177,7 +177,7 @@ let find_field typ n =
   with Not_found ->
     let err_msg =
       Printf.sprintf2 "Field %a does not exist (possible fields are: %a)"
-        RamenName.field_print n
+        N.field_print n
         RamenTuple.print_typ_names typ in
     failwith err_msg
 
@@ -189,7 +189,7 @@ let find_param params n =
   with Not_found ->
     let err_msg =
       Printf.sprintf2 "Field %a is not a parameter (parameters are: %a)"
-        RamenName.field_print n
+        N.field_print n
         RamenTuple.print_params_names params in
     failwith err_msg
 

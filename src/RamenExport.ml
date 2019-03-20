@@ -8,6 +8,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 module OutRef = RamenOutRef
 
 exception FuncHasNoEventTimeInfo of string
@@ -19,7 +20,7 @@ let () =
 
 (* Some ringbuf are always available and their type known:
  * instrumentation, notifications. *)
-let read_well_known (fq : RamenName.fq) where suffix bname typ () =
+let read_well_known (fq : N.fq) where suffix bname typ () =
   let fq_str = (fq :> string) in
   if fq_str = suffix || String.ends_with fq_str suffix then
     (* For well-known tuple types, serialized tuple is as given (no
@@ -28,7 +29,7 @@ let read_well_known (fq : RamenName.fq) where suffix bname typ () =
     let where =
       if fq_str = suffix then where else
       let fq = String.rchop ~n:(String.length suffix) fq_str in
-      let w = RamenName.field_of_string "worker", "=", T.VString fq in
+      let w = N.field "worker", "=", T.VString fq in
       w :: where in
     let filter = RamenSerialization.filter_tuple_by ser where in
     Some (bname, filter, typ, ser)
@@ -37,7 +38,7 @@ let read_well_known (fq : RamenName.fq) where suffix bname typ () =
 (* Returns the ringbuf name, a bool indicating if it's a temporary export or not,
  * the filter corresponding to [where], the tuple type, the tuple serialized type,
  * the parameters and event time of [fq]: *)
-let read_output conf ?duration (fq : RamenName.fq) where =
+let read_output conf ?duration (fq : N.fq) where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where ("#"^ SpecialFunctions.stats)
@@ -91,7 +92,7 @@ let header_of_type ?(with_event_time=false) field_names typ =
       try List.findi (fun _ t -> t.RamenTuple.name = n) typ
       with Not_found ->
         Printf.sprintf2 "Unknown field name %a (have %a)"
-          RamenName.field_print n
+          N.field_print n
           (pretty_list_print RamenTuple.print_field_typ) typ |>
         failwith
     ) field_names in
@@ -108,13 +109,13 @@ let check_field_names typ field_names =
   (* Asking for no field names is asking for all: *)
   if field_names = [] then
     List.filter_map (fun t ->
-      if RamenName.is_private t.RamenTuple.name then None else Some t.name
+      if N.is_private t.RamenTuple.name then None else Some t.name
     ) typ
   else (
     List.iter (fun f ->
       if not (List.exists (fun t -> f = t.RamenTuple.name) typ) then
         Printf.sprintf2 "Unknown field %a, should be one of %a"
-          RamenName.field_print f
+          N.field_print f
           RamenTuple.print_typ_names typ |>
         failwith
     ) field_names ;
@@ -205,10 +206,10 @@ end
 
 let link_print oc (pfq, fq) =
   Printf.fprintf oc "%a=>%a"
-    RamenName.fq_print pfq
-    RamenName.fq_print fq
+    N.fq_print pfq
+    N.fq_print fq
 
-exception NotInStats of RamenName.fq
+exception NotInStats of N.fq
 exception NoData
 
 let find_replay_sources conf ?while_ fq since until =
@@ -276,7 +277,7 @@ let find_replay_sources conf ?while_ fq since until =
             Range.merge range (Range.make (max t1 since) (min t2 until))
           ) Range.empty s.RamenArchivist.archives in
         !logger.debug "From %a, range from archives = %a"
-          RamenName.fq_print fq
+          N.fq_print fq
           Range.print local_range ;
         (* Take what we can from here and the rest from the parents: *)
         (* Note: we are going to ask all the parents to export the replay
@@ -316,7 +317,7 @@ let find_replay_sources conf ?while_ fq since until =
   match find_ways stats since until Set.empty fq with
   | exception NotInStats _ ->
       Printf.sprintf2 "Cannot find %a in the stats"
-        RamenName.fq_print fq |>
+        N.fq_print fq |>
       failwith
   | [] ->
       raise NoData
@@ -324,7 +325,7 @@ let find_replay_sources conf ?while_ fq since until =
       !logger.debug "Found those ways: %a"
         (List.print (Tuple2.print
           Range.print
-          (Tuple2.print (Set.print RamenName.fq_print)
+          (Tuple2.print (Set.print N.fq_print)
                         (Set.print link_print)))) ways ;
       pick_best_way ways
 
@@ -343,7 +344,7 @@ let replay conf ?(while_=always) fq field_names where since until
   let head_idx, head_typ =
     header_of_type ~with_event_time field_names ser in
   !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
-    (List.print RamenName.field_print) field_names
+    (List.print N.field_print) field_names
     RamenTuple.print_typ head_typ
     (Array.print Int.print) head_idx ;
   let on_tuple, on_exit = f head_typ in
@@ -352,7 +353,7 @@ let replay conf ?(while_=always) fq field_names where since until
   | exception NoData -> on_exit ()
   | range, (sources, links) ->
     !logger.debug "Required sources: %a"
-      (Set.print RamenName.fq_print) sources ;
+      (Set.print N.fq_print) sources ;
     !logger.debug "Required links: %a"
       (Set.print link_print) links ;
     !logger.debug "Time slice covered: %a" Range.print range ;
@@ -427,7 +428,7 @@ let replay conf ?(while_=always) fq field_names where since until
                  "replayer_id="^ string_of_int i |] in
             let pid = RamenProcesses.run_worker smre.C.bin args env in
             !logger.debug "Replay for %a is running under pid %d"
-              RamenName.fq_print sfq pid ;
+              N.fq_print sfq pid ;
             i + 1,
             Set.Int.add pid pids,
             Set.add i eofs

@@ -14,6 +14,7 @@ module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module N = RamenName
 
 (* To help the client to make sense of the error we distinguish between those
  * kind of errors: *)
@@ -155,7 +156,7 @@ type get_columns_req = string list [@@ppp PPP_JSON]
 
 type get_columns_resp = (string, columns_info) Hashtbl.t [@@ppp PPP_JSON]
 
-and columns_info = (RamenName.field, column_info) Hashtbl.t [@@ppp PPP_JSON]
+and columns_info = (N.field, column_info) Hashtbl.t [@@ppp PPP_JSON]
 
 and column_info =
   { type_ : string [@ppp_rename "type"] ;
@@ -188,7 +189,7 @@ and alert_info_v1 =
   [@@ppp PPP_OCaml]
 
 and simple_filter =
-  { lhs : RamenName.field ;
+  { lhs : N.field ;
     rhs : string ;
     op : string [@ppp_default "="] }
   [@@ppp PPP_JSON]
@@ -196,7 +197,7 @@ and simple_filter =
 
 (* Alerts are saved on disc under this format: *)
 and alert_source =
-  | V1 of { table : string ; column : RamenName.field ; alert : alert_info_v1 }
+  | V1 of { table : string ; column : N.field ; alert : alert_info_v1 }
   (* ... and so on *)
   [@@ppp PPP_OCaml]
 
@@ -225,13 +226,13 @@ let group_keys_of_operation = function
         List.filter_map (fun e ->
           match e.E.text with
           | Stateless (SL0 (Path [ E.Name n ]))
-            when n <> RamenName.field_of_string "start" &&
-                 n <> RamenName.field_of_string "stop" ->
+            when n <> N.field "start" &&
+                 n <> N.field "stop" ->
               Some (TupleIn, n)
           | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                  { text = Variable pref ; _ }))
             when n <> "start" && n <> "stop" ->
-              Some (pref, RamenName.field_of_string n)
+              Some (pref, N.field n)
           | _ -> None
         ) key in
       List.filter_map (fun sf ->
@@ -241,7 +242,7 @@ let group_keys_of_operation = function
             Some sf.alias
         | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                                { text = Variable pref ; _ }))
-          when List.mem (pref, RamenName.field_of_string n) simple_keys ->
+          when List.mem (pref, N.field n) simple_keys ->
             Some sf.alias
         | _ -> None
       ) fields
@@ -250,7 +251,7 @@ let group_keys_of_operation = function
 let alert_info_of_alert_source = function
   | V1 { alert ; _ } -> alert
 
-let alerts_of_column conf func (column : RamenName.field) =
+let alerts_of_column conf func (column : N.field) =
   (* All files with extension ".alert" in this directory is supposed to be
    * an alert description: *)
   let alert_func_path = "alerts/"^ F.path func in
@@ -305,7 +306,7 @@ let columns_of_func conf func =
 let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name =
-    RamenName.(fq_of_string table |> fq_parse) in
+    N.(fq table |> fq_parse) in
   C.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
     | exception _ -> None
@@ -345,9 +346,9 @@ type get_timeseries_req =
   [@@ppp PPP_JSON]
 
 and timeseries_data_spec =
-  { select : RamenName.field list ;
+  { select : N.field list ;
     where : simple_filter list [@ppp_default []] ;
-    factors : RamenName.field list [@ppp_default []] }
+    factors : N.field list [@ppp_default []] }
   [@@ppp PPP_JSON]
 
 let check_get_timeseries_req req =
@@ -385,8 +386,8 @@ let get_timeseries conf msg =
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
   Hashtbl.iter (fun table data_spec ->
-    let fq = RamenName.fq_of_string table in
-    let prog_name, func_name = RamenName.fq_parse fq in
+    let fq = N.fq table in
+    let prog_name, func_name = N.fq_parse fq in
     let filters =
       C.with_rlock conf (fun programs ->
         (* Even if the program has been killed we want to be able to output
@@ -439,7 +440,7 @@ let get_timeseries conf msg =
  *)
 
 type set_alerts_req =
-  (string, (RamenName.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
+  (string, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
   [@@ppp PPP_JSON]
 
 (* Alert ids are used to uniquely identify alerts (for instance when
@@ -449,7 +450,7 @@ type set_alerts_req =
  * not even be unique. But we have to save this user id as well even when
  * its the only thing that changed so it's easier to make it part of this
  * hash. *)
-let alert_id (column : RamenName.field) =
+let alert_id (column : N.field) =
   let filterspec filter =
     IO.to_string
       (List.print ~first:"" ~last:"" ~sep:"-"
@@ -468,7 +469,7 @@ let alert_id (column : RamenName.field) =
 
 let func_of_table programs table =
   let pn, fn =
-    RamenName.(fq_of_string table |> fq_parse) in
+    N.(fq table |> fq_parse) in
   let no_such_program () =
     Printf.sprintf "Program %s does not exist"
       (pn :> string) |>
@@ -637,7 +638,7 @@ let () =
       C.with_rlock conf (fun programs ->
         generate_alert programs target_file a))
 
-let stop_alert conf (program_name : RamenName.program) =
+let stop_alert conf (program_name : N.program) =
   let glob =
     Globs.((program_name :> string) |> escape |> compile) in
   (* As we are also deleting the binary better purge the conf as per
@@ -648,9 +649,9 @@ let stop_alert conf (program_name : RamenName.program) =
       (program_name :> string) num_kills
 
 let save_alert conf program_name alert_info =
-  let program_name = RamenName.program_of_string program_name in
+  let program_name = N.program program_name in
   let basename =
-    C.api_alerts_root conf ^"/"^ RamenName.path_of_program program_name in
+    C.api_alerts_root conf ^"/"^ N.path_of_program program_name in
   let src_file = basename ^".alert" in
   (* Avoid triggering a recompilation if it's unchanged.
    * To avoid comparing floats we compare the actual serialized result. *)
@@ -693,15 +694,15 @@ let set_alerts conf msg =
   Hashtbl.iter (fun table columns ->
     !logger.debug "set-alerts: table %s" table ;
     Hashtbl.iter (fun column alerts ->
-      !logger.debug "set-alerts: column %a" RamenName.field_print column ;
+      !logger.debug "set-alerts: column %a" N.field_print column ;
       (* All non listed alerts must be suppressed *)
       let parent =
         (* It's safer to anchor alerts in a different subtree
          * (for instance to avoid configurator "managing" them) *)
-        RamenName.program_of_string ("alerts/"^ table ^"/"^ (column :> string)) in
+        N.program ("alerts/"^ table ^"/"^ (column :> string)) in
       let dir =
         C.api_alerts_root conf ^"/"^
-        RamenName.path_of_program parent in
+        N.path_of_program parent in
       if is_directory dir then (
         Sys.readdir dir |>
         Array.iter (fun f ->
@@ -745,11 +746,11 @@ let set_alerts conf msg =
     !logger.info "Going to delete non mentioned alerts %a"
       (Set.String.print String.print) to_delete ;
     Set.String.iter (fun program_name ->
-      let program_name = RamenName.program_of_string program_name in
+      let program_name = N.program program_name in
       stop_alert conf program_name ;
       let fname ext =
         C.api_alerts_root conf ^"/"^
-        RamenName.(path_of_program program_name)
+        N.(path_of_program program_name)
         ^ "." ^ ext in
       List.iter (fun ext -> safe_unlink (fname ext))
         [ "alert" ; "ramen" ; "x" ]

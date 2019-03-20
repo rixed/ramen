@@ -14,6 +14,7 @@ module C = RamenConf
 module F = C.Func
 module E = RamenExpr
 module O = RamenOperation
+module N = RamenName
 
 type expr =
   | Nullability of bool
@@ -51,7 +52,7 @@ let string_of_index c t =
   string_of_int (c + 1) ^ ordinal_suffix (c + 1) ^ " "
 
 let expr_of_id funcs i =
-  let exception ReturnExpr of RamenName.func * E.t list * E.t in
+  let exception ReturnExpr of N.func * E.t list * E.t in
   try
     List.iter (fun func ->
       let print_expr stack e =
@@ -151,15 +152,15 @@ let print funcs oc =
   | Expr (i, e) ->
       let func_name, stack, expr = expr_of_id funcs i in
       p "In function %s: %aexpression %s%a"
-        (RamenName.func_color func_name)
+        (N.func_color func_name)
         print_stack stack
-        (RamenName.expr_color
+        (N.expr_color
           (IO.to_string (E.print ~max_depth:3 false) expr))
         (print_expr funcs) e
   | Func (i, e) ->
       let func_name = (func_of_id i).F.name in
       p "In function %s: %a"
-        (RamenName.func_color func_name)
+        (N.func_color func_name)
         (print_func funcs) e
   | RunCondition -> p "running condition must be a non nullable boolean."
 
