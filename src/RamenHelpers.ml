@@ -575,16 +575,6 @@ let has_dotnames s =
   String.exists s "/./" ||
   String.exists s "/../"
 
-let ensure_trailing_slash dirname =
-  let len = String.length dirname in
-  if len > 0 && dirname.[len-1] <> '/' then
-    dirname ^"/" else dirname
-
-let ensure_no_trailing_slash dirname =
-  let len = String.length dirname in
-  if len > 0 && dirname.[len-1] = '/' then
-    String.rchop dirname else dirname
-
 let change_ext new_ext fname =
   Filename.remove_extension fname ^ new_ext
 
