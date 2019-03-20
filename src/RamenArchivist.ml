@@ -13,10 +13,11 @@ module F = C.Func
 module P = C.Program
 module N = RamenName
 module OutRef = RamenOutRef
+module Files = RamenFiles
 
 let conf_dir conf =
-  conf.C.persist_dir ^"/archivist/"
-                     ^ RamenVersions.archivist_conf
+  N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
+               N.path RamenVersions.archivist_conf ]
 
 (*
  * User configuration provides what functions we want to be able to retrieve
@@ -56,7 +57,7 @@ and retention =
   [@@ppp PPP_OCaml]
 
 let user_conf_file conf =
-  conf_dir conf ^ "/config"
+  N.path_cat [ conf_dir conf ; N.path "config" ]
 
 let retention_of_fq user_conf (fq : N.fq) =
   try
@@ -102,7 +103,7 @@ let archives_print oc =
 
 let get_user_conf fname per_func_stats =
   let default = "{size_limit=1073741824}" in
-  let user_conf = ppp_of_file ~default user_conf_ppp_ocaml fname in
+  let user_conf = Files.ppp_of_file ~default user_conf_ppp_ocaml fname in
   (* In case no retention was provided, keep the roots for 1 hour: *)
   if Hashtbl.length user_conf.retentions = 0 then (
     let save_short = { duration = 3600. ; query_freq = 0.1 }
@@ -154,11 +155,12 @@ let add_ps_stats a b =
 type per_func_stats_ser = (N.fq, func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
-let stat_fname conf = conf_dir conf ^ "/stats"
+let stat_fname conf =
+  N.path_cat [ conf_dir conf ; N.path "stats" ]
 
 let load_stats =
   let ppp_of_file =
-    ppp_of_file ~default:"{}" per_func_stats_ser_ppp_ocaml in
+    Files.ppp_of_file ~default:"{}" per_func_stats_ser_ppp_ocaml in
   fun conf ->
     let fname = stat_fname conf in
     RamenAdvLock.with_r_lock fname (fun _fd -> ppp_of_file fname)
@@ -166,7 +168,7 @@ let load_stats =
 let save_stats conf stats =
   let fname = stat_fname conf in
   RamenAdvLock.with_w_lock fname (fun fd ->
-    ppp_to_fd ~pretty:true per_func_stats_ser_ppp_ocaml fd stats)
+    Files.ppp_to_fd ~pretty:true per_func_stats_ser_ppp_ocaml fd stats)
 
 (* Then we also need the RC as we also need to know the workers relationships
  * in order to estimate how expensive it is to rely on parents as opposed to
@@ -556,21 +558,23 @@ type per_func_allocs_ser = (N.fq, int) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 let save_allocs conf allocs =
-  let fname = conf_dir conf ^ "/allocs" in
-  ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
+  let fname = N.path_cat [ conf_dir conf ; N.path "allocs" ] in
+  Files.ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
 
 let load_allocs =
   let ppp_of_file =
-    ppp_of_file ~default:"{}" per_func_allocs_ser_ppp_ocaml in
+    Files.ppp_of_file ~default:"{}" per_func_allocs_ser_ppp_ocaml in
   fun conf ->
-    conf_dir conf ^ "/allocs" |> ppp_of_file
+    N.path_cat [ conf_dir conf ; N.path "allocs" ] |>
+    ppp_of_file
 
 let update_storage_allocation conf =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let per_func_stats = load_stats conf in
   let user_conf = get_user_conf (user_conf_file conf) per_func_stats in
-  let fname = conf_dir conf ^ "/allocations.smt2"
+  let fname =
+    N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
   and emit = emit_smt2 user_conf per_func_stats
   and parse_result sym vars sort term =
     try Scanf.sscanf sym "perc_%s%!" (fun s ->
@@ -690,12 +694,12 @@ let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
 (* Helpers: get the stats (maybe refreshed) *)
 
 let get_stats ?while_ conf =
-  (match age_of_file (stat_fname conf) with
+  (match Files.age (stat_fname conf) with
   | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
       update_worker_stats ?while_ conf
   | stat_file_age ->
       if stat_file_age > max_archivist_stat_file_age ||
-         stat_file_age > age_of_file (C.running_config_file conf)
+         stat_file_age > Files.age (C.running_config_file conf)
       then
         update_worker_stats ?while_ conf) ;
   load_stats conf

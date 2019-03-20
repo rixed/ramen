@@ -12,6 +12,7 @@ module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
 module OutRef = RamenOutRef
+module Files = RamenFiles
 
 let () =
   Printexc.register_printer (function
@@ -65,9 +66,10 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
     fail_for_good := fail_for_good_ ;
     let logdir =
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/supervisor") in
-    Option.may mkdir_all logdir ;
-    init_logger ?logdir conf.C.log_level) ;
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/supervisor" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
@@ -112,12 +114,15 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
   let notif_conf_file =
     match notif_conf_file with
     | None ->
-        let notif_conf_file = conf.C.persist_dir ^"/alerter.conf" in
+        let notif_conf_file =
+          N.path_cat [ conf.C.persist_dir ; N.path "alerter.conf" ] in
         RamenAlerter.ensure_conf_file_exists notif_conf_file ;
         notif_conf_file
     | Some notif_conf_file ->
-        if file_check ~min_size:1 notif_conf_file <> FileOk then (
-          failwith ("Configuration file "^ notif_conf_file ^" does not exist.")
+        if Files.check ~min_size:1 notif_conf_file <> FileOk then (
+          Printf.sprintf2 "Configuration file %a does not exist."
+            N.path_print notif_conf_file |>
+          failwith
         ) else (
           (* Try to parse that file while we have the user attention: *)
           ignore (RamenAlerter.load_config notif_conf_file)
@@ -128,9 +133,10 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
   else (
     let logdir =
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/alerter") in
-    Option.may mkdir_all logdir ;
-    init_logger ?logdir conf.C.log_level) ;
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/alerter" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers conf ;
@@ -176,7 +182,7 @@ let compile conf lib_path use_external_compiler bundle_dir
       let programs = C.with_rlock conf identity in
       RamenCompiler.parent_from_programs programs
     else
-      List.map absolute_path_of lib_path |>
+      List.map Files.absolute_path_of lib_path |>
       RamenCompiler.parent_from_lib_path in
   let all_ok = ref true in
   let compile_file source_file =
@@ -188,10 +194,10 @@ let compile conf lib_path use_external_compiler bundle_dir
         match lib_path with
         | p::_ ->
           (try
-            Filename.remove_extension source_file |>
-            rel_path_from (absolute_path_of p) |>
-            N.program |>
-            Option.some
+            let p =
+              Files.remove_ext source_file |>
+              Files.rel_path_from (Files.absolute_path_of p) in
+            Some (N.program (p :> string))
           with Failure s ->
             !logger.debug "%s" s ;
             None)
@@ -203,7 +209,7 @@ let compile conf lib_path use_external_compiler bundle_dir
     in
     let output_file =
       Option.default_delayed (fun () ->
-        Filename.remove_extension source_file ^".x"
+        Files.change_ext "x" source_file
       ) output_file_opt in
     RamenMake.build conf ~force_rebuild:true get_parent program_name
                     source_file output_file
@@ -333,9 +339,10 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   else (
     let logdir =
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/gc") in
-    Option.may mkdir_all logdir ;
-    init_logger ?logdir conf.C.log_level) ;
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/gc" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   if loop <= 0. then
     RamenGc.cleanup_once conf dry_run del_ratio compress_older
   else (
@@ -572,12 +579,14 @@ let parse_func_name_of_code conf what func_name_or_code =
     let get_parent = RamenCompiler.parent_from_programs programs in
     let oc, src_file =
       BatFile.open_temporary_out ~prefix:what ~suffix:".ramen" () in
-    !logger.info "Going to use source file %S" src_file ;
-    let exec_file = Filename.remove_extension src_file ^".x" in
+    let src_file = N.path src_file in
+    !logger.info "Going to use source file %a"
+      N.path_print_quoted src_file ;
+    let exec_file = Files.change_ext "x" src_file in
     on_error (fun () ->
       if not conf.C.keep_temp_files then (
-        safe_unlink src_file ;
-        safe_unlink exec_file))
+        Files.safe_unlink src_file ;
+        Files.safe_unlink exec_file))
              (fun () ->
       Printf.fprintf oc
         "-- Temporary file created on %a for %s\n\
@@ -588,7 +597,7 @@ let parse_func_name_of_code conf what func_name_or_code =
         (List.print ~first:"" ~last:"" ~sep:" " String.print)
           func_name_or_code ;
       close_out oc ;
-      safe_unlink exec_file ; (* hahaha! *)
+      Files.safe_unlink exec_file ; (* hahaha! *)
       RamenMake.build conf get_parent program_name src_file exec_file ;
       (* Run it, making sure it archives its history straight from the start: *)
       let debug = conf.C.log_level = Debug in
@@ -915,9 +924,10 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
       (* In case we serve several API from several daemon we will need an
        * additional option to set a different logdir for each. *)
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/httpd") in
-    Option.may mkdir_all logdir ;
-    init_logger ?logdir conf.C.log_level) ;
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/httpd" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers conf ;
@@ -968,9 +978,10 @@ let archivist conf loop daemonize no_stats no_allocs no_reconf
   else (
     let logdir =
       if to_stdout then None
-      else Some (conf.C.persist_dir ^"/log/archivist") in
-    Option.may mkdir_all logdir ;
-    init_logger ?logdir conf.C.log_level) ;
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/archivist" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   RamenProcesses.prepare_signal_handlers conf ;
   if loop <= 0. then
     RamenArchivist.run_once conf ~while_ no_stats no_allocs no_reconf

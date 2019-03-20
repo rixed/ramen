@@ -159,6 +159,16 @@ external base_unit : string -> base_unit = "%identity"
 let base_unit_print = String.print
 let base_unit_print_quoted = String.print_quoted
 
+(* File paths *)
+
+type path = [`Path] t
+
+let path_ppp_ocaml = t_ppp_ocaml
+external path : string -> path = "%identity"
+let path_print = String.print
+let path_print_quoted = String.print_quoted
+let path_cat = String.concat "/"
+
 (* Some dedicated colors for those strings: *)
 
 let field_color = RamenLog.blue
@@ -168,4 +178,13 @@ let rel_program_color = program_color
 let expr_color = RamenLog.yellow
 let fq_color = func_color
 
+type 'a any =
+  [< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url|`Path] as 'a
+
 let compare = String.compare
+let cat = (^)
+let length = String.length
+let is_empty s = String.length s = 0
+let lchop = String.lchop
+let starts_with = String.starts_with
+let sub = String.sub

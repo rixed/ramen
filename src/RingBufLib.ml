@@ -5,6 +5,7 @@ open Stdint
 open RingBuf
 module T = RamenTypes
 module N = RamenName
+module Files = RamenFiles
 open RamenTypes
 
 (* Note regarding nullmask and constructed types:
@@ -383,7 +384,7 @@ let with_enqueue_tx rb sz f =
   enqueue_commit tx tmin tmax
 
 let arc_dir_of_bname fname =
-  Filename.dirname fname ^"/arc"
+  N.cat (Files.dirname fname) (N.path "/arc")
 
 let int_of_hex s = int_of_string ("0x"^ s)
 
@@ -392,8 +393,8 @@ external kill_myself : int -> unit = "wrap_raise"
 
 type arc_type = RingBuf | Orc
 
-let parse_archive_file_name fname =
-  let mi, rest = String.split ~by:"_" fname in
+let parse_archive_file_name (fname : N.path) =
+  let mi, rest = String.split ~by:"_" (fname :> string) in
   let ma, rest = String.split ~by:"_" rest in
   let tmi, rest = String.split ~by:"_" rest in
   let tma, rest = String.rsplit ~by:"." rest in
@@ -402,26 +403,35 @@ let parse_archive_file_name fname =
     | "b" -> RingBuf
     | "orc" -> Orc
     | _ ->
-        failwith ("not an archive file ("^ fname ^")") in
+        Printf.sprintf2 "not an archive file: %a"
+          N.path_print_quoted fname |>
+        failwith in
   int_of_hex mi, int_of_hex ma,
   strtod tmi, strtod tma, type_
+
+(*$inject
+  module N = RamenName
+*)
 (*$= parse_archive_file_name & ~printer:BatPervasives.dump
   (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30, RingBuf) \
     (parse_archive_file_name \
-      "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b")
+      (N.path "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.b"))
   (10, 16, 0x1.6bbcc4b69ae36p+30, 0x1.6bbcf3df4c0dbp+30, Orc) \
     (parse_archive_file_name \
-      "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.orc")
- *)
+      (N.path "00A_010_0x1.6bbcc4b69ae36p+30_0x1.6bbcf3df4c0dbp+30.orc"))
+*)
 
 let filter_arc_files dir =
   Enum.filter_map (fun fname ->
     match parse_archive_file_name fname with
-    | exception (Not_found | Failure _) -> None
-    | mi, ma, t1, t2, typ -> Some (mi, ma, t1, t2, typ, dir ^"/"^ fname))
+    | exception (Not_found | Failure _) ->
+        None
+    | mi, ma, t1, t2, typ ->
+        let full_path = N.cat (N.cat dir (N.path "/")) fname in
+        Some (mi, ma, t1, t2, typ, full_path))
 
 let arc_files_of dir =
-  (try Sys.files_of dir
+  (try Files.files_of dir
   with Sys_error _ -> Enum.empty ()) |>
   filter_arc_files dir
 

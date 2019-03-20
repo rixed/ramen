@@ -49,8 +49,6 @@ val params_ppp_ocaml : params PPP.t
 val string_of_params : params -> string
 val signature_of_params : params -> string
 
-val path_of_program : program -> string
-
 (* For logs, not paths! *)
 type fq = [`FQ] t
 val fq_ppp_ocaml : fq PPP.t
@@ -70,13 +68,29 @@ val base_unit : string -> base_unit
 val base_unit_print : 'a BatInnerIO.output -> base_unit -> unit
 val base_unit_print_quoted : 'a BatInnerIO.output -> base_unit -> unit
 
+(* File names: *)
+type path = [`Path] t
+val path_ppp_ocaml : path PPP.t
+val path : string -> path
+val path_print : 'a BatInnerIO.output -> path -> unit
+val path_print_quoted : 'a BatInnerIO.output -> path -> unit
+val path_cat : path list -> path
+
+val path_of_program : program -> path
+
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
-val compare :
-  ([< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url] as 'a) t ->
-  'a t -> int
+type 'a any =
+  [< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url|`Path] as 'a
+val compare : ('a any as 'a) t -> 'a t -> int
+val cat : ('a any as 'a) t -> 'a t -> 'a t
+val length : 'a t -> int
+val is_empty : 'a  t -> bool
+val lchop : ?n:int -> ('a any as 'a) t -> 'a t
+val starts_with : ('a any as 'a) t -> 'a t -> bool
+val sub : ('a any as 'a) t -> int -> int -> 'a t
 
 (* Misc: *)
 val expr_color : string -> string
 
-(* TODO: bin names, notif names... *)
+(* TODO: notif names... *)

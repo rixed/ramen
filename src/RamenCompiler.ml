@@ -18,6 +18,7 @@ module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
 module Orc = RamenOrc
+module Files = RamenFiles
 open RamenTypingHelpers
 open RamenConsts
 
@@ -25,13 +26,13 @@ open Binocle
 
 let stats_typing_time =
   RamenBinocle.ensure_inited (fun save_dir ->
-    Histogram.make ~save_dir
+    Histogram.make ~save_dir:(save_dir :> string)
       Metric.Names.compiler_typing_time
       "Time spent typing ramen programs, per typer" Histogram.powers_of_two)
 
 let stats_typing_count =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
@@ -52,26 +53,32 @@ let orc_codec debug orc_write_func orc_read_func prefix_name func =
   let otyp = Orc.of_structure rtyp.T.structure in
   let schema = IO.to_string Orc.print otyp in
   !logger.debug "Corresponding ORC type: %s" schema ;
-  let cc_src_file = prefix_name ^"_orc_codec.cc" in
-  mkdir_all ~is_file:true cc_src_file ;
-  File.with_file_out cc_src_file (fun oc ->
+  let cc_src_file = N.cat prefix_name (N.path "_orc_codec.cc") in
+  Files.mkdir_all ~is_file:true cc_src_file ;
+  File.with_file_out (cc_src_file :> string) (fun oc ->
     Orc.emit_intro oc ;
     Orc.emit_write_value orc_write_func rtyp oc ;
     Orc.emit_read_values orc_read_func rtyp oc ;
     Orc.emit_outro oc) ;
-  !logger.debug "Generated C++ support file in %s" cc_src_file ;
+  !logger.debug "Generated C++ support file in %a"
+    N.path_print cc_src_file ;
   let cpp_command src dst =
     let _, where = Unix.run_and_read "ocamlc -where" in
     let where = String.trim where in
-    let inc = !RamenOCamlCompiler.bundle_dir ^"/include" in
-    Printf.sprintf "c++%s -std=c++17 -W -Wall -c -I %S -I %S -o %S %S"
-      (if debug then " -g" else "") where inc dst src in
-  let cc_dst = change_ext ".o" cc_src_file in
+    let inc =
+      N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
+    Printf.sprintf2 "c++%s -std=c++17 -W -Wall -c -I %S -I %a -o %a %a"
+      (if debug then " -g" else "") where
+      N.path_print_quoted inc
+      N.path_print_quoted dst
+      N.path_print_quoted src in
+  let cc_dst = Files.change_ext "o" cc_src_file in
   let cmd = cpp_command cc_src_file cc_dst in
   let status = Unix.system cmd in
   if status <> Unix.WEXITED 0 then
-    Printf.sprintf "Compilation of %S with %s failed: %s"
-      cc_src_file cmd (string_of_process_status status) |>
+    Printf.sprintf2 "Compilation of %a with %s failed: %s"
+      N.path_print_quoted cc_src_file
+      cmd (string_of_process_status status) |>
     failwith ;
   cc_dst
 
@@ -83,7 +90,7 @@ let parent_from_lib_path lib_path pn =
     P.bin_of_program_name p pn |>
     P.of_bin ~errors_ok pn (Hashtbl.create 0) in
   let rec loop = function
-    | [] -> try_path ~errors_ok:false "./"
+    | [] -> try_path ~errors_ok:false (N.path "./")
     | [p] -> try_path ~errors_ok:false p
     | p :: rest ->
         (try try_path ~errors_ok:true p
@@ -101,7 +108,7 @@ let parent_from_programs programs pn =
  * functions. *)
 let compile conf get_parent ~exec_file source_file
             (program_name : N.program) =
-  let program_code = read_whole_file source_file in
+  let program_code = Files.read_whole_file source_file in
   (*
    * If all goes well, many temporary files are going to be created. Here
    * we collect all their name so we delete them at the end:
@@ -109,20 +116,20 @@ let compile conf get_parent ~exec_file source_file
   let temp_files = ref Set.empty in
   let add_single_temp_file f = temp_files := Set.add f !temp_files in
   let add_temp_file f =
-    add_single_temp_file (change_ext ".ml" f) ;
-    add_single_temp_file (change_ext ".cmx" f) ;
-    add_single_temp_file (change_ext ".cmi" f) ;
-    add_single_temp_file (change_ext ".o" f) ;
-    add_single_temp_file (change_ext ".s" f) ;
-    add_single_temp_file (change_ext ".cc" f) ;
-    add_single_temp_file (change_ext ".cmt" f) ;
-    add_single_temp_file (change_ext ".cmti" f) ;
-    add_single_temp_file (change_ext ".annot" f) in
+    add_single_temp_file (Files.change_ext "ml" f) ;
+    add_single_temp_file (Files.change_ext "cmx" f) ;
+    add_single_temp_file (Files.change_ext "cmi" f) ;
+    add_single_temp_file (Files.change_ext "o" f) ;
+    add_single_temp_file (Files.change_ext "s" f) ;
+    add_single_temp_file (Files.change_ext "cc" f) ;
+    add_single_temp_file (Files.change_ext "cmt" f) ;
+    add_single_temp_file (Files.change_ext "cmti" f) ;
+    add_single_temp_file (Files.change_ext "annot" f) in
   let del_temp_files () =
     if not conf.C.keep_temp_files then
       Set.iter (fun fname ->
-        !logger.debug "Deleting temp file %s" fname ;
-        log_and_ignore_exceptions safe_unlink fname
+        !logger.debug "Deleting temp file %a" N.path_print fname ;
+        log_and_ignore_exceptions Files.safe_unlink fname
       ) !temp_files
   in
   finally del_temp_files (fun () ->
@@ -418,10 +425,10 @@ let compile conf get_parent ~exec_file source_file
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
     let params_obj_name =
-      (Filename.remove_extension source_file) ^
-      "_params_"^ RamenVersions.codegen ^".cmx" |>
+      N.cat (Files.remove_ext source_file)
+            (N.path ("_params_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
-    mkdir_all ~is_file:true params_obj_name ;
+    Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
       RamenOCamlCompiler.with_code_file_for
         params_obj_name conf.C.keep_temp_files (fun oc ->
@@ -447,9 +454,9 @@ let compile conf get_parent ~exec_file source_file
       ) compiler_funcs [] |>
       List.fast_sort N.compare in
     let src_name_of_func func =
-      Filename.remove_extension source_file ^
-      "_"^ func.F.signature ^
-      "_"^ RamenVersions.codegen |>
+      N.cat (Files.remove_ext source_file)
+            (N.path ("_"^ func.F.signature ^
+                     "_"^ RamenVersions.codegen)) |>
       RamenOCamlCompiler.make_valid_for_module in
     let obj_files =
       Hashtbl.fold (fun _ func obj_files ->
@@ -465,8 +472,8 @@ let compile conf get_parent ~exec_file source_file
           (* Note: the OCaml wrappers will be written in the single ML
            * module generated by [CodeGen_OCaml.compile below] *)
         (* Then the OCaml module that implement the function operation: *)
-        let obj_name = src_name_of_func func ^".cmx" in
-        mkdir_all ~is_file:true obj_name ;
+        let obj_name = Files.add_ext (src_name_of_func func) "cmx" in
+        Files.mkdir_all ~is_file:true obj_name ;
         (try
           CodeGen_OCaml.compile
             conf func obj_name params_mod_name orc_write_func orc_read_func
@@ -494,8 +501,8 @@ let compile conf get_parent ~exec_file source_file
      * above).
      *)
     let casing_obj_name =
-      (Filename.remove_extension source_file) ^
-      "_casing_"^ RamenVersions.codegen ^".cmx" |>
+      N.cat (Files.remove_ext source_file)
+            (N.path ("_casing_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
     let src_file =
       RamenOCamlCompiler.with_code_file_for
@@ -530,9 +537,9 @@ let compile conf get_parent ~exec_file source_file
             RamenVersions.codegen ;
         Printf.fprintf oc "\t[\n" ;
         Hashtbl.iter (fun _ func ->
-          let mod_name = src_name_of_func func |>
-                         Filename.basename |>
-                         String.capitalize_ascii in
+          let mod_name =
+            ((src_name_of_func func |> Files.basename) :> string) |>
+            String.capitalize_ascii in
           Printf.fprintf oc
             "\t\t%S,\n\
              \t\t\t{ worker_entry_point = %s.%s ;\n\

@@ -7,6 +7,7 @@ module F = C.Func
 module P = C.Program
 module O = RamenOperation
 module N = RamenName
+module Files = RamenFiles
 
 (*
  * Stopping a worker from running.
@@ -169,20 +170,20 @@ let check_links ?(force=false) program_name prog running_programs =
 let no_params = Hashtbl.create 0
 
 let default_program_name bin_file =
-  Filename.(remove_extension (basename bin_file)) |>
-  N.program
+  let f = Files.(remove_ext (basename bin_file)) in
+  N.program (f :> string)
 
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
-        ?(report_period=Default.report_period) ?(src_file="") ?(debug=false)
-        ?(params=no_params) bin_file program_name_opt =
+        ?(report_period=Default.report_period) ?(src_file=N.path "")
+        ?(debug=false) ?(params=no_params) bin_file program_name_opt =
   let program_name =
     Option.default_delayed (fun () ->
       default_program_name bin_file
     ) program_name_opt in
   C.with_wlock conf (fun programs ->
-    let bin = absolute_path_of bin_file in
+    let bin = Files.absolute_path_of bin_file in
     let can_run = P.wants_to_run conf bin params in
     if not can_run then (
       !logger.info "Program %a is disabled"
@@ -208,4 +209,5 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
             failwith) ;
       (* TODO: Make sure this key is authoritative on a program name: *)
       Hashtbl.replace programs program_name
-        C.{ bin ; params ; status = MustRun ; debug ; report_period ; src_file }))
+        C.{ bin ; params ; status = MustRun ; debug ; report_period ;
+            src_file }))

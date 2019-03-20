@@ -5,12 +5,13 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module N = RamenName
+module Files = RamenFiles
 
 (* Dequeue command *)
 
 let dequeue conf file n () =
   init_logger conf.C.log_level ;
-  if file = "" then invalid_arg "dequeue" ;
+  if N.is_empty file then invalid_arg "dequeue" ;
   let open RingBuf in
   let rb = load file in
   let rec dequeue_loop n =
@@ -37,7 +38,7 @@ let summary conf max_bytes files () =
     let rb = load file in
     let s = stats rb in
     (* The file header: *)
-    Printf.printf "%s:\n\
+    Printf.printf "%a:\n\
                    Flags:%s\n\
                    seq range: %d..%d (%d)\n\
                    time range: %f..%f (%.1fs)\n\
@@ -45,7 +46,7 @@ let summary conf max_bytes files () =
                    mmapped bytes: %d\n\
                    producers range: %d..%d\n\
                    consumers range: %d..%d\n"
-      file
+      N.path_print file
       (if s.wrap then " Wrap" else "")
       s.first_seq (s.first_seq + s.alloc_count - 1) s.alloc_count
       s.t_min s.t_max (s.t_max -. s.t_min)
@@ -123,7 +124,8 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     let parent = fq_name p and child = fq_name c in
     let ringbuf, fill_ratio, next_seqs, max_etime, is_err1 =
       match c with
-      | NotRunning _ | ProgramError _ -> "", "0.", "", None, false
+      | NotRunning _ | ProgramError _ ->
+          N.path "", "0.", "", None, false
       | Running c ->
           let ringbuf =
             if c.F.merge_inputs then
@@ -149,14 +151,14 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     let out_ref, spec, is_err2 =
       match p with
       | NotRunning _ ->
-          "", red "NOT RUNNING", true
+          N.path "", red "NOT RUNNING", true
       | ProgramError (_, e) ->
-          "", red e, true
+          N.path "", red e, true
       | Running p ->
           let out_ref = C.out_ringbuf_names_ref conf p in
           let outs = RamenOutRef.read out_ref in
           let spec, is_err =
-            if Hashtbl.mem outs ringbuf then ringbuf, false
+            if Hashtbl.mem outs ringbuf then (ringbuf :> string), false
             else red "MISSING", true in
           out_ref, spec, is_err
     in
@@ -164,8 +166,9 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
     let ap s = if no_abbrev then s else abbrev_path s in
     let parent_disp = ap parent and child_disp = ap child in
     let ap s = if no_abbrev then s else
-                 abbrev_path ~known_prefix:conf.persist_dir s in
-    let out_ref = ap out_ref and ringbuf = ap ringbuf in
+                 abbrev_path ~known_prefix:(conf.persist_dir :> string) s in
+    let out_ref = ap (out_ref :> string)
+    and ringbuf = ap (ringbuf :> string) in
     is_err, parent, parent_disp, child,
     TermTable.[|
       Some (ValStr parent_disp) ;

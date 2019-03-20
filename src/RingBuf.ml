@@ -2,6 +2,8 @@ open Batteries
 open Stdint
 open RamenHelpers
 open RamenConsts
+module N = RamenName
+module Files = RamenFiles
 
 exception NoMoreRoom
 exception Empty
@@ -11,16 +13,16 @@ let () =
 
 type t (* abstract, represents a ring buffer mmapped file *)
 
-let prepend_rb_name f fname =
+let prepend_rb_name f (fname : N.path) =
   try f fname
-  with Failure msg -> failwith (fname ^": "^ msg)
+  with Failure msg -> failwith ((fname :> string) ^": "^ msg)
 
-external create_ : string -> bool -> int -> string -> unit =
+external create_ : string -> bool -> int -> N.path -> unit =
   "wrap_ringbuf_create"
 
 let create ?(wrap=true)
            ?(words=Default.ringbuffer_word_length) fname =
-  mkdir_all ~is_file:true fname ;
+  Files.mkdir_all ~is_file:true fname ;
   prepend_rb_name (create_ RamenVersions.ringbuf wrap words) fname
 
 type stats = {
@@ -37,7 +39,7 @@ type stats = {
   cons_tail : int ;
   first_seq : int (* taken from arc/max file *) }
 
-external load_ : string -> string -> t = "wrap_ringbuf_load"
+external load_ : string -> N.path -> t = "wrap_ringbuf_load"
 let load = prepend_rb_name (load_ RamenVersions.ringbuf)
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"

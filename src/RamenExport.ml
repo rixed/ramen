@@ -10,6 +10,7 @@ module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
 module OutRef = RamenOutRef
+module Files = RamenFiles
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -359,7 +360,8 @@ let replay conf ?(while_=always) fq field_names where since until
     !logger.debug "Time slice covered: %a" Range.print range ;
     (* Then create a ringbuffer for reception: *)
     let rb_name =
-      Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) in
+      Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) |>
+      N.path in
     RingBuf.create rb_name ;
     let rb = RingBuf.load rb_name in
     let ret = finally (fun () -> RingBuf.unload rb) (fun () ->
@@ -408,20 +410,22 @@ let replay conf ?(while_=always) fq field_names where since until
           Set.fold (fun sfq (i, pids, eofs) ->
             let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
             let args = [| replay_argv0 ; (sfq :> string) |]
-            and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc in
+            and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc
+            and rb_archive =
+              (* We pass the name of the current ringbuf archive if
+               * there is one, that will be read after the archive
+               * directory. Notice that if we cannot read the current
+               * ORC file before it's archived, nothing prevent a
+               * worker to write both a non-wrapping, non-archive
+               * worthy ringbuf in addition to an ORC file. *)
+              C.archive_buf_name ~file_type:OutRef.RingBuf conf sfunc
+            in
             let env =
               [| "name="^ (sfunc.F.name :> string) ;
                  "fq_name="^ (sfq :> string) ;
                  "log_level="^ string_of_log_level conf.C.log_level ;
-                 "output_ringbufs_ref="^ out_ringbuf_ref ;
-                 "rb_archive="^
-                   (* We pass the name of the current ringbuf archive if
-                    * there is one, that will be read after the archive
-                    * directory. Notice that if we cannot read the current
-                    * ORC file before it's archived, nothing prevent a
-                    * worker to write both a non-wrapping, non-archive
-                    * worthy ringbuf in addition to an ORC file. *)
-                   C.archive_buf_name ~file_type:OutRef.RingBuf conf sfunc ;
+                 "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
+                 "rb_archive="^ (rb_archive :> string) ;
                  "since="^ string_of_float since ;
                  "until="^ string_of_float until ;
                  "channel_id="^ RamenChannel.to_string channel ;
@@ -502,5 +506,5 @@ let replay conf ?(while_=always) fq field_names where since until
       ) ()
     ) () in
     (* If all went well, delete the ringbuf: *)
-    safe_unlink rb_name ;
+    Files.safe_unlink rb_name ;
     ret

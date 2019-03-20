@@ -5,6 +5,8 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
+module N = RamenName
+module Files = RamenFiles
 
 let propose (l, h) =
   String.print stdout l ;
@@ -63,43 +65,45 @@ let find_opt o =
   fun lst -> loop lst
 
 let persist_dir toks =
-  try find_opt "--persist-dir" toks
+  try find_opt "--persist-dir" toks |> N.path
   with Not_found ->
-    try Sys.getenv "RAMEN_DIR"
+    try Sys.getenv "RAMEN_DIR" |> N.path
     with Not_found -> Default.persist_dir
 
 let complete_file select str =
   let count = ref 0 in
   let res = ref [] in
   let root, pref =
-    if str = "" then ".", ""
-    else if str.[String.length str - 1] = '/' then str, str
-    else let d = Filename.dirname str in d, if d = "." && str.[0] <> '.' then "" else d^"/" in
+    if str = "" then
+      N.path ".", N.path ""
+    else if str.[String.length str - 1] = '/' then
+      N.path str, N.path str
+    else
+      let d = Filename.dirname str in
+      N.path d, N.path (if d = "." && str.[0] <> '.' then "" else d^"/") in
   let start =
     (* [basename ""] would be ".", and [basename "toto/"] would be toto ?! *)
-    if str = "" || str.[String.length str - 1] = '/' then ""
-    else Filename.basename str in
+    if str = "" || str.[String.length str - 1] = '/' then N.path ""
+    else Files.basename (N.path str) in
   let on_file fname rel_fname =
-    if select fname && String.starts_with rel_fname start then (
+    if select fname && N.starts_with rel_fname start then (
       incr count ;
       if !count > 500 then raise Exit ;
-      res := (pref ^ rel_fname, "") :: !res) in
+      res := (N.cat pref rel_fname, "") :: !res) in
   if str <> "" && str.[0] = '-' then [] else (
-    (try dir_subtree_iter ~on_file root
+    (try Files.dir_subtree_iter ~on_file root
     with Exit -> ()) ;
-    !res)
-
-let extension_is ext fname =
-  String.ends_with fname ext
+    (!res :> (string * string) list)
+  )
 
 let complete_program_files str =
-  complete_file (extension_is ".ramen") str
+  complete_file (Files.has_ext "ramen") str
 
 let complete_binary_files str =
-  complete_file (extension_is ".x") str
+  complete_file (Files.has_ext "x") str
 
 let complete_test_file str =
-  complete_file (extension_is ".test") str
+  complete_file (Files.has_ext "test") str
 
 let empty_help s = s, ""
 

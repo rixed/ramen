@@ -12,6 +12,7 @@ module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
+module Files = RamenFiles
 
 (* Building time series with points at regular times *)
 
@@ -233,20 +234,20 @@ let possible_values conf ?since ?until func factor =
   if not (List.mem factor factors) then
     invalid_arg "get_possible_values: not a factor" ;
   let dir =
-    C.factors_of_function conf func
-      ^"/"^ path_quote (factor :> string) in
-  (try Sys.files_of dir
+    N.path_cat [ C.factors_of_function conf func ;
+                 Files.quote (N.path (factor :> string)) ] in
+  (try Files.files_of dir
   with Sys_error _ -> Enum.empty ()) //@
   (fun fname ->
     try
-      let mi, ma = String.split ~by:"_" fname in
+      let mi, ma = String.split ~by:"_" (fname :> string) in
       let mi, ma = RingBufLib.(strtod mi, strtod ma) in
       if Option.map_default (fun t -> t <= ma) true since &&
          Option.map_default (fun t -> t >= mi) true until
-      then Some (dir ^"/"^ fname) else None
+      then Some (N.path_cat [ dir ; fname ]) else None
     with (Not_found | Failure _) -> None) |>
   Enum.fold (fun s fname ->
     let s' : T.value Set.t =
       RamenAdvLock.with_r_lock
-        fname (marshal_from_fd ~default:Set.empty fname) in
+        fname (Files.marshal_from_fd ~default:Set.empty fname) in
     Set.union s s') Set.empty

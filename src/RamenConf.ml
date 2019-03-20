@@ -3,23 +3,29 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module O = RamenOperation
-module OutRef = RamenOutRef
 module N = RamenName
+module OutRef = RamenOutRef
+module Files = RamenFiles
 
 type conf =
   { log_level : log_level ;
-    persist_dir : string ;
+    persist_dir : N.path ;
     do_persist : bool ; (* false for unit-tests *)
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     initial_export_duration : float }
 
-let tmp_input_of_func persist_dir program_name func_name in_type =
-  persist_dir ^"/workers/inputs/"^ program_name ^"/"^ func_name ^"/"
-              ^ RamenTuple.type_signature in_type
+let tmp_input_of_func persist_dir (program_name : N.program)
+                      (func_name : N.func) in_type =
+  N.path_cat
+    [ persist_dir ; N.path "workers/inputs" ;
+      N.path (program_name :> string) ; N.path (func_name :> string) ;
+      N.path (RamenTuple.type_signature in_type) ]
 
 let upload_dir_of_func persist_dir program_name func_name in_type =
-  tmp_input_of_func persist_dir program_name func_name in_type ^"/uploads"
+  N.path_cat
+    [ tmp_input_of_func persist_dir program_name func_name in_type ;
+      N.path "uploads" ]
 
 (* Configuration that's embedded in the workers: *)
 module Func =
@@ -97,8 +103,9 @@ struct
   let fq_name f = N.fq_of_program f.program_name f.name
 
   let path f =
-    N.path_of_program f.program_name
-    ^"/"^ (f.name :> string)
+    N.path_cat
+      [ N.path_of_program f.program_name ;
+        N.path (f.name :> string) ]
 
   let signature func params =
     (* We'd like to be formatting independent so that operation text can be
@@ -156,13 +163,15 @@ struct
       condition = t.condition ;
       funcs = List.map (Func.unserialized program_name) t.funcs }
 
-  let version_of_bin fname =
-    let args = [| fname ; WorkerCommands.print_version |] in
-    with_stdout_from_command ~expected_status:0 fname args Legacy.input_line
+  let version_of_bin (fname : N.path) =
+    let args = [| (fname :> string) ; WorkerCommands.print_version |] in
+    Files.with_stdout_from_command
+      ~expected_status:0 fname args Legacy.input_line
 
-  let info_of_bin program_name fname =
-    let args = [| fname ; WorkerCommands.get_info |] in
-    with_stdout_from_command ~expected_status:0 fname args Legacy.input_value |>
+  let info_of_bin program_name (fname : N.path) =
+    let args = [| (fname :> string) ; WorkerCommands.get_info |] in
+    Files.with_stdout_from_command
+      ~expected_status:0 fname args Legacy.input_value |>
     unserialized program_name
 
   let env_of_params_and_exps conf params =
@@ -183,10 +192,10 @@ struct
       List.enum in
     Enum.append env exps
 
-  let wants_to_run conf fname params =
-    let args = [| fname ; WorkerCommands.wants_to_run |] in
+  let wants_to_run conf (fname : N.path) params =
+    let args = [| (fname :> string) ; WorkerCommands.wants_to_run |] in
     let env = env_of_params_and_exps conf params |> Array.of_enum in
-    with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_line |>
+    Files.with_stdout_from_command ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
 
   let of_bin ?(errors_ok=false) =
@@ -194,33 +203,37 @@ struct
       (if errors_ok then !logger.debug else !logger.error) fmt in
     (* Cache of path to date of last read and program *)
     let reread_data (program_name, fname) : t =
-      !logger.debug "Reading config from %s..." fname ;
+      !logger.debug "Reading config from %a..." N.path_print fname ;
       match version_of_bin fname with
       | exception e ->
-          let err = Printf.sprintf "Cannot get version from %s: %s"
-                      fname (Printexc.to_string e) in
+          let err = Printf.sprintf2 "Cannot get version from %a: %s"
+                      N.path_print fname (Printexc.to_string e) in
           log "%s" err ;
           failwith err
       | v when v <> RamenVersions.codegen ->
-        let err = Printf.sprintf "Executable %s is for version %s \
-                                  (I'm version %s)"
-                    fname v RamenVersions.codegen in
+        let err = Printf.sprintf2
+                    "Executable %a is for version %s (I'm version %s)"
+                    N.path_print fname
+                    v RamenVersions.codegen in
         log "%s" err ;
         failwith err
       | _ ->
           (try info_of_bin program_name fname with e ->
-             let err = Printf.sprintf "Cannot get info from %s: %s"
-                         fname (Printexc.to_string e) in
+             let err = Printf.sprintf2 "Cannot get info from %a: %s"
+                         N.path_print fname
+                         (Printexc.to_string e) in
              !logger.error "%s" err ;
              failwith err)
     and age_of_data (_, fname) =
-      try mtime_of_file fname
+      try Files.mtime fname
       with e ->
-        log "Cannot get mtime of %s: %s" fname (Printexc.to_string e) ;
+        log "Cannot get mtime of %a: %s"
+          N.path_print fname
+          (Printexc.to_string e) ;
         0.
     in
     let get_prog = cached "of_bin" reread_data age_of_data in
-    fun program_name params fname ->
+    fun program_name params (fname : N.path) ->
       let p = get_prog (program_name, fname) in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { params = RamenTuple.overwrite_params p.params params ;
@@ -231,11 +244,13 @@ struct
     (* Use an extension so we can still use the plain program_name for a
      * directory holding subprograms. Not using "exe" as it remind me of
      * that operating system, but rather "x" as in the x bit: *)
-    lib_path ^"/"^ N.path_of_program program_name ^".x"
+    N.path_cat [ lib_path ;
+                 Files.add_ext (N.path_of_program program_name) "x" ]
 end
 
 let running_config_file conf =
-  conf.persist_dir ^"/configuration/"^ RamenVersions.graph_config ^"/rc"
+  N.path ((conf.persist_dir :> string) ^"/configuration/"^
+          RamenVersions.graph_config ^"/rc")
 
 type worker_status = MustRun | Killed [@@ppp PPP_OCaml]
 
@@ -252,13 +267,13 @@ type must_run_entry =
     (* Stat report period: *)
     report_period : float [@ppp_default Default.report_period] ;
     (* Full path to the worker's binary: *)
-    bin : string ;
+    bin : N.path ;
     (* "Command line" for that worker: *)
     params : N.params [@ppp_default Hashtbl.create 0] ;
     (* Optionally, file from which this worker can be (re)build (see RamenMake).
      * When it is rebuild, relative parents are found using the program name that's
      * the key in the running config. *)
-    src_file : string [@ppp_default ""] }
+    src_file : N.path [@ppp_default N.path ""] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
 type must_run_file = (N.program, must_run_entry) Hashtbl.t
@@ -269,17 +284,16 @@ let non_persisted_programs = ref (Hashtbl.create 11)
 
 let read_rc_file =
   let get fname =
-    fail_with_context "Reading RC file"
-      (fun () -> ppp_of_file ~default:"{}" must_run_file_ppp_ocaml fname) in
+    fail_with_context "Reading RC file" (fun () ->
+      Files.ppp_of_file ~default:"{}" must_run_file_ppp_ocaml fname) in
   fun do_persist fname ->
-    if do_persist then (
-      get fname
-    ) else !non_persisted_programs
+    if do_persist then get fname
+    else !non_persisted_programs
 
 let save_rc_file do_persist fd rc =
   if do_persist then
-    fail_with_context "Saving RC file"
-      (fun () -> ppp_to_fd ~pretty:true must_run_file_ppp_ocaml fd rc)
+    fail_with_context "Saving RC file" (fun () ->
+      Files.ppp_to_fd ~pretty:true must_run_file_ppp_ocaml fd rc)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
@@ -314,7 +328,7 @@ let is_program_running programs program_name =
   | mre, _get_rc -> mre.status = MustRun
 
 let last_conf_mtime conf =
-  running_config_file conf |> mtime_of_file_def 0.
+  running_config_file conf |> Files.mtime_def 0.
 
 let find_func programs fq =
   let program_name, func_name = N.fq_parse fq in
@@ -339,7 +353,7 @@ let make_conf
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
-  let persist_dir = simplified_path persist_dir in
+  let persist_dir = Files.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
     initial_export_duration ; test }
@@ -355,13 +369,12 @@ let type_signature_hash = md5 % RamenTuple.type_signature
  * version (which versions the language/state), and also the ocaml
  * version itself as we use stdlib's Marshaller for this: *)
 let worker_state conf func params =
-  conf.persist_dir ^"/workers/states/"
-                   ^ RamenVersions.(worker_state ^"_"^ codegen)
-                   ^"/"^ Config.version
-                   ^"/"^ Func.path func
-                   ^"/"^ func.signature
-                   ^"/"^ N.signature_of_params params
-                   ^"/snapshot"
+  N.path_cat
+    [ conf.persist_dir ; N.path "workers/states" ;
+      N.path RamenVersions.(worker_state ^"_"^ codegen) ;
+      N.path Config.version ; Func.path func ;
+      N.path func.signature ; N.path (N.signature_of_params params) ;
+      N.path "snapshot" ]
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
  * We want that file to be unique for a given operation name and to change
@@ -377,17 +390,16 @@ let worker_state conf func params =
 
 let in_ringbuf_name_base conf func =
   let sign = md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
-  conf.persist_dir ^"/workers/ringbufs/"
-                   ^ RamenVersions.ringbuf
-                   ^"/"^ Func.path func
-                   ^"/"^ sign ^"/"
+  N.path_cat
+    [ conf.persist_dir ; N.path "workers/ringbufs" ;
+      N.path RamenVersions.ringbuf ; Func.path func ; N.path sign ]
 
 let in_ringbuf_name_single conf func =
-  in_ringbuf_name_base conf func ^ "all.r"
+  N.path_cat [ in_ringbuf_name_base conf func ; N.path "all.r" ]
 
 let in_ringbuf_name_merging conf func parent_index =
-  in_ringbuf_name_base conf func ^
-    string_of_int parent_index ^".r"
+  N.path_cat [ in_ringbuf_name_base conf func ;
+               N.path (string_of_int parent_index ^".r") ]
 
 let in_ringbuf_names conf func =
   if func.Func.parents = [] then []
@@ -410,10 +422,10 @@ let archive_buf_name ~file_type conf func =
     | OutRef.Orc _ -> "orc" in
   let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
-  conf.persist_dir ^"/workers/ringbufs/"
-                   ^ RamenVersions.ringbuf
-                   ^"/"^ Func.path func
-                   ^"/"^ sign ^"/archive."^ ext
+  N.path_cat
+    [ conf.persist_dir ; N.path "workers/ringbufs" ;
+      N.path RamenVersions.ringbuf ; Func.path func ;
+      N.path sign ; N.path ("archive."^ ext) ]
 
 (* Every function with factors will have a file sequence storing possible
  * values encountered for that time range. This is so that we can quickly
@@ -430,12 +442,12 @@ let archive_buf_name ~file_type conf func =
 let factors_of_function conf func =
   let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
-  conf.persist_dir ^"/workers/factors/"
-                   ^ RamenVersions.factors
-                   ^"/"^ Config.version
-                   ^"/"^ Func.path func
-                   (* arc extension for the GC. FIXME *)
-                   ^"/"^ sign ^".arc"
+  N.path_cat
+    [ conf.persist_dir ; N.path "workers/factors" ;
+      N.path RamenVersions.factors ; N.path Config.version ;
+      Func.path func ;
+      (* arc extension for the GC. FIXME *)
+      N.path (sign ^".arc") ]
 
 (* Operations are told where to write their output (and which selection of
  * fields) by another file, the "out-ref" file, which is a kind of symbolic
@@ -445,42 +457,44 @@ let factors_of_function conf func =
 let out_ringbuf_names_ref conf func =
   let sign = O.out_type_of_operation func.Func.operation |>
              type_signature_hash in
-  conf.persist_dir ^"/workers/out_ref/"
-                   ^ RamenVersions.out_ref
-                   ^"/"^ Func.path func
-                   ^"/"^ sign ^"/out_ref"
+  N.path_cat
+    [ conf.persist_dir ; N.path "workers/out_ref" ;
+      N.path RamenVersions.out_ref ; Func.path func ;
+      N.path (sign ^"/out_ref") ]
 
 (* Finally, operations have two additional output streams: one for
  * instrumentation statistics, and one for notifications. Both are
  * common to all running operations, low traffic, and archived. *)
 let report_ringbuf conf =
-  conf.persist_dir ^"/instrumentation_ringbuf/"
-                   ^ RamenVersions.instrumentation_tuple ^"_"
-                   ^ RamenVersions.ringbuf
-                   ^"/ringbuf.r"
+  N.path_cat
+    [ conf.persist_dir ; N.path "instrumentation_ringbuf" ;
+      N.path (RamenVersions.instrumentation_tuple ^"_"^
+              RamenVersions.ringbuf) ;
+      N.path "ringbuf.r" ]
 
 let notify_ringbuf conf =
-  conf.persist_dir ^"/notify_ringbuf/"
-                   ^ RamenVersions.notify_tuple ^"_"
-                   ^ RamenVersions.ringbuf
-                   ^"/ringbuf.r"
+  N.path_cat
+    [ conf.persist_dir ; N.path "notify_ringbuf" ;
+      N.path (RamenVersions.notify_tuple ^"_"^ RamenVersions.ringbuf) ;
+      N.path "ringbuf.r" ]
 
 (* This is not a ringbuffer but a mere snapshot of the alerter state: *)
 let pending_notifications_file conf =
-  conf.persist_dir ^"/pending_notifications_"
-                   ^ RamenVersions.pending_notify ^"_"
-                   ^ RamenVersions.notify_tuple
+  N.path_cat
+    [ conf.persist_dir ;
+      N.path ("pending_notifications_" ^ RamenVersions.pending_notify ^"_"^
+              RamenVersions.notify_tuple) ]
 
 (* For custom API, where to store alerting thresholds: *)
 let api_alerts_root conf =
-  conf.persist_dir ^"/api/set_alerts"
+  N.path_cat [ conf.persist_dir ; N.path "/api/set_alerts" ]
 
 let test_literal_programs_root conf =
-  conf.persist_dir ^"/tests"
+  N.path_cat [ conf.persist_dir ; N.path "tests" ]
 
 (* Where SMT files (used for type-checking) are written temporarily *)
 let smt_file src_file =
-  Filename.remove_extension src_file ^".smt2"
+  Files.change_ext "smt2" src_file
 
 (* Create a temporary program name: *)
 let make_transient_program () =

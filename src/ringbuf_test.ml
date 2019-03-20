@@ -2,13 +2,14 @@ open RingBuf
 open RingBufLib
 open Stdint
 open Batteries
+module Files = RamenFiles
 
 let debug = false
 
 let () =
   if debug then Printf.printf "Mmapping ringbuf...\n%!" ;
-  let rb_fname = "/tmp/ringbuf_test.r" in
-  ignore_exceptions Unix.unlink rb_fname ;
+  let rb_fname = N.path "/tmp/ringbuf_test.r" in
+  ignore_exceptions Files.unlink rb_fname ;
   create ~words:100 rb_fname ;
   let rb = load rb_fname in
   if debug then Printf.printf "Allocating bytes...\n%!" ;

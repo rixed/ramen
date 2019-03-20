@@ -13,6 +13,7 @@ module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
 module OutRef = RamenOutRef
+module Files = RamenFiles
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
@@ -91,24 +92,24 @@ let close_fd i =
 let run_background ?cwd ?(and_stop=false) cmd args env =
   let open Unix in
   let quoted oc s = Printf.fprintf oc "%S" s in
-  !logger.debug "Running %s as: /usr/bin/env %a %S %a"
-    cmd
+  !logger.debug "Running %a as: /usr/bin/env %a %a %a"
+    N.path_print cmd
     (Array.print ~first:"" ~last:"" ~sep:" " quoted) env
-    cmd
+    N.path_print_quoted cmd
     (Array.print ~first:"" ~last:"" ~sep:" " quoted) args ;
   flush_all () ;
   match fork () with
   | 0 ->
     (try
       if and_stop then RingBufLib.kill_myself Sys.sigstop ;
-      Option.may chdir cwd ;
+      Option.may (fun (d : N.path) -> chdir (d :> string)) cwd ;
       let null = openfile "/dev/null" [O_RDONLY] 0 in
       dup2 null stdin ;
       close null ;
       for i = 3 to 255 do
         try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
       done ;
-      execve cmd args env
+      execve (cmd :> string) args env
     with e ->
       Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
       sys_exit 127)
@@ -116,6 +117,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
 
 (*$inject
   open Unix
+  module N = RamenName
 
   let check_status pid expected =
     let rep_pid, status = waitpid [ WNOHANG; WUNTRACED ] pid in
@@ -127,7 +129,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
     assert_equal ~printer expected status
 
   let run ?and_stop args =
-    let pid = run_background ?and_stop args.(0) args [||] in
+    let pid = run_background ?and_stop (N.path args.(0)) args [||] in
     sleepf 0.1 ;
     pid
 *)
@@ -157,7 +159,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
  * Not persisted on disk. *)
 type running_process =
   { params : N.params ;
-    bin : string ;
+    bin : N.path ;
     func : C.Func.t ;
     log_level : log_level ;
     report_period : float ;
@@ -240,13 +242,13 @@ open Binocle
 
 let stats_worker_crashes =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_crashes
       "Number of workers that have crashed (or exited with non 0 status).")
 
 let stats_worker_deadloopings =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_deadloopings
       "Number of time a worker has been found to deadloop.")
 
@@ -260,19 +262,19 @@ let stats_worker_running =
 
 let stats_ringbuf_repairs =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.ringbuf_repairs
       "Number of times a worker ringbuf had to be repaired.")
 
 let stats_outref_repairs =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.outref_repairs
       "Number of times a worker outref had to be repaired.")
 
 let stats_worker_sigkills =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_sigkills
       "Number of times a worker had to be sigkilled instead of sigtermed.")
 
@@ -285,10 +287,10 @@ let rescue_worker conf func params =
                 input ringbuffers."
     ((F.fq_name func) :> string) ;
   let state_file = C.worker_state conf func params in
-  move_file_away state_file ;
+  Files.move_away state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
   let input_ringbufs = C.in_ringbuf_names conf func in
-  List.iter move_file_away input_ringbufs
+  List.iter Files.move_away input_ringbufs
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
@@ -332,11 +334,11 @@ let process_workers_terminations conf running =
     ) proc.pid
   ) running
 
-let run_worker ?and_stop bin args env =
+let run_worker ?and_stop (bin : N.path) args env =
   (* Better have the workers CWD where the binary is, so that any file name
    * mentioned in the program is relative to the program. *)
-  let cwd = Filename.dirname bin in
-  let cmd = Filename.basename bin in
+  let cwd = Files.dirname bin in
+  let cmd = Files.basename bin in
   run_background ~cwd ?and_stop cmd args env
 
 (* Returns the buffer name: *)
@@ -416,25 +418,28 @@ let really_start conf proc parents children =
     (* Used to choose the function to perform: *)
     "name="^ (proc.func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
-    "output_ringbufs_ref="^ out_ringbuf_ref ;
-    "report_ringbuf="^ C.report_ringbuf conf ;
+    "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
+    "report_ringbuf="^ (C.report_ringbuf conf :> string) ;
     "report_period="^ string_of_float proc.report_period ;
-    "notify_ringbuf="^ notify_ringbuf ;
+    "notify_ringbuf="^ (notify_ringbuf :> string) ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
     (* We need to change this dir whenever the func signature or params
      * change to prevent it to reload an incompatible state: *)
-    "state_file="^ C.worker_state conf proc.func proc.params ;
-    "factors_dir="^ C.factors_of_function conf proc.func ;
+    "state_file="^ (C.worker_state conf proc.func proc.params :> string) ;
+    "factors_dir="^ (C.factors_of_function conf proc.func :> string) ;
     (match !logger.output with
       | Directory _ ->
-        "log="^ conf.C.persist_dir ^"/log/workers/" ^ F.path proc.func
+        let dir = N.path_cat [ conf.C.persist_dir ; N.path "log/workers" ;
+                               F.path proc.func ] in
+        "log="^ (dir :> string)
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
-    Enum.mapi (fun i n -> "input_ringbuf_"^ string_of_int i ^"="^ n) in
+    Enum.mapi (fun i (n : N.path) ->
+      "input_ringbuf_"^ string_of_int i ^"="^ (n :> string)) in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
@@ -591,12 +596,14 @@ let check_out_ref conf must_run running =
       let out_ref = C.out_ringbuf_names_ref conf proc.func in
       let outs = OutRef.read_live out_ref in
       Hashtbl.iter (fun fname _ ->
-        if String.ends_with fname ".r" && not (Set.mem fname rbs) then (
-          !logger.error "Operation %s outputs to %s, which is not read, fixing"
-            (F.fq_name proc.func :> string) fname ;
-          log_and_ignore_exceptions ~what:("fixing "^fname) (fun () ->
-            IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-            OutRef.remove out_ref fname RamenChannel.live) ())
+        if Files.has_ext "r" fname && not (Set.mem fname rbs) then (
+          !logger.error "Operation %s outputs to %a, which is not read, fixing"
+            (F.fq_name proc.func :> string)
+            N.path_print fname ;
+          log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
+            (fun () ->
+              IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
+              OutRef.remove out_ref fname RamenChannel.live) ())
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
@@ -610,10 +617,11 @@ let check_out_ref conf must_run running =
           !logger.error "Operation %s must output to %s but does not, fixing"
             (F.fq_name par_func :> string)
             (F.fq_name proc.func :> string) ;
-          log_and_ignore_exceptions ~what:("fixing "^ out_ref) (fun () ->
-            let fname = input_ringbuf_fname conf par_func proc.func
-            and fieldmask = make_fieldmask par_func proc.func in
-            OutRef.add out_ref fname fieldmask) ())
+          log_and_ignore_exceptions ~what:("fixing "^(out_ref :> string))
+            (fun () ->
+              let fname = input_ringbuf_fname conf par_func proc.func
+              and fieldmask = make_fieldmask par_func proc.func in
+              OutRef.add out_ref fname fieldmask) ())
       ) par_funcs
     )
   ) running
@@ -750,7 +758,7 @@ let synchronize_running conf autoreload_delay =
             last_read
           ) else (
             let last_mod =
-              try Some (mtime_of_file rc_file)
+              try Some (Files.mtime rc_file)
               with Unix.(Unix_error (ENOENT, _, _)) -> None in
             let now = Unix.gettimeofday () in
             let must_reread =
@@ -776,9 +784,11 @@ let synchronize_running conf autoreload_delay =
               Hashtbl.clear must_run ;
               Hashtbl.iter (fun program_name (mre, get_rc) ->
                 if mre.C.status = C.MustRun then (
-                  if mre.C.src_file <> "" then (
-                    !logger.debug "Trying to build %S" mre.C.bin ;
-                    log_and_ignore_exceptions ~what:("rebuilding "^ mre.C.bin)
+                  if not (N.is_empty mre.C.src_file) then (
+                    !logger.debug "Trying to build %a"
+                      N.path_print mre.C.bin ;
+                    log_and_ignore_exceptions
+                      ~what:("rebuilding "^ (mre.C.bin :> string))
                       (fun () ->
                         let get_parent =
                           RamenCompiler.parent_from_programs programs in
@@ -814,7 +824,7 @@ let synchronize_running conf autoreload_delay =
         let changed = synchronize must_run running in
         (* Touch the rc file if anything changed (esp. autoreload) since that
          * mtime is used to signal cache expirations etc. *)
-        if changed then touch_file rc_file last_read ;
+        if changed then Files.touch rc_file last_read ;
         Gc.minor () ;
         let delay = if !quit = None then 1. else 0.3 in
         Unix.sleepf delay ;

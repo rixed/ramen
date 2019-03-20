@@ -56,6 +56,8 @@ open RamenHelpers
 open RamenNullable
 open RamenConsts
 module C = RamenConf
+module N = RamenName
+module Files = RamenFiles
 
 (* Used to know if we must use normal schedule delay or schedule delay
  * after startup: *)
@@ -67,11 +69,12 @@ let startup_time = ref (Unix.gettimeofday ())
 type alert_id = uint64 [@@ppp PPP_OCaml]
 
 let next_alert_id =
-  let ppp_of_file = ppp_of_file ~default:"0" alert_id_ppp_ocaml in
+  let ppp_of_file = Files.ppp_of_file ~default:"0" alert_id_ppp_ocaml in
   fun conf ->
-    let fname = conf.C.persist_dir ^"/pending_alerts" in
+    let fname =
+      N.path_cat [ conf.C.persist_dir ; N.path "pending_alerts" ] in
     let v = ppp_of_file fname in
-    ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
+    Files.ppp_to_file fname alert_id_ppp_ocaml (Uint64.succ v) ;
     v
 
 open Binocle
@@ -80,26 +83,26 @@ open Binocle
 
 let stats_count =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_count
       "Number of messages sent, per channel.")
 
 let stats_send_fails =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_send_fails
       "Number of messages that could not be sent due to error.")
 
 let stats_team_fallbacks =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.team_fallbacks
       "Number of times the default team was selected because the \
       configuration was not specific enough")
 
 let stats_messages_cancelled =
   RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir
+    IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.messages_cancelled
       "Number of notifications not send, per reason")
 
@@ -349,11 +352,11 @@ type saved_pendings = task list [@@ppp PPP_OCaml]
 let save_pendings conf =
   let fname = C.pending_notifications_file conf in
   let lst = PendingSet.to_list pendings.set in
-  ppp_to_file fname saved_pendings_ppp_ocaml lst
+  Files.ppp_to_file fname saved_pendings_ppp_ocaml lst
 
 let restore_pendings conf =
   let fname = C.pending_notifications_file conf in
-  (match ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
+  (match Files.ppp_of_file ~default:"[]" saved_pendings_ppp_ocaml fname with
   | exception (Unix.(Unix_error (ENOENT, _, _)) | Sys_error _) -> ()
   | lst ->
       pendings.set <- PendingSet.of_list lst) ;
@@ -742,16 +745,17 @@ let ensure_conf_file_exists notif_conf_file =
       default_init_schedule_delay_after_startup = 120. ;
       default_alert_timeout = 10. *. 3600. } in
   let contents = PPP.to_string notify_config_ppp_ocaml default_conf in
-  ensure_file_exists ~contents notif_conf_file
+  Files.ensure_exists ~contents notif_conf_file
 
 let load_config notif_conf_file =
-  let notif_conf = ppp_of_file notify_config_ppp_ocaml notif_conf_file in
+  let notif_conf =
+    Files.ppp_of_file notify_config_ppp_ocaml notif_conf_file in
   check_conf_is_valid notif_conf ;
   notif_conf
 
 let start conf notif_conf_file rb max_fpr =
-  !logger.info "Starting alerter, using configuration file %s"
-    notif_conf_file ;
+  !logger.info "Starting alerter, using configuration file %a"
+    N.path_print notif_conf_file ;
   (* Check the configuration file is OK before waiting for the first
    * notification. Also, we will reload this ref, keeping the last
    * good version: *)
@@ -783,8 +787,8 @@ let start conf notif_conf_file rb max_fpr =
      * mechanism to cut down the work: *)
     (try notif_conf := load_config notif_conf_file
     with exn ->
-      !logger.error "Cannot read alerter configuration file %s: %s"
-        notif_conf_file (Printexc.to_string exn)) ;
+      !logger.error "Cannot read alerter configuration file %a: %s"
+        N.path_print notif_conf_file (Printexc.to_string exn)) ;
     let team = Team.find_in_charge conf !notif_conf.teams notif_name in
     let action =
       match notif.firing with

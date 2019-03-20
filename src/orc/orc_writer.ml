@@ -8,11 +8,13 @@ open Batteries
 open RamenHelpers
 open RamenLog
 module T = RamenTypes
+module N = RamenName
 module Orc = RamenOrc
+module Files = RamenFiles
 
 let main =
   init_logger Debug ;
-  let exec_file = Sys.argv.(1) in
+  let exec_file = N.path (Sys.argv.(1)) in
   let ramen_type = Sys.argv.(2) in
   let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
   !logger.info "Generating an ORC writer for Ramen type %s"
@@ -27,33 +29,39 @@ let main =
   let schema = IO.to_string Orc.print otyp in
   !logger.info "Corresponding ORC type: %s" schema ;
   RamenOCamlCompiler.use_external_compiler := false ;
-  RamenOCamlCompiler.bundle_dir := Sys.getenv_opt "RAMEN_LIBS" |? "./bundle" ;
+  RamenOCamlCompiler.bundle_dir :=
+    N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") ;
   (*
    * Generate the C++ side:
    *)
   let orc_write_func = "orc_write" in
   let orc_read_func = "orc_read" in
   let cc_src_file =
-    Filename.temp_file "orc_writer_cc_" ".cc" in
-  mkdir_all ~is_file:true cc_src_file ;
-  File.with_file_out cc_src_file (fun oc ->
+    N.path (Filename.temp_file "orc_writer_cc_" ".cc") in
+  Files.mkdir_all ~is_file:true cc_src_file ;
+  File.with_file_out (cc_src_file :> string) (fun oc ->
     Orc.emit_intro oc ;
     Orc.emit_write_value orc_write_func rtyp oc ;
     Orc.emit_read_values orc_read_func rtyp oc ;
     Orc.emit_outro oc) ;
-  !logger.info "Generated C++ support file in %s" cc_src_file ;
+  !logger.info "Generated C++ support file in %a"
+    N.path_print cc_src_file ;
   let cpp_command src dst =
     let _, where = Unix.run_and_read "ocamlc -where" in
     let where = String.trim where in
-    let inc = !RamenOCamlCompiler.bundle_dir ^"/include" in
-    Printf.sprintf "g++ -g -std=c++17 -W -Wall -c -I %S -I %S -o %S %S"
-      where inc dst src in
-  let cc_dst = change_ext ".o" cc_src_file in
+    let inc =
+      N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
+    Printf.sprintf2 "g++ -g -std=c++17 -W -Wall -c -I %S -I %a -o %a %a"
+      where
+      N.path_print_quoted inc
+      N.path_print_quoted dst
+      N.path_print_quoted src in
+  let cc_dst = Files.change_ext "o" cc_src_file in
   let cmd = cpp_command cc_src_file cc_dst in
   let status = Unix.system cmd in
   if status <> Unix.WEXITED 0 then (
-    !logger.error "Compilation of %S: %s"
-      cc_src_file (string_of_process_status status) ;
+    !logger.error "Compilation of %a: %s"
+      N.path_print_quoted cc_src_file (string_of_process_status status) ;
     !logger.info "I'm so sorry! This is what I tried: %s" cmd ;
     !logger.info "I'm out of ideas. Good luck!" ;
     exit 1) ;
@@ -61,7 +69,7 @@ let main =
    * Now the ML side:
    *)
   let ml_obj_name =
-    Filename.temp_file "orc_writer_" ".cmx" |>
+    N.path (Filename.temp_file "orc_writer_" ".cmx") |>
     RamenOCamlCompiler.make_valid_for_module in
   let keep_temp_files = true in
   let ml_src_file =
@@ -133,7 +141,8 @@ let main =
       p "        orc_close handler)" ;
       p "  | _ -> syntax ()" ;
   ) in
-  !logger.info "Generated OCaml support module in %s" ml_src_file ;
+  !logger.info "Generated OCaml support module in %a"
+    N.path_print ml_src_file ;
   (*
    * Link!
    *)

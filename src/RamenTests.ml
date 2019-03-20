@@ -9,6 +9,7 @@ module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
+module Files = RamenFiles
 
 type tuple_spec = (N.field, string) Hashtbl.t [@@ppp PPP_OCaml]
 
@@ -49,7 +50,7 @@ type test_spec =
     [@@ppp PPP_OCaml]
 
 and program_spec =
-  { bin : string [@ppp_default ""] ;
+  { bin : N.path [@ppp_default N.path ""] ;
     code : string [@ppp_default ""] ;
     params : N.params [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
@@ -217,7 +218,7 @@ let test_output conf fq output_spec end_flag =
     !RamenProcesses.quit = None &&
     Unix.gettimeofday () -. start < output_spec.timeout in
   let unserialize = RamenSerialization.read_array_of_values ser in
-  !logger.debug "Enumerating tuples from %s" bname ;
+  !logger.debug "Enumerating tuples from %a" N.path_print bname ;
   let num_tuples =
     RamenSerialization.fold_seq_range
       ~wait_for_more:true ~while_ bname 0 (fun count _seq tx ->
@@ -280,7 +281,8 @@ let test_until conf count end_flag fq spec =
     not !got_it &&
     !RamenProcesses.quit = None &&
     Atomic.Flag.is_unset end_flag in
-  !logger.debug "Enumerating tuples from %s for early termination" bname ;
+  !logger.debug "Enumerating tuples from %a for early termination"
+    N.path_print bname ;
   RamenSerialization.fold_seq_range ~wait_for_more:true ~while_ bname ()
     (fun () _ tx ->
     match RamenSerialization.read_tuple unserialize tx with
@@ -405,13 +407,13 @@ let check_test_spec conf test =
 
 let bin_of_program conf get_parent program_name program_code =
   let exec_file =
-    C.test_literal_programs_root conf ^"/"^
-    N.path_of_program program_name ^".x"
+    N.path_cat [ C.test_literal_programs_root conf ;
+                 Files.add_ext (N.path_of_program program_name) "x" ]
   and source_file =
-    C.test_literal_programs_root conf ^"/"^
-    N.path_of_program program_name ^".ramen" in
-  File.with_file_out ~mode:[`create; `text ; `trunc] source_file (fun oc ->
-    String.print oc program_code) ;
+    N.path_cat [ C.test_literal_programs_root conf ;
+                 Files.add_ext (N.path_of_program program_name) "ramen" ] in
+  File.with_file_out ~mode:[`create; `text ; `trunc] (source_file :> string)
+    (fun oc -> String.print oc program_code) ;
   RamenCompiler.compile conf get_parent ~exec_file
                         source_file program_name ;
   exec_file
@@ -419,7 +421,7 @@ let bin_of_program conf get_parent program_name program_code =
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
-  let dirname = absolute_path_of dirname in
+  let dirname = Files.absolute_path_of dirname in
   (* The only sure way to know when to stop the workers is: when the test
    * succeeded, or timeouted. So we start three threads at the same time:
    * the process synchronizer, the worker feeder, and the output evaluator: *)
@@ -429,9 +431,10 @@ let run_test conf notify_rb dirname test =
     Hashtbl.clear programs ;
     Hashtbl.iter (fun program_name p ->
       let bin =
-        if p.bin <> "" then (
+        if not (N.is_empty p.bin) then (
           (* The path to the binary is relative to the test file: *)
-          if p.bin.[0] = '/' then p.bin else dirname ^"/"^ p.bin
+          if Files.is_absolute p.bin then p.bin
+          else N.path_cat [ dirname ; p.bin ]
         ) else (
           if p.code = "" then failwith "Either the binary file or the code of \
                                         a program must be specified" ;
@@ -447,7 +450,7 @@ let run_test conf notify_rb dirname test =
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; status = MustRun ; debug = false ;
             report_period = RamenConsts.Default.report_period ;
-            src_file = "" } ;
+            src_file = N.path "" } ;
       List.iter (fun func ->
         Hashtbl.add workers (F.fq_name func) (func, ref None)
       ) prog.P.funcs
@@ -561,13 +564,13 @@ let run conf server_url api graphite
     persist_dir =
       Filename.get_temp_dir_name ()
         ^"/ramen_test."^ string_of_int (Unix.getpid ()) |>
-      uniquify_filename ;
+      N.path |> Files.uniquify ;
     test = true } in
   init_logger conf.C.log_level ;
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
-  !logger.info "Using temp dir %s" conf.persist_dir ;
-  mkdir_all conf.persist_dir ;
+  !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
+  Files.mkdir_all conf.persist_dir ;
   let httpd_thread =
     if server_url = "" && api = None && graphite = None then None
     else Some (
@@ -575,9 +578,10 @@ let run conf server_url api graphite
         RamenHttpd.run_httpd conf server_url api graphite 0.0
       ) ()) in
   (* Parse tests so that we won't have to clean anything if it's bogus *)
-  !logger.info "Parsing test specification in %S..." test ;
-  let test_spec = ppp_of_file test_spec_ppp_ocaml test in
-  let name = Filename.(basename test |> remove_extension) in
+  !logger.info "Parsing test specification in %a..."
+    N.path_print_quoted test ;
+  let test_spec = Files.ppp_of_file test_spec_ppp_ocaml test in
+  let name = (Files.(basename test |> remove_ext) :> string) in
   (* Start Ramen *)
   RamenProcesses.prepare_signal_handlers conf ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
@@ -585,7 +589,7 @@ let run conf server_url api graphite
   RingBuf.unload report_rb ;
   (* Run all tests. Also return the syn thread that's still running: *)
   !logger.info "Starting tests..." ;
-  let res, sync = run_test conf notify_rb (Filename.dirname test) test_spec in
+  let res, sync = run_test conf notify_rb (Files.dirname test) test_spec in
   !logger.debug "Finished tests" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)

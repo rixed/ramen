@@ -3,6 +3,8 @@ open Legacy.Unix
 open RamenLog
 open RamenHelpers
 open RamenAtomic
+module N = RamenName
+module Files = RamenFiles
 
 let write_locked = Hashtbl.create 11
 
@@ -17,15 +19,16 @@ let with_lock op fname f =
           mutex
       | mutex ->
           if not (Mutex.try_lock mutex) then (
-            !logger.warning "File %S is already locked, waiting!"
-              fname ;
+            !logger.warning "File %a is already locked, waiting!"
+              N.path_print fname ;
             Mutex.lock mutex (* Wait for that other thread... *)) ;
           mutex
     ) else None in
   finally (fun () -> Option.may Mutex.unlock mutex)
           (fun () ->
-    mkdir_all ~is_file:true fname ;
-    let fd = openfile fname [O_RDWR; O_CLOEXEC; O_CREAT] 0o640 in
+    Files.mkdir_all ~is_file:true fname ;
+    let flags = [O_RDWR; O_CLOEXEC; O_CREAT] in
+    let fd = openfile (fname :> string) flags 0o640 in
     finally (fun () -> close fd) (fun () ->
       lockf fd op 0 ;
       finally

@@ -13,6 +13,13 @@ module N = RamenName
  * Common options
  *)
 
+let path =
+  let parse s = Pervasives.Ok (N.path s)
+  and print fmt (p : N.path) =
+    Format.fprintf fmt "%s" (p :> string)
+  in
+  Arg.conv ~docv:"FILE" (parse, print)
+
 let copts =
   let docs = Manpage.s_common_options in
   let debug =
@@ -29,7 +36,7 @@ let copts =
     let env = Term.env_info "RAMEN_DIR" in
     let i = Arg.info ~doc:CliInfo.persist_dir
                      ~docs ~env [ "persist-dir" ] in
-    Arg.(value (opt string Default.persist_dir i))
+    Arg.(value (opt path Default.persist_dir i))
   and rand_seed =
     let env = Term.env_info "RAMEN_RANDOM_SEED" in
     let i = Arg.info ~doc:CliInfo.rand_seed
@@ -99,7 +106,7 @@ let bundle_dir =
   let env = Term.env_info "RAMEN_LIBS" in
   let i = Arg.info ~doc:CliInfo.bundle_dir
                    ~env [ "bundle-dir" ] in
-  Arg.(value (opt string RamenCompilConfig.default_bundle_dir i))
+  Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
 
 let max_simult_compilations =
   let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
@@ -189,7 +196,7 @@ let gc =
 let conf_file ?env ?(opt_names=["config"; "c"]) ~doc () =
   let env = Option.map Term.env_info env in
   let i = Arg.info ~doc ?env opt_names in
-  Arg.(value (opt (some string) None i))
+  Arg.(value (opt (some path) None i))
 
 let max_fpr =
   let env = Term.env_info "ALERTER_MAX_FPR" in
@@ -246,7 +253,7 @@ let notify =
 let rb_file =
   let i = Arg.info ~doc:CliInfo.rb_file
                    ~docv:"FILE" [] in
-  Arg.(required (pos 0 (some string) None i))
+  Arg.(required (pos 0 (some path) None i))
 
 let num_tuples =
   let i = Arg.info ~doc:CliInfo.num_tuples
@@ -269,7 +276,7 @@ let max_bytes =
 let rb_files =
   let i = Arg.info ~doc:CliInfo.rb_files
                    ~docv:"FILE" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(non_empty (pos_all path [] i))
 
 let summary =
   Term.(
@@ -382,17 +389,17 @@ let lib_path =
   let env = Term.env_info "RAMEN_PATH" in
   let i = Arg.info ~doc:CliInfo.lib_path
                    ~env [ "lib-path" ; "L" ] in
-  Arg.(value (opt_all string [] i))
+  Arg.(value (opt_all path [] i))
 
 let src_files =
   let i = Arg.info ~doc:CliInfo.src_files
                    ~docv:"FILE" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(non_empty (pos_all path [] i))
 
 let bin_file =
   let i = Arg.info ~doc:CliInfo.bin_file
                    ~docv:"FILE" [] in
-  Arg.(required (pos 0 (some string) None i))
+  Arg.(required (pos 0 (some path) None i))
 
 let program =
   let parse s = Pervasives.Ok (N.program s)
@@ -404,7 +411,7 @@ let program =
 let output_file =
   let i = Arg.info ~doc:CliInfo.output_file
                    ~docv:"FILE" [ "o" ] in
-  Arg.(value (opt (some string) None i))
+  Arg.(value (opt (some path) None i))
 
 let as_ =
   let i = Arg.info ~doc:CliInfo.program_name
@@ -444,7 +451,7 @@ let report_period =
 let src_file =
   let i = Arg.info ~doc:CliInfo.src_file
                    [ "src-file" ; "source-file" ] in
-  Arg.(value (opt (some string) None i))
+  Arg.(value (opt (some path) None i))
 
 let run =
   Term.(
@@ -882,7 +889,7 @@ let expand =
 let test_file =
   let i = Arg.info ~doc:CliInfo.test_file
                    ~docv:"file.test" [] in
-  Arg.(value (pos 0 string "" i))
+  Arg.(value (pos 0 path (N.path "") i))
 
 let test =
   Term.(

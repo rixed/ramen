@@ -7,6 +7,7 @@ open RamenHelpers
 open RamenConsts
 open RamenNullable
 module T = RamenTypes
+module Files = RamenFiles
 
 (* Health and Stats
  *
@@ -231,43 +232,47 @@ type possible_values_index =
   { min_time : float ; max_time : float ;
     (* Name of the previous file where that set was saved.
      * This file is renamed after every write. *)
-    fname : string ;
+    fname : N.path ;
     mutable values : T.value Set.t }
 
 (* Just a placeholder to init the initial array. *)
 let possible_values_empty =
   { min_time = max_float ; max_time = min_float ;
-    fname = "" ; values = Set.empty }
+    fname = N.path "" ; values = Set.empty }
+
+let possible_values_file dir factor min_time max_time =
+  N.path_cat [ dir ; Files.quote (N.path factor) ;
+               N.path (Printf.sprintf "%h_%h" min_time max_time) ]
 
 let save_possible_values prev_fname pvs =
   (* We are going to write a new file and delete the former one.
    * We only need a lock when that's the same file. *)
-  let do_write fd = marshal_into_fd fd pvs.values in
+  let do_write fd = Files.marshal_into_fd fd pvs.values in
   if prev_fname = pvs.fname then (
-    !logger.debug "Updating index %s" prev_fname ;
+    !logger.debug "Updating index %a" N.path_print prev_fname ;
     RamenAdvLock.with_w_lock prev_fname do_write
   ) else (
-    !logger.debug "Creating new index %s" pvs.fname ;
-    mkdir_all ~is_file:true pvs.fname ;
+    !logger.debug "Creating new index %a" N.path_print pvs.fname ;
+    Files.mkdir_all ~is_file:true pvs.fname ;
     let flags = Unix.[ O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC ] in
-    (match Unix.openfile pvs.fname flags 0o644 with
+    (match Unix.openfile (pvs.fname :> string) flags 0o644 with
     | exception Unix.(Unix_error (EEXIST, _, _)) ->
         (* Although we though we would create a new file for a singleton,
          * it turns out this file exists already. This could happen when
          * event time goes back and forth, which is allowed. So we have
          * to merge the indices now: *)
-        !logger.warning "Stumbled upon preexisting index %s, merging..."
-          pvs.fname ;
+        !logger.warning "Stumbled upon preexisting index %a, merging..."
+          N.path_print pvs.fname ;
         RamenAdvLock.with_w_lock pvs.fname (fun fd ->
           let prev_set : T.value Set.t =
-            marshal_from_fd ~default:Set.empty pvs.fname fd in
+            Files.marshal_from_fd ~default:Set.empty pvs.fname fd in
           let s = Set.union prev_set pvs.values in
           (* Keep past values for the next write: *)
           pvs.values <- s ;
           do_write fd)
     | fd -> do_write fd) ;
-    if prev_fname <> "" then
-      log_and_ignore_exceptions safe_unlink prev_fname)
+    if not (N.is_empty prev_fname) then
+      log_and_ignore_exceptions Files.safe_unlink prev_fname)
 
 
 (* Helpers *)
@@ -303,7 +308,7 @@ let output rb serialize_tuple sersize_of_tuple
 let quit = ref None
 
 type 'a out_rb =
-  { fname : string ;
+  { fname : N.path ;
     rb : RingBuf.t ;
     tup_serializer : RingBuf.tx -> int -> 'a -> int ;
     tup_sizer : 'a -> int ;
@@ -338,7 +343,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       !quit = None && still_in_outref (Unix.gettimeofday ()))
     ~on:(function
       | RingBuf.NoMoreRoom ->
-        !logger.debug "NoMoreRoom in %s" out_rb.fname ;
+        !logger.debug "NoMoreRoom in %a" N.path_print out_rb.fname ;
         (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
         let now = Unix.gettimeofday () in
         (* Also check from time to time that we are still supposed to
@@ -353,8 +358,9 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
               min 30. (10. +. out_rb.quarantine_delay *. 1.5) ;
             out_rb.quarantine_until <-
               now +. jitter out_rb.quarantine_delay ;
-            !logger.error "Quarantining %s until %s"
-              out_rb.fname (string_of_time out_rb.quarantine_until) ;
+            !logger.error "Quarantining %a until %s"
+              N.path_print out_rb.fname
+              (string_of_time out_rb.quarantine_until) ;
             true))
       | _ -> false)
     ~first_delay:0.001 ~max_delay:1. ~delay_rec:sleep_out
@@ -363,8 +369,8 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       | exception Not_found ->
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
-            !logger.debug "Drop a tuple for %s unknown channel %a"
-              out_rb.fname RamenChannel.print dest_channel ;
+            !logger.debug "Drop a tuple for %a unknown channel %a"
+              N.path_print out_rb.fname RamenChannel.print dest_channel ;
       | t ->
           if not (RamenOutRef.timed_out !CodeGenLib_IO.now t) then (
             if out_rb.quarantine_until < !CodeGenLib_IO.now then (
@@ -372,15 +378,16 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
                      start_stop head tuple_opt ;
               out_rb.last_successful_output <- !CodeGenLib_IO.now ;
               if out_rb.quarantine_delay > 0. then (
-                !logger.info "Resuming output to %s" out_rb.fname ;
+                !logger.info "Resuming output to %a"
+                  N.path_print out_rb.fname ;
                 out_rb.quarantine_delay <- 0.)
             ) else (
-              !logger.debug "Skipping output to %s (quarantined)"
-                out_rb.fname)
+              !logger.debug "Skipping output to %a (quarantined)"
+                N.path_print out_rb.fname)
           ) else (
             if out_rb.rate_limit_log_drops () then
-              !logger.debug "Drop a tuple for %s outdated channel %a"
-                out_rb.fname RamenChannel.print dest_channel
+              !logger.debug "Drop a tuple for %a outdated channel %a"
+                N.path_print out_rb.fname RamenChannel.print dest_channel
           )) ()
 
 let writer_of_spec serialize_tuple sersize_of_tuple
@@ -438,7 +445,7 @@ let outputer_of
   and outputers = ref [] in
   let max_num_fields = 100 (* FIXME *) in
   let factors_values = Array.make max_num_fields possible_values_empty in
-  let factors_dir = getenv ~def:"/tmp/factors" "factors_dir" in
+  let factors_dir = N.path (getenv ~def:"/tmp/factors" "factors_dir") in
   let last_full_out_measurement = ref 0. in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
@@ -447,10 +454,11 @@ let outputer_of
       if !CodeGenLib_IO.now > !last_stat +. Default.min_delay_restats then (
         last_stat := !CodeGenLib_IO.now ;
         let must_read =
-          let t = mtime_of_file_def 0. rb_ref_out_fname in
+          let t = Files.mtime_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
             if !last_mtime <> 0. then
-              !logger.debug "Have to re-read %s" rb_ref_out_fname ;
+              !logger.debug "Have to re-read %a"
+                N.path_print rb_ref_out_fname ;
             last_mtime := t ;
             true
           (* We have to reread the outref from time to time even if not
@@ -484,9 +492,10 @@ let outputer_of
         hashtbl_merge !out_h out_specs (fun fname prev new_ ->
           match prev, new_ with
           | None, Some new_spec ->
-              !logger.debug "Starts outputting to %S" fname ;
+              !logger.debug "Starts outputting to %a"
+                N.path_print_quoted fname ;
               (* The show must go on: *)
-              let what = Printf.sprintf "mmapping ringbuf %s" fname in
+              let what = "mmapping ringbuf "^ (fname :> string) in
               default_on_exception None ~what (fun () ->
                 let writer, closer =
                   writer_of_spec serialize_tuple sersize_of_tuple
@@ -499,7 +508,8 @@ let outputer_of
                   ref (Unix.gettimeofday ()),
                   writer, closer)) ()
           | Some (_, _, _, closer), None ->
-              !logger.debug "Stop outputting to %S" fname ;
+              !logger.debug "Stop outputting to %a"
+                N.path_print_quoted fname ;
               closer () ;
               None
           | Some (cur_spec, last_check_outref, writer, closer) as cur,
@@ -508,7 +518,7 @@ let outputer_of
               last_check_outref := Unix.gettimeofday () ;
               (* The only allowed change is channels: *)
               if cur_spec.channels <> new_spec.channels then (
-                !logger.debug "Updating %S" fname ;
+                !logger.debug "Updating %a" N.path_print_quoted fname ;
                 Some ({ cur_spec with channels = new_spec.channels },
                       last_check_outref, writer, closer)
               ) else cur
@@ -548,7 +558,7 @@ let outputer_of
                 then
                   min_time, max_time, Set.add pv pvs.values, pvs.fname
                 else
-                  start, stop, Set.singleton pv, "" in
+                  start, stop, Set.singleton pv, N.path "" in
               let fname =
                 possible_values_file factors_dir factor min_time max_time in
               let pvs = { min_time ; max_time ; fname ; values } in
@@ -574,7 +584,7 @@ let outputer_of
 
 type worker_conf =
   { log_level : log_level ;
-    state_file : string ;
+    state_file : N.path ;
     is_test : bool }
 
 let info_or_test conf =
@@ -585,7 +595,8 @@ let worker_start worker_name get_binocle_tuple k =
   let default_persist_dir =
     "/tmp/worker_"^ worker_name ^"_"^ string_of_int (Unix.getpid ()) in
   let is_test = getenv ~def:"false" "is_test" |> bool_of_string in
-  let state_file = getenv ~def:default_persist_dir "state_file" in
+  let state_file =
+    N.path (getenv ~def:default_persist_dir "state_file") in
   let prefix = worker_name ^": " in
   (match getenv "log" with
   | exception _ ->
@@ -594,14 +605,14 @@ let worker_start worker_name get_binocle_tuple k =
       if logdir = "syslog" then
         init_syslog ~prefix log_level
       else (
-        mkdir_all logdir ;
+        Files.mkdir_all (N.path logdir) ;
         init_logger ~logdir log_level
       )) ;
   let report_period =
     getenv ~def:(string_of_float Default.report_period)
            "report_period" |> float_of_string in
   let report_rb_fname =
-    getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf" in
+    N.path (getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf") in
   let report_rb = RingBuf.load report_rb_fname in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
@@ -648,7 +659,8 @@ let read_csv_file
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun conf ->
-    let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
+    let rb_ref_out_fname =
+      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     (* For tests, allow to overwrite what's specified in the operation: *)
     and filename = getenv ~def:filename "csv_filename"
     and separator = getenv ~def:separator "csv_separator" in
@@ -692,8 +704,8 @@ let listen_on
   let get_binocle_tuple () =
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun conf ->
-    let rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    in
+    let rb_ref_out_fname =
+      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
       outputer_of
@@ -719,10 +731,9 @@ let read_well_known
     get_binocle_tuple worker_name None None None in
   worker_start worker_name get_binocle_tuple (fun conf ->
     let bname =
-      getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar in
+      N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
     let rb_ref_out_fname =
-      getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    in
+      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
@@ -1126,10 +1137,12 @@ let aggregate
       let rec loop lst i =
         match Sys.getenv ("input_ringbuf_"^ string_of_int i) with
         | exception Not_found -> lst
-        | n -> loop (n :: lst) (i + 1) in
+        | n -> loop (N.path n :: lst) (i + 1) in
       loop [] 0
-    and rb_ref_out_fname = getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-    and notify_rb_name = getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf" in
+    and rb_ref_out_fname =
+      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
+    and notify_rb_name =
+      N.path (getenv ~def:"/tmp/ringbuf_notify.r" "notify_ringbuf") in
     let notify_rb = RingBuf.load notify_rb_name in
     let msg_outputer =
       outputer_of
@@ -1186,7 +1199,7 @@ let aggregate
         save_state chn s' (* TODO: have a mutable state and check s==s'? *)
     in
     !logger.debug "Will read ringbuffer %a"
-      (List.print String.print) rb_in_fnames ;
+      (List.print N.path_print) rb_in_fnames ;
     let rb_ins =
       List.map (fun fname ->
         let on _ =
@@ -1523,12 +1536,13 @@ let replay
       if logdir = "syslog" then
         init_syslog ~prefix log_level
       else (
-        mkdir_all logdir ;
+        Files.mkdir_all (N.path logdir) ;
         init_logger ~logdir log_level
       )) ;
   let rb_ref_out_fname =
-    getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref"
-  and rb_archive = getenv ~def:"/tmp/archive.b" "rb_archive"
+    N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
+  and rb_archive =
+    N.path (getenv ~def:"/tmp/archive.b" "rb_archive")
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string
   and channel_id = getenv "channel_id" |> RamenChannel.of_string
@@ -1546,7 +1560,8 @@ let replay
                                else ExitCodes.interrupted))) ;
   (* Ignore sigusr1: *)
   set_signals Sys.[sigusr1] Signal_ignore ;
-  !logger.debug "Will replay archive from %S" rb_archive ;
+  !logger.debug "Will replay archive from %a"
+    N.path_print_quoted rb_archive ;
   let outputer =
     outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
@@ -1565,10 +1580,10 @@ let replay
   let loop_tuples rb =
     read_whole_archive ~while_ read_tuple rb output_tuple in
   let loop_tuples_of_ringbuf fname =
-    !logger.debug "Reading archive %S" fname ;
+    !logger.debug "Reading archive %a" N.path_print_quoted fname ;
     match RingBuf.load fname with
     | exception e ->
-        let what = "Reading archive "^ fname in
+        let what = "Reading archive "^ (fname :> string) in
         print_exception ~what e
     | rb ->
         finally (fun () -> RingBuf.unload rb) (fun () ->
@@ -1576,9 +1591,10 @@ let replay
           if time_overlap st.t_min st.t_max then
             loop_tuples rb
           else
-            !logger.debug "Archive times of %S (%f..%f) does not overlap \
+            !logger.debug "Archive times of %a (%f..%f) does not overlap \
                            with search (%f..%f)"
-              rb_archive st.t_min st.t_max since until) () in
+              N.path_print_quoted rb_archive
+              st.t_min st.t_max since until) () in
   let rec loop_files () =
     if while_ () then
       match Enum.get_exn files with
@@ -1607,7 +1623,7 @@ let replay
   exit (!quit |? ExitCodes.terminated)
 
 let convert
-      in_fmt in_fname out_fmt out_fname
+      in_fmt (in_fname : N.path) out_fmt (out_fname : N.path)
       orc_read csv_write orc_make_handler orc_write orc_close
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_out option)
       (sersize_of_tuple : RamenFieldMask.fieldmask -> 'tuple_out -> int)
@@ -1622,7 +1638,7 @@ let convert
       if logdir = "syslog" then
         init_syslog log_level
       else (
-        mkdir_all logdir ;
+        Files.mkdir_all (N.path logdir) ;
         init_logger ~logdir log_level
       )) ;
   !logger.debug "Going to convert from %s to %s"
@@ -1638,7 +1654,7 @@ let convert
   let reader =
     match in_fmt with
     | CodeGenLib_Casing.CSV ->
-        let fd = openfile in_fname [O_RDONLY] 0o644 in
+        let fd = openfile (in_fname :> string) [O_RDONLY] 0o644 in
         in_fd := Some fd ;
         (fun k ->
           read_lines fd |>
@@ -1662,7 +1678,8 @@ let convert
   and writer =
     match out_fmt with
     | CodeGenLib_Casing.CSV ->
-        let fd = openfile out_fname [O_CREAT;O_EXCL;O_WRONLY] 0o644 in
+        let flags = [O_CREAT;O_EXCL;O_WRONLY] in
+        let fd = openfile (out_fname :> string) flags 0o644 in
         out_fd := Some fd ;
         csv_write fd
     | CodeGenLib_Casing.ORC ->

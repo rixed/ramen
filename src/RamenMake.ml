@@ -29,15 +29,16 @@ module C = RamenConf
 module F = C.Func
 module P = C.Program
 module N = RamenName
+module Files = RamenFiles
 
 (* Raise any exception on failure: *)
 type builder =
   C.conf ->
   (N.program -> RamenProgram.P.t) ->
-  N.program -> string -> string -> unit
+  N.program -> N.path -> N.path -> unit
 
 (* Tells if the target must be rebuilt from the source: *)
-type check = string -> string -> bool
+type check = N.path -> N.path -> bool
 
 (*
  * Possible check functions
@@ -48,14 +49,14 @@ type check = string -> string -> bool
  * have to rebuild (but we make sure the target will be > next time!)
  * Fails if src_file does not exist. *)
 let target_is_older src_file target_file =
-  let st = mtime_of_file src_file in
+  let st = Files.mtime src_file in
   let rec wait_source_in_past () =
     let now = Unix.gettimeofday () in
     if st >= now then (
       Unix.sleepf (max 0.01 (st -. now)) ;
       wait_source_in_past ()
     ) in
-  match mtime_of_file target_file with
+  match Files.mtime target_file with
   | exception Unix.(Unix_error (ENOENT, _, _)) ->
       wait_source_in_past () ;
       true
@@ -65,8 +66,8 @@ let target_is_older src_file target_file =
 let target_is_obsolete target_file =
   match P.version_of_bin target_file with
   | exception e ->
-      !logger.warning "Cannot get version from %s: %s, assuming obsolescence"
-        target_file (Printexc.to_string e) ;
+      !logger.warning "Cannot get version from %a: %s, assuming obsolescence"
+        N.path_print target_file (Printexc.to_string e) ;
       true
   | v ->
       v <> RamenVersions.codegen
@@ -109,28 +110,29 @@ let find_path src dst =
 (* Get the build path, then for each step from the source, check if the build is
  * required.
  * [program_name] is required to resolve relative parents. *)
-let build conf ?(force_rebuild=false) get_parent program_name src_file
-          target_file =
-  let base_file = Filename.remove_extension target_file in
+let build conf ?(force_rebuild=false) get_parent program_name
+          (src_file : N.path) (target_file : N.path) =
+  let base_file = Files.remove_ext target_file in
   let rec loop src_file = function
     | [] ->
-        !logger.debug "Done recompiling %S" target_file
+        !logger.debug "Done recompiling %a" N.path_print_quoted target_file
     | (to_type, check, builder) :: rest ->
-        let target_file = base_file ^"."^ to_type in
-        mkdir_all ~is_file:true target_file ;
+        let target_file = N.cat base_file (N.path ("."^ to_type)) in
+        Files.mkdir_all ~is_file:true target_file ;
         if force_rebuild || check src_file target_file then (
           (* Make the target appear in the FS as atomically as possible as
            * we might be overwriting a running worker, which would be
            * confusing for the supervisor. Note that RamenCompiler actually
            * pays no attention to the target file name. *)
-          let tmp_file = target_file ^"_tmp" in
+          let tmp_file = N.cat target_file (N.path "_tmp") in
           builder conf get_parent program_name src_file tmp_file ;
-          Unix.rename tmp_file target_file
+          Files.rename tmp_file target_file
         ) else
-          !logger.debug "%S is still up to date" target_file ;
+          !logger.debug "%a is still up to date"
+            N.path_print_quoted target_file ;
         loop target_file rest
   in
-  let from_type = file_ext src_file
-  and to_type = file_ext target_file in
+  let from_type = Files.ext src_file
+  and to_type = Files.ext target_file in
   let path = find_path from_type to_type in
   loop src_file path

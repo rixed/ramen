@@ -1,6 +1,8 @@
 open Batteries
 open RamenHelpers
 open RamenLog
+module Files = RamenFiles
+module N = RamenName
 
 module Variant =
 struct
@@ -89,7 +91,7 @@ let specialize e branches =
  * It must never change. That's why we save it in a file and we try to
  * reproduce the same value should that file disappear. *)
 let get_experimenter_id persist_dir =
-  let fname = persist_dir ^"/.experimenter_id" in
+  let fname = N.path_cat [ persist_dir ; N.path ".experimenter_id" ] in
   let compute () =
     match Unix.run_and_read "hostname" with
     | exception e ->
@@ -105,15 +107,14 @@ let get_experimenter_id persist_dir =
         !logger.error "Cannot execute hostname: %s"
           (string_of_process_status st) ;
         0 in
-  try save_in_file ~compute ~serialize:string_of_int
-                   ~deserialize:int_of_string fname
+  try Files.save ~compute ~serialize:string_of_int
+                 ~deserialize:int_of_string fname
   with _ -> 0
 
 (* A file where to store additional experiments (usable from ramen programs) *)
-let get_add_exps_fname persist_dir =
-  persist_dir ^"/experiments/"
-              ^ RamenVersions.experiment
-              ^"/config"
+let get_add_exps_fname (persist_dir : N.path) =
+  N.path ((persist_dir :> string) ^"/experiments/"^ RamenVersions.experiment
+          ^"/config")
 
 (* All internal and external (in fname) experiments.
  * External experiments are loaded only once so that they can be mutated to set
@@ -125,11 +126,11 @@ let all_experiments =
     | Some lst -> lst
     | None ->
         let fname = get_add_exps_fname persist_dir in
-        mkdir_all ~is_file:true fname ;
+        Files.mkdir_all ~is_file:true fname ;
         let lst =
-          if file_exists fname then
+          if Files.exists fname then
             let exps =
-              ppp_of_file Serialized.exps_ppp_ocaml fname |>
+              Files.ppp_of_file Serialized.exps_ppp_ocaml fname |>
               Hashtbl.to_list |>
               List.map (fun (name, vars) ->
                 name,

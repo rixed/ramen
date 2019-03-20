@@ -2,6 +2,8 @@
 open Batteries
 open RamenHelpers
 open RamenLog
+module Files = RamenFiles
+module N = RamenName
 
 let solver = ref "z3 -t:20000 -smt2 %s"
 
@@ -46,20 +48,22 @@ let post_scriptum oc =
      (get-unsat-core)\n\
      (get-model)\n"
 
-let run_solver smt2_file =
+let run_solver (smt2_file : N.path) =
   let cmd =
     if String.exists !solver "%s" then
-      String.nreplace ~sub:"%s" ~by:(shell_quote smt2_file) ~str:!solver
+      String.nreplace ~sub:"%s"
+                      ~by:(shell_quote (smt2_file :> string))
+                      ~str:!solver
     else
-      !solver ^" "^ shell_quote smt2_file in
+      !solver ^" "^ shell_quote (smt2_file :> string) in
   !logger.debug "Running the solver as %S" cmd ;
   (* Lazy way to split the arguments: *)
-  let shell = "/bin/sh" in
-  let args = [| shell ; "-c" ; cmd |] in
+  let shell = N.path "/bin/sh" in
+  let args = [| (shell :> string) ; "-c" ; cmd |] in
   (* Now summon the solver: *)
-  with_subprocess shell args (fun (_ic, oc, ec) ->
-    let output = read_whole_channel oc
-    and errors = read_whole_channel ec in
+  Files.with_subprocess shell args (fun (_ic, oc, ec) ->
+    let output = Files.read_whole_channel oc
+    and errors = Files.read_whole_channel ec in
     !logger.debug "Solver is done." ;
     let p =
       RamenParsing.allow_surrounding_blanks RamenSmtParser.response in
@@ -75,10 +79,11 @@ let run_solver smt2_file =
         failwith)
 
 let run_smt2 ~fname ~emit ~parse_result ~unsat =
-  mkdir_all ~is_file:true fname ;
-  !logger.debug "Writing SMT2 program into %S" fname ;
-  File.with_file_out ~mode:[`create; `text; `trunc] fname (fun oc ->
-    emit oc ~optimize:true) ;
+  Files.mkdir_all ~is_file:true fname ;
+  !logger.debug "Writing SMT2 program into %a"
+    N.path_print_quoted fname ;
+  File.with_file_out ~mode:[`create; `text; `trunc] (fname :> string)
+    (fun oc -> emit oc ~optimize:true) ;
   match run_solver fname with
   | RamenSmtParser.Solved (model, sure), output ->
       if not sure then
@@ -91,9 +96,9 @@ let run_smt2 ~fname ~emit ~parse_result ~unsat =
       !logger.debug "No unsat-core, resubmitting." ;
       (* Resubmit the same problem without optimizations to get the unsat
        * core: *)
-      let fname' = fname ^".no_opt" in
-      File.with_file_out ~mode:[`create; `text; `trunc] fname' (fun oc ->
-        emit oc ~optimize:false) ;
+      let fname' = N.cat fname (N.path ".no_opt") in
+      File.with_file_out ~mode:[`create; `text; `trunc] (fname' :> string)
+        (fun oc -> emit oc ~optimize:false) ;
       (match run_solver fname' with
       | RamenSmtParser.Unsolved syms, output -> unsat syms output
       | RamenSmtParser.Solved _, _ ->

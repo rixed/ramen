@@ -12,6 +12,8 @@
  * save/restore across runs and offloading on disc. *)
 open RamenLog
 open RamenHelpers
+module N = RamenName
+module Files = RamenFiles
 
 (* The "state" is a value of some type known only to the function. The module
  * used to save/restore has to be chosen depending on the knowledge the user
@@ -19,24 +21,24 @@ open RamenHelpers
 open Batteries
 
 let marshal_into_fd fd v =
-  try marshal_into_fd fd v
+  try Files.marshal_into_fd fd v
   with e ->
     !logger.error "Cannot marshal_into_fd %d: %s, skipping"
-      (int_of_fd fd) (Printexc.to_string e)
+      (Files.int_of_fd fd) (Printexc.to_string e)
 
 let create_or_read fname v =
   let open Unix in
-  mkdir_all ~is_file:true fname ;
+  Files.mkdir_all ~is_file:true fname ;
   let init_restore () =
-    !logger.debug "Will have my state in file %s" fname ;
-    let fd = openfile fname [O_RDWR] 0o640 in
-    fd, marshal_from_fd fname fd
+    !logger.debug "Will have my state in file %a" N.path_print fname ;
+    let fd = openfile (fname :> string) [O_RDWR] 0o640 in
+    fd, Files.marshal_from_fd fname fd
   and init_create () =
-    let fd = openfile fname [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
+    let fd = openfile (fname :> string) [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
     marshal_into_fd fd v ;
     fd, v
   in
-  if file_check ~min_size:1 ~has_perms:0o400 fname = FileOk then
+  if Files.check ~min_size:1 ~has_perms:0o400 fname = FileOk then
     try init_restore () with _ -> init_create ()
   else
     init_create ()
@@ -61,7 +63,8 @@ struct
     (* FIXME: if save_every>0 || save_timeout>0., register an at_exit call that
      * will backup the last value. *)
     let fd, v = create_or_read fname v in
-    !logger.debug "Will save/restore state from fd %d" (int_of_fd fd) ;
+    !logger.debug "Will save/restore state from fd %d"
+      (Files.int_of_fd fd) ;
     { v ; fd ;
       last_saved = !CodeGenLib_IO.now ;
       calls_since_saved = 0 }
@@ -82,8 +85,9 @@ struct
     then (
       !logger.debug "Save state into fd %d (after %d calls, now=%f while \
                      last_saved=%f)"
-        (int_of_fd h.fd) h.calls_since_saved !CodeGenLib_IO.now h.last_saved ;
-      marshal_into_fd h.fd v ;
+        (Files.int_of_fd h.fd) h.calls_since_saved !CodeGenLib_IO.now
+        h.last_saved ;
+      Files.marshal_into_fd h.fd v ;
       { h with v ; last_saved = !CodeGenLib_IO.now ; calls_since_saved = 1 }
     ) else (
       { h with calls_since_saved = h.calls_since_saved + 1 }
@@ -101,9 +105,9 @@ struct
      * will backup the last value. *)
     let fd, _v = create_or_read fname v in fd
 
-  let restore = marshal_from_fd
+  let restore = Files.marshal_from_fd
 
-  let save = marshal_into_fd
+  let save = Files.marshal_into_fd
 end
 
 (* TODO: variant of the above without keeping the file_descr but keeping the

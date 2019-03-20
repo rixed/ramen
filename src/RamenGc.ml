@@ -12,39 +12,41 @@ module F = C.Func
 module P = C.Program
 module N = RamenName
 module OutRef = RamenOutRef
+module Files = RamenFiles
 
 let get_log_file () =
-  gettimeofday () |> localtime |> log_file
+  gettimeofday () |> localtime |> log_file |> N.path
 
 let date_regexp = regexp "^[0-9]+-[0-9]+-[0-9]+$"
 let v_regexp = regexp "v[0-9]+"
 let v1v2_regexp = regexp "v[0-9]+_v[0-9]+"
 
 let cleanup_dir_old conf dry_run (dir, sub_re, current_version) =
-  let dir = conf.C.persist_dir ^"/"^ dir in
-  !logger.debug "Cleaning directory %s..." dir ;
+  let dir = N.path_cat [ conf.C.persist_dir ; dir ] in
+  !logger.debug "Cleaning directory %a..." N.path_print dir ;
   (* Error in there will be delivered to the stream reader: *)
-  match Sys.files_of dir with
+  match Files.files_of dir with
   | exception (Unix_error (ENOENT, _, _) | Sys_error _) ->
       (* No such directory is OK: *)
       ()
   | exception exn ->
-      !logger.error "Cannot list %s: %s" dir (Printexc.to_string exn)
+      !logger.error "Cannot list %a: %s"
+        N.path_print dir (Printexc.to_string exn)
   | files ->
     Enum.iter (fun fname ->
-      let full_path = dir ^"/"^ fname in
+      let full_path = N.path_cat [ dir ; fname ] in
       if fname = current_version then (
         if not dry_run then
-          touch_file full_path (gettimeofday ())
-      ) else if string_match sub_re fname 0 &&
-                is_directory full_path &&
+          Files.touch full_path (gettimeofday ())
+      ) else if string_match sub_re (fname :> string) 0 &&
+                Files.is_directory full_path &&
                 (* TODO: should be a few days *)
-                file_is_older_than ~on_err:false (1. *. 86400.) full_path
+                Files.is_older_than ~on_err:false (1. *. 86400.) full_path
       then (
-        !logger.info "Deleting %s: unused, old version%s"
-          fname (if dry_run then " (NOPE)" else "") ;
+        !logger.info "Deleting %a: unused, old version%s"
+          N.path_print fname (if dry_run then " (NOPE)" else "") ;
         if not dry_run then
-          rm_rf full_path
+          Files.rm_rf full_path
       )
     ) files
 
@@ -57,15 +59,15 @@ let cleanup_old_versions conf dry_run =
    * one and delete it. *)
   !logger.debug "Cleaning old versions..." ;
   let to_clean =
-    [ "log", date_regexp, get_log_file () ;
-      "log/workers", v_regexp, get_log_file () ;
-      "configuration", v_regexp, RamenVersions.graph_config ;
-      "instrumentation_ringbuf", v1v2_regexp,
-        (RamenVersions.instrumentation_tuple ^"_"^ RamenVersions.ringbuf) ;
-      "workers/ringbufs", v_regexp, RamenVersions.ringbuf ;
-      "workers/out_ref", v_regexp, RamenVersions.out_ref ;
-      "workers/states", v_regexp, RamenVersions.worker_state ;
-      "workers/factors", v_regexp, RamenVersions.factors ]
+    [ N.path "log", date_regexp, get_log_file () ;
+      N.path "log/workers", v_regexp, get_log_file () ;
+      N.path "configuration", v_regexp, N.path RamenVersions.graph_config ;
+      N.path "instrumentation_ringbuf", v1v2_regexp,
+        N.path RamenVersions.(instrumentation_tuple ^"_"^ ringbuf) ;
+      N.path "workers/ringbufs", v_regexp, N.path RamenVersions.ringbuf ;
+      N.path "workers/out_ref", v_regexp, N.path RamenVersions.out_ref ;
+      N.path "workers/states", v_regexp, N.path RamenVersions.worker_state ;
+      N.path "workers/factors", v_regexp, N.path RamenVersions.factors ]
   in
   List.iter (cleanup_dir_old conf dry_run) to_clean
 
@@ -73,20 +75,22 @@ let cleanup_old_archives conf programs dry_run del_ratio =
   (* Delete old archive files *)
   !logger.debug "Deleting old archives..." ;
   let arcdir =
-    conf.C.persist_dir ^"/workers/ringbufs/"^ RamenVersions.ringbuf
+    N.path_cat [ conf.C.persist_dir ;
+                 N.path "workers/ringbufs" ; N.path RamenVersions.ringbuf ]
   and factordir =
-    conf.C.persist_dir ^"/workers/factors/"^ RamenVersions.factors
+    N.path_cat [ conf.C.persist_dir ;
+                 N.path "workers/factors" ; N.path RamenVersions.factors ]
   and reportdir =
-    Filename.dirname (RamenConf.report_ringbuf conf)
+    Files.dirname (RamenConf.report_ringbuf conf)
   and notifdir =
-    Filename.dirname (RamenConf.notify_ringbuf conf) in
+    Files.dirname (RamenConf.notify_ringbuf conf) in
   let clean_seq_archives dir alloced =
     (* Delete oldest files matching %d_%d_%a_%a.r, until the worker is below
      * its allocated storage space, but not more than a given fraction of
      * what we should delete. *)
     (* Delete all files matching %d_%d_%a_%a.r but the last ones.
      * Also, for each of these, try to delete all attached factor files. *)
-    let files = Sys.files_of dir |> Array.of_enum in
+    let files = Files.files_of dir |> Array.of_enum in
     let arc_files =
       Array.enum files |> RingBufLib.filter_arc_files dir |>
       Array.of_enum in
@@ -96,7 +100,7 @@ let cleanup_old_archives conf programs dry_run del_ratio =
     let rec loop i sum_sz num_to_del to_del =
       if i < 0 then num_to_del, to_del else
       let _, _, _, _, _, fpath as f = arc_files.(i) in
-      let sum_sz = sum_sz + file_size fpath in
+      let sum_sz = sum_sz + Files.size fpath in
       let num_to_del, to_del =
         if sum_sz <= alloced then num_to_del, to_del
         else num_to_del + 1, f::to_del in
@@ -114,13 +118,14 @@ let cleanup_old_archives conf programs dry_run del_ratio =
             (* TODO: also check that we do not delete younger data than
              * planned. Ie. allocs must also tell the retention for each
              * function. *)
-            !logger.info "Deleting %s: old archive%s"
-              fpath (if dry_run then " (NOPE)" else "") ;
+            !logger.info "Deleting %a: old archive%s"
+              N.path_print fpath (if dry_run then " (NOPE)" else "") ;
             if not dry_run then (
-              let pref = Filename.(basename fpath |> remove_extension) in
+              let pref = Files.(basename fpath |> remove_ext) in
               Array.iter (fun fname ->
-                if String.starts_with fname pref then
-                  log_and_ignore_exceptions unlink (dir ^"/"^ fname)
+                if N.starts_with fname pref then
+                  log_and_ignore_exceptions
+                    Files.unlink (N.path_cat [ dir ; fname ])
               ) files
             ) ;
             del (n - 1) to_del
@@ -134,29 +139,29 @@ let cleanup_old_archives conf programs dry_run del_ratio =
      * space (assuming 0 for unknown worker or version).
      * See src/ringbuf/ringbuf.c, function rotate_file_locked for details
      * on how those files are named. *)
-    let fq = Filename.dirname rel_fname |> Filename.dirname |>
-             N.fq in
+    let fq = Files.dirname rel_fname |> Files.dirname in
+    let fq = N.fq (fq :> string) in
     match C.find_func programs fq with
     | exception Not_found ->
         !logger.info
-          "Archive directory %s belongs to unknown function %a"
-          fname N.fq_print fq ;
+          "Archive directory %a belongs to unknown function %a"
+          N.path_print fname N.fq_print fq ;
         0
     | _mre, _prog, func ->
         (* TODO: RingBufLib.arc_dir_of_func ... to avoid selecting an
          * arbitrary file_type: *)
         let arc_dir = C.archive_buf_name ~file_type:RingBuf conf func |>
                       RingBufLib.arc_dir_of_bname in
-        if same_files arc_dir fname then (
+        if Files.same arc_dir fname then (
           !logger.info
-            "Archive directory %s is still the current archive for %a"
-            fname N.fq_print fq ;
+            "Archive directory %a is still the current archive for %a"
+            N.path_print fname N.fq_print fq ;
           Hashtbl.find allocs fq
         ) else (
           !logger.warning
-            "Archive directory %s seems to be an old archive for %a \
-             (which now uses %s). Will delete its content slowly."
-            fname N.fq_print fq arc_dir ;
+            "Archive directory %a seems to be an old archive for %a \
+             (which now uses %a). Will delete its content slowly."
+            N.path_print fname N.fq_print fq N.path_print arc_dir ;
           0
         ) in
   let get_alloced_special _fname _rel_fname = 150_000_000 (* TODO *) in
@@ -165,39 +170,43 @@ let cleanup_old_archives conf programs dry_run del_ratio =
      * We should leave the GC explore freely under persist_dir, looking
      * for .gc files giving it instructions (max size and/or max age,
      * and/or account to given FQ. *)
-    if String.ends_with rel_fname ".arc" then (
+    if Files.has_ext "arc" rel_fname then (
       match get_alloced fname rel_fname with
       | exception e ->
           (* Better not delete anything *)
           let what =
-            Printf.sprintf "Cannot find allocated storage for archive %s"
-              rel_fname in
+            Printf.sprintf2 "Cannot find allocated storage for archive %a"
+              N.path_print rel_fname in
           print_exception ~what e
       | alloced ->
-          !logger.debug "%s is allocated %d bytes" rel_fname alloced ;
+          !logger.debug "%a is allocated %d bytes"
+            N.path_print rel_fname alloced ;
           clean_seq_archives fname alloced
     )
   in
-  dir_subtree_iter ~on_dir:(on_dir get_alloced_worker) arcdir ;
-  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) factordir ;
-  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
-  dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
+  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_worker) arcdir ;
+  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) factordir ;
+  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) reportdir ;
+  Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
 (* TODO: instrumentation for number of successful/failed compressions *)
 
-let compress_archive bin (func_name : N.func) rb_name =
-  let orc_name = Filename.remove_extension rb_name ^".orc" in
-  let args = [| bin ; WorkerCommands.convert_archive ;
-                (func_name :> string) ; rb_name ; orc_name |] in
-  with_subprocess ~expected_status:0 bin args (fun (_ic, oc, ec) ->
-    let output = read_whole_channel oc
-    and errors = read_whole_channel ec in
+let compress_archive (bin : N.path) (func_name : N.func) rb_name =
+  let orc_name = Files.change_ext "orc" rb_name in
+  let args =
+    [| (bin :> string) ; WorkerCommands.convert_archive ;
+       (func_name :> string) ; (rb_name :> string) ;
+       (orc_name :> string) |] in
+  Files.with_subprocess ~expected_status:0 bin args (fun (_ic, oc, ec) ->
+    let output = Files.read_whole_channel oc
+    and errors = Files.read_whole_channel ec in
     if errors = "" then (
-      !logger.debug "Compressed %s into %s" rb_name orc_name ;
-      ignore_exceptions safe_unlink rb_name
+      !logger.debug "Compressed %a into %a"
+        N.path_print rb_name N.path_print orc_name ;
+      ignore_exceptions Files.safe_unlink rb_name
     ) else
-      !logger.error "Cannot compress archive %s with %s: %s"
-        rb_name bin errors ;
+      !logger.error "Cannot compress archive %a with %a: %s"
+        N.path_print rb_name N.path_print bin errors ;
     if output <> "" then !logger.debug "Output: %s" output)
 
 let compress_old_archives conf programs dry_run compress_older =
@@ -212,10 +221,10 @@ let compress_old_archives conf programs dry_run compress_older =
       RingBufLib.arc_files_of |>
       Enum.iter (fun (_from, _to, _t1, _t2, arc_typ, fname) ->
         if arc_typ = RingBufLib.RingBuf &&
-           file_is_older_than ~on_err:false compress_older fname
+           Files.is_older_than ~on_err:false compress_older fname
         then (
-          !logger.debug "Compressing %s%s"
-            fname (if dry_run then " (NOPE)" else "") ;
+          !logger.debug "Compressing %a%s"
+            N.path_print fname (if dry_run then " (NOPE)" else "") ;
           if not dry_run then compress_archive mre.C.bin func.F.name fname
         ))
     ) prog.P.funcs

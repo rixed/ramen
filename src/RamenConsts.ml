@@ -1,3 +1,5 @@
+module N = RamenName
+
 module ContentTypes =
 struct
   let json = "application/json"
@@ -286,7 +288,7 @@ end
 module Default =
 struct
   (* Where to store all of daemons+workers state and logs: *)
-  let persist_dir = "/tmp/ramen"
+  let persist_dir = N.path "/tmp/ramen"
 
   (* How frequently shall workers emit their instrumentation (seconds): *)
   let report_period = 30.

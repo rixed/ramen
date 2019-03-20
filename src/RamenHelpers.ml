@@ -102,53 +102,6 @@ let sql_quote s =
 
 let ramen_quote = sql_quote
 
-let path_quote s =
-  let s = String.nreplace s "%" "%%" in
-  String.nreplace s "/" "%2F"
-(*$= path_quote & ~printer:(fun x -> x)
-  "" (path_quote "")
-  "glop" (path_quote "glop")
-  "pas%2Fglop" (path_quote "pas/glop")
-  "%%%2Fglop%2Fpas%%pas%2Fglop%2F%%" (path_quote "%/glop/pas%pas/glop/%")
-  "%2F%%glop%2Fpas%%pas%2Fglop%%%2F" (path_quote "/%glop/pas%pas/glop%/")
- *)
-
-let path_unquote s =
-  let len = String.length s in
-  let b = Buffer.create len in
-  let rec loop i =
-    if i >= len then Buffer.contents b
-    else if s.[i] = '%' then (
-      if i < len - 1 && s.[i+1] = '%' then (
-        Buffer.add_char b '%' ;
-        loop (i + 2)
-      ) else if i < len - 2 && s.[i+1] = '2' && s.[i+2] = 'F' then (
-        Buffer.add_char b '/' ;
-        loop (i + 3)
-      ) else invalid_arg s
-    ) else if s.[i] = '/' then invalid_arg s else (
-      Buffer.add_char b s.[i] ;
-      loop (i + 1)
-    )
-  in
-  loop 0
-(*$= path_unquote & ~printer:(fun x -> x)
-  "" (path_unquote "")
-  "glop" (path_unquote "glop")
-  "pas/glop" (path_unquote "pas%2Fglop")
-  "%/glop/pas%pas/glop/%" (path_unquote "%%%2Fglop%2Fpas%%pas%2Fglop%2F%%")
-  "/%glop/pas%pas/glop%/" (path_unquote "%2F%%glop%2Fpas%%pas%2Fglop%%%2F")
- *)
-(*$T path_unquote
-  try ignore (path_unquote "%") ; false with Invalid_argument _ -> true
-  try ignore (path_unquote "%%%") ; false with Invalid_argument _ -> true
-  try ignore (path_unquote "%2") ; false with Invalid_argument _ -> true
-  try ignore (path_unquote "%2f") ; false with Invalid_argument _ -> true
-  try ignore (path_unquote "%2z") ; false with Invalid_argument _ -> true
-  try ignore (path_unquote "%3F") ; false with Invalid_argument _ -> true
- *)
-
-
 (* TODO: add to batteries *)
 let set_iteri f s =
   Set.fold (fun e i -> f i e ; i + 1) s 0 |>
@@ -366,7 +319,7 @@ let time what f =
   res
 
 (*
- * Some file utilities
+ * Some file utilities using mere strings that RamenName.path is using
  *)
 
 let rec restart_on_eintr ?(while_=always) f x =
@@ -376,196 +329,6 @@ let rec restart_on_eintr ?(while_=always) f x =
     if while_ () then restart_on_eintr ~while_ f x
     else raise Exit
 
-let is_directory f =
-  try Sys.is_directory f with _ -> false
-
-let mkdir_all ?(is_file=false) dir =
-  let dir = if is_file then Filename.dirname dir else dir in
-  let rec ensure_exist d =
-    if String.length d > 0 && not (is_directory d) then (
-      ensure_exist (Filename.dirname d) ;
-      !logger.debug "mkdir %S" d ;
-      try Unix.mkdir d 0o755
-      (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
-      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) -> ()
-    ) in
-  ensure_exist dir
-
-let safe_stat fname =
-  BatUnix.(restart_on_EINTR stat fname)
-
-type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
-let file_check ?(min_size=0) ?(has_perms=0) fname =
-  let open Unix in
-  match safe_stat fname with
-  | exception _ ->
-    (* Be it the file or a directory, or a permission issue, we consider the
-     * file to be missing: *)
-    FileMissing
-  | s ->
-    if s.st_perm land has_perms <> has_perms then FileBadPerms else
-    if s.st_size < min_size then FileTooSmall else
-    FileOk
-
-let file_exists fname = file_check fname = FileOk
-
-let file_size fname =
-  let s = safe_stat fname in
-  s.Unix.st_size
-
-let is_empty_file fname =
-  file_size fname = 0
-
-let safe_fileop f fname =
-  try BatUnix.restart_on_EINTR f fname
-  with Unix.(Unix_error (ENOENT, _, _)) -> ()
-
-let safe_unlink fname =
-  safe_fileop Unix.unlink fname
-
-let move_file_away fname =
-  let bad_file = fname ^".bad?" in
-  ignore_exceptions safe_unlink bad_file ;
-  (try restart_on_eintr (Unix.rename fname) bad_file
-  with e ->
-    !logger.warning "Cannot rename file %s to %s: %s"
-      fname bad_file (Printexc.to_string e))
-
-let rec rm_rf fname =
-  assert (String.length fname > 2) ;
-  if not (is_directory fname) then
-    Printf.sprintf "rm_rf: %S must be a directory" fname |>
-    invalid_arg
-  else (
-    foreach (Sys.files_of fname) (fun rel ->
-      let fname = fname ^"/"^ rel in
-      if is_directory fname then rm_rf fname
-      else safe_unlink fname) ;
-    safe_fileop Unix.rmdir fname)
-
-let mtime_of_file fname =
-  let s = safe_stat fname in
-  s.Unix.st_mtime
-
-let mtime_of_file_def default fname =
-  try mtime_of_file fname
-  with Unix.Unix_error (Unix.ENOENT, _, _) -> default
-
-let mtime_of_fd fd =
-  let open Unix in
-  let s = fstat fd in
-  s.st_mtime
-
-let mtime_of_fd_def default fd =
-  try mtime_of_fd fd
-  with Unix.Unix_error (Unix.ENOENT, _, _) -> default
-
-let age_of_file fname =
-  let mtime = mtime_of_file fname
-  and now = Unix.gettimeofday () in
-  now -. mtime
-
-let file_is_older_than ~on_err age fname =
-  try
-    age < age_of_file fname
-  with e ->
-    print_exception e ;
-    on_err
-
-let write_whole_string fd str =
-  let len = String.length str in
-  Unix.single_write_substring fd str 0 len |> ignore
-
-let rec ensure_file_exists ?(contents="") ?min_size fname =
-  mkdir_all ~is_file:true fname ;
-  (* If needed, create the file with the initial content, atomically: *)
-  let open Unix in
-  (* But first, check if the file is already there with the proper size
-   * (without opening it, or the following O_EXCL dance won't work!): *)
-  match file_check ?min_size fname with
-  | FileOk -> ()
-  | FileMissing ->
-      !logger.debug "File %s is still missing" fname ;
-      (match openfile fname [O_CREAT; O_EXCL; O_WRONLY; O_CLOEXEC] 0o644 with
-      | exception Unix_error (EEXIST, _, _) ->
-          (* Wait for some other concurrent process to rebuild it: *)
-          !logger.debug "File %s just appeared, give it time..." fname ;
-          sleep 1 ;
-          ensure_file_exists ~contents ?min_size fname
-      | fd ->
-          !logger.debug "Creating file %s with initial content %S"
-            fname contents ;
-          finally
-            (fun () -> close fd)
-            (fun () ->
-              if contents <> "" then (
-                write_whole_string fd contents)) ())
-  | FileTooSmall ->
-      (* Not my business, wait until the file length is at least min_size,
-       * which realistically should not take more than 1s: *)
-      let redo () =
-        move_file_away fname ;
-        ensure_file_exists ~contents ?min_size fname
-      in
-      if file_is_older_than ~on_err:true 3. fname then (
-        !logger.warning "File %s is an old left-over, let's redo it" fname ;
-        redo ()
-      ) else (
-        (* Wait for some other concurrent process to rebuild it: *)
-        !logger.debug "File %s is being worked on, give it time..." fname ;
-        sleep 1 ;
-        ensure_file_exists ~contents ?min_size fname)
-  | FileBadPerms ->
-      assert false (* We aren't checking that here *)
-
-let uniquify_filename fname =
-  let rec loop n =
-    let fname = fname ^"."^ string_of_int n in
-    if file_exists fname then loop (n + 1) else fname
-  in
-  if file_exists fname then loop 0 else fname
-
-(* Will call on_dir and on_file with both the absolute file name and then the
- * name from the given root. *)
-let dir_subtree_iter ?on_dir ?on_file root =
-  let open Unix in
-  let rec loop_subtree path_from_root =
-    let path =
-      (* Avoid using "./" as we want path to correspond to program names: *)
-      if path_from_root = "" then root else root ^"/"^ path_from_root in
-    match opendir path with
-    | exception Unix_error(ENOENT, _, _) ->
-        (* A callback must have deleted it, no worries. *) ()
-    | dh ->
-      let rec loop_files () =
-        match readdir dh with
-        | exception End_of_file -> ()
-        (* Ignore dotnames and any "hidden" dir or files: *)
-        | s when s.[0] = '.' ->
-            loop_files ()
-        | fname_from_path ->
-            let fname = path ^"/"^ fname_from_path in
-            let fname_from_root =
-              if path_from_root = "" then fname_from_path
-              else path_from_root ^"/"^ fname_from_path in
-            let may_run = function
-              | None -> ()
-              | Some f -> log_and_ignore_exceptions (f fname) fname_from_root in
-            if is_directory fname then (
-              may_run on_dir ;
-              let path_from_root' =
-                if path_from_root = "" then fname_from_path
-                else path_from_root ^"/"^ fname_from_path in
-              loop_subtree path_from_root'
-            ) else
-              may_run on_file ;
-            loop_files ()
-      in
-      loop_files () ;
-      closedir dh
-  in
-  loop_subtree ""
-
 let has_dotnames s =
   s = "." || s = ".." ||
   String.starts_with s "./" ||
@@ -574,44 +337,6 @@ let has_dotnames s =
   String.ends_with s "/.." ||
   String.exists s "/./" ||
   String.exists s "/../"
-
-let change_ext new_ext fname =
-  Filename.remove_extension fname ^ new_ext
-
-let file_ext fname =
-  let e = Filename.extension fname in
-  if e = "" then e else String.lchop e
-
-let read_whole_file fname =
-  File.with_file_in ~mode:[`text] fname IO.read_all
-
-let read_whole_thing read =
-  let read_chunk = 1000 in
-  let rec loop buf o =
-    if Bytes.length buf - o < read_chunk then
-      loop (Bytes.extend buf 0 (5 * read_chunk)) o
-    else
-      let ret = read buf o read_chunk in
-      if ret = 0 then Bytes.(sub buf 0 o |> to_string)
-      else loop buf (o + ret)
-  in
-  loop (Bytes.create (5 * read_chunk)) 0
-
-(* FIXME: read_whole_channels that read several simultaneously! *)
-
-let read_whole_channel ic =
-  read_whole_thing (Legacy.input ic)
-
-let read_whole_fd fd =
-  read_whole_thing (Unix.read fd)
-
-let touch_file fname to_when =
-  !logger.debug "Touching %s" fname ;
-  Unix.utimes fname to_when to_when
-
-let file_print oc fname =
-  let content = File.lines_of fname |> List.of_enum |> String.concat "\n" in
-  String.print oc content
 
 let rec simplified_path =
   let open Str in
@@ -650,137 +375,6 @@ let rec simplified_path =
   "/glop"      (simplified_path "/glop/glop/..")
   "/glop"      (simplified_path "/glop/glop/../")
  *)
-
-let absolute_path_of ?cwd path =
-  (if path <> "" && path.[0] = '/' then path else
-   (cwd |? Unix.getcwd ()) ^"/"^ path) |>
-  simplified_path
-
-(*$= absolute_path_of & ~printer:identity
-  "/tmp/ramen_root/junkie/csv.x" \
-    (absolute_path_of ~cwd:"/tmp" "ramen_root/junkie/csv.x")
- *)
-
-let rel_path_from lib_path path =
-  (* If root path is null assume source file is already relative to root: *)
-  if lib_path = "" then path else
-  let root = absolute_path_of lib_path
-  and path = absolute_path_of path in
-  if String.starts_with path root then
-    let rl = String.length root in
-    String.sub path rl (String.length path - rl)
-  else
-    failwith ("Cannot locate "^ path ^" within "^ lib_path)
-
-let int_of_fd fd : int = Obj.magic fd
-
-let really_read_fd fd size =
-  let open Unix in
-  let buf = Bytes.create size in
-  let rec loop i =
-    if i >= size then buf else
-    let r = BatUnix.restart_on_EINTR (read fd buf i) (size - i) in
-    if r > 0 then loop (i + r) else
-      let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
-                size i in
-      failwith e
-  in
-  loop 0
-
-let marshal_into_fd fd v =
-  let open BatUnix in
-  (* Leak memory for some reason / and do not write anything to the file
-   * if we Marshal.to_channel directly. :-/ *)
-  let bytes = Marshal.to_bytes v [] in
-  let len = Bytes.length bytes in
-  restart_on_EINTR (fun () ->
-    lseek fd 0 SEEK_SET |> ignore ;
-    write fd bytes 0 len) () |> ignore
-
-let marshal_from_fd ?default fname fd =
-  let open Unix in
-  (* Useful log statement in case the GC crashes right away: *)
-  !logger.debug "Retrieving marshaled value from file %s" fname ;
-  try
-    let bytes = read_whole_fd fd in
-    Marshal.from_string bytes 0
-  with e ->
-    (match default with
-    | None -> raise e
-    | Some d ->
-        !logger.error "Cannot unmarshal from file %s: %s"
-          fname (Printexc.to_string e) ;
-        d)
-
-let same_file_content a b =
-  let same_file_size () =
-    try
-      file_size a = file_size b
-    with Unix.(Unix_error (ENOENT, _, _)) -> false
-  and same_content () =
-    read_whole_file a = read_whole_file b
-  in
-  same_file_size () && same_content ()
-
-(* Given two files, compare their content and if it differs rename
- * [src] into [dst] ; otherwise merely deletes [src].
- * This is to avoid touching the mtime of the destination when not needed.
- * [dst] might not exist but the directory does.
- * Returns true iff the file was moved. *)
-let replace_if_different ~src ~dst =
-  if same_file_content src dst then (
-    Unix.unlink src ;
-    false
-  ) else (
-    Unix.rename src dst ;
-    true
-  )
-
-(*$R replace_if_different
-  let open Batteries in
-  let tmpdir = "/tmp/ramen_inline_test_"^ string_of_int (Unix.getpid ()) in
-  mkdir_all tmpdir ;
-  let src = tmpdir ^ "/replace_if_different.src"
-  and dst = tmpdir ^ "/replace_if_different.dst" in
-  let set_content f = function
-    | Some c ->
-        File.with_file_out f (fun oc -> String.print oc c)
-    | None ->
-        safe_unlink f
-  in
-  let test csrc cdst_opt =
-    let asrt t =
-      assert_bool (csrc ^"->"^ (cdst_opt |? "none") ^": "^ t) in
-    set_content src (Some csrc) ;
-    set_content dst cdst_opt ;
-    let res = replace_if_different ~src ~dst in
-    (* In any cases: *)
-    asrt "src file must be gone" (not (file_exists src)) ;
-    asrt "dst file must be present" (file_exists dst) ;
-    if res then
-      asrt "dest content must have changed"
-        (csrc = read_whole_file dst)
-    else
-      asrt "dest content must not have changed"
-        ((cdst_opt |? "ENOENT") = read_whole_file dst) ;
-    res
-  in
-  assert_bool "Must not move identical content (1)" (not (test "bla" (Some "bla"))) ;
-  assert_bool "Must not move identical content (2)" (not (test "" (Some ""))) ;
-  assert_bool "Must move non-identical content (1)" (test "bla" (Some "")) ;
-  assert_bool "Must move non-identical content (2)" (test "" (Some "bla")) ;
-  (* Also dest file may not exist: *)
-  assert_bool "Must move over non existing dest" (test "bla" None) ;
-  (* Cleanup: *)
-  safe_unlink src ; safe_unlink dst ; Unix.rmdir tmpdir
-*)
-
-let same_files a b =
-  a = b || (
-    let sa = safe_stat a
-    and sb = safe_stat b in
-    Unix.(sa.st_dev = sb.st_dev && sa.st_ino = sb.st_ino)
-  )
 
 (*
  * Some Unix utilities
@@ -875,64 +469,6 @@ let waitall ?(while_=always) ?expected_status ~what pids =
 
 let waitpid_log ?expected_status ~what pid =
   waitall ?expected_status ~what (Set.Int.singleton pid)
-
-let with_subprocess ?expected_status ?env cmd args k =
-  (* Got some Unix_error(EBADF, "close_process_in", "") suggesting the
-   * fd is closed several times so limit the magic: *)
-  let open Legacy.Unix in
-  !logger.debug "Going to exec %s %a" cmd (Array.print String.print) args ;
-  (* Check that the file is present before forking; as we are not going to
-   * check the child exit status it will give us a better error message. *)
-  if not (file_exists cmd) then
-    failwith (Printf.sprintf "File %s does not exist" cmd) ;
-  let env = env |? environment () in
-  let his_in, my_in = pipe ~cloexec:false ()
-  and my_out, his_out = pipe ~cloexec:false ()
-  and my_err, his_err = pipe ~cloexec:false () in
-  flush_all () ;
-  match Unix.fork () with
-  | 0 -> (* Child *)
-    (try
-      (* Move the fd in pos 0, 1 and 2: *)
-      let move_fd s d =
-        dup2 ~cloexec:false s d ;
-        close s in
-      move_fd his_err stderr ;
-      move_fd his_in stdin ;
-      move_fd his_out stdout ;
-      execve cmd args env
-    with e ->
-      Printf.eprintf "Cannot execve: %s\n%!" (Printexc.to_string e) ;
-      sys_exit 126)
-  | pid -> (* Parent *)
-    close his_in ; close his_out ; close his_err ;
-    let close_all () =
-      close my_in ;
-      close my_out ;
-      close my_err in
-    let close_wait () =
-      close_all () ;
-      let what =
-        IO.to_string
-          (Array.print ~first:"" ~last:"" ~sep:" " String.print) args in
-      waitpid_log ~what ?expected_status pid
-      in
-    finally close_wait
-      k (out_channel_of_descr my_in,
-         in_channel_of_descr my_out,
-         in_channel_of_descr my_err)
-
-let with_stdout_from_command ?expected_status ?env cmd args k =
-  with_subprocess ?expected_status ?env cmd args (fun (_ic, oc, ec) ->
-    let dump_stderr () =
-      let last_words = read_whole_channel ec in
-      if last_words <> "" then !logger.warning "%s: %s" cmd last_words in
-    finally dump_stderr k oc)
-
-(*$= with_stdout_from_command & ~printer:identity
-  "glop" (with_stdout_from_command "/bin/echo" [|"/bin/echo";"glop"|] \
-          Legacy.input_line)
-*)
 
 let quote_at_start s =
   String.length s > 0 && s.[0] = '"'
@@ -1336,47 +872,6 @@ let cached cache_name reread time =
   let c = cached2 cache_name (fun k () -> reread k) (fun k () -> time k) in
   fun k -> c k ()
 
-let save_in_file ~compute ~serialize ~deserialize fname =
-  try read_whole_file fname |> deserialize
-  with _ ->
-    mkdir_all ~is_file:true fname ;
-    File.with_file_out ~mode:[`create;`trunc;`text] fname (fun oc ->
-      let v = compute () in
-      String.print oc (serialize v) ;
-      v)
-
-let abbrev_path ?(max_length=20) ?(known_prefix="") path =
-  let known_prefix =
-    if String.length known_prefix > 0 &&
-       known_prefix.[String.length known_prefix - 1] <> '/'
-    then known_prefix ^"/"
-    else known_prefix in
-  let path =
-    if String.starts_with path known_prefix then
-      String.lchop ~n:(String.length known_prefix) path
-    else path in
-  let rec loop abb rest =
-    if String.length rest < 1 || rest.[0] = '.' ||
-       String.length abb + String.length rest <= max_length
-    then
-      abb ^ rest
-    else
-      if rest.[0] = '/' then loop (abb ^"/") (String.lchop rest)
-      else
-        match String.index rest '/' with
-        | exception Not_found ->
-            abb ^ rest
-        | n ->
-            loop (abb ^ String.of_char rest.[0]) (String.lchop ~n rest)
-  in loop "" path
-(*$= abbrev_path & ~printer:(fun x -> x)
-  "/a/b/c/glop" (abbrev_path "/a very long name/before another very long one/could be reduced to/glop")
-  "/a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/a very long name/before another very long one/could be reduced to/glop")
-  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/tmp/a very long name/before another very long one/could be reduced to/glop")
-  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp/" "/tmp/a very long name/before another very long one/could be reduced to/glop")
-  "a/b/c/glop" (abbrev_path "a very long name/before another very long one/could be reduced to/glop")
- *)
-
 (* Addition capped to min_int/max_int *)
 let cap_add a b =
   if a > 0 && b > 0 then
@@ -1700,61 +1195,6 @@ let fail_with_context ctx f =
       ctx (Printexc.to_string e) |>
     failwith
 
-(* [default] replaces a missing _or_empty_ file. *)
-let ppp_of_file ?default ppp =
-  let reread fname =
-    let from_string s =
-      let c = "parsing default value for file "^ fname ^": "^ s in
-      fail_with_context c (fun () -> PPP.of_string_exc ppp s)
-    and from_in ic =
-      finally
-        (fun () -> Legacy.close_in ic)
-        (fun ic ->
-          fail_with_context ("parsing file "^ fname)
-            (fun () -> PPP.of_in_channel_exc ppp ic)) ic in
-    !logger.debug "Have to reread %S" fname ;
-    let openflags = [ Open_rdonly; Open_text ] in
-    match Legacy.open_in_gen openflags 0o644 fname with
-    | exception e ->
-        (match default with
-        | None ->
-            !logger.warning "Cannot open %S for reading: %s"
-              fname (Printexc.to_string e) ;
-            raise e
-        | Some d -> from_string d)
-    | ic ->
-        (match default with
-        | Some d ->
-            let fd = Legacy.Unix.descr_of_in_channel ic in
-            let s = BatUnix.(restart_on_EINTR fstat fd) in
-            if s.st_size = 0 then from_string d else from_in ic
-        | None -> from_in ic) in
-  let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
-  cached cache_name reread (mtime_of_file_def 0.)
-
-let ppp_to_fd ?pretty ppp fd v =
-  Unix.(lseek fd 0 SEEK_SET) |> ignore ;
-  let str = PPP.to_string ?pretty ppp v in
-  let len = String.length str in
-  if len = Unix.write_substring fd str 0 len then
-    Unix.ftruncate fd len
-  else
-    Printf.sprintf "Cannot write %d bytes into fd" len |>
-    failwith
-
-let ppp_to_file ?pretty fname ppp v =
-  mkdir_all ~is_file:true fname ;
-  let openflags = [ Open_wronly; Open_creat; Open_trunc; Open_text ] in
-  match Pervasives.open_out_gen openflags 0o644 fname with
-  | exception e ->
-      !logger.warning "Cannot open %S for writing: %s"
-        fname (Printexc.to_string e) ;
-      raise e
-  | oc ->
-      finally
-        (fun () -> Pervasives.close_out oc)
-        (PPP.to_out_channel ?pretty ppp oc) v
-
 let rec reach_fixed_point ?max_try f =
   match max_try with Some n when n <= 0 -> false
   | _ ->
@@ -2032,9 +1472,39 @@ let path_in_graph fold ?(max_len=50) ~src ~dst =
   let path_rev, _ = loop max_len [] 0 src in
   path_rev
 
-let possible_values_file dir factor min_time max_time =
-  Legacy.Printf.sprintf "%s/%s/%h_%h"
-    dir (path_quote factor) min_time max_time
+(* Used to abbreviate file paths as well as program names: *)
+let abbrev_path ?(max_length=20) ?(known_prefix="") path =
+  let known_prefix =
+    if String.length known_prefix > 0 &&
+       known_prefix.[String.length known_prefix - 1] <> '/'
+    then known_prefix ^"/"
+    else known_prefix in
+  let path =
+    if String.starts_with path known_prefix then
+      String.lchop ~n:(String.length known_prefix) path
+    else path in
+  let rec loop abb rest =
+    if String.length rest < 1 || rest.[0] = '.' ||
+       String.length abb + String.length rest <= max_length
+    then
+      abb ^ rest
+    else
+      if rest.[0] = '/' then loop (abb ^"/") (String.lchop rest)
+      else
+        match String.index rest '/' with
+        | exception Not_found ->
+            abb ^ rest
+        | n ->
+            loop (abb ^ String.of_char rest.[0]) (String.lchop ~n rest)
+  in loop "" path
+(*$= abbrev_path & ~printer:(fun x -> x)
+  "/a/b/c/glop" (abbrev_path "/a very long name/before another very long one/could be reduced to/glop")
+  "/a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp" "/tmp/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path ~known_prefix:"/tmp/" "/tmp/a very long name/before another very long one/could be reduced to/glop")
+  "a/b/c/glop" (abbrev_path "a very long name/before another very long one/could be reduced to/glop")
+ *)
+
 
 (* TODO: in batteries? *)
 let hashtbl_merge h1 h2 f =

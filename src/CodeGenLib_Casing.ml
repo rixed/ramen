@@ -3,6 +3,7 @@
 open Batteries
 open RamenHelpers
 open RamenConsts
+module Files = RamenFiles
 
 type convert_format = CSV | RB | ORC
 let string_of_format = function
@@ -11,10 +12,10 @@ let string_of_format = function
   | ORC -> "orc"
 
 let format_of_filename s =
-  match Filename.extension s with
-  | ".orc" -> ORC
-  | ".csv" -> CSV
-  | ".r" | ".b" -> RB
+  match Files.ext s with
+  | "orc" -> ORC
+  | "csv" -> CSV
+  | "r" | "b" -> RB
   | e -> failwith ("unknown format for extension "^ e)
 
 (* The [per_funcname] association list received by the [run] function use
@@ -23,7 +24,7 @@ type per_func_info =
   { worker_entry_point : unit -> unit ;
     replay_entry_point : unit -> unit ;
     convert_entry_point :
-      convert_format -> string -> convert_format -> string -> unit }
+      convert_format -> N.path -> convert_format -> N.path -> unit }
 
 let run codegen_version rc_marsh run_condition per_funcname =
   (* Init the random number generator *)
@@ -60,6 +61,7 @@ let run codegen_version rc_marsh run_condition per_funcname =
     | name ->
         k (assoc_or_fail name per_funcname) in
   let convert ?out_format ~in_ ~out func_name =
+    let in_ = N.path in_ and out = N.path out in
     let in_format = format_of_filename in_
     and out_format = out_format |? format_of_filename out
     in

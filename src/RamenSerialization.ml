@@ -5,6 +5,7 @@ open RamenLog
 open RamenHelpers
 module T = RamenTypes
 module E = RamenExpr
+module N = RamenName
 open RamenTypes
 
 let verbose_serialization = false
@@ -308,7 +309,7 @@ let fold_buffer ?wait_for_more ?while_ bname init f =
 
 (* Like fold_buffer but call f with the message rather than the tx: *)
 let fold_buffer_tuple ?while_ ?(early_stop=true) bname typ init f =
-  !logger.debug "Going to fold over %s" bname ;
+  !logger.debug "Going to fold over %a" N.path_print bname ;
   let unserialize = read_array_of_values typ in
   let f usr tx =
     match read_tuple unserialize tx with
@@ -369,7 +370,7 @@ let event_time_of_tuple typ params
 let fold_buffer_with_time ?(channel_id=RamenChannel.live)
                           ?while_ ?early_stop
                           bname typ params event_time init f =
-  !logger.debug "Folding over %s" bname ;
+  !logger.debug "Folding over %a" N.path_print bname ;
   let event_time_of_tuple =
     match event_time with
     | None ->

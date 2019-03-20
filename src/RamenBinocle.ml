@@ -16,6 +16,7 @@ open RamenHelpers
 open RamenConsts
 module T = RamenTypes
 module N = RamenName
+module Files = RamenFiles
 
 let profile_typ =
   T.{ nullable = false ;
@@ -206,8 +207,10 @@ let ensure_inited f =
   let initer persist_dir =
     match !inited with
     | None ->
-        let save_dir = persist_dir ^"/binocle/"^ RamenVersions.binocle in
-        mkdir_all save_dir ;
+        let save_dir =
+          N.cat (N.cat persist_dir (N.path "/binocle/"))
+                (N.path RamenVersions.binocle) in
+        Files.mkdir_all save_dir ;
         let m = f save_dir in
         inited := Some m ;
         m
