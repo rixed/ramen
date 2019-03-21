@@ -53,6 +53,7 @@
 <ul>
 <li>Support for graphite functions when extracting a time series;</li>
 <li>Send alerts to Kafka.</li>
+<li>Export tuples to Kafka, ElasticSearch, CSV files...</li>
 </ul>
 
 <a name="ingestion">
