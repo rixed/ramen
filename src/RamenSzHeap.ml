@@ -19,7 +19,7 @@ let add cmp x (h, c) = add cmp x h, c + 1
 
 let min cmp (h, _) = min cmp h
 
-let min_opt cmp (h, _) = min_opt cmp h
+let min_opt (h, _) = min_opt h
 
 let del_min cmp (h, c) = del_min cmp h, c - 1
 

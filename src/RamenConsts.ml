@@ -34,14 +34,17 @@ struct
     let last_out = "last_out"
     let event_time = "event_time"
     let avg_full_out_bytes = "avg_full_out_bytes"
+    let relocated_groups = "relocated_groups"
     let perf_per_tuple = "perf_per_tuple"
     let perf_where_fast = "perf_where_fast"
     let perf_find_group = "perf_find_group"
     let perf_where_slow = "perf_where_slow"
     let perf_update_group = "perf_update_group"
     let perf_commit_incoming = "perf_commit_incoming"
-    let perf_commit_others_find = "perf_commit_others_find"
+    let perf_select_others = "perf_select_others"
+    let perf_finalize_others = "perf_finalize_others"
     let perf_commit_others = "perf_commit_others"
+    let perf_flush_others = "perf_flush_others"
 
     (* Metrics reported by the supervisor: *)
     let worker_crashes = "workers_crashes"
@@ -105,6 +108,8 @@ struct
       "Last, minimum and maximum (since startup) event time emitted \
        (for the live channel only)."
     let avg_full_out_bytes = "Average size of a fully-fledged out tuple."
+    let relocated_groups =
+      "How many times a group was moved in the commit precondition heap."
     let perf_per_tuple = "Average time spent processing an incoming tuples."
     let perf_where_fast =
       "Average time spent executing the (fast) WHERE clause for each \
@@ -119,12 +124,17 @@ struct
        tuple."
     let perf_commit_incoming =
       "Average time spent committing the incoming tuple."
-    let perf_commit_others_find =
+    let perf_select_others =
       "Average time spent looking for other tuples to commit, for each \
        incoming one."
+    let perf_finalize_others =
+      "Average time spent finalizing the values to output for other tuples, \
+       for each incoming one."
     let perf_commit_others =
-      "Average time spent actually committing other tuples, for each \
+      "Average time spent committing other tuples, for each \
        incoming one."
+    let perf_flush_others =
+      "Average time spent flushing other tuples, for each incoming one."
     let profile = "Performance measurements."
   end
 end

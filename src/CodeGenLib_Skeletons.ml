@@ -83,6 +83,11 @@ let stats_avg_full_out_bytes =
   IntGauge.make Metric.Names.avg_full_out_bytes
     Metric.Docs.avg_full_out_bytes
 
+(* TODO: add in the instrumentation tuple? *)
+let stats_relocated_groups =
+  IntCounter.make Metric.Names.relocated_groups
+    Metric.Docs.relocated_groups
+
 (* Perf counters: *)
 let stats_perf_per_tuple =
   Perf.make Metric.Names.perf_per_tuple Metric.Docs.perf_per_tuple
@@ -102,12 +107,18 @@ let stats_perf_update_group =
 let stats_perf_commit_incoming =
   Perf.make Metric.Names.perf_commit_incoming Metric.Docs.perf_commit_incoming
 
-let stats_perf_commit_others_find =
-  Perf.make Metric.Names.perf_commit_others_find
-            Metric.Docs.perf_commit_others_find
+let stats_perf_select_others =
+  Perf.make Metric.Names.perf_select_others Metric.Docs.perf_select_others
+
+let stats_perf_finalize_others =
+  Perf.make Metric.Names.perf_finalize_others
+            Metric.Docs.perf_finalize_others
 
 let stats_perf_commit_others =
   Perf.make Metric.Names.perf_commit_others Metric.Docs.perf_commit_others
+
+let stats_perf_flush_others =
+  Perf.make Metric.Names.perf_flush_others Metric.Docs.perf_flush_others
 
 
 let measure_full_out =
@@ -189,8 +200,10 @@ let get_binocle_tuple worker ic sc gc =
      "where_slow", Perf.get stats_perf_where_slow |> sp ;
      "update_group", Perf.get stats_perf_update_group |> sp ;
      "commit_incoming", Perf.get stats_perf_commit_incoming |> sp ;
-     "commit_others_find", Perf.get stats_perf_commit_others_find |> sp ;
-     "commit_others", Perf.get stats_perf_commit_others |> sp |],
+     "select_others", Perf.get stats_perf_select_others |> sp ;
+     "finalize_others", Perf.get stats_perf_finalize_others |> sp ;
+     "commit_others", Perf.get stats_perf_commit_others |> sp ;
+     "flush_others", Perf.get stats_perf_flush_others |> sp |],
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,
@@ -971,7 +984,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
       wait_for_tuples (Unix.gettimeofday ()) ;
       match
         Array.fold_lefti (fun mi_ma i to_merge ->
-          match mi_ma, RamenSzHeap.min_opt tuples_cmp to_merge.tuples with
+          match mi_ma, RamenSzHeap.min_opt to_merge.tuples with
           | None, Some t ->
               Some (i, t, t)
           | Some (j, tmi, tma) as prev, Some t ->
@@ -1232,57 +1245,54 @@ let aggregate
                       s.global_state in
           if g.g0 <> Some g0 then (
             (* Relocate that group in the heap: *)
+            IntCounter.inc stats_relocated_groups ;
             let cmp = cmp_g0 cmp in
-            if not (RamenHeap.rem_phys cmp g s.groups_heap) then
-              !logger.error "Cannot delete group from heap!?" ;
+            s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap ;
+            (* Now that it's no longer in the heap, its g0 can be updated: *)
             g.g0 <- Some g0 ;
             s.groups_heap <- RamenHeap.add cmp g s.groups_heap
           )
         ) commit_cond0 in
-      let commit_and_flush g =
+      let may_rem_group_from_heap g =
+        Option.may (fun (_, _, cmp, _) ->
+          let cmp = cmp_g0 cmp in
+          s.groups_heap <- RamenHeap.rem_phys cmp g s.groups_heap
+        ) commit_cond0 in
+      let finalize_out g =
         (* Output the tuple *)
-        (match commit_before, g.previous_out with
+        match commit_before, g.previous_out with
         | false, _ ->
             let out =
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 g.current_out in
             s.last_out_tuple <- NotNull out ;
-            outputer channel_id in_tuple out
-        | true, None -> ()
+            Some out
+        | true, None -> None
         | true, Some previous_out ->
             let out =
               out_tuple_of_minimal_tuple
                 g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
             s.last_out_tuple <- NotNull out ;
-            outputer channel_id in_tuple out) ;
+            Some out
+      and flush g =
         (* Flush/Keep/Slide *)
-        if do_flush then (
-          if commit_before then (
-            (* Note that when "committing before" groups never disappear. *)
-            (* Restore the group as if this tuple were the first and only
-             * one: *)
-            g.first_in <- g.last_in ;
-            g.previous_out <- None ;
-            (* We cannot rewind the global state, but the local state we
-             * can: for other fields than minimum-out we can reset, and
-             * for the states owned by minimum-out, where_slow and the
-             * commit condition we can replay (TODO): *)
-            g.local_state <- group_init s.global_state ;
-            may_relocate_group_in_heap g
-          ) else (
-            Hashtbl.remove s.groups g.key ;
-            (* We remove the entry from the heap right now. Alternatively,
-             * we could keep the group in there with a del flag in the group
-             * so that it's popped from the heap when it surfaces. But
-             * may_relocate_group_in_heap is then much harder: *)
-            Option.may (fun (_, _, cmp, _) ->
-              let cmp = cmp_g0 cmp in
-              if not (RamenHeap.rem_phys cmp g s.groups_heap) then
-                !logger.error "Cannot delete group from heap(2) ?!" ;
-            ) commit_cond0
-          )
+        if commit_before then (
+          (* Note that when "committing before" groups never disappear. *)
+          (* Restore the group as if this tuple were the first and only
+           * one: *)
+          g.first_in <- g.last_in ;
+          g.previous_out <- None ;
+          (* We cannot rewind the global state, but the local state we
+           * can: for other fields than minimum-out we can reset, and
+           * for the states owned by minimum-out, where_slow and the
+           * commit condition we can replay (TODO): *)
+          g.local_state <- group_init s.global_state ;
+          may_relocate_group_in_heap g
+        ) else (
+          Hashtbl.remove s.groups g.key
+          (* g Has been removed from the heap already, in theory *)
         )
       in
       (* Now that this is all in place, here are the next steps:
@@ -1383,7 +1393,10 @@ let aggregate
                         g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
-          commit_and_flush g
+          Option.may (outputer channel_id in_tuple) (finalize_out g) ;
+          if do_flush then flush g ;
+          if do_flush && not commit_before then
+            may_rem_group_from_heap g
         ) ;
         if commit_before then
           update_states g.last_in s.last_out_tuple
@@ -1401,9 +1414,8 @@ let aggregate
           match commit_cond0 with
           | Some (f0, _, cmp, eq) ->
               let f0 = f0 in_tuple s.global_state in
-              let to_commit = ref [] in
-              (try
-                RamenHeap.fold_left (cmp_g0 cmp) (fun () g ->
+              let to_commit, heap =
+                RamenHeap.collect (cmp_g0 cmp) (fun g ->
                   let g0 = option_get "g0" g.g0 in
                   let c = cmp f0 g0 in
                   if c > 0 || c = 0 && eq then (
@@ -1411,14 +1423,14 @@ let aggregate
                     assert (not (already_output g)) ;
                     if commit_cond in_tuple s.last_out_tuple g.local_state
                                    s.global_state g.current_out
-                    then to_commit := g :: !to_commit
+                    then RamenHeap.Collect
+                    else RamenHeap.Keep
                   ) else
                     (* No way we will find another true pre-condition *)
-                    raise Exit
-                ) () s.groups_heap
-              with Exit -> ()) ;
-              (* Better pop the min first: *)
-              List.rev !to_commit
+                    RamenHeap.KeepAll
+                ) s.groups_heap in
+              s.groups_heap <- heap ;
+              to_commit
           | None ->
               Hashtbl.fold (fun _ g to_commit ->
                 if not (already_output g) &&
@@ -1426,10 +1438,14 @@ let aggregate
                                s.global_state g.current_out
                 then g :: to_commit else to_commit
               ) s.groups [] in
-        perf := Perf.add_and_transfer stats_perf_commit_others_find !perf ;
-        List.iter commit_and_flush to_commit ;
         (* FIXME: use the channel_id as a label! *)
-        Perf.add stats_perf_commit_others (Perf.stop !perf) ;
+        perf := Perf.add_and_transfer stats_perf_select_others !perf ;
+        let outs = List.filter_map finalize_out to_commit in
+        perf := Perf.add_and_transfer stats_perf_finalize_others !perf ;
+        List.iter (outputer channel_id in_tuple) outs ;
+        perf := Perf.add_and_transfer stats_perf_commit_others !perf ;
+        if do_flush then List.iter flush to_commit ;
+        Perf.add stats_perf_flush_others (Perf.stop !perf) ;
       ) ;
       s
     in

@@ -308,7 +308,7 @@ module Past = struct
 
   let add state x t =
     let rec out_the_olds h =
-      match RamenHeap.min cmp h with
+      match RamenHeap.min h with
       | exception Not_found -> h
       | _, t' ->
           if t -. t' < state.max_age then h else

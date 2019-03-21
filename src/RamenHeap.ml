@@ -12,7 +12,6 @@ open Batteries
 type 'a t =
   | E
   | T of {
-      mutable deleted : bool ;
       value : 'a ;
       rank : int ;
       left : 'a t ;
@@ -21,70 +20,46 @@ type 'a t =
 let empty = E
 
 let rec is_empty = function
-  | E ->
-      true
-  | T { deleted = false ; _ } ->
-      false
-  | T { deleted = true ; left ; right ; _ } ->
-      is_empty left && is_empty right
+  | E -> true
+  | T _ -> false
 
 let singleton value =
-  T { deleted = false ; value ; rank = 1 ; left = E ; right = E }
+  T { value ; rank = 1 ; left = E ; right = E }
 
 let rec print p oc = function
   | E -> String.print oc "∅"
   | T t ->
-      Printf.fprintf oc "[ %a <- %a%s -> %a ]"
+      Printf.fprintf oc "[ %a <- %a -> %a ]"
         (print p) t.left
         p t.value
-        (if t.deleted then "(DELETED)" else "")
         (print p) t.right
 
 let rank = function
   | E -> 0
   | T t -> t.rank
 
+(* Build a tree once we already know the min value and two subtrees: *)
 let makeT value left right =
   let rank_l, rank_r = rank left, rank right in
   if rank_l >= rank_r then
-    T { deleted = false ; value ; rank = rank_r + 1 ; left ; right }
+    T { value ; rank = rank_r + 1 ; left ; right }
   else
-    T { deleted = false ; value ; rank = rank_l + 1 ; left = right ; right = left }
+    T { value ; rank = rank_l + 1 ; left = right ; right = left }
 
-let rec min cmp = function
-  | E ->
-      raise Not_found
-  | T { deleted = false ; value ; _ } ->
-      value
-  | T { deleted = true ; left ; right ; _ } ->
-      (match min cmp left with
-      | exception Not_found -> min cmp right
-      | l ->
-          (match min cmp right with
-          | exception Not_found -> l
-          | r ->
-              if cmp l r <= 0 then l else r))
+let min = function
+  | E -> raise Not_found
+  | T t -> t.value
 
-let min_opt cmp t =
-  try Some (min cmp t)
+let min_opt t =
+  try Some (min t)
   with Not_found -> None
 
-let rec pop_deleted cmp a =
-  match a with
-  | E -> a
-  | T t ->
-      if t.deleted then merge cmp t.left t.right
-      else a
-
-and merge cmp a b =
-  let a = pop_deleted cmp a
-  and b = pop_deleted cmp b in
+let rec merge cmp a b =
   match a with
   | E -> b
   | T ta -> (match b with
       | E -> a
       | T tb ->
-          (* Note: It is forbidden to call cmp on a deleted item: *)
           if cmp ta.value tb.value < 0 then
             makeT ta.value ta.left (merge cmp ta.right b)
           else
@@ -96,14 +71,11 @@ let add cmp x a =
 let del_min cmp = function
   | E ->
       raise Not_found
-  | a ->
-      (match pop_deleted cmp a with
-      | E -> raise Not_found
-      | T t ->
-          merge cmp t.left t.right)
+  | T t ->
+      merge cmp t.left t.right
 
 let pop_min cmp t =
-  min cmp t, del_min cmp t
+  min t, del_min cmp t
 
 (* Iterate over items, smallest to greatest: *)
 let rec fold_left cmp f init = function
@@ -118,11 +90,12 @@ let rec fold_left cmp f init = function
  * which item to delete. *)
 let rec rem cmp x = function
   | E -> E
-  | T t ->
-      (* Note: it is forbidden to call cmp on a deleted value: *)
+  | T t (* as a *) ->
       (* FIXME: no need for the cmp check: *)
-      if not t.deleted && x = t.value && cmp x t.value = 0 then
+      if x = t.value && cmp x t.value = 0 then
         merge cmp t.left t.right
+      (* FIXME: give up when we reached a value biger than the one we are looking for *)
+      (* else if cmp x t.value < 0 then a *)
       else
         makeT t.value (rem cmp x t.left) (rem cmp x t.right)
 
@@ -130,30 +103,45 @@ let rec rem cmp x = function
  * item to be removed. Returns true if the value was indeed removed: *)
 let rec rem_phys cmp x = function
   | E ->
-      false
-  | T t ->
+      E
+  | T t as a ->
       (* If the entry we want to delete is smaller than the value, give up: *)
-      if t.deleted then
-        rem_phys cmp x t.left ||
-        rem_phys cmp x t.right
+      if x == t.value then (
+        merge cmp t.left t.right
+      ) else if cmp x t.value < 0 then
+        a
       else
-        if x == t.value then (
-          t.deleted <- true ;
-          true
-        ) else if cmp x t.value < 0 then
-          false
-        else
-          rem_phys cmp x t.left ||
-          rem_phys cmp x t.right
+        makeT t.value (rem_phys cmp x t.left) (rem_phys cmp x t.right)
 
-(* Returns the number of items in that heap (total and non-deleted).
+(* Returns the number of items in that heap.
  * Slow and non recursive, for debugging only: *)
 let length t =
-  let rec loop tot nd = function
-    | E -> tot, nd
+  let rec loop tot = function
+    | E -> tot
     | T t ->
-        let tot = tot + 1
-        and nd = if t.deleted then nd else nd + 1 in
-        let tot, nd = loop tot nd t.left in
-        loop tot nd t.right in
-  loop 0 0 t
+        let tot = loop (tot + 1) t.left in
+        loop tot t.right in
+  loop 0 t
+
+(* A function that goes through the heap from top to bottom, offering the
+ * caller to either collect, keep or stop at each item. It returns the
+ * list of collected items as well as the resulting heap. *)
+type collect_action = Collect | Keep | KeepAll
+let collect cmp f h =
+  let rec loop collected h =
+    match h with
+    | E -> collected, h
+    | T t ->
+        let res = f t.value in
+        if res = KeepAll then
+            collected, h
+        else
+          let collected, a = loop collected t.left in
+          let collected, b = loop collected t.right in
+          if res = Keep then
+            collected, makeT t.value a b
+          else (
+            assert (res = Collect) ;
+            (t.value :: collected), merge cmp a b
+          ) in
+  loop [] h

@@ -390,8 +390,8 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
       if profile then
         [| "program" ; "CPU" ; "wait in" ; "wait out" ;
            "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
-           "update_group" ; "commit_incoming" ;
-           "commit_others_find" ; "commit_others" |]
+           "update_group" ; "commit_incoming" ; "select_others" ;
+           "finalize_others" ; "commit_others" ; "flush_others" |]
       else
         [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
            "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
@@ -417,8 +417,10 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.where_slow ;
                perf s.profile.update_group ;
                perf s.profile.commit_incoming ;
-               perf s.profile.commit_others_find ;
-               perf s.profile.commit_others |]
+               perf s.profile.select_others ;
+               perf s.profile.finalize_others ;
+               perf s.profile.commit_others ;
+               perf s.profile.flush_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
                Some (ValStr (N.string_of_params mre.C.params)) ;
@@ -443,8 +445,8 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
       if profile then
         [| "operation" ; "CPU" ; "wait in" ; "wait out" ;
            "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
-           "update_group" ; "commit_incoming" ;
-           "commit_others_find" ; "commit_others" |]
+           "update_group" ; "commit_incoming" ; "select_others" ;
+           "finalize_others" ; "commit_others" ; "flush_others" |]
       else
         [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
            "last out" ; "min event time" ; "max event time" ; "CPU" ;
@@ -489,8 +491,10 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                    perf s.profile.where_slow ;
                    perf s.profile.update_group ;
                    perf s.profile.commit_incoming ;
-                   perf s.profile.commit_others_find ;
-                   perf s.profile.commit_others |]
+                   perf s.profile.select_others ;
+                   perf s.profile.finalize_others ;
+                   perf s.profile.commit_others ;
+                   perf s.profile.flush_others |]
                else
                 let num_children = Hashtbl.find_all children_of_func
                                      (func.F.program_name, func.F.name) |>

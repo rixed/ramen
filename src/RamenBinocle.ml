@@ -32,8 +32,10 @@ let profile_fields =
      "where_slow", profile_typ ;
      "update_group", profile_typ ;
      "commit_incoming", profile_typ ;
-     "commit_others_find", profile_typ ;
-     "commit_others", profile_typ |]
+     "select_others", profile_typ ;
+     "finalize_others", profile_typ ;
+     "commit_others", profile_typ ;
+     "flush_others", profile_typ |]
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
