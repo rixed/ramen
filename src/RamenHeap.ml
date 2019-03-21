@@ -128,17 +128,23 @@ let rec rem cmp x = function
 
 (* Same as above, destructively, using physical equality to select the
  * item to be removed. Returns true if the value was indeed removed: *)
-let rec rem_phys x = function
+let rec rem_phys cmp x = function
   | E ->
       false
   | T t ->
-      if not t.deleted && x == t.value then (
-        t.deleted <- true ;
-        true
-      ) else (
-        rem_phys x t.left ||
-        rem_phys x t.right
-      )
+      (* If the entry we want to delete is smaller than the value, give up: *)
+      if t.deleted then
+        rem_phys cmp x t.left ||
+        rem_phys cmp x t.right
+      else
+        if x == t.value then (
+          t.deleted <- true ;
+          true
+        ) else if cmp x t.value < 0 then
+          false
+        else
+          rem_phys cmp x t.left ||
+          rem_phys cmp x t.right
 
 (* Returns the number of items in that heap (total and non-deleted).
  * Slow and non recursive, for debugging only: *)

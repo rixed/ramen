@@ -1233,7 +1233,7 @@ let aggregate
           if g.g0 <> Some g0 then (
             (* Relocate that group in the heap: *)
             let cmp = cmp_g0 cmp in
-            if not (RamenHeap.rem_phys g s.groups_heap) then
+            if not (RamenHeap.rem_phys cmp g s.groups_heap) then
               !logger.error "Cannot delete group from heap!?" ;
             g.g0 <- Some g0 ;
             s.groups_heap <- RamenHeap.add cmp g s.groups_heap
@@ -1277,8 +1277,9 @@ let aggregate
              * we could keep the group in there with a del flag in the group
              * so that it's popped from the heap when it surfaces. But
              * may_relocate_group_in_heap is then much harder: *)
-            Option.may (fun _ ->
-              if not (RamenHeap.rem_phys g s.groups_heap) then
+            Option.may (fun (_, _, cmp, _) ->
+              let cmp = cmp_g0 cmp in
+              if not (RamenHeap.rem_phys cmp g s.groups_heap) then
                 !logger.error "Cannot delete group from heap(2) ?!" ;
             ) commit_cond0
           )
