@@ -82,12 +82,12 @@ export RAMEN_DIR=$(mktemp -d)
 echo "Will use RAMEN_DIR=$RAMEN_DIR"
 
 # Write the configuration
-# 100MB of max total disk space, with retention for the various aggregation
+# 8GB of max total disk space, with retention for the various aggregation
 # levels (1min for 12 hours, 10 mins for 3 days, 1 hour for 30 days).
 mkdir -p "$RAMEN_DIR/archivist/v2/"
 cat > "$RAMEN_DIR/archivist/v2/config" <<EOF
 {
-  size_limit = 100000000;
+  size_limit = 8000000000;
   retentions = {
     "1min/http" => { duration = 43200 };
     "10mins/http" => { duration = 259200 };

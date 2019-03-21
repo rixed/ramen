@@ -3,7 +3,7 @@
 
 PARAMETERS
   start_of_time {seconds(rel)} DEFAULTS TO 191631600,
-  hit_rate {hits*seconds^-1} DEFAULTS TO 10,
+  hit_rate {hits*seconds^-1} DEFAULTS TO 100,
   clock_jitter {seconds} DEFAULTS TO 5s;
 
 -- And God said, Let there be HTTP: and there was HTTP
