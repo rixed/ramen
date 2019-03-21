@@ -493,7 +493,6 @@ let resolve_unknown_tuples params op =
   match op with
   | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
                  notifications ; _ } as aggr) ->
-      let fields_from_in = ref Set.empty in
       let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
         list_existsi (fun i' sf ->
           sf.alias = name &&
@@ -503,7 +502,7 @@ let resolve_unknown_tuples params op =
        * params), TupleIn or TupleOut (depending on the presence of this alias
        * in selected_fields -- optionally, only before position i). It will
        * also keep track of opened records and look up there first. *)
-      let prefix_smart ?i =
+      let prefix_smart ?(allow_out=true) ?i =
         resolve_unknown_tuple (fun stack n ->
           (* First, lookup for an opened record: *)
           if List.exists (fun e ->
@@ -527,14 +526,11 @@ let resolve_unknown_tuples params op =
               (* Look into predefined records: *)
               if RamenTuple.params_mem n params then
                 TupleParam
-              else if Set.mem n !fields_from_in then
-                TupleIn
-              else if is_selected_fields ?i n then
+              (* Then into fields that have been defined before: *)
+              else if allow_out && is_selected_fields ?i n then
                 TupleOut
-              else (
-                fields_from_in := Set.add n !fields_from_in ;
-                TupleIn
-              ) in
+              (* Then finally assume input: *)
+              else TupleIn in
             !logger.debug "Field %a thought to belong to %s"
               N.field_print n
               (string_of_prefix pref) ;
@@ -542,17 +538,6 @@ let resolve_unknown_tuples params op =
           )
         )
     in
-    (* Set of fields known to come from in (to help prefix_smart): *)
-    iter_expr (fun _ e ->
-      match e.E.text with
-      | Stateless (SL0 (Path [ Name n ])) ->
-          fields_from_in := Set.add n !fields_from_in
-      | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                             { text = Variable tup }))
-        when tuple_has_type_input tup ->
-          let n = N.field n in
-          fields_from_in := Set.add n !fields_from_in
-      | _ -> ()) op ;
     let fields =
       List.mapi (fun i sf ->
         { sf with expr = prefix_smart ~i sf.expr }
@@ -566,7 +551,7 @@ let resolve_unknown_tuples params op =
         Option.map (prefix_def params TupleIn) u_opt,
         List.map (prefix_def params TupleIn) b
       ) sort in
-    let where = prefix_smart where in
+    let where = prefix_smart ~allow_out:false where in
     let key = List.map (prefix_def params TupleIn) key in
     let commit_cond = prefix_smart commit_cond in
     let notifications = List.map prefix_smart notifications in
@@ -1367,7 +1352,7 @@ let fields_schema m =
     "FROM foo SELECT 1 AS one COMMIT BEFORE (SUM locally skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5")
 
-    "FROM foo/bar SELECT in.n, LAG globally skip nulls(2, in.n) AS l" \
+    "FROM foo/bar SELECT in.n, LAG globally skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag(2, n) AS l FROM foo/bar")
 
     "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \
