@@ -3048,7 +3048,7 @@ let emit_when ~env name in_typ minimal_typ ~opc when_expr =
     add_tuple_environment TupleOutPrevious opc.typ in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause" when_expr ;
-  Printf.fprintf opc.code "\t%a\n"
+  Printf.fprintf opc.code "\t%a\n\n"
     (emit_expr ~env ~context:Finalize ~opc) when_expr
 
 (* Similarly but with different signatures: *)

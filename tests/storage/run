@@ -7,12 +7,13 @@ top_src=$(dirname $0)/../../
 
 # At exit
 
-_AT_EXIT="echo bye"
+_AT_EXIT='echo bye'
 at_exit() {
   _AT_EXIT="$*; $_AT_EXIT"
 }
 at_exit_() {
   eval "$_AT_EXIT" || true
+  $_AT_EXIT='true'
 }
 trap at_exit_ EXIT INT TERM
 
@@ -136,6 +137,8 @@ end_of_test=194700000
 
 while true; do
   "$ramen" ps 1min/http | awk '{print $8}'
+  echo 'cpu/tuple:'
+  "$ramen" ps | awk '($3 > 0 && $3 != "n/a"){print $1, $9/$3}'
   sleep 60
 done
 

@@ -4,11 +4,11 @@
  * An operation is the body of a function, ie. the actual operation that
  * workers will execute.
  *
- * The main operation is the `SELECT / GROUP BY` operation, but there are a few
- * others of lesser importance for data input and output.
+ * The main operation is the `SELECT / GROUP BY` operation, but there are a
+ * few others of lesser importance for data input and output.
  *
- * Operations are made of expressions, parsed in RamenExpr, and assembled into
- * programs (the compilation unit) in RamenProgram.
+ * Operations are made of expressions, parsed in RamenExpr, and assembled
+ * into programs (the compilation unit) in RamenProgram.
  *)
 open Batteries
 open RamenLang

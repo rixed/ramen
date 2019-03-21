@@ -431,7 +431,7 @@ let locate_opened_record stack e path =
             ) stack with
       | exception Not_found ->
           Printf.sprintf2 "Cannot find field %a in scope (%a)"
-            N.field_print n
+            N.field_print_quoted n
             (pretty_list_print (E.print ~max_depth:1 false)) stack |>
           failwith
       | ret ->
@@ -454,7 +454,7 @@ let eq_to_opened_record_field stack e oc path =
   | exception Not_found ->
       Printf.sprintf2 "Cannot find path %a within field %a (%a)"
         E.print_path path
-        N.field_print field_name
+        N.field_print_quoted field_name
         (E.print ~max_depth:2 false) field_expr |>
       failwith
   | path_target ->
@@ -2272,7 +2272,7 @@ let set_io_tuples parents funcs h =
       let f_name = E.id_of_path f.RamenFieldMaskLib.path in
       if parents = [] then
         Printf.sprintf2 "Cannot use input field %a without any parent"
-          N.field_print f_name |>
+          N.field_print_quoted f_name |>
         failwith ;
       if T.is_typed f.typ.structure then (
         !logger.debug "... already typed to %a" T.print_typ f.typ
@@ -2287,7 +2287,7 @@ let set_io_tuples parents funcs h =
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"
-              N.field_print f_name
+              N.field_print_quoted f_name
               (N.func_color parent.F.name) |>
             failwith
         | typ ->
