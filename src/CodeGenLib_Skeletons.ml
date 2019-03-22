@@ -1445,7 +1445,7 @@ let aggregate
         List.iter (outputer channel_id in_tuple) outs ;
         perf := Perf.add_and_transfer stats_perf_commit_others !perf ;
         if do_flush then List.iter flush to_commit ;
-        Perf.add stats_perf_flush_others (Perf.stop !perf) ;
+        Perf.add stats_perf_flush_others (Perf.stop !perf)
       ) ;
       s
     in
