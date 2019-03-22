@@ -7,6 +7,8 @@ open RamenHelpers
 open RamenNullable
 open RamenConsts
 
+(*$inject open Batteries *)
+
 (* Get parameters from the environment.
  * This function is called at module initialization time to get the (constant)
  * value of a parameter (with default value in [def]): *)
@@ -94,19 +96,144 @@ let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
 (* Compute the p percentile of an array of anything: *)
-let percentile ps arr =
-  assert (Array.for_all (fun p -> p >= 0.0 && p <= 100.0) ps) ;
-  Array.fast_sort Pervasives.compare arr ;
-  Array.map (fun p ->
-    let p = p *. 0.01 in
-    let idx =
-      round_to_int (p *. float_of_int (Array.length arr - 1)) in
-    arr.(idx)
-  ) ps
+module Percentile = struct
+  (*$< Percentile *)
+  let swap a i j =
+    let tmp = a.(i) in
+    a.(i) <- a.(j) ;
+    a.(j) <- tmp
 
-(* Mono-valued variant of the above: *)
-let percentile_single p arr =
-  (percentile [| p |] arr).(0)
+  (* Appetizer: partition a sub-array around a given pivot value,
+   * and return a position into the final array such that every
+   * items up to and including that position are <= pivot and
+   * every items after that are >= pivot. *)
+  let partition a lo hi p =
+    let rec adv_i i j =
+      (* Everything that's <= i is <= p,
+       * everything that's >= j is >= p,
+       * i < j *)
+      let i = i + 1 in
+      if i >= j then i - 1
+      else if a.(i) < p then (adv_i [@tailcall]) i j
+      else (rec_j [@tailcall]) i j
+    and rec_j i j =
+      (* Everything that's < i is <= p, i is > p,
+       * everything that's >= j is >= p, j > i-1.
+       * If i = 0 we know we have the actual pivot value before to stop j
+       * from reading before the beginning of the array. *)
+      let j = j - 1 in
+      if a.(j) > p then (rec_j [@tailcall]) i j
+      else if j <= i then i - 1
+      else (
+        swap a i j ;
+        (* we are back to adv_i precondition: *)
+        (adv_i [@tailcall]) i j
+      )
+    in
+    adv_i (lo - 1) (hi + 1)
+
+  (*$inject
+    let test_partition arr =
+      Q.assume (Array.length arr > 0) ;
+      let hi = Array.length arr - 1 in
+      let m = arr.(0) in
+      let pv = partition arr 0 hi m in
+      let res =
+        Array.fold_lefti (fun res i v ->
+          res && (
+            (i <= pv && v <= m) ||
+            (i > pv && v >= m)
+          )) true arr in
+      if not res then (
+        Printf.printf "ERROR: pv=%d, m=%d, arr=%a\n" pv m (Array.print Int.print) arr
+      ) ;
+      res
+  *)
+  (*$Q test_partition
+    (Q.array_of_size (Q.Gen.int_range 1 10) Q.small_int) \
+      test_partition
+  *)
+
+  (* Sorting a-la quicksort, but looking only at the partitions that has
+   * one of the indexes we care about: *)
+  let partial_sort a ks =
+    let rec loop count lo hi ks =
+      (* Add tot count and tot length in instrumentation ? *)
+      if count > Array.length a then (
+        !logger.error "DEADLOOP: loop lo=%d, hi=%d, ks=%a, a=%a"
+          lo hi (List.print Int.print) ks (Array.print (fun oc v -> String.print oc (dump v))) a ;
+        assert false
+      ) ;
+      if hi - lo > 0 && ks <> [] then (
+        (* We are going to use partition in that way:
+         * First, we take one random value as the pivot and put it in front.
+         * Then, we partition the rest of the array around
+         * that pivot value. The returned position is the last of the first
+         * partition. We can then put the pivot at the end of it, so we have
+         * "sorted" that value. *)
+        let pv = lo + (hi - lo) / 2 in (* not that random *)
+        swap a lo pv ;
+        let m = a.(lo) in
+        let pv = partition a (lo + 1) hi m in
+        swap a lo pv ;
+        let ks_lo, ks_hi = List.partition (fun k -> k <= pv) ks in
+        let c = loop (count + 1) lo pv ks_lo in
+        loop c (pv + 1) hi ks_hi
+      ) else count in
+    let count = loop 0 0 (Array.length a - 1) ks in
+    (*!logger.info "partial_sort %d items for ks=%a in %d steps" (Array.length a) (List.print Int.print) ks count *)
+    ignore count
+
+  (* Check that the percentiles we obtain from [a] are the same as those
+   * we would get after a full sort *)
+  (*$inject
+    let test_partial_sort (ps, a) =
+      let a_orig = Array.copy a in
+      Q.assume (Array.length a > 0) ;
+      let hi = Array.length a - 1 in
+      let ks =
+        Array.map (fun p ->
+          let k =
+            RamenHelpers.round_to_int (float_of_int (p * hi) *. 0.01) in
+          assert (k >= 0 && k <= hi) ;
+          k
+        ) ps in
+      partial_sort a (Array.to_list ks) ;
+      let vs = Array.map (fun k -> a.(k)) ks in
+      Array.fast_sort Int.compare a ;
+      let res =
+        Array.fold_lefti (fun res i k ->
+          res && a.(k) = vs.(i)
+        ) true ks in
+      if not res then (
+        Printf.printf "ERROR: a_orig=%a, a=%a, ks=%a\n"
+          (Array.print Int.print) a_orig
+          (Array.print Int.print) a
+          (Array.print Int.print) ks
+      ) ;
+      res
+  *)
+  (*$Q test_partial_sort
+    (Q.pair (Q.array_of_size (Q.Gen.int_range 0 3) (Q.int_range 0 100)) \
+            (Q.array_of_size (Q.Gen.int_range 1 10) Q.small_int)) \
+      test_partial_sort
+  *)
+
+  let multi ps arr =
+    let ks =
+      Array.map (fun p ->
+        assert (p >= 0.0 && p <= 100.0) ;
+        round_to_int (p *. 0.01 *. float_of_int (Array.length arr - 1))
+      ) ps in
+    partial_sort arr (Array.to_list ks) ;
+    Array.map (fun k -> arr.(k)) ks
+
+  (* Mono-valued variant of the above: *)
+  let single p arr =
+    (multi [| p |] arr).(0)
+
+  (*$>*)
+end
 
 let substring s a b =
   let a = Int32.to_int a
