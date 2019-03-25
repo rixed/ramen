@@ -20,7 +20,7 @@ let () =
     | _ -> None)
 
 let make_copts debug quiet persist_dir rand_seed keep_temp_files
-               forced_variants initial_export_duration =
+               forced_variants initial_export_duration hostname =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -33,7 +33,7 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
       List.rev_append (String.split_on_char ',' s) lst
     ) [] forced_variants in
   C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
-              ~initial_export_duration persist_dir
+              ~initial_export_duration ~hostname persist_dir
 
 (*
  * `ramen supervisor`
@@ -234,13 +234,13 @@ let compile conf lib_path use_external_compiler bundle_dir
  *)
 
 let run conf params replace kill_if_disabled report_period program_name_opt
-        src_file bin_file () =
+        src_file on_hostname bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file bin_file program_name_opt
+               ?src_file ?on_hostname bin_file program_name_opt
 
 (*
  * `ramen kill`

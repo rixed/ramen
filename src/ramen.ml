@@ -20,6 +20,13 @@ let path =
   in
   Arg.conv ~docv:"FILE" (parse, print)
 
+let host =
+  let parse s = Pervasives.Ok (N.host s)
+  and print fmt (p : N.host) =
+    Format.fprintf fmt "%s" (p :> string)
+  in
+  Arg.conv ~docv:"HOST" (parse, print)
+
 let copts =
   let docs = Manpage.s_common_options in
   let debug =
@@ -57,6 +64,10 @@ let copts =
     let i = Arg.info ~doc:CliInfo.initial_export_duration
                      ~docs ~env [ "initial-export-duration" ] in
     Arg.(value (opt float Default.initial_export_duration i))
+  and hostname =
+    let env = Term.env_info "HOSTNAME" in
+    let i = Arg.info ~doc:CliInfo.hostname ~env [ "hostname" ] in
+    Arg.(value (opt host (N.host "") i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -65,7 +76,8 @@ let copts =
     $ rand_seed
     $ keep_temp_files
     $ forced_variants
-    $ initial_export_duration)
+    $ initial_export_duration
+    $ hostname)
 
 (*
  * Start the process supervisor
@@ -453,6 +465,10 @@ let src_file =
                    [ "src-file" ; "source-file" ] in
   Arg.(value (opt (some path) None i))
 
+let on_hostname =
+  let i = Arg.info ~doc:CliInfo.on_hostname [ "on-hostname" ] in
+  Arg.(value (opt (some host) None i))
+
 let run =
   Term.(
     (const RamenCliCmd.run
@@ -463,6 +479,7 @@ let run =
       $ report_period
       $ as_
       $ src_file
+      $ on_hostname
       $ bin_file),
     info ~doc:CliInfo.run "run")
 

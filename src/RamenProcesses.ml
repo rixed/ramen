@@ -670,6 +670,9 @@ let watchdog = ref None
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
+  let must_run_here mre =
+    mre.C.status = C.MustRun &&
+    (N.is_empty mre.C.on_hostname || mre.C.on_hostname = conf.C.hostname) in
   if !watchdog = None then
     watchdog :=
       (* In the first run we might have *plenty* of workers to start, thus
@@ -783,7 +786,7 @@ let synchronize_running conf autoreload_delay =
                * worker. *)
               Hashtbl.clear must_run ;
               Hashtbl.iter (fun program_name (mre, get_rc) ->
-                if mre.C.status = C.MustRun then (
+                if must_run_here mre then (
                   if not (N.is_empty mre.C.src_file) then (
                     !logger.debug "Trying to build %a"
                       N.path_print mre.C.bin ;

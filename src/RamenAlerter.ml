@@ -511,7 +511,7 @@ let contact_via conf p =
       "certainty", nice_string_of_float alert.first_start_notif.certainty ;
       (* Those are for convenience, before we can call actual functions
        * from the templates: *)
-      "hostname", getenv ~def:"" "HOSTNAME" ;
+      "hostname", (conf.C.hostname :> string) ;
       "certainty_percent", 100. *. alert.first_start_notif.certainty |>
                            round_to_int |> string_of_int ] in
   (* Add "stop" if we have it (or let it be NULL) *)

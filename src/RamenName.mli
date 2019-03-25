@@ -78,10 +78,18 @@ val path_cat : path list -> path
 
 val path_of_program : program -> path
 
+(* Host names: *)
+type host = [`Host] t
+val host_ppp_ocaml : host PPP.t
+val host : string -> host
+val host_print : 'a BatInnerIO.output -> host -> unit
+val host_print_quoted : 'a BatInnerIO.output -> host -> unit
+
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
 type 'a any =
-  [< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url|`Path] as 'a
+  [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
+   | `Path | `Host ] as 'a
 val compare : ('a any as 'a) t -> 'a t -> int
 val cat : ('a any as 'a) t -> 'a t -> 'a t
 val length : 'a t -> int

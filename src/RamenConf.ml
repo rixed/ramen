@@ -13,7 +13,8 @@ type conf =
     do_persist : bool ; (* false for unit-tests *)
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
-    initial_export_duration : float }
+    initial_export_duration : float ;
+    hostname : N.host (* this host name *) }
 
 let tmp_input_of_func persist_dir (program_name : N.program)
                       (func_name : N.func) in_type =
@@ -273,7 +274,9 @@ type must_run_entry =
     (* Optionally, file from which this worker can be (re)build (see RamenMake).
      * When it is rebuild, relative parents are found using the program name that's
      * the key in the running config. *)
-    src_file : N.path [@ppp_default N.path ""] }
+    src_file : N.path [@ppp_default N.path ""] ;
+    (* Optionally, run this worker only on this host: *)
+    on_hostname : N.host [@ppp_default N.host ""] }
   [@@ppp PPP_OCaml]
 (* The must_run file gives us the unique names of the programs. *)
 type must_run_file = (N.program, must_run_entry) Hashtbl.t
@@ -348,7 +351,7 @@ let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
-      ?(test=false) persist_dir =
+      ?(hostname=N.host "") ?(test=false) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -356,7 +359,7 @@ let make_conf
   let persist_dir = Files.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
-    initial_export_duration ; test }
+    initial_export_duration ; hostname ; test }
 
 (* Various directory names: *)
 

@@ -169,6 +169,16 @@ let path_print = String.print
 let path_print_quoted = String.print_quoted
 let path_cat = String.concat "/"
 
+(* Host names *)
+
+type host = [`Host] t
+
+let host_ppp_ocaml = t_ppp_ocaml
+external host : string -> host = "%identity"
+let host_print = String.print
+let host_print_quoted = String.print_quoted
+
+
 (* Some dedicated colors for those strings: *)
 
 let field_color = RamenLog.blue
@@ -179,7 +189,8 @@ let expr_color = RamenLog.yellow
 let fq_color = func_color
 
 type 'a any =
-  [< `Field|`Function|`Program|`RelProgram|`FQ|`BaseUnit|`Url|`Path] as 'a
+  [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
+   | `Path | `Host ] as 'a
 
 let compare = String.compare
 let cat = (^)

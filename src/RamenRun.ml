@@ -177,7 +177,8 @@ let default_program_name bin_file =
  * linkage checks: *)
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(report_period=Default.report_period) ?(src_file=N.path "")
-        ?(debug=false) ?(params=no_params) bin_file program_name_opt =
+        ?(on_hostname=N.host "") ?(debug=false) ?(params=no_params)
+        bin_file program_name_opt =
   let program_name =
     Option.default_delayed (fun () ->
       default_program_name bin_file
@@ -210,4 +211,4 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       (* TODO: Make sure this key is authoritative on a program name: *)
       Hashtbl.replace programs program_name
         C.{ bin ; params ; status = MustRun ; debug ; report_period ;
-            src_file }))
+            src_file ; on_hostname }))
