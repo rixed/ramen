@@ -200,7 +200,8 @@ end
 
 type notify_config =
   { teams : Team.t list ;
-    default_init_schedule_delay : float [@ppp_default 90.] ;
+    default_init_schedule_delay : float
+      [@ppp_default Default.init_schedule_delay] ;
     default_init_schedule_delay_after_startup : float [@ppp_default 120.] ;
     (* After a firing is received, automatically "close" the alert if it's not
      * been firing again for that long (timing out behaves the same as if a
@@ -741,7 +742,7 @@ let ensure_conf_file_exists notif_conf_file =
         Team.[
           { name = "" ;
             contacts = [ send_to_prometheus ] } ] ;
-      default_init_schedule_delay = 90. ;
+      default_init_schedule_delay = Default.init_schedule_delay ;
       default_init_schedule_delay_after_startup = 120. ;
       default_alert_timeout = 10. *. 3600. } in
   let contents = PPP.to_string notify_config_ppp_ocaml default_conf in

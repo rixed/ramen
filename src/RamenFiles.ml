@@ -317,18 +317,23 @@ let rel_path_from lib_path path =
 
 let int_of_fd fd : int = Obj.magic fd
 
-let really_read_fd fd size =
+let really_read_fd_into buf offs fd size =
+  assert (Bytes.length buf >= offs + size) ;
   let open Unix in
-  let buf = Bytes.create size in
   let rec loop i =
-    if i >= size then buf else
-    let r = BatUnix.restart_on_EINTR (read fd buf i) (size - i) in
-    if r > 0 then loop (i + r) else
-      let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
-                size i in
-      failwith e
+    if i < size then
+      let r =
+        BatUnix.restart_on_EINTR (read fd buf (offs + i)) (size - i) in
+      if r > 0 then loop (i + r) else
+        let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
+                  size i in
+        failwith e
   in
   loop 0
+
+let really_read_fd fd size =
+  let buf = Bytes.create size in
+  really_read_fd_into buf 0 fd size
 
 let marshal_into_fd fd v =
   let open BatUnix in
@@ -341,16 +346,28 @@ let marshal_into_fd fd v =
     write fd bytes 0 len) () |> ignore
 
 let marshal_from_fd ?default fname fd =
-  let open Unix in
   (* Useful log statement in case the GC crashes right away: *)
   !logger.debug "Retrieving marshaled value from file %a"
     N.path_print fname ;
   try
-    let bytes = read_whole_fd fd in
-    Marshal.from_string bytes 0
+    let buf, data_sz =
+      let capa = 8000 in
+      let buf = Bytes.create (Marshal.header_size + capa) in
+      really_read_fd_into buf 0 fd Marshal.header_size ;
+      let data_size = Marshal.data_size buf 0 in
+      if data_size <= capa then
+        buf, data_size
+      else
+        let buf' = Bytes.create (Marshal.header_size + data_size) in
+        Bytes.blit buf 0 buf' 0 Marshal.header_size ;
+        buf', data_size in
+    really_read_fd_into buf Marshal.header_size fd data_sz ;
+    Marshal.from_bytes buf 0
   with e ->
+    let bt = Printexc.get_raw_backtrace () in
     (match default with
-    | None -> raise e
+    | None ->
+        Printexc.raise_with_backtrace e bt
     | Some d ->
         !logger.error "Cannot unmarshal from file %a: %s"
           N.path_print fname (Printexc.to_string e) ;

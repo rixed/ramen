@@ -459,10 +459,67 @@ let seq_range bname =
   | None -> s.first_seq, s.alloc_count
   | Some (mi, _ma) -> mi, s.first_seq + s.alloc_count
 
-(* All the following functions are here rather than in RamenSerialization
+(* In the ringbuf we actually pass more than tuples: also various kinds of
+ * notifications. Also, tuples (and some of those meta-messages) are
+ * specific to a * "channel". *)
+
+type message_header =
+  | DataTuple of RamenChannel.t (* Followed by a tuple *)
+  | EndOfReplay of RamenChannel.t * int (* identifying the replayer *)
+  (* Also TBD:
+  | Timing of RamenChannel.t * (string * float) list
+  | TimeBarrier ... *)
+
+let channel_of_message_header = function
+  | DataTuple chn -> chn
+  | EndOfReplay (chn, _) -> chn
+
+(* We encode the variant on 4 bits, channel id on 16 and replayer id on
+ * 12 so that everything fits in word word for now while we still have
+ * plenty of variants left: *)
+
+(* Let's assume there will never be more than 36636 live channels and use
+ * only one word for the header: *)
+let message_header_sersize = function
+  | DataTuple _ -> 4
+  | EndOfReplay _ -> 4
+
+let write_message_header tx offs = function
+  | DataTuple chan ->
+      assert ((chan :> int) <= 0xFFFF) ;
+      write_u32 tx offs (Uint32.of_int ((chan :> int) land 0xFFFF))
+  | EndOfReplay (chan, replayer_id) ->
+      assert ((chan :> int) <= 0xFFFF) ;
+      assert (replayer_id <= 0xFFF) ;
+      let hi = 0x1000 + replayer_id land 0xFFF in
+      Uint32.(
+        shift_left (of_int hi) 16 |>
+        logor (of_int ((chan :> int) land 0xFFFF))) |>
+      write_u32 tx offs
+
+let read_message_header tx offs =
+  let u32 = read_u32 tx offs in
+  let chan = Uint32.(logand u32 (of_int 0xFFFF) |> to_int) |>
+             RamenChannel.of_int in
+  match Uint32.(shift_right_logical u32 16 |> to_int) with
+  | 0 -> DataTuple chan
+  | w when w >= 0x1000 ->
+      let replayer_id = w land 0xFFF in
+      EndOfReplay (chan, replayer_id)
+  | _ ->
+      Printf.sprintf
+        "read_message_header: invalid header at offset %d: %s"
+        offs (Uint32.to_string u32) |>
+      invalid_arg
+
+(*
+ * Notifications
+ *
+ * All the following functions are here rather than in RamenSerialization
  * or RamenNotification since it has to be included by workers as well, and
  * both RamenSerialization and RamenNotification depends on too many
- * modules for the workers. *)
+ * modules for the workers.
+ *)
 
 let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
@@ -530,63 +587,6 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
   in
   notification_nullmask_sz + notification_fixsz +
   sersize_of_string worker + sersize_of_string name + psz
-
-(* In the ringbuf we actually pass more than tuples: also various kinds of
- * notifications. Also, tuples (and some of those meta-messages) are
- * specific to a * "channel". *)
-
-type message_header =
-  | DataTuple of RamenChannel.t (* Followed by a tuple *)
-  | EndOfReplay of RamenChannel.t * int (* identifying the replayer *)
-  (* Also TBD:
-  | Timing of RamenChannel.t * (string * float) list
-  | TimeBarrier ... *)
-
-let channel_of_message_header = function
-  | DataTuple chn -> chn
-  | EndOfReplay (chn, _) -> chn
-
-(* We encode the variant on 4 bits, channel id on 16 and replayer id on
- * 12 so that everything fits in word word for now while we still have
- * plenty of variants left: *)
-
-(* Let's assume there will never be more than 36636 live channels and use
- * only one word for the header: *)
-let message_header_sersize = function
-  | DataTuple _ -> 4
-  | EndOfReplay _ -> 4
-
-let write_message_header tx offs = function
-  | DataTuple chan ->
-      assert ((chan :> int) <= 0xFFFF) ;
-      write_u32 tx offs (Uint32.of_int ((chan :> int) land 0xFFFF))
-  | EndOfReplay (chan, replayer_id) ->
-      assert ((chan :> int) <= 0xFFFF) ;
-      assert (replayer_id <= 0xFFF) ;
-      let hi = 0x1000 + replayer_id land 0xFFF in
-      Uint32.(
-        shift_left (of_int hi) 16 |>
-        logor (of_int ((chan :> int) land 0xFFFF))) |>
-      write_u32 tx offs
-
-let read_message_header tx offs =
-  let u32 = read_u32 tx offs in
-  let chan = Uint32.(logand u32 (of_int 0xFFFF) |> to_int) |>
-             RamenChannel.of_int in
-  match Uint32.(shift_right_logical u32 16 |> to_int) with
-  | 0 -> DataTuple chan
-  | w when w >= 0x1000 ->
-      let replayer_id = w land 0xFFF in
-      EndOfReplay (chan, replayer_id)
-  | _ ->
-      Printf.sprintf
-        "read_message_header: invalid header at offset %d: %s"
-        offs (Uint32.to_string u32) |>
-      invalid_arg
-
-(*
- * Notifications
- *)
 
 let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
                 (_, _, event_time, _, _, _, _ as tuple) =

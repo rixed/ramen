@@ -358,6 +358,9 @@ struct
    * to the file: *)
   let orc_rows_per_batch = 1000
   let orc_batches_per_file = 1000
+
+  (* Alerter: delay between first scheduling of a new alert: *)
+  let init_schedule_delay = 90.
 end
 
 module SpecialFunctions =
