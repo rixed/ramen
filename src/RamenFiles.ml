@@ -628,3 +628,6 @@ let unquote (s : N.path) =
   try ignore (unquote (N.path "%2z")) ; false with Invalid_argument _ -> true
   try ignore (unquote (N.path "%3F")) ; false with Invalid_argument _ -> true
 *)
+
+(* Used as a placeholder for file names that are sockets: *)
+let socket_path = N.path "socket"

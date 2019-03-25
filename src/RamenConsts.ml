@@ -68,6 +68,12 @@ struct
     (* Metrics reported by the compiler: *)
     let compiler_typing_time = "compiler_typing_time"
     let compiler_typing_count = "compiler_typing_count"
+
+    (* Metrics reported by the copy service: *)
+    let copy_server_accepts = "copy_server_accepts"
+    let copy_server_tuples = "copy_server_tuples"
+    let copy_client_connects = "copy_client_connects"
+    let copy_client_tuples = "copy_client_tuples"
   end
 
   (* Only required when the doc is used in more than one place: *)
@@ -145,6 +151,7 @@ struct
   let supervisor = "Start the processes supervisor"
   let httpd = "Start an HTTP server"
   let alerter = "Start the alerter"
+  let tunneld = "Start the tuple forward service"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"
@@ -277,6 +284,7 @@ struct
   let no_update_allocs = "Do no attempt to update the allocations file"
   let no_reconf_workers = "Do not change the workers export configuration"
   let max_bytes = "How many bytes to dump from the ringbuf messages"
+  let tunneld_port = "Port number for the tuple forward service"
 end
 
 module WorkerCommands =
@@ -361,6 +369,9 @@ struct
 
   (* Alerter: delay between first scheduling of a new alert: *)
   let init_schedule_delay = 90.
+
+  (* Default port for the tuple forward service: *)
+  let tunneld_port = 29329
 end
 
 module SpecialFunctions =

@@ -258,6 +258,24 @@ let notify =
     info ~doc:CliInfo.notify "notify")
 
 (*
+ * Service to forward tuples over the network
+ *)
+
+let port =
+  let i = Arg.info ~doc:CliInfo.tunneld_port [ "p"; "port" ] in
+  Arg.(value (opt int Default.tunneld_port i))
+
+let tunneld =
+  Term.(
+    (const RamenCliCmd.tunneld
+      $ copts
+      $ daemonize
+      $ to_stdout
+      $ to_syslog
+      $ port),
+    info ~doc:CliInfo.tunneld "tunneld")
+
+(*
  * Examine the ringbuffers
  *)
 
@@ -1013,7 +1031,7 @@ let () =
   match
     print_exn (fun () ->
       Term.eval_choice ~catch:false default [
-        supervisor ; gc ; httpd ; alerter ; info ;
+        supervisor ; gc ; httpd ; alerter ; tunneld ; info ;
         notify ; compile ; run ; kill ; archivist ;
         tail ; replay ; timeseries ; timerange ;
         ps ; profile ;

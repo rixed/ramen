@@ -1,0 +1,14 @@
+[Unit]
+Description=Ramen tuple forward server
+PartOf=ramen.target
+Documentation=https://rixed.github.io/ramen/man/tunneld.html
+
+[Install]
+WantedBy=ramen.target
+
+[Service]
+EnvironmentFile=-/etc/default/ramen
+ExecStart=/usr/bin/ramen tunneld --stdout
+User=ramen
+Restart=always
+RestartSec=60

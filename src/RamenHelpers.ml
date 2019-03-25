@@ -1255,6 +1255,14 @@ module Distance = struct
     String.length a - String.length b |> float_of_int
 end
 
+let string_of_sockaddr addr =
+  let open Unix in
+  match addr with
+  | ADDR_UNIX file ->
+      "UNIX:"^ file
+  | ADDR_INET (addr, port) ->
+      string_of_inet_addr addr ^":"^ string_of_int port
+
 (* We need an accept that stops waiting whenever the while_ condition become
  * false. It is not enough to check while_ on EINTR since the actual signal handler
  * will be resumed and the OCaml signal handler might not be have run yet when

@@ -159,6 +159,35 @@ let notify conf parameters notif_name () =
     ("CLI", start, None, notif_name, firing, certainty, parameters)
 
 (*
+ * `ramen tunneld`
+ *
+ * Runs a service allowing other hosts to transfert tuples to workers running
+ * on this host.
+ *)
+
+let tunneld conf daemonize to_stdout to_syslog port () =
+  if to_stdout && daemonize then
+    failwith "Options --daemonize and --stdout are incompatible." ;
+  if to_stdout && to_syslog then
+    failwith "Options --syslog and --stdout are incompatible." ;
+  if to_syslog then
+    init_syslog conf.C.log_level
+  else (
+    let logdir =
+      (* In case we serve several API from several daemon we will need an
+       * additional option to set a different logdir for each. *)
+      if to_stdout then None
+      else Some (N.path_cat [ conf.C.persist_dir ;
+                              N.path "log/tunneld" ]) in
+    Option.may Files.mkdir_all logdir ;
+    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
+  check_binocle_errors () ;
+  if daemonize then do_daemonize () ;
+  RamenProcesses.prepare_signal_handlers conf ;
+  RamenCopySrv.copy_server conf port ;
+  Option.may exit !RamenProcesses.quit
+
+(*
  * `ramen compile`
  *
  * Turn a ramen program into an executable binary.

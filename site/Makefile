@@ -26,6 +26,7 @@ MANPAGES = \
 	man/compile.html \
 	man/gc.html \
 	man/httpd.html \
+	man/tunneld.html \
 	man/kill.html \
 	man/links.html \
 	man/alerter.html \
@@ -128,6 +129,10 @@ man/kill.groff: ../src/ramen
 man/httpd.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen httpd --help=groff > $@
+
+man/tunneld.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen tunneld --help=groff > $@
 
 man/compile.groff: ../src/ramen
 	@echo 'Extracting $@'

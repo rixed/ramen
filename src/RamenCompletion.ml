@@ -36,6 +36,7 @@ let complete_commands s =
       "links", CliInfo.links ;
       "test", CliInfo.test ;
       "httpd", CliInfo.httpd ;
+      "tunneld", CliInfo.tunneld ;
       "variants", CliInfo.variants ;
       "gc", CliInfo.gc ;
       "stats", CliInfo.stats ;
@@ -339,6 +340,12 @@ let complete str () =
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
+          copts
+       | "tunneld" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--port=", CliInfo.tunneld_port ] @
           copts
       | "variants" ->
           copts
