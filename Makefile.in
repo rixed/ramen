@@ -23,16 +23,10 @@ OCAMLOPTFLAGS += -noassert -O2
 CPPFLAGS += -DNDEBUG -O2
 endif
 
-ifeq ($(shell uname),Darwin)
-FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
-else
-FILE_NOTIFIER = src/RamenFileNotify_Inotify.ml
-endif
-
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads \
-	inotify binocle lacaml ppp ppp.unix syslog
+	binocle lacaml ppp ppp.unix syslog
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -41,9 +35,17 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.unix batteries cmdliner stdint parsercombinator \
-	syslog num inotify binocle unix lacaml \
+	syslog num binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3
+
+ifeq ($(shell uname),Darwin)
+FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
+else
+FILE_NOTIFIER = src/RamenFileNotify_Inotify.ml
+META_REQUIRES += inotify
+PACKAGES += inotify
+endif
 
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
