@@ -6,6 +6,7 @@
  * Later this could grow to allow more flexible behavior (such as uploading
  * on HDFS or some cloud). */
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
@@ -20,13 +21,11 @@
 #include "archive.h"
 #include "../config.h"
 
-#ifndef HAVE_RENAMEX_NP
-# ifndef HAVE_RENAMEAT2
-    // Assuming we are building on an older Linux,
-    // let's try to call the syscall manually
-#   include <sys/syscall.h>
-#   include <linux/fs.h>
-# endif
+#if !(defined(HAVE_RENAMEX_NP)) && !(defined(HAVE_RENAMEAT2)) && !(defined(__APPLE__))
+  // Assuming we are building on an older Linux,
+  // let's try to call the syscall manually
+# include <sys/syscall.h>
+# include <linux/fs.h>
 #endif
 
 // Create the directories required to create that file:
@@ -111,6 +110,81 @@ char const *extension_of_fname(char const *fname)
   return ret ? ret : "";
 }
 
+// WARNING: If only_if_exist and the lock does not exist, this returns 0.
+int lock(char const *rb_fname, int operation /* LOCK_SH|LOCK_EX */, bool only_if_exist)
+{
+  char fname[PATH_MAX];
+  if ((size_t)snprintf(fname, sizeof(fname), "%s.lock", rb_fname) >= sizeof(fname)) {
+    fprintf(stderr, "Archive lockfile name truncated: '%s'\n", fname);
+    goto err;
+  }
+
+  int fd = open(fname, only_if_exist ? 0 : O_CREAT, S_IRUSR|S_IWUSR);
+  if (fd < 0) {
+    if (errno == ENOENT && only_if_exist) return 0;
+    fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
+    goto err;
+  }
+
+  int err = -1;
+  do {
+    err = flock(fd, operation);
+  } while (err < 0 && EINTR == errno);
+
+  if (err < 0) {
+    fprintf(stderr, "Cannot lock '%s': %s\n", fname, strerror(errno));
+    if (close(fd) < 0) {
+      fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
+      // so be it
+    }
+    goto err;
+  }
+
+  return fd;
+err:
+  fflush(stderr);
+  return -1;
+}
+
+int unlock(int lock_fd)
+{
+  if (0 == lock_fd) {
+    // Assuming lock didn't exist rather than locking stdin:
+    return 0;
+  }
+
+  while (0 != close(lock_fd)) {
+    if (errno != EINTR) {
+      fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
+      fflush(stderr);
+      return -1;
+    }
+  }
+  return 0;
+}
+
+
+#if !(defined(HAVE_RENAMEX_NP)) && !(defined(HAVE_RENAMEAT2)) && defined(__APPLE__)
+// Poor man version of exclusive rename, using a lock
+static int rename_locked(char const *src, char const *dst)
+{
+  int ret = -1;
+
+  int lock_fd = lock(src, LOCK_EX, true);
+  if (lock_fd < 0) goto err0;
+
+  ret = rename(src, dst);
+
+  if (0 != unlock(lock_fd)) {
+    ret = -1;
+    goto err0;
+  }
+
+err0:
+  return ret;
+}
+#endif
+
 int ramen_archive(char const *fname, double start, double stop)
 {
   int ret = -1;
@@ -145,7 +219,11 @@ int ramen_archive(char const *fname, double start, double stop)
 # ifdef HAVE_RENAMEAT2
       renameat2(AT_FDCWD, fname, AT_FDCWD, arc_fname, RENAME_NOREPLACE)
 # else
+#   ifdef __APPLE__
+      rename_locked(fname, arc_fname)
+#   else
       syscall(SYS_renameat2, AT_FDCWD, fname, AT_FDCWD, arc_fname, RENAME_NOREPLACE)
+#   endif
 # endif
 #endif
     ) {

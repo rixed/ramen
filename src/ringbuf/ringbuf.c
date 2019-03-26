@@ -163,59 +163,6 @@ err0:
   return ret;
 }
 
-// WARNING: If only_if_exist and the lock does not exist, this returns 0.
-static int lock(char const *rb_fname, int operation /* LOCK_SH|LOCK_EX */, bool only_if_exist)
-{
-  char fname[PATH_MAX];
-  if ((size_t)snprintf(fname, sizeof(fname), "%s.lock", rb_fname) >= sizeof(fname)) {
-    fprintf(stderr, "Archive lockfile name truncated: '%s'\n", fname);
-    goto err;
-  }
-
-  int fd = open(fname, only_if_exist ? 0 : O_CREAT, S_IRUSR|S_IWUSR);
-  if (fd < 0) {
-    if (errno == ENOENT && only_if_exist) return 0;
-    fprintf(stderr, "Cannot create '%s': %s\n", fname, strerror(errno));
-    goto err;
-  }
-
-  int err = -1;
-  do {
-    err = flock(fd, operation);
-  } while (err < 0 && EINTR == errno);
-
-  if (err < 0) {
-    fprintf(stderr, "Cannot lock '%s': %s\n", fname, strerror(errno));
-    if (close(fd) < 0) {
-      fprintf(stderr, "Cannot close lockfile '%s': %s\n", fname, strerror(errno));
-      // so be it
-    }
-    goto err;
-  }
-
-  return fd;
-err:
-  fflush(stderr);
-  return -1;
-}
-
-static int unlock(int lock_fd)
-{
-  if (0 == lock_fd) {
-    // Assuming lock didn't exist rather than locking stdin:
-    return 0;
-  }
-
-  while (0 != close(lock_fd)) {
-    if (errno != EINTR) {
-      fprintf(stderr, "Cannot unlock fd %d: %s\n", lock_fd, strerror(errno));
-      fflush(stderr);
-      return -1;
-    }
-  }
-  return 0;
-}
-
 // Keep existing files as much as possible:
 extern int ringbuf_create_locked(
     uint64_t version, bool wrap, char const *fname, uint32_t num_words)
