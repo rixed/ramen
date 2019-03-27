@@ -49,7 +49,9 @@ INSTALLED_LIB = \
 	src/liborchelp.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) META
 
-bin_dir ?= /usr/bin/
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+bin_dir ?= @bindir@
 # Where the deb (or other non-opam) version of ramen will get the libraries
 # bundle from. This is important that the ramen package is compiled with the
 # correct path as we use opam installed libs to build the non-opam bundle,
