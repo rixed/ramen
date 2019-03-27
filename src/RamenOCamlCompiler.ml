@@ -46,18 +46,23 @@ let cannot_link what status =
 
 (* Takes a source file and produce an object file: *)
 
+let ocamlpath () =
+  let open RamenCompilConfig in
+  (if ocamlfind_destdir <> "" then ocamlfind_destdir ^ ":" else "") ^
+  ocamlpath
+
 let compile_external ~debug ~keep_temp_files what
                      (src_file : N.path) (obj_file : N.path) =
-  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
-  and ocamlpath = getenv ~def:"" "OCAMLPATH" in
+  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH" in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -linscan -thread -bin-annot -w %s \
+           %s ocamlopt%s%s -linscan -thread -bin-annot -w %s \
                      -o %s -package ramen -I %s -c %s"
       (shell_quote path)
-      (shell_quote ocamlpath)
+      (shell_quote (ocamlpath ()))
+      (shell_quote RamenCompilConfig.ocamlfind)
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (shell_quote warnings)
@@ -90,16 +95,16 @@ let is_ocaml_objfile (fname : N.path) =
 let link_external ~debug ~keep_temp_files
                   ~what ~inc_dirs ~obj_files
                   ~(src_file : N.path) ~(exec_file : N.path) =
-  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
-  and ocamlpath = getenv ~def:"" "OCAMLPATH" in
+  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH" in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s %s -thread -annot \
+           %s ocamlopt%s%s %s -thread -annot \
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote path)
-      (shell_quote ocamlpath)
+      (shell_quote (ocamlpath ()))
+      (shell_quote RamenCompilConfig.ocamlfind)
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (IO.to_string

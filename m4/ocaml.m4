@@ -153,7 +153,7 @@ AC_DEFUN([AC_PROG_FINDLIB],
   AC_REQUIRE([AC_PROG_OCAML])dnl
 
   # checking for ocamlfind
-  AC_CHECK_TOOL([OCAMLFIND],[ocamlfind],[no])
+  AC_PATH_TOOL([OCAMLFIND],[ocamlfind],[no])
   AC_SUBST([OCAMLFIND])
 ])
 

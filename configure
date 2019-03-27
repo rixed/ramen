@@ -4007,20 +4007,22 @@ fi
 set dummy ${ac_tool_prefix}ocamlfind; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
-if ${ac_cv_prog_OCAMLFIND+:} false; then :
+if ${ac_cv_path_OCAMLFIND+:} false; then :
   $as_echo_n "(cached) " >&6
 else
-  if test -n "$OCAMLFIND"; then
-  ac_cv_prog_OCAMLFIND="$OCAMLFIND" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+  case $OCAMLFIND in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_OCAMLFIND="$OCAMLFIND" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
 for as_dir in $PATH
 do
   IFS=$as_save_IFS
   test -z "$as_dir" && as_dir=.
     for ac_exec_ext in '' $ac_executable_extensions; do
   if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
-    ac_cv_prog_OCAMLFIND="${ac_tool_prefix}ocamlfind"
+    ac_cv_path_OCAMLFIND="$as_dir/$ac_word$ac_exec_ext"
     $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
     break 2
   fi
@@ -4028,9 +4030,10 @@ done
   done
 IFS=$as_save_IFS
 
+  ;;
+esac
 fi
-fi
-OCAMLFIND=$ac_cv_prog_OCAMLFIND
+OCAMLFIND=$ac_cv_path_OCAMLFIND
 if test -n "$OCAMLFIND"; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: $OCAMLFIND" >&5
 $as_echo "$OCAMLFIND" >&6; }
@@ -4041,26 +4044,28 @@ fi
 
 
 fi
-if test -z "$ac_cv_prog_OCAMLFIND"; then
-  ac_ct_OCAMLFIND=$OCAMLFIND
+if test -z "$ac_cv_path_OCAMLFIND"; then
+  ac_pt_OCAMLFIND=$OCAMLFIND
   # Extract the first word of "ocamlfind", so it can be a program name with args.
 set dummy ocamlfind; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
-if ${ac_cv_prog_ac_ct_OCAMLFIND+:} false; then :
+if ${ac_cv_path_ac_pt_OCAMLFIND+:} false; then :
   $as_echo_n "(cached) " >&6
 else
-  if test -n "$ac_ct_OCAMLFIND"; then
-  ac_cv_prog_ac_ct_OCAMLFIND="$ac_ct_OCAMLFIND" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+  case $ac_pt_OCAMLFIND in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ac_pt_OCAMLFIND="$ac_pt_OCAMLFIND" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
 for as_dir in $PATH
 do
   IFS=$as_save_IFS
   test -z "$as_dir" && as_dir=.
     for ac_exec_ext in '' $ac_executable_extensions; do
   if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
-    ac_cv_prog_ac_ct_OCAMLFIND="ocamlfind"
+    ac_cv_path_ac_pt_OCAMLFIND="$as_dir/$ac_word$ac_exec_ext"
     $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
     break 2
   fi
@@ -4068,18 +4073,19 @@ done
   done
 IFS=$as_save_IFS
 
+  ;;
+esac
 fi
-fi
-ac_ct_OCAMLFIND=$ac_cv_prog_ac_ct_OCAMLFIND
-if test -n "$ac_ct_OCAMLFIND"; then
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_OCAMLFIND" >&5
-$as_echo "$ac_ct_OCAMLFIND" >&6; }
+ac_pt_OCAMLFIND=$ac_cv_path_ac_pt_OCAMLFIND
+if test -n "$ac_pt_OCAMLFIND"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_pt_OCAMLFIND" >&5
+$as_echo "$ac_pt_OCAMLFIND" >&6; }
 else
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 fi
 
-  if test "x$ac_ct_OCAMLFIND" = x; then
+  if test "x$ac_pt_OCAMLFIND" = x; then
     OCAMLFIND="no"
   else
     case $cross_compiling:$ac_tool_warned in
@@ -4088,10 +4094,10 @@ yes:)
 $as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
 ac_tool_warned=yes ;;
 esac
-    OCAMLFIND=$ac_ct_OCAMLFIND
+    OCAMLFIND=$ac_pt_OCAMLFIND
   fi
 else
-  OCAMLFIND="$ac_cv_prog_OCAMLFIND"
+  OCAMLFIND="$ac_cv_path_OCAMLFIND"
 fi
 
 
