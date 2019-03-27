@@ -738,10 +738,10 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 
 install: $(INSTALLED)
 	@ocamlfind install ramen $(INSTALLED_LIB) META
-	@echo 'Installing binaries into $(prefix)$(bin_dir)'
-	@install -d $(prefix)$(bin_dir)
-	@install $(INSTALLED_BIN) $(prefix)$(bin_dir)/
-	@for f in $(INSTALLED_BIN); do strip $(prefix)$(bin_dir)/$$(basename $$f); done
+	@echo 'Installing binaries into $(bin_dir)'
+	@install -d $(bin_dir)
+	@install $(INSTALLED_BIN) $(bin_dir)/
+	@for f in $(INSTALLED_BIN); do strip $(bin_dir)/$$(basename $$f); done
 
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
@@ -761,7 +761,7 @@ install-systemd:
 uninstall:
 	@ocamlfind remove ramen
 	@echo 'Uninstalling binaries'
-	@$(RM) $(prefix)$(bin_dir)/ramen
+	@$(RM) $(bin_dir)/ramen
 
 reinstall: uninstall install
 
