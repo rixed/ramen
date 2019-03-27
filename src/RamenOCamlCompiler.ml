@@ -120,16 +120,15 @@ let compile_internal ~debug ~keep_temp_files what src_file obj_file =
     cannot_compile what (Printexc.to_string exn)
 
 let compile_external ~debug ~keep_temp_files what (src_file : N.path) obj_file =
-  let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
-  and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           ocamlfind ocamlopt%s%s -linscan -thread -bin-annot -w %s \
+           %s ocamlopt%s%s -linscan -thread -annot -w %s \
                      -o %s -package ramen -I %s -c %s"
-      (shell_quote path)
-      (shell_quote ocamlpath)
+      (shell_quote RamenCompilConfig.build_path)
+      (shell_quote RamenCompilConfig.ocamlpath)
+      (shell_quote (RamenCompilConfig.ocamlfind :> string))
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (shell_quote warnings)

@@ -61,16 +61,17 @@ let orc_codec ~debug orc_write_func orc_read_func prefix_name rtyp =
     Orc.emit_outro oc) ;
   !logger.debug "Generated C++ support file in %a"
     N.path_print cc_src_file ;
-  let cpp_command src dst =
-    let _, where = Unix.run_and_read "ocamlc -where" in
-    let where = String.trim where in
+  let cpp_command (src : N.path) (dst : N.path) =
     let inc =
       N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
-    Printf.sprintf2 "c++%s -std=c++17 -W -Wall -c -I %S -I %a -o %a %a"
-      (if debug then " -g" else "") where
-      N.path_print_quoted inc
-      N.path_print_quoted dst
-      N.path_print_quoted src in
+    Printf.sprintf2 "%s%s -std=c++17 -W -Wall -c -I %s -I %s -o %s %s"
+      (* No quote as it might be a command line: *)
+      RamenCompilConfig.cpp_compiler
+      (if debug then " -g" else "")
+      (shell_quote (RamenCompilConfig.ocamllib :> string))
+      (shell_quote (inc :> string))
+      (shell_quote (dst :> string))
+      (shell_quote (src :> string)) in
   let cc_dst = Files.change_ext "o" cc_src_file in
   let cmd = cpp_command cc_src_file cc_dst in
   let status = Unix.system cmd in
