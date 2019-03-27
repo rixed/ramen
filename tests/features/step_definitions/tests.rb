@@ -10,14 +10,7 @@ end
 Given /the environment variable (.*) is set(?: to (.*))?/ \
 do |envvar, opt_val|
   if ENV[envvar].nil? and opt_val.nil? then
-    val =
-      case envvar
-        when /RAMEN_LIBS/
-          ENV['HOME'] + '/share/src/ramen/bundle'
-        else
-          fail(StandardError.new("No idea what to set #{envvar} to"))
-      end
-    ENV[envvar] = val
+    fail(StandardError.new("No idea what to set #{envvar} to"))
   else
     if not opt_val.nil? then
       ENV[envvar] = opt_val

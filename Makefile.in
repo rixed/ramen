@@ -1,7 +1,6 @@
 # Configuration
 
 VERSION = @PACKAGE_VERSION@
-BUNDLE_DIR = bundle
 
 DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
@@ -10,12 +9,11 @@ QTEST    = qtest
 Z3       = /usr/bin/z3
 WARNS    = -w -40-58+27
 
-override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
+override OCAMLOPTFLAGS += -thread -I src $(WARNS) -g -annot -S
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
                           -I $(shell ocamlfind ocamlc -where) \
-                          -I $(BUNDLE_DIR)/include \
                           -DHAVE_INT128 -I $(shell ocamlfind query stdint)
 
 ifdef NDEBUG
@@ -29,15 +27,11 @@ META_REQUIRES = \
 	binocle lacaml ppp ppp.unix syslog
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
-#   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
-#   compiler-libs compiler-libs.common
-#   compiler-libs.bytecomp compiler-libs.optcomp
+#   unix num cmdliner sqlite3
 
 PACKAGES = \
 	ppp ppp.unix batteries cmdliner stdint parsercombinator \
-	syslog num binocle unix lacaml \
-	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp net_codecs sqlite3
+	syslog num binocle unix lacaml net_codecs sqlite3
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
@@ -69,14 +63,14 @@ sample_dir ?= /var/lib/ramen
 systemd_dir ?= /lib/systemd/system
 sysconf_dir ?= /etc/default
 
-all: $(INSTALLED) bundle
+all: $(INSTALLED)
 
 # Generic rules
 
 .SUFFIXES: .ml .mli .mlppp .cmi .cmx .cmxs .cmt .top .html .adoc .ramen .x .test .success
-.PHONY: clean clean-temp all dep bundle doc deb tarball bundle \
+.PHONY: clean clean-dist clean-temp all dep doc deb tarball \
         check func-check unit-check cli-check err-check arc-check orc-check \
-        install install-bundle install-examples install-systemd uninstall reinstall \
+        install install-examples install-systemd uninstall reinstall \
         docker-latest docker-build-image docker-build-builder docker-circleci docker-push
 
 %.cmi: %.mli
@@ -143,6 +137,7 @@ RAMEN_SOURCES = \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
+	src/RamenCompilConfig.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
@@ -150,8 +145,6 @@ RAMEN_SOURCES = \
 	src/RamenWatchdog.ml \
 	src/HeavyHitters.ml \
 	src/Globs.ml \
-	src/RamenCompilConfig.ml \
-	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
@@ -288,10 +281,9 @@ ORCWRITER_SOURCES = \
 	src/RamenFieldMask.ml \
 	src/RamenOutRef.ml \
 	src/RamenFieldMaskLib.ml \
+	src/RamenCompilConfig.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
-	src/RamenCompilConfig.ml \
-	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
 	src/orc/orc_writer.ml
@@ -351,17 +343,6 @@ submodules/orc/NOTICE: .gitmodules
 	@git submodule update
 	@touch $@
 
-# We need the ORC include files to be installed for that one:
-src/orc/wrappers.o: $(BUNDLE_DIR)/lib/liborc.a
-
-$(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
-	@echo 'Building liborc'
-	@mkdir -p submodules/orc/build
-	@cd submodules/orc/build &&\
-	 cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
-	 make install
-	@touch $@
-
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
 # symbols we need as we are the only users.
@@ -390,8 +371,7 @@ src/orc/orc_writer: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		src/codegen.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -435,8 +415,7 @@ src/ramen: \
 		src/libcollectd.a \
 		src/libnetflow.a \
 		src/liborchelp.a \
-		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		src/codegen.a
 	@echo 'Linking $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
@@ -451,7 +430,6 @@ src/codegen.cmxa: \
 
 src/codegen.a: src/codegen.cmxa
 
-# embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
 # cut -c X- means to takes all from X, 1st char being 1, thus the leading _:
 OCAML_WHERE_LEN = $(shell printf '_%s/' $(OCAML_WHERE) | wc -m | xargs echo)
@@ -463,87 +441,10 @@ META:
 	@echo 'archive(native) = "codegen.cmxa"' >> $@
 	@echo 'requires = "$(META_REQUIRES)"' >> $@
 
-bundle: $(BUNDLE_DIR)/ramen/codegen.a $(BUNDLE_DIR)/lib/liborc.a
-
-$(BUNDLE_DIR)/date:
-	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
-	@$(RM) -rf '$(BUNDLE_DIR)'
-	@mkdir -p '$(BUNDLE_DIR)'
-	@touch $@
-
-$(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
-	@echo 'Bundling libs together into $(BUNDLE_DIR)'
-	@$(RM) -rf '$(BUNDLE_DIR).tmp'
-	@mkdir '$(BUNDLE_DIR).tmp'
-	@set -e ;\
-	 deps=$$( \
-	   for p in $(META_REQUIRES) ; do \
-	     ocamlfind query -recursive -predicates native -format '%d' $$p ;\
-	   done | sort -u | grep -v /findlib) ;\
-	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
-	@mkdir $(BUNDLE_DIR).tmp/ramen
-	@cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
-	@find '$(BUNDLE_DIR).tmp' -type f -not '-(' \
-	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
-	    -name '*.so' -o -name '*.o' \
-	  '-)' -delete
-	@find '$(BUNDLE_DIR).tmp' -empty -delete
-	@# Delete some of the biggest unused files:
-	@$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
-	@$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
-	@$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
-	@$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
-	@# to clear a clang warning:
-	@mkdir $(BUNDLE_DIR).tmp/num
-	@mkdir $(BUNDLE_DIR).tmp/bytes
-	@# Delete everything that's not from liborc:
-	@mkdir -p '$(BUNDLE_DIR)'
-	@find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '-(' \
-	    -name lib -o -name include \
-		'-)' -exec rm -rf '{}' \;
-	@mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
-	@$(RM) -r $(BUNDLE_DIR).tmp
-	@touch $@
-
-# Bootstrapping this is a bit special as ocamlfind needs to know the ramen
-# package first. Therefore this file is included with the source package for
-# simplicity.
-src/RamenDepLibs.ml.frominst:
-	@echo '(* Generated by Makefile - edition is futile *)' > $@
-	@echo 'module N = RamenName' >> $@
-	@echo 'let incdirs = [' >> $@
-	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%d' ramen | sort -u | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
-	  echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
-	  sed -e 's,^\(.*\)$$,  N.path "\1" ;,' >> $@ ;\
-	done ;
-# Equivalent to -threads:
-	@echo '  N.path "ocaml/threads" ;' >> $@
-	@echo ']' >> $@
-	@echo 'let objfiles = [' >> $@
-	@set -e ; for d in $$(ocamlfind query -recursive -predicates native -format '%+a' ramen | uniq | grep -v -e compiler-libs -e ppx_tools -e /findlib) ; do \
-	  echo $$d | cut -c $(OCAML_WHERE_LEN)- | \
-	  sed -e 's,^\(.*\)$$,  N.path "\1" ;,' >> $@ ;\
-	done ;
-	@echo ']' >> $@
-# Equivalent to -threads, must come right after unix.cmxa:
-	@sed -i -e '/ocaml\/unix.cmxa/a \ \ N.path "ocaml/threads/threads.cmxa" ;' $@
-
-src/RamenDepLibs.ml: src/RamenDepLibs.ml.frominst
-ifeq ($(shell uname),Darwin)
-	@sed -e '/inotify/d' $< > $@
-else
-	@cp $< $@
-endif
-
-# At the contrary, this one has to be generated at every build:
 src/RamenCompilConfig.ml:
 	@echo '(* Generated by Makefile - edition is futile *)' > $@
 	@echo 'module N = RamenName' >> $@
-	@echo 'let default_bundle_dir = N.path "$(lib_dir)/$(BUNDLE_DIR)/"' >> $@
+	@echo 'let ocaml_version = "$(shell ocamlc -version)"' >> $@
 
 # Tests
 
@@ -626,12 +527,11 @@ LINKED_FOR_TESTS = \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
+	src/RamenCompilConfig.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
 	src/Globs.ml \
-	src/RamenCompilConfig.ml \
-	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
@@ -724,9 +624,9 @@ RAMEN_TESTS_SOURCES = \
 	$(RAMEN_TESTS:.test=.ramen) \
 	$(wildcard tests/func/fixtures/*.ramen)
 
-%.x: %.ramen $(BUNDLE_DIR)/ramen/codegen.a src/ramen src/codegen.cmxa
+%.x: %.ramen src/codegen.a src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --bundle=bundle -L . -L tests/func $< -o $@
+	@src/ramen compile -L . -L tests/func $< -o $@
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
@@ -800,14 +700,13 @@ func-check: $(RAMEN_TESTS:.test=.success)
 
 err-check: \
 		src/ramen \
-		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a \
+		src/codegen.a \
 		$(wildcard tests/errors/*.ramen) \
 		$(wildcard tests/errors/*.err)
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
+	  src/ramen compile --quiet -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
 	  if ! diff -q $$f.err $$t ; then \
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
@@ -842,14 +741,6 @@ install: $(INSTALLED)
 	@install $(INSTALLED_BIN) $(prefix)$(bin_dir)/
 	@for f in $(INSTALLED_BIN); do strip $(prefix)$(bin_dir)/$$(basename $$f); done
 
-# We need ocamlfind to find ramen package before we can install the lib bundle.
-# Therefore we simply build it as a separate, optional step (that's only
-# required if you intend to use the embedded compiler).
-install-bundle: bundle
-	@echo 'Installing libraries bundle into $(DESTDIR)$(lib_dir)'
-	@install -d $(DESTDIR)$(lib_dir)
-	@cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
-
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
 	@install -d $(DESTDIR)$(lib_dir)
@@ -867,12 +758,8 @@ install-systemd:
 
 uninstall:
 	@ocamlfind remove ramen
-	@echo 'Uninstalling binaries and libraries bundle'
+	@echo 'Uninstalling binaries'
 	@$(RM) $(prefix)$(bin_dir)/ramen
-
-uninstall-bundle:
-	@echo 'Uninstalling libraries bundle'
-	@$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
 
 reinstall: uninstall install
 
@@ -884,8 +771,7 @@ tarball: ramen.$(VERSION).tgz
 
 ramen.$(VERSION).deb: \
 		$(INSTALLED) \
-		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a \
+		src/codegen.a \
 		debian.control
 	@echo 'Building debian package $@'
 	@sudo rm -rf debtmp
@@ -893,7 +779,6 @@ ramen.$(VERSION).deb: \
 	@install $(INSTALLED_BIN) debtmp/usr/bin
 	@for f in $(INSTALLED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-examples
-	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-bundle
 	@$(MAKE) DESTDIR=$(PWD)/debtmp/ install-systemd
 	@mkdir -p debtmp/DEBIAN
 	@cp debian.control debtmp/DEBIAN/control
@@ -904,8 +789,7 @@ ramen.$(VERSION).deb: \
 
 ramen.$(VERSION).tgz: \
 		$(INSTALLED_BIN) \
-		$(BUNDLE_DIR)/ramen/codegen.a \
-		$(BUNDLE_DIR)/lib/liborc.a
+		src/codegen.a
 	@echo 'Building tarball $@'
 	@$(RM) -r tmp/ramen
 	@install -d tmp/ramen
@@ -914,7 +798,6 @@ ramen.$(VERSION).tgz: \
 	@for f in $(INSTALLED_BIN) z3; do strip tmp/ramen/$$(basename $$f); done
 	@chmod -R a+x tmp/ramen/*
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
-	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-systemd
 	@tar c -C tmp ramen | gzip > $@
 
@@ -974,7 +857,6 @@ clean-dist: clean clean-temp
 	@echo 'Cleaning all build files'
 	@$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	@find tests -name '*.success' -delete
-	@$(RM) -r $(BUNDLE_DIR)
 	@sudo rm -rf debtmp
 	@$(RM) -r tmp
 	@$(RM) ramen.*.deb ramen.*.tgz

@@ -72,7 +72,6 @@ find_bin() {
 }
 
 ramen="$top_src/src/ramen"
-export RAMEN_LIBS="$top_src/bundle"
 
 # Locate the optional tools
 # TODO: if there is atop, run it

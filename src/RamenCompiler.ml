@@ -36,9 +36,7 @@ let stats_typing_count =
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let init use_external_compiler bundle_dir max_simult_compils smt_solver =
-  RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
-  RamenOCamlCompiler.bundle_dir := bundle_dir ;
+let init max_simult_compils smt_solver =
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
   RamenSmt.solver := smt_solver
@@ -65,11 +63,9 @@ let orc_codec debug orc_write_func orc_read_func prefix_name func =
   let cpp_command src dst =
     let _, where = Unix.run_and_read "ocamlc -where" in
     let where = String.trim where in
-    let inc =
-      N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
-    Printf.sprintf2 "c++%s -std=c++17 -W -Wall -c -I %S -I %a -o %a %a"
-      (if debug then " -g" else "") where
-      N.path_print_quoted inc
+    Printf.sprintf2 "c++%s -std=c++17 -W -Wall -c -I %S -o %a %a"
+      (if debug then " -g" else "")
+      where
       N.path_print_quoted dst
       N.path_print_quoted src in
   let cc_dst = Files.change_ext "o" cc_src_file in

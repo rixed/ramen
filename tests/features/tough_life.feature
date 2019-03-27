@@ -4,7 +4,6 @@ Feature: behavior under harsh conditions
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_LIBS is set
     And ramen supervisor --autoreload=1 --fail-for-good is started
     Given a file dir/p1.ramen with content
       """

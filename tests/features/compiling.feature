@@ -6,7 +6,6 @@ Feature: I can compile programs and get proper error status.
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     And a file tests/nodep1.ramen with content
       """

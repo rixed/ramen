@@ -11,7 +11,6 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_LIBS is set
     And a file p1/p2/t1.ramen with content
       """
       define f1 as

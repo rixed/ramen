@@ -375,7 +375,7 @@ let worker_state conf func params =
   N.path_cat
     [ conf.persist_dir ; N.path "workers/states" ;
       N.path RamenVersions.(worker_state ^"_"^ codegen) ;
-      N.path Config.version ; Func.path func ;
+      N.path RamenCompilConfig.ocaml_version ; Func.path func ;
       N.path func.signature ; N.path (N.signature_of_params params) ;
       N.path "snapshot" ]
 
@@ -447,7 +447,8 @@ let factors_of_function conf func =
              type_signature_hash in
   N.path_cat
     [ conf.persist_dir ; N.path "workers/factors" ;
-      N.path RamenVersions.factors ; N.path Config.version ;
+      N.path RamenVersions.factors ;
+      N.path RamenCompilConfig.ocaml_version ;
       Func.path func ;
       (* arc extension for the GC. FIXME *)
       N.path (sign ^".arc") ]

@@ -7,7 +7,6 @@ Feature: Programs ca  be parameterized
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     And the environment variable LAST_NAME is set to Smith
     And a file test.ramen with content

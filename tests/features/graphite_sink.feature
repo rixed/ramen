@@ -2,7 +2,6 @@ Feature: Test Ramen Graphite data sink
 
   Background:
     Given ramen must be in the path
-    And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     And a file test.ramen with content
       """

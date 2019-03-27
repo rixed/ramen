@@ -108,18 +108,6 @@ let autoreload =
                    ~env ["autoreload"] in
   Arg.(value (opt ~vopt:Default.autoreload float 0. i))
 
-let external_compiler =
-  let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
-  let i = Arg.info ~doc:CliInfo.external_compiler
-                   ~env [ "use-external-compiler"; "external-compiler" ] in
-  Arg.(value (flag i))
-
-let bundle_dir =
-  let env = Term.env_info "RAMEN_LIBS" in
-  let i = Arg.info ~doc:CliInfo.bundle_dir
-                   ~env [ "bundle-dir" ] in
-  Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
-
 let max_simult_compilations =
   let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
   let i = Arg.info ~doc:CliInfo.max_simult_compilations
@@ -147,8 +135,6 @@ let supervisor =
       $ to_stdout
       $ to_syslog
       $ autoreload
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ fail_for_good),
@@ -453,8 +439,6 @@ let compile =
     (const RamenCliCmd.compile
       $ copts
       $ lib_path
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ src_files
@@ -685,8 +669,6 @@ let tail =
       $ timeout
       $ pretty
       $ flush
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.tail "tail")
@@ -740,8 +722,6 @@ let replay =
       $ with_event_time
       $ pretty
       $ flush
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.replay "replay")
@@ -799,8 +779,6 @@ let timeseries =
       $ consolidation
       $ bucket_time
       $ pretty
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.timeseries "timeseries")
@@ -891,8 +869,6 @@ let httpd =
       $ server_url "http://127.0.0.1:8080"
       $ api
       $ graphite
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.httpd "httpd")
@@ -933,8 +909,6 @@ let test =
       $ server_url ""
       $ api
       $ graphite
-      $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ test_file),

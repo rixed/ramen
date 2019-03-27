@@ -206,10 +206,6 @@ struct
   let rb_file = "File with the ring buffer"
   let num_tuples = "How many entries to dequeue"
   let rb_files = "The ring buffers to display information about"
-  let external_compiler =
-    "Call external compiler rather than using embedded one"
-  let bundle_dir =
-    "Directory where to find libraries for the embedded compiler"
   let max_simult_compilations =
     "Max number of compilations to perform simultaneously"
   let smt_solver =

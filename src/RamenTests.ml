@@ -557,9 +557,7 @@ let run_test conf notify_rb dirname test =
   Thread.join early_terminator ;
   !all_good, sync
 
-let run conf server_url api graphite
-        use_external_compiler bundle_dir max_simult_compils smt_solver
-        test () =
+let run conf server_url api graphite max_simult_compils smt_solver test () =
   let conf = C.{ conf with
     persist_dir =
       Filename.get_temp_dir_name ()
@@ -567,8 +565,7 @@ let run conf server_url api graphite
       N.path |> Files.uniquify ;
     test = true } in
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init max_simult_compils smt_solver ;
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   let httpd_thread =

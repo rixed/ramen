@@ -28,9 +28,6 @@ let main =
   let otyp = Orc.of_structure rtyp.T.structure in
   let schema = IO.to_string Orc.print otyp in
   !logger.info "Corresponding ORC type: %s" schema ;
-  RamenOCamlCompiler.use_external_compiler := false ;
-  RamenOCamlCompiler.bundle_dir :=
-    N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") ;
   (*
    * Generate the C++ side:
    *)
@@ -49,11 +46,8 @@ let main =
   let cpp_command src dst =
     let _, where = Unix.run_and_read "ocamlc -where" in
     let where = String.trim where in
-    let inc =
-      N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
-    Printf.sprintf2 "g++ -g -std=c++17 -W -Wall -c -I %S -I %a -o %a %a"
+    Printf.sprintf2 "g++ -g -std=c++17 -W -Wall -c -I %a -o %a %a"
       where
-      N.path_print_quoted inc
       N.path_print_quoted dst
       N.path_print_quoted src in
   let cc_dst = Files.change_ext "o" cc_src_file in
