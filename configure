@@ -583,6 +583,7 @@ PACKAGE_URL=''
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+RUNTIME_LIBDIRS
 OCAML_PKG_batteries_stdint_parsercombinator_binocle_lacaml_num_ppp_cmdliner_syslog_sqlite3_net_codecs
 OCAMLFIND
 OCAMLBUILD
@@ -650,6 +651,8 @@ SHELL'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
+with_liborc
+with_runtime_libdirs
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1277,6 +1280,13 @@ if test -n "$ac_init_help"; then
      short | recursive ) echo "Configuration of ramen 3.3.0:";;
    esac
   cat <<\_ACEOF
+
+Optional Packages:
+  --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
+  --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-liborc=path      Where liborc is located
+  --with-runtime-libdirs=path1,path2,...
+                          Additional libdirs to use at runtime
 
 Some influential environment variables:
   CC          C compiler command
@@ -4184,9 +4194,37 @@ ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ex
 ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
 CXXFLAGS="$CFLAGS -std=c++17"
-LDFLAGS="$LDFLAGS -lorc"
+# We will need to find the given liborc at runtime, so just ask for where it is:
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for liborc" >&5
+$as_echo_n "checking for liborc... " >&6; }
 
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+# Check whether --with-liborc was given.
+if test "${with_liborc+set}" = set; then :
+  withval=$with_liborc;
+fi
+
+
+if test "x$with_liborc" != "xno"; then :
+
+  if test -e "$with_liborc/liborc.a"; then :
+
+    RUNTIME_LIBDIRS="$with_liborc"
+    LDFLAGS="$LDFLAGS -L$with_liborc"
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: found in $with_liborc" >&5
+$as_echo "found in $with_liborc" >&6; }
+
+else
+
+    as_fn_error $? "Cannot find liborc.a in $with_liborc" "$LINENO" 5
+
+fi
+
+else
+
+  # No location given: just see if we can link
+  SAVED_LDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS -lorc"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <orc/Common.hh>
 int
@@ -4199,13 +4237,32 @@ orc::CompressionKind dummy
 _ACEOF
 if ac_fn_cxx_try_link "$LINENO"; then :
   TEST_LIBS="$TEST_LIBS -lorc"
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: found" >&5
+$as_echo "found" >&6; }
 
 else
-  as_fn_error $? "Cannot find liborc." "$LINENO" 5
+  as_fn_error $? "Not found!" "$LINENO" 5
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
-LDFLAGS=$SAVED_LDFLAGS
+  LDFLAGS="$SAVED_LDFLAGS"
+
+fi
+
+# Similarly, we could be given the path of other libs (sasl2, openssl...),
+# that are required at runtime:
+
+# Check whether --with-runtime-libdirs was given.
+if test "${with_runtime_libdirs+set}" = set; then :
+  withval=$with_runtime_libdirs;
+fi
+
+if test "x$with_runtime_libdirs" != "xno"; then :
+
+  RUNTIME_LIBDIRS="$RUNTIME_LIBDIRS,$with_runtime_libdirs"
+
+fi
+
 
 ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml tests/features/api.feature debian.control docker/Dockerfile-builder docker/Dockerfile"
 

@@ -48,8 +48,10 @@ let cannot_link what status =
 
 let ocamlpath () =
   let open RamenCompilConfig in
-  (if ocamlfind_destdir <> "" then ocamlfind_destdir ^ ":" else "") ^
-  ocamlpath
+  (
+    if N.is_empty ocamlfind_destdir then ""
+    else (ocamlfind_destdir :> string) ^ ":"
+  ) ^ ocamlpath
 
 let compile_external ~debug ~keep_temp_files what
                      (src_file : N.path) (obj_file : N.path) =
@@ -61,7 +63,7 @@ let compile_external ~debug ~keep_temp_files what
                      -o %s -package ramen -I %s -c %s"
       (shell_quote RamenCompilConfig.build_path)
       (shell_quote (ocamlpath ()))
-      (shell_quote RamenCompilConfig.ocamlfind)
+      (shell_quote (RamenCompilConfig.ocamlfind :> string))
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (shell_quote warnings)
@@ -102,7 +104,7 @@ let link_external ~debug ~keep_temp_files
                        -o %s -package ramen -linkpkg %s %s"
       (shell_quote RamenCompilConfig.build_path)
       (shell_quote (ocamlpath ()))
-      (shell_quote RamenCompilConfig.ocamlfind)
+      (shell_quote (RamenCompilConfig.ocamlfind :> string))
       (if debug then " -g" else "")
       (if keep_temp_files then " -S" else "")
       (IO.to_string
@@ -129,6 +131,11 @@ let link ?(debug=false) ?(keep_temp_files=false)
          ~what ~obj_files ~src_file ~exec_file =
   Files.mkdir_all ~is_file:true exec_file ;
   (* Look for cmi files in the same dirs where the cmx are: *)
+  let inc_dirs =
+    String.nsplit ~by:"," RamenCompilConfig.runtime_libdirs |>
+    List.filter ((<>) "") |>
+    List.map N.path |>
+    Set.of_list in
   let inc_dirs, obj_files =
     List.fold_left (fun (s, l) obj_file ->
       if is_ocaml_objfile obj_file then
@@ -136,7 +143,7 @@ let link ?(debug=false) ?(keep_temp_files=false)
         Files.basename obj_file :: l
       else
         s, obj_file :: l
-    ) (Set.empty, []) obj_files in
+    ) (inc_dirs, []) obj_files in
   link_external
     ~debug ~keep_temp_files
     ~what ~inc_dirs ~obj_files ~src_file ~exec_file

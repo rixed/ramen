@@ -21,12 +21,39 @@ AC_CHECK_OCAML_PKG(batteries stdint parsercombinator binocle lacaml num ppp cmdl
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
-LDFLAGS="$LDFLAGS -lorc"
-AC_TRY_LINK([#include <orc/Common.hh>], [orc::CompressionKind dummy],
-  [TEST_LIBS="$TEST_LIBS -lorc"]
-  ,
-  [AC_MSG_ERROR([Cannot find liborc.])])
-LDFLAGS=$SAVED_LDFLAGS
+# We will need to find the given liborc at runtime, so just ask for where it is:
+AC_MSG_CHECKING([for liborc])
+AC_ARG_WITH([liborc],
+  AS_HELP_STRING([--with-liborc=path], [Where liborc is located]))
+AS_IF([test "x$with_liborc" != "xno"], [
+  AS_IF([test -e "$with_liborc/liborc.a"], [
+    RUNTIME_LIBDIRS="$with_liborc"
+    LDFLAGS="$LDFLAGS -L$with_liborc"
+    AC_MSG_RESULT([found in $with_liborc])
+  ], [
+    AC_MSG_ERROR([Cannot find liborc.a in $with_liborc])
+  ])
+], [
+  # No location given: just see if we can link
+  SAVED_LDFLAGS="$LDFLAGS"
+  LDFLAGS="$LDFLAGS -lorc"
+  AC_TRY_LINK([#include <orc/Common.hh>], [orc::CompressionKind dummy],
+    [TEST_LIBS="$TEST_LIBS -lorc"]
+    AC_MSG_RESULT([found])
+    ,
+    [AC_MSG_ERROR([Not found!])])
+  LDFLAGS="$SAVED_LDFLAGS"
+])
+
+# Similarly, we could be given the path of other libs (sasl2, openssl...),
+# that are required at runtime:
+AC_ARG_WITH([runtime-libdirs],
+  AS_HELP_STRING([--with-runtime-libdirs=path1,path2,...],
+                 [Additional libdirs to use at runtime]))
+AS_IF([test "x$with_runtime_libdirs" != "xno"], [
+  RUNTIME_LIBDIRS="$RUNTIME_LIBDIRS,$with_runtime_libdirs"
+])
+AC_SUBST([RUNTIME_LIBDIRS])
 
 AC_CONFIG_FILES([
   Makefile
