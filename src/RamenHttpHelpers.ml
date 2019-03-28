@@ -260,4 +260,4 @@ let http_service conf port url_prefix router fault_injection_rate =
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !RamenProcesses.quit = None in
-  forking_server ~while_ addr srv
+  forking_server ~while_ ~service_name:"httpd" addr srv

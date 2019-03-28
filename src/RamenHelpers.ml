@@ -1265,7 +1265,7 @@ let string_of_sockaddr addr =
 
 (* We need an accept that stops waiting whenever the while_ condition become
  * false. It is not enough to check while_ on EINTR since the actual signal handler
- * will be resumed and the OCaml signal handler might not be have run yet when
+ * will be resumed and the OCaml signal handler might not have run yet when
  * the accept is interrupted by EINTR. So we have to summon select.
  * raise Exit when while_ says so. *)
 let rec my_accept ~while_ sock =
@@ -1280,7 +1280,7 @@ let rec my_accept ~while_ sock =
 (* This is a version of [Unix.establish_server] that pass the file
  * descriptor instead of buffered channels. Also, we want a way to stop
  * the server: *)
-let forking_server ~while_ sockaddr server_fun =
+let forking_server ~while_ ~service_name sockaddr server_fun =
   let open Legacy.Unix in
   (* Keep an eye on my sons pids: *)
   let sons = Atomic.Set.make () in
@@ -1294,10 +1294,11 @@ let forking_server ~while_ sockaddr server_fun =
         if not continue then (
           if !stop_since = 0. then stop_since := now ;
           if not (Atomic.Set.is_empty sons) then (
-            !logger.info "Killing httpd servers..." ;
+            !logger.info "Killing %s servers..." service_name ;
             Atomic.Set.iter sons (fun (pid, _) ->
               !logger.debug "Killing %d" pid ;
-              log_and_ignore_exceptions ~what:"stopping httpd servers"
+              let what = Printf.sprintf "stopping %s servers" service_name in
+              log_and_ignore_exceptions ~what
                 (kill pid)
                 Sys.(if now -. !stop_since > 3. then sigkill else sigterm))
           ) else (
@@ -1313,8 +1314,8 @@ let forking_server ~while_ sockaddr server_fun =
             | _, status ->
                 let dt = now -. start in
                 (if status = WEXITED 0 then !logger.debug else !logger.error)
-                  "httpd server %d %s after %fs"
-                    pid (string_of_process_status status) dt ;
+                  "%s server %d %s after %fs"
+                    service_name pid (string_of_process_status status) dt ;
                 false) ;
         sleep 1
       done
@@ -1345,7 +1346,7 @@ let forking_server ~while_ sockaddr server_fun =
               Atomic.Set.add sons (pid, Unix.gettimeofday ())
         done
       with Exit ->
-        !logger.debug "Stop accepting connections."
+        !logger.debug "%s stops accepting connections." service_name
     ) () ;
   Thread.join killer_thread
 

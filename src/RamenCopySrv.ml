@@ -64,4 +64,4 @@ let copy_server conf port =
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !RamenProcesses.quit = None in
   (* TODO: a wrapper that compresses and hashes the content. *)
-  forking_server ~while_ addr (serve conf)
+  forking_server ~while_ ~service_name:"tunneld" addr (serve conf)
