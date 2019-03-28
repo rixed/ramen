@@ -541,7 +541,7 @@ src/RamenDepLibs.ml.frominst:
 # Equivalent to -threads, must come right after unix.cmxa:
 	@sed -i -e '/ocaml\/unix.cmxa/a \ \ N.path "ocaml/threads/threads.cmxa" ;' $@
 
-src/RamenDepLibs.ml: src/RamenDepLibs.ml.frominst
+src/RamenDepLibs.ml: src/RamenDepLibs.ml.frominst Makefile
 ifeq ($(shell uname),Darwin)
 	@sed -e '/inotify/d' $< > $@
 else
