@@ -819,7 +819,18 @@ let synchronize_running conf autoreload_delay =
                         let k =
                           program_name, f.F.name, f.F.signature, prog.P.params
                         in
-                        Hashtbl.add must_run k (mre, f)
+                        Hashtbl.modify_opt k (function
+                          | None -> Some (mre, f)
+                          | prev ->
+                              !logger.error
+                                "The same function is asked to run several \
+                                 times: %a/%a, sig %s with params %a"
+                                N.program_print program_name
+                                N.func_print f.F.name
+                                f.F.signature
+                                RamenTuple.print_params prog.P.params ;
+                              prev
+                        ) must_run
                       ) prog.P.funcs)
               ) programs ;
               now
