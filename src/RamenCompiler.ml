@@ -42,8 +42,7 @@ let init max_simult_compils smt_solver =
   RamenSmt.solver := smt_solver
 
 (* ORC codec C++ module generator: *)
-let orc_codec debug orc_write_func orc_read_func prefix_name func =
-  let rtyp = O.out_record_of_operation func.F.operation in
+let orc_codec ~debug orc_write_func orc_read_func prefix_name rtyp =
   !logger.debug "Generating an ORC codec for Ramen type %s"
     (IO.to_string T.print_typ rtyp |> abbrev 130) ;
   let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
@@ -458,11 +457,12 @@ let compile conf get_parent ~exec_file source_file
       Hashtbl.fold (fun _ func obj_files ->
         (* Start with the C++ object file for ORC support: *)
         let orc_write_func = "orc_write_"^ func.F.signature
-        and orc_read_func = "orc_read_"^ func.F.signature in
+        and orc_read_func = "orc_read_"^ func.F.signature
+        and rtyp = O.out_record_of_operation func.F.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
-          let obj_file = orc_codec debug orc_write_func orc_read_func
-                                   (src_name_of_func func) func in
+          let obj_file = orc_codec ~debug orc_write_func orc_read_func
+                                   (src_name_of_func func) rtyp in
           add_temp_file obj_file ;
           obj_file :: obj_files in
           (* Note: the OCaml wrappers will be written in the single ML

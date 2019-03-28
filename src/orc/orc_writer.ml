@@ -17,48 +17,9 @@ let main =
   let exec_file = N.path (Sys.argv.(1)) in
   let ramen_type = Sys.argv.(2) in
   let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
-  !logger.info "Generating an ORC writer for Ramen type %s"
-    (IO.to_string T.print_typ rtyp |> abbrev 130) ;
-  (* We need to generate two things from this type:
-   * - a string parser (using [CodeGen_OCaml.emit_value_of_string])
-   * - a ORC writer (using [Orc.emit_write_value]).
-   * Then we compile this into a program that write stdin into an ORC file. *)
-  !logger.info "Corresponding runtime type: %a"
-    CodeGen_OCaml.otype_of_type rtyp ;
-  let otyp = Orc.of_structure rtyp.T.structure in
-  let schema = IO.to_string Orc.print otyp in
-  !logger.info "Corresponding ORC type: %s" schema ;
-  (*
-   * Generate the C++ side:
-   *)
-  let orc_write_func = "orc_write" in
-  let orc_read_func = "orc_read" in
   let cc_src_file =
-    N.path (Filename.temp_file "orc_writer_cc_" ".cc") in
-  Files.mkdir_all ~is_file:true cc_src_file ;
-  File.with_file_out (cc_src_file :> string) (fun oc ->
-    Orc.emit_intro oc ;
-    Orc.emit_write_value orc_write_func rtyp oc ;
-    Orc.emit_read_values orc_read_func rtyp oc ;
-    Orc.emit_outro oc) ;
-  !logger.info "Generated C++ support file in %a"
-    N.path_print cc_src_file ;
-  let cpp_command src dst =
-    let _, where = Unix.run_and_read "ocamlc -where" in
-    let where = String.trim where in
-    Printf.sprintf2 "g++ -g -std=c++17 -W -Wall -c -I %a -o %a %a"
-      where
-      N.path_print_quoted dst
-      N.path_print_quoted src in
-  let cc_dst = Files.change_ext "o" cc_src_file in
-  let cmd = cpp_command cc_src_file cc_dst in
-  let status = Unix.system cmd in
-  if status <> Unix.WEXITED 0 then (
-    !logger.error "Compilation of %a: %s"
-      N.path_print_quoted cc_src_file (string_of_process_status status) ;
-    !logger.info "I'm so sorry! This is what I tried: %s" cmd ;
-    !logger.info "I'm out of ideas. Good luck!" ;
-    exit 1) ;
+    RamenCompiler.orc_codec ~debug:true "orc_write" "orc_read" "orc_writer_"
+                            rtyp in
   (*
    * Now the ML side:
    *)
