@@ -21,6 +21,12 @@ AC_CHECK_OCAML_PKG(batteries stdint parsercombinator binocle lacaml num ppp cmdl
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
+LDFLAGS="$LDFLAGS -lorc"
+AC_TRY_LINK([#include <orc/Common.hh>], [orc::CompressionKind dummy],
+  [TEST_LIBS="$TEST_LIBS -lorc"]
+  ,
+  [AC_MSG_ERROR([Cannot find liborc.])])
+LDFLAGS=$SAVED_LDFLAGS
 
 AC_CONFIG_FILES([
   Makefile
