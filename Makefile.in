@@ -294,6 +294,13 @@ ORCWRITER_SOURCES = \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/CodeGen_OCaml.ml \
+	src/RamenSmtParser.ml \
+	src/RamenSmt.ml \
+	src/RamenTypingErrors.ml \
+	src/RamenTypingHelpers.ml \
+	src/RamenTyping.ml \
+	src/RamenProgram.ml \
+	src/RamenCompiler.ml \
 	src/orc/orc_writer.ml
 
 TESTONLY_SOURCES = \
