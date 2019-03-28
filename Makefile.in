@@ -34,7 +34,7 @@ META_REQUIRES = \
 #   compiler-libs.bytecomp compiler-libs.optcomp
 
 PACKAGES = \
-	ppp ppp.unix batteries cmdliner stdint parsercombinator \
+	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
 	syslog num binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3
