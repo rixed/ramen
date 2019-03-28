@@ -30,7 +30,7 @@ META_REQUIRES = \
 #   unix num cmdliner sqlite3
 
 PACKAGES = \
-	ppp ppp.unix batteries cmdliner stdint parsercombinator \
+	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
 	syslog num binocle unix lacaml net_codecs sqlite3
 
 ifeq ($(shell uname),Darwin)
