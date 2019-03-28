@@ -59,7 +59,7 @@ let compile_external ~debug ~keep_temp_files what
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
          nice -n 1 \
-           %s ocamlopt%s%s -linscan -thread -bin-annot -w %s \
+           %s ocamlopt%s%s -linscan -thread -annot -w %s \
                      -o %s -package ramen -I %s -c %s"
       (shell_quote RamenCompilConfig.build_path)
       (shell_quote (ocamlpath ()))

@@ -451,6 +451,8 @@ src/RamenCompilConfig.ml: Makefile
 	@echo 'let build_path = "$(PATH)"' >> $@
 	@echo 'let ocamlfind = N.path "@OCAMLFIND@"' >> $@
 	@echo 'let ocamlpath = "$(OCAMLPATH)"' >> $@
+	@echo 'let ocamllib = N.path "@OCAMLLIB@"' >> $@
+	@echo 'let cpp_compiler = "@CXX@"' >> $@
 	@echo 'let ocamlfind_destdir = N.path "$(OCAMLFIND_DESTDIR)"' >> $@
 	@echo 'let runtime_libdirs = "@RUNTIME_LIBDIRS@"' >> $@
 	@echo 'Generated CompilConfig.ml:'
