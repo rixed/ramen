@@ -12,7 +12,7 @@ let graph_config = "v16" (* last: changed {T,V}Record format *)
 let codegen = "v57" (* last: Cosmetics: SF3s *)
 
 (* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v7" (* last: addition of profile field *)
+let instrumentation_tuple = "v8" (* last: addition of top-halves *)
 
 (* Notifications sent from workers to Ramen *)
 let notify_tuple = "v6" (* last: firing is now optional *)

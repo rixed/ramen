@@ -22,6 +22,7 @@ let format_of_filename s =
  * this type of entries: *)
 type per_func_info =
   { worker_entry_point : unit -> unit ;
+    top_half_entry_point : unit -> unit ;
     replay_entry_point : unit -> unit ;
     convert_entry_point :
       convert_format -> N.path -> convert_format -> N.path -> unit }
@@ -69,9 +70,11 @@ let run codegen_version rc_marsh run_condition per_funcname =
     e.convert_entry_point in_format in_ out_format out
   in
   (* If we are called "ramen worker:" then we must run: *)
-  if Sys.argv.(0) = worker_argv0 then
+  if Sys.argv.(0) = Worker_argv0.full_worker then
     run_from_list (fun e -> e.worker_entry_point ())
-  else if Sys.argv.(0) = replay_argv0 then
+  else if Sys.argv.(0) = Worker_argv0.top_half then
+    run_from_list (fun e -> e.top_half_entry_point ())
+  else if Sys.argv.(0) = Worker_argv0.replay then
     run_from_list (fun e -> e.replay_entry_point ())
   else match Sys.argv.(1) with
   | exception Invalid_argument _ ->

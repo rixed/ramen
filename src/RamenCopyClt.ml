@@ -3,9 +3,6 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
-module C = RamenConf
-module F = C.Func
-module P = C.Program
 module N = RamenName
 module Files = RamenFiles
 
@@ -14,20 +11,16 @@ module Files = RamenFiles
 open Binocle
 
 let stats_connects =
-  RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir:(save_dir :> string)
-      Metric.Names.copy_client_connects
-      "Number of attempted connections.")
+  IntCounter.make Metric.Names.copy_client_connects
+    Metric.Docs.copy_client_connects
 
 let stats_tuples =
-  RamenBinocle.ensure_inited (fun save_dir ->
-    IntCounter.make ~save_dir:(save_dir :> string)
-      Metric.Names.copy_client_tuples
-      "Number of sent tuples.")
+  IntCounter.make Metric.Names.copy_client_tuples
+    Metric.Docs.copy_client_tuples
 
 (* Client: *)
 
-let copy_client conf host port fq parent_num =
+let copy_client host port fq parent_num =
   !logger.info "Connecting to copy server at %a:%d" N.host_print host port ;
   let service = string_of_int port in
   let open Unix in
@@ -45,11 +38,11 @@ let copy_client conf host port fq parent_num =
           (string_of_sockaddr addr.ai_addr) (Printexc.to_string e) ;
         None
     ) addrs in
-  IntCounter.inc (stats_connects conf.C.persist_dir) ;
-  let target = fq, parent_num in
+  IntCounter.inc stats_connects ;
+  let target : RamenCopy.set_target_msg = fq, parent_num in
   Files.marshal_into_fd fd target ;
   !logger.info "Send target identification" ;
-  fun bytes start stop ->
-    IntCounter.inc (stats_tuples conf.C.persist_dir) ;
-    let msg = bytes, start, stop in
+  fun bytes ->
+    IntCounter.inc stats_tuples ;
+    let msg : RamenCopy.append_msg = bytes in
     Files.marshal_into_fd fd msg

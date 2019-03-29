@@ -544,12 +544,14 @@ let compile conf get_parent ~exec_file source_file
           Printf.fprintf oc
             "\t\t%S,\n\
              \t\t\t{ worker_entry_point = %s.%s ;\n\
+             \t\t\t  top_half_entry_point = %s.%s ;\n\
              \t\t\t  replay_entry_point = %s.%s ;\n\
              \t\t\t  convert_entry_point = %s.%s } ;\n"
             (func.F.name :> string)
-            mod_name worker_entry_point
-            mod_name replay_entry_point
-            mod_name convert_entry_point
+            mod_name EntryPoints.worker
+            mod_name EntryPoints.top_half
+            mod_name EntryPoints.replay
+            mod_name EntryPoints.convert
         ) compiler_funcs ;
         Printf.fprintf oc "\t]\n"
       ) in

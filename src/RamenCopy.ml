@@ -9,4 +9,4 @@ type set_target_msg = N.fq * int
 
 (* Append the given tuples to the proper ringbuffer
  * (once target has been set): *)
-type append_msg = Bytes.t * float * float
+type append_msg = Bytes.t

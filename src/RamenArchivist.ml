@@ -254,8 +254,9 @@ let update_worker_stats ?while_ conf =
   in
   let now = Unix.gettimeofday () in
   RamenPs.read_stats ?while_ conf |>
-  Hashtbl.iter (fun fq s ->
-    Hashtbl.modify_opt fq (function
+  Hashtbl.iter (fun (fq, is_top_half) s ->
+    if not is_top_half then
+      Hashtbl.modify_opt fq (function
       | None ->
           Some (None, func_stats_of_stat s now)
       | Some (tot, cur) ->

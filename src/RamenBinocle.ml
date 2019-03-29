@@ -41,6 +41,7 @@ let profile_fields =
  * (un)serialization functions! *)
 let tuple_typ =
   [ { name = N.field "worker" ; typ = { structure = TString ; nullable = false } ; units = Some RamenUnits.processes ; doc = "" ; aggr = None } ;
+    { name = N.field "top-half" ; typ = { structure = TBool ; nullable = false } ; units = None ; doc = "True if that worker performs only the bottom half of a worker" ; aggr = None } ;
     { name = N.field "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ;
       doc = "When those statistics have been collected (wall clock time)" ; aggr = None } ;
     { name = N.field "min_event_time" ; typ = { structure = TFloat ; nullable = true } ; units = Some RamenUnits.seconds_since_epoch ;
@@ -94,15 +95,16 @@ let fix_sz = tot_fixsz tuple_typ
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, profile, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, profile, _, _, _, _, _, _, _) =
   nullmask_sz +
   fix_sz +
   sersize_of_string worker +
   sersize_of_record profile
 
 let serialize tx start_offs
-              (worker, start, min_etime, max_etime, ic, sc, oc, gc, cpu,
-               ram, max_ram, profile, wi, wo, bi, bo, os, lo, stime) =
+              (worker, is_top_half, start, min_etime, max_etime, ic, sc, oc,
+               gc, cpu, ram, max_ram, profile, wi, wo, bi, bo, os, lo,
+               stime) =
   zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
   let write_nullable_thing w sz offs null_i = function
     | None ->
@@ -121,6 +123,9 @@ let serialize tx start_offs
   let offs =
     write_string tx offs worker ;
     offs + sersize_of_string worker in
+  let offs =
+    write_bool tx offs is_top_half ;
+    offs + sersize_of_bool in
   let offs =
     write_float tx offs start ;
     offs + sersize_of_float in
@@ -168,6 +173,8 @@ let unserialize tx start_offs =
   let offs = start_offs + nullmask_sz in
   let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
+  let is_top_half = read_bool tx offs in
+  let offs = offs + sersize_of_bool in
   let start = read_float tx offs in
   let offs = offs + sersize_of_float in
   let min_etime, offs = read_nullable_float 0 offs in
@@ -193,8 +200,8 @@ let unserialize tx start_offs =
   let stime = read_float tx offs in
   let offs = offs + sersize_of_float in
   let t =
-    worker, start, min_etime, max_etime, ic, sc , oc, gc, cpu, ram, max_ram,
-    profile, wi, wo, bi, bo, os, lo, stime in
+    worker, is_top_half, start, min_etime, max_etime, ic, sc , oc, gc,
+    cpu, ram, max_ram, profile, wi, wo, bi, bo, os, lo, stime in
   assert (offs <= start_offs + max_sersize_of_tuple t) ;
   t
 

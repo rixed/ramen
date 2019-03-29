@@ -508,7 +508,10 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
           List.iter (fun func ->
             let fq = N.fq_of_program program_name func.F.name in
             if Globs.matches pattern (fq :> string) then
-              let s = Hashtbl.find_default stats fq RamenPs.no_stats in
+              (* TODO: also lookup for the top-half and... display it on
+               * a separate line? *)
+              let s =
+                Hashtbl.find_default stats (fq, false) RamenPs.no_stats in
               (if profile then
                 [| Some (ValStr (fq :> string)) ;
                    Some (ValFlt s.cpu) ;

@@ -3271,7 +3271,7 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
     loop [] es
 
 let emit_aggregate opc global_env group_env env_env param_env
-                   name in_typ =
+                   name top_half_name in_typ =
   let out_typ = opc.typ in
   match opc.op with
   | Some O.Aggregate
@@ -3420,7 +3420,20 @@ let emit_aggregate opc global_env group_env env_env param_env
     commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
   p "    global_init_ group_init_" ;
   p "    get_notifications_ %f" every ;
-  p "    orc_make_handler_ orc_write orc_close\n"
+  p "    orc_make_handler_ orc_write orc_close\n" ;
+  (* The top-half is similar, but need less parameters: *)
+  p "let %s () =" top_half_name ;
+  p "  CodeGenLib_Skeletons.top_half" ;
+  p "    read_in_tuple_" ;
+  (* Now the where_fast filter that we can apply is the same as the real
+   * where_fast_ filter, unless the where_fast filter make use of some
+   * stateful function, or of the previous out tuple, or the max_merged
+   * tuple, in which case we must pass all tuples: *)
+  (* No actually we need to be able to extract from the WHERE condition
+   * the most we can, ie all the ANDed expressions using no state and no
+   * previous and no max_merged. For now just use true. *)
+  let filter = "(fun _ -> true)" in
+  p "    %s\n" filter
   | _ -> assert false
 
 let sanitize_ocaml_fname s =
@@ -3529,8 +3542,11 @@ let emit_header func params_mod oc =
     (O.print true) func.F.operation
     params_mod
 
-let emit_operation
-      name func global_env group_env env_env param_env opc =
+let emit_operation name top_half_name func
+                   global_env group_env env_env param_env opc =
+  (* Default top-half: a NOP *)
+  Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
+  (* Emit code for all the operations: *)
   match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; _ } ; _ } ->
@@ -3556,7 +3572,7 @@ let emit_operation
           doc = "" ; aggr = None }
       ) func.F.in_type in
     emit_aggregate opc global_env group_env env_env param_env
-                   name in_type
+                   name top_half_name in_type
 
 (* A function that reads the history and write it according to some out_ref
  * under a given chanel: *)
@@ -3756,10 +3772,10 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
         emit_orc_wrapper func orc_write_func orc_read_func opc.code ;
         emit_make_orc_handler "orc_make_handler_" func opc.code ;
         emit_factors_of_tuple "factors_of_tuple_" func opc.code ;
-        emit_operation worker_entry_point func
+        emit_operation EntryPoints.worker EntryPoints.top_half func
                        global_env group_env env_env param_env opc ;
-        emit_replay replay_entry_point func opc ;
-        emit_convert convert_entry_point func opc.code ;
+        emit_replay EntryPoints.replay func opc ;
+        emit_convert EntryPoints.convert func opc.code ;
         Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                            \n(* Operation Implementation: *)\n\n%s\n"
           (IO.close_out consts) (IO.close_out code)

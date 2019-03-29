@@ -31,10 +31,10 @@ let stats_tuples =
 
 let copy_all conf fd rb =
   forever (fun () ->
-    let bytes, start, stop =
+    let bytes : RamenCopy.append_msg =
       Files.(marshal_from_fd socket_path) fd in
     IntCounter.inc (stats_tuples conf.C.persist_dir) ;
-    RingBuf.enqueue rb bytes (Bytes.length bytes) start stop
+    RingBuf.enqueue rb bytes (Bytes.length bytes) 0. 0.
   ) ()
 
 let serve conf fd =
@@ -42,7 +42,8 @@ let serve conf fd =
     (Files.int_of_fd fd) ;
   IntCounter.inc (stats_accepts conf.C.persist_dir) ;
   (* First message is supposed to identify what the target is: *)
-  let child, parent_num = Files.(marshal_from_fd socket_path) fd in
+  let (child, parent_num) : RamenCopy.set_target_msg =
+    Files.(marshal_from_fd socket_path) fd in
   !logger.info "Received target identification: %a, #%d"
     N.fq_print child parent_num ;
   let _mre, _prog, func =

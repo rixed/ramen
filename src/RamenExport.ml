@@ -409,7 +409,7 @@ let replay conf ?(while_=always) fq field_names where since until
         let _, pids, eofs =
           Set.fold (fun sfq (i, pids, eofs) ->
             let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
-            let args = [| replay_argv0 ; (sfq :> string) |]
+            let args = [| Worker_argv0.replay ; (sfq :> string) |]
             and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc
             and rb_archive =
               (* We pass the name of the current ringbuf archive if

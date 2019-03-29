@@ -142,6 +142,8 @@ struct
     let perf_flush_others =
       "Average time spent flushing other tuples, for each incoming one."
     let profile = "Performance measurements."
+    let copy_client_connects = "Number of attempted connections."
+    let copy_client_tuples = "Number of sent tuples."
   end
 end
 
@@ -382,8 +384,17 @@ end
 
 (* What we use as workers argv.(0) to make it easier to read ps/top
  * output: *)
-let worker_argv0 = "ramen worker:"
-let replay_argv0 = "ramen replay: "
+module Worker_argv0 =
+struct
+  let full_worker = "ramen worker:"
+  (* The top half of a worker executes the fast-where and then sends the
+   * filtered tuples into the children. In the future, when we can transmit
+   * aggregation state, it could go as far as aggregating.
+   * The tunneld service then enqueue the tuples in the proper worker input
+   * queue. *)
+  let top_half = "ramen worker (top-half):"
+  let replay = "ramen replay: "
+end
 
 (* Number of seconds we keep cached factors after new tuples have been
  * produced (seconds): *)
@@ -412,6 +423,10 @@ let min_delay_between_full_out_measurement = 3.
 let max_archivist_stat_file_age = 3. *. 60.
 
 (* Well known entry points in generated code: *)
-let worker_entry_point = "worker"
-let replay_entry_point = "replay"
-let convert_entry_point = "convert"
+module EntryPoints =
+struct
+  let worker = "worker"
+  let top_half = "top_half"
+  let replay = "replay"
+  let convert = "convert"
+end

@@ -596,7 +596,9 @@ let run conf server_url api graphite
   let stats = RamenPs.read_stats conf in
   !logger.info "Resources:%a"
     (Hashtbl.print ~first:"\n\t" ~last:"" ~kvsep:"\t" ~sep:"\n\t"
-      N.fq_print
+      (fun oc (fq, is_top_half) ->
+        assert (not is_top_half) ;
+        N.fq_print oc fq)
       (fun oc s ->
         Printf.fprintf oc "cpu:%fs\tmax ram:%s"
           s.RamenPs.cpu (Uint64.to_string s.max_ram)))

@@ -251,6 +251,24 @@ CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
   CAMLreturn(bytes_);
 }
 
+/* A function to return a full message, used to forward messages to the
+ * tunneld service. */
+CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
+{
+  CAMLparam1(tx);
+  CAMLlocal1(bytes_);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  struct ringbuf_file *rbf = wrtx->rb->rbf;
+  size_t const size =
+      sizeof(*rbf->data) * (wrtx->tx.next - wrtx->tx.record_start);
+
+  bytes_ = caml_alloc_string(size);
+  if (! bytes_) caml_failwith("Cannot malloc tx bytes");
+  memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
+
+  CAMLreturn(bytes_);
+}
+
 CAMLprim value wrap_ringbuf_dequeue(value rb_)
 {
   CAMLparam1(rb_);

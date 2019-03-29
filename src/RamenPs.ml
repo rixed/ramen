@@ -109,7 +109,8 @@ let read_stats ?while_ conf =
   and get_u64 = function VU64 n -> n [@@ocaml.warning "-8"]
   and get_nu64 = function VNull -> None | VU64 n -> Some n [@@ocaml.warning "-8"]
   and get_float = function VFloat f -> f [@@ocaml.warning "-8"]
-  and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"] in
+  and get_nfloat = function VNull -> None | VFloat f -> Some f [@@ocaml.warning "-8"]
+  and get_bool = function VBool b -> b [@@ocaml.warning "-8"] in
   let get_perf = function VRecord kvs ->
     assert (fst kvs.(0) = "count") ;
     assert (fst kvs.(1) = "system") ;
@@ -147,28 +148,29 @@ let read_stats ?while_ conf =
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until () (fun () tuple _t1 _t2 ->
     let worker = get_string tuple.(0)
-    and time = get_float tuple.(1)
+    and is_top_half = get_bool tuple.(1)
+    and time = get_float tuple.(2)
     and stats =
-      { min_etime = get_nfloat tuple.(2) ;
-        max_etime = get_nfloat tuple.(3) ;
-        in_count = get_nu64 tuple.(4) ;
-        selected_count = get_nu64 tuple.(5) ;
-        out_count = get_nu64 tuple.(6) ;
-        group_count = get_nu64 tuple.(7) ;
-        cpu = get_float tuple.(8) ;
-        ram = get_u64 tuple.(9) ;
-        max_ram = get_u64 tuple.(10) ;
-        profile = get_profile tuple.(11) ;
-        wait_in = get_nfloat tuple.(12) ;
-        wait_out = get_nfloat tuple.(13) ;
-        bytes_in = get_nu64 tuple.(14) ;
-        bytes_out = get_nu64 tuple.(15) ;
-        avg_full_bytes = get_nu64 tuple.(16) ;
-        last_out = get_nfloat tuple.(17) ;
-        startup_time = get_float tuple.(18) }
+      { min_etime = get_nfloat tuple.(3) ;
+        max_etime = get_nfloat tuple.(4) ;
+        in_count = get_nu64 tuple.(5) ;
+        selected_count = get_nu64 tuple.(6) ;
+        out_count = get_nu64 tuple.(7) ;
+        group_count = get_nu64 tuple.(8) ;
+        cpu = get_float tuple.(9) ;
+        ram = get_u64 tuple.(10) ;
+        max_ram = get_u64 tuple.(11) ;
+        profile = get_profile tuple.(12) ;
+        wait_in = get_nfloat tuple.(13) ;
+        wait_out = get_nfloat tuple.(14) ;
+        bytes_in = get_nu64 tuple.(15) ;
+        bytes_out = get_nu64 tuple.(16) ;
+        avg_full_bytes = get_nu64 tuple.(17) ;
+        last_out = get_nfloat tuple.(18) ;
+        startup_time = get_float tuple.(19) }
     in
     (* Keep only the latest stat line per worker: *)
-    Hashtbl.modify_opt (N.fq worker) (function
+    Hashtbl.modify_opt (N.fq worker, is_top_half) (function
       | None -> Some (time, stats)
       | Some (time', _) as prev ->
           if time' > time then prev else Some (time, stats)
@@ -209,7 +211,7 @@ let add_stats s1 s2 =
 
 let per_program stats =
   let h = Hashtbl.create 17 in
-  Hashtbl.iter (fun fq stats ->
+  Hashtbl.iter (fun (fq, _is_top_half) stats ->
     let program, _ = N.fq_parse fq in
     Hashtbl.modify_opt program (function
       | None -> Some stats
