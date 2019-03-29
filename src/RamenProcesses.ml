@@ -155,6 +155,9 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
  * Also monitor quit.
  *)
 
+type must_run_top_half =
+  { mre : C.must_run_entry ; prog : P.t ; func : F.t ; parent_num : int }
+
 (* Description of a running worker.
  * Not persisted on disk. *)
 type running_process =
@@ -163,6 +166,7 @@ type running_process =
     func : C.Func.t ;
     log_level : log_level ;
     report_period : float ;
+    top_half : must_run_top_half option ;
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
     mutable continued : bool ;
@@ -178,10 +182,10 @@ let print_running_process oc proc =
     (proc.func.F.name :> string)
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process conf mre func =
+let make_running_process conf mre func top_half =
   let log_level =
     if mre.C.debug then Debug else conf.C.log_level in
-  { bin = mre.C.bin ; params = mre.C.params ; pid = None ;
+  { bin = mre.C.bin ; params = mre.C.params ; top_half ; pid = None ;
     last_killed = 0. ; continued = false ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. ; log_level ;
@@ -224,18 +228,19 @@ let check_is_subtype t1 t2 =
       failwith
   ) t1
 
-(* Returns the running parents and children of a func: *)
+(* Returns the running parents and children of a func present in must_run. *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (_, func) (ps, cs) ->
-    (* Tells if [func'] is a parent of [func]: *)
+  Hashtbl.fold (fun _k (mre, prog, func) (ps, cs) ->
+    (* if [func'] is a parent of [func] then return its parent_num, or
+     * raise Not_found: *)
     let is_parent_of func func' =
-      List.exists (fun (rel_par_prog, par_func) ->
+      List.findi (fun _ (rel_par_prog, par_func) ->
         func'.F.name = par_func &&
         func'.F.program_name =
           F.program_of_parent_prog func.F.program_name rel_par_prog
-      ) func.F.parents in
-    (if is_parent_of f func then func::ps else ps),
-    (if is_parent_of func f then func::cs else cs)
+      ) func.F.parents |> fst in
+    (try (mre, prog, func, is_parent_of f func)::ps with Not_found -> ps),
+    (try (mre, prog, func, is_parent_of func f)::cs with Not_found -> cs)
   ) must_run ([], [])
 
 open Binocle
@@ -388,7 +393,7 @@ let really_start conf proc parents children =
   (* And the pre-filled out_ref: *)
   !logger.debug "Updating out-ref buffers..." ;
   let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
-  List.iter (fun c ->
+  List.iter (fun (_, _, c, _) ->
     let fname = input_ringbuf_fname conf proc.func c
     and fieldmask = make_fieldmask proc.func c in
     (* The destination ringbuffer must exist before it's referenced in an
@@ -463,7 +468,7 @@ let really_start conf proc parents children =
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
-  List.iter (fun p ->
+  List.iter (fun (_, _, p, _) ->
     let out_ref =
       C.out_ringbuf_names_ref conf p in
     let fname = input_ringbuf_fname conf p proc.func
@@ -489,7 +494,7 @@ let really_try_start conf now must_run proc =
           let p_prog =
             N.(program_of_rel_program proc.func.program_name rel_p_prog) in
           let has_parent =
-            List.exists (fun func ->
+            List.exists (fun (_, _, func, _) ->
               func.F.program_name = p_prog && func.F.name = p_func
             ) parents in
           if not has_parent then
@@ -516,11 +521,11 @@ let really_try_start conf now must_run proc =
   try
     check_parents () ;
     parents_ok := true ;
-    List.iter (fun p ->
-      check_linkage p proc.func
+    List.iter (fun (_, _, pfunc, _) ->
+      check_linkage pfunc proc.func
     ) parents ;
-    List.iter (fun c ->
-      check_linkage proc.func c
+    List.iter (fun (_, _, cfunc, _) ->
+      check_linkage proc.func cfunc
     ) children ;
     really_start conf proc parents children
   with e ->
@@ -533,7 +538,9 @@ let really_try_start conf now must_run proc =
 
 let try_start conf must_run proc =
   let now = Unix.gettimeofday () in
-  if proc.quarantine_until > now then (
+  if proc.top_half <> None then (
+    !logger.warning "Skipping top-half"
+  ) else if proc.quarantine_until > now then (
     !logger.debug "Operation %a still in quarantine"
       print_running_process proc
   ) else (
@@ -549,9 +556,9 @@ let try_kill conf must_run proc =
   let parents, _children = relatives proc.func must_run in
   (* Let's remove this proc from all its parent out-ref. *)
   let input_ringbufs = C.in_ringbuf_names conf proc.func in
-  List.iter (fun p ->
+  List.iter (fun (_, _, pfunc, _) ->
     let parent_out_ref =
-      C.out_ringbuf_names_ref conf p in
+      C.out_ringbuf_names_ref conf pfunc in
     List.iter (fun this_in ->
       OutRef.remove parent_out_ref this_in RamenChannel.live
     ) input_ringbufs
@@ -583,9 +590,11 @@ let last_checked_outref = ref 0.
 (* Need also running to check which workers are actually running *)
 let check_out_ref conf must_run running =
   !logger.debug "Checking out_refs..." ;
-  (* Build the set of all wrapping ringbuf that are being read: *)
+  (* Build the set of all wrapping ringbuf that are being read.
+   * Note that input rb of a top-half must be treated the same as input
+   * rb of a full worker: *)
   let rbs =
-    Hashtbl.fold (fun _k (_, func) s ->
+    Hashtbl.fold (fun _k (_, _, func) s ->
       C.in_ringbuf_names conf func |>
       List.fold_left (fun s rb_name -> Set.add rb_name s) s
     ) must_run (Set.singleton (C.notify_ringbuf conf)) in
@@ -609,18 +618,18 @@ let check_out_ref conf must_run running =
        * parent: *)
       let par_funcs, _c = relatives proc.func must_run in
       let in_rbs = C.in_ringbuf_names conf proc.func |> Set.of_list in
-      List.iter (fun par_func ->
-        let out_ref = C.out_ringbuf_names_ref conf par_func in
+      List.iter (fun (_, _, pfunc, _) ->
+        let out_ref = C.out_ringbuf_names_ref conf pfunc in
         let outs = OutRef.read_live out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
           !logger.error "Operation %s must output to %s but does not, fixing"
-            (F.fq_name par_func :> string)
+            (F.fq_name pfunc :> string)
             (F.fq_name proc.func :> string) ;
           log_and_ignore_exceptions ~what:("fixing "^(out_ref :> string))
             (fun () ->
-              let fname = input_ringbuf_fname conf par_func proc.func
-              and fieldmask = make_fieldmask par_func proc.func in
+              let fname = input_ringbuf_fname conf pfunc proc.func
+              and fieldmask = make_fieldmask pfunc proc.func in
               OutRef.add out_ref fname fieldmask) ())
       ) par_funcs
     )
@@ -670,9 +679,8 @@ let watchdog = ref None
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
-  let must_run_here mre =
-    mre.C.status = C.MustRun &&
-    (N.is_empty mre.C.on_hostname || mre.C.on_hostname = conf.C.hostname) in
+  let match_localhost on_hostname =
+    N.is_empty on_hostname || on_hostname = conf.C.hostname in
   if !watchdog = None then
     watchdog :=
       (* In the first run we might have *plenty* of workers to start, thus
@@ -682,11 +690,19 @@ let synchronize_running conf autoreload_delay =
                                "supervisor" quit) ;
   let watchdog = Option.get !watchdog in
   (* Stop/Start processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the function mount point, signature and
-   * parameters to the [C.must_run_entry] and func.
-   * [running] is a hash from the function mount point, signature and
-   * parameters to its running_process (mutable pid, cleared asynchronously
-   * when the worker terminates). *)
+   * [must_run] is a hash from the function mount point (program and function
+   * name), signature, parameters and top-half info, to the
+   * [C.must_run_entry], prog and func.
+   *
+   * [running] is a hash from the same key to its running_process (mutable
+   * pid, cleared asynchronously when the worker terminates).
+   *
+   * FIXME: it would be nice if all parents were resolved once and for all
+   * in [must_run] as well, as a list of optional function mount point (FQ).
+   * When a function is reparented we would then detect it and could fix the
+   * outref immediately.
+   * Similarly, [running] should keep the previous set of parents (or rather,
+   * the name of their out_ref). *)
   let synchronize must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
@@ -701,10 +717,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun k (mre, func) ->
+    Hashtbl.iter (fun (_, _, _, _, th_opt as k) (mre, _, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process conf mre func in
+          let proc = make_running_process conf mre func th_opt in
           Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
@@ -785,8 +801,10 @@ let synchronize_running conf autoreload_delay =
                * of a worker changes but not its name we see a different
                * worker. *)
               Hashtbl.clear must_run ;
+              (* First put into [must_run] the programs that must run in this
+               * host: *)
               Hashtbl.iter (fun program_name (mre, get_rc) ->
-                if must_run_here mre then (
+                if match_localhost mre.C.on_hostname then (
                   if not (N.is_empty mre.C.src_file) then (
                     !logger.debug "Trying to build %a"
                       N.path_print mre.C.bin ;
@@ -798,7 +816,7 @@ let synchronize_running conf autoreload_delay =
                         RamenMake.build
                           conf get_parent program_name mre.C.src_file
                           mre.C.bin) ()) ;
-                  match get_rc () with
+                  (match get_rc () with
                   | exception _ ->
                       (* Errors have been logged already, nothing more can
                        * be done about this. *)
@@ -817,10 +835,11 @@ let synchronize_running conf autoreload_delay =
                          * unset is changed in the program then that's considered a
                          * different program. *)
                         let k =
-                          program_name, f.F.name, f.F.signature, prog.P.params
+                          program_name, f.F.name, f.F.signature,
+                          prog.P.params, None
                         in
                         Hashtbl.modify_opt k (function
-                          | None -> Some (mre, f)
+                          | None -> Some (mre, prog, f)
                           | prev ->
                               !logger.error
                                 "The same function is asked to run several \
@@ -832,7 +851,53 @@ let synchronize_running conf autoreload_delay =
                               prev
                         ) must_run
                       ) prog.P.funcs)
+                )
               ) programs ;
+              (* Now add the top-halves of functions that must run on other
+               * hosts but that are direct children of anything already in
+               * [must_run]: *)
+              let top_halves =
+                Hashtbl.fold (fun _ (mre, get_rc) top_halves ->
+                  if match_localhost mre.C.on_hostname then
+                    top_halves
+                  else
+                    match get_rc () with
+                    | exception _ ->
+                        top_halves
+                    | prog ->
+                        List.fold_left (fun top_halves func ->
+                          (* We need a top half for each individual parent
+                           * running here: *)
+                          let ps, _cs = relatives func must_run in
+                          List.fold_left (fun top_halves (_, pprog, pfunc, parent_num) ->
+                            let k =
+                              pfunc.F.program_name, pfunc.F.name,
+                              pfunc.F.signature, pprog.P.params, None in
+                            if Hashtbl.mem must_run k then (
+                              !logger.debug "Parent %a/%a of remote %a/%a \
+                                             is running locally!"
+                                N.program_print pfunc.F.program_name
+                                N.func_print pfunc.F.name
+                                N.program_print func.F.program_name
+                                N.func_print func.F.name ;
+                              { mre ; prog ; func ; parent_num } ::
+                                top_halves
+                            ) else top_halves
+                          ) top_halves ps
+                        ) top_halves prog.P.funcs
+                ) programs [] in
+              (* Actually add the top-halves into must_run: *)
+              List.iter (fun (th : must_run_top_half) ->
+                !logger.warning "Should run the top half of %a/%a toward %a"
+                  N.program_print th.func.F.program_name
+                  N.func_print th.func.F.name
+                  N.host_print th.mre.C.on_hostname ;
+                let k = th.func.F.program_name, th.func.F.name,
+                        th.func.F.signature, th.prog.P.params,
+                        Some th in
+                assert (not (Hashtbl.mem must_run k)) ;
+                Hashtbl.add must_run k (th.mre, th.prog, th.func)
+              ) top_halves ;
               now
             ) else last_read) in
         let changed = synchronize must_run running in
