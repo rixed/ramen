@@ -269,7 +269,7 @@ let run conf params replace kill_if_disabled report_period program_name_opt
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file ?on_hostname bin_file program_name_opt
+               ?src_file ~on_hostname bin_file program_name_opt
 
 (*
  * `ramen kill`
@@ -280,8 +280,6 @@ let run conf params replace kill_if_disabled report_period program_name_opt
 
 let kill conf program_names purge () =
   init_logger conf.C.log_level ;
-  let program_names =
-    List.map Globs.compile program_names in
   let num_kills = RamenRun.kill conf ~purge program_names in
   Printf.printf "Killed %d program%s\n"
     num_kills (if num_kills > 1 then "s" else "")
@@ -409,7 +407,6 @@ let sort_col_of_string spec str =
 
 let ps_ profile conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
-  let pattern = Globs.compile pattern in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)

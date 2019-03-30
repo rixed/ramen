@@ -27,6 +27,13 @@ let host =
   in
   Arg.conv ~docv:"HOST" (parse, print)
 
+let glob =
+  let parse s = Pervasives.Ok (Globs.compile s)
+  and print fmt p =
+    Format.fprintf fmt "%s" (Globs.decompile p)
+  in
+  Arg.conv ~docv:"PATTERN" (parse, print)
+
 let copts =
   let docs = Manpage.s_common_options in
   let debug =
@@ -326,7 +333,7 @@ let repair =
 let pattern =
   let i = Arg.info ~doc:CliInfo.pattern
                    ~docv:"PATTERN" [] in
-  Arg.(value (pos 0 string "*" i))
+  Arg.(value (pos 0 glob Globs.all i))
 
 let no_abbrev =
   let env = Term.env_info "RAMEN_NO_ABBREVIATION" in
@@ -413,7 +420,7 @@ let params =
 let program_globs =
   let i = Arg.info ~doc:CliInfo.program_globs
                    ~docv:"PROGRAM" [] in
-  Arg.(non_empty (pos_all string [] i))
+  Arg.(non_empty (pos_all glob [] i))
 
 let lib_path =
   let env = Term.env_info "RAMEN_PATH" in
