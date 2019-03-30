@@ -380,8 +380,13 @@ let really_start conf proc parents children =
    * Each time a new worker is started or stopped the parents outrefs
    * are updated. *)
   let fq_str = (F.fq_name proc.func :> string) in
+  let is_top_half = proc.top_half <> None in
   !logger.debug "Creating in buffers..." ;
-  let input_ringbufs = C.in_ringbuf_names conf proc.func in
+  let input_ringbufs =
+    if is_top_half then
+      [ C.in_ringbuf_name_single conf proc.func ]
+    else
+      C.in_ringbuf_names conf proc.func in
   List.iter (fun rb_name ->
     RingBuf.create rb_name ;
     let rb = RingBuf.load rb_name in
@@ -391,20 +396,26 @@ let really_start conf proc parents children =
         IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
-  !logger.debug "Updating out-ref buffers..." ;
-  let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
-  List.iter (fun (_, _, c, _) ->
-    let fname = input_ringbuf_fname conf proc.func c
-    and fieldmask = make_fieldmask proc.func c in
-    (* The destination ringbuffer must exist before it's referenced in an
-     * out-ref, or the worker might err and throw away the tuples: *)
-    RingBuf.create fname ;
-    OutRef.add out_ringbuf_ref fname fieldmask
-  ) children ;
-  (* Always export for a little while at the beginning *)
-  let _bname =
+  let out_ringbuf_ref =
+    if is_top_half then None else (
+      !logger.debug "Updating out-ref buffers..." ;
+      let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
+      List.iter (fun (_, _, c, _) ->
+        let fname = input_ringbuf_fname conf proc.func c
+        and fieldmask = make_fieldmask proc.func c in
+        (* The destination ringbuffer must exist before it's referenced in an
+         * out-ref, or the worker might err and throw away the tuples: *)
+        RingBuf.create fname ;
+        OutRef.add out_ringbuf_ref fname fieldmask
+      ) children ;
+      Some out_ringbuf_ref
+    ) in
+  (* Export for a little while at the beginning (help with both automatic
+   * and manual tests): *)
+  if not is_top_half then (
     let duration = conf.initial_export_duration in
-    start_export ~duration conf proc.func in
+    start_export ~duration conf proc.func |> ignore
+  ) ;
   (* Now actually start the binary *)
   let notify_ringbuf =
     (* Where that worker must write its notifications. Normally toward a
@@ -423,16 +434,11 @@ let really_start conf proc parents children =
     (* Used to choose the function to perform: *)
     "name="^ (proc.func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
-    "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
     "report_ringbuf="^ (C.report_ringbuf conf :> string) ;
     "report_period="^ string_of_float proc.report_period ;
     "notify_ringbuf="^ (notify_ringbuf :> string) ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
-    (* We need to change this dir whenever the func signature or params
-     * change to prevent it to reload an incompatible state: *)
-    "state_file="^ (C.worker_state conf proc.func proc.params :> string) ;
-    "factors_dir="^ (C.factors_of_function conf proc.func :> string) ;
     (match !logger.output with
       | Directory _ ->
         let dir = N.path_cat [ conf.C.persist_dir ; N.path "log/workers" ;
@@ -440,11 +446,28 @@ let really_start conf proc parents children =
         "log="^ (dir :> string)
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
+  let more_env =
+    List.enum (
+      match proc.top_half with
+      | None ->
+        [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
+          (* We need to change this dir whenever the func signature or
+           * params change to prevent it to reload an incompatible state: *)
+          "state_file="^ (C.worker_state conf proc.func proc.params :>
+                            string) ;
+          "factors_dir="^ (C.factors_of_function conf proc.func :>
+                            string) ]
+      | Some th ->
+        [ "copy_srv_host="^ (th.mre.C.on_hostname :> string) ;
+          "copy_srv_port="^ (string_of_int Default.tunneld_port) (* TODO *) ;
+          "parent_num="^ (string_of_int th.parent_num) ]
+    ) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
     Enum.mapi (fun i (n : N.path) ->
-      "input_ringbuf_"^ string_of_int i ^"="^ (n :> string)) in
+      "input_ringbuf_"^ string_of_int i ^"="^ (n :> string)) |>
+    Enum.append more_env in
   (* Pass each individual parameter as a separate envvar; envvars are just
    * non interpreted strings (but for the first '=' sign that will be
    * interpreted by the OCaml runtime) so it should work regardless of the
@@ -538,9 +561,7 @@ let really_try_start conf now must_run proc =
 
 let try_start conf must_run proc =
   let now = Unix.gettimeofday () in
-  if proc.top_half <> None then (
-    !logger.warning "Skipping top-half"
-  ) else if proc.quarantine_until > now then (
+  if proc.quarantine_until > now then (
     !logger.debug "Operation %a still in quarantine"
       print_running_process proc
   ) else (
