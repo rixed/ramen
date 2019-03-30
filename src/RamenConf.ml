@@ -278,8 +278,9 @@ type must_run_entry =
     (* Optionally, run this worker only on this host: *)
     on_hostname : N.host [@ppp_default N.host ""] }
   [@@ppp PPP_OCaml]
+
 (* The must_run file gives us the unique names of the programs. *)
-type must_run_file = (N.program, must_run_entry) Hashtbl.t
+type running_config = (N.program, must_run_entry) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 (* For tests we don't store the rc_file on disk but in there: *)
@@ -288,7 +289,7 @@ let non_persisted_programs = ref (Hashtbl.create 11)
 let read_rc_file =
   let get fname =
     fail_with_context "Reading RC file" (fun () ->
-      Files.ppp_of_file ~default:"{}" must_run_file_ppp_ocaml fname) in
+      Files.ppp_of_file ~default:"{}" running_config_ppp_ocaml fname) in
   fun do_persist fname ->
     if do_persist then get fname
     else !non_persisted_programs
@@ -296,7 +297,7 @@ let read_rc_file =
 let save_rc_file do_persist fd rc =
   if do_persist then
     fail_with_context "Saving RC file" (fun () ->
-      Files.ppp_to_fd ~pretty:true must_run_file_ppp_ocaml fd rc)
+      Files.ppp_to_fd ~pretty:true running_config_ppp_ocaml fd rc)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning

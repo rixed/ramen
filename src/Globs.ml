@@ -243,3 +243,10 @@ let match_fold h s i f =
     match Hashtbl.find h s with
     | exception Not_found -> i
     | v -> f s v i)
+
+(* Serialize patterns as user friendly strings: *)
+let pattern_ppp_ocaml : pattern PPP.t =
+  let star = '*' and placeholder = '?' and escape = '\\' in
+  let s2g = compile ~star ~placeholder ~escape
+  and g2s = decompile in
+  PPP.(string >>: (g2s, s2g))

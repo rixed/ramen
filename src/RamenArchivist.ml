@@ -26,14 +26,6 @@ let conf_dir conf =
  * space we have at disposal.
  *)
 
-(* We want to serialize globs as strings: *)
-type glob = Globs.pattern
-let glob_ppp_ocaml : glob PPP.t =
-  let star = '*' and placeholder = '?' and escape = '\\' in
-  let s2g = Globs.compile ~star ~placeholder ~escape
-  and g2s = Globs.decompile in
-  PPP.(string >>: (g2s, s2g))
-
 type user_conf =
   { (* Global size limit, in byte (although the SMT uses coarser grained
        sizes): *)
@@ -45,7 +37,7 @@ type user_conf =
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
-    retentions : (glob, retention) Hashtbl.t
+    retentions : (Globs.pattern, retention) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
