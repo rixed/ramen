@@ -276,7 +276,7 @@ type must_run_entry =
      * the key in the running config. *)
     src_file : N.path [@ppp_default N.path ""] ;
     (* Optionally, run this worker only on this host: *)
-    on_hostname : N.host [@ppp_default N.host ""] }
+    on_hostname : Globs.pattern [@ppp_default Globs.all] }
   [@@ppp PPP_OCaml]
 
 (* The must_run file gives us the unique names of the programs. *)

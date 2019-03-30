@@ -145,13 +145,13 @@ RAMEN_SOURCES = \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
+	src/Globs.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
 	src/RamenWatchdog.ml \
 	src/HeavyHitters.ml \
-	src/Globs.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
@@ -642,10 +642,10 @@ LINKED_FOR_TESTS = \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
+	src/Globs.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
-	src/Globs.ml \
 	src/RamenCompilConfig.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \

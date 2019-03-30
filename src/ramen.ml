@@ -492,7 +492,7 @@ let src_file =
 
 let on_hostname =
   let i = Arg.info ~doc:CliInfo.on_hostname [ "on-hostname" ] in
-  Arg.(value (opt (some host) None i))
+  Arg.(value (opt glob Globs.all i))
 
 let run =
   Term.(

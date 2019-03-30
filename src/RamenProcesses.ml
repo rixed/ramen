@@ -459,7 +459,9 @@ let really_start conf proc parents children =
           "factors_dir="^ (C.factors_of_function conf proc.func :>
                             string) ]
       | Some th ->
-        [ "copy_srv_host="^ (th.mre.C.on_hostname :> string) ;
+        (* TODO: have a list of possible hosts:port and filter it: *)
+        let copy_srv_host = Globs.decompile th.mre.C.on_hostname in
+        [ "copy_srv_host="^ copy_srv_host ;
           "copy_srv_port="^ (string_of_int Default.tunneld_port) (* TODO *) ;
           "parent_num="^ (string_of_int th.parent_num) ]
     ) in
@@ -705,7 +707,7 @@ let watchdog = ref None
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   let match_localhost on_hostname =
-    N.is_empty on_hostname || on_hostname = conf.C.hostname in
+    Globs.matches on_hostname (conf.C.hostname :> string) in
   if !watchdog = None then
     watchdog :=
       (* In the first run we might have *plenty* of workers to start, thus
@@ -914,10 +916,10 @@ let synchronize_running conf autoreload_delay =
                 ) programs [] in
               (* Actually add the top-halves into must_run: *)
               List.iter (fun (th : must_run_top_half) ->
-                !logger.warning "Should run the top half of %a/%a toward %a"
+                !logger.warning "Should run the top half of %a/%a toward %s"
                   N.program_print th.func.F.program_name
                   N.func_print th.func.F.name
-                  N.host_print th.mre.C.on_hostname ;
+                  (Globs.decompile th.mre.C.on_hostname) ;
                 let k = th.func.F.program_name, th.func.F.name,
                         th.func.F.signature, th.prog.P.params,
                         Some th in
