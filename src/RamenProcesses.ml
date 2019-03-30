@@ -177,9 +177,10 @@ type running_process =
     mutable quarantine_until : float }
 
 let print_running_process oc proc =
-  Printf.fprintf oc "%s/%s (parents=%a)"
+  Printf.fprintf oc "%s/%s%s (parents=%a)"
     (proc.func.F.program_name :> string)
     (proc.func.F.name :> string)
+    (if proc.top_half <> None then " (TOP-HALF)" else "")
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf mre func top_half =
@@ -431,7 +432,7 @@ let really_start conf proc parents children =
     "log_level="^ string_of_log_level proc.log_level ;
     (* To know what to log: *)
     "is_test="^ string_of_bool conf.C.test ;
-    (* Used to choose the function to perform: *)
+    (* Select the function to be executed: *)
     "name="^ (proc.func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
     "report_ringbuf="^ (C.report_ringbuf conf :> string) ;
@@ -487,7 +488,8 @@ let really_start conf proc parents children =
   let env = Array.append env (Array.of_enum more_env) in
   let args = [| Worker_argv0.full_worker ; fq_str |] in
   let pid = run_worker ~and_stop:conf.C.test proc.bin args env in
-  !logger.debug "Function %s now runs under pid %d" fq_str pid ;
+  !logger.debug "Function %a now runs under pid %d"
+    print_running_process proc pid ;
   proc.pid <- Some pid ;
   proc.last_killed <- 0. ;
   (* Update the parents out_ringbuf_ref: *)
@@ -507,6 +509,8 @@ let really_try_start conf now must_run proc =
   info_or_test conf "Starting operation %a"
     print_running_process proc ;
   assert (proc.pid = None) ;
+  (* This returns only the parents/children that are actually running on
+   * this host: *)
   let parents, children = relatives proc.func must_run in
   (* We must not start if a parent is missing: *)
   let check_parents () =
@@ -888,7 +892,8 @@ let synchronize_running conf autoreload_delay =
                     | prog ->
                         List.fold_left (fun top_halves func ->
                           (* We need a top half for each individual parent
-                           * running here: *)
+                           * running here (if we had only one for all then
+                           * we would have to deal with merging/sorting): *)
                           let ps, _cs = relatives func must_run in
                           List.fold_left (fun top_halves (_, pprog, pfunc, parent_num) ->
                             let k =
