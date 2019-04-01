@@ -175,6 +175,24 @@ let list_remove_dups cmp lst =
   [1;2;3] (list_remove_dups Int.compare [1;1;2;3;1;3;2])
 *)
 
+let hashtbl_find_first f h =
+  let res = ref None in
+  try
+    Hashtbl.iter (fun k v ->
+      if f k v then (
+        res := Some (k, v) ;
+        raise Exit)
+    ) h ;
+    raise Not_found
+  with Exit -> Option.get !res
+
+let hashtbl_find_all f h =
+  let res = ref [] in
+  Hashtbl.iter (fun k v ->
+    if f k v then res := (k, v) :: !res
+  ) h ;
+  !res
+
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)

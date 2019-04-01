@@ -64,6 +64,7 @@ let cleanup_old_versions conf dry_run =
       N.path "configuration", v_regexp, N.path RamenVersions.rc ;
       N.path "instrumentation_ringbuf", v1v2_regexp,
         N.path RamenVersions.(instrumentation_tuple ^"_"^ ringbuf) ;
+      N.path "services", v_regexp, N.path RamenVersions.services ;
       N.path "workers/ringbufs", v_regexp, N.path RamenVersions.ringbuf ;
       N.path "workers/out_ref", v_regexp, N.path RamenVersions.out_ref ;
       N.path "workers/states", v_regexp, N.path RamenVersions.worker_state ;

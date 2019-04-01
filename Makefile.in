@@ -162,6 +162,7 @@ RAMEN_SOURCES = \
 	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
+	src/RamenServices.ml \
 	src/RamenProcesses.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -594,6 +595,7 @@ TESTABLE_SOURCES = \
 	src/RamenSmtParser.ml \
 	src/RamenUnits.ml \
 	src/RamenTypeConverters.ml \
+	src/RamenServices.ml \
 	src/RamenProcesses.ml\
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
@@ -664,6 +666,7 @@ LINKED_FOR_TESTS = \
 	src/RamenTyping.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
+	src/RamenServices.ml \
 	src/RamenProcesses.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \

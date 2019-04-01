@@ -40,3 +40,6 @@ let archivist_conf = "v2"
 
 (* Format used for factor possible values (content and file name) *)
 let factors = "v1"
+
+(* Format of the services file *)
+let services = "v1"
