@@ -1341,7 +1341,12 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
   (* Now fork a new server for each new connection: *)
   let sock =
     socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
-  finally (fun () -> close sock)
+  let sock_closed = ref false in
+  finally
+    (fun () ->
+      if not !sock_closed then (
+        close sock ;
+        sock_closed := true))
     (fun () ->
       setsockopt sock SO_REUSEADDR true ;
       bind sock sockaddr ;
@@ -1357,6 +1362,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
           | 0 ->
               Random.init prng_init ;
               close sock ;
+              sock_closed := true ;
               server_fun s ;
               exit 0
           | pid ->
