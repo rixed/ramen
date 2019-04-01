@@ -155,12 +155,25 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
  * Also monitor quit.
  *)
 
+type top_half_spec = { child_host : N.host ; parent_num : int }
+
+(* What is run from a worker: *)
+type worker_part =
+  | Whole
+  (* Top half: only the filtering part of that function is run, once for
+   * every local parent; output is forwarded to another host. *)
+  | TopHalf of top_half_spec
+  (* Bottom-half: The remote parent of a locally running function.
+   * Nothing will be run in this case actually, but it's useful to know
+   * a parent is running somewhere. *)
+  | BottomHalf
+
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
   { rce : C.rc_entry ;
     prog : P.t ;
     func : F.t ;
-    top_half : (N.host * int) option (* dest * parent_num *) }
+    part : worker_part }
 
 (* Description of a running worker that is stored in the [running] hash.
  * Not persisted on disk. *)
@@ -170,7 +183,7 @@ type running_process =
     func : C.Func.t ;
     log_level : log_level ;
     report_period : float ;
-    top_half : (N.host * int) option ;
+    top_half : top_half_spec option ;
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
     mutable continued : bool ;
@@ -187,9 +200,13 @@ let print_running_process oc proc =
     (if proc.top_half <> None then " (TOP-HALF)" else "")
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process conf rce func top_half =
+let make_running_process conf rce func part =
   let log_level =
     if rce.C.debug then Debug else conf.C.log_level in
+  let top_half =
+    match part with
+    | TopHalf th -> Some th
+    | _ -> None in
   { bin = rce.C.bin ; params = rce.C.params ; top_half ; pid = None ;
     last_killed = 0. ; continued = false ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
@@ -462,11 +479,11 @@ let really_start conf proc parents children =
                             string) ;
           "factors_dir="^ (C.factors_of_function conf proc.func :>
                             string) ]
-      | Some ((srv_host : N.host), parent_num) ->
+      | Some th ->
         (* TODO: have a list of possible hosts:port and filter it: *)
-        [ "copy_srv_host="^ (srv_host :> string) ;
+        [ "copy_srv_host="^ (th.child_host :> string) ;
           "copy_srv_port="^ (string_of_int Default.tunneld_port) (* TODO *) ;
-          "parent_num="^ (string_of_int parent_num) ]
+          "parent_num="^ (string_of_int th.parent_num) ]
     ) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
@@ -712,6 +729,9 @@ let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   let match_localhost on_hostname =
     Globs.matches on_hostname (conf.C.hostname :> string) in
+  let key_of (mre : must_run_entry) part =
+      mre.func.F.program_name, mre.func.F.name,
+      mre.func.F.signature, mre.prog.P.params, part in
   if !watchdog = None then
     watchdog :=
       (* In the first run we might have *plenty* of workers to start, thus
@@ -748,12 +768,13 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, _, _, th_opt as k) mre ->
+    Hashtbl.iter (fun (_, _, _, _, part as k) mre ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process conf mre.rce mre.func th_opt in
-          Hashtbl.add running k proc ;
-          to_start += proc
+          if part <> BottomHalf then (
+            let proc = make_running_process conf mre.rce mre.func part in
+            Hashtbl.add running k proc ;
+            to_start += proc)
       | proc ->
           (* If it's dead, restart it: *)
           if proc.pid = None then to_start += proc else
@@ -867,11 +888,11 @@ let synchronize_running conf autoreload_delay =
                          * different program. *)
                         let k =
                           program_name, f.F.name, f.F.signature,
-                          prog.P.params, None
+                          prog.P.params, Whole
                         in
                         Hashtbl.modify_opt k (function
                           | None ->
-                              Some { rce ; prog ; func = f ; top_half = None }
+                              Some { rce ; prog ; func = f ; part = Whole }
                           | prev ->
                               !logger.error
                                 "The same function is asked to run several \
@@ -885,36 +906,55 @@ let synchronize_running conf autoreload_delay =
                       ) prog.P.funcs)
                 )
               ) programs ;
-              (* Now add the top-halves of functions that must run on other
-               * hosts but that are direct children of anything already in
-               * [must_run]: *)
-              let top_halves =
-                Hashtbl.fold (fun _ (rce, get_rc) top_halves ->
+              (* Now add the bottom (resp top) halves of functions that must
+               * run on other hosts but which are parents (resp. children)
+               * of functions running locally, thus already in [must_run]: *)
+              let halves =
+                Hashtbl.fold (fun _ (rce, get_rc) halves ->
                   if match_localhost rce.C.on_hostname then
-                    top_halves
+                    halves
                   else
                     match get_rc () with
                     | exception _ ->
-                        top_halves
+                        halves
                     | prog ->
                         (* FIXME: rather: filter all possible hosts *)
-                        let child_host =
+                        let rc_host =
                           N.host (Globs.decompile rce.C.on_hostname) in
-                        List.fold_left (fun top_halves func ->
+                        List.fold_left (fun halves func ->
+                          let parents, children = relatives func must_run in
+                          (* Add a bottom half for each function with at least
+                           * one child running locally: *)
+                          let halves =
+                            List.fold_left (fun halves ((cmre : must_run_entry), _) ->
+                              let k = key_of cmre Whole in
+                              match Hashtbl.find must_run k with
+                              | exception Not_found -> halves
+                              | mre when mre.part <> Whole ->
+                                  (* Should not happen yet as we've stored only
+                                   * local functions in must_run so far *)
+                                  halves
+                              | _ ->
+                                !logger.debug "Child %a/%a of remote %a/%a \
+                                               is running locally!"
+                                  N.program_print cmre.func.F.program_name
+                                  N.func_print cmre.func.F.name
+                                  N.program_print func.F.program_name
+                                  N.func_print func.F.name ;
+                                { rce ; prog ; func ; part = BottomHalf }
+                                  :: halves
+                            ) halves children in
                           (* We need a top half for each individual parent
                            * running here (if we had only one for all then
                            * we would have to deal with merging/sorting): *)
-                          let parents, _cs = relatives func must_run in
-                          List.fold_left (fun top_halves ((pmre : must_run_entry), parent_num) ->
-                            let k =
-                              pmre.func.F.program_name, pmre.func.F.name,
-                              pmre.func.F.signature, pmre.prog.P.params, None in
+                          List.fold_left (fun halves ((pmre : must_run_entry), parent_num) ->
+                            let k = key_of pmre Whole in
                             match Hashtbl.find must_run k with
-                            | exception Not_found -> top_halves
-                            | mre when mre.top_half <> None ->
-                                (* SHould not happen yet as we've stored only
+                            | exception Not_found -> halves
+                            | mre when mre.part <> Whole ->
+                                (* Should not happen yet as we've stored only
                                  * local functions in must_run so far *)
-                                top_halves
+                                halves
                             | _ ->
                               !logger.debug "Parent %a/%a of remote %a/%a \
                                              is running locally!"
@@ -922,24 +962,22 @@ let synchronize_running conf autoreload_delay =
                                 N.func_print pmre.func.F.name
                                 N.program_print func.F.program_name
                                 N.func_print func.F.name ;
-                              { rce ; prog ; func ;
-                                top_half = Some (child_host, parent_num) } ::
-                                top_halves
-                          ) top_halves parents
-                        ) top_halves prog.P.funcs
+                              { rce ; prog ; func ; part =
+                                  TopHalf { child_host = rc_host ; parent_num} } ::
+                                halves
+                          ) halves parents
+                        ) halves prog.P.funcs
                 ) programs [] in
-              (* Actually add the top-halves into must_run: *)
-              List.iter (fun (th : must_run_entry) ->
+              (* Actually add the bottom and top halves into must_run: *)
+              List.iter (fun (mre : must_run_entry) ->
                 !logger.warning "Should run the top half of %a/%a toward %s"
-                  N.program_print th.func.F.program_name
-                  N.func_print th.func.F.name
-                  (Globs.decompile th.rce.C.on_hostname) ;
-                let k = th.func.F.program_name, th.func.F.name,
-                        th.func.F.signature, th.prog.P.params,
-                        th.top_half in
+                  N.program_print mre.func.F.program_name
+                  N.func_print mre.func.F.name
+                  (Globs.decompile mre.rce.C.on_hostname) ;
+                let k = key_of mre mre.part in
                 assert (not (Hashtbl.mem must_run k)) ;
-                Hashtbl.add must_run k th
-              ) top_halves ;
+                Hashtbl.add must_run k mre
+              ) halves ;
               now
             ) else last_read) in
         let changed = synchronize must_run running in
