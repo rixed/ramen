@@ -218,6 +218,7 @@ let matches p c = match_chunks c p.chunks
   true  (matches (compile "*glop") "pas glop glop")
  *)
 
+(* Tells if the pattern has any kind of wildcard (`*` or `?`) *)
 let has_wildcard p =
   match p.chunks with
   | [] | [ String _ ] -> false
