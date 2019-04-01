@@ -251,13 +251,13 @@ end
 
 let running_config_file conf =
   N.path ((conf.persist_dir :> string) ^"/configuration/"^
-          RamenVersions.graph_config ^"/rc")
+          RamenVersions.rc ^"/rc")
 
 type worker_status = MustRun | Killed [@@ppp PPP_OCaml]
 
 (* Saved configuration is merely a hash from (unique) program names
  * to their binaries, and parameters (actual ones, not default values): *)
-type must_run_entry =
+type rc_entry =
   { (* Tells whether the entry must actually be started. Set to true
        at exit so that we do not loose information of previously run
        entries. *)
@@ -280,7 +280,7 @@ type must_run_entry =
   [@@ppp PPP_OCaml]
 
 (* The must_run file gives us the unique names of the programs. *)
-type running_config = (N.program, must_run_entry) Hashtbl.t
+type running_config = (N.program, rc_entry) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 (* For tests we don't store the rc_file on disk but in there: *)
@@ -302,8 +302,8 @@ let save_rc_file do_persist fd rc =
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
  * the Program.t (with the actual params). *)
-let program_of_running_entry program_name mre =
-  Program.of_bin program_name mre.params mre.bin
+let program_of_running_entry program_name rce =
+  Program.of_bin program_name rce.params rce.bin
 
 (* [f] takes a hash-table of program name to running-config getter.
  * Modifications will not be saved. *)
@@ -312,9 +312,9 @@ let with_rlock conf f =
   RamenAdvLock.with_r_lock rc_file (fun _fd ->
     let programs =
       read_rc_file conf.do_persist rc_file |>
-      Hashtbl.map (fun pn mre ->
-        mre,
-        memoize (fun () -> program_of_running_entry pn mre)) in
+      Hashtbl.map (fun pn rce ->
+        rce,
+        memoize (fun () -> program_of_running_entry pn rce)) in
     f programs)
 
 let with_wlock conf f =
@@ -329,17 +329,17 @@ let with_wlock conf f =
 let is_program_running programs program_name =
   match Hashtbl.find programs program_name with
   | exception Not_found -> false
-  | mre, _get_rc -> mre.status = MustRun
+  | rce, _get_rc -> rce.status = MustRun
 
 let last_conf_mtime conf =
   running_config_file conf |> Files.mtime_def 0.
 
 let find_func programs fq =
   let program_name, func_name = N.fq_parse fq in
-  let mre, get_rc =
+  let rce, get_rc =
     Hashtbl.find programs program_name in
   let prog = get_rc () in
-  mre, prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
+  rce, prog, List.find (fun f -> f.Func.name = func_name) prog.Program.funcs
 
 let find_func_or_fail programs fq =
   try find_func programs fq

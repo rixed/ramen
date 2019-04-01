@@ -17,11 +17,11 @@ let check_orphans killed_prog_names programs =
   !logger.debug "Checking orphans of %a..."
     (pretty_list_print N.program_print) killed_prog_names ;
   (* We want to warn if a child is stalled. *)
-  Hashtbl.iter (fun prog_name mre ->
-    if mre.C.status = MustRun &&
+  Hashtbl.iter (fun prog_name rce ->
+    if rce.C.status = MustRun &&
        not (List.mem prog_name killed_prog_names)
     then (
-      match P.of_bin prog_name mre.C.params mre.C.bin with
+      match P.of_bin prog_name rce.C.params rce.C.bin with
       | exception _ ->
         (* Missing or erroneous programs can't make orphan check fail. *)
         ()
@@ -47,8 +47,8 @@ let check_orphans killed_prog_names programs =
 let kill_locked ?(purge=false) program_names programs =
   let killed_prog_names =
     Hashtbl.enum programs //
-    (fun ((n : N.program), mre) ->
-      (mre.C.status <> C.Killed || purge) &&
+    (fun ((n : N.program), rce) ->
+      (rce.C.status <> C.Killed || purge) &&
       List.exists (fun p ->
         Globs.matches p (n :> string)
       ) program_names) /@
@@ -56,8 +56,8 @@ let kill_locked ?(purge=false) program_names programs =
     List.of_enum in
   let running_killed_prog_names =
     List.filter (fun (n : N.program) ->
-      let mre = Hashtbl.find programs n in
-      mre.C.status <> C.Killed
+      let rce = Hashtbl.find programs n in
+      rce.C.status <> C.Killed
     ) killed_prog_names in
   check_orphans running_killed_prog_names programs ;
   if purge then
@@ -66,8 +66,8 @@ let kill_locked ?(purge=false) program_names programs =
     ) programs
   else
     List.iter (fun n ->
-      let mre = Hashtbl.find programs n in
-      mre.C.status <- C.Killed
+      let rce = Hashtbl.find programs n in
+      rce.C.status <- C.Killed
     ) running_killed_prog_names ;
   List.length killed_prog_names
 
@@ -103,8 +103,8 @@ let check_links ?(force=false) program_name prog running_programs =
               (func.F.name :> string)
               (par_prog :> string) ;
             already_warned1 := Set.add par_prog !already_warned1)
-        | mre ->
-            (match P.of_bin par_prog mre.C.params mre.C.bin with
+        | rce ->
+            (match P.of_bin par_prog rce.C.params rce.C.bin with
             | exception _ -> (* of_bin already logged the error *) ()
             | pprog ->
                 (match List.find (fun p ->
@@ -137,8 +137,8 @@ let check_links ?(force=false) program_name prog running_programs =
    * run by the process supervisor anyway, unless the incompatible
    * relatives are stopped/restarted, in which case these new workers
    * could be run at the expense of the old ones. *)
-  Hashtbl.iter (fun prog_name mre ->
-    match P.of_bin prog_name mre.C.params mre.C.bin with
+  Hashtbl.iter (fun prog_name rce ->
+    match P.of_bin prog_name rce.C.params rce.C.bin with
     | exception _ -> (* of_bin already logged the error *) ()
     | prog' ->
         List.iter (fun func ->
@@ -203,8 +203,8 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       if not replace then
         (match Hashtbl.find programs program_name with
         | exception Not_found -> ()
-        | mre ->
-          if mre.C.status = C.MustRun then
+        | rce ->
+          if rce.C.status = C.MustRun then
             Printf.sprintf "A program named %s is already running"
               (program_name :> string) |>
             failwith) ;

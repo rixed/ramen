@@ -6,7 +6,7 @@
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Format of the list of running programs: *)
-let graph_config = "v16" (* last: changed {T,V}Record format *)
+let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
 let codegen = "v57" (* last: Cosmetics: SF3s *)

@@ -427,8 +427,8 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
     C.with_rlock conf (fun programs ->
-      Hashtbl.iter (fun (program_name : N.program) (mre, _get_rc) ->
-        if (all || mre.C.status = C.MustRun) &&
+      Hashtbl.iter (fun (program_name : N.program) (rce, _get_rc) ->
+        if (all || rce.C.status = C.MustRun) &&
            Globs.matches pattern (program_name :> string)
         then (
           let s = Hashtbl.find_default h program_name RamenPs.no_stats in
@@ -449,7 +449,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.flush_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
-               Some (ValStr (N.string_of_params mre.C.params)) ;
+               Some (ValStr (N.string_of_params rce.C.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
                int_or_na s.out_count ;
@@ -484,8 +484,8 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     C.with_rlock conf (fun programs ->
       (* First pass to get the children: *)
       let children_of_func = Hashtbl.create 23 in
-      Hashtbl.iter (fun _prog_name (mre, get_rc) ->
-        if all || mre.C.status = C.MustRun then match get_rc () with
+      Hashtbl.iter (fun _prog_name (rce, get_rc) ->
+        if all || rce.C.status = C.MustRun then match get_rc () with
         | exception _ -> ()
         | prog ->
             List.iter (fun func ->
@@ -498,8 +498,8 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
               ) func.F.parents
             ) prog.P.funcs
       ) programs ;
-      Hashtbl.iter (fun program_name (mre, get_rc) ->
-        if all || mre.C.status = MustRun then match get_rc () with
+      Hashtbl.iter (fun program_name (rce, get_rc) ->
+        if all || rce.C.status = MustRun then match get_rc () with
         | exception _ -> (* which has been logged already *) ()
         | prog ->
           List.iter (fun func ->

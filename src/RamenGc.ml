@@ -61,7 +61,7 @@ let cleanup_old_versions conf dry_run =
   let to_clean =
     [ N.path "log", date_regexp, get_log_file () ;
       N.path "log/workers", v_regexp, get_log_file () ;
-      N.path "configuration", v_regexp, N.path RamenVersions.graph_config ;
+      N.path "configuration", v_regexp, N.path RamenVersions.rc ;
       N.path "instrumentation_ringbuf", v1v2_regexp,
         N.path RamenVersions.(instrumentation_tuple ^"_"^ ringbuf) ;
       N.path "workers/ringbufs", v_regexp, N.path RamenVersions.ringbuf ;
@@ -213,7 +213,7 @@ let compress_old_archives conf programs dry_run compress_older =
   (* Compress archives of every functions we can find in the RC file (running
    * or not) from ringbuf to ORC: *)
   !logger.debug "Compressing archives..." ;
-  Hashtbl.iter (fun _ (mre, get_rc) ->
+  Hashtbl.iter (fun _ (rce, get_rc) ->
     let prog = get_rc () in
     List.iter (fun func ->
       C.archive_buf_name ~file_type:OutRef.RingBuf conf func |>
@@ -225,7 +225,7 @@ let compress_old_archives conf programs dry_run compress_older =
         then (
           !logger.debug "Compressing %a%s"
             N.path_print fname (if dry_run then " (NOPE)" else "") ;
-          if not dry_run then compress_archive mre.C.bin func.F.name fname
+          if not dry_run then compress_archive rce.C.bin func.F.name fname
         ))
     ) prog.P.funcs
   ) programs

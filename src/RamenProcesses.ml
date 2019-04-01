@@ -156,7 +156,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
  *)
 
 type must_run_top_half =
-  { mre : C.must_run_entry ; prog : P.t ; func : F.t ; parent_num : int }
+  { rce : C.rc_entry ; prog : P.t ; func : F.t ; parent_num : int }
 
 (* Description of a running worker.
  * Not persisted on disk. *)
@@ -183,14 +183,14 @@ let print_running_process oc proc =
     (if proc.top_half <> None then " (TOP-HALF)" else "")
     (List.print F.print_parent) proc.func.parents
 
-let make_running_process conf mre func top_half =
+let make_running_process conf rce func top_half =
   let log_level =
-    if mre.C.debug then Debug else conf.C.log_level in
-  { bin = mre.C.bin ; params = mre.C.params ; top_half ; pid = None ;
+    if rce.C.debug then Debug else conf.C.log_level in
+  { bin = rce.C.bin ; params = rce.C.params ; top_half ; pid = None ;
     last_killed = 0. ; continued = false ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. ; log_level ;
-    report_period = mre.C.report_period }
+    report_period = rce.C.report_period }
 
 (* Returns the name of func input ringbuf for the given parent (if func is
  * merging, each parent uses a distinct one) and the file_spec. *)
@@ -231,7 +231,7 @@ let check_is_subtype t1 t2 =
 
 (* Returns the running parents and children of a func present in must_run. *)
 let relatives f must_run =
-  Hashtbl.fold (fun _k (mre, prog, func) (ps, cs) ->
+  Hashtbl.fold (fun _k (rce, prog, func) (ps, cs) ->
     (* if [func'] is a parent of [func] then return its parent_num, or
      * raise Not_found: *)
     let is_parent_of func func' =
@@ -240,8 +240,8 @@ let relatives f must_run =
         func'.F.program_name =
           F.program_of_parent_prog func.F.program_name rel_par_prog
       ) func.F.parents |> fst in
-    (try (mre, prog, func, is_parent_of f func)::ps with Not_found -> ps),
-    (try (mre, prog, func, is_parent_of func f)::cs with Not_found -> cs)
+    (try (rce, prog, func, is_parent_of f func)::ps with Not_found -> ps),
+    (try (rce, prog, func, is_parent_of func f)::cs with Not_found -> cs)
   ) must_run ([], [])
 
 open Binocle
@@ -460,7 +460,7 @@ let really_start conf proc parents children =
                             string) ]
       | Some th ->
         (* TODO: have a list of possible hosts:port and filter it: *)
-        let copy_srv_host = Globs.decompile th.mre.C.on_hostname in
+        let copy_srv_host = Globs.decompile th.rce.C.on_hostname in
         [ "copy_srv_host="^ copy_srv_host ;
           "copy_srv_port="^ (string_of_int Default.tunneld_port) (* TODO *) ;
           "parent_num="^ (string_of_int th.parent_num) ]
@@ -744,10 +744,10 @@ let synchronize_running conf autoreload_delay =
       false
     ) running ;
     (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun (_, _, _, _, th_opt as k) (mre, _, func) ->
+    Hashtbl.iter (fun (_, _, _, _, th_opt as k) (rce, _, func) ->
       match Hashtbl.find running k with
       | exception Not_found ->
-          let proc = make_running_process conf mre func th_opt in
+          let proc = make_running_process conf rce func th_opt in
           Hashtbl.add running k proc ;
           to_start += proc
       | proc ->
@@ -830,19 +830,19 @@ let synchronize_running conf autoreload_delay =
               Hashtbl.clear must_run ;
               (* First put into [must_run] the programs that must run in this
                * host: *)
-              Hashtbl.iter (fun program_name (mre, get_rc) ->
-                if match_localhost mre.C.on_hostname then (
-                  if not (N.is_empty mre.C.src_file) then (
+              Hashtbl.iter (fun program_name (rce, get_rc) ->
+                if match_localhost rce.C.on_hostname then (
+                  if not (N.is_empty rce.C.src_file) then (
                     !logger.debug "Trying to build %a"
-                      N.path_print mre.C.bin ;
+                      N.path_print rce.C.bin ;
                     log_and_ignore_exceptions
-                      ~what:("rebuilding "^ (mre.C.bin :> string))
+                      ~what:("rebuilding "^ (rce.C.bin :> string))
                       (fun () ->
                         let get_parent =
                           RamenCompiler.parent_from_programs programs in
                         RamenMake.build
-                          conf get_parent program_name mre.C.src_file
-                          mre.C.bin) ()) ;
+                          conf get_parent program_name rce.C.src_file
+                          rce.C.bin) ()) ;
                   (match get_rc () with
                   | exception _ ->
                       (* Errors have been logged already, nothing more can
@@ -850,7 +850,7 @@ let synchronize_running conf autoreload_delay =
                       ()
                   | prog ->
                       (* NOTE: We might want to do this only when
-                       *   P.wants_to_run conf mre.bin mre.params
+                       *   P.wants_to_run conf rce.bin rce.params
                        * but given we cannot change the environment nor
                        * re-read the external experiment file there would be
                        * little use for this. *)
@@ -858,7 +858,7 @@ let synchronize_running conf autoreload_delay =
                         (* Use the mount point + signature + params as the key.
                          * Notice that we take all the parameter values (from
                          * prog.params), not only the explicitly set values (from
-                         * mre.params), so that if a default value that is
+                         * rce.params), so that if a default value that is
                          * unset is changed in the program then that's considered a
                          * different program. *)
                         let k =
@@ -866,7 +866,7 @@ let synchronize_running conf autoreload_delay =
                           prog.P.params, None
                         in
                         Hashtbl.modify_opt k (function
-                          | None -> Some (mre, prog, f)
+                          | None -> Some (rce, prog, f)
                           | prev ->
                               !logger.error
                                 "The same function is asked to run several \
@@ -884,8 +884,8 @@ let synchronize_running conf autoreload_delay =
                * hosts but that are direct children of anything already in
                * [must_run]: *)
               let top_halves =
-                Hashtbl.fold (fun _ (mre, get_rc) top_halves ->
-                  if match_localhost mre.C.on_hostname then
+                Hashtbl.fold (fun _ (rce, get_rc) top_halves ->
+                  if match_localhost rce.C.on_hostname then
                     top_halves
                   else
                     match get_rc () with
@@ -908,7 +908,7 @@ let synchronize_running conf autoreload_delay =
                                 N.func_print pfunc.F.name
                                 N.program_print func.F.program_name
                                 N.func_print func.F.name ;
-                              { mre ; prog ; func ; parent_num } ::
+                              { rce ; prog ; func ; parent_num } ::
                                 top_halves
                             ) else top_halves
                           ) top_halves ps
@@ -919,12 +919,12 @@ let synchronize_running conf autoreload_delay =
                 !logger.warning "Should run the top half of %a/%a toward %s"
                   N.program_print th.func.F.program_name
                   N.func_print th.func.F.name
-                  (Globs.decompile th.mre.C.on_hostname) ;
+                  (Globs.decompile th.rce.C.on_hostname) ;
                 let k = th.func.F.program_name, th.func.F.name,
                         th.func.F.signature, th.prog.P.params,
                         Some th in
                 assert (not (Hashtbl.mem must_run k)) ;
-                Hashtbl.add must_run k (th.mre, th.prog, th.func)
+                Hashtbl.add must_run k (th.rce, th.prog, th.func)
               ) top_halves ;
               now
             ) else last_read) in

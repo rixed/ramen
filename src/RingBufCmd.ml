@@ -183,8 +183,8 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
    * parent/children relationships: *)
   let links =
     C.with_rlock conf (fun programs ->
-      Hashtbl.fold (fun _prog_name (mre, get_rc) links ->
-        if mre.C.status <> MustRun then links else
+      Hashtbl.fold (fun _prog_name (rce, get_rc) links ->
+        if rce.C.status <> MustRun then links else
         match get_rc () with
         | exception _ ->
             links (* Errors have been logged already *)

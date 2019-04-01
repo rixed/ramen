@@ -132,8 +132,8 @@ let get_tables conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
   C.with_rlock conf (fun programs ->
-    Hashtbl.iter (fun _prog_name (mre, get_rc) ->
-      if mre.C.status = C.MustRun then match get_rc () with
+    Hashtbl.iter (fun _prog_name (rce, get_rc) ->
+      if rce.C.status = C.MustRun then match get_rc () with
       | exception _ -> ()
       | prog ->
           List.iter (fun f ->
@@ -313,8 +313,8 @@ let columns_of_table conf table =
   C.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
     | exception _ -> None
-    | mre, get_rc ->
-      if mre.status <> MustRun then None else
+    | rce, get_rc ->
+      if rce.status <> MustRun then None else
         (match get_rc () with
         | exception _ -> None
         | prog ->
@@ -479,10 +479,10 @@ let func_of_table programs table =
     bad_request in
   match Hashtbl.find programs pn with
   | exception Not_found -> no_such_program ()
-  | mre, get_rc ->
+  | rce, get_rc ->
       (match get_rc () with
       (* Best effort if the program is no longer running: *)
-      | exception _ when mre.C.status <> MustRun ->
+      | exception _ when rce.C.status <> MustRun ->
           no_such_program ()
       | prog ->
         (try List.find (fun f -> f.F.name = fn) prog.P.funcs

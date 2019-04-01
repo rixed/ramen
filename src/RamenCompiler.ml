@@ -98,8 +98,8 @@ let parent_from_lib_path lib_path pn =
   loop lib_path
 
 let parent_from_programs programs pn =
-  let mre, get_rc = Hashtbl.find programs pn in
-  if mre.C.status <> MustRun then raise Not_found else get_rc ()
+  let rce, get_rc = Hashtbl.find programs pn in
+  if rce.C.status <> MustRun then raise Not_found else get_rc ()
 
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.

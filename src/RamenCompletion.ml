@@ -127,8 +127,8 @@ let complete_running_function persist_dir =
 let complete_running_program persist_dir =
   let conf = C.make_conf persist_dir in
   Hashtbl.enum (C.with_rlock conf identity) //@
-  (fun (p, (mre, _)) ->
-    if mre.C.status = C.MustRun then
+  (fun (p, (rce, _)) ->
+    if rce.C.status = C.MustRun then
       Some (p :> string)
     else None) /@
   empty_help |> List.of_enum

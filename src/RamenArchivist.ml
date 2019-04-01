@@ -219,7 +219,7 @@ let update_archives conf s func =
 
 let enrich_stats conf per_func_stats =
   C.with_rlock conf identity |>
-  Hashtbl.iter (fun program_name (mre, get_rc) ->
+  Hashtbl.iter (fun program_name (rce, get_rc) ->
     match get_rc () with
     | exception _ -> ()
     | prog ->
@@ -228,7 +228,7 @@ let enrich_stats conf per_func_stats =
           match Hashtbl.find per_func_stats fq with
           | exception Not_found -> ()
           | s ->
-              s.is_running <- mre.C.status = MustRun ;
+              s.is_running <- rce.C.status = MustRun ;
               update_parents s program_name func ;
               update_archives conf s func
         ) prog.P.funcs)
