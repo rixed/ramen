@@ -335,14 +335,14 @@ let really_read_fd fd size =
   let buf = Bytes.create size in
   really_read_fd_into buf 0 fd size
 
-let marshal_into_fd fd v =
+let marshal_into_fd ?(at_start=true) fd v =
   let open BatUnix in
   (* Leak memory for some reason / and do not write anything to the file
    * if we Marshal.to_channel directly. :-/ *)
   let bytes = Marshal.to_bytes v [] in
   let len = Bytes.length bytes in
   restart_on_EINTR (fun () ->
-    lseek fd 0 SEEK_SET |> ignore ;
+    if at_start then lseek fd 0 SEEK_SET |> ignore ;
     write fd bytes 0 len) () |> ignore
 
 let marshal_from_fd ?default fname fd =

@@ -40,9 +40,9 @@ let copy_client host port fq parent_num =
     ) addrs in
   IntCounter.inc stats_connects ;
   let target : RamenCopy.set_target_msg = fq, parent_num in
-  Files.marshal_into_fd fd target ;
+  Files.marshal_into_fd ~at_start:false fd target ;
   !logger.info "Send target identification" ;
   fun bytes ->
     IntCounter.inc stats_tuples ;
     let msg : RamenCopy.append_msg = bytes in
-    Files.marshal_into_fd fd msg
+    Files.marshal_into_fd ~at_start:false fd msg
