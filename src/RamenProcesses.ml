@@ -511,7 +511,10 @@ let really_start conf proc parents children =
       with Not_found -> None) |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
-  let args = [| Worker_argv0.full_worker ; fq_str |] in
+  let args =
+    [| if proc.top_half = None then Worker_argv0.full_worker
+                               else Worker_argv0.top_half ;
+       fq_str |] in
   let pid = run_worker ~and_stop:conf.C.test proc.bin args env in
   !logger.debug "Function %a now runs under pid %d"
     print_running_process proc pid ;

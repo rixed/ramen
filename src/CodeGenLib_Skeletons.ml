@@ -1531,7 +1531,7 @@ let top_half
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
   worker_start worker_name true get_binocle_tuple (fun _conf ->
-    let rb_in_fname = N.path (getenv "input_ringbuf") in
+    let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forward_bytes =
       RamenCopyClt.copy_client srv_host srv_port worker_name parent_num in
