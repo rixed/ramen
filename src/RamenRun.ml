@@ -81,8 +81,7 @@ let kill conf ?purge program_names =
  * ("linking") and then add it.
  *)
 
-(* TODO: remove that useless force option *)
-let check_links ?(force=false) program_name prog running_programs =
+let check_links program_name prog running_programs =
   !logger.debug "checking links" ;
   List.iter (fun func ->
     (* Check linkage:
@@ -122,21 +121,14 @@ let check_links ?(force=false) program_name prog running_programs =
                     already_warned2 :=
                       Set.add (par_prog, par_func) !already_warned2)
                 | par ->
-                  (* We want to err if a parent is incompatible (unless
-                   * --force). *)
+                  (* We want to err if a parent is incompatible. *)
                   let par_out_type =
                     O.out_type_of_operation par.F.operation in
-                  try RamenProcesses.check_is_subtype func.F.in_type
-                                                      par_out_type
-                  with Failure m when force -> (* or let it fail *)
-                    !logger.error "%s" m)))
+                  RamenProcesses.check_is_subtype func.F.in_type
+                                                  par_out_type)))
     ) func.parents
   ) prog.P.funcs ;
-  (* We want to err if a child is incompatible (unless --force).
-   * In case we force the insertion, the bad workers will *not* be
-   * run by the process supervisor anyway, unless the incompatible
-   * relatives are stopped/restarted, in which case these new workers
-   * could be run at the expense of the old ones. *)
+  (* We want to err if a child is incompatible. *)
   Hashtbl.iter (fun prog_name rce ->
     match P.of_bin prog_name rce.C.params rce.C.bin with
     | exception _ -> (* of_bin already logged the error *) ()
@@ -159,10 +151,7 @@ let check_links ?(force=false) program_name prog running_programs =
               | f -> (* so func is depending on f, let's see: *)
                 let out_type =
                   O.out_type_of_operation f.F.operation in
-                try RamenProcesses.check_is_subtype func.F.in_type
-                                                    out_type
-                with Failure m when force -> (* or let it fail *)
-                  !logger.error "%s" m
+                RamenProcesses.check_is_subtype func.F.in_type out_type
           ) func.F.parents
         ) prog'.P.funcs
   ) running_programs
