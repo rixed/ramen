@@ -178,6 +178,7 @@ RAMEN_SOURCES = \
 	src/RamenAlerter.ml \
 	src/TermTable.ml \
 	src/RamenHttpd.ml \
+	src/RamenCopy.ml \
 	src/RamenCopySrv.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
@@ -228,6 +229,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
 	src/RamenSortBuf.ml \
+	src/RamenCopy.ml \
 	src/RamenCopyClt.ml \
 	src/CodeGenLib_Skeletons.ml \
 	src/HeavyHitters.ml \
