@@ -175,6 +175,16 @@ let list_remove_dups cmp lst =
   [1;2;3] (list_remove_dups Int.compare [1;1;2;3;1;3;2])
 *)
 
+let list_revmap_3 f l1 l2 l3 =
+  let rec loop res l1 l2 l3 =
+    match l1, l2, l3 with
+    | [], [], [] -> res
+    | a::l1, b::l2, c::l3 ->
+        loop (f a b c :: res) l1 l2 l3
+    | _ ->
+        invalid_arg "list_revmap_3" in
+  loop [] l1 l2 l3
+
 let hashtbl_find_first f h =
   let res = ref None in
   try

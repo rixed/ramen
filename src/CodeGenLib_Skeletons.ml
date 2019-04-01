@@ -291,6 +291,14 @@ let save_possible_values prev_fname pvs =
 
 (* Helpers *)
 
+(* Read a list of values from the environment: *)
+let getenv_list name f =
+  let rec loop lst i =
+    match Sys.getenv (name ^"_"^ string_of_int i) with
+    | exception Not_found -> lst
+    | n -> loop (f n :: lst) (i + 1) in
+  loop [] 0
+
 (* For non-wrapping buffers we need to know the value for the time, as
  * the min/max times per slice are saved, along the first/last tuple
  * sequence number. *)
@@ -1152,12 +1160,7 @@ let aggregate
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
   worker_start worker_name false get_binocle_tuple (fun conf ->
-    let rb_in_fnames =
-      let rec loop lst i =
-        match Sys.getenv ("input_ringbuf_"^ string_of_int i) with
-        | exception Not_found -> lst
-        | n -> loop (N.path n :: lst) (i + 1) in
-      loop [] 0
+    let rb_in_fnames = getenv_list "input_ringbuf" N.path
     and rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     and notify_rb_name =
@@ -1513,16 +1516,21 @@ let aggregate
     in
     tuple_reader on_tup on_else)
 
+type tunneld_dest = { host : N.host ; port : int ; parent_num : int }
+
 (* Simplified version of [aggregate] that performs only the where filter: *)
 let top_half
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (where : 'tuple_in ->  bool) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and worker_name = N.fq (getenv ~def:"?" "fq_name")
-  and srv_host = N.host (getenv "copy_srv_host")
-  and srv_port = getenv ~def:(string_of_int Default.tunneld_port)
-                        "copy_srv_port" |> int_of_string
-  and parent_num = getenv ~def:"0" "parent_num" |> int_of_string in
+  and tunnelds =
+    let hosts = getenv_list "tunneld_host" N.host
+    and ports = getenv_list "tunneld_port" int_of_string
+    and pnums = getenv_list "parent_num" int_of_string in
+    list_revmap_3 (fun host port parent_num ->
+      { host ; port ; parent_num }
+    ) hosts ports pnums in
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     get_binocle_tuple
@@ -1533,8 +1541,12 @@ let top_half
   worker_start worker_name true get_binocle_tuple (fun _conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
-    let forward_bytes =
-      RamenCopyClt.copy_client srv_host srv_port worker_name parent_num in
+    let forwarders =
+      List.map (fun t ->
+        RamenCopyClt.copy_client t.host t.port worker_name t.parent_num
+      ) tunnelds in
+    let forward_bytes b =
+      List.iter (fun forwarder -> forwarder b) forwarders in
     let rb_in =
       let on _ =
         ignore (Gc.major_slice 0) ;

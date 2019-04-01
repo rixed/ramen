@@ -14,6 +14,7 @@ module O = RamenOperation
 module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Services = RamenServices
 
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
@@ -155,18 +156,24 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
  * Also monitor quit.
  *)
 
-type top_half_spec = { child_host : N.host ; parent_num : int }
+type top_half_spec =
+  { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
 
 (* What is run from a worker: *)
 type worker_part =
   | Whole
   (* Top half: only the filtering part of that function is run, once for
    * every local parent; output is forwarded to another host. *)
-  | TopHalf of top_half_spec
+  | TopHalf of top_half_spec list
   (* Bottom-half: The remote parent of a locally running function.
    * Nothing will be run in this case actually, but it's useful to know
    * a parent is running somewhere. *)
   | BottomHalf
+
+let print_worker_part oc = function
+  | Whole -> String.print oc "whole worker"
+  | TopHalf _ -> String.print oc "top half"
+  | BottomHalf -> String.print oc "bottom half"
 
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
@@ -188,7 +195,7 @@ type running_process =
     func : C.Func.t ;
     log_level : log_level ;
     report_period : float ;
-    top_half : top_half_spec option ;
+    top_half : top_half_spec list ; (* empty list -> not a top half *)
     mutable pid : int option ;
     mutable last_killed : float (* 0 for never *) ;
     mutable continued : bool ;
@@ -202,7 +209,7 @@ let print_running_process oc proc =
   Printf.fprintf oc "%s/%s%s (parents=%a)"
     (proc.func.F.program_name :> string)
     (proc.func.F.name :> string)
-    (if proc.top_half <> None then " (TOP-HALF)" else "")
+    (if proc.top_half <> [] then " (TOP-HALF)" else "")
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf rce func part =
@@ -210,8 +217,8 @@ let make_running_process conf rce func part =
     if rce.C.debug then Debug else conf.C.log_level in
   let top_half =
     match part with
-    | TopHalf th -> Some th
-    | _ -> None in
+    | TopHalf ths -> ths
+    | _ -> [] in
   { bin = rce.C.bin ; params = rce.C.params ; top_half ; pid = None ;
     last_killed = 0. ; continued = false ; func ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
@@ -405,7 +412,7 @@ let really_start conf proc parents children =
    * Each time a new worker is started or stopped the parents outrefs
    * are updated. *)
   let fq_str = (F.fq_name proc.func :> string) in
-  let is_top_half = proc.top_half <> None in
+  let is_top_half = proc.top_half <> [] in
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs =
     if is_top_half then
@@ -472,22 +479,31 @@ let really_start conf proc parents children =
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
   let more_env =
-    List.enum (
-      match proc.top_half with
-      | None ->
-        [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
-          (* We need to change this dir whenever the func signature or
-           * params change to prevent it to reload an incompatible state: *)
-          "state_file="^ (C.worker_state conf proc.func proc.params :>
-                            string) ;
-          "factors_dir="^ (C.factors_of_function conf proc.func :>
-                            string) ]
-      | Some th ->
-        (* TODO: have a list of possible hosts:port and filter it: *)
-        [ "copy_srv_host="^ (th.child_host :> string) ;
-          "copy_srv_port="^ (string_of_int Default.tunneld_port) (* TODO *) ;
-          "parent_num="^ (string_of_int th.parent_num) ]
-    ) in
+    match proc.top_half with
+    | [] ->
+        List.enum
+          [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
+            (* We need to change this dir whenever the func signature or
+             * params change to prevent it to reload an incompatible state *)
+            "state_file="^ (C.worker_state conf proc.func proc.params :>
+                              string) ;
+            "factors_dir="^ (C.factors_of_function conf proc.func :>
+                              string) ]
+    | ths ->
+        Enum.append
+          (List.enum ths |>
+          Enum.mapi (fun i th ->
+            "tunneld_host_"^ string_of_int i ^"="^
+              (th.tunneld_host :> string)))
+          (List.enum ths |>
+          Enum.mapi (fun i th ->
+            "tunneld_port_"^ string_of_int i ^"="^
+              string_of_int th.tunneld_port)) |>
+        Enum.append
+          (List.enum ths |>
+          Enum.mapi (fun i th ->
+            "parent_num_"^ string_of_int i ^"="^
+              string_of_int th.parent_num)) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
@@ -512,8 +528,8 @@ let really_start conf proc parents children =
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
-    [| if proc.top_half = None then Worker_argv0.full_worker
-                               else Worker_argv0.top_half ;
+    [| if proc.top_half = [] then Worker_argv0.full_worker
+                             else Worker_argv0.top_half ;
        fq_str |] in
   let pid = run_worker ~and_stop:conf.C.test proc.bin args env in
   !logger.debug "Function %a now runs under pid %d"
@@ -818,6 +834,159 @@ let synchronize_running conf autoreload_delay =
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
   in
+  let build_must_run must_run conf =
+    (* Reread the content of that file *)
+    let programs = C.with_rlock conf identity in
+    (* The run file gives us the programs (and how to run them), but
+     * we want [must_run] to be a hash of functions. Also, we want
+     * the workers identified by their signature so that if the type
+     * of a worker changes but not its name we see a different
+     * worker. *)
+    Hashtbl.clear must_run ;
+    (* First put into [must_run] the programs that must run in this
+     * host: *)
+    Hashtbl.iter (fun program_name (rce, get_rc) ->
+      if match_localhost rce.C.on_hostname then (
+        if not (N.is_empty rce.C.src_file) then (
+          !logger.debug "Trying to build %a"
+            N.path_print rce.C.bin ;
+          log_and_ignore_exceptions
+            ~what:("rebuilding "^ (rce.C.bin :> string))
+            (fun () ->
+              let get_parent =
+                RamenCompiler.parent_from_programs programs in
+              RamenMake.build
+                conf get_parent program_name rce.C.src_file
+                rce.C.bin) ()) ;
+        (match get_rc () with
+        | exception _ ->
+            (* Errors have been logged already, nothing more can
+             * be done about this. *)
+            ()
+        | prog ->
+            (* NOTE: We might want to do this only when
+             *   P.wants_to_run conf rce.bin rce.params
+             * but given we cannot change the environment nor
+             * re-read the external experiment file there would be
+             * little use for this. *)
+            List.iter (fun f ->
+              (* Use the mount point + signature + params as the key.
+               * Notice that we take all the parameter values (from
+               * prog.params), not only the explicitly set values (from
+               * rce.params), so that if a default value that is
+               * unset is changed in the program then that's considered a
+               * different program. *)
+              let k =
+                program_name, f.F.name, f.F.signature,
+                prog.P.params, Whole
+              in
+              Hashtbl.modify_opt k (function
+                | None ->
+                    Some { rce ; prog ; func = f ; part = Whole }
+                | prev ->
+                    !logger.error
+                      "The same function is asked to run several \
+                       times: %a/%a, sig %s with params %a"
+                      N.program_print program_name
+                      N.func_print f.F.name
+                      f.F.signature
+                      RamenTuple.print_params prog.P.params ;
+                    prev
+              ) must_run
+            ) prog.P.funcs)
+      )
+    ) programs ;
+    (* Now add the bottom (resp top) halves of functions that must
+     * run on other hosts but which are parents (resp. children)
+     * of functions running locally, thus already in [must_run]: *)
+    let halves =
+      Hashtbl.fold (fun _ (rce, get_rc) halves ->
+        if match_localhost rce.C.on_hostname then
+          halves
+        else
+          match get_rc () with
+          | exception _ ->
+              halves
+          | prog ->
+              (match Services.lookup conf rce.C.on_hostname with
+              | exception Not_found ->
+                  !logger.error "No host matching %s"
+                    (Globs.decompile rce.C.on_hostname) ;
+                  halves
+              | tunnelds ->
+                  List.fold_left (fun halves func ->
+                    let parents, children = relatives func must_run in
+                    (* Add a bottom half for each function with at least
+                     * one child running locally: *)
+                    let halves =
+                      List.fold_left (fun halves ((cmre : must_run_entry), _) ->
+                        let k = key_of cmre Whole in
+                        match Hashtbl.find must_run k with
+                        | exception Not_found -> halves
+                        | mre when mre.part <> Whole ->
+                            (* Should not happen yet as we've stored only
+                             * local functions in must_run so far *)
+                            halves
+                        | _ ->
+                          !logger.info "Child %a/%a of remote %a/%a \
+                                        is running locally!"
+                            N.program_print cmre.func.F.program_name
+                            N.func_print cmre.func.F.name
+                            N.program_print func.F.program_name
+                            N.func_print func.F.name ;
+                          { rce ; prog ; func ; part = BottomHalf }
+                            :: halves
+                      ) halves children in
+                    (* We need a top half for each individual parent
+                     * running here (if we had only one for all then
+                     * we would have to deal with merging/sorting): *)
+                    List.fold_left (fun halves ((pmre : must_run_entry), parent_num) ->
+                      let k = key_of pmre Whole in
+                      match Hashtbl.find must_run k with
+                      | exception Not_found -> halves
+                      | mre when mre.part <> Whole ->
+                          (* Should not happen yet as we've stored only
+                           * local functions in must_run so far *)
+                          halves
+                      | _ ->
+                        !logger.info "Parent %a/%a of remote %a/%a \
+                                      (host %a) is running locally!"
+                          N.program_print pmre.func.F.program_name
+                          N.func_print pmre.func.F.name
+                          N.program_print func.F.program_name
+                          N.func_print func.F.name
+                          (List.print Services.print_entry) tunnelds ;
+                        let part =
+                          TopHalf (
+                            List.map (fun t ->
+                              { tunneld_host = t.Services.host ;
+                                tunneld_port = t.Services.port ;
+                                parent_num }
+                            ) tunnelds) in
+                        { rce ; prog ; func ; part } :: halves
+                    ) halves parents
+                  ) halves prog.P.funcs)
+      ) programs [] in
+    (* Actually add the bottom and top halves into must_run: *)
+    List.iter (fun (mre : must_run_entry) ->
+      let k = key_of mre mre.part in
+      assert (not (Hashtbl.mem must_run k)) ;
+      Hashtbl.modify_opt k (function
+        | None -> Some mre
+        | Some prev ->
+            (match prev.part, mre.part with
+            | TopHalf lst1, TopHalf lst2 ->
+                Some { prev with part = TopHalf (lst1 @ lst2) }
+            | part1, part2 ->
+                !logger.error "Cannot run both a %a and a %a in \
+                               the same host for %a"
+                  print_worker_part part1
+                  print_worker_part part2
+                  print_must_run_entry mre ;
+                assert false)
+      ) must_run
+    ) halves
+  in
   (* The hash of programs that must be running, updated by [loop]: *)
   let must_run = Hashtbl.create 307
   and running = Hashtbl.create 307 in
@@ -851,136 +1020,7 @@ let synchronize_running conf autoreload_delay =
                    * time is old enough: *)
                   now -. lm > 1. in
             if last_mod <> None && must_reread then (
-              (* Reread the content of that file *)
-              let programs = C.with_rlock conf identity in
-              (* The run file gives us the programs (and how to run them), but
-               * we want [must_run] to be a hash of functions. Also, we want
-               * the workers identified by their signature so that if the type
-               * of a worker changes but not its name we see a different
-               * worker. *)
-              Hashtbl.clear must_run ;
-              (* First put into [must_run] the programs that must run in this
-               * host: *)
-              Hashtbl.iter (fun program_name (rce, get_rc) ->
-                if match_localhost rce.C.on_hostname then (
-                  if not (N.is_empty rce.C.src_file) then (
-                    !logger.debug "Trying to build %a"
-                      N.path_print rce.C.bin ;
-                    log_and_ignore_exceptions
-                      ~what:("rebuilding "^ (rce.C.bin :> string))
-                      (fun () ->
-                        let get_parent =
-                          RamenCompiler.parent_from_programs programs in
-                        RamenMake.build
-                          conf get_parent program_name rce.C.src_file
-                          rce.C.bin) ()) ;
-                  (match get_rc () with
-                  | exception _ ->
-                      (* Errors have been logged already, nothing more can
-                       * be done about this. *)
-                      ()
-                  | prog ->
-                      (* NOTE: We might want to do this only when
-                       *   P.wants_to_run conf rce.bin rce.params
-                       * but given we cannot change the environment nor
-                       * re-read the external experiment file there would be
-                       * little use for this. *)
-                      List.iter (fun f ->
-                        (* Use the mount point + signature + params as the key.
-                         * Notice that we take all the parameter values (from
-                         * prog.params), not only the explicitly set values (from
-                         * rce.params), so that if a default value that is
-                         * unset is changed in the program then that's considered a
-                         * different program. *)
-                        let k =
-                          program_name, f.F.name, f.F.signature,
-                          prog.P.params, Whole
-                        in
-                        Hashtbl.modify_opt k (function
-                          | None ->
-                              Some { rce ; prog ; func = f ; part = Whole }
-                          | prev ->
-                              !logger.error
-                                "The same function is asked to run several \
-                                 times: %a/%a, sig %s with params %a"
-                                N.program_print program_name
-                                N.func_print f.F.name
-                                f.F.signature
-                                RamenTuple.print_params prog.P.params ;
-                              prev
-                        ) must_run
-                      ) prog.P.funcs)
-                )
-              ) programs ;
-              (* Now add the bottom (resp top) halves of functions that must
-               * run on other hosts but which are parents (resp. children)
-               * of functions running locally, thus already in [must_run]: *)
-              let halves =
-                Hashtbl.fold (fun _ (rce, get_rc) halves ->
-                  if match_localhost rce.C.on_hostname then
-                    halves
-                  else
-                    match get_rc () with
-                    | exception _ ->
-                        halves
-                    | prog ->
-                        (* FIXME: rather: filter all possible hosts *)
-                        let rc_host =
-                          N.host (Globs.decompile rce.C.on_hostname) in
-                        List.fold_left (fun halves func ->
-                          let parents, children = relatives func must_run in
-                          (* Add a bottom half for each function with at least
-                           * one child running locally: *)
-                          let halves =
-                            List.fold_left (fun halves ((cmre : must_run_entry), _) ->
-                              let k = key_of cmre Whole in
-                              match Hashtbl.find must_run k with
-                              | exception Not_found -> halves
-                              | mre when mre.part <> Whole ->
-                                  (* Should not happen yet as we've stored only
-                                   * local functions in must_run so far *)
-                                  halves
-                              | _ ->
-                                !logger.info "Child %a/%a of remote %a/%a \
-                                              is running locally!"
-                                  N.program_print cmre.func.F.program_name
-                                  N.func_print cmre.func.F.name
-                                  N.program_print func.F.program_name
-                                  N.func_print func.F.name ;
-                                { rce ; prog ; func ; part = BottomHalf }
-                                  :: halves
-                            ) halves children in
-                          (* We need a top half for each individual parent
-                           * running here (if we had only one for all then
-                           * we would have to deal with merging/sorting): *)
-                          List.fold_left (fun halves ((pmre : must_run_entry), parent_num) ->
-                            let k = key_of pmre Whole in
-                            match Hashtbl.find must_run k with
-                            | exception Not_found -> halves
-                            | mre when mre.part <> Whole ->
-                                (* Should not happen yet as we've stored only
-                                 * local functions in must_run so far *)
-                                halves
-                            | _ ->
-                              !logger.info "Parent %a/%a of remote %a/%a \
-                                            (host %a) is running locally!"
-                                N.program_print pmre.func.F.program_name
-                                N.func_print pmre.func.F.name
-                                N.program_print func.F.program_name
-                                N.func_print func.F.name
-                                N.host_print rc_host ;
-                              { rce ; prog ; func ; part =
-                                  TopHalf { child_host = rc_host ; parent_num} } ::
-                                halves
-                          ) halves parents
-                        ) halves prog.P.funcs
-                ) programs [] in
-              (* Actually add the bottom and top halves into must_run: *)
-              List.iter (fun (mre : must_run_entry) ->
-                let k = key_of mre mre.part in
-                assert (not (Hashtbl.mem must_run k)) ;
-                Hashtbl.add must_run k mre
-              ) halves ;
+              build_must_run must_run conf ;
               now
             ) else last_read) in
         let changed = synchronize must_run running in
