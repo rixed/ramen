@@ -640,7 +640,7 @@ let worker_start (worker_name : N.fq) is_top_half get_binocle_tuple k =
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   let conf = { log_level ; state_file ; is_test } in
   info_or_test conf "Starting %a%s process. Will log into %s at level %s."
-    N.fq_print worker_name (if is_top_half then " (top-half)" else "")
+    N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
     (string_of_log_output !logger.output)
     (string_of_log_level log_level) ;
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->

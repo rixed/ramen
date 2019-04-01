@@ -175,6 +175,11 @@ type must_run_entry =
     func : F.t ;
     part : worker_part }
 
+let print_must_run_entry oc mre =
+  Printf.fprintf oc "%a/%a"
+    N.program_print mre.func.F.program_name
+    N.func_print mre.func.F.name
+
 (* Description of a running worker that is stored in the [running] hash.
  * Not persisted on disk. *)
 type running_process =
@@ -326,10 +331,8 @@ let process_workers_terminations conf running =
   Hashtbl.iter (fun _ proc ->
     Option.may (fun pid ->
       let what =
-        Printf.sprintf "Operation %s/%s (pid %d)"
-          (proc.func.F.program_name :> string)
-          (proc.func.name :> string)
-          pid in
+        Printf.sprintf2 "Operation %a (pid %d)"
+          print_running_process proc pid in
       (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
       | exception exn ->
           !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
@@ -654,8 +657,8 @@ let check_out_ref conf must_run running =
       let outs = OutRef.read_live out_ref in
       Hashtbl.iter (fun fname _ ->
         if Files.has_ext "r" fname && not (Set.mem fname rbs) then (
-          !logger.error "Operation %s outputs to %a, which is not read, fixing"
-            (F.fq_name proc.func :> string)
+          !logger.error "Operation %a outputs to %a, which is not read, fixing"
+            print_running_process proc
             N.path_print fname ;
           log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
             (fun () ->
@@ -671,9 +674,9 @@ let check_out_ref conf must_run running =
         let outs = OutRef.read_live out_ref in
         let outs = Hashtbl.keys outs |> Set.of_enum in
         if Set.disjoint in_rbs outs then (
-          !logger.error "Operation %s must output to %s but does not, fixing"
-            (F.fq_name pmre.func :> string)
-            (F.fq_name proc.func :> string) ;
+          !logger.error "Operation %a must output to %a but does not, fixing"
+            print_must_run_entry pmre
+            print_running_process proc ;
           log_and_ignore_exceptions ~what:("fixing "^(out_ref :> string))
             (fun () ->
               let fname = input_ringbuf_fname conf pmre.func proc.func
@@ -935,8 +938,8 @@ let synchronize_running conf autoreload_delay =
                                    * local functions in must_run so far *)
                                   halves
                               | _ ->
-                                !logger.debug "Child %a/%a of remote %a/%a \
-                                               is running locally!"
+                                !logger.info "Child %a/%a of remote %a/%a \
+                                              is running locally!"
                                   N.program_print cmre.func.F.program_name
                                   N.func_print cmre.func.F.name
                                   N.program_print func.F.program_name
@@ -956,12 +959,13 @@ let synchronize_running conf autoreload_delay =
                                  * local functions in must_run so far *)
                                 halves
                             | _ ->
-                              !logger.debug "Parent %a/%a of remote %a/%a \
-                                             is running locally!"
+                              !logger.info "Parent %a/%a of remote %a/%a \
+                                            (host %a) is running locally!"
                                 N.program_print pmre.func.F.program_name
                                 N.func_print pmre.func.F.name
                                 N.program_print func.F.program_name
-                                N.func_print func.F.name ;
+                                N.func_print func.F.name
+                                N.host_print rc_host ;
                               { rce ; prog ; func ; part =
                                   TopHalf { child_host = rc_host ; parent_num} } ::
                                 halves
@@ -970,10 +974,6 @@ let synchronize_running conf autoreload_delay =
                 ) programs [] in
               (* Actually add the bottom and top halves into must_run: *)
               List.iter (fun (mre : must_run_entry) ->
-                !logger.warning "Should run the top half of %a/%a toward %s"
-                  N.program_print mre.func.F.program_name
-                  N.func_print mre.func.F.name
-                  (Globs.decompile mre.rce.C.on_hostname) ;
                 let k = key_of mre mre.part in
                 assert (not (Hashtbl.mem must_run k)) ;
                 Hashtbl.add must_run k mre
