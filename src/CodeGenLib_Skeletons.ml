@@ -1558,7 +1558,6 @@ let top_half
     let rate_limit_log_reads = rate_limit 1 1. in
     let while_ () = !quit = None in
     let on_tup tx tx_size channel_id in_tuple =
-      let perf_per_tuple = Perf.start () in
       if channel_id <> RamenChannel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
           RamenChannel.print channel_id ;
@@ -1571,23 +1570,26 @@ let top_half
       let perf = Perf.start () in
       let pass = where in_tuple in
       Perf.add stats_perf_where_fast (Perf.stop perf) ;
-      if pass then RingBuf.read_raw_tx tx |> forward_bytes ;
-      if channel_id = RamenChannel.live then
-        Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple)
+      if pass then Some (RingBuf.read_raw_tx tx) else None
     in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       match read_tuple tx with
       | exception e ->
           print_exception ~what:"reading a tuple" e
       | msg ->
+          let perf_per_tuple = Perf.start () in
           let tx_size = RingBuf.tx_size tx in
-          (match msg with
-          | RingBufLib.DataTuple chan, Some tuple ->
-              on_tup tx tx_size chan tuple
-          | _, None ->
-              RingBuf.read_raw_tx tx |> forward_bytes
-          | _ -> assert false) ;
-          RingBuf.dequeue_commit tx))
+          let chan, to_forward =
+            match msg with
+            | RingBufLib.DataTuple chan, Some tuple ->
+                Some chan, on_tup tx tx_size chan tuple
+            | _, None ->
+                None, Some (RingBuf.read_raw_tx tx)
+            | _ -> assert false in
+          RingBuf.dequeue_commit tx ;
+          Option.may forward_bytes to_forward ;
+          if chan = Some RamenChannel.live then
+            Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple)))
 
 let read_whole_archive ?(while_=always) read_tuplez rb k =
   if while_ () then
