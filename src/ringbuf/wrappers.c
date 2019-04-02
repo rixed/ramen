@@ -259,8 +259,7 @@ CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
   CAMLlocal1(bytes_);
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   struct ringbuf_file *rbf = wrtx->rb->rbf;
-  size_t const size =
-      sizeof(*rbf->data) * (wrtx->tx.next - wrtx->tx.record_start);
+  size_t const size = wrtx->alloced;
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc tx bytes");
