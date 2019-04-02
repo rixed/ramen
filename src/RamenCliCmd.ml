@@ -407,6 +407,8 @@ let sort_col_of_string spec str =
 
 let ps_ profile conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
+  let must_run_here rce =
+    rce.C.status = C.MustRun && C.match_localhost conf rce.C.on_hostname in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)
@@ -428,7 +430,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     let h = RamenPs.per_program stats in
     C.with_rlock conf (fun programs ->
       Hashtbl.iter (fun (program_name : N.program) (rce, _get_rc) ->
-        if (all || rce.C.status = C.MustRun) &&
+        if (all || must_run_here rce) &&
            Globs.matches pattern (program_name :> string)
         then (
           let s = Hashtbl.find_default h program_name RamenPs.no_stats in
@@ -485,7 +487,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
       (* First pass to get the children: *)
       let children_of_func = Hashtbl.create 23 in
       Hashtbl.iter (fun _prog_name (rce, get_rc) ->
-        if all || rce.C.status = C.MustRun then match get_rc () with
+        if all || must_run_here rce then match get_rc () with
         | exception _ -> ()
         | prog ->
             List.iter (fun func ->
@@ -499,7 +501,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
             ) prog.P.funcs
       ) programs ;
       Hashtbl.iter (fun program_name (rce, get_rc) ->
-        if all || rce.C.status = MustRun then match get_rc () with
+        if all || must_run_here rce then match get_rc () with
         | exception _ -> (* which has been logged already *) ()
         | prog ->
           List.iter (fun func ->
