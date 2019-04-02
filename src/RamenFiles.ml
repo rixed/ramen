@@ -325,8 +325,8 @@ let really_read_fd_into buf offs fd size =
       let r =
         BatUnix.restart_on_EINTR (read fd buf (offs + i)) (size - i) in
       if r > 0 then loop (i + r) else
-        let e = Printf.sprintf "File smaller then %d bytes (EOF at %d)"
-                  size i in
+        let e = Printf.sprintf "File ended but only %d/%d bytes could be read"
+                  i size in
         failwith e
   in
   loop 0
