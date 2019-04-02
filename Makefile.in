@@ -50,7 +50,8 @@ endif
 INSTALLED_BIN = src/ramen
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
-	$(CODEGENLIB_SOURCES:.ml=.cmi) $(CODEGENLIB_SOURCES:.ml=.cmx) \
+	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
+	$(filter %.cmx, $(CODEGENLIB_SOURCES:.ml=.cmx)) \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) META
