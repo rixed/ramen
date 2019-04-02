@@ -49,7 +49,7 @@ let copy_all conf (client_host : N.host) (bname : N.path) fd rb =
       (RingBuf.enqueue rb bytes (Bytes.length bytes) 0.) 0.
   ) ()
 
-let serve conf fd =
+let serve conf ~while_ fd =
   !logger.debug "New connection to copy service on fd %d!"
     (Files.int_of_fd fd) ;
   IntCounter.inc (stats_accepts conf.C.persist_dir) ;
@@ -69,7 +69,10 @@ let serve conf fd =
       C.in_ringbuf_name_merging conf func id.parent_num
     else
       C.in_ringbuf_name_single conf func in
-  let rb = RingBuf.load bname in
+  let rb =
+    (* If supervisor haven't started this worker for any reason, then
+     * [load] is going to fail. Just wait. *)
+    retry ~on:always ~while_ RingBuf.load bname in
   copy_all conf id.client_host bname fd rb
 
 (* Start the service: *)
@@ -80,4 +83,4 @@ let copy_server conf port =
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !RamenProcesses.quit = None in
   (* TODO: a wrapper that compresses and hashes the content. *)
-  forking_server ~while_ ~service_name:"tunneld" addr (serve conf)
+  forking_server ~while_ ~service_name:"tunneld" addr (serve conf ~while_)

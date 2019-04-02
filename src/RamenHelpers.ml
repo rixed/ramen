@@ -54,7 +54,7 @@ let print_nice_float oc f =
 exception Timeout
 
 (* Avoid to create a new while_ at each call: *)
-let always () = true
+let always _ = true
 
 let retry
     ~on ?(first_delay=1.0) ?(min_delay=0.0001) ?(max_delay=10.0)
