@@ -907,7 +907,8 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in on_tup on_else =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
     match read_tuple tx with
     | exception e ->
-        print_exception ~what:"reading a tuple" e
+        print_exception ~what:"reading a tuple" e ;
+        RingBuf.dequeue_commit tx
     | msg ->
         let tx_size = RingBuf.tx_size tx in
         RingBuf.dequeue_commit tx ;
@@ -1575,7 +1576,8 @@ let top_half
     RingBufLib.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       match read_tuple tx with
       | exception e ->
-          print_exception ~what:"reading a tuple" e
+          print_exception ~what:"reading a tuple" e ;
+          RingBuf.dequeue_commit tx
       | msg ->
           let perf_per_tuple = Perf.start () in
           let tx_size = RingBuf.tx_size tx in

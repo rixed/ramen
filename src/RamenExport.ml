@@ -465,7 +465,9 @@ let replay conf ?(while_=always) fq field_names where since until
           RamenSerialization.read_array_of_values ser in
         let filter = RamenSerialization.filter_tuple_by ser where in
         RingBufLib.read_ringbuf ~while_ rb (fun tx ->
-          match RamenSerialization.read_tuple unserialize tx with
+          let msg = RamenSerialization.read_tuple unserialize tx in
+          RingBuf.dequeue_commit tx ;
+          match msg with
           | RingBufLib.EndOfReplay (chan, replay_id), None ->
             if chan = channel then (
               if Set.mem replay_id !eofs then (
