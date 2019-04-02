@@ -1,0 +1,104 @@
+#!/bin/sh
+# Test network transfer of tuples
+
+this_script="$0"
+top_src=$(dirname "$this_script")/../../
+nb_loggers=4
+
+. $top_src/tests/lib.sh
+
+# Merely runs the logs generator in one instance and aggregate the entries
+# in another. The aggregator is the "master" that will be forwarded logs to.
+# Both run on a single machine but with different $RAMEN_DIR
+#
+# We rely on envvars to know which role this instance of the test script
+# has to play and on which port to contact the master.
+# By default I am the master:
+
+if test -z "$master_port" ; then
+  r=$(rand 64511)
+  master_port=$((1024+$r))
+  be_master='yes'
+  ramen_hostname='aggregator'
+  master_ramen_dir="$RAMEN_DIR"
+  log "I'm the aggregator, listening to forwarded tuples at port $master_port"
+else
+  be_master='no'
+  test -n "$ramen_hostname" || fail 'master should have set ramen_hostname'
+  test -n "$master_ramen_dir" || fail 'master should have set master_ramen_dir'
+  log "I'm a logger"
+fi
+export RAMEN_DIR="$master_ramen_dir/$ramen_hostname"
+
+rc_version='v16'
+services_version='v1'
+
+# Compile the test programs (only once)
+if test "$be_master" = yes ; then
+  log "Compiling programs..."
+
+  root="examples/programs/monitoring"
+  "$ramen" compile "$root/logs.ramen"
+  "$ramen" compile -L "$root" "$root/logs_aggr.ramen"
+
+  log "Run the tunneling server..."
+  "$ramen" tunneld --port "$master_port" &
+  tunneld_pid=$!
+  at_exit "echo 'Killing ramen tunneld'; kill '$tunneld_pid'"
+
+  log "declare all the services..."
+  # TODO: version number from ramen_versions.sh?
+  services="$RAMEN_DIR/services/$services_version/services"
+  mkdir -p $(dirname $services)
+  echo '{' > $services
+  echo '  "aggregator" => { host="127.0.0.1"; port='"$master_port"' };' >> $services
+  for h in $(seq 1 $nb_loggers) ; do
+    name="logger$h"
+    echo '  "$name" => { host="127.0.0.1"; port=0 };' >> $services
+  done
+  echo '}' >> $services
+
+  log "Starting programs..."
+  export RAMEN_REPORT_PERIOD=5
+  "$ramen" run "$root/logs.x"      --on-hostname="logger*"    --as logs
+  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 1min   -p time_period=60
+  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 10mins -p time_period=600
+  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 1hour  -p time_period=3600
+
+else
+  log "Linking RC config from aggregator" ;
+
+  mkdir -p "$RAMEN_DIR/configuration/$rc_version/"
+  ln "$RAMEN_DIR/../aggregator/configuration/$rc_version/rc" \
+     "$RAMEN_DIR/configuration/$rc_version/"
+  mkdir -p "$RAMEN_DIR/services/$services_version/"
+  ln "$RAMEN_DIR/../aggregator/services/$services_version/services" \
+     "$RAMEN_DIR/services/$services_version/"
+fi
+
+# Supervisor runs in all instances:
+"$ramen" supervisor --hostname="$ramen_hostname" &
+supervisor_pid=$!
+at_exit "echo 'Killing ramen supervisor'; kill '$supervisor_pid'"
+
+if test "$be_master" = yes ; then
+
+  # Run the other instances
+  for h in $(seq 1 $nb_loggers) ; do
+    name="logger$h"
+    /usr/bin/env \
+      master_port="$master_port" ramen_hostname="$name" \
+      master_ramen_dir="$master_ramen_dir" \
+      "$this_script" &
+    logger_pid=$!
+    at_exit "echo 'Killing $name'; kill '$logger_pid'"
+  done
+fi
+
+# Wait until we have "enough" data
+echo "Waiting for the kills..."
+
+wait
+
+echo "Stopping..."
+kill "$supervisor_pid"

@@ -12,6 +12,12 @@ at_exit_() {
 }
 trap at_exit_ EXIT INT TERM
 
+# Random
+
+rand() {
+  echo | awk 'BEGIN{srand()} {printf("%d\n",int('"$1"'*rand()))}'
+}
+
 # Logs
 
 debug=yes
