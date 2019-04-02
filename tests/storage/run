@@ -3,7 +3,7 @@
 
 top_src=$(dirname $0)/../../
 
-source $top_src/tests/lib.sh
+. $top_src/tests/lib.sh
 echo "Will use RAMEN_DIR=$RAMEN_DIR"
 
 # Monitor disk usage
