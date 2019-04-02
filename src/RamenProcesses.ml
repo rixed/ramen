@@ -971,13 +971,15 @@ let synchronize_running conf autoreload_delay =
     (* Actually add the bottom and top halves into must_run: *)
     List.iter (fun (mre : must_run_entry) ->
       let k = key_of mre mre.part in
-      assert (not (Hashtbl.mem must_run k)) ;
       Hashtbl.modify_opt k (function
         | None -> Some mre
         | Some prev ->
             (match prev.part, mre.part with
             | TopHalf lst1, TopHalf lst2 ->
                 Some { prev with part = TopHalf (lst1 @ lst2) }
+            | BottomHalf, BottomHalf ->
+                (* Several local children of the same remote parent are OK *)
+                Some prev
             | part1, part2 ->
                 !logger.error "Cannot run both a %a and a %a in \
                                the same host for %a"
