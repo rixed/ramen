@@ -750,8 +750,6 @@ let watchdog = ref None
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
-  let match_localhost on_hostname =
-    Globs.matches on_hostname (conf.C.hostname :> string) in
   let key_of (mre : must_run_entry) part =
       mre.func.F.program_name, mre.func.F.name,
       mre.func.F.signature, mre.prog.P.params, part in
@@ -847,7 +845,9 @@ let synchronize_running conf autoreload_delay =
     (* First put into [must_run] the programs that must run in this
      * host: *)
     Hashtbl.iter (fun program_name (rce, get_rc) ->
-      if match_localhost rce.C.on_hostname then (
+      if rce.C.status = C.MustRun &&
+         C.match_localhost conf rce.C.on_hostname
+      then (
         if not (N.is_empty rce.C.src_file) then (
           !logger.debug "Trying to build %a"
             N.path_print rce.C.bin ;
@@ -902,7 +902,9 @@ let synchronize_running conf autoreload_delay =
      * of functions running locally, thus already in [must_run]: *)
     let halves =
       Hashtbl.fold (fun _ (rce, get_rc) halves ->
-        if match_localhost rce.C.on_hostname then
+        if rce.C.status <> C.MustRun ||
+           C.match_localhost conf rce.C.on_hostname
+        then
           halves
         else
           match get_rc () with

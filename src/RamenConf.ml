@@ -331,6 +331,9 @@ let is_program_running programs program_name =
   | exception Not_found -> false
   | rce, _get_rc -> rce.status = MustRun
 
+let match_localhost conf on_hostname =
+  Globs.matches on_hostname (conf.hostname :> string)
+
 let last_conf_mtime conf =
   running_config_file conf |> Files.mtime_def 0.
 
