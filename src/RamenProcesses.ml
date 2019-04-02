@@ -648,8 +648,8 @@ let try_kill conf must_run proc =
       (Unix.kill pid) Sys.sigterm ;
     proc.last_killed <- now ;
   ) else if now -. proc.last_killed > 10. then (
-    !logger.warning "Killing worker %s (pid %d) with bigger guns"
-      (F.fq_name proc.func :> string) pid ;
+    !logger.warning "Killing worker %a (pid %d) with bigger guns"
+      print_running_process proc pid ;
     log_and_ignore_exceptions ~what:"Killing worker"
       (Unix.kill pid) Sys.sigkill ;
     proc.last_killed <- now ;

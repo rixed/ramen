@@ -48,4 +48,9 @@ let copy_client clt_host srv_host port child parent_num =
   fun bytes ->
     IntCounter.inc stats_tuples ;
     let msg : RamenCopy.append_msg = bytes in
+    (* If the connection became unusable for any reason, this will raise,
+     * and kill the worker. Supersivor will then have another look at it, esp.
+     * will resolve tunneld service again, and restart the worker.
+     * We do not want a worker to stubbornly retry to connect to some place
+     * when the service IP have changed. *)
     Files.marshal_into_fd ~at_start:false fd msg

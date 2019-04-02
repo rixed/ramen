@@ -5,6 +5,7 @@ module N = RamenName
  *)
 
 (* This is supposed to be the first message sent by the client. *)
+(* TODO: versioned variant type *)
 type set_target_msg =
   { client_host : N.host ;
     child : N.fq ;
@@ -12,4 +13,5 @@ type set_target_msg =
 
 (* Append the given tuples to the proper ringbuffer
  * (once target has been set): *)
+ (* TODO: versioned variant type *)
 type append_msg = Bytes.t
