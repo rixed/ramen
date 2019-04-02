@@ -5,7 +5,10 @@ module N = RamenName
  *)
 
 (* This is supposed to be the first message sent by the client. *)
-type set_target_msg = N.fq * int
+type set_target_msg =
+  { client_host : N.host ;
+    child : N.fq ;
+    parent_num : int }
 
 (* Append the given tuples to the proper ringbuffer
  * (once target has been set): *)

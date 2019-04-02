@@ -681,7 +681,7 @@ let read_csv_file
     time_of_tuple factors_of_tuple serialize_tuple
     tuple_of_strings preprocessor field_of_params
     orc_make_handler orc_write orc_close =
-  let worker_name = N.fq (getenv ~def:"?" "fq_name") in
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name false None None None in
   worker_start worker_name false get_binocle_tuple (fun conf ->
@@ -726,7 +726,7 @@ let listen_on
       proto_name
       sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
       orc_make_handler orc_write orc_close =
-  let worker_name = N.fq (getenv ~def:"?" "fq_name") in
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name false None None None in
   worker_start worker_name false get_binocle_tuple (fun conf ->
@@ -752,7 +752,7 @@ let read_well_known
       from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
       unserialize_tuple ringbuf_envvar worker_time_of_tuple
       orc_make_handler orc_write orc_close =
-  let worker_name = N.fq (getenv ~def:"?" "fq_name") in
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let get_binocle_tuple () =
     get_binocle_tuple worker_name false None None None in
   worker_start worker_name false get_binocle_tuple (fun conf ->
@@ -1150,7 +1150,7 @@ let aggregate
   and cmp_g0 cmp g1 g2 =
     cmp (option_get "g0" g1.g0) (option_get "g0" g2.g0) in
   IntGauge.set stats_group_count 0 ;
-  let worker_name = N.fq (getenv ~def:"?" "fq_name") in
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
@@ -1523,7 +1523,7 @@ let top_half
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (where : 'tuple_in ->  bool) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and worker_name = N.fq (getenv ~def:"?" "fq_name")
+  and worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name")
   and tunnelds =
     let hosts = getenv_list "tunneld_host" N.host
     and ports = getenv_list "tunneld_port" int_of_string
@@ -1539,11 +1539,13 @@ let top_half
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
   worker_start worker_name true get_binocle_tuple (fun _conf ->
-    let rb_in_fname = N.path (getenv "input_ringbuf_0") in
+    let rb_in_fname = N.path (getenv "input_ringbuf_0")
+    and hostname = N.host (getenv ~def:"?hostname?" "hostname") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
       List.map (fun t ->
-        RamenCopyClt.copy_client t.host t.port worker_name t.parent_num
+        RamenCopyClt.copy_client hostname t.host t.port worker_name
+                                 t.parent_num
       ) tunnelds in
     let forward_bytes b =
       List.iter (fun forwarder -> forwarder b) forwarders in
@@ -1621,7 +1623,7 @@ let replay
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
       orc_make_handler orc_write orc_read orc_close =
-  let worker_name = getenv ~def:"?" "fq_name" in
+  let worker_name = getenv ~def:"?fq_name?" "fq_name" in
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let prefix = worker_name ^" (REPLAY): " in
   (* TODO: factorize *)

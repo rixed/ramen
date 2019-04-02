@@ -471,6 +471,7 @@ let really_start conf proc parents children =
     "notify_ringbuf="^ (notify_ringbuf :> string) ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
+    "hostname="^ (conf.C.hostname :> string) ;
     (match !logger.output with
       | Directory _ ->
         let dir = N.path_cat [ conf.C.persist_dir ; N.path "log/workers" ;

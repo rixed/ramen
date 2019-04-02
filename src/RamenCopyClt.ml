@@ -20,12 +20,13 @@ let stats_tuples =
 
 (* Client: *)
 
-let copy_client host port fq parent_num =
-  !logger.info "Connecting to copy server at %a:%d" N.host_print host port ;
+let copy_client clt_host srv_host port child parent_num =
+  !logger.info "Connecting to copy server at %a:%d"
+    N.host_print srv_host port ;
   let service = string_of_int port in
   let open Unix in
   let opts = [ AI_SOCKTYPE SOCK_STREAM ; AI_PASSIVE ] in
-  let addrs = getaddrinfo (host :> string) service opts in
+  let addrs = getaddrinfo (srv_host :> string) service opts in
   let fd =
     List.find_map (fun addr ->
       try
@@ -39,7 +40,9 @@ let copy_client host port fq parent_num =
         None
     ) addrs in
   IntCounter.inc stats_connects ;
-  let target : RamenCopy.set_target_msg = fq, parent_num in
+  let target =
+    RamenCopy.{ client_host = clt_host ;
+                child ; parent_num } in
   Files.marshal_into_fd ~at_start:false fd target ;
   !logger.info "Send target identification" ;
   fun bytes ->
