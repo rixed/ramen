@@ -22,19 +22,25 @@ let stats_accepts =
       "Number of accepted connections.")
 
 let stats_tuples =
+(*(* TODO: make Binocle able to merge saved stats with new stats
+   * and then make it merge only from time to time, so that it became
+   * possible to save stats with high rate of change: *)
   RamenBinocle.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.copy_server_tuples
-      "Number of copied tuples.")
+      "Number of copied tuples.") *)
+  IntCounter.make Metric.Names.copy_server_tuples
+    "Number of copied tuples."
 
 (* Server: *)
 
-let copy_all conf (client_host : N.host) (bname : N.path) fd rb =
+let copy_all _conf (client_host : N.host) (bname : N.path) fd rb =
   let labels = [ "client", (client_host :> string) ] in
   forever (fun () ->
     let bytes : RamenCopy.append_msg =
       Files.(marshal_from_fd socket_path) fd in
-    IntCounter.inc (stats_tuples conf.C.persist_dir) ;
+    (*IntCounter.inc ~labels (stats_tuples conf.C.persist_dir) ;*)
+    IntCounter.inc ~labels stats_tuples ;
     retry
       ~while_:(fun () -> !RamenProcesses.quit = None)
       ~on:(function
