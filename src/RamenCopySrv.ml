@@ -29,13 +29,24 @@ let stats_tuples =
 
 (* Server: *)
 
-let copy_all conf (client_host : N.host) fd rb =
+let copy_all conf (client_host : N.host) (bname : N.path) fd rb =
   let labels = [ "client", (client_host :> string) ] in
   forever (fun () ->
     let bytes : RamenCopy.append_msg =
       Files.(marshal_from_fd socket_path) fd in
     IntCounter.inc (stats_tuples conf.C.persist_dir) ;
-    RingBuf.enqueue rb bytes (Bytes.length bytes) 0. 0.
+    retry
+      ~while_:(fun () -> !RamenProcesses.quit = None)
+      ~on:(function
+        | RingBuf.NoMoreRoom ->
+            !logger.debug "NoMoreRoom in target ringbuf of %a: %a, waiting"
+              N.host_print client_host
+              N.path_print bname ;
+            true
+        | _ ->
+            false)
+      ~first_delay:0.001 ~max_delay:1.
+      (RingBuf.enqueue rb bytes (Bytes.length bytes) 0.) 0.
   ) ()
 
 let serve conf fd =
@@ -59,7 +70,7 @@ let serve conf fd =
     else
       C.in_ringbuf_name_single conf func in
   let rb = RingBuf.load bname in
-  copy_all conf id.client_host fd rb
+  copy_all conf id.client_host bname fd rb
 
 (* Start the service: *)
 
