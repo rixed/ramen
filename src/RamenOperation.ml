@@ -160,47 +160,54 @@ let rec print_data_source with_types oc = function
 
 and print with_types oc =
   let sep = ", " in
+  let sp =
+    let had_output = ref false in
+    fun oc ->
+      String.print oc (if !had_output then " " else "") ;
+      had_output := true in
   function
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
                 notifications ; key ; commit_cond ; commit_before ;
                 flush_how ; from ; every ; event_time ; _ } ->
     if from <> [] then
-      List.print ~first:"FROM " ~last:"" ~sep
-        (print_data_source with_types) oc from ;
+      Printf.fprintf oc "%tFROM %a" sp
+        (List.print ~first:"" ~last:"" ~sep
+          (print_data_source with_types)) from ;
     if merge.on <> [] then (
-      Printf.fprintf oc " MERGE LAST %d ON %a"
+      Printf.fprintf oc "%tMERGE LAST %d ON %a" sp
         merge.last
-        (List.print ~first:"" ~last:"" ~sep:", " (E.print with_types)) merge.on ;
+        (List.print ~first:"" ~last:"" ~sep (E.print with_types)) merge.on ;
       if merge.timeout > 0. then
-        Printf.fprintf oc " TIMEOUT AFTER %g SECONDS" merge.timeout) ;
+        Printf.fprintf oc "%tTIMEOUT AFTER %g SECONDS" sp merge.timeout) ;
     Option.may (fun (n, u_opt, b) ->
-      Printf.fprintf oc " SORT LAST %d" n ;
+      Printf.fprintf oc "%tSORT LAST %d" sp n ;
       Option.may (fun u ->
-        Printf.fprintf oc " OR UNTIL %a"
+        Printf.fprintf oc "%tOR UNTIL %a" sp
           (E.print with_types) u) u_opt ;
       Printf.fprintf oc " BY %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (E.print with_types)) b
+        (List.print ~first:"" ~last:"" ~sep (E.print with_types)) b
     ) sort ;
     if fields <> [] || not and_all_others then
-      Printf.fprintf oc " SELECT %a%s%s"
+      Printf.fprintf oc "%tSELECT %a%s%s" sp
         (List.print ~first:"" ~last:"" ~sep
           (print_selected_field with_types)) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
     if every > 0. then
-      Printf.fprintf oc " EVERY %g SECONDS" every ;
+      Printf.fprintf oc "%tEVERY %g SECONDS" sp every ;
     if not (E.is_true where) then
-      Printf.fprintf oc " WHERE %a"
+      Printf.fprintf oc "%tWHERE %a" sp
         (E.print with_types) where ;
     if key <> [] then
-      Printf.fprintf oc " GROUP BY %a"
-        (List.print ~first:"" ~last:"" ~sep:", " (E.print with_types)) key ;
+      Printf.fprintf oc "%tGROUP BY %a" sp
+        (List.print ~first:"" ~last:"" ~sep (E.print with_types)) key ;
     if not (E.is_true commit_cond) ||
        flush_how <> Reset ||
        notifications <> [] then (
       let sep = ref " " in
       if flush_how = Reset && notifications = [] then (
-        Printf.fprintf oc "%sCOMMIT" !sep ; sep := ", ") ;
+        Printf.fprintf oc "%tCOMMIT" sp ;
+        sep := ", ") ;
       if flush_how <> Reset then (
         Printf.fprintf oc "%s%a" !sep print_flush_method flush_how ;
         sep := ", ") ;
@@ -210,40 +217,40 @@ and print with_types oc =
           oc notifications ;
         sep := ", ") ;
       if not (E.is_true commit_cond) then
-        Printf.fprintf oc " %s %a"
+        Printf.fprintf oc "%t%s %a" sp
           (if commit_before then "BEFORE" else "AFTER")
           (E.print with_types) commit_cond) ;
       Option.may (fun et ->
-        Char.print oc ' ' ;
+        sp oc ;
         RamenEventTime.print oc et
       ) event_time
 
   | ReadCSVFile { where = file_spec ; what = csv_specs ; preprocessor ;
                   event_time ; _ } ->
-    Printf.fprintf oc "%a %s %a"
+    Printf.fprintf oc "%t%a %s %a" sp
       print_file_spec file_spec
       (Option.map_default (fun e ->
-         Printf.sprintf2 "PREPROCESS WITH %a" (E.print with_types) e
+         Printf.sprintf2 "%tPREPROCESS WITH %a" sp (E.print with_types) e
        ) "" preprocessor)
       print_csv_specs csv_specs ;
     Option.may (fun et ->
-      Char.print oc ' ' ;
+      sp oc ;
       RamenEventTime.print oc et
     ) event_time
 
   | ListenFor { net_addr ; port ; proto } ->
-    Printf.fprintf oc "LISTEN FOR %s ON %s:%d"
+    Printf.fprintf oc "%tLISTEN FOR %s ON %s:%d" sp
       (RamenProtocols.string_of_proto proto)
       (Unix.string_of_inet_addr net_addr)
       port
 
   | Instrumentation { from } ->
-    Printf.fprintf oc "LISTEN FOR INSTRUMENTATION%a"
+    Printf.fprintf oc "%tLISTEN FOR INSTRUMENTATION%a" sp
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         (print_data_source with_types)) from
 
   | Notifications { from } ->
-    Printf.fprintf oc "LISTEN FOR NOTIFICATIONS%a"
+    Printf.fprintf oc "%tLISTEN FOR NOTIFICATIONS%a" sp
       (List.print ~first:" FROM " ~last:"" ~sep:", "
         (print_data_source with_types)) from
 
@@ -1366,7 +1373,7 @@ let fields_schema m =
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
 
-    " SELECT 1 AS one EVERY 1 SECONDS" \
+    "SELECT 1 AS one EVERY 1 SECONDS" \
         (test_op "YIELD 1 AS one EVERY 1 SECOND")
   *)
 
