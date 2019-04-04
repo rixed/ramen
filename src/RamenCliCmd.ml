@@ -334,7 +334,17 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     Option.may (fun et ->
       TermTable.print_head (i+1) "Event time" ;
       TermTable.print (i+2) "%a" RamenEventTime.print et) ;
-    print_endline ""
+    print_endline "" ;
+    if func.F.persistent || func.F.is_lazy then (
+      let lst = [] in
+      let lst =
+        if func.F.persistent then "persistent"::lst else lst in
+      let lst =
+        if func.F.is_lazy then "lazy"::lst else lst in
+      TermTable.print_head (i+1) "Misc" ;
+      TermTable.print (i+2) "%a"
+        (List.print ~first:"" ~last:"" ~sep:", " String.print) lst
+    )
   in
   match opt_func_name with
   | None ->

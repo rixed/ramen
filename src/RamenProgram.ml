@@ -39,7 +39,8 @@ type func =
   { name : N.func option (* optional during parsing only *) ;
     doc : string ;
     operation : O.t ;
-    persistent : bool }
+    persistent : bool ;
+    is_lazy : bool }
 
 type t = RamenTuple.param list * func list
 
@@ -52,8 +53,9 @@ let make_name =
     incr seq ;
     N.func ("f"^ string_of_int !seq)
 
-let make_func ?(persistent=false) ?name ?(doc="") operation =
-  { name ; doc ; operation ; persistent }
+let make_func ?(persistent=false) ?(is_lazy=false) ?name ?(doc="")
+              operation =
+  { name ; doc ; operation ; persistent ; is_lazy }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -69,7 +71,9 @@ let print_func oc n =
       Printf.fprintf oc "%a;"
         (O.print with_types ) n.operation
   | Some name ->
-      Printf.fprintf oc "DEFINE '%s' AS %a;"
+      Printf.fprintf oc "DEFINE%s%s '%s' AS %a;"
+        (if n.persistent then " PERSISTENT" else "")
+        (if n.is_lazy then " LAZY" else "")
         (name :> string)
         (O.print with_types) n.operation
 
@@ -224,17 +228,24 @@ struct
     let m = "anonymous func" :: m in
     (O.Parser.p >>: make_func) m
 
+  type func_flag = Persistent | Lazy
   let named_func m =
     let m = "function" :: m in
     (
       strinG "define" -- blanks -+
-      optional ~def:false (strinG "persistent" -- blanks >>: fun () -> true) ++
+      repeat ~sep:blanks (
+        (
+          (strinG "persistent" >>: fun () -> Persistent) |||
+          (strinG "lazy" >>: fun () -> Lazy)
+        ) +- blanks) ++
       function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
       O.Parser.p >>:
-      fun (((persistent, name), doc), op) ->
-        make_func ~persistent ~name ~doc op
+      fun (((flags, name), doc), op) ->
+        let persistent = List.mem Persistent flags
+        and is_lazy = List.mem Lazy flags in
+        make_func ~persistent ~is_lazy ~name ~doc op
     ) m
 
   let func m =

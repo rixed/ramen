@@ -477,6 +477,12 @@ let use_event_time op =
     | _ -> b
   ) op
 
+let has_notifications = function
+  | ListenFor _ | ReadCSVFile _
+  | Instrumentation _ | Notifications _ -> false
+  | Aggregate { notifications ; _ } ->
+      notifications <> []
+
 let resolve_unknown_tuple resolver e =
   E.map (fun stack e ->
     let resolver = function

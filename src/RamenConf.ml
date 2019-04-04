@@ -43,6 +43,9 @@ struct
        * ancestor stored history: *)
       persistent : bool ;
       doc : string ;
+      (* A lazy function runs only if it is used: has a children that is
+       * itself used, emits notifications or export its data somehow. *)
+      is_lazy : bool ;
       mutable operation : O.t ;
       in_type : RamenFieldMaskLib.in_type ;
       (* The signature identifies the code but not the actual parameters.
@@ -60,6 +63,7 @@ struct
     type t = (* A version of the above without redundancy: *)
       { name : N.func ;
         persistent : bool ;
+        is_lazy : bool ;
         doc : string ;
         operation : O.t ;
         signature : string }
@@ -70,6 +74,7 @@ struct
     Serialized.{
       name = t.name ;
       persistent = t.persistent ;
+      is_lazy = t.is_lazy ;
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature }
@@ -78,6 +83,7 @@ struct
     { program_name ;
       name = t.name ;
       persistent = t.persistent ;
+      is_lazy = t.is_lazy ;
       doc = t.doc ;
       operation = t.operation ;
       signature = t.signature ;
