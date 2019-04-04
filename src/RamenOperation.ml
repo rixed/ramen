@@ -176,14 +176,14 @@ let rec print_data_source with_types oc = function
   | GlobPattern s ->
       Globs.print oc s
 
-and print with_types oc =
+and print with_types oc op =
   let sep = ", " in
   let sp =
     let had_output = ref false in
     fun oc ->
       String.print oc (if !had_output then " " else "") ;
       had_output := true in
-  function
+  match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ;
                 notifications ; key ; commit_cond ; commit_before ;
                 flush_how ; from ; every ; event_time ; _ } ->
