@@ -1,7 +1,7 @@
 open Batteries
 open String
 
-type pattern =
+type t =
   { chunks : chunk list ;
     star : char ; placeholder : char ; escape : char }
 
@@ -246,7 +246,7 @@ let match_fold h s i f =
     | v -> f s v i)
 
 (* Serialize patterns as user friendly strings: *)
-let pattern_ppp_ocaml : pattern PPP.t =
+let t_ppp_ocaml : t PPP.t =
   let star = '*' and placeholder = '?' and escape = '\\' in
   let s2g = compile ~star ~placeholder ~escape
   and g2s = decompile in

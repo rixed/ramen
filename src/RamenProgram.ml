@@ -276,7 +276,7 @@ struct
      TestHelpers.test_printer print
   *)
   (*$= test_prog & ~printer:BatPervasives.identity
-   "DEFINE 'bar' AS FROM foo SELECT 42 AS the_answer;" \
+   "DEFINE 'bar' AS FROM 'foo' SELECT 42 AS the_answer;" \
       (test_prog "DEFINE bar AS SELECT 42 AS the_answer FROM foo")
 
    "PARAMETER p1 U32 DEFAULTS TO 0;\n\\

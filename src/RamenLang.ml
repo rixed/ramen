@@ -93,15 +93,13 @@ open RamenParsing
  * function and program names: *)
 
 let program_name ?(quoted=false) m =
-  let not_quote =
-    cond "quoted identifier" ((<>) '\'') 'x' in
-  let quoted_quote = string "''" >>: fun () -> '\'' in
+  let quoted_quote = id_quote_escaped >>: fun () -> id_quote_char in
   let what = "program name" in
   let m = what :: m in
   let first_char =
-    if quoted then not_quote ||| quoted_quote
+    if quoted then not_id_quote ||| quoted_quote
     else letter ||| underscore ||| dot ||| slash in
-  let any_char = if quoted then not_quote
+  let any_char = if quoted then not_id_quote
                  else first_char ||| decimal_digit in
   (
     first_char ++ repeat ~sep:none ~what any_char >>:
@@ -112,7 +110,7 @@ let func_name ?(quoted=false) m =
   let what = "function name" in
   let m = what :: m in
   let not_quote =
-    cond "quoted identifier" (fun c -> c <> '\'' && c <> '/') 'x' in
+    cond "quoted identifier" (fun c -> c <> id_quote_char && c <> '/') '_' in
   let first_char = if quoted then not_quote
                    else letter ||| underscore in
   let any_char = if quoted then not_quote
@@ -139,5 +137,5 @@ let func_identifier m =
     optional ~def:None
        (some (program_name ~quoted:true) +- char '/') ++
     func_name ~quoted:true +-
-    id_quote
-  in (quoted ||| unquoted) m
+    id_quote in
+  (quoted ||| unquoted) m

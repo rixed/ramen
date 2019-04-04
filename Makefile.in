@@ -142,11 +142,11 @@ RAMEN_SOURCES = \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
+	src/Globs.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
-	src/Globs.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
@@ -576,6 +576,7 @@ TESTABLE_SOURCES = \
 	src/RamenTypes.ml \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
+	src/Globs.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
@@ -586,7 +587,6 @@ TESTABLE_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenBloomFilter.ml \
-	src/Globs.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSortBuf.ml \
 	src/RamenGraphite.ml \
@@ -643,11 +643,11 @@ LINKED_FOR_TESTS = \
 	src/RamenOrc.ml \
 	src/RamenBinocle.ml \
 	src/RamenNotification.ml \
+	src/Globs.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
-	src/Globs.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \

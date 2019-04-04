@@ -144,19 +144,20 @@ and merge =
 and data_source =
   | NamedOperation of (N.rel_program option * N.func)
   | SubQuery of t
-  | GlobPattern of string
+  | GlobPattern of Globs.t
   [@@ppp PPP_OCaml]
 
 let rec print_data_source with_types oc = function
   | NamedOperation (Some rel_p, f) ->
-      Printf.fprintf oc "%s/%s"
-        (rel_p :> string) (f :> string)
-  | NamedOperation (None, f) ->
-      String.print oc (f :> string)
+      let fq = (rel_p :> string) ^"/"^ (f :> string) in
+      RamenParsing.print_quoted String.print oc fq
+  | NamedOperation (host, None, f) ->
+      RamenParsing.print_quoted N.func_print oc f
   | SubQuery q ->
-      Printf.fprintf oc "(%a)" (print with_types) q
+      Printf.fprintf oc "(%a)"
+        (print with_types) q
   | GlobPattern s ->
-      String.print oc s
+      Globs.print oc s
 
 and print with_types oc =
   let sep = ", " in
@@ -1327,22 +1328,22 @@ let fields_schema m =
       TestHelpers.test_printer (RamenOperation.print false)
   *)
   (*$= test_op & ~printer:BatPervasives.identity
-    "FROM foo SELECT in.start, in.stop, in.itf_clt AS itf_src, in.itf_srv AS itf_dst" \
+    "FROM 'foo' SELECT in.start, in.stop, in.itf_clt AS itf_src, in.itf_srv AS itf_dst" \
       (test_op "from foo select start, stop, itf_clt as itf_src, itf_srv as itf_dst")
 
-    "FROM foo WHERE (in.packets) > (0)" \
+    "FROM 'foo' WHERE (in.packets) > (0)" \
       (test_op "from foo where packets > 0")
 
-    "FROM foo SELECT in.t, in.value EVENT STARTING AT t*10. AND DURATION 60." \
+    "FROM 'foo' SELECT in.t, in.value EVENT STARTING AT t*10. AND DURATION 60." \
       (test_op "from foo select t, value aggregates using max event starting at t*10 with duration 60s")
 
-    "FROM foo SELECT in.t1, in.t2, in.value EVENT STARTING AT t1*10. AND STOPPING AT t2*10." \
+    "FROM 'foo' SELECT in.t1, in.t2, in.value EVENT STARTING AT t1*10. AND STOPPING AT t2*10." \
       (test_op "from foo select t1, t2, value event starting at t1*10. and stopping at t2*10.")
 
-    "FROM foo NOTIFY \"ouch\"" \
+    "FROM 'foo' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
-    "FROM foo SELECT MIN locally skip nulls(in.start) AS start, \\
+    "FROM 'foo' SELECT MIN locally skip nulls(in.start) AS start, \\
        MAX locally skip nulls(in.stop) AS max_stop, \\
        (SUM locally skip nulls(in.packets)) / \\
          (param.avg_window) AS packets_per_sec \\
@@ -1356,10 +1357,10 @@ let fields_schema m =
                    group by start / (1_000_000 * avg_window) \\
                    commit after out.start < (max in.start) + 3600")
 
-    "FROM foo SELECT 1 AS one COMMIT BEFORE (SUM locally skip nulls(1)) >= (5)" \
+    "FROM 'foo' SELECT 1 AS one COMMIT BEFORE (SUM locally skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5")
 
-    "FROM foo/bar SELECT in.n, LAG globally skip nulls(2, out.n) AS l" \
+    "FROM 'foo/bar' SELECT in.n, LAG globally skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag(2, n) AS l FROM foo/bar")
 
     "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \

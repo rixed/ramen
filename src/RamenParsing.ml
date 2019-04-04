@@ -16,7 +16,7 @@ let blank = ParseUsual.blank >>: ignore
 let newline = ParseUsual.newline >>: ignore
 
 let all_but_newline =
-  cond "anything until newline" (fun c -> c <> '\n' && c <> '\r') 'x'
+  cond "anything until newline" (fun c -> c <> '\n' && c <> '\r') '_'
 
 let comment =
   char '-' -- char '-' --
@@ -78,7 +78,21 @@ let star = char ~what:"star" '*'
 let dot = char ~what:"dot" '.'
 let char_ ?what x = char ?what x >>: fun _ -> ()
 
-let id_quote = char_ ~what:"quote" '\''
+(* Help with quoted identifiers: *)
+
+let id_quote_char = '\''
+let id_quote = char_ ~what:"quote" id_quote_char
+let not_id_quote = cond "quoted identifier" ((<>) id_quote_char) '_'
+let id_quote_escaped_str = "''"
+let id_quote_escaped = string id_quote_escaped_str
+
+let print_quoted p oc x =
+  let str = Printf.sprintf2 "%a" p x in
+  Printf.fprintf oc "%c%s%c"
+    id_quote_char
+    (String.nreplace ~str ~sub:(String.of_char id_quote_char)
+                     ~by:id_quote_escaped_str)
+    id_quote_char
 
 let not_in_range ?min ?max what =
   let e =
@@ -257,6 +271,7 @@ let non_keyword =
   (
     id_quote -+ (
     repeat_greedy ~sep:none (
-      cond "quoted identifier" (fun c -> c <> '\'') 'x') >>: String.of_list) +-
+      cond "quoted identifier" (fun c -> c <> id_quote_char) '_') >>:
+        String.of_list) +-
     id_quote
   )

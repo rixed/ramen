@@ -37,7 +37,7 @@ type user_conf =
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
-    retentions : (Globs.pattern, retention) Hashtbl.t
+    retentions : (Globs.t, retention) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
