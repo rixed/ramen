@@ -305,12 +305,12 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     TermTable.print_string 1 run_cond
   ) prog.condition ;
   let info_func i func =
-   TermTable.print i "%s" (N.func_color func.F.name) ;
+    TermTable.print i "%s" (N.func_color func.F.name) ;
     if func.doc <> "" then TermTable.print_abstract i func.doc ;
     TermTable.print_head (i+1) "Parents" ;
-    if func.parents = [] then (
+    if func.parents = [] then
       TermTable.print (i+2) "None"
-    ) else (
+    else
       List.iter (function
         | site, None, f ->
             TermTable.print (i+2) "%a%s"
@@ -322,8 +322,8 @@ let info _conf params program_name_opt bin_file opt_func_name () =
               (N.rel_program_color rp)
               (N.func_color f)
       ) func.parents ;
-      TermTable.print_head (i+1) "Input type" ;
-      TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type) ;
+    TermTable.print_head (i+1) "Input type" ;
+    TermTable.print (i+2) "%a" RamenFieldMaskLib.print_in_type func.in_type ;
     let out_type =
       O.out_type_of_operation ~with_private:false func.operation in
     TermTable.print_head (i+1) "Output type" ;
