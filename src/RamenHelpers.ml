@@ -1322,7 +1322,8 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
         if not continue then (
           if !stop_since = 0. then stop_since := now ;
           if not (Atomic.Set.is_empty sons) then (
-            !logger.info "Killing %s servers..." service_name ;
+            !logger.info "Killing %d %s servers..."
+              (Atomic.Set.cardinal sons) service_name ;
             Atomic.Set.iter sons (fun (pid, _) ->
               !logger.debug "Killing %d" pid ;
               let what = Printf.sprintf "stopping %s servers" service_name in
@@ -1361,26 +1362,27 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
       setsockopt sock SO_REUSEADDR true ;
       bind sock sockaddr ;
       listen sock 5 ;
-      try
-        while while_ () do
-          let s, _caller = my_accept ~while_ sock in
-          (* Before forking, advance the PRNG so that all children do not re-init
-           * their own PRNG with the same number: *)
-          let prng_init = Random.bits () in
-          flush_all () ;
-          match fork () with
-          | 0 ->
-              Random.init prng_init ;
-              close sock ;
-              sock_closed := true ;
-              server_fun s ;
-              exit 0
-          | pid ->
-              close s ;
-              Atomic.Set.add sons (pid, Unix.gettimeofday ())
-        done
-      with Exit ->
-        !logger.debug "%s stops accepting connections." service_name
+      while while_ () do
+        match my_accept ~while_ sock with
+        | exception Exit ->
+            !logger.debug "%s stops accepting connections." service_name
+        | s, _caller ->
+            (* Before forking, advance the PRNG so that all children do not
+             * re-init their own PRNG with the same number: *)
+            let prng_init = Random.bits () in
+            flush_all () ;
+            (match fork () with
+            | 0 ->
+                Random.init prng_init ;
+                close sock ;
+                sock_closed := true ;
+                let what = "single server for "^ service_name in
+                log_exceptions ~what (fun () -> server_fun s) ;
+                exit 0
+            | pid ->
+                close s ;
+                Atomic.Set.add sons (pid, Unix.gettimeofday ()))
+      done
     ) () ;
   Thread.join killer_thread
 
