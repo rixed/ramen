@@ -731,6 +731,31 @@ let signal_all_cont running =
         (Unix.kill (Option.get proc.pid)) Sys.sigcont) ;
   ) running
 
+module FuncGraph =
+struct
+  type t =
+    (N.site, (N.program * N.func, entry) Hashtbl.t) Hashtbl.t
+
+  and entry =
+    { rce : C.rc_entry ;
+      prog : P.t ;
+      func : F.t ;
+      parents : (N.site * N.program * N.func) Set.t }
+
+  let print oc =
+    let print_entry oc ge =
+      print_parents oc ge.parents in
+    let print_key oc (pn, fn) =
+      Printf.fprintf oc "%a/%a" N.program_print pn N.func_print fn in
+    Hashtbl.print
+      N.site_print_quoted
+      (Hashtbl.print print_key print_entry) oc
+
+  let find t site pn_fn =
+    let h = Hashtbl.find t site in
+    Hashtbl.find h pn_fn
+end
+
 (* Build the list of workers that must run on this site.
  * Start by getting a list of sites and then populate it with all workers
  * that must run there, with for each the set of their parents. *)
@@ -752,18 +777,7 @@ let build_must_run conf =
   ) programs ;
   (* Build a map from site name to the map of (prog, func names) to
    * prog*func*parents, where parents is a set of site*prog*func: *)
-  let graph = Hashtbl.create (Hashtbl.length programs) in
-  let find_in_graph site pn_fn =
-    let h = Hashtbl.find graph site in
-    Hashtbl.find h pn_fn in
-  let print_graph oc =
-    let print_entry oc (_rce, _prog, _func, parents) =
-      print_parents oc parents in
-    let print_key oc (pn, fn) =
-      Printf.fprintf oc "%a/%a" N.program_print pn N.func_print fn in
-    Hashtbl.print
-      N.site_print_quoted
-      (Hashtbl.print print_key print_entry) oc in
+  let graph : FuncGraph.t = Hashtbl.create (Hashtbl.length programs) in
   with_time (fun () ->
     Hashtbl.iter (fun _ (rce, get_rc) ->
       if rce.C.status = C.MustRun then (
@@ -786,13 +800,13 @@ let build_must_run conf =
                   hashtbl_find_option_delayed
                     (fun () -> Hashtbl.create 5) graph local_site in
                 let k = func.F.program_name, func.F.name in
-                Hashtbl.add h k (rce, prog, func, parents)
+                Hashtbl.add h k FuncGraph.{ rce ; prog ; func ; parents }
               ) where_running
             ) prog.P.funcs
       ) (* else this program is not running *)
     ) programs)
     (!logger.info "Built the function graph in %gs") ;
-  !logger.debug "Graph of functions: %a" print_graph graph ;
+  !logger.debug "Graph of functions: %a" FuncGraph.print graph ;
   (* Now building the hash of functions that must run from graph is easy: *)
   let must_run =
     match Hashtbl.find graph conf.C.site with
@@ -800,7 +814,7 @@ let build_must_run conf =
         Hashtbl.create 0
     | h ->
         Hashtbl.enum h /@
-        (fun (_, (rce, prog, func, parents_sites)) ->
+        (fun (_, ge) ->
           (* Use the mount point + signature + params as the key.
            * Notice that we take all the parameter values (from
            * prog.params), not only the explicitly set values (from
@@ -810,18 +824,17 @@ let build_must_run conf =
           let parents =
             Set.fold (fun (ps, pp, pf) lst ->
               (* Guaranteed to be in the graph: *)
-              let h' = Hashtbl.find graph ps in
-              let _rce, pprog, pfunc, _ = Hashtbl.find h' (pp, pf) in
-              (ps, pprog, pfunc) :: lst
-            ) parents_sites [] in
+              let pge = FuncGraph.find graph ps (pp, pf) in
+              (ps, pge.prog, pge.func) :: lst
+            ) ge.parents [] in
           let key =
-            { program_name = func.F.program_name ;
-              func_name = func.F.name ;
-              func_signature = func.F.signature ;
-              params = prog.P.params ;
+            { program_name = ge.func.F.program_name ;
+              func_name = ge.func.F.name ;
+              func_signature = ge.func.F.signature ;
+              params = ge.prog.P.params ;
               part = Whole } in
           let v =
-            { key ; rce ; func ; parents } in
+            { key ; rce = ge.rce ; func = ge.func ; parents } in
           key, v) |>
         Hashtbl.of_enum in
   !logger.info "%d workers must run in full" (Hashtbl.length must_run) ;
@@ -835,7 +848,7 @@ let build_must_run conf =
   let top_halves = Hashtbl.create 10 in
   Hashtbl.iter (fun site h ->
     if site <> conf.C.site then
-      Hashtbl.iter (fun _ (rce, prog, func, parents_sites) ->
+      Hashtbl.iter (fun _ ge ->
         Set.iter (fun (ps, pp, pf) ->
           if ps = conf.C.site then
             let service = N.service "tunneld" in
@@ -849,17 +862,17 @@ let build_must_run conf =
                   (* local part *)
                   pp, pf,
                   (* remote part *)
-                  func.F.program_name, func.F.name, func.F.signature,
-                  prog.P.params in
+                  ge.FuncGraph.func.F.program_name, ge.func.F.name,
+                  ge.func.F.signature, ge.prog.P.params in
                 (* We could meet several times the same func on different
                  * sites, but that would be the same rce and func! *)
                 Hashtbl.modify_opt k (function
                   | Some (rce, func, srvs) ->
                       Some (rce, func, (srv :: srvs))
                   | None ->
-                      Some (rce, func, [ srv ])
+                      Some (ge.rce, ge.func, [ srv ])
                 ) top_halves
-        ) parents_sites
+        ) ge.parents
       ) h
   ) graph ;
   !logger.info "%d workers must run in half" (Hashtbl.length top_halves) ;
@@ -876,9 +889,8 @@ let build_must_run conf =
         func_signature = sign ;
         params ; part } in
     let parents =
-      let _rce, pprog, pfunc, _ =
-        find_in_graph conf.C.site (pp, pf) in
-      [ conf.C.site, pprog, pfunc ] in
+      let pge = FuncGraph.find graph conf.C.site (pp, pf) in
+      [ conf.C.site, pge.prog, pge.func ] in
     let v =
       { key ; rce ; func ; parents } in
     assert (not (Hashtbl.mem must_run key)) ;
