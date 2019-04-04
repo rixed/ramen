@@ -58,7 +58,7 @@ if test "$be_master" = yes ; then
   # Services.all_hosts knows about them (improves logs on aggregator)
   for h in $(seq 1 $nb_loggers) ; do
     name="logger$h"
-    echo '  "$name" => {};' >> $services
+    echo '  "'"$name"'" => {};' >> $services
   done
   echo '}' >> $services
 
