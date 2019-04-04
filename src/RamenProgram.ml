@@ -307,7 +307,7 @@ let expurgate from =
     | O.SubQuery q ->
         let new_func = reify_subquery q in
         (new_func :: new_funcs),
-        O.NamedOperation (None, Option.get new_func.name) :: from
+        O.NamedOperation (O.ThisSite, None, Option.get new_func.name) :: from
     | (O.GlobPattern _ | O.NamedOperation _) as f -> new_funcs, f :: from
   ) ([], []) from
 
@@ -350,7 +350,7 @@ let common_fields_of_from get_parent start_name funcs from =
           assert false
       | O.GlobPattern _ ->
           List.map (fun f -> f.RamenTuple.name) RamenBinocle.tuple_typ
-      | O.NamedOperation (None, fn) ->
+      | O.NamedOperation (_, None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
               Printf.sprintf "While expanding STAR, cannot find parent %s"
@@ -372,7 +372,7 @@ let common_fields_of_from get_parent start_name funcs from =
               | Notifications _ ->
                   RamenNotification.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.name)))
-      | O.NamedOperation (Some rel_pn, fn) ->
+      | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
           let par_func =

@@ -190,8 +190,8 @@ let compile conf get_parent ~exec_file source_file
          * type: *)
         let parent_prog_name, parent_func_name =
           match parent with
-          | None, func_name -> program_name, func_name
-          | Some rel_prog, func_name ->
+          | _, None, func_name -> program_name, func_name
+          | _, Some rel_prog, func_name ->
               N.program_of_rel_program program_name rel_prog,
               func_name in
         let parent_name =

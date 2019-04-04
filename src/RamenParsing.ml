@@ -76,6 +76,7 @@ let quoted_string = quoted_string ~base_num:10
 let slash = char ~what:"slash" '/'
 let star = char ~what:"star" '*'
 let dot = char ~what:"dot" '.'
+let minus = char ~what:"minus" '-'
 let char_ ?what x = char ?what x >>: fun _ -> ()
 
 (* Help with quoted identifiers: *)

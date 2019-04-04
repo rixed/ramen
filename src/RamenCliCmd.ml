@@ -20,7 +20,7 @@ let () =
     | _ -> None)
 
 let make_copts debug quiet persist_dir rand_seed keep_temp_files
-               forced_variants initial_export_duration hostname =
+               forced_variants initial_export_duration site =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -33,7 +33,7 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
       List.rev_append (String.split_on_char ',' s) lst
     ) [] forced_variants in
   C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
-              ~initial_export_duration ~hostname persist_dir
+              ~initial_export_duration ~site persist_dir
 
 (*
  * `ramen supervisor`
@@ -161,8 +161,8 @@ let notify conf parameters notif_name () =
 (*
  * `ramen tunneld`
  *
- * Runs a service allowing other hosts to transfert tuples to workers running
- * on this host.
+ * Runs a service allowing other sites to transfer tuples to workers running
+ * on this one.
  *)
 
 let tunneld conf daemonize to_stdout to_syslog port () =
@@ -263,13 +263,13 @@ let compile conf lib_path use_external_compiler bundle_dir
  *)
 
 let run conf params replace kill_if_disabled report_period program_name_opt
-        src_file on_hostname bin_file () =
+        src_file on_site bin_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file ~on_hostname bin_file program_name_opt
+               ?src_file ~on_site bin_file program_name_opt
 
 (*
  * `ramen kill`
@@ -312,10 +312,13 @@ let info _conf params program_name_opt bin_file opt_func_name () =
       TermTable.print (i+2) "None"
     ) else (
       List.iter (function
-        | None, f ->
-            TermTable.print (i+2) "%s" (N.func_color f)
-        | Some rp, f ->
-            TermTable.print (i+2) "%s/%s"
+        | site, None, f ->
+            TermTable.print (i+2) "%a%s"
+              O.print_site_identifier site
+              (N.func_color f)
+        | site, Some rp, f ->
+            TermTable.print (i+2) "%a%s/%s"
+              O.print_site_identifier site
               (N.rel_program_color rp)
               (N.func_color f)
       ) func.parents ;
@@ -408,7 +411,7 @@ let sort_col_of_string spec str =
 let ps_ profile conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
   let must_run_here rce =
-    rce.C.status = C.MustRun && C.match_localhost conf rce.C.on_hostname in
+    rce.C.status = C.MustRun && C.match_localsite conf rce.C.on_site in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)
@@ -491,7 +494,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
         | exception _ -> ()
         | prog ->
             List.iter (fun func ->
-              List.iter (fun (pp, pf) ->
+              List.iter (fun (_, pp, pf) ->
                 (* We could use the pattern to filter out uninteresting
                  * parents but there is not much to save at this point. *)
                 let k =

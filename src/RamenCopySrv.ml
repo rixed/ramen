@@ -34,9 +34,9 @@ let stats_tuples =
 
 (* Server: *)
 
-let copy_all _conf (client_host : N.host) (bname : N.path) fd rb =
-  let labels = [ "client", (client_host :> string) ] in
-  forever (fun () ->
+let copy_all ~while_ _conf (client_site : N.site) (bname : N.path) fd rb =
+  let labels = [ "client", (client_site :> string) ] in
+  while while_ () do
     let bytes : RamenCopy.append_msg =
       Files.(marshal_from_fd socket_path) fd in
     (*IntCounter.inc ~labels (stats_tuples conf.C.persist_dir) ;*)
@@ -46,14 +46,14 @@ let copy_all _conf (client_host : N.host) (bname : N.path) fd rb =
       ~on:(function
         | RingBuf.NoMoreRoom ->
             !logger.debug "NoMoreRoom in target ringbuf of %a: %a, waiting"
-              N.host_print client_host
+              N.site_print client_site
               N.path_print bname ;
             true
         | _ ->
             false)
       ~first_delay:0.001 ~max_delay:1.
       (RingBuf.enqueue rb bytes (Bytes.length bytes) 0.) 0.
-  ) ()
+  done
 
 let serve conf ~while_ fd =
   !logger.debug "New connection to copy service on fd %d!"
@@ -64,7 +64,7 @@ let serve conf ~while_ fd =
   let id : RamenCopy.set_target_msg =
     Files.(marshal_from_fd socket_path) fd in
   !logger.info "Received target identification: %a, %a, #%d"
-    N.host_print id.client_host
+    N.site_print id.client_site
     N.fq_print id.child
     id.parent_num ;
   let _mre, _prog, func =
@@ -79,7 +79,7 @@ let serve conf ~while_ fd =
     (* If supervisor haven't started this worker for any reason, then
      * [load] is going to fail. Just wait. *)
     retry ~on:always ~while_ RingBuf.load bname in
-  copy_all conf id.client_host bname fd rb
+  copy_all ~while_ conf id.client_site bname fd rb
 
 (* Start the service: *)
 

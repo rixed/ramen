@@ -142,17 +142,34 @@ and merge =
 (* Possible FROM sources: other function (optionally from another program),
  * sub-query or internal instrumentation: *)
 and data_source =
-  | NamedOperation of (N.rel_program option * N.func)
+  | NamedOperation of (site_identifier * N.rel_program option * N.func)
   | SubQuery of t
   | GlobPattern of Globs.t
   [@@ppp PPP_OCaml]
 
+and site_identifier =
+  | AllSites
+  | TheseSites of Globs.t
+  | ThisSite
+  [@@ppp PPP_OCaml]
+
+let print_site_identifier oc = function
+  | AllSites -> ()
+  | TheseSites s ->
+      Printf.fprintf oc "%a:"
+        (RamenParsing.print_quoted Globs.print) s
+  | ThisSite -> Char.print oc ':'
+
 let rec print_data_source with_types oc = function
-  | NamedOperation (Some rel_p, f) ->
+  | NamedOperation (site, Some rel_p, f) ->
       let fq = (rel_p :> string) ^"/"^ (f :> string) in
-      RamenParsing.print_quoted String.print oc fq
-  | NamedOperation (host, None, f) ->
-      RamenParsing.print_quoted N.func_print oc f
+      Printf.fprintf oc "%a%a"
+        print_site_identifier site
+        (RamenParsing.print_quoted String.print) fq
+  | NamedOperation (site, None, f) ->
+      Printf.fprintf oc "%a%a"
+        print_site_identifier site
+        (RamenParsing.print_quoted N.func_print) f
   | SubQuery q ->
       Printf.fprintf oc "(%a)"
         (print with_types) q
@@ -1105,15 +1122,28 @@ let fields_schema m =
       checked (String.of_list s) in
     (unquoted ||| quoted) m
 
+  type tmp_data_source =
+    | Named_ of (N.rel_program option * N.func)
+    | Pattern_ of string
+
   let rec from_clause m =
     let m = "from clause" :: m in
+    let site =
+      optional ~def:ThisSite (
+        site_identifier >>: fun h -> TheseSites (Globs.compile h)) in
     (
       strinG "from" -- blanks -+
       several ~sep:list_sep_and (
-        (func_identifier >>: fun id -> NamedOperation id) |||
-        (char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' >>:
-          fun t -> SubQuery t) |||
-        (from_pattern >>: fun t -> GlobPattern t))
+        (
+          char '(' -- opt_blanks -+ p +- opt_blanks +- char ')' >>:
+            fun t -> SubQuery t
+        ) ||| (
+          from_pattern >>: fun s -> GlobPattern (Globs.compile s)
+        ) ||| (
+          optional ~def:AllSites (site +- char ':') ++
+          func_identifier >>: fun (h, (p, f)) -> NamedOperation (h, p, f)
+        )
+      )
     ) m
 
   and p m =

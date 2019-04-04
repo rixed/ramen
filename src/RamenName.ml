@@ -172,11 +172,27 @@ let path_cat = String.concat "/"
 (* Host names *)
 
 type host = [`Host] t
-
 let host_ppp_ocaml = t_ppp_ocaml
 external host : string -> host = "%identity"
 let host_print = String.print
 let host_print_quoted = String.print_quoted
+
+(* Site names *)
+
+type site = [`Site] t
+let site_ppp_ocaml = t_ppp_ocaml
+external site : string -> site = "%identity"
+let site_print = String.print
+let site_print_quoted = String.print_quoted
+
+(* Service names *)
+
+type service = [`Service] t
+
+let service_ppp_ocaml = t_ppp_ocaml
+external service : string -> service = "%identity"
+let service_print = String.print
+let service_print_quoted = String.print_quoted
 
 
 (* Some dedicated colors for those strings: *)
@@ -190,9 +206,10 @@ let fq_color = func_color
 
 type 'a any =
   [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `Host ] as 'a
+   | `Path | `Host | `Site | `Service ] as 'a
 
 let compare = String.compare
+let eq = String.equal
 let cat = (^)
 let length = String.length
 let is_empty s = String.length s = 0

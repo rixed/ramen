@@ -20,7 +20,7 @@ let stats_tuples =
 
 (* Client: *)
 
-let copy_client clt_host srv_host port child parent_num =
+let copy_client clt_site srv_host port child parent_num =
   !logger.info "Connecting to copy server at %a:%d"
     N.host_print srv_host port ;
   let service = string_of_int port in
@@ -41,7 +41,7 @@ let copy_client clt_host srv_host port child parent_num =
     ) addrs in
   IntCounter.inc stats_connects ;
   let target =
-    RamenCopy.{ client_host = clt_host ;
+    RamenCopy.{ client_site = clt_site ;
                 child ; parent_num } in
   Files.marshal_into_fd ~at_start:false fd target ;
   !logger.info "Send target identification" ;

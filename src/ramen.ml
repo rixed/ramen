@@ -20,12 +20,12 @@ let path =
   in
   Arg.conv ~docv:"FILE" (parse, print)
 
-let host =
-  let parse s = Pervasives.Ok (N.host s)
-  and print fmt (p : N.host) =
+let site =
+  let parse s = Pervasives.Ok (N.site s)
+  and print fmt (p : N.site) =
     Format.fprintf fmt "%s" (p :> string)
   in
-  Arg.conv ~docv:"HOST" (parse, print)
+  Arg.conv ~docv:"SITE" (parse, print)
 
 let glob =
   let parse s = Pervasives.Ok (Globs.compile s)
@@ -71,10 +71,10 @@ let copts =
     let i = Arg.info ~doc:CliInfo.initial_export_duration
                      ~docs ~env [ "initial-export-duration" ] in
     Arg.(value (opt float Default.initial_export_duration i))
-  and hostname =
+  and site =
     let env = Term.env_info "HOSTNAME" in
-    let i = Arg.info ~doc:CliInfo.hostname ~env [ "hostname" ] in
-    Arg.(value (opt host (N.host "") i))
+    let i = Arg.info ~doc:CliInfo.site ~env [ "site" ] in
+    Arg.(value (opt site (N.site "") i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -84,7 +84,7 @@ let copts =
     $ keep_temp_files
     $ forced_variants
     $ initial_export_duration
-    $ hostname)
+    $ site)
 
 (*
  * Start the process supervisor
@@ -490,8 +490,8 @@ let src_file =
                    [ "src-file" ; "source-file" ] in
   Arg.(value (opt (some path) None i))
 
-let on_hostname =
-  let i = Arg.info ~doc:CliInfo.on_hostname [ "on-hostname" ] in
+let on_site =
+  let i = Arg.info ~doc:CliInfo.on_site [ "on-site" ] in
   Arg.(value (opt glob Globs.all i))
 
 let run =
@@ -504,7 +504,7 @@ let run =
       $ report_period
       $ as_
       $ src_file
-      $ on_hostname
+      $ on_site
       $ bin_file),
     info ~doc:CliInfo.run "run")
 

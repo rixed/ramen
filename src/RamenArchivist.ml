@@ -171,7 +171,8 @@ let save_stats conf stats =
 
 let update_parents s program_name func =
   s.parents <-
-    List.map (fun (pprog, pfunc) ->
+    List.map (fun (phost, pprog, pfunc) ->
+      ignore phost ; (* TODO: have a per host disk allowance *)
       let pprog =
         F.program_of_parent_prog program_name pprog in
       N.fq_of_program pprog pfunc

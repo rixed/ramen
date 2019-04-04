@@ -31,8 +31,9 @@ let check_orphans killed_prog_names programs =
            * complain: *)
           if func.F.parents <> [] &&
              List.for_all (function
-               | None, _ -> false (* does not depend upon a killed program *)
-               | Some par_rel_prog, _ ->
+               (* FIXME: `kill` should probably accept --on-site? *)
+               | _, None, _ -> false (* does not depend upon a killed program *)
+               | _, Some par_rel_prog, _ ->
                   let par_prog =
                     N.program_of_rel_program func.F.program_name par_rel_prog in
                   List.mem par_prog killed_prog_names
@@ -90,8 +91,10 @@ let check_links program_name prog running_programs =
     let already_warned1 = ref Set.empty
     and already_warned2 = ref Set.empty in
     List.iter (function
-      | None, _ -> ()
-      | Some par_rel_prog, par_func ->
+      (* FIXME: if a specific host is selected, check that the program is
+       * running on that host *)
+      | _, None, _ -> ()
+      | _, Some par_rel_prog, par_func ->
         let par_prog = N.program_of_rel_program func.F.program_name
                                                         par_rel_prog in
         (match Hashtbl.find running_programs par_prog with
@@ -135,8 +138,8 @@ let check_links program_name prog running_programs =
     | prog' ->
         List.iter (fun func ->
           (* Check that a children that depends on us gets the proper
-           * type: *)
-          List.iter (fun (rel_par_prog_opt, par_func as parent) ->
+           * type (regardless of where it runs): *)
+          List.iter (fun (_, rel_par_prog_opt, par_func as parent) ->
             let par_prog = F.program_of_parent_prog func.F.program_name
                                                     rel_par_prog_opt in
             if par_prog = program_name then
@@ -166,7 +169,7 @@ let default_program_name bin_file =
  * linkage checks: *)
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(report_period=Default.report_period) ?(src_file=N.path "")
-        ?(on_hostname=Globs.all) ?(debug=false) ?(params=no_params)
+        ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
         bin_file program_name_opt =
   let program_name =
     Option.default_delayed (fun () ->
@@ -200,4 +203,4 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       (* TODO: Make sure this key is authoritative on a program name: *)
       Hashtbl.replace programs program_name
         C.{ bin ; params ; status = MustRun ; debug ; report_period ;
-            src_file ; on_hostname }))
+            src_file ; on_site }))

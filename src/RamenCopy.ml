@@ -7,7 +7,7 @@ module N = RamenName
 (* This is supposed to be the first message sent by the client. *)
 (* TODO: versioned variant type *)
 type set_target_msg =
-  { client_host : N.host ;
+  { client_site : N.site ;
     child : N.fq ;
     parent_num : int }
 

@@ -14,7 +14,7 @@ type conf =
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     initial_export_duration : float ;
-    hostname : N.host (* this host name *) }
+    site : N.site (* this site name *) }
 
 let tmp_input_of_func persist_dir (program_name : N.program)
                       (func_name : N.func) in_type =
@@ -32,7 +32,7 @@ let upload_dir_of_func persist_dir program_name func_name in_type =
 module Func =
 struct
   type parent =
-    N.rel_program option * N.func
+    O.site_identifier * N.rel_program option * N.func
     [@@ppp PPP_OCaml]
 
   type t =
@@ -94,10 +94,13 @@ struct
 
   let print_parent oc (parent : parent) =
     match parent with
-    | None, f ->
-        String.print oc (f :> string)
-    | Some p, f ->
-        Printf.fprintf oc "%s/%s"
+    | site, None, f ->
+        Printf.fprintf oc "%a%s"
+          O.print_site_identifier site
+          (f :> string)
+    | site, Some p, f ->
+        Printf.fprintf oc "%a%s/%s"
+          O.print_site_identifier site
           (p :> string) (f :> string)
 
   (* Only for debug or keys, not for paths! *)
@@ -275,8 +278,8 @@ type rc_entry =
      * When it is rebuild, relative parents are found using the program name that's
      * the key in the running config. *)
     src_file : N.path [@ppp_default N.path ""] ;
-    (* Optionally, run this worker only on this host: *)
-    on_hostname : Globs.t [@ppp_default Globs.all] }
+    (* Optionally, run this worker only on these sites: *)
+    on_site : Globs.t [@ppp_default Globs.all] }
   [@@ppp PPP_OCaml]
 
 (* The must_run file gives us the unique names of the programs. *)
@@ -331,8 +334,8 @@ let is_program_running programs program_name =
   | exception Not_found -> false
   | rce, _get_rc -> rce.status = MustRun
 
-let match_localhost conf on_hostname =
-  Globs.matches on_hostname (conf.hostname :> string)
+let match_localsite conf site_glob =
+  Globs.matches site_glob (conf.site :> string)
 
 let last_conf_mtime conf =
   running_config_file conf |> Files.mtime_def 0.
@@ -355,7 +358,7 @@ let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
-      ?(hostname=N.host "") ?(test=false) persist_dir =
+      ?(site=N.site "") ?(test=false) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -363,7 +366,7 @@ let make_conf
   let persist_dir = Files.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
-    initial_export_duration ; hostname ; test }
+    initial_export_duration ; site ; test }
 
 (* Various directory names: *)
 

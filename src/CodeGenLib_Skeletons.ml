@@ -1541,12 +1541,11 @@ let top_half
       None in
   worker_start worker_name true get_binocle_tuple (fun _conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0")
-    and hostname = N.host (getenv ~def:"?hostname?" "hostname") in
+    and site = N.site (getenv ~def:"?site?" "site") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
       List.map (fun t ->
-        RamenCopyClt.copy_client hostname t.host t.port worker_name
-                                 t.parent_num
+        RamenCopyClt.copy_client site t.host t.port worker_name t.parent_num
       ) tunnelds in
     let forward_bytes b =
       List.iter (fun forwarder -> forwarder b) forwarders in

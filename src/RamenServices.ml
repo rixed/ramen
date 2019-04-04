@@ -19,29 +19,44 @@ type entry =
 let print_entry oc e =
   Printf.fprintf oc "%a:%d" N.host_print e.host e.port
 
-type services =
-  (string, entry) Hashtbl.t [@@ppp PPP_OCaml]
+type site_directory =
+  (N.service, entry) Hashtbl.t [@@ppp PPP_OCaml]
 
-let services_file persist_dir =
+type directory =
+  (N.site, site_directory) Hashtbl.t [@@ppp PPP_OCaml]
+
+let directory_file persist_dir =
   N.path_cat [ persist_dir ; N.path "services" ;
                N.path RamenVersions.services ; N.path "services" ]
 
 (* FIXME: cache it *)
 let load conf =
-  let fname = services_file conf.C.persist_dir in
-  fail_with_context "Reading services file" (fun () ->
-    Files.ppp_of_file ~default:"{}" services_ppp_ocaml fname)
+  let fname = directory_file conf.C.persist_dir in
+  fail_with_context "Reading directory file" (fun () ->
+    Files.ppp_of_file ~default:"{}" directory_ppp_ocaml fname)
 
-let resolve conf name =
-  let services = load conf in
-  Hashtbl.find services name
+let resolve conf site service =
+  let directory = load conf in
+  Hashtbl.find (Hashtbl.find directory site) service
 
-let lookup conf glob =
-  if Globs.has_wildcard glob then
-    let services = load conf in
-    hashtbl_find_all (fun k _ ->
-      Globs.matches glob k
-    ) services |> List.map snd
+let lookup conf site_glob service =
+  if Globs.has_wildcard site_glob then
+    let directory = load conf in
+    hashtbl_find_all (fun (site : N.site) _ ->
+      Globs.matches site_glob (site :> string)
+    ) directory |>
+    List.fold_left (fun lst (_site, site_dir) ->
+      List.rev_append
+        (Hashtbl.find_all site_dir service)
+        lst
+    ) []
   else
-    [ resolve conf (Globs.decompile glob) ]
+    let site = N.site (Globs.decompile site_glob) in
+    [ resolve conf site service ]
 
+let all_sites conf =
+  let directory = load conf in
+  let s = Hashtbl.keys directory |> Set.of_enum in
+  (* For single-site runs, for instance tests, that does not want to bother
+   * with a service directory: *)
+  Set.add conf.C.site s

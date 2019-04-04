@@ -173,7 +173,7 @@ let complete str () =
         "--rand-seed", CliInfo.rand_seed ;
         "--persist-dir=", CliInfo.persist_dir ;
         "--variant", CliInfo.variant ;
-        "--hostname", CliInfo.hostname ] in
+        "--site", CliInfo.site ] in
     let completions =
       (match command with
       | "supervisor" ->
@@ -215,7 +215,7 @@ let complete str () =
           ("--replace", CliInfo.replace) ::
           ("--kill-if-disabled", CliInfo.kill_if_disabled) ::
           ("--source-file=", CliInfo.src_file) ::
-          ("--on-hostname=", CliInfo.on_hostname) ::
+          ("--on-site=", CliInfo.on_site) ::
           copts @
           (complete_binary_files last_tok)
       | "kill" ->

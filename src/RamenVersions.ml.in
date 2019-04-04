@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v57" (* last: Cosmetics: SF3s *)
+let codegen = "v58" (* last: host identifiers in func parents *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v8" (* last: addition of top-halves *)
@@ -42,4 +42,4 @@ let archivist_conf = "v2"
 let factors = "v1"
 
 (* Format of the services file *)
-let services = "v1"
+let services = "v2" (* last: split sites/services *)

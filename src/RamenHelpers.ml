@@ -203,6 +203,14 @@ let hashtbl_find_all f h =
   ) h ;
   !res
 
+let hashtbl_find_option_delayed def h k =
+  try
+    Hashtbl.find h k
+  with Not_found ->
+    let v = def () in
+    Hashtbl.add h k v ;
+    v
+
 let print_exception ?(what="Exception") e =
   !logger.error "%s: %s\n%s" what
     (Printexc.to_string e)

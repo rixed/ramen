@@ -3,7 +3,7 @@
 
 this_script="$0"
 top_src=$(dirname "$this_script")/../../
-nb_loggers=4
+nb_loggers=1
 
 . $top_src/tests/lib.sh
 
@@ -19,19 +19,19 @@ if test -z "$master_port" ; then
   r=$(rand 64511)
   master_port=$((1024+$r))
   be_master='yes'
-  ramen_hostname='aggregator'
+  ramen_site='aggregator'
   master_ramen_dir="$RAMEN_DIR"
   log "I'm the aggregator, listening to forwarded tuples at port $master_port"
 else
   be_master='no'
-  test -n "$ramen_hostname" || fail 'master should have set ramen_hostname'
+  test -n "$ramen_site" || fail 'master should have set ramen_site'
   test -n "$master_ramen_dir" || fail 'master should have set master_ramen_dir'
   log "I'm a logger"
 fi
-export RAMEN_DIR="$master_ramen_dir/$ramen_hostname"
+export RAMEN_DIR="$master_ramen_dir/$ramen_site"
 
 rc_version='v16'
-services_version='v1'
+services_version='v2'
 
 # Compile the test programs (only once)
 if test "$be_master" = yes ; then
@@ -51,19 +51,23 @@ if test "$be_master" = yes ; then
   services="$RAMEN_DIR/services/$services_version/services"
   mkdir -p $(dirname $services)
   echo '{' > $services
-  echo '  "aggregator" => { host="127.0.0.1"; port='"$master_port"' };' >> $services
+  echo '  "aggregator" => {' >> $services
+  echo '    "tunneld" => { host="127.0.0.1"; port='"$master_port"' };' >> $services
+  echo '  };' >> $services
+  # Also declare other hosts that are not running any service so that
+  # Services.all_hosts knows about them (improves logs on aggregator)
   for h in $(seq 1 $nb_loggers) ; do
     name="logger$h"
-    echo '  "$name" => { host="127.0.0.1"; port=0 };' >> $services
+    echo '  "$name" => {};' >> $services
   done
   echo '}' >> $services
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=5
-  "$ramen" run "$root/logs.x"      --on-hostname="logger*"    --as logs
-  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 1min   -p time_period=60
-  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 10mins -p time_period=600
-  "$ramen" run "$root/logs_aggr.x" --on-hostname="aggregator" --as 1hour  -p time_period=3600
+  "$ramen" run "$root/logs.x"      --on-site="logger*"    --as logs
+  "$ramen" run "$root/logs_aggr.x" --on-site="aggregator" --as 1min   -p time_period=60
+  "$ramen" run "$root/logs_aggr.x" --on-site="aggregator" --as 10mins -p time_period=600
+  "$ramen" run "$root/logs_aggr.x" --on-site="aggregator" --as 1hour  -p time_period=3600
 
 else
   log "Linking RC config from aggregator" ;
@@ -77,7 +81,7 @@ else
 fi
 
 # Supervisor runs in all instances:
-"$ramen" supervisor --hostname="$ramen_hostname" &
+"$ramen" supervisor --site="$ramen_site" &
 supervisor_pid=$!
 at_exit "echo 'Killing ramen supervisor'; kill '$supervisor_pid'"
 
@@ -87,7 +91,7 @@ if test "$be_master" = yes ; then
   for h in $(seq 1 $nb_loggers) ; do
     name="logger$h"
     /usr/bin/env \
-      master_port="$master_port" ramen_hostname="$name" \
+      master_port="$master_port" ramen_site="$name" \
       master_ramen_dir="$master_ramen_dir" \
       "$this_script" &
     logger_pid=$!

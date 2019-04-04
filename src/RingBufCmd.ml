@@ -192,7 +192,10 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
             List.fold_left (fun links func ->
               let links =
                 List.fold_lefti (fun links i
-                                    (par_rel_prog, par_func) ->
+                                     (par_host, par_rel_prog, par_func) ->
+                  (* FIXME: only inspect locally running node and maybe also
+                   * the links to the top-halves *)
+                  ignore par_host ;
                   (* i is the index in the list of parents for a given
                    * child *)
                   let par_prog =

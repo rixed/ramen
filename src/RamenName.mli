@@ -78,19 +78,38 @@ val path_cat : path list -> path
 
 val path_of_program : program -> path
 
-(* Host names: *)
+(* Host names (or IP as strings): *)
 type host = [`Host] t
 val host_ppp_ocaml : host PPP.t
 val host : string -> host
 val host_print : 'a BatInnerIO.output -> host -> unit
 val host_print_quoted : 'a BatInnerIO.output -> host -> unit
 
+(* Site names:
+ * A site is an instance of Ramen. Various sites can share a single RC
+ * and communicate through the tunneld service. *)
+type site = [`Site] t
+val site_ppp_ocaml : site PPP.t
+val site : string -> site
+val site_print : 'a BatInnerIO.output -> site -> unit
+val site_print_quoted : 'a BatInnerIO.output -> site -> unit
+
+(* Service names:
+ * For now the only service is the "tunneld" service, forwarding remote
+ * tuples to local workers. *)
+type service = [`Service] t
+val service_ppp_ocaml : service PPP.t
+val service : string -> service
+val service_print : 'a BatInnerIO.output -> service -> unit
+val service_print_quoted : 'a BatInnerIO.output -> service -> unit
+
 (* Compare two strings together as long as they are of the same (phantom)
  * type: *)
 type 'a any =
   [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
-   | `Path | `Host ] as 'a
+   | `Path | `Host | `Site | `Service ] as 'a
 val compare : ('a any as 'a) t -> 'a t -> int
+val eq : ('a any as 'a) t -> 'a t -> bool
 val cat : ('a any as 'a) t -> 'a t -> 'a t
 val length : 'a t -> int
 val is_empty : 'a  t -> bool

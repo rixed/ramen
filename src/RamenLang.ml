@@ -139,3 +139,17 @@ let func_identifier m =
     func_name ~quoted:true +-
     id_quote in
   (quoted ||| unquoted) m
+
+let site_identifier m =
+  let what = "site identifier" in
+  let m = what :: m in
+  let site_char =
+    letter ||| decimal_digit ||| minus |||
+    underscore ||| star in
+  let unquoted =
+    repeat_greedy ~sep:none ~what site_char
+  and quoted =
+    id_quote -+ repeat_greedy ~sep:none ~what not_id_quote +- id_quote in
+  (
+    quoted ||| unquoted >>: String.of_list
+  ) m
