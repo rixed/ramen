@@ -983,7 +983,7 @@ struct
       blanks +- strinGs "null"
     ) m
 
-  let state_and_nulls ?(def_state=GlobalState)
+  let state_and_nulls ?(def_state=LocalState)
                       ?(def_skipnulls=true) m =
     (
       optional ~def:def_state (blanks -+ state_lifespan) ++
@@ -1279,25 +1279,25 @@ struct
          make (Stateless (SL2 (Trunc, e1, e2)))) |||
       (afun1 "hash" >>: fun e -> make (Stateless (SL1 (Hash, e)))) |||
       (afun1 "sparkline" >>: fun e -> make (Stateless (SL1 (Sparkline, e)))) |||
-      (afun1_sf ~def_state:LocalState "min" >>: fun ((g, n), e) ->
+      (afun1_sf "min" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrMin, e)))) |||
-      (afun1_sf ~def_state:LocalState "max" >>: fun ((g, n), e) ->
+      (afun1_sf "max" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrMax, e)))) |||
-      (afun1_sf ~def_state:LocalState "sum" >>: fun ((g, n), e) ->
+      (afun1_sf "sum" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrSum, e)))) |||
-      (afun1_sf ~def_state:LocalState "avg" >>: fun ((g, n), e) ->
+      (afun1_sf "avg" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrAvg, e)))) |||
-      (afun1_sf ~def_state:LocalState "and" >>: fun ((g, n), e) ->
+      (afun1_sf "and" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrAnd, e)))) |||
-      (afun1_sf ~def_state:LocalState "or" >>: fun ((g, n), e) ->
+      (afun1_sf "or" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrOr, e)))) |||
-      (afun1_sf ~def_state:LocalState "first" >>: fun ((g, n), e) ->
+      (afun1_sf "first" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrFirst, e)))) |||
-      (afun1_sf ~def_state:LocalState "last" >>: fun ((g, n), e) ->
+      (afun1_sf "last" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (AggrLast, e)))) |||
-      (afun1_sf ~def_state:LocalState "group" >>: fun ((g, n), e) ->
+      (afun1_sf "group" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Group, e)))) |||
-      (afun1_sf ~def_state:GlobalState "all" >>: fun ((g, n), e) ->
+      (afun1_sf "all" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Group, e)))) |||
       (
         let perc =
@@ -1308,12 +1308,11 @@ struct
         fun (ps, e) ->
           make (Stateless (SL2 (Percentile, e, ps)))
       ) |||
-      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
+      (afun2_sf ~def_state:GlobalState "lag" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
-      (afun1_sf "lag" >>: fun ((g, n), e) ->
+      (afun1_sf ~def_state:GlobalState "lag" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF2 (Lag, one (), e)))) |||
 
-      (* avg perform a division thus the float type *)
       (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
          make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |||
       (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
@@ -1338,11 +1337,11 @@ struct
          make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, [e])))) |||
       (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
          make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |||
-      (afun0v_sf ~def_state:LocalState "distinct" >>: fun ((g, n), es) ->
+      (afun0v_sf "distinct" >>: fun ((g, n), es) ->
          make (Stateful (g, n, Distinct es))) |||
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
          make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |||
-      (afun4_sf ~def_state:LocalState "histogram" >>:
+      (afun4_sf "histogram" >>:
        fun ((g, n), what, min, max, num_buckets) ->
          match float_of_const min,
                float_of_const max,
@@ -1673,7 +1672,7 @@ struct
     "ABS((unknown.bps) - (LAG globally skip nulls(1, unknown.bps)))" \
       (test_expr ~printer:(print false) p "abs(bps - lag(1,bps))")
 
-    "HYSTERESIS globally skip nulls(unknown.value, 900, 1000)" \
+    "HYSTERESIS locally skip nulls(unknown.value, 900, 1000)" \
       (test_expr ~printer:(print false) p "hysteresis(value, 900, 1000)")
 
     "((4) & (4)) * (2)" \

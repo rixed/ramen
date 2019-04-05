@@ -6,7 +6,7 @@ DEFINE win1 AS
   FROM fixtures/earthquakes/csv
   WHERE year < 2000
   SELECT
-    LAST 2 n AS _lst,
+    LAST 2 GLOBALLY n AS _lst,
     GET(0, _lst) AS last_but_one,
     GET(1, _lst) AS last_one;
 
@@ -16,20 +16,20 @@ DEFINE win2 AS
   WHERE model starts with "A3"
   SELECT
     -- Will skip NULLs:
-    LAST 3 CO AS _lst,
+    LAST 3 GLOBALLY CO AS _lst,
     GET(0, _lst) AS third_to_last_co,
     GET(1, _lst) AS second_to_last_co,
     GET(2, _lst) AS last_one_co,
-    LAST 3 horsepower AS _hp,
+    LAST 3 GLOBALLY horsepower AS _hp,
     GET(0, _hp) AS third_to_last_hp,
     GET(1, _hp) AS second_to_last_hp,
     GET(2, _hp) AS last_one_hp,
     -- Will not skip NULLs:
-    LAST 3 keep nulls CO AS _lst_n,
+    LAST 3 GLOBALLY keep nulls CO AS _lst_n,
     GET(0, _lst_n) AS third_to_last_co_n,
     GET(1, _lst_n) AS second_to_last_co_n,
     GET(2, _lst_n) AS last_one_co_n,
-    LAST 3 horsepower AS _hp_n,
+    LAST 3 GLOBALLY horsepower AS _hp_n,
     GET(0, _hp_n) AS third_to_last_hp_n,
     GET(1, _hp_n) AS second_to_last_hp_n,
     GET(2, _hp_n) AS last_one_hp_n;
@@ -38,7 +38,7 @@ DEFINE win2 AS
 DEFINE f3 AS
   FROM fixtures/earthquakes/csv
   SELECT
-    LENGTH(LAST 1 n) = 1 AS t1,
-    GET(0, LAST 1 n) = n AS t2,
-    AVG(LAST 1 n) = n AS t3,
-    AVG(LAST 1 float(not (n = 99999))) >= 1 AS t4;
+    LENGTH(LAST 1 GLOBALLY n) = 1 AS t1,
+    GET(0, LAST 1 GLOBALLY n) = n AS t2,
+    AVG(LAST 1 GLOBALLY n) = n AS t3,
+    AVG(LAST 1 GLOBALLY float(not (n = 99999))) >= 1 AS t4;
