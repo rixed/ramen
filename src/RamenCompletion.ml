@@ -358,9 +358,9 @@ let complete str () =
           copts
       | "archivist" ->
           [ "--loop", CliInfo.loop ;
-            "--no-stats", CliInfo.no_update_stats ;
-            "--no-allocs", CliInfo.no_update_allocs ;
-            "--no-reconf-workers", CliInfo.no_reconf_workers ] @
+            "--stats", CliInfo.update_stats ;
+            "--allocs", CliInfo.update_allocs ;
+            "--reconf-workers", CliInfo.reconf_workers ] @
           copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

@@ -60,7 +60,7 @@ at_exit "echo 'Killing ramen supervisor'; kill '$supervisor_pid'"
 gc_pid=$!
 at_exit "echo 'Killing ramen gc'; kill '$gc_pid'"
 
-"$ramen" archivist --loop 60 &
+"$ramen" archivist --stats --allocs --reconf --loop 60 &
 archivist_pid=$!
 at_exit "echo 'Killing ramen archivist'; kill '$archivist_pid'"
 

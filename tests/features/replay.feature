@@ -42,11 +42,11 @@ Feature: test ramen replay in a simple setting
     And ramen supervisor is started
     And program test is running
     And I wait 10 seconds
-    And I run ramen with arguments archivist
+    And I run ramen with arguments archivist --stats --allocs --reconf
     # Now we have the workers configured to archive, but we still need some
     # actual data archived before updating the stats:
     And I wait 5 seconds
-    And I run ramen with arguments archivist --no-allocs --no-reconf
+    And I run ramen with arguments archivist --stats
 
   Scenario: Check the allocations from the background situation obey the config.
     When I run cat with arguments ramen_dir/archivist/v2/allocs

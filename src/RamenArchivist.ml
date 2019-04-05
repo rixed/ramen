@@ -656,22 +656,22 @@ let update_workers_export ?(export_duration=Default.archivist_export_duration)
  *)
 
 let run_once conf ?while_ ?export_duration
-             no_stats no_allocs no_reconf =
+             stats allocs reconf =
   (* Start by gathering (more) workers stats: *)
-  if not no_stats then (
+  if stats then (
     !logger.info "Updating workers stats" ;
     update_worker_stats ?while_ conf) ;
   (* Then use those to answer the big questions about queries, the storage
    * and everything: *)
-  if not no_allocs then (
+  if allocs then (
     !logger.info "Updating storage allocations" ;
     update_storage_allocation conf) ;
   (* Now update the archiving configuration of running workers: *)
-  if not no_reconf then (
+  if reconf then (
     !logger.info "Updating workers export configuration" ;
     update_workers_export ?export_duration conf)
 
-let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
+let run_loop conf ?while_ sleep_time stats allocs reconf =
   (* Export instructions are only valid for twice as long as the archivist
    * loop. Consequence to keep in mind: if the archivist is not running then
    * exports will soon stop! *)
@@ -681,7 +681,7 @@ let run_loop conf ?while_ sleep_time no_stats no_allocs no_reconf =
     RamenWatchdog.make ~timeout "Archiver" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    run_once conf ?while_ ~export_duration no_stats no_allocs no_reconf ;
+    run_once conf ?while_ ~export_duration stats allocs reconf ;
     RamenWatchdog.reset watchdog ;
     Unix.sleepf (jitter sleep_time)) ()
 

@@ -1,5 +1,8 @@
 set -e
 
+ramen="$top_src/src/ramen"
+export RAMEN_LIBS="$top_src/bundle"
+
 # At exit
 
 _AT_EXIT='echo bye'
@@ -56,8 +59,12 @@ find_bin() {
   fail "Cannot find $tool"
 }
 
-ramen="$top_src/src/ramen"
-export RAMEN_LIBS="$top_src/bundle"
+# Compilation
+
+needs_recompile() {
+  target="$1"
+  ! test -s "$target" || test "$ramen" -nt "$target"
+}
 
 # Locate the optional tools
 # TODO: if there is atop, run it

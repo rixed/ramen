@@ -1010,14 +1010,14 @@ let graphite_expand conf for_render since until query () =
  * able to retrieve or rebuild the output of all persistent functions.
  *)
 
-let archivist conf loop daemonize no_stats no_allocs no_reconf
+let archivist conf loop daemonize stats allocs reconf
               to_stdout to_syslog () =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
     failwith "Options --syslog and --stdout are incompatible." ;
-  if no_stats && no_allocs && no_reconf then
-    failwith "Nothing to do then?" ;
+  if not stats && not allocs && not reconf then
+    failwith "Must specify at least one of --stats, --allocs or --reconf" ;
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.archivist_loop in
@@ -1032,11 +1032,11 @@ let archivist conf loop daemonize no_stats no_allocs no_reconf
     init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   RamenProcesses.prepare_signal_handlers conf ;
   if loop <= 0. then
-    RamenArchivist.run_once conf ~while_ no_stats no_allocs no_reconf
+    RamenArchivist.run_once conf ~while_ stats allocs reconf
   else (
     check_binocle_errors () ;
     if daemonize then do_daemonize () ;
-    RamenArchivist.run_loop conf ~while_ loop no_stats no_allocs no_reconf)
+    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf)
 
 (*
  * Display various internal informations

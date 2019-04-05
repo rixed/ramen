@@ -23,7 +23,7 @@ Feature: test ramen tail
     And ramen supervisor is started
     And program test is running
     And I wait 5 second
-    And I run ramen with arguments archivist --no-allocs --no-reconf
+    And I run ramen with arguments archivist --stats
 
   Scenario: I can obtain some values using timeseries.
     When I run ramen with arguments timeseries -n 5 --since=1000 --until=1005 test/ts v
@@ -61,7 +61,7 @@ Feature: test ramen tail
     And test2.ramen is compiled
     And program test2 is running
     And I wait 5 second
-    And I run ramen with arguments archivist --no-allocs --no-reconf
+    And I run ramen with arguments archivist --stats
     And I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test2/f v
     Then ramen must print 5 lines on stdout
     And ramen must mention "42"

@@ -31,7 +31,7 @@ Feature: Test Ramen API from the command line.
     And ramen supervisor is started
     And the program test is running
     And I wait 10 seconds
-    And I run ramen with arguments archivist --no-allocs --no-reconf
+    And I run ramen with arguments archivist --stats
 
   Scenario: Can get the version number from the API.
     Given ramen httpd --url http://localhost:8042 --api is started

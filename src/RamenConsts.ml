@@ -282,9 +282,9 @@ struct
   let api = "Implement ramen API over http"
   let fault_injection_rate = "Rate at which to generate fake errors"
   let purge = "Also remove the program from the configuration"
-  let no_update_stats = "Do no attempt to update the workers stats file"
-  let no_update_allocs = "Do no attempt to update the allocations file"
-  let no_reconf_workers = "Do not change the workers export configuration"
+  let update_stats = "update the workers stats file"
+  let update_allocs = "update the allocations file"
+  let reconf_workers = "change the workers export configuration"
   let max_bytes = "How many bytes to dump from the ringbuf messages"
   let tunneld_port = "Port number for the tuple forward service"
 end

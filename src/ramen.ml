@@ -951,19 +951,19 @@ let test =
  * Allocate disk space to workers archives
  *)
 
-let no_update_stats =
-  let i = Arg.info ~doc:CliInfo.no_update_stats
-                   [ "no-stats" ] in
+let update_stats =
+  let i = Arg.info ~doc:CliInfo.update_stats
+                   [ "stats" ] in
   Arg.(value (flag i))
 
-let no_update_allocs =
-  let i = Arg.info ~doc:CliInfo.no_update_allocs
-                   [ "no-allocs" ] in
+let update_allocs =
+  let i = Arg.info ~doc:CliInfo.update_allocs
+                   [ "allocs" ] in
   Arg.(value (flag i))
 
-let no_reconf_workers =
-  let i = Arg.info ~doc:CliInfo.no_reconf_workers
-                   [ "no-reconf-workers" ] in
+let reconf_workers =
+  let i = Arg.info ~doc:CliInfo.reconf_workers
+                   [ "reconf-workers" ] in
   Arg.(value (flag i))
 
 let archivist =
@@ -972,9 +972,9 @@ let archivist =
       $ copts
       $ loop
       $ daemonize
-      $ no_update_stats
-      $ no_update_allocs
-      $ no_reconf_workers
+      $ update_stats
+      $ update_allocs
+      $ reconf_workers
       $ to_stdout
       $ to_syslog),
     info ~doc:CliInfo.archivist "archivist")
