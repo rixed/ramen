@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align=center>ramen-timerange</h1>
+<h1 align=center>ramen-tunneld</h1>
 
 
 
@@ -65,34 +65,27 @@
 <h2>NAME</h2>
 
 
-
-<p style="margin-left:11%; margin-top: 1em">Ramen-timerange
-- Retrieve the available time range of an operation
-output</p>
+<p style="margin-left:11%; margin-top: 1em">Ramen-tunneld -
+Start the tuple forward service</p>
 
 <a name="SYNOPSIS"></a>
 <h2>SYNOPSIS</h2>
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>Ramen
-timerange</b> [<i>OPTION</i>]... <i>OPERATION</i></p>
-
-<a name="ARGUMENTS"></a>
-<h2>ARGUMENTS</h2>
-
-
-
-<p style="margin-left:11%; margin-top: 1em"><i>OPERATION</i>
-(required)</p>
-
-<p style="margin-left:17%;">Operation unique name</p>
+tunneld</b> [<i>OPTION</i>]...</p>
 
 <a name="OPTIONS"></a>
 <h2>OPTIONS</h2>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--help</b>[=<i>FMT</i>]
+<p style="margin-left:11%; margin-top: 1em"><b>--daemonize</b>
+(absent <b>RAMEN_DAEMONIZE</b> env)</p>
+
+<p style="margin-left:17%;">Daemonize</p>
+
+<p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
 <p style="margin-left:17%;">Show this help in format
@@ -102,10 +95,29 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;plain' whenever the <b>TERM</b> env var is
 &lsquo;dumb' or undefined.</p>
 
+<p style="margin-left:11%;"><b>-p</b> <i>VAL</i>,
+<b>--port</b>=<i>VAL</i> (absent=29329)</p>
+
+<p style="margin-left:17%;">Port number for the tuple
+forward service</p>
+
 <p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
 (absent <b>HOSTNAME</b> env)</p>
 
 <p style="margin-left:17%;">The name of this site</p>
+
+<p style="margin-left:11%;"><b>--to-stdout</b>,
+<b>--to-stderr</b>, <b>--stdout</b>, <b>--stderr</b> (absent
+<b><br>
+RAMEN_LOG_TO_STDERR</b> env)</p>
+
+<p style="margin-left:17%;">Log onto stdout/stderr instead
+of a file</p>
+
+<p style="margin-left:11%;"><b>--to-syslog</b>,
+<b>--syslog</b> (absent <b>RAMEN-LOG-SYSLOG</b> env)</p>
+
+<p style="margin-left:17%;">log using syslog</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -163,10 +175,20 @@ generator with (will use a random one if unset)</p>
 
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of
-<b>timerange</b>: <b><br>
+<b>tunneld</b>: <b><br>
 HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN-LOG-SYSLOG</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-syslog</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_DAEMONIZE</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--daemonize</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
@@ -188,6 +210,11 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_LOG_TO_STDERR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-stderr</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 

@@ -108,6 +108,12 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 <p style="margin-left:17%;">If the program is disabled by a
 run-if clause then kills it instead</p>
 
+<p style="margin-left:11%;"><b>--on-site</b>=<i>VAL</i>
+(absent=*)</p>
+
+<p style="margin-left:17%;">sites where this worker has to
+run</p>
+
 <p style="margin-left:11%;"><b>-p</b> <i>PARAM=VALUE</i>,
 <b>--parameter</b>=<i>PARAM=VALUE</i></p>
 
@@ -125,6 +131,11 @@ is already running, replace it</p>
 
 <p style="margin-left:17%;">Number of seconds between two
 stats report from each worker</p>
+
+<p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
+(absent <b>HOSTNAME</b> env)</p>
+
+<p style="margin-left:17%;">The name of this site</p>
 
 <p style="margin-left:11%;"><b>--src-file</b>=<i>VAL</i>,
 <b>--source-file</b>=<i>VAL</i></p>
@@ -189,7 +200,11 @@ generator with (will use a random one if unset)</p>
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of <b>run</b>:
 <b><br>
-RAMEN_DEBUG</b></p>
+HOSTNAME</b></p>
+
+<p style="margin-left:17%;">See option <b>--site</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
 
