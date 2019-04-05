@@ -641,12 +641,15 @@ let checked params op =
   let op = resolve_unknown_tuples params op in
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
-      failwith ("Stateful function not allowed in "^ clause))
+      failwith ("Stateful functions not allowed in "^ clause))
   and check_no_state state clause =
     E.unpure_iter (fun _ e ->
       match e.E.text with
       | Stateful (g, _, _) when g = state ->
-          failwith ("Stateful function not allowed in "^ clause)
+          Printf.sprintf "%s stateful functions not allowed in %s"
+            (match g with LocalState -> "Locally" | GlobalState -> "Globally")
+            clause |>
+          failwith
       | _ -> ())
   and check_fields_from lst where e =
     try check_depends_only_on lst e
