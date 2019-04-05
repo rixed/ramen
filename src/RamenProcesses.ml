@@ -925,7 +925,8 @@ let build_must_run conf =
           ) ge.parents
       ) h
   ) graph.h ;
-  !logger.info "%d workers must run in half" (Hashtbl.length top_halves) ;
+  let l = Hashtbl.length top_halves in
+  if l > 0 then !logger.info "%d workers must run in half" l ;
   (* Now that we have aggregated all top-halves children, actually adds them
    * to [must_run]: *)
   Hashtbl.iter (fun (pp, pf, cprog, cfunc, sign, params)
