@@ -651,6 +651,17 @@ let checked params op =
             clause |>
           failwith
       | _ -> ())
+  and warn_no_group clause =
+    E.unpure_iter (fun _ e ->
+      match e.E.text with
+      | Stateful (LocalState, skip, stateful) ->
+          !logger.warning
+            "In %s: Locally stateful function without a GROUP-BY clause. \
+             Did you mean %a?"
+            clause
+            (E.print_text ~max_depth:1 false)
+              (Stateful (GlobalState, skip, stateful))
+      | _ -> ())
   and check_fields_from lst where e =
     try check_depends_only_on lst e
     with DependsOnInvalidTuple tuple ->
@@ -769,7 +780,10 @@ let checked params op =
               N.field_print n |>
             failwith
       | _ -> ()
-    ) op
+    ) op ;
+    (* Finally, check that if now group-by clause is present, then no
+     * LocalState is used anywhere: *)
+    if key = [] then iter_top_level_expr warn_no_group op
 
   | ListenFor { proto ; factors ; _ } ->
     let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -1382,13 +1396,13 @@ let fields_schema m =
     "FROM 'foo' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
-    "FROM 'foo' SELECT MIN locally skip nulls(in.start) AS start, \\
-       MAX locally skip nulls(in.stop) AS max_stop, \\
-       (SUM locally skip nulls(in.packets)) / \\
+    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.start) AS start, \\
+       MAX LOCALLY skip nulls(in.stop) AS max_stop, \\
+       (SUM LOCALLY skip nulls(in.packets)) / \\
          (param.avg_window) AS packets_per_sec \\
      GROUP BY (in.start) / ((1000000) * (param.avg_window)) \\
      COMMIT AFTER \\
-       ((MAX locally skip nulls(in.start)) + (3600)) > (out.start)" \
+       ((MAX LOCALLY skip nulls(in.start)) + (3600)) > (out.start)" \
         (test_op "select min start as start, \\
                            max stop as max_stop, \\
                            (sum packets)/avg_window as packets_per_sec \\
@@ -1396,10 +1410,10 @@ let fields_schema m =
                    group by start / (1_000_000 * avg_window) \\
                    commit after out.start < (max in.start) + 3600")
 
-    "FROM 'foo' SELECT 1 AS one COMMIT BEFORE (SUM locally skip nulls(1)) >= (5)" \
-        (test_op "select 1 as one from foo commit before sum 1 >= 5")
+    "FROM 'foo' SELECT 1 AS one GROUP BY true COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
+        (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
-    "FROM 'foo/bar' SELECT in.n, LAG globally skip nulls(2, out.n) AS l" \
+    "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag(2, n) AS l FROM foo/bar")
 
     "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \

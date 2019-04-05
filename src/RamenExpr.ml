@@ -446,248 +446,248 @@ let fields_of_record kvs =
   Array.of_enum
 
 let rec print ?(max_depth=max_int) with_types oc e =
-  let st g n =
-    (* TODO: do not display default *)
-    (match g with LocalState -> " locally" | GlobalState -> " globally") ^
-    (if n then " skip nulls" else " keep nulls")
-  and print_args =
-    List.print ~first:"(" ~last:")" ~sep:", " (print with_types)
-  in
   if max_depth <= 0 then
     Printf.fprintf oc "..."
   else (
-    let p oc = print ~max_depth:(max_depth-1) with_types oc in
-    (match e.text with
-    | Const c ->
-        T.print oc c
-    | Tuple es ->
-        List.print ~first:"(" ~last:")" ~sep:"; " p oc es
-    | Record kvs ->
-        Char.print oc '(' ;
-        List.print ~first:"" ~last:"" ~sep:", "
-          (fun oc (k, e) ->
-            Printf.fprintf oc "%a AZ %s"
-              p e
-              (ramen_quote k))
-          oc (kvs :> (string * t) list);
-        Char.print oc ')'
-    | Vector es ->
-        List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
-    | Stateless (SL0 (Path path)) ->
-        Printf.fprintf oc "in.%a" print_path path
-    | Variable pref ->
-        Printf.fprintf oc "%s" (string_of_prefix pref)
-    | Binding k ->
-        Printf.fprintf oc "<BINDING FOR %a>"
-          print_binding_key k
-    | Case (alts, else_) ->
-        let print_alt oc alt =
-          Printf.fprintf oc "WHEN %a THEN %a"
-            p alt.case_cond
-            p alt.case_cons
-        in
-        Printf.fprintf oc "CASE %a "
-         (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
-        Option.may (fun else_ ->
-          Printf.fprintf oc "ELSE %a "
-            p else_) else_ ;
-        Printf.fprintf oc "END"
-    | Stateless (SL1s (Coalesce, es)) ->
-        Printf.fprintf oc "COALESCE %a" print_args es
-    | Stateless (SL1 (Age, e)) ->
-        Printf.fprintf oc "AGE (%a)" p e
-    | Stateless (SL0 Now) ->
-        Printf.fprintf oc "NOW"
-    | Stateless (SL0 Random) ->
-        Printf.fprintf oc "RANDOM"
-    | Stateless (SL0 EventStart) ->
-        Printf.fprintf oc "#start"
-    | Stateless (SL0 EventStop) ->
-        Printf.fprintf oc "#stop"
-    | Stateless (SL1 (Cast typ, e)) ->
-        Printf.fprintf oc "CAST(%a, %a)"
-          T.print_typ typ p e
-    | Stateless (SL1 (Length, e)) ->
-        Printf.fprintf oc "LENGTH(%a)" p e
-    | Stateless (SL1 (Lower, e)) ->
-        Printf.fprintf oc "LOWER(%a)" p e
-    | Stateless (SL1 (Upper, e)) ->
-        Printf.fprintf oc "UPPER(%a)" p e
-    | Stateless (SL1 (Not, e)) ->
-        Printf.fprintf oc "NOT(%a)" p e
-    | Stateless (SL1 (Abs, e)) ->
-        Printf.fprintf oc "ABS(%a)" p e
-    | Stateless (SL1 (Minus, e)) ->
-        Printf.fprintf oc "-(%a)" p e
-    | Stateless (SL1 (Defined, e)) ->
-        Printf.fprintf oc "(%a) IS NOT NULL" p e
-    | Stateless (SL2 (Add, e1, e2)) ->
-        Printf.fprintf oc "(%a) + (%a)" p e1 p e2
-    | Stateless (SL2 (Sub, e1, e2)) ->
-        Printf.fprintf oc "(%a) - (%a)" p e1 p e2
-    | Stateless (SL2 (Mul, e1, e2)) ->
-        Printf.fprintf oc "(%a) * (%a)" p e1 p e2
-    | Stateless (SL2 (Div, e1, e2)) ->
-        Printf.fprintf oc "(%a) / (%a)" p e1 p e2
-    | Stateless (SL2 (Reldiff, e1, e2)) ->
-        Printf.fprintf oc "RELDIFF((%a), (%a))" p e1 p e2
-    | Stateless (SL2 (IDiv, e1, e2)) ->
-        Printf.fprintf oc "(%a) // (%a)" p e1 p e2
-    | Stateless (SL2 (Mod, e1, e2)) ->
-        Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
-    | Stateless (SL2 (Pow, e1, e2)) ->
-        Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
-    | Stateless (SL3 (SubString, e1, e2, e3)) ->
-        Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
-    | Stateless (SL1 (Exp, e)) ->
-        Printf.fprintf oc "EXP (%a)" p e
-    | Stateless (SL1 (Log, e)) ->
-        Printf.fprintf oc "LOG (%a)" p e
-    | Stateless (SL1 (Log10, e)) ->
-        Printf.fprintf oc "LOG10 (%a)" p e
-    | Stateless (SL1 (Sqrt, e)) ->
-        Printf.fprintf oc "SQRT (%a)" p e
-    | Stateless (SL1 (Ceil, e)) ->
-        Printf.fprintf oc "CEIL (%a)" p e
-    | Stateless (SL1 (Floor, e)) ->
-        Printf.fprintf oc "FLOOR (%a)" p e
-    | Stateless (SL1 (Round, e)) ->
-        Printf.fprintf oc "ROUND (%a)" p e
-    | Stateless (SL1 (Hash, e)) ->
-        Printf.fprintf oc "HASH (%a)" p e
-    | Stateless (SL1 (Sparkline, e)) ->
-        Printf.fprintf oc "SPARKLINE (%a)" p e
-    | Stateless (SL2 (Trunc, e1, e2)) ->
-        Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
-    | Stateless (SL2 (In, e1, e2)) ->
-        Printf.fprintf oc "(%a) IN (%a)" p e1 p e2
-    | Stateless (SL1 ((BeginOfRange|EndOfRange as op), e)) ->
-        Printf.fprintf oc "%s of (%a)"
-          (if op = BeginOfRange then "BEGIN" else "END")
-          p e ;
-    | Stateless (SL1 (Strptime, e)) ->
-        Printf.fprintf oc "PARSE_TIME (%a)" p e
-    | Stateless (SL1 (Variant, e)) ->
-        Printf.fprintf oc "VARIANT (%a)" p e
-    | Stateless (SL2 (And, e1, e2)) ->
-        Printf.fprintf oc "(%a) AND (%a)" p e1 p e2
-    | Stateless (SL2 (Or, e1, e2)) ->
-        Printf.fprintf oc "(%a) OR (%a)" p e1 p e2
-    | Stateless (SL2 (Ge, e1, e2)) ->
-        Printf.fprintf oc "(%a) >= (%a)" p e1 p e2
-    | Stateless (SL2 (Gt, e1, e2)) ->
-        Printf.fprintf oc "(%a) > (%a)" p e1 p e2
-    | Stateless (SL2 (Eq, e1, e2)) ->
-        Printf.fprintf oc "(%a) = (%a)" p e1 p e2
-    | Stateless (SL2 (Concat, e1, e2)) ->
-        Printf.fprintf oc "(%a) || (%a)" p e1 p e2
-    | Stateless (SL2 (StartsWith, e1, e2)) ->
-        Printf.fprintf oc "(%a) STARTS WITH (%a)" p e1 p e2
-    | Stateless (SL2 (EndsWith, e1, e2)) ->
-        Printf.fprintf oc "(%a) ENDS WITH (%a)" p e1 p e2
-    | Stateless (SL2 (Strftime, e1, e2)) ->
-        Printf.fprintf oc "FORMAT_TIME (%a, %a)" p e1 p e2
-    | Stateless (SL2 (BitAnd, e1, e2)) ->
-        Printf.fprintf oc "(%a) & (%a)" p e1 p e2
-    | Stateless (SL2 (BitOr, e1, e2)) ->
-        Printf.fprintf oc "(%a) | (%a)" p e1 p e2
-    | Stateless (SL2 (BitXor, e1, e2)) ->
-        Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
-    | Stateless (SL2 (BitShift, e1, e2)) ->
-        Printf.fprintf oc "(%a) << (%a)" p e1 p e2
-    | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable pref ; _ }))
-      when not with_types ->
-        Printf.fprintf oc "%s.%s" (string_of_prefix pref) n
-    | Stateless (SL2 (Get, e1, e2)) ->
-        Printf.fprintf oc "GET(%a, %a)" p e1 p e2
-    | Stateless (SL2 (Percentile, e1, e2)) ->
-        Printf.fprintf oc "%a PERCENTILE(%a)" p e2 p e1
-    | Stateless (SL1 (Like pat, e)) ->
-        Printf.fprintf oc "(%a) LIKE %S" p e pat
-    | Stateless (SL1s (Max, es)) ->
-        Printf.fprintf oc "GREATEST %a" print_args es
-    | Stateless (SL1s (Min, es)) ->
-        Printf.fprintf oc "LEAST %a" print_args es
-    | Stateless (SL1s (Print, es)) ->
-        Printf.fprintf oc "PRINT %a" print_args es
-    | Stateful (g, n, SF1 (AggrMin, e)) ->
-        Printf.fprintf oc "MIN%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrMax, e)) ->
-        Printf.fprintf oc "MAX%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrSum, e)) ->
-        Printf.fprintf oc "SUM%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrAvg, e)) ->
-        Printf.fprintf oc "AVG%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrAnd, e)) ->
-        Printf.fprintf oc "AND%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrOr, e)) ->
-        Printf.fprintf oc "OR%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrFirst, e)) ->
-        Printf.fprintf oc "FIRST%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrLast, e)) ->
-        Printf.fprintf oc "LAST%s(%a)" (st g n) p e
-    | Stateful (g, n, SF1 (AggrHistogram (min, max, num_buckets), e)) ->
-        Printf.fprintf oc "HISTOGRAM%s(%a, %g, %g, %d)" (st g n)
-          p e min max num_buckets
-    | Stateful (g, n, SF2 (Lag, e1, e2)) ->
-        Printf.fprintf oc "LAG%s(%a, %a)" (st g n) p e1 p e2
-    | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
-        Printf.fprintf oc "SEASON_MOVEAVG%s(%a, %a, %a)"
-          (st g n) p e1 p e2 p e3
-    | Stateful (g, n, SF3 (LinReg, e1, e2, e3)) ->
-        Printf.fprintf oc "SEASON_FIT%s(%a, %a, %a)"
-          (st g n) p e1 p e2 p e3
-    | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
-        Printf.fprintf oc "SEASON_FIT_MULTI%s(%a, %a, %a, %a)"
-          (st g n) p e1 p e2 p e3 print_args e4s
-    | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
-        Printf.fprintf oc "REMEMBER%s(%a, %a, %a, %a)"
-          (st g n) p fpr p tim p dur print_args es
-    | Stateful (g, n, Distinct es) ->
-        Printf.fprintf oc "DISTINCT%s(%a)" (st g n) print_args es
-    | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
-        Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
-    | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
-        Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
-          (st g n) p meas p accept p max
-    | Stateful (g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
-                            duration }) ->
-        Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
-          (if want_rank then "rank of" else "is")
-          (List.print ~first:"" ~last:"" ~sep:", " p) what
-          (fun oc -> function
-           | None -> Unit.print oc ()
-           | Some e -> Printf.fprintf oc " over %a" p e) max_size
-          p c (st g n) p by p duration p time
-    | Stateful (g, n, SF3s (Last, c, e, es)) ->
-        let print_by oc es =
-          if es <> [] then
-            Printf.fprintf oc " BY %a"
-              (List.print ~first:"" ~last:"" ~sep:", " p) es in
-        Printf.fprintf oc "LAST %a%s %a%a"
-          p c (st g n) p e print_by es
-    | Stateful (g, n, SF2 (Sample, c, e)) ->
-        Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
-    | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
-        (match sample_size with
-        | None -> ()
-        | Some sz ->
-            Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
-        Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
-          p max_age (st g n) p what p time
-    | Stateful (g, n, SF1 (Group, e)) ->
-        Printf.fprintf oc "GROUP%s %a" (st g n) p e
-
-    | Generator (Split (e1, e2)) ->
-        Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
-    | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
-    | Stateless (SL3 (DontBeLonely, _, _, _)) ->
-        assert false
-    ) ;
+    print_text ~max_depth with_types oc e.text ;
     Option.may (RamenUnits.print oc) e.units ;
-    if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ
-  )
+    if with_types then Printf.fprintf oc " [#%d, %a]" e.uniq_num T.print_typ e.typ)
+
+and print_text ?(max_depth=max_int) with_types oc text =
+  let st g n =
+    (* TODO: do not display default *)
+    (match g with LocalState -> " LOCALLY" | GlobalState -> " GLOBALLY") ^
+    (if n then " skip nulls" else " keep nulls")
+  and print_args =
+    List.print ~first:"(" ~last:")" ~sep:", " (print with_types) in
+  let p oc = print ~max_depth:(max_depth-1) with_types oc in
+  (match text with
+  | Const c ->
+      T.print oc c
+  | Tuple es ->
+      List.print ~first:"(" ~last:")" ~sep:"; " p oc es
+  | Record kvs ->
+      Char.print oc '(' ;
+      List.print ~first:"" ~last:"" ~sep:", "
+        (fun oc (k, e) ->
+          Printf.fprintf oc "%a AZ %s"
+            p e
+            (ramen_quote k))
+        oc (kvs :> (string * t) list);
+      Char.print oc ')'
+  | Vector es ->
+      List.print ~first:"[" ~last:"]" ~sep:"; " p oc es
+  | Stateless (SL0 (Path path)) ->
+      Printf.fprintf oc "in.%a" print_path path
+  | Variable pref ->
+      Printf.fprintf oc "%s" (string_of_prefix pref)
+  | Binding k ->
+      Printf.fprintf oc "<BINDING FOR %a>"
+        print_binding_key k
+  | Case (alts, else_) ->
+      let print_alt oc alt =
+        Printf.fprintf oc "WHEN %a THEN %a"
+          p alt.case_cond
+          p alt.case_cons
+      in
+      Printf.fprintf oc "CASE %a "
+       (List.print ~first:"" ~last:"" ~sep:" " print_alt) alts ;
+      Option.may (fun else_ ->
+        Printf.fprintf oc "ELSE %a "
+          p else_) else_ ;
+      Printf.fprintf oc "END"
+  | Stateless (SL1s (Coalesce, es)) ->
+      Printf.fprintf oc "COALESCE %a" print_args es
+  | Stateless (SL1 (Age, e)) ->
+      Printf.fprintf oc "AGE (%a)" p e
+  | Stateless (SL0 Now) ->
+      Printf.fprintf oc "NOW"
+  | Stateless (SL0 Random) ->
+      Printf.fprintf oc "RANDOM"
+  | Stateless (SL0 EventStart) ->
+      Printf.fprintf oc "#start"
+  | Stateless (SL0 EventStop) ->
+      Printf.fprintf oc "#stop"
+  | Stateless (SL1 (Cast typ, e)) ->
+      Printf.fprintf oc "CAST(%a, %a)"
+        T.print_typ typ p e
+  | Stateless (SL1 (Length, e)) ->
+      Printf.fprintf oc "LENGTH(%a)" p e
+  | Stateless (SL1 (Lower, e)) ->
+      Printf.fprintf oc "LOWER(%a)" p e
+  | Stateless (SL1 (Upper, e)) ->
+      Printf.fprintf oc "UPPER(%a)" p e
+  | Stateless (SL1 (Not, e)) ->
+      Printf.fprintf oc "NOT(%a)" p e
+  | Stateless (SL1 (Abs, e)) ->
+      Printf.fprintf oc "ABS(%a)" p e
+  | Stateless (SL1 (Minus, e)) ->
+      Printf.fprintf oc "-(%a)" p e
+  | Stateless (SL1 (Defined, e)) ->
+      Printf.fprintf oc "(%a) IS NOT NULL" p e
+  | Stateless (SL2 (Add, e1, e2)) ->
+      Printf.fprintf oc "(%a) + (%a)" p e1 p e2
+  | Stateless (SL2 (Sub, e1, e2)) ->
+      Printf.fprintf oc "(%a) - (%a)" p e1 p e2
+  | Stateless (SL2 (Mul, e1, e2)) ->
+      Printf.fprintf oc "(%a) * (%a)" p e1 p e2
+  | Stateless (SL2 (Div, e1, e2)) ->
+      Printf.fprintf oc "(%a) / (%a)" p e1 p e2
+  | Stateless (SL2 (Reldiff, e1, e2)) ->
+      Printf.fprintf oc "RELDIFF((%a), (%a))" p e1 p e2
+  | Stateless (SL2 (IDiv, e1, e2)) ->
+      Printf.fprintf oc "(%a) // (%a)" p e1 p e2
+  | Stateless (SL2 (Mod, e1, e2)) ->
+      Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
+  | Stateless (SL2 (Pow, e1, e2)) ->
+      Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+  | Stateless (SL3 (SubString, e1, e2, e3)) ->
+      Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
+  | Stateless (SL1 (Exp, e)) ->
+      Printf.fprintf oc "EXP (%a)" p e
+  | Stateless (SL1 (Log, e)) ->
+      Printf.fprintf oc "LOG (%a)" p e
+  | Stateless (SL1 (Log10, e)) ->
+      Printf.fprintf oc "LOG10 (%a)" p e
+  | Stateless (SL1 (Sqrt, e)) ->
+      Printf.fprintf oc "SQRT (%a)" p e
+  | Stateless (SL1 (Ceil, e)) ->
+      Printf.fprintf oc "CEIL (%a)" p e
+  | Stateless (SL1 (Floor, e)) ->
+      Printf.fprintf oc "FLOOR (%a)" p e
+  | Stateless (SL1 (Round, e)) ->
+      Printf.fprintf oc "ROUND (%a)" p e
+  | Stateless (SL1 (Hash, e)) ->
+      Printf.fprintf oc "HASH (%a)" p e
+  | Stateless (SL1 (Sparkline, e)) ->
+      Printf.fprintf oc "SPARKLINE (%a)" p e
+  | Stateless (SL2 (Trunc, e1, e2)) ->
+      Printf.fprintf oc "TRUNCATE (%a, %a)" p e1 p e2
+  | Stateless (SL2 (In, e1, e2)) ->
+      Printf.fprintf oc "(%a) IN (%a)" p e1 p e2
+  | Stateless (SL1 ((BeginOfRange|EndOfRange as op), e)) ->
+      Printf.fprintf oc "%s of (%a)"
+        (if op = BeginOfRange then "BEGIN" else "END")
+        p e ;
+  | Stateless (SL1 (Strptime, e)) ->
+      Printf.fprintf oc "PARSE_TIME (%a)" p e
+  | Stateless (SL1 (Variant, e)) ->
+      Printf.fprintf oc "VARIANT (%a)" p e
+  | Stateless (SL2 (And, e1, e2)) ->
+      Printf.fprintf oc "(%a) AND (%a)" p e1 p e2
+  | Stateless (SL2 (Or, e1, e2)) ->
+      Printf.fprintf oc "(%a) OR (%a)" p e1 p e2
+  | Stateless (SL2 (Ge, e1, e2)) ->
+      Printf.fprintf oc "(%a) >= (%a)" p e1 p e2
+  | Stateless (SL2 (Gt, e1, e2)) ->
+      Printf.fprintf oc "(%a) > (%a)" p e1 p e2
+  | Stateless (SL2 (Eq, e1, e2)) ->
+      Printf.fprintf oc "(%a) = (%a)" p e1 p e2
+  | Stateless (SL2 (Concat, e1, e2)) ->
+      Printf.fprintf oc "(%a) || (%a)" p e1 p e2
+  | Stateless (SL2 (StartsWith, e1, e2)) ->
+      Printf.fprintf oc "(%a) STARTS WITH (%a)" p e1 p e2
+  | Stateless (SL2 (EndsWith, e1, e2)) ->
+      Printf.fprintf oc "(%a) ENDS WITH (%a)" p e1 p e2
+  | Stateless (SL2 (Strftime, e1, e2)) ->
+      Printf.fprintf oc "FORMAT_TIME (%a, %a)" p e1 p e2
+  | Stateless (SL2 (BitAnd, e1, e2)) ->
+      Printf.fprintf oc "(%a) & (%a)" p e1 p e2
+  | Stateless (SL2 (BitOr, e1, e2)) ->
+      Printf.fprintf oc "(%a) | (%a)" p e1 p e2
+  | Stateless (SL2 (BitXor, e1, e2)) ->
+      Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
+  | Stateless (SL2 (BitShift, e1, e2)) ->
+      Printf.fprintf oc "(%a) << (%a)" p e1 p e2
+  | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
+                         { text = Variable pref ; _ }))
+    when not with_types ->
+      Printf.fprintf oc "%s.%s" (string_of_prefix pref) n
+  | Stateless (SL2 (Get, e1, e2)) ->
+      Printf.fprintf oc "GET(%a, %a)" p e1 p e2
+  | Stateless (SL2 (Percentile, e1, e2)) ->
+      Printf.fprintf oc "%a PERCENTILE(%a)" p e2 p e1
+  | Stateless (SL1 (Like pat, e)) ->
+      Printf.fprintf oc "(%a) LIKE %S" p e pat
+  | Stateless (SL1s (Max, es)) ->
+      Printf.fprintf oc "GREATEST %a" print_args es
+  | Stateless (SL1s (Min, es)) ->
+      Printf.fprintf oc "LEAST %a" print_args es
+  | Stateless (SL1s (Print, es)) ->
+      Printf.fprintf oc "PRINT %a" print_args es
+  | Stateful (g, n, SF1 (AggrMin, e)) ->
+      Printf.fprintf oc "MIN%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrMax, e)) ->
+      Printf.fprintf oc "MAX%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrSum, e)) ->
+      Printf.fprintf oc "SUM%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrAvg, e)) ->
+      Printf.fprintf oc "AVG%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrAnd, e)) ->
+      Printf.fprintf oc "AND%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrOr, e)) ->
+      Printf.fprintf oc "OR%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrFirst, e)) ->
+      Printf.fprintf oc "FIRST%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrLast, e)) ->
+      Printf.fprintf oc "LAST%s(%a)" (st g n) p e
+  | Stateful (g, n, SF1 (AggrHistogram (min, max, num_buckets), e)) ->
+      Printf.fprintf oc "HISTOGRAM%s(%a, %g, %g, %d)" (st g n)
+        p e min max num_buckets
+  | Stateful (g, n, SF2 (Lag, e1, e2)) ->
+      Printf.fprintf oc "LAG%s(%a, %a)" (st g n) p e1 p e2
+  | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
+      Printf.fprintf oc "SEASON_MOVEAVG%s(%a, %a, %a)"
+        (st g n) p e1 p e2 p e3
+  | Stateful (g, n, SF3 (LinReg, e1, e2, e3)) ->
+      Printf.fprintf oc "SEASON_FIT%s(%a, %a, %a)"
+        (st g n) p e1 p e2 p e3
+  | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
+      Printf.fprintf oc "SEASON_FIT_MULTI%s(%a, %a, %a, %a)"
+        (st g n) p e1 p e2 p e3 print_args e4s
+  | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
+      Printf.fprintf oc "REMEMBER%s(%a, %a, %a, %a)"
+        (st g n) p fpr p tim p dur print_args es
+  | Stateful (g, n, Distinct es) ->
+      Printf.fprintf oc "DISTINCT%s(%a)" (st g n) print_args es
+  | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
+      Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
+  | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
+      Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
+        (st g n) p meas p accept p max
+  | Stateful (g, n, Top { want_rank ; c ; max_size ; what ; by ; time ;
+                          duration }) ->
+      Printf.fprintf oc "%s %a in top %a %a%s by %a in the last %a at time %a"
+        (if want_rank then "rank of" else "is")
+        (List.print ~first:"" ~last:"" ~sep:", " p) what
+        (fun oc -> function
+         | None -> Unit.print oc ()
+         | Some e -> Printf.fprintf oc " over %a" p e) max_size
+        p c (st g n) p by p duration p time
+  | Stateful (g, n, SF3s (Last, c, e, es)) ->
+      let print_by oc es =
+        if es <> [] then
+          Printf.fprintf oc " BY %a"
+            (List.print ~first:"" ~last:"" ~sep:", " p) es in
+      Printf.fprintf oc "LAST %a%s %a%a"
+        p c (st g n) p e print_by es
+  | Stateful (g, n, SF2 (Sample, c, e)) ->
+      Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
+  | Stateful (g, n, Past { what ; time ; max_age ; sample_size }) ->
+      (match sample_size with
+      | None -> ()
+      | Some sz ->
+          Printf.fprintf oc "SAMPLE OF SIZE %a OF THE " p sz) ;
+      Printf.fprintf oc "LAST %a%s OF %a AT TIME %a"
+        p max_age (st g n) p what p time
+  | Stateful (g, n, SF1 (Group, e)) ->
+      Printf.fprintf oc "GROUP%s %a" (st g n) p e
+
+  | Generator (Split (e1, e2)) ->
+      Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
+  | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
+  | Stateless (SL3 (DontBeLonely, _, _, _)) ->
+      assert false)
 
 let is_nullable e = e.typ.T.nullable
 
@@ -1653,7 +1653,7 @@ struct
       (test_expr ~printer:(print false) p "(zone_src IS NULL or zone_src = z1) and \\
                  (zone_dst IS NULL or zone_dst = z2)")
 
-    "(SUM locally skip nulls(unknown.bytes)) / (unknown.avg_window)" \
+    "(SUM LOCALLY skip nulls(unknown.bytes)) / (unknown.avg_window)" \
       (test_expr ~printer:(print false) p "(sum bytes)/avg_window")
 
     "(unknown.start) // ((1000000) * (unknown.avg_window))" \
@@ -1662,17 +1662,17 @@ struct
     "param.p PERCENTILE(unknown.bytes_per_sec)" \
       (test_expr ~printer:(print false) p "p percentile bytes_per_sec")
 
-    "(MAX locally skip nulls(in.start)) > ((out.start) + (((unknown.obs_window) * (1.15)) * (1000000)))" \
+    "(MAX LOCALLY skip nulls(in.start)) > ((out.start) + (((unknown.obs_window) * (1.15)) * (1000000)))" \
       (test_expr ~printer:(print false) p \
         "max in.start > out.start + (obs_window * 1.15) * 1_000_000")
 
     "(unknown.x) % (unknown.y)" \
       (test_expr ~printer:(print false) p "x % y")
 
-    "ABS((unknown.bps) - (LAG globally skip nulls(1, unknown.bps)))" \
+    "ABS((unknown.bps) - (LAG GLOBALLY skip nulls(1, unknown.bps)))" \
       (test_expr ~printer:(print false) p "abs(bps - lag(1,bps))")
 
-    "HYSTERESIS locally skip nulls(unknown.value, 900, 1000)" \
+    "HYSTERESIS LOCALLY skip nulls(unknown.value, 900, 1000)" \
       (test_expr ~printer:(print false) p "hysteresis(value, 900, 1000)")
 
     "((4) & (4)) * (2)" \
