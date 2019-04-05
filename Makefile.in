@@ -111,6 +111,9 @@ RAMEN_SOURCES = \
 	src/RamenAtomic.ml \
 	src/RamenNullable.ml \
 	src/RamenLog.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
 	src/RamenBitmask.ml \
 	src/RamenChannel.mli \
@@ -121,9 +124,7 @@ RAMEN_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
-	src/RamenConsts.ml \
+	src/RamenParams.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
@@ -193,6 +194,9 @@ CODEGENLIB_SOURCES = \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
 	src/RamenAtomic.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
@@ -203,9 +207,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
-	src/RamenConsts.ml \
 	src/RamenFiles.ml \
 	src/RamenWatchdog.ml \
 	src/RamenAdvLock.ml \
@@ -259,6 +260,9 @@ ORCWRITER_SOURCES = \
 	src/RamenLog.ml \
 	src/RamenNullable.ml \
 	src/RamenAtomic.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
@@ -269,9 +273,7 @@ ORCWRITER_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
-	src/RamenConsts.ml \
+	src/RamenParams.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
@@ -574,6 +576,7 @@ TESTABLE_SOURCES = \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
+	src/RamenName.ml \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/Globs.ml \
@@ -609,6 +612,9 @@ LINKED_FOR_TESTS = \
 	src/RamenVersions.ml \
 	src/RamenLog.ml \
 	src/RamenAtomic.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
 	src/HeavyHitters.ml \
 	src/RamenChannel.mli \
@@ -620,9 +626,6 @@ LINKED_FOR_TESTS = \
 	src/RamenIp.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
-	src/RamenConsts.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
@@ -648,6 +651,7 @@ LINKED_FOR_TESTS = \
 	src/RamenFieldMask.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
+	src/RamenParams.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \
@@ -699,6 +703,8 @@ all_tests.opt: \
 ringbuf_test.opt: \
 		src/RamenLog.cmx \
 		src/RamenAtomic.cmx \
+		src/RamenName.cmx \
+		src/RamenConsts.cmx \
 		src/RamenHelpers.cmx \
 		src/RamenChannel.cmx \
 		src/RamenParsing.cmx \
@@ -708,8 +714,6 @@ ringbuf_test.opt: \
 		src/RamenIp.cmx \
 		src/RamenTypeConverters.cmx \
 		src/RamenTypes.cmx \
-		src/RamenName.cmx \
-		src/RamenConsts.cmx \
 		src/RamenFiles.cmx \
 		src/RamenAdvLock.cmx \
 		src/RamenFieldMask.cmx \

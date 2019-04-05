@@ -55,9 +55,6 @@ let is_directory (f : N.path) =
 let files_of (d : N.path) =
   Sys.files_of (d :> string) /@ N.path
 
-let simplified_path (p : N.path) =
-  N.path (simplified_path (p :> string))
-
 let mkdir_all ?(is_file=false) (dir : N.path) =
   let dir = if is_file then dirname dir else dir in
   let rec ensure_exist d =
@@ -294,7 +291,7 @@ let absolute_path_of ?cwd (path : N.path) =
   let cwd =
     match cwd with Some p -> p | None -> N.path (Unix.getcwd ()) in
   (if is_absolute path then path else N.path_cat [ cwd ; path ]) |>
-  simplified_path
+  N.simplified_path
 
 (*$= absolute_path_of & ~printer:(IO.to_string N.path_print)
   (N.path "/tmp/ramen_root/junkie/csv.x") \
@@ -324,10 +321,11 @@ let really_read_fd_into buf offs fd size =
     if i < size then
       let r =
         BatUnix.restart_on_EINTR (read fd buf (offs + i)) (size - i) in
-      if r > 0 then loop (i + r) else
-        let e = Printf.sprintf "File ended but only %d/%d bytes could be read"
-                  i size in
-        failwith e
+      if r > 0 then loop (i + r) else (
+        if i > 0 then
+          !logger.warning "File ended but only %d/%d bytes could be read"
+            i size ;
+        raise End_of_file)
   in
   loop 0
 

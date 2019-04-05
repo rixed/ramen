@@ -235,7 +235,7 @@ let print_parents oc parents =
  * Some of this is updated as the configuration change. *)
 type running_process =
   { key : key ;
-    params : N.params ; (* The ones in RCE only! *)
+    params : RamenParams.t ; (* The ones in RCE only! *)
     bin : N.path ;
     func : C.Func.t ;
     parents : (N.site * P.t * F.t) list ;

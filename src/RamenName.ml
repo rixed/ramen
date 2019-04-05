@@ -1,7 +1,5 @@
 (* See RamenNames.mli *)
 open Batteries
-open RamenHelpers
-module T = RamenTypes
 
 type 'a t = string [@@ppp PPP_OCaml] [@@ppp PPP_JSON]
 
@@ -55,11 +53,64 @@ type program = [`Program] t
 
 let program_ppp_ocaml = t_ppp_ocaml
 
-let program s =
-  let rec remove_heading_slashes s =
-    if String.length s > 0 && s.[0] = '/' then
-      remove_heading_slashes (String.lchop s)
+let rec remove_heading_slashes s =
+  if String.length s > 0 && s.[0] = '/' then
+    remove_heading_slashes (String.lchop s)
+  else s
+
+let has_dotnames s =
+  s = "." || s = ".." ||
+  String.starts_with s "./" ||
+  String.starts_with s "../" ||
+  String.ends_with s "/." ||
+  String.ends_with s "/.." ||
+  String.exists s "/./" ||
+  String.exists s "/../"
+
+let rec simplified_path =
+  let open Str in
+  let strip_final_slash s =
+    let l = String.length s in
+    if l > 1 && s.[l-1] = '/' then
+      String.rchop s
     else s in
+  let res =
+    [ regexp "/[^/]+/\\.\\./", "/" ;
+      regexp "/[^/]+/\\.\\.$", "" ;
+      regexp "/\\./", "/" ;
+      regexp "//", "/" ;
+      regexp "/\\.?$", "" ;
+      regexp "^\\./", "" ] in
+  fun path ->
+    let s =
+      List.fold_left (fun s (re, repl) ->
+        global_replace re repl s
+      ) path res in
+    if s = path then strip_final_slash s
+    else simplified_path s
+
+(*$inject open Batteries *)
+(*$inject
+  let simplified_path_ p =
+    ((simplified_path (path p)) :> string)
+*)
+(*$= simplified_path_ & ~printer:identity
+  "/glop/glop" (simplified_path_ "/glop/glop/")
+  "/glop/glop" (simplified_path_ "/glop/glop")
+  "glop/glop"  (simplified_path_ "./glop/glop/")
+  "glop/glop"  (simplified_path_ "glop/glop/.")
+  "/glop/glop" (simplified_path_ "/glop/pas glop/../glop")
+  "/glop/glop" (simplified_path_ "/glop/./glop")
+  "glop"       (simplified_path_ "glop/.")
+  "glop"       (simplified_path_ "glop/./")
+  "/glop"      (simplified_path_ "/./glop")
+  "/glop/glop" (simplified_path_ "/glop//glop")
+  "/glop/glop" (simplified_path_ "/glop/pas glop/..//pas glop/.././//glop//")
+  "/glop"      (simplified_path_ "/glop/glop/..")
+  "/glop"      (simplified_path_ "/glop/glop/../")
+*)
+
+let program s =
   let s = remove_heading_slashes s in
   if s = "" then
     failwith "Program names must not be empty" else
@@ -69,6 +120,7 @@ let program s =
 
 (* Make sure a path component is shorter that max_dir_len: *)
 let max_dir_len = 255
+let md5 str = Digest.(string str |> to_hex)
 let abbrev s =
   if String.length s <= max_dir_len then s else md5 s
 
@@ -99,30 +151,6 @@ let program_of_rel_program start rel_program =
 
 let rel_program_print = String.print
 let rel_program_print_quoted = String.print_quoted
-
-(* Program parameters
- *
- * String representation is the printed out values of all parameters
- * ("{p1=n1;p2=v2;...}"), if short enough;
- * - The MD5 hash of the above, otherwise.  *)
-
-type param = string * T.value [@@ppp PPP_OCaml]
-type params = (field, T.value) Hashtbl.t [@@ppp PPP_OCaml]
-
-let params_sort =
-  let param_compare (a, _) (b, _) = String.compare a b in
-  List.fast_sort param_compare
-
-let string_of_params params =
-  let print_param oc (n, v) =
-    Printf.fprintf oc "%s=%a" n T.print v in
-  Hashtbl.enum params |>
-  List.of_enum |>
-  params_sort |>
-  IO.to_string (List.print ~first:"" ~last:"" ~sep:";" print_param) |>
-  abbrev
-
-let signature_of_params = md5 % string_of_params
 
 (* Fully Qualified function names *)
 

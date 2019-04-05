@@ -52,7 +52,7 @@ type test_spec =
 and program_spec =
   { bin : N.path [@ppp_default N.path ""] ;
     code : string [@ppp_default ""] ;
-    params : N.params [@ppp_default Hashtbl.create 0] }
+    params : RamenParams.t [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
 (* Read a tuple described by the given type, and return a hash of fields

@@ -137,7 +137,7 @@ struct
     ";OUT="^ RamenTuple.type_signature out_type ^
     (* Similarly to input type, also depends on the parameters type: *)
     ";PRM="^ RamenTuple.params_type_signature params |>
-    md5
+    N.md5
 
   let dump_io func =
     !logger.debug "func %S:\n\tinput type: %a\n\toutput type: %a"
@@ -279,7 +279,7 @@ type rc_entry =
     (* Full path to the worker's binary: *)
     bin : N.path ;
     (* "Command line" for that worker: *)
-    params : N.params [@ppp_default Hashtbl.create 0] ;
+    params : RamenParams.t [@ppp_default Hashtbl.create 0] ;
     (* Optionally, file from which this worker can be (re)build (see RamenMake).
      * When it is rebuild, relative parents are found using the program name that's
      * the key in the running config. *)
@@ -369,14 +369,14 @@ let make_conf
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
-  let persist_dir = Files.simplified_path persist_dir in
+  let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
     initial_export_duration ; site ; test }
 
 (* Various directory names: *)
 
-let type_signature_hash = md5 % RamenTuple.type_signature
+let type_signature_hash = N.md5 % RamenTuple.type_signature
 
 (* Each workers regularly snapshot its internal state in this file.
  * This data contains tuples and statefull function internal states, so
@@ -389,7 +389,7 @@ let worker_state conf func params =
     [ conf.persist_dir ; N.path "workers/states" ;
       N.path RamenVersions.(worker_state ^"_"^ codegen) ;
       N.path Config.version ; Func.path func ;
-      N.path func.signature ; N.path (N.signature_of_params params) ;
+      N.path func.signature ; N.path (RamenParams.signature params) ;
       N.path "snapshot" ]
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
@@ -405,7 +405,7 @@ let worker_state conf func params =
  * FROM clause): *)
 
 let in_ringbuf_name_base conf func =
-  let sign = md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
+  let sign = N.md5 (RamenFieldMaskLib.in_type_signature func.Func.in_type) in
   N.path_cat
     [ conf.persist_dir ; N.path "workers/ringbufs" ;
       N.path RamenVersions.ringbuf ; Func.path func ; N.path sign ]

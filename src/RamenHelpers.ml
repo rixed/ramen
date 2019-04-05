@@ -1,5 +1,6 @@
 open Batteries
 open RamenLog
+open RamenConsts
 module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
@@ -365,53 +366,6 @@ let rec restart_on_eintr ?(while_=always) f x =
     if while_ () then restart_on_eintr ~while_ f x
     else raise Exit
 
-let has_dotnames s =
-  s = "." || s = ".." ||
-  String.starts_with s "./" ||
-  String.starts_with s "../" ||
-  String.ends_with s "/." ||
-  String.ends_with s "/.." ||
-  String.exists s "/./" ||
-  String.exists s "/../"
-
-let rec simplified_path =
-  let open Str in
-  let strip_final_slash s =
-    let l = String.length s in
-    if l > 1 && s.[l-1] = '/' then
-      String.rchop s
-    else s in
-  let res =
-    [ regexp "/[^/]+/\\.\\./", "/" ;
-      regexp "/[^/]+/\\.\\.$", "" ;
-      regexp "/\\./", "/" ;
-      regexp "//", "/" ;
-      regexp "/\\.?$", "" ;
-      regexp "^\\./", "" ] in
-  fun path ->
-    let s =
-      List.fold_left (fun s (re, repl) ->
-        global_replace re repl s
-      ) path res in
-    if s = path then strip_final_slash s
-    else simplified_path s
-
-(*$= simplified_path & ~printer:identity
-  "/glop/glop" (simplified_path "/glop/glop/")
-  "/glop/glop" (simplified_path "/glop/glop")
-  "glop/glop"  (simplified_path "./glop/glop/")
-  "glop/glop"  (simplified_path "glop/glop/.")
-  "/glop/glop" (simplified_path "/glop/pas glop/../glop")
-  "/glop/glop" (simplified_path "/glop/./glop")
-  "glop"       (simplified_path "glop/.")
-  "glop"       (simplified_path "glop/./")
-  "/glop"      (simplified_path "/./glop")
-  "/glop/glop" (simplified_path "/glop//glop")
-  "/glop/glop" (simplified_path "/glop/pas glop/..//pas glop/.././//glop//")
-  "/glop"      (simplified_path "/glop/glop/..")
-  "/glop"      (simplified_path "/glop/glop/../")
- *)
-
 (*
  * Some Unix utilities
  *)
@@ -454,11 +408,17 @@ let set_signals sigs behavior =
   ) sigs
 
 let string_of_process_status = function
-  | Unix.WEXITED 126 -> "couldn't execve after fork"
-  | Unix.WEXITED 127 -> "couldn't be executed"
-  | Unix.WEXITED code -> Printf.sprintf "terminated with code %d" code
-  | Unix.WSIGNALED sign -> Printf.sprintf "killed by signal %s" (name_of_signal sign)
-  | Unix.WSTOPPED sign -> Printf.sprintf "stopped by signal %s" (name_of_signal sign)
+  | Unix.WEXITED 126 ->
+      "couldn't execve after fork"
+  | Unix.WEXITED 127 ->
+      "couldn't be executed"
+  | Unix.WEXITED code ->
+      Printf.sprintf "terminated with code %d (%s)"
+        code (ExitCodes.string_of_code code)
+  | Unix.WSIGNALED sign ->
+      Printf.sprintf "killed by signal %s" (name_of_signal sign)
+  | Unix.WSTOPPED sign ->
+      Printf.sprintf "stopped by signal %s" (name_of_signal sign)
 
 exception RunFailure of Unix.process_status
 let () = Printexc.register_printer (function
@@ -817,8 +777,6 @@ let rec restart_on_failure ?(while_=always) what f x =
         !logger.error "Will restart %s..." what ;
         Unix.sleepf (0.5 +. Random.float 0.5) ;
         (restart_on_failure ~while_ [@tailcall]) what f x)
-
-let md5 str = Digest.(string str |> to_hex)
 
 (* Cohttp does not enforce any scheme but we want to be friendlier with
  * user entered urls so we add one if it's missing, assuming http: *)
@@ -1318,6 +1276,9 @@ let rec my_accept ~while_ sock =
  * the server: *)
 let forking_server ~while_ ~service_name sockaddr server_fun =
   let open Legacy.Unix in
+  let sock =
+    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
+  let sock_closed = ref false in
   (* Keep an eye on my sons pids: *)
   let sons = Atomic.Set.make () in
   let killer_thread =
@@ -1339,7 +1300,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                 (kill pid)
                 Sys.(if now -. !stop_since > 3. then sigkill else sigterm))
           ) else (
-            !logger.debug "Quit servers killer" ;
+            !logger.info "Quit servers killer" ;
             Thread.exit ()
           )
         ) ;
@@ -1358,9 +1319,6 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
       done
     ) () in
   (* Now fork a new server for each new connection: *)
-  let sock =
-    socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
-  let sock_closed = ref false in
   finally
     (fun () ->
       if not !sock_closed then (
@@ -1384,11 +1342,18 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                 Random.init prng_init ;
                 close sock ;
                 sock_closed := true ;
-                let what = "single server for "^ service_name in
-                log_exceptions ~what (fun () -> server_fun s) ;
-                exit 0
+                let what = "forked "^ service_name ^" server" in
+                (try
+                  server_fun s
+                with End_of_file ->
+                    !logger.info "%s: client disconnected, exiting" what ;
+                    exit 0
+                   | e ->
+                    print_exception ~what e ;
+                    exit ExitCodes.forking_server_uncaught_exception) ;
             | pid ->
                 close s ;
+                !logger.info "Forked server with pid %d" pid ;
                 Atomic.Set.add sons (pid, Unix.gettimeofday ()))
       done
     ) () ;

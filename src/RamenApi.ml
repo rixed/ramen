@@ -468,7 +468,7 @@ let alert_id (column : N.field) =
          (column :> string)
          threshold recovery duration ratio id
          (filterspec where)
-         (filterspec having) |> md5
+         (filterspec having) |> N.md5
 
 let func_of_table programs table =
   let pn, fn =

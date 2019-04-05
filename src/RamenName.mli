@@ -39,16 +39,6 @@ val rel_program_print : 'a BatInnerIO.output -> rel_program -> unit
 val rel_program_print_quoted : 'a BatInnerIO.output -> rel_program -> unit
 val rel_program_color : rel_program -> string
 
-(* We also need param expansion as strings, since that's what the user
- * gives us and what we use to identify an instance of a program: *)
-type param = string * RamenTypes.value
-val param_ppp_ocaml : param PPP.t
-
-type params = (field, RamenTypes.value) Hashtbl.t
-val params_ppp_ocaml : params PPP.t
-val string_of_params : params -> string
-val signature_of_params : params -> string
-
 (* For logs, not paths! *)
 type fq = [`FQ] t
 val fq_ppp_ocaml : fq PPP.t
@@ -77,6 +67,7 @@ val path_print_quoted : 'a BatInnerIO.output -> path -> unit
 val path_cat : path list -> path
 
 val path_of_program : program -> path
+val simplified_path : path -> path
 
 (* Host names (or IP as strings): *)
 type host = [`Host] t
@@ -119,5 +110,7 @@ val sub : ('a any as 'a) t -> int -> int -> 'a t
 
 (* Misc: *)
 val expr_color : string -> string
+
+val md5 : string -> string (* used internally but others might want this *)
 
 (* TODO: notif names... *)

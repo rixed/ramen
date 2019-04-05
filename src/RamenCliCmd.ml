@@ -464,7 +464,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.flush_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
-               Some (ValStr (N.string_of_params rce.C.params)) ;
+               Some (ValStr (RamenParams.to_string rce.C.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
                int_or_na s.out_count ;
