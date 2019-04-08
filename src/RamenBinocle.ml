@@ -18,12 +18,20 @@ module T = RamenTypes
 module N = RamenName
 module Files = RamenFiles
 
+let perf_kts =
+  T.[| "count",  { nullable = false ; structure = TU32 } ;
+       "user",   { nullable = false ; structure = TFloat } ;
+       "system", { nullable = false ; structure = TFloat } |]
+
 let profile_typ =
-  T.{ nullable = false ;
-      structure = TRecord [|
-        "count",  { nullable = false ; structure = TU32 } ;
-        "user",   { nullable = false ; structure = TFloat } ;
-        "system", { nullable = false ; structure = TFloat } |] }
+  T.{ nullable = false ; structure = TRecord perf_kts }
+
+let perf_nullmask_sz =
+  RingBufLib.nullmask_sz_of_record perf_kts
+
+let sersize_of_perf =
+  perf_nullmask_sz +
+  RingBufLib.(sersize_of_u32 + sersize_of_float + sersize_of_float)
 
 let profile_fields =
   [| "tot_per_tuple", profile_typ ;
@@ -36,6 +44,12 @@ let profile_fields =
      "finalize_others", profile_typ ;
      "commit_others", profile_typ ;
      "flush_others", profile_typ |]
+
+let profile_nullmask_sz =
+  RingBufLib.nullmask_sz_of_record profile_fields
+
+let sersize_of_profile =
+  profile_nullmask_sz + Array.length profile_fields * sersize_of_perf
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
@@ -91,15 +105,20 @@ open RingBufLib
 
 let nullmask_sz = nullmask_bytes_of_tuple_type tuple_typ
 
-let fix_sz = tot_fixsz tuple_typ
+let fix_sz =
+  tot_fixsz tuple_typ +
+  (* Records are not considered fixed-sized by tot_fixsz (TODO), but it is so
+   * add it now. Note: All fields of a Tuples/records are considered
+   * nullable, therefore the (useless) nullmask. Cf. isssue #712 *)
+  (profile_nullmask_sz +
+   Array.length profile_fields * sersize_of_perf)
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, profile, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   nullmask_sz +
   fix_sz +
-  sersize_of_string worker +
-  sersize_of_record profile
+  sersize_of_string worker
 
 let serialize tx start_offs
               (worker, is_top_half, start, min_etime, max_etime, ic, sc, oc,
@@ -118,7 +137,17 @@ let serialize tx start_offs
     write_nullable_thing write_u64 sz
   and write_nullable_float =
     let sz = sersize_of_float in
-    write_nullable_thing write_float sz in
+    write_nullable_thing write_float sz
+  and write_perf offs (count, system, user) =
+    (* Cf issue #712: *)
+    zero_bytes tx offs perf_nullmask_sz ;
+    let offs = offs + perf_nullmask_sz in
+    write_u32 tx offs count ;
+    let offs = offs + sersize_of_u32 in
+    write_float tx offs system ;
+    let offs = offs + sersize_of_float in
+    write_float tx offs user ;
+    offs + sersize_of_float in
   let offs = start_offs + nullmask_sz in
   let offs =
     write_string tx offs worker ;
@@ -145,8 +174,21 @@ let serialize tx start_offs
     write_u64 tx offs max_ram ;
     offs + sersize_of_u64 in
   let offs =
-    write_record tx offs profile ;
-    offs + sersize_of_record profile in
+    (* Cf issue #712: *)
+    zero_bytes tx offs profile_nullmask_sz ;
+    let offs = offs + profile_nullmask_sz in
+    let ci, co, fo, fg, fp, so, pt, ug, wf, ws = profile in
+    let offs = write_perf offs ci in
+    let offs = write_perf offs co in
+    let offs = write_perf offs fo in
+    let offs = write_perf offs fg in
+    let offs = write_perf offs fp in
+    let offs = write_perf offs so in
+    let offs = write_perf offs pt in
+    let offs = write_perf offs ug in
+    let offs = write_perf offs wf in
+    let offs = write_perf offs ws in
+    offs in
   let offs = write_nullable_float offs 6 wi in
   let offs = write_nullable_float offs 7 wo in
   let offs = write_nullable_u64 offs 8 bi in
@@ -169,7 +211,17 @@ let unserialize tx start_offs =
     read_nullable_thing read_u64 sz
   and read_nullable_float =
     let sz = sersize_of_float in
-    read_nullable_thing read_float sz in
+    read_nullable_thing read_float sz
+  and read_perf offs =
+    (* Cf issue #712: *)
+    let offs = offs + perf_nullmask_sz in
+    let count = read_u32 tx offs in
+    let offs = offs + sersize_of_u32 in
+    let system = read_float tx offs in
+    let offs = offs + sersize_of_float in
+    let user = read_float tx offs in
+    let offs = offs + sersize_of_float in
+    (count, system, user), offs in
   let offs = start_offs + nullmask_sz in
   let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
@@ -189,8 +241,20 @@ let unserialize tx start_offs =
   let offs = offs + sersize_of_u64 in
   let max_ram = read_u64 tx offs in
   let offs = offs + sersize_of_u64 in
-  let profile = read_record profile_fields tx offs in
-  let offs = offs + sersize_of_record profile in
+  let profile, offs =
+    (* Cf issue #712: *)
+    let offs = offs + profile_nullmask_sz in
+    let ci, offs = read_perf offs in
+    let co, offs = read_perf offs in
+    let fo, offs = read_perf offs in
+    let fg, offs = read_perf offs in
+    let fp, offs = read_perf offs in
+    let so, offs = read_perf offs in
+    let pt, offs = read_perf offs in
+    let ug, offs = read_perf offs in
+    let wf, offs = read_perf offs in
+    let ws, offs = read_perf offs in
+    (ci, co, fo, fg, fp, so, pt, ug, wf, ws), offs in
   let wi, offs = read_nullable_float 6 offs in
   let wo, offs = read_nullable_float 7 offs in
   let bi, offs = read_nullable_u64 8 offs in
@@ -201,7 +265,8 @@ let unserialize tx start_offs =
   let offs = offs + sersize_of_float in
   let t =
     worker, is_top_half, start, min_etime, max_etime, ic, sc , oc, gc,
-    cpu, ram, max_ram, profile, wi, wo, bi, bo, os, lo, stime in
+    cpu, ram, max_ram,
+    profile, wi, wo, bi, bo, os, lo, stime in
   assert (offs <= start_offs + max_sersize_of_tuple t) ;
   t
 

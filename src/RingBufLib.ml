@@ -32,8 +32,7 @@ let nullmask_sz_of_tuple ts =
   Array.length ts |> bytes_for_bits |> round_up_to_rb_word
 
 let nullmask_sz_of_record kts =
-  Array.map snd kts |>
-  nullmask_sz_of_tuple
+  Array.length kts |> bytes_for_bits |> round_up_to_rb_word
 
 let nullmask_sz_of_vector d =
   bytes_for_bits d |> round_up_to_rb_word
@@ -136,32 +135,32 @@ let rec sersize_of_value = function
   | VCidrv4 _ -> sersize_of_cidrv4
   | VCidrv6 _ -> sersize_of_cidrv6
   | VCidr x -> sersize_of_cidr x
-  | VTuple vs -> sersize_of_tuple vs
-  | VRecord kvs -> sersize_of_record kvs
-  | VVec vs -> sersize_of_vector vs
-  | VList vs -> sersize_of_list vs
+  | VTuple vs -> sersize_of_tuple_value vs
+  | VRecord kvs -> sersize_of_record_value kvs
+  | VVec vs -> sersize_of_vector_value vs
+  | VList vs -> sersize_of_list_value vs
 
-and sersize_of_tuple vs =
+and sersize_of_tuple_value vs =
   (* Tuples are serialized in field order, unserializer will know which
    * fields are present so there is no need for meta-data: *)
-  (* The bitmask for the null values is stored first (remember that all
+  (* The bitmask for the null values is stored first (in which all
    * values are considered nullable). *)
   let nullmask_sz = nullmask_sz_of_tuple vs in
   Array.fold_left (fun s v -> s + sersize_of_value v) nullmask_sz vs
 
-and sersize_of_record kvs =
+and sersize_of_record_value kvs =
   (* We serialize records as we serialize output: in alphabetical order *)
-  Array.map snd kvs |> sersize_of_tuple
+  Array.map snd kvs |> sersize_of_tuple_value
 
-and sersize_of_vector vs =
+and sersize_of_vector_value vs =
   (* Vectors are serialized in field order, unserializer will also know
    * the size of the vector and the type of its elements: *)
-  sersize_of_tuple vs
+  sersize_of_tuple_value vs
 
-and sersize_of_list vs =
+and sersize_of_list_value vs =
   (* Lists are prefixed with their number of elements (before the
    * nullmask): *)
-  sersize_of_u32 + sersize_of_tuple vs
+  sersize_of_u32 + sersize_of_tuple_value vs
 
 let has_fixed_size = function
   | TString

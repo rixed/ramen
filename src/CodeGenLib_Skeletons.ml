@@ -178,10 +178,7 @@ let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
   let sp p =
     let count, system, user =
       Option.map_default perf (0, 0., 0.) p in
-    T.VRecord
-      [| "count", VU32 (Uint32.of_int count) ;
-         "system", VFloat system ;
-         "user", VFloat user |]
+    Uint32.of_int count, system, user
   in
   (worker :> string), is_top_half, time,
   min_event_time, max_event_time,
@@ -191,19 +188,19 @@ let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
   FloatCounter.get stats_cpu,
   (* Assuming we call update_stats before this: *)
   ram, max_ram,
-  (* Start measurements as a single record: *)
+  (* Start measurements as a single record (BEWARE FIELD ORDERING!): *)
   (* FIXME: make RamenBinocle the only place where this record is defined,
    * instead of there, here, in RamenPs. *)
-  [| "tot_per_tuple", Perf.get stats_perf_per_tuple |> sp ;
-     "where_fast", Perf.get stats_perf_where_fast |> sp ;
-     "find_group", Perf.get stats_perf_find_group |> sp ;
-     "where_slow", Perf.get stats_perf_where_slow |> sp ;
-     "update_group", Perf.get stats_perf_update_group |> sp ;
-     "commit_incoming", Perf.get stats_perf_commit_incoming |> sp ;
-     "select_others", Perf.get stats_perf_select_others |> sp ;
-     "finalize_others", Perf.get stats_perf_finalize_others |> sp ;
-     "commit_others", Perf.get stats_perf_commit_others |> sp ;
-     "flush_others", Perf.get stats_perf_flush_others |> sp |],
+  (Perf.get stats_perf_commit_incoming |> sp,
+   Perf.get stats_perf_commit_others |> sp,
+   Perf.get stats_perf_finalize_others |> sp,
+   Perf.get stats_perf_find_group |> sp,
+   Perf.get stats_perf_flush_others |> sp,
+   Perf.get stats_perf_select_others |> sp,
+   Perf.get stats_perf_per_tuple |> sp,
+   Perf.get stats_perf_update_group |> sp,
+   Perf.get stats_perf_where_fast |> sp,
+   Perf.get stats_perf_where_slow |> sp),
   FloatCounter.get stats_rb_read_sleep_time |> s,
   FloatCounter.get stats_rb_write_sleep_time |> s,
   IntCounter.get stats_rb_read_bytes |> si,

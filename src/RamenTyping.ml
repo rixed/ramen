@@ -2136,32 +2136,50 @@ let used_tuples_records funcs parents =
     set_iteri (fun i n -> register_field n l i) s in
   register_set params ;
   register_set envvars ;
-  (* We might also get tuples and records from our parents. Collect all
-   * their output fields even if it's not used anywhere for simplicity. *)
+  (* This function accept the set of tuple_sizes and a type, and will
+   * (recursively) explore that type for tuples/records and return the new
+   * extended tuple_sizes set and will also call register_field on all
+   * discovered record fields: *)
+  let rec look_into_type tuple_sizes t =
+    match t.T.structure with
+    | TTuple ts ->
+        let tuple_sizes = Set.Int.add (Array.length ts) tuple_sizes in
+        Array.fold_left look_into_type tuple_sizes ts
+    | TVec (_, t) | TList t ->
+        look_into_type tuple_sizes t
+    | TRecord kts ->
+        let d = Array.length kts in
+        Array.fold_lefti (fun tuple_sizes i (k, t) ->
+          register_field (N.field k) d i ;
+          look_into_type tuple_sizes t
+        ) tuple_sizes kts
+    | _ ->
+        tuple_sizes
+  in
+  (* We might also get tuples and records from our parents. With the help of
+   * the above function, collect all their output fields even if it's not
+   * used anywhere for simplicity. *)
   let tuple_sizes =
     Hashtbl.fold (fun _ fs s ->
       List.fold_left (fun s f ->
+        let out_type = O.out_type_of_operation f.F.operation in
         List.fold_left (fun s ft ->
-          match ft.RamenTuple.typ.structure with
-          | TTuple ts -> Set.Int.add (Array.length ts) s
-          | TRecord ts->
-              let d = Array.length ts in
-              Array.iteri (fun i (k, _) ->
-                register_field (N.field k) d i
-              ) ts ;
-              s
-          | _ -> s
-        ) s (O.out_type_of_operation f.F.operation)
+          look_into_type s ft.RamenTuple.typ
+        ) s out_type
       ) s fs
     ) parents tuple_sizes in
   (* Finally, every input and output of all functions might also be a
    * record: *)
+  let look_into_type t =
+    (* A variant that only register the record fields recursively: *)
+    ignore (look_into_type Set.Int.empty t) in
   List.iter (fun func ->
     let out_typ = O.out_type_of_operation func.F.operation in
     (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->
       register_field ft.RamenTuple.name sz i ;
+      look_into_type ft.typ
     ) out_typ ;
     let sz = List.length func.in_type in
     List.iteri (fun i fm ->

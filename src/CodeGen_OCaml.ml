@@ -3556,7 +3556,7 @@ let emit_operation name top_half_name func
   | Instrumentation { from } ->
     emit_well_known opc name from
       "RamenBinocle.unserialize" "report_ringbuf"
-      "(fun (w, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
+      "(fun (w, _, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     emit_well_known opc name from
       "RamenNotification.unserialize" "notifs_ringbuf"
@@ -3594,17 +3594,20 @@ let emit_replay name func opc =
 let emit_priv_pub opc =
   let op = option_get "must have function" opc.op in
   let rtyp = O.out_record_of_operation op in
+  let var_of var k =
+    var ^"_"^ k ^"_" |>
+    RamenOCamlCompiler.make_valid_ocaml_identifier in
   let rec emit_transform indent trim var typ oc =
     let transform_record indent kts =
       let p fmt = emit oc indent fmt in
       p "let %a = %s in"
         (Enum.print ~first:"" ~last:"" ~sep:", " (fun oc (k, _) ->
-          Printf.fprintf oc "%s_%s_" var k))
+          String.print oc (var_of var k)))
           (Array.enum kts // fun (k, _) ->
             trim || not N.(is_private (field k)))
         var ;
       Array.fold_left (fun i (k, t) ->
-        let var' = Printf.sprintf "%s_%s_" var k in
+        let var' = var_of var k in
         if trim then (
           (* remove all private fields, recursively: *)
           if N.(is_private (field k)) then i
@@ -3625,7 +3628,7 @@ let emit_priv_pub opc =
               var' (emit_expr ~env:[] ~context:Finalize ~opc) e ;
             p "dummy_for_private_%s_" var'
           ) else (
-            p "%s_%s_" var k
+            p "%s" (var_of var k)
           ) ;
           i + 1
         )
