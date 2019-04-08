@@ -2115,7 +2115,7 @@ let used_tuples_records funcs parents =
             (* We must type all defined fields, including those that are
              * shadowed: *)
             let d = List.length kvs in
-            (* For each possible field name we have to record that its a
+            (* For each possible field name we have to record that it's a
              * legit field name for a record of that length at that
              * position: *)
             List.iteri (fun i (k, _) -> register_field k d i) kvs ;
