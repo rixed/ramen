@@ -463,7 +463,12 @@ let rec match_case m =
 
 and var_binding m =
   let m = "var binding" :: m in
-  (par (symbol ++ term)) m
+  (par (symbol +- blanks ++ term)) m
+
+(*$= var_binding & ~printer:dump
+  ("a!1", ConstantTerm (Numeral 42)) \
+    (test_exn var_binding "(a!1 42)")
+*)
 
 and term m =
   let m = "term" :: m in
