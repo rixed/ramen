@@ -184,6 +184,10 @@ let symbol m =
   let m = "symbol" :: m in
   (simple_symbol ||| quoted_symbol) m
 
+(*$= symbol & ~printer:dump
+  "a!1" (test_exn symbol "a!1")
+*)
+
 let keyword m =
   let m = "keyword" :: m in
   (char ':' -+ simple_symbol) m
@@ -397,6 +401,10 @@ let qual_identifier m =
       fun (i, s) -> i, Some s)
   ) m
 
+(*$= qual_identifier & ~printer:dump
+  (Identifier "record2", None) (test_exn qual_identifier "record2")
+*)
+
 type sorted_var = symbol * sort
 
 let print_sorted_var oc (sym, sort) =
@@ -488,6 +496,18 @@ and term m =
     (par (char '!' -- blanks -+ term +- blanks ++ several ~sep attribute) >>:
       fun (t, attrs) -> Tagged (t, attrs))
   ) m
+
+(*$= term & ~printer:dump
+  (ConstantTerm (Numeral 1)) (test_exn term "1")
+  (QualIdentifier ((Identifier "false", None), [])) (test_exn term "false")
+  (QualIdentifier ((Identifier "u32", None), [])) (test_exn term "u32")
+  (QualIdentifier ((Identifier "float", None), [])) (test_exn term "float")
+  (QualIdentifier ((Identifier "record1", None), \
+    [ QualIdentifier ((Identifier "u32", None), []) ; \
+      QualIdentifier ((Identifier "false", None), []) ; \
+      ConstantTerm (Numeral 1) ])) \
+    (test_exn term "(record1 u32 false 1)")
+*)
 
 type function_def =
   symbol * sorted_var list * sort * term
