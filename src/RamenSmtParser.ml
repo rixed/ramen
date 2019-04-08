@@ -477,11 +477,11 @@ and term m =
     (qual_identifier >>: fun n -> QualIdentifier (n, [])) |||
     (par (qual_identifier +- blanks ++ several ~sep term) >>: fun (n, ts) ->
       QualIdentifier (n, ts)) |||
-    (par (string "let" -- blanks -+ par (several ~sep var_binding) +-
+    (par (string "let" -- opt_blanks -+ par (several ~sep var_binding) +-
           opt_blanks ++ term) >>: fun (vbs, t) -> Let (vbs, t)) |||
-    (par (string "forall" -- blanks -+ par (several ~sep sorted_var) +-
+    (par (string "forall" -- opt_blanks -+ par (several ~sep sorted_var) +-
           opt_blanks ++ term) >>: fun (svs, t) -> ForAll (svs, t)) |||
-    (par (string "exists" -- blanks -+ par (several ~sep sorted_var) +-
+    (par (string "exists" -- opt_blanks -+ par (several ~sep sorted_var) +-
           opt_blanks ++ term) >>: fun (svs, t) -> Exists (svs, t)) |||
     (par (string "match" -- blanks -+ term +- opt_blanks ++
           par (several ~sep match_case)) >>: fun (t, ps) -> Match (t, ps)) |||
