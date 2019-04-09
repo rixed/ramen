@@ -644,8 +644,7 @@ let () =
         generate_alert programs target_file a))
 
 let stop_alert conf (program_name : N.program) =
-  let glob =
-    Globs.((program_name :> string) |> escape |> compile) in
+  let glob = Globs.escape (program_name :> string) in
   (* As we are also deleting the binary better purge the conf as per
    * https://github.com/rixed/ramen/issues/548 *)
   let num_kills = RamenRun.kill ~purge:true conf [ glob ] in

@@ -185,7 +185,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         log_and_ignore_exceptions ~what:"Killing disabled program"
           (fun () ->
             let program_name =
-              Globs.(compile (escape (program_name :> string))) in
+              Globs.(escape (program_name :> string)) in
             let nb_killed =
               kill_locked ?purge [ program_name ] programs in
             if nb_killed > 0 then !logger.info "...and has been killed") ()

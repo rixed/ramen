@@ -122,11 +122,12 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
 
 (* Make the given string a glob that matches only itself,
  * by replacing any literal stars by escaped stars: *)
-let escape ?(star='*') ?(escape='\\') =
+let escape ?(star='*') ?placeholder ?(escape='\\') =
   let open Str in
   let re = regexp (quote (of_char star)) in
   fun str ->
-    global_replace re (of_char escape ^ of_char star) str
+    global_replace re (of_char escape ^ of_char star) str |>
+    compile ~star ?placeholder ~escape
 
 let string_ends_with s e =
   let off = length s - length e in

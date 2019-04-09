@@ -773,7 +773,7 @@ let purge_transient conf to_purge () =
   if to_purge <> [] then
     let patterns =
       List.map (fun (p : N.program) ->
-        Globs.(compile (escape (p :> string)))
+        Globs.escape (p :> string)
       ) to_purge in
     let nb_kills = RamenRun.kill conf ~purge:true patterns in
     !logger.debug "Killed %d programs" nb_kills

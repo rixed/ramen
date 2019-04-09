@@ -107,7 +107,7 @@ let get_user_conf fname per_func_stats =
     else
       Hashtbl.iter (fun (fq : N.fq) s ->
         if s.parents = [] then
-          let pat = Globs.(compile (escape (fq :> string))) in
+          let pat = Globs.(escape (fq :> string)) in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
   assert (Hashtbl.length user_conf.retentions > 0) ;
