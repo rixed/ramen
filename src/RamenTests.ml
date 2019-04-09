@@ -379,8 +379,9 @@ let check_test_spec conf test =
     iter_programs
       ~per_prog:(fun pn ->
         if not (Hashtbl.mem programs pn) then
-          Printf.sprintf "Unknown program %s"
-            (N.program_color pn) |>
+          Printf.sprintf2 "Unknown program %s (have %a)"
+            (N.program_color pn)
+            (pretty_enum_print N.program_print) (Hashtbl.keys programs) |>
           failwith)
       ~per_func:(fun pn fn tuple ->
         let _mre, get_rc = Hashtbl.find programs pn in
