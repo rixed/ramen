@@ -1,0 +1,7 @@
+-- vim: ft=sql expandtab spell spelllang=en
+-- In distributed settings, this program is supposed to run on the master(s)
+-- (in addition to local.ramen)
+
+-- Import stats from all remote sites:
+DEFINE PERSISTENT global_stats AS
+  SELECT * FROM *:local/stats;

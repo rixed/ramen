@@ -1,0 +1,6 @@
+-- vim: ft=sql expandtab spell spelllang=en
+-- In distributed settings, this program is supposed to run on all instances.
+
+-- So that local stats can be read from remote sites:
+DEFINE LAZY stats AS
+  LISTEN FOR INSTRUMENTATION;
