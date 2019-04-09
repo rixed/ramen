@@ -428,7 +428,7 @@ and term =
   | Tagged of term * attribute list
 
 let rec print_var_binding oc (s, t) =
-  Printf.fprintf oc "(%a <- %a)"
+  Printf.fprintf oc "(%a %a)"
     print_symbol s
     print_term t
 
@@ -436,7 +436,7 @@ and print_term oc = function
   | ConstantTerm c -> print_spec_constant oc c
   | QualIdentifier (id, ts) ->
       print_qual_identifier oc id ;
-      print_a_la_sexpr print_term oc ts
+      if ts <> [] then print_a_la_sexpr print_term oc ts
   | Let (bs, t) ->
       Printf.fprintf oc "(let %a %a)"
         (print_a_la_sexpr print_var_binding) bs
