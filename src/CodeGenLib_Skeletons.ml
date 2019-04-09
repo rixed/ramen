@@ -769,32 +769,34 @@ let read_well_known
     let start = Unix.gettimeofday () in
     let while_ () = !quit = None in
     let rec loop last_seq =
-      let rb = RingBuf.load bname in
-      let st = RingBuf.stats rb in
-      if st.first_seq <= last_seq then (
-        Unix.sleepf (1. +. Random.float 1.) ;
-        loop last_seq
-      ) else (
-        info_or_test conf "Reading buffer..." ;
-        RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
-          let open RingBufLib in
-          (match read_message_header tx 0 with
-          | exception e ->
-            print_exception ~what:"read well known tuple" e
-          | DataTuple chan as m ->
-            let offs = message_header_sersize m in
-            let tuple = unserialize_tuple tx offs in
-            let worker, time = worker_time_of_tuple tuple in
-            (* Filter by time and worker *)
-            if time >= start && match_from worker then (
-              CodeGenLib_IO.on_each_input_pre () ;
-              IntCounter.add stats_in_tuple_count 1 ;
-              outputer (RingBufLib.DataTuple chan) (Some tuple))
-          | _ -> ()) ;
-          (), true) ;
-        info_or_test conf "Done reading buffer, waiting for next one." ;
-        RingBuf.unload rb ;
-        loop st.first_seq
+      if while_ () then (
+        let rb = RingBuf.load bname in
+        let st = RingBuf.stats rb in
+        if st.first_seq <= last_seq then (
+          Unix.sleepf (1. +. Random.float 1.) ;
+          loop last_seq
+        ) else (
+          info_or_test conf "Reading buffer..." ;
+          RingBufLib.read_buf ~while_ ~delay_rec:sleep_in rb () (fun () tx ->
+            let open RingBufLib in
+            (match read_message_header tx 0 with
+            | exception e ->
+              print_exception ~what:"read well known tuple" e
+            | DataTuple chan as m ->
+              let offs = message_header_sersize m in
+              let tuple = unserialize_tuple tx offs in
+              let worker, time = worker_time_of_tuple tuple in
+              (* Filter by time and worker *)
+              if time >= start && match_from worker then (
+                CodeGenLib_IO.on_each_input_pre () ;
+                IntCounter.add stats_in_tuple_count 1 ;
+                outputer (RingBufLib.DataTuple chan) (Some tuple))
+            | _ -> ()) ;
+            (), true) ;
+          info_or_test conf "Done reading buffer, waiting for next one." ;
+          RingBuf.unload rb ;
+          loop st.first_seq
+        )
       ) in
     loop ~-1)
 
