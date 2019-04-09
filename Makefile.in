@@ -14,9 +14,9 @@ override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
-                          -I $(shell ocamlfind ocamlc -where) \
-                          -I $(BUNDLE_DIR)/include \
-                          -DHAVE_INT128 -I $(shell ocamlfind query stdint)
+                          -I '@OCAMLLIB@' \
+                          -I '$(BUNDLE_DIR)/include' \
+                          -DHAVE_INT128 -I '$(shell ocamlfind query stdint)'
 
 ifdef NDEBUG
 OCAMLOPTFLAGS += -noassert -O2
