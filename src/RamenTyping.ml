@@ -1913,19 +1913,27 @@ let structure_of_sort_identifier = function
       !logger.error "Unknown sort identifier %S" unk ;
       TEmpty
 
-let rec structure_of_term name_of_idx =
+let rec structure_of_identifier name_of_idx bindings id =
+  match List.assoc id bindings with
+  | exception Not_found ->
+      (* Better be a predefined binding then: *)
+      structure_of_sort_identifier id
+  | term ->
+      structure_of_term name_of_idx bindings term
+
+and structure_of_term name_of_idx bindings =
   let open RamenSmtParser in
   function
-  | QualIdentifier ((Identifier typ, None), []) ->
-      structure_of_sort_identifier typ
+  | QualIdentifier ((Identifier id, None), []) ->
+      structure_of_identifier name_of_idx bindings id
   | QualIdentifier ((Identifier "vector", None),
                     [ ConstantTerm c ; typ ; null ]) ->
-      let structure = structure_of_term name_of_idx typ
+      let structure = structure_of_term name_of_idx bindings typ
       and nullable = bool_of_term null in
       let n = int_of_constant c in
       TVec (n, T.make ~nullable structure)
   | QualIdentifier ((Identifier "list", None), [ typ ; null ]) ->
-      let structure = structure_of_term name_of_idx typ
+      let structure = structure_of_term name_of_idx bindings typ
       and nullable = bool_of_term null in
       TList (T.make ~nullable structure)
   | QualIdentifier ((Identifier id, None), sub_terms)
@@ -1942,7 +1950,7 @@ let rec structure_of_term name_of_idx =
           | [] -> List.rev ts |> Array.of_list
           | e::n::rest ->
               let nullable = bool_of_term n
-              and structure = structure_of_term name_of_idx e in
+              and structure = structure_of_term name_of_idx bindings e in
               let t = T.make ~nullable structure in
               loop (t :: ts) rest
           | _ -> assert false in
@@ -1968,7 +1976,7 @@ let rec structure_of_term name_of_idx =
           | [] -> List.rev ts |> Array.of_list
           | e::n::f::rest ->
               let nullable = bool_of_term n
-              and structure = structure_of_term name_of_idx e in
+              and structure = structure_of_term name_of_idx bindings e in
               let t = T.make ~nullable structure in
               let idx = int_of_term f in
               if idx < 0 || idx >= Array.length name_of_idx then
@@ -1986,8 +1994,11 @@ let rec structure_of_term name_of_idx =
       let what = "While scanning "^ id in
       print_exception ~what e ;
       TEmpty)
-  | _ ->
-      !logger.warning "TODO: exploit define-fun with funny term" ;
+  | Let (bs, t) ->
+      let bindings = bs @ bindings in
+      structure_of_term name_of_idx bindings t
+  | term ->
+      !logger.warning "Unimplemented term: %a" print_term term ;
       TEmpty
 
 let emit_smt2 parents tuple_sizes records field_names condition funcs params oc ~optimize =
@@ -2211,7 +2222,7 @@ let get_types parents condition funcs params fname =
       try Scanf.sscanf sym "%[tn]%d%!" (fun tn id ->
         match vars, sort, tn with
         | [], NonParametricSort (Identifier "Type"), "t" ->
-            let structure = structure_of_term name_of_idx term in
+            let structure = structure_of_term name_of_idx [] term in
             Hashtbl.modify_opt id (function
               | None ->
                   Some { structure ; nullable = false (* by default *) }
