@@ -459,9 +459,10 @@ let run_test conf notify_rb dirname test =
   (* Now that the running config is complete we can start the worker
    * supervisor: *)
   let sync =
+    let open RamenProcesses in
     Thread.create (
       restart_on_failure "synchronize_running"
-        (RamenProcesses.synchronize_running conf)) 0. in
+        (synchronize_running conf 0.)) NotDistributed in
   (* Start the test proper: *)
   let worker_feeder () =
     let feed_input input =

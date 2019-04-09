@@ -94,9 +94,14 @@ else
   # Also copy the allocs
 fi
 
-# Supervisor runs in all instances:
-"$ramen" supervisor --site="$ramen_site" &
-supervisor_pid=$!
+# Supervisor runs in all instances but with different CLI:
+if test "$be_master" = yes; then
+  "$ramen" supervisor --site="$ramen_site" --role=master &
+  supervisor_pid=$!
+else
+  "$ramen" supervisor --site="$ramen_site" --role=slave &
+  supervisor_pid=$!
+fi
 at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 
 # Archivist --reconf must also run everywhere, and fully on master

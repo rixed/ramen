@@ -52,7 +52,7 @@ let while_ () = !RamenProcesses.quit = None
 
 let supervisor conf daemonize to_stdout to_syslog autoreload
                use_external_compiler bundle_dir max_simult_compils
-               smt_solver fail_for_good_ () =
+               smt_solver fail_for_good_ distributed_role () =
   RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
                      smt_solver ;
   if to_stdout && daemonize then
@@ -88,7 +88,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
-      (fun () -> synchronize_running conf autoreload) |] ;
+      (fun () -> synchronize_running conf autoreload distributed_role) |] ;
   Option.may exit !RamenProcesses.quit
 
 (*

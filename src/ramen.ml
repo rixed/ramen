@@ -146,6 +146,15 @@ let fail_for_good =
                    [ "fail-for-good" ] in
   Arg.(value (flag i))
 
+let distributed_role =
+  let i = Arg.info ~doc:CliInfo.distributed_role
+                   ~docv:"none|slave|master" ["role"] in
+  let enums =
+    RamenProcesses.[
+      "none", NotDistributed ; "slave", Slave ; "master", Master ] in
+  Arg.(value (opt (enum enums) NotDistributed i))
+
+
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
@@ -158,7 +167,8 @@ let supervisor =
       $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
-      $ fail_for_good),
+      $ fail_for_good
+      $ distributed_role),
     info ~doc:CliInfo.supervisor "supervisor")
 
 (*

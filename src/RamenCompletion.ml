@@ -186,7 +186,8 @@ let complete str () =
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ] @
+            "--solver=", CliInfo.smt_solver ;
+            "--role=", CliInfo.distributed_role ] @
           copts
        | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
