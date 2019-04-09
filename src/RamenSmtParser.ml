@@ -499,14 +499,48 @@ and term m =
 
 (*$= term & ~printer:dump
   (ConstantTerm (Numeral 1)) (test_exn term "1")
+
   (QualIdentifier ((Identifier "false", None), [])) (test_exn term "false")
+
   (QualIdentifier ((Identifier "u32", None), [])) (test_exn term "u32")
+
   (QualIdentifier ((Identifier "float", None), [])) (test_exn term "float")
+
   (QualIdentifier ((Identifier "record1", None), \
     [ QualIdentifier ((Identifier "u32", None), []) ; \
       QualIdentifier ((Identifier "false", None), []) ; \
       ConstantTerm (Numeral 1) ])) \
     (test_exn term "(record1 u32 false 1)")
+
+  (Let ( \
+      [ "a!1", QualIdentifier ( \
+                 (Identifier "record2", None), \
+                 [ QualIdentifier ((Identifier "u32", None), []) ; \
+                   QualIdentifier ((Identifier "false", None), []) ; \
+                   ConstantTerm (Numeral 1) ; \
+                   QualIdentifier ((Identifier "float", None), []) ; \
+                   QualIdentifier ((Identifier "true", None), []) ; \
+                   ConstantTerm (Numeral 2) ]) ], \
+      QualIdentifier ( \
+        (Identifier "record20", None), \
+        [ QualIdentifier ((Identifier "u64", None), []) ; \
+          QualIdentifier ((Identifier "true", None), []) ; \
+          ConstantTerm (Numeral 32) ; \
+          QualIdentifier ( \
+            (Identifier "record10", None), \
+            [ QualIdentifier ((Identifier "a!1", None), []) ; \
+              QualIdentifier ((Identifier "false", None), []) ; \
+              ConstantTerm (Numeral 0) ; \
+              QualIdentifier ((Identifier "a!1", None), []) ; \
+              QualIdentifier ((Identifier "false", None), []) ; \
+              ConstantTerm (Numeral 4) ]) ; \
+          QualIdentifier ((Identifier "false", None), []) ; \
+          ConstantTerm (Numeral 23) ]))) \
+    (test_exn term \
+      "(let ((a!1 (record2 u32 false 1 float true 2)))\n\
+         (record20 u64 true 32\n\
+                   (record10 a!1 false 0 a!1 false 4)\n\
+                   false 23))")
 *)
 
 type function_def =
