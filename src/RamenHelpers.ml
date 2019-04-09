@@ -1348,7 +1348,10 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                 with End_of_file ->
                     !logger.info "%s: client disconnected, exiting" what ;
                     exit 0
-                   | e ->
+                  | Exit ->
+                    !logger.info "%s: time to quit" what ;
+                    exit 0
+                  | e ->
                     print_exception ~what e ;
                     exit ExitCodes.forking_server_uncaught_exception) ;
             | pid ->
