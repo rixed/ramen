@@ -20,7 +20,7 @@ let () =
     | _ -> None)
 
 let make_copts debug quiet persist_dir rand_seed keep_temp_files
-               forced_variants initial_export_duration site =
+               forced_variants initial_export_duration site bundle_dir role =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -33,7 +33,7 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
       List.rev_append (String.split_on_char ',' s) lst
     ) [] forced_variants in
   C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
-              ~initial_export_duration ~site persist_dir
+              ~initial_export_duration ~site ~bundle_dir ~role persist_dir
 
 (*
  * `ramen supervisor`
@@ -51,10 +51,9 @@ let check_binocle_errors () =
 let while_ () = !RamenProcesses.quit = None
 
 let supervisor conf daemonize to_stdout to_syslog autoreload
-               use_external_compiler bundle_dir max_simult_compils
-               smt_solver fail_for_good_ distributed_role () =
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+               use_external_compiler max_simult_compils
+               smt_solver fail_for_good_ () =
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -88,7 +87,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
-      (fun () -> synchronize_running conf autoreload distributed_role) |] ;
+      (fun () -> synchronize_running conf autoreload) |] ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -185,6 +184,8 @@ let tunneld conf daemonize to_stdout to_syslog port () =
   if daemonize then do_daemonize () ;
   RamenProcesses.prepare_signal_handlers conf ;
   RamenCopySrv.copy_server conf port ;
+  !logger.info "Returned from copy_server, quit code = %a"
+    (Option.print Int.print) !RamenProcesses.quit ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -195,7 +196,7 @@ let tunneld conf daemonize to_stdout to_syslog port () =
  *)
 
 (* Note: We need a program name to identify relative parents. *)
-let compile conf lib_path use_external_compiler bundle_dir
+let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
             output_file_opt program_name_opt () =
   let many_source_files = List.length source_files > 1 in
@@ -204,8 +205,7 @@ let compile conf lib_path use_external_compiler bundle_dir
   init_logger conf.C.log_level ;
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let get_parent =
     if lib_path = [] then
       let programs = C.with_rlock conf identity in
@@ -782,11 +782,10 @@ let tail conf func_name_or_code with_header with_units sep null raw
          last next min_seq max_seq continuous where since until
          with_event_time duration pretty flush
          (* We might compile the command line: *)
-         use_external_compiler bundle_dir max_simult_compils smt_solver
+         use_external_compiler max_simult_compils smt_solver
          () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -831,11 +830,10 @@ let replay_ conf fq field_names with_header with_units sep null raw
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
            (* We might compile the command line: *)
-           use_external_compiler bundle_dir max_simult_compils smt_solver
+           use_external_compiler max_simult_compils smt_solver
            () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -902,11 +900,10 @@ let timeseries conf func_name_or_code
                time_step sep null consolidation
                bucket_time pretty
                (* We might compile the command line: *)
-               use_external_compiler bundle_dir max_simult_compils smt_solver
+               use_external_compiler max_simult_compils smt_solver
                () =
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
@@ -955,10 +952,9 @@ let timerange conf fq () =
 let httpd conf daemonize to_stdout to_syslog fault_injection_rate
           server_url api graphite
           (* The API might compile some code: *)
-          use_external_compiler bundle_dir max_simult_compils smt_solver
+          use_external_compiler max_simult_compils smt_solver
           () =
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then

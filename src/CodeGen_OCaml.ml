@@ -3783,7 +3783,6 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
                            \n(* Operation Implementation: *)\n\n%s\n"
           (IO.close_out consts) (IO.close_out code)
       ) in
-  let debug = conf.C.log_level = Debug in
   let what = "function "^ N.func_color func.F.name in
-  RamenOCamlCompiler.compile ~debug ~keep_temp_files:conf.C.keep_temp_files
+  RamenOCamlCompiler.compile conf ~keep_temp_files:conf.C.keep_temp_files
                              what src_file obj_name

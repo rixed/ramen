@@ -16,17 +16,6 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Services = RamenServices
 
-(* The role this instance must play in a distributed setting.
- * Slave will run the local.ramen program and the master will additionally
- * run the master.ramen. *)
-type role = NotDistributed | Slave | Master
-let print_role oc r =
-  String.print oc
-    (match r with
-    | NotDistributed -> "not distributed"
-    | Slave -> "slave"
-    | Master -> "master")
-
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
 let quit = ref None
@@ -809,47 +798,13 @@ struct
     { rce ; prog ; func ; parents ; used }
 end
 
-let additional_program name debug on_site =
-  let pname = N.program name in
-  let rce =
-    C.{ status = MustRun ;
-        debug ;
-        (* FIXME: Report period should be a supervisor option rather
-         * than a run option. *)
-        report_period = Default.report_period ;
-        bin = N.path_cat [ !RamenOCamlCompiler.bundle_dir ;
-                           N.path "ramen/programs" ;
-                           N.path (name ^".x") ] ;
-        params = Hashtbl.create 0 ;
-        src_file = N.path "" ;
-        on_site } in
-  let get_rc = memoize (fun () -> C.program_of_running_entry pname rce) in
-  pname, (rce, get_rc)
-
 (* Build the list of workers that must run on this site.
  * Start by getting a list of sites and then populate it with all workers
  * that must run there, with for each the set of their parents. *)
 
-let build_must_run conf local_program master_program role =
+let build_must_run conf =
   let sites = Services.all_sites conf in
   let programs = C.with_rlock conf identity in
-  let add_program (pname, p) =
-    Hashtbl.modify_opt pname (function
-      | Some _ ->
-          Printf.sprintf2
-            "Supposed to run as %a but a program named %a already exists!"
-            print_role role
-            N.program_print pname |>
-          failwith
-      | None -> Some p
-    ) programs in
-  (match role with
-  | NotDistributed -> ()
-  | Slave ->
-      add_program local_program
-  | Master ->
-      add_program local_program ;
-      add_program master_program) ;
   (* Start by rebuilding what needs to be before calling any get_rc() : *)
   Hashtbl.iter (fun program_name (rce, _get_rc) ->
     if rce.C.status = C.MustRun && not (N.is_empty rce.C.src_file) then (
@@ -1028,15 +983,9 @@ let watchdog = ref None
  * unblock all workers. This mechanism enforces that CSV readers do not start
  * to read tuples before all their children are attached to their out_ref file.
  *)
-let synchronize_running conf autoreload_delay role =
+let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
   (* Avoid memoizing this at every call to build_must_run: *)
-  let debug = conf.C.log_level = Debug in
-  let local_program =
-    additional_program "local" debug Globs.all
-  and master_program =
-    additional_program "master" debug (Globs.escape (conf.C.site :> string))
-  in
   if !watchdog = None then
     watchdog :=
       (* In the first run we might have *plenty* of workers to start, thus
@@ -1148,7 +1097,7 @@ let synchronize_running conf autoreload_delay role =
                    * time is old enough: *)
                   now -. lm > 1. in
             if last_mod <> None && must_reread then (
-              build_must_run conf local_program master_program role, now
+              build_must_run conf, now
             ) else last_must_run, last_read) in
         let changed = synchronize must_run running in
         (* Touch the rc file if anything changed (esp. autoreload) since that

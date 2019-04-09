@@ -217,8 +217,7 @@ struct
   let smt_solver =
     "Command to run the SMT solver (with %s in place of the SMT2 file name)"
   let fail_for_good = "For tests: do not restart after a crash"
-  let distributed_role =
-    "Role this instance has to play in a distributed setting"
+  let role = "Role this instance has to play in a distributed setting"
   let param = "Override parameter's P default value with V"
   let program_globs = "Program names"
   let lib_path = "Path where to find other programs"

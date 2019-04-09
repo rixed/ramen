@@ -173,7 +173,9 @@ let complete str () =
         "--rand-seed", CliInfo.rand_seed ;
         "--persist-dir=", CliInfo.persist_dir ;
         "--variant", CliInfo.variant ;
-        "--site", CliInfo.site ] in
+        "--site", CliInfo.site ;
+        "--role=", CliInfo.role ;
+        "--bundle-dir=", CliInfo.bundle_dir ] in
     let completions =
       (match command with
       | "supervisor" ->
@@ -182,12 +184,10 @@ let complete str () =
             "--syslog", CliInfo.to_syslog ;
             "--autoreload=", CliInfo.autoreload ;
             "--report-period=", CliInfo.report_period ;
-            "--bundle-dir=", CliInfo.bundle_dir ;
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ;
-            "--role=", CliInfo.distributed_role ] @
+            "--solver=", CliInfo.smt_solver ] @
           copts
        | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -199,8 +199,7 @@ let complete str () =
           ("--parameter=", CliInfo.param) ::
           copts
       | "compile" ->
-          [ "--bundle-dir=", CliInfo.bundle_dir ;
-            "--external-compiler=", CliInfo.external_compiler ;
+          [ "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ;
@@ -246,7 +245,6 @@ let complete str () =
           ("--pretty", CliInfo.pretty) ::
           ("--raw", CliInfo.csv_raw) ::
           ("--flush", CliInfo.flush) ::
-          ("--bundle-dir=", CliInfo.bundle_dir) ::
           ("--external-compiler=", CliInfo.external_compiler) ::
           ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
           ("--solver=", CliInfo.smt_solver) ::
@@ -267,7 +265,6 @@ let complete str () =
           ("--pretty", CliInfo.pretty) ::
           ("--raw", CliInfo.csv_raw) ::
           ("--flush", CliInfo.flush) ::
-          ("--bundle-dir=", CliInfo.bundle_dir) ::
           ("--external-compiler=", CliInfo.external_compiler) ::
           ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
           ("--solver=", CliInfo.smt_solver) ::
@@ -322,7 +319,6 @@ let complete str () =
             "--url=", CliInfo.server_url ;
             "--api", CliInfo.api ;
             "--graphite", CliInfo.graphite ;
-            "--bundle-dir=", CliInfo.bundle_dir ;
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
@@ -336,7 +332,6 @@ let complete str () =
             "--url=", CliInfo.server_url ;
             "--api", CliInfo.api ;
             "--graphite", CliInfo.graphite ;
-            "--bundle-dir=", CliInfo.bundle_dir ;
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;

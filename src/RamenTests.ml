@@ -450,7 +450,7 @@ let run_test conf notify_rb dirname test =
       Hashtbl.add programs program_name
         C.{ bin ; params = p.params ; status = MustRun ; debug = false ;
             report_period = RamenConsts.Default.report_period ;
-            src_file = N.path "" ; on_site = Globs.all } ;
+            src_file = N.path "" ; on_site = Globs.all ; automatic = false } ;
       List.iter (fun func ->
         Hashtbl.add workers (F.fq_name func) (func, ref None)
       ) prog.P.funcs
@@ -462,7 +462,7 @@ let run_test conf notify_rb dirname test =
     let open RamenProcesses in
     Thread.create (
       restart_on_failure "synchronize_running"
-        (synchronize_running conf 0.)) NotDistributed in
+        (synchronize_running conf)) 0. in
   (* Start the test proper: *)
   let worker_feeder () =
     let feed_input input =
@@ -559,7 +559,7 @@ let run_test conf notify_rb dirname test =
   !all_good, sync
 
 let run conf server_url api graphite
-        use_external_compiler bundle_dir max_simult_compils smt_solver
+        use_external_compiler max_simult_compils smt_solver
         test () =
   let conf = C.{ conf with
     persist_dir =
@@ -568,8 +568,7 @@ let run conf server_url api graphite
       N.path |> Files.uniquify ;
     test = true } in
   init_logger conf.C.log_level ;
-  RamenCompiler.init use_external_compiler bundle_dir max_simult_compils
-                     smt_solver ;
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   let httpd_thread =

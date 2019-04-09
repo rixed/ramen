@@ -7,7 +7,6 @@ module Files = RamenFiles
 
 let max_simult_compilations = Atomic.Counter.make 4
 let use_external_compiler = ref false
-let bundle_dir = ref (N.path "")
 let warnings = "-58-26@5"
 
 (* Mostly copied from ocaml source code driver/optmain.ml *)
@@ -71,7 +70,8 @@ let cannot_link what status =
 
 (* Takes a source file and produce an object file: *)
 
-let compile_internal ~debug ~keep_temp_files what src_file obj_file =
+let compile_internal conf ~keep_temp_files what src_file obj_file =
+  let debug = conf.C.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Compiling %a" N.path_print_quoted src_file ;
   reset () ;
@@ -83,7 +83,7 @@ let compile_internal ~debug ~keep_temp_files what src_file obj_file =
   Clflags.verbose := debug ;
   Clflags.no_std_include := true ;
   !logger.debug "Use bundled libraries from %a"
-    N.path_print_quoted !bundle_dir ;
+    N.path_print_quoted conf.C.bundle_dir ;
   (* Also include in incdir the directory where the obj_file will be,
    * since other modules (params...) might have been compiled there
    * already: *)
@@ -91,7 +91,7 @@ let compile_internal ~debug ~keep_temp_files what src_file obj_file =
   let inc_dirs =
     obj_dir ::
     List.map (fun d ->
-      N.path_cat [ !bundle_dir ; d ]
+      N.path_cat [ conf.C.bundle_dir ; d ]
     ) RamenDepLibs.incdirs in
   Clflags.include_dirs := (inc_dirs :> string list) ;
   Clflags.dlcode := true ;
@@ -119,7 +119,8 @@ let compile_internal ~debug ~keep_temp_files what src_file obj_file =
     Location.report_exception (ppf ()) exn ;
     cannot_compile what (Printexc.to_string exn)
 
-let compile_external ~debug ~keep_temp_files what (src_file : N.path) obj_file =
+let compile_external conf ~keep_temp_files what (src_file : N.path) obj_file =
+  let debug = conf.C.log_level = Debug in
   let cmd =
     Printf.sprintf
       "env -i PATH=%s OCAMLPATH=%s \
@@ -147,10 +148,10 @@ let compile_external ~debug ~keep_temp_files what (src_file : N.path) obj_file =
        * report to the GUI: *)
       cannot_compile what (string_of_process_status status)
 
-let compile ?(debug=false) ?(keep_temp_files=false) what src_file obj_file =
+let compile conf ?(keep_temp_files=false) what src_file obj_file =
   Files.mkdir_all ~is_file:true obj_file ;
   (if !use_external_compiler then compile_external else compile_internal)
-    ~debug ~keep_temp_files what src_file obj_file
+    conf ~keep_temp_files what src_file obj_file
 
 (* Function to take some object files, a source file, and produce an
  * executable: *)
@@ -159,9 +160,10 @@ let is_ocaml_objfile (fname : N.path) =
   String.ends_with (fname :> string) ".cmx" ||
   String.ends_with (fname :> string) ".cmxa"
 
-let link_internal ~debug ~keep_temp_files
+let link_internal conf ~keep_temp_files
                   ~what ~inc_dirs ~obj_files
                   ~src_file ~(exec_file : N.path) =
+  let debug = conf.C.log_level = Debug in
   let backend = (module Backend : Backend_intf.S) in
   !logger.info "Linking %a" N.path_print_quoted src_file ;
   reset () ;
@@ -172,10 +174,10 @@ let link_internal ~debug ~keep_temp_files
   Clflags.verbose := debug ;
   Clflags.no_std_include := true ;
   !logger.debug "Use bundled libraries from %a"
-    N.path_print_quoted !bundle_dir ;
+    N.path_print_quoted conf.C.bundle_dir ;
   let inc_dirs =
     List.map (fun d ->
-      N.path_cat [ !bundle_dir ; d ]
+      N.path_cat [ conf.C.bundle_dir ; d ]
     ) RamenDepLibs.incdirs @
     Set.to_list inc_dirs in
   Clflags.include_dirs := (inc_dirs :> string list) ;
@@ -211,7 +213,7 @@ let link_internal ~debug ~keep_temp_files
   let cmx_file = Files.change_ext "cmx" src_file in
   let objfiles =
     List.map (fun d ->
-      N.path_cat [ !bundle_dir ; d ]
+      N.path_cat [ conf.C.bundle_dir ; d ]
     ) RamenDepLibs.objfiles @
     objfiles @ [ cmx_file ] in
 
@@ -230,9 +232,10 @@ let link_internal ~debug ~keep_temp_files
     Location.report_exception (ppf ()) exn ;
     cannot_link what (Printexc.to_string exn)
 
-let link_external ~debug ~keep_temp_files
+let link_external conf ~keep_temp_files
                   ~what ~inc_dirs ~obj_files
                   ~(src_file : N.path) ~(exec_file : N.path) =
+  let debug = conf.C.log_level = Debug in
   let path = getenv ~def:"/usr/bin:/usr/sbin" "PATH"
   and ocamlpath = getenv ~def:"" "OCAMLPATH" in
   let cmd =
@@ -265,12 +268,13 @@ let link_external ~debug ~keep_temp_files
        * report to the GUI: *)
       cannot_link what (string_of_process_status status)
 
-let link ?(debug=false) ?(keep_temp_files=false)
+let link conf ?(keep_temp_files=false)
          ~what ~obj_files ~src_file ~exec_file =
   Files.mkdir_all ~is_file:true exec_file ;
   (* We have a few C libraries in bundle_dir/lib that will be searched by the
    * C linker: *)
-  let inc_dirs = Set.singleton (N.path_cat [ !bundle_dir ; N.path "lib" ]) in
+  let inc_dirs =
+    Set.singleton (N.path_cat [ conf.C.bundle_dir ; N.path "lib" ]) in
   (* Look for cmi files in the same dirs where the cmx are: *)
   let inc_dirs, obj_files =
     List.fold_left (fun (s, l) obj_file ->
@@ -281,7 +285,7 @@ let link ?(debug=false) ?(keep_temp_files=false)
         s, obj_file :: l
     ) (inc_dirs, []) obj_files in
   (if !use_external_compiler then link_external else link_internal)
-    ~debug ~keep_temp_files
+    conf ~keep_temp_files
     ~what ~inc_dirs ~obj_files ~src_file ~exec_file
 
 

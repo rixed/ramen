@@ -8,6 +8,7 @@ open RamenHelpers
 open RamenConsts
 module T = RamenTypes
 module N = RamenName
+module C = RamenConf
 
 (*
  * Common options
@@ -75,6 +76,17 @@ let copts =
     let env = Term.env_info "HOSTNAME" in
     let i = Arg.info ~doc:CliInfo.site ~env [ "site" ] in
     Arg.(value (opt site (N.site "") i))
+  and bundle_dir =
+    let env = Term.env_info "RAMEN_LIBS" in
+    let i = Arg.info ~doc:CliInfo.bundle_dir
+                     ~env [ "bundle-dir" ] in
+    Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
+  and role =
+    let i = Arg.info ~doc:CliInfo.role
+                     ~docv:"none|slave|master" ["role"] in
+    let enums =
+      C.[ "none", NotDistributed ; "slave", Slave ; "master", Master ] in
+    Arg.(value (opt (enum enums) C.NotDistributed i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -84,7 +96,9 @@ let copts =
     $ keep_temp_files
     $ forced_variants
     $ initial_export_duration
-    $ site)
+    $ site
+    $ bundle_dir
+    $ role)
 
 (*
  * Start the process supervisor
@@ -121,12 +135,6 @@ let external_compiler =
                    ~env [ "use-external-compiler"; "external-compiler" ] in
   Arg.(value (flag i))
 
-let bundle_dir =
-  let env = Term.env_info "RAMEN_LIBS" in
-  let i = Arg.info ~doc:CliInfo.bundle_dir
-                   ~env [ "bundle-dir" ] in
-  Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
-
 let max_simult_compilations =
   let env = Term.env_info "RAMEN_MAX_SIMULT_COMPILATIONS" in
   let i = Arg.info ~doc:CliInfo.max_simult_compilations
@@ -146,14 +154,6 @@ let fail_for_good =
                    [ "fail-for-good" ] in
   Arg.(value (flag i))
 
-let distributed_role =
-  let i = Arg.info ~doc:CliInfo.distributed_role
-                   ~docv:"none|slave|master" ["role"] in
-  let enums =
-    RamenProcesses.[
-      "none", NotDistributed ; "slave", Slave ; "master", Master ] in
-  Arg.(value (opt (enum enums) NotDistributed i))
-
 
 let supervisor =
   Term.(
@@ -164,11 +164,9 @@ let supervisor =
       $ to_syslog
       $ autoreload
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
-      $ fail_for_good
-      $ distributed_role),
+      $ fail_for_good),
     info ~doc:CliInfo.supervisor "supervisor")
 
 (*
@@ -471,7 +469,6 @@ let compile =
       $ copts
       $ lib_path
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ src_files
@@ -703,7 +700,6 @@ let tail =
       $ pretty
       $ flush
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.tail "tail")
@@ -758,7 +754,6 @@ let replay =
       $ pretty
       $ flush
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.replay "replay")
@@ -817,7 +812,6 @@ let timeseries =
       $ bucket_time
       $ pretty
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.timeseries "timeseries")
@@ -909,7 +903,6 @@ let httpd =
       $ api
       $ graphite
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.httpd "httpd")
@@ -951,7 +944,6 @@ let test =
       $ api
       $ graphite
       $ external_compiler
-      $ bundle_dir
       $ max_simult_compilations
       $ smt_solver
       $ test_file),

@@ -7,6 +7,17 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 
+(* The role this instance must play in a distributed setting.
+ * Slave will run the local.ramen program and the master will additionally
+ * run the master.ramen. *)
+type role = NotDistributed | Slave | Master
+let print_role oc r =
+  String.print oc
+    (match r with
+    | NotDistributed -> "not distributed"
+    | Slave -> "slave"
+    | Master -> "master")
+
 type conf =
   { log_level : log_level ;
     persist_dir : N.path ;
@@ -14,7 +25,9 @@ type conf =
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     initial_export_duration : float ;
-    site : N.site (* this site name *) }
+    site : N.site (* this site name *) ;
+    role : role ;
+    bundle_dir : N.path }
 
 let tmp_input_of_func persist_dir (program_name : N.program)
                       (func_name : N.func) in_type =
@@ -285,7 +298,9 @@ type rc_entry =
      * the key in the running config. *)
     src_file : N.path [@ppp_default N.path ""] ;
     (* Optionally, run this worker only on these sites: *)
-    on_site : Globs.t [@ppp_default Globs.all] }
+    on_site : Globs.t [@ppp_default Globs.all] ;
+    (* For nodes added automatically, that were not in the RC file proper *)
+    automatic : bool [@ppp_default false] }
   [@@ppp PPP_OCaml]
 
 (* The must_run file gives us the unique names of the programs. *)
@@ -299,14 +314,56 @@ let read_rc_file =
   let get fname =
     fail_with_context "Reading RC file" (fun () ->
       Files.ppp_of_file ~default:"{}" running_config_ppp_ocaml fname) in
-  fun do_persist fname ->
-    if do_persist then get fname
-    else !non_persisted_programs
+  fun conf fname ->
+    if conf.do_persist then (
+      let rc = get fname in
+      let debug = conf.log_level = Debug in
+      let make_auto_rce name on_site =
+        let pname = N.program name in
+        let rce =
+          { status = MustRun ;
+            debug ;
+            (* FIXME: Report period should be a supervisor option rather
+             * than a run option. *)
+            report_period = Default.report_period ;
+            bin = N.path_cat [ conf.bundle_dir ;
+                               N.path "ramen/programs" ;
+                               N.path (name ^".x") ] ;
+            params = Hashtbl.create 0 ;
+            src_file = N.path "" ;
+            on_site ;
+            automatic = true } in
+        pname, rce in
+      let add_entry (pname, rce) =
+        Hashtbl.modify_opt pname (function
+          | Some _ ->
+              Printf.sprintf2
+                "Supposed to run as %a but a program named %a already exists!"
+                print_role conf.role
+                N.program_print pname |>
+              failwith
+          | None -> Some rce
+        ) rc
+      and local_rce =
+        make_auto_rce "local" Globs.all
+      and master_rce =
+        make_auto_rce "master" (Globs.escape (conf.site :> string))
+      in
+      (match conf.role with
+      | NotDistributed -> ()
+      | Slave ->
+          add_entry local_rce
+      | Master ->
+          add_entry local_rce ;
+          add_entry master_rce) ;
+      rc
+    ) else !non_persisted_programs
 
 let save_rc_file do_persist fd rc =
   if do_persist then
     fail_with_context "Saving RC file" (fun () ->
-      Files.ppp_to_fd ~pretty:true running_config_ppp_ocaml fd rc)
+      Hashtbl.filter (fun rce -> not rce.automatic) rc |>
+      Files.ppp_to_fd ~pretty:true running_config_ppp_ocaml fd)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
@@ -320,7 +377,7 @@ let with_rlock conf f =
   let rc_file = running_config_file conf in
   RamenAdvLock.with_r_lock rc_file (fun _fd ->
     let programs =
-      read_rc_file conf.do_persist rc_file |>
+      read_rc_file conf rc_file |>
       Hashtbl.map (fun pn rce ->
         rce,
         memoize (fun () -> program_of_running_entry pn rce)) in
@@ -329,7 +386,7 @@ let with_rlock conf f =
 let with_wlock conf f =
   let rc_file = running_config_file conf in
   RamenAdvLock.with_w_lock rc_file (fun fd ->
-    let programs = read_rc_file conf.do_persist rc_file in
+    let programs = read_rc_file conf rc_file in
     let ret = f programs in
     (* Save the config only if f did not fail: *)
     save_rc_file conf.do_persist fd programs ;
@@ -364,7 +421,9 @@ let make_conf
       ?(do_persist=true) ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
-      ?(site=N.site "") ?(test=false) persist_dir =
+      ?(site=N.site "") ?(test=false)
+      ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
+      ?(role=NotDistributed) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -372,7 +431,7 @@ let make_conf
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
-    initial_export_duration ; site ; test }
+    initial_export_duration ; site ; test ; bundle_dir ; role }
 
 (* Various directory names: *)
 

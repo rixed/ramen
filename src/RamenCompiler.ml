@@ -36,15 +36,15 @@ let stats_typing_count =
       Metric.Names.compiler_typing_count
       "How many times a typer have succeeded/failed")
 
-let init use_external_compiler bundle_dir max_simult_compils smt_solver =
+let init use_external_compiler max_simult_compils smt_solver =
   RamenOCamlCompiler.use_external_compiler := use_external_compiler ;
-  RamenOCamlCompiler.bundle_dir := bundle_dir ;
   Atomic.Counter.set RamenOCamlCompiler.max_simult_compilations
                      max_simult_compils ;
   RamenSmt.solver := smt_solver
 
 (* ORC codec C++ module generator: *)
-let orc_codec ~debug orc_write_func orc_read_func prefix_name rtyp =
+let orc_codec conf orc_write_func orc_read_func prefix_name rtyp =
+  let debug = conf.C.log_level = Debug in
   !logger.debug "Generating an ORC codec for Ramen type %s"
     (IO.to_string T.print_typ rtyp |> abbrev 130) ;
   let xtyp = IO.to_string CodeGen_OCaml.otype_of_type rtyp in
@@ -63,7 +63,7 @@ let orc_codec ~debug orc_write_func orc_read_func prefix_name rtyp =
     N.path_print cc_src_file ;
   let cpp_command (src : N.path) (dst : N.path) =
     let inc =
-      N.path_cat [ !RamenOCamlCompiler.bundle_dir ; N.path "include" ] in
+      N.path_cat [ conf.bundle_dir ; N.path "include" ] in
     Printf.sprintf2 "%s%s -std=c++17 -W -Wall -c -I %s -I %s -o %s %s"
       (* No quote as it might be a command line: *)
       RamenCompilConfig.cpp_compiler
@@ -420,8 +420,7 @@ let compile conf get_parent ~exec_file source_file
      * functions.
      *)
     !logger.info "Compiling program %s" (program_name :> string) ;
-    let debug = conf.C.log_level = Debug
-    and keep_temp_files = conf.C.keep_temp_files in
+    let keep_temp_files = conf.C.keep_temp_files in
     let what = "program "^ (N.program_color program_name) in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
@@ -442,7 +441,7 @@ let compile conf get_parent ~exec_file source_file
         CodeGen_OCaml.emit_parameters oc parsed_params) in
     add_temp_file params_src_file ;
     RamenOCamlCompiler.compile
-      ~debug ~keep_temp_files what params_src_file params_obj_name ;
+      conf ~keep_temp_files what params_src_file params_obj_name ;
     let params_mod_name =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
     (* We need to collect all envvars used in the whole program (same as
@@ -467,7 +466,7 @@ let compile conf get_parent ~exec_file source_file
         and rtyp = O.out_record_of_operation func.F.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
-          let obj_file, _ = orc_codec ~debug orc_write_func orc_read_func
+          let obj_file, _ = orc_codec conf orc_write_func orc_read_func
                                       (src_name_of_func func) rtyp in
           add_temp_file obj_file ;
           obj_file :: obj_files in
@@ -561,7 +560,7 @@ let compile conf get_parent ~exec_file source_file
      * executable that can perform all the operations of this ramen program.
      *)
     let what = "program "^ N.program_color program_name in
-    RamenOCamlCompiler.link ~debug ~keep_temp_files ~what ~obj_files
+    RamenOCamlCompiler.link conf ~keep_temp_files ~what ~obj_files
                             ~src_file ~exec_file ;
     add_temp_file src_file
   ) () (* and finally, delete temp files! *)

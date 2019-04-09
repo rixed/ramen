@@ -203,4 +203,4 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       (* TODO: Make sure this key is authoritative on a program name: *)
       Hashtbl.replace programs program_name
         C.{ bin ; params ; status = MustRun ; debug ; report_period ;
-            src_file ; on_site }))
+            src_file ; on_site ; automatic = false }))
