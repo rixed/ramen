@@ -3,6 +3,6 @@
 DEFINE f AS
   FROM fixtures/n123/csv
   SELECT
-    sample(2, NULL) IS NULL AS trou, -- should be NULL
-    length sample(2, b) AS two
+    sample globally (2, NULL) IS NULL AS trou, -- should be NULL
+    length sample globally (2, b) AS two
   COMMIT AFTER n = 3;
