@@ -23,10 +23,10 @@ Feature: test the archivist
     And program test is running
     And I wait 10 seconds
     And I run ramen with arguments archivist --stats --allocs --reconf
-    And I run cat with arguments ramen_dir/archivist/v3/allocs
-    Then cat must mention ""test/r0" => 0"
-    And cat must mention ""test/s0" => 536870912"
-    And cat must mention ""test/s1" => 536870912"
+    And I run tr with arguments -d '\n[:blank:]' < ramen_dir/archivist/v3/allocs
+    Then tr must mention "","test/r0")=>0"
+    And tr must mention "","test/s0")=>536870912"
+    And tr must mention "","test/s1")=>536870912"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s0/*/out_ref
     Then cat must mention "archive.b"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s1/*/out_ref

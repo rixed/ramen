@@ -49,10 +49,10 @@ Feature: test ramen replay in a simple setting
     And I run ramen with arguments archivist --stats
 
   Scenario: Check the allocations from the background situation obey the config.
-    When I run cat with arguments ramen_dir/archivist/v3/allocs
-    Then cat must mention ""test/r0" => 0"
-    And cat must mention ""test/s0" => 10000000000"
-    And cat must mention ""test/s1" => 10000000000"
+    When I run tr with arguments -d '\n[:blank:]' < ramen_dir/archivist/v3/allocs
+    Then tr must mention "","test/r0")=>0"
+    And tr must mention "","test/s0")=>10000000000"
+    And tr must mention "","test/s1")=>10000000000"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s0/*/out_ref
     Then cat must mention "archive.b"
     When I run cat with arguments ramen_dir/workers/out_ref/*/test/s1/*/out_ref

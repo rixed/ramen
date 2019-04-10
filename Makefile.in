@@ -860,8 +860,10 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	 for f in $(RAMEN_ARCHIVIST_TESTS); do \
 	  echo "  Testing $$(basename $$f .allocs)" ;\
 	  d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
-	  src/ramen archivist --persist-dir $$d --alloc --stdout ;\
+	  src/ramen archivist --site="" --persist-dir $$d --alloc --stdout ;\
 	  if ! diff -q $$f $$d/archivist/v*/allocs ; then \
+	    echo $$d/archivist/v*/allocs : ;\
+	    cat $$d/archivist/v*/allocs ;\
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    exit 1 ;\
 	  fi ;\
