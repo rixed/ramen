@@ -10,7 +10,7 @@ nb_loggers=2
 
 # How long should we fill up with data before the functions are stopped.
 # In seconds.
-logs_for=5
+logs_for=10
 
 . $top_src/tests/lib.sh
 
@@ -25,22 +25,22 @@ logs_for=5
 if test -z "$master_port"; then
   r=$(rand 64511)
   master_port=$((1024+$r))
-  be_master='yes'
-  ramen_site='aggregator'
+  be_master=yes
+  ramen_site=aggregator
   master_ramen_dir="$RAMEN_DIR"
   log "I'm the aggregator, listening to forwarded tuples at port $master_port"
 else
   # mktemp created a directory that we are not going to use:
   rmdir "$RAMEN_DIR"
-  be_master='no'
+  be_master=no
   test -n "$ramen_site" || fail 'master should have set ramen_site'
   test -n "$master_ramen_dir" || fail 'master should have set master_ramen_dir'
   log "I'm $ramen_site"
 fi
 export RAMEN_DIR="$master_ramen_dir/$ramen_site"
 
-rc_version='v16'
-services_version='v2'
+rc_version=v16
+services_version=v2
 
 # Compile the test programs (only once)
 if test "$be_master" = yes; then

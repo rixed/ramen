@@ -257,9 +257,12 @@ let rec fold_seq_range ?while_ ?wait_for_more ?(mi=0) ?ma bname init f =
     let keep_going = match while_ with Some w -> w () | _ -> true in
     if not keep_going then init else (
       let dir = arc_dir_of_bname bname in
+      !logger.debug "Archives taken from directory %a" N.path_print dir ;
       let entries =
         arc_files_of dir //
-        (fun (from, to_, _t1, _t2, _typ, _fname) ->
+        (fun (from, to_, _t1, _t2, _typ, fname) ->
+          !logger.debug "  ...Considering file %a, seqnums %d..%d"
+            N.path_print fname from to_ ;
           (* in file names, to_ is inclusive *)
           to_ >= mi && Option.map_default (fun ma -> from < ma) true ma) |>
         Array.of_enum in
