@@ -323,6 +323,7 @@ end
 
 module FieldDocs =
 struct
+  let site = "Name of the Ramen instance that produced these statistics"
   let worker =
     "Fully qualified name of the Ramen function that these statistics are \
      about"

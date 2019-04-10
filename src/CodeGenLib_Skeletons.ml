@@ -158,20 +158,20 @@ let gauge_current (_mi, x, _ma) = x
 let startup_time = Unix.gettimeofday ()
 
 (* Basic tuple without aggregate specific counters: *)
-let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
+let get_binocle_tuple (site : N.site) (worker : N.fq) is_top_half ic sc gc =
   let si v =
     if v < 0 then !logger.error "Negative int counter: %d" v ;
-    Some (Uint64.of_int v) in
-  let sg = function None -> None | Some (_, v, _) -> si v
-  and s v = Some v
+    NotNull (Uint64.of_int v) in
+  let sg = function None -> Null | Some (_, v, _) -> si v
+  and s v = NotNull v
   and ram, max_ram =
     match IntGauge.get stats_ram with
     | None -> Uint64.zero, Uint64.zero
     | Some (_mi, x, ma) -> Uint64.of_int x, Uint64.of_int ma
   and min_event_time, max_event_time =
     match FloatGauge.get stats_event_time with
-    | None -> None, None
-    | Some (mi, _, ma) -> Some mi, Some ma
+    | None -> Null, Null
+    | Some (mi, _, ma) -> NotNull mi, NotNull ma
   and time = Unix.gettimeofday ()
   and perf p =
     p.Binocle.Perf.count, p.Binocle.Perf.system, p.Binocle.Perf.user in
@@ -180,11 +180,12 @@ let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
       Option.map_default perf (0, 0., 0.) p in
     Uint32.of_int count, system, user
   in
-  (worker :> string), is_top_half, time,
+  (site :> string), (worker :> string), is_top_half, time,
   min_event_time, max_event_time,
-  ic, sc,
+  nullable_of_option ic,
+  nullable_of_option sc,
   IntCounter.get stats_out_tuple_count |> si,
-  gc,
+  nullable_of_option gc,
   FloatCounter.get stats_cpu,
   (* Assuming we call update_stats before this: *)
   ram, max_ram,
@@ -206,11 +207,12 @@ let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
   IntCounter.get stats_rb_read_bytes |> si,
   IntCounter.get stats_rb_write_bytes |> si,
   IntGauge.get stats_avg_full_out_bytes |> sg,
-  FloatGauge.get stats_last_out |> Option.map gauge_current,
+  FloatGauge.get stats_last_out |>
+    Option.map gauge_current |> nullable_of_option,
   startup_time
 
 let send_stats
-    rb (_, _, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _
+    rb (_, _, _, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _
         as tuple) =
   let open RingBuf in
   let head = RingBufLib.DataTuple RamenChannel.live in
@@ -604,12 +606,14 @@ let outputer_of
 type worker_conf =
   { log_level : log_level ;
     state_file : N.path ;
-    is_test : bool }
+    is_test : bool ;
+    site : N.site }
 
 let info_or_test conf =
   if conf.is_test then !logger.debug else !logger.info
 
-let worker_start (worker_name : N.fq) is_top_half get_binocle_tuple k =
+let worker_start (site : N.site) (worker_name : N.fq) is_top_half
+                 get_binocle_tuple k =
   let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
   let default_persist_dir =
     "/tmp/worker_"^ (worker_name :> string) ^"_"^
@@ -643,7 +647,7 @@ let worker_start (worker_name : N.fq) is_top_half get_binocle_tuple k =
   (* Then, the sooner a new worker appears in the stats the better: *)
   if report_period > 0. then
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
-  let conf = { log_level ; state_file ; is_test } in
+  let conf = { log_level ; state_file ; is_test ; site } in
   info_or_test conf "Starting %a%s process. Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
     (string_of_log_output !logger.output)
@@ -679,9 +683,10 @@ let read_csv_file
     tuple_of_strings preprocessor field_of_params
     orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
+  let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
-    get_binocle_tuple worker_name false None None None in
-  worker_start worker_name false get_binocle_tuple (fun conf ->
+    get_binocle_tuple site worker_name false None None None in
+  worker_start site worker_name false get_binocle_tuple (fun conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     (* For tests, allow to overwrite what's specified in the operation: *)
@@ -724,9 +729,10 @@ let listen_on
       sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
       orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
+  let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
-    get_binocle_tuple worker_name false None None None in
-  worker_start worker_name false get_binocle_tuple (fun conf ->
+    get_binocle_tuple site worker_name false None None None in
+  worker_start site worker_name false get_binocle_tuple (fun conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
@@ -750,9 +756,10 @@ let read_well_known
       unserialize_tuple ringbuf_envvar worker_time_of_tuple
       orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
+  let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
-    get_binocle_tuple worker_name false None None None in
-  worker_start worker_name false get_binocle_tuple (fun conf ->
+    get_binocle_tuple site worker_name false None None None in
+  worker_start site worker_name false get_binocle_tuple (fun conf ->
     let bname =
       N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
     let rb_ref_out_fname =
@@ -1151,15 +1158,16 @@ let aggregate
     cmp (option_get "g0" g1.g0) (option_get "g0" g2.g0) in
   IntGauge.set stats_group_count 0 ;
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
+  let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     let i v = Option.map (fun r -> Uint64.of_int r) v in
     get_binocle_tuple
-      worker_name false
+      site worker_name false
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
-  worker_start worker_name false get_binocle_tuple (fun conf ->
+  worker_start site worker_name false get_binocle_tuple (fun conf ->
     let rb_in_fnames = getenv_list "input_ringbuf" N.path
     and rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
@@ -1524,6 +1532,7 @@ let top_half
       (where : 'tuple_in ->  bool) =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name")
+  and site = N.site (getenv ~def:"" "site")
   and tunnelds =
     let hosts = getenv_list "tunneld_host" N.host
     and ports = getenv_list "tunneld_port" int_of_string
@@ -1534,17 +1543,17 @@ let top_half
   let get_binocle_tuple () =
     let si v = Some (Uint64.of_int v) in
     get_binocle_tuple
-      worker_name true
+      site worker_name true
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
-  worker_start worker_name true get_binocle_tuple (fun _conf ->
-    let rb_in_fname = N.path (getenv "input_ringbuf_0")
-    and site = N.site (getenv ~def:"?site?" "site") in
+  worker_start site worker_name true get_binocle_tuple (fun conf ->
+    let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
       List.map (fun t ->
-        RamenCopyClt.copy_client site t.host t.port worker_name t.parent_num
+        RamenCopyClt.copy_client
+          conf.site t.host t.port worker_name t.parent_num
       ) tunnelds in
     let forward_bytes b =
       List.iter (fun forwarder -> forwarder b) forwarders in

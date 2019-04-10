@@ -12,7 +12,7 @@ let rc = "v16" (* last: changed {T,V}Record format *)
 let codegen = "v59" (* last: is_lazy in Func *)
 
 (* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v8" (* last: addition of top-halves *)
+let instrumentation_tuple = "v9" (* last: addition of site *)
 
 (* Notifications sent from workers to Ramen *)
 let notify_tuple = "v6" (* last: firing is now optional *)

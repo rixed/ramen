@@ -3556,7 +3556,7 @@ let emit_operation name top_half_name func
   | Instrumentation { from } ->
     emit_well_known opc name from
       "RamenWorkerStats.unserialize" "report_ringbuf"
-      "(fun (w, _, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
+      "(fun (_, w, _, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     emit_well_known opc name from
       "RamenNotification.unserialize" "notifs_ringbuf"

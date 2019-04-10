@@ -54,7 +54,12 @@ let sersize_of_profile =
 (* <blink>DO NOT ALTER</blink> this record without also updating
  * (un)serialization functions! *)
 let tuple_typ =
-  [ { name = N.field "worker" ;
+  [ { name = N.field "site" ;
+      typ = { structure = TString ; nullable = false } ;
+      units = None ;
+      doc = FieldDocs.site ;
+      aggr = None } ;
+    { name = N.field "worker" ;
       typ = { structure = TString ; nullable = false } ;
       units = Some RamenUnits.processes ;
       doc = FieldDocs.worker ;
@@ -160,7 +165,7 @@ let event_time =
   Some ((N.field "start", ref OutputField, 1.),
         DurationConst 0.)
 
-let factors = [ N.field "worker" ]
+let factors = [ N.field "site" ; N.field "worker" ]
 
 open RingBuf
 open RingBufLib
@@ -177,23 +182,26 @@ let fix_sz =
 
 (* We will actually allocate that much on the RB since we know most of the
  * time the counters won't be NULL. *)
-let max_sersize_of_tuple (worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+let max_sersize_of_tuple (site, worker, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) =
   nullmask_sz +
   fix_sz +
+  sersize_of_string site +
   sersize_of_string worker
 
 let serialize tx start_offs
-              (worker, is_top_half, start, min_etime, max_etime, ic, sc, oc,
-               gc, cpu, ram, max_ram, profile, wi, wo, bi, bo, os, lo,
-               stime) =
+              (site, worker, is_top_half, start, min_etime, max_etime,
+               ic, sc, oc, gc, cpu, ram, max_ram, profile, wi, wo, bi, bo,
+               os, lo, stime) =
   zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
-  let write_nullable_thing w sz offs null_i = function
-    | None ->
-      offs
-    | Some v ->
-      set_bit tx start_offs null_i ;
-      w tx offs v ;
-      offs + sz in
+  let null_i = ref 0 in
+  let write_nullable_thing w sz offs = function
+    | Null ->
+        offs
+    | NotNull v ->
+        set_bit tx start_offs !null_i ;
+        incr null_i ;
+        w tx offs v ;
+        offs + sz in
   let write_nullable_u64 =
     let sz = sersize_of_u64 in
     write_nullable_thing write_u64 sz
@@ -212,6 +220,9 @@ let serialize tx start_offs
     offs + sersize_of_float in
   let offs = start_offs + nullmask_sz in
   let offs =
+    write_string tx offs site ;
+    offs + sersize_of_string site in
+  let offs =
     write_string tx offs worker ;
     offs + sersize_of_string worker in
   let offs =
@@ -220,12 +231,12 @@ let serialize tx start_offs
   let offs =
     write_float tx offs start ;
     offs + sersize_of_float in
-  let offs = write_nullable_float offs 0 min_etime in
-  let offs = write_nullable_float offs 1 max_etime in
-  let offs = write_nullable_u64 offs 2 ic in
-  let offs = write_nullable_u64 offs 3 sc in
-  let offs = write_nullable_u64 offs 4 oc in
-  let offs = write_nullable_u64 offs 5 gc in
+  let offs = write_nullable_float offs min_etime in
+  let offs = write_nullable_float offs max_etime in
+  let offs = write_nullable_u64 offs ic in
+  let offs = write_nullable_u64 offs sc in
+  let offs = write_nullable_u64 offs oc in
+  let offs = write_nullable_u64 offs gc in
   let offs =
     write_float tx offs cpu ;
     offs + sersize_of_float in
@@ -251,23 +262,27 @@ let serialize tx start_offs
     let offs = write_perf offs wf in
     let offs = write_perf offs ws in
     offs in
-  let offs = write_nullable_float offs 6 wi in
-  let offs = write_nullable_float offs 7 wo in
-  let offs = write_nullable_u64 offs 8 bi in
-  let offs = write_nullable_u64 offs 9 bo in
-  let offs = write_nullable_u64 offs 10 os in
-  let offs = write_nullable_float offs 11 lo in
+  let offs = write_nullable_float offs wi in
+  let offs = write_nullable_float offs wo in
+  let offs = write_nullable_u64 offs bi in
+  let offs = write_nullable_u64 offs bo in
+  let offs = write_nullable_u64 offs os in
+  let offs = write_nullable_float offs lo in
   let offs =
     write_float tx offs stime ;
     offs + sersize_of_float in
   offs
 
 let unserialize tx start_offs =
-  let read_nullable_thing r sz null_i offs =
-    if get_bit tx start_offs null_i then
-      NotNull (r tx offs), offs + sz
-    else
-      Null, offs in
+  let null_i = ref 0 in
+  let read_nullable_thing r sz offs =
+    let res =
+      if get_bit tx start_offs !null_i then
+        NotNull (r tx offs), offs + sz
+      else
+        Null, offs in
+    incr null_i ;
+    res in
   let read_nullable_u64 =
     let sz = sersize_of_u64 in
     read_nullable_thing read_u64 sz
@@ -285,18 +300,20 @@ let unserialize tx start_offs =
     let offs = offs + sersize_of_float in
     (count, system, user), offs in
   let offs = start_offs + nullmask_sz in
+  let site = read_string tx offs in
+  let offs = offs + sersize_of_string site in
   let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
   let is_top_half = read_bool tx offs in
   let offs = offs + sersize_of_bool in
   let start = read_float tx offs in
   let offs = offs + sersize_of_float in
-  let min_etime, offs = read_nullable_float 0 offs in
-  let max_etime, offs = read_nullable_float 1 offs in
-  let ic, offs = read_nullable_u64 2 offs in
-  let sc, offs = read_nullable_u64 3 offs in
-  let oc, offs = read_nullable_u64 4 offs in
-  let gc, offs = read_nullable_u64 5 offs in
+  let min_etime, offs = read_nullable_float offs in
+  let max_etime, offs = read_nullable_float offs in
+  let ic, offs = read_nullable_u64 offs in
+  let sc, offs = read_nullable_u64 offs in
+  let oc, offs = read_nullable_u64 offs in
+  let gc, offs = read_nullable_u64 offs in
   let cpu = read_float tx offs in
   let offs = offs + sersize_of_float in
   let ram = read_u64 tx offs in
@@ -317,16 +334,16 @@ let unserialize tx start_offs =
     let wf, offs = read_perf offs in
     let ws, offs = read_perf offs in
     (ci, co, fo, fg, fp, so, pt, ug, wf, ws), offs in
-  let wi, offs = read_nullable_float 6 offs in
-  let wo, offs = read_nullable_float 7 offs in
-  let bi, offs = read_nullable_u64 8 offs in
-  let bo, offs = read_nullable_u64 9 offs in
-  let os, offs = read_nullable_u64 10 offs in
-  let lo, offs = read_nullable_float 11 offs in
+  let wi, offs = read_nullable_float offs in
+  let wo, offs = read_nullable_float offs in
+  let bi, offs = read_nullable_u64 offs in
+  let bo, offs = read_nullable_u64 offs in
+  let os, offs = read_nullable_u64 offs in
+  let lo, offs = read_nullable_float offs in
   let stime = read_float tx offs in
   let offs = offs + sersize_of_float in
   let t =
-    worker, is_top_half, start, min_etime, max_etime, ic, sc , oc, gc,
+    site, worker, is_top_half, start, min_etime, max_etime, ic, sc, oc, gc,
     cpu, ram, max_ram,
     profile, wi, wo, bi, bo, os, lo, stime in
   assert (offs <= start_offs + max_sersize_of_tuple t) ;
