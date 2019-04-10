@@ -489,7 +489,9 @@ let really_start conf proc =
   (* Export for a little while at the beginning (help with both automatic
    * and manual tests): *)
   if not is_top_half then (
-    let duration = conf.initial_export_duration in
+    let duration =
+      if proc.func.F.persistent then ~-.1. (* forever *)
+      else conf.initial_export_duration in
     start_export ~duration conf proc.func |> ignore
   ) ;
   (* Now actually start the binary *)
