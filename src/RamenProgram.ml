@@ -360,7 +360,7 @@ let common_fields_of_from get_parent start_name funcs from =
           (* Sub-queries have been reified already *)
           assert false
       | O.GlobPattern _ ->
-          List.map (fun f -> f.RamenTuple.name) RamenBinocle.tuple_typ
+          List.map (fun f -> f.RamenTuple.name) RamenWorkerStats.tuple_typ
       | O.NamedOperation (_, None, fn) ->
           (match List.find (fun f -> f.name = Some fn) funcs with
           | exception Not_found ->
@@ -378,7 +378,7 @@ let common_fields_of_from get_parent start_name funcs from =
                   RamenProtocols.tuple_typ_of_proto proto |>
                   List.map (fun f -> f.RamenTuple.name)
               | Instrumentation _ ->
-                  RamenBinocle.tuple_typ |>
+                  RamenWorkerStats.tuple_typ |>
                   List.map (fun f -> f.RamenTuple.name)
               | Notifications _ ->
                   RamenNotification.tuple_typ |>

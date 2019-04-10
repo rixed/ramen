@@ -1072,5 +1072,5 @@ let stats conf () =
   (* Initialize all metrics so that they register to Binocle: *)
   List.iter (fun initer ->
     initer conf.C.persist_dir
-  ) !RamenBinocle.all_saved_metrics ;
+  ) !RamenWorkerStats.all_saved_metrics ;
   Binocle.display_console ()

@@ -142,7 +142,7 @@ RAMEN_SOURCES = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenBinocle.ml \
+	src/RamenWorkerStats.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
 	src/Globs.ml \
@@ -223,7 +223,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenTypeConverters.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenBinocle.ml \
+	src/RamenWorkerStats.ml \
 	src/RamenNotification.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
@@ -291,7 +291,7 @@ ORCWRITER_SOURCES = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenBinocle.ml \
+	src/RamenWorkerStats.ml \
 	src/RamenNotification.ml \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
@@ -653,7 +653,7 @@ LINKED_FOR_TESTS = \
 	src/RingBuf.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
-	src/RamenBinocle.ml \
+	src/RamenWorkerStats.ml \
 	src/RamenNotification.ml \
 	src/Globs.ml \
 	src/RamenOperation.ml \

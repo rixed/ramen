@@ -16,7 +16,7 @@ module Files = RamenFiles
 open Binocle
 
 let stats_accepts =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.copy_server_accepts
       "Number of accepted connections.")
@@ -25,7 +25,7 @@ let stats_tuples =
 (*(* TODO: make Binocle able to merge saved stats with new stats
    * and then make it merge only from time to time, so that it became
    * possible to save stats with high rate of change: *)
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.copy_server_tuples
       "Number of copied tuples.") *)

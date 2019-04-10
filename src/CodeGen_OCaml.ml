@@ -3555,7 +3555,7 @@ let emit_operation name top_half_name func
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->
     emit_well_known opc name from
-      "RamenBinocle.unserialize" "report_ringbuf"
+      "RamenWorkerStats.unserialize" "report_ringbuf"
       "(fun (w, _, t, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _) -> w, t)"
   | Notifications { from } ->
     emit_well_known opc name from

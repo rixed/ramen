@@ -43,9 +43,9 @@ let read_output conf ?duration (fq : N.fq) where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where ("#"^ SpecialFunctions.stats)
-          (C.report_ringbuf conf) RamenBinocle.tuple_typ () with
+          (C.report_ringbuf conf) RamenWorkerStats.tuple_typ () with
   | Some (bname, filter, typ, ser) ->
-      bname, false, filter, typ, ser, [], RamenBinocle.event_time
+      bname, false, filter, typ, ser, [], RamenWorkerStats.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)

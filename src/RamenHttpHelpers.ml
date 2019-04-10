@@ -71,13 +71,13 @@ let check_accept headers content_type =
 open Binocle
 
 let stats_count =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.requests_count
       "Number of HTTP requests, per response status")
 
 let stats_resp_time =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir:(save_dir :> string)
       Metric.Names.http_resp_time
       "HTTP response time per URL" Histogram.powers_of_two)

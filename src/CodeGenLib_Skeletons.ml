@@ -189,7 +189,7 @@ let get_binocle_tuple (worker : N.fq) is_top_half ic sc gc =
   (* Assuming we call update_stats before this: *)
   ram, max_ram,
   (* Start measurements as a single record (BEWARE FIELD ORDERING!): *)
-  (* FIXME: make RamenBinocle the only place where this record is defined,
+  (* FIXME: make RamenWorkerStats the only place where this record is defined,
    * instead of there, here, in RamenPs. *)
   (Perf.get stats_perf_commit_incoming |> sp,
    Perf.get stats_perf_commit_others |> sp,
@@ -216,13 +216,13 @@ let send_stats
   let head = RingBufLib.DataTuple RamenChannel.live in
   let sersize =
     RingBufLib.message_header_sersize head +
-    RamenBinocle.max_sersize_of_tuple tuple in
+    RamenWorkerStats.max_sersize_of_tuple tuple in
   match enqueue_alloc rb sersize with
   | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
     RingBufLib.(write_message_header tx 0 head) ;
     let offs = RingBufLib.message_header_sersize head in
-    let offs = RamenBinocle.serialize tx offs tuple in
+    let offs = RamenWorkerStats.serialize tx offs tuple in
     enqueue_commit tx time time ;
     assert (offs <= sersize)
 

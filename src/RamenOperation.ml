@@ -367,7 +367,7 @@ let event_time_of_operation op =
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
     | Instrumentation _ ->
-        RamenBinocle.event_time, []
+        RamenWorkerStats.event_time, []
     | Notifications _ ->
         RamenNotification.event_time, []
   and event_time_from_fields fields =
@@ -418,7 +418,7 @@ let factors_of_operation = function
   | ListenFor { factors ; proto ; _ } ->
       if factors <> [] then factors
       else RamenProtocols.factors_of_proto proto
-  | Instrumentation _ -> RamenBinocle.factors
+  | Instrumentation _ -> RamenWorkerStats.factors
   | Notifications _ -> RamenNotification.factors
 
 let operation_with_factors op factors = match op with
@@ -446,7 +446,7 @@ let out_type_of_operation ?(with_private=true) = function
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
   | Instrumentation _ ->
-      RamenBinocle.tuple_typ
+      RamenWorkerStats.tuple_typ
   | Notifications _ ->
       RamenNotification.tuple_typ
 

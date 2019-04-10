@@ -1592,7 +1592,7 @@ let id_or_type_of_field op path =
                                  (RamenProtocols.tuple_typ_of_proto proto))
   | O.Instrumentation _ ->
       FieldType (find_field_type "instrumentation"
-                                 RamenBinocle.tuple_typ)
+                                 RamenWorkerStats.tuple_typ)
   | O.Notifications _ ->
       FieldType (find_field_type "notifications"
                                  RamenNotification.tuple_typ)

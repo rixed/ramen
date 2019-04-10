@@ -8,7 +8,7 @@ module F = C.Func
 module P = C.Program
 module N = RamenName
 
-(* FIXME: Make RamenBinocle the only place where this record is defined *)
+(* FIXME: Make RamenWorkerStats the only place where this record is defined *)
 module Profile =
 struct
   type t =
@@ -85,8 +85,8 @@ let read_stats ?while_ conf =
   let h = Hashtbl.create 57 in
   let open RamenTypes in
   let bname = C.report_ringbuf conf in
-  let typ = RamenBinocle.tuple_typ in
-  let event_time = RamenBinocle.event_time in
+  let typ = RamenWorkerStats.tuple_typ in
+  let event_time = RamenWorkerStats.event_time in
   let now = Unix.gettimeofday () in
   let while_ () = (* Do not wait more than 1s: *)
     (while_ |? always) () && Unix.gettimeofday () -. now < 1. in
@@ -121,7 +121,7 @@ let read_stats ?while_ conf =
       system = get_float (snd kvs.(1)) }
     [@@ocaml.warning "-8"] in
   let get_profile = function VRecord kvs ->
-    (* FIXME: make it RamenBinocle job to deserialize this properly: *)
+    (* FIXME: make it RamenWorkerStats job to deserialize this properly: *)
     assert (fst kvs.(0) = "commit_incoming") ;
     assert (fst kvs.(1) = "commit_others") ;
     assert (fst kvs.(2) = "finalize_others") ;

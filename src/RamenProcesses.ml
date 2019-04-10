@@ -323,13 +323,13 @@ let check_is_subtype t1 t2 =
 open Binocle
 
 let stats_worker_crashes =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_crashes
       "Number of workers that have crashed (or exited with non 0 status).")
 
 let stats_worker_deadloopings =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_deadloopings
       "Number of time a worker has been found to deadloop.")
@@ -343,19 +343,19 @@ let stats_worker_running =
     "Number of workers actually running."
 
 let stats_ringbuf_repairs =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.ringbuf_repairs
       "Number of times a worker ringbuf had to be repaired.")
 
 let stats_outref_repairs =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.outref_repairs
       "Number of times a worker outref had to be repaired.")
 
 let stats_worker_sigkills =
-  RamenBinocle.ensure_inited (fun save_dir ->
+  RamenWorkerStats.ensure_inited (fun save_dir ->
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_sigkills
       "Number of times a worker had to be sigkilled instead of sigtermed.")
