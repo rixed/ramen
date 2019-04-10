@@ -212,7 +212,8 @@ type notify_config =
 (* Same as RamenOperation.notification, but with strings for name and
  * parameters: *)
 type notification =
-  { worker : string ;
+  { site : string ;
+    worker : string ;
     notif_name : string ;
     event_time : float option ;
     sent_time : float ;
@@ -322,7 +323,7 @@ let heap_pending_cmp i1 i2 =
 let find_pending name contact =
   let fake_pending_named notif_name contact =
     let notif =
-      { notif_name ; worker = "" ; parameters = [] ;
+      { notif_name ; site = "" ; worker = "" ; parameters = [] ;
         firing = None ; certainty = 0. ;
         event_time = None ; sent_time = 0. ; rcvd_time = 0. } in
     { schedule_time = 0. ;
@@ -507,6 +508,7 @@ let contact_via conf p =
     [ "name", alert.first_start_notif.notif_name ;
       "alert_id", Uint64.to_string alert.alert_id ;
       "start", nice_string_of_float (notif_time alert.first_start_notif) ;
+      "site", alert.first_start_notif.site ;
       "worker", alert.first_start_notif.worker ;
       "firing", string_of_bool firing ;
       "certainty", nice_string_of_float alert.first_start_notif.certainty ;
@@ -770,16 +772,17 @@ let start conf notif_conf_file rb max_fpr =
       (send_notifications max_fpr)) conf |> ignore ;
   let while_ () = !RamenProcesses.quit = None in
   RamenSerialization.read_notifs ~while_ rb
-    (fun (worker, sent_time, event_time, notif_name,
+    (fun (site, worker, sent_time, event_time, notif_name,
           firing, certainty, parameters) ->
     let event_time = option_of_nullable event_time in
     let firing = option_of_nullable firing
     and parameters = Array.to_list parameters in
     let now = Unix.gettimeofday () in
     let notif =
-      { worker ; sent_time ; rcvd_time = now ; event_time ;
+      { site ; worker ; sent_time ; rcvd_time = now ; event_time ;
         notif_name ; firing ; certainty ; parameters } in
-    !logger.info "Received notification from %s: %S %s"
+    !logger.info "Received notification from %s%s: %S %s"
+      (if site <> "" then site ^":" else "")
       worker notif_name
       (if firing = Some false then "ended"
        else ("started ("^ nice_string_of_float certainty ^" certainty)")) ;

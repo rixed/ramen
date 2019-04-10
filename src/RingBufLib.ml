@@ -524,7 +524,7 @@ let notification_nullmask_sz = round_up_to_rb_word (bytes_for_bits 2)
 let notification_fixsz = sersize_of_float * 3 + sersize_of_bool
 
 let serialize_notification tx start_offs
-      (worker, start, event_time, name, firing, certainty, parameters) =
+      (site, worker, start, event_time, name, firing, certainty, parameters) =
   (* Zero the nullmask: *)
   RingBuf.zero_bytes tx start_offs notification_nullmask_sz ;
   let write_nullable_thing w sz offs null_i = function
@@ -539,6 +539,9 @@ let serialize_notification tx start_offs
   let write_nullable_bool =
     write_nullable_thing RingBuf.write_bool sersize_of_bool in
   let offs = start_offs + notification_nullmask_sz in
+  let offs =
+    RingBuf.write_string tx offs site ;
+    offs + sersize_of_string site in
   let offs =
     RingBuf.write_string tx offs worker ;
     offs + sersize_of_string worker in
@@ -575,7 +578,7 @@ let serialize_notification tx start_offs
   offs
 
 (* Types have been erased so we cannot use sersize_of_value: *)
-let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
+let max_sersize_of_notification (site, worker, _, _, name, _, _, parameters) =
   let psz =
     Array.fold_left (fun sz (n, v) ->
       sz +
@@ -585,10 +588,11 @@ let max_sersize_of_notification (worker, _, _, name, _, _, parameters) =
       parameters
   in
   notification_nullmask_sz + notification_fixsz +
-  sersize_of_string worker + sersize_of_string name + psz
+  sersize_of_string site + sersize_of_string worker +
+  sersize_of_string name + psz
 
 let write_notif ?delay_rec rb ?(channel_id=RamenChannel.live)
-                (_, _, event_time, _, _, _, _ as tuple) =
+                (_, _, _, event_time, _, _, _, _ as tuple) =
   retry_for_ringbuf ?delay_rec (fun () ->
     let sersize = max_sersize_of_notification tuple in
     let tx = enqueue_alloc rb sersize in

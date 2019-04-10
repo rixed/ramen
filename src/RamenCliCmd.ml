@@ -160,7 +160,8 @@ let notify conf parameters notif_name () =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   RingBufLib.write_notif rb
-    ("CLI", start, None, notif_name, firing, certainty, parameters)
+    ((conf.site :> string), "CLI", start, None,
+     notif_name, firing, certainty, parameters)
 
 (*
  * `ramen tunneld`

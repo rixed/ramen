@@ -11,7 +11,12 @@ open RamenConsts
  * the (un)serialization functions. *)
 let tuple_typ =
   let open RamenTypes in
-  [ { name = N.field "worker" ;
+  [ { name = N.field "site" ;
+      typ = { structure = TString ; nullable = false } ;
+      units = None ;
+      doc = FieldDocs.site ;
+      aggr = None } ;
+    { name = N.field "worker" ;
       typ = { structure = TString ; nullable = false } ;
       units = None ;
       doc = FieldDocs.worker ;
@@ -65,7 +70,8 @@ let event_time =
 (* We trust the user not to generate too many distinct names and use instead
  * parameters to store arbitrary values. *)
 let factors =
-  [ N.field "name" ;
+  [ N.field "site" ;
+    N.field "name" ;
     N.field "firing" ]
 
 open RingBuf
@@ -94,6 +100,8 @@ let unserialize tx start_offs =
     let sz = sersize_of_bool in
     read_nullable_thing read_bool sz in
   let offs = start_offs + nullmask_sz in
+  let site = read_string tx offs in
+  let offs = offs + sersize_of_string site in
   let worker = read_string tx offs in
   let offs = offs + sersize_of_string worker in
   let start = read_float tx offs in
@@ -121,6 +129,6 @@ let unserialize tx start_offs =
       n, v
     ) in
   let t =
-    worker, start, event_time, name, firing, certainty, parameters in
+    site, worker, start, event_time, name, firing, certainty, parameters in
   assert (!offs <= start_offs + max_sersize_of_notification t) ;
   t

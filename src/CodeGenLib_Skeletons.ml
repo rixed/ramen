@@ -842,13 +842,13 @@ let read_well_known
  * product of their values.
  *)
 
-let notify rb (worker : N.fq) event_time (name, parameters) =
+let notify rb (site : N.site) (worker : N.fq) event_time (name, parameters) =
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   RingBufLib.write_notif ~delay_rec:sleep_out rb
-    ((worker :> string), !CodeGenLib_IO.now, event_time, name,
-     firing, certainty, parameters)
+    ((site :> string), (worker :> string), !CodeGenLib_IO.now, event_time,
+     name, firing, certainty, parameters)
 
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
   { (* The key value of this group: *)
@@ -1187,7 +1187,8 @@ let aggregate
           else [] in
         if notifications <> [] then (
           let event_time = time_of_tuple tuple_out |> Option.map fst in
-          List.iter (notify notify_rb worker_name event_time) notifications
+          List.iter
+            (notify notify_rb site worker_name event_time) notifications
         ) ;
         msg_outputer (RingBufLib.DataTuple chan) (Some tuple_out)
       in

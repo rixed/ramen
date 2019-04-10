@@ -308,11 +308,12 @@ let test_notifications notify_rb notif_spec end_flag =
     !notifs_to_not_find = [] &&
     Unix.gettimeofday () -. start < notif_spec.timeout in
   RamenSerialization.read_notifs ~while_ notify_rb
-    (fun (worker, _sent_time, _event_time, notif_name, firing, _certainty,
+    (fun (site, worker, _sent_time, _event_time, notif_name, firing, _certainty,
           _parameters) ->
       let firing = option_of_nullable firing in
-      !logger.debug "Got %snotification from %s: %S"
+      !logger.debug "Got %snotification from %s%s: %S"
         (if firing = Some false then "stopping " else "firing ")
+        (if site <> "" then site ^":" else "")
         worker notif_name ;
       notifs_to_find :=
         List.filter (fun (_pat, re) ->

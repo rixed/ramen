@@ -15,7 +15,7 @@ let codegen = "v59" (* last: is_lazy in Func *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
 
 (* Notifications sent from workers to Ramen *)
-let notify_tuple = "v6" (* last: firing is now optional *)
+let notify_tuple = "v7" (* last: add site *)
 
 (* Pending notification format (marshalled on disc) *)
 let pending_notify = "v7" (* last: changed {T,V}Record format *)
