@@ -29,17 +29,61 @@ type collectd_metric =
   float * float nullable * float nullable * float nullable * float nullable
 
 let tuple_typ =
-  [ { name = N.field "host" ; typ = { structure = TString ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "start" ; typ = { structure = TFloat ; nullable = false } ; units = Some RamenUnits.seconds_since_epoch ; doc = "" ; aggr = None } ;
-    { name = N.field "plugin" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "type_name" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "type_instance" ; typ = { structure = TString ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "value" ; typ = { structure = TFloat ; nullable = false } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "value2" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "value3" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "value4" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ;
-    { name = N.field "value5" ; typ = { structure = TFloat ; nullable = true } ; units = None ; doc = "" ; aggr = None } ]
+  [ { name = N.field "host" ;
+      typ = { structure = TString ; nullable = false } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "start" ;
+      typ = { structure = TFloat ; nullable = false } ;
+      units = Some RamenUnits.seconds_since_epoch ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "plugin" ;
+      typ = { structure = TString ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "instance" ;
+      typ = { structure = TString ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "type_name" ;
+      typ = { structure = TString ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "type_instance" ;
+      typ = { structure = TString ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "value" ;
+      typ = { structure = TFloat ; nullable = false } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "value2" ;
+      typ = { structure = TFloat ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "value3" ;
+      typ = { structure = TFloat ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "value4" ;
+      typ = { structure = TFloat ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ;
+    { name = N.field "value5" ;
+      typ = { structure = TFloat ; nullable = true } ;
+      units = None ;
+      doc = "" ;
+      aggr = None } ]
 
 let event_time =
   let open RamenEventTime in

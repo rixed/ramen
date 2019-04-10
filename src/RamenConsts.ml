@@ -321,6 +321,16 @@ struct
     | _ -> "unknown"
 end
 
+module FieldDocs =
+struct
+  let worker =
+    "Fully qualified name of the Ramen function that these statistics are \
+     about"
+  let top_half =
+    "True if this worker performs only the bottom half of a worker"
+  let start = "When these statistics have been collected (wall clock time)"
+end
+
 module Default =
 struct
   (* Where to store all of daemons+workers state and logs: *)
