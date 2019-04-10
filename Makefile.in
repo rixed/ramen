@@ -55,7 +55,7 @@ INSTALLED_LIB = \
 	src/libringbuf.a src/libcollectd.a src/libnetflow.a \
 	src/liborchelp.a
 INSTALLED_PROGRAMS = \
-	src/local.x src/master.x
+	src/local.x src/global.x
 INSTALLED = $(INSTALLED_BIN) $(INSTALLED_LIB) $(INSTALLED_PROGRAMS) META
 
 prefix = @prefix@
@@ -483,7 +483,7 @@ META:
 bundle: \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_DIR)/lib/liborc.a \
-		$(BUNDLE_DIR)/ramen/programs/master.x
+		$(BUNDLE_DIR)/ramen/programs/global.x
 
 $(BUNDLE_DIR)/date:
 	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
@@ -529,7 +529,7 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	@$(RM) -r $(BUNDLE_DIR).tmp
 	@touch $@
 
-$(BUNDLE_DIR)/ramen/programs/master.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_PROGRAMS)
+$(BUNDLE_DIR)/ramen/programs/global.x: $(BUNDLE_DIR)/ramen/codegen.a $(INSTALLED_PROGRAMS)
 	@echo 'Installing precompiled ramen programs'
 	@install -d $(BUNDLE_DIR)/ramen/programs
 	@install $(INSTALLED_PROGRAMS) $(BUNDLE_DIR)/ramen/programs/

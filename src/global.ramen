@@ -3,5 +3,5 @@
 -- (in addition to local.ramen)
 
 -- Import stats from all remote sites:
-DEFINE PERSISTENT global_stats AS
+DEFINE PERSISTENT stats AS
   SELECT * FROM *:local/stats;

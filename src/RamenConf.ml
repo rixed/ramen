@@ -338,7 +338,7 @@ let read_rc_file =
         add_entry (make_auto_rce "local" Globs.all) ;
         Set.iter (fun (master : N.site) ->
           add_entry
-            (make_auto_rce "master" (Globs.escape (master :> string)))
+            (make_auto_rce "global" (Globs.escape (master :> string)))
         ) conf.masters
       ) ;
       rc
