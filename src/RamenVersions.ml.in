@@ -36,7 +36,7 @@ let binocle = Binocle.version
 let experiment = "v1"
 
 (* Format of the archivist user constraints and other intermediary files *)
-let archivist_conf = "v2"
+let archivist_conf = "v3" (* last: per site stats *)
 
 (* Format used for factor possible values (content and file name) *)
 let factors = "v1"

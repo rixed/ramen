@@ -1,3 +1,9 @@
 {
-	"children/a" => 1333333; "root" => 0; "children/b" => 2666667
+	(
+		"", "children/a"
+	) => 1333333; (
+		"", "children/b"
+	) => 2666667; (
+		"", "root"
+	) => 0
 }

@@ -4,11 +4,11 @@
     running_time = 600; tuples = 6000; bytes = 600000; cpu = 1;
   };
   "children/a" => {
-    parents = [ "root" ]; is_running = true; startup_time = 1552130000;
+    parents = [ ("","root") ]; is_running = true; startup_time = 1552130000;
     running_time = 600; tuples = 6000; bytes = 100000; cpu = 1;
   };
   "children/b" => {
-    parents = [ "root" ]; is_running = true; startup_time = 1552130000;
+    parents = [ ("","root") ]; is_running = true; startup_time = 1552130000;
     running_time = 600; tuples = 6000; bytes = 200000; cpu = 1;
   };
 }

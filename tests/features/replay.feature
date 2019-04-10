@@ -20,7 +20,7 @@ Feature: test ramen replay in a simple setting
     And the environment variable RAMEN_REPORT_PERIOD is set to 1
     # Disable initial export so we can check archiving is setup properly:
     And the environment variable RAMEN_INITIAL_EXPORT is set to 0
-    And a file ramen_dir/archivist/v2/config with content
+    And a file ramen_dir/archivist/v3/config with content
       """
       {
         size_limit = 20000000000;
@@ -49,7 +49,7 @@ Feature: test ramen replay in a simple setting
     And I run ramen with arguments archivist --stats
 
   Scenario: Check the allocations from the background situation obey the config.
-    When I run cat with arguments ramen_dir/archivist/v2/allocs
+    When I run cat with arguments ramen_dir/archivist/v3/allocs
     Then cat must mention ""test/r0" => 0"
     And cat must mention ""test/s0" => 10000000000"
     And cat must mention ""test/s1" => 10000000000"

@@ -157,7 +157,7 @@ let cleanup_old_archives conf programs dry_run del_ratio =
           !logger.info
             "Archive directory %a is still the current archive for %a"
             N.path_print fname N.fq_print fq ;
-          Hashtbl.find allocs fq
+          Hashtbl.find allocs (conf.C.site, fq)
         ) else (
           !logger.warning
             "Archive directory %a seems to be an old archive for %a \
