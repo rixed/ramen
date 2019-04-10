@@ -20,20 +20,25 @@ let () =
     | _ -> None)
 
 let make_copts debug quiet persist_dir rand_seed keep_temp_files
-               forced_variants initial_export_duration site bundle_dir role =
+               forced_variants initial_export_duration site bundle_dir
+               masters =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
       RamenProcesses.rand_seed := Some seed ;
       Random.init seed) ;
-  (* As the RAMEN_VARIANTS envar can only take a list as a single string,
-   * let's consider each value can be a list: *)
-  let forced_variants =
+  (* As the RAMEN_VARIANTS and RAMEN_MASTERS envars can only take a list as
+   * a single string, let's consider each value can be a list: *)
+  let list_of_string_opt opt =
     List.fold_left (fun lst s ->
       List.rev_append (String.split_on_char ',' s) lst
-    ) [] forced_variants in
+    ) [] opt
+  in
+  let forced_variants = list_of_string_opt forced_variants
+  and masters =
+    list_of_string_opt masters |> List.map N.site |> Set.of_list in
   C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
-              ~initial_export_duration ~site ~bundle_dir ~role persist_dir
+              ~initial_export_duration ~site ~bundle_dir ~masters persist_dir
 
 (*
  * `ramen supervisor`

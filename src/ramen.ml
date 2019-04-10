@@ -74,19 +74,18 @@ let copts =
     Arg.(value (opt float Default.initial_export_duration i))
   and site =
     let env = Term.env_info "HOSTNAME" in
-    let i = Arg.info ~doc:CliInfo.site ~env [ "site" ] in
+    let i = Arg.info ~docs ~doc:CliInfo.site ~env [ "site" ] in
     Arg.(value (opt site (N.site "") i))
   and bundle_dir =
     let env = Term.env_info "RAMEN_LIBS" in
     let i = Arg.info ~doc:CliInfo.bundle_dir
-                     ~env [ "bundle-dir" ] in
+                     ~docs ~env [ "bundle-dir" ] in
     Arg.(value (opt path RamenCompilConfig.default_bundle_dir i))
-  and role =
-    let i = Arg.info ~doc:CliInfo.role
-                     ~docv:"none|slave|master" ["role"] in
-    let enums =
-      C.[ "none", NotDistributed ; "slave", Slave ; "master", Master ] in
-    Arg.(value (opt (enum enums) C.NotDistributed i))
+  and masters =
+    let env = Term.env_info "RAMEN_MASTERS" in
+    let i = Arg.info ~doc:CliInfo.master
+                     ~docs ~env ["master"] in
+    Arg.(value (opt_all string [] i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -98,7 +97,7 @@ let copts =
     $ initial_export_duration
     $ site
     $ bundle_dir
-    $ role)
+    $ masters)
 
 (*
  * Start the process supervisor

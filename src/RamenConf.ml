@@ -7,17 +7,6 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 
-(* The role this instance must play in a distributed setting.
- * Slave will run the local.ramen program and the master will additionally
- * run the master.ramen. *)
-type role = NotDistributed | Slave | Master
-let print_role oc r =
-  String.print oc
-    (match r with
-    | NotDistributed -> "not distributed"
-    | Slave -> "slave"
-    | Master -> "master")
-
 type conf =
   { log_level : log_level ;
     persist_dir : N.path ;
@@ -26,7 +15,7 @@ type conf =
     keep_temp_files : bool ;
     initial_export_duration : float ;
     site : N.site (* this site name *) ;
-    role : role ;
+    masters : N.site Set.t ;
     bundle_dir : N.path }
 
 let tmp_input_of_func persist_dir (program_name : N.program)
@@ -334,28 +323,24 @@ let read_rc_file =
             on_site ;
             automatic = true } in
         pname, rce in
-      let add_entry (pname, rce) =
-        Hashtbl.modify_opt pname (function
-          | Some _ ->
-              Printf.sprintf2
-                "Supposed to run as %a but a program named %a already exists!"
-                print_role conf.role
-                N.program_print pname |>
-              failwith
-          | None -> Some rce
-        ) rc
-      and local_rce =
-        make_auto_rce "local" Globs.all
-      and master_rce =
-        make_auto_rce "master" (Globs.escape (conf.site :> string))
-      in
-      (match conf.role with
-      | NotDistributed -> ()
-      | Slave ->
-          add_entry local_rce
-      | Master ->
-          add_entry local_rce ;
-          add_entry master_rce) ;
+      if not (Set.is_empty conf.masters) then (
+        (* Distributed mode *)
+        let add_entry (pname, rce) =
+          Hashtbl.modify_opt pname (function
+            | Some _ ->
+                (* FIXME: avoid this when parsing user defined functions *)
+                Printf.sprintf2 "A program named %a already exists!"
+                  N.program_print pname |>
+                failwith
+            | None -> Some rce
+          ) rc
+        in
+        add_entry (make_auto_rce "local" Globs.all) ;
+        Set.iter (fun (master : N.site) ->
+          add_entry
+            (make_auto_rce "master" (Globs.escape (master :> string)))
+        ) conf.masters
+      ) ;
       rc
     ) else !non_persisted_programs
 
@@ -423,7 +408,7 @@ let make_conf
       ?(initial_export_duration=Default.initial_export_duration)
       ?(site=N.site "") ?(test=false)
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
-      ?(role=NotDistributed) persist_dir =
+      ?(masters=Set.empty) persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -431,7 +416,7 @@ let make_conf
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { do_persist ; log_level ; persist_dir ; keep_temp_files ;
-    initial_export_duration ; site ; test ; bundle_dir ; role }
+    initial_export_duration ; site ; test ; bundle_dir ; masters }
 
 (* Various directory names: *)
 

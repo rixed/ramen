@@ -174,7 +174,7 @@ let complete str () =
         "--persist-dir=", CliInfo.persist_dir ;
         "--variant", CliInfo.variant ;
         "--site", CliInfo.site ;
-        "--role=", CliInfo.role ;
+        "--master=", CliInfo.site ;
         "--bundle-dir=", CliInfo.bundle_dir ] in
     let completions =
       (match command with
