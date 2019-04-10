@@ -147,34 +147,44 @@ let read_stats ?while_ conf =
   in
   RamenSerialization.fold_time_range ~while_ bname typ [] event_time
                        since until () (fun () tuple _t1 _t2 ->
-    let worker = get_string tuple.(0)
-    and is_top_half = get_bool tuple.(1)
-    and time = get_float tuple.(2)
-    and stats =
-      { min_etime = get_nfloat tuple.(3) ;
-        max_etime = get_nfloat tuple.(4) ;
-        in_count = get_nu64 tuple.(5) ;
-        selected_count = get_nu64 tuple.(6) ;
-        out_count = get_nu64 tuple.(7) ;
-        group_count = get_nu64 tuple.(8) ;
-        cpu = get_float tuple.(9) ;
-        ram = get_u64 tuple.(10) ;
-        max_ram = get_u64 tuple.(11) ;
-        profile = get_profile tuple.(12) ;
-        wait_in = get_nfloat tuple.(13) ;
-        wait_out = get_nfloat tuple.(14) ;
-        bytes_in = get_nu64 tuple.(15) ;
-        bytes_out = get_nu64 tuple.(16) ;
-        avg_full_bytes = get_nu64 tuple.(17) ;
-        last_out = get_nfloat tuple.(18) ;
-        startup_time = get_float tuple.(19) }
-    in
-    (* Keep only the latest stat line per worker: *)
-    Hashtbl.modify_opt (N.fq worker, is_top_half) (function
-      | None -> Some (time, stats)
-      | Some (time', _) as prev ->
-          if time' > time then prev else Some (time, stats)
-    ) h) ;
+    match tuple with
+    | [| _site ; worker ; is_top_half ; time ; min_etime ; max_etime ;
+         in_count ; selected_count ; out_count ; group_count ; cpu ;
+         ram ; max_ram ; profile ; wait_in ; wait_out ; bytes_in ;
+         bytes_out ; avg_full_bytes ; last_out ; startup_time |] ->
+        let worker = get_string worker
+        and is_top_half = get_bool is_top_half
+        and time = get_float time
+        and stats =
+          { min_etime = get_nfloat min_etime ;
+            max_etime = get_nfloat max_etime ;
+            in_count = get_nu64 in_count ;
+            selected_count = get_nu64 selected_count ;
+            out_count = get_nu64 out_count ;
+            group_count = get_nu64 group_count ;
+            cpu = get_float cpu ;
+            ram = get_u64 ram ;
+            max_ram = get_u64 max_ram ;
+            profile = get_profile profile ;
+            wait_in = get_nfloat wait_in ;
+            wait_out = get_nfloat wait_out ;
+            bytes_in = get_nu64 bytes_in ;
+            bytes_out = get_nu64 bytes_out ;
+            avg_full_bytes = get_nu64 avg_full_bytes ;
+            last_out = get_nfloat last_out ;
+            startup_time = get_float startup_time }
+        in
+        (* Keep only the latest stat line per worker: *)
+        Hashtbl.modify_opt (N.fq worker, is_top_half) (function
+          | None -> Some (time, stats)
+          | Some (time', _) as prev ->
+              if time' > time then prev else Some (time, stats)
+        ) h
+    | _ ->
+        Printf.sprintf
+          "Bad instrumentation tuple with %d fields instead of %d"
+            (Array.length tuple) (List.length RamenWorkerStats.tuple_typ) |>
+        failwith) ;
   (* Clean out time: *)
   Hashtbl.map (fun _ (_time, stats) -> stats) h
 
