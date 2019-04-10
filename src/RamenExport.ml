@@ -70,7 +70,7 @@ let read_output conf ?duration (fq : N.fq) where =
               | exception Not_found ->
                   failwith ("Function "^ (fq :> string) ^
                             " does not exist")
-              | _mre, prog, func ->
+              | _rce, prog, func ->
                   let bname =
                     RamenProcesses.start_export
                       conf ~file_type:OutRef.RingBuf ?duration func in
@@ -222,8 +222,8 @@ let find_replay_sources conf ?while_ fq since until =
    * in that case the archiver could well decide to archive both the
    * parent and, as an optimisation, this child. Now which best (or only)
    * path to query that child depends on since/until.
-   * But the shortest path form func to its archiving parents that have the
-   * required data is always the best. So start from func and progress
+   * But the shortest path form fq to its archiving parents that have the
+   * required data is always the best. So start from fq and progress
    * through parents until we have found all required sources with the whole
    * archived content, recording the all the functions on the way up there
    * in a set.
@@ -337,7 +337,7 @@ let replay conf ?(while_=always) fq field_names where since until
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
   let programs = C.with_rlock conf identity in
-  let _mre, prog, func = C.find_func_or_fail programs fq in
+  let _rce, prog, func = C.find_func_or_fail programs fq in
   let out_type = O.out_type_of_operation func.F.operation in
   let field_names = check_field_names out_type field_names in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
@@ -383,7 +383,7 @@ let replay conf ?(while_=always) fq field_names where since until
       let clean_links () =
         OutRef.remove out_ref rb_name channel ;
         Set.iter (fun (pfq, _fq) ->
-          let _mre, _prog, pfunc = C.find_func_or_fail programs pfq in
+          let _rce, _prog, pfunc = C.find_func_or_fail programs pfq in
           let out_ref = C.out_ringbuf_names_ref conf pfunc in
           OutRef.remove_channel out_ref channel
         ) links in
@@ -408,7 +408,7 @@ let replay conf ?(while_=always) fq field_names where since until
          * with, and since/until dates. *)
         let _, pids, eofs =
           Set.fold (fun sfq (i, pids, eofs) ->
-            let smre, _prog, sfunc = C.find_func_or_fail programs sfq in
+            let srce, _prog, sfunc = C.find_func_or_fail programs sfq in
             let args = [| Worker_argv0.replay ; (sfq :> string) |]
             and out_ringbuf_ref = C.out_ringbuf_names_ref conf sfunc
             and rb_archive =
@@ -430,7 +430,7 @@ let replay conf ?(while_=always) fq field_names where since until
                  "until="^ string_of_float until ;
                  "channel_id="^ RamenChannel.to_string channel ;
                  "replayer_id="^ string_of_int i |] in
-            let pid = RamenProcesses.run_worker smre.C.bin args env in
+            let pid = RamenProcesses.run_worker srce.C.bin args env in
             !logger.debug "Replay for %a is running under pid %d"
               N.fq_print sfq pid ;
             i + 1,

@@ -51,6 +51,8 @@ and retention =
 let user_conf_file conf =
   N.path_cat [ conf_dir conf ; N.path "config" ]
 
+(* FIXME: retention conf should take into account the site.
+ * Or not, if we store it in the operation. *)
 let retention_of_fq user_conf (fq : N.fq) =
   try
     Hashtbl.enum user_conf.retentions |>
@@ -130,7 +132,9 @@ let func_stats_of_stat s now =
     bytes = Uint64.(to_int64 bytes) ;
     cpu = s.RamenPs.cpu ;
     ram = Uint64.(to_int64 s.max_ram) ;
-    parents = [] ; archives = [] ; is_running = true }
+    parents = [] ;
+    archives = [] ;
+    is_running = true }
 
 (* Adds two func_stats together, favoring a *)
 let add_ps_stats a b =
@@ -140,7 +144,9 @@ let add_ps_stats a b =
     bytes = Int64.add a.bytes b.bytes ;
     cpu = a.cpu +. b.cpu ;
     ram = Int64.add a.ram b.ram ;
-    parents = a.parents ; archives = a.archives ; is_running = a.is_running }
+    parents = a.parents ;
+    archives = a.archives ;
+    is_running = a.is_running }
 
 (* Those stats are saved on disk: *)
 

@@ -100,7 +100,6 @@ type 'a any =
   [< `Field | `Function | `Program | `RelProgram | `FQ | `BaseUnit | `Url
    | `Path | `Host | `Site | `Service ] as 'a
 val compare : ('a any as 'a) t -> 'a t -> int
-val eq : ('a any as 'a) t -> 'a t -> bool
 val cat : ('a any as 'a) t -> 'a t -> 'a t
 val length : 'a t -> int
 val is_empty : 'a  t -> bool

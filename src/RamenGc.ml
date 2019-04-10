@@ -148,7 +148,7 @@ let cleanup_old_archives conf programs dry_run del_ratio =
           "Archive directory %a belongs to unknown function %a"
           N.path_print fname N.fq_print fq ;
         0
-    | _mre, _prog, func ->
+    | _rce, _prog, func ->
         (* TODO: RingBufLib.arc_dir_of_func ... to avoid selecting an
          * arbitrary file_type: *)
         let arc_dir = C.archive_buf_name ~file_type:RingBuf conf func |>
