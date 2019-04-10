@@ -1283,39 +1283,45 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
   let sons = Atomic.Set.make () in
   let killer_thread =
     Thread.create (fun () ->
+      !logger.debug "Starting killer thread..." ;
       let stop_since = ref 0. in
       while true do
-        let now = gettimeofday () in
-        let continue = while_ () in
-        (* If we want to quit, kill the sons: *)
-        if not continue then (
-          if !stop_since = 0. then stop_since := now ;
-          if not (Atomic.Set.is_empty sons) then (
-            !logger.info "Killing %d %s servers..."
-              (Atomic.Set.cardinal sons) service_name ;
-            Atomic.Set.iter sons (fun (pid, _) ->
-              !logger.debug "Killing %d" pid ;
-              let what = Printf.sprintf "stopping %s servers" service_name in
-              log_and_ignore_exceptions ~what
-                (kill pid)
-                Sys.(if now -. !stop_since > 3. then sigkill else sigterm))
-          ) else (
-            !logger.info "Quit servers killer" ;
-            Thread.exit ()
-          )
-        ) ;
-        (* Collect the sons statuses: *)
-        Atomic.Set.filter sons
-          (fun (pid, start) ->
-            match BatUnix.restart_on_EINTR (waitpid [ WNOHANG ]) pid with
-            | 0, _ -> true
-            | _, status ->
-                let dt = now -. start in
-                (if status = WEXITED 0 then !logger.debug else !logger.error)
-                  "%s server %d %s after %fs"
-                    service_name pid (string_of_process_status status) dt ;
-                false) ;
-        sleep 1
+        log_and_ignore_exceptions ~what:"Killer thread" (fun () ->
+          let now = gettimeofday () in
+          let continue = while_ () in
+          (* If we want to quit, kill the sons: *)
+          if not continue then (
+            if !stop_since = 0. then stop_since := now ;
+            if not (Atomic.Set.is_empty sons) then (
+              !logger.debug "Killing %d %s servers..."
+                (Atomic.Set.cardinal sons) service_name ;
+              Atomic.Set.iter sons (fun (pid, _) ->
+                !logger.info "Killing %d" pid ;
+                let what =
+                  Printf.sprintf "stopping %s servers" service_name in
+                let signal =
+                  let open Sys in
+                  if now -. !stop_since > 3. then sigkill else sigterm in
+                log_and_ignore_exceptions ~what
+                  (kill pid) signal)
+            ) else (
+              !logger.debug "Quit killer thread" ;
+              Thread.exit ()
+            )
+          ) ;
+          (* Collect the sons statuses: *)
+          Atomic.Set.filter sons
+            (fun (pid, start) ->
+              match BatUnix.restart_on_EINTR (waitpid [ WNOHANG ]) pid with
+              | 0, _ ->
+                  true
+              | _, status ->
+                  let dt = now -. start in
+                  (if status = WEXITED 0 then !logger.info else !logger.error)
+                    "%s server %d %s after %fs"
+                      service_name pid (string_of_process_status status) dt ;
+                  false) ;
+          sleep 1) ()
       done
     ) () in
   (* Now fork a new server for each new connection: *)
@@ -1360,7 +1366,9 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                 Atomic.Set.add sons (pid, Unix.gettimeofday ()))
       done
     ) () ;
-  Thread.join killer_thread
+  !logger.info "Waiting for killer thread to finish..." ;
+  Thread.join killer_thread ;
+  !logger.debug "Killed thread finished!"
 
 let cap ?min ?max f =
   let f = Option.map_default (Pervasives.max f) f min in
