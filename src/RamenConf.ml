@@ -10,7 +10,6 @@ module Files = RamenFiles
 type conf =
   { log_level : log_level ;
     persist_dir : N.path ;
-    do_persist : bool ; (* false for unit-tests *)
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
     initial_export_duration : float ;
@@ -304,7 +303,7 @@ let read_rc_file =
     fail_with_context "Reading RC file" (fun () ->
       Files.ppp_of_file ~default:"{}" running_config_ppp_ocaml fname) in
   fun conf fname ->
-    if conf.do_persist then (
+    if not (N.is_empty conf.persist_dir) then (
       let rc = get fname in
       let debug = conf.log_level = Debug in
       let make_auto_rce name on_site =
@@ -344,11 +343,10 @@ let read_rc_file =
       rc
     ) else !non_persisted_programs
 
-let save_rc_file do_persist fd rc =
-  if do_persist then
-    fail_with_context "Saving RC file" (fun () ->
-      Hashtbl.filter (fun rce -> not rce.automatic) rc |>
-      Files.ppp_to_fd ~pretty:true running_config_ppp_ocaml fd)
+let save_rc_file fd rc =
+  fail_with_context "Saving RC file" (fun () ->
+    Hashtbl.filter (fun rce -> not rce.automatic) rc |>
+    Files.ppp_to_fd ~pretty:true running_config_ppp_ocaml fd)
 
 (* Users wanting to know the running config must use with_{r,w}lock.
  * This will return a hash from program name to a function returning
@@ -374,7 +372,8 @@ let with_wlock conf f =
     let programs = read_rc_file conf rc_file in
     let ret = f programs in
     (* Save the config only if f did not fail: *)
-    save_rc_file conf.do_persist fd programs ;
+    if not (N.is_empty conf.persist_dir) then
+      save_rc_file fd programs ;
     ret)
 
 let is_program_running programs program_name =
@@ -403,7 +402,7 @@ let find_func_or_fail programs fq =
     failwith
 
 let make_conf
-      ?(do_persist=true) ?(debug=false) ?(quiet=false)
+      ?(debug=false) ?(quiet=false)
       ?(keep_temp_files=false) ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
       ?(site=N.site "") ?(test=false)
@@ -415,7 +414,7 @@ let make_conf
     if debug then Debug else if quiet then Quiet else Normal in
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
-  { do_persist ; log_level ; persist_dir ; keep_temp_files ;
+  { log_level ; persist_dir ; keep_temp_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters }
 
 (* Various directory names: *)
