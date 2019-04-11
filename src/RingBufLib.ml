@@ -483,17 +483,20 @@ let message_header_sersize = function
   | DataTuple _ -> 4
   | EndOfReplay _ -> 4
 
+let max_replayer_id = 0xFFF
+let max_channel_id = 0xFFFF
+
 let write_message_header tx offs = function
   | DataTuple chan ->
-      assert ((chan :> int) <= 0xFFFF) ;
-      write_u32 tx offs (Uint32.of_int ((chan :> int) land 0xFFFF))
+      assert ((chan :> int) <= max_channel_id) ;
+      write_u32 tx offs (Uint32.of_int ((chan :> int) land max_channel_id))
   | EndOfReplay (chan, replayer_id) ->
-      assert ((chan :> int) <= 0xFFFF) ;
-      assert (replayer_id <= 0xFFF) ;
-      let hi = 0x1000 + replayer_id land 0xFFF in
+      assert ((chan :> int) <= max_channel_id) ;
+      assert (replayer_id <= max_replayer_id) ;
+      let hi = 0x1000 + replayer_id land max_replayer_id in
       Uint32.(
         shift_left (of_int hi) 16 |>
-        logor (of_int ((chan :> int) land 0xFFFF))) |>
+        logor (of_int ((chan :> int) land max_channel_id))) |>
       write_u32 tx offs
 
 let read_message_header tx offs =

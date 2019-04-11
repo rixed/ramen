@@ -54,6 +54,8 @@ struct
     let worker_sigkills = "workers_sigkills"
     let ringbuf_repairs = "workers_ringbuf_repairs"
     let outref_repairs = "workers_outref_repairs"
+    let replayer_crashes = "replayers_crashes"
+    let replayer_sigkills = "replayers_sigkills"
 
     (* Metrics reported by the alerter: *)
     let messages_count = "messages_count"

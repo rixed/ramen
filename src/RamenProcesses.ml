@@ -250,7 +250,7 @@ type running_process =
     log_level : log_level ;
     report_period : float ;
     mutable pid : int option ;
-    mutable last_killed : float (* 0 for never *) ;
+    last_killed : float ref (* 0 for never *) ;
     mutable continued : bool ;
     (* purely for reporting: *)
     mutable last_exit : float ;
@@ -286,7 +286,7 @@ let make_running_process conf must_run mre =
     children ;
     log_level ;
     report_period = mre.rce.C.report_period ;
-    pid = None ; last_killed = 0. ; continued = false ;
+    pid = None ; last_killed = ref 0. ; continued = false ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
@@ -445,20 +445,40 @@ struct
     N.path_cat [ conf.C.persist_dir ; N.path "replays" ;
                  N.path RamenVersions.replays ; N.path "replays" ]
 
-  let load =
+  let load_locked =
     let get = Files.ppp_of_file ~default:"{}" replays_ppp_ocaml in
-    fun conf ->
-      let fname = replays_file conf in
+    fun (fname : N.path) ->
       let context = "Reading replays from "^ (fname :> string) in
-      fail_with_context context (fun () ->
-        RamenAdvLock.with_r_lock fname (fun _fd -> get fname))
+      let now = Unix.gettimeofday () in
+      fail_with_context context (fun () -> get fname) |>
+      Hashtbl.filter (fun replay -> replay.timeout > now)
 
-  let save conf replays =
+  let load conf =
     let fname = replays_file conf in
+    RamenAdvLock.with_r_lock fname (fun _fd -> load_locked fname)
+
+  let save_locked fd (fname : N.path) replays =
     let context = "Saving replays into "^ (fname :> string) in
     fail_with_context context (fun () ->
-      RamenAdvLock.with_w_lock fname (fun fd ->
-        Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays))
+      Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays)
+
+  let add conf replay =
+    let fname = replays_file conf in
+    RamenAdvLock.with_w_lock fname (fun fd ->
+      let replays = load_locked fname in
+      if Hashtbl.mem replays replay.channel then
+        Printf.sprintf2 "Replay channel %a is already in use!"
+          RamenChannel.print replay.channel |>
+        failwith ;
+      Hashtbl.add replays replay.channel replay ;
+      save_locked fd fname replays)
+
+  let remove conf channel =
+    let fname = replays_file conf in
+    RamenAdvLock.with_w_lock fname (fun fd ->
+      let replays = load_locked fname in
+      Hashtbl.remove replays channel ;
+      save_locked fd fname replays)
 
   (* Helper function: *)
 
@@ -763,20 +783,17 @@ struct
   let spawn_all_local_sources conf programs t =
     let what = Printf.sprintf2 "Spawning local replayers for channel %a"
                  RamenChannel.print t.channel in
-    let _, pids, eofs =
-      Set.fold (fun (ssite, sfq) (i, pids, eofs as prev) ->
-        if conf.C.site = ssite then
-          match spawn_source_replay conf programs sfq t i with
-          | exception e ->
-              print_exception ~what e ;
-              prev
-          | pid ->
-              i + 1,
-              Set.Int.add pid pids,
-              Set.add i eofs
-        else prev
-      ) t.sources (0, Set.Int.empty, Set.empty) in
-    pids, eofs
+    Set.fold (fun (ssite, sfq) pids ->
+      if conf.C.site = ssite then
+        let replayer_id = Random.int RingBufLib.max_replayer_id in
+        match spawn_source_replay conf programs sfq t replayer_id with
+        | exception e ->
+            print_exception ~what e ;
+            pids
+        | pid ->
+            Set.add (pid, ref 0.) pids
+      else pids
+    ) t.sources Set.empty
 
   (*$>*)
 end
@@ -821,6 +838,19 @@ let stats_worker_sigkills =
     IntCounter.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_sigkills
       "Number of times a worker had to be sigkilled instead of sigtermed.")
+
+let stats_replayer_crashes =
+  RamenWorkerStats.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir:(save_dir :> string)
+      Metric.Names.replayer_crashes
+      "Number of replayers that have crashed (or exited with non 0 status).")
+
+let stats_replayer_sigkills =
+  RamenWorkerStats.ensure_inited (fun save_dir ->
+    IntCounter.make ~save_dir:(save_dir :> string)
+      Metric.Names.replayer_sigkills
+      "Number of times a replayer had to be sigkilled instead of sigtermed.")
+
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
@@ -875,6 +905,42 @@ let process_workers_terminations conf running =
           proc.pid <- None)
     ) proc.pid
   ) running
+
+let process_replayers_terminations conf replayers =
+  let open Unix in
+  let get_programs = memoize (fun () -> C.with_rlock conf identity) in
+  Hashtbl.filter_map_inplace (fun channel (replay, pids) ->
+    let pids =
+      Set.filter (fun (pid, _last_killed) ->
+        let what =
+          Printf.sprintf2 "Replayer for channel %a (pid %d)"
+            RamenChannel.print channel pid in
+        (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
+        | exception exn ->
+            !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
+            (* assume the replayers is safe *)
+            true
+        | 0, _ ->
+            true (* Nothing to report *)
+        | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+            !logger.debug "%s got stopped" what ;
+            true
+        | _, status ->
+            let status_str = string_of_process_status status in
+            let is_err =
+              status <> WEXITED ExitCodes.terminated in
+            (if is_err then !logger.error else info_or_test conf)
+              "%s %s." what status_str ;
+            if is_err then
+              IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
+            false)
+      ) pids in
+    if Set.is_empty pids then (
+      let programs = get_programs () in
+      Replay.teardown_links conf programs replay ;
+      None
+    ) else Some (replay, pids)
+  ) replayers
 
 (* Returns the buffer name: *)
 let start_export ?(file_type=OutRef.RingBuf)
@@ -1037,7 +1103,7 @@ let really_start conf proc =
   !logger.debug "Function %a now runs under pid %d"
     print_running_process proc pid ;
   proc.pid <- Some pid ;
-  proc.last_killed <- 0. ;
+  proc.last_killed := 0. ;
   (* Update the parents out_ringbuf_ref: *)
   List.iter (fun (_, _, pfunc) ->
     let out_ref =
@@ -1094,6 +1160,24 @@ let try_start conf proc =
     really_try_start conf now proc
   )
 
+let kill_politely conf last_killed what pid stats_sigkills =
+  (* Start with a TERM (if last_killed = 0.) and then after 5s send a
+   * KILL if the worker is still running. *)
+  let now = Unix.gettimeofday () in
+  if !last_killed = 0. then (
+    (* Ask politely: *)
+    info_or_test conf "Terminating %s" what ;
+    log_and_ignore_exceptions ~what:("Terminating "^ what)
+      (Unix.kill pid) Sys.sigterm ;
+    last_killed := now
+  ) else if now -. !last_killed > 10. then (
+    !logger.warning "Killing %s with bigger guns" what ;
+    log_and_ignore_exceptions ~what:("Killing "^ what)
+      (Unix.kill pid) Sys.sigkill ;
+    last_killed := now ;
+    IntCounter.inc (stats_sigkills conf.C.persist_dir)
+  )
+
 let try_kill conf proc =
   let pid = Option.get proc.pid in
   (* There is no reason to wait before we remove this worker from its
@@ -1111,23 +1195,9 @@ let try_kill conf proc =
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
-  (* Start with a TERM (if last_killed = 0.) and then after 5s send a
-   * KILL if the worker is still running. *)
-  let now = Unix.gettimeofday () in
-  if proc.last_killed = 0. then (
-    (* Ask politely: *)
-    info_or_test conf "Terminating worker %s (pid %d)"
-      (F.fq_name proc.func :> string) pid ;
-    log_and_ignore_exceptions ~what:"Terminating worker"
-      (Unix.kill pid) Sys.sigterm ;
-    proc.last_killed <- now ;
-  ) else if now -. proc.last_killed > 10. then (
-    !logger.warning "Killing worker %a (pid %d) with bigger guns"
-      print_running_process proc pid ;
-    log_and_ignore_exceptions ~what:"Killing worker"
-      (Unix.kill pid) Sys.sigkill ;
-    proc.last_killed <- now ;
-    IntCounter.inc (stats_worker_sigkills conf.C.persist_dir))
+  let what = Printf.sprintf2 "worker %a (pid %d)"
+               N.fq_print (F.fq_name proc.func) pid in
+  kill_politely conf proc.last_killed what pid stats_worker_sigkills
 
 (* This is used to check that we do not check too often nor too rarely: *)
 let last_checked_outref = ref 0.
@@ -1412,7 +1482,8 @@ let watchdog = ref None
 
 (*
  * Synchronisation of the rc file of programs we want to run and the
- * actually running workers.
+ * actually running workers. Also synchronise the configured replays
+ * and the actually running replayers and established replay channels.
  *
  * [autoreload_delay]: even if the rc file hasn't changed, we want to re-read
  * it from time to time and refresh the [must_run] hash with new signatures
@@ -1442,6 +1513,7 @@ let watchdog = ref None
  *)
 let synchronize_running conf autoreload_delay =
   let rc_file = C.running_config_file conf in
+  let replays_file = Replay.replays_file conf in
   (* Avoid memoizing this at every call to build_must_run: *)
   if !watchdog = None then
     watchdog :=
@@ -1465,7 +1537,7 @@ let synchronize_running conf autoreload_delay =
    * outref immediately.
    * Similarly, [running] should keep the previous set of parents (or rather,
    * the name of their out_ref). *)
-  let synchronize must_run running =
+  let synchronize_workers must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
     let prev_num_running = Hashtbl.length running in
@@ -1490,7 +1562,7 @@ let synchronize_running conf autoreload_delay =
           if proc.pid = None then to_start += proc else
           (* If we were killing it, it's safer to keep killing it until it's
            * dead and then restart it. *)
-          if proc.last_killed <> 0. then to_kill += proc
+          if !(proc.last_killed) <> 0. then to_kill += proc
     ) must_run ;
     let num_running = Hashtbl.length running in
     if !quit <> None && num_running > 0 && num_running <> prev_num_running then
@@ -1521,51 +1593,113 @@ let synchronize_running conf autoreload_delay =
     if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
+  (* Similarly, try to make [replayers] the same as [must_replay]: *)
+  and synchronize_replays must_replay replayers =
+    (* Kill the replayers of channels that are not configured any longer,
+     * and start new replayers for new channels: *)
+    let run_chans = Hashtbl.keys replayers |> Set.of_enum
+    and def_chans = Hashtbl.keys must_replay |> Set.of_enum in
+    let kill_replayer chan (pid, last_killed) =
+      let what = Printf.sprintf2 "replayer for %a (pid %d)"
+                   RamenChannel.print chan pid in
+      kill_politely conf last_killed what pid stats_replayer_sigkills in
+    let to_rem chan =
+      (* Just kill the replayers and wait for them to finish before tearing
+       * down the replay chanel: *)
+      let replayer, pids = Hashtbl.find replayers chan in
+      Set.iter (kill_replayer replayer.Replay.channel) pids in
+    let get_programs = memoize (fun () -> C.with_rlock conf identity) in
+    let start_replay replay =
+      let programs = get_programs () in
+      Replay.settup_links conf programs replay ;
+      (* Do not start the replay at once or the worker won't have reread
+       * its out-ref. TODO: signal it. *)
+      Unix.sleepf Default.min_delay_restats ;
+      Replay.spawn_all_local_sources conf programs replay in
+    let to_add chan =
+      let replay = Hashtbl.find must_replay chan in
+      match start_replay replay with
+      | exception e ->
+          let what = Printf.sprintf2 "Starting replay for channel %a"
+                       RamenChannel.print replay.Replay.channel in
+          print_exception ~what e
+      | pids ->
+          (* If this replay does not concern our site, the pids will be
+           * empty, process_replayers_terminations will then remove the
+           * entry, and it will be added again next time. We can save
+           * a bit of this useless work by not adding it at all: *)
+          if not (Set.is_empty pids) then
+            Hashtbl.add replayers chan (replay, pids)
+    in
+    Set.diff run_chans def_chans |> Set.iter to_rem ;
+    Set.diff def_chans run_chans |> Set.iter to_add
   in
-  (* The hash of programs that must be running, updated by [loop]: *)
+  (* The workers that are currently running: *)
   let running = Hashtbl.create 307 in
-  let rec loop last_must_run last_read =
+  (* The replayers (hash from channel to (pids * replay)) that are currently
+   * running: *)
+  let replayers = Hashtbl.create 307 in
+  let rec loop last_must_run last_read_rc last_replays last_read_replays =
     (* Once we have forked some workers we must not allow an exception to
      * terminate this function or we'd leave unsupervised workers behind: *)
     restart_on_failure "process supervisor" (fun () ->
       process_workers_terminations conf running ;
-      if !quit <> None && Hashtbl.length running = 0 then (
+      process_replayers_terminations conf replayers ;
+      if !quit <> None &&
+         Hashtbl.length running + Hashtbl.length replayers = 0
+      then (
         !logger.info "All processes stopped, quitting."
       ) else (
-        let must_run, last_read =
+        let must_reread fname last_read autoreload_delay now =
+          let last_mod =
+            try Some (Files.mtime fname)
+            with Unix.(Unix_error (ENOENT, _, _)) -> None in
+          let reread =
+            match last_mod with
+            | None -> false
+            | Some lm ->
+                (lm >= last_read -. 1. ||
+                 autoreload_delay > 0. &&
+                 now -. last_read >= autoreload_delay) &&
+                (* To prevent missing the last writes when the file is
+                 * updated several times a second (the possible resolution
+                 * of mtime), refuse to refresh the file unless last mod
+                 * time is old enough: *)
+                now -. lm > 1. in
+          last_mod <> None && reread in
+        let must_run, last_read_rc =
           if !quit <> None then (
             !logger.debug "No more workers should run" ;
-            Hashtbl.create 0, last_read
+            Hashtbl.create 0, last_read_rc
           ) else (
-            let last_mod =
-              try Some (Files.mtime rc_file)
-              with Unix.(Unix_error (ENOENT, _, _)) -> None in
             let now = Unix.gettimeofday () in
-            let must_reread =
-              match last_mod with
-              | None -> false
-              | Some lm ->
-                  (lm >= last_read -. 1. ||
-                   autoreload_delay > 0. &&
-                   now -. last_read >= autoreload_delay) &&
-                  (* To prevent missing the last writes when the file is
-                   * updated several times a second (the possible resolution
-                   * of mtime), refuse to refresh the file unless last mod
-                   * time is old enough: *)
-                  now -. lm > 1. in
-            if last_mod <> None && must_reread then (
+            if must_reread rc_file last_read_rc autoreload_delay now then
               build_must_run conf, now
-            ) else last_must_run, last_read) in
-        let changed = synchronize must_run running in
+            else
+              last_must_run, last_read_rc
+          ) in
+        let changed = synchronize_workers must_run running in
         (* Touch the rc file if anything changed (esp. autoreload) since that
          * mtime is used to signal cache expirations etc. *)
-        if changed then Files.touch rc_file last_read ;
+        if changed then Files.touch rc_file last_read_rc ;
+        let must_replay, last_read_replays =
+          if !quit <> None then (
+            !logger.debug "No more replays should run" ;
+            Hashtbl.create 0, last_read_replays
+          ) else (
+            let now = Unix.gettimeofday () in
+            if must_reread replays_file last_read_replays 0. now then
+              Replay.load conf, now
+            else
+              last_replays, last_read_replays
+          ) in
+        synchronize_replays must_replay replayers ;
         Gc.minor () ;
         let delay = if !quit = None then 1. else 0.3 in
         Unix.sleepf delay ;
         RamenWatchdog.reset watchdog ;
-        loop must_run last_read)) ()
+        loop must_run last_read_rc must_replay last_read_replays)) ()
   in
   RamenWatchdog.enable watchdog ;
-  loop (Hashtbl.create 0) 0. ;
+  loop (Hashtbl.create 0) 0. (Hashtbl.create 0) 0. ;
   RamenWatchdog.disable watchdog
