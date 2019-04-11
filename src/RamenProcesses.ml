@@ -1,7 +1,5 @@
-(* Process supervisor which task is to start and stop workers, make sure they
- * keep working, collect their stats and write them somewhere for anybody
- * to see, send their notifications, delete old unused files...
- *)
+(* Process supervisor which task is to start and stop workers, connect them
+ * properly and make sure they keep working. *)
 open Batteries
 open RamenLog
 open RamenHelpers

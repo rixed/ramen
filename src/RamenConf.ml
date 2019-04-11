@@ -260,8 +260,8 @@ struct
 end
 
 let running_config_file conf =
-  N.path ((conf.persist_dir :> string) ^"/configuration/"^
-          RamenVersions.rc ^"/rc")
+  N.path_cat [ conf.persist_dir ; N.path "configuration" ;
+               N.path RamenVersions.rc ; N.path "rc" ]
 
 type worker_status = MustRun | Killed [@@ppp PPP_OCaml]
 
