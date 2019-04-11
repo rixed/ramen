@@ -399,6 +399,10 @@ struct
 
   (* Default port for the tuple forward service: *)
   let tunneld_port = 29329
+
+  (* Number of seconds after which a replay channel will cease to conduct
+   * tuples: *)
+  let replay_timeout = 300.
 end
 
 module SpecialFunctions =

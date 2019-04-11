@@ -14,6 +14,8 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Services = RamenServices
 
+(*$inject open Batteries *)
+
 (* Global quit flag, set (to some ExitCodes) when the term signal
  * is received or some other bad condition happen: *)
 let quit = ref None
@@ -325,8 +327,82 @@ let check_is_subtype t1 t2 =
       failwith
   ) t1
 
+(* Global per-func stats that are updated by the thread reading #notifs and
+ * the one reading the RC, and also saved on disk while ramen is not running:
+ *)
+
+type func_stats =
+  { startup_time : float ; (* To distinguish from present run *)
+    running_time : float [@ppp_default 0.] ;
+    tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
+    bytes : int64 [@ppp_default 0L] ;
+    cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
+    ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
+    mutable parents : (N.site * N.fq) list ;
+    (* Also gather available history per running workers, to speed up
+     * establishing query plans: *)
+    mutable archives : (float * float) list [@ppp_default []] ;
+    (* We want to allocate disk space only to those workers that are running,
+     * but also want to save stats about workers that's been running recently
+     * enough and might resume: *)
+    mutable is_running : bool [@ppp_default false] }
+  [@@ppp PPP_OCaml]
+
+let archives_print oc =
+  List.print (Tuple2.print Float.print Float.print) oc
+
 module Replay =
 struct
+  (*$< Replay *)
+
+  module Range = struct
+    (*$< Range *)
+    type t = (float * float) list
+
+    let empty = []
+
+    let is_empty = (=) []
+
+    let make t1 t2 =
+      let t1 = min t1 t2 and t2 = max t1 t2 in
+      if t1 < t2 then [ t1, t2 ] else []
+
+    (*$T make
+      is_empty (make 1. 1.)
+      not (is_empty (make 1. 2.))
+    *)
+
+    let rec merge l1 l2 =
+      match l1, l2 with
+      | [], l | l, [] -> l
+      | (a1, b1)::r1, (a2, b2)::r2 ->
+          let am = min a1 a2 and bm = max b1 b2 in
+          if bm -. am <= (b1 -. a1) +. (b2 -. a2) then
+            (am, bm) :: merge r1 r2
+          else if a1 <= a2 then
+            (a1, b1) :: merge r1 l2
+          else
+            (a2, b2) :: merge l1 r2
+
+    (*$= merge & ~printer:(IO.to_string print)
+      [ 1.,2. ; 3.,4. ] (merge [ 1.,2. ] [ 3.,4. ])
+      [ 1.,2. ; 3.,4. ] (merge [ 3.,4. ] [ 1.,2. ])
+      [ 1.,4. ] (merge [ 1.,3. ] [ 2.,4. ])
+      [ 1.,4. ] (merge [ 1.,2. ] [ 2.,4. ])
+      [ 1.,4. ] (merge [ 1.,4. ] [ 2.,3. ])
+      [] (merge [] [])
+      [ 1.,2. ] (merge [ 1.,2. ] [])
+      [ 1.,2. ] (merge [] [ 1.,2. ])
+    *)
+
+    let print oc =
+      let rel = ref "" in
+      let p = print_as_date ~right_justified:false ~rel in
+      List.print (Tuple2.print p p) oc
+
+    (*$>*)
+  end
+
   (* Like BatSet.t, but with a serializer: *)
   type 'a set = 'a Set.t
   let set_ppp_ocaml ppp =
@@ -335,6 +411,16 @@ struct
 
   type site_fq = N.site * N.fq
     [@@ppp PPP_OCaml]
+
+  let site_fq_print oc (site, fq) =
+    Printf.fprintf oc "%a:%a"
+      N.site_print site
+      N.fq_print fq
+
+  let link_print oc (psite_fq, site_fq) =
+    Printf.fprintf oc "%a=>%a"
+      site_fq_print psite_fq
+      site_fq_print site_fq
 
   type t =
     { channel : RamenChannel.t ;
@@ -355,13 +441,245 @@ struct
   type replays = (RamenChannel.t, t) Hashtbl.t
     [@@ppp PPP_OCaml]
 
-  let replay_file conf =
+  let replays_file conf =
     N.path_cat [ conf.C.persist_dir ; N.path "replays" ;
                  N.path RamenVersions.replays ; N.path "replays" ]
 
   let load =
     let get = Files.ppp_of_file ~default:"{}" replays_ppp_ocaml in
-    fun conf -> get (replay_file conf)
+    fun conf ->
+      let fname = replays_file conf in
+      let context = "Reading replays from "^ (fname :> string) in
+      fail_with_context context (fun () ->
+        RamenAdvLock.with_r_lock fname (fun _fd -> get fname))
+
+  let save conf replays =
+    let fname = replays_file conf in
+    let context = "Saving replays into "^ (fname :> string) in
+    fail_with_context context (fun () ->
+      RamenAdvLock.with_w_lock fname (fun fd ->
+        Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays))
+
+  (* Helper function: *)
+
+  let cartesian_product f lst =
+    (* We have a list of list of things. Call [f] with a all possible lists of
+     * thing, one by one. (technically, the lists are reversed) *)
+    let rec loop selection = function
+      | [] -> f selection
+      | lst::rest ->
+          (* For each x of list, try all possible continuations: *)
+          List.iter (fun x ->
+            loop (x::selection) rest
+          ) lst in
+    if lst <> [] then loop [] lst
+
+  (*$inject
+    let test_cp lst =
+      let ls l = List.fast_sort compare l in
+      let s = ref Set.empty in
+      cartesian_product (fun l -> s := Set.add (ls l) !s) lst ;
+      Set.to_list !s |> ls
+  *)
+
+  (*$= test_cp & ~printer:(IO.to_string (List.print (List.print Int.print)))
+    [ [1;4;5] ; [1;4;6] ; \
+      [2;4;5] ; [2;4;6] ; \
+      [3;4;5] ; [3;4;6] ] (test_cp [ [1;2;3]; [4]; [5;6] ])
+
+   [] (test_cp [])
+
+   [] (test_cp [ []; [] ])
+
+   [] (test_cp [ [1;2;3]; []; [5;6] ])
+  *)
+
+  exception NotInStats of (N.site * N.fq)
+  exception NoData
+
+  (* Find a way to get the data out of fq for that time range.
+   * Note that there could be several ways to obtain those. For instance,
+   * we could ask for a 1year retention of some node that queried very
+   * infrequently, and that is also a parent of some other node for which
+   * we asked for a much shorter retention but that is queried more often:
+   * in that case the archiver could well decide to archive both the
+   * parent and, as an optimisation, this child. Now which best (or only)
+   * path to query that child depends on since/until.
+   * But the shortest path form fq to its archiving parents that have the
+   * required data is always the best. So start from fq and progress
+   * through parents until we have found all required sources with the whole
+   * archived content, recording the all the functions on the way up there
+   * in a set.
+   * Return all the possible ways to get some data in that range, with the
+   * sources, their distance, and the list of covered ranges. Caller
+   * will pick what it likes best (or compose a mix).
+   *
+   * Note regarding distributed mode:
+   * We keep assuming for now that fq is unique and runs locally.
+   * But its sources might not. In particular, for each parent we have to
+   * take into account the optional host identifier and follow there. During
+   * recursion we will have to keep track of the current local site. *)
+  let find_sources stats local_site fq since until =
+    let find_fq_stats site_fq =
+      try Hashtbl.find stats site_fq
+      with Not_found -> raise (NotInStats site_fq)
+    in
+    let cost (sources, links) =
+      Set.cardinal sources + Set.cardinal links in
+    let merge_ways ways =
+      (* We have a list of, for each parent, one time range and one replay
+       * configuration. Compute the union of all: *)
+      List.fold_left (fun (range, (sources, links))
+                          (range', (sources', links')) ->
+        Range.merge range range',
+        (Set.union sources sources', Set.union links links')
+      ) (Range.empty, (Set.empty, Set.empty)) ways in
+    let rec find_parent_ways since until links fqs =
+      (* When asked for several parent fqs, all the possible ways to retrieve
+       * any range of data is the cartesian product. But we are not going to
+       * return the full product, only the best alternative for any distinct
+       * time range. *)
+      let per_parent_ways =
+        List.map (find_ways since until links) fqs in
+      (* For each parent, we got an alist from time ranges to a set of
+       * sources/links (from which we assess a cost).
+       * Now the result is an alist from time ranges to ways unioning all
+       * possible ways. *)
+      let h = Hashtbl.create 11 in
+      cartesian_product (fun ways ->
+        (* ranges is a list (one item per parent) of all possible ways.
+         * Compute the resulting range.
+         * If it's better that what we already have (or if
+         * we have nothing for that range yet) then compute the actual
+         * set of sources and links and store it in [ways]: *)
+        let range, v = merge_ways ways in
+        Hashtbl.modify_opt range (function
+          | None -> Some v
+          | Some v' as prev ->
+              if cost v < cost v' then Some v else prev
+        ) h
+      ) per_parent_ways ;
+      Hashtbl.enum h |> List.of_enum
+    (* Find all ways up to some data sources required for [fq] in the time
+     * range [since]..[until]. Returns a list of pairs composed of the Range.t
+     * and a pair of the set of fqs and the set of links, a link being a pair
+     * of parent and child fq. So for instance, this is a possible result:
+     * [
+     *   [ (123.456, 125.789) ], (* the range *)
+     *   (
+     *     { source1; source2; ... }, (* The set of data sources *)
+     *     { (source1, fq2); (fq2, fq3); ... } (* The set of links *)
+     *   )
+     * ]
+     *
+     * Note regarding distributed mode:
+     * Everywhere we have a fq in that return type, what we actually have is a
+     * site * fq.
+     *)
+    and find_ways since until links (local_site, fq as site_fq) =
+      (* When given a single function, the possible ways are the one from
+       * the archives of this node, plus all possible ways from its parents: *)
+      let s = find_fq_stats site_fq in
+      let local_range =
+        List.fold_left (fun range (t1, t2) ->
+          if t1 > until || t2 < since then range else
+          Range.merge range (Range.make (max t1 since) (min t2 until))
+        ) Range.empty s.archives in
+      !logger.debug "From %a:%a, range from archives = %a"
+        N.site_print local_site
+        N.fq_print fq
+        Range.print local_range ;
+      (* Take what we can from here and the rest from the parents: *)
+      (* Note: we are going to ask all the parents to export the replay
+       * channel to this function. Although maybe some of those we are
+       * going to spawn a replayer. That's normal, the replayer is reusing
+       * the out_ref of the function it substitutes to. Which will never
+       * receive this channel (unless loops but then we actually want
+       * the worker to process the looping tuples!) *)
+      let links =
+        List.fold_left (fun links pfq ->
+          Set.add (pfq, (local_site, fq)) links
+        ) links s.parents in
+      let from_parents =
+        find_parent_ways since until links s.parents in
+      if Range.is_empty local_range then from_parents else
+        let local_way = local_range, (Set.singleton (local_site, fq), links) in
+        local_way :: from_parents
+    and pick_best_way ways =
+      let span_of_range =
+        List.fold_left (fun s (t1, t2) -> s +. (t2 -. t1)) 0. in
+      (* For now, consider only the covered range.
+       * TODO: Maybe favor also shorter paths? *)
+      List.fold_left (fun (best_span, _ as prev) (range, _ as way) ->
+        let span = span_of_range range in
+        assert (span >= 0.) ;
+        if span > best_span then span, Some way else prev
+      ) (0., None) ways |>
+      snd |>
+      option_get "no data in best path"
+    in
+    (* We assume all functions are running for now but this is not required
+     * for the replayer itself. Later we could add the required workers in the
+     * RC for just that channel. *)
+    match find_ways since until Set.empty (local_site, fq) with
+    | exception NotInStats _ ->
+        Printf.sprintf2 "Cannot find %a in the stats"
+          N.fq_print fq |>
+        failwith
+    | [] ->
+        raise NoData
+    | ways ->
+        !logger.debug "Found those ways: %a"
+          (List.print (Tuple2.print
+            Range.print
+            (Tuple2.print (Set.print site_fq_print)
+                          (Set.print link_print)))) ways ;
+        pick_best_way ways
+
+  (* Create the replay structure but does not start it (nor create the
+   * final_rb).
+   * Notice that the target is always local, which free us from the
+   * site identifier that would otherwise be necessary. If one wants
+   * to replay remote (or a combination of local and remote) workers
+   * then one can easily replay from an immediate expression, expressing
+   * this complex selection in ramen language directly.
+   * So, here [func] is supposed to mean the local instance of it only. *)
+  let create conf stats ?(timeout=Default.replay_timeout) func since until =
+    let timeout = Unix.gettimeofday () +. timeout in
+    let fq = F.fq_name func in
+    let out_type = O.out_type_of_operation func.F.operation in
+    let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+              List.map fst in
+    (* Ask to export only the fields we want. From now on we'd better
+     * not fail and retry as we would hammer the out_ref with temp
+     * ringbufs.
+     * Maybe we should use the channel in the rb name, and pick a
+     * channel large enough to be a hash of FQ, output fields and
+     * dates? But that mean 256bits integers (2xU128?). *)
+    (* TODO: for now, we ask for all fields. Ask only for field_names,
+     * but beware of with_event_type! *)
+    let target_fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
+    let range, (sources, links) =
+      find_sources stats conf.C.site fq since until in
+    (* Pick a channel. They are cheap, we do not care if we fail
+     * in the next step: *)
+    let channel = RamenChannel.make () in
+    let final_rb =
+      let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
+      Printf.sprintf2 "%s/replay_%a_%d.rb"
+        tmpdir RamenChannel.print channel (Unix.getpid ()) |>
+      N.path in
+    !logger.debug
+      "Creating replay channel %a, with sources=%a, links=%a, \
+       covered time slices=%a, final rb=%a"
+      RamenChannel.print channel
+      (Set.print site_fq_print) sources
+      (Set.print link_print) links
+      Range.print range
+      N.path_print final_rb ;
+    { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
+      since ; until ; final_rb ; sources ; links ; timeout }
+
 
   let teardown_links conf programs t =
     let rem_out_from site_fq =
@@ -459,6 +777,8 @@ struct
         else prev
       ) t.sources (0, Set.Int.empty, Set.empty) in
     pids, eofs
+
+  (*$>*)
 end
 
 

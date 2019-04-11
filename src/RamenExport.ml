@@ -12,6 +12,7 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
+module Replay = Processes.Replay
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -124,243 +125,6 @@ let check_field_names typ field_names =
     field_names)
 
 
-let cartesian_product f lst =
-  (* We have a list of list of things. Call [f] with a all possible lists of
-   * thing, one by one. (technically, the list are reversed) *)
-  let rec loop selection = function
-    | [] -> f selection
-    | lst::rest ->
-        (* For each x of list, try all possible continuations: *)
-        List.iter (fun x ->
-          loop (x::selection) rest
-        ) lst in
-  if lst <> [] then loop [] lst
-
-(*$inject
-  open Batteries
-
-  let test_cp lst =
-    let ls l = List.fast_sort compare l in
-    let s = ref Set.empty in
-    cartesian_product (fun l -> s := Set.add (ls l) !s) lst ;
-    Set.to_list !s |> ls
-*)
-
-(*$= test_cp & ~printer:(IO.to_string (List.print (List.print Int.print)))
-  [ [1;4;5] ; [1;4;6] ; \
-    [2;4;5] ; [2;4;6] ; \
-    [3;4;5] ; [3;4;6] ] (test_cp [ [1;2;3]; [4]; [5;6] ])
-
- [] (test_cp [])
-
- [] (test_cp [ []; [] ])
-
- [] (test_cp [ [1;2;3]; []; [5;6] ])
-*)
-
-module Range = struct
-  (*$< Range *)
-  type t = (float * float) list
-
-  let empty = []
-
-  let is_empty = (=) []
-
-  let make t1 t2 =
-    let t1 = min t1 t2 and t2 = max t1 t2 in
-    if t1 < t2 then [ t1, t2 ] else []
-
-  (*$T make
-    is_empty (make 1. 1.)
-    not (is_empty (make 1. 2.))
-  *)
-
-  let rec merge l1 l2 =
-    match l1, l2 with
-    | [], l | l, [] -> l
-    | (a1, b1)::r1, (a2, b2)::r2 ->
-        let am = min a1 a2 and bm = max b1 b2 in
-        if bm -. am <= (b1 -. a1) +. (b2 -. a2) then
-          (am, bm) :: merge r1 r2
-        else if a1 <= a2 then
-          (a1, b1) :: merge r1 l2
-        else
-          (a2, b2) :: merge l1 r2
-
-  (*$= merge & ~printer:(IO.to_string print)
-    [ 1.,2. ; 3.,4. ] (merge [ 1.,2. ] [ 3.,4. ])
-    [ 1.,2. ; 3.,4. ] (merge [ 3.,4. ] [ 1.,2. ])
-    [ 1.,4. ] (merge [ 1.,3. ] [ 2.,4. ])
-    [ 1.,4. ] (merge [ 1.,2. ] [ 2.,4. ])
-    [ 1.,4. ] (merge [ 1.,4. ] [ 2.,3. ])
-    [] (merge [] [])
-    [ 1.,2. ] (merge [ 1.,2. ] [])
-    [ 1.,2. ] (merge [] [ 1.,2. ])
-  *)
-
-  let print oc =
-    let rel = ref "" in
-    let p = print_as_date ~right_justified:false ~rel in
-    List.print (Tuple2.print p p) oc
-
-  (*$>*)
-end
-
-let site_fq_print oc (site, fq) =
-  Printf.fprintf oc "%a:%a"
-    N.site_print site
-    N.fq_print fq
-
-let link_print oc (psite_fq, site_fq) =
-  Printf.fprintf oc "%a=>%a"
-    site_fq_print psite_fq
-    site_fq_print site_fq
-
-exception NotInStats of (N.site * N.fq)
-exception NoData
-
-let find_replay_sources conf ?while_ local_site fq since until =
-  (* Find a way to get the data out of fq for that time range.
-   * Note that there could be several ways to obtain those. For instance,
-   * we could ask for a 1year retention of some node that queried very
-   * infrequently, and that is also a parent of some other node for which
-   * we asked for a much shorter retention but that is queried more often:
-   * in that case the archiver could well decide to archive both the
-   * parent and, as an optimisation, this child. Now which best (or only)
-   * path to query that child depends on since/until.
-   * But the shortest path form fq to its archiving parents that have the
-   * required data is always the best. So start from fq and progress
-   * through parents until we have found all required sources with the whole
-   * archived content, recording the all the functions on the way up there
-   * in a set.
-   * Return all the possible ways to get some data in that range, with the
-   * sources, their distance, and the list of covered ranges. Caller
-   * will pick what it likes best (or compose a mix).
-   *
-   * Note regarding distributed mode:
-   * We keep assuming for now that fq is unique and runs locally.
-   * But its sources might not. In particular, for each parent we have to
-   * take into account the optional host identifier and follow there. During
-   * recursion we will have to keep track of the current local site.
-   *)
-  let stats = RamenArchivist.get_global_stats ?while_ conf in
-  let find_fq_stats site_fq =
-    try Hashtbl.find stats site_fq
-    with Not_found -> raise (NotInStats site_fq)
-  in
-  let cost (sources, links) =
-    Set.cardinal sources + Set.cardinal links in
-  let merge_ways ways =
-    (* We have a list of, for each parent, one time range and one replay
-     * configuration. Compute the union of all: *)
-    List.fold_left (fun (range, (sources, links))
-                        (range', (sources', links')) ->
-      Range.merge range range',
-      (Set.union sources sources', Set.union links links')
-    ) (Range.empty, (Set.empty, Set.empty)) ways in
-  let rec find_parent_ways since until links fqs =
-    (* When asked for several parent fqs, all the possible ways to retrieve
-     * any range of data is the cartesian product. But we are not going to
-     * return the full product, only the best alternative for any distinct
-     * time range. *)
-    let per_parent_ways =
-      List.map (find_ways since until links) fqs in
-    (* For each parent, we got an alist from time ranges to a set of
-     * sources/links (from which we assess a cost).
-     * Now the result is an alist from time ranges to ways unioning all
-     * possible ways. *)
-    let h = Hashtbl.create 11 in
-    cartesian_product (fun ways ->
-      (* ranges is a list (one item per parent) of all possible ways.
-       * Compute the resulting range.
-       * If it's better that what we already have (or if
-       * we have nothing for that range yet) then compute the actual
-       * set of sources and links and store it in [ways]: *)
-      let range, v = merge_ways ways in
-      Hashtbl.modify_opt range (function
-        | None -> Some v
-        | Some v' as prev ->
-            if cost v < cost v' then Some v else prev
-      ) h
-    ) per_parent_ways ;
-    Hashtbl.enum h |> List.of_enum
-  (* Find all ways up to some data sources required for [fq] in the time
-   * range [since]..[until]. Returns a list of pairs composed of the Range.t
-   * and a pair of the set of fqs and the set of links, a link being a pair
-   * of parent and child fq. So for instance, this is a possible result:
-   * [
-   *   [ (123.456, 125.789) ], (* the range *)
-   *   (
-   *     { source1; source2; ... }, (* The set of data sources *)
-   *     { (source1, fq2); (fq2, fq3); ... } (* The set of links *)
-   *   )
-   * ]
-   *
-   * Note regarding distributed mode:
-   * Everywhere we have a fq in that return type, what we actually have is a
-   * site * fq.
-   *)
-  and find_ways since until links (local_site, fq as site_fq) =
-    (* When given a single function, the possible ways are the one from
-     * the archives of this node, plus all possible ways from its parents: *)
-    let s = find_fq_stats site_fq in
-    let local_range =
-      List.fold_left (fun range (t1, t2) ->
-        if t1 > until || t2 < since then range else
-        Range.merge range (Range.make (max t1 since) (min t2 until))
-      ) Range.empty s.RamenArchivist.archives in
-    !logger.debug "From %a:%a, range from archives = %a"
-      N.site_print local_site
-      N.fq_print fq
-      Range.print local_range ;
-    (* Take what we can from here and the rest from the parents: *)
-    (* Note: we are going to ask all the parents to export the replay
-     * channel to this function. Although maybe some of those we are
-     * going to spawn a replayer. That's normal, the replayer is reusing
-     * the out_ref of the function it substitutes to. Which will never
-     * receive this channel (unless loops but then we actually want
-     * the worker to process the looping tuples!) *)
-    let links =
-      List.fold_left (fun links pfq ->
-        Set.add (pfq, (local_site, fq)) links
-      ) links s.parents in
-    let from_parents =
-      find_parent_ways since until links s.parents in
-    if Range.is_empty local_range then from_parents else
-      let local_way = local_range, (Set.singleton (local_site, fq), links) in
-      local_way :: from_parents
-  and pick_best_way ways =
-    let span_of_range =
-      List.fold_left (fun s (t1, t2) -> s +. (t2 -. t1)) 0. in
-    (* For now, consider only the covered range.
-     * TODO: Maybe favor also shorter paths? *)
-    List.fold_left (fun (best_span, _ as prev) (range, _ as way) ->
-      let span = span_of_range range in
-      assert (span >= 0.) ;
-      if span > best_span then span, Some way else prev
-    ) (0., None) ways |>
-    snd |>
-    option_get "no data in best path"
-  in
-  (* We assume all functions are running for now but this is not required
-   * for the replayer itself. Later we could add the required workers in the
-   * RC for just that channel. *)
-  match find_ways since until Set.empty (local_site, fq) with
-  | exception NotInStats _ ->
-      Printf.sprintf2 "Cannot find %a in the stats"
-        N.fq_print fq |>
-      failwith
-  | [] ->
-      raise NoData
-  | ways ->
-      !logger.debug "Found those ways: %a"
-        (List.print (Tuple2.print
-          Range.print
-          (Tuple2.print (Set.print site_fq_print)
-                        (Set.print link_print)))) ways ;
-      pick_best_way ways
-
-
 let replay conf ?(while_=always) fq field_names where since until
            ~with_event_time f =
   (* Start with the most hazardous and interesting part: find a way to
@@ -390,57 +154,24 @@ let replay conf ?(while_=always) fq field_names where since until
    * the new channel is not broadcasted to all children to avoid spamming
    * the whole function tree! So we may want a special kind of entry in
    * the RC, or a special file altogether. *)
-  match find_replay_sources conf ~while_ conf.C.site fq since until with
-  | exception NoData -> on_exit ()
-  | range, (sources, links) ->
-    !logger.debug "Required sources: %a"
-      (Set.print site_fq_print) sources ;
-    !logger.debug "Required links: %a"
-      (Set.print link_print) links ;
-    !logger.debug "Time slice covered: %a" Range.print range ;
-    (* Then create a ringbuffer for reception: *)
-    let rb_name =
-      Printf.sprintf "/tmp/replay_test_%d.rb" (Unix.getpid ()) |>
-      N.path in
-    RingBuf.create rb_name ;
-    let rb = RingBuf.load rb_name in
-    let ret = finally (fun () -> RingBuf.unload rb) (fun () ->
-      (* Pick a channel. They are cheap, we do not care if we fail
-       * in the next step: *)
-      let channel = RamenChannel.make () in
-      (* Ask to export only the fields we want. From now on we'd better
-       * not fail and retry as we would hammer the out_ref with temp
-       * ringbufs.
-       * Maybe we should use the channel in the rb name, and pick a
-       * channel large enough to be a hash of FQ, output fields and
-       * dates? But that mean 256bits integers (2xU128?). *)
-      (* TODO: for now, we ask for all fields. Ask only for field_names,
-       * but beware of with_event_type! *)
-      (* Here we manipulate the outrefs directly, first to set our custom
-       * ringbuf as the exit of fq (which we suppose local), and to connect
-       * all the links that have been found above. Again, this is going to
-       * work only if all the involved workers are local. FIXME. *)
-      let fieldmask = RamenFieldMaskLib.fieldmask_all ~out_typ:ser in
-      let replay = Processes.Replay.{
-        channel ;
-        target = (conf.C.site, fq) ;
-        target_fieldmask = fieldmask ;
-        since ;
-        until ;
-        final_rb = rb_name ;
-        sources ;
-        links ;
-        timeout = Unix.gettimeofday () +. 300. } in
+  let stats = RamenArchivist.get_global_stats ~while_ conf in
+  match Replay.create conf stats func since until with
+  | exception Replay.NoData -> on_exit ()
+  | replay ->
+    RingBuf.create replay.final_rb ;
+    let rb = RingBuf.load replay.final_rb in
+    let ret =
       finally
         (fun () ->
-          Processes.Replay.teardown_links conf programs replay)
+          Replay.teardown_links conf programs replay ;
+          RingBuf.unload rb)
         (fun () ->
-          Processes.Replay.settup_links conf programs replay ;
+          Replay.settup_links conf programs replay ;
           (* Do not start the replay at once or the worker won't have reread
            * its out-ref. TODO: signal it. *)
           Unix.sleepf Default.min_delay_restats ;
           let pids, eofs =
-            Processes.Replay.spawn_all_local_sources conf programs replay in
+            Replay.spawn_all_local_sources conf programs replay in
           (* Read the rb while monitoring children: *)
           let pids = ref pids and eofs = ref eofs in
           let while_ () =
@@ -473,7 +204,7 @@ let replay conf ?(while_=always) fq field_names where since until
             RingBuf.dequeue_commit tx ;
             match msg with
             | RingBufLib.EndOfReplay (chan, replay_id), None ->
-              if chan = channel then (
+              if chan = replay.channel then (
                 if Set.mem replay_id !eofs then (
                   !logger.debug "EndOfReplay from %d" replay_id ;
                   eofs := Set.remove replay_id !eofs
@@ -482,9 +213,9 @@ let replay conf ?(while_=always) fq field_names where since until
                     replay_id
               ) else
                 !logger.error "Received EndOfReplay for channel %a not %a"
-                  RamenChannel.print chan RamenChannel.print channel
+                  RamenChannel.print chan RamenChannel.print replay.channel
             | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
-              if chan = channel then (
+              if chan = replay.channel then (
                 if filter tuple then (
                   let t1, t2 = event_time_of_tuple tuple in
                   if t2 > since && t1 <= until then (
@@ -500,7 +231,7 @@ let replay conf ?(while_=always) fq field_names where since until
                 ) else !logger.debug "tuple filtered out"
               ) else
                 !logger.error "Received EndOfReplay for channel %a not %a"
-                  RamenChannel.print chan RamenChannel.print channel
+                  RamenChannel.print chan RamenChannel.print replay.channel
             | _ ->
                 !logger.error "Received an unknown message in tx") ;
           (* Signal the end of the replay: *)
@@ -509,8 +240,7 @@ let replay conf ?(while_=always) fq field_names where since until
           waitall ~while_ ~expected_status:ExitCodes.terminated
                   ~what:"replayer" !pids ;
           ret
-        ) ()
-    ) () in
+        ) () in
     (* If all went well, delete the ringbuf: *)
-    Files.safe_unlink rb_name ;
+    Files.safe_unlink replay.final_rb ;
     ret

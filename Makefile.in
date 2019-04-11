@@ -612,7 +612,6 @@ TESTABLE_SOURCES = \
 	src/RamenProcesses.ml\
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
-	src/RamenExport.ml \
 	src/RamenOutRef.ml \
 	src/RamenOCamlCompiler.ml
 

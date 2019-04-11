@@ -15,6 +15,7 @@ module N = RamenName
 module O = RamenOperation
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Processes = RamenProcesses
 
 let conf_dir conf =
   N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
@@ -72,30 +73,6 @@ let retention_of_fq user_conf (fq : N.fq) =
  * #notifs "manually".
  *)
 
-(* Global per-func stats that are updated by the thread reading #notifs and
- * the one reading the RC, and also saved on disk while ramen is not running:
- *)
-
-type func_stats =
-  { startup_time : float ; (* To distinguish from present run *)
-    running_time : float [@ppp_default 0.] ;
-    tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
-    bytes : int64 [@ppp_default 0L] ;
-    cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
-    ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
-    mutable parents : (N.site * N.fq) list ;
-    (* Also gather available history per running workers, to speed up
-     * establishing query plans: *)
-    mutable archives : (float * float) list [@ppp_default []] ;
-    (* We want to allocate disk space only to those workers that are running,
-     * but also want to save stats about workers that's been running recently
-     * enough and might resume: *)
-    mutable is_running : bool [@ppp_default false] }
-  [@@ppp PPP_OCaml]
-
-let archives_print oc =
-  List.print (Tuple2.print Float.print Float.print) oc
-
 let get_user_conf fname per_func_stats =
   let default = "{size_limit=1073741824}" in
   let user_conf = Files.ppp_of_file ~default user_conf_ppp_ocaml fname in
@@ -109,7 +86,7 @@ let get_user_conf fname per_func_stats =
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
       Hashtbl.iter (fun (_, (fq : N.fq)) s ->
-        if s.parents = [] then
+        if s.Processes.parents = [] then
           let pat = Globs.(escape (fq :> string)) in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
@@ -127,7 +104,8 @@ let func_stats_of_stat s now =
     | None, _ | _, None -> Uint64.zero
     | Some b, Some c -> Uint64.(b * c)
   in
-  { startup_time = s.RamenPs.startup_time ;
+  Processes.{
+    startup_time = s.RamenPs.startup_time ;
     running_time = etime_diff ;
     tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
     bytes = Uint64.(to_int64 bytes) ;
@@ -139,7 +117,8 @@ let func_stats_of_stat s now =
 
 (* Adds two func_stats together, favoring a *)
 let add_ps_stats a b =
-  { startup_time = a.startup_time ;
+  Processes.{
+    startup_time = a.startup_time ;
     running_time = a.running_time +. b.running_time ;
     tuples = Int64.add a.tuples b.tuples ;
     bytes = Int64.add a.bytes b.bytes ;
@@ -151,7 +130,7 @@ let add_ps_stats a b =
 
 (* Those stats are saved on disk: *)
 
-type per_func_stats_ser = (N.fq, func_stats) Hashtbl.t
+type per_func_stats_ser = (N.fq, Processes.func_stats) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 let stat_file ?site conf =
@@ -207,7 +186,7 @@ let sites_matching_identifier conf all_sites = function
       ) all_sites
 
 let update_parents conf s all_sites program_name func =
-  s.parents <-
+  s.Processes.parents <-
     List.fold_left (fun parents (psite_id, pprog, pfunc) ->
       let pprog =
         F.program_of_parent_prog program_name pprog
@@ -256,7 +235,7 @@ let update_archives conf s func =
         loop [t] rest'
     | prev, [] ->
         List.rev prev in
-  s.archives <- loop [] lst
+  s.Processes.archives <- loop [] lst
 
 let enrich_local_stats conf per_func_stats =
   let all_sites = RamenServices.all_sites conf in
@@ -271,7 +250,7 @@ let enrich_local_stats conf per_func_stats =
             match Hashtbl.find per_func_stats fq with
             | exception Not_found -> ()
             | s ->
-                s.is_running <- rce.C.status = MustRun ;
+                s.Processes.is_running <- rce.C.status = MustRun ;
                 update_parents conf s all_sites program_name func ;
                 update_archives conf s func
           ) prog.P.funcs)
@@ -283,7 +262,7 @@ let update_local_worker_stats ?while_ conf =
    * loading the file as the current stats. We will shift it into the total
    * if we receive a new startup_time: *)
   let per_func_stats :
-    (N.fq, (func_stats option * func_stats)) Hashtbl.t =
+    (N.fq, (Processes.func_stats option * Processes.func_stats)) Hashtbl.t =
     load_stats ~site:conf.C.site conf |>
     Hashtbl.map (fun _fq s -> None, s)
   in
@@ -422,12 +401,14 @@ let cost i site_fq =
 
 (* The "compute cost" per second is the CPU time it takes to
  * process one second worth of data. *)
-let compute_cost s = s.cpu /. s.running_time
+let compute_cost s =
+  s.Processes.cpu /. s.Processes.running_time
 
 (* The "recall size" is the total size per second in bytes.
  * The recall cost of a second worth of output will be this size
  * times the user_conf.recall_cost. *)
-let recall_size s = Int64.to_float s.bytes /. s.running_time
+let recall_size s =
+  Int64.to_float s.Processes.bytes /. s.Processes.running_time
 
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100. From now on, [per_func_stats] is keyed by site*fq and has all
@@ -473,7 +454,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
       (list_print (fun oc (site, fq) ->
         Printf.fprintf oc "%a:%a"
           N.site_print site
-          N.fq_print fq)) s.parents ;
+          N.fq_print fq)) s.Processes.parents ;
     List.iteri (fun i d ->
       let recall_size = recall_size s in
       let recall_cost =
@@ -543,13 +524,14 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
   (* We want to consider only the running functions, but also need their
    * non running parents! *)
   let per_func_stats =
-    let h = Hashtbl.filter (fun s -> s.is_running) per_func_stats in
+    let h =
+      Hashtbl.filter (fun s -> s.Processes.is_running) per_func_stats in
     let rec loop () =
       let mia =
         Hashtbl.fold (fun _site_fq s mia ->
           List.fold_left (fun mia psite_fq ->
             if Hashtbl.mem h psite_fq then mia else psite_fq::mia
-          ) mia s.parents
+          ) mia s.Processes.parents
         ) h [] in
       if mia <> [] then (
         List.iter (fun (psite, pfq as psite_fq) ->
@@ -659,7 +641,7 @@ let update_storage_allocation conf =
       (* Next scale will scale this properly *)
       let solution =
         Hashtbl.filter_map (fun _ s ->
-          if s.is_running then Some 1 else None
+          if s.Processes.is_running then Some 1 else None
         ) per_func_stats in
       (* Have to recompute [tot_perc]: *)
       let tot_perc =
@@ -704,7 +686,7 @@ let update_local_workers_export
                 batch_size = Default.orc_rows_per_batch ;
                 num_batches = Default.orc_batches_per_file } in
           if max_size > 0 then
-            RamenProcesses.start_export
+            Processes.start_export
               ~file_type ~duration:export_duration conf func |> ignore)
 
 (*
@@ -734,7 +716,7 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
   let export_duration = sleep_time *. 2. in
   let watchdog =
     let timeout = sleep_time *. 2. in
-    RamenWatchdog.make ~timeout "Archiver" RamenProcesses.quit in
+    RamenWatchdog.make ~timeout "Archiver" Processes.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
     run_once conf ?while_ ~export_duration stats allocs reconf ;
