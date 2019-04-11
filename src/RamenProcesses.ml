@@ -149,6 +149,13 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
   check_status pid (Some (WEXITED 0))
  *)
 
+let run_worker ?and_stop (bin : N.path) args env =
+  (* Better have the workers CWD where the binary is, so that any file name
+   * mentioned in the program is relative to the program. *)
+  let cwd = Files.dirname bin in
+  let cmd = Files.basename bin in
+  run_background ~cwd ?and_stop cmd args env
+
 (*
  * Process Supervisor: Start and stop according to a mere file listing which
  * programs to run.
@@ -320,6 +327,143 @@ let check_is_subtype t1 t2 =
       failwith
   ) t1
 
+module Replay =
+struct
+  (* Like BatSet.t, but with a serializer: *)
+  type 'a set = 'a Set.t
+  let set_ppp_ocaml ppp =
+    let open PPP in
+    PPP_OCaml.list ppp >>: Set.(to_list, of_list)
+
+  type site_fq = N.site * N.fq
+    [@@ppp PPP_OCaml]
+
+  type t =
+    { channel : RamenChannel.t ;
+      target : site_fq ;
+      target_fieldmask : RamenFieldMask.fieldmask ;
+      since : float ;
+      until : float ;
+      final_rb : N.path ;
+      sources : site_fq set ;
+      (* We pave the whole way from all sources to the target for this
+       * channel id, rather than letting the normal stream carry this
+       * channel events, in order to avoid spamming unrelated nodes
+       * (Cf. issue #640): *)
+      links : (site_fq * site_fq) set ;
+      timeout : float (* wall clock time, not duration! *) }
+    [@@ppp PPP_OCaml]
+
+  type replays = (RamenChannel.t, t) Hashtbl.t
+    [@@ppp PPP_OCaml]
+
+  let replay_file conf =
+    N.path_cat [ conf.C.persist_dir ; N.path "replays" ;
+                 N.path RamenVersions.replays ; N.path "replays" ]
+
+  let load =
+    let get = Files.ppp_of_file ~default:"{}" replays_ppp_ocaml in
+    fun conf -> get (replay_file conf)
+
+  let teardown_links conf programs t =
+    let rem_out_from site_fq =
+      let site, fq = site_fq in
+      if site = conf.C.site then
+        match C.find_func programs fq with
+        | exception Not_found -> (* Not a big deal really *)
+            !logger.warning
+              "While tearing down channel %a, cannot find function %a"
+              RamenChannel.print t.channel N.fq_print fq
+        | _rce, _prog, func ->
+            let out_ref = C.out_ringbuf_names_ref conf func in
+            OutRef.remove_channel out_ref t.channel
+    in
+    (* Start by removing the links from the graph, then the last one
+     * from the target: *)
+    Set.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
+    rem_out_from t.target
+
+  let settup_links conf programs t =
+    (* Connect the target first, then the graph: *)
+    let connect_to_rb func fname fieldmask =
+      let out_ref = C.out_ringbuf_names_ref conf func in
+      OutRef.add out_ref ~timeout:t.timeout ~channel:t.channel
+                 fname fieldmask
+    in
+    let target_site, target_fq = t.target in
+    let what = Printf.sprintf2 "Setting up links for channel %a"
+                 RamenChannel.print t.channel in
+    log_and_ignore_exceptions ~what (fun () ->
+      if conf.C.site = target_site then (
+        let _rce, _prog, func = C.find_func_or_fail programs target_fq in
+        connect_to_rb func t.final_rb t.target_fieldmask)) () ;
+    Set.iter (fun ((psite, pfq), (_, cfq)) ->
+      if conf.C.site = psite then
+        log_and_ignore_exceptions ~what (fun () ->
+          let _rce, _prog, cfunc = C.find_func_or_fail programs cfq in
+          let _rce, _prog, pfunc = C.find_func_or_fail programs pfq in
+          let fname = input_ringbuf_fname conf pfunc cfunc
+          and fieldmask = make_fieldmask pfunc cfunc in
+          connect_to_rb pfunc fname fieldmask) ()
+    ) t.links
+
+  (* Spawn a source.
+   * Note: there is no top-half for sources. We assume the required
+   * top-halves are already running as their full remote children are.
+   * Pass to each replayer the name of the function, the out_ref files to
+   * obey, the channel id to tag tuples with, and since/until dates.
+   * Returns the pid. *)
+  let spawn_source_replay conf programs sfq t replayer_id =
+    let rce, _prog, func = C.find_func_or_fail programs sfq in
+    let fq = F.fq_name func in
+    let args = [| Worker_argv0.replay ; (fq :> string) |]
+    and out_ringbuf_ref = C.out_ringbuf_names_ref conf func
+    and rb_archive =
+      (* We pass the name of the current ringbuf archive if
+       * there is one, that will be read after the archive
+       * directory. Notice that if we cannot read the current
+       * ORC file before it's archived, nothing prevent a
+       * worker to write both a non-wrapping, non-archive
+       * worthy ringbuf in addition to an ORC file. *)
+      C.archive_buf_name ~file_type:OutRef.RingBuf conf func
+    in
+    let env =
+      [| "name="^ (func.F.name :> string) ;
+         "fq_name="^ (fq :> string) ;
+         "log_level="^ string_of_log_level conf.C.log_level ;
+         "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
+         "rb_archive="^ (rb_archive :> string) ;
+         "since="^ string_of_float t.since ;
+         "until="^ string_of_float t.until ;
+         "channel_id="^ RamenChannel.to_string t.channel ;
+         "replayer_id="^ string_of_int replayer_id |] in
+    let pid = run_worker rce.C.bin args env in
+    !logger.debug "Replay for %a is running under pid %d"
+      N.fq_print fq pid ;
+    pid
+
+  (* Spawn all (local) replayers and return the set of pids and the
+   * set of replayer ids. *)
+  let spawn_all_local_sources conf programs t =
+    let what = Printf.sprintf2 "Spawning local replayers for channel %a"
+                 RamenChannel.print t.channel in
+    let _, pids, eofs =
+      Set.fold (fun (ssite, sfq) (i, pids, eofs as prev) ->
+        if conf.C.site = ssite then
+          match spawn_source_replay conf programs sfq t i with
+          | exception e ->
+              print_exception ~what e ;
+              prev
+          | pid ->
+              i + 1,
+              Set.Int.add pid pids,
+              Set.add i eofs
+        else prev
+      ) t.sources (0, Set.Int.empty, Set.empty) in
+    pids, eofs
+end
+
+
 open Binocle
 
 let stats_worker_crashes =
@@ -413,13 +557,6 @@ let process_workers_terminations conf running =
           proc.pid <- None)
     ) proc.pid
   ) running
-
-let run_worker ?and_stop (bin : N.path) args env =
-  (* Better have the workers CWD where the binary is, so that any file name
-   * mentioned in the program is relative to the program. *)
-  let cwd = Files.dirname bin in
-  let cmd = Files.basename bin in
-  run_background ~cwd ?and_stop cmd args env
 
 (* Returns the buffer name: *)
 let start_export ?(file_type=OutRef.RingBuf)

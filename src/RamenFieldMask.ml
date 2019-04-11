@@ -46,6 +46,11 @@ let of_string s =
     failwith ;
   fm
 
+let fieldmask_ppp_ocaml =
+  PPP.(>>:)
+    PPP_OCaml.string
+    (to_string, of_string)
+
 (*$< Batteries *)
 
 (*$= of_string & ~printer:identity

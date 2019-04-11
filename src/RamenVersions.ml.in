@@ -43,3 +43,6 @@ let factors = "v1"
 
 (* Format of the services file *)
 let services = "v2" (* last: split sites/services *)
+
+(* Format of the replays file *)
+let replays = "v1"
