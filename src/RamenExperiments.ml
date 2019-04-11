@@ -126,9 +126,8 @@ let all_experiments =
     | Some lst -> lst
     | None ->
         let fname = get_add_exps_fname persist_dir in
-        Files.mkdir_all ~is_file:true fname ;
         let lst =
-          if Files.exists fname then
+          if not (N.is_empty persist_dir) && Files.exists fname then
             let exps =
               Files.ppp_of_file Serialized.exps_ppp_ocaml fname |>
               Hashtbl.to_list |>

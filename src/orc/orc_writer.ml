@@ -9,6 +9,7 @@ open RamenHelpers
 open RamenLog
 module T = RamenTypes
 module N = RamenName
+module C = RamenConf
 module Orc = RamenOrc
 module Files = RamenFiles
 
@@ -20,10 +21,11 @@ let main =
   and orc_read_func = "orc_read" in
   let rtyp = PPP.of_string_exc T.t_ppp_ocaml ramen_type in
   RamenOCamlCompiler.use_external_compiler := false ;
-  RamenOCamlCompiler.bundle_dir :=
-    N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") ;
+  let bundle_dir =
+    N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") in
+  let conf = C.make_conf ~debug:true ~bundle_dir (N.path "") in
   let cc_dst, schema =
-    RamenCompiler.orc_codec ~debug:true orc_write_func orc_read_func
+    RamenCompiler.orc_codec conf orc_write_func orc_read_func
                             (N.path "orc_writer_") rtyp in
   (*
    * Now the ML side:
@@ -107,5 +109,5 @@ let main =
    * Link!
    *)
   let obj_files = [ cc_dst ] in
-  RamenOCamlCompiler.link ~debug:true ~keep_temp_files ~what:"ORC writer"
+  RamenOCamlCompiler.link conf ~keep_temp_files ~what:"ORC writer"
                           ~obj_files ~src_file:ml_src_file ~exec_file
