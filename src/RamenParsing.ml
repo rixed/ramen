@@ -36,11 +36,19 @@ let string_parser ~what ~print p =
   let p = allow_surrounding_blanks p in
   fun s ->
     let stream = stream_of_string s in
-    (* TODO: enable error correction *)
-    match p [what] None Parsers.no_error_correction stream |> to_result with
-    | Bad e ->
-      Printf.sprintf2 "Parse error: %a" (print_bad_result print) e |>
-      failwith
+    let parse_with_err_budget e =
+      let c = ParsersBoundedSet.make e in
+      p [what] None c stream |> to_result in
+    match parse_with_err_budget 0 with
+    | Bad _ ->
+        (* Try again with some error correction activated, in order to get a
+         * better error message: *)
+        (match parse_with_err_budget 3 with
+        | Bad e ->
+            Printf.sprintf2 "Parse error: %a"
+              (print_bad_result print) e |>
+            failwith
+        | _ -> assert false)
     | Ok (res, _) -> res
 
 (* strinG will match the given string regardless of the case and
