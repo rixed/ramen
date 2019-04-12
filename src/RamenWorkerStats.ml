@@ -194,14 +194,17 @@ let serialize tx start_offs
                os, lo, stime) =
   zero_bytes tx start_offs nullmask_sz ; (* zero the nullmask *)
   let null_i = ref 0 in
-  let write_nullable_thing w sz offs = function
-    | Null ->
-        offs
-    | NotNull v ->
-        set_bit tx start_offs !null_i ;
-        incr null_i ;
-        w tx offs v ;
-        offs + sz in
+  let write_nullable_thing w sz offs t =
+    let offs =
+      match t with
+      | Null ->
+          offs
+      | NotNull v ->
+          set_bit tx start_offs !null_i ;
+          w tx offs v ;
+          offs + sz in
+    incr null_i ;
+    offs in
   let write_nullable_u64 =
     let sz = sersize_of_u64 in
     write_nullable_thing write_u64 sz
