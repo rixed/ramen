@@ -632,6 +632,8 @@ let check_depends_only_on lst =
       check_can_use TupleOut
     | _ -> ())
 
+let default_commit_cond = E.of_bool true
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
@@ -656,8 +658,8 @@ let checked params op =
       match e.E.text with
       | Stateful (LocalState, skip, stateful) ->
           !logger.warning
-            "In %s: Locally stateful function without a GROUP-BY clause. \
-             Did you mean %a?"
+            "In %s: Locally stateful function without aggregation. \
+             Do you mean %a?"
             clause
             (E.print_text ~max_depth:1 false)
               (Stateful (GlobalState, skip, stateful))
@@ -781,9 +783,10 @@ let checked params op =
             failwith
       | _ -> ()
     ) op ;
-    (* Finally, check that if now group-by clause is present, then no
+    (* Finally, check that if there is no aggregation then no
      * LocalState is used anywhere: *)
-    if key = [] then iter_top_level_expr warn_no_group op
+    if commit_cond == default_commit_cond then
+      iter_top_level_expr warn_no_group op
 
   | ListenFor { proto ; factors ; _ } ->
     let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -982,8 +985,6 @@ struct
 
   let dummy_commit m =
     (strinG "commit" >>: fun () -> CommitSpec) m
-
-  let default_commit_cond = E.of_bool true
 
   let commit_clause m =
     let m = "commit clause" :: m in
