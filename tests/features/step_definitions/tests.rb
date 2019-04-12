@@ -194,14 +194,14 @@ Given /^(?:the )?programs? (.*) must( not)? be running/ do |programs, not_run|
   end
 end
 
-Given /no (?:program|worker)s? (?:is|are) running/ do
+Given /^no (?:program|worker)s? (?:is|are) running/ do
   `ramen ps --short`.lines.select{|e| e =~ /^([^\t]+)\t/}.each do |e|
     prog = $1
     `ramen kill "#{prog}"`
   end
 end
 
-Given /(?:the )?programs? (.*) (?:is|are) not running/ do |programs|
+Given /^(?:the )?programs? (.*) (?:is|are) not running/ do |programs|
   re = Regexp.union(programs.list_split.map{|w| /^(#{Regexp.escape(w)})\t/})
   l = `ramen ps --short`.lines.select{|e| e =~ re}.each do |e|
     prog = $1
@@ -209,7 +209,7 @@ Given /(?:the )?programs? (.*) (?:is|are) not running/ do |programs|
   end
 end
 
-Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
+Given /^(?:the )?programs? (.*) (?:is|are) running/ do |programs|
   running = `ramen ps --short`.lines.map do |l|
     l =~ /^([^\t]+)\t/
     $1

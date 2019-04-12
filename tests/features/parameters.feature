@@ -21,6 +21,8 @@ Feature: Programs ca  be parameterized
 
   Scenario: A program behavior can depends on parameter and environment.
     Given I run ramen with arguments run -p 'first_name="Leontine"' test.x --as test/Leontine
+    And I wait 2 seconds
+    # ...for the stats to arrive
     When I run ramen with arguments ps
     Then ramen must mention "test/Leontine/f"
     When I run ramen with arguments tail -n 1 'test/Leontine/f' --raw
@@ -29,6 +31,8 @@ Feature: Programs ca  be parameterized
   Scenario: We can run two instances of a program with different parameters.
     Given I run ramen with arguments run -p 'first_name="Romuald"' test.x --as test/Romuald
     And I run ramen with arguments run -p 'first_name="Raphael"' test.x --as test/Raphael
+    And I wait 2 seconds
+    # ...for the stats to arrive
     When I run ramen with arguments ps
     Then ramen must mention "test/Romuald/f"
     And ramen must mention "test/Raphael/f".
@@ -39,5 +43,7 @@ Feature: Programs ca  be parameterized
   Scenario: But only one under the same name.
     Given I run ramen with arguments run -p 'first_name="Josephine"' test.x --as test/Josephine
     And I run ramen with arguments run -p 'first_name="Josephine"' test.x --as test/Josephine
+    And I wait 2 seconds
+    # ...for the stats to arrive
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.

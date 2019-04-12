@@ -14,6 +14,8 @@ Feature: check that the CLI behave in a sensible way
     Given ramen supervisor is started
     And the program tests/p is running
     When I run ramen with arguments ps
+    And I wait 2 seconds
+    # ...for the stats to arrive
     Then ramen must mention "tests/p"
     When I run ramen with arguments kill tests/p
     Then ramen must exit gracefully
