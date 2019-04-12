@@ -8,8 +8,8 @@ DEFINE f1 AS
     -- explanation about seasonal in CodeGenLib) the equivalent
     -- is actually `avg _last_ last N`:
     n,
-    moveavg(1, n) AS n1_1,
-    avg lag last 1 n AS n1_2,
-    moveavg(2, n) AS n2_1,
-    avg lag last 2 n AS n2_2
+    moveavg globally (1, n) AS n1_1,
+    avg globally lag globally last 1 globally n AS n1_2,
+    moveavg globally (2, n) AS n2_1,
+    avg globally lag globally last 2 globally n AS n2_2
   COMMIT AFTER n = 3;

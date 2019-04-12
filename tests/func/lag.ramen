@@ -2,4 +2,4 @@
 
 DEFINE f AS
   FROM fixtures/n123/csv
-  SELECT n, lag n AS lag1, lag (2, n) AS lag2;
+  SELECT n, lag globally n AS lag1, lag globally (2, n) AS lag2;

@@ -30,4 +30,4 @@ DEFINE o3 AS FROM fixtures/n123/csv SELECT OR globally (not b) AS not_b COMMIT A
 
 -- Check stateful functions in where clauses
 
-DEFINE f2 AS SELECT n FROM fixtures/n123/csv WHERE lag n = 2;
+DEFINE f2 AS SELECT n FROM fixtures/n123/csv WHERE lag globally n = 2;

@@ -1308,9 +1308,9 @@ struct
         fun (ps, e) ->
           make (Stateless (SL2 (Percentile, e, ps)))
       ) |||
-      (afun2_sf ~def_state:GlobalState "lag" >>: fun ((g, n), e1, e2) ->
+      (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
          make (Stateful (g, n, SF2 (Lag, e1, e2)))) |||
-      (afun1_sf ~def_state:GlobalState "lag" >>: fun ((g, n), e) ->
+      (afun1_sf "lag" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF2 (Lag, one (), e)))) |||
 
       (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
@@ -1669,7 +1669,7 @@ struct
     "(unknown.x) % (unknown.y)" \
       (test_expr ~printer:(print false) p "x % y")
 
-    "ABS((unknown.bps) - (LAG GLOBALLY skip nulls(1, unknown.bps)))" \
+    "ABS((unknown.bps) - (LAG LOCALLY skip nulls(1, unknown.bps)))" \
       (test_expr ~printer:(print false) p "abs(bps - lag(1,bps))")
 
     "HYSTERESIS LOCALLY skip nulls(unknown.value, 900, 1000)" \

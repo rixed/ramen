@@ -10,6 +10,6 @@ DEFINE count_cars AS
   FROM fixtures/cars/csv
   SELECT
     manufacturer,
-    lag locally manufacturer AS prev_manufacturer,
-    SUM 1 AS num_models
+    lag manufacturer AS prev_manufacturer,
+    SUM globally 1 AS num_models
   COMMIT BEFORE out.manufacturer != out.prev_manufacturer;

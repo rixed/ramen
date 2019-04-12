@@ -1414,7 +1414,7 @@ let fields_schema m =
         (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
     "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
-        (test_op "SELECT n, lag(2, n) AS l FROM foo/bar")
+        (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
 
     "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \
       (test_op "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
