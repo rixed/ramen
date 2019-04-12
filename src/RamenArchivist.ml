@@ -624,7 +624,7 @@ let update_storage_allocation conf =
       | [], NonParametricSort (Identifier "Int"),
         ConstantTerm perc ->
           let perc = int_of_constant perc in
-          if perc <> 0 then !logger.info "%a%a: %d%%"
+          if perc <> 0 then !logger.info "%a:%a: %d%%"
             N.site_print site
             N.fq_print fq
             perc ;
