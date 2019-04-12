@@ -185,16 +185,27 @@ let sites_matching_identifier conf all_sites = function
         Globs.matches p (s :> string)
       ) all_sites
 
-let update_parents conf s all_sites program_name func =
+let update_parents conf programs s all_sites program_name func =
   s.Processes.parents <-
     List.fold_left (fun parents (psite_id, pprog, pfunc) ->
       let pprog =
-        F.program_of_parent_prog program_name pprog
-      and psites =
-        sites_matching_identifier conf all_sites psite_id in
-      Set.fold (fun psite parents ->
-        (psite, N.fq_of_program pprog pfunc) :: parents
-      ) psites parents
+        F.program_of_parent_prog program_name pprog in
+      match Hashtbl.find programs pprog with
+      | exception Not_found ->
+          !logger.warning "Unknown parent %a of %a"
+            N.program_print pprog
+            N.fq_print (F.fq_name func) ;
+          parents
+      | prce, _ ->
+          let psites =
+            (* Parent sites are the intersection of the site identifier of the
+             * FROM clause and the RC specification for that program: *)
+            sites_matching_identifier conf all_sites psite_id |>
+            Set.filter (fun (psite : N.site) ->
+              Globs.matches prce.C.on_site (psite :> string)) in
+          Set.fold (fun psite parents ->
+            (psite, N.fq_of_program pprog pfunc) :: parents
+          ) psites parents
     ) [] func.F.parents
 
 let update_archives conf s func =
@@ -239,7 +250,7 @@ let update_archives conf s func =
 
 let enrich_local_stats conf per_func_stats =
   let all_sites = RamenServices.all_sites conf in
-  C.with_rlock conf identity |>
+  let programs = C.with_rlock conf identity in
   Hashtbl.iter (fun program_name (rce, get_rc) ->
     if Globs.matches rce.C.on_site (conf.C.site :> string) then
       match get_rc () with
@@ -251,9 +262,10 @@ let enrich_local_stats conf per_func_stats =
             | exception Not_found -> ()
             | s ->
                 s.Processes.is_running <- rce.C.status = MustRun ;
-                update_parents conf s all_sites program_name func ;
+                update_parents conf programs s all_sites program_name func ;
                 update_archives conf s func
-          ) prog.P.funcs)
+          ) prog.P.funcs
+  ) programs
 
 (* tail -f the #notifs stream and update per_func_stats: *)
 let update_local_worker_stats ?while_ conf =
