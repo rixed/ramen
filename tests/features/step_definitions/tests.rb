@@ -219,6 +219,8 @@ Given /(?:the )?programs? (.*) (?:is|are) running/ do |programs|
       expect(system("ramen run --src-file '#{prog}.ramen' --as '#{prog}' '#{prog}.x'")).to eq true
     end
   end
+  # Wait until supervisor really start them, and they appear in stats
+  sleep 2
 end
 
 Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|

@@ -11,6 +11,7 @@ type valtype =
   | ValFlt of float
   | ValDate of float
   | ValDuration of float
+  | ValBool of bool
 
 let string_of_val = function
   | ValStr s -> s
@@ -18,12 +19,14 @@ let string_of_val = function
   | ValFlt f -> nice_string_of_float f
   | ValDate t -> string_of_time t
   | ValDuration t -> string_of_duration t
+  | ValBool t -> string_of_bool t
 
+let str_or_na = Option.map (fun s -> ValStr s)
 let int_or_na = Option.map (fun i -> ValInt (Stdint.Uint64.to_int i))
 let flt_or_na = Option.map (fun f -> ValFlt f)
 let date_or_na = Option.map (fun t -> ValDate t)
 let duration_or_na = Option.map (fun t -> ValDuration t)
-let str_or_na = Option.map (fun s -> ValStr s)
+let bool_or_na = Option.map (fun t -> ValBool t)
 let perf p =
   let open Binocle.Perf in
   if p.count <= 0 then None else
@@ -53,10 +56,14 @@ let sort ~sort_col lines =
         Float.compare (float_of_int i2) f1
     | Some (ValInt i1), Some (ValFlt f2 | ValDate f2 | ValDuration f2) ->
         Float.compare f2 (float_of_int i1)
+    | Some (ValBool b1), Some (ValBool b2) ->
+        Bool.compare b2 b1
     | Some (ValStr s1), Some v2 ->
         String.compare s1 (string_of_val v2)
     | Some v1, Some (ValStr s2) ->
         String.compare (string_of_val v1) s2
+    | Some (ValBool _), Some _ -> -1
+    | Some _, Some (ValBool _) -> 1
     | Some _, None -> 1
     | None, Some _ -> -1
     | None, None -> 0
@@ -139,6 +146,8 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
                   fmts.(i) <- Some make_left_justify ; has_unset
               | Some (ValDuration _) ->
                   fmts.(i) <- Some make_right_justify ; has_unset
+              | Some (ValBool _) ->
+                  fmts.(i) <- Some make_left_justify ; has_unset
               | None ->
                   fmts.(i) <- None ; true)
           | Some _ -> has_unset

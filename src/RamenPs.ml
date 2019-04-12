@@ -221,9 +221,9 @@ let add_stats s1 s2 =
 
 let per_program stats =
   let h = Hashtbl.create 17 in
-  Hashtbl.iter (fun (fq, _is_top_half) stats ->
+  Hashtbl.iter (fun (fq, is_top_half) stats ->
     let program, _ = N.fq_parse fq in
-    Hashtbl.modify_opt program (function
+    Hashtbl.modify_opt (program, is_top_half) (function
       | None -> Some stats
       | Some stats' -> Some (add_stats stats' stats)
     ) h

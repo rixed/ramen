@@ -439,27 +439,25 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
   if short then
     let head =
       if profile then
-        [| "program" ; "CPU" ; "wait in" ; "wait out" ;
+        [| "program" ; "top-half" ; "CPU" ; "wait in" ; "wait out" ;
            "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
            "update_group" ; "commit_incoming" ; "select_others" ;
            "finalize_others" ; "commit_others" ; "flush_others" |]
       else
-        [| "program" ; "parameters" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-           "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-           "volume out" |]  in
+        [| "program" ; "top-half" ; "parameters" ; "#in" ; "#selected" ;
+           "#out" ; "#groups" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
+           "max heap" ; "volume in" ; "volume out" |]  in
     let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
     RC.with_rlock conf (fun programs ->
       Hashtbl.iter (fun (program_name : N.program) (rce, _get_rc) ->
-        if (all || must_run_here rce) &&
-           Globs.matches pattern (program_name :> string)
-        then (
-          let s = Hashtbl.find_default h program_name RamenPs.no_stats in
+        let display top_half s =
           (if profile then
             [| Some (ValStr (program_name :> string)) ;
-               Some (ValFlt s.cpu) ;
+               Some (ValBool top_half) ;
+               Some (ValFlt s.RamenPs.cpu) ;
                flt_or_na s.wait_in ;
                flt_or_na s.wait_out ;
                perf s.profile.tot_per_tuple ;
@@ -474,6 +472,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.flush_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
+               Some (ValBool top_half) ;
                Some (ValStr (RamenParams.to_string rce.RC.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
@@ -486,7 +485,15 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                Some (ValInt (Uint64.to_int s.max_ram)) ;
                flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
                flt_or_na (Option.map Uint64.to_float s.bytes_out) |]) |>
-          print
+          print in
+        if (all || must_run_here rce) &&
+           Globs.matches pattern (program_name :> string)
+        then (
+          [ false ; true ] |> List.iter (fun top_half ->
+            match Hashtbl.find h (program_name, top_half) with
+            | exception Not_found ->
+                if not top_half then display top_half RamenPs.no_stats
+            | s -> display top_half s)
         )
       ) programs) ;
     print [||]
@@ -494,15 +501,15 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     (* Otherwise we want to display all we can about individual workers *)
     let head =
       if profile then
-        [| "operation" ; "CPU" ; "wait in" ; "wait out" ;
+        [| "operation" ; "top-half" ; "CPU" ; "wait in" ; "wait out" ;
            "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
            "update_group" ; "commit_incoming" ; "select_others" ;
            "finalize_others" ; "commit_others" ; "flush_others" |]
       else
-        [| "operation" ; "#in" ; "#selected" ; "#out" ; "#groups" ;
-           "last out" ; "min event time" ; "max event time" ; "CPU" ;
-           "wait in" ; "wait out" ; "heap" ; "max heap" ; "volume in" ;
-           "volume out" ; "avg out sz" ; "startup time" ;
+        [| "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
+           "#groups" ; "last out" ; "min event time" ; "max event time" ;
+           "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
+           "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
            "#parents" ; "#children" ; "signature" |] in
     let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
@@ -523,59 +530,55 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
               ) func.F.parents
             ) prog.P.funcs
       ) programs ;
-      Hashtbl.iter (fun program_name (rce, get_rc) ->
-        if all || must_run_here rce then match get_rc () with
-        | exception _ -> (* which has been logged already *) ()
-        | prog ->
-          List.iter (fun func ->
-            let fq = N.fq_of_program program_name func.F.name in
-            if Globs.matches pattern (fq :> string) then
-              (* TODO: also lookup for the top-half and... display it on
-               * a separate line? *)
-              let s =
-                Hashtbl.find_default stats (fq, false) RamenPs.no_stats in
-              (if profile then
-                [| Some (ValStr (fq :> string)) ;
-                   Some (ValFlt s.cpu) ;
-                   flt_or_na s.wait_in ;
-                   flt_or_na s.wait_out ;
-                   perf s.profile.tot_per_tuple ;
-                   perf s.profile.where_fast ;
-                   perf s.profile.find_group ;
-                   perf s.profile.where_slow ;
-                   perf s.profile.update_group ;
-                   perf s.profile.commit_incoming ;
-                   perf s.profile.select_others ;
-                   perf s.profile.finalize_others ;
-                   perf s.profile.commit_others ;
-                   perf s.profile.flush_others |]
-               else
-                let num_children = Hashtbl.find_all children_of_func
-                                     (func.F.program_name, func.F.name) |>
-                                     List.length in
-                [| Some (ValStr (fq :> string)) ;
-                   int_or_na s.in_count ;
-                   int_or_na s.selected_count ;
-                   int_or_na s.out_count ;
-                   int_or_na s.group_count ;
-                   date_or_na s.last_out ;
-                   date_or_na s.min_etime ;
-                   date_or_na s.max_etime ;
-                   Some (ValFlt s.cpu) ;
-                   flt_or_na s.wait_in ;
-                   flt_or_na s.wait_out ;
-                   Some (ValInt (Uint64.to_int s.ram)) ;
-                   Some (ValInt (Uint64.to_int s.max_ram)) ;
-                   flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
-                   flt_or_na (Option.map Uint64.to_float s.bytes_out) ;
-                   flt_or_na (Option.map Uint64.to_float s.avg_full_bytes) ;
-                   Some (ValDate s.startup_time) ;
-                   Some (ValInt (List.length func.F.parents)) ;
-                   Some (ValInt num_children) ;
-                   Some (ValStr func.signature) |]) |>
-              print
-          ) prog.P.funcs
-      ) programs) ;
+      Hashtbl.iter (fun ((fq : N.fq), top_half) s ->
+        if Globs.matches pattern (fq :> string) then
+          match RC.find_func_or_fail programs fq with
+          | exception _ -> ()
+          | rce, _prog, func ->
+              if all || must_run_here rce then (
+                (if profile then
+                  [| Some (ValStr (fq :> string)) ;
+                     Some (ValBool top_half) ;
+                     Some (ValFlt s.RamenPs.cpu) ;
+                     flt_or_na s.wait_in ;
+                     flt_or_na s.wait_out ;
+                     perf s.profile.tot_per_tuple ;
+                     perf s.profile.where_fast ;
+                     perf s.profile.find_group ;
+                     perf s.profile.where_slow ;
+                     perf s.profile.update_group ;
+                     perf s.profile.commit_incoming ;
+                     perf s.profile.select_others ;
+                     perf s.profile.finalize_others ;
+                     perf s.profile.commit_others ;
+                     perf s.profile.flush_others |]
+                 else
+                  let num_children = Hashtbl.find_all children_of_func
+                                       (func.F.program_name, func.F.name) |>
+                                       List.length in
+                  [| Some (ValStr (fq :> string)) ;
+                     Some (ValBool top_half) ;
+                     int_or_na s.in_count ;
+                     int_or_na s.selected_count ;
+                     int_or_na s.out_count ;
+                     int_or_na s.group_count ;
+                     date_or_na s.last_out ;
+                     date_or_na s.min_etime ;
+                     date_or_na s.max_etime ;
+                     Some (ValFlt s.cpu) ;
+                     flt_or_na s.wait_in ;
+                     flt_or_na s.wait_out ;
+                     Some (ValInt (Uint64.to_int s.ram)) ;
+                     Some (ValInt (Uint64.to_int s.max_ram)) ;
+                     flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
+                     flt_or_na (Option.map Uint64.to_float s.bytes_out) ;
+                     flt_or_na (Option.map Uint64.to_float s.avg_full_bytes) ;
+                     Some (ValDate s.startup_time) ;
+                     Some (ValInt (List.length func.F.parents)) ;
+                     Some (ValInt num_children) ;
+                     Some (ValStr func.signature) |]) |>
+                print)
+      ) stats) ;
       print [||]
 
 let ps = ps_ false
