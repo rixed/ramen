@@ -6,6 +6,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
@@ -214,7 +215,7 @@ let compile conf lib_path use_external_compiler
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let get_parent =
     if lib_path = [] then
-      let programs = C.with_rlock conf identity in
+      let programs = RC.with_rlock conf identity in
       RamenCompiler.parent_from_programs programs
     else
       List.map Files.absolute_path_of lib_path |>
@@ -430,7 +431,7 @@ let sort_col_of_string spec str =
 let ps_ profile conf short pretty with_header sort_col top pattern all () =
   init_logger conf.C.log_level ;
   let must_run_here rce =
-    rce.C.status = C.MustRun && C.match_localsite conf rce.C.on_site in
+    rce.RC.status = RC.MustRun && RC.match_localsite conf rce.RC.on_site in
   (* Start by reading the last minute of instrumentation data: *)
   let stats = RamenPs.read_stats conf in
   (* Now iter over all workers and display those stats: *)
@@ -450,7 +451,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
     (* For --short, we sum everything by program: *)
     let h = RamenPs.per_program stats in
-    C.with_rlock conf (fun programs ->
+    RC.with_rlock conf (fun programs ->
       Hashtbl.iter (fun (program_name : N.program) (rce, _get_rc) ->
         if (all || must_run_here rce) &&
            Globs.matches pattern (program_name :> string)
@@ -473,7 +474,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                perf s.profile.flush_others |]
           else
             [| Some (ValStr (program_name :> string)) ;
-               Some (ValStr (RamenParams.to_string rce.C.params)) ;
+               Some (ValStr (RamenParams.to_string rce.RC.params)) ;
                int_or_na s.in_count ;
                int_or_na s.selected_count ;
                int_or_na s.out_count ;
@@ -505,7 +506,7 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
            "#parents" ; "#children" ; "signature" |] in
     let sort_col = sort_col_of_string head sort_col in
     let print = print_table ~pretty ~sort_col ~with_header ?top head in
-    C.with_rlock conf (fun programs ->
+    RC.with_rlock conf (fun programs ->
       (* First pass to get the children: *)
       let children_of_func = Hashtbl.create 23 in
       Hashtbl.iter (fun _prog_name (rce, get_rc) ->
@@ -625,14 +626,14 @@ let parse_func_name_of_code conf what func_name_or_code =
           ret
         else (
           (* Check this function exists: *)
-          C.with_rlock conf (fun programs ->
-            C.find_func programs fq |> ignore) ;
+          RC.with_rlock conf (fun programs ->
+            RC.find_func programs fq |> ignore) ;
           ret)
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
     let program_name = C.make_transient_program () in
     let func_name = N.func "f" in
-    let programs = C.with_rlock conf identity in (* best effort *)
+    let programs = RC.with_rlock conf identity in (* best effort *)
     let get_parent = RamenCompiler.parent_from_programs programs in
     let oc, src_file =
       BatFile.open_temporary_out ~prefix:what ~suffix:".ramen" () in
@@ -737,8 +738,8 @@ let tail_ conf fq field_names with_header with_units sep null raw
   if is_temp_export then (
     let rec reset_export_timeout () =
       let _mre, _prog, func =
-        C.with_rlock conf (fun programs ->
-          C.find_func_or_fail programs fq) in
+        RC.with_rlock conf (fun programs ->
+          RC.find_func_or_fail programs fq) in
       let _ = RamenProcesses.start_export conf ~duration func in
       (* Start by sleeping as we've just set the temp export above: *)
       Unix.sleepf (max 1. (duration -. 1.)) ;
@@ -929,8 +930,8 @@ let timeseries conf func_name_or_code
 
 let timerange conf fq () =
   init_logger conf.C.log_level ;
-  C.with_rlock conf (fun programs ->
-    let _mre, prog, func = C.find_func_or_fail programs fq in
+  RC.with_rlock conf (fun programs ->
+    let _mre, prog, func = RC.find_func_or_fail programs fq in
     let mi_ma =
       (* We need the func to know its buffer location.
        * Nothing better to do in case of error than to exit.

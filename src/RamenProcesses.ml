@@ -5,6 +5,8 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
+module FS = C.FuncStats
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
@@ -192,7 +194,7 @@ type key =
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
   { key : key ;
-    rce : C.rc_entry ;
+    rce : RC.entry ;
     func : F.t ;
     parents : (N.site * P.t * F.t) list }
 
@@ -211,9 +213,9 @@ let parents_sites local_site programs sites func =
     | exception Not_found ->
         s
     | rce, _get_rc ->
-        if rce.C.status <> C.MustRun then s else
+        if rce.RC.status <> RC.MustRun then s else
         (* Where the parents are running: *)
-        let where_running = sites_matching rce.C.on_site sites in
+        let where_running = sites_matching rce.RC.on_site sites in
         (* Restricted to where [func] selects from: *)
         let psites =
           match psite with
@@ -267,7 +269,7 @@ let print_running_process oc proc =
 
 let make_running_process conf must_run mre =
   let log_level =
-    if mre.rce.C.debug then Debug else conf.C.log_level in
+    if mre.rce.RC.debug then Debug else conf.C.log_level in
   (* All children running locally, including top-halves: *)
   let children =
     Hashtbl.fold (fun _ (mre' : must_run_entry) children ->
@@ -279,13 +281,13 @@ let make_running_process conf must_run mre =
       ) children mre.parents
     ) must_run [] in
   { key = mre.key ;
-    params = mre.rce.C.params ;
-    bin = mre.rce.C.bin ;
+    params = mre.rce.RC.params ;
+    bin = mre.rce.RC.bin ;
     func = mre.func ;
     parents = mre.parents ;
     children ;
     log_level ;
-    report_period = mre.rce.C.report_period ;
+    report_period = mre.rce.RC.report_period ;
     pid = None ; last_killed = ref 0. ; continued = false ;
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
@@ -327,29 +329,19 @@ let check_is_subtype t1 t2 =
       failwith
   ) t1
 
-(* Global per-func stats that are updated by the thread reading #notifs and
- * the one reading the RC, and also saved on disk while ramen is not running:
+(*
+ * Replay
+ *
+ * This module knows how to:
+ * - find the required sources to reconstruct any function output in a
+ *   given time range;
+ * - connect all those sources for a dedicated channel, down to the function
+ *   which output we are interested in (the target);
+ * - tear down all these connections.
+ *
+ * Temporarily also:
+ * - load and save the replays configuration from disk.
  *)
-
-type func_stats =
-  { startup_time : float ; (* To distinguish from present run *)
-    running_time : float [@ppp_default 0.] ;
-    tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
-    bytes : int64 [@ppp_default 0L] ;
-    cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
-    ram : int64 (* Max observed heap size *) [@ppp_default 0L] ;
-    mutable parents : (N.site * N.fq) list ;
-    (* Also gather available history per running workers, to speed up
-     * establishing query plans: *)
-    mutable archives : (float * float) list [@ppp_default []] ;
-    (* We want to allocate disk space only to those workers that are running,
-     * but also want to save stats about workers that's been running recently
-     * enough and might resume: *)
-    mutable is_running : bool [@ppp_default false] }
-  [@@ppp PPP_OCaml]
-
-let archives_print oc =
-  List.print (Tuple2.print Float.print Float.print) oc
 
 module Replay =
 struct
@@ -403,83 +395,6 @@ struct
     (*$>*)
   end
 
-  (* Like BatSet.t, but with a serializer: *)
-  type 'a set = 'a Set.t
-  let set_ppp_ocaml ppp =
-    let open PPP in
-    PPP_OCaml.list ppp >>: Set.(to_list, of_list)
-
-  type site_fq = N.site * N.fq
-    [@@ppp PPP_OCaml]
-
-  let site_fq_print oc (site, fq) =
-    Printf.fprintf oc "%a:%a"
-      N.site_print site
-      N.fq_print fq
-
-  let link_print oc (psite_fq, site_fq) =
-    Printf.fprintf oc "%a=>%a"
-      site_fq_print psite_fq
-      site_fq_print site_fq
-
-  type t =
-    { channel : RamenChannel.t ;
-      target : site_fq ;
-      target_fieldmask : RamenFieldMask.fieldmask ;
-      since : float ;
-      until : float ;
-      final_rb : N.path ;
-      sources : site_fq set ;
-      (* We pave the whole way from all sources to the target for this
-       * channel id, rather than letting the normal stream carry this
-       * channel events, in order to avoid spamming unrelated nodes
-       * (Cf. issue #640): *)
-      links : (site_fq * site_fq) set ;
-      timeout : float (* wall clock time, not duration! *) }
-    [@@ppp PPP_OCaml]
-
-  type replays = (RamenChannel.t, t) Hashtbl.t
-    [@@ppp PPP_OCaml]
-
-  let replays_file conf =
-    N.path_cat [ conf.C.persist_dir ; N.path "replays" ;
-                 N.path RamenVersions.replays ; N.path "replays" ]
-
-  let load_locked =
-    let get = Files.ppp_of_file ~default:"{}" replays_ppp_ocaml in
-    fun (fname : N.path) ->
-      let context = "Reading replays from "^ (fname :> string) in
-      let now = Unix.gettimeofday () in
-      fail_with_context context (fun () -> get fname) |>
-      Hashtbl.filter (fun replay -> replay.timeout > now)
-
-  let load conf =
-    let fname = replays_file conf in
-    RamenAdvLock.with_r_lock fname (fun _fd -> load_locked fname)
-
-  let save_locked fd (fname : N.path) replays =
-    let context = "Saving replays into "^ (fname :> string) in
-    fail_with_context context (fun () ->
-      Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays)
-
-  let add conf replay =
-    let fname = replays_file conf in
-    RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fname in
-      if Hashtbl.mem replays replay.channel then
-        Printf.sprintf2 "Replay channel %a is already in use!"
-          RamenChannel.print replay.channel |>
-        failwith ;
-      Hashtbl.add replays replay.channel replay ;
-      save_locked fd fname replays)
-
-  let remove conf channel =
-    let fname = replays_file conf in
-    RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fname in
-      Hashtbl.remove replays channel ;
-      save_locked fd fname replays)
-
   (* Helper function: *)
 
   let cartesian_product f lst =
@@ -513,6 +428,8 @@ struct
 
    [] (test_cp [ [1;2;3]; []; [5;6] ])
   *)
+
+  open C.Replays
 
   exception NotInStats of (N.site * N.fq)
   exception NoData
@@ -604,7 +521,7 @@ struct
         List.fold_left (fun range (t1, t2) ->
           if t1 > until || t2 < since then range else
           Range.merge range (Range.make (max t1 since) (min t2 until))
-        ) Range.empty s.archives in
+        ) Range.empty s.FS.archives in
       !logger.debug "From %a:%a, range from archives = %a"
         N.site_print local_site
         N.fq_print fq
@@ -705,7 +622,7 @@ struct
     let rem_out_from site_fq =
       let site, fq = site_fq in
       if site = conf.C.site then
-        match C.find_func programs fq with
+        match RC.find_func programs fq with
         | exception Not_found -> (* Not a big deal really *)
             !logger.warning
               "While tearing down channel %a, cannot find function %a"
@@ -731,13 +648,13 @@ struct
                  RamenChannel.print t.channel in
     log_and_ignore_exceptions ~what (fun () ->
       if conf.C.site = target_site then (
-        let _rce, _prog, func = C.find_func_or_fail programs target_fq in
+        let _rce, _prog, func = RC.find_func_or_fail programs target_fq in
         connect_to_rb func t.final_rb t.target_fieldmask)) () ;
     Set.iter (fun ((psite, pfq), (_, cfq)) ->
       if conf.C.site = psite then
         log_and_ignore_exceptions ~what (fun () ->
-          let _rce, _prog, cfunc = C.find_func_or_fail programs cfq in
-          let _rce, _prog, pfunc = C.find_func_or_fail programs pfq in
+          let _rce, _prog, cfunc = RC.find_func_or_fail programs cfq in
+          let _rce, _prog, pfunc = RC.find_func_or_fail programs pfq in
           let fname = input_ringbuf_fname conf pfunc cfunc
           and fieldmask = make_fieldmask pfunc cfunc in
           connect_to_rb pfunc fname fieldmask) ()
@@ -750,7 +667,7 @@ struct
    * obey, the channel id to tag tuples with, and since/until dates.
    * Returns the pid. *)
   let spawn_source_replay conf programs sfq t replayer_id =
-    let rce, _prog, func = C.find_func_or_fail programs sfq in
+    let rce, _prog, func = RC.find_func_or_fail programs sfq in
     let fq = F.fq_name func in
     let args = [| Worker_argv0.replay ; (fq :> string) |]
     and out_ringbuf_ref = C.out_ringbuf_names_ref conf func
@@ -773,7 +690,7 @@ struct
          "until="^ string_of_float t.until ;
          "channel_id="^ RamenChannel.to_string t.channel ;
          "replayer_id="^ string_of_int replayer_id |] in
-    let pid = run_worker rce.C.bin args env in
+    let pid = run_worker rce.RC.bin args env in
     !logger.debug "Replay for %a is running under pid %d"
       N.fq_print fq pid ;
     pid
@@ -908,7 +825,7 @@ let process_workers_terminations conf running =
 
 let process_replayers_terminations conf replayers =
   let open Unix in
-  let get_programs = memoize (fun () -> C.with_rlock conf identity) in
+  let get_programs = memoize (fun () -> RC.with_rlock conf identity) in
   Hashtbl.filter_map_inplace (fun channel (replay, pids) ->
     let pids =
       Set.filter (fun (pid, _last_killed) ->
@@ -1267,7 +1184,7 @@ struct
       mutable delay_used : parent Set.t }
 
   and entry =
-    { rce : C.rc_entry ;
+    { rce : RC.entry ;
       prog : P.t ;
       func : F.t ;
       parents : parent Set.t ;
@@ -1331,30 +1248,30 @@ end
 
 let build_must_run conf =
   let sites = Services.all_sites conf in
-  let programs = C.with_rlock conf identity in
+  let programs = RC.with_rlock conf identity in
   (* Start by rebuilding what needs to be before calling any get_rc() : *)
   Hashtbl.iter (fun program_name (rce, _get_rc) ->
-    if rce.C.status = C.MustRun && not (N.is_empty rce.C.src_file) then (
-      !logger.debug "Trying to build %a" N.path_print rce.C.bin ;
+    if rce.RC.status = RC.MustRun && not (N.is_empty rce.RC.src_file) then (
+      !logger.debug "Trying to build %a" N.path_print rce.RC.bin ;
       log_and_ignore_exceptions
-        ~what:("rebuilding "^ (rce.C.bin :> string))
+        ~what:("rebuilding "^ (rce.RC.bin :> string))
         (fun () ->
           let get_parent =
             RamenCompiler.parent_from_programs programs in
           RamenMake.build
-            conf get_parent program_name rce.C.src_file
-            rce.C.bin) ())
+            conf get_parent program_name rce.RC.src_file
+            rce.RC.bin) ())
   ) programs ;
   (* Build a map from site name to the map of (prog, func names) to
    * prog*func*parents, where parents is a set of site*prog*func: *)
   let graph = FuncGraph.make () in
   with_time (fun () ->
     Hashtbl.iter (fun _ (rce, get_rc) ->
-      if rce.C.status = C.MustRun then (
-        let where_running = sites_matching rce.C.on_site sites in
+      if rce.RC.status = RC.MustRun then (
+        let where_running = sites_matching rce.RC.on_site sites in
         !logger.debug "%a must run on sites matching %a: %a"
-          N.path_print rce.C.bin
-          Globs.print rce.C.on_site
+          N.path_print rce.RC.bin
+          Globs.print rce.RC.on_site
           (Set.print N.site_print_quoted) where_running ;
         match get_rc () with
         | exception _ ->
@@ -1512,8 +1429,8 @@ let watchdog = ref None
  * to read tuples before all their children are attached to their out_ref file.
  *)
 let synchronize_running conf autoreload_delay =
-  let rc_file = C.running_config_file conf in
-  let replays_file = Replay.replays_file conf in
+  let rc_file = RC.file_name conf in
+  let replays_file = C.Replays.file_name conf in
   (* Avoid memoizing this at every call to build_must_run: *)
   if !watchdog = None then
     watchdog :=
@@ -1607,8 +1524,8 @@ let synchronize_running conf autoreload_delay =
       (* Just kill the replayers and wait for them to finish before tearing
        * down the replay chanel: *)
       let replayer, pids = Hashtbl.find replayers chan in
-      Set.iter (kill_replayer replayer.Replay.channel) pids in
-    let get_programs = memoize (fun () -> C.with_rlock conf identity) in
+      Set.iter (kill_replayer replayer.C.Replays.channel) pids in
+    let get_programs = memoize (fun () -> RC.with_rlock conf identity) in
     let start_replay replay =
       let programs = get_programs () in
       Replay.settup_links conf programs replay ;
@@ -1621,7 +1538,7 @@ let synchronize_running conf autoreload_delay =
       match start_replay replay with
       | exception e ->
           let what = Printf.sprintf2 "Starting replay for channel %a"
-                       RamenChannel.print replay.Replay.channel in
+                       RamenChannel.print replay.C.Replays.channel in
           print_exception ~what e
       | pids ->
           (* If this replay does not concern our site, the pids will be
@@ -1689,7 +1606,7 @@ let synchronize_running conf autoreload_delay =
           ) else (
             let now = Unix.gettimeofday () in
             if must_reread replays_file last_read_replays 0. now then
-              Replay.load conf, now
+              C.Replays.load conf, now
             else
               last_replays, last_read_replays
           ) in

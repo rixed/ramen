@@ -21,6 +21,7 @@ open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
@@ -283,7 +284,7 @@ let metrics_find conf ?since ?until query =
   let filter = filter_of_query split_q in
   !logger.debug "metrics_find: filter = %a"
     (Array.print Globs.print) filter ;
-  let programs = C.with_rlock conf identity in
+  let programs = RC.with_rlock conf identity in
   (* We are going to compute all possible values for the query, expanding
    * also intermediary globs. But in here we want to return only one result
    * per terminal expansion. So we are going to uniquify the results.
@@ -361,7 +362,7 @@ let targets_for_render conf ?since ?until queries =
    * for field/function names with matches. *)
   let filters =
     List.map (filter_of_query % split_query) queries
-  and programs = C.with_rlock conf identity in
+  and programs = RC.with_rlock conf identity in
   inverted_tree_of_programs conf ?since ?until ~only_with_event_time:true
                             ~only_num_fields:true ~factor_expansion:All
                             filters programs //@

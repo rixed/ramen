@@ -4,6 +4,7 @@ open RamenHelpers
 open RamenLog
 open RamenNullable
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
@@ -376,7 +377,7 @@ let check_test_spec conf test =
       s
     ) |> ignore
   in
-  C.with_rlock conf (fun programs ->
+  RC.with_rlock conf (fun programs ->
     iter_programs
       ~per_prog:(fun pn ->
         if not (Hashtbl.mem programs pn) then
@@ -429,7 +430,7 @@ let run_test conf notify_rb dirname test =
    * the process synchronizer, the worker feeder, and the output evaluator: *)
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
-  C.with_wlock conf (fun programs ->
+  RC.with_wlock conf (fun programs ->
     Hashtbl.clear programs ;
     Hashtbl.iter (fun program_name p ->
       let bin =

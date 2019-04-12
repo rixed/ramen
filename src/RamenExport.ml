@@ -4,6 +4,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
@@ -67,8 +68,8 @@ let read_output conf ?duration (fq : N.fq) where =
            * archives of other format must not be read, as on the long term
            * format can indeed switch (worker would restart in between). *)
           let prog, func, bname =
-            C.with_rlock conf (fun programs ->
-              match C.find_func programs fq with
+            RC.with_rlock conf (fun programs ->
+              match RC.find_func programs fq with
               | exception Not_found ->
                   failwith ("Function "^ (fq :> string) ^
                             " does not exist")
@@ -130,8 +131,8 @@ let replay conf ?(while_=always) fq field_names where since until
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
-  let programs = C.with_rlock conf identity in
-  let _rce, prog, func = C.find_func_or_fail programs fq in
+  let programs = RC.with_rlock conf identity in
+  let _rce, prog, func = RC.find_func_or_fail programs fq in
   let out_type = O.out_type_of_operation func.F.operation in
   let field_names = check_field_names out_type field_names in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
@@ -160,11 +161,11 @@ let replay conf ?(while_=always) fq field_names where since until
   | replay ->
     RingBuf.create replay.final_rb ;
     let rb = RingBuf.load replay.final_rb in
-    Replay.add conf replay ;
+    C.Replays.add conf replay ;
     let ret =
       finally
         (fun () ->
-          Replay.remove conf replay.channel ;
+          C.Replays.remove conf replay.channel ;
           RingBuf.unload rb)
         (fun () ->
           (* Read the rb while monitoring children: *)

@@ -9,6 +9,8 @@ open RamenLog
 open RamenSmt
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
+module FS = C.FuncStats
 module F = C.Func
 module P = C.Program
 module N = RamenName
@@ -86,14 +88,14 @@ let get_user_conf fname per_func_stats =
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
       Hashtbl.iter (fun (_, (fq : N.fq)) s ->
-        if s.Processes.parents = [] then
+        if s.FS.parents = [] then
           let pat = Globs.(escape (fq :> string)) in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
   assert (Hashtbl.length user_conf.retentions > 0) ;
   user_conf
 
-(* Build a func_stats from a unique stats received for the first time: *)
+(* Build a FS.t from a unique stats received for the first time: *)
 let func_stats_of_stat s now =
   let etime_diff =
     match s.RamenPs.min_etime, s.max_etime with
@@ -104,7 +106,7 @@ let func_stats_of_stat s now =
     | None, _ | _, None -> Uint64.zero
     | Some b, Some c -> Uint64.(b * c)
   in
-  Processes.{
+  FS.{
     startup_time = s.RamenPs.startup_time ;
     running_time = etime_diff ;
     tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
@@ -115,9 +117,9 @@ let func_stats_of_stat s now =
     archives = [] ;
     is_running = true }
 
-(* Adds two func_stats together, favoring a *)
+(* Adds two FS.t together, favoring a *)
 let add_ps_stats a b =
-  Processes.{
+  FS.{
     startup_time = a.startup_time ;
     running_time = a.running_time +. b.running_time ;
     tuples = Int64.add a.tuples b.tuples ;
@@ -130,7 +132,7 @@ let add_ps_stats a b =
 
 (* Those stats are saved on disk: *)
 
-type per_func_stats_ser = (N.fq, Processes.func_stats) Hashtbl.t
+type per_func_stats_ser = (N.fq, FS.t) Hashtbl.t
   [@@ppp PPP_OCaml]
 
 let stat_file ?site conf =
@@ -186,7 +188,7 @@ let sites_matching_identifier conf all_sites = function
       ) all_sites
 
 let update_parents conf programs s all_sites program_name func =
-  s.Processes.parents <-
+  s.FS.parents <-
     List.fold_left (fun parents (psite_id, pprog, pfunc) ->
       let pprog =
         F.program_of_parent_prog program_name pprog in
@@ -202,7 +204,7 @@ let update_parents conf programs s all_sites program_name func =
              * FROM clause and the RC specification for that program: *)
             sites_matching_identifier conf all_sites psite_id |>
             Set.filter (fun (psite : N.site) ->
-              Globs.matches prce.C.on_site (psite :> string)) in
+              Globs.matches prce.RC.on_site (psite :> string)) in
           Set.fold (fun psite parents ->
             (psite, N.fq_of_program pprog pfunc) :: parents
           ) psites parents
@@ -246,13 +248,13 @@ let update_archives conf s func =
         loop [t] rest'
     | prev, [] ->
         List.rev prev in
-  s.Processes.archives <- loop [] lst
+  s.FS.archives <- loop [] lst
 
 let enrich_local_stats conf per_func_stats =
   let all_sites = RamenServices.all_sites conf in
-  let programs = C.with_rlock conf identity in
+  let programs = RC.with_rlock conf identity in
   Hashtbl.iter (fun program_name (rce, get_rc) ->
-    if Globs.matches rce.C.on_site (conf.C.site :> string) then
+    if Globs.matches rce.RC.on_site (conf.C.site :> string) then
       match get_rc () with
       | exception _ -> ()
       | prog ->
@@ -261,7 +263,7 @@ let enrich_local_stats conf per_func_stats =
             match Hashtbl.find per_func_stats fq with
             | exception Not_found -> ()
             | s ->
-                s.Processes.is_running <- rce.C.status = MustRun ;
+                s.FS.is_running <- rce.RC.status = MustRun ;
                 update_parents conf programs s all_sites program_name func ;
                 update_archives conf s func
           ) prog.P.funcs
@@ -274,7 +276,7 @@ let update_local_worker_stats ?while_ conf =
    * loading the file as the current stats. We will shift it into the total
    * if we receive a new startup_time: *)
   let per_func_stats :
-    (N.fq, (Processes.func_stats option * Processes.func_stats)) Hashtbl.t =
+    (N.fq, (FS.t option * FS.t)) Hashtbl.t =
     load_stats ~site:conf.C.site conf |>
     Hashtbl.map (fun _fq s -> None, s)
   in
@@ -414,13 +416,13 @@ let cost i site_fq =
 (* The "compute cost" per second is the CPU time it takes to
  * process one second worth of data. *)
 let compute_cost s =
-  s.Processes.cpu /. s.Processes.running_time
+  s.FS.cpu /. s.FS.running_time
 
 (* The "recall size" is the total size per second in bytes.
  * The recall cost of a second worth of output will be this size
  * times the user_conf.recall_cost. *)
 let recall_size s =
-  Int64.to_float s.Processes.bytes /. s.Processes.running_time
+  Int64.to_float s.FS.bytes /. s.FS.running_time
 
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100. From now on, [per_func_stats] is keyed by site*fq and has all
@@ -466,7 +468,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
       (list_print (fun oc (site, fq) ->
         Printf.fprintf oc "%a:%a"
           N.site_print site
-          N.fq_print fq)) s.Processes.parents ;
+          N.fq_print fq)) s.FS.parents ;
     List.iteri (fun i d ->
       let recall_size = recall_size s in
       let recall_cost =
@@ -537,13 +539,13 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
    * non running parents! *)
   let per_func_stats =
     let h =
-      Hashtbl.filter (fun s -> s.Processes.is_running) per_func_stats in
+      Hashtbl.filter (fun s -> s.FS.is_running) per_func_stats in
     let rec loop () =
       let mia =
         Hashtbl.fold (fun _site_fq s mia ->
           List.fold_left (fun mia psite_fq ->
             if Hashtbl.mem h psite_fq then mia else psite_fq::mia
-          ) mia s.Processes.parents
+          ) mia s.FS.parents
         ) h [] in
       if mia <> [] then (
         List.iter (fun (psite, pfq as psite_fq) ->
@@ -653,7 +655,7 @@ let update_storage_allocation conf =
       (* Next scale will scale this properly *)
       let solution =
         Hashtbl.filter_map (fun _ s ->
-          if s.Processes.is_running then Some 1 else None
+          if s.FS.is_running then Some 1 else None
         ) per_func_stats in
       (* Have to recompute [tot_perc]: *)
       let tot_perc =
@@ -679,11 +681,11 @@ let update_storage_allocation conf =
 
 let update_local_workers_export
     ?(export_duration=Default.archivist_export_duration) conf =
-  let programs = C.with_rlock conf identity in (* Best effort *)
+  let programs = RC.with_rlock conf identity in (* Best effort *)
   load_allocs conf |>
   Hashtbl.iter (fun (site, fq) max_size ->
     if site = conf.C.site then
-      match C.find_func programs fq with
+      match RC.find_func programs fq with
       | exception e ->
           !logger.debug "Cannot find function %a: %s, skipping"
             N.fq_print fq
@@ -743,7 +745,7 @@ let maybe_refresh_local_stats ?while_ conf =
       update_local_worker_stats ?while_ conf
   | stat_file_age ->
       if stat_file_age > max_archivist_stat_file_age ||
-         stat_file_age > Files.age (C.running_config_file conf)
+         stat_file_age > RC.age conf
       then
         update_local_worker_stats ?while_ conf
 

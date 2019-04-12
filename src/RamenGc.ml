@@ -8,6 +8,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module N = RamenName
@@ -142,7 +143,7 @@ let cleanup_old_archives conf programs dry_run del_ratio =
      * on how those files are named. *)
     let fq = Files.dirname rel_fname |> Files.dirname in
     let fq = N.fq (fq :> string) in
-    match C.find_func programs fq with
+    match RC.find_func programs fq with
     | exception Not_found ->
         !logger.info
           "Archive directory %a belongs to unknown function %a"
@@ -226,7 +227,7 @@ let compress_old_archives conf programs dry_run compress_older =
         then (
           !logger.debug "Compressing %a%s"
             N.path_print fname (if dry_run then " (NOPE)" else "") ;
-          if not dry_run then compress_archive rce.C.bin func.F.name fname
+          if not dry_run then compress_archive rce.RC.bin func.F.name fname
         ))
     ) prog.P.funcs
   ) programs
@@ -234,7 +235,7 @@ let compress_old_archives conf programs dry_run compress_older =
 let cleanup_once conf dry_run del_ratio compress_older =
   !logger.info "Cleaning old unused files..." ;
   cleanup_old_versions conf dry_run ;
-  let programs = C.with_rlock conf identity in
+  let programs = RC.with_rlock conf identity in
   if RamenExperiments.archive_in_orc.variant > 0 then
     compress_old_archives conf programs dry_run compress_older ;
   cleanup_old_archives conf programs dry_run del_ratio

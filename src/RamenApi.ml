@@ -9,6 +9,7 @@ open RamenHelpers
 open RamenHttpHelpers
 open RamenLang
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
@@ -131,9 +132,9 @@ type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 let get_tables conf msg =
   let req = JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
-  C.with_rlock conf (fun programs ->
+  RC.with_rlock conf (fun programs ->
     Hashtbl.iter (fun _prog_name (rce, get_rc) ->
-      if rce.C.status = C.MustRun then match get_rc () with
+      if rce.RC.status = RC.MustRun then match get_rc () with
       | exception _ -> ()
       | prog ->
           List.iter (fun f ->
@@ -310,7 +311,7 @@ let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name =
     N.(fq table |> fq_parse) in
-  C.with_rlock conf (fun programs ->
+  RC.with_rlock conf (fun programs ->
     match Hashtbl.find programs prog_name with
     | exception _ -> None
     | rce, get_rc ->
@@ -392,7 +393,7 @@ let get_timeseries conf msg =
     let fq = N.fq table in
     let prog_name, func_name = N.fq_parse fq in
     let filters =
-      C.with_rlock conf (fun programs ->
+      RC.with_rlock conf (fun programs ->
         (* Even if the program has been killed we want to be able to output
          * its time series: *)
         let _mre, get_rc = Hashtbl.find programs prog_name in
@@ -482,7 +483,7 @@ let func_of_table programs table =
   | rce, get_rc ->
       (match get_rc () with
       (* Best effort if the program is no longer running: *)
-      | exception _ when rce.C.status <> MustRun ->
+      | exception _ when rce.RC.status <> MustRun ->
           no_such_program ()
       | prog ->
         (try List.find (fun f -> f.F.name = fn) prog.P.funcs
@@ -640,7 +641,7 @@ let () =
     RamenMake.target_is_older
     (fun conf _get_parent _prog_name src_file target_file ->
       let a = Files.ppp_of_file alert_source_ppp_ocaml src_file in
-      C.with_rlock conf (fun programs ->
+      RC.with_rlock conf (fun programs ->
         generate_alert programs target_file a))
 
 let stop_alert conf (program_name : N.program) =
@@ -667,11 +668,11 @@ let save_alert conf program_name alert_info =
     try
       let exec_file = Files.add_ext basename "x" in
       let is_new_alert =
-        C.with_rlock conf (fun programs ->
+        RC.with_rlock conf (fun programs ->
           (* If this is a new alert we must compile it before we can add it to
            * the running-config. If it's already running though, we must leave
            * the recompilation to the supervisor (or we would race). *)
-          if C.is_program_running programs program_name then false else (
+          if RC.is_program_running programs program_name then false else (
             let get_parent = RamenCompiler.parent_from_programs programs in
             RamenMake.build conf get_parent program_name src_file exec_file ;
             true)) in
@@ -725,7 +726,7 @@ let set_alerts conf msg =
           bad_request "Ratio must be between 0 and 1" ;
         if alert.time_step <= 0. then
           bad_request "Time step must be strictly greater than 0" ;
-        C.with_rlock conf (fun programs ->
+        RC.with_rlock conf (fun programs ->
           let ft = field_typ_of_column programs table column in
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
             Printf.sprintf "Column %s of table %s is not numeric"

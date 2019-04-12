@@ -12,6 +12,7 @@ open Batteries
 open RamenHelpers
 open RamenLog
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module E = RamenExpr
@@ -99,7 +100,7 @@ let parent_from_lib_path lib_path pn =
 
 let parent_from_programs programs pn =
   let rce, get_rc = Hashtbl.find programs pn in
-  if rce.C.status <> MustRun then raise Not_found else get_rc ()
+  if rce.RC.status <> MustRun then raise Not_found else get_rc ()
 
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.

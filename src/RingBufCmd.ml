@@ -2,6 +2,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module N = RamenName
@@ -182,9 +183,9 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
   (* We first collect all links supposed to exist according to
    * parent/children relationships: *)
   let links =
-    C.with_rlock conf (fun programs ->
+    RC.with_rlock conf (fun programs ->
       Hashtbl.fold (fun _prog_name (rce, get_rc) links ->
-        if rce.C.status <> MustRun then links else
+        if rce.RC.status <> MustRun then links else
         match get_rc () with
         | exception _ ->
             links (* Errors have been logged already *)

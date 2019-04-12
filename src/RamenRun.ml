@@ -3,6 +3,7 @@ open RamenHelpers
 open RamenLog
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module O = RamenOperation
@@ -18,10 +19,10 @@ let check_orphans killed_prog_names programs =
     (pretty_list_print N.program_print) killed_prog_names ;
   (* We want to warn if a child is stalled. *)
   Hashtbl.iter (fun prog_name rce ->
-    if rce.C.status = MustRun &&
+    if rce.RC.status = MustRun &&
        not (List.mem prog_name killed_prog_names)
     then (
-      match P.of_bin prog_name rce.C.params rce.C.bin with
+      match P.of_bin prog_name rce.RC.params rce.RC.bin with
       | exception _ ->
         (* Missing or erroneous programs can't make orphan check fail. *)
         ()
@@ -49,7 +50,7 @@ let kill_locked ?(purge=false) program_names programs =
   let killed_prog_names =
     Hashtbl.enum programs //
     (fun ((n : N.program), rce) ->
-      (rce.C.status <> C.Killed || purge) &&
+      (rce.RC.status <> RC.Killed || purge) &&
       List.exists (fun p ->
         Globs.matches p (n :> string)
       ) program_names) /@
@@ -58,7 +59,7 @@ let kill_locked ?(purge=false) program_names programs =
   let running_killed_prog_names =
     List.filter (fun (n : N.program) ->
       let rce = Hashtbl.find programs n in
-      rce.C.status <> C.Killed
+      rce.RC.status <> RC.Killed
     ) killed_prog_names in
   check_orphans running_killed_prog_names programs ;
   if purge then
@@ -68,12 +69,12 @@ let kill_locked ?(purge=false) program_names programs =
   else
     List.iter (fun n ->
       let rce = Hashtbl.find programs n in
-      rce.C.status <- C.Killed
+      rce.RC.status <- RC.Killed
     ) running_killed_prog_names ;
   List.length killed_prog_names
 
 let kill conf ?purge program_names =
-  C.with_wlock conf (kill_locked ?purge program_names)
+  RC.with_wlock conf (kill_locked ?purge program_names)
 
 (*
  * Starting a new worker from a binary.
@@ -106,7 +107,7 @@ let check_links program_name prog running_programs =
               (par_prog :> string) ;
             already_warned1 := Set.add par_prog !already_warned1)
         | rce ->
-            (match P.of_bin par_prog rce.C.params rce.C.bin with
+            (match P.of_bin par_prog rce.RC.params rce.RC.bin with
             | exception _ -> (* of_bin already logged the error *) ()
             | pprog ->
                 (match List.find (fun p ->
@@ -133,7 +134,7 @@ let check_links program_name prog running_programs =
   ) prog.P.funcs ;
   (* We want to err if a child is incompatible. *)
   Hashtbl.iter (fun prog_name rce ->
-    match P.of_bin prog_name rce.C.params rce.C.bin with
+    match P.of_bin prog_name rce.RC.params rce.RC.bin with
     | exception _ -> (* of_bin already logged the error *) ()
     | prog' ->
         List.iter (fun func ->
@@ -175,7 +176,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
     Option.default_delayed (fun () ->
       default_program_name bin_file
     ) program_name_opt in
-  C.with_wlock conf (fun programs ->
+  RC.with_wlock conf (fun programs ->
     let bin = Files.absolute_path_of bin_file in
     let can_run = P.wants_to_run conf bin params in
     if not can_run then (
@@ -196,7 +197,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         (match Hashtbl.find programs program_name with
         | exception Not_found -> ()
         | rce ->
-          if rce.C.status = C.MustRun then
+          if rce.RC.status = RC.MustRun then
             Printf.sprintf "A program named %s is already running"
               (program_name :> string) |>
             failwith) ;

@@ -6,6 +6,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
 module F = C.Func
 module P = C.Program
 module N = RamenName
@@ -68,8 +69,8 @@ let serve conf ~while_ fd =
     N.fq_print id.child
     id.parent_num ;
   let _mre, _prog, func =
-    C.with_rlock conf (fun programs ->
-      C.find_func_or_fail programs id.child) in
+    RC.with_rlock conf (fun programs ->
+      RC.find_func_or_fail programs id.child) in
   let bname =
     if func.F.merge_inputs then
       C.in_ringbuf_name_merging conf func id.parent_num
