@@ -39,16 +39,21 @@ let string_parser ~what ~print p =
     let parse_with_err_budget e =
       let c = ParsersBoundedSet.make e in
       p [what] None c stream |> to_result in
+    let err_out e =
+      Printf.sprintf2 "Parse error: %a"
+        (print_bad_result print) e |>
+      failwith
+    in
     match parse_with_err_budget 0 with
-    | Bad _ ->
-        (* Try again with some error correction activated, in order to get a
-         * better error message: *)
-        (match parse_with_err_budget 3 with
-        | Bad e ->
-            Printf.sprintf2 "Parse error: %a"
-              (print_bad_result print) e |>
-            failwith
-        | _ -> assert false)
+    | Bad e ->
+        RamenExperiments.(specialize parse_error_correction) [|
+          (fun () -> err_out e) ;
+          (fun () ->
+            (* Try again with some error correction activated, in order to
+             * get a better error message: *)
+            match parse_with_err_budget 1 with
+            | Bad e -> err_out e
+            | _ -> assert false) |]
     | Ok (res, _) -> res
 
 (* strinG will match the given string regardless of the case and

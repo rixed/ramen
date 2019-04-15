@@ -75,9 +75,15 @@ let archive_in_orc =
       "All archives are written in ORC format. Non ORC non-wrapping \
        ringbufs are still possible but will not be archived.\n" |]
 
+let parse_error_correction =
+  make [|
+    Variant.make "off" "No attempt at error correction\n" ;
+    Variant.make ~share:0. "on" "Look for likely typo on parse errors\n" |]
+
 let all_internal_experiments =
   [ "TheBigOne", the_big_one ;
-    "ArchiveInORC", archive_in_orc ]
+    "ArchiveInORC", archive_in_orc ;
+    "ParseErrorCorrection", parse_error_correction ]
 
 (*
  * Helpers
