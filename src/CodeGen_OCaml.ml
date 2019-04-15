@@ -3419,7 +3419,8 @@ let emit_aggregate opc global_env group_env env_env param_env
   p "    commit_cond_ %s %b %b %b"
     commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
   p "    global_init_ group_init_" ;
-  p "    get_notifications_ %f" every ;
+  p "    get_notifications_ (%a)"
+    (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) every ;
   p "    orc_make_handler_ orc_write orc_close\n" ;
   (* The top-half is similar, but need less parameters: *)
   p "let %s () =" top_half_name ;

@@ -120,6 +120,8 @@ RAMEN_SOURCES = \
 	src/RamenBitmask.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -127,8 +129,6 @@ RAMEN_SOURCES = \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
 	src/RamenParams.ml \
-	src/RamenFiles.ml \
-	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
@@ -167,6 +167,7 @@ RAMEN_SOURCES = \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
+	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -203,13 +204,14 @@ CODEGENLIB_SOURCES = \
 	src/Globs.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
-	src/RamenFiles.ml \
 	src/RamenWatchdog.ml \
 	src/RamenAdvLock.ml \
 	src/RamenFieldMask.ml \
@@ -269,6 +271,8 @@ ORCWRITER_SOURCES = \
 	src/Globs.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -276,8 +280,6 @@ ORCWRITER_SOURCES = \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
 	src/RamenParams.ml \
-	src/RamenFiles.ml \
-	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
@@ -627,6 +629,8 @@ LINKED_FOR_TESTS = \
 	src/HeavyHitters.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -634,8 +638,6 @@ LINKED_FOR_TESTS = \
 	src/RamenIp.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenTypes.ml \
-	src/RamenFiles.ml \
-	src/RamenExperiments.ml \
 	src/RamenAdvLock.ml \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
@@ -680,6 +682,7 @@ LINKED_FOR_TESTS = \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
+	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -690,7 +693,6 @@ LINKED_FOR_TESTS = \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \
 	src/RamenNullable.ml \
-	src/RamenFileNotify.ml \
 	src/CodeGenLib_IO.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml
@@ -715,6 +717,8 @@ ringbuf_test.opt: \
 		src/RamenConsts.cmx \
 		src/RamenHelpers.cmx \
 		src/RamenChannel.cmx \
+		src/RamenFiles.cmx \
+		src/RamenExperiments.cmx \
 		src/RamenParsing.cmx \
 		src/RamenEthAddr.cmx \
 		src/RamenIpv4.cmx \
@@ -722,7 +726,6 @@ ringbuf_test.opt: \
 		src/RamenIp.cmx \
 		src/RamenTypeConverters.cmx \
 		src/RamenTypes.cmx \
-		src/RamenFiles.cmx \
 		src/RamenAdvLock.cmx \
 		src/RamenFieldMask.cmx \
 		src/RamenOutRef.cmx \

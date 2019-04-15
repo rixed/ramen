@@ -112,7 +112,7 @@ type t =
       from : data_source list ;
       (* Pause in between two productions (useful for operations with no
        * parents: *)
-      every : float ;
+      every : E.t ;
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
       factors : N.field list }
@@ -211,8 +211,11 @@ and print with_types oc op =
           (print_selected_field with_types)) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
-    if every > 0. then
-      Printf.fprintf oc "%tEVERY %g SECONDS" sp every ;
+    (match E.float_of_const every with
+    | Some d ->
+        if d <> 0. then
+          Printf.fprintf oc "%tEVERY %g SECONDS" sp d
+    | None -> ()) ;
     if not (E.is_true where) then
       Printf.fprintf oc "%tWHERE %a" sp
         (E.print with_types) where ;
@@ -283,7 +286,7 @@ let fold_top_level_expr init f = function
       let x = f x "CSV filename" fname in
       f x "CSV DELETE-IF clause" unlink
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
-                notifications ; _ } ->
+                notifications ; every ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
             let what = Printf.sprintf "field %S" (sf.alias :> string) in
@@ -309,6 +312,7 @@ let fold_top_level_expr init f = function
             List.fold_left (fun prev e ->
               f prev "SORT-BY clause" e
             ) x b in
+      let x = f x "EVERY clause" every in
       x
 
 let iter_top_level_expr f =
@@ -766,7 +770,14 @@ let checked params op =
         [ TupleParam; TupleEnv; TupleIn; Record ]
         "MERGE-ON clause" e
     ) merge.on ;
-    if every > 0. && from <> [] then
+    let has_every =
+      match E.float_of_const every with
+      | Some d ->
+          if d < 0. then failwith "EVERY clause can not be negative" ;
+          d > 0.
+      | None ->
+          true (* must be a param then *) in
+    if has_every && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
     let generators = List.filter_map (fun sf ->
@@ -900,10 +911,9 @@ struct
 
   let every_clause m =
     let m = "every clause" :: m in
-    (strinG "every" -- blanks -+ duration >>: fun every ->
-       if every < 0. then
-         raise (Reject "sleep duration must be greater than 0") ;
-       every) m
+    (
+      strinG "every" -- blanks -+ E.Parser.(const ||| param)
+    ) m
 
   let select_clause m =
     let m = "select clause" :: m in
@@ -1117,7 +1127,7 @@ let fields_schema m =
     | GroupByClause of E.t list
     | CommitClause of (commit_spec list * (bool (* before *) * E.t))
     | FromClause of data_source list
-    | EveryClause of float
+    | EveryClause of E.t
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
     | InstrumentationClause of string
     | ExternalDataClause of file_spec
@@ -1199,7 +1209,7 @@ let fields_schema m =
       and default_key = []
       and default_commit = ([], (false, default_commit_cond))
       and default_from = []
-      and default_every = 0.
+      and default_every = E.zero ()
       and default_listen = None
       and default_instrumentation = ""
       and default_ext_data = None
@@ -1322,11 +1332,12 @@ let fields_schema m =
         select_fields == default_select_fields && sort == default_sort &&
         where == default_where && key == default_key &&
         commit == default_commit
-      and not_listen = listen = None || from != default_from || every <> 0.
+      and not_listen =
+        listen = None || from != default_from || every != default_every
       and not_instrumentation = instrumentation = ""
       and not_csv =
         ext_data = None && preprocessor == default_preprocessor &&
-        csv_specs = None || from != default_from || every <> 0.
+        csv_specs = None || from != default_from || every != default_every
       and not_event_time = event_time = default_event_time
       and not_factors = factors == default_factors in
       if not_listen && not_csv && not_instrumentation then
