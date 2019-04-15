@@ -10,7 +10,10 @@ nb_loggers=2
 
 # How long should we fill up with data before the functions are stopped.
 # In seconds.
-logs_for=60
+logs_for=6000
+
+# Choose between full speed (0) to slow (>0).
+every=1
 
 . $top_src/tests/lib.sh
 
@@ -78,7 +81,7 @@ if test "$be_master" = yes; then
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=2
-  "$ramen" run "$root/logs.x"      --master=aggregator --on-site="logger*"    --as logs
+  "$ramen" run "$root/logs.x"      --master=aggregator --on-site="logger*"    --as logs   -p every="$every"
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
@@ -95,6 +98,7 @@ else
   mkdir -p "$RAMEN_DIR/archivist/"
   ln -s "$RAMEN_DIR/../aggregator/archivist/$archivist_version" \
         "$RAMEN_DIR/archivist/"
+  ln -s "$RAMEN_DIR/../aggregator/replays" "$RAMEN_DIR/"
 fi
 
 "$ramen" supervisor --master=aggregator --site="$ramen_site" &
@@ -104,11 +108,14 @@ at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 # Archivist --reconf and --stats must also run everywhere, and fully on master
 if test "$be_master" = yes; then
   mkdir -p "$RAMEN_DIR/archivist/$archivist_version/"
+  # The idea behind this conf is that aggregated values are kept for a
+  # longer time while 1min aggregate is not kept, but could be reconstructed
+  # from raw logs (thus allowing to test distributed replay)
   cat > "$RAMEN_DIR/archivist/$archivist_version/config" <<EOF
 {
   size_limit = 8000000000;
   retentions = {
-    "1min/http" => { duration = 43200 };
+    "logs/http" => { duration = 43200 };
     "10mins/http" => { duration = 259200 };
     "1hour/http" => { duration = 2592000 };
   }

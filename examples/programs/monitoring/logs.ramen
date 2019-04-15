@@ -4,7 +4,8 @@
 PARAMETERS
   start_of_time {seconds(rel)} DEFAULTS TO 191631600,
   hit_rate {hits*seconds^-1} DEFAULTS TO 100,
-  clock_jitter {seconds} DEFAULTS TO 5s;
+  clock_jitter {seconds} DEFAULTS TO 5s,
+  every {seconds} DEFAULTS TO 0s;
 
 -- And God said, Let there be HTTP: and there was HTTP
 -- _ _ _ X _ _ _ X _ X X _ X X
@@ -56,4 +57,5 @@ DEFINE http AS
     END AS code,
     u32(RANDOM * 100_000) AS response_size
 
-  FACTORS method, code;
+  FACTORS method, code
+  EVERY param.every;
