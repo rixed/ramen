@@ -711,6 +711,7 @@ all_tests.opt: \
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) -package qcheck $(filter %.cmx, $^) $(filter %.a, $^) $(filter %.ml, $^) -o $@
 
 ringbuf_test.opt: \
+		src/RamenVersions.cmx \
 		src/RamenLog.cmx \
 		src/RamenAtomic.cmx \
 		src/RamenName.cmx \
