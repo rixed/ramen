@@ -160,8 +160,8 @@ let replay conf ?(while_=always) fq field_names where since until
   | exception Replay.NoData -> on_exit ()
   | replay ->
     RingBuf.create replay.final_rb ;
-    let rb = RingBuf.load replay.final_rb in
     C.Replays.add conf replay ;
+    let rb = RingBuf.load replay.final_rb in
     let ret =
       finally
         (fun () ->
