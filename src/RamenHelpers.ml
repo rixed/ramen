@@ -1278,7 +1278,6 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
   let open Legacy.Unix in
   let sock =
     socket ~cloexec:true (domain_of_sockaddr sockaddr) SOCK_STREAM 0 in
-  let sock_closed = ref false in
   (* Keep an eye on my sons pids: *)
   let sons = Atomic.Set.make () in
   let killer_thread =
@@ -1326,10 +1325,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
     ) () in
   (* Now fork a new server for each new connection: *)
   finally
-    (fun () ->
-      if not !sock_closed then (
-        close sock ;
-        sock_closed := true))
+    (fun () -> close sock)
     (fun () ->
       setsockopt sock SO_REUSEADDR true ;
       bind sock sockaddr ;
@@ -1345,21 +1341,24 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
             flush_all () ;
             (match fork () with
             | 0 ->
-                Random.init prng_init ;
-                close sock ;
-                sock_closed := true ;
                 let what = "forked "^ service_name ^" server" in
                 (try
-                  server_fun s
-                with End_of_file ->
-                    !logger.info "%s: client disconnected, exiting" what ;
+                  (* Server process must not escape this scope or it would
+                   * try to use sock again! *)
+                  Random.init prng_init ;
+                  close sock ;
+                  (try
+                    server_fun s ;
                     exit 0
-                  | Exit ->
-                    !logger.info "%s: time to quit" what ;
-                    exit 0
-                  | e ->
-                    print_exception ~what e ;
-                    exit ExitCodes.forking_server_uncaught_exception) ;
+                  with End_of_file ->
+                      !logger.info "%s: client disconnected, exiting" what ;
+                      exit 0
+                    | Exit ->
+                      !logger.info "%s: time to quit" what ;
+                      exit 0)
+                with e ->
+                  print_exception ~what e ;
+                  exit ExitCodes.forking_server_uncaught_exception)
             | pid ->
                 close s ;
                 !logger.info "Forked server with pid %d" pid ;
