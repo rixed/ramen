@@ -617,7 +617,6 @@ struct
     { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
       since ; until ; final_rb ; sources ; links ; timeout }
 
-
   let teardown_links conf programs t =
     let rem_out_from site_fq =
       let site, fq = site_fq in
@@ -1429,8 +1428,6 @@ let watchdog = ref None
  * to read tuples before all their children are attached to their out_ref file.
  *)
 let synchronize_running conf autoreload_delay =
-  let rc_file = RC.file_name conf in
-  let replays_file = C.Replays.file_name conf in
   (* Avoid memoizing this at every call to build_must_run: *)
   if !watchdog = None then
     watchdog :=
@@ -1531,6 +1528,8 @@ let synchronize_running conf autoreload_delay =
       Replay.settup_links conf programs replay ;
       (* Do not start the replay at once or the worker won't have reread
        * its out-ref. TODO: signal it. *)
+      !logger.info "Sleeping %fs to allow nodes to read out-ref"
+        Default.min_delay_restats ;
       Unix.sleepf Default.min_delay_restats ;
       Replay.spawn_all_local_sources conf programs replay in
     let to_add chan =
@@ -1556,6 +1555,8 @@ let synchronize_running conf autoreload_delay =
   (* The replayers (hash from channel to (pids * replay)) that are currently
    * running: *)
   let replayers = Hashtbl.create 307 in
+  let rc_file = RC.file_name conf in
+  let replays_file = C.Replays.file_name conf in
   let rec loop last_must_run last_read_rc last_replays last_read_replays =
     (* Once we have forked some workers we must not allow an exception to
      * terminate this function or we'd leave unsupervised workers behind: *)

@@ -3,6 +3,8 @@ open Stdint
 open Batteries
 open Legacy.Unix
 open RamenHelpers
+module N = RamenName
+module Files = RamenFiles
 
 let now = ref (gettimeofday ())
 
@@ -10,15 +12,15 @@ let on_each_input_pre () =
   now := gettimeofday ()
 
 let read_file_lines ?(while_=always) ?(do_unlink=false)
-                    filename preprocessor watchdog k =
+                    (filename : N.path) preprocessor watchdog k =
   let open_file =
     if preprocessor = "" then (
       fun () ->
-        let fd = openfile filename [ O_RDONLY ] 0o644 in
+        let fd = openfile (filename :> string) [ O_RDONLY ] 0o644 in
         fd, (fun () -> close fd)
     ) else (
       fun () ->
-        let f = RamenHelpers.shell_quote filename in
+        let f = RamenHelpers.shell_quote (filename :> string) in
         let cmd =
           if String.exists preprocessor "%s" then
             String.nreplace preprocessor "%s" f
@@ -38,13 +40,13 @@ let read_file_lines ?(while_=always) ?(do_unlink=false)
     ) in
   match open_file () with
   | exception e ->
-    !logger.error "Cannot open file %S%s: %s, skipping."
-      filename
+    !logger.error "Cannot open file %a%s: %s, skipping."
+      N.path_print filename
       (if preprocessor = "" then ""
        else (Printf.sprintf " through %S" preprocessor))
       (Printexc.to_string e)
   | fd, close_file ->
-    !logger.debug "Start reading %S" filename ;
+    !logger.debug "Start reading %a" N.path_print filename ;
     finally close_file
       (fun () ->
         (* If we used a preprocessor we must wait for EOF before
@@ -52,7 +54,7 @@ let read_file_lines ?(while_=always) ?(do_unlink=false)
          * of the file it is safer to skip the file rather than redo
          * the lines that have been read already. *)
         if do_unlink && preprocessor = "" then
-          unlink filename ;
+          Files.safe_unlink filename ;
         RamenWatchdog.enable watchdog ;
         let lines = read_lines fd in
         (try
@@ -64,18 +66,20 @@ let read_file_lines ?(while_=always) ?(do_unlink=false)
           ) lines
         with Exit -> ()) ;
         RamenWatchdog.disable watchdog ;
-        !logger.debug "Finished reading %S" filename ;
-        if do_unlink && preprocessor <> "" then unlink filename ;
+        !logger.debug "Finished reading %a" N.path_print filename ;
+        if do_unlink && preprocessor <> "" then Files.safe_unlink filename ;
         ignore (Gc.major_slice 0)) ()
 
 let check_file_exists kind kind_name path =
-  !logger.debug "Checking %S is a %s..." path kind_name ;
-  match stat path with
+  !logger.debug "Checking %a is a %s..." N.path_print path kind_name ;
+  match Files.safe_stat path with
   | exception Unix_error (ENOENT, _, _) ->
-    failwith (path ^" does not exist")
+    Printf.sprintf2 "%a does not exist" N.path_print path |>
+    failwith
   | stats ->
     if stats.st_kind <> kind then
-      failwith (Printf.sprintf "Path %S is not a %s" path kind_name)
+      Printf.sprintf2 "Path %a is not a %s" N.path_print path kind_name |>
+      failwith
 
 let check_dir_exists = check_file_exists S_DIR "directory"
 
@@ -83,31 +87,32 @@ let check_dir_exists = check_file_exists S_DIR "directory"
 let watchdog = ref None
 
 let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
-  let dirname = Filename.dirname path
+  let dirname = Filename.dirname path |> N.path
   and glob = Filename.basename path in
   let glob = Globs.compile glob in
   if !watchdog = None then
     watchdog := Some (RamenWatchdog.make ~timeout:300. "read lines"
                                          quit_flag) ;
   let watchdog = Option.get !watchdog in
-  let import_file_if_match filename =
-    if Globs.matches glob filename then
+  let import_file_if_match (filename : N.path) =
+    if Globs.matches glob (filename :> string) then
       try
-        read_file_lines ?while_ ?do_unlink (dirname ^"/"^ filename)
+        read_file_lines ?while_ ?do_unlink (N.path_cat [dirname ; filename ])
                         preprocessor watchdog k
       with exn ->
-        !logger.error "Exception while reading file %s: %s\n%s"
-          filename
+        !logger.error "Exception while reading file %a: %s\n%s"
+          N.path_print filename
           (Printexc.to_string exn)
           (Printexc.get_backtrace ())
     else (
-      !logger.debug "File %S is not interesting." filename
+      !logger.debug "File %a is not interesting." N.path_print filename
     ) in
   check_dir_exists dirname ;
   let handler = RamenFileNotify.make ?while_ dirname in
-  !logger.debug "Import all files in dir %S..." dirname ;
+  !logger.debug "Import all files in dir %a..." N.path_print dirname ;
   RamenFileNotify.for_each (fun filename ->
-    !logger.debug "New file %S in dir %S!" filename dirname ;
+    !logger.debug "New file %a in dir %a!"
+      N.path_print filename N.path_print dirname ;
     import_file_if_match filename) handler
 
 let url_encode =

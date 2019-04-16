@@ -648,8 +648,10 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   if report_period > 0. then
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   let conf = { log_level ; state_file ; is_test ; site } in
-  info_or_test conf "Starting %a%s process. Will log into %s at level %s."
+  info_or_test conf
+    "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
+    (Unix.getpid ())
     (string_of_log_output !logger.output)
     (string_of_log_level log_level) ;
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->

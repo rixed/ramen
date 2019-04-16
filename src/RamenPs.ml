@@ -97,12 +97,12 @@ let read_stats ?while_ conf =
         now
     | Some (_, ma) ->
         if ma < now -. 120. then
-          !logger.warning "Instrumentation info is %ds old"
-            (int_of_float (now -. ma)) ;
+          !logger.warning "Instrumentation info is %a old"
+            print_as_duration (now -. ma) ;
         ma in
   (* FIXME: Not OK because we don't know if report-period has been
    * overridden on `ramen run` command line. Maybe at least make
-   * `ramen ps` accept that option too? *)
+   * `ramen ps` and `archivist` accept that option too? *)
   let since = until -. 2. *. RamenConsts.Default.report_period in
   let get_string = function VString s -> s [@@ocaml.warning "-8"]
   and get_u32 = function VU32 n -> n [@@ocaml.warning "-8"]

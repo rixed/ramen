@@ -296,7 +296,8 @@ let update_local_worker_stats ?while_ conf =
             (* Worker has restarted. We assume it's still mostly the
              * same operation. Maybe consider the function signature
              * (and add it to the stats?) *)
-            let print_date = print_as_date ?rel:None ?right_justified:None in
+            let print_date =
+              print_as_date ?rel:None ?right_justified:None in
             !logger.warning
               "Merging stats of a new instance of worker %a that started \
                at %a with the previous run that started at %a"
@@ -493,14 +494,14 @@ let emit_query_costs user_conf durations oc per_func_stats =
             \t(ite (>= %s %d)\n\
                  \t\t%s\n\
                  \t\t%s)))\n"
-      (cost i site_fq)
-      (perc site_fq)
-        (* Percentage of size_limit required to hold duration [d] of
-         * archives: *)
-        (ceil_to_int (d *. recall_size *. 100. /.
-         float_of_int user_conf.size_limit))
-      recall_cost
-      compute_cost
+        (cost i site_fq)
+        (perc site_fq)
+          (* Percentage of size_limit required to hold duration [d] of
+           * archives: *)
+          (ceil_to_int (d *. recall_size *. 100. /.
+             float_of_int user_conf.size_limit))
+        recall_cost
+        compute_cost
     ) durations
   ) per_func_stats
 
@@ -647,7 +648,12 @@ let update_storage_allocation conf =
    * stats or if the solver decided that all functions were equally important
    * and give them each 0% of storage.
    * In that case, we'd rather have each function share the available space: *)
+  let site_fq_print oc (site, fq) =
+    Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq in
   let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
+  !logger.debug "solution: %a, tot-perc = %d"
+    (Hashtbl.print site_fq_print Int.print) solution
+    tot_perc ;
   let solution, tot_perc =
     if tot_perc = 0 then (
       !logger.warning
