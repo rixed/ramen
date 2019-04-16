@@ -12,8 +12,8 @@ nb_loggers=2
 # In seconds.
 logs_for=6000
 
-# Choose between full speed (0) to slow (>0).
-every=1
+# hit_rate = logs per seconds output by each logger
+hit_rate=1
 
 . $top_src/tests/lib.sh
 
@@ -81,7 +81,7 @@ if test "$be_master" = yes; then
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=2
-  "$ramen" run "$root/logs.x"      --master=aggregator --on-site="logger*"    --as logs   -p every="$every"
+  "$ramen" run "$root/logs.x"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
   "$ramen" run "$root/logs_aggr.x" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600

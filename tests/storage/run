@@ -39,7 +39,7 @@ EOF
 
 # Compile the test programs
 root="examples/programs/monitoring"
-"$ramen" compile "$root/logs.ramen"
+"$ramen" compile "$root/logs_fast.ramen"
 "$ramen" compile -L "$root" "$root/logs_aggr.ramen"
 
 # Run everything
@@ -65,7 +65,7 @@ archivist_pid=$!
 at_exit "echo 'Killing ramen archivist'; kill '$archivist_pid'"
 
 export RAMEN_REPORT_PERIOD=5
-"$ramen" run "$root/logs.x" --as logs
+"$ramen" run "$root/logs_fast.x" --as logs
 "$ramen" run "$root/logs_aggr.x" --as 1min   -p time_period=60
 "$ramen" run "$root/logs_aggr.x" --as 10mins -p time_period=600
 "$ramen" run "$root/logs_aggr.x" --as 1hour  -p time_period=3600

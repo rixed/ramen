@@ -1054,7 +1054,7 @@ let yield_every ~while_ read_tuple every on_tup on_else =
          * from the many others when using strace: *)
         let sleep_time =
           min 1.33
-          ((start +. every) -. Unix.gettimeofday ()) in
+          ((start +. (every |? 0.)) -. Unix.gettimeofday ()) in
         let keep_going = while_ () in
         if sleep_time > 0. && keep_going then (
           !logger.debug "Sleeping for %f seconds" sleep_time ;
@@ -1150,7 +1150,7 @@ let aggregate
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
         'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
-      (every : float)
+      (every : float option)
       orc_make_handler orc_write orc_close =
   let stats_selected_tuple_count = make_stats_selected_tuple_count ()
   and stats_group_count =

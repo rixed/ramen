@@ -112,7 +112,7 @@ type t =
       from : data_source list ;
       (* Pause in between two productions (useful for operations with no
        * parents: *)
-      every : E.t ;
+      every : E.t option ;
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
       factors : N.field list }
@@ -211,11 +211,9 @@ and print with_types oc op =
           (print_selected_field with_types)) fields
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
-    (match E.float_of_const every with
-    | Some d ->
-        if d <> 0. then
-          Printf.fprintf oc "%tEVERY %g SECONDS" sp d
-    | None -> ()) ;
+    Option.may (fun every ->
+      Printf.fprintf oc "%tEVERY %a SECONDS"
+        sp (E.print with_types) every) every ;
     if not (E.is_true where) then
       Printf.fprintf oc "%tWHERE %a" sp
         (E.print with_types) where ;
@@ -312,7 +310,10 @@ let fold_top_level_expr init f = function
             List.fold_left (fun prev e ->
               f prev "SORT-BY clause" e
             ) x b in
-      let x = f x "EVERY clause" every in
+      let x =
+        Option.map_default
+          (fun every -> f x "EVERY clause" every)
+          x every in
       x
 
 let iter_top_level_expr f =
@@ -527,7 +528,7 @@ let resolve_unknown_tuples params op =
    * belongs to def: *)
   match op with
   | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
-                 notifications ; _ } as aggr) ->
+                 notifications ; every ; _ } as aggr) ->
       let is_selected_fields ?i name = (* Tells if a field is in _out_ *)
         list_existsi (fun i' sf ->
           sf.alias = name &&
@@ -590,8 +591,10 @@ let resolve_unknown_tuples params op =
     let key = List.map (prefix_def params TupleIn) key in
     let commit_cond = prefix_smart commit_cond in
     let notifications = List.map prefix_smart notifications in
+    let every = Option.map (prefix_def params TupleIn) every in
     Aggregate { aggr with
-      fields ; merge ; sort ; where ; key ; commit_cond ; notifications }
+      fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
+      every }
 
   | ReadCSVFile ({ where ; preprocessor ; _ } as csv) ->
     (* Default to In if not a param, and then disallow In >:-> *)
@@ -770,14 +773,9 @@ let checked params op =
         [ TupleParam; TupleEnv; TupleIn; Record ]
         "MERGE-ON clause" e
     ) merge.on ;
-    let has_every =
-      match E.float_of_const every with
-      | Some d ->
-          if d < 0. then failwith "EVERY clause can not be negative" ;
-          d > 0.
-      | None ->
-          true (* must be a param then *) in
-    if has_every && from <> [] then
+    Option.may
+      (check_fields_from [ TupleParam; TupleEnv ] "EVERY clause") every ;
+    if every <> None && from <> [] then
       failwith "Cannot have both EVERY and FROM" ;
     (* Check that we do not use any fields from out that is generated: *)
     let generators = List.filter_map (fun sf ->
@@ -912,7 +910,7 @@ struct
   let every_clause m =
     let m = "every clause" :: m in
     (
-      strinG "every" -- blanks -+ E.Parser.(const ||| param)
+      strinG "every" -- blanks -+ E.Parser.p
     ) m
 
   let select_clause m =
@@ -1127,7 +1125,7 @@ let fields_schema m =
     | GroupByClause of E.t list
     | CommitClause of (commit_spec list * (bool (* before *) * E.t))
     | FromClause of data_source list
-    | EveryClause of E.t
+    | EveryClause of E.t option
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
     | InstrumentationClause of string
     | ExternalDataClause of file_spec
@@ -1191,7 +1189,7 @@ let fields_schema m =
       (group_by >>: fun c -> GroupByClause c) |||
       (commit_clause >>: fun c -> CommitClause c) |||
       (from_clause >>: fun c -> FromClause c) |||
-      (every_clause >>: fun c -> EveryClause c) |||
+      (every_clause >>: fun c -> EveryClause (Some c)) |||
       (listen_clause >>: fun c -> ListenClause c) |||
       (instrumentation_clause >>: fun c -> InstrumentationClause c) |||
       (read_file_specs >>: fun c -> ExternalDataClause c) |||
@@ -1209,7 +1207,7 @@ let fields_schema m =
       and default_key = []
       and default_commit = ([], (false, default_commit_cond))
       and default_from = []
-      and default_every = E.zero ()
+      and default_every = None
       and default_listen = None
       and default_instrumentation = ""
       and default_ext_data = None

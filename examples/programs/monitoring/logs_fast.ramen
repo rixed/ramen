@@ -2,6 +2,7 @@
 -- In this file we simulate a fictive web shop monitoring
 
 PARAMETERS
+  start_of_time {seconds(rel)} DEFAULTS TO 191631600,
   hit_rate {hits*seconds^-1} DEFAULTS TO 100,
   clock_jitter {seconds} DEFAULTS TO 5s;
 
@@ -10,8 +11,10 @@ DEFINE http AS
     -- Timing
     -- We use a fake clock, that is not perfectly monotonous
     RANDOM * 2 * clock_jitter - clock_jitter AS _clock_jitter,
+    1 / hit_rate AS _avg_dt,
+    RANDOM * 2 * _avg_dt AS _dt,
+    (previous.start |? start_of_time) + _clock_jitter + _dt AS start,
     RANDOM * 2ms AS _resp_time,
-    now - _clock_jitter - _resp_time AS start,
     start + _resp_time AS stop,
 
     -- Request
@@ -51,5 +54,4 @@ DEFINE http AS
     END AS code,
     u32(RANDOM * 100_000) AS response_size
 
-  FACTORS method, code
-  EVERY 1 / hit_rate;
+  FACTORS method, code;

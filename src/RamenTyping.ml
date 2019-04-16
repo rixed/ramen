@@ -1453,7 +1453,7 @@ let emit_operation declare tuple_sizes records field_names
   O.iter_expr (fun _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
-  | Aggregate { where ; notifications ; commit_cond ; _ } ->
+  | Aggregate { where ; notifications ; commit_cond ; every ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type oc
@@ -1461,7 +1461,7 @@ let emit_operation declare tuple_sizes records field_names
       (* Typing rules:
        * - Where must be a bool;
        * - Commit-when must also be a bool;
-       * - Flush_how conditions must also be bools;
+       * - Every-clause must be numeric;
        * - Notification names must be non-nullable strings. *)
       let name = func_err fi Err.(Clause ("where", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr where) oc TBool ;
@@ -1471,6 +1471,13 @@ let emit_operation declare tuple_sizes records field_names
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr commit_cond) oc TBool ;
       let name = func_err fi Err.(Clause ("commit", Nullability false)) in
       emit_assert_is_false ~name oc (n_of_expr commit_cond) ;
+      Option.may (fun e ->
+        let name = func_err fi Err.(Clause ("every", ActualType "float")) in
+        emit_assert_id_eq_typ ~name tuple_sizes records field_names
+                              (t_of_expr e) oc TFloat ;
+        let name = func_err fi Err.(Clause ("every", Nullability false)) in
+        emit_assert_is_false ~name oc (n_of_expr e)
+      ) every ;
       List.iteri (fun i notif ->
         let name = func_err fi Err.(Notif (i, ActualType "string")) in
         emit_assert_id_eq_typ ~name tuple_sizes records field_names
