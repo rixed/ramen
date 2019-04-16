@@ -355,6 +355,11 @@ struct
     | _ -> Many
 
   let has_many = function Many -> true | _ -> false
+
+  let print p oc = function
+    | Empty -> Printf.fprintf oc "<empty>"
+    | Single v -> Printf.fprintf oc "{%a}" p v
+    | Many -> Printf.fprintf oc "{...many!...}"
 end
 
 let targets_for_render conf ?since ?until queries =
@@ -500,6 +505,9 @@ let render conf headers body =
   let with_data_field = SimpleSet.has_many data_fields
   and with_factors = (* Set of factor names we want to keep *)
     Hashtbl.enum factor_values //@ (fun (fact_name, fact_vals) ->
+      !logger.debug "Factor %a has values %a"
+        N.field_print fact_name
+        (SimpleSet.print T.print) fact_vals ;
       if SimpleSet.has_many fact_vals then Some fact_name
       else None) |>
     Set.of_enum in
