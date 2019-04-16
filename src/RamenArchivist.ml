@@ -96,19 +96,16 @@ let get_user_conf fname per_func_stats =
   user_conf
 
 (* Build a FS.t from a unique stats received for the first time: *)
-let func_stats_of_stat s now =
-  let etime_diff =
-    match s.RamenPs.min_etime, s.max_etime with
-    | Some t1, Some t2 -> t2 -. t1
-    | _ -> now -. s.startup_time
-  and bytes =
-    match s.avg_full_bytes, s.out_count with
+let func_stats_of_stat s =
+  let bytes =
+    match s.RamenPs.avg_full_bytes, s.out_count with
     | None, _ | _, None -> Uint64.zero
     | Some b, Some c -> Uint64.(b * c)
   in
   FS.{
     startup_time = s.RamenPs.startup_time ;
-    running_time = etime_diff ;
+    min_etime = s.RamenPs.min_etime ;
+    max_etime = s.RamenPs.max_etime ;
     tuples = Uint64.(to_int64 (s.out_count |? zero)) ;
     bytes = Uint64.(to_int64 bytes) ;
     cpu = s.RamenPs.cpu ;
@@ -121,7 +118,8 @@ let func_stats_of_stat s now =
 let add_ps_stats a b =
   FS.{
     startup_time = a.startup_time ;
-    running_time = a.running_time +. b.running_time ;
+    min_etime = option_map2 min a.min_etime b.min_etime ;
+    max_etime = option_map2 max a.max_etime b.max_etime ;
     tuples = Int64.add a.tuples b.tuples ;
     bytes = Int64.add a.bytes b.bytes ;
     cpu = a.cpu +. b.cpu ;
@@ -280,18 +278,21 @@ let update_local_worker_stats ?while_ conf =
     load_stats ~site:conf.C.site conf |>
     Hashtbl.map (fun _fq s -> None, s)
   in
-  let now = Unix.gettimeofday () in
-  RamenPs.read_stats ?while_ conf |>
+  let max_etime =
+    Hashtbl.fold (fun _fq (_, s) t ->
+      option_map2 max t s.FS.max_etime
+    ) per_func_stats None in
+  RamenPs.read_stats ?while_ ?since:max_etime conf |>
   Hashtbl.iter (fun (fq, is_top_half) s ->
-    if not is_top_half then
+    if not is_top_half then (
       Hashtbl.modify_opt fq (function
       | None ->
-          Some (None, func_stats_of_stat s now)
+          Some (None, func_stats_of_stat s)
       | Some (tot, cur) ->
           if Distance.float s.RamenPs.startup_time cur.startup_time < 1.
           then (
             (* Just replace cur: *)
-            Some (tot, func_stats_of_stat s now)
+            Some (tot, func_stats_of_stat s)
           ) else (
             (* Worker has restarted. We assume it's still mostly the
              * same operation. Maybe consider the function signature
@@ -312,9 +313,9 @@ let update_local_worker_stats ?while_ conf =
               | Some tot ->
                   (* Accumulate tot + cur and let s be the new cur: *)
                   add_ps_stats tot cur in
-            Some (Some tot, func_stats_of_stat s now)
+            Some (Some tot, func_stats_of_stat s)
           )
-    ) per_func_stats
+    ) per_func_stats)
   ) ;
   let stats =
     Hashtbl.map (fun _fq -> function
@@ -417,13 +418,23 @@ let cost i site_fq =
 (* The "compute cost" per second is the CPU time it takes to
  * process one second worth of data. *)
 let compute_cost s =
-  s.FS.cpu /. s.FS.running_time
+  match s.FS.min_etime, s.FS.max_etime with
+  | Some mi, Some ma ->
+      let running_time = ma -. mi in
+      s.FS.cpu /. running_time
+  | _ ->
+      Default.compute_cost
 
 (* The "recall size" is the total size per second in bytes.
  * The recall cost of a second worth of output will be this size
  * times the user_conf.recall_cost. *)
 let recall_size s =
-  Int64.to_float s.FS.bytes /. s.FS.running_time
+  match s.FS.min_etime, s.FS.max_etime with
+  | Some mi, Some ma ->
+      let running_time = ma -. mi in
+      Int64.to_float s.FS.bytes /. running_time
+  | _ ->
+      Default.recall_size
 
 (* For each function, declare the boolean perc_f, that must be between 0
  * and 100. From now on, [per_func_stats] is keyed by site*fq and has all

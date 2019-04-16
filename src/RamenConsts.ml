@@ -405,6 +405,10 @@ struct
   (* Number of seconds after which a replay channel will cease to conduct
    * tuples: *)
   let replay_timeout = 300.
+
+  (* When some worker lacks stats it still needs to be allocates storage: *)
+  let compute_cost = 0.5 (* 0.5s of CPU for 1s of data *)
+  let recall_size = 100. (* 100 bytes of data every second *)
 end
 
 module SpecialFunctions =

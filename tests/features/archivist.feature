@@ -23,7 +23,7 @@ Feature: test the archivist
     And program test is running
     And I wait 10 seconds
     And I run ramen with arguments archivist --stats --allocs --reconf
-    And I run tr with arguments -d '\n[:blank:]' < ramen_dir/archivist/v3/allocs
+    And I run tr with arguments -d '\n[:blank:]' < ramen_dir/archivist/v4/allocs
     Then tr must mention "","test/r0")=>0"
     And tr must mention "","test/s0")=>536870912"
     And tr must mention "","test/s1")=>536870912"

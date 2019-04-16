@@ -459,7 +459,8 @@ module FuncStats =
 struct
   type t =
     { startup_time : float ; (* To distinguish from present run *)
-      running_time : float [@ppp_default 0.] ;
+      min_etime : float option [@ppp_default None] ;
+      max_etime : float option [@ppp_default None] ;
       tuples : int64 (* Sacrifice 1 bit for convenience *) [@ppp_default 0L] ;
       bytes : int64 [@ppp_default 0L] ;
       cpu : float (* Cumulated seconds *) [@ppp_default 0.] ;
