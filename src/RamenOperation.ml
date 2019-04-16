@@ -212,7 +212,7 @@ and print with_types oc op =
         (if fields <> [] && and_all_others then sep else "")
         (if and_all_others then "*" else "") ;
     Option.may (fun every ->
-      Printf.fprintf oc "%tEVERY %a SECONDS"
+      Printf.fprintf oc "%tEVERY %a"
         sp (E.print with_types) every) every ;
     if not (E.is_true where) then
       Printf.fprintf oc "%tWHERE %a" sp
@@ -1437,8 +1437,8 @@ let fields_schema m =
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
 
-    "SELECT 1 AS one EVERY 1 SECONDS" \
-        (test_op "YIELD 1 AS one EVERY 1 SECOND")
+    "SELECT 1 AS one EVERY 1{seconds}" \
+        (test_op "YIELD 1 AS one EVERY 1 SECONDS")
   *)
 
   (*$>*)
