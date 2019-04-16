@@ -667,12 +667,24 @@ let update_storage_allocation conf =
     tot_perc ;
   let solution, tot_perc =
     if tot_perc = 0 then (
-      !logger.warning
-        "No solution due to lack of stats(?), sharing available space" ;
+      let retention_globs = Hashtbl.keys user_conf.retentions |>
+                            List.of_enum in
+      let mentionned_in_user_conf (_site, (fq : N.fq)) =
+        List.exists (fun p ->
+          Globs.matches p (fq :> string)
+        ) retention_globs in
+      let persist_nodes =
+        Hashtbl.keys per_func_stats //
+        mentionned_in_user_conf |>
+        Set.of_enum in
+      !logger.warning "No solution due to lack of stats(?), \
+                       sharing available space between %a"
+        (Set.print site_fq_print) persist_nodes ;
       (* Next scale will scale this properly *)
       let solution =
-        Hashtbl.filter_map (fun _ s ->
-          if s.FS.is_running then Some 1 else None
+        Hashtbl.filter_map (fun site_fq s ->
+          if s.FS.is_running && mentionned_in_user_conf site_fq
+          then Some 1 else None
         ) per_func_stats in
       (* Have to recompute [tot_perc]: *)
       let tot_perc =
