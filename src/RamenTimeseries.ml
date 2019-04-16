@@ -106,8 +106,9 @@ let get conf num_points since until where factors
     | _ -> invalid_arg "RamenTimeseries.get: unknown consoliation function"
   in
   (* The data fields we are really interested about are: the data fields +
-   * the factors *)
-  let tuple_fields = List.rev_append factors data_fields in
+   * the factors.
+   * Note that order of factors does matter, so do not rev_append here! *)
+  let tuple_fields = factors @ data_fields in
   !logger.debug "tuple_fields = %a"
     (List.print N.field_print) tuple_fields ;
   (* Must not add event time in front of factors: *)
