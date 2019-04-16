@@ -762,7 +762,8 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
     RamenWatchdog.make ~timeout "Archiver" Processes.quit in
   RamenWatchdog.enable watchdog ;
   forever (fun () ->
-    run_once conf ?while_ ~export_duration stats allocs reconf ;
+    log_and_ignore_exceptions ~what:"archivist run_once"
+      (run_once conf ?while_ ~export_duration stats allocs) reconf ;
     RamenWatchdog.reset watchdog ;
     Unix.sleepf (jitter sleep_time)) ()
 
