@@ -130,6 +130,12 @@ fi
 at_exit "echo 'Killing archivist'; kill '$archivist_pid'"
 
 if test "$be_master" = yes; then
+  "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
+  httpd_pid=$!
+  at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
+fi
+
+if test "$be_master" = yes; then
 
   # Run the other instances
   for h in $(seq 1 $nb_loggers); do
