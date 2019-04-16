@@ -49,3 +49,54 @@ let for_each f n =
               (Inotify.string_of_event ev)) lst ;
           loop ()) in
   loop ()
+
+type file_notifier =
+  { files : N.path list ;
+    handler : Unix.file_descr }
+
+let make_file_notifier files =
+  let handler = Inotify.create () in
+  List.iter (fun (fname : N.path) ->
+    Files.mkdir_all ~is_file:true fname ;
+    let mask = Inotify.[ S_Close_write ; S_Moved_to ] in
+    Inotify.add_watch handler (fname :> string) mask |> ignore
+  ) files ;
+  { handler ; files }
+
+let wait_file_changes ?(while_=always) ?max_wait n =
+  let set_alarm dt =
+    Unix.alarm (int_of_float dt) |> ignore in
+  let rec loop () =
+    if while_ () then
+      match Inotify.read n.handler with
+      | exception Unix.Unix_error (Unix.EINTR, _, _) ->
+          None
+      | exception exn ->
+          !logger.error "Cannot Inotify.read: %s"
+            (Printexc.to_string exn) ;
+          Unix.sleep 1 ;
+          loop ()
+      | lst ->
+          (match
+            List.find_map (function
+              | _watch, kinds, _cookie, Some fname
+                  when (List.mem Inotify.Close_write kinds ||
+                        List.mem Inotify.Moved_to kinds) &&
+                       not (List.mem Inotify.Isdir kinds) ->
+                  Some fname
+              | watch, kinds, _cookie, None
+                  when Inotify.int_of_watch watch = -1 &&
+                       List.mem Inotify.Q_overflow kinds ->
+                  None
+              | ev ->
+                !logger.debug "Received a useless inotification: %s"
+                  (Inotify.string_of_event ev) ;
+                None
+            ) lst with
+          | exception Not_found -> loop ()
+          | fname -> Some fname)
+    else None in
+  Option.may set_alarm max_wait ;
+  finally
+    (fun () -> if max_wait <> None then set_alarm 0.)
+    loop ()

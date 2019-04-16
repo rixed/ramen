@@ -75,3 +75,38 @@ let rec for_each f n =
               )
           ) in
     merge [] n.reported files)
+
+(* Wait until any of the files are changed. [files] is an assoc list of file
+ * name to last modification time stamp. Returns the new list of files, with
+ * the changed one on top, or the empty list if not [while_]. *)
+type file_notifier =
+  { files : (N.path * float ref) list }
+
+let make_file_notifier files =
+  { files =
+      List.map (fun fname ->
+        Files.mkdir_all ~is_file:true fname ;
+        fname, ref 0.
+      ) files }
+
+let wait_file_changes ?(while_=always) ?max_wait n =
+  let rec loop tot_wait = function
+    | (fname, mtime) :: rest ->
+        (match Files.mtime fname with
+        | exception _ ->
+            loop tot_wait rest
+        | t ->
+            if t > !mtime then (
+              mtime := t ;
+              Some fname
+            ) else
+              loop tot_wait rest)
+    | [] ->
+        if Option.map_default ((<) tot_wait) true max_wait &&
+           while_ ()
+        then (
+          let delay = 1. in
+          Unix.sleepf delay ;
+          loop (tot_wait +. delay) n.files
+        ) else None in
+  loop 0. n.files

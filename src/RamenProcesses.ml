@@ -81,7 +81,10 @@ let prepare_signal_handlers conf =
   set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
     !logger.info "Received signal %s" (name_of_signal s) ;
-    Binocle.display_console ()))
+    Binocle.display_console ())) ;
+  (* NOP on sigalarm as we use it to EINTR inotify reads only: *)
+  set_signals Sys.[sigalrm] (Signal_handle (fun s ->
+    !logger.debug "Received signal %s" (name_of_signal s)))
 
 (*
  * Machinery to spawn other programs.
@@ -1556,7 +1559,11 @@ let synchronize_running conf autoreload_delay =
    * running: *)
   let replayers = Hashtbl.create 307 in
   let rc_file = RC.file_name conf in
+  Files.ensure_exists ~contents:"{}" rc_file ;
   let replays_file = C.Replays.file_name conf in
+  Files.ensure_exists ~contents:"{}" replays_file ;
+  let fnotifier =
+    RamenFileNotify.make_file_notifier [ rc_file ; replays_file ] in
   let rec loop last_must_run last_read_rc last_replays last_read_replays =
     (* Once we have forked some workers we must not allow an exception to
      * terminate this function or we'd leave unsupervised workers behind: *)
@@ -1584,7 +1591,9 @@ let synchronize_running conf autoreload_delay =
                  * of mtime), refuse to refresh the file unless last mod
                  * time is old enough: *)
                 now -. lm > 1. in
-          last_mod <> None && reread in
+          let ret = last_mod <> None && reread in
+          if ret then !logger.info "%a has changed" N.path_print fname ;
+          ret in
         let must_run, last_read_rc =
           if !quit <> None then (
             !logger.debug "No more workers should run" ;
@@ -1613,8 +1622,8 @@ let synchronize_running conf autoreload_delay =
           ) in
         synchronize_replays must_replay replayers ;
         Gc.minor () ;
-        let delay = if !quit = None then 1. else 0.3 in
-        Unix.sleepf delay ;
+        let max_wait = if !quit = None then 1. else 0.3 in
+        RamenFileNotify.wait_file_changes ~max_wait fnotifier |> ignore ;
         RamenWatchdog.reset watchdog ;
         loop must_run last_read_rc must_replay last_read_replays)) ()
   in
