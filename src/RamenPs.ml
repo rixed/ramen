@@ -81,7 +81,7 @@ let no_stats =
     wait_in = None ; wait_out = None ; bytes_in = None ; bytes_out = None ;
     avg_full_bytes = None ; last_out = None ; startup_time = 0. }
 
-let read_stats ?while_ conf =
+let read_stats ?while_ ?since conf =
   let h = Hashtbl.create 57 in
   let open RamenTypes in
   let bname = C.report_ringbuf conf in
@@ -103,7 +103,7 @@ let read_stats ?while_ conf =
   (* FIXME: Not OK because we don't know if report-period has been
    * overridden on `ramen run` command line. Maybe at least make
    * `ramen ps` and `archivist` accept that option too? *)
-  let since = until -. 2. *. RamenConsts.Default.report_period in
+  let since = since |? until -. 2. *. RamenConsts.Default.report_period in
   let get_string = function VString s -> s [@@ocaml.warning "-8"]
   and get_u32 = function VU32 n -> n [@@ocaml.warning "-8"]
   and get_u64 = function VU64 n -> n [@@ocaml.warning "-8"]
