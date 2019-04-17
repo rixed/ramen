@@ -70,21 +70,28 @@ let prepare_reports conf =
 let info_or_test conf =
   if conf.C.test then !logger.debug else !logger.info
 
-(* Install signal handlers *)
+(* Install signal handlers.
+ * Beware: do not use BatPrintf in there, as there is a mutex in there that
+ * might be held already when the OCaml runtime decides to run this in the
+ * same thread: *)
 let prepare_signal_handlers conf =
+  ignore conf ;
   set_signals Sys.[sigterm; sigint] (Signal_handle (fun s ->
-    info_or_test conf "Received signal %s" (name_of_signal s) ;
+    (*info_or_test conf "Received signal %s" (name_of_signal s) ;*)
+    ignore s ;
     quit :=
       Some (if s = Sys.sigterm then ExitCodes.terminated
                                else ExitCodes.interrupted))) ;
   (* Dump stats on sigusr1: *)
   set_signals Sys.[sigusr1] (Signal_handle (fun s ->
     (* This log also useful to rotate the logfile. *)
-    !logger.info "Received signal %s" (name_of_signal s) ;
+    ignore s ;
+    (*!logger.info "Received signal %s" (name_of_signal s) ;*)
     Binocle.display_console ())) ;
   (* NOP on sigalarm as we use it to EINTR inotify reads only: *)
   set_signals Sys.[sigalrm] (Signal_handle (fun s ->
-    !logger.debug "Received signal %s" (name_of_signal s)))
+    (*!logger.debug "Received signal %s" (name_of_signal s)*)
+    ignore s))
 
 (*
  * Machinery to spawn other programs.
