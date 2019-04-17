@@ -229,6 +229,7 @@ Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|
     begin
       step what
       done = true
+      break
     rescue Exception => e
       puts "got exception #{e}, retrying"
       sleep 1
