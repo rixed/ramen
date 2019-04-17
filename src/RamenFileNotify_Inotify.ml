@@ -51,16 +51,17 @@ let for_each f n =
   loop ()
 
 type file_notifier =
-  { files : N.path list ;
+  { files : (Inotify.watch * N.path) list ;
     handler : Unix.file_descr }
 
 let make_file_notifier files =
   let handler = Inotify.create () in
-  List.iter (fun (fname : N.path) ->
-    Files.mkdir_all ~is_file:true fname ;
-    let mask = Inotify.[ S_Close_write ; S_Moved_to ] in
-    Inotify.add_watch handler (fname :> string) mask |> ignore
-  ) files ;
+  let files =
+    List.map (fun (fname : N.path) ->
+      Files.mkdir_all ~is_file:true fname ;
+      let mask = Inotify.[ S_Close_write ; S_Moved_to ] in
+      Inotify.add_watch handler (fname :> string) mask, fname
+    ) files in
   { handler ; files }
 
 let wait_file_changes ?(while_=always) ?max_wait n =
@@ -79,11 +80,20 @@ let wait_file_changes ?(while_=always) ?max_wait n =
       | lst ->
           (match
             List.find_map (function
-              | _watch, kinds, _cookie, Some fname
+              | watch, kinds, _cookie, _ as ev (* The file is not given *)
                   when (List.mem Inotify.Close_write kinds ||
                         List.mem Inotify.Moved_to kinds) &&
                        not (List.mem Inotify.Isdir kinds) ->
-                  Some fname
+                  (match List.assoc watch n.files with
+                  | exception Not_found ->
+                      !logger.error "Received notification %S about unknown \
+                                     watch (known watches: %a)"
+                        (Inotify.string_of_event ev)
+                        (pretty_enum_print Int.print)
+                          (List.enum n.files /@ fst /@ Inotify.int_of_watch) ;
+                      None
+                  | fname ->
+                      Some fname)
               | watch, kinds, _cookie, None
                   when Inotify.int_of_watch watch = -1 &&
                        List.mem Inotify.Q_overflow kinds ->
