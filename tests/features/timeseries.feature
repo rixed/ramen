@@ -1,4 +1,4 @@
-Feature: test ramen tail
+Feature: test ramen timeseries
 
   Test `ramen timeseries` behavior according to its many options.
 

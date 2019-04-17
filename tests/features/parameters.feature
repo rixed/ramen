@@ -1,4 +1,4 @@
-Feature: Programs ca  be parameterized
+Feature: Programs can be parameterized
 
   It is possible to change the behavior of a program with parameters (or
   environment).

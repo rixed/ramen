@@ -99,9 +99,9 @@ let wait_file_changes ?(while_=always) ?max_wait n =
                        List.mem Inotify.Q_overflow kinds ->
                   None
               | ev ->
-                !logger.debug "Received a useless inotification: %s"
-                  (Inotify.string_of_event ev) ;
-                None
+                  !logger.debug "Received a useless inotification: %s"
+                    (Inotify.string_of_event ev) ;
+                  None
             ) lst with
           | exception Not_found -> loop ()
           | fname -> Some fname)

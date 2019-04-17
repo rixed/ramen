@@ -14,7 +14,7 @@ Feature: We can run and kill any program in any order
     Given ramen must be in the path
     And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
-    # Create a bad xdep that depends on this to-ne-overwriten definition:
+    # Create a bad xdep that depends on this to-be-overwriten definition:
     And a file tests/nodep.ramen with content
       """
       define yi as yield "pas glop" as v every 1 second;
@@ -29,6 +29,8 @@ Feature: We can run and kill any program in any order
     And tests/dep.ramen is compiled as tests/xdep
     And tests/dep.ramen is compiled
     # Now the real content
+    # Notice the type change: but that's OK as supervisor will
+    # recompile both dep and nodep:
     And a file tests/nodep.ramen with content
       """
       define yi as yield 1 as v every 1 second;
@@ -68,3 +70,4 @@ Feature: We can run and kill any program in any order
     And ramen must print a few lines on stderr
     Then after max 1 second program tests/nodep must not be running
     But after max 3 seconds the program tests/dep must be running
+
