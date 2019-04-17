@@ -442,7 +442,9 @@ let render conf headers body =
           Hashtbl.modify_opt (fq, factor) (function
             | None -> Some (Some fval)
             | Some None as prev -> prev
-            | Some (Some _) -> Some None
+            | Some (Some v) as prev ->
+                if v = fval then prev
+                else Some None
           ) wanted_factors
     ) fvals
   ) targets ;
