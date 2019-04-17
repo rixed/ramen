@@ -24,9 +24,6 @@ jobs:
           name: Build lib bundle
           command: make bundle
       - run:
-          name: Parse/Typing tests
-          command: make err-check
-      - run:
           name: Behavioral tests
           command: make cli-check
       - run:
