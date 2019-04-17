@@ -105,7 +105,7 @@ let wait_file_changes ?(while_=always) ?max_wait n =
         if Option.map_default ((<) tot_wait) true max_wait &&
            while_ ()
         then (
-          let delay = 1. in
+          let delay = 0.1 in
           Unix.sleepf delay ;
           loop (tot_wait +. delay) n.files
         ) else None in

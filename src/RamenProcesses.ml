@@ -1575,7 +1575,13 @@ let synchronize_running conf autoreload_delay =
       then (
         !logger.info "All processes stopped, quitting."
       ) else (
+        let max_wait =
+          ref (if autoreload_delay > 0. then
+                 autoreload_delay else 5.) in
+        let set_max_wait d =
+          if d < !max_wait then max_wait := d in
         let must_reread fname last_read autoreload_delay now =
+          let granularity = 0.1 in
           let last_mod =
             try Some (Files.mtime fname)
             with Unix.(Unix_error (ENOENT, _, _)) -> None in
@@ -1583,14 +1589,22 @@ let synchronize_running conf autoreload_delay =
             match last_mod with
             | None -> false
             | Some lm ->
-                (lm >= last_read -. 1. ||
-                 autoreload_delay > 0. &&
-                 now -. last_read >= autoreload_delay) &&
-                (* To prevent missing the last writes when the file is
-                 * updated several times a second (the possible resolution
-                 * of mtime), refuse to refresh the file unless last mod
-                 * time is old enough: *)
-                now -. lm > 1. in
+                if lm >= last_read ||
+                   autoreload_delay > 0. &&
+                   now -. last_read >= autoreload_delay
+                then (
+                  set_max_wait granularity ;
+                  (* To prevent missing the last writes when the file is
+                   * updated faster than mtime granularity, refuse to refresh
+                   * the file unless last mod time is old enough.
+                   * As [now] will be the next [last_read] we are guaranteed to
+                   * have [lm < last_read] in the next calls in the absence of
+                   * writes.  But we also want to make sure that all writes
+                   * occurring after we do read that file will push the mtime
+                   * after (>) [lm], which is true only if now is greater than
+                   * lm + mtime granularity: *)
+                  now -. lm > granularity
+                ) else false in
           let ret = last_mod <> None && reread in
           if ret then !logger.info "%a has changed %gs ago"
             N.path_print fname (now -. Option.get last_mod) ;
@@ -1626,7 +1640,7 @@ let synchronize_running conf autoreload_delay =
           ) in
         synchronize_replays must_replay replayers ;
         Gc.minor () ;
-        let max_wait = if !quit = None then 1. else 0.3 in
+        let max_wait = if !quit = None then !max_wait else !max_wait /. 10. in
         RamenFileNotify.wait_file_changes ~max_wait fnotifier |> ignore ;
         RamenWatchdog.reset watchdog ;
         loop must_run last_read_rc must_replay last_read_replays)) ()
