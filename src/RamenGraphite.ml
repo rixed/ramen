@@ -422,28 +422,38 @@ let render conf headers body =
    * filter (it's the only value we want for this factor) or if we want to
    * get a time series for all possible values (in a single scan). For this
    * we merely count how many distinct values we are asking for: *)
-  let factors_wanted = Hashtbl.create 9 in
+  let wanted_factors = Hashtbl.create 9 in
+  let print_wanted_factors =
+    let fq_field_print oc (fq, field) =
+      Printf.fprintf oc "%a.%a" N.fq_print fq N.field_print field in
+    Hashtbl.print fq_field_print (Option.print T.print) in
   Array.iter (fun (_func, fq, fvals, _data_field) ->
+    !logger.debug "Factors for %a: %a"
+      N.fq_print fq
+      (Set.print (fun oc (f, v_opt) ->
+        Printf.fprintf oc "%a=%a" N.field_print f
+          (Option.print T.print) v_opt)) fvals ;
     Set.iter (fun (factor, opt_val) ->
       match opt_val with
       | None ->
           (* None means high cardinality: *)
-          Hashtbl.replace factors_wanted (fq, factor) None
+          Hashtbl.replace wanted_factors (fq, factor) None
       | Some fval ->
           Hashtbl.modify_opt (fq, factor) (function
             | None -> Some (Some fval)
             | Some None as prev -> prev
             | Some (Some _) -> Some None
-          ) factors_wanted
+          ) wanted_factors
     ) fvals
   ) targets ;
+  !logger.debug "wanted factors: %a" print_wanted_factors wanted_factors ;
 
   (* Now we can decide on which scans to perform *)
   let scans = Hashtbl.create 9 in
   Array.iter (fun (func, fq, fvals, data_field) ->
     let where, factors =
       Set.fold (fun (factor, _) (where, factors) ->
-        match Hashtbl.find factors_wanted (fq, factor) with
+        match Hashtbl.find wanted_factors (fq, factor) with
         | Some fval ->
             (* If we are interested in only one value, do not ask for this
              * factor but add a where filter: *)

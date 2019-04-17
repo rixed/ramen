@@ -1592,7 +1592,8 @@ let synchronize_running conf autoreload_delay =
                  * time is old enough: *)
                 now -. lm > 1. in
           let ret = last_mod <> None && reread in
-          if ret then !logger.info "%a has changed" N.path_print fname ;
+          if ret then !logger.info "%a has changed %gs ago"
+            N.path_print fname (now -. Option.get last_mod) ;
           ret in
         let must_run, last_read_rc =
           if !quit <> None then (
@@ -1616,6 +1617,9 @@ let synchronize_running conf autoreload_delay =
           ) else (
             let now = Unix.gettimeofday () in
             if must_reread replays_file last_read_replays 0. now then
+              (* FIXME: We need to start lazy nodes right *after* having
+               * written into their out-ref but *before* replayers are started
+               *)
               C.Replays.load conf, now
             else
               last_replays, last_read_replays
