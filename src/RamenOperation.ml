@@ -833,13 +833,16 @@ struct
   open RamenParsing
 
   let rec default_alias e =
+    let strip_leading_underscore s =
+      let l = String.length s in
+      if l > 1 && s.[0] = '_' then String.lchop s else s in
     match e.E.text with
     | Stateless (SL0 (Path [ Name name ]))
       when not (N.is_virtual name) ->
-        (name :> string)
+        strip_leading_underscore (name :> string)
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ }, _))
       when not (N.is_virtual (N.field n)) ->
-        n
+        strip_leading_underscore n
     (* Provide some default name for common aggregate functions: *)
     | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
     | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
