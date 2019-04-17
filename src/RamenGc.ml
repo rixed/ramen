@@ -245,7 +245,8 @@ let cleanup_loop conf dry_run del_ratio compress_older sleep_time =
     let timeout = sleep_time *. 2. in
     RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit in
   RamenWatchdog.enable watchdog ;
-  forever (fun () ->
+  RamenProcesses.until_quit (fun () ->
     cleanup_once conf dry_run del_ratio compress_older ;
     RamenWatchdog.reset watchdog ;
-    sleepf (jitter sleep_time)) ()
+    sleepf (jitter sleep_time) ;
+    true)

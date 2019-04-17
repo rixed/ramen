@@ -398,6 +398,7 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   else (
     check_binocle_errors () ;
     if daemonize then do_daemonize () ;
+    RamenProcesses.prepare_signal_handlers conf ;
     RamenGc.cleanup_loop conf dry_run del_ratio compress_older loop)
 
 (*
