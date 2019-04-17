@@ -7,8 +7,20 @@ $daemon_pids = {}
 
 def kill_ramens ()
   $daemon_pids.each do |cmd, pid|
-    Process.kill('INT', pid)
-    Process.waitpid pid
+    begin
+      for again in 1..10 do
+        sig = again < 6 ? 'INT' : 'KILL'
+        Process.kill(sig, pid)
+        sleep 1
+        if Process.waitpid(pid, Process::WNOHANG).nil? then
+          puts "Process didn't react to signal #{sig}, will retry"
+        else
+          break
+        end
+      end
+    rescue Exception => e
+      puts "got exception #{e}, proceeding."
+    end
   end
   $daemon_pids = {}
 end
