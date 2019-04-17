@@ -47,3 +47,7 @@ Feature: Programs ca  be parameterized
     # ...for the stats to arrive
     When I run ramen with arguments ps
     Then ramen must print 1 line on stdout.
+
+  Scenario: passing an unknown parameter is an error.
+    When I run ramen with arguments run -p 'last_name="Doe"' test.x
+    Then ramen must fail gracefully.

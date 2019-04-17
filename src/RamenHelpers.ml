@@ -108,6 +108,10 @@ let set_iteri f s =
   Set.fold (fun e i -> f i e ; i + 1) s 0 |>
   ignore
 
+(* FIXME: could be faster :) *)
+let set_is_singleton s =
+  Set.cardinal s = 1
+
 let array_rfindi f a =
   let res = ref (-1) in
   try
@@ -1239,6 +1243,9 @@ let pretty_list_print p oc =
 
 let pretty_array_print p oc =
   pretty_enum_print p oc % Array.enum
+
+let pretty_set_print p oc =
+  pretty_enum_print p oc % Set.enum
 
 (* Return the distance (as a float) between two values of the same type: *)
 module Distance = struct

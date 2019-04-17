@@ -160,6 +160,23 @@ let check_links program_name prog running_programs =
         ) prog'.P.funcs
   ) running_programs
 
+(* Check that all params are actually used by some functions: *)
+let check_params prog params =
+  let used =
+    List.fold_left (fun s func ->
+      (* Get the result as a set: *)
+      let used = O.vars_of_operation TupleParam func.F.operation in
+      Set.union used s
+    ) Set.empty prog.P.funcs in
+  let unused = Set.diff params used in
+  if not (Set.is_empty unused) then
+    let single = set_is_singleton unused in
+    Printf.sprintf2 "Parameter%s %a %s unused"
+      (if single then "" else "s")
+      (pretty_set_print N.field_print) unused
+      (if single then "is" else "are") |>
+    failwith
+
 let no_params = Hashtbl.create 0
 
 let default_program_name bin_file =
@@ -192,6 +209,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
             if nb_killed > 0 then !logger.info "...and has been killed") ()
     ) else (
       let prog = P.of_bin program_name params bin in
+      check_params prog (Hashtbl.keys params |> Set.of_enum) ;
       check_links program_name prog programs ;
       if not replace then
         (match Hashtbl.find programs program_name with

@@ -465,15 +465,20 @@ let out_record_of_operation ?with_private op =
         (ft.RamenTuple.name :> string), ft.typ) |>
       Array.of_enum))
 
-let envvars_of_operation op =
+let vars_of_operation tup_type op =
   fold_expr Set.empty (fun _ s e ->
     match e.E.text with
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
-                           { text = Variable TupleEnv ; _ })) ->
+                           { text = Variable tt ; _ }))
+      when tt = tup_type ->
         Set.add (N.field n) s
-    | _ -> s) op |>
-  Set.to_list |>
-  List.fast_sort N.compare
+    | _ -> s) op
+
+let to_sorted_list s =
+  Set.to_list s |> List.fast_sort N.compare
+
+let envvars_of_operation = to_sorted_list % vars_of_operation TupleEnv
+let params_of_operation = to_sorted_list % vars_of_operation TupleParam
 
 let use_event_time op =
   fold_expr false (fun _ b e ->
