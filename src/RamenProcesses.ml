@@ -1601,7 +1601,6 @@ let synchronize_running conf autoreload_delay =
                    autoreload_delay > 0. &&
                    now -. last_read >= autoreload_delay
                 then (
-                  set_max_wait granularity ;
                   (* To prevent missing the last writes when the file is
                    * updated faster than mtime granularity, refuse to refresh
                    * the file unless last mod time is old enough.
@@ -1611,7 +1610,13 @@ let synchronize_running conf autoreload_delay =
                    * occurring after we do read that file will push the mtime
                    * after (>) [lm], which is true only if now is greater than
                    * lm + mtime granularity: *)
-                  now -. lm > granularity
+                  let age_modif = now -. lm in
+                  if age_modif > granularity then
+                    true
+                  else (
+                    set_max_wait (granularity -. age_modif) ;
+                    false
+                  )
                 ) else false in
           let ret = last_mod <> None && reread in
           if ret then !logger.info "%a has changed %gs ago"
