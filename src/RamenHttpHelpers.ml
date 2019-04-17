@@ -96,10 +96,9 @@ let with_timing n f =
   ret
 
 (* The HTTP protocol is usually a protocol one don't want to touch with a
- * 10 feet pole, so the preferred way to make ramen works over HTTP is to
- * use the CGI mode (TODO: `ramen cgi`). But for ease of use, ramen also
- * provide its own basic and slow HTTP server.
- * It runs in its own thread already thanks to [forking_server].
+ * 10 feet pole, so the preferred way to make Ramen works over HTTP is to
+ * use the CGI mode (TODO: `ramen cgi`). But for ease of use, Ramen also
+ * provides its own basic and slow HTTP server.
  * Parsing an average HTTP message takes about 5ms, which is still likely
  * considerably faster than what's going to happen next... *)
 module ParserConfig = ParsersConfig.BlockList (ParsersConfig.FileReader)
@@ -181,9 +180,6 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
       let method_ = r.CodecHttp.RequestLine.cmd in
       let labels = [ "method", CodecHttp.Command.to_string method_ ;
                      "path", path] in
-      !logger.info "%s path %a"
-        (CodecHttp.Command.to_string method_)
-        (List.print String.print) path_lst ;
       (* Fake fault injection: *)
       let do_inject_fault =
         if List.mem_assoc "X-Keep-The-Ouistiti-At-Bay" headers then (
@@ -213,9 +209,9 @@ let on_all_http_msg conf url_prefix fault_injection_rate router fd msg =
         ) in
       let resp_time = Unix.gettimeofday () -. start_time in
       respond fd resp ;
-      let labels =
-        ("status", string_of_int (code_of_response resp)) :: labels in
-      !logger.debug "Response time to %a: %f"
+      let code = code_of_response resp in
+      let labels = ("status", string_of_int code) :: labels in
+      !logger.info "%a, srt=%f"
         (List.print (fun oc (n,v) -> Printf.fprintf oc "%s=%s" n v))
           labels resp_time ;
       Histogram.add (stats_resp_time conf.C.persist_dir) ~labels resp_time
