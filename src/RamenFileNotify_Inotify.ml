@@ -65,7 +65,7 @@ let make_file_notifier files =
 
 let wait_file_changes ?(while_=always) ?max_wait n =
   let set_alarm dt =
-    Unix.alarm (int_of_float dt) |> ignore in
+    Unix.alarm (int_of_float (ceil dt)) |> ignore in
   let rec loop () =
     if while_ () then
       match Inotify.read n.handler with
