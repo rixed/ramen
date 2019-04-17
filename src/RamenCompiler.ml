@@ -166,8 +166,7 @@ let compile conf get_parent ~exec_file source_file
             in_type = RamenFieldMaskLib.in_type_of_operation op ;
             signature = "" ;
             parents = O.parents_of_operation op ;
-            merge_inputs = O.is_merging op ;
-            envvars = O.envvars_of_operation op } in
+            merge_inputs = O.is_merging op } in
       let fq_name = N.fq_of_program program_name name in
       Hashtbl.add compiler_funcs fq_name me_func
     ) parsed_funcs ;

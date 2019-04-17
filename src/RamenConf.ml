@@ -87,9 +87,7 @@ struct
        * name of the operation. *)
       mutable signature : string ;
       parents : parent list ;
-      merge_inputs : bool ;
-      (* List of envvar used in that function: *)
-      envvars : N.field list }
+      merge_inputs : bool }
 
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
@@ -121,8 +119,7 @@ struct
       signature = t.signature ;
       in_type = RamenFieldMaskLib.in_type_of_operation t.operation ;
       parents = O.parents_of_operation t.operation ;
-      merge_inputs = O.is_merging t.operation ;
-      envvars = O.envvars_of_operation t.operation }
+      merge_inputs = O.is_merging t.operation }
 
   (* TODO: takes a func instead of child_prog? *)
   let program_of_parent_prog child_prog = function

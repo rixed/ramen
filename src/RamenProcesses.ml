@@ -1014,8 +1014,9 @@ let really_start conf proc =
     P.env_of_params_and_exps conf proc.params |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
+  let envvars = O.envvars_of_operation proc.func.operation in
   let more_env =
-    List.enum proc.func.envvars //@
+    List.enum envvars //@
     (fun (n : N.field) ->
       try Some ((n :> string) ^"="^ Sys.getenv (n :> string))
       with Not_found -> None) |>
