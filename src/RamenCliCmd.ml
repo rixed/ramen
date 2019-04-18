@@ -66,7 +66,15 @@ let start_daemon conf daemonize to_stdout to_syslog name =
   else (
     let logdir =
       if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ; N.path "log" ; name ]) in
+      else (
+        let log_path =
+          N.path_cat [ conf.C.persist_dir ; N.path "log" ; name ] in
+        (* It can be surprising when the command keeps the console but logs
+         * elsewhere, and is rarely the desired behavior, so log about it: *)
+        if not daemonize then
+          Printf.printf "Will log in %a\n%!" N.path_print log_path ;
+        Some log_path
+      ) in
     Option.may Files.mkdir_all logdir ;
     init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
