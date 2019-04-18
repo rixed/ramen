@@ -9,10 +9,13 @@ RUN echo 'APT::Install-Recommends "0";' > \
 RUN apt-get --yes update && \
     DEBIAN_FRONTEND=noninteractive \
       apt-get --yes install \
+        g++ \
         gcc \
         libblas-dev \
         liblapack-dev \
+        libsasl2-dev \
         libsqlite3-0 \
+        libssl-dev \
         util-linux \
         coreutils
 
