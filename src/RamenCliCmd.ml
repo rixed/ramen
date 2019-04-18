@@ -56,10 +56,7 @@ let check_binocle_errors () =
 
 let while_ () = !RamenProcesses.quit = None
 
-let supervisor conf daemonize to_stdout to_syslog autoreload
-               use_external_compiler max_simult_compils
-               smt_solver fail_for_good_ () =
-  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+let start_daemon conf daemonize to_stdout to_syslog name =
   if to_stdout && daemonize then
     failwith "Options --daemonize and --stdout are incompatible." ;
   if to_stdout && to_syslog then
@@ -67,23 +64,30 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   if to_syslog then
     init_syslog conf.C.log_level
   else (
-    (* Controls all calls to restart_on_failure: *)
-    fail_for_good := fail_for_good_ ;
     let logdir =
       if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/supervisor" ]) in
+      else Some (N.path_cat [ conf.C.persist_dir ; N.path "log" ; name ]) in
     Option.may Files.mkdir_all logdir ;
     init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
   check_binocle_errors () ;
   if daemonize then do_daemonize () ;
   let open RamenProcesses in
+  prepare_signal_handlers conf
+
+let supervisor conf daemonize to_stdout to_syslog autoreload
+               use_external_compiler max_simult_compils
+               smt_solver fail_for_good_ () =
+  RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "supervisor") ;
+  (* Controls all calls to restart_on_failure: *)
+  fail_for_good := fail_for_good_ ;
+  let open RamenProcesses in
+  prepare_signal_handlers conf ;
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
    * any way. For notifications we could have the alerter reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
-  prepare_signal_handlers conf ;
   let reports_rb = prepare_reports conf in
   RingBuf.unload reports_rb ;
   let notify_rb = prepare_notifs conf in
@@ -108,12 +112,9 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
 
 let alerter conf notif_conf_file max_fpr daemonize to_stdout
              to_syslog () =
-  if to_stdout && daemonize then
-    failwith "Options --daemonize and --stdout are incompatible." ;
-  if to_stdout && to_syslog then
-    failwith "Options --syslog and --stdout are incompatible." ;
   if max_fpr < 0. || max_fpr > 1. then
     failwith "False-positive rate is a rate is a rate." ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "alerter") ;
   (* The configuration file better exists, unless it's the default one in
    * which case it will be created with the default configuration: *)
   let notif_conf_file =
@@ -133,18 +134,6 @@ let alerter conf notif_conf_file max_fpr daemonize to_stdout
           ignore (RamenAlerter.load_config notif_conf_file)
         ) ;
         notif_conf_file in
-  if to_syslog then
-    init_syslog conf.C.log_level
-  else (
-    let logdir =
-      if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/alerter" ]) in
-    Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
-  check_binocle_errors () ;
-  if daemonize then do_daemonize () ;
-  RamenProcesses.prepare_signal_handlers conf ;
   let notify_rb = RamenProcesses.prepare_notifs conf in
   restart_on_failure ~while_ "process_notifications"
     RamenExperiments.(specialize the_big_one) [|
@@ -172,23 +161,7 @@ let notify conf parameters notif_name () =
  *)
 
 let tunneld conf daemonize to_stdout to_syslog port () =
-  if to_stdout && daemonize then
-    failwith "Options --daemonize and --stdout are incompatible." ;
-  if to_stdout && to_syslog then
-    failwith "Options --syslog and --stdout are incompatible." ;
-  if to_syslog then
-    init_syslog conf.C.log_level
-  else (
-    let logdir =
-      (* In case we serve several API from several daemon we will need an
-       * additional option to set a different logdir for each. *)
-      if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/tunneld" ]) in
-    Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
-  check_binocle_errors () ;
-  if daemonize then do_daemonize () ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "tunneld") ;
   RamenProcesses.prepare_signal_handlers conf ;
   RamenCopySrv.copy_server conf port ;
   !logger.info "Returned from copy_server, quit code = %a"
@@ -377,29 +350,14 @@ let info _conf params program_name_opt bin_file opt_func_name () =
 
 let gc conf dry_run del_ratio compress_older loop daemonize
        to_stdout to_syslog () =
-  if to_stdout && daemonize then
-    failwith "Options --daemonize and --stdout are incompatible." ;
-  if to_stdout && to_syslog then
-    failwith "Options --syslog and --stdout are incompatible." ;
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.gc_loop in
-  if to_syslog then
-    init_syslog conf.C.log_level
-  else (
-    let logdir =
-      if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/gc" ]) in
-    Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "gc") ;
   if loop <= 0. then
     RamenGc.cleanup_once conf dry_run del_ratio compress_older
-  else (
-    check_binocle_errors () ;
-    if daemonize then do_daemonize () ;
-    RamenProcesses.prepare_signal_handlers conf ;
-    RamenGc.cleanup_loop conf dry_run del_ratio compress_older loop)
+  else
+    RamenGc.cleanup_loop conf dry_run del_ratio compress_older loop
 
 (*
  * `ramen ps`
@@ -969,26 +927,9 @@ let httpd conf daemonize to_stdout to_syslog fault_injection_rate
           use_external_compiler max_simult_compils smt_solver
           () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
-  if to_stdout && daemonize then
-    failwith "Options --daemonize and --stdout are incompatible." ;
-  if to_stdout && to_syslog then
-    failwith "Options --syslog and --stdout are incompatible." ;
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
-  if to_syslog then
-    init_syslog conf.C.log_level
-  else (
-    let logdir =
-      (* In case we serve several API from several daemon we will need an
-       * additional option to set a different logdir for each. *)
-      if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/httpd" ]) in
-    Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
-  check_binocle_errors () ;
-  if daemonize then do_daemonize () ;
-  RamenProcesses.prepare_signal_handlers conf ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "httpd") ;
   RamenHttpd.run_httpd conf server_url api graphite fault_injection_rate ;
   Option.may exit !RamenProcesses.quit
 
@@ -1022,31 +963,16 @@ let graphite_expand conf for_render since until query () =
 
 let archivist conf loop daemonize stats allocs reconf
               to_stdout to_syslog () =
-  if to_stdout && daemonize then
-    failwith "Options --daemonize and --stdout are incompatible." ;
-  if to_stdout && to_syslog then
-    failwith "Options --syslog and --stdout are incompatible." ;
   if not stats && not allocs && not reconf then
     failwith "Must specify at least one of --stats, --allocs or --reconf" ;
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.archivist_loop in
-  if to_syslog then
-    init_syslog conf.C.log_level
-  else (
-    let logdir =
-      if to_stdout then None
-      else Some (N.path_cat [ conf.C.persist_dir ;
-                              N.path "log/archivist" ]) in
-    Option.may Files.mkdir_all logdir ;
-    init_logger ?logdir:(logdir :> string option) conf.C.log_level) ;
-  RamenProcesses.prepare_signal_handlers conf ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "archivist") ;
   if loop <= 0. then
     RamenArchivist.run_once conf ~while_ stats allocs reconf
-  else (
-    check_binocle_errors () ;
-    if daemonize then do_daemonize () ;
-    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf)
+  else
+    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf
 
 (*
  * Display various internal informations
