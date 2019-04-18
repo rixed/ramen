@@ -777,6 +777,12 @@ let stats_replayer_sigkills =
       Metric.Names.replayer_sigkills
       "Number of times a replayer had to be sigkilled instead of sigtermed.")
 
+let stats_graph_build_time =
+  RamenWorkerStats.ensure_inited (fun save_dir ->
+    Histogram.make ~save_dir:(save_dir :> string)
+      Metric.Names.worker_graph_build_time
+      "Workers graph build time" Histogram.powers_of_two)
+
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
@@ -1305,7 +1311,7 @@ let build_must_run conf =
       ) (* else this program is not running *)
     ) programs ;
     FuncGraph.fix_used graph)
-    (!logger.info "Built the function graph in %gs") ;
+    (Histogram.add (stats_graph_build_time conf.C.persist_dir)) ;
   !logger.debug "Graph of functions: %a" FuncGraph.print graph ;
   (* Now building the hash of functions that must run from graph is easy: *)
   let must_run =

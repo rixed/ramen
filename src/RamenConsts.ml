@@ -56,6 +56,7 @@ struct
     let outref_repairs = "workers_outref_repairs"
     let replayer_crashes = "replayers_crashes"
     let replayer_sigkills = "replayers_sigkills"
+    let worker_graph_build_time = "workers_graph_build_time"
 
     (* Metrics reported by the alerter: *)
     let messages_count = "messages_count"
