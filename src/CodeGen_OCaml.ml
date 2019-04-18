@@ -3213,6 +3213,8 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
   let rec defined_order = function
     | E.{ text = Stateless (SL2 ((Gt|Ge as op), l, r)) } ->
         let dep_only_on lst e =
+          (* env and params are always ok on both sides of course: *)
+          let lst = TupleEnv :: TupleParam :: lst in
           let open RamenOperation in
           try check_depends_only_on lst e ; true
           with DependsOnInvalidTuple _ -> false
