@@ -323,7 +323,7 @@ let make_valid_for_module (fname : N.path) =
   N.path_cat [ dirname ; basename ]
 
 (* obj name must not conflict with any external module. *)
-let with_code_file_for obj_name keep_temp_files f =
+let with_code_file_for obj_name reuse_prev_files f =
   assert (not (N.is_empty obj_name)) ;
   let basename =
     Files.(change_ext "ml" (basename obj_name)) in
@@ -332,7 +332,7 @@ let with_code_file_for obj_name keep_temp_files f =
   let fname = N.path_cat [ Files.dirname obj_name ; basename ] in
   Files.mkdir_all ~is_file:true fname ;
   (* If keep-temp-file is set, reuse preexisting source code : *)
-  if keep_temp_files &&
+  if reuse_prev_files &&
      Files.check ~min_size:1 ~has_perms:0o400 fname = FileOk
   then
     !logger.info "Reusing source file %a" N.path_print_quoted fname

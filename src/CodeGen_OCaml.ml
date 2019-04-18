@@ -3773,7 +3773,7 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
       typ ; event_time = O.event_time_of_operation func.F.operation } in
   let src_file =
     RamenOCamlCompiler.with_code_file_for
-      obj_name conf.C.keep_temp_files (fun oc ->
+      obj_name conf.C.reuse_prev_files (fun oc ->
         emit_header func params_mod oc ;
         emit_params_env params_mod params envvars oc ;
         emit_priv_pub opc ;

@@ -34,8 +34,9 @@ let main =
     N.path (Filename.temp_file "orc_writer_" ".cmx") |>
     RamenOCamlCompiler.make_valid_for_module in
   let keep_temp_files = true in
+  let reuse_prev_files = false in
   let ml_src_file =
-    RamenOCamlCompiler.with_code_file_for ml_obj_name keep_temp_files (fun oc ->
+    RamenOCamlCompiler.with_code_file_for ml_obj_name reuse_prev_files (fun oc ->
       let p fmt = Printf.fprintf oc (fmt^^"\n") in
       p "open Batteries" ;
       p "open Stdint" ;

@@ -205,6 +205,7 @@ let complete str () =
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ;
             "--keep-temp-files", CliInfo.keep_temp_files ;
+            "--reuse-prev-files", CliInfo.reuse_prev_files ;
             "--lib-path=", CliInfo.lib_path ;
             "--external-compiler", CliInfo.external_compiler ;
             "--as-program=", CliInfo.program_name ] @

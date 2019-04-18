@@ -62,6 +62,11 @@ let copts =
     let i = Arg.info ~doc:CliInfo.keep_temp_files
                      ~docs ~env [ "S" ; "keep-temp-files" ] in
     Arg.(value (flag i))
+  and reuse_prev_files =
+    let env = Term.env_info "RAMEN_REUSE_PREV_FILES" in
+    let i = Arg.info ~doc:CliInfo.reuse_prev_files
+                     ~docs ~env [ "reuse-prev-files" ] in
+    Arg.(value (flag i))
   and forced_variants =
     let env = Term.env_info "RAMEN_VARIANTS" in
     let i = Arg.info ~doc:CliInfo.variant
@@ -93,6 +98,7 @@ let copts =
     $ persist_dir
     $ rand_seed
     $ keep_temp_files
+    $ reuse_prev_files
     $ forced_variants
     $ initial_export_duration
     $ site

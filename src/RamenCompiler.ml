@@ -420,7 +420,6 @@ let compile conf get_parent ~exec_file source_file
      * functions.
      *)
     !logger.info "Compiling program %s" (program_name :> string) ;
-    let keep_temp_files = conf.C.keep_temp_files in
     let what = "program "^ (N.program_color program_name) in
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
@@ -431,7 +430,7 @@ let compile conf get_parent ~exec_file source_file
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
       RamenOCamlCompiler.with_code_file_for
-        params_obj_name conf.C.keep_temp_files (fun oc ->
+        params_obj_name conf.C.reuse_prev_files (fun oc ->
         Printf.fprintf oc "(* Parameter values for program %s *)\n\
           open Batteries\n\
           open Stdint\n\
@@ -440,6 +439,7 @@ let compile conf get_parent ~exec_file source_file
           (program_name :> string) ;
         CodeGen_OCaml.emit_parameters oc parsed_params) in
     add_temp_file params_src_file ;
+    let keep_temp_files = conf.C.keep_temp_files in
     RamenOCamlCompiler.compile
       conf ~keep_temp_files what params_src_file params_obj_name ;
     let params_mod_name =
@@ -507,7 +507,7 @@ let compile conf get_parent ~exec_file source_file
       RamenOCamlCompiler.make_valid_for_module in
     let src_file =
       RamenOCamlCompiler.with_code_file_for
-        casing_obj_name conf.C.keep_temp_files (fun oc ->
+        casing_obj_name conf.C.reuse_prev_files (fun oc ->
         let params = parsed_params in
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n\
           open Batteries\n\

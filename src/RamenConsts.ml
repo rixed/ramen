@@ -192,6 +192,7 @@ struct
     "Seed to initialize the random generator with \
      (will use a random one if unset)"
   let keep_temp_files = "Keep temporary files"
+  let reuse_prev_files = "Reuse existing source files"
   let variant = "Force variants"
   let site = "The name of this site"
   let daemonize = "Daemonize"

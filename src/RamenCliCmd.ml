@@ -20,9 +20,9 @@ let () =
     | Failure msg -> Some msg
     | _ -> None)
 
-let make_copts debug quiet persist_dir rand_seed keep_temp_files
-               forced_variants initial_export_duration site bundle_dir
-               masters =
+let make_copts
+      debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
+      forced_variants initial_export_duration site bundle_dir masters =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -38,8 +38,9 @@ let make_copts debug quiet persist_dir rand_seed keep_temp_files
   let forced_variants = list_of_string_opt forced_variants
   and masters =
     list_of_string_opt masters |> List.map N.site |> Set.of_list in
-  C.make_conf ~debug ~quiet ~keep_temp_files ~forced_variants
-              ~initial_export_duration ~site ~bundle_dir ~masters persist_dir
+  C.make_conf
+    ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
+    ~initial_export_duration ~site ~bundle_dir ~masters persist_dir
 
 (*
  * `ramen supervisor`

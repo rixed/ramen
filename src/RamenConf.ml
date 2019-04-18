@@ -32,6 +32,7 @@ type conf =
     persist_dir : N.path ;
     test : bool ; (* true within `ramen test` *)
     keep_temp_files : bool ;
+    reuse_prev_files : bool ;
     initial_export_duration : float ;
     site : N.site (* this site name *) ;
     masters : N.site Set.t ;
@@ -39,7 +40,8 @@ type conf =
 
 let make_conf
       ?(debug=false) ?(quiet=false)
-      ?(keep_temp_files=false) ?(forced_variants=[])
+      ?(keep_temp_files=false) ?(reuse_prev_files=false)
+      ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
       ?(site=N.site "") ?(test=false)
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
@@ -50,7 +52,7 @@ let make_conf
     if debug then Debug else if quiet then Quiet else Normal in
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
-  { log_level ; persist_dir ; keep_temp_files ;
+  { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters }
 
 
