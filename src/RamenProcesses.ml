@@ -87,11 +87,7 @@ let prepare_signal_handlers conf =
     (* This log also useful to rotate the logfile. *)
     ignore s ;
     (*!logger.info "Received signal %s" (name_of_signal s) ;*)
-    Binocle.display_console ())) ;
-  (* NOP on sigalarm as we use it to EINTR inotify reads only: *)
-  set_signals Sys.[sigalrm] (Signal_handle (fun s ->
-    (*!logger.debug "Received signal %s" (name_of_signal s)*)
-    ignore s))
+    Binocle.display_console ()))
 
 (*
  * Machinery to spawn other programs.
@@ -1659,8 +1655,12 @@ let synchronize_running conf autoreload_delay =
           ) in
         synchronize_replays must_replay replayers ;
         Gc.minor () ;
-        let max_wait = if !quit = None then !max_wait else !max_wait /. 10. in
-        RamenFileNotify.wait_file_changes ~max_wait fnotifier |> ignore ;
+        !logger.debug "Waiting for file changes (max %a)"
+          print_as_duration !max_wait ;
+        let fname = RamenFileNotify.wait_file_changes
+                      ~while_:(fun () -> !quit = None)
+                      ~max_wait:!max_wait fnotifier in
+        !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;
         RamenWatchdog.reset watchdog ;
         loop must_run last_read_rc must_replay last_read_replays)) ()
   in

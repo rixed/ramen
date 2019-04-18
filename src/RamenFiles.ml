@@ -99,6 +99,12 @@ let safe_fileop f fname =
 let safe_unlink fname =
   safe_fileop unlink fname
 
+let safe_open (fname : N.path) flags perms =
+  BatUnix.(restart_on_EINTR openfile (fname :> string) flags perms)
+
+let safe_close fd =
+  log_and_ignore_exceptions BatUnix.(restart_on_EINTR close) fd
+
 let move_away (fname : N.path) =
   let bad_file = N.cat fname (N.path ".bad?") in
   ignore_exceptions safe_unlink bad_file ;

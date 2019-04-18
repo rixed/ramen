@@ -52,31 +52,49 @@ let for_each f n =
 
 type file_notifier =
   { files : (Inotify.watch * N.path) list ;
-    handler : Unix.file_descr }
+    handler : Unix.file_descr ;
+    alarm_file : N.path }
 
 let make_file_notifier files =
   let handler = Inotify.create () in
+  (* To be used as an alarm, to stop Inotify.read after some time: *)
+  let alarm_file =
+    Filename.temp_file "ramen_alarm_file_" ".tmp" |>
+    N.path in
   let files =
     List.map (fun (fname : N.path) ->
       Files.mkdir_all ~is_file:true fname ;
       let mask = Inotify.[ S_Close_write ; S_Moved_to ] in
       Inotify.add_watch handler (fname :> string) mask, fname
-    ) files in
-  { handler ; files }
+    ) (alarm_file :: files) in
+  { handler ; alarm_file ; files }
 
 let wait_file_changes ?(while_=always) ?max_wait n =
+  (* TODO: Actual cancellation of those threads before they accumulate: *)
   let set_alarm dt =
-    Unix.alarm (int_of_float (ceil dt)) |> ignore in
+    let cancelled = ref false in
+    Thread.create (fun () ->
+      let rec wait dt =
+        if dt > 0. && not !cancelled && while_ () then (
+          let s = min dt 0.3 in
+          Thread.delay s ;
+          wait (dt -. s)
+        ) in
+      wait dt ;
+      if not !cancelled then
+        let flags = Unix.[ O_WRONLY ; O_TRUNC ; O_CREAT ] in
+        let fd = Files.safe_open n.alarm_file flags 0x644 in
+        Files.safe_close fd
+    ) () |> ignore ;
+    cancelled in
+  let cancel_alarm r = r := true in
   let rec loop () =
-    if while_ () then
-      match Inotify.read n.handler with
-      | exception Unix.Unix_error (Unix.EINTR, _, _) ->
-          None
+    if while_ () then (
+      match BatUnix.restart_on_EINTR Inotify.read n.handler with
       | exception exn ->
           !logger.error "Cannot Inotify.read: %s"
             (Printexc.to_string exn) ;
-          Unix.sleep 1 ;
-          loop ()
+          raise exn
       | lst ->
           (match
             List.find_map (function
@@ -97,6 +115,7 @@ let wait_file_changes ?(while_=always) ?max_wait n =
               | watch, kinds, _cookie, None
                   when Inotify.int_of_watch watch = -1 &&
                        List.mem Inotify.Q_overflow kinds ->
+                  !logger.error "Inotify overflow!" ;
                   None
               | ev ->
                   !logger.debug "Received a useless inotification: %s"
@@ -105,8 +124,8 @@ let wait_file_changes ?(while_=always) ?max_wait n =
             ) lst with
           | exception Not_found -> loop ()
           | fname -> Some fname)
-    else None in
-  Option.may set_alarm max_wait ;
+    ) else None in
+  let alrm = Option.map set_alarm max_wait in
   finally
-    (fun () -> if max_wait <> None then set_alarm 0.)
+    (fun () -> Option.may cancel_alarm alrm)
     loop ()
