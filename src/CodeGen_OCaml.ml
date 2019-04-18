@@ -1028,7 +1028,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
       [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
   | Finalize, Stateless (SL2 (Reldiff, e1, e2)), TFloat ->
-    emit_functionN ~env ~opc ~nullable "CodeGenLib.reldiff"
+    emit_functionN ~env ~opc ~nullable "reldiff"
       [Some TFloat, PropagateNull; Some TFloat, PropagateNull] oc [e1; e2]
   | Finalize, Stateless (SL2 (Pow, e1, e2)), (TFloat|TI32|TI64 as t) ->
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".( ** )")

@@ -23,6 +23,22 @@ let round_to_int f =
 let ceil_to_int f =
   int_of_float (Float.ceil f)
 
+let reldiff a b =
+  let diff = abs_float (a -. b)
+  and scale = max (abs_float a) (abs_float b) in
+  if scale = 0. then 0. else diff /. scale
+
+(*$= reldiff & ~printer:string_of_float
+  1. (reldiff 0. 5.)
+  1. (reldiff 5. 0.)
+  0. (reldiff 5. 5.)
+  0. (reldiff 0. 0.)
+  0.5 (reldiff 1. 2.)
+*)
+(*$Q reldiff
+  (Q.pair Q.float Q.float) (fun (a, b) -> reldiff a b = reldiff b a)
+ *)
+
 (* The original Float.to_string adds a useless dot at the end of
  * round numbers, and likes to end with lots of zeroes: *)
 let nice_string_of_float v =
