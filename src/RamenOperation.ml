@@ -696,6 +696,10 @@ let checked params op =
       Printf.sprintf2 "Field %a is not in output tuple (only %a)"
         N.field_print f
         (pretty_list_print N.field_print) field_names |>
+      failwith
+  and check_field_is_public f =
+    if N.is_private f then
+      Printf.sprintf2 "Field %a must not be private" N.field_print f |>
       failwith in
   let check_event_time field_names (start_field, duration) =
     let check_field (f, src, _scale) =
@@ -712,7 +716,9 @@ let checked params op =
     | RamenEventTime.DurationField f
     | RamenEventTime.StopField f -> check_field f
   and check_factors field_names =
-    List.iter (check_field_exists field_names)
+    List.iter (fun fn ->
+      check_field_exists field_names fn ;
+      check_field_is_public fn)
   and check_no_group = check_no_state LocalState
   in
   (match op with
