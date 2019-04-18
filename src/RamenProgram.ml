@@ -403,21 +403,8 @@ let common_fields_of_from get_parent start_name funcs from =
                 (fn :> string) |>
               failwith
           | par ->
-              (match par.operation with
-              | Aggregate { fields ; and_all_others ; _ } ->
-                  if and_all_others then raise Exit ;
-                  List.map (fun sf -> sf.O.alias) fields
-              | ReadCSVFile { what ; _ } ->
-                  List.map (fun f -> f.RamenTuple.name) what.fields
-              | ListenFor { proto ; _ } ->
-                  RamenProtocols.tuple_typ_of_proto proto |>
-                  List.map (fun f -> f.RamenTuple.name)
-              | Instrumentation _ ->
-                  RamenWorkerStats.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.name)
-              | Notifications _ ->
-                  RamenNotification.tuple_typ |>
-                  List.map (fun f -> f.RamenTuple.name)))
+              O.out_type_of_operation ~with_private:false par.operation |>
+              List.map (fun ft -> ft.RamenTuple.name))
       | O.NamedOperation (_, Some rel_pn, fn) ->
           let pn = N.program_of_rel_program start_name rel_pn in
           let par_rc = get_parent pn in
