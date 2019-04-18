@@ -448,7 +448,11 @@ let out_type_of_operation ~with_private = function
           units = sf.expr.units } :: lst
       ) [] fields |> List.rev
   | ReadCSVFile { what = { fields ; _ } ; _ } ->
-      fields
+      (* It is possible to suppress a field from the CSV files by prefixing
+       * its name with an underscore: *)
+      List.filter (fun ft ->
+        with_private || not (N.is_private ft.RamenTuple.name)
+      ) fields
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
   | Instrumentation _ ->
