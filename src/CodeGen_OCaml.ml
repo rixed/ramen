@@ -3658,7 +3658,7 @@ let emit_replay name func opc =
   p "    serialize_tuple_" ;
   p "    orc_make_handler_ orc_write orc_read orc_close\n"
 
-(* Generator for function [out_of_pub_] that add missing private fields. *)
+(* Generator for function [out_of_pub_] that adds missing private fields. *)
 let emit_priv_pub opc =
   let op = option_get "must have function" opc.op in
   let rtyp = O.out_record_of_operation ~with_private:true op in

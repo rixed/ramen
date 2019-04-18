@@ -36,26 +36,26 @@ let read_well_known (fq : N.fq) where suffix bname typ () =
       let w = N.field "worker", "=", T.VString fq in
       w :: where in
     let filter = RamenSerialization.filter_tuple_by ser where in
-    Some (bname, filter, typ, ser)
+    Some (bname, filter, ser)
   else None
 
 (* Returns the ringbuf name, a bool indicating if it's a temporary export or not,
- * the filter corresponding to [where], the tuple type, the tuple serialized type,
- * the parameters and event time of [fq]: *)
+ * the filter corresponding to [where], the tuple serialized type, the parameters
+ * and event time of [fq]: *)
 let read_output conf ?duration (fq : N.fq) where =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where ("#"^ SpecialFunctions.stats)
           (C.report_ringbuf conf) RamenWorkerStats.tuple_typ () with
-  | Some (bname, filter, typ, ser) ->
-      bname, false, filter, typ, ser, [], RamenWorkerStats.event_time
+  | Some (bname, filter, ser) ->
+      bname, false, filter, ser, [], RamenWorkerStats.event_time
   | None ->
       (* Or from the notifications ringbuf when fq ends with
        * "#notifs": *)
       (match read_well_known fq where ("#"^ SpecialFunctions.notifs)
                (C.notify_ringbuf conf) RamenNotification.tuple_typ () with
-      | Some (bname, filter, typ, ser) ->
-          bname, false, filter, typ, ser, [], RamenNotification.event_time
+      | Some (bname, filter, ser) ->
+          bname, false, filter, ser, [], RamenNotification.event_time
       | None ->
           (* Normal case: Create the non-wrapping RingBuf (under a standard
            * name given by RamenConf. If that worker is already archiving
@@ -86,7 +86,7 @@ let read_output conf ?duration (fq : N.fq) where =
             RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
             List.map fst in
           let filter = RamenSerialization.filter_tuple_by ser where in
-          bname, true, filter, out_type, ser, prog.P.params, event_time)
+          bname, true, filter, ser, prog.P.params, event_time)
 
 (* Returns an array of index in [typ] tuple * field type.
  * Index -1 it for t1 and index -2 for t2. *)

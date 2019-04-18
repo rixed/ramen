@@ -678,7 +678,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
     then Some 10 else last in
   let flush = flush || continuous in
   let next = if continuous then Some max_int else next in
-  let bname, is_temp_export, filter, _typ, ser, params, event_time =
+  let bname, is_temp_export, filter, ser, params, event_time =
     RamenExport.read_output conf ~duration fq where
   in
   (* Find out which seqnums we want to scan: *)

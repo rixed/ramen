@@ -196,7 +196,7 @@ let tuple_print typ oc vs =
 let test_output conf fq output_spec end_flag =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
-  let bname, _is_temp_export, filter, _typ, ser, _params, _event_time =
+  let bname, _is_temp_export, filter, ser, _params, _event_time =
     RamenExport.read_output conf fq [] in
   (* Change the hashtable of field to string value into a list of field
    * index and value: *)
@@ -273,7 +273,7 @@ let test_output conf fq output_spec end_flag =
 
 (* Wait for the given tuple: *)
 let test_until conf count end_flag fq spec =
-  let bname, _is_temp_export, filter, _typ, typ, _params, _event_time =
+  let bname, _is_temp_export, filter, typ, _params, _event_time =
     RamenExport.read_output conf fq [] in
   let filter_spec = filter_spec_of_spec fq typ spec in
   let unserialize = RamenSerialization.read_array_of_values typ in
