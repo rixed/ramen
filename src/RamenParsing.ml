@@ -32,13 +32,15 @@ let opt_blanks =
 let allow_surrounding_blanks ppp =
   opt_blanks -+ ppp +- opt_blanks +- eof
 
-let string_parser ~what ~print p =
+let string_parser ?what ~print p =
+  let what =
+    match what with None -> [] | Some w -> [w] in
   let p = allow_surrounding_blanks p in
   fun s ->
     let stream = stream_of_string s in
     let parse_with_err_budget e =
       let c = ParsersBoundedSet.make e in
-      p [what] None c stream |> to_result in
+      p what None c stream |> to_result in
     let err_out e =
       Printf.sprintf2 "Parse error: %a"
         (print_bad_result print) e |>
@@ -186,7 +188,7 @@ let number m =
   "42." (test_expr ~printer:BatFloat.print number "42000milli")
 *)
 
-let rec duration m =
+let duration m =
   let m = "duration" :: m in
   let single_duration =
     number +- opt_blanks ++ (

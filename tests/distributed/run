@@ -59,7 +59,7 @@ if test "$be_master" = yes; then
   fi
 
   log "Run the tunneling server..."
-  "$ramen" tunneld --master=aggregator --port "$master_port" --debug &
+  "$ramen" tunneld --master=aggregator --port "$master_port" &
   tunneld_pid=$!
   at_exit "echo 'Killing tunneld'; kill '$tunneld_pid'"
 

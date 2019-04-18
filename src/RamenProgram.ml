@@ -33,8 +33,7 @@ module T = RamenTypes
  * select from p/f. To select from another instance of the same program running
  * with parameters p1=v1 and p2=v2, select from p{p1=v1,p2=v2}/f (order of
  * parameters does not actually matter, p{p2=v2,p1=v1}/f would identify the same
- * function).
- * *)
+ * function).  *)
 
 type func =
   { name : N.func option (* optional during parsing only *) ;
@@ -240,12 +239,12 @@ struct
     ) m
 
   let anonymous_func m =
-    let m = "anonymous func" :: m in
+    let m = "anonymous function" :: m in
     (O.Parser.p >>: make_func) m
 
   type func_flag = Lazy | Persist of float | Querying of float | Ignore
   let named_func m =
-    let m = "function" :: m in
+    let m = "named function" :: m in
     (
       strinG "define" -- blanks -+
       repeat ~sep:none (
@@ -286,7 +285,6 @@ struct
     ) m
 
   let func m =
-    let m = "func" :: m in
     (anonymous_func ||| named_func) m
 
   type definition =
@@ -489,7 +487,7 @@ let reify_star_fields get_parent program_name funcs =
  *)
 
 let parse =
-  let p = RamenParsing.string_parser ~what:"program" ~print Parser.p in
+  let p = RamenParsing.string_parser ~print Parser.p in
   fun get_parent program_name program ->
     let params, run_cond, funcs = p program in
     let funcs = name_unnamed funcs in

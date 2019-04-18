@@ -1619,7 +1619,7 @@ let synchronize_running conf autoreload_delay =
                   )
                 ) else false in
           let ret = last_mod <> None && reread in
-          if ret then !logger.info "%a has changed %gs ago"
+          if ret then !logger.debug "%a has changed %gs ago"
             N.path_print fname (now -. Option.get last_mod) ;
           ret in
         let must_run, last_read_rc =
