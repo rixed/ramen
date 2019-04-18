@@ -548,7 +548,7 @@ struct
       Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays)
 
   let add conf replay =
-    !logger.info "Adding replay for channel %a"
+    !logger.debug "Adding replay for channel %a"
       RamenChannel.print replay.channel ;
     let fname = file_name conf in
     RamenAdvLock.with_w_lock fname (fun fd ->

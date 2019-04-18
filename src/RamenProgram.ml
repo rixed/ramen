@@ -123,8 +123,8 @@ let checked (params, run_cond, funcs) =
           failwith in
       (* While at it, we should not have any STAR left at that point: *)
       assert (match op with
-      | Aggregate { and_all_others = true ; _ } -> false
-      | _ -> true) ;
+              | Aggregate { and_all_others = true ; _ } -> false
+              | _ -> true) ;
       (* Finally, check that the name is valid and unique: *)
       let names =
         match n.name with
