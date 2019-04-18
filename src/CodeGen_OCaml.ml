@@ -3246,8 +3246,8 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
   let rec loop rest = function
     | [] ->
         !logger.warning "Cannot find a way to optimise the commit \
-                         condition of function %a"
-          N.func_print (option_get "func_name" opc.func_name) ;
+                         condition of function %s"
+          (N.func_color (option_get "func_name" opc.func_name)) ;
         no_optim
     | e :: es ->
         (match defined_order e with
@@ -3801,8 +3801,8 @@ let emit_convert name func oc =
 
 let compile conf func obj_name params_mod orc_write_func orc_read_func
             params envvars =
-  !logger.debug "Going to compile function %a: %a"
-    N.func_print func.F.name
+  !logger.debug "Going to compile function %s: %a"
+    (N.func_color func.F.name)
     (O.print true) func.F.operation ;
   (* Now the code, which might need some global constant parameters,
    * thus the two strings that are assembled later: *)
