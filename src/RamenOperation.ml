@@ -156,20 +156,21 @@ and site_identifier =
 let print_site_identifier oc = function
   | AllSites -> ()
   | TheseSites s ->
-      Printf.fprintf oc "%a:"
+      Printf.fprintf oc "ON SITE %a"
         (RamenParsing.print_quoted Globs.print) s
-  | ThisSite -> Char.print oc ':'
+  | ThisSite ->
+      String.print oc "ON THIS SITE"
 
 let rec print_data_source with_types oc = function
   | NamedOperation (site, Some rel_p, f) ->
       let fq = (rel_p :> string) ^"/"^ (f :> string) in
       Printf.fprintf oc "%a%a"
-        print_site_identifier site
         (RamenParsing.print_quoted String.print) fq
+        print_site_identifier site
   | NamedOperation (site, None, f) ->
       Printf.fprintf oc "%a%a"
-        print_site_identifier site
         (RamenParsing.print_quoted N.func_print) f
+        print_site_identifier site
   | SubQuery q ->
       Printf.fprintf oc "(%a)"
         (print with_types) q
@@ -1172,9 +1173,6 @@ let fields_schema m =
 
   let rec from_clause m =
     let m = "from clause" :: m in
-    let site =
-      optional ~def:ThisSite (
-        site_identifier >>: fun h -> TheseSites (Globs.compile h)) in
     (
       strinG "from" -- blanks -+
       several ~sep:list_sep_and (
@@ -1184,8 +1182,18 @@ let fields_schema m =
         ) ||| (
           from_pattern >>: fun s -> GlobPattern (Globs.compile s)
         ) ||| (
-          optional ~def:AllSites (site +- char ':') ++
-          func_identifier >>: fun (h, (p, f)) -> NamedOperation (h, p, f)
+          func_identifier ++
+          optional ~def:AllSites (
+            blanks -- strinG "on" -- blanks -+ (
+              (
+                strinG "this" -- blanks -- strinG "site" >>:
+                fun () -> ThisSite
+              ) ||| (
+                strinGs "site" -- blanks -+ site_identifier >>:
+                fun s -> TheseSites (Globs.compile s)
+              )
+            )
+          ) >>: fun ((p, f), s) -> NamedOperation (s, p, f)
         )
       )
     ) m
