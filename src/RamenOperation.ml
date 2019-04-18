@@ -480,6 +480,10 @@ let to_sorted_list s =
 let envvars_of_operation = to_sorted_list % vars_of_operation TupleEnv
 let params_of_operation = to_sorted_list % vars_of_operation TupleParam
 
+let notifications_of_operation = function
+  | Aggregate { notifications ; _ } -> notifications
+  | _ -> []
+
 let use_event_time op =
   fold_expr false (fun _ b e ->
     match e.E.text with

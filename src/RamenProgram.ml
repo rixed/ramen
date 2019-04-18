@@ -125,6 +125,11 @@ let checked (params, run_cond, funcs) =
       assert (match op with
               | Aggregate { and_all_others = true ; _ } -> false
               | _ -> true) ;
+      (* Check that lazy functions do not emit notifications: *)
+      if n.is_lazy && O.notifications_of_operation n.operation <> [] then
+        !logger.warning
+          "Function %s defined as LAZY but emits notifications"
+          (N.func_color (n.name |? anonymous)) ;
       (* Finally, check that the name is valid and unique: *)
       let names =
         match n.name with
