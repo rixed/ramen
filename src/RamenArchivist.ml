@@ -696,10 +696,19 @@ let update_storage_allocation conf =
     if tot_perc > 0 then
       float_of_int user_conf.size_limit /. float_of_int tot_perc
     else 1. in
-  Hashtbl.map (fun _ p ->
-    round_to_int (float_of_int p *. scale)
-  ) solution |>
-  save_allocs conf
+  let allocs =
+    Hashtbl.map (fun _ p ->
+      round_to_int (float_of_int p *. scale)
+    ) solution in
+  (* Warn of any large change: *)
+  let prev_allocs = load_allocs conf in
+  Hashtbl.iter (fun site_fq p ->
+    let prev_p = Hashtbl.find_default allocs site_fq 0 in
+    if reldiff (float_of_int p) (float_of_int prev_p) > 0.5 then
+      !logger.warning "Allocation for %a is jumping from %d%% to %d%%"
+        site_fq_print site_fq prev_p p
+  ) prev_allocs ;
+  save_allocs conf allocs
 
 (*
  * The allocs are used to update the workers out_ref to make them archive.
