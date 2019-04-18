@@ -2446,11 +2446,12 @@ let emit_factors_of_tuple name func oc =
   String.print oc "|]\n\n"
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
-let emit_read_csv_file opc name csv_fname unlink
+let emit_read_csv_file opc param_env env_env name csv_fname unlink
                        csv_separator csv_null preprocessor =
+  let env = param_env @ env_env in
   let const_string_of e =
     Printf.sprintf2 "(%a)"
-      (emit_expr ~context:Finalize ~opc ~env:[]) e
+      (emit_expr ~context:Finalize ~opc ~env) e
   in
   let preprocessor =
     fail_with_context "csv preprocessor expression" (fun () ->
@@ -2480,7 +2481,7 @@ let emit_read_csv_file opc name csv_fname unlink
   fail_with_context "csv reader function" (fun () ->
     p "let %s () =" name ;
     p "  let unlink_ = %a in"
-      (emit_expr ~env:[] ~context:Finalize ~opc) unlink ;
+      (emit_expr ~env ~context:Finalize ~opc) unlink ;
     p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
     p "    unlink_ %S sersize_of_tuple_ time_of_tuple_" csv_separator ;
     p "    factors_of_tuple_ serialize_tuple_" ;
@@ -3616,7 +3617,8 @@ let emit_operation name top_half_name func
   match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
                   what = { separator ; null ; _ } ; _ } ->
-    emit_read_csv_file opc name fname unlink separator null preprocessor
+    emit_read_csv_file opc param_env env_env name fname unlink
+                       separator null preprocessor
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->
