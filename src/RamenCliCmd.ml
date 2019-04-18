@@ -914,7 +914,7 @@ let timerange conf fq () =
        * it exists: *)
       let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
       let typ =
-        O.out_type_of_operation func.F.operation in
+        O.out_type_of_operation ~with_private:false func.F.operation in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ |>
                 List.map fst in
       let params = prog.P.params in

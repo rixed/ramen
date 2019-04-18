@@ -102,11 +102,11 @@ let inverted_tree_of_programs
       if end_of_filters flt_idx then Enum.singleton prev else
       let factors =
         O.factors_of_operation operation in
-      let out_typ = O.out_type_of_operation operation in
+      let out_typ =
+        O.out_type_of_operation ~with_private:false operation in
       (* TODO: sort alphabetically (only the remaining fields!) *)
       List.enum out_typ //@ (fun ft ->
-        if not (N.is_private ft.RamenTuple.name) &&
-           (not only_num_fields || T.is_a_num ft.RamenTuple.typ.structure) &&
+        if (not only_num_fields || T.is_a_num ft.RamenTuple.typ.structure) &&
            not (List.mem ft.RamenTuple.name factors)
         then
           let value = (ft.RamenTuple.name :> string) in

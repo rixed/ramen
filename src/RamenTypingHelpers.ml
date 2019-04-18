@@ -66,7 +66,7 @@ let infer_field_doc_aggr func parents params =
         N.func_print func.F.name
         N.field_print alias ;
       let ft =
-        O.out_type_of_operation func.F.operation |>
+        O.out_type_of_operation ~with_private:true func.F.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.doc <- doc)
@@ -76,7 +76,7 @@ let infer_field_doc_aggr func parents params =
         N.func_print func.F.name
         N.field_print alias ;
       let ft =
-        O.out_type_of_operation func.F.operation |>
+        O.out_type_of_operation ~with_private:true func.F.operation |>
         List.find (fun ft ->
           ft.RamenTuple.name = alias) in
       ft.aggr <- aggr)
@@ -90,7 +90,7 @@ let infer_field_doc_aggr func parents params =
             when doc = "" || aggr = None ->
             (* Look for this field n in parent: *)
             let out_type = (List.hd parents).F.operation |>
-                           O.out_type_of_operation in
+                           O.out_type_of_operation ~with_private:true in
             (match List.find (fun ft -> ft.RamenTuple.name = n) out_type with
             | exception Not_found -> ()
             | psf ->

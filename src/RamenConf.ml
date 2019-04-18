@@ -169,7 +169,8 @@ struct
      * function changed in any way. It's `ramen run` job to evaluate the
      * running condition independently. *)
     let op_str = IO.to_string (O.print false) func.operation
-    and out_type = O.out_type_of_operation func.operation in
+    and out_type =
+      O.out_type_of_operation ~with_private:false func.operation in
     "OP="^ op_str ^
     ";IN="^ RamenFieldMaskLib.in_type_signature func.in_type ^
     ";OUT="^ RamenTuple.type_signature out_type ^
@@ -182,7 +183,7 @@ struct
       (func.name :> string)
       RamenFieldMaskLib.print_in_type func.in_type
       RamenTuple.print_typ
-        (O.out_type_of_operation func.operation)
+        (O.out_type_of_operation ~with_private:false func.operation)
 end
 
 module Program =
@@ -641,8 +642,9 @@ let archive_buf_name ~file_type conf func =
     match file_type with
     | OutRef.RingBuf -> "b"
     | OutRef.Orc _ -> "orc" in
-  let sign = O.out_type_of_operation func.Func.operation |>
-             type_signature_hash in
+  let sign =
+    O.out_type_of_operation ~with_private:false func.Func.operation |>
+    type_signature_hash in
   N.path_cat
     [ conf.persist_dir ; N.path "workers/ringbufs" ;
       N.path RamenVersions.ringbuf ; Func.path func ;
@@ -661,8 +663,9 @@ let archive_buf_name ~file_type conf func =
  * the name of the directory containing a file per time slice (named
  * begin_end). *)
 let factors_of_function conf func =
-  let sign = O.out_type_of_operation func.Func.operation |>
-             type_signature_hash in
+  let sign =
+    O.out_type_of_operation ~with_private:false func.Func.operation |>
+    type_signature_hash in
   N.path_cat
     [ conf.persist_dir ; N.path "workers/factors" ;
       N.path RamenVersions.factors ; N.path Config.version ;
@@ -676,8 +679,9 @@ let factors_of_function conf func =
  * like the above archive file, the out_ref files must be identified by the
  * operation name and its output type: *)
 let out_ringbuf_names_ref conf func =
-  let sign = O.out_type_of_operation func.Func.operation |>
-             type_signature_hash in
+  let sign =
+    O.out_type_of_operation ~with_private:false func.Func.operation |>
+    type_signature_hash in
   N.path_cat
     [ conf.persist_dir ; N.path "workers/out_ref" ;
       N.path RamenVersions.out_ref ; Func.path func ;

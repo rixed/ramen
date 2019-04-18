@@ -396,7 +396,8 @@ let check_test_spec conf test =
             failwith ;
         | func ->
             let out_type =
-              O.out_type_of_operation func.F.operation in
+              O.out_type_of_operation ~with_private:false
+                                      func.F.operation in
             Hashtbl.iter (fun field_name _ ->
               if not (List.exists (fun ft ->
                         ft.RamenTuple.name = field_name

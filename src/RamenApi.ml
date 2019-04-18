@@ -292,7 +292,7 @@ let units_of_column ft =
 let columns_of_func conf func =
   let h = Hashtbl.create 11 in
   let group_keys = group_keys_of_operation func.F.operation in
-  O.out_type_of_operation func.F.operation |>
+  O.out_type_of_operation ~with_private:false func.F.operation |>
   List.iter (fun ft ->
     let type_ = ext_type_of_typ ft.RamenTuple.typ.structure in
     if type_ <> Other then
@@ -403,7 +403,8 @@ let get_timeseries conf msg =
           let open RamenSerialization in
           try
             let out_type =
-              O.out_type_of_operation func.F.operation in
+              O.out_type_of_operation ~with_private:false
+                                      func.F.operation in
             let _, ftyp = find_field out_type where.lhs in
             let v = value_of_string ftyp.typ where.rhs in
             (where.lhs, where.op, v) :: filters
@@ -497,7 +498,8 @@ let field_typ_of_column programs table column =
   let open RamenTuple in
   let func = func_of_table programs table in
   try
-    O.out_type_of_operation func.F.operation |>
+    O.out_type_of_operation ~with_private:false
+                            func.F.operation |>
     List.find (fun t -> t.name = column)
   with Not_found ->
     Printf.sprintf "No column %s in table %s"

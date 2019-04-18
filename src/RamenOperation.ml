@@ -435,7 +435,7 @@ let operation_with_factors op factors = match op with
   | Notifications _ -> op
 
 (* Return the (likely) untyped output tuple *)
-let out_type_of_operation ?(with_private=true) = function
+let out_type_of_operation ~with_private = function
   | Aggregate { fields ; and_all_others ; _ } ->
       assert (not and_all_others) ;
       List.fold_left (fun lst sf ->
@@ -458,10 +458,10 @@ let out_type_of_operation ?(with_private=true) = function
 
 (* Same as above, but return the output type as a TRecord (the way it's
  * supposed to be!) *)
-let out_record_of_operation ?with_private op =
+let out_record_of_operation ~with_private op =
   T.make ~nullable:false
     (T.TRecord (
-      (out_type_of_operation ?with_private op |> List.enum) |>
+      (out_type_of_operation ~with_private op |> List.enum) |>
       Enum.map (fun ft ->
         (ft.RamenTuple.name :> string), ft.typ) |>
       Array.of_enum))

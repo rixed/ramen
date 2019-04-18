@@ -1728,7 +1728,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 what
                 E.print_path path
                 RamenTuple.print_typ
-                  (O.out_type_of_operation pfunc.F.operation)
+                  (O.out_type_of_operation ~with_private:true
+                                           pfunc.F.operation)
                 (E.print false) e |>
               failwith
             and aggr_types pfunc t prev =
@@ -1782,7 +1783,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
                 ) else (
                   (* External parent: look for the exact type *)
                   let pser =
-                    O.out_type_of_operation pfunc.F.operation in
+                    O.out_type_of_operation ~with_private:true
+                                             pfunc.F.operation in
                   (* If [path] has several component then look for each
                    * components one after the other, localizing the type
                    * through the TRecords.
@@ -2180,7 +2182,8 @@ let used_tuples_records funcs parents =
   let tuple_sizes =
     Hashtbl.fold (fun _ fs s ->
       List.fold_left (fun s f ->
-        let out_type = O.out_type_of_operation f.F.operation in
+        let out_type =
+          O.out_type_of_operation ~with_private:true f.F.operation in
         List.fold_left (fun s ft ->
           look_into_type s ft.RamenTuple.typ
         ) s out_type
@@ -2192,7 +2195,8 @@ let used_tuples_records funcs parents =
     (* A variant that only register the record fields recursively: *)
     ignore (look_into_type Set.Int.empty t) in
   List.iter (fun func ->
-    let out_typ = O.out_type_of_operation func.F.operation in
+    let out_typ =
+      O.out_type_of_operation ~with_private:true func.F.operation in
     (* Keep user defined order: *)
     let sz = List.length out_typ in
     List.iteri (fun i ft ->
@@ -2270,7 +2274,7 @@ let set_io_tuples parents funcs h =
   let set_output func =
     !logger.debug "set_output of function %a"
       N.func_print func.F.name ;
-    O.out_type_of_operation func.F.operation |>
+    O.out_type_of_operation ~with_private:true func.F.operation |>
     List.iter (fun ft ->
       !logger.debug "set_output of field %a"
         N.field_print ft.RamenTuple.name ;
@@ -2319,7 +2323,7 @@ let set_io_tuples parents funcs h =
         !logger.debug "Copying from parent %a"
           N.func_print parent.F.name ;
         let pser =
-          O.out_type_of_operation parent.F.operation in
+          O.out_type_of_operation ~with_private:true parent.F.operation in
         match RamenFieldMaskLib.find_type_of_path pser f.path with
         | exception Not_found ->
             Printf.sprintf2 "Cannot find field %a in %s"

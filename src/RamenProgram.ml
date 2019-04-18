@@ -423,7 +423,7 @@ let common_fields_of_from get_parent start_name funcs from =
           let par_rc = get_parent pn in
           let par_func =
             List.find (fun f -> f.F.name = fn) par_rc.P.funcs in
-          O.out_type_of_operation par_func.F.operation |>
+          O.out_type_of_operation ~with_private:false par_func.F.operation |>
           List.map (fun f -> f.RamenTuple.name)
     in
     let fields = Set.of_list fields in
@@ -452,7 +452,8 @@ let reify_star_fields get_parent program_name funcs =
           match func.operation with
           | Aggregate ({ fields ; and_all_others = true ; from ; _ } as op) ->
               (* Exit when we met a parent which output type is not stable: *)
-              (match common_fields_of_from get_parent program_name !new_funcs from with
+              (match common_fields_of_from get_parent program_name
+                                           !new_funcs from with
               | exception Exit -> changed, func :: prev
               | common_fields ->
                   (* Note that the fields are added in reverse alphabetical

@@ -79,7 +79,7 @@ let read_output conf ?duration (fq : N.fq) where =
                       conf ~file_type:OutRef.RingBuf ?duration func in
                   prog, func, bname) in
           let out_type =
-            O.out_type_of_operation func.F.operation
+            O.out_type_of_operation ~with_private:false func.F.operation
           and event_time =
             O.event_time_of_operation func.F.operation in
           let ser =
@@ -133,7 +133,8 @@ let replay conf ?(while_=always) fq field_names where since until
   (* First, make sure the operation actually exist: *)
   let programs = RC.with_rlock conf identity in
   let _rce, prog, func = RC.find_func_or_fail programs fq in
-  let out_type = O.out_type_of_operation func.F.operation in
+  let out_type =
+    O.out_type_of_operation ~with_private:false func.F.operation in
   let field_names = check_field_names out_type field_names in
   let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
             List.map fst in

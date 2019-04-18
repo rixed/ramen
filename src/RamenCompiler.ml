@@ -268,7 +268,7 @@ let compile conf get_parent ~exec_file source_file
         N.field_print name
         (func.F.name :> string) ;
       let out_type =
-        O.out_type_of_operation func.F.operation in
+        O.out_type_of_operation ~with_private:true func.F.operation in
       match List.find (fun ft ->
               ft.RamenTuple.name = name
             ) out_type with
@@ -332,7 +332,7 @@ let compile conf get_parent ~exec_file source_file
        * out_types fields are reordered. *)
       if changed then (
         let out_type =
-          O.out_type_of_operation func.F.operation in
+          O.out_type_of_operation ~with_private:true func.F.operation in
         match func.F.operation with
         | O.Aggregate { fields ; _ } ->
             List.iter (fun sf ->
@@ -463,7 +463,8 @@ let compile conf get_parent ~exec_file source_file
         (* Start with the C++ object file for ORC support: *)
         let orc_write_func = "orc_write_"^ func.F.signature
         and orc_read_func = "orc_read_"^ func.F.signature
-        and rtyp = O.out_record_of_operation func.F.operation in
+        and rtyp =
+          O.out_record_of_operation ~with_private:true func.F.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
