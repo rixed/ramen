@@ -630,7 +630,10 @@ let check_depends_only_on lst =
   in
   E.iter (fun _ e ->
     match e.E.text with
-    | Variable tuple -> check_can_use tuple
+    | Variable tuple
+    | Binding (RecordField (tuple, _))
+    | Binding (RecordValue tuple) ->
+        check_can_use tuple
     | Stateless (SL0 (EventStart|EventStop)) ->
       (* Be conservative for now.
        * TODO: Actually check the event time expressions.
