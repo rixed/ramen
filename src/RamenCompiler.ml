@@ -159,7 +159,7 @@ let compile conf get_parent ~exec_file source_file
       let me_func =
         F.{ program_name ;
             name ;
-            persistent = parsed_func.persistent ;
+            retention = parsed_func.retention ;
             is_lazy = parsed_func.is_lazy ;
             doc = parsed_func.doc ;
             operation = op ;

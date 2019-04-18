@@ -327,10 +327,14 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     TermTable.print (i+2) "%a"
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
     print_endline "" ;
-    if func.F.persistent || func.F.is_lazy then (
+    if func.F.retention <> None || func.F.is_lazy then (
       let lst = [] in
       let lst =
-        if func.F.persistent then "persistent"::lst else lst in
+        match func.F.retention with
+        | Some r ->
+            IO.to_string RamenProgram.print_retention r :: lst
+        | None ->
+          lst in
       let lst =
         if func.F.is_lazy then "lazy"::lst else lst in
       TermTable.print_head (i+1) "Misc" ;

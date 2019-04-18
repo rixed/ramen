@@ -411,6 +411,10 @@ struct
   (* When some worker lacks stats it still needs to be allocates storage: *)
   let compute_cost = 0.5 (* 0.5s of CPU for 1s of data *)
   let recall_size = 100. (* 100 bytes of data every second *)
+
+  (* Default query period when unspecified in a retention configuration: *)
+  let query_period = 600.
+
 end
 
 module SpecialFunctions =

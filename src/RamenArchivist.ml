@@ -41,29 +41,29 @@ type user_conf =
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
-    retentions : (Globs.t, retention) Hashtbl.t
+    retentions : (Globs.t, F.retention) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
-  [@@ppp PPP_OCaml]
-
-and retention =
-  { duration : float ;
-    (* How frequently we intend to query it, in Hertz (TODO: we could
-     * approximate a better value if absent): *)
-    query_freq : float [@ppp_default 1. /. 600.] }
   [@@ppp PPP_OCaml]
 
 let user_conf_file conf =
   N.path_cat [ conf_dir conf ; N.path "config" ]
 
-(* FIXME: retention conf should take into account the site.
- * Or not, if we store it in the operation. *)
-let retention_of_fq user_conf (fq : N.fq) =
-  try
-    Hashtbl.enum user_conf.retentions |>
-    Enum.find_map (fun (pat, ret) ->
-      if Globs.matches pat (fq :> string) then Some ret
-      else None)
-  with Not_found -> { duration = 0. ; query_freq = 0. }
+let retention_of_user_conf user_conf (fq : N.fq) =
+  Hashtbl.enum user_conf.retentions |>
+  Enum.find_map (fun (pat, ret) ->
+    if Globs.matches pat (fq :> string) then Some ret
+    else None)
+
+let retention_of_source src_retention (fq : N.fq) =
+  Hashtbl.find src_retention fq
+
+(* FIXME: retention conf should take into account the site. *)
+let retention_of_fq src_retention user_conf (fq : N.fq) =
+  try retention_of_user_conf user_conf fq
+  with Not_found ->
+    (try retention_of_source src_retention fq
+    with Not_found ->
+      { duration = 0. ; period = 0. })
 
 (*
  * Then the first stage is to gather statistics about all running workers.
@@ -80,8 +80,8 @@ let get_user_conf fname per_func_stats =
   let user_conf = Files.ppp_of_file ~default user_conf_ppp_ocaml fname in
   (* In case no retention was provided, keep the roots for 1 hour: *)
   if Hashtbl.length user_conf.retentions = 0 then (
-    let save_short = { duration = 3600. ; query_freq = 0.1 }
-    and no_save = { duration = 0. ; query_freq = 0. } in
+    let save_short = F.{ duration = 3600. ; period = Default.query_period }
+    and no_save = F.{ duration = 0. ; period = 0. } in
     (* Empty configuration: save the roots for 10 minutes. *)
     if Hashtbl.length per_func_stats = 0 then
       (* No worker, then do not save anything: *)
@@ -94,6 +94,21 @@ let get_user_conf fname per_func_stats =
       ) per_func_stats) ;
   assert (Hashtbl.length user_conf.retentions > 0) ;
   user_conf
+
+let get_retention_from_src programs =
+  let src_retention = Hashtbl.create 11 in
+  Hashtbl.iter (fun _prog_name (_rce, get_rc) ->
+    match get_rc () with
+    | exception _ -> ()
+    | prog ->
+        List.iter (fun func ->
+          Option.may (fun r ->
+            let fq = N.fq_of_program func.F.program_name func.F.name in
+            Hashtbl.add src_retention fq r
+          ) func.F.retention
+        ) prog.P.funcs
+  ) programs ;
+  src_retention
 
 (* Build a FS.t from a unique stats received for the first time: *)
 let func_stats_of_stat s =
@@ -248,9 +263,8 @@ let update_archives conf s func =
         List.rev prev in
   s.FS.archives <- loop [] lst
 
-let enrich_local_stats conf per_func_stats =
+let enrich_local_stats conf programs per_func_stats =
   let all_sites = RamenServices.all_sites conf in
-  let programs = RC.with_rlock conf identity in
   Hashtbl.iter (fun program_name (rce, get_rc) ->
     if Globs.matches rce.RC.on_site (conf.C.site :> string) then
       match get_rc () with
@@ -268,7 +282,7 @@ let enrich_local_stats conf per_func_stats =
   ) programs
 
 (* tail -f the #notifs stream and update per_func_stats: *)
-let update_local_worker_stats ?while_ conf =
+let update_local_worker_stats ?while_ conf programs =
   (* When running we keep both the stats and the last received health report
    * as well as the last startup_time (to detect restarts). We start by
    * loading the file as the current stats. We will shift it into the total
@@ -322,7 +336,7 @@ let update_local_worker_stats ?while_ conf =
       | Some tot, s -> add_ps_stats tot s
       | None, s -> s
     ) per_func_stats in
-  enrich_local_stats conf stats ;
+  enrich_local_stats conf programs stats ;
   save_stats conf stats
 
 (*
@@ -516,9 +530,10 @@ let emit_query_costs user_conf durations oc per_func_stats =
     ) durations
   ) per_func_stats
 
-let emit_no_invalid_cost user_conf durations oc per_func_stats =
+let emit_no_invalid_cost
+      src_retention user_conf durations oc per_func_stats =
   Hashtbl.iter (fun (_, (fq : N.fq) as site_fq) _ ->
-    let retention = retention_of_fq user_conf fq in
+    let retention = retention_of_fq src_retention user_conf fq in
     if retention.duration > 0. then (
       (* Which index is that? *)
       let i = List.index_of retention.duration durations |> Option.get in
@@ -526,16 +541,17 @@ let emit_no_invalid_cost user_conf durations oc per_func_stats =
         (cost i site_fq) invalid_cost)
   ) per_func_stats
 
-let emit_total_query_costs user_conf durations oc per_func_stats =
+let emit_total_query_costs
+      src_retention user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc ((site : N.site), (fq : N.fq) as site_fq) ->
-      let retention = retention_of_fq user_conf fq in
+      let retention = retention_of_fq src_retention user_conf fq in
       if retention.duration > 0. then
         (* Which index is that? *)
         let i = List.index_of retention.duration durations |> Option.get in
         (* The cost is a whole day of queries: *)
         let queries_per_days =
-          ceil_to_int (retention.query_freq *. secs_per_day) in
+          ceil_to_int (secs_per_day /. (max 1. retention.period)) in
         !logger.info
           "Must be able to query %a:%a for a duration %s, at %d queries per day"
           N.site_print site
@@ -546,7 +562,7 @@ let emit_total_query_costs user_conf durations oc per_func_stats =
           (cost i site_fq) queries_per_days))
       per_func_stats
 
-let emit_smt2 user_conf per_func_stats oc ~optimize =
+let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
   (* We want to consider only the running functions, but also need their
    * non running parents! *)
   let per_func_stats =
@@ -598,8 +614,8 @@ let emit_smt2 user_conf per_func_stats oc ~optimize =
     (emit_all_vars durations) per_func_stats
     emit_sum_of_percentages per_func_stats
     (emit_query_costs user_conf durations) per_func_stats
-    (emit_no_invalid_cost user_conf durations) per_func_stats
-    (emit_total_query_costs user_conf durations) per_func_stats
+    (emit_no_invalid_cost src_retention user_conf durations) per_func_stats
+    (emit_total_query_costs src_retention user_conf durations) per_func_stats
     post_scriptum
 
 (*
@@ -621,14 +637,14 @@ let load_allocs =
     N.path_cat [ conf_dir conf ; N.path "allocs" ] |>
     ppp_of_file
 
-let update_storage_allocation conf =
+let update_storage_allocation conf programs =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
   let per_func_stats = get_global_stats_no_refresh conf in
-  let user_conf = get_user_conf (user_conf_file conf) per_func_stats in
-  let fname =
-    N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
-  and emit = emit_smt2 user_conf per_func_stats
+  let user_conf = get_user_conf (user_conf_file conf) per_func_stats
+  and src_retention = get_retention_from_src programs in
+  let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
+  and emit = emit_smt2 src_retention user_conf per_func_stats
   and parse_result sym vars sort term =
     try Scanf.sscanf sym "perc_%s%!" (fun s ->
       let site_fq = unscramble s in
@@ -718,8 +734,7 @@ let update_storage_allocation conf =
  *)
 
 let update_local_workers_export
-    ?(export_duration=Default.archivist_export_duration) conf =
-  let programs = RC.with_rlock conf identity in (* Best effort *)
+    ?(export_duration=Default.archivist_export_duration) conf programs =
   load_allocs conf |>
   Hashtbl.iter (fun (site, fq) max_size ->
     if site = conf.C.site then
@@ -747,19 +762,20 @@ let update_local_workers_export
 
 let run_once conf ?while_ ?export_duration
              stats allocs reconf =
+  let programs = RC.with_rlock conf identity in (* Best effort *)
   (* Start by gathering (more) workers stats: *)
   if stats then (
     !logger.info "Updating workers stats" ;
-    update_local_worker_stats ?while_ conf) ;
+    update_local_worker_stats ?while_ conf programs) ;
   (* Then use those to answer the big questions about queries, the storage
    * and everything: *)
   if allocs then (
     !logger.info "Updating storage allocations" ;
-    update_storage_allocation conf) ;
+    update_storage_allocation conf programs) ;
   (* Now update the archiving configuration of running workers: *)
   if reconf then (
     !logger.info "Updating workers export configuration" ;
-    update_local_workers_export ?export_duration conf)
+    update_local_workers_export ?export_duration conf programs)
 
 let run_loop conf ?while_ sleep_time stats allocs reconf =
   (* Export instructions are only valid for twice as long as the archivist
@@ -780,14 +796,15 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
 (* Helpers: get the stats (maybe refreshed) *)
 
 let maybe_refresh_local_stats ?while_ conf =
+  let programs = RC.with_rlock conf identity in
   match Files.age (stat_file conf) with
   | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
-      update_local_worker_stats ?while_ conf
+      update_local_worker_stats ?while_ conf programs
   | stat_file_age ->
       if stat_file_age > max_archivist_stat_file_age ||
          stat_file_age > RC.age conf
       then
-        update_local_worker_stats ?while_ conf
+        update_local_worker_stats ?while_ conf programs
 
 (* Returns a hash keyed by FQ: *)
 let get_local_stats ?while_ conf =

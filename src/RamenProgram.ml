@@ -6,6 +6,7 @@ open Batteries
 open RamenLang
 open RamenLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -39,7 +40,7 @@ type func =
   { name : N.func option (* optional during parsing only *) ;
     doc : string ;
     operation : O.t ;
-    persistent : bool ;
+    retention : F.retention option ;
     is_lazy : bool }
 
 type t = RamenTuple.param list * func list
@@ -53,9 +54,9 @@ let make_name =
     incr seq ;
     N.func ("f"^ string_of_int !seq)
 
-let make_func ?(persistent=false) ?(is_lazy=false) ?name ?(doc="")
+let make_func ?retention ?(is_lazy=false) ?name ?(doc="")
               operation =
-  { name ; doc ; operation ; persistent ; is_lazy }
+  { name ; doc ; operation ; retention ; is_lazy }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -64,6 +65,12 @@ let print_param oc p =
     RamenTuple.print_field_typ p.RamenTuple.ptyp
     T.print p.value
 
+let print_retention oc r =
+  Printf.fprintf oc
+    "PERSIST FOR %a WHILE QUERYING EVERY %a"
+    print_as_duration r.F.duration
+    print_as_duration r.F.period
+
 let print_func oc n =
   let with_types = false in (* TODO: a parameter *)
   match n.name with
@@ -71,9 +78,12 @@ let print_func oc n =
       Printf.fprintf oc "%a;"
         (O.print with_types ) n.operation
   | Some name ->
-      Printf.fprintf oc "DEFINE%s%s '%s' AS %a;"
-        (if n.persistent then " PERSISTENT" else "")
+      Printf.fprintf oc "DEFINE%s%a '%s' AS %a;"
         (if n.is_lazy then " LAZY" else "")
+        (fun oc -> function
+          | None -> ()
+          | Some r ->
+              Printf.fprintf oc " %a" print_retention r) n.retention
         (name :> string)
         (O.print with_types) n.operation
 
@@ -233,24 +243,46 @@ struct
     let m = "anonymous func" :: m in
     (O.Parser.p >>: make_func) m
 
-  type func_flag = Persistent | Lazy
+  type func_flag = Lazy | Persist of float | Querying of float | Ignore
   let named_func m =
     let m = "function" :: m in
     (
       strinG "define" -- blanks -+
-      repeat ~sep:blanks (
+      repeat ~sep:none (
         (
-          (strinG "persistent" >>: fun () -> Persistent) |||
-          (strinG "lazy" >>: fun () -> Lazy)
+          (
+            strinG "lazy" >>: fun () -> Lazy
+          ) ||| (
+            strinG "persist" -- blanks -- strinG "for" -- blanks -+
+            duration >>: fun d -> Persist d
+          ) ||| (
+            (strinG "querying" ||| strinG "query") -- blanks --
+            strinG "every" -- blanks -+ duration >>: fun d -> Querying d
+          ) ||| (
+            strinG "while" >>: fun () -> Ignore
+          )
         ) +- blanks) ++
       function_name ++
       optional ~def:"" (blanks -+ quoted_string) +-
       blanks +- strinG "as" +- blanks ++
       O.Parser.p >>:
       fun (((flags, name), doc), op) ->
-        let persistent = List.mem Persistent flags
+        let duration =
+          list_find_map_opt (function Persist r -> Some r | _ -> None) flags
+        and period =
+          list_find_map_opt (function Querying d -> Some d | _ -> None) flags
         and is_lazy = List.mem Lazy flags in
-        make_func ~persistent ~is_lazy ~name ~doc op
+        let retention =
+          match duration, period with
+          | Some duration, Some period ->
+              Some F.{ duration ; period }
+          | None, None ->
+              None
+          | Some duration, None ->
+              Some F.{ duration ; period = Default.query_period }
+          | None, Some _ ->
+              raise (Reject "incomplete retention definition") in
+        make_func ?retention ~is_lazy ~name ~doc op
     ) m
 
   let func m =

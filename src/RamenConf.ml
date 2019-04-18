@@ -69,13 +69,20 @@ struct
     O.site_identifier * N.rel_program option * N.func
     [@@ppp PPP_OCaml]
 
+  type retention =
+    { duration : float ;
+      (* How frequently we intend to query it, in Hertz (TODO: we could
+       * approximate a better value if absent): *)
+      period : float [@ppp_default 600.] }
+    [@@ppp PPP_OCaml]
+
   type t =
     { program_name : N.program ;
       name : N.func ;
       (* A function which history we might want to query in the future
        * so make sure it is either stored or can be computed again from
        * ancestor stored history: *)
-      persistent : bool ;
+      retention : retention option ;
       doc : string ;
       (* A lazy function runs only if it is used: has a children that is
        * itself used, emits notifications or export its data somehow. *)
@@ -94,7 +101,7 @@ struct
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
       { name : N.func ;
-        persistent : bool ;
+        retention : retention option  ;
         is_lazy : bool ;
         doc : string ;
         operation : O.t ;
@@ -105,7 +112,7 @@ struct
   let serialized (t : t) =
     Serialized.{
       name = t.name ;
-      persistent = t.persistent ;
+      retention = t.retention ;
       is_lazy = t.is_lazy ;
       doc = t.doc ;
       operation = t.operation ;
@@ -114,7 +121,7 @@ struct
   let unserialized program_name (t : Serialized.t) =
     { program_name ;
       name = t.name ;
-      persistent = t.persistent ;
+      retention = t.retention ;
       is_lazy = t.is_lazy ;
       doc = t.doc ;
       operation = t.operation ;

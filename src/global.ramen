@@ -3,5 +3,5 @@
 -- (in addition to local.ramen)
 
 -- Import stats from all remote sites:
-DEFINE PERSISTENT stats AS
+DEFINE PERSIST FOR 5 days stats AS
   SELECT * FROM local/stats ON SITES *;

@@ -153,6 +153,9 @@ let list_filter_mapi f a =
 let list_rfind_map f l =
   List.rev l |> List.find_map f
 
+let list_find_map_opt f l =
+  try Some (List.find_map f l) with Not_found -> None
+
 let list_rassoc k l =
   List.rev l |> List.assoc k
 

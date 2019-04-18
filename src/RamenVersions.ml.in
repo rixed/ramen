@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v60" (* last: every clause now an expression *)
+let codegen = "v61" (* last: retention replaces persistent in F.t *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
@@ -36,7 +36,7 @@ let binocle = Binocle.version
 let experiment = "v1"
 
 (* Format of the archivist user constraints and other intermediary files *)
-let archivist_conf = "v4" (* last: replace running_time with min/max etimes *)
+let archivist_conf = "v5" (* last: query period replaces query_freq *)
 
 (* Format used for factor possible values (content and file name) *)
 let factors = "v1"

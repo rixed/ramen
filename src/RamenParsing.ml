@@ -192,8 +192,9 @@ let rec duration m =
     number +- opt_blanks ++ (
       ((worDs "second" ||| worDs "sec" ||| word "s") >>: fun () -> 1.) |||
       ((worDs "minute" ||| worDs "min") >>: fun () -> 60.) |||
-      ((worDs "hour" ||| word "h") >>: fun () -> 3600.)
-      (* Length of a day is already not doable due to DST *)
+      ((worDs "hour" ||| word "h") >>: fun () -> 3600.) |||
+      ((worDs "day" ||| word "d") >>: fun () -> 86400.)
+      (* Length of a day is only an approximation due to DST *)
     ) >>: fun (dur, scale) ->
       let d = dur *. scale in
       if d < 0. then
