@@ -91,6 +91,9 @@ let tuple_id tuple =
   string_of_prefix tuple ^"_" |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
+let fail_with_context c f =
+  fail_with_context ("generating code for "^ c) f
+
 let emit_tuple ?(with_alias=false) tuple =
   let print_field oc field_typ =
       String.print oc (id_of_field_typ ~tuple field_typ)
@@ -2450,10 +2453,13 @@ let emit_read_csv_file opc name csv_fname unlink
       (emit_expr ~context:Finalize ~opc ~env:[]) e
   in
   let preprocessor =
-    match preprocessor with
-    | None -> "\"\""
-    | Some p -> const_string_of p
-  and csv_fname = const_string_of csv_fname
+    fail_with_context "csv preprocessor expression" (fun () ->
+      match preprocessor with
+      | None -> "\"\""
+      | Some p -> const_string_of p)
+  and csv_fname =
+    fail_with_context "csv file name expression" (fun () ->
+      const_string_of csv_fname)
   and p fmt = emit opc.code 0 fmt
   in
   (* The dynamic part comes from the unpredictable field list.
@@ -2463,53 +2469,66 @@ let emit_read_csv_file opc name csv_fname unlink
    * - reading a CSV string into a tuple type (when nullable fields are option type)
    * - given such a tuple, return its serialized size
    * - given a pointer toward the ring buffer, serialize the tuple *)
-  emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ ;
-  emit_time_of_tuple "time_of_tuple_" opc ;
-  emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ ;
-  emit_tuple_of_strings 0 "tuple_of_strings_" csv_null opc.code opc.typ ;
-  p "let %s () =" name ;
-  p "  let unlink_ = %a in"
-    (emit_expr ~env:[] ~context:Finalize ~opc) unlink ;
-  p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
-  p "    unlink_ %S sersize_of_tuple_ time_of_tuple_" csv_separator ;
-  p "    factors_of_tuple_ serialize_tuple_" ;
-  p "    tuple_of_strings_ %s field_of_params_" preprocessor ;
-  p "    orc_make_handler_ orc_write orc_close\n"
+  fail_with_context "tuple serialization size computation" (fun () ->
+    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ) ;
+  fail_with_context "event time extraction" (fun () ->
+    emit_time_of_tuple "time_of_tuple_" opc) ;
+  fail_with_context "tuple serialization" (fun () ->
+    emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "csv line parser" (fun () ->
+    emit_tuple_of_strings 0 "tuple_of_strings_" csv_null opc.code opc.typ) ;
+  fail_with_context "csv reader function" (fun () ->
+    p "let %s () =" name ;
+    p "  let unlink_ = %a in"
+      (emit_expr ~env:[] ~context:Finalize ~opc) unlink ;
+    p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
+    p "    unlink_ %S sersize_of_tuple_ time_of_tuple_" csv_separator ;
+    p "    factors_of_tuple_ serialize_tuple_" ;
+    p "    tuple_of_strings_ %s field_of_params_" preprocessor ;
+    p "    orc_make_handler_ orc_write orc_close\n")
 
 let emit_listen_on opc name net_addr port proto =
   let open RamenProtocols in
   let p fmt = emit opc.code 0 fmt in
   let tuple_typ = tuple_typ_of_proto proto in
   let collector = collector_of_proto proto in
-  emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code tuple_typ ;
-  emit_time_of_tuple "time_of_tuple_" opc ;
-  emit_serialize_tuple 0 "serialize_tuple_" opc.code tuple_typ ;
-  p "let %s () =" name ;
-  p "  CodeGenLib_Skeletons.listen_on" ;
-  p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)"
-    collector
-    (Unix.string_of_inet_addr net_addr) port ;
-  p "    %S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_"
-    (string_of_proto proto) ;
-  p "    serialize_tuple_" ;
-  p "    orc_make_handler_ orc_write orc_close\n"
+  fail_with_context "serialization size computation" (fun () ->
+    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code tuple_typ) ;
+  fail_with_context "event time extraction" (fun () ->
+    emit_time_of_tuple "time_of_tuple_" opc) ;
+  fail_with_context "tuple serialization" (fun () ->
+    emit_serialize_tuple 0 "serialize_tuple_" opc.code tuple_typ) ;
+  fail_with_context "listening function" (fun () ->
+    p "let %s () =" name ;
+    p "  CodeGenLib_Skeletons.listen_on" ;
+    p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%d)"
+      collector
+      (Unix.string_of_inet_addr net_addr) port ;
+    p "    %S sersize_of_tuple_ time_of_tuple_ factors_of_tuple_"
+      (string_of_proto proto) ;
+    p "    serialize_tuple_" ;
+    p "    orc_make_handler_ orc_write orc_close\n")
 
 let emit_well_known opc name from
                     unserializer_name ringbuf_envvar worker_and_time =
   let open RamenProtocols in
   let p fmt = emit opc.code 0 fmt in
-  emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ ;
-  emit_time_of_tuple "time_of_tuple_" opc ;
-  emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ ;
-  p "let %s () =" name ;
-  p "  CodeGenLib_Skeletons.read_well_known %a"
-    (List.print (fun oc ds ->
-      Printf.fprintf oc "%S" (
-        IO.to_string (O.print_data_source true) ds))) from ;
-  p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
-  p "    serialize_tuple_ %s %S %s"
-   unserializer_name ringbuf_envvar worker_and_time ;
-  p "    orc_make_handler_ orc_write orc_close\n"
+  fail_with_context "serialized size computation" (fun () ->
+    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code opc.typ) ;
+  fail_with_context "event time extractor" (fun () ->
+    emit_time_of_tuple "time_of_tuple_" opc) ;
+  fail_with_context "tuple serializer" (fun () ->
+    emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ) ;
+  fail_with_context "well-known listening function" (fun () ->
+    p "let %s () =" name ;
+    p "  CodeGenLib_Skeletons.read_well_known %a"
+      (List.print (fun oc ds ->
+        Printf.fprintf oc "%S" (
+          IO.to_string (O.print_data_source true) ds))) from ;
+    p "    sersize_of_tuple_ time_of_tuple_ factors_of_tuple_" ;
+    p "    serialize_tuple_ %s %S %s"
+     unserializer_name ringbuf_envvar worker_and_time ;
+    p "    orc_make_handler_ orc_write orc_close\n")
 
 (* We do not want to read the value from the RB each time it's used,
  * so extract a tuple from the ring buffer. *)
@@ -3376,70 +3395,112 @@ let emit_aggregate opc global_env group_env env_env param_env
   let commit_cond0, commit_cond_rest =
     let env = group_env @ global_env @ base_env in
     if check_commit_for_all then
-      optimize_commit_cond in_typ minimal_typ ~env ~opc commit_cond
+      fail_with_context "optimized commit condition" (fun () ->
+        optimize_commit_cond in_typ minimal_typ ~env ~opc commit_cond)
     else "None", commit_cond
   in
-  emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where ~commit_cond ~opc fields ;
-  emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env) ["global_"] ~where ~commit_cond ~opc fields ;
-  emit_read_tuple 0 "read_in_tuple_" ~is_yield ~opc in_typ ;
+  fail_with_context "global state initializer" (fun () ->
+    emit_state_init "global_init_" E.GlobalState ~env:base_env ["()"] ~where
+                    ~commit_cond ~opc fields) ;
+  fail_with_context "group state initializer" (fun () ->
+    emit_state_init "group_init_" E.LocalState ~env:(global_env @ base_env)
+                    ["global_"] ~where ~commit_cond ~opc fields) ;
+  fail_with_context "tuple reader" (fun () ->
+    emit_read_tuple 0 "read_in_tuple_" ~is_yield ~opc in_typ) ;
   if where_need_group then
-    emit_where ~env:(global_env @ base_env) "where_fast_" ~always_true:true in_typ ~opc where
+    fail_with_context "where-fast function" (fun () ->
+      emit_where ~env:(global_env @ base_env) "where_fast_"
+                 ~always_true:true in_typ ~opc where)
   else
-    emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc where ;
+    fail_with_context "where-fast function" (fun () ->
+      emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc
+                 where) ;
   if not where_need_group then
-    emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true ~always_true:true in_typ ~opc where
+    fail_with_context "where-slow function" (fun () ->
+      emit_where ~env:(global_env @ base_env) "where_slow_"
+                 ~with_group:true ~always_true:true in_typ ~opc where)
   else
-    emit_where ~env:(global_env @ base_env) "where_slow_" ~with_group:true in_typ ~opc where ;
-  emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env) ~opc key ;
-  emit_maybe_fields opc.code out_typ ;
-  emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_" in_typ minimal_typ ~opc commit_cond_rest ;
-  emit_field_selection ~build_minimal:true ~env:(group_env @ global_env @ base_env) "minimal_tuple_of_group_" in_typ minimal_typ ~opc fields ;
-  emit_field_selection ~build_minimal:false ~env:(group_env @ global_env @ base_env) "out_tuple_of_minimal_tuple_" in_typ minimal_typ ~opc fields ;
-  emit_update_states ~env:(group_env @ global_env @ base_env) "update_states_" in_typ minimal_typ ~opc fields ;
-  emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code out_typ ;
-  emit_time_of_tuple "time_of_tuple_" opc ;
-  emit_serialize_tuple 0 "serialize_tuple_" opc.code out_typ ;
-  emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc fields ;
-  emit_merge_on "merge_on_" in_typ ~opc merge.on ;
-  emit_sort_expr "sort_until_" in_typ ~opc (match sort with Some (_, Some u, _) -> [u] | _ -> []) ;
-  emit_sort_expr "sort_by_" in_typ ~opc (match sort with Some (_, _, b) -> b | None -> []) ;
-  emit_get_notifications "get_notifications_" in_typ out_typ ~opc notifications ;
+    fail_with_context "where-slow function" (fun () ->
+      emit_where ~env:(global_env @ base_env) "where_slow_"
+                 ~with_group:true in_typ ~opc where) ;
+  fail_with_context "key extraction function" (fun () ->
+    emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env)
+                      ~opc key) ;
+  fail_with_context "optional-field extraction functions" (fun () ->
+    emit_maybe_fields opc.code out_typ) ;
+  fail_with_context "commit condition function" (fun () ->
+    emit_when ~env:(group_env @ global_env @ base_env) "commit_cond_"
+              in_typ minimal_typ ~opc commit_cond_rest) ;
+  fail_with_context "select-clause function" (fun () ->
+    emit_field_selection ~build_minimal:true
+                         ~env:(group_env @ global_env @ base_env)
+                         "minimal_tuple_of_group_" in_typ minimal_typ ~opc
+                         fields) ;
+  fail_with_context "output tuple function" (fun () ->
+    emit_field_selection ~build_minimal:false
+                         ~env:(group_env @ global_env @ base_env)
+                         "out_tuple_of_minimal_tuple_" in_typ minimal_typ
+                         ~opc fields) ;
+  fail_with_context "state update function" (fun () ->
+    emit_update_states ~env:(group_env @ global_env @ base_env)
+                       "update_states_" in_typ minimal_typ ~opc fields) ;
+  fail_with_context "sersize-of-tuple function" (fun () ->
+    emit_sersize_of_tuple 0 "sersize_of_tuple_" opc.code out_typ) ;
+  fail_with_context "time-of-tuple function" (fun () ->
+    emit_time_of_tuple "time_of_tuple_" opc) ;
+  fail_with_context "tuple serializer" (fun () ->
+    emit_serialize_tuple 0 "serialize_tuple_" opc.code out_typ) ;
+  fail_with_context "tuple generator" (fun () ->
+    emit_generate_tuples "generate_tuples_" in_typ out_typ ~opc fields) ;
+  fail_with_context "merge-on condition" (fun () ->
+    emit_merge_on "merge_on_" in_typ ~opc merge.on) ;
+  fail_with_context "sort-until function" (fun () ->
+    emit_sort_expr "sort_until_" in_typ ~opc
+                   (match sort with Some (_, Some u, _) -> [u] | _ -> [])) ;
+  fail_with_context "sort-by function" (fun () ->
+    emit_sort_expr "sort_by_" in_typ ~opc
+                   (match sort with Some (_, _, b) -> b | None -> [])) ;
+  fail_with_context "notification extraction function" (fun () ->
+    emit_get_notifications "get_notifications_" in_typ out_typ ~opc
+                           notifications) ;
   let p fmt = emit opc.code 0 fmt in
-  p "let %s () =" name ;
-  p "  CodeGenLib_Skeletons.aggregate" ;
-  p "    read_in_tuple_ sersize_of_tuple_ time_of_tuple_" ;
-  p "    factors_of_tuple_ serialize_tuple_" ;
-  p "    generate_tuples_" ;
-  p "    minimal_tuple_of_group_" ;
-  p "    update_states_" ;
-  p "    out_tuple_of_minimal_tuple_" ;
-  p "    merge_on_ %d %F %d sort_until_ sort_by_" merge.last merge.timeout
-    (match sort with None -> 0 | Some (n, _, _) -> n) ;
-  p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
-  p "    commit_cond_ %s %b %b %b"
-    commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
-  p "    global_init_ group_init_" ;
-  p "    get_notifications_ (%a)"
-    (Option.print
-      (fun oc e ->
-        Printf.fprintf oc "(%a)"
-          (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) e))
-      every ;
-  p "    orc_make_handler_ orc_write orc_close\n" ;
+  fail_with_context "aggregate function" (fun () ->
+    p "let %s () =" name ;
+    p "  CodeGenLib_Skeletons.aggregate" ;
+    p "    read_in_tuple_ sersize_of_tuple_ time_of_tuple_" ;
+    p "    factors_of_tuple_ serialize_tuple_" ;
+    p "    generate_tuples_" ;
+    p "    minimal_tuple_of_group_" ;
+    p "    update_states_" ;
+    p "    out_tuple_of_minimal_tuple_" ;
+    p "    merge_on_ %d %F %d sort_until_ sort_by_" merge.last merge.timeout
+      (match sort with None -> 0 | Some (n, _, _) -> n) ;
+    p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
+    p "    commit_cond_ %s %b %b %b"
+      commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
+    p "    global_init_ group_init_" ;
+    p "    get_notifications_ (%a)"
+      (Option.print
+        (fun oc e ->
+          Printf.fprintf oc "(%a)"
+            (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) e))
+        every ;
+    p "    orc_make_handler_ orc_write orc_close\n") ;
   (* The top-half is similar, but need less parameters: *)
-  p "let %s () =" top_half_name ;
-  p "  CodeGenLib_Skeletons.top_half" ;
-  p "    read_in_tuple_" ;
-  (* Now the where_fast filter that we can apply is the same as the real
-   * where_fast_ filter, unless the where_fast filter make use of some
-   * stateful function, or of the previous out tuple, or the max_merged
-   * tuple, in which case we must pass all tuples: *)
-  (* No actually we need to be able to extract from the WHERE condition
-   * the most we can, ie all the ANDed expressions using no state and no
-   * previous and no max_merged. For now just use true. *)
-  let filter = "(fun _ -> true)" in
-  p "    %s\n" filter
-  | _ -> assert false
+  fail_with_context "top-half function" (fun () ->
+    p "let %s () =" top_half_name ;
+    p "  CodeGenLib_Skeletons.top_half" ;
+    p "    read_in_tuple_" ;
+    (* Now the where_fast filter that we can apply is the same as the real
+     * where_fast_ filter, unless the where_fast filter make use of some
+     * stateful function, or of the previous out tuple, or the max_merged
+     * tuple, in which case we must pass all tuples: *)
+    (* No actually we need to be able to extract from the WHERE condition
+     * the most we can, ie all the ANDed expressions using no state and no
+     * previous and no max_merged. For now just use true. *)
+    let filter = "(fun _ -> true)" in
+    p "    %s\n" filter)
+    | _ -> assert false
 
 let sanitize_ocaml_fname s =
   let open Str in
@@ -3774,16 +3835,25 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
   let src_file =
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
-        emit_header func params_mod oc ;
-        emit_params_env params_mod params envvars oc ;
-        emit_priv_pub opc ;
-        emit_orc_wrapper func orc_write_func orc_read_func opc.code ;
-        emit_make_orc_handler "orc_make_handler_" func opc.code ;
-        emit_factors_of_tuple "factors_of_tuple_" func opc.code ;
-        emit_operation EntryPoints.worker EntryPoints.top_half func
-                       global_env group_env env_env param_env opc ;
-        emit_replay EntryPoints.replay func opc ;
-        emit_convert EntryPoints.convert func opc.code ;
+        fail_with_context "header" (fun () ->
+          emit_header func params_mod oc) ;
+        fail_with_context "parameters" (fun () ->
+          emit_params_env params_mod params envvars oc) ;
+        fail_with_context "priv_to_pub function" (fun () ->
+          emit_priv_pub opc) ;
+        fail_with_context "orc wrapper" (fun () ->
+          emit_orc_wrapper func orc_write_func orc_read_func opc.code) ;
+        fail_with_context "orc handler builder" (fun () ->
+          emit_make_orc_handler "orc_make_handler_" func opc.code) ;
+        fail_with_context "factors extractor" (fun () ->
+          emit_factors_of_tuple "factors_of_tuple_" func opc.code) ;
+        fail_with_context "operation" (fun () ->
+          emit_operation EntryPoints.worker EntryPoints.top_half func
+                         global_env group_env env_env param_env opc) ;
+        fail_with_context "replay function" (fun () ->
+          emit_replay EntryPoints.replay func opc) ;
+        fail_with_context "tuple conversion function" (fun () ->
+          emit_convert EntryPoints.convert func opc.code) ;
         Printf.fprintf oc "\n(* Global constants: *)\n\n%s\n\
                            \n(* Operation Implementation: *)\n\n%s\n"
           (IO.close_out consts) (IO.close_out code)
