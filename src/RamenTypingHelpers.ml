@@ -115,13 +115,13 @@ let infer_field_doc_aggr func parents params =
       ) fields
   | _ -> ()
 
-let check_typed ~what _stack e =
+let check_typed ?what clause _stack e =
   let open RamenExpr in
   match e.E.typ.T.structure with
   | TNum | TAny ->
-      Printf.sprintf2 "%s: Cannot complete typing of %s, \
+      Printf.sprintf2 "%s%s: Cannot complete typing of %s, \
                        still of type %a"
-        what
+        (Option.map_default (fun w -> w ^", ") "" what) clause
         (IO.to_string (print true) e)
         T.print_typ e.typ |>
     failwith

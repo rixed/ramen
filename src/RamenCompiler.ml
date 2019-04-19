@@ -400,7 +400,7 @@ let compile conf get_parent ~exec_file source_file
     ) compiler_funcs ;
     (* Also check that the running condition have been typed: *)
     Option.may (fun cond ->
-      E.iter (check_typed ~what:"Running condition") cond
+      E.iter (check_typed "Running condition") cond
     ) condition ;
 
     (*

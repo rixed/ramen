@@ -714,7 +714,7 @@ let static_environments params envvars =
 (* Returns all the bindings in global and group states: *)
 let initial_environments op =
   let glob_env, loc_env =
-    O.fold_expr ([], []) (fun _s (glo, loc as prev) e ->
+    O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
       match e.E.text with
       | Stateful (g, _, _) ->
           let n = name_of_state e in

@@ -288,7 +288,7 @@ let fold_top_level_expr init f = function
                 notifications ; every ; _ } ->
       let x =
         List.fold_left (fun prev sf ->
-            let what = Printf.sprintf "field %S" (sf.alias :> string) in
+            let what = Printf.sprintf "field %s" (N.field_color sf.alias) in
             f prev what sf.expr
           ) init fields in
       let x = List.fold_left (fun prev me ->
@@ -321,10 +321,10 @@ let iter_top_level_expr f =
   fold_top_level_expr () (fun () -> f)
 
 let fold_expr init f =
-  fold_top_level_expr init (fun i _ -> E.fold f [] i)
+  fold_top_level_expr init (fun i c -> E.fold (f c) [] i)
 
 let iter_expr f op =
-  fold_expr () (fun s () e -> f s e) op
+  fold_expr () (fun c s () e -> f c s e) op
 
 let map_top_level_expr f op =
   match op with
@@ -471,7 +471,7 @@ let out_record_of_operation ~with_private op =
       Array.of_enum))
 
 let vars_of_operation tup_type op =
-  fold_expr Set.empty (fun _ s e ->
+  fold_expr Set.empty (fun _ _ s e ->
     match e.E.text with
     | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                            { text = Variable tt ; _ }))
@@ -490,7 +490,7 @@ let notifications_of_operation = function
   | _ -> []
 
 let use_event_time op =
-  fold_expr false (fun _ b e ->
+  fold_expr false (fun _ _ b e ->
     match e.E.text with
     | Stateless (SL0 (EventStart|EventStop)) -> true
     | _ -> b
@@ -730,7 +730,7 @@ let checked params op =
                 commit_cond ; event_time ; notifications ; from ; every ;
                 factors ; _ } ->
     (* Check that we use the TupleGroup only for virtual fields: *)
-    iter_expr (fun _ e ->
+    iter_expr (fun _ _ e ->
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                              { text = Variable TupleGroup ; _ })) ->
@@ -804,7 +804,7 @@ let checked params op =
     let generators = List.filter_map (fun sf ->
         if E.is_generator sf.expr then Some sf.alias else None
       ) fields in
-    iter_expr (fun _ e ->
+    iter_expr (fun _ _ e ->
       match e.E.text with
       | Stateless (SL2 (Get, { text = Const (VString n) ; _ },
                              { text = Variable TupleOutPrevious ; _ })) ->
@@ -842,7 +842,7 @@ let checked params op =
   | Instrumentation _ | Notifications _ -> ()) ;
   (* Now that we have inferred the IO tuples, run some additional checks on
    * the expressions: *)
-  iter_expr (fun _ e -> E.check e) op ;
+  iter_expr (fun _ _ e -> E.check e) op ;
   op
 
 module Parser =

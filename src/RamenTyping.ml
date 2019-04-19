@@ -475,7 +475,7 @@ let eq_to_opened_record stack e oc path =
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes records field_names
-                     in_type out_type param_type env_type oc stack e =
+                     in_type out_type param_type env_type oc _clause stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
   emit_comment oc (IO.to_string (E.print false) e) ;
   (* Then we also have specific rules according to the operation at hand: *)
@@ -1443,14 +1443,14 @@ let emit_running_condition declare tuple_sizes records field_names
   emit_assert_is_false ~name oc (n_of_expr e) ;
   E.iter (
     emit_constraints tuple_sizes records field_names
-                     None None param_type env_type oc
+                     None None param_type env_type oc "running condition"
   ) e
 
 (* FIXME: we should have only the records accessible from this operation *)
 let emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type fi oc op =
   (* Declare all variables: *)
-  O.iter_expr (fun _ e -> declare e) op ;
+  O.iter_expr (fun _ _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
   (match op with
   | Aggregate { where ; notifications ; commit_cond ; every ; _ } ->
@@ -1538,14 +1538,14 @@ let emit_minimize oc condition funcs =
                        (ite (= float n) 5\n\
                        (ite (or (= i128 n) (= u128 n)) 6\n\
                        0)))))))\n" ;
-  let cost_of_expr _ e =
+  let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     match e.E.typ with
     | { structure = (TAny | TNum) ; _ } ->
         Printf.fprintf oc " (cost_of_number %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (E.iter cost_of_expr) condition ;
+  Option.may (E.iter (cost_of_expr ())) condition ;
   List.iter (fun func ->
     O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
@@ -1555,14 +1555,14 @@ let emit_minimize oc condition funcs =
     "\n; Minimize total signed ints\n\
        (define-fun cost_of_sign ((n Type)) Int\n\
        (ite (or (= i8 n) (= i16 n) (= i32 n) (= i64 n) (= i128 n)) 1 0))\n" ;
-  let cost_of_expr _ e =
+  let cost_of_expr _ _ e =
     let eid = t_of_expr e in
     match e.E.typ with
     | { structure = (TAny | TNum) ; _ } ->
         Printf.fprintf oc " (cost_of_sign %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (E.iter cost_of_expr) condition ;
+  Option.may (E.iter (cost_of_expr ())) condition ;
   List.iter (fun func ->
     O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
@@ -1679,7 +1679,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
   in
   let program_iter f condition funcs =
     Option.may (fun cond ->
-        E.iter (f ?func:None "Running condition") cond |>
+        E.iter (f ?func:None "Running condition" "") cond |>
         ignore
     ) condition ;
     List.iter (fun func ->
@@ -1819,7 +1819,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             register_input in_fields (Some func) path e)
     | _tup_ref -> (* Ignore non-inputs *) ()
   in
-  program_iter (fun ?func what _ e ->
+  program_iter (fun ?func what _ _ e ->
     match e.E.text with
     | Stateless (SL2 (Get, E.{ text = Const (VString s) ; _ },
                            E.{ text = Variable prefix ; _ })) ->
@@ -2117,7 +2117,7 @@ let used_tuples_records funcs parents =
   let tuple_sizes, params, envvars =
     List.fold_left (fun i func ->
       O.fold_expr i
-        (fun _ (tuple_sizes, params, envvars as prev) e ->
+        (fun _ _ (tuple_sizes, params, envvars as prev) e ->
         let register_param_or_env tuple name =
           if tuple = TupleParam then
             tuple_sizes, (Set.add name params), envvars
@@ -2345,13 +2345,13 @@ let set_io_tuples parents funcs h =
 
 (* FIXME: get_types and apply_types should be a single function doing both *)
 let apply_types parents condition funcs h =
-  let apply _ e =
+  let apply _ _ e =
     match Hashtbl.find h e.E.uniq_num with
     | exception Not_found ->
         !logger.warning "No type for expression %a"
           (E.print true) e
     | typ -> e.E.typ <- typ in
-  Option.may (E.iter apply) condition ;
+  Option.may (E.iter (apply ())) condition ;
   Hashtbl.iter (fun _ func ->
     O.iter_expr apply func.F.operation
   ) funcs ;

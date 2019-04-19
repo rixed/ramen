@@ -52,16 +52,16 @@ let string_of_index c t =
   string_of_int (c + 1) ^ ordinal_suffix (c + 1) ^ " "
 
 let expr_of_id funcs i =
-  let exception ReturnExpr of N.func * E.t list * E.t in
+  let exception ReturnExpr of (N.func * string * E.t list * E.t) in
   try
     List.iter (fun func ->
-      let print_expr stack e =
+      let print_expr clause stack e =
         if e.E.uniq_num = i then
-          raise (ReturnExpr (func.F.name, stack, e)) in
+          raise (ReturnExpr (func.F.name, clause, stack, e)) in
       O.iter_expr print_expr func.F.operation
     ) funcs ;
     assert false
-  with ReturnExpr (f, s, e) -> f, s, e
+  with ReturnExpr x -> x
 
 let print_expr funcs oc =
   let p fmt = Printf.fprintf oc fmt in
@@ -103,7 +103,7 @@ let print_expr funcs oc =
   | InheritType -> p " must match all parents output"
   | InheritNull -> p " must match all parents nullability"
   | OpenedRecordIs i ->
-      let _func_name, _stack, e = expr_of_id funcs i in
+      let _func_name, _clause, _stack, e = expr_of_id funcs i in
       p " refers to record %a" (E.print ~max_depth:2 false) e
 
 type func =
@@ -150,9 +150,10 @@ let print funcs oc =
   and p fmt = Printf.fprintf oc fmt in
   function
   | Expr (i, e) ->
-      let func_name, stack, expr = expr_of_id funcs i in
-      p "In function %s: %aexpression %s%a"
+      let func_name, clause, stack, expr = expr_of_id funcs i in
+      p "In function %s, %s: %aexpression %s%a"
         (N.func_color func_name)
+        clause
         print_stack stack
         (N.expr_color
           (IO.to_string (E.print ~max_depth:3 false) expr))
