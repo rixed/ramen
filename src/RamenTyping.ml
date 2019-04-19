@@ -477,7 +477,7 @@ let eq_to_opened_record stack e oc path =
 let emit_constraints tuple_sizes records field_names
                      in_type out_type param_type env_type oc _clause stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
-  emit_comment oc (IO.to_string (E.print false) e) ;
+  emit_comment oc "%a" (E.print false) e ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e.E.text with
   | Stateless (SL0 (Path _)) ->

@@ -10,8 +10,8 @@ let solver = ref "z3 -t:20000 -smt2 %s"
 let scramble = Base64.str_encode
 let unscramble = Base64.str_decode
 
-let emit_comment oc str =
-  Printf.fprintf oc "; %s\n" str
+let emit_comment oc fmt =
+  Printf.fprintf oc ("; "^^fmt^^"\n")
 
 let emit_is_true id oc =
   Printf.fprintf oc "%s" id
