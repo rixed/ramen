@@ -3516,7 +3516,8 @@ let sanitize_ocaml_fname s =
   "m"^ global_substitute re replace_by_underscore s
 
 let emit_parameters oc params envvars =
-  (* Emit parameters: *)
+  (* Emit params module, that has a static value for each parameter and
+   * the record expression for params and envvars. *)
   Printf.fprintf oc "\n(* Parameters: *)\n" ;
   List.iter (fun p ->
     let ctx =
