@@ -1031,6 +1031,6 @@ clean:
 	@$(RM) src/orc/*.cmx src/orc/*.annot src/orc/*.cmt src/orc/*.cmxs src/orc/*.cmi
 	@$(RM) src/oUnit-anon.cache src/qtest.targets.log
 	@$(RM) .depend src/*.opt src/*.byte
-	@$(RM) src/RamenFileNotify.ml RamenCompilConfig.ml
+	@$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a src/liborchelp.a
