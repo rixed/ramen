@@ -475,9 +475,15 @@ let eq_to_opened_record stack e oc path =
 (* Assuming all input/output/constants have been declared already, emit the
  * constraints connecting the parameter to the result: *)
 let emit_constraints tuple_sizes records field_names
-                     in_type out_type param_type env_type oc _clause stack e =
+                     in_type out_type param_type env_type ?func_name oc clause
+                     stack e =
   let eid = t_of_expr e and nid = n_of_expr e in
-  emit_comment oc "%a" (E.print false) e ;
+  emit_comment oc "%a%s: %a"
+    (fun oc -> function
+      | Some f -> Printf.fprintf oc "%a, " N.func_print f
+      | None -> ()) func_name
+    clause
+    (E.print false) e ;
   (* Then we also have specific rules according to the operation at hand: *)
   match e.E.text with
   | Stateless (SL0 (Path _)) ->
@@ -1448,7 +1454,7 @@ let emit_running_condition declare tuple_sizes records field_names
 
 (* FIXME: we should have only the records accessible from this operation *)
 let emit_operation declare tuple_sizes records field_names
-                   in_type out_type param_type env_type fi oc op =
+                   in_type out_type param_type env_type func_name fi oc op =
   (* Declare all variables: *)
   O.iter_expr (fun _ _ e -> declare e) op ;
   (* Now add specific constraints depending on the clauses: *)
@@ -1456,7 +1462,7 @@ let emit_operation declare tuple_sizes records field_names
   | Aggregate { where ; notifications ; commit_cond ; every ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
-                         in_type out_type param_type env_type oc
+                         in_type out_type param_type env_type ~func_name oc
       ) op ;
       (* Typing rules:
        * - Where must be a bool;
@@ -1489,7 +1495,7 @@ let emit_operation declare tuple_sizes records field_names
   | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
-                         in_type out_type param_type env_type oc
+                         in_type out_type param_type env_type ~func_name oc
       ) op ;
       Option.may (fun p ->
         (*  must be a non-nullable string: *)
@@ -1524,7 +1530,7 @@ let emit_program declare tuple_sizes records field_names
     (* FIXME: filter the records to pass only those accessible from this op *)
     emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type
-                   fi oc func.F.operation
+                   func.F.name fi oc func.F.operation
   ) funcs
 
 let emit_minimize oc condition funcs =
@@ -1627,8 +1633,8 @@ let emit_out_types decls oc field_names funcs =
           (* Equates each field expression to its field: *)
           let id = sf.O.expr.uniq_num in
           Printf.fprintf oc
-            "; Output field %d (%a) equals expression %d\n"
-            j N.field_print sf.alias id ;
+            "; Output field %d (%a.%a) equals expression %d\n"
+            j N.func_print func.F.name N.field_print sf.alias id ;
           emit_assert oc (fun oc ->
             Printf.fprintf oc "(= %s (record%d-e%d %s))"
               (t_of_num id) sz j rec_tid) ;
@@ -1640,7 +1646,10 @@ let emit_out_types decls oc field_names funcs =
               (f_of_name field_names sf.alias) sz j rec_tid)
         ) fields ;
         (F.fq_name func, i) :: assoc, i + 1
-    | _ -> prev
+    | _ ->
+        (* FIXME: those should also have an out record expression, although
+         * their individual fields are not expressions. *)
+        prev
   ) ([], 0) funcs |> fst
 
 (* Reading already compiled parents, set the type of fields originating from
@@ -1684,12 +1693,17 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     ) condition ;
     List.iter (fun func ->
       let what =
-        Printf.sprintf2 "Function %s" (N.func_color func.F.name) in
+        Printf.sprintf2 "Function %a" N.func_print func.F.name in
       O.iter_expr (f ?func:(Some func) what) func.operation |>
       ignore
     ) funcs
   in
   let register_io ?func what e prefix path =
+    emit_comment oc "register_io of %a%s"
+      (fun oc -> function
+        | Some f -> Printf.fprintf oc "%a, " N.func_print f.F.name
+        | None -> ()) func
+      what ;
     match prefix with
     | TupleEnv ->
         emit_assert_id_eq_typ tuple_sizes records field_names
@@ -1842,7 +1856,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
       let rec_tid = t_of_prefix pref id
       and rec_nid = n_of_prefix pref id in
       Printf.fprintf decls
-        "\n; record type for %s\n\n\
+        "\n; Record type for %s\n\n\
          (declare-fun %s () Type)\n\
          (declare-fun %s () Bool)\n"
         (match fq_name with
@@ -2057,7 +2071,9 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
     ) records Set.Int.empty in
   Printf.fprintf oc
     "%a\
+     ;\n\
      ; Define a sort for types:\n\
+     ;\n\
      (declare-datatypes\n\
        ( (Type 0) )\n\
        ( ((bool) (string) (eth) (float)\n\
@@ -2069,11 +2085,17 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
           %a\n\
           %a) ))\n\
      \n\
+     ;\n\
      ; Declarations:\n\
+     ;\n\
      %s\n\
+     ;\n\
      ; Children-Parent relationships:\n\
+     ;\n\
      %s\n\
+     ;\n\
      ; Constraints:\n\
+     ;\n\
      %s\n\
      %t"
     preamble optimize
