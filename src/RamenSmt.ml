@@ -5,7 +5,7 @@ open RamenLog
 module Files = RamenFiles
 module N = RamenName
 
-let solver = ref "z3 -t:20000 -smt2 %s"
+let solver = ref "z3 -t:60000 -smt2 %s"
 
 let scramble = Base64.str_encode
 let unscramble = Base64.str_decode
