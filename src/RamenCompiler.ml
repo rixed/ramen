@@ -427,23 +427,6 @@ let compile conf get_parent ~exec_file source_file
       N.cat (Files.remove_ext source_file)
             (N.path ("_params_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
-    Files.mkdir_all ~is_file:true params_obj_name ;
-    let params_src_file =
-      RamenOCamlCompiler.with_code_file_for
-        params_obj_name conf.C.reuse_prev_files (fun oc ->
-        Printf.fprintf oc "(* Parameter values for program %s *)\n\
-          open Batteries\n\
-          open Stdint\n\
-          open RamenHelpers\n\
-          open RamenNullable\n"
-          (program_name :> string) ;
-        CodeGen_OCaml.emit_parameters oc parsed_params) in
-    add_temp_file params_src_file ;
-    let keep_temp_files = conf.C.keep_temp_files in
-    RamenOCamlCompiler.compile
-      conf ~keep_temp_files what params_src_file params_obj_name ;
-    let params_mod_name =
-      RamenOCamlCompiler.module_name_of_file_name params_src_file in
     (* We need to collect all envvars used in the whole program (same as
      * the env tuple that's just been typed): *)
     let envvars =
@@ -453,6 +436,25 @@ let compile conf get_parent ~exec_file source_file
           envvars
       ) compiler_funcs [] |>
       List.fast_sort N.compare in
+    Files.mkdir_all ~is_file:true params_obj_name ;
+    let params_src_file =
+      RamenOCamlCompiler.with_code_file_for
+        params_obj_name conf.C.reuse_prev_files (fun oc ->
+        Printf.fprintf oc "(* Parameter values for program %s *)\n\
+          open Batteries\n\
+          open Stdint\n\
+          open RamenHelpers\n\
+          open RamenNullable\n\
+          open RamenLog\n\
+          open RamenConsts\n"
+          (program_name :> string) ;
+        CodeGen_OCaml.emit_parameters oc parsed_params envvars) in
+    add_temp_file params_src_file ;
+    let keep_temp_files = conf.C.keep_temp_files in
+    RamenOCamlCompiler.compile
+      conf ~keep_temp_files what params_src_file params_obj_name ;
+    let params_mod_name =
+      RamenOCamlCompiler.module_name_of_file_name params_src_file in
     let src_name_of_func func =
       N.cat (Files.remove_ext source_file)
             (N.path ("_"^ func.F.signature ^
@@ -510,14 +512,9 @@ let compile conf get_parent ~exec_file source_file
       RamenOCamlCompiler.with_code_file_for
         casing_obj_name conf.C.reuse_prev_files (fun oc ->
         let params = parsed_params in
-        Printf.fprintf oc "(* Ramen Casing for program %s *)\n\
-          open Batteries\n\
-          open Stdint\n\
-          open RamenHelpers\n\
-          open RamenNullable\n\
-          open %s\n\n"
-          (program_name :> string)
-          params_mod_name ;
+        Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
+          (program_name :> string) ;
+        CodeGen_OCaml.emit_header params_mod_name oc ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition oc params envvars condition ;
         (* Embed in the binary all info required for running it: the program

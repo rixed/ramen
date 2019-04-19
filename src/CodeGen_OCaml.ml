@@ -703,13 +703,16 @@ let env_of_params params =
     E.RecordField (TupleParam, f), v
   ) params
 
-(* Returns all the bindings in global and group states as well as the
- * environment for the env and param 'tuples': *)
-let initial_environments op params envvars =
+(* Returns all the bindings for accessing the env and param 'tuples': *)
+let static_environments params envvars =
   let init_env = E.RecordValue TupleEnv, "envs_"
   and init_param = E.RecordValue TupleParam, "params_" in
   let env_env = init_env :: env_of_envvars envvars
   and param_env = init_param :: env_of_params params in
+  env_env, param_env
+
+(* Returns all the bindings in global and group states: *)
+let initial_environments op =
   let glob_env, loc_env =
     O.fold_expr ([], []) (fun _s (glo, loc as prev) e ->
       match e.E.text with
@@ -724,7 +727,7 @@ let initial_environments op params envvars =
               glo, (E.State e.uniq_num, v) :: loc)
       | _ -> prev
     ) op in
-  glob_env, loc_env, env_env, param_env
+  glob_env, loc_env
 
 (* Takes an operation and convert all its Path expressions for the
  * given tuple into a Binding to the environment: *)
@@ -3512,47 +3515,75 @@ let sanitize_ocaml_fname s =
   (* Must start with a letter: *)
   "m"^ global_substitute re replace_by_underscore s
 
-let emit_parameters oc params =
+let emit_parameters oc params envvars =
   (* Emit parameters: *)
   Printf.fprintf oc "\n(* Parameters: *)\n" ;
   List.iter (fun p ->
-    (* FIXME: nullable parameters *)
-    Printf.fprintf oc
-      "let %s =\n\
-       \tlet parser_ s_ =\n"
-      (id_of_field_name ~tuple:TupleParam p.ptyp.name) ;
-    let emit_is_null fins str_var offs_var oc =
+    let ctx =
+      Printf.sprintf2 "definition of parameter %a"
+        N.field_print p.ptyp.name in
+    fail_with_context ctx (fun () ->
+      (* FIXME: nullable parameters *)
       Printf.fprintf oc
-        "if looks_like_null ~offs:%s %s && \
-            string_is_term %a %s (%s + 4) then \
-         true, %s + 4 else false, %s"
-        offs_var str_var
-        (List.print char_print_quoted) fins str_var offs_var
-        offs_var offs_var in
-    emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] oc ;
-    Printf.fprintf oc
-      "\tin\n\
-       \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
-      (if p.ptyp.typ.nullable && p.value <> VNull then "NotNull " else "")
-      emit_type
-      p.value (p.ptyp.name :> string)
+        "let %s =\n\
+         \tlet parser_ s_ =\n"
+        (id_of_field_name ~tuple:TupleParam p.ptyp.name) ;
+      let emit_is_null fins str_var offs_var oc =
+        Printf.fprintf oc
+          "if looks_like_null ~offs:%s %s && \
+              string_is_term %a %s (%s + 4) then \
+           true, %s + 4 else false, %s"
+          offs_var str_var
+          (List.print char_print_quoted) fins str_var offs_var
+          offs_var offs_var in
+      emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] oc ;
+      Printf.fprintf oc
+        "\tin\n\
+         \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
+        (if p.ptyp.typ.nullable && p.value <> VNull then "NotNull " else "")
+        emit_type
+        p.value (p.ptyp.name :> string))
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
-  Printf.fprintf oc "let field_of_params_ = function\n%a\
-                     \t| _ -> raise Not_found\n\n"
-    (List.print ~first:"" ~last:"" ~sep:"" (fun oc p ->
-      let glob_name =
-        Printf.sprintf "%s_%s_"
+  fail_with_context "parameter field extraction function" (fun () ->
+    Printf.fprintf oc "let field_of_params_ = function\n%a\
+                       \t| _ -> raise Not_found\n\n"
+      (List.print ~first:"" ~last:"" ~sep:"" (fun oc p ->
+        let glob_name =
+          Printf.sprintf "%s_%s_"
+            (id_of_prefix TupleParam)
+            (p.ptyp.name :> string) in
+        Printf.fprintf oc "\t| %S -> %t %s%s\n"
+          (p.ptyp.name :> string)
+          (conv_from_to ~nullable:p.ptyp.typ.nullable
+                        p.ptyp.typ.structure TString)
+          glob_name
+          (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
+           else ""))) params) ;
+  (* params and envs must be accessible as records (encoded as tuples)
+   * under names "params_" and "envs_". Note that since we can refer to
+   * the whole tuple "env" and "params", and that we type all functions
+   * in a program together, then these records must contain all fields
+   * used in the program, not only the fields used by any single function. *)
+  fail_with_context "definition of the parameter record" (fun () ->
+    Printf.fprintf oc
+      "\n(* Parameters as a Ramen record: *)\n\
+       let params_ = %a\n\n"
+      (list_print_as_tuple (fun oc p ->
+        (* See emit_parameters *)
+        Printf.fprintf oc "%s_%s_"
           (id_of_prefix TupleParam)
-          (p.ptyp.name :> string) in
-      Printf.fprintf oc "\t| %S -> %t %s%s\n"
-        (p.ptyp.name :> string)
-        (conv_from_to ~nullable:p.ptyp.typ.nullable
-                      p.ptyp.typ.structure TString)
-        glob_name
-        (if p.ptyp.typ.nullable then Printf.sprintf " |! %S" string_of_null
-         else ""))) params
+          (p.ptyp.name :> string)))
+        (RamenTuple.params_sort params)) ;
+  fail_with_context "definition of the env record" (fun () ->
+    Printf.fprintf oc
+      "\n(* Environment variables as a Ramen record: *)\n\
+       let envs_ = %a\n\n"
+      (list_print_as_tuple (fun oc (n : N.field) ->
+        Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
+          (n :> string)))
+        envvars)
 
 let emit_running_condition oc params envvars cond =
   let code = IO.output_string ()
@@ -3560,46 +3591,27 @@ let emit_running_condition oc params envvars cond =
   let opc =
     { op = None ; event_time = None ; func_name = None ;
       params ; code ; consts ; typ = [] } in
-  (match cond with
-  | Some cond ->
-      let env = List.rev_append (env_of_envvars envvars)
-                                (env_of_params params) in
-      Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
-        (emit_expr ~env ~context:Finalize ~opc) cond
-  | None ->
-      Printf.fprintf opc.code "let run_condition_ () = true") ;
-  Printf.fprintf oc "%s\n%s\n"
-    (IO.close_out opc.consts) (IO.close_out opc.code)
+  fail_with_context "running condition" (fun () ->
+    (match cond with
+    | Some cond ->
+        (* Running condition has no input/output tuple but must have a
+         * value once and for all depending on params/env only: *)
+        let env_env, param_env = static_environments params envvars in
+        let env = param_env @ env_env in
+        Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
+          (emit_expr ~env ~context:Finalize ~opc) cond
+    | None ->
+        Printf.fprintf opc.code "let run_condition_ () = true") ;
+    Printf.fprintf oc "%s\n%s\n"
+      (IO.close_out opc.consts) (IO.close_out opc.code))
 
-(* params and envs must be accessible as records (encoded as tuples)
- * under names "params_" and "envs_". Note that since we can refer to
- * the whole tuple "env" and "params", and that we type all functions
- * in a program together, then these records must contain all fields
- * used in the program, not only the fields used by the function being
- * compiled. Therefore we must be given params and envvars by the
- * compiler. *)
-let emit_params_env params_mod params envvars oc =
-  (* Collect all used envvars/params: *)
-  Printf.fprintf oc
-    "\n(* Parameters as a Ramen record: *)\n\
-     let params_ = %a\n\n"
-    (list_print_as_tuple (fun oc p ->
-      (* See emit_parameters *)
-      Printf.fprintf oc "%s.%s_%s_"
-        params_mod
-        (id_of_prefix TupleParam)
-        (p.ptyp.name :> string)))
-      (RamenTuple.params_sort params) ;
-  Printf.fprintf oc
-    "\n(* Environment variables as a Ramen record: *)\n\
-     let envs_ = %a\n\n"
-    (list_print_as_tuple (fun oc (n : N.field) ->
-      Printf.fprintf oc "Sys.getenv_opt %S |> nullable_of_option"
-        (n :> string)))
-      envvars
+let emit_title func oc =
+  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n"
+    (func.F.name :> string)
+    (O.print true) func.F.operation
 
-let emit_header func params_mod oc =
-  Printf.fprintf oc "(* Code generated for operation %S:\n%a\n*)\n\
+let emit_header params_mod oc =
+  Printf.fprintf oc "\
     open Batteries\n\
     open Stdint\n\
     open RamenHelpers\n\
@@ -3607,8 +3619,6 @@ let emit_header func params_mod oc =
     open RamenLog\n\
     open RamenConsts\n\
     open %s\n"
-    (func.F.name :> string)
-    (O.print true) func.F.operation
     params_mod
 
 let emit_operation name top_half_name func
@@ -3809,8 +3819,8 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
   let code = IO.output_string ()
   and consts = IO.output_string ()
   and typ = O.out_type_of_operation ~with_private:true func.F.operation
-  and global_env, group_env, env_env, param_env =
-    initial_environments func.F.operation params envvars
+  and env_env, param_env = static_environments params envvars
+  and global_env, group_env = initial_environments func.F.operation
   in
   !logger.debug "Global environment will be: %a" print_env global_env ;
   !logger.debug "Group environment will be: %a" print_env group_env ;
@@ -3840,9 +3850,8 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
     RamenOCamlCompiler.with_code_file_for
       obj_name conf.C.reuse_prev_files (fun oc ->
         fail_with_context "header" (fun () ->
-          emit_header func params_mod oc) ;
-        fail_with_context "parameters" (fun () ->
-          emit_params_env params_mod params envvars oc) ;
+          emit_title func oc ;
+          emit_header params_mod oc) ;
         fail_with_context "priv_to_pub function" (fun () ->
           emit_priv_pub opc) ;
         fail_with_context "orc wrapper" (fun () ->
