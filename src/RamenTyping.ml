@@ -2071,9 +2071,9 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
      \n\
      ; Declarations:\n\
      %s\n\
-     ; Constraints:\n\
-     %s\n\
      ; Children-Parent relationships:\n\
+     %s\n\
+     ; Constraints:\n\
      %s\n\
      %t"
     preamble optimize
@@ -2094,8 +2094,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
       done ;
       Printf.fprintf oc ")")) record_sizes
     (IO.close_out decls)
-    (IO.close_out expr_types)
     (IO.close_out io_types)
+    (IO.close_out expr_types)
     post_scriptum
 
 let used_tuples_records funcs parents =
