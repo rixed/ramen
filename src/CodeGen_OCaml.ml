@@ -3822,10 +3822,10 @@ let compile conf func obj_name params_mod orc_write_func orc_read_func
   and env_env, param_env = static_environments params envvars
   and global_env, group_env = initial_environments func.F.operation
   in
-  !logger.debug "Global environment will be: %a" print_env global_env ;
-  !logger.debug "Group environment will be: %a" print_env group_env ;
-  !logger.debug "Unix-env environment will be: %a" print_env env_env ;
-  !logger.debug "Parameters environment will be: %a" print_env param_env ;
+  !logger.debug "Global environment: %a" print_env global_env ;
+  !logger.debug "Group environment: %a" print_env group_env ;
+  !logger.debug "Unix-env environment: %a" print_env env_env ;
+  !logger.debug "Parameters environment: %a" print_env param_env ;
   (* As all exposed IO tuples are present in the environment, any Path can
    * now be replaced with a Binding. The [subst_fields_for_binding] function
    * takes an expression and does this change for any tuple_prefix. The
