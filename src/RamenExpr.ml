@@ -1526,7 +1526,8 @@ struct
     let m = "n-th" :: m in
     let q =
       pos_decimal_integer "nth" ++
-      (that_string "th" ||| that_string "st" ||| that_string "nd") >>:
+      (that_string "th" ||| that_string "st" ||| that_string "nd" |||
+       that_string "rd") >>:
       fun (n, th) ->
         if n = 0 then raise (Reject "tuple indices start at 1") ;
         if ordinal_suffix n = th then n
