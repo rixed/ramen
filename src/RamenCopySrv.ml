@@ -85,6 +85,9 @@ let serve conf ~while_ fd =
 (* Start the service: *)
 
 let copy_server conf port =
+  if port < 0 || port > 65535 then
+    Printf.sprintf "tunneld port number (%d) not within valid range" port |>
+    failwith ;
   !logger.info "Starting copy server on port %d" port ;
   let inet = Unix.inet_addr_any in
   let addr = Unix.(ADDR_INET (inet, port)) in

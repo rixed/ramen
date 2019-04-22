@@ -159,7 +159,8 @@ let collector ~inet_addr ~port ?while_ k =
     decode buffer recv_len (nullable_of_option sender) |>
     Array.iter k
   in
-  udp_server ~inet_addr ~port ?while_ serve
+  udp_server
+    ~what:"netflow sink" ~inet_addr ~port ?while_ serve
 
 let test ?(port=2055) () =
   init_logger Normal ;

@@ -21,6 +21,9 @@ let stats_tuples =
 (* Client: *)
 
 let copy_client clt_site srv_host port child parent_num =
+  if port < 0 || port > 65535 then
+    Printf.sprintf "tunneld port number (%d) not within valid range" port |>
+    failwith ;
   !logger.info "Connecting to copy server at %a:%d"
     N.host_print srv_host port ;
   let service = string_of_int port in

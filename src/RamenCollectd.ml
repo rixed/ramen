@@ -108,7 +108,8 @@ let collector ~inet_addr ~port ?while_ k =
     Array.iter k
   in
   (* collectd current network.c buffer is 1452 bytes: *)
-  udp_server ~buffer_size:1500 ~inet_addr ~port ?while_ serve
+  udp_server
+    ~what:"collectd sink" ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =
   init_logger Normal ;

@@ -35,6 +35,20 @@ let glob =
   in
   Arg.conv ~docv:"PATTERN" (parse, print)
 
+let port =
+  let parse s =
+    match int_of_string s with
+    | exception Failure _ ->
+        Pervasives.Error (`Msg "Cannot parse port into an integer")
+    | p ->
+        if p < 0 || p > 65535 then
+          Pervasives.Error (`Msg "Invalid port number")
+        else
+          Pervasives.Ok p
+  and print fmt p = Format.fprintf fmt "%d" p
+  in
+  Arg.conv ~docv:"PORT" (parse, print)
+
 let copts =
   let docs = Manpage.s_common_options in
   let debug =
@@ -281,9 +295,9 @@ let notify =
  * Service to forward tuples over the network
  *)
 
-let port =
+let tunneld_port =
   let i = Arg.info ~doc:CliInfo.tunneld_port [ "p"; "port" ] in
-  Arg.(value (opt int Default.tunneld_port i))
+  Arg.(value (opt port Default.tunneld_port i))
 
 let tunneld =
   Term.(
@@ -292,7 +306,7 @@ let tunneld =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ port),
+      $ tunneld_port),
     info ~doc:CliInfo.tunneld "tunneld")
 
 (*

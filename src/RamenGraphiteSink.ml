@@ -120,4 +120,5 @@ let collector ~inet_addr ~port ?while_ k =
     | tuples ->
         Enum.iter k tuples
   in
-  udp_server ~buffer_size:60000 ~inet_addr ~port ?while_ serve
+  udp_server
+    ~what:"graphite sink" ~buffer_size:60000 ~inet_addr ~port ?while_ serve

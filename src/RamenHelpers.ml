@@ -669,7 +669,10 @@ let string_of_duration d =
   if d = 0. then s else
   s ^ nice_string_of_float d ^ "s"
 
-let udp_server ?(buffer_size=2000) ~inet_addr ~port ?(while_=always) k =
+let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
+  if port < 0 || port > 65535 then
+    Printf.sprintf "%s: port number (%d) not within valid range" what port |>
+    failwith ;
   let open Unix in
   (* FIXME: it seems that binding that socket makes cohttp leak descriptors
    * when sending reports to ramen. Oh boy! *)
