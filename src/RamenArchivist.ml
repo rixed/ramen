@@ -798,7 +798,7 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
 let maybe_refresh_local_stats ?while_ conf =
   let programs = RC.with_rlock conf identity in
   match Files.age (stat_file conf) with
-  | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+  | exception Unix.(Unix_error (ENOENT, _, _)) ->
       update_local_worker_stats ?while_ conf programs
   | stat_file_age ->
       if stat_file_age > max_archivist_stat_file_age ||

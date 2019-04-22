@@ -242,7 +242,7 @@ let http_service conf port url_prefix router fault_injection_rate =
           !logger.info "Client disconnected"
       | Bad err -> on_all_err err in
     try loop (make_stream fd) with
-    | Unix.Unix_error (Unix.EPIPE, "write", _) ->
+    | Unix.(Unix_error (EPIPE, "write", _)) ->
         !logger.warning "EPIPE while write, client probably closed its \
                          connection" ;
     | exn ->

@@ -116,7 +116,7 @@ let run_background ?cwd ?(and_stop=false) cmd args env =
       dup2 null stdin ;
       close null ;
       for i = 3 to 255 do
-        try close_fd i with Unix.Unix_error (Unix.EBADF, _, _) -> ()
+        try close_fd i with Unix.(Unix_error (EBADF, _, _)) -> ()
       done ;
       execve (cmd :> string) args env
     with e ->

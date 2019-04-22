@@ -63,7 +63,7 @@ let mkdir_all ?(is_file=false) (dir : N.path) =
       !logger.debug "mkdir %a" N.path_print_quoted d ;
       try Unix.mkdir (d :> string) 0o755
       (* Happens when we have "somepath//someother" (dirname should handle this IMHO) *)
-      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) -> ()
+      with Unix.(Unix_error (EEXIST, "mkdir", _)) -> ()
     ) in
   ensure_exist dir
 
@@ -137,7 +137,7 @@ let mtime fname =
 
 let mtime_def default fname =
   try mtime fname
-  with Unix.Unix_error (Unix.ENOENT, _, _) -> default
+  with Unix.(Unix_error (ENOENT, _, _)) -> default
 
 let mtime_of_fd fd =
   let open Unix in
@@ -146,7 +146,7 @@ let mtime_of_fd fd =
 
 let mtime_of_fd_def default fd =
   try mtime_of_fd fd
-  with Unix.Unix_error (Unix.ENOENT, _, _) -> default
+  with Unix.(Unix_error (ENOENT, _, _)) -> default
 
 let age fname =
   let mtime = mtime fname

@@ -38,7 +38,7 @@ let rec for_each f n =
           for_each f n
       | (file :: files') as files ->
           (match Files.safe_stat (N.path_cat [ n.dirname ; file ]) with
-          | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+          | exception Unix.(Unix_error (ENOENT, _, _)) ->
               (* File might have been read and deleted by another worker
                * already *)
               merge prev next files'
