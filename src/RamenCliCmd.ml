@@ -370,7 +370,7 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   if loop <= 0. then
     RamenGc.cleanup_once conf dry_run del_ratio compress_older
   else
-    RamenGc.cleanup_loop conf dry_run del_ratio compress_older loop
+    RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop
 
 (*
  * `ramen ps`
