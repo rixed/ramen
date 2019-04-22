@@ -16,7 +16,15 @@ let run_httpd conf server_url api graphite fault_injection_rate =
         (match url.CodecUrl.scheme with
         | "https" -> 443
         | _ -> 80)
-    | _, p -> int_of_string p in
+    | _, p ->
+        try int_of_string p
+        with Failure _ ->
+          Printf.sprintf "httpd port (%S) must be numeric" p |>
+          failwith
+  in
+  if port < 0 || port > 65535 then
+    Printf.sprintf "httpd port (%d) not in valid range" port |>
+    failwith ;
   let url_prefix = url.CodecUrl.path in
   let (++) rout1 rout2 =
     fun meth path params headers body ->
