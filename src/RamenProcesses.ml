@@ -1577,8 +1577,6 @@ let synchronize_running conf autoreload_delay =
     (* Once we have forked some workers we must not allow an exception to
      * terminate this function or we'd leave unsupervised workers behind: *)
     restart_on_failure "process supervisor" (fun () ->
-      process_workers_terminations conf running ;
-      process_replayers_terminations conf replayers ;
       if !quit <> None &&
          Hashtbl.length running + Hashtbl.length replayers = 0
       then (
@@ -1634,6 +1632,7 @@ let synchronize_running conf autoreload_delay =
             else
               last_must_run, last_read_rc
           ) in
+        process_workers_terminations conf running ;
         let changed = synchronize_workers must_run running in
         (* Touch the rc file if anything changed (esp. autoreload) since that
          * mtime is used to signal cache expirations etc. *)
@@ -1652,6 +1651,7 @@ let synchronize_running conf autoreload_delay =
             else
               last_replays, last_read_replays
           ) in
+        process_replayers_terminations conf replayers ;
         synchronize_replays must_replay replayers ;
         Gc.minor () ;
         !logger.debug "Waiting for file changes (max %a)"
