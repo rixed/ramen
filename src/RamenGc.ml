@@ -14,6 +14,9 @@ module P = C.Program
 module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Processes = RamenProcesses
+module Versions = RamenVersions
+module Watchdog = RamenWatchdog
 
 let get_log_file () =
   gettimeofday () |> localtime |> log_file |> N.path
@@ -62,14 +65,14 @@ let cleanup_old_versions conf dry_run =
   let to_clean =
     [ N.path "log", date_regexp, get_log_file () ;
       N.path "log/workers", v_regexp, get_log_file () ;
-      N.path "configuration", v_regexp, N.path RamenVersions.rc ;
+      N.path "configuration", v_regexp, N.path Versions.rc ;
       N.path "instrumentation_ringbuf", v1v2_regexp,
-        N.path RamenVersions.(instrumentation_tuple ^"_"^ ringbuf) ;
-      N.path "services", v_regexp, N.path RamenVersions.services ;
-      N.path "workers/ringbufs", v_regexp, N.path RamenVersions.ringbuf ;
-      N.path "workers/out_ref", v_regexp, N.path RamenVersions.out_ref ;
-      N.path "workers/states", v_regexp, N.path RamenVersions.worker_state ;
-      N.path "workers/factors", v_regexp, N.path RamenVersions.factors ]
+        N.path Versions.(instrumentation_tuple ^"_"^ ringbuf) ;
+      N.path "services", v_regexp, N.path Versions.services ;
+      N.path "workers/ringbufs", v_regexp, N.path Versions.ringbuf ;
+      N.path "workers/out_ref", v_regexp, N.path Versions.out_ref ;
+      N.path "workers/states", v_regexp, N.path Versions.worker_state ;
+      N.path "workers/factors", v_regexp, N.path Versions.factors ]
   in
   List.iter (cleanup_dir_old conf dry_run) to_clean
 
@@ -78,14 +81,14 @@ let cleanup_old_archives conf programs dry_run del_ratio =
   !logger.debug "Deleting old archives..." ;
   let arcdir =
     N.path_cat [ conf.C.persist_dir ;
-                 N.path "workers/ringbufs" ; N.path RamenVersions.ringbuf ]
+                 N.path "workers/ringbufs" ; N.path Versions.ringbuf ]
   and factordir =
     N.path_cat [ conf.C.persist_dir ;
-                 N.path "workers/factors" ; N.path RamenVersions.factors ]
+                 N.path "workers/factors" ; N.path Versions.factors ]
   and reportdir =
-    Files.dirname (RamenConf.report_ringbuf conf)
+    Files.dirname (C.report_ringbuf conf)
   and notifdir =
-    Files.dirname (RamenConf.notify_ringbuf conf) in
+    Files.dirname (C.notify_ringbuf conf) in
   let clean_seq_archives dir alloced =
     (* Delete oldest files matching %d_%d_%a_%a.r, until the worker is below
      * its allocated storage space, but not more than a given fraction of
@@ -243,11 +246,11 @@ let cleanup_once conf dry_run del_ratio compress_older =
 let cleanup_loop ?while_ conf dry_run del_ratio compress_older sleep_time =
   let watchdog =
     let timeout = sleep_time *. 2. in
-    RamenWatchdog.make ~timeout "GC files" RamenProcesses.quit in
-  RamenWatchdog.enable watchdog ;
-  RamenProcesses.until_quit (fun () ->
+    Watchdog.make ~timeout "GC files" Processes.quit in
+  Watchdog.enable watchdog ;
+  Processes.until_quit (fun () ->
     log_and_ignore_exceptions ~what:"gc cleanup loop"
       (cleanup_once conf dry_run del_ratio) compress_older ;
-    RamenWatchdog.reset watchdog ;
-    RamenProcesses.sleep_or_exit ?while_ (jitter sleep_time) ;
+    Watchdog.reset watchdog ;
+    Processes.sleep_or_exit ?while_ (jitter sleep_time) ;
     true)
