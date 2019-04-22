@@ -109,11 +109,14 @@ let move_away (fname : N.path) =
   let bad_file = N.cat fname (N.path ".bad?") in
   ignore_exceptions safe_unlink bad_file ;
   (try restart_on_eintr (rename fname) bad_file
-  with e ->
-    !logger.warning "Cannot rename file %a to %a: %s"
-      N.path_print fname
-      N.path_print bad_file
-      (Printexc.to_string e))
+  with
+    | Unix.(Unix_error (ENOENT, _, _)) ->
+        () (* never mind *)
+    | e ->
+        !logger.warning "Cannot rename file %a to %a: %s"
+          N.path_print fname
+          N.path_print bad_file
+          (Printexc.to_string e))
 
 let rec rm_rf fname =
   assert (N.length fname > 2) ;
