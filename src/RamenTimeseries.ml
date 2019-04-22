@@ -237,18 +237,28 @@ let possible_values conf ?since ?until func factor =
   let dir =
     N.path_cat [ C.factors_of_function conf func ;
                  Files.quote (N.path (factor :> string)) ] in
-  (try Files.files_of dir
-  with Sys_error _ -> Enum.empty ()) //@
-  (fun fname ->
-    try
-      let mi, ma = String.split ~by:"_" (fname :> string) in
-      let mi, ma = RingBufLib.(strtod mi, strtod ma) in
-      if Option.map_default (fun t -> t <= ma) true since &&
-         Option.map_default (fun t -> t >= mi) true until
-      then Some (N.path_cat [ dir ; fname ]) else None
-    with (Not_found | Failure _) -> None) |>
-  Enum.fold (fun s fname ->
-    let s' : T.value Set.t =
-      RamenAdvLock.with_r_lock
-        fname (Files.marshal_from_fd ~default:Set.empty fname) in
-    Set.union s s') Set.empty
+  let min_times =
+    (try Files.files_of dir
+    with Sys_error _ -> Enum.empty ()) //@
+    (fun fname ->
+      try
+        let min_time = RingBufLib.strtod (fname :> string) in
+        if Option.map_default ((<=) min_time) true until then
+          Some (min_time, fname) else None
+      with (Not_found | Failure _) -> None) |>
+    Array.of_enum in
+  Array.sort (fun (a, _) (b, _) -> Float.compare a b) min_times ;
+  (* Iter over all files which max_time (ie. next min_time) is not before
+   * [since]: *)
+  Array.fold_lefti (fun s i (_, fname) ->
+    let max_time =
+      if i < Array.length min_times - 1 then fst min_times.(i + 1)
+      else max_float in
+    if Option.map_default ((>=) max_time) true since then (
+      let fname = N.path_cat [ dir ; fname ] in
+      let s' : T.value Set.t =
+        RamenAdvLock.with_r_lock
+          fname (Files.marshal_from_fd ~default:Set.empty fname) in
+      Set.union s s'
+    ) else s
+  ) Set.empty min_times

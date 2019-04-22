@@ -242,7 +242,7 @@ let update_stats_rb report_period rb get_tuple =
  *)
 
 type possible_values_index =
-  { min_time : float ; max_time : float ;
+  { min_time : float ;
     (* Name of the previous file where that set was saved.
      * This file is renamed after every write. *)
     fname : N.path ;
@@ -250,12 +250,12 @@ type possible_values_index =
 
 (* Just a placeholder to init the initial array. *)
 let possible_values_empty =
-  { min_time = max_float ; max_time = min_float ;
+  { min_time = max_float ;
     fname = N.path "" ; values = Set.empty }
 
-let possible_values_file dir factor min_time max_time =
+let possible_values_file dir factor min_time =
   N.path_cat [ dir ; Files.quote (N.path factor) ;
-               N.path (Printf.sprintf "%h_%h" min_time max_time) ]
+               N.path (Printf.sprintf "%h" min_time) ]
 
 let save_possible_values prev_fname pvs =
   (* We are going to write a new file and delete the former one.
@@ -571,18 +571,17 @@ let outputer_of
             if not (Set.mem pv pvs.values) then ( (* FIXME: Set.update *)
               !logger.debug "New value for factor %s: %a"
                 factor T.print pv ;
-              let min_time = min start pvs.min_time
-              and max_time = max stop pvs.max_time in
-              let min_time, max_time, values, prev_fname =
+              let min_time = min start pvs.min_time in
+              let min_time, values, prev_fname =
                 if start_stop = None ||
-                   max_time -. min_time <= possible_values_lifespan
+                   stop -. min_time <= possible_values_lifespan
                 then
-                  min_time, max_time, Set.add pv pvs.values, pvs.fname
+                  min_time, Set.add pv pvs.values, pvs.fname
                 else
-                  start, stop, Set.singleton pv, N.path "" in
+                  start, Set.singleton pv, N.path "" in
               let fname =
-                possible_values_file factors_dir factor min_time max_time in
-              let pvs = { min_time ; max_time ; fname ; values } in
+                possible_values_file factors_dir factor min_time in
+              let pvs = { min_time ; fname ; values } in
               factors_values.(i) <- pvs ;
               (* Warning that this function might in some rare case update
                * pvs.values! *)

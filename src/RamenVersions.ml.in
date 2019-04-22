@@ -39,7 +39,7 @@ let experiment = "v1"
 let archivist_conf = "v5" (* last: query period replaces query_freq *)
 
 (* Format used for factor possible values (content and file name) *)
-let factors = "v1"
+let factors = "v2" (* last: no more max_time in file name *)
 
 (* Format of the services file *)
 let services = "v2" (* last: split sites/services *)
