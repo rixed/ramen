@@ -30,10 +30,13 @@ let directory_file persist_dir =
                N.path RamenVersions.services ; N.path "services" ]
 
 (* FIXME: cache it *)
-let load conf =
-  let fname = directory_file conf.C.persist_dir in
-  fail_with_context "Reading directory file" (fun () ->
-    Files.ppp_of_file ~default:"{}" directory_ppp_ocaml fname)
+let load =
+  let ppp_of_file =
+    Files.ppp_of_file ~default:"{}" directory_ppp_ocaml in
+  fun conf ->
+    let fname = directory_file conf.C.persist_dir in
+    fail_with_context "Reading directory file" (fun () ->
+      ppp_of_file fname)
 
 let resolve conf site service =
   let directory = load conf in

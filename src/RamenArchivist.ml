@@ -76,25 +76,28 @@ let retention_of_fq src_retention user_conf (fq : N.fq) =
  * #notifs "manually".
  *)
 
-let get_user_conf fname per_func_stats =
+let get_user_conf =
   let default = "{size_limit=1073741824}" in
-  let user_conf = Files.ppp_of_file ~default user_conf_ppp_ocaml fname in
-  (* In case no retention was provided, keep the roots for 1 hour: *)
-  if Hashtbl.length user_conf.retentions = 0 then (
-    let save_short = F.{ duration = 3600. ; period = Default.query_period }
-    and no_save = F.{ duration = 0. ; period = 0. } in
-    (* Empty configuration: save the roots for 10 minutes. *)
-    if Hashtbl.length per_func_stats = 0 then
-      (* No worker, then do not save anything: *)
-      Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
-    else
-      Hashtbl.iter (fun (_, (fq : N.fq)) s ->
-        if s.FS.parents = [] then
-          let pat = Globs.(escape (fq :> string)) in
-          Hashtbl.add user_conf.retentions pat save_short
-      ) per_func_stats) ;
-  assert (Hashtbl.length user_conf.retentions > 0) ;
-  user_conf
+  let ppp_of_file =
+    Files.ppp_of_file ~default user_conf_ppp_ocaml in
+  fun fname per_func_stats ->
+    let user_conf = ppp_of_file fname in
+    (* In case no retention was provided, keep the roots for 1 hour: *)
+    if Hashtbl.length user_conf.retentions = 0 then (
+      let save_short = F.{ duration = 3600. ; period = Default.query_period }
+      and no_save = F.{ duration = 0. ; period = 0. } in
+      (* Empty configuration: save the roots for 10 minutes. *)
+      if Hashtbl.length per_func_stats = 0 then
+        (* No worker, then do not save anything: *)
+        Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
+      else
+        Hashtbl.iter (fun (_, (fq : N.fq)) s ->
+          if s.FS.parents = [] then
+            let pat = Globs.(escape (fq :> string)) in
+            Hashtbl.add user_conf.retentions pat save_short
+        ) per_func_stats) ;
+    assert (Hashtbl.length user_conf.retentions > 0) ;
+    user_conf
 
 let get_retention_from_src programs =
   let src_retention = Hashtbl.create 11 in

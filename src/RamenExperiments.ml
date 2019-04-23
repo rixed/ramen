@@ -127,6 +127,8 @@ let get_add_exps_fname (persist_dir : N.path) =
  * the variant and the decision remembered. *)
 let all_experiments =
   let ext_exps = ref None in
+  let ppp_of_file =
+    Files.ppp_of_file Serialized.exps_ppp_ocaml in
   fun persist_dir ->
     match !ext_exps with
     | Some lst -> lst
@@ -135,7 +137,7 @@ let all_experiments =
         let lst =
           if not (N.is_empty persist_dir) && Files.exists fname then
             let exps =
-              Files.ppp_of_file Serialized.exps_ppp_ocaml fname |>
+              ppp_of_file fname |>
               Hashtbl.to_list |>
               List.map (fun (name, vars) ->
                 name,
