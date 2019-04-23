@@ -57,6 +57,7 @@ let retention_of_user_conf user_conf (fq : N.fq) =
 let retention_of_source src_retention (fq : N.fq) =
   Hashtbl.find src_retention fq
 
+(* Returns both the retention setting and a numeric identifier *)
 (* FIXME: retention conf should take into account the site. *)
 let retention_of_fq src_retention user_conf (fq : N.fq) =
   try retention_of_user_conf user_conf fq
@@ -425,7 +426,12 @@ let hashkeys_print p =
 let const pref ((site_id : N.site), (fq : N.fq)) =
   pref ^ scramble ((site_id :> string) ^":"^ (fq :> string))
 
+(* (variable name of the) percentage of total storage allocated to this
+ * worker: *)
 let perc = const "perc_"
+
+(* (variable name of the) cost of archiving this worker for the duration
+ * [i]: *)
 let cost i site_fq =
   (const "cost_" site_fq) ^"_"^ string_of_int i
 
@@ -451,9 +457,10 @@ let recall_size s =
       Default.recall_size
 
 (* For each function, declare the boolean perc_f, that must be between 0
- * and 100. From now on, [per_func_stats] is keyed by site*fq and has all
- * functions running everywhere. Obviously this is intended for the master
- * instance, to compute the disk allocations. *)
+ * and 100, and as many cost_f as there are defined durations.
+ * From now on, [per_func_stats] is keyed by site*fq and has all functions
+ * running everywhere. Obviously this is intended for the master instance to
+ * compute the disk allocations. *)
 let emit_all_vars durations oc per_func_stats =
   Hashtbl.iter (fun ((site : N.site), (fq : N.fq) as site_fq) s ->
     Printf.fprintf oc
@@ -536,7 +543,8 @@ let emit_no_invalid_cost
     let retention = retention_of_fq src_retention user_conf fq in
     if retention.duration > 0. then (
       (* Which index is that? *)
-      let i = List.index_of retention.duration durations |> Option.get in
+      let i = List.index_of retention.duration durations |>
+              option_get "retention.duration" in
       Printf.fprintf oc "(assert (< %s %s))\n"
         (cost i site_fq) invalid_cost)
   ) per_func_stats

@@ -39,18 +39,6 @@ DEFINE cpu AS
   COMMIT AFTER in.start > out.start + 30
   FACTORS host AND cpu_num;
 
-DEFINE cpu_diff AS
-  SELECT
-    start, stop, host, cpu_num,
-    (user - lag locally user) / 30 AS user,
-    (system - lag locally system) / 30 AS system,
-    (nice - lag locally nice) / 30 AS nice,
-    (idle - lag locally idle) / 30 AS idle
-  FROM cpu
-  GROUP BY host, cpu_num
-  KEEP ALL
-  FACTORS host AND cpu_num;
-
 DEFINE memory_alert AS
   FROM memory
   SELECT
