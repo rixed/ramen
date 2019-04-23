@@ -463,6 +463,9 @@ struct
    * take into account the optional host identifier and follow there. During
    * recursion we will have to keep track of the current local site. *)
   let find_sources stats local_site fq since until =
+    let since, until =
+      if since <= until then since, until
+      else until, since in
     let find_fq_stats site_fq =
       try Hashtbl.find stats site_fq
       with Not_found -> raise (NotInStats site_fq)
@@ -539,27 +542,41 @@ struct
        * the out_ref of the function it substitutes to. Which will never
        * receive this channel (unless loops but then we actually want
        * the worker to process the looping tuples!) *)
-      let links =
+      let plinks =
         List.fold_left (fun links pfq ->
           Set.add (pfq, (local_site, fq)) links
         ) links s.parents in
       let from_parents =
-        find_parent_ways since until links s.parents in
+        find_parent_ways since until plinks s.parents in
       if Range.is_empty local_range then from_parents else
         let local_way = local_range, (Set.singleton (local_site, fq), links) in
         local_way :: from_parents
     and pick_best_way ways =
-      let span_of_range =
-        List.fold_left (fun s (t1, t2) -> s +. (t2 -. t1)) 0. in
-      (* For now, consider only the covered range.
-       * TODO: Maybe favor also shorter paths? *)
-      List.fold_left (fun (best_span, _ as prev) (range, _ as way) ->
-        let span = span_of_range range in
-        assert (span >= 0.) ;
-        if span > best_span then span, Some way else prev
-      ) (0., None) ways |>
+      let tot_range = until -. since in
+      assert (tot_range >= 0.) ;
+      let coverage_of_range range = (* ratio over tot_range *)
+        if tot_range = 0. then 1. else
+        let tot =
+          List.fold_left (fun s (t1, t2) ->
+            assert (t2 >= t1) ;
+            s +. (t2 -. t1)
+          ) 0. range in
+        tot /. tot_range in
+      (* It is frequent that a much shorter way is missing a few seconds at
+       * the end of the range when querying until `now`, which forces us to
+       * consider not only the covered time range but also the number of
+       * involved sources when assessing a way. *)
+      let cost_of_way (range, (_site_fq, links)) =
+        let cov = coverage_of_range range in
+        if cov = 0. then 1. else
+        log (float_of_int (2 + Set.cardinal links)) /. cov in
+      List.fold_left (fun (best_cost, _ as prev) way ->
+        let cost = cost_of_way way in
+        assert (cost >= 0.) ;
+        if cost < best_cost then cost, Some way else prev
+      ) (max_float, None) ways |>
       snd |>
-      option_get "no data in best path"
+      option_get "best path"
     in
     (* We assume all functions are running for now but this is not required
      * for the replayer itself. Later we could add the required workers in the
