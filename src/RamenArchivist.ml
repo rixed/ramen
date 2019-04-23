@@ -592,8 +592,12 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
     h in
   (* To begin with, what retention durations are we interested about? *)
   let durations =
-    Hashtbl.enum user_conf.retentions /@
-    (fun (_fq, ret) -> ret.duration) |>
+    Enum.append
+      (* Durations defined in user_conf: *)
+      (Hashtbl.values user_conf.retentions)
+      (* Durations defined in function source: *)
+      (Hashtbl.values src_retention) /@
+    (fun ret -> ret.F.duration) |>
     List.of_enum |>
     List.sort_uniq Float.compare in
   Printf.fprintf oc
