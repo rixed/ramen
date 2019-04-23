@@ -728,7 +728,7 @@ let checked params op =
   (match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
                 commit_cond ; event_time ; notifications ; from ; every ;
-                factors ; _ } ->
+                factors ; flush_how ; _ } ->
     (* Check that we use the TupleGroup only for virtual fields: *)
     iter_expr (fun _ _ e ->
       match e.E.text with
@@ -817,7 +817,8 @@ let checked params op =
     ) op ;
     (* Finally, check that if there is no aggregation then no
      * LocalState is used anywhere: *)
-    if commit_cond == default_commit_cond then
+    if commit_cond == default_commit_cond &&
+       flush_how == Reset then
       iter_top_level_expr warn_no_group op
 
   | ListenFor { proto ; factors ; _ } ->
