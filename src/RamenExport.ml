@@ -222,4 +222,7 @@ let replay conf ?(while_=always) fq field_names where since until
         ) () in
     (* If all went well, delete the ringbuf: *)
     Files.safe_unlink replay.final_rb ;
+    (* ringbuf lib also create a lock with the rb: *)
+    let lock_fname = N.cat replay.final_rb (N.path ".lock") in
+    ignore_exceptions Files.safe_unlink lock_fname ;
     ret
