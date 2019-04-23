@@ -854,8 +854,7 @@ let process_workers_terminations conf running =
 
 let process_replayers_terminations conf replayers =
   let open Unix in
-  let get_programs = memoize (fun () -> RC.with_rlock conf identity) in
-  Hashtbl.filter_map_inplace (fun channel (replay, pids) ->
+  Hashtbl.map_inplace (fun channel (replay, pids) ->
     let pids =
       Set.filter (fun (pid, _last_killed) ->
         let what =
@@ -881,11 +880,7 @@ let process_replayers_terminations conf replayers =
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
             false)
       ) pids in
-    if Set.is_empty pids then (
-      let programs = get_programs () in
-      Replay.teardown_links conf programs replay ;
-      None
-    ) else Some (replay, pids)
+    replay, pids
   ) replayers
 
 (* Returns the buffer name: *)
@@ -1546,12 +1541,19 @@ let synchronize_running conf autoreload_delay =
       let what = Printf.sprintf2 "replayer for %a (pid %d)"
                    RamenChannel.print chan pid in
       kill_politely conf last_killed what pid stats_replayer_sigkills in
+    let get_programs =
+      memoize (fun () -> RC.with_rlock conf identity) in
     let to_rem chan =
-      (* Just kill the replayers and wait for them to finish before tearing
-       * down the replay chanel: *)
-      let replayer, pids = Hashtbl.find replayers chan in
-      Set.iter (kill_replayer replayer.C.Replays.channel) pids in
-    let get_programs = memoize (fun () -> RC.with_rlock conf identity) in
+      (* If there are some replayers left kill them (and warn), otherwise
+       * just remove the entry from [replayers] and teardown the channel: *)
+      let replay, pids = Hashtbl.find replayers chan in
+      if Set.is_empty pids then (
+        let programs = get_programs () in
+        Replay.teardown_links conf programs replay ;
+        Hashtbl.remove replayers chan
+      ) else (
+        Set.iter (kill_replayer replay.C.Replays.channel) pids
+      ) in
     let start_replay replay =
       let programs = get_programs () in
       Replay.settup_links conf programs replay ;
