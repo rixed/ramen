@@ -13,7 +13,7 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
-module Replay = Processes.Replay
+module Replay = RamenReplay
 
 exception FuncHasNoEventTimeInfo of string
 let () =

@@ -169,6 +169,8 @@ RAMEN_SOURCES = \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
+	src/RamenReplay.ml \
+	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \
@@ -611,7 +613,9 @@ TESTABLE_SOURCES = \
 	src/RamenUnits.ml \
 	src/RamenTypeConverters.ml \
 	src/RamenServices.ml \
-	src/RamenProcesses.ml\
+	src/RamenProcesses.ml \
+	src/RamenReplay.ml \
+	src/RamenSupervisor.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
 	src/RamenOutRef.ml \
@@ -684,6 +688,8 @@ LINKED_FOR_TESTS = \
 	src/RamenServices.ml \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
+	src/RamenReplay.ml \
+	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
 	src/RamenExport.ml \

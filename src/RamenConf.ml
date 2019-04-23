@@ -184,6 +184,11 @@ struct
       RamenFieldMaskLib.print_in_type func.in_type
       RamenTuple.print_typ
         (O.out_type_of_operation ~with_private:false func.operation)
+
+  let make_fieldmask parent child =
+    let out_typ =
+      O.out_type_of_operation ~with_private:false parent.operation in
+    RamenFieldMaskLib.fieldmask_of_operation ~out_typ child.operation
 end
 
 module Program =
@@ -493,7 +498,7 @@ end
  * Replays are temporary workers+paths used to recompute a given target
  * function output in a given time range.
  *
- * See RamenProcesses.Replay for actual operations.
+ * See RamenReplay for actual operations.
  *)
 
 module Replays =
@@ -631,6 +636,25 @@ let in_ringbuf_names conf func =
     ) func.Func.parents
   else
     [ in_ringbuf_name_single conf func ]
+
+(* Returns the name of func input ringbuf for the given parent (if func is
+ * merging, each parent uses a distinct one) and the file_spec. *)
+let input_ringbuf_fname conf parent child =
+  (* In case of merge, ringbufs are numbered as the node parents: *)
+  if child.Func.merge_inputs then
+    match List.findi (fun _ (_, pprog, pname) ->
+            let pprog_name =
+              Func.program_of_parent_prog child.Func.program_name pprog in
+            pprog_name = parent.Func.program_name && pname = parent.name
+          ) child.parents with
+    | exception Not_found ->
+        !logger.error "Operation %S is not a child of %S"
+          (child.name :> string)
+          (parent.name :> string) ;
+        invalid_arg "input_ringbuf_fname"
+    | i, _ ->
+        in_ringbuf_name_merging conf child i
+  else in_ringbuf_name_single conf child
 
 (* Operations can also be asked to output their full result (all the public
  * fields) in a non-wrapping file for later retrieval by the tail or

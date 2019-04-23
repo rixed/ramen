@@ -26,7 +26,7 @@ let make_copts
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
-      RamenProcesses.rand_seed := Some seed ;
+      RamenSupervisor.rand_seed := Some seed ;
       Random.init seed) ;
   (* As the RAMEN_VARIANTS and RAMEN_MASTERS envars can only take a list as
    * a single string, let's consider each value can be a list: *)
@@ -106,7 +106,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
-      (fun () -> synchronize_running conf autoreload) |] ;
+      (fun () -> RamenSupervisor.synchronize_running conf autoreload) |] ;
   Option.may exit !RamenProcesses.quit
 
 (*
