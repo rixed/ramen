@@ -722,10 +722,10 @@ let update_storage_allocation conf programs =
     ) solution in
   (* Warn of any large change: *)
   let prev_allocs = load_allocs conf in
-  Hashtbl.iter (fun site_fq p ->
-    let prev_p = Hashtbl.find_default allocs site_fq 0 in
+  Hashtbl.iter (fun site_fq prev_p ->
+    let p = Hashtbl.find_default allocs site_fq 0 in
     if reldiff (float_of_int p) (float_of_int prev_p) > 0.5 then
-      !logger.warning "Allocation for %a is jumping from %d%% to %d%%"
+      !logger.warning "Allocation for %a is jumping from %d to %d bytes"
         site_fq_print site_fq prev_p p
   ) prev_allocs ;
   save_allocs conf allocs
