@@ -342,12 +342,13 @@ let dequeue_ringbuf_once ?while_ ?delay_rec ?max_retry_time rb =
 let read_ringbuf ?while_ ?delay_rec rb f =
   let rec loop () =
     match dequeue_ringbuf_once ?while_ ?delay_rec rb with
-    | exception (Exit | Timeout) -> ()
+    | exception (Exit | Timeout) ->
+        ()
     | tx ->
-      (* f has to call dequeue_commit on the passed tx (as soon as
-       * possible): *)
-      f tx ;
-      loop () in
+        (* f has to call dequeue_commit on the passed tx (as soon as
+         * possible): *)
+        f tx ;
+        loop () in
   loop ()
 
 let read_buf ?wait_for_more ?while_ ?delay_rec rb init f =

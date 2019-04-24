@@ -801,15 +801,16 @@ let read_well_known
             | exception e ->
                 log_rb_error tx e
             | DataTuple chan as m ->
-              let offs = message_header_sersize m in
-              let tuple = unserialize_tuple tx offs in
-              let worker, time = worker_time_of_tuple tuple in
-              (* Filter by time and worker *)
-              if time >= start && match_from worker then (
-                CodeGenLib_IO.on_each_input_pre () ;
-                IntCounter.add stats_in_tuple_count 1 ;
-                outputer (RingBufLib.DataTuple chan) (Some tuple))
-            | _ -> ()) ;
+                let offs = message_header_sersize m in
+                let tuple = unserialize_tuple tx offs in
+                let worker, time = worker_time_of_tuple tuple in
+                (* Filter by time and worker *)
+                if time >= start && match_from worker then (
+                  CodeGenLib_IO.on_each_input_pre () ;
+                  IntCounter.add stats_in_tuple_count 1 ;
+                  outputer (RingBufLib.DataTuple chan) (Some tuple))
+            | _ ->
+                ()) ;
             (), true) ;
           info_or_test conf "Done reading buffer, waiting for next one." ;
           RingBuf.unload rb ;
