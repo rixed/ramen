@@ -28,10 +28,8 @@ let with_lock op fname f =
           (fun () ->
     Files.mkdir_all ~is_file:true fname ;
     let flags =
-      O_CLOEXEC :: (
-        if op = F_LOCK then
-          [ O_RDWR; O_CREAT ] else [ O_RDONLY ]
-      ) in
+      O_CLOEXEC :: O_CREAT ::
+        [ if op = F_LOCK then O_RDWR else O_RDONLY ] in
     let fd = openfile (fname :> string) flags 0o640 in
     finally
       (fun () -> Files.safe_close fd)
