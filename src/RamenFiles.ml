@@ -461,6 +461,26 @@ let save ~compute ~serialize ~deserialize fname =
         v)
 
 (* [default] replaces a missing _or_empty_ file. *)
+let ppp_of_fd ?default ppp =
+  let reread fd =
+    let from_string s =
+      let c = Printf.sprintf2 "parsing default value: %s" s in
+      fail_with_context c (fun () -> PPP.of_string_exc ppp s)
+    and from_fd fd =
+      let c = Printf.sprintf2 "parsing file %d" (int_of_fd fd) in
+      let ic = Legacy.Unix.in_channel_of_descr fd in
+      fail_with_context c (fun () -> PPP.of_in_channel_exc ppp ic) in
+    !logger.debug "Have to reread %d" (int_of_fd fd) ;
+    match default with
+    | Some d ->
+        let s = Unix.(restart_on_EINTR fstat fd) in
+        if s.st_size = 0 then from_string d else from_fd fd
+    | None ->
+        from_fd fd in
+  let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
+  cached cache_name reread (mtime_of_fd_def 0.)
+
+(* [default] replaces a missing _or_empty_ file. *)
 let ppp_of_file ?default ppp =
   let reread fname =
     let from_string s =
