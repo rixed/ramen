@@ -160,11 +160,11 @@ let stat_file ?site conf =
         if N.is_empty site then "local" else (site :> string)) ]
 
 let load_stats =
-  let ppp_of_file =
-    Files.ppp_of_file ~default:"{}" per_func_stats_ser_ppp_ocaml in
+  let ppp_of_fd =
+    Files.ppp_of_fd ~default:"{}" per_func_stats_ser_ppp_ocaml in
   fun ?site conf ->
     let fname = stat_file ?site conf in
-    RamenAdvLock.with_r_lock fname (fun _fd -> ppp_of_file fname)
+    RamenAdvLock.with_r_lock fname ppp_of_fd
 
 let save_stats conf stats =
   let fname = stat_file conf in

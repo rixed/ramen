@@ -359,12 +359,12 @@ struct
   let non_persisted_programs = ref (Hashtbl.create 11)
 
   let read_file =
-    let get fname =
+    let get fd =
       fail_with_context "Reading RC file" (fun () ->
-        Files.ppp_of_file ~default:"{}" running_config_ppp_ocaml fname) in
-    fun conf fname ->
+        Files.ppp_of_fd ~default:"{}" running_config_ppp_ocaml fd) in
+    fun conf fd ->
       if not (N.is_empty conf.persist_dir) then (
-        let rc = get fname in
+        let rc = get fd in
         let debug = conf.log_level = Debug in
         let make_auto_rce name on_site =
           let pname = N.program name in
@@ -418,9 +418,9 @@ struct
    * Modifications will not be saved. *)
   let with_rlock conf f =
     let rc_file = file_name conf in
-    RamenAdvLock.with_r_lock rc_file (fun _fd ->
+    RamenAdvLock.with_r_lock rc_file (fun fd ->
       let programs =
-        read_file conf rc_file |>
+        read_file conf fd |>
         Hashtbl.map (fun pn rce ->
           rce,
           memoize (fun () -> program_of_running_entry pn rce)) in
@@ -429,7 +429,7 @@ struct
   let with_wlock conf f =
     let rc_file = file_name conf in
     RamenAdvLock.with_w_lock rc_file (fun fd ->
-      let programs = read_file conf rc_file in
+      let programs = read_file conf fd in
       let ret = f programs in
       (* Save the config only if f did not fail: *)
       if not (N.is_empty conf.persist_dir) then
