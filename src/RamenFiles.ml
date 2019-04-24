@@ -468,12 +468,8 @@ let ppp_of_file ?default ppp =
                 N.path_print fname s in
       fail_with_context c (fun () -> PPP.of_string_exc ppp s)
     and from_in ic =
-      finally
-        (fun () -> Legacy.close_in ic)
-        (fun ic ->
-          let c = Printf.sprintf2 "parsing file %a" N.path_print fname in
-          fail_with_context c (fun () ->
-            PPP.of_in_channel_exc ppp ic)) ic in
+      let c = Printf.sprintf2 "parsing file %a" N.path_print fname in
+      fail_with_context c (fun () -> PPP.of_in_channel_exc ppp ic) in
     !logger.debug "Have to reread %a" N.path_print_quoted fname ;
     let openflags = [ Open_rdonly; Open_text ] in
     match Legacy.open_in_gen openflags 0o644 (fname :> string) with
@@ -485,12 +481,15 @@ let ppp_of_file ?default ppp =
             raise e
         | Some d -> from_string d)
     | ic ->
-        (match default with
-        | Some d ->
-            let fd = Legacy.Unix.descr_of_in_channel ic in
-            let s = BatUnix.(restart_on_EINTR fstat fd) in
-            if s.st_size = 0 then from_string d else from_in ic
-        | None -> from_in ic) in
+        finally
+          (fun () -> Legacy.close_in ic)
+          (fun () ->
+            match default with
+            | Some d ->
+                let fd = Legacy.Unix.descr_of_in_channel ic in
+                let s = Unix.(restart_on_EINTR fstat fd) in
+                if s.st_size = 0 then from_string d else from_in ic
+            | None -> from_in ic) () in
   let cache_name = "ppp_of_file ("^ (ppp ()).descr 0 ^")" in
   cached cache_name reread (mtime_def 0.)
 
