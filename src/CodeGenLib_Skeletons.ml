@@ -752,6 +752,16 @@ let listen_on
  * Operations that funcs may run: read known tuples from a ringbuf.
  *)
 
+let log_rb_error tx e =
+  let open RingBuf in
+  let startw = tx_start tx
+  and sz = tx_size tx
+  and fname = tx_fname tx in
+  assert (sz land 3 = 0) ;
+  let endw = startw + (sz / 4) in
+  !logger.error "While reading message from %S at words %d..%d: %s"
+      fname startw endw (Printexc.to_string e)
+
 let read_well_known
       from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
       unserialize_tuple ringbuf_envvar worker_time_of_tuple
@@ -789,7 +799,7 @@ let read_well_known
             let open RingBufLib in
             (match read_message_header tx 0 with
             | exception e ->
-              print_exception ~what:"read well known tuple" e
+                log_rb_error tx e
             | DataTuple chan as m ->
               let offs = message_header_sersize m in
               let tuple = unserialize_tuple tx offs in
@@ -914,7 +924,7 @@ let read_single_rb ?while_ ?delay_rec read_tuple rb_in on_tup on_else =
   RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
     match read_tuple tx with
     | exception e ->
-        print_exception ~what:"reading a tuple" e ;
+        log_rb_error tx e ;
         RingBuf.dequeue_commit tx
     | msg ->
         let tx_size = RingBuf.tx_size tx in
@@ -1585,7 +1595,7 @@ let top_half
     RingBufLib.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       match read_tuple tx with
       | exception e ->
-          print_exception ~what:"reading a tuple" e ;
+          log_rb_error tx e ;
           RingBuf.dequeue_commit tx
       | msg ->
           let perf_per_tuple = Perf.start () in

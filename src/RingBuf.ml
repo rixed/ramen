@@ -7,9 +7,11 @@ module Files = RamenFiles
 
 exception NoMoreRoom
 exception Empty
+exception Damaged
 let () =
   Callback.register_exception "ringbuf full exception" NoMoreRoom ;
-  Callback.register_exception "ringbuf empty exception" Empty
+  Callback.register_exception "ringbuf empty exception" Empty ;
+  Callback.register_exception "ringbuf damaged exception" Damaged
 
 type t (* abstract, represents a ring buffer mmapped file *)
 
@@ -48,6 +50,8 @@ external repair : t -> bool = "wrap_ringbuf_repair"
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 
 external tx_size : tx -> int = "wrap_ringbuf_tx_size"
+external tx_start : tx -> int = "wrap_ringbuf_tx_start"
+external tx_fname : tx -> string = "wrap_ringbuf_tx_fname"
 external enqueue_alloc : t -> int -> tx = "wrap_ringbuf_enqueue_alloc"
 external enqueue_commit : tx -> float -> float -> unit = "wrap_ringbuf_enqueue_commit"
 external enqueue : t -> bytes -> int -> float -> float -> unit = "wrap_ringbuf_enqueue"

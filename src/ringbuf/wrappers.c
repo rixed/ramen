@@ -18,16 +18,17 @@
 
 #include "ringbuf.h"
 
-static value exn_NoMoreRoom, exn_Empty;
-static bool exception_inited = false;
+static value exn_NoMoreRoom, exn_Empty, exn_Damaged;
+static bool exceptions_inited = false;
 
 static void retrieve_exceptions(void)
 {
-  if (exception_inited) return;
+  if (exceptions_inited) return;
 
   exn_NoMoreRoom = *caml_named_value("ringbuf full exception");
   exn_Empty = *caml_named_value("ringbuf empty exception");
-  exception_inited = true;
+  exn_Damaged = *caml_named_value("ringbuf damaged exception");
+  exceptions_inited = true;
 }
 
 /* type t for struct ringbuf */
@@ -202,7 +203,7 @@ static void check_error(
       caml_failwith(fail);
       break;
     case RB_ERR_NO_MORE_ROOM:
-      assert(exception_inited);
+      assert(exceptions_inited);
       caml_raise_constant(exn_NoMoreRoom);
       break;
     case RB_ERR_BAD_VERSION:
@@ -276,7 +277,7 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
   struct ringbuf_tx tx;
   ssize_t size = ringbuf_dequeue_alloc(rb, &tx);
   if (size < 0) {
-    assert(exception_inited);
+    assert(exceptions_inited);
     caml_raise_constant(exn_Empty);
   }
 
@@ -305,7 +306,7 @@ CAMLprim value wrap_ringbuf_read_first(value rb_)
     caml_failwith("Invalid buffer file");
   } else if (size == -1) {
     // Have to wait for content:
-    assert(exception_inited);
+    assert(exceptions_inited);
     caml_raise_constant(exn_Empty);
   } else {
     wrtx->alloced = (size_t)size;
@@ -325,7 +326,7 @@ CAMLprim value wrap_ringbuf_read_next(value tx)
     caml_raise_end_of_file();
   } else if (size == -1) {
     // Have to wait for content:
-    assert(exception_inited);
+    assert(exceptions_inited);
     caml_raise_constant(exn_Empty);
   } else {
     wrtx->alloced = (size_t)size;
@@ -376,6 +377,22 @@ CAMLprim value wrap_ringbuf_tx_size(value tx)
   CAMLreturn(Val_long((long)wrtx->alloced));
 }
 
+CAMLprim value wrap_ringbuf_tx_start(value tx)
+{
+  CAMLparam1(tx);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  CAMLreturn(Val_long((long)wrtx->tx.record_start));
+}
+
+CAMLprim value wrap_ringbuf_tx_fname(value tx)
+{
+  CAMLparam1(tx);
+  CAMLlocal1(fname);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  fname = caml_copy_string(wrtx->rb->fname);
+  CAMLreturn(fname);
+}
+
 CAMLprim value wrap_ringbuf_enqueue_commit(value tx, value tmin_, value tmax_)
 {
   CAMLparam3(tx, tmin_, tmax_);
@@ -396,7 +413,7 @@ CAMLprim value wrap_ringbuf_dequeue_alloc(value rb_)
   wrtx->rb = rb;
   ssize_t size = ringbuf_dequeue_alloc(rb, &wrtx->tx);
   if (size < 0) {
-    assert(exception_inited);
+    assert(exceptions_inited);
     caml_raise_constant(exn_Empty);
   }
   /*printf("Allocated %zd bytes for dequeuing at offset %"PRIu32" (in words)\n",
@@ -428,12 +445,16 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   if (size + offs > wrtx->alloced) {
     printf("ERROR: size (%zu) + offs (%zu) > alloced (%zu)\n", size, offs, wrtx->alloced);
     fflush(stdout);
+    assert(exceptions_inited);
+    caml_raise_constant(exn_Damaged);
   }
-  assert(size + offs <= wrtx->alloced);
+
   if (size > MAX_RINGBUF_MSG_SIZE) {
     printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+    fflush(stdout);
+    assert(exceptions_inited);
+    caml_raise_constant(exn_Damaged);
   }
-  assert(size <= MAX_RINGBUF_MSG_SIZE);
   uint32_t *addr = where_to(wrtx, offs);
 /*
   printf("Write %zu bytes at offset %zu:", size, offs);
@@ -450,12 +471,15 @@ static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *ds
   if (offs + size > wrtx->alloced) {
     printf("ERROR: offs (%zu) + size (%zu) > alloced (%zu)\n", offs, size, wrtx->alloced);
     fflush(stdout);
+    assert(exceptions_inited);
+    caml_raise_constant(exn_Damaged);
   }
-  assert(size + offs <= wrtx->alloced);
   if (size > MAX_RINGBUF_MSG_SIZE) {
     printf("ERROR: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", size);
+    fflush(stdout);
+    assert(exceptions_inited);
+    caml_raise_constant(exn_Damaged);
   }
-  assert(size <= MAX_RINGBUF_MSG_SIZE);
 
   uint32_t *addr = where_to(wrtx, offs);
 /*
