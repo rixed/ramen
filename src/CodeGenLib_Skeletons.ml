@@ -668,11 +668,18 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
     restart_on_failure "update_stats_rb"
       (update_stats_rb report_period report_rb)) get_binocle_tuple |>
     ignore ;
-  log_and_ignore_exceptions k conf ;
   (* Sending stats for one last time: *)
-  if report_period > 0. then
-    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
-  exit (!quit |? ExitCodes.terminated)
+  let last_report () =
+    if report_period > 0. then
+      ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
+  match k conf with
+  | exception e ->
+      print_exception e ;
+      last_report () ;
+      exit ExitCodes.uncaught_exception
+  | () ->
+      last_report () ;
+      exit (!quit |? ExitCodes.terminated)
 
 (*
  * Operations that funcs may run: read a CSV file.

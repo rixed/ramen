@@ -313,7 +313,7 @@ struct
   let lwt_uncaught_exception = 2
   let cannot_parse_param = 3
   let watchdog = 4
-  let forking_server_uncaught_exception = 5
+  let uncaught_exception = 5
 
   let string_of_code = function
     | 0 -> "terminated"
@@ -321,7 +321,7 @@ struct
     | 2 -> "uncaught exception in LWT scheduler"
     | 3 -> "cannot parse a parameter"
     | 4 -> "killed by watchdog"
-    | 5 -> "forking server crashed"
+    | 5 -> "crashed"
     | _ -> "unknown"
 end
 

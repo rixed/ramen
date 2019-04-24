@@ -1387,7 +1387,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                       exit 0)
                 with e ->
                   print_exception ~what e ;
-                  exit ExitCodes.forking_server_uncaught_exception)
+                  exit ExitCodes.uncaught_exception)
             | pid ->
                 close s ;
                 !logger.info "Forked server with pid %d" pid ;
