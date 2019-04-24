@@ -765,7 +765,7 @@ let listen_on
 let log_rb_error =
   let last_err = ref 0
   and err_count = ref 0 in
-  fun tx e ->
+  fun ?at_exit tx e ->
     let open RingBuf in
     let startw = tx_start tx
     and sz = tx_size tx
@@ -777,8 +777,10 @@ let log_rb_error =
     let now = int_of_float (Unix.time ()) in
     if now = !last_err then (
       incr err_count ;
-      if !err_count > 5 then
-      exit ExitCodes.damaged_ringbuf
+      if !err_count > 5 then (
+        Option.may (fun f -> f ()) at_exit ;
+        exit ExitCodes.damaged_ringbuf
+      )
     ) else (
       last_err := now ;
       err_count := 0
@@ -1635,13 +1637,13 @@ let top_half
           if chan = Some RamenChannel.live then
             Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple)))
 
-let read_whole_archive ?(while_=always) read_tuplez rb k =
+let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
   if while_ () then
     RingBufLib.(read_buf ~wait_for_more:false ~while_ rb () (fun () tx ->
       match read_tuplez tx with
       | exception e ->
-          print_exception ~what:"reading a tuple from archive" e,
-          false (* Skip the rest of that file for safety *)
+          log_rb_error ?at_exit tx e ;
+          (), false (* Skip the rest of that file for safety *)
       | DataTuple chn, Some tuple when chn = RamenChannel.live ->
           k tuple, true
       | DataTuple chn, _ ->
@@ -1715,6 +1717,12 @@ let replay
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
   let time_overlap t1 t2 = since < t2 && until >= t1 in
+  let at_exit () =
+    (* TODO: it would be nice to send an error code with the EndOfReplay
+     * so that the client would know if everything was alright. *)
+    (* Before quitting (normally or because of too many errors), signal
+     * the end of this replay: *)
+    outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None in
   let output_tuple tuple =
     CodeGenLib_IO.on_each_input_pre () ;
     incr num_replayed_tuples ;
@@ -1722,7 +1730,7 @@ let replay
      * to read it all: *)
     outputer (RingBufLib.DataTuple channel_id) (Some tuple) in
   let loop_tuples rb =
-    read_whole_archive ~while_ read_tuple rb output_tuple in
+    read_whole_archive ~at_exit ~while_ read_tuple rb output_tuple in
   let loop_tuples_of_ringbuf fname =
     !logger.debug "Reading archive %a" N.path_print_quoted fname ;
     match RingBuf.load fname with
@@ -1760,8 +1768,7 @@ let replay
   (* Finish with the current archive: *)
   !logger.debug "Reading current archive" ;
   loop_tuples_of_ringbuf rb_archive ;
-  (* Before quitting, signal the end of this replay: *)
-  outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
+  at_exit () ;
   !logger.info "Finished after having replayed %d tuples"
     !num_replayed_tuples ;
   exit (!quit |? ExitCodes.terminated)
