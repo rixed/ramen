@@ -577,8 +577,11 @@ let outputer_of
                    stop -. min_time <= possible_values_lifespan
                 then
                   min_time, Set.add pv pvs.values, pvs.fname
-                else
-                  start, Set.singleton pv, N.path "" in
+                else (
+                  !logger.info "New factor index file (min_time=%g, stop=%g)"
+                    min_time stop ;
+                  start, Set.singleton pv, N.path ""
+                ) in
               let fname =
                 possible_values_file factors_dir factor min_time in
               let pvs = { min_time ; fname ; values } in

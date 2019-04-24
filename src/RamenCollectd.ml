@@ -25,7 +25,7 @@ type collectd_metric =
   string nullable (* plugin name *) * string nullable (* plugin instance *) *
   string nullable (* type name (whatever that means) *) *
   string nullable (* type instance *) *
-  (* And the values (up to 5: *)
+  (* And the values (up to 5): *)
   float * float nullable * float nullable * float nullable * float nullable
 
 let tuple_typ =
