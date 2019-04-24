@@ -1006,8 +1006,11 @@ let synchronize_running conf autoreload_delay =
         !logger.info "All processes stopped, quitting."
       ) else (
         let max_wait =
-          ref (if autoreload_delay > 0. then
-                 autoreload_delay else 5.) in
+          ref (
+            if !Processes.quit <> None then 0.3 else
+            if autoreload_delay > 0. then
+               autoreload_delay else 5.
+          ) in
         let set_max_wait d =
           if d < !max_wait then max_wait := d in
         let must_reread fname last_read autoreload_delay now =
@@ -1080,7 +1083,6 @@ let synchronize_running conf autoreload_delay =
         !logger.debug "Waiting for file changes (max %a)"
           print_as_duration !max_wait ;
         let fname = RamenFileNotify.wait_file_changes
-                      ~while_:(fun () -> !Processes.quit = None)
                       ~max_wait:!max_wait fnotifier in
         !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;
         RamenWatchdog.reset watchdog ;
