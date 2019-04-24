@@ -2200,7 +2200,13 @@ let emit_for_serialized_fields_of_output_no_value
   let ser_typ =
     RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ in
   let num_ser_fields = List.length ser_typ in
-  p "assert (Array.length %s = %d) ;" fm_var num_ser_fields ;
+  p "if Array.length %s <> %d && Array.length %s <> %d then ("
+    fm_var num_ser_fields fm_var num_all_fields ;
+  p "  !logger.error \"bad fieldmask of length %%d while serializing %d fields\""
+    num_ser_fields ;
+  p "    (Array.length %s) ;" fm_var ;
+  p "    assert false" ;
+  p ") ;" ;
   List.iter (fun (ft, i) ->
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;

@@ -463,6 +463,10 @@ let min_delay_between_full_out_measurement = 3.
 (* Max age of the archivist stat file before it's rebuilt: *)
 let max_archivist_stat_file_age = 3. *. 60.
 
+(* Number of fields in the special (hackish) fieldmask that's used to
+ * mean "all fields": *)
+let num_all_fields = 100
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

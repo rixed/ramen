@@ -455,7 +455,7 @@ let writer_of_spec serialize_tuple sersize_of_tuple
       (fun () -> orc_close hdr)
 
 (* FIXME: when the output type is a single value, just [| Copy |]: *)
-let all_fields = Array.make 100 RamenFieldMask.Copy
+let all_fields = Array.make num_all_fields RamenFieldMask.Copy
 
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
