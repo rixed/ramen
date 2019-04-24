@@ -1729,7 +1729,7 @@ let replay
   loop_tuples_of_ringbuf rb_archive ;
   (* Before quitting, signal the end of this replay: *)
   outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None ;
-  !logger.debug "Finished after having replayed %d tuples"
+  !logger.info "Finished after having replayed %d tuples"
     !num_replayed_tuples ;
   exit (!quit |? ExitCodes.terminated)
 

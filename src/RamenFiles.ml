@@ -68,7 +68,7 @@ let mkdir_all ?(is_file=false) (dir : N.path) =
   ensure_exist dir
 
 let safe_stat (fname : N.path) =
-  BatUnix.(restart_on_EINTR stat (fname :> string))
+  Unix.(restart_on_EINTR stat (fname :> string))
 
 type file_status = FileOk | FileMissing | FileTooSmall | FileBadPerms
 let check ?(min_size=0) ?(has_perms=0) fname =
@@ -93,17 +93,17 @@ let is_empty_file fname =
   size fname = 0
 
 let safe_fileop f fname =
-  try BatUnix.restart_on_EINTR f fname
+  try Unix.restart_on_EINTR f fname
   with Unix.(Unix_error (ENOENT, _, _)) -> ()
 
 let safe_unlink fname =
   safe_fileop unlink fname
 
 let safe_open (fname : N.path) flags perms =
-  BatUnix.(restart_on_EINTR openfile (fname :> string) flags perms)
+  Unix.(restart_on_EINTR openfile (fname :> string) flags perms)
 
 let safe_close fd =
-  log_and_ignore_exceptions BatUnix.(restart_on_EINTR close) fd
+  log_and_ignore_exceptions Unix.(restart_on_EINTR close) fd
 
 let move_away (fname : N.path) =
   let bad_file = N.cat fname (N.path ".bad?") in
@@ -329,7 +329,7 @@ let really_read_fd_into buf offs fd size =
   let rec loop i =
     if i < size then
       let r =
-        BatUnix.restart_on_EINTR (read fd buf (offs + i)) (size - i) in
+        Unix.restart_on_EINTR (read fd buf (offs + i)) (size - i) in
       if r > 0 then loop (i + r) else (
         if i > 0 then
           !logger.warning "File ended but only %d/%d bytes could be read"
@@ -343,7 +343,7 @@ let really_read_fd fd size =
   really_read_fd_into buf 0 fd size
 
 let marshal_into_fd ?(at_start=true) fd v =
-  let open BatUnix in
+  let open Unix in
   (* Leak memory for some reason / and do not write anything to the file
    * if we Marshal.to_channel directly. :-/ *)
   let bytes = Marshal.to_bytes v [] in
