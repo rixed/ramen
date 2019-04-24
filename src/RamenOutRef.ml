@@ -77,7 +77,7 @@ let read_ =
     Files.ppp_of_fd ~default:"{}" out_ref_conf_ppp_ocaml in
   fun (fname : N.path) fd ->
     let c = "Reading out_ref "^ (fname :> string) in
-    fail_with_context c (fun () -> ppp_of_fd fd)
+    fail_with_context c (fun () -> ppp_of_fd fname fd)
 
 let read fname =
   let now = Unix.gettimeofday () in

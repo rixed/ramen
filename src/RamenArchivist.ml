@@ -164,7 +164,7 @@ let load_stats =
     Files.ppp_of_fd ~default:"{}" per_func_stats_ser_ppp_ocaml in
   fun ?site conf ->
     let fname = stat_file ?site conf in
-    RamenAdvLock.with_r_lock fname ppp_of_fd
+    RamenAdvLock.with_r_lock fname (ppp_of_fd fname)
 
 let save_stats conf stats =
   let fname = stat_file conf in

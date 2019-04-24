@@ -359,12 +359,12 @@ struct
   let non_persisted_programs = ref (Hashtbl.create 11)
 
   let read_file =
-    let get fd =
+    let ppp_of_fd fname fd =
       fail_with_context "Reading RC file" (fun () ->
-        Files.ppp_of_fd ~default:"{}" running_config_ppp_ocaml fd) in
-    fun conf fd ->
+        Files.ppp_of_fd ~default:"{}" running_config_ppp_ocaml fname fd) in
+    fun conf fname fd ->
       if not (N.is_empty conf.persist_dir) then (
-        let rc = get fd in
+        let rc = ppp_of_fd fname fd in
         let debug = conf.log_level = Debug in
         let make_auto_rce name on_site =
           let pname = N.program name in
@@ -420,7 +420,7 @@ struct
     let rc_file = file_name conf in
     RamenAdvLock.with_r_lock rc_file (fun fd ->
       let programs =
-        read_file conf fd |>
+        read_file conf rc_file fd |>
         Hashtbl.map (fun pn rce ->
           rce,
           memoize (fun () -> program_of_running_entry pn rce)) in
@@ -429,7 +429,7 @@ struct
   let with_wlock conf f =
     let rc_file = file_name conf in
     RamenAdvLock.with_w_lock rc_file (fun fd ->
-      let programs = read_file conf fd in
+      let programs = read_file conf rc_file fd in
       let ret = f programs in
       (* Save the config only if f did not fail: *)
       if not (N.is_empty conf.persist_dir) then
@@ -546,28 +546,29 @@ struct
                  N.path RamenVersions.replays ; N.path "replays" ]
 
   let load_locked =
-    let get = Files.ppp_of_fd ~default:"{}" replays_ppp_ocaml in
-    fun fd ->
+    let ppp_of_fd = Files.ppp_of_fd ~default:"{}" replays_ppp_ocaml in
+    fun fname fd ->
       let context = "Reading replays" in
       let now = Unix.gettimeofday () in
-      fail_with_context context (fun () -> get fd) |>
+      fail_with_context context (fun () -> ppp_of_fd fname fd) |>
       Hashtbl.filter (fun replay -> replay.timeout > now)
 
   let load conf =
     let fname = file_name conf in
-    RamenAdvLock.with_r_lock fname load_locked
+    RamenAdvLock.with_r_lock fname (load_locked fname)
 
-  let save_locked fd replays =
-    let context = "Saving replays" in
-    fail_with_context context (fun () ->
-      Files.ppp_to_fd ~pretty:true replays_ppp_ocaml fd replays)
+  let save_locked =
+    let ppp_to_fd = Files.ppp_to_fd ~pretty:true replays_ppp_ocaml in
+    fun fd replays ->
+      let context = "Saving replays" in
+      fail_with_context context (fun () -> ppp_to_fd fd replays)
 
   let add conf replay =
     !logger.debug "Adding replay for channel %a"
       RamenChannel.print replay.channel ;
     let fname = file_name conf in
     RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fd in
+      let replays = load_locked fname fd in
       if Hashtbl.mem replays replay.channel then
         Printf.sprintf2 "Replay channel %a is already in use!"
           RamenChannel.print replay.channel |>
@@ -578,7 +579,7 @@ struct
   let remove conf channel =
     let fname = file_name conf in
     RamenAdvLock.with_w_lock fname (fun fd ->
-      let replays = load_locked fd in
+      let replays = load_locked fname fd in
       Hashtbl.remove replays channel ;
       save_locked fd replays)
 end
