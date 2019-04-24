@@ -314,6 +314,7 @@ struct
   let cannot_parse_param = 3
   let watchdog = 4
   let uncaught_exception = 5
+  let damaged_ringbuf = 6
 
   let string_of_code = function
     | 0 -> "terminated"
@@ -322,6 +323,7 @@ struct
     | 3 -> "cannot parse a parameter"
     | 4 -> "killed by watchdog"
     | 5 -> "crashed"
+    | 6 -> "suffered ringbuffer damage"
     | _ -> "unknown"
 end
 

@@ -762,15 +762,27 @@ let listen_on
  * Operations that funcs may run: read known tuples from a ringbuf.
  *)
 
-let log_rb_error tx e =
-  let open RingBuf in
-  let startw = tx_start tx
-  and sz = tx_size tx
-  and fname = tx_fname tx in
-  assert (sz land 3 = 0) ;
-  let endw = startw + (sz / 4) in
-  !logger.error "While reading message from %S at words %d..%d: %s"
-      fname startw endw (Printexc.to_string e)
+let log_rb_error =
+  let last_err = ref 0
+  and err_count = ref 0 in
+  fun tx e ->
+    let open RingBuf in
+    let startw = tx_start tx
+    and sz = tx_size tx
+    and fname = tx_fname tx in
+    assert (sz land 3 = 0) ;
+    let endw = startw + (sz / 4) in
+    !logger.error "While reading message from %S at words %d..%d: %s"
+        fname startw endw (Printexc.to_string e) ;
+    let now = int_of_float (Unix.time ()) in
+    if now = !last_err then (
+      incr err_count ;
+      if !err_count > 5 then
+      exit ExitCodes.damaged_ringbuf
+    ) else (
+      last_err := now ;
+      err_count := 0
+    )
 
 let read_well_known
       from sersize_of_tuple time_of_tuple factors_of_tuple serialize_tuple
