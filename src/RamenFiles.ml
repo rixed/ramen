@@ -495,7 +495,7 @@ let ppp_of_file ?default ppp =
   cached cache_name reread (mtime_def 0.)
 
 let ppp_to_fd ?pretty ppp fd v =
-  Unix.(lseek fd 0 SEEK_SET) |> ignore ;
+  Unix.restart_on_EINTR (Unix.lseek fd 0) SEEK_SET |> ignore ;
   let str = PPP.to_string ?pretty ppp v in
   let len = String.length str in
   if len = Unix.write_substring fd str 0 len then

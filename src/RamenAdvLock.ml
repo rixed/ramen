@@ -27,16 +27,20 @@ let with_lock op fname f =
   finally (fun () -> Option.may Mutex.unlock mutex)
           (fun () ->
     Files.mkdir_all ~is_file:true fname ;
-    let flags = [O_RDWR; O_CLOEXEC; O_CREAT] in
+    let flags =
+      O_CLOEXEC :: (
+        if op = F_LOCK then
+          [ O_RDWR; O_CREAT ] else [ O_RDONLY ]
+      ) in
     let fd = openfile (fname :> string) flags 0o640 in
     finally
-      (fun () -> close fd)
+      (fun () -> Files.safe_close fd)
       (fun () ->
-        lockf fd op 0 ;
+        Unix.restart_on_EINTR (lockf fd op) 0 ;
         finally
           (fun () ->
-            lseek fd 0 SEEK_SET |> ignore ;
-            lockf fd F_ULOCK 0)
+            Unix.restart_on_EINTR (lseek fd 0) SEEK_SET |> ignore ;
+            Unix.restart_on_EINTR (lockf fd F_ULOCK) 0)
           f fd
       ) ()
   ) ()
