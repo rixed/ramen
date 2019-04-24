@@ -217,14 +217,16 @@ let info_or_test conf =
 let rescue_worker conf func params =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
-  !logger.info "Worker %s is deadlooping. Deleting its state file and \
-                input ringbuffers."
+  !logger.info "Worker %s is deadlooping. Deleting its state file, \
+                input ringbuffers and out_ref."
     ((F.fq_name func) :> string) ;
   let state_file = C.worker_state conf func params in
   Files.move_away state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
   let input_ringbufs = C.in_ringbuf_names conf func in
-  List.iter Files.move_away input_ringbufs
+  List.iter Files.move_away input_ringbufs ;
+  let out_ref = C.out_ringbuf_names_ref conf func in
+  Files.move_away out_ref
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
