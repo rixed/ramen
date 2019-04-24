@@ -2197,13 +2197,17 @@ let emit_for_serialized_fields_of_output_no_value
   let p fmt = emit oc indent fmt in
   (* TODO: a fake record for emit_for_serialized_fields_no_value,
    * with out_var = a whole tuple. *)
-  RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ |>
+  let ser_typ =
+    RingBufLib.ser_tuple_typ_of_tuple_typ ~recursive:false typ in
+  let num_ser_fields = List.length ser_typ in
+  p "assert (Array.length %s = %d) ;" fm_var num_ser_fields ;
   List.iter (fun (ft, i) ->
     if not (N.is_private ft.name) then (
       p "(* Field %a *)" N.field_print ft.RamenTuple.name ;
       let fm_var = Printf.sprintf "%s.(%d)" fm_var i in
       emit_for_serialized_fields_no_value
-        indent ft.typ copy skip fm_var oc out_var))
+        indent ft.typ copy skip fm_var oc out_var)
+  ) ser_typ
 
 let emit_compute_nullmask_size indent fm_var oc typ =
   let p fmt = emit oc indent fmt in
