@@ -228,6 +228,16 @@ let rescue_worker conf func params =
   let out_ref = C.out_ringbuf_names_ref conf func in
   Files.move_away out_ref
 
+let cut_from_parents_outrefs conf proc =
+  let input_ringbufs = C.in_ringbuf_names conf proc.func in
+  List.iter (fun (_, _, pfunc) ->
+    let parent_out_ref =
+      C.out_ringbuf_names_ref conf pfunc in
+    List.iter (fun this_in ->
+      OutRef.remove parent_out_ref this_in RamenChannel.live
+    ) input_ringbufs
+  ) proc.parents
+
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
   let open Unix in
@@ -260,6 +270,9 @@ let process_workers_terminations conf running =
           ) else (
             proc.succ_failures <- 0
           ) ;
+          (* In case the worker stopped on it's own, remove it from its
+           * parents out_ref: *)
+          cut_from_parents_outrefs conf proc ;
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
@@ -519,14 +532,7 @@ let try_kill conf proc =
    * parent out-ref: if it's not replaced then the last unprocessed
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
-  let input_ringbufs = C.in_ringbuf_names conf proc.func in
-  List.iter (fun (_, _, pfunc) ->
-    let parent_out_ref =
-      C.out_ringbuf_names_ref conf pfunc in
-    List.iter (fun this_in ->
-      OutRef.remove parent_out_ref this_in RamenChannel.live
-    ) input_ringbufs
-  ) proc.parents ;
+  cut_from_parents_outrefs conf proc ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
