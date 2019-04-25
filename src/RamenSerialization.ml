@@ -205,7 +205,10 @@ let filter_tuple_by ser where =
         let open RamenTypes in
         if v = VNull then VNull else
         let to_structure =
-          if op = "in" then TVec (0, t.typ) else t.typ.structure in
+          if op = "in" || op = "not in" then
+            TVec (0, t.typ)
+          else
+            t.typ.structure in
         (try enlarge_value to_structure v
         with e ->
           !logger.error "Cannot enlarge %a to %a (ser = %a)"
