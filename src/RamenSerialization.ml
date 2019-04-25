@@ -178,8 +178,8 @@ let find_field typ n =
   try List.findi (fun _i f -> f.RamenTuple.name = n) typ
   with Not_found ->
     let err_msg =
-      Printf.sprintf2 "Field %a does not exist (possible fields are: %a)"
-        N.field_print n
+      Printf.sprintf2 "Field %s does not exist (possible fields are: %a)"
+        (N.field_color n)
         RamenTuple.print_typ_names typ in
     failwith err_msg
 

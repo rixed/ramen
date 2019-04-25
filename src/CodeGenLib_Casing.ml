@@ -48,7 +48,7 @@ let run codegen_version rc_marsh run_condition per_funcname =
     try List.assoc name lst
     with Not_found ->
       Printf.eprintf
-        "Unknown operation %S (possible operations are %a).\n\
+        "Unknown function %S (possible functions are %a).\n\
          Trying to run a Ramen program? Try `ramen run %s`\n"
         name
         (pretty_enum_print String.print_quoted) (List.enum lst /@ fst)

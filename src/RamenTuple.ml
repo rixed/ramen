@@ -56,7 +56,7 @@ let print_typ oc =
 
 let print_typ_names oc =
   pretty_list_print (fun oc t ->
-    String.print_quoted oc (t.name :> string)) oc
+    String.print oc (N.field_color t.name)) oc
 
 (* Params form a special tuple with fixed values: *)
 
