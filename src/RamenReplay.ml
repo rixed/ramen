@@ -65,7 +65,7 @@ module Range = struct
 
   let print oc =
     let rel = ref "" in
-    let p = print_as_date ~right_justified:false ~rel in
+    let p = print_as_date_rel ~rel ~right_justified:false in
     List.print (Tuple2.print p p) oc
 
   (*$>*)

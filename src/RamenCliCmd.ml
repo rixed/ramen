@@ -624,7 +624,7 @@ let parse_func_name_of_code conf what func_name_or_code =
       Printf.fprintf oc
         "-- Temporary file created on %a for %s\n\
          DEFINE '%s' AS %a\n"
-        (print_as_date ?rel:None ?right_justified:None) (Unix.time ())
+        print_as_date (Unix.time ())
         what
         (func_name :> string)
         (List.print ~first:"" ~last:"" ~sep:" " String.print)

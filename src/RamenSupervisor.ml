@@ -19,6 +19,7 @@ module Files = RamenFiles
 module Services = RamenServices
 module Replay = RamenReplay
 module Processes = RamenProcesses
+module Channel = RamenChannel
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -234,7 +235,7 @@ let cut_from_parents_outrefs conf proc =
     let parent_out_ref =
       C.out_ringbuf_names_ref conf pfunc in
     List.iter (fun this_in ->
-      OutRef.remove parent_out_ref this_in RamenChannel.live
+      OutRef.remove parent_out_ref this_in Channel.live
     ) input_ringbufs
   ) proc.parents
 
@@ -568,7 +569,7 @@ let check_out_ref conf must_run running =
           log_and_ignore_exceptions ~what:("fixing "^ (fname :> string))
             (fun () ->
               IntCounter.inc (stats_outref_repairs conf.C.persist_dir) ;
-              OutRef.remove out_ref fname RamenChannel.live) ())
+              OutRef.remove out_ref fname Channel.live) ())
       ) outs ;
       (* Conversely, check that all children are in the out_ref of their
        * parent: *)
@@ -822,9 +823,9 @@ let build_must_run conf =
 let watchdog = ref None
 
 (*
- * Synchronisation of the rc file of programs we want to run and the
+ * Synchronisation of the rc file of programs we want to run with the
  * actually running workers. Also synchronise the configured replays
- * and the actually running replayers and established replay channels.
+ * with the actually running replayers and established replay channels.
  *
  * [autoreload_delay]: even if the rc file hasn't changed, we want to re-read
  * it from time to time and refresh the [must_run] hash with new signatures

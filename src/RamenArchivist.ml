@@ -315,14 +315,12 @@ let update_local_worker_stats ?while_ conf programs =
             (* Worker has restarted. We assume it's still mostly the
              * same operation. Maybe consider the function signature
              * (and add it to the stats?) *)
-            let print_date =
-              print_as_date ?rel:None ?right_justified:None in
             !logger.warning
               "Merging stats of a new instance of worker %a that started \
                at %a with the previous run that started at %a"
               N.fq_print fq
-              print_date s.RamenPs.startup_time
-              print_date cur.startup_time ;
+              print_as_date s.RamenPs.startup_time
+              print_as_date cur.startup_time ;
             let tot =
               match tot with
               | None ->

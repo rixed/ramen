@@ -8,6 +8,7 @@ open RamenConsts
 open RamenNullable
 module T = RamenTypes
 module Files = RamenFiles
+module Channel = RamenChannel
 
 (* Health and Stats
  *
@@ -215,7 +216,7 @@ let send_stats
     rb (_, _, _, time, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _
         as tuple) =
   let open RingBuf in
-  let head = RingBufLib.DataTuple RamenChannel.live in
+  let head = RingBufLib.DataTuple Channel.live in
   let sersize =
     RingBufLib.message_header_sersize head +
     RamenWorkerStats.max_sersize_of_tuple tuple in
@@ -349,9 +350,9 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
       last_check_outref := now ;
       RamenOutRef.mem rb_ref_out_fname out_rb.fname now)
   in
-  if dest_channel <> RamenChannel.live && out_rb.rate_limit_log_writes () then
+  if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a tuple to channel %a"
-      RamenChannel.print dest_channel ;
+      Channel.print dest_channel ;
   (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
    * case the ringbuf disappear altogether because the child is
    * terminated then we won't deadloop.  Also, if one child is full
@@ -391,7 +392,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
           (* Can happen at leaf functions after a replay: *)
           if out_rb.rate_limit_log_drops () then
             !logger.debug "Drop a tuple for %a unknown channel %a"
-              N.path_print out_rb.fname RamenChannel.print dest_channel ;
+              N.path_print out_rb.fname Channel.print dest_channel ;
       | t ->
           if not (RamenOutRef.timed_out !CodeGenLib_IO.now t) then (
             if out_rb.quarantine_until < !CodeGenLib_IO.now then (
@@ -408,7 +409,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
           ) else (
             if out_rb.rate_limit_log_drops () then
               !logger.debug "Drop a tuple for %a outdated channel %a"
-                N.path_print out_rb.fname RamenChannel.print dest_channel
+                N.path_print out_rb.fname Channel.print dest_channel
           )) ()
 
 let writer_of_spec serialize_tuple sersize_of_tuple
@@ -553,7 +554,7 @@ let outputer_of
       match tuple_opt with
       | Some tuple ->
         let start_stop = time_of_tuple tuple in
-        if dest_channel = RamenChannel.live then (
+        if dest_channel = Channel.live then (
           (* Update stats *)
           IntCounter.add stats_out_tuple_count 1 ;
           FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
@@ -718,7 +719,7 @@ let read_csv_file
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close
-        (RingBufLib.DataTuple RamenChannel.live) in
+        (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
     CodeGenLib_IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
@@ -751,7 +752,7 @@ let listen_on
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close
-        (RingBufLib.DataTuple RamenChannel.live) in
+        (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
@@ -1059,7 +1060,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
           !logger.debug "Min in source #%d with key=%s" i (dump key) ;
           to_merge.(i).tuples <-
             RamenSzHeap.del_min tuples_cmp to_merge.(i).tuples ;
-          let chan = RamenChannel.live (* TODO *) in
+          let chan = Channel.live (* TODO *) in
           on_tup tx_size chan min_tuple max_tuple ;
           loop ()) in
   loop ()
@@ -1105,7 +1106,7 @@ let aggregate
       (time_of_tuple : 'tuple_out -> (float * float) option)
       (factors_of_tuple : 'tuple_out -> (string * T.value) array)
       (serialize_tuple : RamenFieldMask.fieldmask -> RingBuf.tx -> int -> 'tuple_out -> int)
-      (generate_tuples : (RamenChannel.t -> 'tuple_in -> 'tuple_out -> unit) -> RamenChannel.t -> 'tuple_in -> 'generator_out -> unit)
+      (generate_tuples : (Channel.t -> 'tuple_in -> 'tuple_out -> unit) -> Channel.t -> 'tuple_in -> 'generator_out -> unit)
       (* Build as few fields as possible, to answer commit_cond. Also update
        * the stateful functions required for those fields, but not others. *)
       (minimal_tuple_of_aggr :
@@ -1218,7 +1219,7 @@ let aggregate
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
         let notifications =
-          if chan = RamenChannel.live then
+          if chan = Channel.live then
             get_notifications tuple_in tuple_out
           else [] in
         if notifications <> [] then (
@@ -1245,7 +1246,7 @@ let aggregate
       (* Non live states: *)
       let states = Hashtbl.create 103 in
       let get_state chn =
-        if chn = RamenChannel.live then
+        if chn = Channel.live then
           restore !live_state
         else
           match Hashtbl.find states chn with
@@ -1255,7 +1256,7 @@ let aggregate
               st
           | st -> st
       and save_state chn st =
-        if chn = RamenChannel.live then
+        if chn = Channel.live then
           live_state := save ~save_every:100000 ~save_timeout:31. !live_state st
         else
           Hashtbl.replace states chn st
@@ -1369,7 +1370,7 @@ let aggregate
         then (
           perf := Perf.add_and_transfer stats_perf_where_fast !perf ;
           (* 2. Retrieve the group *)
-          if channel_id = RamenChannel.live then
+          if channel_id = Channel.live then
             IntGauge.set stats_group_count (Hashtbl.length s.groups) ;
           let k = key_of_input in_tuple in
           (* Update/create the group if it passes where_slow. *)
@@ -1440,7 +1441,7 @@ let aggregate
       (match aggr_opt with
       | Some g ->
         (* 5. Post-condition to commit and flush *)
-        if channel_id = RamenChannel.live then
+        if channel_id = Channel.live then
           IntCounter.add stats_selected_tuple_count 1 ;
         if not commit_before then
           update_states g.last_in s.last_out_tuple
@@ -1517,14 +1518,14 @@ let aggregate
                     merge_timeout read_tuple rb_ins
     and on_tup tx_size channel_id in_tuple merge_greatest =
       let perf_per_tuple = Perf.start () in
-      if channel_id <> RamenChannel.live && rate_limit_log_reads () then
+      if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
-          RamenChannel.print channel_id ;
+          Channel.print channel_id ;
       with_state channel_id (fun s ->
         (* Set CodeGenLib_IO.now: *)
         CodeGenLib_IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
-        if channel_id = RamenChannel.live then (
+        if channel_id = Channel.live then (
           IntCounter.add stats_in_tuple_count 1 ;
           IntCounter.add stats_rb_read_bytes tx_size) ;
         (* Sort: add in_tuple into the heap of sorted tuples, update
@@ -1554,7 +1555,7 @@ let aggregate
             aggregate_one channel_id s min_in merge_greatest
           else
             s) ;
-        if channel_id = RamenChannel.live then
+        if channel_id = Channel.live then
           Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple) ;
     and on_else head =
       msg_outputer head None
@@ -1603,13 +1604,13 @@ let top_half
     let rate_limit_log_reads = rate_limit 1 1. in
     let while_ () = !quit = None in
     let on_tup tx tx_size channel_id in_tuple =
-      if channel_id <> RamenChannel.live && rate_limit_log_reads () then
+      if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
-          RamenChannel.print channel_id ;
+          Channel.print channel_id ;
       (* Set CodeGenLib_IO.now: *)
       CodeGenLib_IO.on_each_input_pre () ;
       (* Update per in-tuple stats *)
-      if channel_id = RamenChannel.live then (
+      if channel_id = Channel.live then (
         IntCounter.add stats_in_tuple_count 1 ;
         IntCounter.add stats_rb_read_bytes tx_size) ;
       let perf = Perf.start () in
@@ -1634,7 +1635,7 @@ let top_half
             | _ -> assert false in
           RingBuf.dequeue_commit tx ;
           Option.may forward_bytes to_forward ;
-          if chan = Some RamenChannel.live then
+          if chan = Some Channel.live then
             Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple)))
 
 let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
@@ -1644,12 +1645,12 @@ let read_whole_archive ?at_exit ?(while_=always) read_tuplez rb k =
       | exception e ->
           log_rb_error ?at_exit tx e ;
           (), false (* Skip the rest of that file for safety *)
-      | DataTuple chn, Some tuple when chn = RamenChannel.live ->
+      | DataTuple chn, Some tuple when chn = Channel.live ->
           k tuple, true
       | DataTuple chn, _ ->
           (* This should not happen as we archive only the live channel: *)
           !logger.warning "Read a tuple from channel %a in archive?"
-            RamenChannel.print chn ;
+            Channel.print chn ;
           (), true
       | _ -> (), true))
 
@@ -1848,7 +1849,7 @@ let convert
         RingBuf.create ~wrap:false out_fname ;
         let rb = RingBuf.load out_fname in
         out_rb := Some rb ;
-        let head = RingBufLib.DataTuple RamenChannel.live in
+        let head = RingBufLib.DataTuple Channel.live in
         let head_sz = RingBufLib.message_header_sersize head in
         (fun tuple ->
           let start_stop = time_of_tuple tuple in

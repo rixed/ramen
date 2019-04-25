@@ -146,8 +146,8 @@ let replay conf ?(while_=always) fq field_names where since until
     (Array.print Int.print) head_idx ;
   let on_tuple, on_exit = f head_typ in
   (* Using the archivist stats, find out all required sources: *)
-  (* FIXME: here we assume fq is local. Instead, what we want is to tail
-   * from all instances of running fq.
+  (* FIXME: here we assume fq (the target) is local. Instead, what we
+   * want is to tail from all instances of running fq.
    * The only thing that we should do here is to create a new temporary
    * local worker that `SELECT * from *:fq`, with the special additional
    * attribute for since/until and a random channel id, and leave it to
@@ -160,6 +160,8 @@ let replay conf ?(while_=always) fq field_names where since until
   match Replay.create conf stats func since until with
   | exception Replay.NoData -> on_exit ()
   | replay ->
+    !logger.debug "Creating replay target ringbuf %a"
+      N.path_print replay.final_rb ;
     RingBuf.create replay.final_rb ;
     C.Replays.add conf replay ;
     let rb = RingBuf.load replay.final_rb in
@@ -221,6 +223,8 @@ let replay conf ?(while_=always) fq field_names where since until
           on_exit ()
         ) () in
     (* If all went well, delete the ringbuf: *)
+    !logger.debug "Deleting replay target ringbuf %a"
+      N.path_print replay.final_rb ;
     Files.safe_unlink replay.final_rb ;
     (* ringbuf lib also create a lock with the rb: *)
     let lock_fname = N.cat replay.final_rb (N.path ".lock") in
