@@ -921,6 +921,7 @@ let synchronize_running conf autoreload_delay =
       Some (RamenWatchdog.make ~grace_period:180. ~timeout:30.
                                "supervisor" Processes.quit) ;
   let watchdog = Option.get !watchdog in
+  let prev_num_running = ref 0 in
   (* Stop/Start processes so that [running] corresponds to [must_run].
    * [must_run] is a hash from the function mount point (program and function
    * name), signature, parameters and top-half info, to the
@@ -938,9 +939,8 @@ let synchronize_running conf autoreload_delay =
   let synchronize_workers must_run running =
     (* First, remove from running all terminated processes that must not run
      * any longer. Send a kill to those that are still running. *)
-    let prev_num_running = Hashtbl.length running in
     IntGauge.set stats_worker_count (Hashtbl.length must_run) ;
-    IntGauge.set stats_worker_running prev_num_running ;
+    IntGauge.set stats_worker_running (Hashtbl.length running) ;
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
     Hashtbl.filteri_inplace (fun k (proc : running_process) ->
@@ -962,13 +962,6 @@ let synchronize_running conf autoreload_delay =
            * dead and then restart it. *)
           if !(proc.last_killed) <> 0. then to_kill += proc
     ) must_run ;
-    let num_running = Hashtbl.length running in
-    if !Processes.quit <> None &&
-       num_running > 0 &&
-       num_running <> prev_num_running
-    then
-      info_or_test conf "Still %d processes running"
-        (Hashtbl.length running) ;
     (* See preamble discussion about autoreload for why workers must be
      * started only after all the kills: *)
     if !to_kill <> [] then !logger.debug "Starting the kills" ;
@@ -1067,11 +1060,22 @@ let synchronize_running conf autoreload_delay =
     (* Once we have forked some workers we must not allow an exception to
      * terminate this function or we'd leave unsupervised workers behind: *)
     restart_on_failure "process supervisor" (fun () ->
-      if !Processes.quit <> None &&
-         Hashtbl.length running + Hashtbl.length replayers = 0
-      then (
-        !logger.info "All processes stopped, quitting."
-      ) else (
+      let the_end =
+        if !Processes.quit <> None then (
+          let num_running =
+            Hashtbl.length running + Hashtbl.length replayers in
+          if num_running = 0 then (
+            !logger.info "All processes stopped, quitting." ;
+            true
+          ) else (
+            if num_running <> !prev_num_running then (
+              prev_num_running := num_running ;
+              info_or_test conf "Still %d workers and %d replayers running"
+                (Hashtbl.length running) (Hashtbl.length replayers)) ;
+            false
+          )
+        ) else false in
+      if not the_end then (
         let max_wait =
           ref (
             if autoreload_delay > 0. then autoreload_delay else 5.

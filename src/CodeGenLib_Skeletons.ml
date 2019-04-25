@@ -757,7 +757,8 @@ let listen_on
     collector ~while_ (fun tup ->
       CodeGenLib_IO.on_each_input_pre () ;
       IntCounter.add stats_in_tuple_count 1 ;
-      outputer (Some tup)))
+      outputer (Some tup) ;
+      ignore (Gc.major_slice 0)))
 
 (*
  * Operations that funcs may run: read known tuples from a ringbuf.

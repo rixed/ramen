@@ -475,7 +475,10 @@ let num_all_fields = 100
 
 (* Time to wait before a replay is created and the workers are actually
  * spawned. The longer and the more likely other replays can be served by
- * the same replayer. *)
+ * the same replayer. But that's also to be added to the response time of any
+ * query. Also, beware that most web clients will wait when too many queries
+ * are in flight so at some point there is little benefit to wait longer on
+ * the server side. *)
 let delay_before_replay = 0.5
 
 (* Well known entry points in generated code: *)
