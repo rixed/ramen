@@ -619,7 +619,7 @@ let max_seq =
 let filter =
   (* Longer first: *)
   let operators =
-    [ ">="; "<="; "!="; "="; "<>"; "<"; ">"; " in"; " not in" ] in
+    [ " not in"; " in"; ">="; "<="; "!="; "="; "<>"; "<"; ">" ] in
   let parse s =
     match
       List.find_map (fun op ->
