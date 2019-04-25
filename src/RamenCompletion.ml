@@ -44,7 +44,8 @@ let complete_commands s =
       "archivist", CliInfo.archivist ;
       "ringbuf-summary", CliInfo.summary ;
       "dequeue", CliInfo.dequeue ;
-      "repair-ringbuf", CliInfo.repair ] in
+      "repair-ringbuf", CliInfo.repair ;
+      "dump-ringbuf", CliInfo.dump ] in
   complete commands s
 
 let complete_global_options s =
@@ -375,6 +376,11 @@ let complete str () =
           copts @
           (complete_rb_file last_tok)
       | "repair-ringbuf" ->
+          copts @
+          (complete_rb_file last_tok)
+      | "dump-ringbuf" ->
+          [ "--start", CliInfo.start_word ;
+            "--stop", CliInfo.stop_word ] @
           copts @
           (complete_rb_file last_tok)
       | _ -> []) in

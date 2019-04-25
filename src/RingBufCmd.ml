@@ -31,6 +31,25 @@ let dequeue conf file n () =
 
 (* Summary command *)
 
+let print_content rb s startw stopw maxw =
+  let dump o sz =
+    let bytes = RingBuf.read_raw rb o sz in
+    hex_print ~from_rb:true stdout bytes
+  in
+  if startw < stopw then ( (* no wraparound *)
+    (* Reminder: we manipulate only word indices here: *)
+    let szw = stopw - startw in
+    dump startw (min maxw szw) ;
+    if szw > maxw then Printf.printf "...\n"
+  ) else ( (* wrap around *)
+    let szw = s.RingBuf.capacity - startw in
+    dump startw (min maxw szw) ;
+    if szw < maxw then (
+      Printf.printf "***** WRAP AROUND *****\n" ;
+      let maxw_ = maxw - szw in
+      dump 0 (min maxw_ stopw) ;
+      if stopw > maxw_ then Printf.printf "...\n"))
+
 let summary conf max_bytes files () =
   let open RingBuf in
   let max_words = round_up_to_rb_word max_bytes in
@@ -56,25 +75,9 @@ let summary conf max_bytes files () =
       s.mem_size s.prod_tail s.prod_head s.cons_tail s.cons_head ;
     (* Also dump the content from consumer begin to producer begin, aka
      * the available tuples. *)
-    let dump o sz =
-      let bytes = RingBuf.read_raw rb o sz in
-      hex_print ~from_rb:true stdout bytes
-    in
     if s.prod_tail <> s.cons_head then ( (* not empty *)
       Printf.printf "\nAvailable bytes:" ;
-      if s.cons_head < s.prod_tail then ( (* no wraparound *)
-        (* Reminder: we manipulate only word indices here: *)
-        let sz = s.prod_tail - s.cons_tail in
-        dump s.cons_tail (min max_words sz) ;
-        if sz > max_words then Printf.printf "...\n"
-      ) else ( (* wrap around *)
-        let sz = s.capacity - s.cons_tail in
-        dump s.cons_tail (min max_words sz) ;
-        if sz < max_words then (
-          Printf.printf "***** WRAP AROUND *****\n" ;
-          let max_words_ = max_words - sz in
-          dump 0 (min max_words_ s.prod_tail) ;
-          if s.prod_tail > max_words_ then Printf.printf "...\n"))) ;
+      print_content rb s s.cons_head s.prod_tail max_words) ;
     unload rb
   ) files
 
@@ -89,6 +92,17 @@ let repair conf files () =
       !logger.warning "Ringbuf was damaged" ;
     unload rb
   ) files
+
+(* Dump the content of some ringbuffer *)
+
+let dump conf startw stopw file () =
+  let open RingBuf in
+  init_logger conf.C.log_level ;
+  let maxw = max_int in
+  let rb = load file in
+  let s = stats rb in
+  print_content rb s startw stopw maxw ;
+  unload rb
 
 (* List all ringbuffers in use with some stats: *)
 

@@ -768,7 +768,9 @@ let log_rb_error =
   and err_count = ref 0 in
   fun ?at_exit tx e ->
     let open RingBuf in
-    let startw = tx_start tx
+    (* Subtract one word from the start of the TX to get to the length
+     * of the message, which is a nicer starting position to dump: *)
+    let startw = tx_start tx - 1
     and sz = tx_size tx
     and fname = tx_fname tx in
     assert (sz land 3 = 0) ;

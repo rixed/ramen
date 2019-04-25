@@ -171,7 +171,8 @@ struct
   let profile = "Display profiling information about running programs"
   let test = "Test a configuration against one or several tests"
   let dequeue = "Dequeue a message from a ringbuffer"
-  let summary = "Dump info about a ring-buffer"
+  let summary = "Display informations about a ring-buffer"
+  let dump = "Dump some bytes from the ringbuffer"
   let repair = "Repair a ringbuf header, assuming no readers/writers"
   let links = "List all in use ring buffers with some statistics"
   let variants = "Display the experimenter identifier and variants"
@@ -293,6 +294,8 @@ struct
   let update_allocs = "update the allocations file"
   let reconf_workers = "change the workers export configuration"
   let max_bytes = "How many bytes to dump from the ringbuf messages"
+  let start_word = "First word to dump"
+  let stop_word = "First word to not dump"
   let tunneld_port = "Port number for the tuple forward service"
 end
 

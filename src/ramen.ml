@@ -357,6 +357,25 @@ let repair =
       $ rb_files),
     info ~doc:CliInfo.repair "repair-ringbuf")
 
+let start_word =
+  let i = Arg.info ~doc:CliInfo.start_word
+                   [ "f" ; "start" ] in
+  Arg.(required (opt (some int) None i))
+
+let stop_word =
+  let i = Arg.info ~doc:CliInfo.stop_word
+                   [ "t" ; "stop" ] in
+  Arg.(required (opt (some int) None i))
+
+let dump =
+  Term.(
+    (const RingBufCmd.dump
+      $ copts
+      $ start_word
+      $ stop_word
+      $ rb_file),
+    info ~doc:CliInfo.dump "dump-ringbuf")
+
 let pattern =
   let i = Arg.info ~doc:CliInfo.pattern
                    ~docv:"PATTERN" [] in
@@ -1063,7 +1082,7 @@ let () =
         notify ; compile ; run ; kill ; archivist ;
         tail ; replay ; timeseries ; timerange ;
         ps ; profile ;
-        test ; dequeue ; summary ; repair ; links ;
+        test ; dequeue ; summary ; repair ; dump ; links ;
         variants ; stats ; autocomplete ; expand
       ]) with
   | `Error _ -> exit 1
