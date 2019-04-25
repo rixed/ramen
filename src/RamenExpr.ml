@@ -1028,7 +1028,9 @@ struct
     let op =
       that_string ">" ||| that_string ">=" ||| that_string "<" ||| that_string "<=" |||
       that_string "=" ||| that_string "<>" ||| that_string "!=" |||
-      that_string "in" ||| that_string "like" |||
+      that_string "in" |||
+      (strinG "not" -- blanks -- strinG "in" >>: fun () -> "not in") |||
+      that_string "like" |||
       ((that_string "starts" ||| that_string "ends") +- blanks +- strinG "with")
     and reduce e1 op e2 = match op with
       | ">" -> make (Stateless (SL2 (Gt, e1, e2)))
@@ -1039,6 +1041,8 @@ struct
       | "!=" | "<>" ->
           make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, e2))))))
       | "in" -> make (Stateless (SL2 (In, e1, e2)))
+      | "not in" ->
+          make (Stateless (SL1 (Not, make (Stateless (SL2 (In, e1, e2))))))
       | "like" ->
           (match string_of_const e2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")
