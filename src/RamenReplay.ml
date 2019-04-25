@@ -98,10 +98,16 @@ module Range = struct
     let p = print_as_date_rel ~rel ~right_justified:false in
     List.print (Tuple2.print p p) oc
 
-  let approx_within l1 l2 =
-    (* [l1] is approx within [l2] if the intersection of [l1] and [l2] has
-     * approximately the same length as that of [l1] *)
-    span (inter l1 l2) >= 0.9 *. span l1
+  let approx_eq l1 l2 =
+    (* [l1] is approx_eq [l2] if the intersection of [l1] and [l2] has
+     * approximately the same length as that of [l1] and that of [l2].
+     * This is used to determine if two replays can be merged. The time
+     * range will be the union of both of course, but if they are too
+     * distinct it's better to start two replayers than to share a
+     * single one. *)
+    let i = span (inter l1 l2) in
+    i >= 0.7 *. span l1 &&
+    i >= 0.7 *. span l2
 
   let bounds = function
     | [] ->

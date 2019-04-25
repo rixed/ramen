@@ -162,7 +162,11 @@ and replayer =
     id : int ;
     (* Actual process is spawned only a bit later: *)
     creation : float ;
+    (* Set when the replayer has started and then always set.
+     * Until then new channels can be added. *)
     mutable pid : int option ;
+    (* When the replayer actually stopped: *)
+    mutable stopped : bool ;
     last_killed : float ref ;
     (* What running replays are using this process.
      * Can be killed/deleted when this drops to zero. *)
@@ -173,6 +177,7 @@ let make_replayer now =
     id = Random.int RingBufLib.max_replayer_id ;
     creation = now ;
     pid = None ;
+    stopped = false ;
     last_killed = ref 0. ;
     replays = Map.empty }
 
@@ -323,52 +328,63 @@ let process_replayers_start_stop conf now replayers =
     match replayer.pid with
     | None ->
         (* Maybe start it? *)
-        if now -. replayer.creation > delay_before_replay &&
-           not (Map.is_empty replayer.replays) &&
-           not (Replay.Range.is_empty replayer.time_range)
-        then
-          let channels = Map.keys replayer.replays |> Set.of_enum
-          and since, until = Replay.Range.bounds replayer.time_range
-          and programs = get_programs () in
-          match Replay.spawn_source_replay
-                  conf programs fq since until channels replayer.id with
-          | exception e ->
-              let what =
-                Printf.sprintf2 "spawning replayer %d for channels %a"
-                  replayer.id
-                  (Set.print Channel.print) channels in
-              print_exception ~what e ;
-              false
-          | pid ->
-              replayer.pid <- Some pid ;
-              Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
-                            (float_of_int (Set.cardinal channels)) ;
-              true
-        else
-          true
+        if now -. replayer.creation > delay_before_replay then (
+          if
+            Map.is_empty replayer.replays ||
+            Replay.Range.is_empty replayer.time_range
+          then (
+            (* Do away with it *)
+            false
+          ) else (
+            let channels = Map.keys replayer.replays |> Set.of_enum
+            and since, until = Replay.Range.bounds replayer.time_range
+            and programs = get_programs () in
+            !logger.info
+              "Starting a %a replayer created %gs ago for channels %a"
+              N.fq_print fq
+              (now -. replayer.creation)
+              (Set.print Channel.print) channels ;
+            match Replay.spawn_source_replay
+                    conf programs fq since until channels replayer.id with
+            | exception e ->
+                let what =
+                  Printf.sprintf2 "spawning replayer %d for channels %a"
+                    replayer.id
+                    (Set.print Channel.print) channels in
+                print_exception ~what e ;
+                false
+            | pid ->
+                replayer.pid <- Some pid ;
+                Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
+                              (float_of_int (Set.cardinal channels)) ;
+                true
+          )
+        ) else true
     | Some pid ->
-        let what =
-          Printf.sprintf2 "Replayer for %a (pid %d)"
-            C.Replays.site_fq_print site_fq pid in
-        (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
-        | exception exn ->
-            !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
-            (* assume the replayers is safe *)
-            true
-        | 0, _ ->
-            true (* Nothing to report *)
-        | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
-            !logger.debug "%s got stopped" what ;
-            true
-        | _, status ->
-            let status_str = string_of_process_status status in
-            let is_err =
-              status <> WEXITED ExitCodes.terminated in
-            (if is_err then !logger.error else info_or_test conf)
-              "%s %s." what status_str ;
-            if is_err then
-              IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
-            false)
+        if replayer.stopped then
+          not (Map.is_empty replayer.replays)
+        else
+          let what =
+            Printf.sprintf2 "Replayer for %a (pid %d)"
+              C.Replays.site_fq_print site_fq pid in
+          (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
+          | exception exn ->
+              !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
+              (* assume the replayers is safe *)
+          | 0, _ ->
+              () (* Nothing to report *)
+          | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+              !logger.debug "%s got stopped" what
+          | _, status ->
+              let status_str = string_of_process_status status in
+              let is_err =
+                status <> WEXITED ExitCodes.terminated in
+              (if is_err then !logger.error else info_or_test conf)
+                "%s %s." what status_str ;
+              if is_err then
+                IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
+              replayer.stopped <- true) ;
+          true
   ) replayers
 
 let really_start conf proc =
@@ -1002,8 +1018,9 @@ let synchronize_running conf autoreload_delay =
       | None ->
           !logger.debug "Replay stopped before replayer even started"
       | Some pid ->
-          let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
-          kill_politely conf r.last_killed what pid stats_replayer_sigkills in
+          if not r.stopped then
+            let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
+            kill_politely conf r.last_killed what pid stats_replayer_sigkills in
     let get_programs =
       memoize (fun () -> RC.with_rlock conf identity) in
     let to_rem chan replay =
@@ -1027,7 +1044,8 @@ let synchronize_running conf autoreload_delay =
           let r =
             try
               List.find (fun r ->
-                Replay.Range.approx_within
+                r.pid = None &&
+                Replay.Range.approx_eq
                   [ replay.since, replay.until ] r.time_range
               ) rs
             with Not_found ->
