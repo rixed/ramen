@@ -41,7 +41,10 @@ let complete_commands s =
       "variants", CliInfo.variants ;
       "gc", CliInfo.gc ;
       "stats", CliInfo.stats ;
-      "archivist", CliInfo.archivist ] in
+      "archivist", CliInfo.archivist ;
+      "ringbuf-summary", CliInfo.summary ;
+      "dequeue", CliInfo.dequeue ;
+      "repair-ringbuf", CliInfo.repair ] in
   complete commands s
 
 let complete_global_options s =
@@ -106,6 +109,9 @@ let complete_binary_files str =
 
 let complete_test_file str =
   complete_file (Files.has_ext "test") str
+
+let complete_rb_file str =
+  complete_file (fun f -> Files.(has_ext "r" f || has_ext "b" f)) str
 
 let empty_help s = s, ""
 
@@ -360,5 +366,16 @@ let complete str () =
             "--allocs", CliInfo.update_allocs ;
             "--reconf-workers", CliInfo.reconf_workers ] @
           copts
+      | "ringbuf-summary" ->
+          ("--max-bytes", CliInfo.max_bytes) ::
+          copts @
+          (complete_rb_file last_tok)
+      | "dequeue" ->
+          ("--num-entries", CliInfo.num_tuples) ::
+          copts @
+          (complete_rb_file last_tok)
+      | "repair-ringbuf" ->
+          copts @
+          (complete_rb_file last_tok)
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))
