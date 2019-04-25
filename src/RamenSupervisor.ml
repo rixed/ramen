@@ -333,6 +333,8 @@ let process_replayers_start_stop conf now replayers =
               false
           | pid ->
               replayer.pid <- Some pid ;
+              Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
+                            (float_of_int (Set.cardinal channels)) ;
               true
         else
           true
