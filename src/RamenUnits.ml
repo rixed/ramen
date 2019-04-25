@@ -75,6 +75,7 @@ let tuples = make "tuples"
 let groups = make "groups"
 let processes = make "processes"
 let chars = make "chars"
+let operations = make "operations"
 
 let is_relative u =
   MapUnit.exists (fun _ (_e, rel) -> rel) u
