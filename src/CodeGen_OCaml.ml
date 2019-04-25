@@ -3066,7 +3066,8 @@ let emit_state_init name state_lifespan ~env other_params
         Printf.fprintf opc.code " %s ; %s_empty_ = true ; "
           (name_of_state f) (name_of_state f)) ;
     Printf.fprintf opc.code " }\n"
-  )
+  ) ;
+  Printf.fprintf opc.code "\n"
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)

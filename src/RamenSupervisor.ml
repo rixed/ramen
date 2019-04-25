@@ -228,11 +228,19 @@ let stats_replayer_sigkills =
       Metric.Names.replayer_sigkills
       "Number of times a replayer had to be sigkilled instead of sigtermed.")
 
+let stats_chans_per_replayer =
+  RamenWorkerStats.ensure_inited (fun save_dir ->
+    Histogram.make ~save_dir:(save_dir :> string)
+      Metric.Names.chans_per_replayer
+      "Number of channels per replayer."
+      (Histogram.linear_buckets 1.))
+
 let stats_graph_build_time =
   RamenWorkerStats.ensure_inited (fun save_dir ->
     Histogram.make ~save_dir:(save_dir :> string)
       Metric.Names.worker_graph_build_time
-      "Workers graph build time" Histogram.powers_of_two)
+      "Workers graph build time"
+      Histogram.powers_of_two)
 
 (* Many messages that are exceptional in supervisor are quite expected in tests: *)
 let info_or_test conf =
