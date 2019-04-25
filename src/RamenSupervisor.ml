@@ -151,6 +151,31 @@ let make_running_process conf must_run mre =
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
+type replayers = (C.Replays.site_fq, replayer) Hashtbl.t
+
+and replayer =
+  { (*site_fq : C.Replays.site_fq ;*)
+    (* Aggregated from all replays. Won't change once the replayer is
+     * spawned. *)
+    mutable time_range : Replay.Range.t ;
+    (* Used to count the end of retransmissions: *)
+    id : int ;
+    (* Actual process is spawned only a bit later: *)
+    creation : float ;
+    mutable pid : int option ;
+    last_killed : float ref ;
+    (* What running replays are using this process.
+     * Can be killed/deleted when this drops to zero. *)
+    mutable replays : (Channel.t, C.Replays.entry) Map.t }
+
+let make_replayer now =
+  { time_range = Replay.Range.empty ;
+    id = Random.int RingBufLib.max_replayer_id ;
+    creation = now ;
+    pid = None ;
+    last_killed = ref 0. ;
+    replays = Map.empty }
+
 open Binocle
 
 let stats_worker_crashes =
@@ -282,14 +307,39 @@ let process_workers_terminations conf running =
     ) proc.pid
   ) running
 
-let process_replayers_terminations conf replayers =
+let process_replayers_start_stop conf now replayers =
+  let get_programs =
+    memoize (fun () -> RC.with_rlock conf identity) in
   let open Unix in
-  Hashtbl.map_inplace (fun channel (replay, pids) ->
-    let pids =
-      Set.filter (fun (pid, _last_killed) ->
+  Hashtbl.filteri_inplace (fun (_, fq as site_fq) replayer ->
+    match replayer.pid with
+    | None ->
+        (* Maybe start it? *)
+        if now -. replayer.creation > delay_before_replay &&
+           not (Map.is_empty replayer.replays) &&
+           not (Replay.Range.is_empty replayer.time_range)
+        then
+          let channels = Map.keys replayer.replays |> Set.of_enum
+          and since, until = Replay.Range.bounds replayer.time_range
+          and programs = get_programs () in
+          match Replay.spawn_source_replay
+                  conf programs fq since until channels replayer.id with
+          | exception e ->
+              let what =
+                Printf.sprintf2 "spawning replayer %d for channels %a"
+                  replayer.id
+                  (Set.print Channel.print) channels in
+              print_exception ~what e ;
+              false
+          | pid ->
+              replayer.pid <- Some pid ;
+              true
+        else
+          true
+    | Some pid ->
         let what =
-          Printf.sprintf2 "Replayer for channel %a (pid %d)"
-            RamenChannel.print channel pid in
+          Printf.sprintf2 "Replayer for %a (pid %d)"
+            C.Replays.site_fq_print site_fq pid in
         (match restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ]) pid with
         | exception exn ->
             !logger.error "%s: waitpid: %s" what (Printexc.to_string exn) ;
@@ -309,8 +359,6 @@ let process_replayers_terminations conf replayers =
             if is_err then
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
             false)
-      ) pids in
-    replay, pids
   ) replayers
 
 let really_start conf proc =
@@ -527,7 +575,7 @@ let kill_politely conf last_killed what pid stats_sigkills =
     IntCounter.inc (stats_sigkills conf.C.persist_dir)
   )
 
-let try_kill conf proc =
+let try_kill conf (proc : running_process) =
   let pid = Option.get proc.pid in
   (* There is no reason to wait before we remove this worker from its
    * parent out-ref: if it's not replaced then the last unprocessed
@@ -555,7 +603,7 @@ let check_out_ref conf must_run running =
       C.in_ringbuf_names conf mre.func |>
       List.fold_left (fun s rb_name -> Set.add rb_name s) s
     ) must_run (Set.singleton (C.notify_ringbuf conf)) in
-  Hashtbl.iter (fun _ proc ->
+  Hashtbl.iter (fun _ (proc : running_process) ->
     (* Iter over all running functions and check they do not output to a
      * ringbuf not in this set: *)
     if proc.pid <> None then (
@@ -592,7 +640,7 @@ let check_out_ref conf must_run running =
   ) running
 
 let signal_all_cont running =
-  Hashtbl.iter (fun _ proc ->
+  Hashtbl.iter (fun _ (proc : running_process) ->
     if proc.pid <> None && not proc.continued then (
       proc.continued <- true ;
       !logger.debug "Signaling %a to continue" print_running_process proc ;
@@ -885,7 +933,7 @@ let synchronize_running conf autoreload_delay =
     IntGauge.set stats_worker_running prev_num_running ;
     let to_kill = ref [] and to_start = ref []
     and (+=) r x = r := x :: !r in
-    Hashtbl.filteri_inplace (fun k proc ->
+    Hashtbl.filteri_inplace (fun k (proc : running_process) ->
       if Hashtbl.mem must_run k then true else
       if proc.pid <> None then (to_kill += proc ; true) else
       false
@@ -936,60 +984,68 @@ let synchronize_running conf autoreload_delay =
     if !to_start = [] && conf.C.test then signal_all_cont running ;
     (* Return if anything changed: *)
     !to_kill <> [] || !to_start <> []
-  (* Similarly, try to make [replayers] the same as [must_replay]: *)
-  and synchronize_replays must_replay replayers =
+  (* Similarly, try to make [replayers] the same as [must_replay] *)
+  and synchronize_replays now must_replay replayers =
     (* Kill the replayers of channels that are not configured any longer,
-     * and start new replayers for new channels: *)
-    let run_chans = Hashtbl.keys replayers |> Set.of_enum
-    and def_chans = Hashtbl.keys must_replay |> Set.of_enum in
-    let kill_replayer chan (pid, last_killed) =
-      let what = Printf.sprintf2 "replayer for %a (pid %d)"
-                   RamenChannel.print chan pid in
-      kill_politely conf last_killed what pid stats_replayer_sigkills in
+     * and create new replayers for new channels: *)
+    let run_chans =
+      Hashtbl.fold (fun _ r m ->
+        Map.union r.replays m
+      ) replayers Map.empty
+    and def_chans =
+      Hashtbl.fold Map.add must_replay Map.empty in
+    let kill_replayer r =
+      match r.pid with
+      | None ->
+          !logger.debug "Replay stopped before replayer even started"
+      | Some pid ->
+          let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
+          kill_politely conf r.last_killed what pid stats_replayer_sigkills in
     let get_programs =
       memoize (fun () -> RC.with_rlock conf identity) in
-    let to_rem chan =
-      (* If there are some replayers left kill them (and warn), otherwise
-       * just remove the entry from [replayers] and teardown the channel: *)
-      let replay, pids = Hashtbl.find replayers chan in
-      if Set.is_empty pids then (
-        let programs = get_programs () in
-        Replay.teardown_links conf programs replay ;
-        Hashtbl.remove replayers chan
-      ) else (
-        Set.iter (kill_replayer replay.C.Replays.channel) pids
-      ) in
-    let start_replay replay =
+    let to_rem chan replay =
+      (* Remove this chan from all replayers. If a replayer has no more
+       * channels left and has a pid, then kill it (and warn). But first,
+       * tear down the channel: *)
+      let programs = get_programs () in
+      Replay.teardown_links conf programs replay ;
+      Hashtbl.iter (fun _ r ->
+        if not (Map.is_empty r.replays) then (
+          r.replays <- Map.remove chan r.replays ;
+          if Map.is_empty r.replays then kill_replayer r)
+      ) replayers in
+    let to_add chan replay =
       let programs = get_programs () in
       Replay.settup_links conf programs replay ;
-      (* Do not start the replay at once or the worker won't have reread
-       * its out-ref. TODO: signal it. *)
-      !logger.info "Sleeping %fs to allow nodes to read out-ref"
-        Default.min_delay_restats ;
-      Unix.sleepf Default.min_delay_restats ;
-      Replay.spawn_all_local_sources conf programs replay in
-    let to_add chan =
-      let replay = Hashtbl.find must_replay chan in
-      match start_replay replay with
-      | exception e ->
-          let what = Printf.sprintf2 "Starting replay for channel %a"
-                       RamenChannel.print replay.C.Replays.channel in
-          print_exception ~what e
-      | pids ->
-          (* If this replay does not concern our site, the pids will be
-           * empty, process_replayers_terminations will then remove the
-           * entry, and it will be added again next time. We can save
-           * a bit of this useless work by not adding it at all: *)
-          if not (Set.is_empty pids) then
-            Hashtbl.add replayers chan (replay, pids)
+      (* Find or create all replayers: *)
+      Set.iter (fun (site, _ as site_fq) ->
+        if site = conf.C.site then (
+          let rs = Hashtbl.find_all replayers site_fq in
+          let r =
+            try
+              List.find (fun r ->
+                Replay.Range.approx_within
+                  [ replay.since, replay.until ] r.time_range
+              ) rs
+            with Not_found ->
+              let r = make_replayer now in
+              Hashtbl.add replayers site_fq r ;
+              r in
+          !logger.debug
+            "Adding replay for channel %a into replayer created at %a"
+            Channel.print chan print_as_date r.creation ;
+          r.time_range <-
+            Replay.Range.merge r.time_range [ replay.since, replay.until ] ;
+          r.replays <- Map.add chan replay r.replays)
+      ) replay.C.Replays.sources
     in
-    Set.diff run_chans def_chans |> Set.iter to_rem ;
-    Set.diff def_chans run_chans |> Set.iter to_add
+    Map.diff run_chans def_chans |> Map.iter to_rem ;
+    Map.diff def_chans run_chans |> Map.iter to_add
   in
   (* The workers that are currently running: *)
   let running = Hashtbl.create 307 in
-  (* The replayers (hash from channel to (pids * replay)) that are currently
-   * running: *)
+  (* The replayers: description of the replayer worker that are running (or
+   * about to run). Each worker can handle several replays. *)
   let replayers = Hashtbl.create 307 in
   let rc_file = RC.file_name conf in
   Files.ensure_exists ~contents:"{}" rc_file ;
@@ -1008,12 +1064,12 @@ let synchronize_running conf autoreload_delay =
       ) else (
         let max_wait =
           ref (
-            if !Processes.quit <> None then 0.3 else
-            if autoreload_delay > 0. then
-               autoreload_delay else 5.
+            if autoreload_delay > 0. then autoreload_delay else 5.
           ) in
         let set_max_wait d =
           if d < !max_wait then max_wait := d in
+        if !Processes.quit <> None then set_max_wait 0.3 ;
+        let now = Unix.gettimeofday () in
         let must_reread fname last_read autoreload_delay now =
           let granularity = 0.1 in
           let last_mod =
@@ -1053,7 +1109,6 @@ let synchronize_running conf autoreload_delay =
             !logger.debug "No more workers should run" ;
             Hashtbl.create 0, last_read_rc
           ) else (
-            let now = Unix.gettimeofday () in
             if must_reread rc_file last_read_rc autoreload_delay now then
               build_must_run conf, now
             else
@@ -1069,7 +1124,6 @@ let synchronize_running conf autoreload_delay =
             !logger.debug "No more replays should run" ;
             Hashtbl.create 0, last_read_replays
           ) else (
-            let now = Unix.gettimeofday () in
             if must_reread replays_file last_read_replays 0. now then
               (* FIXME: We need to start lazy nodes right *after* having
                * written into their out-ref but *before* replayers are started
@@ -1078,11 +1132,12 @@ let synchronize_running conf autoreload_delay =
             else
               last_replays, last_read_replays
           ) in
-        process_replayers_terminations conf replayers ;
-        synchronize_replays must_replay replayers ;
-        Gc.minor () ;
+        process_replayers_start_stop conf now replayers ;
+        synchronize_replays now must_replay replayers ;
+        if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
         !logger.debug "Waiting for file changes (max %a)"
           print_as_duration !max_wait ;
+        Gc.minor () ;
         let fname = RamenFileNotify.wait_file_changes
                       ~max_wait:!max_wait fnotifier in
         !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;

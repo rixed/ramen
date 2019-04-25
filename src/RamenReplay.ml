@@ -63,11 +63,51 @@ module Range = struct
     [ 1.,2. ] (merge [] [ 1.,2. ])
   *)
 
+  let single_inter (a1, b1) (a2, b2) =
+    let a = max a1 a2 and b = min b1 b2 in
+    if a < b then (a, b) else raise Not_found
+
+  let rec inter l1 l2 =
+    match l1, l2 with
+    | [], _ | _, [] -> []
+    | (a1, b1 as i1)::r1, (a2, b2 as i2)::r2 ->
+        match single_inter i1 i2 with
+        | exception Not_found ->
+            if a1 <= a2 then inter r1 l2 else inter l1 r2
+        | (_, b) as i ->
+            i :: (inter ((b, b1)::r1) ((b, b2)::r2))
+
+  (*$= inter & ~printer:(IO.to_string print)
+    [] (inter [ 1.,2. ] [ 3.,4. ])
+    [] (inter [ 3.,4. ] [ 1.,2. ])
+    [ 2.,3. ] (inter [ 1.,3. ] [ 2.,4. ])
+    [] (inter [ 1.,2. ] [ 2.,4. ])
+    [ 2.,3. ] (inter [ 1.,4. ] [ 2.,3. ])
+    [] (inter [] [])
+    [] (inter [ 1.,2. ] [])
+    [] (inter [] [ 1.,2. ])
+    [ 2.,3. ; 4.,5. ] (inter [ 1.,3. ; 4., 6.] [ 2., 5. ])
+  *)
+
+  let rec span = function
+    | [] -> 0.
+    | (a, b) :: r -> (b -. a) +. span r
+
   let print oc =
     let rel = ref "" in
     let p = print_as_date_rel ~rel ~right_justified:false in
     List.print (Tuple2.print p p) oc
 
+  let approx_within l1 l2 =
+    (* [l1] is approx within [l2] if the intersection of [l1] and [l2] has
+     * approximately the same length as that of [l1] *)
+    span (inter l1 l2) >= 0.9 *. span l1
+
+  let bounds = function
+    | [] ->
+        invalid_arg "Range.bounds"
+    | (a, _) :: _ as l ->
+        a, snd (List.last l)
   (*$>*)
 end
 
@@ -359,7 +399,7 @@ let settup_links conf programs t =
  * Pass to each replayer the name of the function, the out_ref files to
  * obey, the channel id to tag tuples with, and since/until dates.
  * Returns the pid. *)
-let spawn_source_replay conf programs sfq t replayer_id =
+let spawn_source_replay conf programs sfq since until channels replayer_id =
   let rce, _prog, func = RC.find_func_or_fail programs sfq in
   let fq = F.fq_name func in
   let args = [| Worker_argv0.replay ; (fq :> string) |]
@@ -379,9 +419,11 @@ let spawn_source_replay conf programs sfq t replayer_id =
        "log_level="^ string_of_log_level conf.C.log_level ;
        "output_ringbufs_ref="^ (out_ringbuf_ref :> string) ;
        "rb_archive="^ (rb_archive :> string) ;
-       "since="^ string_of_float t.since ;
-       "until="^ string_of_float t.until ;
-       "channel_id="^ RamenChannel.to_string t.channel ;
+       "since="^ string_of_float since ;
+       "until="^ string_of_float until ;
+       "channel_ids="^ Printf.sprintf2 "%a"
+                         (Set.print ~first:"" ~last:"" ~sep:","
+                                    RamenChannel.print) channels ;
        "replayer_id="^ string_of_int replayer_id |] in
   let pid = RamenProcesses.run_worker rce.RC.bin args env in
   !logger.debug "Replay for %a is running under pid %d"
@@ -396,7 +438,9 @@ let spawn_all_local_sources conf programs t =
   Set.fold (fun (ssite, sfq) pids ->
     if conf.C.site = ssite then
       let replayer_id = Random.int RingBufLib.max_replayer_id in
-      match spawn_source_replay conf programs sfq t replayer_id with
+      let channels = Set.singleton t.channel in
+      match spawn_source_replay
+              conf programs sfq t.since t.until channels replayer_id with
       | exception e ->
           print_exception ~what e ;
           pids

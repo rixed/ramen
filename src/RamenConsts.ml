@@ -469,6 +469,11 @@ let max_archivist_stat_file_age = 3. *. 60.
  * mean "all fields": *)
 let num_all_fields = 100
 
+(* Time to wait before a replay is created and the workers are actually
+ * spawned. The longer and the more likely other replays can be served by
+ * the same replayer. *)
+let delay_before_replay = 0.5
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

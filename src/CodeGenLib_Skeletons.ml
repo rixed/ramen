@@ -1692,7 +1692,9 @@ let replay
     N.path (getenv ~def:"/tmp/archive.b" "rb_archive")
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string
-  and channel_id = getenv "channel_id" |> RamenChannel.of_string
+  and channel_ids = getenv "channel_ids" |>
+                    String.split_on_char ',' |>
+                    List.map Channel.of_string
   and replayer_id = getenv "replayer_id" |> int_of_string
   in
   !logger.debug "Starting REPLAY of %s. Will log into %s at level %s."
@@ -1723,13 +1725,17 @@ let replay
      * so that the client would know if everything was alright. *)
     (* Before quitting (normally or because of too many errors), signal
      * the end of this replay: *)
-    outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None in
+    List.iter (fun channel_id ->
+      outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
+    ) channel_ids in
   let output_tuple tuple =
     CodeGenLib_IO.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
      * to read it all: *)
-    outputer (RingBufLib.DataTuple channel_id) (Some tuple) in
+    List.iter (fun channel_id ->
+      outputer (RingBufLib.DataTuple channel_id) (Some tuple)
+    ) channel_ids in
   let loop_tuples rb =
     read_whole_archive ~at_exit ~while_ read_tuple rb output_tuple in
   let loop_tuples_of_ringbuf fname =
@@ -1770,8 +1776,10 @@ let replay
   !logger.debug "Reading current archive" ;
   loop_tuples_of_ringbuf rb_archive ;
   at_exit () ;
-  !logger.info "Finished after having replayed %d tuples"
-    !num_replayed_tuples ;
+  !logger.info
+    "Finished after having replayed %d tuples for channels %a"
+    !num_replayed_tuples
+    (pretty_list_print Channel.print) channel_ids ;
   exit (!quit |? ExitCodes.terminated)
 
 let convert

@@ -9,7 +9,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let rc = "v16" (* last: changed {T,V}Record format *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v61" (* last: retention replaces persistent in F.t *)
+let codegen = "v62" (* last: replayers now accept several channels *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v9" (* last: addition of site *)
