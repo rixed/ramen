@@ -280,11 +280,11 @@ DEFINE memory AS
     MAX start AS stop,
     host,
     COALESCE (type_instance, "") AS _type,
-    AVG (IF _type = "free" THEN value ELSE 0) AS free,
-    AVG (IF _type = "used" THEN value ELSE 0) AS used,
-    AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
-    AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
-    AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
+    AVG (IF _type = "free" THEN value) AS free,
+    AVG (IF _type = "used" THEN value) AS used,
+    AVG (IF _type = "cached" THEN value) AS cached,
+    AVG (IF _type = "buffered" THEN value) AS buffered,
+    AVG (IF _type LIKE "slab%" THEN value) AS slab
   FROM demo/collectd
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, start // 30
@@ -360,11 +360,11 @@ DEFINE memory AS
     MIN time AS time,
     host,
     COALESCE (type_instance, "") AS _type,
-    AVG (IF _type = "free" THEN value ELSE 0) AS free,
-    AVG (IF _type = "used" THEN value ELSE 0) AS used,
-    AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
-    AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
-    AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
+    AVG (IF _type = "free" THEN value) AS free,
+    AVG (IF _type = "used" THEN value) AS used,
+    AVG (IF _type = "cached" THEN value) AS cached,
+    AVG (IF _type = "buffered" THEN value) AS buffered,
+    AVG (IF _type LIKE "slab%" THEN value) AS slab
   FROM demo/collectd
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, time // 30

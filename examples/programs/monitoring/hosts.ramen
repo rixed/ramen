@@ -10,11 +10,11 @@ DEFINE memory AS
     out.start + 30s AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "free" THEN value ELSE 0) AS free,
-    AVG (IF _type = "used" THEN value ELSE 0) AS used,
-    AVG (IF _type = "cached" THEN value ELSE 0) AS cached,
-    AVG (IF _type = "buffered" THEN value ELSE 0) AS buffered,
-    AVG (IF _type LIKE "slab%" THEN value ELSE 0) AS slab
+    AVG (IF _type = "free" THEN value) AS free,
+    AVG (IF _type = "used" THEN value) AS used,
+    AVG (IF _type = "cached" THEN value) AS cached,
+    AVG (IF _type = "buffered" THEN value) AS buffered,
+    AVG (IF _type LIKE "slab%" THEN value) AS slab
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
   GROUP BY host, start // 30
@@ -29,10 +29,10 @@ DEFINE cpu AS
     -- regexp extract the integer from the quotes, then cast to int:
     u16(instance) AS cpu_num,
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "user" THEN value ELSE 0) {jiffies} AS user,
-    AVG (IF _type = "system" THEN value ELSE 0) {jiffies} AS system,
-    AVG (IF _type = "nice" THEN value ELSE 0) {jiffies} AS nice,
-    AVG (IF _type = "idle" THEN value ELSE 0) {jiffies} AS idle
+    AVG (IF _type = "user" THEN value) {jiffies} AS user,
+    AVG (IF _type = "system" THEN value) {jiffies} AS system,
+    AVG (IF _type = "nice" THEN value) {jiffies} AS nice,
+    AVG (IF _type = "idle" THEN value) {jiffies} AS idle
   FROM collectd
   WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
   GROUP BY host, start // 30, instance
