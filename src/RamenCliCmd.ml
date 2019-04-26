@@ -175,6 +175,21 @@ let tunneld conf daemonize to_stdout to_syslog port () =
   Option.may exit !RamenProcesses.quit
 
 (*
+ * `ramen confserver`
+ *
+ * Runs a service that reads all configuration and makes it available to
+ * other processes via a real-time synchronisation protocol.
+ *)
+
+let confserver conf daemonize to_stdout to_syslog port () =
+  start_daemon conf daemonize to_stdout to_syslog (N.path "confserver") ;
+  RamenSyncService.start conf port ;
+  Option.may exit !RamenProcesses.quit
+
+let confclient conf url () =
+  RamenSyncService.test_client conf url
+
+(*
  * `ramen compile`
  *
  * Turn a ramen program into an executable binary.

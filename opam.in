@@ -26,6 +26,7 @@ depends: [
   "syslog" {= "1.5"}
   "sqlite3" {build}
   "net_codecs" {>= "1.0"}
+  "zmq" {= "5.0.0"}
   "qtest" {test}
 ]
 depopts: [

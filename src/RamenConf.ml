@@ -76,6 +76,12 @@ struct
       period : float [@ppp_default 600.] }
     [@@ppp PPP_OCaml]
 
+  (* For the ramen language printer, see RamenProgram.print_retention *)
+  let print_retention oc r =
+    Printf.fprintf oc "duration:%a, period:%a"
+      print_as_duration r.duration
+      print_as_duration r.period
+
   type t =
     { program_name : N.program ;
       name : N.func ;

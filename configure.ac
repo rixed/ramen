@@ -28,6 +28,7 @@ AC_CHECK_OCAML_PKG(cmdliner)
 AC_CHECK_OCAML_PKG(syslog)
 AC_CHECK_OCAML_PKG(sqlite3)
 AC_CHECK_OCAML_PKG(net_codecs)
+AC_CHECK_OCAML_PKG(zmq)
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"

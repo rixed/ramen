@@ -158,6 +158,8 @@ struct
   let httpd = "Start an HTTP server"
   let alerter = "Start the alerter"
   let tunneld = "Start the tuple forward service"
+  let confserver = "Start the configuration synchronization service"
+  let confclient = "Test client for the confserver"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"
@@ -298,6 +300,9 @@ struct
   let start_word = "First word to dump"
   let stop_word = "First word to not dump"
   let tunneld_port = "Port number for the tuple forward service"
+  let confserver_port =
+    "Port number for the configuration synchronisation service"
+  let confserver_url = "host:port of the confserver"
 end
 
 module WorkerCommands =
@@ -409,6 +414,9 @@ struct
 
   (* Default port for the tuple forward service: *)
   let tunneld_port = 29329
+
+  (* Default port for the config sync service: *)
+  let confserver_port = 29340
 
   (* Number of seconds after which a replay channel will cease to conduct
    * tuples: *)

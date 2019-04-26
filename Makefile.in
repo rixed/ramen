@@ -26,7 +26,7 @@ endif
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads \
-	binocle lacaml ppp ppp.unix syslog
+	binocle lacaml ppp ppp.unix syslog zmq
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -37,7 +37,7 @@ PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
 	syslog num binocle unix lacaml \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp net_codecs sqlite3
+	compiler-libs.optcomp net_codecs sqlite3 zmq
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
@@ -188,6 +188,11 @@ RAMEN_SOURCES = \
 	src/RamenHttpd.ml \
 	src/RamenCopy.ml \
 	src/RamenCopySrv.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncServer.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
+	src/RamenSyncService.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \

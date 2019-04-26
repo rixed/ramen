@@ -310,6 +310,37 @@ let tunneld =
     info ~doc:CliInfo.tunneld "tunneld")
 
 (*
+ * Config Server
+ *)
+
+let confserver_port =
+  let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "port" ] in
+  Arg.(value (opt port Default.confserver_port i))
+
+let confserver =
+  Term.(
+    (const RamenCliCmd.confserver
+      $ copts
+      $ daemonize
+      $ to_stdout
+      $ to_syslog
+      $ confserver_port),
+    info ~doc:CliInfo.confserver "confserver")
+
+let confserver_url =
+  let i = Arg.info ~doc:CliInfo.confserver_url
+                   [ "url" ] in
+  let def = "localhost:"^ string_of_int Default.confserver_port in
+  Arg.(value (opt string def i))
+
+let confclient =
+  Term.(
+    (const RamenCliCmd.confclient
+      $ copts
+      $ confserver_url),
+    info ~doc:CliInfo.confclient "confclient")
+
+(*
  * Examine the ringbuffers
  *)
 
@@ -1080,6 +1111,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
+        confserver ; confclient ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)
