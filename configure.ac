@@ -17,7 +17,17 @@ if test "$OCAMLFIND" = "no"; then
   AC_MSG_ERROR([You must install OCaml findlib (the ocamlfind command)])
 fi
 
-AC_CHECK_OCAML_PKG(batteries stdint parsercombinator binocle lacaml num ppp cmdliner syslog sqlite3 net_codecs)
+AC_CHECK_OCAML_PKG(batteries)
+AC_CHECK_OCAML_PKG(stdint)
+AC_CHECK_OCAML_PKG(parsercombinator)
+AC_CHECK_OCAML_PKG(binocle)
+AC_CHECK_OCAML_PKG(lacaml)
+AC_CHECK_OCAML_PKG(num)
+AC_CHECK_OCAML_PKG(ppp)
+AC_CHECK_OCAML_PKG(cmdliner)
+AC_CHECK_OCAML_PKG(syslog)
+AC_CHECK_OCAML_PKG(sqlite3)
+AC_CHECK_OCAML_PKG(net_codecs)
 
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
