@@ -173,8 +173,6 @@ let tunneld conf daemonize to_stdout to_syslog port () =
   start_daemon conf daemonize to_stdout to_syslog (N.path "tunneld") ;
   RamenProcesses.prepare_signal_handlers conf ;
   RamenCopySrv.copy_server conf port ;
-  !logger.info "Returned from copy_server, quit code = %a"
-    (Option.print Int.print) !RamenProcesses.quit ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -370,7 +368,8 @@ let gc conf dry_run del_ratio compress_older loop daemonize
   if loop <= 0. then
     RamenGc.cleanup_once conf dry_run del_ratio compress_older
   else
-    RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop
+    RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop ;
+  Option.may exit !RamenProcesses.quit
 
 (*
  * `ramen ps`
@@ -985,7 +984,8 @@ let archivist conf loop daemonize stats allocs reconf
   if loop <= 0. then
     RamenArchivist.run_once conf ~while_ stats allocs reconf
   else
-    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf
+    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf ;
+  Option.may exit !RamenProcesses.quit
 
 (*
  * Display various internal informations

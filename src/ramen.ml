@@ -1078,12 +1078,22 @@ let () =
   match
     print_exn (fun () ->
       Term.eval_choice ~catch:false default [
-        supervisor ; gc ; httpd ; alerter ; tunneld ; info ;
-        notify ; compile ; run ; kill ; archivist ;
+        (* daemons: *)
+        supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
+        (* process management: *)
+        compile ; run ; kill ; ps ; profile ; info ;
+        (* reading tuples: *)
         tail ; replay ; timeseries ; timerange ;
-        ps ; profile ;
-        test ; dequeue ; summary ; repair ; dump ; links ;
-        variants ; stats ; autocomplete ; expand
+        (* writing tuples: *)
+        notify ;
+        (* ringbuffers management: *)
+        dequeue ; summary ; repair ; dump ; links ;
+        (* testing configuration: *)
+        test ;
+        (* introspection: *)
+        variants ; stats ;
+        (* debug: *)
+        autocomplete ; expand
       ]) with
   | `Error _ -> exit 1
   | `Version | `Help -> exit 0

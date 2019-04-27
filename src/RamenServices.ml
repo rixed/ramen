@@ -29,7 +29,6 @@ let directory_file persist_dir =
   N.path_cat [ persist_dir ; N.path "services" ;
                N.path RamenVersions.services ; N.path "services" ]
 
-(* FIXME: cache it *)
 let load =
   let ppp_of_file =
     Files.ppp_of_file ~default:"{}" directory_ppp_ocaml in
