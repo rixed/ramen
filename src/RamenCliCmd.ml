@@ -171,7 +171,6 @@ let notify conf parameters notif_name () =
 
 let tunneld conf daemonize to_stdout to_syslog port () =
   start_daemon conf daemonize to_stdout to_syslog (N.path "tunneld") ;
-  RamenProcesses.prepare_signal_handlers conf ;
   RamenCopySrv.copy_server conf port ;
   Option.may exit !RamenProcesses.quit
 
