@@ -202,11 +202,11 @@ struct
           Printf.sprintf2 "SS %s"
             (Selector.to_string sel)
       | SetKey (k, v) ->
-          Printf.sprintf2 "SK %S %s"
+          Printf.sprintf2 "SK %S %S"
             (Key.to_string k)
             (Value.to_string v)
       | NewKey (k, v) ->
-          Printf.sprintf2 "NK %S %s"
+          Printf.sprintf2 "NK %S %S"
             (Key.to_string k)
             (Value.to_string v)
       | DelKey k ->
@@ -233,10 +233,10 @@ struct
       | 'S', 'S', ' ' ->
           StartSync (Selector.of_string args)
       | 'S', 'K', ' ' ->
-          Scanf.sscanf args "%S %s" (fun k v ->
+          Scanf.sscanf args "%S %S" (fun k v ->
             SetKey (Key.of_string k, Value.of_string v))
       | 'N', 'K', ' ' ->
-          Scanf.sscanf args "%S %s" (fun k v ->
+          Scanf.sscanf args "%S %S" (fun k v ->
             NewKey (Key.of_string k, Value.of_string v))
       | 'D', 'K', ' ' ->
           DelKey (Key.of_string args)
@@ -259,17 +259,17 @@ struct
   module SrvMsg =
   struct
     type t =
-      | BadAuth of string
+      | Auth of string
       | SetKey of Key.t * Value.t
       | DelKey of Key.t
       | LockKey of Key.t
       | UnlockKey of Key.t
 
     let to_string = function
-      | BadAuth s ->
+      | Auth s ->
           Printf.sprintf2 "AU %s" s
       | SetKey (k, v) ->
-          Printf.sprintf2 "SK %S %s"
+          Printf.sprintf2 "SK %S %S"
             (Key.to_string k)
             (Value.to_string v)
       | DelKey k ->
@@ -289,9 +289,9 @@ struct
       let args = String.lchop ~n:3 s in
       match s.[0], s.[1], s.[2] with
       | 'A', 'U', ' ' ->
-          BadAuth args
+          Auth args
       | 'S', 'K', ' ' ->
-          Scanf.sscanf args "%S %s" (fun k v ->
+          Scanf.sscanf args "%S %S" (fun k v ->
             SetKey (Key.of_string k, Value.of_string v))
       | 'D', 'K', ' ' ->
           DelKey (Key.of_string args)

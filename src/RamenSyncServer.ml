@@ -247,22 +247,26 @@ struct
         User.print u ;
       (match cmd with
       | CltMsg.Auth creds ->
-          (* Auth is special: as we have not yet a user errors must be
+          (* Auth is special: as we have not yet a user, errors must be
            * returned directly. *)
-          (try
-            let u' = User.authenticate u creds in
-            !logger.info "User %a authenticated out of user %a"
-              User.print u'
-              User.print u ;
-            (* Must create this user's error object if not already there.
-             * Value will be set below: *)
-            let k = Key.user_errs u' in
-            create_or_update t k (Value.err_msg i "")
-                             ~r:(User.only_me u') ~w:Capa.nobody ~s:false
-          with e ->
-            let err = Printexc.to_string e in
-            !logger.debug "While authenticating %a: %s" User.print u err ;
-            t.send_msg (SrvMsg.BadAuth err) (Enum.singleton u))
+          let err =
+            try
+              let u' = User.authenticate u creds in
+              !logger.info "User %a authenticated out of user %a"
+                User.print u'
+                User.print u ;
+              (* Must create this user's error object if not already there.
+               * Value will be set below: *)
+              let k = Key.user_errs u' in
+              create_or_update t k (Value.err_msg i "")
+                               ~r:(User.only_me u') ~w:Capa.nobody ~s:false ;
+              ""
+            with e ->
+              let err = Printexc.to_string e in
+              !logger.info "While authenticating %a: %s" User.print u err ;
+              err
+          in
+          t.send_msg (SrvMsg.Auth err) (Enum.singleton u)
 
       | CltMsg.StartSync sel ->
           subscribe_user t u sel ;

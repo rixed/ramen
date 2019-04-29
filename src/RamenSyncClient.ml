@@ -19,7 +19,6 @@ struct
 
   type t =
     { h : hash_value H.t ;
-      send_msg : CltMsg.t -> unit ;
       on_new : t -> Key.t -> Value.t -> unit ;
       on_set : t -> Key.t -> Value.t -> unit ;
       on_del : t -> Key.t -> unit ;
@@ -30,14 +29,15 @@ struct
     { mutable v : Value.t ;
       mutable locked : bool }
 
-  let make ~send_msg ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
-    { h = H.create 99 ; send_msg ;
+  let make ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
+    { h = H.create 99 ;
       on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let process_msg t = function
-    | SrvMsg.BadAuth e ->
-        Printf.sprintf "Cannot authenticate to the server: %s" e |>
-        failwith
+    | SrvMsg.Auth err ->
+        if err <> "" then
+          Printf.sprintf "Cannot authenticate to the server: %s" err |>
+          failwith
 
     | SrvMsg.SetKey (k, v) ->
         (match H.find t.h k with

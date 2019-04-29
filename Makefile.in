@@ -47,7 +47,7 @@ META_REQUIRES += inotify
 PACKAGES += inotify
 endif
 
-INSTALLED_BIN = src/ramen
+INSTALLED_BIN = src/ramen rmadmin/rmadmin
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
 	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
@@ -250,6 +250,29 @@ CODEGENLIB_SOURCES = \
 	src/HeavyHitters.ml \
 	src/CodeGenLib.ml
 
+RMADMIN_SOURCES = \
+	src/RamenVersions.ml \
+	src/RamenLog.ml \
+	src/RamenName.mli \
+	src/RamenName.ml \
+	src/RamenConsts.ml \
+	src/RamenAtomic.ml \
+	src/RamenHelpers.ml \
+	src/RamenFiles.ml \
+	src/RamenExperiments.ml \
+	src/RamenParsing.ml \
+	src/RamenEthAddr.ml \
+	src/RamenIpv4.ml \
+	src/RamenIpv6.ml \
+	src/RamenIp.ml \
+	src/RamenTypes.ml \
+	src/RamenRetention.ml \
+	src/Globs.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
+	rmadmin/GuiHelper.ml
+
 LIBRINGBUF_SOURCES = \
 	src/ringbuf/archive.h \
 	src/ringbuf/archive.c \
@@ -332,6 +355,7 @@ TESTONLY_SOURCES = \
 SOURCES = \
 	$(RAMEN_SOURCES) \
 	$(CODEGENLIB_SOURCES) \
+	$(RMADMIN_SOURCES) \
 	$(LIBRINGBUF_SOURCES) \
 	$(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) \
@@ -484,6 +508,28 @@ src/codegen.cmxa: \
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
 
 src/codegen.a: src/codegen.cmxa
+
+RMADMIN_FLAGS = \
+	-package batteries,stdint,syslog,cmdliner,zmq \
+	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
+
+rmadmin/GuiHelper.o: \
+		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RMADMIN_SOURCES))) \
+		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RMADMIN_SOURCES)))
+	@echo 'Generating OCaml GUI helper $@'
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) $(filter %.cmx, $^) -output-obj -o $@
+	# Also help qmake Makefile to notice the dependency:
+	@touch rmadmin/main.cpp
+
+rmadmin/Makefile:
+	@echo 'Generating $@'
+	cd rmadmin && qmake
+
+rmadmin/rmadmin: \
+		rmadmin/GuiHelper.o \
+		rmadmin/Makefile
+	@echo 'Generating RMAdmin $@'
+	$(MAKE) -C rmadmin
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
@@ -1053,4 +1099,5 @@ clean:
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
-	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a src/liborchelp.a
+	@$(RM) rmadmin/rmadmin
+	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a

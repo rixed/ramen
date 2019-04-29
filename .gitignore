@@ -29,6 +29,7 @@ BUGS
 TODO
 *.db
 src/ramen
+rmadmin/rmadmin
 src/100k.csv
 *.Rmd
 stream_in
@@ -72,3 +73,9 @@ site/man/*.groff
 site/favicon.ico
 site/menuicon.png
 src/orc/orc_writer
+moc_*.cpp
+moc_*.h
+rmadmin/rmadmin.app
+rmadmin/Makefile
+.DS_Store
+.qmake.stash

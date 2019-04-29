@@ -386,19 +386,16 @@ struct
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
-  let to_string ?prev t =
+  let to_string ?prev (t : t) =
     ignore prev ;
     Marshal.(to_string t [ No_sharing ])
 
-  let of_string ?prev b =
+  let of_string ?prev b : t =
     ignore prev ;
     Marshal.from_string b 0
 end
 
-module Client = RamenSyncClient.Make (Value) (Selector)
-
 (* TODO:
- * - a stand alone ocaml program with this Client module above
  * - each time a key is created/modified/locked/unlocked/deleted,
  *   call a C++ function depending on the key, with proper C++
  *   values as arguments, that will, for now, just print something.
