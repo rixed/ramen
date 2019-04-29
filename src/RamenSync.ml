@@ -7,8 +7,7 @@ open RamenSyncIntf
 open RamenHelpers
 module N = RamenName
 module T = RamenTypes
-module C = RamenConf
-module F = C.Func
+module Retention = RamenRetention
 
 (* The only capacity we need is:
  * - One per user for personal communications (err messages...)
@@ -359,7 +358,7 @@ struct
     | Time of float
     | String of string
     | Error of float * int * string
-    | Retention of F.retention
+    | Retention of Retention.t
     | RamenDataset of (T.value array * int (* index of the first *))
 
   let equal v1 v2 =
@@ -380,7 +379,7 @@ struct
         Printf.fprintf fmt "%a:%d:%s"
           print_as_date t i s
     | Retention r ->
-        F.print_retention fmt r
+        Retention.print fmt r
     | RamenDataset (a, i) ->
         Printf.fprintf fmt "%a,%d"
           (Array.print T.print) a i

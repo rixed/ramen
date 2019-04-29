@@ -151,6 +151,7 @@ RAMEN_SOURCES = \
 	src/RamenFieldMaskLib.ml \
 	src/RamenOutRef.ml \
 	src/RamenCompilConfig.ml \
+	src/RamenRetention.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenTypingHelpers.ml \
@@ -264,7 +265,8 @@ LIBCOLLECTD_SOURCES = \
 LIBNETFLOW_SOURCES = \
 	src/netflow/v5.c
 
-LIBORC_SOURCES = src/orc/wrappers.cc
+LIBORC_SOURCES = \
+	src/orc/wrappers.cc
 
 ORCWRITER_SOURCES = \
 	src/RamenVersions.ml \
@@ -308,6 +310,7 @@ ORCWRITER_SOURCES = \
 	src/RamenOutRef.ml \
 	src/RamenFieldMaskLib.ml \
 	src/RamenCompilConfig.ml \
+	src/RamenRetention.ml \
 	src/RamenConf.ml \
 	src/RamenSerialization.ml \
 	src/RamenDepLibs.ml \
@@ -323,14 +326,19 @@ ORCWRITER_SOURCES = \
 	src/orc/orc_writer.ml
 
 TESTONLY_SOURCES = \
-	src/TestHelpers.ml
+	src/TestHelpers.ml \
+	src/ringbuf_test.ml
 
 SOURCES = \
-	$(RAMEN_SOURCES) $(CODEGENLIB_SOURCES) \
-	$(LIBRINGBUF_SOURCES) $(LIBRINGBUF_OCAML_SOURCES) \
-	$(LIBCOLLECTD_SOURCES) $(LIBNETFLOW_SOURCES) \
-	$(ORCWRITER_SOURCES) $(LIBORC_SOURCES) $(TESTONLY_SOURCES) \
-	src/ringbuf_test.ml
+	$(RAMEN_SOURCES) \
+	$(CODEGENLIB_SOURCES) \
+	$(LIBRINGBUF_SOURCES) \
+	$(LIBRINGBUF_OCAML_SOURCES) \
+	$(LIBCOLLECTD_SOURCES) \
+	$(LIBNETFLOW_SOURCES) \
+	$(ORCWRITER_SOURCES) \
+	$(LIBORC_SOURCES) \
+	$(TESTONLY_SOURCES)
 
 dep:
 	@$(RM) .depend
@@ -672,6 +680,7 @@ LINKED_FOR_TESTS = \
 	src/RamenOutRef.ml \
 	src/RamenParams.ml \
 	src/RamenCompilConfig.ml \
+	src/RamenRetention.ml \
 	src/RamenConf.ml \
 	src/RamenTypingHelpers.ml \
 	src/RamenProgram.ml \

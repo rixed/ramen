@@ -18,6 +18,7 @@ module O = RamenOperation
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
+module Retention = RamenRetention
 
 let conf_dir conf =
   N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
@@ -41,7 +42,7 @@ type user_conf =
     (* Individual nodes we want to keep some history, none by default.
      * TODO: replaces or override the persist flag + retention length
      * that should go with it): *)
-    retentions : (Globs.t, F.retention) Hashtbl.t
+    retentions : (Globs.t, Retention.t) Hashtbl.t
       [@ppp_default Hashtbl.create 0] }
   [@@ppp PPP_OCaml]
 
@@ -87,8 +88,10 @@ let get_user_conf =
 let default_populate_user_conf user_conf per_func_stats =
   (* In case no retention was provided, keep the roots for 1 hour: *)
   if Hashtbl.length user_conf.retentions = 0 then (
-    let save_short = F.{ duration = 3600. ; period = Default.query_period }
-    and no_save = F.{ duration = 0. ; period = 0. } in
+    let save_short =
+      Retention.{ duration = 3600. ; period = Default.query_period }
+    and no_save =
+      Retention.{ duration = 0. ; period = 0. } in
     (* Empty configuration: save the roots for 10 minutes. *)
     if Hashtbl.length per_func_stats = 0 then
       (* No worker, then do not save anything: *)
@@ -609,7 +612,7 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
       (Hashtbl.values user_conf.retentions)
       (* Durations defined in function source: *)
       (Hashtbl.values src_retention) /@
-    (fun ret -> ret.F.duration) |>
+    (fun ret -> ret.Retention.duration) |>
     List.of_enum |>
     List.sort_uniq Float.compare in
   Printf.fprintf oc

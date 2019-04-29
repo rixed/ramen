@@ -20,6 +20,7 @@ module O = RamenOperation
 module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Retention = RamenRetention
 
 (*
  * Ramen internal configuration record
@@ -69,26 +70,13 @@ struct
     O.site_identifier * N.rel_program option * N.func
     [@@ppp PPP_OCaml]
 
-  type retention =
-    { duration : float ;
-      (* How frequently we intend to query it, in Hertz (TODO: we could
-       * approximate a better value if absent): *)
-      period : float [@ppp_default 600.] }
-    [@@ppp PPP_OCaml]
-
-  (* For the ramen language printer, see RamenProgram.print_retention *)
-  let print_retention oc r =
-    Printf.fprintf oc "duration:%a, period:%a"
-      print_as_duration r.duration
-      print_as_duration r.period
-
   type t =
     { program_name : N.program ;
       name : N.func ;
       (* A function which history we might want to query in the future
        * so make sure it is either stored or can be computed again from
        * ancestor stored history: *)
-      retention : retention option ;
+      retention : Retention.t option ;
       doc : string ;
       (* A lazy function runs only if it is used: has a children that is
        * itself used, emits notifications or export its data somehow. *)
@@ -107,7 +95,7 @@ struct
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
       { name : N.func ;
-        retention : retention option  ;
+        retention : Retention.t option  ;
         is_lazy : bool ;
         doc : string ;
         operation : O.t ;

@@ -13,6 +13,7 @@ module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
 module T = RamenTypes
+module Retention = RamenRetention
 
 (*$inject
   open TestHelpers
@@ -39,7 +40,7 @@ type func =
   { name : N.func option (* optional during parsing only *) ;
     doc : string ;
     operation : O.t ;
-    retention : F.retention option ;
+    retention : Retention.t option ;
     is_lazy : bool }
 
 type t = RamenTuple.param list * func list
@@ -67,8 +68,8 @@ let print_param oc p =
 let print_retention oc r =
   Printf.fprintf oc
     "PERSIST FOR %a WHILE QUERYING EVERY %a"
-    print_as_duration r.F.duration
-    print_as_duration r.F.period
+    print_as_duration r.Retention.duration
+    print_as_duration r.period
 
 let print_func oc n =
   let with_types = false in (* TODO: a parameter *)
@@ -274,7 +275,7 @@ struct
         let retention =
           match duration, period with
           | Some duration, Some period ->
-              Some F.{ duration ; period }
+              Some Retention.{ duration ; period }
           | None, None ->
               None
           | Some duration, None ->

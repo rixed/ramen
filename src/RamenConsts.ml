@@ -302,7 +302,7 @@ struct
   let tunneld_port = "Port number for the tuple forward service"
   let confserver_port =
     "Port number for the configuration synchronisation service"
-  let confserver_url = "host:port of the confserver"
+  let confserver_url = "host:port of Ramen confserver"
 end
 
 module WorkerCommands =

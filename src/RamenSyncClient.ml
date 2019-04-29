@@ -5,7 +5,6 @@
  *)
 open Batteries
 open RamenLog
-open RamenHelpers
 open RamenSyncIntf
 
 module Make (Value : VALUE) (Selector : SELECTOR) =
