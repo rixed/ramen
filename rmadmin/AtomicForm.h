@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QMessageBox>
 #include "confValue.h"
 #include "confKey.h"
 #include "AtomicWidget.h"
@@ -44,6 +45,7 @@ class AtomicForm : public QGroupBox
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
   QPushButton *editButton, *cancelButton, *submitButton;
+  QMessageBox *confirmationDialog;
 
   enum state {
     ReadOnly,

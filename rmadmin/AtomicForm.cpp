@@ -40,6 +40,13 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   groupLayout->addWidget(centralWidget);
   groupLayout->addWidget(errorArea);
   groupLayout->addWidget(buttonBar);
+
+  /* Also prepare the confirmation dialog: */
+  confirmationDialog = new QMessageBox();
+  confirmationDialog->setText("Some values have been modified.");
+  confirmationDialog->setInformativeText("Are you sure you want to cancel?");
+  confirmationDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+  confirmationDialog->setDefaultButton(QMessageBox::No);
 }
 
 AtomicForm::~AtomicForm()
@@ -51,6 +58,7 @@ AtomicForm::~AtomicForm()
   delete cancelButton;
   delete submitButton;
   delete groupLayout;
+  delete confirmationDialog;
 }
 
 void AtomicForm::setCentralWidget(QWidget *w)
@@ -111,7 +119,9 @@ void AtomicForm::doCancel()
 void AtomicForm::wantCancel()
 {
   if (someEdited()) {
-    std::cerr << "TODO: confirmation" << std::endl;
+    if (QMessageBox::Yes == confirmationDialog->exec()) {
+      doCancel();
+    }
   } else {
     doCancel();
   }
