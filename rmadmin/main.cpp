@@ -11,6 +11,7 @@ extern "C" {
 }
 #include <QApplication>
 #include <QtWidgets>
+#include <QMetaType>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
 #include "conf.h"
@@ -66,6 +67,8 @@ int main(int argc, char *argv[])
 {
   QApplication a(argc, argv);
   QCoreApplication::setApplicationName("RamenAdmin");
+  qRegisterMetaType<conf::Key>();
+  qRegisterMetaType<conf::Value>();
 
   w = new RmAdminWin();
   thread sync_thread(do_sync_thread, argv);

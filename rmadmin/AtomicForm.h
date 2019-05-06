@@ -2,12 +2,14 @@
 #define ATOMICFORM_H_190504
 #include <vector>
 #include <set>
+#include <utility> // for pair
 #include <QWidget>
 #include <QString>
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QGroupBox>
-#include "KWidget.h"
+#include "confValue.h"
+#include "confKey.h"
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
  * "edit", "cancel" and "commit".
@@ -33,11 +35,11 @@
  * it the user adds an atomic widget to register it in the atomic group.
  */
 
-class AtomicForm : public QGroupBox, public KWidget
+class AtomicForm : public QGroupBox
 {
   Q_OBJECT
 
-  std::vector<KWidget *> widgets;
+  std::vector<std::pair<conf::Key, QWidget *>> widgets;
 
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
@@ -52,7 +54,7 @@ class AtomicForm : public QGroupBox, public KWidget
   } state;
 
   // The set of all currently locked keys:
-  std::set<std::string> locked;
+  std::set<conf::Key> locked;
 
   void lockAll();
 
@@ -62,16 +64,15 @@ public:
   ~AtomicForm();
 
   void setCentralWidget(QWidget *);
-  // and take ownership of those KWidgets:
-  void addWidget(KWidget *);
+  // and take ownership of those QWidgets:
+  void addWidget(conf::Key const &key, QWidget *);
 
 public slots:
   void wantEdit();
   void setEnabled(bool);
-  void setValue(conf::Value const &) {}
-  void delValue(std::string const &) {};
-  void lockValue(std::string const &, std::string const &);
-  void unlockValue(std::string const &);
+  void setValue(conf::Key const &, conf::Value const &) {}
+  void lockValue(conf::Key const &, QString const &);
+  void unlockValue(conf::Key const &);
 };
 
 #endif

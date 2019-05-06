@@ -2,25 +2,24 @@
 #define KLABEL_H_190505
 #include <iostream>
 #include <QLabel>
-#include "KWidget.h"
 #include "confValue.h"
+#include "conf.h"
 
-class KErrorMsg : public QLabel, public KWidget
+class KErrorMsg : public QLabel
 {
   Q_OBJECT
 
 public:
-  KErrorMsg(std::string const key, QWidget *parent = nullptr) :
-    QLabel(parent),
-    KWidget(key)
-  {}
+  KErrorMsg(conf::Key const key, QWidget *parent = nullptr) :
+    QLabel(parent)
+  {
+    KValue &kv = conf::kvs[key];
+    QObject::connect(&kv, &KValue::valueChanged, this, &KErrorMsg::setValue);
+  }
   ~KErrorMsg() {}
 
 public slots:
-  // We do not care about locks for error messages:
-  void setEnabled(bool) {}
-
-  void setValue(conf::Value const &v)
+  void setValue(conf::Key const &, conf::Value const &v)
   {
     QString s(v.toQString());
     setStyleSheet(
@@ -28,11 +27,6 @@ public slots:
         "" :
         "background-color: pink");
     QLabel::setText(s);
-  }
-
-  void delValue(std::string const &)
-  {
-    // TODO: replace this widget with s tombstone?
   }
 };
 

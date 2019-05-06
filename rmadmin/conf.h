@@ -1,19 +1,22 @@
 #ifndef CONF_H_190504
 #define CONF_H_190504
 #include <string>
-
-class KWidget;
+#include <QMap>
+#include <QString>
+#include "KValue.h"
+#include "confKey.h"
 
 namespace conf {
 
-extern std::string my_uid;
-extern std::string my_errors;
+extern QString my_uid;
+extern conf::Key my_errors;
 
-void registerWidget(std::string const &key, KWidget *);
-void unregisterWidget(std::string const &key, KWidget *);
+/* We keep all KValues in this map so that it's possible to connect
+ * updates to widget slots. */
+extern QMap<conf::Key, KValue> kvs;
 
-void askLock(std::string const &key);
-void askUnlock(std::string const &key);
+void askLock(conf::Key const &key);
+void askUnlock(conf::Key const &key);
 
 };
 

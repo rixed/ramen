@@ -1,6 +1,6 @@
 #include <QtWidgets>
 #include <QString>
-#include "Value.h"
+#include "confValue.h"
 
 namespace conf {
 
@@ -9,7 +9,7 @@ Value::Value()
   valueType = LastValueType;
 }
 
-bool Value::is_initialized()
+bool Value::is_initialized() const
 {
   return (valueType < LastValueType);
 }
@@ -74,7 +74,7 @@ Value::Value(const Value& other)
       v.String = other.v.String;
       break;
     case Error:
-      v.Error= other.v.Error;
+      v.Error = other.v.Error;
       break;
     case Retention:
       v.Retention = other.v.Retention;
@@ -107,7 +107,7 @@ Value& Value::operator=(const Value& other)
       v.String = other.v.String;
       break;
     case Error:
-      v.Error= other.v.Error;
+      v.Error = other.v.Error;
       break;
     case Retention:
       v.Retention = other.v.Retention;
@@ -151,10 +151,78 @@ QString Value::toQString() const
   }
 }
 
+bool operator==(Value const &a, Value const &b)
+{
+  if (a.valueType != b.valueType) return false;
+  switch (a.valueType) {
+    case Value::Bool:
+      return a.v.Bool == b.v.Bool;
+    case Value::Int:
+      return a.v.Int == b.v.Int;
+    case Value::Float:
+      return a.v.Float == b.v.Float;
+    case Value::Time:
+      return a.v.Time == b.v.Time;
+    case Value::String:
+      return a.v.String == b.v.String;
+    case Value::Error:
+      return a.v.Error == b.v.Error;
+    case Value::Retention:
+      return a.v.Retention == b.v.Retention;
+    case Value::Dataset:
+      return a.v.Dataset == b.v.Dataset;
+    case Value::LastValueType:
+      return true;
+ }
+}
+
+bool operator!=(Value const &a, Value const &b)
+{
+  return !(a == b);
+}
+
+bool operator==(Error const &a, Error const &b)
+{
+  return a.cmd_id == b.cmd_id;  // Same as in OCaml
+}
+
+bool operator!=(Error const &a, Error const &b)
+{
+  return !(a == b);
+}
+
+bool operator==(Retention const &a, Retention const &b)
+{
+  return a.duration == b.duration &&
+         a.period == b.period;
+}
+
+bool operator!=(Retention const &a, Retention const &b)
+{
+  return !(a == b);
+}
+
+bool operator==(Dataset const &a, Dataset const &b)
+{
+  (void)a; (void)b;
+  return false; // TODO
+}
+
+bool operator!=(Dataset const &a, Dataset const &b)
+{
+  return !(a == b);
+}
+
 std::ostream &operator<<(std::ostream &os, Value const &v)
 {
   os << v.toQString().toStdString();
   return os;
+}
+
+QDebug operator<<(QDebug dbg, Value const &v)
+{
+  dbg.nospace() << v.toQString();
+  return dbg.maybeSpace();
 }
 
 };

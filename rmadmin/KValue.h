@@ -3,29 +3,31 @@
 #include <string>
 #include <optional>
 #include <QObject>
+#include <QString>
 #include "confValue.h"
+#include "confKey.h"
 
-class KValue : QObject
+class KValue : public QObject
 {
   Q_OBJECT
 
-  std::string const key;
-  std::optional<std::string const> owner;
-  conf::Value value; // may not be initialized
+  std::optional<QString> owner;
+  conf::Value val; // may not be initialized
 
 public:
-  KValue(std::string const &);
+  KValue();
+  KValue(const KValue&);
   ~KValue();
-  void set(conf::Value const &);
-  void lock(std::string const &);
-  void unlock();
-
+  void set(conf::Key const &, conf::Value const &);
+  void lock(conf::Key const &, QString const &);
+  void unlock(conf::Key const &);
+  KValue& operator=(const KValue&);
 signals:
-  void valueCreated(std::string const &key);
-  void valueChanged(std::string const &key);
-  void valueLocked(std::string const &key, std::string const &uid);
-  void valueUnlocked(std::string const &key);
-  void valueDeleted(std::string const &key);
+  void valueCreated(conf::Key const &key, conf::Value const &v);
+  void valueChanged(conf::Key const &key, conf::Value const &v);
+  void valueLocked(conf::Key const &key, QString const &uid);
+  void valueUnlocked(conf::Key const &key);
+  void valueDeleted(conf::Key const &key);
 };
 
 #endif

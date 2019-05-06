@@ -1,10 +1,10 @@
 #include <iostream>
 #include <QHBoxLayout>
 #include "AtomicForm.h"
+#include "conf.h"
 
 AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   QGroupBox(title, parent),
-  KWidget(),
   widgets(),
   state(AtomicForm::ReadOnly)
 {
@@ -46,9 +46,6 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
 AtomicForm::~AtomicForm()
 {
   // TODO: unlock whatever widget is locked
-  for (KWidget *const w: widgets) {
-    if (w->key) conf::unregisterWidget(*(w->key), this);
-  }
   delete centralWidget;
   delete errorArea;
   delete editButton;
@@ -65,13 +62,15 @@ void AtomicForm::setCentralWidget(QWidget *w)
   delete previous;
 }
 
-void AtomicForm::addWidget(KWidget *w)
+void AtomicForm::addWidget(conf::Key const &key, QWidget *w)
 {
-  widgets.push_back(w);
+  widgets.push_back(std::pair<conf::Key, QWidget *>(key, w));
   w->setEnabled(false);
   // TODO: also subscribe to those keys so that we can update our state and
   //       enable/disable the buttons
-  if (w->key) conf::registerWidget(*(w->key), this);
+  KValue &kv = conf::kvs[key];
+  QObject::connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
+  QObject::connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
 }
 
 void AtomicForm::lockAll()
@@ -83,9 +82,9 @@ void AtomicForm::lockAll()
 void AtomicForm::wantEdit()
 {
   // Lock all widgets that are not locked already:
-  for (KWidget const* w : widgets) {
-    if (w->key && locked.find(*(w->key)) == locked.end()) {
-      conf::askLock(*(w->key));
+  for (std::pair<conf::Key, QWidget *> const w : widgets) {
+    if (locked.find(w.first) == locked.end()) {
+      conf::askLock(w.first);
     }
   }
 }
@@ -98,16 +97,19 @@ void AtomicForm::setEnabled(bool enabled)
   submitButton->setEnabled(enabled);
 }
 
-void AtomicForm::lockValue(std::string const &k, std::string const &u)
+void AtomicForm::lockValue(conf::Key const &k, QString const &u)
 {
-  std::cerr << "locked key " << k << " to user " << u << std::endl;
-  if (u == conf::my_uid) locked.insert(k);
+  std::cerr << "locked key " << k << " to user " << u.toStdString() << std::endl;
+  if (u == conf::my_uid) {
+    locked.insert(k);
+  } else {
+    locked.erase(k);
+  }
   if (locked.size() >= widgets.size()) setEnabled(true);
 }
 
-void AtomicForm::unlockValue(std::string const &k)
+void AtomicForm::unlockValue(conf::Key const &k)
 {
-  auto it = locked.find(k);
-  if (it != locked.end()) locked.erase(it);
+  locked.erase(k);
   if (locked.size() <= widgets.size()) setEnabled(false);
 }

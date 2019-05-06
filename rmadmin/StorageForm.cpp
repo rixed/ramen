@@ -11,11 +11,13 @@ StorageForm::StorageForm(QWidget *parent) :
   QWidget *cw = new QWidget(this);
 
   /* Define 2 input lines, for total size and recall cost: */
-  KLineEdit *totalSizeEdit = new KLineEdit("storage/total_size", cw);
+  static std::string const totalSizeKey("storage/total_size");
+  KLineEdit *totalSizeEdit = new KLineEdit(totalSizeKey, cw);
   totalSizeEdit->setPlaceholderText(tr("Size in bytes"));
   totalSizeEdit->setValidator(&posIntValidator);
 
-  KLineEdit *recallCostEdit = new KLineEdit("storage/recall_cost", cw);
+  static std::string const recallCostKey("storage/recall_cost");
+  KLineEdit *recallCostEdit = new KLineEdit(recallCostKey, cw);
   recallCostEdit->setPlaceholderText(tr("Cost of reading vs. computing"));
   recallCostEdit->setValidator(&posDoubleValidator);
 
@@ -25,8 +27,8 @@ StorageForm::StorageForm(QWidget *parent) :
   cw->setLayout(formLayout);
 
   this->setCentralWidget(cw);
-  this->addWidget(totalSizeEdit);
-  this->addWidget(recallCostEdit);
+  this->addWidget(totalSizeKey, totalSizeEdit);
+  this->addWidget(recallCostKey, recallCostEdit);
 }
 
 StorageForm::~StorageForm()

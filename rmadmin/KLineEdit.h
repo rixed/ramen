@@ -1,35 +1,42 @@
 #ifndef KLINEEDIT_H_190505
 #define KLINEEDIT_H_190505
 #include <QLineEdit>
-#include "KWidget.h"
+#include "KValue.h"
 #include "confValue.h"
+#include "conf.h"
 
-class KLineEdit : public QLineEdit, public KWidget
+class KLineEdit : public QLineEdit
 {
   Q_OBJECT
 
 public:
   KLineEdit(std::string const key, QWidget *parent = nullptr) :
-    QLineEdit(parent),
-    KWidget(key)
-  {}
+    QLineEdit(parent)
+  {
+    KValue &kv = conf::kvs[key];
+    QObject::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
+    QObject::connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
+    QObject::connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
+    QObject::connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
+  }
   ~KLineEdit() {}
 
 public slots:
-  void setEnabled(bool enabled)
-  {
-    QLineEdit::setEnabled(enabled);
-  }
-
-  void setValue(conf::Value const &v)
+  void setValue(conf::Key const &, conf::Value const &v)
   {
     QLineEdit::setText(v.toQString());
   }
 
-  void delValue(std::string const &)
+  void lockValue(conf::Key const &, QString const &uid)
   {
-    // TODO: replace this widget with s tombstone?
+    setEnabled(uid == conf::my_uid);
   }
+
+  void unlockValue(conf::Key const &)
+  {
+    setEnabled(false);
+  }
+
 };
 
 #endif

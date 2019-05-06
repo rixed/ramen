@@ -2,35 +2,26 @@
 #define KLABEL_H_190505
 #include <iostream>
 #include <QLabel>
-#include "KWidget.h"
 #include "confValue.h"
+#include "conf.h"
 
-class KLabel : public QLabel, public KWidget
+class KLabel : public QLabel
 {
   Q_OBJECT
 
 public:
-  KLabel(std::string const key, QWidget *parent = nullptr) :
-    QLabel(parent),
-    KWidget(key)
-  {}
+  KLabel(conf::Key const key, QWidget *parent = nullptr) :
+    QLabel(parent)
+  {
+    KValue &kv = conf::kvs[key];
+    QObject::connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
+  }
   ~KLabel() {}
 
 public slots:
-  void setEnabled(bool enabled)
+  void setValue(conf::Key const &, conf::Value const &v)
   {
-    QLabel::setEnabled(enabled);
-  }
-
-  void setValue(conf::Value const &v)
-  {
-    std::cerr << "Setting KLabel" << std::endl;
     QLabel::setText(v.toQString());
-  }
-
-  void delValue(std::string const &)
-  {
-    // TODO: replace this widget with s tombstone?
   }
 };
 

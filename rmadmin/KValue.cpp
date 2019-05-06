@@ -1,44 +1,57 @@
 #include <cassert>
 #include "KValue.h"
 
-KValue::KValue(std::string const &key_) :
-  key(key_)
+KValue::KValue()
 {
+}
+
+KValue::KValue(const KValue& other)
+{
+  owner = other.owner;
+  val = other.val;
 }
 
 KValue::~KValue()
 {
 }
 
-void set(conf::Value const &v)
+KValue& KValue::operator=(const KValue& other)
 {
-  if (value.is_initialized()) {
+  owner = other.owner;
+  val = other.val;
+  return *this;
+}
+
+void KValue::set(conf::Key const &k, conf::Value const &v)
+{
+  if (val.is_initialized()) {
     if (v.is_initialized()) {
-      if (value != v) {
-        value = v;
-        emit valueChanged(key);
+      if (val != v) {
+        val = v;
+        emit valueChanged(k, v);
       }
     } else {
-      value = v;
-      emit valueDeleted(key);
+      val = v;
+      emit valueDeleted(k);
     }
   } else {
     if (v.is_initialized()) {
-      value = v;
-      emit valueCreated(key);
+      val = v;
+      emit valueCreated(k, v);
     }
   }
 }
 
-void lock(std::string const &uid)
+void KValue::lock(conf::Key const &k, QString const &uid)
 {
   assert(! owner);
   owner = uid;
-  emit valueLocked(key, uid);
+  emit valueLocked(k, uid);
 }
 
-void unlock() const
+void KValue::unlock(conf::Key const &k)
 {
   assert(owner);
-  emit valueUnlocked(key);
+  owner.reset();
+  emit valueUnlocked(k);
 }

@@ -28,10 +28,10 @@ HEADERS += \
   SyncStatus.h \
   PosIntValidator.h \
   PosDoubleValidator.h \
+  confKey.h \
   confValue.h \
   KValue.h \
   conf.h \
-  KWidget.h \
   KLineEdit.h \
   KLabel.h \
   KErrorMsg.h \
@@ -43,10 +43,10 @@ SOURCES += \
   SyncStatus.cpp \
   PosIntValidator.cpp \
   PosDoubleValidator.cpp \
+  confKey.cpp \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \
-  KWidget.cpp \
   AtomicForm.cpp \
   StorageForm.cpp \
   RmAdminWin.cpp \
