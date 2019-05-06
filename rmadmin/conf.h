@@ -15,8 +15,9 @@ extern conf::Key my_errors;
  * updates to widget slots. */
 extern QMap<conf::Key, KValue> kvs;
 
-void askLock(conf::Key const &key);
-void askUnlock(conf::Key const &key);
+void askSet(conf::Key const &, conf::Value const &);
+void askLock(conf::Key const &);
+void askUnlock(conf::Key const &);
 
 };
 

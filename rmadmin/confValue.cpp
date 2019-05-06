@@ -3,6 +3,10 @@
 #include <QtWidgets>
 #include <QString>
 #include "confValue.h"
+extern "C" {
+#  include <caml/memory.h>
+#  include <caml/alloc.h>
+}
 
 namespace conf {
 
@@ -222,6 +226,46 @@ QString Value::toQString() const
     case LastValueType:
       return QString("undefined values");
   }
+}
+
+value Value::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  switch (valueType) {
+    case Bool:
+      ret = caml_alloc(1, 0);
+      Store_field(ret, 0, Val_bool(v.Bool));
+      break;
+    case Int:
+      ret = caml_alloc(1, 1);
+      Store_field(ret, 0, Val_int(v.Int));
+      break;
+    case Float:
+      ret = caml_alloc(1, 2);
+      Store_field(ret, 0, caml_copy_double(v.Float));
+      break;
+    case Time:
+      ret = caml_alloc(1, 3);
+      Store_field(ret, 0, caml_copy_double(v.Time));
+      break;
+    case String:
+      ret = caml_alloc(1, 4);
+      Store_field(ret, 0, caml_copy_string(v.String.toStdString().c_str()));
+      break;
+    case Error:
+      assert(!"Don't know how to convert from an Error");
+      break;
+    case Retention:
+      assert(!"Don't know how to convert form a Retention");
+      break;
+    case Dataset:
+      assert(!"Don't know how to convert from a Dataset");
+      break;
+    default:
+      assert(!"Tag_val(v_) <= LastValueType");
+  }
+  CAMLreturn(ret);
 }
 
 bool operator==(Value const &a, Value const &b)

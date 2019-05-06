@@ -17,7 +17,7 @@ conf::Key my_errors("errors/users/admin");
 QMap<conf::Key, KValue> kvs;
 
 struct ConfRequest {
-  enum Action { Lock, Unlock } action;
+  enum Action { Set, Lock, Unlock } action;
   std::string const key;
   std::optional<Value const> value;
 };
@@ -35,18 +35,33 @@ extern "C" {
     } else {
       ConfRequest cr = pending_requests.takeFirst();
       switch (cr.action) {
+        case ConfRequest::Set:
+          req = caml_alloc(2, 0);
+          Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          Store_field(req, 1, cr.value->toOCamlValue());
+          break;
         case ConfRequest::Lock:
-          req = caml_alloc(1, 0);
+          req = caml_alloc(1, 1);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::Unlock:
-          req = caml_alloc(1, 1);
+          req = caml_alloc(1, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
       }
     }
     CAMLreturn(req);
   }
+}
+
+void askSet(conf::Key const &key, conf::Value const &val)
+{
+  ConfRequest req = {
+    .action = ConfRequest::Set,
+    .key = key.s,
+    .value = val
+  };
+  pending_requests.push_back(req);
 }
 
 void askLock(conf::Key const &key)

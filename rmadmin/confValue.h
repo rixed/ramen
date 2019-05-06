@@ -72,6 +72,7 @@ public:
   bool is_initialized() const;
 
   QString toQString() const;
+  value toOCamlValue() const;
 
   friend bool operator==(Value const &, Value const &);
   friend bool operator!=(Value const &, Value const &);

@@ -55,13 +55,15 @@ class AtomicForm : public QGroupBox
     Unlocking   // With or without having written the values first
   } state;
 
-  // The set of all currently locked keys:
+  // The set of all keys currently locked by this user:
   std::set<conf::Key> locked;
 
   void lockAll();
   void wantEdit();
   void wantCancel();
+  void wantSubmit();
   void doCancel();
+  void doSubmit();
   bool someEdited();
 
 public:

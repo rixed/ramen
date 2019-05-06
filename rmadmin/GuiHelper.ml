@@ -87,6 +87,7 @@ external should_quit : unit -> bool = "should_quit"
 
 type pending_req =
   | NoReq
+  | Set of string * Value.t
   | Lock of string
   | Unlock of string
 
@@ -112,6 +113,9 @@ let sync_loop clt zock =
   let rec handle_msgs_out () =
     match next_pending_request () with
     | NoReq -> ()
+    | Set (k, v) ->
+        send_cmd zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        handle_msgs_out ()
     | Lock k ->
         send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
         handle_msgs_out ()

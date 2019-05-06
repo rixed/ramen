@@ -29,7 +29,7 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   QObject::connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
   submitButton = new QPushButton(tr("submit"), buttonBar);
-  // TODO: set action!
+  QObject::connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
   QHBoxLayout *buttonsLayout = new QHBoxLayout(buttonBar);
   buttonsLayout->addWidget(editButton);
@@ -97,10 +97,10 @@ void AtomicForm::wantEdit()
 bool AtomicForm::someEdited()
 {
   for (AtomicWidget const *aw : widgets) {
-    conf::Value currVal = aw->getValue();
-    if (aw->initValue != currVal) {
+    conf::Value v = aw->getValue();
+    if (aw->initValue != v) {
       std::cerr << "value of " << aw->key << " has changed from "
-                << aw->initValue << " to " << currVal << std::endl;
+                << aw->initValue << " to " << v << std::endl;
       return true;
     }
   }
@@ -123,6 +123,26 @@ void AtomicForm::wantCancel()
       doCancel();
     }
   } else {
+    doCancel();
+  }
+}
+
+void AtomicForm::doSubmit()
+{
+  state = Unlocking;
+  for (AtomicWidget *aw : widgets) {
+    conf::Value v = aw->getValue();
+    if (v != aw->initValue) conf::askSet(aw->key, v);
+    conf::askUnlock(aw->key);
+  }
+}
+
+void AtomicForm::wantSubmit()
+{
+  if (someEdited()) {
+    doSubmit();
+  } else {
+    std::cerr << "Cancelling rather, as no edition was done." << std::endl;
     doCancel();
   }
 }
