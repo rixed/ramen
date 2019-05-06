@@ -518,7 +518,7 @@ rmadmin/GuiHelper.o: \
 		$(patsubst %.ml,%.cmx,$(filter %.ml, $(RMADMIN_SOURCES)))
 	@echo 'Generating OCaml GUI helper $@'
 	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) $(filter %.cmx, $^) -output-obj -o $@
-	# Also help qmake Makefile to notice the dependency:
+	@# Also help qmake Makefile to notice the dependency:
 	@touch rmadmin/main.cpp
 
 rmadmin/Makefile:
