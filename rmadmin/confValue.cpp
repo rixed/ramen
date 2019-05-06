@@ -1,3 +1,5 @@
+#include <string.h>
+#include <cstdlib>
 #include <QtWidgets>
 #include <QString>
 #include "confValue.h"
@@ -17,7 +19,7 @@ bool Value::is_initialized() const
 Value::Value(value v_)
 {
   assert(Is_block(v_));
-  valueType = (enum valueType)Tag_val(v_);
+  valueType = (ValueType)Tag_val(v_);
   switch (valueType) {
     case Bool:
       v.Bool = Bool_val(Field(v_, 0));
@@ -35,19 +37,22 @@ Value::Value(value v_)
       v.String = String_val(Field(v_, 0));
       break;
     case Error:
-      v.Error.time = Double_val(Field(v_, 0));
-      v.Error.cmd_id = Int_val(Field(v_, 1));
-      v.Error.msg.assign(String_val(Field(v_, 2)));
+      v.Error = {
+        .time = Double_val(Field(v_, 0)),
+        .cmd_id = (unsigned)Int_val(Field(v_, 1)),
+        .msg = strdup(String_val(Field(v_, 2)))
+      };
       break;
     case Retention:
-      v.Retention.duration = Double_val(Field(v_, 0));
-      v.Retention.period = Double_val(Field(v_, 1));
+      v.Retention = {
+        .duration = Double_val(Field(v_, 0)),
+        .period = Double_val(Field(v_, 1))
+      };
       break;
     case Dataset:
-      v.Dataset.capa = 0;
-      v.Dataset.length = 0;
-      v.Dataset.next = 0;
-      v.Dataset.arr = nullptr;
+      v.Dataset = { // TODO
+        .capa = 0, .length = 0, .next = 0, .arr = nullptr
+      };
       break;
     case LastValueType:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -75,6 +80,7 @@ Value::Value(const Value& other)
       break;
     case Error:
       v.Error = other.v.Error;
+      v.Error.msg = strdup(other.v.Error.msg);
       break;
     case Retention:
       v.Retention = other.v.Retention;
@@ -84,6 +90,19 @@ Value::Value(const Value& other)
       break;
     case LastValueType:
       break;
+  }
+}
+
+Value::Value(ValueType vt, QString const &s)
+{
+  (void)vt; (void)s;
+  Value(); // TODO
+}
+
+Value::~Value()
+{
+  if (valueType == Error) {
+    free(v.Error.msg);
   }
 }
 
@@ -108,6 +127,7 @@ Value& Value::operator=(const Value& other)
       break;
     case Error:
       v.Error = other.v.Error;
+      v.Error.msg = strdup(other.v.Error.msg);
       break;
     case Retention:
       v.Retention = other.v.Retention;
@@ -138,7 +158,7 @@ QString Value::toQString() const
     case String:
       return v.String;
     case Error:
-      return QString(v.Error.msg.c_str()); // TODO: prepend with time etc.
+      return QString(v.Error.msg); // TODO: prepend with time etc.
     case Retention:
       return QString("duration: ").
              append(QString::number(v.Retention.duration)).
@@ -155,23 +175,23 @@ bool operator==(Value const &a, Value const &b)
 {
   if (a.valueType != b.valueType) return false;
   switch (a.valueType) {
-    case Value::Bool:
+    case Bool:
       return a.v.Bool == b.v.Bool;
-    case Value::Int:
+    case Int:
       return a.v.Int == b.v.Int;
-    case Value::Float:
+    case Float:
       return a.v.Float == b.v.Float;
-    case Value::Time:
+    case Time:
       return a.v.Time == b.v.Time;
-    case Value::String:
+    case String:
       return a.v.String == b.v.String;
-    case Value::Error:
-      return a.v.Error == b.v.Error;
-    case Value::Retention:
+    case Error:
+      return a.v.Error.cmd_id == b.v.Error.cmd_id;
+    case Retention:
       return a.v.Retention == b.v.Retention;
-    case Value::Dataset:
+    case Dataset:
       return a.v.Dataset == b.v.Dataset;
-    case Value::LastValueType:
+    case LastValueType:
       return true;
  }
 }
@@ -181,34 +201,34 @@ bool operator!=(Value const &a, Value const &b)
   return !(a == b);
 }
 
-bool operator==(Error const &a, Error const &b)
+bool operator==(struct Error const &a, struct Error const &b)
 {
   return a.cmd_id == b.cmd_id;  // Same as in OCaml
 }
 
-bool operator!=(Error const &a, Error const &b)
+bool operator!=(struct Error const &a, struct Error const &b)
 {
   return !(a == b);
 }
 
-bool operator==(Retention const &a, Retention const &b)
+bool operator==(struct Retention const &a, struct Retention const &b)
 {
   return a.duration == b.duration &&
          a.period == b.period;
 }
 
-bool operator!=(Retention const &a, Retention const &b)
+bool operator!=(struct Retention const &a, struct Retention const &b)
 {
   return !(a == b);
 }
 
-bool operator==(Dataset const &a, Dataset const &b)
+bool operator==(struct Dataset const &a, struct Dataset const &b)
 {
   (void)a; (void)b;
   return false; // TODO
 }
 
-bool operator!=(Dataset const &a, Dataset const &b)
+bool operator!=(struct Dataset const &a, struct Dataset const &b)
 {
   return !(a == b);
 }
@@ -217,12 +237,6 @@ std::ostream &operator<<(std::ostream &os, Value const &v)
 {
   os << v.toQString().toStdString();
   return os;
-}
-
-QDebug operator<<(QDebug dbg, Value const &v)
-{
-  dbg.nospace() << v.toQString();
-  return dbg.maybeSpace();
 }
 
 };

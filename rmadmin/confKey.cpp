@@ -18,10 +18,4 @@ std::ostream &operator<<(std::ostream &os, Key const &v)
   return os;
 }
 
-QDebug operator<<(QDebug dbg, Key const &k)
-{
-  dbg.nospace() << k.s;
-  return dbg.maybeSpace();
-}
-
 };

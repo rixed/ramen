@@ -2,16 +2,21 @@
 #define KLINEEDIT_H_190505
 #include <QLineEdit>
 #include "KValue.h"
+#include "AtomicWidget.h"
 #include "confValue.h"
 #include "conf.h"
 
 class KLineEdit : public QLineEdit
 {
   Q_OBJECT
+  //Q_INTERFACES(AtomicWidget)
+
+  conf::ValueType valueType;
 
 public:
-  KLineEdit(std::string const key, QWidget *parent = nullptr) :
-    QLineEdit(parent)
+  KLineEdit(std::string const key, conf::ValueType valueType_, QWidget *parent = nullptr) :
+    QLineEdit(parent),
+    valueType(valueType_)
   {
     KValue &kv = conf::kvs[key];
     QObject::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
@@ -20,6 +25,11 @@ public:
     QObject::connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
   }
   ~KLineEdit() {}
+
+  conf::Value const currentValue()
+  {
+    return conf::Value(valueType, text());
+  }
 
 public slots:
   void setValue(conf::Key const &, conf::Value const &v)
@@ -36,7 +46,6 @@ public slots:
   {
     setEnabled(false);
   }
-
 };
 
 #endif

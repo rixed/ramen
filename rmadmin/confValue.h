@@ -3,7 +3,6 @@
 #include <iostream>
 #include <QString>
 #include <QMetaType>
-#include <QDebug>
 extern "C" {
 #  include <caml/mlvalues.h>
 }
@@ -13,7 +12,7 @@ namespace conf {
 struct Error {
   double time;
   unsigned cmd_id;
-  std::string msg;
+  char *msg; // owned  (FIXME: get rid of v union; use subtypes?)
   friend bool operator==(Error const &, Error const &);
   friend bool operator!=(Error const &, Error const &);
 };
@@ -36,15 +35,17 @@ struct Dataset {
   friend bool operator!=(Dataset const &, Dataset const &);
 };
 
+enum ValueType {
+  Bool = 0, Int, Float, Time, String, Error, Retention, Dataset,
+  LastValueType
+};
+
 class Value
 {
-  enum valueType {
-    Bool = 0, Int, Float, Time, String, Error, Retention, Dataset,
-    LastValueType
-  } valueType;
+  ValueType valueType;
   union V {
-    V() {};
-    ~V() {};
+    V() { Bool = false; };
+    ~V() {} ;
     bool Bool;
     int Int;
     double Float;
@@ -61,8 +62,13 @@ public:
   Value(value);
   // Copy constructor
   Value(const Value&);
+  // Construct from a QString
+  Value(conf::ValueType, QString const &);
 
   Value& operator=(const Value&);
+
+  ~Value();
+
   bool is_initialized() const;
 
   QString toQString() const;
@@ -72,7 +78,6 @@ public:
 };
 
 std::ostream &operator<<(std::ostream &, Value const &);
-QDebug operator<<(QDebug, Value const &);
 
 };
 

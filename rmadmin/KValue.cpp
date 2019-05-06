@@ -15,6 +15,11 @@ KValue::~KValue()
 {
 }
 
+conf::Value const &KValue::value()
+{
+  return val;
+}
+
 KValue& KValue::operator=(const KValue& other)
 {
   owner = other.owner;

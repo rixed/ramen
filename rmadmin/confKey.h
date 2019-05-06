@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string>
 #include <QMetaType>
-#include <QDebug>
 
 namespace conf {
 
@@ -19,7 +18,6 @@ public:
 
 bool operator<(Key const &, Key const &);
 std::ostream &operator<<(std::ostream &, Key const &);
-QDebug operator<<(QDebug, Key const &);
 
 };
 

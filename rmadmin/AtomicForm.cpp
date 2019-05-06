@@ -25,9 +25,8 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   QWidget *buttonBar = new QWidget(this);
   editButton = new QPushButton(tr("edit"), buttonBar);
   QObject::connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
-  // TODO: set action!
   cancelButton = new QPushButton(tr("cancel"), buttonBar);
-  // TODO: set action!
+  QObject::connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
   submitButton = new QPushButton(tr("submit"), buttonBar);
   // TODO: set action!
@@ -64,11 +63,9 @@ void AtomicForm::setCentralWidget(QWidget *w)
 
 void AtomicForm::addWidget(conf::Key const &key, QWidget *w)
 {
-  widgets.push_back(std::pair<conf::Key, QWidget *>(key, w));
   w->setEnabled(false);
-  // TODO: also subscribe to those keys so that we can update our state and
-  //       enable/disable the buttons
   KValue &kv = conf::kvs[key];
+  widgets.push_back(AtomicWidget(key, kv.value()));
   QObject::connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
   QObject::connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
 }
@@ -82,10 +79,36 @@ void AtomicForm::lockAll()
 void AtomicForm::wantEdit()
 {
   // Lock all widgets that are not locked already:
-  for (std::pair<conf::Key, QWidget *> const w : widgets) {
-    if (locked.find(w.first) == locked.end()) {
-      conf::askLock(w.first);
+  for (AtomicWidget const &aw : widgets) {
+    if (locked.find(aw.key) == locked.end()) {
+      conf::askLock(aw.key);
     }
+  }
+}
+
+bool AtomicForm::someEdited()
+{
+  for (AtomicWidget const &aw : widgets) {
+    if (aw.edited()) return true;
+  }
+  return false;
+}
+
+void AtomicForm::doCancel()
+{
+  state = Unlocking;
+  for (AtomicWidget &aw : widgets) {
+    aw.resetValue();
+    conf::askUnlock(aw.key);
+  }
+}
+
+void AtomicForm::wantCancel()
+{
+  if (someEdited()) {
+    std::cerr << "TODO: confirmation" << std::endl;
+  } else {
+    doCancel();
   }
 }
 

@@ -2,7 +2,6 @@
 #define ATOMICFORM_H_190504
 #include <vector>
 #include <set>
-#include <utility> // for pair
 #include <QWidget>
 #include <QString>
 #include <QVBoxLayout>
@@ -10,6 +9,7 @@
 #include <QGroupBox>
 #include "confValue.h"
 #include "confKey.h"
+#include "AtomicWidget.h"
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
  * "edit", "cancel" and "commit".
@@ -39,7 +39,7 @@ class AtomicForm : public QGroupBox
 {
   Q_OBJECT
 
-  std::vector<std::pair<conf::Key, QWidget *>> widgets;
+  std::vector<AtomicWidget> widgets;
 
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
@@ -50,13 +50,17 @@ class AtomicForm : public QGroupBox
     Locking,
     Locked,
     Cancelling, // Where we ask for confirmation if there were changes
-    Submitting
+    Unlocking   // With or without having written the values first
   } state;
 
   // The set of all currently locked keys:
   std::set<conf::Key> locked;
 
   void lockAll();
+  void wantEdit();
+  void wantCancel();
+  void doCancel();
+  bool someEdited();
 
 public:
   QWidget *centralWidget;
@@ -68,7 +72,6 @@ public:
   void addWidget(conf::Key const &key, QWidget *);
 
 public slots:
-  void wantEdit();
   void setEnabled(bool);
   void setValue(conf::Key const &, conf::Value const &) {}
   void lockValue(conf::Key const &, QString const &);

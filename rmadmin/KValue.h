@@ -19,6 +19,7 @@ public:
   KValue(const KValue&);
   ~KValue();
   void set(conf::Key const &, conf::Value const &);
+  conf::Value const &value();
   void lock(conf::Key const &, QString const &);
   void unlock(conf::Key const &);
   KValue& operator=(const KValue&);
