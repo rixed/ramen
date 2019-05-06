@@ -260,9 +260,11 @@ struct
   struct
     type t =
       | Auth of string
-      | SetKey of Key.t * Value.t
+      | SetKey of (Key.t * Value.t)
+      | NewKey of (Key.t * Value.t * string)
       | DelKey of Key.t
-      | LockKey of Key.t
+      (* With the username of the lock owner: *)
+      | LockKey of (Key.t * string)
       | UnlockKey of Key.t
 
     let to_string = function
@@ -272,12 +274,18 @@ struct
           Printf.sprintf2 "SK %S %S"
             (Key.to_string k)
             (Value.to_string v)
+      | NewKey (k, v, u) ->
+          Printf.sprintf2 "NK %S %S %S"
+            (Key.to_string k)
+            (Value.to_string v)
+            u
       | DelKey k ->
           Printf.sprintf2 "DK %s"
             (Key.to_string k)
-      | LockKey k ->
-          Printf.sprintf2 "LK %s"
+      | LockKey (k, u) ->
+          Printf.sprintf2 "LK %S %S"
             (Key.to_string k)
+            u
       | UnlockKey k ->
           Printf.sprintf2 "UK %s"
             (Key.to_string k)
@@ -293,10 +301,14 @@ struct
       | 'S', 'K', ' ' ->
           Scanf.sscanf args "%S %S" (fun k v ->
             SetKey (Key.of_string k, Value.of_string v))
+      | 'N', 'K', ' ' ->
+          Scanf.sscanf args "%S %S %S" (fun k v u ->
+            NewKey (Key.of_string k, Value.of_string v, u))
       | 'D', 'K', ' ' ->
           DelKey (Key.of_string args)
       | 'L', 'K', ' ' ->
-          LockKey (Key.of_string args)
+          Scanf.sscanf args "%S %S" (fun k u ->
+            LockKey (Key.of_string k, u))
       | 'U', 'K', ' ' ->
           UnlockKey (Key.of_string args)
       | _ ->

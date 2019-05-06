@@ -30,7 +30,7 @@ struct
       r : Capa.t ; (* Read perm *)
       w : Capa.t ; (* Write perm *)
       s : bool (* Sticky, ie cannot be deleted *) ;
-      mutable l : User.t option (* Locked by that user *) }
+      mutable l : User.t option (* Locked by that user. TODO: add a recursion count? *) }
 
   (* Callbacks return either None, meaning the change is refused, or some
    * new (or identical) value to be written instead of the user supplied
@@ -121,7 +121,8 @@ struct
         let v = do_cbs t.on_news t k v in
         let l = Some u in (* objects are created locked *)
         H.add t.h k { v ; r ; w ; s ; l } ;
-        notify t k (User.has_capa r) (SetKey (k, v))
+        let uid = IO.to_string User.print_id (User.id u) in
+        notify t k (User.has_capa r) (NewKey (k, v, uid))
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
           Key.print k |>
@@ -170,7 +171,8 @@ struct
         (match prev.l with
         | Some u' when User.equal u u' -> ()
         | _ ->
-            notify t k (User.has_capa prev.r) (LockKey k) ;
+            let uid = IO.to_string User.print_id (User.id u) in
+            notify t k (User.has_capa prev.r) (LockKey (k, uid)) ;
             prev.l <- Some u)
 
   let unlock t u k =
@@ -227,7 +229,9 @@ struct
       if User.has_capa hv.r u &&
          not (Enum.is_empty (Selector.matches k s))
       then (
-        t.send_msg (SrvMsg.SetKey (k, hv.v)) (Enum.singleton u) ;
+        let uid =
+          IO.to_string User.print_id (User.id (hv.l |? User.internal)) in
+        t.send_msg (SrvMsg.NewKey (k, hv.v, uid)) (Enum.singleton u) ;
         (* Will be created locked by client: *)
         if hv.l = None then
           t.send_msg (SrvMsg.UnlockKey k) (Enum.singleton u)

@@ -6,7 +6,6 @@ open Batteries
 open RamenSyncIntf
 open RamenHelpers
 module N = RamenName
-module T = RamenTypes
 module Retention = RamenRetention
 
 (* The only capacity we need is:
@@ -113,8 +112,8 @@ struct
 
   let print fmt = function
     | Internal -> String.print fmt "internal"
-    | Auth { name ; _ } -> Printf.fprintf fmt "auth:%S" name
-    | Anonymous zmq_id -> Printf.fprintf fmt "anonymous:%S" zmq_id
+    | Auth { name ; _ } -> Printf.fprintf fmt "auth:%s" name
+    | Anonymous zmq_id -> Printf.fprintf fmt "anonymous:%s" zmq_id
 
   type id = string
 
@@ -243,9 +242,9 @@ struct
         Printf.fprintf fmt "storage/%a"
           print_storage_key storage_key
     | Error None ->
-        Printf.fprintf fmt "error/global"
+        Printf.fprintf fmt "errors/global"
     | Error (Some s) ->
-        Printf.fprintf fmt "error/users/%s" s
+        Printf.fprintf fmt "errors/users/%s" s
 
   (* Special key for error reporting: *)
   let global_errs = Error None
@@ -302,7 +301,7 @@ struct
               | "recall_cost", "" -> RecallCost
               | "retention_override", s ->
                   RetentionsOverride (Globs.compile s))
-        | "error", s ->
+        | "errors", s ->
             Error (
               match cut s with
               | "global", "" -> None
@@ -359,7 +358,7 @@ struct
     | String of string
     | Error of float * int * string
     | Retention of Retention.t
-    | RamenDataset of (T.value array * int (* index of the first *))
+    | Dataset of (t array * int (* index of the first *))
 
   let equal v1 v2 =
     match v1, v2 with
@@ -368,9 +367,9 @@ struct
     | Error (_, i1, _), Error (_, i2, _) -> i1 = i2
     | v1, v2 -> v1 = v2
 
-  let dummy = Bool true
+  let dummy = String "undefined"
 
-  let print fmt = function
+  let rec print fmt = function
     | Bool b -> Bool.print fmt b
     | Int i -> Int64.print fmt i
     | Float f | Time f -> Float.print fmt f
@@ -380,9 +379,9 @@ struct
           print_as_date t i s
     | Retention r ->
         Retention.print fmt r
-    | RamenDataset (a, i) ->
+    | Dataset (a, i) ->
         Printf.fprintf fmt "%a,%d"
-          (Array.print T.print) a i
+          (Array.print print) a i
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

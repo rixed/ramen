@@ -1,14 +1,19 @@
-#ifndef WIN_H_20190429
-#define WIN_H_20190429
+#ifndef RMADMINWIN_H_20190429
+#define RMADMINWIN_H_20190429
 
+#include <string>
 #include <QWidget>
+#include <QMainWindow>
+#include "KErrorMsg.h"
+#include "SyncStatus.h"
 
-class QPushButton;
-
-class RmAdminWin : public QWidget
+class RmAdminWin : public QMainWindow
 {
   Q_OBJECT
-  QPushButton* button_;
+
+  SyncStatus connStatus, authStatus, syncStatus;
+  void setStatusMsg();
+  KErrorMsg *errorMessage;
 
 public:
   explicit RmAdminWin(QWidget *parent = nullptr);
@@ -17,7 +22,9 @@ public:
 signals:
 
 public slots:
-//  void startup_progress();
+  void connProgress(SyncStatus);
+  void authProgress(SyncStatus);
+  void syncProgress(SyncStatus);
 };
 
 #endif

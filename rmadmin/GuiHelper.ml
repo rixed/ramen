@@ -7,7 +7,8 @@ open RamenHelpers
  * SyncConf client
  *)
 
-module Client = RamenSyncClient.Make (RamenSync.Value) (RamenSync.Selector)
+module Value = RamenSync.Value
+module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
 module Key = Client.Key
 
 (* The idea is to do the networking work of connecting, sending/receiving
@@ -15,10 +16,10 @@ module Key = Client.Key
  * Then, at every message, in addition to maintaining the conf tree we also,
  * depending on the message, call a C wrapper to the Qt signal. *)
 
-let send_cmd () =
-  let next_id = ref 0 in
-  fun zock cmd ->
+let next_id = ref 0
+let send_cmd zock cmd =
     let s = Client.CltMsg.to_string (!next_id, cmd) in
+    !logger.info "Sending command %s" s ;
     incr next_id ;
     Zmq.Socket.send_all zock [ "" ; s ]
 
@@ -54,11 +55,11 @@ let init_connect url zock =
 
 external signal_auth : sync_status -> unit = "signal_auth"
 
-let init_auth zock =
+let init_auth creds zock =
   signal_auth InitStart ;
   try
     !logger.info "Sending auth..." ;
-    send_cmd () zock (Client.CltMsg.Auth "tintin") ;
+    send_cmd zock (Client.CltMsg.Auth creds) ;
     match recv_cmd zock with
     | Auth "" ->
         signal_auth InitOk
@@ -76,51 +77,102 @@ let init_sync zock glob =
   try
     !logger.info "Sending StartSync %s..." glob ;
     let glob = Globs.compile glob in
-    send_cmd () zock (Client.CltMsg.StartSync glob) ;
+    send_cmd zock (Client.CltMsg.StartSync glob) ;
     signal_sync InitOk
   with e ->
     signal_sync (InitFail (Printexc.to_string e))
 
+(* Will be set form the C++ thread when the sync thread should exit *)
+external should_quit : unit -> bool = "should_quit"
+
+type pending_req =
+  | NoReq
+  | Lock of string
+  | Unlock of string
+
+external next_pending_request : unit -> pending_req = "next_pending_request"
+
 let sync_loop clt zock =
   let msg_count = ref 0 in
-  forever (fun () ->
+  Zmq.Socket.set_receive_timeout zock 100 ;
+  let handle_msgs_in () =
+    match recv_cmd zock with
+    | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+        ()
+    | msg ->
+        Client.process_msg clt msg ;
+        incr msg_count ;
+        !logger.debug "received %d messages" !msg_count ;
+        if !msg_count mod 10 = 0 then
+          let status_msg =
+            Printf.sprintf "%d messages, %d keys"
+              !msg_count
+              (Client.H.length clt.h) in
+          signal_sync (Ok status_msg) in
+  let rec handle_msgs_out () =
+    match next_pending_request () with
+    | NoReq -> ()
+    | Lock k ->
+        send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
+        handle_msgs_out ()
+    | Unlock k ->
+        send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        handle_msgs_out ()
+  in
+  while not (should_quit ()) do
     try
-      !logger.debug "receiving message..." ;
-      recv_cmd zock |> Client.process_msg clt ;
-      incr msg_count ;
-      !logger.debug "received %d messages" !msg_count ;
-      if !msg_count mod 10 = 0 then
-        let status_msg =
-          Printf.sprintf "%d messages, %d keys"
-            !msg_count
-            (Client.H.length clt.h) in
-        signal_sync (Ok status_msg)
+      handle_msgs_in () ;
+      handle_msgs_out ()
     with e ->
       signal_sync (Fail (Printexc.to_string e))
-  ) ()
+  done
 
-let on_new clt k v =
-  !logger.info "New key %a" Key.print k ;
-  ignore clt ; ignore k ; ignore v
+external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
+
+let on_new clt k v uid =
+  !logger.info "New key %a with value %a" Key.print k Value.print v ;
+  ignore clt ;
+  conf_new_key (Key.to_string k) v uid
+
+external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
 let on_set clt k v =
-  !logger.info "Change key %a" Key.print k ;
-  ignore clt ; ignore k ; ignore v
+  !logger.info "Change key %a to value %a" Key.print k Value.print v ;
+  ignore clt ;
+  conf_set_key (Key.to_string k) v
+
+external conf_del_key : string -> unit = "conf_del_key"
 
 let on_del clt k =
   !logger.info "Del key %a" Key.print k ;
-  ignore clt ; ignore k
+  ignore clt ;
+  conf_del_key (Key.to_string k)
 
-let on_lock clt k =
+external conf_lock_key : string -> string -> unit = "conf_lock_key"
+
+let on_lock clt k uid =
   !logger.info "Lock key %a" Key.print k ;
-  ignore clt ; ignore k
+  ignore clt ;
+  conf_lock_key (Key.to_string k) uid
+
+external conf_unlock_key : string -> unit = "conf_unlock_key"
 
 let on_unlock clt k =
   !logger.info "Unlock key %a" Key.print k ;
-  ignore clt ; ignore k
+  ignore clt ;
+  conf_unlock_key (Key.to_string k)
+
+let register_senders zock =
+  let lock_from_cpp k =
+    send_cmd zock (Client.CltMsg.LockKey k)
+  and unlock_from_cpp k =
+    send_cmd zock (Client.CltMsg.UnlockKey k)
+  in
+  ignore (Callback.register "lock_from_cpp" lock_from_cpp) ;
+  ignore (Callback.register "unlock_from_cpp" unlock_from_cpp)
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start_sync url () =
+let start_sync url creds () =
   let ctx = Zmq.Context.create () in
   finally
     (fun () -> Zmq.Context.terminate ctx)
@@ -129,10 +181,11 @@ let start_sync url () =
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
+          register_senders zock ;
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect url zock) ;
           log_exceptions ~what:"init_auth"
-            (fun () -> init_auth zock) ;
+            (fun () -> init_auth creds zock) ;
           log_exceptions ~what:"init_sync"
             (fun () -> init_sync zock "*") ;
           let clt =
@@ -142,14 +195,14 @@ let start_sync url () =
         ) ()
     ) ()
 
-let init debug quiet url =
+let init debug quiet url creds =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
   init_logger log_level ;
   (* Register the functions that will be called from C++ *)
-  let _cb = Callback.register "start_sync" (start_sync url) in
+  ignore (Callback.register "start_sync" (start_sync url creds)) ;
   !logger.info "Done with the command line"
 
 (*
@@ -191,6 +244,7 @@ let cli_parse_result =
   match
     print_exn (fun () ->
       Term.eval ~catch:false
-        Term.(const init $ debug $ quiet $ confserver_url, i))
-  with `Error _ -> false
-     | `Version | `Help | `Ok () -> true
+        Term.(const init $ debug $ quiet $ confserver_url $ const "admin", i))
+  with `Error _ -> exit 1
+     | `Version | `Help -> exit 0
+     | `Ok () -> ()

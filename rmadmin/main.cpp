@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cassert>
+#include <string>
 extern "C" {
 #  include <caml/mlvalues.h>
 #  include <caml/memory.h>
@@ -7,58 +9,76 @@ extern "C" {
 #  include <caml/startup.h>
 #  include <caml/callback.h>
 }
+#include <QApplication>
 #include <QtWidgets>
 #include "RmAdminWin.h"
+#include "SyncStatus.h"
+#include "conf.h"
+
+RmAdminWin *w = nullptr;
 
 using namespace std;
 
 /* Relay signals from OCaml to C++ */
 
 extern "C" {
-  value signal_conn(value url_, value status)
+  value signal_conn(value url_, value status_)
   {
-    cerr << "signal_conn called!" << endl;
-    return(Val_unit);
+    CAMLparam2(url_, status_);
+    string url(String_val(url_));
+    SyncStatus status(status_);
+    if (w) w->connProgress(status);
+    CAMLreturn(Val_unit);
   }
 
-  value signal_auth(value status)
+  value signal_auth(value status_)
   {
-    cerr << "signal_auth called!" << endl;
-    return(Val_unit);
+    CAMLparam1(status_);
+    SyncStatus status(status_);
+    if (w) w->authProgress(status);
+    CAMLreturn(Val_unit);
   }
 
-  value signal_sync(value status)
+  value signal_sync(value status_)
   {
-    cerr << "signal_sync called!" << endl;
-    return(Val_unit);
+    CAMLparam1(status_);
+    SyncStatus status(status_);
+    if (w) w->syncProgress(status);
+    CAMLreturn(Val_unit);
+  }
+
+  static bool quit = false;
+  value should_quit()
+  {
+    CAMLparam0();
+    CAMLreturn(Val_int(quit ? 1:0));
   }
 }
 
 static void do_sync_thread(char *argv[])
 {
-  cout << "Calling OCaml startup..." << endl;
   caml_startup(argv);
-  cout << "Calling start_sync..." << endl;
   value *start_sync = caml_named_value("start_sync");
   caml_callback(*start_sync, Val_unit);
 }
 
 int main(int argc, char *argv[])
 {
-  cout << "Calling QApplication..." << endl;
   QApplication a(argc, argv);
+  QCoreApplication::setApplicationName("RamenAdmin");
 
-  RmAdminWin w;
-  w.show();
+  w = new RmAdminWin();
+  thread sync_thread(do_sync_thread, argv);
 
-  cout << "Starting sync thread..." << endl;
-  std::thread sync_thread(do_sync_thread, argv);
+  w->show();
 
-  cout << "Running QApplication..." << endl;
   int ret = a.exec();
+  quit = true;
 
   cout << "Joining with start_sync thread..." << endl;
   sync_thread.join();
+
+  delete w;
 
   return ret;
 }

@@ -19,15 +19,15 @@ struct
 
   type t =
     { h : hash_value H.t ;
-      on_new : t -> Key.t -> Value.t -> unit ;
+      on_new : t -> Key.t -> Value.t -> string -> unit ;
       on_set : t -> Key.t -> Value.t -> unit ;
       on_del : t -> Key.t -> unit ;
-      on_lock : t -> Key.t -> unit ;
+      on_lock : t -> Key.t -> string -> unit ;
       on_unlock : t -> Key.t -> unit }
 
   and hash_value =
     { mutable v : Value.t ;
-      mutable locked : bool }
+      mutable locked : string option }
 
   let make ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
     { h = H.create 99 ;
@@ -42,9 +42,12 @@ struct
     | SrvMsg.SetKey (k, v) ->
         (match H.find t.h k with
         | exception Not_found ->
-            let hv = { v ; locked = true } in
+            !logger.error
+              "Server set key %a that has not been created"
+              Key.print k ;
+            let hv = { v ; locked = None } in
             H.add t.h k hv ;
-            t.on_new t k v
+            t.on_new t k v "unknown"
         | prev ->
             if Value.equal prev.v v then (
               !logger.error
@@ -58,6 +61,20 @@ struct
             )
         )
 
+    | SrvMsg.NewKey (k, v, uid) ->
+        (match H.find t.h k with
+        | exception Not_found ->
+            let hv = { v ; locked = Some uid } in
+            H.add t.h k hv ;
+            t.on_new t k v uid
+        | prev ->
+            !logger.error
+              "Server create key %a that already exist, updating"
+              Key.print k ;
+            prev.v <- v ;
+            t.on_set t k v
+        )
+
     | SrvMsg.DelKey k ->
         if H.mem t.h k then (
           H.remove t.h k ;
@@ -66,18 +83,18 @@ struct
           !logger.error "Server wanted to delete an unknown key %a"
             Key.print k
 
-    | SrvMsg.LockKey k ->
+    | SrvMsg.LockKey (k, u) ->
         (match H.find t.h k with
         | exception Not_found ->
             !logger.error "Server want to lock unknown key %a"
               Key.print k
         | prev ->
-            if prev.locked then (
+            if prev.locked <> None then (
               !logger.error "Server locked key %a that is already locked"
                 Key.print k ;
             ) else (
-              prev.locked <- true ;
-              t.on_lock t k
+              prev.locked <- Some u ;
+              t.on_lock t k u
             )
         )
 
@@ -87,11 +104,11 @@ struct
             !logger.error "Server want to unlock unknown key %a"
               Key.print k
         | prev ->
-            if not prev.locked then (
+            if prev.locked = None then (
               !logger.error "Server unlocked key %a that is not locked"
                 Key.print k ;
             ) else (
-              prev.locked <- false ;
+              prev.locked <- None ;
               t.on_unlock t k
             )
         )
