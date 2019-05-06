@@ -11,7 +11,7 @@ VERSION = 3.4.0
 INCLUDEPATH += . /Users/rixed/.opam/ramen.4.07.1.flambda/lib/ocaml
 
 QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.14
-QMAKE_CXXFLAGS = -Wall -Wextra
+QMAKE_CXXFLAGS = -Wall -Wextra -fstandalone-debug
 QT += widgets
 
 # The following define makes your compiler warn you if you use any

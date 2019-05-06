@@ -39,7 +39,7 @@ class AtomicForm : public QGroupBox
 {
   Q_OBJECT
 
-  std::vector<AtomicWidget> widgets;
+  std::vector<AtomicWidget *> widgets;
 
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
@@ -69,7 +69,7 @@ public:
 
   void setCentralWidget(QWidget *);
   // and take ownership of those QWidgets:
-  void addWidget(conf::Key const &key, QWidget *);
+  void addWidget(AtomicWidget *);
 
 public slots:
   void setEnabled(bool);

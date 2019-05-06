@@ -61,11 +61,11 @@ void AtomicForm::setCentralWidget(QWidget *w)
   delete previous;
 }
 
-void AtomicForm::addWidget(conf::Key const &key, QWidget *w)
+void AtomicForm::addWidget(AtomicWidget *aw)
 {
-  w->setEnabled(false);
-  KValue &kv = conf::kvs[key];
-  widgets.push_back(AtomicWidget(key, kv.value()));
+  aw->setEnabled(false);
+  KValue &kv = conf::kvs[aw->key];
+  widgets.push_back(aw);
   QObject::connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
   QObject::connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
 }
@@ -79,17 +79,22 @@ void AtomicForm::lockAll()
 void AtomicForm::wantEdit()
 {
   // Lock all widgets that are not locked already:
-  for (AtomicWidget const &aw : widgets) {
-    if (locked.find(aw.key) == locked.end()) {
-      conf::askLock(aw.key);
+  for (AtomicWidget const *aw : widgets) {
+    if (locked.find(aw->key) == locked.end()) {
+      conf::askLock(aw->key);
     }
   }
 }
 
 bool AtomicForm::someEdited()
 {
-  for (AtomicWidget const &aw : widgets) {
-    if (aw.edited()) return true;
+  for (AtomicWidget const *aw : widgets) {
+    conf::Value currVal = aw->getValue();
+    if (aw->initValue != currVal) {
+      std::cerr << "value of " << aw->key << " has changed from "
+                << aw->initValue << " to " << currVal << std::endl;
+      return true;
+    }
   }
   return false;
 }
@@ -97,9 +102,9 @@ bool AtomicForm::someEdited()
 void AtomicForm::doCancel()
 {
   state = Unlocking;
-  for (AtomicWidget &aw : widgets) {
-    aw.resetValue();
-    conf::askUnlock(aw.key);
+  for (AtomicWidget *aw : widgets) {
+    aw->setValue(aw->key, aw->initValue);
+    conf::askUnlock(aw->key);
   }
 }
 

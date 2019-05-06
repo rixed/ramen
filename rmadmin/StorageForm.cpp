@@ -18,7 +18,7 @@ StorageForm::StorageForm(QWidget *parent) :
   totalSizeEdit->setValidator(&posIntValidator);
 
   static std::string const recallCostKey("storage/recall_cost");
-  KLineEdit *recallCostEdit = new KLineEdit(recallCostKey, conf::ValueType::Int, cw);
+  KLineEdit *recallCostEdit = new KLineEdit(recallCostKey, conf::ValueType::Float, cw);
   recallCostEdit->setPlaceholderText(tr("Cost of reading vs. computing"));
   recallCostEdit->setValidator(&posDoubleValidator);
 
@@ -28,8 +28,8 @@ StorageForm::StorageForm(QWidget *parent) :
   cw->setLayout(formLayout);
 
   this->setCentralWidget(cw);
-  this->addWidget(totalSizeKey, totalSizeEdit);
-  this->addWidget(recallCostKey, recallCostEdit);
+  this->addWidget(totalSizeEdit);
+  this->addWidget(recallCostEdit);
 }
 
 StorageForm::~StorageForm()

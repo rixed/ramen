@@ -54,7 +54,7 @@ Value::Value(value v_)
         .capa = 0, .length = 0, .next = 0, .arr = nullptr
       };
       break;
-    case LastValueType:
+    default:
       assert(!"Tag_val(v_) <= LastValueType");
   }
 }
@@ -90,13 +90,64 @@ Value::Value(const Value& other)
       break;
     case LastValueType:
       break;
+    default:
+      assert(!"Tag_val(v_) <= LastValueType");
   }
+}
+
+static bool looks_like_true(QString s_)
+{
+  QString s = s_.simplified();
+  if (s.isEmpty() ||
+      s[0] == '0' || s[0] == 'f' || s[0] == 'F') return false;
+  return true;
 }
 
 Value::Value(ValueType vt, QString const &s)
 {
-  (void)vt; (void)s;
-  Value(); // TODO
+  valueType = vt;
+  switch (valueType) {
+    case Bool:
+      v.Bool = looks_like_true(s);
+      break;
+    case Int:
+      {
+        bool ok;
+        v.Int = s.toInt(&ok);
+        if (! ok)
+          std::cerr << "Cannot convert " << s.toStdString() << " into an int" << std::endl;
+      }
+      break;
+    case Float:
+      {
+        bool ok;
+        v.Float = s.toDouble(&ok);
+        if (! ok)
+          std::cerr << "Cannot convert " << s.toStdString() << " into a double" << std::endl;
+      }
+      break;
+    case Time:
+      {
+          bool ok;
+        v.Time = s.toDouble(&ok);
+        if (! ok)
+          std::cerr << "Cannot convert " << s.toStdString() << " into a time" << std::endl;
+      }
+      break;
+    case String:
+      v.String = s;
+      break;
+    case Error:
+      assert(!"Cannot convert a string into an error");
+    case Retention:
+      assert(!"Cannot convert a string into a retention");
+      break;
+    case Dataset:
+      assert(!"Cannot convert a string into a dataset");
+      break;
+    default:
+      assert(!"Tag_val(v_) <= LastValueType");
+  }
 }
 
 Value::~Value()
@@ -137,6 +188,8 @@ Value& Value::operator=(const Value& other)
       break;
     case LastValueType:
       break;
+    default:
+      assert(!"Tag_val(v_) <= LastValueType");
   }
   return *this;
 }
@@ -167,7 +220,7 @@ QString Value::toQString() const
     case Dataset:
       return QString("TODO: string of dataset");
     case LastValueType:
-      return QString("");
+      return QString("undefined values");
   }
 }
 

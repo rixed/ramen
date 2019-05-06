@@ -6,7 +6,7 @@
 #include "confValue.h"
 #include "conf.h"
 
-class KLineEdit : public QLineEdit
+class KLineEdit : public QLineEdit, public AtomicWidget
 {
   Q_OBJECT
   //Q_INTERFACES(AtomicWidget)
@@ -16,6 +16,7 @@ class KLineEdit : public QLineEdit
 public:
   KLineEdit(std::string const key, conf::ValueType valueType_, QWidget *parent = nullptr) :
     QLineEdit(parent),
+    AtomicWidget(key),
     valueType(valueType_)
   {
     KValue &kv = conf::kvs[key];
@@ -26,9 +27,15 @@ public:
   }
   ~KLineEdit() {}
 
-  conf::Value const currentValue()
+  virtual conf::Value const getValue() const
   {
     return conf::Value(valueType, text());
+  }
+
+  void setEnabled(bool enabled)
+  {
+    AtomicWidget::setEnabled(enabled);
+    QLineEdit::setEnabled(enabled);
   }
 
 public slots:
@@ -39,12 +46,12 @@ public slots:
 
   void lockValue(conf::Key const &, QString const &uid)
   {
-    setEnabled(uid == conf::my_uid);
+    KLineEdit::setEnabled(uid == conf::my_uid);
   }
 
   void unlockValue(conf::Key const &)
   {
-    setEnabled(false);
+    KLineEdit::setEnabled(false);
   }
 };
 

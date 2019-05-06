@@ -4,21 +4,35 @@
 #include <QWidget>
 #include "confKey.h"
 #include "confValue.h"
+#include "conf.h"
 
-struct AtomicWidget
+class AtomicWidget
 {
+  bool last_enabled;
+
+public:
   conf::Key const key;
   conf::Value initValue;
 
-  AtomicWidget(conf::Key const &key_, conf::Value const &initValue_) :
-    key(key_), initValue(initValue_)
+  AtomicWidget(conf::Key const &key_) :
+    last_enabled(true),
+    key(key_)
   {
   }
 
-  ~AtomicWidget() {}
+  virtual ~AtomicWidget() {}
 
-  bool edited() const { return false; /* TODO */ }
-  void resetValue() { /* TODO */ }
+  virtual void setEnabled(bool enabled)
+  {
+    if (enabled && !last_enabled) {
+      // Capture the value at the beginning of edition:
+     initValue = getValue();
+    }
+    last_enabled = enabled;
+  }
+
+  virtual conf::Value const getValue() const = 0;
+  virtual void setValue(conf::Key const &, conf::Value const &) = 0;
 };
 
 #endif
