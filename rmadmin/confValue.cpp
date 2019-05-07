@@ -42,6 +42,7 @@ bool Value::operator!=(Value const &other) const
 Value *valueOfOCaml(value v_)
 {
   CAMLparam1(v_);
+  CAMLlocal1(tmp_);
   assert(Is_block(v_));
   ValueType valueType = (ValueType)Tag_val(v_);
   Value *ret = nullptr;
@@ -71,9 +72,11 @@ Value *valueOfOCaml(value v_)
         String_val(Field(v_, 2)));
       break;
     case RetentionType:
+      tmp_ = Field(v_, 0);
+      assert(Tag_val(tmp_) == Double_array_tag);
       ret = new Retention(
-        Double_val(Field(v_, 0)),
-        Double_val(Field(v_, 1)));
+        Double_field(tmp_, 0),
+        Double_field(tmp_, 1));
       break;
     case TimeRangeType:
       {
