@@ -110,7 +110,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
       ret = new Bool(looks_like_true(s));
       break;
     case IntType:
-      ret = new Int(s.toInt(&ok));
+      ret = new Int(s.toLong(&ok));
       break;
     case FloatType:
       ret = new Float(s.toDouble(&ok));
@@ -161,7 +161,7 @@ bool Bool::operator==(Value const &other) const
   return b == o.b;
 }
 
-Int::Int(int i_) : Value(IntType), i(i_) {}
+Int::Int(int64_t i_) : Value(IntType), i(i_) {}
 
 Int::Int() : Int(0) {}
 

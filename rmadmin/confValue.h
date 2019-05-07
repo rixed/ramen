@@ -49,11 +49,11 @@ public:
 };
 
 class Int : public Value {
-  int i;
+  int64_t i;
 public:
   Int();
   ~Int();
-  Int(int);
+  Int(int64_t);
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
