@@ -97,8 +97,8 @@ void AtomicForm::wantEdit()
 bool AtomicForm::someEdited()
 {
   for (AtomicWidget const *aw : widgets) {
-    conf::Value v = aw->getValue();
-    if (aw->initValue != v) {
+    std::shared_ptr<conf::Value const> v(aw->getValue());
+    if (*aw->initValue != *v) {
       std::cerr << "value of " << aw->key << " has changed from "
                 << aw->initValue << " to " << v << std::endl;
       return true;
@@ -131,8 +131,8 @@ void AtomicForm::doSubmit()
 {
   state = Unlocking;
   for (AtomicWidget *aw : widgets) {
-    conf::Value v = aw->getValue();
-    if (v != aw->initValue) conf::askSet(aw->key, v);
+    std::shared_ptr<conf::Value const> v(aw->getValue());
+    if (*v != *aw->initValue) conf::askSet(aw->key, v);
     conf::askUnlock(aw->key);
   }
 }

@@ -27,9 +27,9 @@ public:
   }
   ~KLineEdit() {}
 
-  virtual conf::Value const getValue() const
+  virtual std::shared_ptr<conf::Value const> getValue() const
   {
-    return conf::Value(valueType, text());
+    return std::shared_ptr<conf::Value const>(conf::ValueOfQString(valueType, text()));
   }
 
   void setEnabled(bool enabled)
@@ -39,9 +39,9 @@ public:
   }
 
 public slots:
-  void setValue(conf::Key const &, conf::Value const &v)
+  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    QLineEdit::setText(v.toQString());
+    QLineEdit::setText(v->toQString());
   }
 
   void lockValue(conf::Key const &, QString const &uid)

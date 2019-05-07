@@ -19,9 +19,9 @@ public:
   ~KErrorMsg() {}
 
 public slots:
-  void setValue(conf::Key const &, conf::Value const &v)
+  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    QString s(v.toQString());
+    QString s(v->toQString());
     setStyleSheet(
       s.length() == 0 ?
         "" :

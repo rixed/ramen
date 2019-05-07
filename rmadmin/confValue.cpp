@@ -4,8 +4,8 @@
 #include <QString>
 #include "confValue.h"
 extern "C" {
-#  include <caml/memory.h>
-#  include <caml/alloc.h>
+# include <caml/memory.h>
+# include <caml/alloc.h>
 }
 
 namespace conf {
@@ -15,88 +15,79 @@ Value::Value()
   valueType = LastValueType;
 }
 
-bool Value::is_initialized() const
+Value::Value(ValueType valueType_) : valueType(valueType_) {}
+
+Value::~Value() {}
+
+QString Value::toQString() const
 {
-  return (valueType < LastValueType);
+  return QString("undefined value");
 }
 
-Value::Value(value v_)
+value Value::toOCamlValue() const
 {
+  assert(!"Don't know how to convert from a base Value");
+}
+
+bool Value::operator==(Value const &other) const
+{
+  return valueType == other.valueType;
+}
+
+bool Value::operator!=(Value const &other) const
+{
+  return !operator==(other);
+}
+
+Value *ValueOfOCaml(value v_)
+{
+  CAMLparam1(v_);
   assert(Is_block(v_));
-  valueType = (ValueType)Tag_val(v_);
+  ValueType valueType = (ValueType)Tag_val(v_);
+  Value *ret = nullptr;
   switch (valueType) {
-    case Bool:
-      v.Bool = Bool_val(Field(v_, 0));
+    case BoolType:
+      ret = new Bool(Bool_val(Field(v_, 0)));
       break;
-    case Int:
-      v.Int = Int64_val(Field(v_, 0));
+    case IntType:
+      ret = new Int(Int64_val(Field(v_, 0)));
       break;
-    case Float:
-      v.Float = Double_val(Field(v_, 0));
+    case FloatType:
+      ret = new Float(Double_val(Field(v_, 0)));
       break;
-    case Time:
-      v.Time = Double_val(Field(v_, 0));
+    case StringType:
+      ret = new String(String_val(Field(v_, 0)));
       break;
-    case String:
-      v.String = String_val(Field(v_, 0));
+    case ErrorType:
+      ret = new Error(
+        Double_val(Field(v_, 0)),
+        (unsigned)Int_val(Field(v_, 1)),
+        String_val(Field(v_, 2)));
       break;
-    case Error:
-      v.Error = {
-        .time = Double_val(Field(v_, 0)),
-        .cmd_id = (unsigned)Int_val(Field(v_, 1)),
-        .msg = strdup(String_val(Field(v_, 2)))
-      };
+    case WorkerType:
+      ret = new Worker(
+        String_val(Field(v_, 0)),
+        String_val(Field(v_, 1)),
+        String_val(Field(v_, 2)));
       break;
-    case Retention:
-      v.Retention = {
-        .duration = Double_val(Field(v_, 0)),
-        .period = Double_val(Field(v_, 1))
-      };
+    case RetentionType:
+      ret = new Retention(
+        Double_val(Field(v_, 0)),
+        Double_val(Field(v_, 1)));
       break;
-    case Dataset:
-      v.Dataset = { // TODO
-        .capa = 0, .length = 0, .next = 0, .arr = nullptr
-      };
+    case TimeRangeType:
+      {
+        std::vector<std::pair<double, double>> range;
+        range.reserve(5);
+        // TODO: read that value
+        range.push_back(std::pair(1., 2.));
+        ret = new TimeRange(range);
+      }
       break;
     default:
       assert(!"Tag_val(v_) <= LastValueType");
   }
-}
-
-Value::Value(const Value& other)
-{
-  valueType = other.valueType;
-  switch (valueType) {
-    case Bool:
-      v.Bool = other.v.Bool;
-      break;
-    case Int:
-      v.Int = other.v.Int;
-      break;
-    case Float:
-      v.Float = other.v.Float;
-      break;
-    case Time:
-      v.Time = other.v.Time;
-      break;
-    case String:
-      v.String = other.v.String;
-      break;
-    case Error:
-      v.Error = other.v.Error;
-      v.Error.msg = strdup(other.v.Error.msg);
-      break;
-    case Retention:
-      v.Retention = other.v.Retention;
-      break;
-    case Dataset:
-      v.Dataset = other.v.Dataset;
-      break;
-    case LastValueType:
-      break;
-    default:
-      assert(!"Tag_val(v_) <= LastValueType");
-  }
+  CAMLreturnT(Value *, ret);
 }
 
 static bool looks_like_true(QString s_)
@@ -107,227 +98,246 @@ static bool looks_like_true(QString s_)
   return true;
 }
 
-Value::Value(ValueType vt, QString const &s)
+Value *ValueOfQString(ValueType vt, QString const &s)
 {
-  valueType = vt;
-  switch (valueType) {
-    case Bool:
-      v.Bool = looks_like_true(s);
+  bool ok = true;
+  Value *ret = nullptr;
+  switch (vt) {
+    case BoolType:
+      ret = new Bool(looks_like_true(s));
       break;
-    case Int:
-      {
-        bool ok;
-        v.Int = s.toInt(&ok);
-        if (! ok)
-          std::cerr << "Cannot convert " << s.toStdString() << " into an int" << std::endl;
-      }
+    case IntType:
+      ret = new Int(s.toInt(&ok));
       break;
-    case Float:
-      {
-        bool ok;
-        v.Float = s.toDouble(&ok);
-        if (! ok)
-          std::cerr << "Cannot convert " << s.toStdString() << " into a double" << std::endl;
-      }
+    case FloatType:
+      ret = new Float(s.toDouble(&ok));
       break;
-    case Time:
-      {
-          bool ok;
-        v.Time = s.toDouble(&ok);
-        if (! ok)
-          std::cerr << "Cannot convert " << s.toStdString() << " into a time" << std::endl;
-      }
+    case StringType:
+      ret = new String(s);
       break;
-    case String:
-      v.String = s;
-      break;
-    case Error:
-      assert(!"Cannot convert a string into an error");
-    case Retention:
-      assert(!"Cannot convert a string into a retention");
-      break;
-    case Dataset:
-      assert(!"Cannot convert a string into a dataset");
+    case ErrorType:
+    case WorkerType:
+    case RetentionType:
+      assert(!"Cannot convert that into a retention");
       break;
     default:
       assert(!"Tag_val(v_) <= LastValueType");
   }
+  if (! ok)
+    std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
+  return ret;
 }
 
-Value::~Value()
+Bool::Bool(bool b_) : Value(BoolType), b(b_) {}
+
+Bool::Bool() : Bool(true) {}
+
+Bool::~Bool() {}
+
+QString Bool::toQString() const
 {
-  if (valueType == Error) {
-    free(v.Error.msg);
-  }
+  if (b)
+    return QCoreApplication::translate("QMainWindow", "true");
+  else
+    return QCoreApplication::translate("QMainWindow", "false");
 }
 
-Value& Value::operator=(const Value& other)
-{
-  valueType = other.valueType;
-  switch (valueType) {
-    case Bool:
-      v.Bool = other.v.Bool;
-      break;
-    case Int:
-      v.Int = other.v.Int;
-      break;
-    case Float:
-      v.Float = other.v.Float;
-      break;
-    case Time:
-      v.Time = other.v.Time;
-      break;
-    case String:
-      v.String = other.v.String;
-      break;
-    case Error:
-      v.Error = other.v.Error;
-      v.Error.msg = strdup(other.v.Error.msg);
-      break;
-    case Retention:
-      v.Retention = other.v.Retention;
-      break;
-    case Dataset:
-      v.Dataset = other.v.Dataset;
-      break;
-    case LastValueType:
-      break;
-    default:
-      assert(!"Tag_val(v_) <= LastValueType");
-  }
-  return *this;
-}
-
-QString Value::toQString() const
-{
-  switch (valueType) {
-    case Bool:
-      if (v.Bool)
-          return QCoreApplication::translate("QMainWindow", "true");
-      else
-          return QCoreApplication::translate("QMainWindow", "false");
-    case Int:
-      return QString::number(v.Int);
-    case Float:
-      return QString::number(v.Float);
-    case Time:
-      return QString::number(v.Time);  // TODO: convert to date+time
-    case String:
-      return v.String;
-    case Error:
-      return QString(v.Error.msg); // TODO: prepend with time etc.
-    case Retention:
-      return QString("duration: ").
-             append(QString::number(v.Retention.duration)).
-             append(", period: ").
-             append(QString::number(v.Retention.period));
-    case Dataset:
-      return QString("TODO: string of dataset");
-    case LastValueType:
-      return QString("undefined values");
-  }
-}
-
-value Value::toOCamlValue() const
+value Bool::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  switch (valueType) {
-    case Bool:
-      ret = caml_alloc(1, 0);
-      Store_field(ret, 0, Val_bool(v.Bool));
-      break;
-    case Int:
-      ret = caml_alloc(1, 1);
-      Store_field(ret, 0, Val_int(v.Int));
-      break;
-    case Float:
-      ret = caml_alloc(1, 2);
-      Store_field(ret, 0, caml_copy_double(v.Float));
-      break;
-    case Time:
-      ret = caml_alloc(1, 3);
-      Store_field(ret, 0, caml_copy_double(v.Time));
-      break;
-    case String:
-      ret = caml_alloc(1, 4);
-      Store_field(ret, 0, caml_copy_string(v.String.toStdString().c_str()));
-      break;
-    case Error:
-      assert(!"Don't know how to convert from an Error");
-      break;
-    case Retention:
-      assert(!"Don't know how to convert form a Retention");
-      break;
-    case Dataset:
-      assert(!"Don't know how to convert from a Dataset");
-      break;
-    default:
-      assert(!"Tag_val(v_) <= LastValueType");
-  }
+  ret = caml_alloc(1, BoolType);
+  Store_field(ret, 0, Val_bool(b));
   CAMLreturn(ret);
 }
 
-bool operator==(Value const &a, Value const &b)
+bool Bool::operator==(Value const &other) const
 {
-  if (a.valueType != b.valueType) return false;
-  switch (a.valueType) {
-    case Bool:
-      return a.v.Bool == b.v.Bool;
-    case Int:
-      return a.v.Int == b.v.Int;
-    case Float:
-      return a.v.Float == b.v.Float;
-    case Time:
-      return a.v.Time == b.v.Time;
-    case String:
-      return a.v.String == b.v.String;
-    case Error:
-      return a.v.Error.cmd_id == b.v.Error.cmd_id;
-    case Retention:
-      return a.v.Retention == b.v.Retention;
-    case Dataset:
-      return a.v.Dataset == b.v.Dataset;
-    case LastValueType:
-      return true;
- }
+  if (! Value::operator==(other)) return false;
+  Bool const &o = static_cast<Bool const &>(other);
+  return b == o.b;
 }
 
-bool operator!=(Value const &a, Value const &b)
+Int::Int(int i_) : Value(IntType), i(i_) {}
+
+Int::Int() : Int(0) {}
+
+Int::~Int() {}
+
+QString Int::toQString() const
 {
-  return !(a == b);
+  return QString::number(i);
 }
 
-bool operator==(struct Error const &a, struct Error const &b)
+value Int::toOCamlValue() const
 {
-  return a.cmd_id == b.cmd_id;  // Same as in OCaml
+  CAMLparam0();
+  CAMLlocal1(ret);
+  ret = caml_alloc(1, IntType);
+  Store_field(ret, 0, Val_int(i));
+  CAMLreturn(ret);
 }
 
-bool operator!=(struct Error const &a, struct Error const &b)
+bool Int::operator==(Value const &other) const
 {
-  return !(a == b);
+  if (! Value::operator==(other)) return false;
+  Int const &o = static_cast<Int const &>(other);
+  return i == o.i;
 }
 
-bool operator==(struct Retention const &a, struct Retention const &b)
+Float::Float(double d_) : Value(FloatType), d(d_) {}
+
+Float::Float() : Float(0.) {}
+
+Float::~Float() {}
+
+QString Float::toQString() const
 {
-  return a.duration == b.duration &&
-         a.period == b.period;
+  return QString::number(d);
 }
 
-bool operator!=(struct Retention const &a, struct Retention const &b)
+value Float::toOCamlValue() const
 {
-  return !(a == b);
+  CAMLparam0();
+  CAMLlocal1(ret);
+  ret = caml_alloc(1, FloatType);
+  Store_field(ret, 0, caml_copy_double(d));
+  CAMLreturn(ret);
 }
 
-bool operator==(struct Dataset const &a, struct Dataset const &b)
+bool Float::operator==(Value const &other) const
 {
-  (void)a; (void)b;
-  return false; // TODO
+  if (! Value::operator==(other)) return false;
+  Float const &o = static_cast<Float const &>(other);
+  return d == o.d;
 }
 
-bool operator!=(struct Dataset const &a, struct Dataset const &b)
+String::String(QString s_) : Value(StringType), s(s_) {}
+
+String::String() : String("") {}
+
+String::~String() {}
+
+QString String::toQString() const
 {
-  return !(a == b);
+  return s;
+}
+
+value String::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  ret = caml_alloc(1, StringType);
+  Store_field(ret, 0, caml_copy_string(s.toStdString().c_str()));
+  CAMLreturn(ret);
+}
+
+bool String::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  String const &o = static_cast<String const &>(other);
+  return s == o.s;
+}
+
+Error::Error(double time_, unsigned cmd_id_, std::string const &msg_) :
+  Value(ErrorType), time(time_), cmd_id(cmd_id_), msg(msg_) {}
+
+Error::Error() : Error(0., 0, "") {}
+
+Error::~Error() {}
+
+QString Error::toQString() const
+{
+  (void)time;
+  return QString::fromStdString(msg); // TODO: prepend with time etc.
+}
+
+value Error::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from an Error");
+}
+
+bool Error::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Error const &o = static_cast<Error const &>(other);
+  return cmd_id == o.cmd_id;
+}
+
+Worker::Worker(std::string const &site_, std::string const &program_, std::string const &function_) :
+  Value(WorkerType), site(site_), program(program_), function(function_) {}
+
+Worker::Worker() : Worker("", "", "") {}
+
+Worker::~Worker() {}
+
+QString Worker::toQString() const
+{
+  return
+    QString::fromStdString(site + "/" + program + "/" + function);
+}
+
+value Worker::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from a Worker");
+}
+
+bool Worker::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Worker const &o = static_cast<Worker const &>(other);
+  return site == o.site && program == o.program && function == o.function;
+}
+
+TimeRange::TimeRange(std::vector<std::pair<double, double>> const &range_) :
+  Value(TimeRangeType), range(range_) {}
+
+TimeRange::TimeRange() : TimeRange(std::vector<std::pair<double,double>>()) {}
+
+TimeRange::~TimeRange() {}
+
+QString TimeRange::toQString() const
+{
+  return QString("TODO: TimeRange to string");
+}
+
+value TimeRange::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from a TimeRange");
+}
+
+bool TimeRange::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  TimeRange const &o = static_cast<TimeRange const &>(other);
+  return range == o.range;
+}
+
+Retention::Retention(double duration_, double period_) :
+  Value(RetentionType), duration(duration_), period(period_) {}
+
+Retention::Retention() : Retention(0., 0.) {}
+
+Retention::~Retention() {}
+
+bool Retention::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Retention const &o = static_cast<Retention const &>(other);
+  return duration == o.duration && period == o.period;
+}
+
+QString Retention::toQString() const
+{
+  return QString("duration: ").
+         append(QString::number(duration)).
+         append(", period: ").
+         append(QString::number(period));
+}
+
+value Retention::toOCamlValue() const
+{
+  assert(!"Don't know how to convert form a Retention");
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

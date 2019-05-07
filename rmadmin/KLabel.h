@@ -19,9 +19,9 @@ public:
   ~KLabel() {}
 
 public slots:
-  void setValue(conf::Key const &, conf::Value const &v)
+  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    QLabel::setText(v.toQString());
+    QLabel::setText(v->toQString());
   }
 };
 

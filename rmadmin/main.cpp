@@ -68,7 +68,15 @@ int main(int argc, char *argv[])
   QApplication a(argc, argv);
   QCoreApplication::setApplicationName("RamenAdmin");
   qRegisterMetaType<conf::Key>();
-  qRegisterMetaType<conf::Value>();
+  qRegisterMetaType<std::shared_ptr<conf::Value const>>();
+  qRegisterMetaType<conf::Bool>();
+  qRegisterMetaType<conf::Int>();
+  qRegisterMetaType<conf::Float>();
+  qRegisterMetaType<conf::String>();
+  qRegisterMetaType<conf::Error>();
+  qRegisterMetaType<conf::Worker>();
+  qRegisterMetaType<conf::TimeRange>();
+  qRegisterMetaType<conf::Retention>();
 
   w = new RmAdminWin();
   thread sync_thread(do_sync_thread, argv);

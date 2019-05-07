@@ -4,84 +4,142 @@
 #include <QString>
 #include <QMetaType>
 extern "C" {
-#  include <caml/mlvalues.h>
+# include <caml/mlvalues.h>
 }
 
 namespace conf {
 
-struct Error {
-  double time;
-  unsigned cmd_id;
-  char *msg; // owned  (FIXME: get rid of v union; use subtypes?)
-  friend bool operator==(Error const &, Error const &);
-  friend bool operator!=(Error const &, Error const &);
-};
-
-struct Retention {
-  double duration;
-  double period;
-  friend bool operator==(Retention const &, Retention const &);
-  friend bool operator!=(Retention const &, Retention const &);
-};
-
-class Value;
-
-struct Dataset {
-  unsigned capa;
-  unsigned length;
-  unsigned next;
-  Value **arr;
-  friend bool operator==(Dataset const &, Dataset const &);
-  friend bool operator!=(Dataset const &, Dataset const &);
-};
-
 enum ValueType {
-  Bool = 0, Int, Float, Time, String, Error, Retention, Dataset,
+  BoolType = 0, IntType, FloatType, StringType,
+  ErrorType, WorkerType, RetentionType, TimeRangeType,
   LastValueType
 };
 
 class Value
 {
   ValueType valueType;
-  union V {
-    V() { Bool = false; };
-    ~V() {} ;
-    bool Bool;
-    int Int;
-    double Float;
-    double Time;
-    QString String;
-    struct Error Error;
-    struct Retention Retention;
-    struct Dataset Dataset;
-  } v;
 public:
-  // construct uninitialized
+  // Construct uninitialized
   Value();
-  // Construct from an OCaml value
-  Value(value);
-  // Copy constructor
-  Value(const Value&);
-  // Construct from a QString
-  Value(conf::ValueType, QString const &);
+  Value(ValueType);
+  virtual ~Value();
 
-  Value& operator=(const Value&);
-
-  ~Value();
-
-  bool is_initialized() const;
-
-  QString toQString() const;
-  value toOCamlValue() const;
-
-  friend bool operator==(Value const &, Value const &);
-  friend bool operator!=(Value const &, Value const &);
+  virtual QString toQString() const;
+  virtual value toOCamlValue() const;
+  virtual bool operator==(Value const &) const;
+  bool operator!=(Value const &) const;
 };
 
 std::ostream &operator<<(std::ostream &, Value const &);
 
+// Construct from an OCaml value
+Value *ValueOfOCaml(value);
+// Construct from a QString
+Value *ValueOfQString(conf::ValueType, QString const &);
+
+class Bool : public Value {
+  bool b;
+public:
+  Bool();
+  ~Bool();
+  Bool(bool);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
 };
 
-Q_DECLARE_METATYPE(conf::Value);
+class Int : public Value {
+  int i;
+public:
+  Int();
+  ~Int();
+  Int(int);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+class Float : public Value {
+  double d;
+public:
+  Float();
+  ~Float();
+  Float(double);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+class String : public Value {
+  QString s;
+public:
+  String();
+  ~String();
+  String(QString);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+class Error : public Value {
+  double time;
+  unsigned cmd_id;
+  std::string msg;
+public:
+  Error();
+  ~Error();
+  Error(double, unsigned, std::string const &);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+class Worker : public Value {
+  std::string site;
+  std::string program;
+  std::string function;
+public:
+  Worker();
+  ~Worker();
+  Worker(std::string const &, std::string const &, std::string const &);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+struct TimeRange : public Value {
+  std::vector<std::pair<double, double>> range;
+public:
+  TimeRange();
+  ~TimeRange();
+  TimeRange(std::vector<std::pair<double, double>> const &);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+struct Retention : public Value {
+  double duration;
+  double period;
+public:
+  Retention();
+  ~Retention();
+  Retention(double, double);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
+};
+
+Q_DECLARE_METATYPE(std::shared_ptr<conf::Value const>);
+Q_DECLARE_METATYPE(conf::Bool);
+Q_DECLARE_METATYPE(conf::Int);
+Q_DECLARE_METATYPE(conf::Float);
+Q_DECLARE_METATYPE(conf::String);
+Q_DECLARE_METATYPE(conf::Error);
+Q_DECLARE_METATYPE(conf::Worker);
+Q_DECLARE_METATYPE(conf::TimeRange);
+Q_DECLARE_METATYPE(conf::Retention);
 
 #endif

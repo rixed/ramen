@@ -19,7 +19,7 @@ QMap<conf::Key, KValue> kvs;
 struct ConfRequest {
   enum Action { Set, Lock, Unlock } action;
   std::string const key;
-  std::optional<Value const> value;
+  std::optional<std::shared_ptr<Value const>> value;
 };
 
 // The ZMQ thread will pop and execute those:
@@ -38,7 +38,7 @@ extern "C" {
         case ConfRequest::Set:
           req = caml_alloc(2, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
-          Store_field(req, 1, cr.value->toOCamlValue());
+          Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
         case ConfRequest::Lock:
           req = caml_alloc(1, 1);
@@ -54,7 +54,7 @@ extern "C" {
   }
 }
 
-void askSet(conf::Key const &key, conf::Value const &val)
+void askSet(conf::Key const &key, std::shared_ptr<conf::Value const> val)
 {
   ConfRequest req = {
     .action = ConfRequest::Set,
@@ -69,7 +69,7 @@ void askLock(conf::Key const &key)
   ConfRequest req = {
     .action = ConfRequest::Lock,
     .key = key.s,
-    .value = std::optional<Value>()
+    .value = std::optional<std::shared_ptr<Value const>>()
   };
   pending_requests.push_back(req);
 }
@@ -79,7 +79,7 @@ void askUnlock(conf::Key const &key)
   ConfRequest req = {
     .action = ConfRequest::Unlock,
     .key = key.s,
-    .value = std::optional<Value>()
+    .value = std::optional<std::shared_ptr<Value const>>()
   };
   pending_requests.push_back(req);
 }
@@ -95,12 +95,16 @@ extern "C" {
 #  include <caml/startup.h>
 #  include <caml/callback.h>
 
+  /*
+   * Called at reception of commands from the server:
+   */
+
   value conf_new_key(value k_, value v_, value u_)
   {
     CAMLparam3(k_, v_, u_);
     std::string k(String_val(k_));
-    conf::Value v(v_);
-    std::cerr << "new key " << k << " with value " << v << std::endl;
+    std::shared_ptr<conf::Value> v(conf::ValueOfOCaml(v_));
+    std::cerr << "new key " << k << " with value " << *v << std::endl;
     QString u(String_val(u_));
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
@@ -113,8 +117,8 @@ extern "C" {
   {
     CAMLparam2(k_, v_);
     std::string k(String_val(k_));
-    conf::Value v(v_);
-    std::cerr << "set key " << k << " to value " << v << std::endl;
+    std::shared_ptr<conf::Value> v(conf::ValueOfOCaml(v_));
+    std::cerr << "set key " << k << " to value " << *v << std::endl;
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);
     CAMLreturn(Val_unit);

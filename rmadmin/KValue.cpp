@@ -15,7 +15,7 @@ KValue::~KValue()
 {
 }
 
-conf::Value const &KValue::value()
+std::shared_ptr<conf::Value const> KValue::value()
 {
   return val;
 }
@@ -27,23 +27,16 @@ KValue& KValue::operator=(const KValue& other)
   return *this;
 }
 
-void KValue::set(conf::Key const &k, conf::Value const &v)
+void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  if (val.is_initialized()) {
-    if (v.is_initialized()) {
-      if (val != v) {
-        val = v;
-        emit valueChanged(k, v);
-      }
-    } else {
+  if (nullptr != val) {
+    if (*val != *v) {
       val = v;
-      emit valueDeleted(k);
+      emit valueChanged(k, v);
     }
   } else {
-    if (v.is_initialized()) {
-      val = v;
-      emit valueCreated(k, v);
-    }
+    val = v;
+    emit valueCreated(k, v);
   }
 }
 
