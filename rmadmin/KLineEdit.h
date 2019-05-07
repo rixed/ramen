@@ -29,7 +29,7 @@ public:
 
   virtual std::shared_ptr<conf::Value const> getValue() const
   {
-    return std::shared_ptr<conf::Value const>(conf::ValueOfQString(valueType, text()));
+    return std::shared_ptr<conf::Value const>(conf::valueOfQString(valueType, text()));
   }
 
   void setEnabled(bool enabled)

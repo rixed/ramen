@@ -39,7 +39,7 @@ bool Value::operator!=(Value const &other) const
   return !operator==(other);
 }
 
-Value *ValueOfOCaml(value v_)
+Value *valueOfOCaml(value v_)
 {
   CAMLparam1(v_);
   assert(Is_block(v_));
@@ -98,7 +98,7 @@ static bool looks_like_true(QString s_)
   return true;
 }
 
-Value *ValueOfQString(ValueType vt, QString const &s)
+Value *valueOfQString(ValueType vt, QString const &s)
 {
   bool ok = true;
   Value *ret = nullptr;

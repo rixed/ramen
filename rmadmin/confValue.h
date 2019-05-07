@@ -33,9 +33,9 @@ public:
 std::ostream &operator<<(std::ostream &, Value const &);
 
 // Construct from an OCaml value
-Value *ValueOfOCaml(value);
+Value *valueOfOCaml(value);
 // Construct from a QString
-Value *ValueOfQString(conf::ValueType, QString const &);
+Value *valueOfQString(conf::ValueType, QString const &);
 
 class Bool : public Value {
   bool b;

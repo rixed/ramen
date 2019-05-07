@@ -103,7 +103,7 @@ extern "C" {
   {
     CAMLparam3(k_, v_, u_);
     std::string k(String_val(k_));
-    std::shared_ptr<conf::Value> v(conf::ValueOfOCaml(v_));
+    std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     std::cerr << "new key " << k << " with value " << *v << std::endl;
     QString u(String_val(u_));
     // key might already be bound (to uninitialized value) due to widget
@@ -117,7 +117,7 @@ extern "C" {
   {
     CAMLparam2(k_, v_);
     std::string k(String_val(k_));
-    std::shared_ptr<conf::Value> v(conf::ValueOfOCaml(v_));
+    std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     std::cerr << "set key " << k << " to value " << *v << std::endl;
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);
