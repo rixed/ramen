@@ -122,6 +122,7 @@ RAMEN_SOURCES = \
 	src/RamenChannel.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -261,6 +262,7 @@ RMADMIN_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenTimeRange.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -650,6 +652,7 @@ TESTABLE_SOURCES = \
 	src/RamenIp.ml \
 	src/RamenTypes.ml \
 	src/RamenName.ml \
+	src/RamenTimeRange.ml \
 	src/RamenExpr.ml \
 	src/RamenGraphiteSink.ml \
 	src/Globs.ml \
@@ -690,6 +693,7 @@ LINKED_FOR_TESTS = \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
+	src/RamenTimeRange.ml \
 	src/HeavyHitters.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \

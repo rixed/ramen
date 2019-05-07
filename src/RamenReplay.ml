@@ -20,102 +20,9 @@ module O = RamenOperation
 module FS = C.FuncStats
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module TimeRange = RamenTimeRange
 
 (*$< Batteries *)
-
-module Range = struct
-  (*$< Range *)
-  type t = (float * float) list
-
-  let empty = []
-
-  let is_empty = (=) []
-
-  let make t1 t2 =
-    let t1 = min t1 t2 and t2 = max t1 t2 in
-    if t1 < t2 then [ t1, t2 ] else []
-
-  (*$T make
-    is_empty (make 1. 1.)
-    not (is_empty (make 1. 2.))
-  *)
-
-  let rec merge l1 l2 =
-    match l1, l2 with
-    | [], l | l, [] -> l
-    | (a1, b1)::r1, (a2, b2)::r2 ->
-        let am = min a1 a2 and bm = max b1 b2 in
-        if bm -. am <= (b1 -. a1) +. (b2 -. a2) then
-          (am, bm) :: merge r1 r2
-        else if a1 <= a2 then
-          (a1, b1) :: merge r1 l2
-        else
-          (a2, b2) :: merge l1 r2
-
-  (*$= merge & ~printer:(IO.to_string print)
-    [ 1.,2. ; 3.,4. ] (merge [ 1.,2. ] [ 3.,4. ])
-    [ 1.,2. ; 3.,4. ] (merge [ 3.,4. ] [ 1.,2. ])
-    [ 1.,4. ] (merge [ 1.,3. ] [ 2.,4. ])
-    [ 1.,4. ] (merge [ 1.,2. ] [ 2.,4. ])
-    [ 1.,4. ] (merge [ 1.,4. ] [ 2.,3. ])
-    [] (merge [] [])
-    [ 1.,2. ] (merge [ 1.,2. ] [])
-    [ 1.,2. ] (merge [] [ 1.,2. ])
-  *)
-
-  let single_inter (a1, b1) (a2, b2) =
-    let a = max a1 a2 and b = min b1 b2 in
-    if a < b then (a, b) else raise Not_found
-
-  let rec inter l1 l2 =
-    match l1, l2 with
-    | [], _ | _, [] -> []
-    | (a1, b1 as i1)::r1, (a2, b2 as i2)::r2 ->
-        match single_inter i1 i2 with
-        | exception Not_found ->
-            if a1 <= a2 then inter r1 l2 else inter l1 r2
-        | (_, b) as i ->
-            i :: (inter ((b, b1)::r1) ((b, b2)::r2))
-
-  (*$= inter & ~printer:(IO.to_string print)
-    [] (inter [ 1.,2. ] [ 3.,4. ])
-    [] (inter [ 3.,4. ] [ 1.,2. ])
-    [ 2.,3. ] (inter [ 1.,3. ] [ 2.,4. ])
-    [] (inter [ 1.,2. ] [ 2.,4. ])
-    [ 2.,3. ] (inter [ 1.,4. ] [ 2.,3. ])
-    [] (inter [] [])
-    [] (inter [ 1.,2. ] [])
-    [] (inter [] [ 1.,2. ])
-    [ 2.,3. ; 4.,5. ] (inter [ 1.,3. ; 4., 6.] [ 2., 5. ])
-  *)
-
-  let rec span = function
-    | [] -> 0.
-    | (a, b) :: r -> (b -. a) +. span r
-
-  let print oc =
-    let rel = ref "" in
-    let p = print_as_date_rel ~rel ~right_justified:false in
-    List.print (Tuple2.print p p) oc
-
-  let approx_eq l1 l2 =
-    (* [l1] is approx_eq [l2] if the intersection of [l1] and [l2] has
-     * approximately the same length as that of [l1] and that of [l2].
-     * This is used to determine if two replays can be merged. The time
-     * range will be the union of both of course, but if they are too
-     * distinct it's better to start two replayers than to share a
-     * single one. *)
-    let i = span (inter l1 l2) in
-    i >= 0.7 *. span l1 &&
-    i >= 0.7 *. span l2
-
-  let bounds = function
-    | [] ->
-        invalid_arg "Range.bounds"
-    | (a, _) :: _ as l ->
-        a, snd (List.last l)
-  (*$>*)
-end
 
 (* Helper function: *)
 
@@ -193,9 +100,9 @@ let find_sources stats local_site fq since until =
      * configuration. Compute the union of all: *)
     List.fold_left (fun (range, (sources, links))
                         (range', (sources', links')) ->
-      Range.merge range range',
+      TimeRange.merge range range',
       (Set.union sources sources', Set.union links links')
-    ) (Range.empty, (Set.empty, Set.empty)) ways in
+    ) (TimeRange.empty, (Set.empty, Set.empty)) ways in
   let rec find_parent_ways since until links fqs =
     (* When asked for several parent fqs, all the possible ways to retrieve
      * any range of data is the cartesian product. But we are not going to
@@ -223,9 +130,10 @@ let find_sources stats local_site fq since until =
     ) per_parent_ways ;
     Hashtbl.enum h |> List.of_enum
   (* Find all ways up to some data sources required for [fq] in the time
-   * range [since]..[until]. Returns a list of pairs composed of the Range.t
-   * and a pair of the set of fqs and the set of links, a link being a pair
-   * of parent and child fq. So for instance, this is a possible result:
+   * range [since]..[until]. Returns a list of pairs composed of the
+   * TimeRange.t and a pair of the set of fqs and the set of links, a link
+   * being a pair of parent and child fq. So for instance, this is a
+   * possible result:
    * [
    *   [ (123.456, 125.789) ], (* the range *)
    *   (
@@ -245,12 +153,12 @@ let find_sources stats local_site fq since until =
     let local_range =
       List.fold_left (fun range (t1, t2) ->
         if t1 > until || t2 < since then range else
-        Range.merge range (Range.make (max t1 since) (min t2 until))
-      ) Range.empty s.FS.archives in
+        TimeRange.merge range (TimeRange.make (max t1 since) (min t2 until))
+      ) TimeRange.empty s.FS.archives in
     !logger.debug "From %a:%a, range from archives = %a"
       N.site_print local_site
       N.fq_print fq
-      Range.print local_range ;
+      TimeRange.print local_range ;
     (* Take what we can from here and the rest from the parents: *)
     (* Note: we are going to ask all the parents to export the replay
      * channel to this function. Although maybe some of those we are
@@ -264,7 +172,7 @@ let find_sources stats local_site fq since until =
       ) links s.parents in
     let from_parents =
       find_parent_ways since until plinks s.parents in
-    if Range.is_empty local_range then from_parents else
+    if TimeRange.is_empty local_range then from_parents else
       let local_way = local_range, (Set.singleton (local_site, fq), links) in
       local_way :: from_parents
   and pick_best_way ways =
@@ -307,7 +215,7 @@ let find_sources stats local_site fq since until =
   | ways ->
       !logger.debug "Found those ways: %a"
         (List.print (Tuple2.print
-          Range.print
+          TimeRange.print
           (Tuple2.print (Set.print site_fq_print)
                         (Set.print link_print)))) ways ;
       pick_best_way ways
@@ -352,7 +260,7 @@ let create conf stats ?(timeout=Default.replay_timeout) func since until =
     RamenChannel.print channel
     (Set.print site_fq_print) sources
     (Set.print link_print) links
-    Range.print range
+    TimeRange.print range
     N.path_print final_rb ;
   { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
     since ; until ; final_rb ; sources ; links ; timeout }

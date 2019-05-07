@@ -21,6 +21,7 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Retention = RamenRetention
+module TimeRange = RamenTimeRange
 
 (*
  * Ramen internal configuration record
@@ -474,7 +475,7 @@ struct
       mutable parents : (N.site * N.fq) list ;
       (* Also gather available history per running workers, to speed up
        * establishing query plans: *)
-      mutable archives : (float * float) list [@ppp_default []] ;
+      mutable archives : TimeRange.t [@ppp_default []] ;
       (* We want to allocate disk space only to those workers that are running,
        * but also want to save stats about workers that's been running recently
        * enough and might resume: *)

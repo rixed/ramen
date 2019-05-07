@@ -21,6 +21,7 @@ module Replay = RamenReplay
 module Processes = RamenProcesses
 module Channel = RamenChannel
 module FuncGraph = RamenFuncGraph
+module TimeRange = RamenTimeRange
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -122,7 +123,7 @@ and replayer =
   { (*site_fq : C.Replays.site_fq ;*)
     (* Aggregated from all replays. Won't change once the replayer is
      * spawned. *)
-    mutable time_range : Replay.Range.t ;
+    mutable time_range : TimeRange.t ;
     (* Used to count the end of retransmissions: *)
     id : int ;
     (* Actual process is spawned only a bit later: *)
@@ -138,7 +139,7 @@ and replayer =
     mutable replays : (Channel.t, C.Replays.entry) Map.t }
 
 let make_replayer now =
-  { time_range = Replay.Range.empty ;
+  { time_range = TimeRange.empty ;
     id = Random.int RingBufLib.max_replayer_id ;
     creation = now ;
     pid = None ;
@@ -289,13 +290,13 @@ let process_replayers_start_stop conf now replayers =
         if now -. replayer.creation > delay_before_replay then (
           if
             Map.is_empty replayer.replays ||
-            Replay.Range.is_empty replayer.time_range
+            TimeRange.is_empty replayer.time_range
           then (
             (* Do away with it *)
             false
           ) else (
             let channels = Map.keys replayer.replays |> Set.of_enum
-            and since, until = Replay.Range.bounds replayer.time_range
+            and since, until = TimeRange.bounds replayer.time_range
             and programs = get_programs () in
             !logger.info
               "Starting a %a replayer created %gs ago for channels %a"
@@ -902,7 +903,7 @@ let synchronize_running conf autoreload_delay =
             try
               List.find (fun r ->
                 r.pid = None &&
-                Replay.Range.approx_eq
+                TimeRange.approx_eq
                   [ replay.since, replay.until ] r.time_range
               ) rs
             with Not_found ->
@@ -913,7 +914,7 @@ let synchronize_running conf autoreload_delay =
             "Adding replay for channel %a into replayer created at %a"
             Channel.print chan print_as_date r.creation ;
           r.time_range <-
-            Replay.Range.merge r.time_range [ replay.since, replay.until ] ;
+            TimeRange.merge r.time_range [ replay.since, replay.until ] ;
           r.replays <- Map.add chan replay r.replays)
       ) replay.C.Replays.sources
     in
