@@ -6,76 +6,176 @@ open RamenSync
 module Archivist = RamenArchivist
 module Files = RamenFiles
 module Processes = RamenProcesses
-
+module FuncGraph = RamenFuncGraph
 module Server = RamenSyncServer.Make (Value) (Selector)
 module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg
 module User = RamenSync.User
 module Capa = RamenSync.Capacity
+module C = RamenConf
+module FS = C.FuncStats
 
 let u = User.internal
 
-let set_devnull_init srv =
-  let on_set _ v =
-    !logger.debug "Some clown wrote into DevNull: %a"
-      Value.print v ;
-    Some (Value.String "")
-  in
-  Server.register_callback srv srv.on_sets on_set (Globs.escape "devnull") ;
-  let devnull = Value.String "Waldo" in
-  Server.create_unlocked srv DevNull devnull
-                         ~r:Capa.nobody ~w:Capa.anybody ~s:true
+module type CONF_SYNCER =
+sig
+  val init : C.conf -> Server.t -> unit
+  val update : C.conf -> Server.t -> unit
+end
 
-let storage_user_conf_dirty = ref false
-let last_read_user_conf = ref 0.
+module DevNull : CONF_SYNCER =
+struct
+  let init _conf srv =
+    let on_set _ v =
+      !logger.debug "Some clown wrote into DevNull: %a"
+        Value.print v ;
+      Some (Value.String "")
+    in
+    Server.register_callback
+      srv srv.on_sets on_set (Globs.escape "devnull") ;
+    let devnull = Value.String "Waldo" in
+    Server.create_unlocked
+      srv DevNull devnull ~r:Capa.nobody ~w:Capa.anybody ~s:true
 
-let update_storage conf srv =
-  let fname = Archivist.user_conf_file conf in
-  let t = Files.mtime_def 0. fname in
-  if t > !last_read_user_conf then (
-    !logger.info "Updating storage configuration from %a"
-      N.path_print fname ;
-    last_read_user_conf := t ;
-    let user_conf = Archivist.get_user_conf conf in
-    Server.set srv u (Storage TotalSize)
-               Value.(Int (Int64.of_int user_conf.Archivist.size_limit)) ;
-    Server.set srv u (Storage RecallCost)
-               Value.(Float user_conf.recall_cost) ;
-    let r = Capa.Anybody and w = Capa.Admin in
-    Hashtbl.iter (fun glob retention ->
-      Server.create_or_update srv (Storage (RetentionsOverride glob))
-                              Value.(Retention retention) ~r ~w ~s:false
-      (* TODO: delete the left over from previous version *)
-      (* TODO: transactions! *)
-    ) user_conf.retentions
-  ) else (
-    (* in the other way around: if conf is dirty save the file.
-     * TODO *)
-  )
+  let update _conf _srv = ()
+end
 
-let set_storage_init srv =
-  (* Create the minimal set of (sticky) keys: *)
-  let r = Capa.Anybody
-  and w = Capa.Admin
-  and s = true in
-  Server.create_unlocked srv (Storage TotalSize) Value.dummy ~r ~w ~s ;
-  Server.create_unlocked srv (Storage RecallCost) Value.dummy ~r ~w ~s ;
-  (* On any change down there, set the dirty flag: *)
-  let set_dirty _ v =
-    storage_user_conf_dirty := true ;
-    Some v in
-  let sel = Globs.escape "storage/*" in
-  Server.register_callback srv srv.on_sets set_dirty sel ;
-  Server.register_callback srv srv.on_news set_dirty sel ;
-  Server.register_callback srv srv.on_dels set_dirty sel
+module PerSite : CONF_SYNCER =
+struct
+  let init conf srv =
+    let graph = FuncGraph.make conf in
+    Hashtbl.iter (fun site per_site_h ->
+      Server.create_unlocked srv
+        (PerSite (site, Name)) (Value.String (site :> string))
+        ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+      let is_master = Set.mem site conf.C.masters in
+      Server.create_unlocked srv
+        (PerSite (site, IsMaster)) (Value.Bool is_master)
+        ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+      (* TODO: PerService *)
+      let stats = Archivist.load_stats ~site conf in
+      Hashtbl.iter (fun (pname, fname) ge ->
+        let fq = N.fq_of_program pname fname in
+        (* IsUsed *)
+        Server.create_unlocked
+          srv (PerSite (site, PerFunction (fq, IsUsed)))
+          (Value.Bool ge.FuncGraph.used)
+          ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+        (* Parents *)
+        set_iteri (fun i (psite, pprog, pfunc) ->
+          Server.create_unlocked
+            srv (PerSite (site, PerFunction (fq, Parents i)))
+            (Value.Worker (psite, pprog, pfunc))
+            ~r:Capa.anybody ~w:Capa.nobody ~s:true
+        ) ge.FuncGraph.parents ;
+        (* Stats *)
+        (match Hashtbl.find stats fq with
+        | exception Not_found -> ()
+        | stats ->
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, StartupTime)))
+              (Value.Float stats.FS.startup_time)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Option.may (fun min_etime ->
+              Server.create_unlocked
+                srv (PerSite (site, PerFunction (fq, MinETime)))
+                (Value.Float min_etime)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true
+            ) stats.FS.min_etime ;
+            Option.may (fun max_etime ->
+              Server.create_unlocked
+                srv (PerSite (site, PerFunction (fq, MaxETime)))
+                (Value.Float max_etime)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true
+            ) stats.FS.max_etime ;
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, TotTuples)))
+              (Value.Int stats.FS.tuples)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, TotBytes)))
+              (Value.Int stats.FS.bytes)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, TotCpu)))
+              (Value.Float stats.FS.cpu)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, MaxRam)))
+              (Value.Int stats.FS.ram)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Server.create_unlocked
+              srv (PerSite (site, PerFunction (fq, ArchivedTimes)))
+              (Value.TimeRange stats.FS.archives)
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true) ;
+      ) per_site_h
+    ) graph.FuncGraph.h
 
-let populate_init srv =
+  let update conf srv =
+    ignore conf ;
+    ignore srv
+end
+
+module Storage : CONF_SYNCER =
+struct
+  let storage_user_conf_dirty = ref false
+  let last_read_user_conf = ref 0.
+
+  let init _conf srv =
+    (* Create the minimal set of (sticky) keys: *)
+    let r = Capa.Anybody
+    and w = Capa.Admin
+    and s = true in
+    Server.create_unlocked srv (Storage TotalSize) Value.dummy ~r ~w ~s ;
+    Server.create_unlocked srv (Storage RecallCost) Value.dummy ~r ~w ~s ;
+    (* On any change down there, set the dirty flag: *)
+    let set_dirty _ v =
+      storage_user_conf_dirty := true ;
+      Some v in
+    let sel = Globs.escape "storage/*" in
+    Server.register_callback srv srv.on_sets set_dirty sel ;
+    Server.register_callback srv srv.on_news set_dirty sel ;
+    Server.register_callback srv srv.on_dels set_dirty sel
+
+  let update conf srv =
+    let fname = Archivist.user_conf_file conf in
+    let t = Files.mtime_def 0. fname in
+    if t > !last_read_user_conf then (
+      !logger.info "Updating storage configuration from %a"
+        N.path_print fname ;
+      last_read_user_conf := t ;
+      let user_conf = Archivist.get_user_conf conf in
+      Server.set srv u (Storage TotalSize)
+                 Value.(Int (Int64.of_int user_conf.Archivist.size_limit)) ;
+      Server.set srv u (Storage RecallCost)
+                 Value.(Float user_conf.recall_cost) ;
+      let r = Capa.Anybody and w = Capa.Admin in
+      Hashtbl.iter (fun glob retention ->
+        Server.create_or_update srv (Storage (RetentionsOverride glob))
+                                Value.(Retention retention) ~r ~w ~s:false
+        (* TODO: delete the left over from previous version *)
+        (* TODO: transactions! *)
+      ) user_conf.retentions
+    ) else (
+      (* in the other way around: if conf is dirty save the file.
+       * TODO *)
+    )
+end
+
+(*
+ *
+ *)
+
+let populate_init conf srv =
   !logger.info "Populating the configuration..." ;
-  set_devnull_init srv ;
-  set_storage_init srv
+  DevNull.init conf srv ;
+  PerSite.init conf srv ;
+  Storage.init conf srv
 
 let sync_step conf srv =
-  update_storage conf srv
+  DevNull.update conf srv ;
+  PerSite.update conf srv ;
+  Storage.update conf srv
 
 let zock_step srv zock =
   let peel_multipart msg =
@@ -135,7 +235,7 @@ let start conf port =
       let zock = Zmq.Socket.(create ctx router) in
       let send_msg = send_msg zock in
       let srv = Server.make ~send_msg in
-      populate_init srv ;
+      populate_init conf srv ;
       finally
         (fun () ->
           Zmq.Socket.close zock)

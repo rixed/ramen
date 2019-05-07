@@ -7,6 +7,7 @@ open RamenSyncIntf
 open RamenHelpers
 module N = RamenName
 module Retention = RamenRetention
+module TimeRange = RamenTimeRange
 
 (* The only capacity we need is:
  * - One per user for personal communications (err messages...)
@@ -172,6 +173,7 @@ struct
     | PerSite of N.site * per_site_key
     | Storage of storage_key
     | Error of string option (* the user name *)
+    (* TODO: alerting *)
   and per_site_key =
     | Name
     | IsMaster
@@ -181,10 +183,13 @@ struct
     | Host
     | Port
   and per_site_fq_key =
+    | IsUsed
     | StartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
-    | Parents
     | ArchivedTimes
+    | Parents of int
+    (* TODO: add children in the FuncGraph
+    | Children of int *)
   and storage_key =
     | TotalSize
     | RecallCost
@@ -197,6 +202,7 @@ struct
 
   let print_per_site_fq_key fmt k =
     String.print fmt (match k with
+      | IsUsed -> "is_used"
       | StartupTime -> "startup_time"
       | MinETime -> "event_time/min"
       | MaxETime -> "event_time/max"
@@ -204,7 +210,7 @@ struct
       | TotBytes -> "total/bytes"
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
-      | Parents -> "parents"
+      | Parents i -> "parents/"^ string_of_int i
       | ArchivedTimes -> "archived_times")
 
   let print_per_site_key fmt = function
@@ -285,6 +291,7 @@ struct
                   | fq, s ->
                       PerFunction (N.fq fq,
                         match cut s with
+                        | "is_used", "" -> IsUsed
                         | "startup_time", "" -> StartupTime
                         | "event_time/min", "" -> MinETime
                         | "event_time/max", "" -> MaxETime
@@ -292,7 +299,7 @@ struct
                         | "total/bytes", "" -> TotBytes
                         | "total/cpu", "" -> TotCpu
                         | "max/ram", "" -> MaxRam
-                        | "parents", "" -> Parents
+                        | "parents", i -> Parents (int_of_string i)
                         | "archived_times", "" -> ArchivedTimes)))
         | "storage", s ->
             Storage (
@@ -354,11 +361,11 @@ struct
     | Bool of bool
     | Int of int64
     | Float of float
-    | Time of float
     | String of string
     | Error of float * int * string
+    | Worker of N.site * N.program * N.func
     | Retention of Retention.t
-    | Dataset of (t array * int (* index of the first *))
+    | TimeRange of TimeRange.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -372,16 +379,18 @@ struct
   let rec print fmt = function
     | Bool b -> Bool.print fmt b
     | Int i -> Int64.print fmt i
-    | Float f | Time f -> Float.print fmt f
+    | Float f -> Float.print fmt f
     | String s -> String.print fmt s
     | Error (t, i, s) ->
         Printf.fprintf fmt "%a:%d:%s"
           print_as_date t i s
+    | Worker (s, p, f) ->
+        Printf.fprintf fmt "%a/%a/%a"
+          N.site_print s N.program_print p N.func_print f
     | Retention r ->
         Retention.print fmt r
-    | Dataset (a, i) ->
-        Printf.fprintf fmt "%a,%d"
-          (Array.print print) a i
+    | TimeRange r ->
+        TimeRange.print fmt r
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
