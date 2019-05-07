@@ -15,7 +15,7 @@ KValue::~KValue()
 {
 }
 
-std::shared_ptr<conf::Value const> KValue::value()
+std::shared_ptr<conf::Value const> KValue::value() const
 {
   return val;
 }

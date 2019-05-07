@@ -1,3 +1,3 @@
 #include "PosDoubleValidator.h"
 
-PosDoubleValidator posDoubleValidator = PosDoubleValidator();
+PosDoubleValidator posDoubleValidator;

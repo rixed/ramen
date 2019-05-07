@@ -83,7 +83,7 @@ Value *valueOfOCaml(value v_)
         std::vector<std::pair<double, double>> range;
         range.reserve(5);
         // TODO: read that value
-        range.push_back(std::pair(1., 2.));
+        range.push_back(std::pair<double, double>(1., 2.));
         ret = new TimeRange(range);
       }
       break;

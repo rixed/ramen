@@ -39,6 +39,8 @@ HEADERS += \
   KErrorMsg.h \
   AtomicWidget.h \
   AtomicForm.h \
+  OperationsModel.h \
+  OperationsView.h \
   StorageForm.h \
   RmAdminWin.h
 
@@ -51,6 +53,8 @@ SOURCES += \
   KValue.cpp \
   conf.cpp \
   AtomicForm.cpp \
+  OperationsModel.cpp \
+  OperationsView.cpp \
   StorageForm.cpp \
   RmAdminWin.cpp \
   main.cpp

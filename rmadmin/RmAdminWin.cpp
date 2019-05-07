@@ -1,12 +1,19 @@
 #include <iostream>
+#include <QTabWidget>
+#include "OperationsView.h"
 #include "StorageForm.h"
 #include "RmAdminWin.h"
 
 RmAdminWin::RmAdminWin(QWidget *parent) :
     QMainWindow(parent)
 {
-  StorageForm *w = new StorageForm();
-  setCentralWidget(w);
+  // For now have a tabbar with the available views:
+  QTabWidget *tw = new QTabWidget(this);
+
+  tw->addTab(new OperationsView(), tr("&Operations"));
+  tw->addTab(new StorageForm(), tr("&Storage"));
+
+  setCentralWidget(tw);
   setWindowTitle(tr("RmAdmin"));
 
   errorMessage = new KErrorMsg(conf::my_errors);

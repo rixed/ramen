@@ -20,7 +20,7 @@ public:
   KValue(const KValue&);
   ~KValue();
   void set(conf::Key const &, std::shared_ptr<conf::Value const>);
-  std::shared_ptr<conf::Value const> value();
+  std::shared_ptr<conf::Value const> value() const;
   void lock(conf::Key const &, QString const &);
   void unlock(conf::Key const &);
   KValue& operator=(const KValue&);

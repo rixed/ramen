@@ -84,6 +84,49 @@ void askUnlock(conf::Key const &key)
   pending_requests.push_back(req);
 }
 
+/* List of registered autoconnects: */
+struct Autoconnect
+{
+  std::string const prefix;
+  std::function<void (conf::Key const &, KValue const *)> cb;
+};
+
+static std::list<Autoconnect> autoconnects;
+
+void autoconnect(
+  std::string const &prefix,
+  std::function<void (conf::Key const &, KValue const *)> cb)
+{
+  autoconnects.push_back({ prefix, cb });
+
+  // As a convenience, call onCreated for every pre-existing keys:
+  size_t pref_len = prefix.length();
+  for (auto it = kvs.constKeyValueBegin(); it != kvs.constKeyValueEnd(); it++) {
+    conf::Key const &key((*it).first);
+    KValue const *kv = &(*it).second;
+    if (key.s.length() >= pref_len &&
+        0 == key.s.compare(0, pref_len, prefix))
+    {
+      cb(key, kv);
+    }
+  }
+}
+
+// Given a new KValue, connect it to all interested parties:
+static void do_autoconnect(conf::Key const &key, KValue const *kv)
+{
+  size_t k_len = key.s.length();
+  for (Autoconnect const &ac : autoconnects) {
+    size_t pref_len = ac.prefix.length();
+    if (pref_len <= k_len &&
+        0 == key.s.compare(0, pref_len, ac.prefix))
+    {
+      std::cerr << "autoconnect key " << key << '\n';
+      ac.cb(key, kv);
+    }
+  }
+}
+
 };
 
 #include <cassert>
@@ -108,6 +151,7 @@ extern "C" {
     QString u(String_val(u_));
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
+    conf::do_autoconnect(k, &conf::kvs[k]);
     conf::kvs[k].set(k, v);
     conf::kvs[k].lock(k, u);
     CAMLreturn(Val_unit);

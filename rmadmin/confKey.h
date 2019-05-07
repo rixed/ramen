@@ -6,6 +6,8 @@
 
 namespace conf {
 
+// So that Qt can serialize keys:
+
 class Key
 {
 public:
