@@ -171,6 +171,7 @@ RAMEN_SOURCES = \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
+	src/RamenFuncGraph.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -749,6 +750,7 @@ LINKED_FOR_TESTS = \
 	src/RamenFileNotify.ml \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
+	src/RamenFuncGraph.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
