@@ -1,11 +1,13 @@
 #ifndef OPERATIONSVIEW_H_190507
 #define OPERATIONSVIEW_H_190507
-#include <QTreeView>
-#include <QWidget>
+#include <QSplitter>
+#include "OperationsModel.h"
 
-class OperationsView : public QTreeView
+class OperationsView : public QSplitter
 {
   Q_OBJECT
+
+  OperationsModel *model;
 
 public:
   OperationsView(QWidget *parent = nullptr);

@@ -1,9 +1,12 @@
 #ifndef OPERATIONSMODEL_H_190507
 #define OPERATIONSMODEL_H_190507
 #include <vector>
+#include <QVector>
+#include <QPointF>
 #include <QAbstractItemModel>
 #include "confKey.h"
 #include "KValue.h"
+#include "OperationsItem.h"
 
 /* The tree is 3 layers deep:
  *
@@ -12,64 +15,26 @@
  * - programs, with again a name etc;
  * - function, with name etc.
  *
- * The tree model correspond exactly to this structure, and is populated
+ * The tree model corresponds exactly to this structure, and is populated
  * using callbacks from the conf synchroniser.
+ *
+ * The GraphView uses the same data model. So the model must also be able
+ * to return another set of parents (graph ancestors). The graphView slots
+ * will be connected to the TreeView signals so that collapse/expand/select
+ * are propagated. But as the GraphView does just the displaying (not the
+ * graph layout) then the data model most hold the positions itself (the
+ * positions are part of the data model, can be edited/saved by users...)
+ * Meaning we need yet another member: [position] and another signal:
+ * [positionChanged].
  */
-
-class OperationsItem
-{
-  /* We store a pointer to the parents, because no item is ever reparented.
-   * When a parent is deleted, it deletes recursively all its children. */
-public:
-  OperationsItem *parent;
-  int row;
-  OperationsItem(OperationsItem *parent_) : parent(parent_), row(0) {}
-  virtual ~OperationsItem() = 0;
-  virtual QVariant data(int) const = 0;
-  // Reorder the children after some has been added/removed
-  virtual void reorder() = 0;
-};
-
-class SiteItem;
-class ProgramItem;
-
-class FunctionItem : public OperationsItem
-{
-public:
-  QString name;
-  FunctionItem(OperationsItem *parent, QString name);
-  ~FunctionItem();
-  QVariant data(int) const;
-  void reorder();
-};
-
-class ProgramItem : public OperationsItem
-{
-public:
-  QString name;
-  // As we are going to point to item from their children we do not want them
-  // to move in memory, so let's use a vector of pointers:
-  std::vector<FunctionItem *> functions;
-  ProgramItem(OperationsItem *parent, QString name);
-  ~ProgramItem();
-  QVariant data(int) const;
-  void reorder();
-};
-
-class SiteItem : public OperationsItem
-{
-public:
-  QString name;
-  std::vector<ProgramItem *> programs;
-  SiteItem(OperationsItem *parent, QString name);
-  ~SiteItem();
-  QVariant data(int) const;
-  void reorder();
-};
 
 class OperationsModel : public QAbstractItemModel
 {
   Q_OBJECT
+
+  friend class SiteItem;
+  friend class ProgramItem;
+  friend class FunctionItem;
 
   std::vector<SiteItem *> sites;
   void reorder();
@@ -95,6 +60,9 @@ public:
 public slots:
   void keyCreated(conf::Key const &, std::shared_ptr<conf::Value const>);
   void keyChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
+
+signals:
+  void positionChanged(QModelIndex const &index) const;
 };
 
 std::ostream &operator<<(std::ostream &, SiteItem const &);

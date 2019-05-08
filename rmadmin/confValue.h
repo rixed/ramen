@@ -37,9 +37,8 @@ Value *valueOfOCaml(value);
 // Construct from a QString
 Value *valueOfQString(conf::ValueType, QString const &);
 
-class Bool : public Value {
+struct Bool : public Value {
   bool b;
-public:
   Bool();
   ~Bool();
   Bool(bool);
@@ -48,9 +47,8 @@ public:
   bool operator==(Value const &) const;
 };
 
-class Int : public Value {
+struct Int : public Value {
   int64_t i;
-public:
   Int();
   ~Int();
   Int(int64_t);
@@ -59,9 +57,8 @@ public:
   bool operator==(Value const &) const;
 };
 
-class Float : public Value {
+struct Float : public Value {
   double d;
-public:
   Float();
   ~Float();
   Float(double);
@@ -70,9 +67,8 @@ public:
   bool operator==(Value const &) const;
 };
 
-class String : public Value {
+struct String : public Value {
   QString s;
-public:
   String();
   ~String();
   String(QString);
@@ -81,11 +77,10 @@ public:
   bool operator==(Value const &) const;
 };
 
-class Error : public Value {
+struct Error : public Value {
   double time;
   unsigned cmd_id;
   std::string msg;
-public:
   Error();
   ~Error();
   Error(double, unsigned, std::string const &);
@@ -94,11 +89,10 @@ public:
   bool operator==(Value const &) const;
 };
 
-class Worker : public Value {
+struct Worker : public Value {
   std::string site;
   std::string program;
   std::string function;
-public:
   Worker();
   ~Worker();
   Worker(std::string const &, std::string const &, std::string const &);
@@ -109,7 +103,6 @@ public:
 
 struct TimeRange : public Value {
   std::vector<std::pair<double, double>> range;
-public:
   TimeRange();
   ~TimeRange();
   TimeRange(std::vector<std::pair<double, double>> const &);
@@ -121,7 +114,6 @@ public:
 struct Retention : public Value {
   double duration;
   double period;
-public:
   Retention();
   ~Retention();
   Retention(double, double);

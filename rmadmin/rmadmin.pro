@@ -12,7 +12,7 @@ INCLUDEPATH += . /Users/rixed/.opam/ramen.4.07.1.flambda/lib/ocaml
 
 QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.14
 QMAKE_CXXFLAGS = -Wall -Wextra -fstandalone-debug
-QT += widgets
+QT += core widgets
 
 # The following define makes your compiler warn you if you use any
 # feature of Qt which has been marked as deprecated (the exact warnings
@@ -39,8 +39,10 @@ HEADERS += \
   KErrorMsg.h \
   AtomicWidget.h \
   AtomicForm.h \
+  OperationsItem.h \
   OperationsModel.h \
   OperationsView.h \
+  GraphView.h \
   StorageForm.h \
   RmAdminWin.h
 
@@ -53,8 +55,10 @@ SOURCES += \
   KValue.cpp \
   conf.cpp \
   AtomicForm.cpp \
+  OperationsItem.cpp \
   OperationsModel.cpp \
   OperationsView.cpp \
+  GraphView.cpp \
   StorageForm.cpp \
   RmAdminWin.cpp \
   main.cpp

@@ -4,65 +4,6 @@
 #include "OperationsModel.h"
 #include "conf.h"
 
-OperationsItem::~OperationsItem() {}
-
-FunctionItem::FunctionItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent), name(name_) {}
-
-FunctionItem::~FunctionItem() {}
-
-QVariant FunctionItem::data(int column) const
-{
-  assert(column == 0);
-  return QVariant(name);
-}
-
-void FunctionItem::reorder() {}
-
-ProgramItem::ProgramItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent), name(name_) {}
-
-ProgramItem::~ProgramItem()
-{
-  for (FunctionItem *function : functions) {
-    delete function;
-  }
-}
-
-QVariant ProgramItem::data(int column) const
-{
-  assert(column == 0);
-  return QVariant(name);
-}
-
-void ProgramItem::reorder()
-{
-  for (size_t i = 0; i < functions.size(); i++)
-    functions[i]->row = i;
-}
-
-SiteItem::SiteItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent), name(name_) {}
-
-SiteItem::~SiteItem()
-{
-  for (ProgramItem *program : programs) {
-    delete program;
-  }
-}
-
-QVariant SiteItem::data(int column) const
-{
-  assert(column == 0);
-  return QVariant(name);
-}
-
-void SiteItem::reorder()
-{
-  for (size_t i = 0; i < programs.size(); i++)
-    programs[i]->row = i;
-}
-
 OperationsModel::OperationsModel(QObject *parent) :
   QAbstractItemModel(parent)
 {
@@ -73,32 +14,6 @@ OperationsModel::OperationsModel(QObject *parent) :
     QObject::connect(kv, &KValue::valueCreated, this, &OperationsModel::keyCreated);
     QObject::connect(kv, &KValue::valueChanged, this, &OperationsModel::keyChanged);
   });
-
-#if 0
-  SiteItem *siteA = new SiteItem(nullptr, "siteA");
-  sites.push_back(siteA);
-
-  ProgramItem *programA = new ProgramItem(siteA, "programA");
-  siteA->programs.push_back(programA);
-  programA->functions.push_back(new FunctionItem(programA, "functionA"));
-  programA->functions.push_back(new FunctionItem(programA, "functionB"));
-  programA->functions.push_back(new FunctionItem(programA, "functionC"));
-  programA->reorder();
-
-  ProgramItem *programB = new ProgramItem(siteA, "programB");
-  siteA->programs.push_back(programB);
-  programB->functions.push_back(new FunctionItem(programB, "functionA"));
-  programB->functions.push_back(new FunctionItem(programB, "functionD"));
-  programB->reorder();
-
-  siteA->reorder();
-
-  reorder();
-
-  for (SiteItem const *site : sites) {
-    std::cout << *site;
-  }
-#endif
 }
 
 QModelIndex OperationsModel::index(int row, int column, QModelIndex const &parent) const
@@ -191,8 +106,13 @@ QVariant OperationsModel::data(QModelIndex const &index, int role) const
 
 void OperationsModel::reorder()
 {
-  for (size_t i = 0; i < sites.size(); i++)
-    sites[i]->row = i;
+  for (int i = 0; (size_t)i < sites.size(); i++) {
+    if (sites[i]->row != i) {
+      sites[i]->row = i;
+      sites[i]->setPos(0, i * 130);
+      emit positionChanged(createIndex(i, 0, static_cast<OperationsItem *>(sites[i])));
+    }
+  }
 }
 
 class ParsedKey {
@@ -228,6 +148,8 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
   std::cerr << "OperationsModel key " << k << " created with value " << *v << " is valid:" << pk.valid << '\n';
 
   if (pk.valid) {
+    assert(pk.site.length() > 0);
+
     SiteItem *siteItem = nullptr;
     for (SiteItem *si : sites) {
       if (si->name == pk.site) {
@@ -238,44 +160,53 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
     if (! siteItem) {
       siteItem = new SiteItem(nullptr, pk.site);
       int idx = sites.size(); // as we insert at the end for now
-      beginInsertRows(QModelIndex(), idx, idx+1);
+      beginInsertRows(QModelIndex(), idx, idx);
       sites.insert(sites.begin()+idx, siteItem);
       reorder();
       endInsertRows();
     }
 
-    ProgramItem *programItem = nullptr;
-    for (ProgramItem *pi : siteItem->programs) {
-      if (pi->name == pk.program) {
-        programItem = pi;
-        break;
+    if (pk.program.length() > 0) {
+      ProgramItem *programItem = nullptr;
+      for (ProgramItem *pi : siteItem->programs) {
+        if (pi->name == pk.program) {
+          programItem = pi;
+          break;
+        }
       }
-    }
-    if (! programItem) {
-      programItem = new ProgramItem(siteItem, pk.program);
-      int idx = siteItem->programs.size();
-      QModelIndex parent = createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
-      beginInsertRows(parent, idx, idx+1);
-      siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
-      siteItem->reorder();
-      endInsertRows();
-    }
+      if (! programItem) {
+        programItem = new ProgramItem(siteItem, pk.program);
+        int idx = siteItem->programs.size();
+        QModelIndex parent = createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
+        beginInsertRows(parent, idx, idx);
+        siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
+        siteItem->reorder(this);
+        endInsertRows();
+      }
 
-    FunctionItem *functionItem = nullptr;
-    for (FunctionItem *fi : programItem->functions) {
-      if (fi->name == pk.function) {
-        functionItem = fi;
-        break;
+      if (pk.function.length() > 0) {
+        FunctionItem *functionItem = nullptr;
+        for (FunctionItem *fi : programItem->functions) {
+          if (fi->name == pk.function) {
+            functionItem = fi;
+            break;
+          }
+        }
+        if (! functionItem) {
+          functionItem = new FunctionItem(programItem, pk.function);
+          int idx = programItem->functions.size();
+          QModelIndex parent = createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));
+          beginInsertRows(parent, idx, idx);
+          programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
+          programItem->reorder(this);
+          endInsertRows();
+        }
+        functionItem->setProperty(pk.property, v);
+      } else {
+        programItem->setProperty(pk.property, v);
       }
-    }
-    if (! functionItem) {
-      functionItem = new FunctionItem(programItem, pk.function);
-      int idx = programItem->functions.size();
-      QModelIndex parent = createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));
-      beginInsertRows(parent, idx, idx+1);
-      programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
-      programItem->reorder();
-      endInsertRows();
+    } else {
+      siteItem->setProperty(pk.property, v);
     }
   }
 }
