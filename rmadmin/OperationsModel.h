@@ -36,7 +36,7 @@ class ProgramItem;
 class FunctionItem : public OperationsItem
 {
 public:
-  QVariant name;
+  QString name;
   FunctionItem(OperationsItem *parent, QString name);
   ~FunctionItem();
   QVariant data(int) const;
@@ -46,7 +46,7 @@ public:
 class ProgramItem : public OperationsItem
 {
 public:
-  QVariant name;
+  QString name;
   // As we are going to point to item from their children we do not want them
   // to move in memory, so let's use a vector of pointers:
   std::vector<FunctionItem *> functions;
@@ -59,7 +59,7 @@ public:
 class SiteItem : public OperationsItem
 {
 public:
-  QVariant name;
+  QString name;
   std::vector<ProgramItem *> programs;
   SiteItem(OperationsItem *parent, QString name);
   ~SiteItem();
