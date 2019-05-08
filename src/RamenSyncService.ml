@@ -44,6 +44,8 @@ module PerSite : CONF_SYNCER =
 struct
   let init conf srv =
     let graph = FuncGraph.make conf in
+    !logger.debug "Populate per-site configuration with graph %a"
+      FuncGraph.print graph ;
     Hashtbl.iter (fun site per_site_h ->
       Server.create_unlocked srv
         (PerSite (site, Name)) (Value.String (site :> string))
