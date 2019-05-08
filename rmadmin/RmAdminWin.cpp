@@ -31,6 +31,13 @@ RmAdminWin::~RmAdminWin()
 
 void RmAdminWin::setStatusMsg()
 {
+  QStatusBar *sb = statusBar(); // create it if it doesn't exist yet
+  if (connStatus.isError() ||
+      authStatus.isError() ||
+      syncStatus.isError())
+  {
+    sb->setStyleSheet("background-color: pink;");
+  }
   QString msg =
     tr("Connection: ").
     append(connStatus.message()).
@@ -38,7 +45,7 @@ void RmAdminWin::setStatusMsg()
     append(authStatus.message()).
     append(tr(", Synchronization: ")).
     append(syncStatus.message());
-  statusBar()->showMessage(msg);
+  sb->showMessage(msg);
 }
 
 void RmAdminWin::connProgress(SyncStatus status)

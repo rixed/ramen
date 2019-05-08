@@ -11,7 +11,7 @@ struct SyncStatus {
   SyncStatus(value s_);
   ~SyncStatus();
   QString message();
-
+  bool isError() const;
 private:
   enum Status {
     Undef, InitStart, InitOk, InitFail, Ok, Fail

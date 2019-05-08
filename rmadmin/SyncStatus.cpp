@@ -60,3 +60,8 @@ QString SyncStatus::message()
              append(msg.c_str());
   }
 }
+
+bool SyncStatus::isError() const
+{
+  return status == InitFail || status == Fail;
+}

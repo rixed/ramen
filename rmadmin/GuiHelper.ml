@@ -128,6 +128,7 @@ let sync_loop clt zock =
       handle_msgs_in () ;
       handle_msgs_out ()
     with e ->
+      print_exception ~what:"sync loop" e ;
       signal_sync (Fail (Printexc.to_string e))
   done
 
