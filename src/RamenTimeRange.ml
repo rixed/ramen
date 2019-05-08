@@ -1,8 +1,6 @@
 open Batteries
 open RamenHelpers
 
-(*$< Batteries *)
-
 type t = (float * float) list [@@ppp PPP_OCaml]
 
 let empty = []
@@ -30,7 +28,7 @@ let rec merge l1 l2 =
       else
         (a2, b2) :: merge l1 r2
 
-(*$= merge & ~printer:(IO.to_string print)
+(*$= merge & ~printer:(BatIO.to_string print)
   [ 1.,2. ; 3.,4. ] (merge [ 1.,2. ] [ 3.,4. ])
   [ 1.,2. ; 3.,4. ] (merge [ 3.,4. ] [ 1.,2. ])
   [ 1.,4. ] (merge [ 1.,3. ] [ 2.,4. ])
@@ -55,7 +53,7 @@ let rec inter l1 l2 =
       | (_, b) as i ->
           i :: (inter ((b, b1)::r1) ((b, b2)::r2))
 
-(*$= inter & ~printer:(IO.to_string print)
+(*$= inter & ~printer:(BatIO.to_string print)
   [] (inter [ 1.,2. ] [ 3.,4. ])
   [] (inter [ 3.,4. ] [ 1.,2. ])
   [ 2.,3. ] (inter [ 1.,3. ] [ 2.,4. ])
@@ -92,5 +90,3 @@ let bounds = function
       invalid_arg "Range.bounds"
   | (a, _) :: _ as l ->
       a, snd (List.last l)
-
-(*$>*)
