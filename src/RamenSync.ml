@@ -166,6 +166,7 @@ end
  *)
 module Key =
 struct
+  (*$< Key *)
   module User = User
 
   type t =
@@ -265,9 +266,12 @@ struct
   let to_string = IO.to_string print
   let of_string =
     (* TODO: a string_split_by_char would come handy in many places. *)
-    let rec cut s =
+    let cut s =
       try String.split ~by:"/" s
       with Not_found -> s, "" in
+    let rcut s =
+      try String.rsplit ~by:"/" s
+      with Not_found -> "", s in
     fun s ->
       try
         match cut s with
@@ -287,20 +291,26 @@ struct
                         | "host", "" -> Host
                         | "port", "" -> Port))
               | "functions", s ->
-                  (match cut s with
+                  (match rcut s with
                   | fq, s ->
-                      PerFunction (N.fq fq,
-                        match cut s with
-                        | "is_used", "" -> IsUsed
-                        | "startup_time", "" -> StartupTime
-                        | "event_time/min", "" -> MinETime
-                        | "event_time/max", "" -> MaxETime
-                        | "total/tuples", "" -> TotTuples
-                        | "total/bytes", "" -> TotBytes
-                        | "total/cpu", "" -> TotCpu
-                        | "max/ram", "" -> MaxRam
-                        | "parents", i -> Parents (int_of_string i)
-                        | "archived_times", "" -> ArchivedTimes)))
+                      try
+                        PerFunction (N.fq fq,
+                          match s with
+                          | "is_used" -> IsUsed
+                          | "startup_time" -> StartupTime
+                          | "archived_times" -> ArchivedTimes)
+                      with Match_failure _ ->
+                        (match rcut fq, s with
+                        | (fq, s1), s2 ->
+                            PerFunction (N.fq fq,
+                              match s1, s2 with
+                              | "event_time", "min" -> MinETime
+                              | "event_time", "max" -> MaxETime
+                              | "total", "tuples" -> TotTuples
+                              | "total", "bytes" -> TotBytes
+                              | "total", "cpu" -> TotCpu
+                              | "max", "ram" -> MaxRam
+                              | "parents", i -> Parents (int_of_string i)))))
         | "storage", s ->
             Storage (
               match cut s with
@@ -317,6 +327,13 @@ struct
       Printf.sprintf "Cannot parse key (%S)" s |>
       failwith
       [@@ocaml.warning "-8"]
+
+  (*$= of_string & ~printer:Batteries.dump
+    (PerSite (N.site "siteA", PerFunction (N.fq "prog/func", TotBytes))) \
+      (of_string "sites/siteA/functions/prog/func/total/bytes")
+  *)
+
+  (*$>*)
 end
 
 (* For now we just use globs on the key names: *)
