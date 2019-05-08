@@ -177,7 +177,7 @@ value Int::toOCamlValue() const
   CAMLparam0();
   CAMLlocal1(ret);
   ret = caml_alloc(1, IntType);
-  Store_field(ret, 0, Val_int(i));
+  Store_field(ret, 0, caml_copy_int64(i));
   CAMLreturn(ret);
 }
 
