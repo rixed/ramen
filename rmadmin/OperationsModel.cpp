@@ -91,6 +91,8 @@ OperationsModel::OperationsModel(QObject *parent) :
 
   siteA->reorder();
 
+  reorder();
+
   for (SiteItem const *site : sites) {
     std::cout << *site;
   }
@@ -182,6 +184,12 @@ QVariant OperationsModel::data(QModelIndex const &index, int role) const
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
   return item->data(index.column());
+}
+
+void OperationsModel::reorder()
+{
+  for (size_t i = 0; i < sites.size(); i++)
+    sites[i]->row = i;
 }
 
 void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value const> v)

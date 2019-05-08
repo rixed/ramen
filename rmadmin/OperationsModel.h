@@ -72,6 +72,7 @@ class OperationsModel : public QAbstractItemModel
   Q_OBJECT
 
   std::vector<SiteItem *> sites;
+  void reorder();
 
   /* To create models that populate incrementally, you can reimplement
    * fetchMore() and canFetchMore(). If the reimplementation of fetchMore()
