@@ -129,10 +129,17 @@ else
 fi
 at_exit "echo 'Killing archivist'; kill '$archivist_pid'"
 
+# httpd and confserver run only on the master site:
 if test "$be_master" = yes; then
+  log "Run the http and config servers..."
+
   "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
   httpd_pid=$!
   at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
+
+  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
+  confserver_pid=$!
+  at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 fi
 
 if test "$be_master" = yes; then
