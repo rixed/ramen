@@ -65,8 +65,4 @@ signals:
   void positionChanged(QModelIndex const &index) const;
 };
 
-std::ostream &operator<<(std::ostream &, SiteItem const &);
-std::ostream &operator<<(std::ostream &, ProgramItem const &);
-std::ostream &operator<<(std::ostream &, FunctionItem const &);
-
 #endif

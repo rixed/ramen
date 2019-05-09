@@ -3,6 +3,9 @@
 #include <QRegularExpression>
 #include "OperationsModel.h"
 #include "conf.h"
+#include "FunctionItem.h"
+#include "ProgramItem.h"
+#include "SiteItem.h"
 
 OperationsModel::OperationsModel(QObject *parent) :
   QAbstractItemModel(parent)

@@ -134,4 +134,7 @@ Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);
 
+// Defined by OCaml header but conflicting with further Qt includes:
+#undef alloc
+
 #endif

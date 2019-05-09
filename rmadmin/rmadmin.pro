@@ -27,6 +27,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 # Input
 HEADERS += \
+  LazyRef.h \
   SyncStatus.h \
   PosIntValidator.h \
   PosDoubleValidator.h \
@@ -40,6 +41,9 @@ HEADERS += \
   AtomicWidget.h \
   AtomicForm.h \
   OperationsItem.h \
+  FunctionItem.h \
+  ProgramItem.h \
+  SiteItem.h \
   OperationsModel.h \
   OperationsView.h \
   GraphView.h \
@@ -56,6 +60,9 @@ SOURCES += \
   conf.cpp \
   AtomicForm.cpp \
   OperationsItem.cpp \
+  FunctionItem.cpp \
+  ProgramItem.cpp \
+  SiteItem.cpp \
   OperationsModel.cpp \
   OperationsView.cpp \
   GraphView.cpp \

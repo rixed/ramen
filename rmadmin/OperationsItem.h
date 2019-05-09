@@ -8,6 +8,7 @@
 #include <QGraphicsItemGroup>
 #include <QBrush>
 #include "confValue.h"
+#include "LazyRef.h"
 
 class OperationsModel;
 
@@ -44,43 +45,5 @@ public:
 
 class SiteItem;
 class ProgramItem;
-
-class FunctionItem : public OperationsItem
-{
-  std::optional<bool> isUsed;
-public:
-  QString name;
-  FunctionItem(OperationsItem *parent, QString name);
-  ~FunctionItem();
-  QVariant data(int) const;
-  void setProperty(QString const &, std::shared_ptr<conf::Value const>);
-};
-
-class ProgramItem : public OperationsItem
-{
-public:
-  QString name;
-  // As we are going to point to item from their children we do not want them
-  // to move in memory, so let's use a vector of pointers:
-  std::vector<FunctionItem *> functions;
-  ProgramItem(OperationsItem *parent, QString name);
-  ~ProgramItem();
-  QVariant data(int) const;
-  void reorder(OperationsModel const *);
-};
-
-class SiteItem : public OperationsItem
-{
-public:
-  QString name;
-  std::optional<bool> isMaster;
-  std::vector<ProgramItem *> programs;
-  SiteItem(OperationsItem *parent, QString name);
-  ~SiteItem();
-  QVariant data(int) const;
-  void setProperty(QString const &, std::shared_ptr<conf::Value const>);
-  void reorder(OperationsModel const *);
-};
-
 
 #endif
