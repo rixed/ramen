@@ -7,10 +7,9 @@
 class SiteItem : public OperationsItem
 {
 public:
-  QString name;
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
-  SiteItem(OperationsItem *parent, QString name);
+  SiteItem(OperationsItem *parent, QString const &name);
   ~SiteItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);

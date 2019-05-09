@@ -28,9 +28,11 @@ public slots:
   void collapse(QModelIndex const &index);
   void expand(QModelIndex const &index);
   void update(QModelIndex const &index);
-  // to be connected to the model rowsAboutToBeInserted signal:
   // to be connected to the model rowsInserted signal:
   void insertRows(const QModelIndex &parent, int first, int last);
+  // to be connected to the model signals of the same names:
+  void relationAdded(FunctionItem const *, FunctionItem const *);
+  void relationRemoved(FunctionItem const *, FunctionItem const *);
 };
 
 #endif

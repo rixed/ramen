@@ -90,12 +90,12 @@ struct Error : public Value {
 };
 
 struct Worker : public Value {
-  std::string site;
-  std::string program;
-  std::string function;
+  QString site;
+  QString program;
+  QString function;
   Worker();
   ~Worker();
-  Worker(std::string const &, std::string const &, std::string const &);
+  Worker(QString const &, QString const &, QString const &);
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;

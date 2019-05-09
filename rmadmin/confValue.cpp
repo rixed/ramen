@@ -267,7 +267,7 @@ bool Error::operator==(Value const &other) const
   return cmd_id == o.cmd_id;
 }
 
-Worker::Worker(std::string const &site_, std::string const &program_, std::string const &function_) :
+Worker::Worker(QString const &site_, QString const &program_, QString const &function_) :
   Value(WorkerType), site(site_), program(program_), function(function_) {}
 
 Worker::Worker() : Worker("", "", "") {}
@@ -276,8 +276,7 @@ Worker::~Worker() {}
 
 QString Worker::toQString() const
 {
-  return
-    QString::fromStdString(site + "/" + program + "/" + function);
+  return site + "/" + program + "/" + function;
 }
 
 value Worker::toOCamlValue() const

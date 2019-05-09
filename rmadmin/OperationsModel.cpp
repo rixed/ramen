@@ -155,14 +155,36 @@ public:
 
 FunctionItem const *OperationsModel::findWorker(std::shared_ptr<conf::Worker const> w)
 {
-  (void)w;
+  std::cerr << "Look for worker " << *w << std::endl;
+  for (SiteItem const *siteItem : sites) {
+    if (siteItem->name == w->site) {
+      for (ProgramItem const *programItem : siteItem->programs) {
+        if (programItem->name == w->program) {
+          for (FunctionItem const *functionItem : programItem->functions) {
+            if (functionItem->name == w->function) {
+              std::cerr << "Found: " << functionItem->fqName().toStdString() << std::endl;
+              return functionItem;
+            } else {
+              std::cerr << "...not " << functionItem->name.toStdString() << std::endl;
+            }
+          }
+          std::cerr << "No such function: " << w->function.toStdString() << std::endl;
+          return nullptr;
+        }
+      }
+      std::cerr << "No such program: " << w->program.toStdString() << std::endl;
+      return nullptr;
+    }
+  }
+  std::cerr << "No such site: " << w->site.toStdString() << std::endl;
   return nullptr;
 }
 
 void OperationsModel::setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx)
 {
   if ((size_t)idx < child->parents.size()) {
-    emit relationRemoved(parent, child);
+    FunctionItem const *prev = child->parents[idx];
+    if (prev) emit relationRemoved(prev, child);
   } else {
     child->parents.resize(idx+1);
   }

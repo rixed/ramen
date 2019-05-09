@@ -1,8 +1,7 @@
 #include "FunctionItem.h"
 
-FunctionItem::FunctionItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent, Qt::blue),
-  name(name_)
+FunctionItem::FunctionItem(OperationsItem *parent, QString const &name) :
+  OperationsItem(parent, name, Qt::blue)
 {}
 
 FunctionItem::~FunctionItem() {}

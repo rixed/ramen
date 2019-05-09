@@ -2,8 +2,8 @@
 #include "ProgramItem.h"
 #include "OperationsModel.h"
 
-ProgramItem::ProgramItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent, Qt::red), name(name_) {}
+ProgramItem::ProgramItem(OperationsItem *parent, QString const &name) :
+  OperationsItem(parent, name, Qt::red) {}
 
 ProgramItem::~ProgramItem()
 {

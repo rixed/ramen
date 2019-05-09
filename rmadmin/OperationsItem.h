@@ -24,12 +24,13 @@ class OperationsItem : public QGraphicsItem
   bool collapsed;
 
 public:
+  QString const name;
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
   OperationsItem *parent; // in the tree
   std::vector<OperationsItem *> preds; // in the graph
   int row;
-  OperationsItem(OperationsItem *parent, QBrush brush=Qt::NoBrush);
+  OperationsItem(OperationsItem *parent, QString const &name, QBrush brush=Qt::NoBrush);
   virtual ~OperationsItem() = 0;
   virtual QVariant data(int) const = 0;
   // Reorder the children after some has been added/removed
@@ -41,6 +42,7 @@ public:
   virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 
   void setCollapsed(bool);
+  QString fqName() const;
 };
 
 class SiteItem;

@@ -1,5 +1,6 @@
 #include <cassert>
 #include "GraphView.h"
+#include "FunctionItem.h"
 
 GraphView::GraphView(QWidget *parent) :
   QGraphicsView(parent), model(nullptr)
@@ -32,6 +33,10 @@ void GraphView::setModel(OperationsModel const *model_)
   // condition)
   QObject::connect(model, &OperationsModel::rowsInserted, this, &GraphView::insertRows);
   // TODO: same goes for removal
+
+  // Also the signals allowing us to learn about functions relationships:
+  QObject::connect(model, &OperationsModel::relationAdded, this, &GraphView::relationAdded);
+  QObject::connect(model, &OperationsModel::relationRemoved, this, &GraphView::relationRemoved);
 }
 
 void GraphView::collapse(QModelIndex const &index)
@@ -70,4 +75,14 @@ void GraphView::insertRows(const QModelIndex &parent, int first, int last)
       static_cast<OperationsItem *>(index.internalPointer());
     scene.addItem(item);
   }
+}
+
+void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
+{
+  std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
+}
+
+void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *child)
+{
+  std::cout << "Del " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
 }
