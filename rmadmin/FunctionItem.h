@@ -18,7 +18,7 @@ public:
   // FIXME: Function destructor must clean those:
   // FIXME: is this actually needed to know the parents?
   std::vector<FunctionItem const*> parents;
-  FunctionItem(OperationsItem *parent, QString const &name);
+  FunctionItem(OperationsItem *treeParent, QString const &name);
   ~FunctionItem();
   QVariant data(int) const;
 };

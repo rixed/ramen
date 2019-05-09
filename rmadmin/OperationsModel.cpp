@@ -26,7 +26,7 @@ QModelIndex OperationsModel::index(int row, int column, QModelIndex const &paren
   if (!parent.isValid()) { // Asking for a site
     if ((size_t)row >= sites.size()) return QModelIndex();
     SiteItem *site = sites[row];
-    assert(site->parent == nullptr);
+    assert(site->treeParent == nullptr);
     return createIndex(row, column, static_cast<OperationsItem *>(site));
   }
 
@@ -36,7 +36,7 @@ QModelIndex OperationsModel::index(int row, int column, QModelIndex const &paren
   if (parentSite) { // bingo!
     if ((size_t)row >= parentSite->programs.size()) return QModelIndex();
     ProgramItem *program = parentSite->programs[row];
-    assert(program->parent == parentPtr);
+    assert(program->treeParent == parentPtr);
     return createIndex(row, column, static_cast<OperationsItem *>(program));
   }
   // Maybe a program?
@@ -44,7 +44,7 @@ QModelIndex OperationsModel::index(int row, int column, QModelIndex const &paren
   if (parentProgram) {
     if ((size_t)row >= parentProgram->functions.size()) return QModelIndex();
     FunctionItem *function = parentProgram->functions[row];
-    assert(function->parent == parentPtr);
+    assert(function->treeParent == parentPtr);
     return createIndex(row, column, static_cast<OperationsItem *>(function));
   }
   // There is no alternative
@@ -55,15 +55,15 @@ QModelIndex OperationsModel::parent(QModelIndex const &index) const
 {
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
-  OperationsItem *parent = item->parent;
+  OperationsItem *treeParent = item->treeParent;
 
-  if (! parent) {
+  if (! treeParent) {
     // We must be a site then:
     assert(nullptr != dynamic_cast<SiteItem *>(item));
     return QModelIndex(); // parent is "root"
   }
 
-  return createIndex(parent->row, 0, parent);
+  return createIndex(treeParent->row, 0, treeParent);
 }
 
 int OperationsModel::rowCount(QModelIndex const &parent) const
@@ -314,7 +314,8 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
       if (! programItem) {
         programItem = new ProgramItem(siteItem, pk.program);
         int idx = siteItem->programs.size();
-        QModelIndex parent = createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
+        QModelIndex parent =
+          createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
         beginInsertRows(parent, idx, idx);
         siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
         siteItem->reorder(this);

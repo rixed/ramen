@@ -4,6 +4,7 @@
 #include <QVector>
 #include <QPointF>
 #include <QAbstractItemModel>
+#include <QTimer>
 #include "confKey.h"
 #include "KValue.h"
 #include "OperationsItem.h"
@@ -41,9 +42,7 @@ class OperationsModel : public QAbstractItemModel
   friend class ProgramItem;
   friend class FunctionItem;
 
-  std::vector<SiteItem *> sites;
   void reorder();
-
   FunctionItem const *findWorker(std::shared_ptr<conf::Worker const>);
   void setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx);
   void delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const>);
@@ -53,6 +52,8 @@ class OperationsModel : public QAbstractItemModel
   void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
 
 public:
+  std::vector<SiteItem *> sites;
+
   OperationsModel(QObject *parent = nullptr);
 
   /* When subclassing QAbstractItemModel, at the very least you must implement

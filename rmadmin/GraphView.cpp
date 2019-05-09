@@ -1,10 +1,15 @@
 #include <cassert>
+#include <cstdlib>
+#include <QPropertyAnimation>
+#include <QParallelAnimationGroup>
 #include "GraphArrow.h"
 #include "FunctionItem.h"
+#include "ProgramItem.h"
+#include "SiteItem.h"
 #include "GraphView.h"
 
 GraphView::GraphView(QWidget *parent) :
-  QGraphicsView(parent), model(nullptr)
+  QGraphicsView(parent), model(nullptr), layoutTimer(this)
 {
   setBackgroundBrush(QBrush(Qt::lightGray, Qt::CrossPattern));
   setRenderHint(QPainter::Antialiasing);
@@ -12,6 +17,9 @@ GraphView::GraphView(QWidget *parent) :
   QSizePolicy sp = sizePolicy();
   sp.setHorizontalPolicy(QSizePolicy::Expanding);
   setSizePolicy(sp);
+
+  layoutTimer.setSingleShot(true);
+  QObject::connect(&layoutTimer, &QTimer::timeout, this, &GraphView::startLayout);
 }
 
 GraphView::~GraphView()
@@ -60,6 +68,9 @@ void GraphView::expand(QModelIndex const &index)
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
+  // Start (or restart) the layoutTimer to trigger a re-layout in 100ms:
+  layoutTimer.start(100);
+
   // We only need to add to the scene the toplevel sites:
   if (parent.isValid()) return;
 
@@ -84,12 +95,12 @@ void GraphView::updateArrows()
     OperationsItem const *dst = static_cast<FunctionItem const *>(it.second);
 
     while (src && !src->isVisibleTo(nullptr)) {
-      src = src->parent;
+      src = src->treeParent;
     }
     if (! src) continue;  // for some reason even the site is not visible?!
 
     while (dst && !dst->isVisibleTo(nullptr)) {
-      dst = dst->parent;
+      dst = dst->treeParent;
     }
     if (! dst) continue;
 
@@ -145,4 +156,41 @@ void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *
   } else {
     std::cerr << "Removal of an unknown relation (good riddance!)" << std::endl;
   }
+}
+
+void GraphView::startLayout()
+{
+  std::cout << "Starting a re-layout of the functions" << std::endl;
+
+  if (! model) {
+    std::cerr << "Cannot relayout without a model\n";
+    return;
+  }
+
+  QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
+  int const animDuration = 700; // ms
+
+  // Test: just move the functions around:
+  for (auto siteItem : model->sites) {
+    QPropertyAnimation *animSite = new QPropertyAnimation(siteItem, "pos");
+    animSite->setDuration(animDuration);
+    animSite->setEndValue(QPoint(rand() % 500 - 250, rand() % 500 - 250));
+    animGroup->addAnimation(animSite);
+
+    for (auto programItem : siteItem->programs) {
+      QPropertyAnimation *animProgram = new QPropertyAnimation(programItem, "pos");
+      animProgram->setDuration(animDuration);
+      animProgram->setEndValue(QPoint(rand() % 200 - 100, rand() % 200 - 100));
+      animGroup->addAnimation(animProgram);
+
+      for (auto functionItem : programItem->functions) {
+        QPropertyAnimation *animFunction = new QPropertyAnimation(functionItem, "pos");
+        animFunction->setDuration(animDuration);
+        animFunction->setEndValue(QPoint(rand() % 30 - 15, rand() % 30 - 15));
+        animGroup->addAnimation(animFunction);
+      }
+    }
+  }
+
+  animGroup->start(QAbstractAnimation::DeleteWhenStopped);
 }

@@ -11,15 +11,15 @@
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-OperationsItem::OperationsItem(OperationsItem *parent_, QString const &name_, QBrush brush_) :
-  QGraphicsItem(parent_ ?
-      static_cast<QGraphicsItem *>(&parent_->subItems) :
-      static_cast<QGraphicsItem *>(parent_)),
+OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, QBrush brush_) :
+  QGraphicsItem(treeParent_ ?
+      static_cast<QGraphicsItem *>(&treeParent_->subItems) :
+      static_cast<QGraphicsItem *>(treeParent_)),
   brush(brush_),
   subItems(this),
   collapsed(true),
   name(name_),
-  parent(parent_),
+  treeParent(treeParent_),
   row(-1),
   anchorIn(this),
   anchorOut(this)
@@ -57,6 +57,6 @@ void OperationsItem::setCollapsed(bool c)
 
 QString OperationsItem::fqName() const
 {
-  if (! parent) return name;
-  return parent->fqName() + "/" + name;
+  if (! treeParent) return name;
+  return treeParent->fqName() + "/" + name;
 }

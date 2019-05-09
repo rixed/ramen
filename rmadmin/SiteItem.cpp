@@ -2,8 +2,8 @@
 #include "SiteItem.h"
 #include "OperationsModel.h"
 
-SiteItem::SiteItem(OperationsItem *parent, QString const &name) :
-  OperationsItem(parent, name, Qt::green)
+SiteItem::SiteItem(OperationsItem *treeParent, QString const &name) :
+  OperationsItem(treeParent, name, Qt::green)
 {}
 
 SiteItem::~SiteItem()

@@ -42,6 +42,11 @@ class GraphView : public QGraphicsView
 
   void updateArrows();
 
+  /* Used to trigger a layout computation after no functions were updated
+   * for a short while: */
+  QTimer layoutTimer;
+
+
 public:
   GraphView(QWidget *parent = nullptr);
   ~GraphView();
@@ -56,6 +61,7 @@ public slots:
   // to be connected to the model signals of the same names:
   void relationAdded(FunctionItem const *, FunctionItem const *);
   void relationRemoved(FunctionItem const *, FunctionItem const *);
+  void startLayout();
 };
 
 #endif
