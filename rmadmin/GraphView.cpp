@@ -1,6 +1,7 @@
 #include <cassert>
-#include "GraphView.h"
+#include "GraphArrow.h"
 #include "FunctionItem.h"
+#include "GraphView.h"
 
 GraphView::GraphView(QWidget *parent) :
   QGraphicsView(parent), model(nullptr)
@@ -41,26 +42,20 @@ void GraphView::setModel(OperationsModel const *model_)
 
 void GraphView::collapse(QModelIndex const &index)
 {
-  // TODO: hide the subnodes (recursively) and collapse the connections
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
 
   item->setCollapsed(true);
+  updateArrows();
 }
 
 void GraphView::expand(QModelIndex const &index)
 {
-  // TODO: reverse the above
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
 
   item->setCollapsed(false);
-}
-
-void GraphView::update(QModelIndex const &index)
-{
-  // TODO: redraw
-  (void)index;
+  updateArrows();
 }
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
@@ -77,12 +72,77 @@ void GraphView::insertRows(const QModelIndex &parent, int first, int last)
   }
 }
 
+void GraphView::updateArrows()
+{
+  // First, untag all arrows:
+  for (auto it = arrows.begin(); it != arrows.end(); it++) {
+    it->second.second = false;
+  }
+
+  for (auto it : relations) {
+    OperationsItem const *src = static_cast<FunctionItem const *>(it.first);
+    OperationsItem const *dst = static_cast<FunctionItem const *>(it.second);
+
+    while (src && !src->isVisibleTo(nullptr)) {
+      src = src->parent;
+    }
+    if (! src) continue;  // for some reason even the site is not visible?!
+
+    while (dst && !dst->isVisibleTo(nullptr)) {
+      dst = dst->parent;
+    }
+    if (! dst) continue;
+
+    // This may happen because of collapsing
+    if (src == dst) continue;
+
+    // Do we have this arrow already?
+    auto ait = arrows.find(std::pair<OperationsItem const *, OperationsItem const *>(src, dst));
+    if (ait == arrows.end()) {
+      std::cout << "Creating Arrow from " << src->fqName().toStdString()
+                << " to " << dst->fqName().toStdString() << std::endl;
+      GraphArrow *arrow = new GraphArrow(&src->anchorOut, &dst->anchorIn);
+      arrows.insert({{ src, dst }, { arrow, true }});
+      scene.addItem(arrow);
+    } else {
+      ait->second.second = true;
+    }
+  }
+
+  // Remove all untagged arrows:
+  for (auto it = arrows.begin(); it != arrows.end(); ) {
+    if (it->second.second) {
+      it++;
+    } else {
+      std::cout << "Deleting Arrow from " << it->first.first->fqName().toStdString()
+                << " to " << it->first.second->fqName().toStdString() << std::endl;
+      GraphArrow *arrow = it->second.first;
+      scene.removeItem(arrow);
+      delete arrow;  // should remove it from the scene etc...
+      it = arrows.erase(it);
+    }
+  }
+
+  /* For some reason Qt is not smart enough to figure out what part of the
+   * scene to redraw: */
+  scene.update();
+}
+
 void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
 {
   std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
+  relations.insert(std::pair<FunctionItem const *, FunctionItem const *>(parent, child));
+  updateArrows();
 }
 
 void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *child)
 {
   std::cout << "Del " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
+  auto it = relations.find(parent);
+  if (it != relations.end()) {
+    relations.erase(it);
+    updateArrows();
+  } else {
+    std::cerr << "Removal of an unknown relation (good riddance!)" << std::endl;
+  }
 }

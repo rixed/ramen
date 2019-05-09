@@ -8,9 +8,10 @@
 #include <QGraphicsItemGroup>
 #include <QBrush>
 #include "confValue.h"
-#include "LazyRef.h"
+#include "GraphAnchor.h"
 
 class OperationsModel;
+class GraphAnchor;
 
 /* OperationsItem is an Item in the OperationsModel *and* in the
  * scene of the GraphView. */
@@ -28,8 +29,10 @@ public:
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
   OperationsItem *parent; // in the tree
-  std::vector<OperationsItem *> preds; // in the graph
   int row;
+  GraphAnchor anchorIn;
+  GraphAnchor anchorOut;
+
   OperationsItem(OperationsItem *parent, QString const &name, QBrush brush=Qt::NoBrush);
   virtual ~OperationsItem() = 0;
   virtual QVariant data(int) const = 0;

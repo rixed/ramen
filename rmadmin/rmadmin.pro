@@ -40,12 +40,14 @@ HEADERS += \
   KErrorMsg.h \
   AtomicWidget.h \
   AtomicForm.h \
+  GraphAnchor.h \
   OperationsItem.h \
   FunctionItem.h \
   ProgramItem.h \
   SiteItem.h \
   OperationsModel.h \
   OperationsView.h \
+  GraphArrow.h \
   GraphView.h \
   StorageForm.h \
   RmAdminWin.h
@@ -59,12 +61,14 @@ SOURCES += \
   KValue.cpp \
   conf.cpp \
   AtomicForm.cpp \
+  GraphAnchor.cpp \
   OperationsItem.cpp \
   FunctionItem.cpp \
   ProgramItem.cpp \
   SiteItem.cpp \
   OperationsModel.cpp \
   OperationsView.cpp \
+  GraphArrow.cpp \
   GraphView.cpp \
   StorageForm.cpp \
   RmAdminWin.cpp \

@@ -20,10 +20,15 @@ OperationsItem::OperationsItem(OperationsItem *parent_, QString const &name_, QB
   collapsed(true),
   name(name_),
   parent(parent_),
-  row(-1)
+  row(-1),
+  anchorIn(this),
+  anchorOut(this)
 {
   // TreeView is initially collapsed, and so are we:
   subItems.hide();
+
+  anchorIn.setPos(-10, 0);
+  anchorOut.setPos(10, 0);
 }
 
 OperationsItem::~OperationsItem() {}
