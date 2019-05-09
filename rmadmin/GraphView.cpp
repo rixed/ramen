@@ -30,8 +30,7 @@ void GraphView::setModel(OperationsModel const *model_)
 
   // Connect to the model signals to learn about updates (notice the race
   // condition)
-  QObject::connect(model, &OperationsModel::rowsAboutToBeInserted, this, &GraphView::prepareInsertRows);
-  QObject::connect(model, &OperationsModel::rowsInserted, this, &GraphView::confirmInsertRows);
+  QObject::connect(model, &OperationsModel::rowsInserted, this, &GraphView::insertRows);
   // TODO: same goes for removal
 }
 
@@ -59,12 +58,7 @@ void GraphView::update(QModelIndex const &index)
   (void)index;
 }
 
-void GraphView::prepareInsertRows(const QModelIndex &, int, int)
-{
-  // nothing to do
-}
-
-void GraphView::confirmInsertRows(const QModelIndex &parent, int first, int last)
+void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
   // We only need to add to the scene the toplevel sites:
   if (parent.isValid()) return;

@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <list>
 #include <QRegularExpression>
 #include "OperationsModel.h"
 #include "conf.h"
@@ -152,11 +153,114 @@ public:
   }
 };
 
+FunctionItem const *OperationsModel::findWorker(std::shared_ptr<conf::Worker const> w)
+{
+  (void)w;
+  return nullptr;
+}
+
+void OperationsModel::setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx)
+{
+  if ((size_t)idx < child->parents.size()) {
+    emit relationRemoved(parent, child);
+  } else {
+    child->parents.resize(idx+1);
+  }
+  child->parents[idx] = parent;
+  emit relationAdded(parent, child);
+}
+
+/* In case we receive a child before its parents we have to wait for the
+ * parent before setting up the relationship: */
+struct PendingSetParent {
+  /* FIXME: FunctionItem destructors should look in here and remove pending
+   * SetParent for them! */
+  FunctionItem *child;
+  int idx;
+  std::shared_ptr<conf::Worker const> worker;
+
+  PendingSetParent(FunctionItem *child_, int idx_, std::shared_ptr<conf::Worker const> worker_) :
+    child(child_), idx(idx_), worker(worker_) {}
+};
+static std::list<PendingSetParent> pendingSetParents;
+
+void OperationsModel::delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const> w)
+{
+  // Check that there is no parent already pending for that slot:
+  for (PendingSetParent &p : pendingSetParents) {
+    if (p.child == child && p.idx == idx) {
+      p.worker = w;
+      return;
+    }
+  }
+  pendingSetParents.emplace_back(child, idx, w);
+}
+
+void OperationsModel::retrySetParents()
+{
+  for (auto it = pendingSetParents.begin(); it != pendingSetParents.end(); ) {
+    FunctionItem const *parent = findWorker(it->worker);
+    if (parent) {
+      std::cout << "Resolved pending parent" << std::endl;
+      setFunctionParent(parent, it->child, it->idx);
+      it = pendingSetParents.erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
+{
+  static QString const parents_prefix("parents/");
+  if (p == "is_used") {
+    std::shared_ptr<conf::Bool const> b =
+      std::dynamic_pointer_cast<conf::Bool const>(v);
+    if (b) functionItem->isUsed = b->b;
+  } else if (p.startsWith(parents_prefix)) {
+    int idx = p.mid(parents_prefix.length()).toInt();
+    if (idx >= 0 && (size_t)idx < functionItem->parents.size()+100000) {
+      std::shared_ptr<conf::Worker const> w =
+        std::dynamic_pointer_cast<conf::Worker const>(v);
+      if (w) {
+        /* Try to locate the OperationsItem of this worker. If it's not
+         * there yet, enqueue this worker somewhere and revisit this
+         * once a new function appears. */
+        FunctionItem const *parent = findWorker(w);
+        if (parent) {
+          setFunctionParent(parent, functionItem, idx);
+        } else {
+          delaySetFunctionParent(functionItem, idx, w);
+        }
+      } else {
+        std::cerr << "Ignoring function parent " << idx
+                  << " because it is not a worker" << std::endl;
+      }
+    } else {
+      std::cerr << "Ignoring bogus request to alter function "
+                << idx << "th parent" << std::endl;
+    }
+  }
+}
+
+void OperationsModel::setProgramProperty(ProgramItem *, QString const &, std::shared_ptr<conf::Value const>)
+{
+}
+
+void OperationsModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
+{
+  if (p == "is_master") {
+    std::shared_ptr<conf::Bool const> b =
+      std::dynamic_pointer_cast<conf::Bool const>(v);
+    if (b) siteItem->isMaster = b->b;
+  }
+}
+
 void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  // TODO: maybe update the model
-  std::cerr << "OperationsModel key " << k << " created with value " << *v << " is valid:" << pk.valid << '\n';
+  std::cerr << "OperationsModel key " << k << " created with value " << *v
+            << " is valid:" << pk.valid << '\n';
 
   if (pk.valid) {
     assert(pk.site.length() > 0);
@@ -206,18 +310,22 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
         if (! functionItem) {
           functionItem = new FunctionItem(programItem, pk.function);
           int idx = programItem->functions.size();
-          QModelIndex parent = createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));
+          QModelIndex parent =
+            createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));
           beginInsertRows(parent, idx, idx);
           programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
           programItem->reorder(this);
           endInsertRows();
+          // Since we have a new function, maybe we can solve some of the
+          // pendingSetParents?
+          retrySetParents();
         }
-        functionItem->setProperty(pk.property, v);
+        setFunctionProperty(functionItem, pk.property, v);
       } else {
-        programItem->setProperty(pk.property, v);
+        setProgramProperty(programItem, pk.property, v);
       }
     } else {
-      siteItem->setProperty(pk.property, v);
+      setSiteProperty(siteItem, pk.property, v);
     }
   }
 }

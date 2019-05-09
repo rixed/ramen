@@ -28,10 +28,15 @@
  * [positionChanged].
  */
 
+class SiteItem;
+class ProgramItem;
+class FunctionItem;
+
 class OperationsModel : public QAbstractItemModel
 {
   Q_OBJECT
 
+  // So they can createIndex():
   friend class SiteItem;
   friend class ProgramItem;
   friend class FunctionItem;
@@ -39,10 +44,13 @@ class OperationsModel : public QAbstractItemModel
   std::vector<SiteItem *> sites;
   void reorder();
 
-  /* To create models that populate incrementally, you can reimplement
-   * fetchMore() and canFetchMore(). If the reimplementation of fetchMore()
-   * adds rows to the model, beginInsertRows() and endInsertRows() must be
-   * called */
+  FunctionItem const *findWorker(std::shared_ptr<conf::Worker const>);
+  void setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx);
+  void delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const>);
+  void retrySetParents();
+  void setFunctionProperty(FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
+  void setProgramProperty(ProgramItem *, QString const &p, std::shared_ptr<conf::Value const>);
+  void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
 
 public:
   OperationsModel(QObject *parent = nullptr);
@@ -63,6 +71,8 @@ public slots:
 
 signals:
   void positionChanged(QModelIndex const &index) const;
+  void relationAdded(FunctionItem const *parent, FunctionItem const *child) const;
+  void relationRemoved(FunctionItem const *parent, FunctionItem const *child) const;
 };
 
 #endif

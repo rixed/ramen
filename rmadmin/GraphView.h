@@ -29,10 +29,8 @@ public slots:
   void expand(QModelIndex const &index);
   void update(QModelIndex const &index);
   // to be connected to the model rowsAboutToBeInserted signal:
-  // TODO: needed?
-  void prepareInsertRows(const QModelIndex &parent, int first, int last);
   // to be connected to the model rowsInserted signal:
-  void confirmInsertRows(const QModelIndex &parent, int first, int last);
+  void insertRows(const QModelIndex &parent, int first, int last);
 };
 
 #endif

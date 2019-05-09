@@ -30,12 +30,3 @@ void SiteItem::reorder(OperationsModel const *model)
     }
   }
 }
-
-void SiteItem::setProperty(QString const &p, std::shared_ptr<conf::Value const> v)
-{
-  if (p == "is_master") {
-    std::shared_ptr<conf::Bool const> b =
-      std::dynamic_pointer_cast<conf::Bool const>(v);
-    if (b) isMaster = b->b;
-  }
-}
