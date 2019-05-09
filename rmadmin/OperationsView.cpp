@@ -22,6 +22,9 @@ OperationsView::OperationsView(QWidget *parent) :
   GraphView *graphView = new GraphView();
   graphView->setModel(model);
   addWidget(graphView);
+
+  QObject::connect(treeView, &QTreeView::collapsed, graphView, &GraphView::collapse);
+  QObject::connect(treeView, &QTreeView::expanded, graphView, &GraphView::expand);
 }
 
 OperationsView::~OperationsView()

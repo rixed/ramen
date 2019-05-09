@@ -37,14 +37,20 @@ void GraphView::setModel(OperationsModel const *model_)
 
 void GraphView::collapse(QModelIndex const &index)
 {
-  // TODO: hide the subnodes and sollapse the connections
-  (void)index;
+  // TODO: hide the subnodes (recursively) and collapse the connections
+  OperationsItem *item =
+    static_cast<OperationsItem *>(index.internalPointer());
+
+  item->setCollapsed(true);
 }
 
 void GraphView::expand(QModelIndex const &index)
 {
   // TODO: reverse the above
-  (void)index;
+  OperationsItem *item =
+    static_cast<OperationsItem *>(index.internalPointer());
+
+  item->setCollapsed(false);
 }
 
 void GraphView::update(QModelIndex const &index)
