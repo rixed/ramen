@@ -123,9 +123,14 @@ public:
   {
     static QRegularExpression re(
       "^sites/(?<site>[^/]+)/"
-      "functions/(?<program>.+)/"
-      "(?<function>[^/]+)/"
-      "(?<property>is_used|parents/\\d)$" ,
+      "("
+        "functions/(?<program>.+)/"
+        "(?<function>[^/]+)/"
+        "(?<function_property>is_used|parents/\\d)"
+      "|"
+        "(?<site_property>is_master)"
+      ")$"
+      ,
       QRegularExpression::DontCaptureOption
     );
     assert(re.isValid());
@@ -136,7 +141,10 @@ public:
       site = match.captured("site");
       program = match.captured("program");
       function = match.captured("function");
-      property = match.captured("property");
+      property = match.captured("function_property");
+      if (property.isNull()) {
+        property = match.captured("site_property");
+      }
     }
   }
 };

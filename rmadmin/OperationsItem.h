@@ -73,10 +73,12 @@ class SiteItem : public OperationsItem
 {
 public:
   QString name;
+  std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
   SiteItem(OperationsItem *parent, QString name);
   ~SiteItem();
   QVariant data(int) const;
+  void setProperty(QString const &, std::shared_ptr<conf::Value const>);
   void reorder(OperationsModel const *);
 };
 
