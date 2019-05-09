@@ -47,9 +47,6 @@ struct
     !logger.debug "Populate per-site configuration with graph %a"
       FuncGraph.print graph ;
     Hashtbl.iter (fun site per_site_h ->
-      Server.create_unlocked srv
-        (PerSite (site, Name)) (Value.String (site :> string))
-        ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
       let is_master = Set.mem site conf.C.masters in
       Server.create_unlocked srv
         (PerSite (site, IsMaster)) (Value.Bool is_master)

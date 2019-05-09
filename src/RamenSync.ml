@@ -176,7 +176,6 @@ struct
     | Error of string option (* the user name *)
     (* TODO: alerting *)
   and per_site_key =
-    | Name
     | IsMaster
     | PerService of N.service * per_service_key
     | PerFunction of N.fq * per_site_fq_key
@@ -215,8 +214,6 @@ struct
       | ArchivedTimes -> "archived_times")
 
   let print_per_site_key fmt = function
-    | Name ->
-        String.print fmt "name"
     | IsMaster ->
         String.print fmt "is_master"
     | PerService (service, per_service_key) ->
@@ -279,8 +276,6 @@ struct
             let site, s = cut s in
             PerSite (N.site site,
               match cut s with
-              | "name", "" ->
-                  Name
               | "is_master", "" ->
                   IsMaster
               | "services", s ->
