@@ -22,9 +22,9 @@ class OperationsItem : public QGraphicsItem
   QGraphicsItemGroup subItems;
   bool collapsed;
 
+public:
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
-public:
   OperationsItem *parent; // in the tree
   std::vector<OperationsItem *> preds; // in the graph
   int row;

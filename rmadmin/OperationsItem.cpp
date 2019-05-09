@@ -40,7 +40,9 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
 }
 
 FunctionItem::FunctionItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent, Qt::blue), name(name_) {}
+  OperationsItem(parent, Qt::blue),
+  name(name_)
+{}
 
 FunctionItem::~FunctionItem() {}
 
@@ -92,7 +94,9 @@ void OperationsItem::setCollapsed(bool c)
 }
 
 SiteItem::SiteItem(OperationsItem *parent, QString name_) :
-  OperationsItem(parent, Qt::green), name(name_) {}
+  OperationsItem(parent, Qt::green),
+  name(name_)
+{}
 
 SiteItem::~SiteItem()
 {
