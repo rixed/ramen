@@ -7,34 +7,26 @@ GraphView::GraphView(QWidget *parent) :
   setBackgroundBrush(QBrush(Qt::lightGray, Qt::CrossPattern));
   setRenderHint(QPainter::Antialiasing);
   setScene(&scene);
+  QSizePolicy sp = sizePolicy();
+  sp.setHorizontalPolicy(QSizePolicy::Expanding);
+  setSizePolicy(sp);
 }
 
 GraphView::~GraphView()
 {
 }
 
-// Populate the scene with the GraphicsItems:
-// Note: we have to pass the model in addition to the parent (despite
-// parent.model()), because for root the invalid QModelIndex has nullptr as
-// model ; bummer!
-void GraphView::populate(QModelIndex const &parent)
+QSize GraphView::sizeHint() const
 {
-  int numRows = model->rowCount(parent);
-  for (int row = 0; row < numRows; row++) {
-    QModelIndex index = model->index(row, 0, parent);
-    OperationsItem *i =
-      static_cast<OperationsItem *>(index.internalPointer());
-    scene.addItem(i);
-    populate(index);
-  }
+  // TODO: compute from components (or rather, cache after components are
+  // added/modified)
+  return QSize(200, 500);
 }
 
 void GraphView::setModel(OperationsModel const *model_)
 {
   assert(! model);
   model = model_;
-  // Iterate the model and add a GraphItem for every row:
-  //populate(QModelIndex());
 
   // Connect to the model signals to learn about updates (notice the race
   // condition)

@@ -10,11 +10,16 @@ OperationsView::OperationsView(QWidget *parent) :
   // requirements:
   model = new OperationsModel();
 
-  QTreeView *treeView = new QTreeView(this);
+  QTreeView *treeView = new QTreeView();
   treeView->setModel(model);
+  treeView->setHeaderHidden(true);
+  treeView->setUniformRowHeights(true);
   addWidget(treeView);
+  QSizePolicy sp = treeView->sizePolicy();
+  sp.setHorizontalPolicy(QSizePolicy::Preferred);
+  treeView->setSizePolicy(sp);
 
-  GraphView *graphView = new GraphView(this);
+  GraphView *graphView = new GraphView();
   graphView->setModel(model);
   addWidget(graphView);
 }

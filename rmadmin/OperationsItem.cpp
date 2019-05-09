@@ -20,7 +20,7 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
 {
   (void)option; (void)widget;
   QPen pen = QPen(Qt::darkBlue);
-  pen.setWidthF(3);
+  pen.setWidthF(2);
   painter->setPen(pen);
   painter->setBrush(brush);
   painter->drawRoundedRect(boundingRect(), 0.1, 0.1);

@@ -14,8 +14,6 @@ class GraphView : public QGraphicsView
 
   QGraphicsScene scene;
 
-  void populate(QModelIndex const &);
-
   // Have to save that one because we cannot rely on QModelIndex to provide it:
   // Note: models are supposed to outlive the views, aren't they?
   OperationsModel const *model;
@@ -24,6 +22,7 @@ public:
   GraphView(QWidget *parent = nullptr);
   ~GraphView();
   void setModel(OperationsModel const *);
+  QSize sizeHint() const override;
 
 public slots:
   void collapse(QModelIndex const &index);
