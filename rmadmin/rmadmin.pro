@@ -48,6 +48,7 @@ HEADERS += \
   FunctionItem.h \
   ProgramItem.h \
   SiteItem.h \
+  GraphViewSettings.h \
   OperationsModel.h \
   OperationsView.h \
   GraphArrow.h \
@@ -71,6 +72,7 @@ SOURCES += \
   FunctionItem.cpp \
   ProgramItem.cpp \
   SiteItem.cpp \
+  GraphViewSettings.cpp \
   OperationsModel.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \

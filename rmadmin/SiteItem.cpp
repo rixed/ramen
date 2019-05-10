@@ -1,9 +1,11 @@
+#include <QMarginsF>
 #include "ProgramItem.h"
 #include "SiteItem.h"
+#include "GraphView.h"
 #include "OperationsModel.h"
 
-SiteItem::SiteItem(OperationsItem *treeParent, QString const &name) :
-  OperationsItem(treeParent, name, Qt::green)
+SiteItem::SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings) :
+  OperationsItem(treeParent, name, settings, Qt::green)
 {
   updateFrame();
 }
@@ -33,23 +35,24 @@ void SiteItem::reorder(OperationsModel const *model)
   updateFrame();
 }
 
-std::vector<std::pair<QString const, QString const>> SiteItem::graphLabels() const
+void SiteItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
 {
-  return {
-    { "name", name },
-    { "#programs", QString::number(programs.size()) },
-    { "master",
-      isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown") }
-  };
+  labels->emplace_back("#programs", QString::number(programs.size()));
+  labels->emplace_back(
+    "master", isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown"));
 }
 
 QRectF SiteItem::boundingRect() const
 {
-  QRectF bbox = OperationsItem::boundingRect();
+  QRectF bbox;
   for (auto program : programs) {
     QRectF b = program->boundingRect();
     b.translate(program->pos());
     bbox |= b;
   }
+  bbox += QMarginsF(settings->programMarginHoriz,
+                    settings->programMarginTop,
+                    settings->programMarginHoriz,
+                    settings->programMarginBottom);
   return bbox;
 }

@@ -32,6 +32,7 @@
 class SiteItem;
 class ProgramItem;
 class FunctionItem;
+class GraphViewSettings;
 
 class OperationsModel : public QAbstractItemModel
 {
@@ -41,6 +42,8 @@ class OperationsModel : public QAbstractItemModel
   friend class SiteItem;
   friend class ProgramItem;
   friend class FunctionItem;
+
+  GraphViewSettings const *settings;
 
   void reorder();
   FunctionItem const *findWorker(std::shared_ptr<conf::Worker const>);
@@ -54,7 +57,7 @@ class OperationsModel : public QAbstractItemModel
 public:
   std::vector<SiteItem *> sites;
 
-  OperationsModel(QObject *parent = nullptr);
+  OperationsModel(GraphViewSettings const *, QObject *parent = nullptr);
 
   /* When subclassing QAbstractItemModel, at the very least you must implement
    * index(), parent(), rowCount(), columnCount(), and data(). These functions

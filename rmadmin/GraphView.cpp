@@ -10,8 +10,9 @@
 #include "layout.h"
 #include "GraphView.h"
 
-GraphView::GraphView(QWidget *parent) :
-  QGraphicsView(parent), model(nullptr), layoutTimer(this)
+GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
+  QGraphicsView(parent), model(nullptr), layoutTimer(this),
+  settings(settings_)
 {
   setScene(&scene);
   QSizePolicy sp = sizePolicy();
@@ -158,11 +159,6 @@ void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *
   }
 }
 
-static QPointF point_of_tile(unsigned x, unsigned y)
-{
-  return QPointF(x * 250, y * 150);
-}
-
 /* Layout is done on the client side for flexibility: so are we free to
  * have a different layout depending on the collapsing state if we decide
  * to take this road, etc.
@@ -229,9 +225,8 @@ void GraphView::startLayout()
       }
     }
 
-    if (siteItem->name == "logger2")
-      std::cout << "logger2 position = " << site_min_x << ", " << site_min_y << '\n';
-    QPointF sitePos = point_of_tile(site_min_x, site_min_y);
+    QPointF sitePos = settings->pointOfTile(site_min_x, site_min_y);
+    sitePos += QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
     QPropertyAnimation *siteAnim = new QPropertyAnimation(siteItem, "pos");
     siteAnim->setDuration(animDuration);
     siteAnim->setEndValue(sitePos);
@@ -246,9 +241,9 @@ void GraphView::startLayout()
         prog_min_x = std::min(prog_min_x, n.x - site_min_x);
         prog_min_y = std::min(prog_min_y, n.y - site_min_y);
       }
-      if (siteItem->name == "logger2" && programItem->name == "logs")
-        std::cout << "logger2/logs position = " << prog_min_x << ", " << prog_min_y << '\n';
-      QPointF progPos = point_of_tile(prog_min_x, prog_min_y);
+      QPointF progPos = settings->pointOfTile(prog_min_x, prog_min_y);
+      progPos +=
+        QPointF(settings->programMarginHoriz, settings->programMarginTop);
       QPropertyAnimation *progAnim =
         new QPropertyAnimation(programItem, "pos");
       progAnim->setDuration(animDuration);
@@ -260,9 +255,9 @@ void GraphView::startLayout()
         layout::Node &n = nodes[functionIdxs[functionItem]];
         unsigned func_min_x = n.x - site_min_x - prog_min_x;
         unsigned func_min_y = n.y - site_min_y - prog_min_y;
-        QPointF funcPos = point_of_tile(func_min_x, func_min_y);
-        if (siteItem->name == "logger2" && programItem->name == "logs" && functionItem->name == "http")
-          std::cout << "logger2/logs/http position = " << func_min_x << ", " << func_min_y << '\n';
+        QPointF funcPos = settings->pointOfTile(func_min_x, func_min_y);
+        funcPos +=
+          QPointF(settings->functionMarginHoriz, settings->functionMarginTop);
         QPropertyAnimation *funcAnim =
           new QPropertyAnimation(functionItem, "pos");
         funcAnim->setDuration(animDuration);

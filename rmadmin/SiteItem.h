@@ -4,14 +4,16 @@
 #include <vector>
 #include "OperationsItem.h"
 
+class GraphViewSettings;
+
 class SiteItem : public OperationsItem
 {
 protected:
-  std::vector<std::pair<QString const, QString const>> graphLabels() const;
+  void addLabels(std::vector<std::pair<QString const, QString const>> *) const;
 public:
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
-  SiteItem(OperationsItem *treeParent, QString const &name);
+  SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *);
   ~SiteItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);

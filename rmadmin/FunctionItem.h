@@ -4,16 +4,15 @@
 #include <vector>
 #include "OperationsItem.h"
 
+class GraphViewSettings;
+
 class FunctionItem : public OperationsItem
 {
-protected:
-  std::vector<std::pair<QString const, QString const>> graphLabels() const;
-
 public:
   std::optional<bool> isUsed;
   // FIXME: Function destructor must clean those:
   std::vector<FunctionItem const*> parents;
-  FunctionItem(OperationsItem *treeParent, QString const &name);
+  FunctionItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *);
   ~FunctionItem();
   QVariant data(int) const;
   QRectF boundingRect() const;

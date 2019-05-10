@@ -6,6 +6,7 @@
 #include "OperationsModel.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
+#include "GraphView.h"
 #include "SiteItem.h"
 
 // Notice that we use our parent's subItems as the parent of the GraphItem,
@@ -13,13 +14,14 @@
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, QBrush brush_) :
+OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, QBrush brush_) :
   QGraphicsItem(treeParent_ ?
       static_cast<QGraphicsItem *>(&treeParent_->subItems) :
       static_cast<QGraphicsItem *>(treeParent_)),
   brush(brush_),
   subItems(this),
   collapsed(true),
+  settings(settings_),
   name(name_),
   treeParent(treeParent_),
   row(-1)
@@ -68,45 +70,42 @@ QString OperationsItem::fqName() const
 
 void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels)
 {
-  QFont normalFont = painter->font();
-  QFont boldFont = normalFont;
+  QFont boldFont = settings->labelsFont;
   boldFont.setBold(true);
 
   QFontMetrics fm(boldFont);
-  int const lineHeight = fm.height() + ((fm.height() + 4) / 5);
 
   QPen pen = QPen(Qt::darkGray);
   pen.setWidthF(1);
   painter->setPen(pen);
 
-  int y = lineHeight;
+  int y = settings->labelsLineHeight;
   int const x = fm.width(" ");
   for (auto label : labels) {
     painter->setFont(boldFont);
     QString const title(label.first + QString(": "));
     painter->drawText(x, y, title);
     int const x2 = x + fm.width(title);
-    painter->setFont(normalFont);
+    painter->setFont(settings->labelsFont);
     painter->drawText(x2, y, label.second);
-    y += lineHeight;
+    y += settings->labelsLineHeight;
   }
 }
 
 QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QString const>> const &labels) const
 {
-  QFont font = labelsFont;
+  QFont font = settings->labelsFont;
   font.setBold(true);
-  QFontMetrics fm(labelsFont);
-  int const lineHeight = fm.height() + ((fm.height() + 4) / 5);
 
-  int const x = fm.width(" ");
+  int const x = settings->labelsFontMetrics.width(" ");
   int totWidth = 0;
   for (auto label : labels) {
     QString const totLine(label.first + QString(": ") + label.second);
-    totWidth = std::max(totWidth, x + fm.width(totLine));
+    totWidth =
+      std::max(totWidth, x + settings->labelsFontMetrics.width(totLine));
   }
 
-  int const totHeight = labels.size() * lineHeight;
+  int const totHeight = labels.size() * settings->labelsLineHeight;
 
   return QRect(QPoint(0, 0), QSize(totWidth, totHeight));
 }
@@ -116,34 +115,22 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
 {
   (void)option;
 
-  auto labels = graphLabels();
+  std::vector<std::pair<QString const, QString const>> labels;
+  labels.reserve(9);
+  labels.emplace_back("name", name);
+  if (collapsed) addLabels(&labels);
 
   // Get the total bbox:
   QRectF bbox = boundingRect();
-  double x0 = bbox.x();
-  double y0 = bbox.y();
-  double x1 = x0 + bbox.width();
-  double y1 = y0 + bbox.height();
-
   QBrush bgBrush = brush;
   QColor bgColor = bgBrush.color();
-  bgColor.setAlpha(100);
+  if (! collapsed) bgColor.setAlpha(10);
   bgBrush.setColor(bgColor);
   painter->setBrush(bgBrush);
-  painter->drawRect(bbox);
-
-  painter->setPen(QPen(brush, 2));
-  painter->drawLine(x0, y0, x0, y1);
-  painter->setPen(QPen(brush, 1));
-  painter->drawLine(x1, y0, x1, y1);
+  painter->drawRoundRect(bbox, 5);
 
   // Print labels on top:
   paintLabels(painter, labels);
-}
-
-QRectF OperationsItem::boundingRect() const
-{
-  return labelsBoundingRect(graphLabels());
 }
 
 void OperationsItem::updateFrame()

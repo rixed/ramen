@@ -7,9 +7,22 @@
 
 class GraphArrow;
 
-/*
- * The actual GraphView:
+/* Graph is layout on a fixed size grid, where functions occupy the cells.
+ * Each cell dimension is functionGridWidth * functionGridHeight.
+ * Then, each cell can contain either nothing, or a function, or a function
+ * and a short program header, or a function and a short program header and
+ * a short site header. The short header meaning: only the name of the
+ * program or site.
+ *
+ * So we need a larger upper margin for all those headers.
+ * Margin1 is the smaller (for sites), Margin2 the intermediary (for
+ * programs) and Margin3 the larger (for functions).
+ *
+ * Then in between those Margin1 will flow all the arrows, so we want enough
+ * place there.
  */
+
+class GraphViewSettings;
 
 struct HashStupidPairOfPointers {
   size_t operator()(const std::pair<OperationsItem const *, OperationsItem const *>& key) const {
@@ -46,8 +59,12 @@ class GraphView : public QGraphicsView
    * for a short while: */
   QTimer layoutTimer;
 
+  // Parameters we must share with the OperationsItems:
+  GraphViewSettings const *settings;
+
 public:
-  GraphView(QWidget *parent = nullptr);
+
+  GraphView(GraphViewSettings const *, QWidget *parent = nullptr);
   ~GraphView();
   void setModel(OperationsModel const *);
   QSize sizeHint() const override;

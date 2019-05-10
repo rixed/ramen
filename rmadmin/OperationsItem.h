@@ -7,10 +7,10 @@
 #include <QGraphicsItem>
 #include <QGraphicsItemGroup>
 #include <QBrush>
-#include <QFont>
 #include <QPoint>
 #include "confValue.h"
 #include "GraphAnchor.h"
+#include "GraphViewSettings.h"
 
 class OperationsModel;
 class GraphAnchor;
@@ -24,7 +24,6 @@ class OperationsItem : public QObject, public QGraphicsItem
   Q_PROPERTY(QPointF pos READ pos WRITE setPos)
   Q_INTERFACES(QGraphicsItem)
 
-  QFont labelsFont;
   QBrush brush;
   /* All subItems will be children of this one, which in turn is our child
    * node. So to collapse subitems it's enough to subItems.hide() */
@@ -35,9 +34,11 @@ class OperationsItem : public QObject, public QGraphicsItem
   QRect labelsBoundingRect(std::vector<std::pair<QString const, QString const>> const &) const;
 
 protected:
+  GraphViewSettings const *settings;
+
   // Displayed in the graph:
   // TODO: use QStaticText
-  virtual std::vector<std::pair<QString const, QString const>> graphLabels() const = 0;
+  virtual void addLabels(std::vector<std::pair<QString const, QString const>> *) const {};
 
   // to update parent's frame bbox:
   QVariant itemChange(QGraphicsItem::GraphicsItemChange, const QVariant &);
@@ -51,7 +52,7 @@ public:
   GraphAnchor *anchorIn;
   GraphAnchor *anchorOut;
 
-  OperationsItem(OperationsItem *treeParent, QString const &name, QBrush brush=Qt::NoBrush);
+  OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, QBrush brush=Qt::NoBrush);
   virtual ~OperationsItem() = 0;
   virtual QVariant data(int) const = 0;
   // Reorder the children after some has been added/removed
@@ -59,7 +60,7 @@ public:
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
 
   // For the GraphView:
-  virtual QRectF boundingRect() const;
+  virtual QRectF boundingRect() const = 0;
   virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 
   void setCollapsed(bool);

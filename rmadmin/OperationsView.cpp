@@ -8,7 +8,8 @@ OperationsView::OperationsView(QWidget *parent) :
 {
   // An OperationsModel satisfies both the TreeView and the GraphView
   // requirements:
-  model = new OperationsModel();
+  settings = new GraphViewSettings();
+  model = new OperationsModel(settings);
 
   QTreeView *treeView = new QTreeView();
   treeView->setModel(model);
@@ -19,7 +20,7 @@ OperationsView::OperationsView(QWidget *parent) :
   sp.setHorizontalPolicy(QSizePolicy::Preferred);
   treeView->setSizePolicy(sp);
 
-  GraphView *graphView = new GraphView();
+  GraphView *graphView = new GraphView(settings);
   graphView->setModel(model);
   addWidget(graphView);
 
@@ -30,4 +31,5 @@ OperationsView::OperationsView(QWidget *parent) :
 OperationsView::~OperationsView()
 {
   delete model;
+  delete settings;
 }

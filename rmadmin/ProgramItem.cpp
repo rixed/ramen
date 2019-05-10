@@ -1,9 +1,11 @@
+#include <QMarginsF>
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "OperationsModel.h"
+#include "GraphView.h"
 
-ProgramItem::ProgramItem(OperationsItem *treeParent, QString const &name) :
-  OperationsItem(treeParent, name, Qt::red)
+ProgramItem::ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings) :
+  OperationsItem(treeParent, name, settings, Qt::red)
 {
   updateFrame();
 }
@@ -33,21 +35,22 @@ void ProgramItem::reorder(OperationsModel const *model)
   updateFrame();
 }
 
-std::vector<std::pair<QString const, QString const>> ProgramItem::graphLabels() const
+void ProgramItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
 {
-  return {
-    { "name", name },
-    { "#functions", QString::number(functions.size()) }
-  };
+  labels->emplace_back("#functions", QString::number(functions.size()));
 }
 
 QRectF ProgramItem::boundingRect() const
 {
-  QRectF bbox = OperationsItem::boundingRect();
+  QRectF bbox;
   for (auto function : functions) {
     QRectF b = function->boundingRect();
     b.translate(function->pos());
     bbox |= b;
   }
+  bbox += QMarginsF(settings->functionMarginHoriz,
+                    settings->functionMarginTop,
+                    settings->functionMarginHoriz,
+                    settings->functionMarginBottom);
   return bbox;
 }

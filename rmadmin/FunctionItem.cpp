@@ -1,7 +1,8 @@
 #include "FunctionItem.h"
+#include "GraphView.h"
 
-FunctionItem::FunctionItem(OperationsItem *treeParent, QString const &name) :
-  OperationsItem(treeParent, name, Qt::blue)
+FunctionItem::FunctionItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings) :
+  OperationsItem(treeParent, name, settings, Qt::blue)
 {
   updateFrame();
 }
@@ -14,14 +15,15 @@ QVariant FunctionItem::data(int column) const
   return QVariant(name);
 }
 
-std::vector<std::pair<QString const, QString const>> FunctionItem::graphLabels() const
-{
-  return {
-    { "name", name }
-  };
-}
-
 QRectF FunctionItem::boundingRect() const
 {
-  return QRect(0, 0, 200, 150);
+  return QRect(0, 0,
+               settings->gridWidth - 2 * (
+                 settings->functionMarginHoriz +
+                 settings->programMarginHoriz +
+                 settings->siteMarginHoriz),
+               settings->gridHeight - (
+                 settings->functionMarginBottom + settings->programMarginBottom +
+                 settings->siteMarginBottom + settings->functionMarginTop +
+                 settings->programMarginTop + settings->siteMarginTop));
 }
