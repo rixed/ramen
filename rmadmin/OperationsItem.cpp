@@ -120,8 +120,22 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
 
   // Get the total bbox:
   QRectF bbox = boundingRect();
-  painter->setBrush(brush);
+  double x0 = bbox.x();
+  double y0 = bbox.y();
+  double x1 = x0 + bbox.width();
+  double y1 = y0 + bbox.height();
+
+  QBrush bgBrush = brush;
+  QColor bgColor = bgBrush.color();
+  bgColor.setAlpha(100);
+  bgBrush.setColor(bgColor);
+  painter->setBrush(bgBrush);
   painter->drawRect(bbox);
+
+  painter->setPen(QPen(brush, 2));
+  painter->drawLine(x0, y0, x0, y1);
+  painter->setPen(QPen(brush, 1));
+  painter->drawLine(x1, y0, x1, y1);
 
   // Print labels on top:
   paintLabels(painter, labels);

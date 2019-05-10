@@ -20,3 +20,8 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::graphLabels()
     { "name", name }
   };
 }
+
+QRectF FunctionItem::boundingRect() const
+{
+  return QRect(0, 0, 200, 150);
+}

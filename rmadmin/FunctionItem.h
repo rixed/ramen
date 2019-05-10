@@ -12,11 +12,11 @@ protected:
 public:
   std::optional<bool> isUsed;
   // FIXME: Function destructor must clean those:
-  // FIXME: is this actually needed to know the parents?
   std::vector<FunctionItem const*> parents;
   FunctionItem(OperationsItem *treeParent, QString const &name);
   ~FunctionItem();
   QVariant data(int) const;
+  QRectF boundingRect() const;
 };
 
 std::ostream &operator<<(std::ostream &, FunctionItem const &);

@@ -8,7 +8,10 @@ CONFIG += debug
 TEMPLATE = app
 TARGET = rmadmin
 VERSION = 3.4.0
-INCLUDEPATH += . /Users/rixed/.opam/ramen.4.07.1.flambda/lib/ocaml
+
+INCLUDEPATH += .
+INCLUDEPATH += /usr/local/include
+INCLUDEPATH += /Users/rixed/.opam/ramen.4.07.1.flambda/lib/ocaml
 
 QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.14
 QMAKE_CXXFLAGS = -Wall -Wextra -fstandalone-debug
@@ -48,6 +51,8 @@ HEADERS += \
   OperationsModel.h \
   OperationsView.h \
   GraphArrow.h \
+  layoutNode.h \
+  layout.h \
   GraphView.h \
   StorageForm.h \
   RmAdminWin.h
@@ -69,6 +74,8 @@ SOURCES += \
   OperationsModel.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
+  layoutNode.cpp \
+  layout.cpp \
   GraphView.cpp \
   StorageForm.cpp \
   RmAdminWin.cpp \
@@ -79,3 +86,4 @@ LIBS += -L/Users/rixed/.opam/ramen.4.07.1.flambda/lib/ocaml -lunix -lbigarray -l
 LIBS += -L/Users/rixed/.opam/ramen.4.07.1.flambda/lib/stdint -lstdint_stubs
 LIBS += -L/Users/rixed/.opam/ramen.4.07.1.flambda/lib/zmq -lzmq_stubs
 LIBS += -L/usr/local/lib -lzmq
+LIBS += -L/usr/local/lib -lz3
