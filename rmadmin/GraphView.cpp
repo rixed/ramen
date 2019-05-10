@@ -11,8 +11,6 @@
 GraphView::GraphView(QWidget *parent) :
   QGraphicsView(parent), model(nullptr), layoutTimer(this)
 {
-  setBackgroundBrush(QBrush(Qt::lightGray, Qt::CrossPattern));
-  setRenderHint(QPainter::Antialiasing);
   setScene(&scene);
   QSizePolicy sp = sizePolicy();
   sp.setHorizontalPolicy(QSizePolicy::Expanding);
@@ -110,9 +108,9 @@ void GraphView::updateArrows()
     // Do we have this arrow already?
     auto ait = arrows.find(std::pair<OperationsItem const *, OperationsItem const *>(src, dst));
     if (ait == arrows.end()) {
-      std::cout << "Creating Arrow from " << src->fqName().toStdString()
-                << " to " << dst->fqName().toStdString() << std::endl;
-      GraphArrow *arrow = new GraphArrow(&src->anchorOut, &dst->anchorIn);
+      /*std::cout << "Creating Arrow from " << src->fqName().toStdString()
+                << " to " << dst->fqName().toStdString() << std::endl;*/
+      GraphArrow *arrow = new GraphArrow(src->anchorOut, dst->anchorIn);
       arrows.insert({{ src, dst }, { arrow, true }});
       scene.addItem(arrow);
     } else {
@@ -125,8 +123,8 @@ void GraphView::updateArrows()
     if (it->second.second) {
       it++;
     } else {
-      std::cout << "Deleting Arrow from " << it->first.first->fqName().toStdString()
-                << " to " << it->first.second->fqName().toStdString() << std::endl;
+      /*std::cout << "Deleting Arrow from " << it->first.first->fqName().toStdString()
+                << " to " << it->first.second->fqName().toStdString() << std::endl;*/
       GraphArrow *arrow = it->second.first;
       scene.removeItem(arrow);
       delete arrow;  // should remove it from the scene etc...
@@ -141,7 +139,7 @@ void GraphView::updateArrows()
 
 void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
 {
-  std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
+  //std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
   relations.insert(std::pair<FunctionItem const *, FunctionItem const *>(parent, child));
   updateArrows();
 }

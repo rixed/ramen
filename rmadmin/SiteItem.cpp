@@ -4,7 +4,9 @@
 
 SiteItem::SiteItem(OperationsItem *treeParent, QString const &name) :
   OperationsItem(treeParent, name, Qt::green)
-{}
+{
+  updateFrame();
+}
 
 SiteItem::~SiteItem()
 {
@@ -28,4 +30,26 @@ void SiteItem::reorder(OperationsModel const *model)
       emit model->positionChanged(model->createIndex(i, 0, static_cast<OperationsItem *>(programs[i])));
     }
   }
+  updateFrame();
+}
+
+std::vector<std::pair<QString const, QString const>> SiteItem::graphLabels() const
+{
+  return {
+    { "name", name },
+    { "#programs", QString::number(programs.size()) },
+    { "master",
+      isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown") }
+  };
+}
+
+QRectF SiteItem::boundingRect() const
+{
+  QRectF bbox = OperationsItem::boundingRect();
+  for (auto program : programs) {
+    QRectF b = program->boundingRect();
+    b.translate(program->pos());
+    bbox |= b;
+  }
+  return bbox;
 }

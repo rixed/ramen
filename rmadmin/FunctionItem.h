@@ -6,12 +6,8 @@
 
 class FunctionItem : public OperationsItem
 {
-  /* The conf sync will /add/del/update parents indexed so it's easy to
-   * save them in a vector, as long as we can skip values.
-   * But the conf sync does not guarantee that parents will be created
-   * before they are referenced, so here we have this lazy reference
-   * system of either refering to a parent by name (not yet actually needed)
-   * or by pointer (cached). */
+protected:
+  std::vector<std::pair<QString const, QString const>> graphLabels() const;
 
 public:
   std::optional<bool> isUsed;

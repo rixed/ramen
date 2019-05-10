@@ -6,6 +6,8 @@
 
 class SiteItem : public OperationsItem
 {
+protected:
+  std::vector<std::pair<QString const, QString const>> graphLabels() const;
 public:
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
@@ -13,6 +15,7 @@ public:
   ~SiteItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);
+  QRectF boundingRect() const;
 };
 
 std::ostream &operator<<(std::ostream &, SiteItem const &);

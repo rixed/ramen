@@ -46,7 +46,6 @@ class GraphView : public QGraphicsView
    * for a short while: */
   QTimer layoutTimer;
 
-
 public:
   GraphView(QWidget *parent = nullptr);
   ~GraphView();

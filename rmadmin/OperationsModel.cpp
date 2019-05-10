@@ -155,28 +155,28 @@ public:
 
 FunctionItem const *OperationsModel::findWorker(std::shared_ptr<conf::Worker const> w)
 {
-  std::cerr << "Look for worker " << *w << std::endl;
+  //std::cerr << "Look for worker " << *w << std::endl;
   for (SiteItem const *siteItem : sites) {
     if (siteItem->name == w->site) {
       for (ProgramItem const *programItem : siteItem->programs) {
         if (programItem->name == w->program) {
           for (FunctionItem const *functionItem : programItem->functions) {
             if (functionItem->name == w->function) {
-              std::cerr << "Found: " << functionItem->fqName().toStdString() << std::endl;
+              //std::cerr << "Found: " << functionItem->fqName().toStdString() << std::endl;
               return functionItem;
             } else {
-              std::cerr << "...not " << functionItem->name.toStdString() << std::endl;
+              //std::cerr << "...not " << functionItem->name.toStdString() << std::endl;
             }
           }
-          std::cerr << "No such function: " << w->function.toStdString() << std::endl;
+          //std::cerr << "No such function: " << w->function.toStdString() << std::endl;
           return nullptr;
         }
       }
-      std::cerr << "No such program: " << w->program.toStdString() << std::endl;
+      //std::cerr << "No such program: " << w->program.toStdString() << std::endl;
       return nullptr;
     }
   }
-  std::cerr << "No such site: " << w->site.toStdString() << std::endl;
+  //std::cerr << "No such site: " << w->site.toStdString() << std::endl;
   return nullptr;
 }
 
@@ -223,7 +223,7 @@ void OperationsModel::retrySetParents()
   for (auto it = pendingSetParents.begin(); it != pendingSetParents.end(); ) {
     FunctionItem const *parent = findWorker(it->worker);
     if (parent) {
-      std::cout << "Resolved pending parent" << std::endl;
+      //std::cout << "Resolved pending parent" << std::endl;
       setFunctionParent(parent, it->child, it->idx);
       it = pendingSetParents.erase(it);
     } else {
@@ -281,8 +281,8 @@ void OperationsModel::setSiteProperty(SiteItem *siteItem, QString const &p, std:
 void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  std::cerr << "OperationsModel key " << k << " created with value " << *v
-            << " is valid:" << pk.valid << '\n';
+  /*std::cerr << "OperationsModel key " << k << " created with value " << *v
+            << " is valid:" << pk.valid << '\n';*/
 
   if (pk.valid) {
     assert(pk.site.length() > 0);
