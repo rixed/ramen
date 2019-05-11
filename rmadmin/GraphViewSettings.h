@@ -20,6 +20,8 @@ public:
   unsigned numArrowChannels;
   int arrowChannelWidth;
   int arrowWidth;
+  int arrowConnectInY;
+  int arrowConnectOutY;
 
   GraphViewSettings();
   ~GraphViewSettings();

@@ -15,9 +15,6 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   settings(settings_)
 {
   setScene(&scene);
-  QSizePolicy sp = sizePolicy();
-  sp.setHorizontalPolicy(QSizePolicy::Expanding);
-  setSizePolicy(sp);
 
   layoutTimer.setSingleShot(true);
   QObject::connect(&layoutTimer, &QTimer::timeout, this, &GraphView::startLayout);
@@ -110,26 +107,21 @@ void GraphView::updateArrows()
   for (auto it : relations) {
     OperationsItem const *src = static_cast<FunctionItem const *>(it.first);
     OperationsItem const *dst = static_cast<FunctionItem const *>(it.second);
-    unsigned marginIdx0 = 0, marginIdx1 = 0;
-
-    // In case of collapsing into bigger item we'd still like the arrow to
-    // connect to the original Y coordinate:
-    int const src_y = (src->y0 + src->y1) / 2;
-    int const dst_y = (dst->y0 + dst->y1) / 2;
+    unsigned marginSrc = 0, marginDst = 0;
 
     while (src && !src->isVisibleTo(nullptr)) {
       src = src->treeParent;
-      marginIdx0 ++;
+      marginSrc ++;
     }
     if (! src) continue;  // for some reason even the site is not visible?!
-    assert (marginIdx0 < NB_HMARGINS);
+    assert (marginSrc < NB_HMARGINS);
 
     while (dst && !dst->isVisibleTo(nullptr)) {
       dst = dst->treeParent;
-      marginIdx1 ++;
+      marginDst ++;
     }
     if (! dst) continue;
-    assert (marginIdx1 < NB_HMARGINS);
+    assert (marginDst < NB_HMARGINS);
 
     // This may happen because of collapsing
     if (src == dst) continue;
@@ -137,11 +129,12 @@ void GraphView::updateArrows()
     // Do we have this arrow already?
     auto ait = arrows.find(std::pair<OperationsItem const *, OperationsItem const *>(src, dst));
     if (ait == arrows.end()) {
-      /*std::cout << "Creating Arrow from " << src->fqName().toStdString()
-                << " to " << dst->fqName().toStdString() << std::endl;*/
+      /*std::cout << "Creating Arrow from " << src->x1 << ", " << src->y1
+                << " to " << dst->x0 << ", " << dst->y0 << '\n';*/
       GraphArrow *arrow =
-        new GraphArrow(settings, src->x1, src_y, hmargins[marginIdx0],
-                                 dst->x0, dst_y, hmargins[marginIdx1]);
+        new GraphArrow(settings,
+          src->x1, src->y1, hmargins[marginSrc],
+          dst->x0, dst->y0, hmargins[marginDst]);
       arrows.insert({{ src, dst }, { arrow, true }});
       scene.addItem(arrow);
     } else {
@@ -272,8 +265,8 @@ void GraphView::startLayout()
         layout::Node &n = nodes[functionIdxs[functionItem]];
         programItem->x0 = std::min(programItem->x0, n.x);
         programItem->y0 = std::min(programItem->y0, n.y);
-        programItem->x1 = std::min(programItem->x1, n.x);
-        programItem->y1 = std::min(programItem->y1, n.y);
+        programItem->x1 = std::max(programItem->x1, n.x);
+        programItem->y1 = std::max(programItem->y1, n.y);
       }
       QPointF progPos =
         settings->pointOfTile(

@@ -116,12 +116,17 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
   QRectF bbox = boundingRect();
   QBrush bgBrush = brush;
   QColor bgColor = bgBrush.color();
-  if (! collapsed) bgColor.setAlpha(10);
+  if (! collapsed) bgColor.setAlpha(30);
   bgBrush.setColor(bgColor);
   painter->setBrush(bgBrush);
-  painter->drawRoundRect(bbox, 5);
+
+  QPen pen(Qt::NoBrush, 2, Qt::DashLine);
+  pen.setColor(Qt::darkGray);
+  painter->setPen(pen);
+  painter->drawRoundedRect(bbox, 5, 5);
 
   // Print labels on top:
+  painter->setPen(QPen(Qt::black));
   paintLabels(painter, labels);
 }
 

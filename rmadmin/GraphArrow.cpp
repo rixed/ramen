@@ -60,47 +60,61 @@ GraphArrow::GraphArrow(GraphViewSettings const *settings_, int x0, int y0, int h
 
   QPointF startPos(
     (x0 + 1) * settings->gridWidth - hmargin0,
-    y0 * settings->gridHeight + settings->gridHeight / 2 +
-    channelOffset
-  );
+    y0 * settings->gridHeight + settings->arrowConnectOutY + channelOffset);
 
-  QPointF targetPos(
+  QPointF stopPos(
     x1 * settings->gridWidth + hmargin1,
-    y1 * settings->gridHeight + settings->gridHeight / 2 +
-    channelOffset
-  );
+    y1 * settings->gridHeight + settings->arrowConnectInY + channelOffset);
 
-  path = new QPainterPath(startPos);
-  path->lineTo(startPos + QPointF(hmargin0 + channelOffset, 0));
+  int arrowHeadLength = 14;
+  int arrowHeadWidth = 8;
+
+  arrowPath = new QPainterPath(startPos);
+  arrowPath->lineTo(startPos + QPointF(hmargin0 + channelOffset, 0));
 
   // Go through these intermediary points:
   QPoint off(channelOffset, channelOffset);
   for (auto const &line : lines) {
-    path->lineTo(line.start(settings) + off);
-    path->lineTo(line.stop(settings) + off);
+    arrowPath->lineTo(line.start(settings) + off);
+    arrowPath->lineTo(line.stop(settings) + off);
   }
 
-  path->lineTo(targetPos + QPointF(channelOffset - hmargin1, 0));
-  path->lineTo(targetPos);
+  arrowPath->lineTo(stopPos + QPointF(channelOffset - hmargin1, 0));
+  arrowPath->lineTo(stopPos - QPointF(arrowHeadLength, 0));
 
-  pathBBox = path->boundingRect();
+  boundingBox = arrowPath->boundingRect();
+  int const w = settings->arrowWidth;
+  boundingBox += QMarginsF(w, w, w, w);
+
+  arrowHead = new QPainterPath(stopPos);
+
+  arrowHead->lineTo(stopPos + QPointF(-arrowHeadLength, -arrowHeadWidth));
+  arrowHead->lineTo(stopPos + QPointF(-arrowHeadLength, +arrowHeadWidth));
+  arrowHead->closeSubpath();
+
+  boundingBox |= arrowHead->boundingRect();
 }
 
 GraphArrow::~GraphArrow()
 {
-  delete path;
+  delete arrowPath;
+  delete arrowHead;
 }
 
 QRectF GraphArrow::boundingRect() const
 {
-  return pathBBox;
+  return boundingBox;
 }
 
 void GraphArrow::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
   QPen pen(Qt::SolidPattern, settings->arrowWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
   painter->setPen(pen);
-  painter->drawPath(*path);
+  painter->drawPath(*arrowPath);
+
+  painter->setPen(Qt::NoPen);
+  painter->setBrush(Qt::black);
+  painter->drawPath(*arrowHead);
 }
 
 QPointF GraphArrow::Line::start(GraphViewSettings const *settings) const

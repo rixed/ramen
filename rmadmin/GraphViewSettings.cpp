@@ -3,19 +3,36 @@
 GraphViewSettings::GraphViewSettings() :
   labelsFontMetrics(labelsFont)
 {
-  labelsLineHeight =
-    labelsFontMetrics.height() + ((labelsFontMetrics.height() + 4) / 5);
+  labelsLineHeight = labelsFontMetrics.lineSpacing();
 
-  gridWidth = 250, gridHeight = 150,
-  functionMarginHoriz = labelsLineHeight,
-  programMarginHoriz = labelsLineHeight,
-  siteMarginHoriz = labelsLineHeight,
-  functionMarginTop = 20, programMarginTop = 20, siteMarginTop = 30,
-  functionMarginBottom = 10, programMarginBottom = 10, siteMarginBottom = 10;
+  gridWidth = 300;
+  gridHeight = 300;
 
-  numArrowChannels = 8;
-  arrowChannelWidth = 6;
-  arrowWidth = 3;
+  numArrowChannels = 5;
+  arrowChannelWidth = 10;
+  arrowWidth = 6;
+
+  siteMarginHoriz = 75;
+  programMarginHoriz = 5;
+  functionMarginHoriz = 5;
+
+  siteMarginTop = 75;
+  programMarginTop = 1.5 * labelsLineHeight;
+  functionMarginTop = 1.5 * labelsLineHeight;
+
+  siteMarginBottom = 75;
+  programMarginBottom = 5;
+  functionMarginBottom = 5;
+
+  int const functionY0 =
+    siteMarginTop + programMarginTop + functionMarginTop;
+  int const functionY1 =
+    gridHeight -
+    (siteMarginBottom + programMarginBottom + functionMarginBottom);
+  int const functionYMid = functionY0 + (functionY1 - functionY0) / 2;
+
+  arrowConnectInY = functionYMid - 10;
+  arrowConnectOutY = functionYMid + 10;
 }
 
 GraphViewSettings::~GraphViewSettings() {};

@@ -22,8 +22,9 @@ class GraphArrow : public QGraphicsItem
   unsigned channel; // could also be used to select a color?
 
   GraphViewSettings const *settings;
-  QPainterPath *path;
-  QRectF pathBBox;
+  QPainterPath *arrowPath;
+  QPainterPath *arrowHead;
+  QRectF boundingBox;
 
 public:
   // Because of transparency we cannot rely on arrows being overpaint by
