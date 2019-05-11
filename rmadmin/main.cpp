@@ -12,6 +12,7 @@ extern "C" {
 #include <QApplication>
 #include <QtWidgets>
 #include <QMetaType>
+#include <QDesktopWidget>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
 #include "conf.h"
@@ -79,6 +80,8 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::Retention>();
 
   w = new RmAdminWin();
+  w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
+
   thread sync_thread(do_sync_thread, argv);
 
   w->show();
