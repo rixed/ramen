@@ -1,15 +1,35 @@
 #ifndef GRAPHARROW_H_190509
 #define GRAPHARROW_H_190509
+#include <vector>
 #include <QGraphicsItem>
+#include <QRectF>
+
+class GraphViewSettings;
+class OperationsItem;
+class QPainterPath;
+
+enum Direction { Right, Left, Up, Down };
 
 class GraphArrow : public QGraphicsItem
 {
-  QGraphicsItem const *from;
-  QGraphicsItem const *to;
+  struct Line {
+    Direction dir;
+    int x, y;
+
+    QPointF start(GraphViewSettings const *) const;
+    QPointF stop(GraphViewSettings const *) const;
+  };
+  unsigned channel; // could also be used to select a color?
+
+  GraphViewSettings const *settings;
+  QPainterPath *path;
+  QRectF pathBBox;
 
 public:
-  // [from] and [to] must outlive the arrow joining them:
-  GraphArrow(QGraphicsItem const *from, QGraphicsItem const *to, QGraphicsItem *parent = nullptr);
+  // Because of transparency we cannot rely on arrows being overpaint by
+  // above layers. So they should be given the horiz-margin to apply by the
+  // constructor.
+  GraphArrow(GraphViewSettings const *, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, QGraphicsItem *parent = nullptr);
   ~GraphArrow();
 
   QRectF boundingRect() const override;

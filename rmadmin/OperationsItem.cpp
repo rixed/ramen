@@ -22,13 +22,11 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
   subItems(this),
   collapsed(true),
   settings(settings_),
+  x0(0), y0(0), x1(0), y1(0),
   name(name_),
   treeParent(treeParent_),
   row(-1)
 {
-  anchorIn = new GraphAnchor(this);
-  anchorOut = new GraphAnchor(this);
-
   // TreeView is initially collapsed, and so are we:
   subItems.hide();
 
@@ -38,8 +36,6 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
 
 OperationsItem::~OperationsItem()
 {
-  delete anchorIn;
-  delete anchorOut;
 }
 
 void OperationsItem::setCollapsed(bool c)
@@ -64,8 +60,6 @@ QString OperationsItem::fqName() const
  * It consists of a frame with a set of labels on the top-left corner,
  * and some drawing (either the subItems or some stats related to the
  * item itself) inside.
- * The anchors are located at the middle of the left and right frame
- * borders.
  * The upper-left corner of that frame lays at (0, 0). */
 
 void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels)
@@ -111,10 +105,8 @@ QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QS
 }
 
 // Every node in the graph start by displaying a set of properties:
-void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *)
+void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
-  (void)option;
-
   std::vector<std::pair<QString const, QString const>> labels;
   labels.reserve(9);
   labels.emplace_back("name", name);
@@ -139,12 +131,6 @@ void OperationsItem::updateFrame()
 
   // useful?
   prepareGeometryChange();
-
-  // reposition anchors:
-  QRectF bbox = boundingRect();
-  int const midHeight = bbox.y() + bbox.height() / 2;
-  anchorIn->setPos(bbox.x(), midHeight);
-  anchorOut->setPos(bbox.x() + bbox.width(), midHeight);
 
   if (treeParent) treeParent->updateFrame();
 }

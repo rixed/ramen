@@ -9,17 +9,21 @@ class GraphViewSettings
 public:
   QFont labelsFont;
   QFontMetrics labelsFontMetrics;
-  unsigned labelsLineHeight;
+  int labelsLineHeight;
 
-  unsigned
+  int
     gridWidth, gridHeight,
     functionMarginHoriz, programMarginHoriz, siteMarginHoriz,
     functionMarginTop, programMarginTop, siteMarginTop,
     functionMarginBottom, programMarginBottom, siteMarginBottom;
 
+  unsigned numArrowChannels;
+  int arrowChannelWidth;
+  int arrowWidth;
+
   GraphViewSettings();
   ~GraphViewSettings();
-  QPointF pointOfTile(unsigned x, unsigned y) const;
+  QPointF pointOfTile(int x, int y) const;
 };
 
 #endif

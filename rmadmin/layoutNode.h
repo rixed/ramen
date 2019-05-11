@@ -15,7 +15,7 @@ struct Node {
   std::vector<size_t> parents;  // indices in the array passed to solve
 
   // Here the solver will write the solution (in _tiles_)
-  unsigned x, y;
+  int x, y;
 
   Node(std::string const &, std::string const &, std::string const &);
   ~Node();

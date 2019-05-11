@@ -86,24 +86,50 @@ void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 
 void GraphView::updateArrows()
 {
+  // Redo all arrows every time:
+  // TODO: if this stick then simplify the following!
+  for (auto it = arrows.begin(); it != arrows.end(); ) {
+    GraphArrow *arrow = it->second.first;
+    scene.removeItem(arrow);
+    delete arrow;  // should remove it from the scene etc...
+    it = arrows.erase(it);
+  }
+
   // First, untag all arrows:
   for (auto it = arrows.begin(); it != arrows.end(); it++) {
     it->second.second = false;
   }
 
+# define NB_HMARGINS 3
+  int const hmargins[NB_HMARGINS] = {
+    settings->siteMarginHoriz + settings->programMarginHoriz + settings->functionMarginHoriz,
+    settings->siteMarginHoriz + settings->programMarginHoriz,
+    settings->siteMarginHoriz
+  };
+
   for (auto it : relations) {
     OperationsItem const *src = static_cast<FunctionItem const *>(it.first);
     OperationsItem const *dst = static_cast<FunctionItem const *>(it.second);
+    unsigned marginIdx0 = 0, marginIdx1 = 0;
+
+    // In case of collapsing into bigger item we'd still like the arrow to
+    // connect to the original Y coordinate:
+    int const src_y = (src->y0 + src->y1) / 2;
+    int const dst_y = (dst->y0 + dst->y1) / 2;
 
     while (src && !src->isVisibleTo(nullptr)) {
       src = src->treeParent;
+      marginIdx0 ++;
     }
     if (! src) continue;  // for some reason even the site is not visible?!
+    assert (marginIdx0 < NB_HMARGINS);
 
     while (dst && !dst->isVisibleTo(nullptr)) {
       dst = dst->treeParent;
+      marginIdx1 ++;
     }
     if (! dst) continue;
+    assert (marginIdx1 < NB_HMARGINS);
 
     // This may happen because of collapsing
     if (src == dst) continue;
@@ -113,7 +139,9 @@ void GraphView::updateArrows()
     if (ait == arrows.end()) {
       /*std::cout << "Creating Arrow from " << src->fqName().toStdString()
                 << " to " << dst->fqName().toStdString() << std::endl;*/
-      GraphArrow *arrow = new GraphArrow(src->anchorOut, dst->anchorIn);
+      GraphArrow *arrow =
+        new GraphArrow(settings, src->x1, src_y, hmargins[marginIdx0],
+                                 dst->x0, dst_y, hmargins[marginIdx1]);
       arrows.insert({{ src, dst }, { arrow, true }});
       scene.addItem(arrow);
     } else {
@@ -202,8 +230,8 @@ void GraphView::startLayout()
     }
   }
   size_t const numNodes = nodes.size();
-  unsigned const max_x = 1 + numNodes/3;
-  unsigned const max_y = 1 + numNodes/4;
+  int const max_x = 1 + numNodes/3;
+  int const max_y = 1 + numNodes/4;
   layout::solve(&nodes, max_x, max_y);
 
   QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
@@ -211,22 +239,25 @@ void GraphView::startLayout()
 
   // Sites must first be positioned, before programs can be positioned
   // in the sites, before functions can be positioned in the programs:
-  unsigned const umax = std::numeric_limits<unsigned>::max();
+  int const umax = std::numeric_limits<int>::max();
 
   for (auto siteItem : model->sites) {
-    unsigned site_min_x = umax;
-    unsigned site_min_y = umax;
+    siteItem->x0 = siteItem->y0 = umax;
+    siteItem->x1 = siteItem->y1 = 0;
 
     for (auto programItem : siteItem->programs) {
       for (auto functionItem : programItem->functions) {
         layout::Node &n = nodes[functionIdxs[functionItem]];
-        site_min_x = std::min(site_min_x, n.x);
-        site_min_y = std::min(site_min_y, n.y);
+        siteItem->x0 = std::min(siteItem->x0, n.x);
+        siteItem->y0 = std::min(siteItem->y0, n.y);
+        siteItem->x1 = std::max(siteItem->x1, n.x);
+        siteItem->y1 = std::max(siteItem->y1, n.y);
       }
     }
 
-    QPointF sitePos = settings->pointOfTile(site_min_x, site_min_y);
-    sitePos += QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
+    QPointF sitePos =
+      settings->pointOfTile(siteItem->x0, siteItem->y0) +
+      QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
     QPropertyAnimation *siteAnim = new QPropertyAnimation(siteItem, "pos");
     siteAnim->setDuration(animDuration);
     siteAnim->setEndValue(sitePos);
@@ -234,15 +265,20 @@ void GraphView::startLayout()
 
     // Now position the programs:
     for (auto programItem : siteItem->programs) {
-      unsigned prog_min_x = umax;
-      unsigned prog_min_y = umax;
+      programItem->x0 = programItem->y0 = umax;
+      programItem->x1 = programItem->y1 = 0;
+
       for (auto functionItem : programItem->functions) {
         layout::Node &n = nodes[functionIdxs[functionItem]];
-        prog_min_x = std::min(prog_min_x, n.x - site_min_x);
-        prog_min_y = std::min(prog_min_y, n.y - site_min_y);
+        programItem->x0 = std::min(programItem->x0, n.x);
+        programItem->y0 = std::min(programItem->y0, n.y);
+        programItem->x1 = std::min(programItem->x1, n.x);
+        programItem->y1 = std::min(programItem->y1, n.y);
       }
-      QPointF progPos = settings->pointOfTile(prog_min_x, prog_min_y);
-      progPos +=
+      QPointF progPos =
+        settings->pointOfTile(
+          programItem->x0 - siteItem->x0,
+          programItem->y0 - siteItem->y0) +
         QPointF(settings->programMarginHoriz, settings->programMarginTop);
       QPropertyAnimation *progAnim =
         new QPropertyAnimation(programItem, "pos");
@@ -250,14 +286,17 @@ void GraphView::startLayout()
       progAnim->setEndValue(progPos);
       animGroup->addAnimation(progAnim);
 
-      // finally, we can now position the functions:
+      // Finally, we can now position the functions:
       for (auto functionItem : programItem->functions) {
         layout::Node &n = nodes[functionIdxs[functionItem]];
-        unsigned func_min_x = n.x - site_min_x - prog_min_x;
-        unsigned func_min_y = n.y - site_min_y - prog_min_y;
-        QPointF funcPos = settings->pointOfTile(func_min_x, func_min_y);
-        funcPos +=
-          QPointF(settings->functionMarginHoriz, settings->functionMarginTop);
+        functionItem->x0 = functionItem->x1 = n.x;
+        functionItem->y0 = functionItem->y1 = n.y;
+        QPointF funcPos =
+          settings->pointOfTile(
+            n.x - programItem->x0,
+            n.y - programItem->y0) +
+          QPointF(settings->functionMarginHoriz,
+                  settings->functionMarginTop);
         QPropertyAnimation *funcAnim =
           new QPropertyAnimation(functionItem, "pos");
         funcAnim->setDuration(animDuration);
@@ -268,4 +307,5 @@ void GraphView::startLayout()
   }
 
   animGroup->start(QAbstractAnimation::DeleteWhenStopped);
+  updateArrows(); // or rather when the animation ends?
 }

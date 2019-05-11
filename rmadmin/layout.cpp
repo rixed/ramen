@@ -142,8 +142,8 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   // Finally (for now), do not allow functions to get too close, ie to be
   // in the same "tile".
   expr_vector tiles(c);
-  for (unsigned i = 0; i < xs.size(); i++) {
-    tiles.push_back(ys[i] * c.int_val((unsigned)xs.size()) + xs[i]);
+  for (size_t i = 0; i < xs.size(); i++) {
+    tiles.push_back(ys[i] * c.int_val((int)xs.size()) + xs[i]);
   }
   opt.add(distinct(tiles));
 
@@ -162,7 +162,7 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
 
   model m = opt.get_model();
   cout << "num bad links = " << m.eval(numBadLinks, true).get_numeral_uint() << '\n';
-  for (unsigned i = 0; i < xs.size(); i++) {
+  for (size_t i = 0; i < xs.size(); i++) {
     Node &n = (*nodes)[i];
     n.x = m.eval(xs[i], true).get_numeral_uint();
     n.y = m.eval(ys[i], true).get_numeral_uint();

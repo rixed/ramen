@@ -12,11 +12,15 @@ GraphViewSettings::GraphViewSettings() :
   siteMarginHoriz = labelsLineHeight,
   functionMarginTop = 20, programMarginTop = 20, siteMarginTop = 30,
   functionMarginBottom = 10, programMarginBottom = 10, siteMarginBottom = 10;
+
+  numArrowChannels = 8;
+  arrowChannelWidth = 6;
+  arrowWidth = 3;
 }
 
 GraphViewSettings::~GraphViewSettings() {};
 
-QPointF GraphViewSettings::pointOfTile(unsigned x, unsigned y) const
+QPointF GraphViewSettings::pointOfTile(int x, int y) const
 {
   return QPointF(x * gridWidth, y * gridHeight);
 }

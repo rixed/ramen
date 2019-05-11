@@ -9,11 +9,9 @@
 #include <QBrush>
 #include <QPoint>
 #include "confValue.h"
-#include "GraphAnchor.h"
 #include "GraphViewSettings.h"
 
 class OperationsModel;
-class GraphAnchor;
 
 /* OperationsItem is an Item in the OperationsModel *and* in the
  * scene of the GraphView. */
@@ -44,13 +42,12 @@ protected:
   QVariant itemChange(QGraphicsItem::GraphicsItemChange, const QVariant &);
 
 public:
+  int x0, y0, x1, y1;  // in the function grid (absolute!)
   QString const name;
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
   OperationsItem *treeParent;
   int row;
-  GraphAnchor *anchorIn;
-  GraphAnchor *anchorOut;
 
   OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, QBrush brush=Qt::NoBrush);
   virtual ~OperationsItem() = 0;
