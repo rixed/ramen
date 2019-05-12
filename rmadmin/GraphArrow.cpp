@@ -47,6 +47,7 @@ GraphArrow::GraphArrow(GraphViewSettings const *settings_, int x0, int y0, int h
       lines.push_back({ Left, x, y });
     x ++;
   }
+  if (y1 < y) y--;
   if (y1 <= y)
     for (; y > y1; y--)
       lines.push_back({ Up, x, y });
