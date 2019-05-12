@@ -55,12 +55,8 @@ QString OperationsItem::fqName() const
 QColor OperationsItem::color() const
 {
   QColor c = brush.color();
-  if (collapsed) return c;
-
-  QColor c_ = c.toHsl();
-  double h, s, l;
-  c_.getHslF(&h, &s, &l);
-  return QColor::fromHslF(h, 0.2, 0.9);
+  c.setAlpha(collapsed ? 200 : 25);
+  return c;
 }
 
 /*

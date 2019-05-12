@@ -142,6 +142,7 @@ void GraphView::updateArrows()
           dst->x0, dst->y0, hmargins[marginDst],
           channel, src->color());
       arrows.insert({{ src, dst }, { arrow, true }});
+      arrow->setZValue(-1);
       scene.addItem(arrow);
     } else {
       ait->second.second = true;
