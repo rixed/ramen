@@ -20,8 +20,10 @@ class OperationsItem : public QObject, public QGraphicsItem
 {
   Q_OBJECT
   Q_PROPERTY(QPointF pos READ pos WRITE setPos)
+  Q_PROPERTY(qreal border READ border WRITE setBorder)
   Q_INTERFACES(QGraphicsItem)
 
+  qreal border_;
   QBrush brush;
   /* All subItems will be children of this one, which in turn is our child
    * node. So to collapse subitems it's enough to subItems.hide() */
@@ -48,6 +50,7 @@ public:
    * When a parent is deleted, it deletes recursively all its children. */
   OperationsItem *treeParent;
   int row;
+  bool isSelected;
 
   OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   virtual ~OperationsItem() = 0;
@@ -63,6 +66,8 @@ public:
   void setCollapsed(bool);
   QString fqName() const;
   QColor color() const;
+  qreal border() const;
+  void setBorder(qreal);
 
 public slots:
   void updateFrame();

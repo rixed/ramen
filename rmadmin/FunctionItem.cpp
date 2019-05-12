@@ -19,13 +19,16 @@ QVariant FunctionItem::data(int column) const
 
 QRectF FunctionItem::boundingRect() const
 {
-  return QRect(0, 0,
-               settings->gridWidth - 2 * (
-                 settings->functionMarginHoriz +
-                 settings->programMarginHoriz +
-                 settings->siteMarginHoriz),
-               settings->gridHeight - (
-                 settings->functionMarginBottom + settings->programMarginBottom +
-                 settings->siteMarginBottom + settings->functionMarginTop +
-                 settings->programMarginTop + settings->siteMarginTop));
+  qreal b = border();
+  return
+    QRect(0, 0,
+          settings->gridWidth - 2 * (
+            settings->functionMarginHoriz +
+            settings->programMarginHoriz +
+            settings->siteMarginHoriz),
+          settings->gridHeight - (
+            settings->functionMarginBottom + settings->programMarginBottom +
+            settings->siteMarginBottom + settings->functionMarginTop +
+            settings->programMarginTop + settings->siteMarginTop))
+  + QMargins(b, b, b, b);
 }

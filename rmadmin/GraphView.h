@@ -40,6 +40,8 @@ class GraphView : public QGraphicsView
   // Note: models are supposed to outlive the views, aren't they?
   OperationsModel const *model;
 
+  OperationsItem *selected;
+
   /* Relationships management:
    *
    * We store all current relationships and we recompute the whole set of
@@ -72,6 +74,7 @@ public:
 public slots:
   void collapse(QModelIndex const &index);
   void expand(QModelIndex const &index);
+  void select(QModelIndex const &index);
   // to be connected to the model rowsInserted signal:
   void insertRows(const QModelIndex &parent, int first, int last);
   // to be connected to the model signals of the same names:

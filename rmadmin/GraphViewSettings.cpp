@@ -24,6 +24,8 @@ GraphViewSettings::GraphViewSettings() :
   programMarginBottom = 5;
   functionMarginBottom = 5;
 
+  labelsHorizMargin = 10;
+
   int const functionY0 =
     siteMarginTop + programMarginTop + functionMarginTop;
   int const functionY1 =

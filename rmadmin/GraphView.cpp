@@ -11,9 +11,15 @@
 #include "GraphView.h"
 
 GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
-  QGraphicsView(parent), model(nullptr), layoutTimer(this),
+  QGraphicsView(parent),
+  model(nullptr),
+  selected(nullptr),
+  layoutTimer(this),
   settings(settings_)
 {
+  QString st = styleSheet();
+  std::cout << "ST=" << st.toStdString() << '\n';
+
   setScene(&scene);
 
   layoutTimer.setSingleShot(true);
@@ -62,6 +68,26 @@ void GraphView::expand(QModelIndex const &index)
 
   item->setCollapsed(false);
   updateArrows();
+}
+
+void GraphView::select(QModelIndex const &index)
+{
+  OperationsItem *item =
+    static_cast<OperationsItem *>(index.internalPointer());
+  if (selected == item) return;
+  if (selected) {
+    selected->isSelected = false;
+    selected->setBorder(2);
+  }
+  selected = item;
+  item->isSelected = true;
+  item->setBorder(14);
+  item->ensureVisible();
+
+  QPropertyAnimation *borderAnim = new QPropertyAnimation(item, "border");
+  borderAnim->setDuration(200);
+  borderAnim->setEndValue(4);
+  borderAnim->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)

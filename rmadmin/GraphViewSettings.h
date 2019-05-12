@@ -16,6 +16,7 @@ public:
     functionMarginHoriz, programMarginHoriz, siteMarginHoriz,
     functionMarginTop, programMarginTop, siteMarginTop,
     functionMarginBottom, programMarginBottom, siteMarginBottom;
+  int labelsHorizMargin;
 
   unsigned numArrowChannels;
   int arrowChannelWidth;

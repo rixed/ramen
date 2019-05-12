@@ -27,7 +27,6 @@ OperationsView::OperationsView(QWidget *parent) :
   leftPannelLayout->setContentsMargins(1, 1, 1, 1);
   leftPannelLayout->setSpacing(3);
 
-  // TODO: radio buttons would be more intuitive
   QWidget *LODBar = new QWidget;
   QHBoxLayout *LODBarLayout = new QHBoxLayout;
   LODBarLayout->setContentsMargins(1, 1, 1, 1);
@@ -68,6 +67,7 @@ OperationsView::OperationsView(QWidget *parent) :
   // Control the GraphView from the TreeView:
   QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
   QObject::connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
+  QObject::connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
 
   allowReset = true;
   // Control the TreeView from the LOD buttons:

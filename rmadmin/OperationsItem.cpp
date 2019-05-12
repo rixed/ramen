@@ -19,13 +19,15 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
   QGraphicsItem(treeParent_ ?
       static_cast<QGraphicsItem *>(&treeParent_->subItems) :
       static_cast<QGraphicsItem *>(treeParent_)),
+  border_(2),
   subItems(this),
   collapsed(true),
   settings(settings_),
   x0(0), y0(0), x1(0), y1(0),
   name(name_),
   treeParent(treeParent_),
-  row(-1)
+  row(-1),
+  isSelected(false)
 {
   brush = QBrush(colorOfString(name, paletteSize)),
 
@@ -59,6 +61,19 @@ QColor OperationsItem::color() const
   return c;
 }
 
+qreal OperationsItem::border() const
+{
+  return border_;
+}
+
+void OperationsItem::setBorder(qreal b)
+{
+  if (b != border_) {
+    border_ = b;
+    update();
+  }
+}
+
 /*
  * CAUTION: Wet Paint!
  */
@@ -83,7 +98,7 @@ void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QStrin
   painter->setPen(pen);
 
   int y = settings->labelsLineHeight;
-  int const x = fm.width(" "); // settings->labelsHorizMargin?
+  int const x = settings->labelsHorizMargin;
   for (auto label : labels) {
     int x2 = x;
     painter->setFont(boldFont);
@@ -124,15 +139,17 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
   labels.emplace_back("", name);
   if (collapsed) addLabels(&labels);
 
-  // Get the total bbox:
-  QRectF bbox = boundingRect();
-  QBrush b = brush;
-  b.setColor(color().lighter());
-  painter->setBrush(b);
-
-  QPen pen(Qt::NoBrush, 2, Qt::DashLine);
-  pen.setColor(Qt::darkGray);
+  qreal b = border();
+  QBrush bru = brush;
+  bru.setColor(color().lighter());
+  painter->setBrush(bru);
+  QPen pen(Qt::NoBrush, b, isSelected ? Qt::SolidLine : Qt::DashLine);
+  pen.setColor(isSelected ? Qt::darkGreen : Qt::darkGray);
   painter->setPen(pen);
+
+  // Get the total bbox and draw inside:
+  QRectF bbox = boundingRect();
+  bbox -= QMargins(b, b, b, b);
   painter->drawRoundedRect(bbox, 5, 5);
 
   // Print labels on top:

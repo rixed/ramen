@@ -56,5 +56,8 @@ QRectF ProgramItem::boundingRect() const
                     settings->functionMarginBottom);
 /*  std::cout << "prog bbox2 = " << bbox.x() << ", " << bbox.y()
             << " + " << bbox.width() << ", " << bbox.height() << '\n';*/
+
+  qreal b = border();
+  bbox += QMargins(b, b, b, b);
   return bbox;
 }
