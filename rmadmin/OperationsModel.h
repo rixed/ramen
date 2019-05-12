@@ -44,6 +44,7 @@ class OperationsModel : public QAbstractItemModel
   friend class FunctionItem;
 
   GraphViewSettings const *settings;
+  unsigned paletteSize;
 
   void reorder();
   FunctionItem const *findWorker(std::shared_ptr<conf::Worker const>);

@@ -1,7 +1,7 @@
 #include <QPainter>
 #include <QPainterPath>
+#include "GraphViewSettings.h"
 #include "GraphArrow.h"
-#include "OperationsItem.h"
 
 /* Arrows only go in the margins, and the GraphArrow object is actually
  * given only the coordinates of the hlines and vlines to occupy, and a
@@ -23,12 +23,12 @@
  * number of tiles where the same channel is occupied by more than one
  * arrow. */
 
-GraphArrow::GraphArrow(GraphViewSettings const *settings_, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, QGraphicsItem *parent) :
+GraphArrow::GraphArrow(GraphViewSettings const *settings_, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, unsigned channel_, QColor color_, QGraphicsItem *parent) :
   QGraphicsItem(parent),
+  channel(channel_),
+  color(color_),
   settings(settings_)
 {
-  // TODO: updateArrows should reallocate the channels:
-  channel = std::rand() % settings->numArrowChannels;
   std::vector<Line> lines; // from src to dest
 
   int x = x0;
@@ -109,11 +109,12 @@ QRectF GraphArrow::boundingRect() const
 void GraphArrow::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
   QPen pen(Qt::SolidPattern, settings->arrowWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+  pen.setColor(color);
   painter->setPen(pen);
   painter->drawPath(*arrowPath);
 
   painter->setPen(Qt::NoPen);
-  painter->setBrush(Qt::black);
+  painter->setBrush(color);
   painter->drawPath(*arrowHead);
 }
 

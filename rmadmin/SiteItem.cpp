@@ -4,8 +4,8 @@
 #include "GraphView.h"
 #include "OperationsModel.h"
 
-SiteItem::SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings) :
-  OperationsItem(treeParent, name, settings, Qt::green)
+SiteItem::SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
+  OperationsItem(treeParent, name, settings, paletteSize)
 {
   updateFrame();
 }
@@ -54,5 +54,7 @@ QRectF SiteItem::boundingRect() const
                     settings->programMarginTop,
                     settings->programMarginHoriz,
                     settings->programMarginBottom);
+/*  std::cout << "site bbox = " << bbox.x() << ", " << bbox.y()
+            << " + " << bbox.width() << ", " << bbox.height() << '\n'; */
   return bbox;
 }

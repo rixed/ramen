@@ -13,7 +13,7 @@ protected:
 public:
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
-  SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *);
+  SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   ~SiteItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);

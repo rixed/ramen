@@ -7,6 +7,7 @@
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "GraphView.h"
+#include "colorOfString.h"
 #include "SiteItem.h"
 
 // Notice that we use our parent's subItems as the parent of the GraphItem,
@@ -14,11 +15,10 @@
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, QBrush brush_) :
+OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
   QGraphicsItem(treeParent_ ?
       static_cast<QGraphicsItem *>(&treeParent_->subItems) :
       static_cast<QGraphicsItem *>(treeParent_)),
-  brush(brush_),
   subItems(this),
   collapsed(true),
   settings(settings_),
@@ -27,6 +27,9 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
   treeParent(treeParent_),
   row(-1)
 {
+  QString fq = fqName();
+  brush = QBrush(colorOfString(fq, paletteSize)),
+
   // TreeView is initially collapsed, and so are we:
   subItems.hide();
 
@@ -50,6 +53,17 @@ QString OperationsItem::fqName() const
   return treeParent->fqName() + "/" + name;
 }
 
+QColor OperationsItem::color() const
+{
+  QColor c = brush.color();
+  if (collapsed) return c;
+
+  QColor c_ = c.toHsl();
+  double h, s, l;
+  c_.getHslF(&h, &s, &l);
+  return QColor::fromHslF(h, 0.2, 0.9);
+}
+
 /*
  * CAUTION: Wet Paint!
  */
@@ -69,8 +83,8 @@ void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QStrin
 
   QFontMetrics fm(boldFont);
 
-  QPen pen = QPen(Qt::darkGray);
-  pen.setWidthF(1);
+  QPen pen = QPen(Qt::black);
+  pen.setWidthF(0);
   painter->setPen(pen);
 
   int y = settings->labelsLineHeight;
@@ -114,11 +128,9 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
 
   // Get the total bbox:
   QRectF bbox = boundingRect();
-  QBrush bgBrush = brush;
-  QColor bgColor = bgBrush.color();
-  if (! collapsed) bgColor.setAlpha(30);
-  bgBrush.setColor(bgColor);
-  painter->setBrush(bgBrush);
+  QBrush b = brush;
+  b.setColor(color().lighter());
+  painter->setBrush(b);
 
   QPen pen(Qt::NoBrush, 2, Qt::DashLine);
   pen.setColor(Qt::darkGray);

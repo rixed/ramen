@@ -19,7 +19,8 @@ class GraphArrow : public QGraphicsItem
     QPointF start(GraphViewSettings const *) const;
     QPointF stop(GraphViewSettings const *) const;
   };
-  unsigned channel; // could also be used to select a color?
+  unsigned channel;
+  QColor color;
 
   GraphViewSettings const *settings;
   QPainterPath *arrowPath;
@@ -30,7 +31,7 @@ public:
   // Because of transparency we cannot rely on arrows being overpaint by
   // above layers. So they should be given the horiz-margin to apply by the
   // constructor.
-  GraphArrow(GraphViewSettings const *, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, QGraphicsItem *parent = nullptr);
+  GraphArrow(GraphViewSettings const *, int x0, int y0, int hmargin0, int x1, int y1, int hmargin1, unsigned channel, QColor, QGraphicsItem *parent = nullptr);
   ~GraphArrow();
 
   QRectF boundingRect() const override;

@@ -105,9 +105,14 @@ void GraphView::updateArrows()
   };
 
   for (auto it : relations) {
-    OperationsItem const *src = static_cast<FunctionItem const *>(it.first);
-    OperationsItem const *dst = static_cast<FunctionItem const *>(it.second);
+    FunctionItem const *srcFunction =
+      static_cast<FunctionItem const *>(it.first);
+    OperationsItem const *src =
+      static_cast<OperationsItem const *>(srcFunction);
+    OperationsItem const *dst =
+      static_cast<OperationsItem const *>(it.second);
     unsigned marginSrc = 0, marginDst = 0;
+    unsigned const channel = srcFunction->channel;
 
     while (src && !src->isVisibleTo(nullptr)) {
       src = src->treeParent;
@@ -134,7 +139,8 @@ void GraphView::updateArrows()
       GraphArrow *arrow =
         new GraphArrow(settings,
           src->x1, src->y1, hmargins[marginSrc],
-          dst->x0, dst->y0, hmargins[marginDst]);
+          dst->x0, dst->y0, hmargins[marginDst],
+          channel, src->color());
       arrows.insert({{ src, dst }, { arrow, true }});
       scene.addItem(arrow);
     } else {

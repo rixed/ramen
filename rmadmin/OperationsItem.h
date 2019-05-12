@@ -49,7 +49,7 @@ public:
   OperationsItem *treeParent;
   int row;
 
-  OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, QBrush brush=Qt::NoBrush);
+  OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   virtual ~OperationsItem() = 0;
   virtual QVariant data(int) const = 0;
   // Reorder the children after some has been added/removed
@@ -62,6 +62,7 @@ public:
 
   void setCollapsed(bool);
   QString fqName() const;
+  QColor color() const;
 
 public slots:
   void updateFrame();

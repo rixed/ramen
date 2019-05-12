@@ -31,6 +31,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # Input
 HEADERS += \
   LazyRef.h \
+  colorOfString.h \
   SyncStatus.h \
   PosIntValidator.h \
   PosDoubleValidator.h \
@@ -59,6 +60,7 @@ HEADERS += \
   RmAdminWin.h
 
 SOURCES += \
+  colorOfString.cpp \
   SyncStatus.cpp \
   PosIntValidator.cpp \
   PosDoubleValidator.cpp \

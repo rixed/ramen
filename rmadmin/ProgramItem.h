@@ -14,7 +14,7 @@ public:
   // As we are going to point to item from their children we do not want them
   // to move in memory, so let's use a vector of pointers:
   std::vector<FunctionItem *> functions;
-  ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *);
+  ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   ~ProgramItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);

@@ -4,8 +4,8 @@
 #include "OperationsModel.h"
 #include "GraphView.h"
 
-ProgramItem::ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings) :
-  OperationsItem(treeParent, name, settings, Qt::red)
+ProgramItem::ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
+  OperationsItem(treeParent, name, settings, paletteSize)
 {
   updateFrame();
 }
@@ -48,9 +48,13 @@ QRectF ProgramItem::boundingRect() const
     b.translate(function->pos());
     bbox |= b;
   }
+/*  std::cout << "prog bbox1 = " << bbox.x() << ", " << bbox.y()
+            << " + " << bbox.width() << ", " << bbox.height() << '\n';*/
   bbox += QMarginsF(settings->functionMarginHoriz,
                     settings->functionMarginTop,
                     settings->functionMarginHoriz,
                     settings->functionMarginBottom);
+/*  std::cout << "prog bbox2 = " << bbox.x() << ", " << bbox.y()
+            << " + " << bbox.width() << ", " << bbox.height() << '\n';*/
   return bbox;
 }

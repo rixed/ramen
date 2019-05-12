@@ -10,7 +10,8 @@
 
 OperationsModel::OperationsModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
-  settings(settings_)
+  settings(settings_),
+  paletteSize(100)
 {
   /* Register callbacks but for now also populate manually: */
   conf::autoconnect("sites/", [this](conf::Key const &k, KValue const *kv) {
@@ -296,7 +297,7 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
       }
     }
     if (! siteItem) {
-      siteItem = new SiteItem(nullptr, pk.site, settings);
+      siteItem = new SiteItem(nullptr, pk.site, settings, paletteSize);
       int idx = sites.size(); // as we insert at the end for now
       beginInsertRows(QModelIndex(), idx, idx);
       sites.insert(sites.begin()+idx, siteItem);
@@ -313,7 +314,7 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
         }
       }
       if (! programItem) {
-        programItem = new ProgramItem(siteItem, pk.program, settings);
+        programItem = new ProgramItem(siteItem, pk.program, settings, paletteSize);
         int idx = siteItem->programs.size();
         QModelIndex parent =
           createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
@@ -332,7 +333,7 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
           }
         }
         if (! functionItem) {
-          functionItem = new FunctionItem(programItem, pk.function, settings);
+          functionItem = new FunctionItem(programItem, pk.function, settings, paletteSize);
           int idx = programItem->functions.size();
           QModelIndex parent =
             createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));

@@ -147,7 +147,7 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   }
   opt.add(distinct(tiles));
 
-  std::cout << opt << "\n";
+  //std::cout << opt << "\n";
 
   switch (opt.check()) {
     case unsat:
