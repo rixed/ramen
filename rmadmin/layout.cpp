@@ -18,12 +18,18 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   p.set("priority", c.str_symbol("pareto"));
   p.set(":timeout", 5000U); // 1s should be enough for everyone
   opt.set(p);
+  expr one  = c.int_val(1);
+  expr zero = c.int_val(0);
 
   // First, we need all function coordinates:
   vector<expr> xs, ys;
-  // While at it, take notice of the existing sites and programs:
+  // While at it, take notice of the existing sites and programs and of
+  // the connections between sites:
   multimap<string, size_t> sites;
   multimap<pair<string, string>, size_t> programs;
+  // Connections between sites and between programs of the same sites:
+  multimap<string, string> siteToSites;
+  multimap<pair<string, string>, pair<string, string>> progToProgs;
 
   for (size_t i = 0; i < nodes->size(); i++) {
     Node &n = (*nodes)[i];
@@ -32,12 +38,21 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     xs.emplace_back(c.int_const((name + "/x").c_str()));
     ys.emplace_back(c.int_const((name + "/y").c_str()));
 
-    // constrain the space to the given square:
+    // Constrain the space to the given square:
     opt.add(xs.back() >= 0 && xs.back() < c.int_val(max_x));
     opt.add(ys.back() >= 0 && ys.back() < c.int_val(max_y));
 
     sites.insert({n.site, i});
     programs.insert({{n.site, n.program}, i});
+    for (size_t pIdx : n.parents) {
+      Node &p = (*nodes)[pIdx];
+      if (p.site == n.site) {
+        if (p.program != n.program)
+          progToProgs.insert({{p.site, p.program}, {n.site, n.program}});
+      } else {
+        siteToSites.insert({p.site, n.site});
+      }
+    }
   }
 
   // First set of constraints: keep the sites together.
@@ -78,6 +93,19 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     }
   }
 
+  // Also minimize the number of child sites not at the right of their
+  // parents:
+  expr numBadSiteLinks = zero;
+  for (auto const connSites_it : siteToSites) {
+    auto srcSitePos = ss.find(connSites_it.first);
+    auto dstSitePos = ss.find(connSites_it.second);
+    numBadSiteLinks = numBadSiteLinks
+                    + ite(srcSitePos->second.second.first >=
+                          dstSitePos->second.first.first,
+                          one, zero);
+  }
+  opt.minimize(numBadSiteLinks);
+
   // Then, also keep the programs together.
   // ps is the min and max of the xs and the ys: (xmin, xmax), (ymin, ymnax).
   map<pair<string, string>, pair<pair<expr, expr>, pair<expr, expr>>> ps;
@@ -115,11 +143,22 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
         p1.second.second.second <= p2.second.second.first);
     }
   }
+  // Also within each site, minimize the number of child programs not at the
+  // right of their parents:
+  expr numBadProgLinks = zero;
+  for (auto const connProgs_it : progToProgs) {
+    auto srcProgPos = ps.find(connProgs_it.first);
+    auto dstProgPos = ps.find(connProgs_it.second);
+    numBadProgLinks = numBadProgLinks
+                    + ite(srcProgPos->second.second.first >=
+                          dstProgPos->second.first.first,
+                          one, zero);
+  }
+  opt.minimize(numBadProgLinks);
+
 
   // Minimize the number of back-links, and the height of links, considering
   // a back link is as bad as 10 steps in y:
-  expr one  = c.int_val(1);
-  expr zero = c.int_val(0);
   expr back = c.int_val(10);
   expr dy_ok = c.int_val(4);
   expr numBadLinks = zero;
