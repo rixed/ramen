@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <QPainter>
 #include <QFontMetrics>
+#include <QPropertyAnimation>
 #include "OperationsItem.h"
 #include "OperationsModel.h"
 #include "FunctionItem.h"
@@ -17,25 +18,27 @@
 // reorder detect that it's indeed a new value when we insert the first one!
 OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
   QGraphicsItem(treeParent_ ?
-      static_cast<QGraphicsItem *>(&treeParent_->subItems) :
+      static_cast<QGraphicsItem *>(treeParent_->subItems) :
       static_cast<QGraphicsItem *>(treeParent_)),
   border_(2),
-  subItems(this),
   collapsed(true),
   settings(settings_),
   x0(0), y0(0), x1(0), y1(0),
   name(name_),
   treeParent(treeParent_),
-  row(-1),
-  isSelected(false)
+  row(-1)
 {
   brush = QBrush(colorOfString(name, paletteSize)),
 
   // TreeView is initially collapsed, and so are we:
-  subItems.hide();
+  subItems = new QGraphicsItemGroup(this);
+  subItems->hide();
 
-  // Notify updateFrame whenever the position is changed:
+  // Notifies itemChange whenever the position is changed:
   setFlag(ItemSendsGeometryChanges, true);
+  // or the item (un)selected:
+  setFlag(ItemIsSelectable, true);
+  setAcceptTouchEvents(true);
 }
 
 OperationsItem::~OperationsItem()
@@ -45,7 +48,7 @@ OperationsItem::~OperationsItem()
 void OperationsItem::setCollapsed(bool c)
 {
   collapsed = c;
-  subItems.setVisible(!c);
+  subItems->setVisible(!c);
 }
 
 QString OperationsItem::fqName() const
@@ -131,6 +134,14 @@ QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QS
   return QRect(QPoint(0, 0), QSize(totWidth, totHeight));
 }
 
+QRectF OperationsItem::boundingRect() const
+{
+  QRectF bbox = operationRect();
+  qreal b = border();
+  bbox += QMargins(b, b, b, b);
+  return bbox;
+}
+
 // Every node in the graph start by displaying a set of properties:
 void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
@@ -143,8 +154,8 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
   QBrush bru = brush;
   bru.setColor(color().lighter());
   painter->setBrush(bru);
-  QPen pen(Qt::NoBrush, b, isSelected ? Qt::SolidLine : Qt::DashLine);
-  pen.setColor(isSelected ? Qt::darkGreen : Qt::darkGray);
+  QPen pen(Qt::NoBrush, b, isSelected() ? Qt::SolidLine : Qt::DashLine);
+  pen.setColor(isSelected() ? Qt::darkGreen : Qt::darkGray);
   painter->setPen(pen);
 
   // Get the total bbox and draw inside:
@@ -157,20 +168,23 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
   paintLabels(painter, labels);
 }
 
-void OperationsItem::updateFrame()
-{
-  // TODO: Recompute sizes etc...
-
-  // useful?
-  prepareGeometryChange();
-
-  if (treeParent) treeParent->updateFrame();
-}
-
 QVariant OperationsItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &v)
 {
   if (treeParent && change == QGraphicsItem::ItemPositionHasChanged) {
-    treeParent->updateFrame();
+    treeParent->update();  // WTF this does nothing? We are supposed to call update()!
+  } else if (change == ItemSelectedHasChanged) {
+    if (v.toBool()) {
+      // This one is selected
+      setBorder(14);
+      ensureVisible();
+      QPropertyAnimation *borderAnim = new QPropertyAnimation(this, "border");
+      borderAnim->setDuration(200);
+      borderAnim->setEndValue(4);
+      borderAnim->start(QAbstractAnimation::DeleteWhenStopped);
+    } else {
+      // This one is unselected
+      setBorder(2);
+    }
   }
   return v;
 }

@@ -7,7 +7,7 @@
 ProgramItem::ProgramItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
   OperationsItem(treeParent, name, settings, paletteSize)
 {
-  updateFrame();
+  setZValue(2);
 }
 
 ProgramItem::~ProgramItem()
@@ -32,7 +32,7 @@ void ProgramItem::reorder(OperationsModel const *model)
       emit model->positionChanged(model->createIndex(i, 0, static_cast<OperationsItem *>(functions[i])));
     }
   }
-  updateFrame();
+  prepareGeometryChange();
 }
 
 void ProgramItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
@@ -40,24 +40,17 @@ void ProgramItem::addLabels(std::vector<std::pair<QString const, QString const>>
   labels->emplace_back("#functions", QString::number(functions.size()));
 }
 
-QRectF ProgramItem::boundingRect() const
+QRectF ProgramItem::operationRect() const
 {
   QRectF bbox;
   for (auto function : functions) {
-    QRectF b = function->boundingRect();
+    QRectF b = function->operationRect();
     b.translate(function->pos());
     bbox |= b;
   }
-/*  std::cout << "prog bbox1 = " << bbox.x() << ", " << bbox.y()
-            << " + " << bbox.width() << ", " << bbox.height() << '\n';*/
   bbox += QMarginsF(settings->functionMarginHoriz,
                     settings->functionMarginTop,
                     settings->functionMarginHoriz,
                     settings->functionMarginBottom);
-/*  std::cout << "prog bbox2 = " << bbox.x() << ", " << bbox.y()
-            << " + " << bbox.width() << ", " << bbox.height() << '\n';*/
-
-  qreal b = border();
-  bbox += QMargins(b, b, b, b);
   return bbox;
 }

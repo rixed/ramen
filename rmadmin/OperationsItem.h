@@ -27,7 +27,7 @@ class OperationsItem : public QObject, public QGraphicsItem
   QBrush brush;
   /* All subItems will be children of this one, which in turn is our child
    * node. So to collapse subitems it's enough to subItems.hide() */
-  QGraphicsItemGroup subItems;
+  QGraphicsItemGroup *subItems;
   bool collapsed;
 
   void paintLabels(QPainter *, std::vector<std::pair<QString const, QString const>> const &);
@@ -50,7 +50,6 @@ public:
    * When a parent is deleted, it deletes recursively all its children. */
   OperationsItem *treeParent;
   int row;
-  bool isSelected;
 
   OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   virtual ~OperationsItem() = 0;
@@ -60,17 +59,16 @@ public:
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
 
   // For the GraphView:
-  virtual QRectF boundingRect() const = 0;
+  QRectF boundingRect() const;
   virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
+  // The box representing the operation, regardless of its border (unlike boundingRect):
+  virtual QRectF operationRect() const = 0;
 
   void setCollapsed(bool);
   QString fqName() const;
   QColor color() const;
   qreal border() const;
   void setBorder(qreal);
-
-public slots:
-  void updateFrame();
 };
 
 class SiteItem;

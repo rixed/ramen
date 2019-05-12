@@ -16,7 +16,7 @@ public:
   FunctionItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
   ~FunctionItem();
   QVariant data(int) const;
-  QRectF boundingRect() const;
+  QRectF operationRect() const;
 };
 
 std::ostream &operator<<(std::ostream &, FunctionItem const &);

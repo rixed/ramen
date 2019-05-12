@@ -6,7 +6,7 @@ FunctionItem::FunctionItem(OperationsItem *treeParent, QString const &name, Grap
 {
   // TODO: updateArrows should reallocate the channels:
   channel = std::rand() % settings->numArrowChannels;
-  updateFrame();
+  setZValue(3);
 }
 
 FunctionItem::~FunctionItem() {}
@@ -17,9 +17,8 @@ QVariant FunctionItem::data(int column) const
   return QVariant(name);
 }
 
-QRectF FunctionItem::boundingRect() const
+QRectF FunctionItem::operationRect() const
 {
-  qreal b = border();
   return
     QRect(0, 0,
           settings->gridWidth - 2 * (
@@ -29,6 +28,5 @@ QRectF FunctionItem::boundingRect() const
           settings->gridHeight - (
             settings->functionMarginBottom + settings->programMarginBottom +
             settings->siteMarginBottom + settings->functionMarginTop +
-            settings->programMarginTop + settings->siteMarginTop))
-  + QMargins(b, b, b, b);
+            settings->programMarginTop + settings->siteMarginTop));
 }

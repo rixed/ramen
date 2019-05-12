@@ -18,7 +18,7 @@ public:
   ~ProgramItem();
   QVariant data(int) const;
   void reorder(OperationsModel const *);
-  QRectF boundingRect() const;
+  QRectF operationRect() const;
 };
 
 std::ostream &operator<<(std::ostream &, ProgramItem const &);

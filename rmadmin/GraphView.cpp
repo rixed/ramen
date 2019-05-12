@@ -20,6 +20,8 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   QString st = styleSheet();
   std::cout << "ST=" << st.toStdString() << '\n';
 
+  setDragMode(ScrollHandDrag);
+  setRenderHint(QPainter::Antialiasing);
   setScene(&scene);
 
   layoutTimer.setSingleShot(true);
@@ -76,18 +78,10 @@ void GraphView::select(QModelIndex const &index)
     static_cast<OperationsItem *>(index.internalPointer());
   if (selected == item) return;
   if (selected) {
-    selected->isSelected = false;
-    selected->setBorder(2);
+    selected->setSelected(false);
   }
   selected = item;
-  item->isSelected = true;
-  item->setBorder(14);
-  item->ensureVisible();
-
-  QPropertyAnimation *borderAnim = new QPropertyAnimation(item, "border");
-  borderAnim->setDuration(200);
-  borderAnim->setEndValue(4);
-  borderAnim->start(QAbstractAnimation::DeleteWhenStopped);
+  item->setSelected(true);
 }
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
@@ -334,4 +328,5 @@ void GraphView::startLayout()
 
   animGroup->start(QAbstractAnimation::DeleteWhenStopped);
   updateArrows(); // or rather when the animation ends?
+  // TODO: scene.setSceneRect(global bouning box)?
 }

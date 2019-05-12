@@ -7,7 +7,7 @@
 SiteItem::SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
   OperationsItem(treeParent, name, settings, paletteSize)
 {
-  updateFrame();
+  setZValue(1);
 }
 
 SiteItem::~SiteItem()
@@ -32,7 +32,7 @@ void SiteItem::reorder(OperationsModel const *model)
       emit model->positionChanged(model->createIndex(i, 0, static_cast<OperationsItem *>(programs[i])));
     }
   }
-  updateFrame();
+  prepareGeometryChange();
 }
 
 void SiteItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
@@ -42,11 +42,11 @@ void SiteItem::addLabels(std::vector<std::pair<QString const, QString const>> *l
     "master", isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown"));
 }
 
-QRectF SiteItem::boundingRect() const
+QRectF SiteItem::operationRect() const
 {
   QRectF bbox;
   for (auto program : programs) {
-    QRectF b = program->boundingRect();
+    QRectF b = program->operationRect();
     b.translate(program->pos());
     bbox |= b;
   }
@@ -54,10 +54,6 @@ QRectF SiteItem::boundingRect() const
                     settings->programMarginTop,
                     settings->programMarginHoriz,
                     settings->programMarginBottom);
-/*  std::cout << "site bbox = " << bbox.x() << ", " << bbox.y()
-            << " + " << bbox.width() << ", " << bbox.height() << '\n'; */
-
-  qreal b = border();
-  bbox += QMargins(b, b, b, b);
   return bbox;
 }
+
