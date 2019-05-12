@@ -27,8 +27,7 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
   treeParent(treeParent_),
   row(-1)
 {
-  QString fq = fqName();
-  brush = QBrush(colorOfString(fq, paletteSize)),
+  brush = QBrush(colorOfString(name, paletteSize)),
 
   // TreeView is initially collapsed, and so are we:
   subItems.hide();
@@ -88,13 +87,16 @@ void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QStrin
   painter->setPen(pen);
 
   int y = settings->labelsLineHeight;
-  int const x = fm.width(" ");
+  int const x = fm.width(" "); // settings->labelsHorizMargin?
   for (auto label : labels) {
+    int x2 = x;
     painter->setFont(boldFont);
-    QString const title(label.first + QString(": "));
-    painter->drawText(x, y, title);
-    int const x2 = x + fm.width(title);
-    painter->setFont(settings->labelsFont);
+    if (label.first.length() > 0) {
+      QString const title(label.first + QString(": "));
+      painter->drawText(x, y, title);
+      x2 += fm.width(title);
+      painter->setFont(settings->labelsFont);
+    }
     painter->drawText(x2, y, label.second);
     y += settings->labelsLineHeight;
   }
@@ -123,7 +125,7 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
 {
   std::vector<std::pair<QString const, QString const>> labels;
   labels.reserve(9);
-  labels.emplace_back("name", name);
+  labels.emplace_back("", name);
   if (collapsed) addLabels(&labels);
 
   // Get the total bbox:
