@@ -1,5 +1,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QItemSelectionModel>
 #include "OperationsView.h"
 #include "OperationsModel.h"
 #include "GraphView.h"
@@ -69,7 +70,7 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
   QObject::connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
   // And the other way arround:
-  // QObject::connect(graphView.scene, &QGraphicsScene::selectionChanged, treeView, &select); // where select selects the first of the list!
+  QObject::connect(graphView, &GraphView::selected, treeView, &NarrowTreeView::setCurrentIndex);
 
   allowReset = true;
   // Control the TreeView from the LOD buttons:

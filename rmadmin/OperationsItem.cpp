@@ -145,6 +145,12 @@ QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QS
   return QRect(QPoint(0, 0), QSize(totWidth, totHeight));
 }
 
+QModelIndex OperationsItem::index(OperationsModel const *model) const
+{
+  return model->index(row, 0,
+    treeParent ? treeParent->index(model) : QModelIndex());
+}
+
 QRectF OperationsItem::boundingRect() const
 {
   QRectF bbox = operationRect();

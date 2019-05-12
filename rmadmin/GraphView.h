@@ -34,7 +34,7 @@ class GraphView : public QGraphicsView
 {
   Q_OBJECT
 
-  QGraphicsScene scene;
+  QGraphicsScene *scene;
 
   // Have to save that one because we cannot rely on QModelIndex to provide it:
   // Note: models are supposed to outlive the views, aren't they?
@@ -79,6 +79,10 @@ public slots:
   void relationAdded(FunctionItem const *, FunctionItem const *);
   void relationRemoved(FunctionItem const *, FunctionItem const *);
   void startLayout();
+  void selectionChanged();
+
+signals:
+  void selected(QModelIndex const &);
 };
 
 #endif

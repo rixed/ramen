@@ -57,6 +57,7 @@ public:
   // Reorder the children after some has been added/removed
   virtual void reorder(OperationsModel const *) {};
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
+  QModelIndex index(OperationsModel const *) const;
 
   // For the GraphView:
   QRectF boundingRect() const;
