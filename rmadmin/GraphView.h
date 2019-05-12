@@ -40,8 +40,6 @@ class GraphView : public QGraphicsView
   // Note: models are supposed to outlive the views, aren't they?
   OperationsModel const *model;
 
-  OperationsItem *selected;
-
   /* Relationships management:
    *
    * We store all current relationships and we recompute the whole set of

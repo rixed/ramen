@@ -27,7 +27,7 @@ class OperationsItem : public QObject, public QGraphicsItem
   QBrush brush;
   /* All subItems will be children of this one, which in turn is our child
    * node. So to collapse subitems it's enough to subItems.hide() */
-  QGraphicsItemGroup *subItems;
+  QGraphicsItem *subItems;
   bool collapsed;
 
   void paintLabels(QPainter *, std::vector<std::pair<QString const, QString const>> const &);

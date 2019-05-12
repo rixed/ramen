@@ -68,6 +68,8 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
   QObject::connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
   QObject::connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
+  // And the other way arround:
+  // QObject::connect(graphView.scene, &QGraphicsScene::selectionChanged, treeView, &select); // where select selects the first of the list!
 
   allowReset = true;
   // Control the TreeView from the LOD buttons:

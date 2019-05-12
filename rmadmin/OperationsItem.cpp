@@ -11,15 +11,26 @@
 #include "colorOfString.h"
 #include "SiteItem.h"
 
+/* The dummbest QGraphicsItem I can made. Does nothing, paint nothing,
+ * but can be used to hide/move/transform its children in one go.
+ * And unlike QGrpahicsItemGroup, will not hide events.
+ * Very useful, should be in Qt IMHO. */
+class GraphicsEmpty : public QAbstractGraphicsShapeItem
+{
+public:
+  GraphicsEmpty(QGraphicsItem *parent = nullptr) : QAbstractGraphicsShapeItem (parent) {}
+  ~GraphicsEmpty() {}
+  QRectF boundingRect() const { return QRectF(); }
+  void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget * = nullptr) {}
+};
+
 // Notice that we use our parent's subItems as the parent of the GraphItem,
 // meaning all coordinates will be relative to that parent. Easier when it
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
 OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
-  QGraphicsItem(treeParent_ ?
-      static_cast<QGraphicsItem *>(treeParent_->subItems) :
-      static_cast<QGraphicsItem *>(treeParent_)),
+  QGraphicsItem(treeParent_ ? treeParent_->subItems : treeParent_),
   border_(2),
   collapsed(true),
   settings(settings_),
@@ -30,15 +41,15 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
 {
   brush = QBrush(colorOfString(name, paletteSize)),
 
-  // TreeView is initially collapsed, and so are we:
-  subItems = new QGraphicsItemGroup(this);
-  subItems->hide();
-
   // Notifies itemChange whenever the position is changed:
   setFlag(ItemSendsGeometryChanges, true);
   // or the item (un)selected:
   setFlag(ItemIsSelectable, true);
   setAcceptTouchEvents(true);
+
+  // TreeView is initially collapsed, and so are we:
+  subItems = new GraphicsEmpty(this);
+  subItems->hide();
 }
 
 OperationsItem::~OperationsItem()

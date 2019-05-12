@@ -13,7 +13,6 @@
 GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   QGraphicsView(parent),
   model(nullptr),
-  selected(nullptr),
   layoutTimer(this),
   settings(settings_)
 {
@@ -74,13 +73,9 @@ void GraphView::expand(QModelIndex const &index)
 
 void GraphView::select(QModelIndex const &index)
 {
+  scene.clearSelection();
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
-  if (selected == item) return;
-  if (selected) {
-    selected->setSelected(false);
-  }
-  selected = item;
   item->setSelected(true);
 }
 
