@@ -56,6 +56,11 @@ OperationsItem::~OperationsItem()
 {
 }
 
+bool OperationsItem::isCollapsed() const
+{
+  return collapsed;
+}
+
 void OperationsItem::setCollapsed(bool c)
 {
   collapsed = c;
@@ -188,7 +193,10 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
 QVariant OperationsItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &v)
 {
   if (treeParent && change == QGraphicsItem::ItemPositionHasChanged) {
-    treeParent->update();  // WTF this does nothing? We are supposed to call update()!
+    update();
+  } else if (change == ItemSelectedChange) {
+    if (v.toBool() && !isCollapsed()) return QVariant(false);
+    return v;
   } else if (change == ItemSelectedHasChanged) {
     if (v.toBool()) {
       // This one is selected

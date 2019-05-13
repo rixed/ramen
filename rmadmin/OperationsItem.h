@@ -58,6 +58,7 @@ public:
   virtual void reorder(OperationsModel const *) {};
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
   QModelIndex index(OperationsModel const *) const;
+  bool isCollapsed() const;
 
   // For the GraphView:
   QRectF boundingRect() const;

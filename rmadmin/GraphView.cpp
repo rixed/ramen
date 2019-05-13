@@ -104,12 +104,17 @@ void GraphView::expand(QModelIndex const &index)
   updateArrows();
 }
 
+// Used to select a graph item from the treeview:
 void GraphView::select(QModelIndex const &index)
 {
-  scene.clearSelection();
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
-  item->setSelected(true);
+
+  // Only allow to select tree leaves:
+  if (item->isCollapsed()) {
+    scene.clearSelection();
+    item->setSelected(true);
+  }
 }
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
