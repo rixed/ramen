@@ -3,6 +3,8 @@
 #include <limits>
 #include <QPropertyAnimation>
 #include <QParallelAnimationGroup>
+#include <QTouchEvent>
+#include <QGestureEvent>
 #include "GraphArrow.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
@@ -14,22 +16,27 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   QGraphicsView(parent),
   model(nullptr),
   layoutTimer(this),
-  settings(settings_)
+  settings(settings_),
+  currentScale(1.),
+  lastScale(1.)
 {
   QString st = styleSheet();
   std::cout << "ST=" << st.toStdString() << '\n';
 
+  setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
   setDragMode(ScrollHandDrag);
   setRenderHint(QPainter::Antialiasing);
-  scene = new QGraphicsScene;
-  setScene(scene);
+  setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
+  setScene(&scene);
 
   layoutTimer.setSingleShot(true);
   QObject::connect(&layoutTimer, &QTimer::timeout, this, &GraphView::startLayout);
 
   /* Connect selectionChanged to our selectionChanged slot that will then
    * get the first item of the list (should be a singleton) and emit that */
-  QObject::connect(scene, &QGraphicsScene::selectionChanged, this, &GraphView::selectionChanged);
+  QObject::connect(&scene, &QGraphicsScene::selectionChanged, this, &GraphView::selectionChanged);
+
+  grabGesture(Qt::PinchGesture);
 }
 
 GraphView::~GraphView()
@@ -41,6 +48,27 @@ QSize GraphView::sizeHint() const
   // TODO: compute from components (or rather, cache after components are
   // added/modified)
   return QSize(200, 500);
+}
+
+bool GraphView::event(QEvent *event)
+{
+  if (event->type() == QEvent::Gesture) {
+    QGestureEvent *gest = static_cast<QGestureEvent*>(event);
+    if (QGesture *pinch_ = gest->gesture(Qt::PinchGesture)) {
+      QPinchGesture *pinch = static_cast<QPinchGesture *>(pinch_);
+      if (pinch->changeFlags() & QPinchGesture::ScaleFactorChanged) {
+        lastScale = pinch->totalScaleFactor();
+        qreal const scale = currentScale * lastScale;
+        setTransform(QTransform().scale(scale, scale));
+      }
+      if (pinch->state() == Qt::GestureFinished) {
+        currentScale *= lastScale;
+        lastScale = 1;
+      }
+      return true;
+    }
+  }
+  return QGraphicsView::event(event);
 }
 
 void GraphView::setModel(OperationsModel const *model_)
@@ -78,7 +106,7 @@ void GraphView::expand(QModelIndex const &index)
 
 void GraphView::select(QModelIndex const &index)
 {
-  scene->clearSelection();
+  scene.clearSelection();
   OperationsItem *item =
     static_cast<OperationsItem *>(index.internalPointer());
   item->setSelected(true);
@@ -97,7 +125,7 @@ void GraphView::insertRows(const QModelIndex &parent, int first, int last)
     QModelIndex index = model->index(row, 0, parent);
     OperationsItem *item =
       static_cast<OperationsItem *>(index.internalPointer());
-    scene->addItem(item);
+    scene.addItem(item);
   }
 }
 
@@ -107,7 +135,7 @@ void GraphView::updateArrows()
   // TODO: if this stick then simplify the following!
   for (auto it = arrows.begin(); it != arrows.end(); ) {
     GraphArrow *arrow = it->second.first;
-    scene->removeItem(arrow);
+    scene.removeItem(arrow);
     delete arrow;  // should remove it from the scene etc...
     it = arrows.erase(it);
   }
@@ -163,7 +191,7 @@ void GraphView::updateArrows()
           channel, src->color());
       arrows.insert({{ src, dst }, { arrow, true }});
       arrow->setZValue(-1);
-      scene->addItem(arrow);
+      scene.addItem(arrow);
     } else {
       ait->second.second = true;
     }
@@ -177,7 +205,7 @@ void GraphView::updateArrows()
       /*std::cout << "Deleting Arrow from " << it->first.first->fqName().toStdString()
                 << " to " << it->first.second->fqName().toStdString() << std::endl;*/
       GraphArrow *arrow = it->second.first;
-      scene->removeItem(arrow);
+      scene.removeItem(arrow);
       delete arrow;  // should remove it from the scene etc...
       it = arrows.erase(it);
     }
@@ -185,7 +213,7 @@ void GraphView::updateArrows()
 
   /* For some reason Qt is not smart enough to figure out what part of the
    * scene to redraw: */
-  scene->update();
+  scene.update();
 }
 
 void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
@@ -328,7 +356,7 @@ void GraphView::startLayout()
 
   animGroup->start(QAbstractAnimation::DeleteWhenStopped);
   updateArrows(); // or rather when the animation ends?
-  // TODO: scene->setSceneRect(global bouning box)?
+  // TODO: scene.setSceneRect(global bouning box)?
 }
 
 // When the selection of the scene have changed. Reemit a simpler signal
@@ -337,7 +365,7 @@ void GraphView::selectionChanged()
 {
   if (! model) return;
 
-  QList<QGraphicsItem *> items = scene->selectedItems();
+  QList<QGraphicsItem *> items = scene.selectedItems();
   if (items.empty()) return;
 
   OperationsItem *item = dynamic_cast<OperationsItem *>(items.first());

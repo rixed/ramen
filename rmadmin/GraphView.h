@@ -34,7 +34,7 @@ class GraphView : public QGraphicsView
 {
   Q_OBJECT
 
-  QGraphicsScene *scene;
+  QGraphicsScene scene;
 
   // Have to save that one because we cannot rely on QModelIndex to provide it:
   // Note: models are supposed to outlive the views, aren't they?
@@ -62,12 +62,15 @@ class GraphView : public QGraphicsView
   // Parameters we must share with the OperationsItems:
   GraphViewSettings const *settings;
 
-public:
+  qreal currentScale;
+  qreal lastScale;
 
+public:
   GraphView(GraphViewSettings const *, QWidget *parent = nullptr);
   ~GraphView();
   void setModel(OperationsModel const *);
   QSize sizeHint() const override;
+  bool event(QEvent *) override;
 
 public slots:
   void collapse(QModelIndex const &index);
