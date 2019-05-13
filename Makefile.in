@@ -65,10 +65,10 @@ bin_dir ?= @bindir@
 # bundle from. This is important that the ramen package is compiled with the
 # correct path as we use opam installed libs to build the non-opam bundle,
 # or RamenCompilConfig will be incompatible).
-lib_dir ?= /usr/lib/ramen
+lib_dir ?= @libexecdir@
 
 # Where examples are installed
-sample_dir ?= /var/lib/ramen
+sample_dir ?= @sharedstatedir@
 
 # Where to install systemd configuration
 systemd_dir ?= /lib/systemd/system
