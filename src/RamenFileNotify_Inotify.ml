@@ -69,63 +69,46 @@ let make_file_notifier files =
     ) (alarm_file :: files) in
   { handler ; alarm_file ; files }
 
-let wait_file_changes ?(while_=always) ?max_wait n =
-  (* TODO: Actual cancellation of those threads before they accumulate: *)
-  let set_alarm dt =
-    let cancelled = ref false in
-    Thread.create (fun () ->
-      let rec wait dt =
-        if dt > 0. && not !cancelled && while_ () then (
-          let s = min dt 0.3 in
-          Thread.delay s ;
-          wait (dt -. s)
-        ) in
-      wait dt ;
-      if not !cancelled then
-        let flags = Unix.[ O_WRONLY ; O_TRUNC ; O_CREAT ] in
-        let fd = Files.safe_open n.alarm_file flags 0x644 in
-        Files.safe_close fd
-    ) () |> ignore ;
-    cancelled in
-  let cancel_alarm r = r := true in
-  let rec loop () =
-    if while_ () then (
-      match BatUnix.restart_on_EINTR Inotify.read n.handler with
-      | exception exn ->
-          !logger.error "Cannot Inotify.read: %s"
-            (Printexc.to_string exn) ;
-          raise exn
-      | lst ->
-          (match
-            List.find_map (function
-              | watch, kinds, _cookie, _ as ev (* The file is not given *)
-                  when (List.mem Inotify.Close_write kinds ||
-                        List.mem Inotify.Moved_to kinds) &&
-                       not (List.mem Inotify.Isdir kinds) ->
-                  (match List.assoc watch n.files with
-                  | exception Not_found ->
-                      !logger.error "Received notification %S about unknown \
-                                     watch (known watches: %a)"
-                        (Inotify.string_of_event ev)
-                        (pretty_enum_print Int.print)
-                          (List.enum n.files /@ fst /@ Inotify.int_of_watch) ;
-                      None
-                  | fname ->
-                      Some fname)
-              | watch, kinds, _cookie, None
-                  when Inotify.int_of_watch watch = -1 &&
-                       List.mem Inotify.Q_overflow kinds ->
-                  !logger.error "Inotify overflow!" ;
-                  None
-              | ev ->
-                  !logger.debug "Received a useless inotification: %s"
-                    (Inotify.string_of_event ev) ;
-                  None
-            ) lst with
-          | exception Not_found -> loop ()
-          | fname -> Some fname)
-    ) else None in
-  let alrm = Option.map set_alarm max_wait in
-  finally
-    (fun () -> Option.may cancel_alarm alrm)
-    loop ()
+let wait_file_changes ?(while_=always) ~max_wait n =
+  match Unix.select [ n.handler ] [] [] max_wait with
+  | exception Unix.(Unix_error (EINTR, _, _)) ->
+      None
+  | [], _, _ ->
+      None
+  | _, _, _ ->
+      if while_ () then (
+        match BatUnix.restart_on_EINTR Inotify.read n.handler with
+        | exception exn ->
+            if exn <> Exit then
+              !logger.error "Cannot Inotify.read: %s"
+                (Printexc.to_string exn) ;
+            raise exn
+        | lst ->
+            (try Some (
+              List.find_map (function
+                | watch, kinds, _cookie, _ as ev (* The file is not given *)
+                    when (List.mem Inotify.Close_write kinds ||
+                          List.mem Inotify.Moved_to kinds) &&
+                         not (List.mem Inotify.Isdir kinds) ->
+                    (match List.assoc watch n.files with
+                    | exception Not_found ->
+                        !logger.error "Received notification %S about unknown \
+                                       watch (known watches: %a)"
+                          (Inotify.string_of_event ev)
+                          (pretty_enum_print Int.print)
+                            (List.enum n.files /@ fst /@ Inotify.int_of_watch) ;
+                        None
+                    | fname ->
+                        Some fname)
+                | watch, kinds, _cookie, None
+                    when Inotify.int_of_watch watch = -1 &&
+                         List.mem Inotify.Q_overflow kinds ->
+                    !logger.error "Inotify overflow!" ;
+                    None
+                | ev ->
+                    !logger.debug "Received a useless inotification: %s"
+                      (Inotify.string_of_event ev) ;
+                    None
+              ) lst)
+            with Not_found -> None)
+      ) else None
