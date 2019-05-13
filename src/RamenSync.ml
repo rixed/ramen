@@ -184,6 +184,7 @@ struct
     | Port
   and per_site_fq_key =
     | IsUsed
+    (* FIXME: create a single entry of type "stats" for the following: *)
     | StartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
     | ArchivedTimes

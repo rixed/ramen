@@ -111,8 +111,84 @@ struct
     ) graph.FuncGraph.h
 
   let update conf srv =
-    ignore conf ;
-    ignore srv
+    let graph = FuncGraph.make conf in
+    !logger.debug "Update per-site configuration with graph %a"
+      FuncGraph.print graph ;
+    (* First, grab all existing keys, to know what to delete later: *)
+    let keys =
+      Server.H.keys srv.Server.h //
+      (function PerSite _ -> true | _ -> false) in
+    (* For every key the process is the same:
+     * - If it's not already there, add it unlocked;
+     * - If it is bound to the same value, pass;
+     * - If it is bound to another value, and unlocked, set the value;
+     * - If it is bound to another value, and is locked, that's a bug.  *)
+    let upd k v ~r ~w ~s =
+      match Server.H.find srv.Server.h k with
+      | exception Not_found ->
+          Server.create_unlocked srv k v ~r ~w ~s
+      | hv when Value.equal hv.Server.v v ->
+          ()
+      | Server.{ l = Some u' } when not (User.equal u' u) ->
+          !logger.error "Ignoring key %a that is locked by user %a"
+            Key.print k User.print u'
+      | hv ->
+          Server.set srv u k v
+    in
+    Hashtbl.iter (fun site per_site_h ->
+      let is_master = Set.mem site conf.C.masters in
+      upd (PerSite (site, IsMaster)) (Value.Bool is_master)
+          ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+      (* TODO: PerService *)
+      let stats = Archivist.load_stats ~site conf in
+      Hashtbl.iter (fun (pname, fname) ge ->
+        let fq = N.fq_of_program pname fname in
+        (* IsUsed *)
+        upd (PerSite (site, PerFunction (fq, IsUsed)))
+            (Value.Bool ge.FuncGraph.used)
+            ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+        (* Parents *)
+        set_iteri (fun i (psite, pprog, pfunc) ->
+          upd (PerSite (site, PerFunction (fq, Parents i)))
+              (Value.Worker (psite, pprog, pfunc))
+              ~r:Capa.anybody ~w:Capa.nobody ~s:true
+        ) ge.FuncGraph.parents ;
+        (* Stats *)
+        (match Hashtbl.find stats fq with
+        | exception Not_found -> ()
+        | stats ->
+            upd (PerSite (site, PerFunction (fq, StartupTime)))
+                (Value.Float stats.FS.startup_time)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            Option.may (fun min_etime ->
+              upd (PerSite (site, PerFunction (fq, MinETime)))
+                  (Value.Float min_etime)
+                  ~r:Capa.anybody ~w:Capa.nobody ~s:true
+            ) stats.FS.min_etime ;
+            Option.may (fun max_etime ->
+              upd (PerSite (site, PerFunction (fq, MaxETime)))
+                  (Value.Float max_etime)
+                  ~r:Capa.anybody ~w:Capa.nobody ~s:true
+            ) stats.FS.max_etime ;
+            upd (PerSite (site, PerFunction (fq, TotTuples)))
+                (Value.Int stats.FS.tuples)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            upd (PerSite (site, PerFunction (fq, TotBytes)))
+                (Value.Int stats.FS.bytes)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            upd (PerSite (site, PerFunction (fq, TotCpu)))
+                (Value.Float stats.FS.cpu)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            upd (PerSite (site, PerFunction (fq, MaxRam)))
+                (Value.Int stats.FS.ram)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            upd (PerSite (site, PerFunction (fq, ArchivedTimes)))
+                (Value.TimeRange stats.FS.archives)
+                ~r:Capa.anybody ~w:Capa.nobody ~s:true) ;
+      ) per_site_h
+    ) graph.FuncGraph.h
+
+
 end
 
 module Storage : CONF_SYNCER =
