@@ -1,15 +1,15 @@
 #ifndef GRAPHVIEWSETTINGS_H_190510
 #define GRAPHVIEWSETTINGS_H_190510
 #include <QFont>
-#include <QFontMetrics>
 #include <QPointF>
 
 class GraphViewSettings
 {
 public:
   QFont labelsFont;
-  QFontMetrics labelsFontMetrics;
   int labelsLineHeight;
+  QFont titleFont;
+  int titleLineHeight;
 
   int
     gridWidth, gridHeight,

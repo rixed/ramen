@@ -288,7 +288,7 @@ void GraphView::startLayout()
   layout::solve(&nodes, max_x, max_y);
 
   QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
-  int const animDuration = 700; // ms
+  int const animDuration = 500; // ms
 
   // Sites must first be positioned, before programs can be positioned
   // in the sites, before functions can be positioned in the programs:

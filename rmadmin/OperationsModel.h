@@ -71,8 +71,7 @@ public:
   QVariant data(QModelIndex const &index, int role) const;
 
 public slots:
-  void keyCreated(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void keyChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void keyUpdated(conf::Key const &, std::shared_ptr<conf::Value const>);
 
 signals:
   void positionChanged(QModelIndex const &index) const;

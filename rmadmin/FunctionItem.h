@@ -8,8 +8,18 @@ class GraphViewSettings;
 
 class FunctionItem : public OperationsItem
 {
+protected:
+  std::vector<std::pair<QString const, QString const>> labels() const;
 public:
   std::optional<bool> isUsed;
+  std::optional<double> startupTime;
+  std::optional<double> eventTimeMin;
+  std::optional<double> eventTimeMax;
+  std::optional<int64_t> totalTuples;
+  std::optional<int64_t> totalBytes;
+  std::optional<double> totalCpu;
+  std::optional<int64_t> maxRAM;
+
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:
   std::vector<FunctionItem const*> parents;

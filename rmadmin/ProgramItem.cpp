@@ -35,9 +35,9 @@ void ProgramItem::reorder(OperationsModel const *model)
   prepareGeometryChange();
 }
 
-void ProgramItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
+std::vector<std::pair<QString const, QString const>> ProgramItem::labels() const
 {
-  labels->emplace_back("#functions", QString::number(functions.size()));
+  return {{ "#functions", QString::number(functions.size()) }};
 }
 
 QRectF ProgramItem::operationRect() const

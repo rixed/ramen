@@ -17,8 +17,8 @@ OperationsModel::OperationsModel(GraphViewSettings const *settings_, QObject *pa
   conf::autoconnect("sites/", [this](conf::Key const &k, KValue const *kv) {
     // TODO: check we are really interested in k (ie it affects either a row or a column)
     (void)k;
-    QObject::connect(kv, &KValue::valueCreated, this, &OperationsModel::keyCreated);
-    QObject::connect(kv, &KValue::valueChanged, this, &OperationsModel::keyChanged);
+    QObject::connect(kv, &KValue::valueCreated, this, &OperationsModel::keyUpdated);
+    QObject::connect(kv, &KValue::valueChanged, this, &OperationsModel::keyUpdated);
   });
 }
 
@@ -132,7 +132,12 @@ public:
       "("
         "functions/(?<program>.+)/"
         "(?<function>[^/]+)/"
-        "(?<function_property>is_used|parents/\\d)"
+        "(?<function_property>"
+          "is_used|parents/\\d|startup_time|"
+          "event_time/min|event_time/max|"
+          "total/tuples|total/bytes|"
+          "total/cpu|max/ram|archived_times"
+        ")"
       "|"
         "(?<site_property>is_master)"
       ")$"
@@ -238,9 +243,40 @@ void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString co
 {
   static QString const parents_prefix("parents/");
   if (p == "is_used") {
-    std::shared_ptr<conf::Bool const> b =
+    std::shared_ptr<conf::Bool const> cf =
       std::dynamic_pointer_cast<conf::Bool const>(v);
-    if (b) functionItem->isUsed = b->b;
+    if (cf) functionItem->isUsed = cf->b;
+  } else if (p == "startup_time") {
+    std::shared_ptr<conf::Float const> cf =
+      std::dynamic_pointer_cast<conf::Float const>(v);
+    if (cf) functionItem->startupTime = cf->d;
+  } else if (p == "event_time/min") {
+    std::shared_ptr<conf::Float const> cf =
+      std::dynamic_pointer_cast<conf::Float const>(v);
+    if (cf) functionItem->eventTimeMin = cf->d;
+  } else if (p == "event_time/max") {
+    std::shared_ptr<conf::Float const> cf =
+      std::dynamic_pointer_cast<conf::Float const>(v);
+    if (cf) functionItem->eventTimeMax = cf->d;
+  } else if (p == "total/tuples") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) std::cout << "#TUPLES for " << functionItem->name.toStdString() << ": " << cf->i << '\n';
+    if (cf) functionItem->totalTuples = cf->i;
+  } else if (p == "total/bytes") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) functionItem->totalBytes = cf->i;
+  } else if (p == "total/cpu") {
+    std::shared_ptr<conf::Float const> cf =
+      std::dynamic_pointer_cast<conf::Float const>(v);
+    if (cf) functionItem->totalCpu = cf->d;
+  } else if (p == "max/ram") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) functionItem->maxRAM = cf->i;
+  } else if (p == "archived_times") {
+    // TODO
   } else if (p.startsWith(parents_prefix)) {
     int idx = p.mid(parents_prefix.length()).toInt();
     if (idx >= 0 && (size_t)idx < functionItem->parents.size()+100000) {
@@ -280,10 +316,10 @@ void OperationsModel::setSiteProperty(SiteItem *siteItem, QString const &p, std:
   }
 }
 
-void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+void OperationsModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  /*std::cerr << "OperationsModel key " << k << " created with value " << *v
+  /*std::cerr << "OperationsModel key " << k << " set to value " << *v
             << " is valid:" << pk.valid << '\n';*/
 
   if (pk.valid) {
@@ -346,19 +382,16 @@ void OperationsModel::keyCreated(conf::Key const &k, std::shared_ptr<conf::Value
           retrySetParents();
         }
         setFunctionProperty(functionItem, pk.property, v);
+        functionItem->update();
       } else {
         setProgramProperty(programItem, pk.property, v);
+        programItem->update();
       }
     } else {
       setSiteProperty(siteItem, pk.property, v);
+      siteItem->update();
     }
   }
-}
-
-void OperationsModel::keyChanged(conf::Key const &k, std::shared_ptr<conf::Value const> v)
-{
-  // TODO: maybe update the model
-  std::cerr << "OperationsModel key " << k << " changed to " << *v << '\n';
 }
 
 std::ostream &operator<<(std::ostream &os, SiteItem const &s)

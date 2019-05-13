@@ -9,7 +9,7 @@ class GraphViewSettings;
 class ProgramItem : public OperationsItem
 {
 protected:
-  void addLabels(std::vector<std::pair<QString const, QString const>> *) const;
+  std::vector<std::pair<QString const, QString const>> labels() const;
 public:
   // As we are going to point to item from their children we do not want them
   // to move in memory, so let's use a vector of pointers:

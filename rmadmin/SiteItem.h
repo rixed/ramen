@@ -9,7 +9,7 @@ class GraphViewSettings;
 class SiteItem : public OperationsItem
 {
 protected:
-  void addLabels(std::vector<std::pair<QString const, QString const>> *) const;
+  std::vector<std::pair<QString const, QString const>> labels() const;
 public:
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;

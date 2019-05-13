@@ -105,18 +105,17 @@ void OperationsItem::setBorder(qreal b)
  * item itself) inside.
  * The upper-left corner of that frame lays at (0, 0). */
 
-void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels)
+void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels, int y)
 {
   QFont boldFont = settings->labelsFont;
   boldFont.setBold(true);
-
   QFontMetrics fm(boldFont);
 
   QPen pen = QPen(Qt::black);
   pen.setWidthF(0);
   painter->setPen(pen);
 
-  int y = settings->labelsLineHeight;
+  y += settings->labelsLineHeight;
   int const x = settings->labelsHorizMargin;
   for (auto label : labels) {
     int x2 = x;
@@ -137,12 +136,13 @@ QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QS
   QFont font = settings->labelsFont;
   font.setBold(true);
 
-  int const x = settings->labelsFontMetrics.width(" ");
+  QFontMetrics fm(font);
+
   int totWidth = 0;
   for (auto label : labels) {
     QString const totLine(label.first + QString(": ") + label.second);
     totWidth =
-      std::max(totWidth, x + settings->labelsFontMetrics.width(totLine));
+      std::max(totWidth, settings->labelsHorizMargin + fm.width(totLine));
   }
 
   int const totHeight = labels.size() * settings->labelsLineHeight;
@@ -167,27 +167,33 @@ QRectF OperationsItem::boundingRect() const
 // Every node in the graph start by displaying a set of properties:
 void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
-  std::vector<std::pair<QString const, QString const>> labels;
-  labels.reserve(9);
-  labels.emplace_back("", name);
-  if (collapsed) addLabels(&labels);
-
   qreal b = border();
   QBrush bru = brush;
   bru.setColor(color().lighter());
   painter->setBrush(bru);
-  QPen pen(Qt::NoBrush, b, isSelected() ? Qt::SolidLine : Qt::DashLine);
-  pen.setColor(isSelected() ? Qt::darkGreen : Qt::darkGray);
-  painter->setPen(pen);
+  QPen blockPen(Qt::NoBrush, b, isSelected() ? Qt::SolidLine : Qt::DashLine);
+  blockPen.setColor(isSelected() ? Qt::darkGreen : Qt::darkGray);
+  painter->setPen(blockPen);
 
   // Get the total bbox and draw inside:
   QRectF bbox = boundingRect();
   bbox -= QMargins(b, b, b, b);
   painter->drawRoundedRect(bbox, 5, 5);
 
-  // Print labels on top:
-  painter->setPen(QPen(Qt::black));
-  paintLabels(painter, labels);
+  // Title (ie name)
+  painter->setFont(settings->titleFont);
+
+  QPen titlePen = QPen(Qt::black);
+  titlePen.setWidth(0);
+  painter->setPen(titlePen);
+
+  painter->drawText(settings->labelsHorizMargin, settings->titleLineHeight, name);
+
+  // Labels:
+  if (collapsed) {
+    std::vector<std::pair<QString const, QString const>> labs = labels();
+    paintLabels(painter, labs, settings->titleLineHeight);
+  }
 }
 
 QVariant OperationsItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &v)

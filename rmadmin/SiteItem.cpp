@@ -35,11 +35,12 @@ void SiteItem::reorder(OperationsModel const *model)
   prepareGeometryChange();
 }
 
-void SiteItem::addLabels(std::vector<std::pair<QString const, QString const>> *labels) const
+std::vector<std::pair<QString const, QString const>> SiteItem::labels() const
 {
-  labels->emplace_back("#programs", QString::number(programs.size()));
-  labels->emplace_back(
-    "master", isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown"));
+  return {
+    { "#programs", QString::number(programs.size()) },
+    { "master", isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown") }
+  };
 }
 
 QRectF SiteItem::operationRect() const

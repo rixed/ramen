@@ -30,7 +30,7 @@ class OperationsItem : public QObject, public QGraphicsItem
   QGraphicsItem *subItems;
   bool collapsed;
 
-  void paintLabels(QPainter *, std::vector<std::pair<QString const, QString const>> const &);
+  void paintLabels(QPainter *, std::vector<std::pair<QString const, QString const>> const &, int y);
   QRect labelsBoundingRect(std::vector<std::pair<QString const, QString const>> const &) const;
 
 protected:
@@ -38,7 +38,7 @@ protected:
 
   // Displayed in the graph:
   // TODO: use QStaticText
-  virtual void addLabels(std::vector<std::pair<QString const, QString const>> *) const {};
+  virtual std::vector<std::pair<QString const, QString const>> labels() const  = 0;
 
   // to update parent's frame bbox:
   QVariant itemChange(QGraphicsItem::GraphicsItemChange, const QVariant &);

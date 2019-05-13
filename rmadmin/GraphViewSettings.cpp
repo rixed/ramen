@@ -1,26 +1,33 @@
+#include <QFontMetrics>
 #include "GraphViewSettings.h"
 
-GraphViewSettings::GraphViewSettings() :
-  labelsFontMetrics(labelsFont)
+GraphViewSettings::GraphViewSettings()
 {
-  labelsLineHeight = labelsFontMetrics.lineSpacing();
+  labelsFont.setPixelSize(9);
+  QFontMetrics fm(labelsFont);
+  labelsLineHeight = fm.lineSpacing();
 
-  gridWidth = 300;
+  titleFont.setPixelSize(13);
+  titleFont.setBold(true);
+  fm = QFontMetrics(titleFont);
+  titleLineHeight = fm.lineSpacing();
+
+  gridWidth = 340;
   gridHeight = 300;
 
   numArrowChannels = 5;
   arrowChannelWidth = 10;
   arrowWidth = 6;
 
-  siteMarginHoriz = 75;
+  siteMarginHoriz = 70;
   programMarginHoriz = 5;
   functionMarginHoriz = 5;
 
-  siteMarginTop = 75;
-  programMarginTop = 1.5 * labelsLineHeight;
-  functionMarginTop = 1.5 * labelsLineHeight;
+  siteMarginTop = 70;
+  programMarginTop = 1.5 * titleLineHeight;
+  functionMarginTop = 1.5 * titleLineHeight;
 
-  siteMarginBottom = 75;
+  siteMarginBottom = 70;
   programMarginBottom = 5;
   functionMarginBottom = 5;
 
