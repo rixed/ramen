@@ -533,6 +533,11 @@ rmadmin/rmadmin: \
 		rmadmin/Makefile
 	@echo 'Generating RMAdmin $@'
 	$(MAKE) -C rmadmin
+	@if ! test -e $@ && test -e rmadmin/rmadmin.app ; then \
+	  echo '#!/bin/sh' > $@ ;\
+	  echo 'exec ./rmadmin/rmadmin.app/Contents/MacOS/rmadmin' >> $@ ;\
+	  chmod a+x $@ ;\
+	fi
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
