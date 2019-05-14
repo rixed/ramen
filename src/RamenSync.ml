@@ -22,7 +22,9 @@ struct
   type t =
     | Nobody (* For DevNull *)
     | SingleUser of string (* Only this user *)
-    | Ramen (* Internal use by Ramen services *)
+    (* Used by Ramen services (Note: different from internal user, which is
+     * not authenticated) *)
+    | Ramen
     | Admin (* Some human which job is to break things *)
     | UnrestrictedUser (* Users who can see whatever lambda users can not *)
     | Users (* Lambda users *)

@@ -25,23 +25,23 @@ let read_array_of_values tuple_typ =
         RamenTuple.print_typ ser_tuple_typ ;
     let tuple = Array.make tuple_len VNull in
     List.fold_lefti (fun (offs, b) i typ ->
-        let value, offs', b' =
-          if typ.RamenTuple.typ.nullable &&
-             not (get_bit tx start_offs b)
-          then (
-            None, offs, b+1
-          ) else (
-            let value = RingBufLib.read_value tx offs typ.typ.structure in
-            if verbose_serialization then
-              !logger.debug "Importing a single value for %a at offset %d: %a"
-                RamenTuple.print_field_typ typ
-                offs T.print value ;
-            let offs' = offs + RingBufLib.sersize_of_value value in
-            Some value, offs', if typ.typ.nullable then b+1 else b
-          ) in
-        Option.may (Array.set tuple i) value ;
-        offs', b'
-      ) (start_offs + nullmask_size, 0) ser_tuple_typ |> ignore ;
+      let value, offs', b' =
+        if typ.RamenTuple.typ.nullable &&
+           not (get_bit tx start_offs b)
+        then (
+          None, offs, b+1
+        ) else (
+          let value = RingBufLib.read_value tx offs typ.typ.structure in
+          if verbose_serialization then
+            !logger.debug "Importing a single value for %a at offset %d: %a"
+              RamenTuple.print_field_typ typ
+              offs T.print value ;
+          let offs' = offs + RingBufLib.sersize_of_value value in
+          Some value, offs', if typ.typ.nullable then b+1 else b
+        ) in
+      Option.may (Array.set tuple i) value ;
+      offs', b'
+    ) (start_offs + nullmask_size, 0) ser_tuple_typ |> ignore ;
     tuple
 
 let read_tuple unserialize tx =

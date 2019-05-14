@@ -129,17 +129,14 @@ struct
         failwith
 
   let set t u k v =
-    !logger.debug "Setting config key %a to value %a"
-      Key.print k
-      Value.print v ;
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
     | prev ->
-        if Value.equal prev.v v then (
-          !logger.debug "Ignoring setting the same value for key %a"
+        if not (Value.equal prev.v v) then (
+          !logger.debug "Setting config key %a to value %a"
             Key.print k
-        ) else (
+            Value.print v ;
           (* TODO: Think about making locking mandatory *)
           check_can_update k prev u ;
           let v = do_cbs t.on_sets t k v in
