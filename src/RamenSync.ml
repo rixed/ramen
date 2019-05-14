@@ -415,16 +415,3 @@ struct
     ignore prev ;
     Marshal.from_string b 0
 end
-
-(* TODO:
- * - each time a key is created/modified/locked/unlocked/deleted,
- *   call a C++ function depending on the key, with proper C++
- *   values as arguments, that will, for now, just print something.
- * - make the client module above authenticate and also report to the
- *   C++ the answer to the sync.
- * - develop the Qt widgets that start by displaying a "waiting..."
- *   message and then, once the minimal required keys have been set
- *   (ie slot called) turn into an actual edition/visualisation widget
- *   adapted to the keys watched.
- * - start with the archive storage user config edition widget.
- *)
