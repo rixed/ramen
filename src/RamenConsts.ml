@@ -352,6 +352,13 @@ struct
   let start = "When these statistics have been collected (wall clock time)"
 end
 
+module ServiceNames =
+struct
+  let httpd = N.service "httpd"
+  let tunneld = N.service "tunneld"
+  let confserver = N.service "confserver"
+end
+
 module Default =
 struct
   (* Where to store all of daemons+workers state and logs: *)

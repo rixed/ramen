@@ -1321,12 +1321,14 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
           if not continue then (
             if !stop_since = 0. then stop_since := now ;
             if not (Atomic.Set.is_empty sons) then (
-              !logger.debug "Killing %d %s servers..."
-                (Atomic.Set.cardinal sons) service_name ;
+              !logger.debug "Killing %d %a servers..."
+                (Atomic.Set.cardinal sons)
+                N.service_print service_name ;
               Atomic.Set.iter sons (fun (pid, _) ->
                 !logger.info "Killing %d" pid ;
                 let what =
-                  Printf.sprintf "stopping %s servers" service_name in
+                  Printf.sprintf2 "stopping %a servers"
+                    N.service_print service_name in
                 let signal =
                   let open Sys in
                   if now -. !stop_since > 3. then sigkill else sigterm in
@@ -1345,9 +1347,13 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                   true
               | _, status ->
                   let dt = now -. start in
-                  (if status = WEXITED 0 then !logger.info else !logger.error)
-                    "%s server %d %s after %fs"
-                      service_name pid (string_of_process_status status) dt ;
+                  (if status = WEXITED 0 then !logger.info
+                   else !logger.error)
+                    "%a server %d %s after %fs"
+                      N.service_print service_name
+                      pid
+                      (string_of_process_status status)
+                      dt ;
                   false) ;
           sleep 1) ()
       done
@@ -1362,7 +1368,8 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
       while while_ () do
         match my_accept ~while_ sock with
         | exception Exit ->
-            !logger.debug "%s stops accepting connections." service_name
+            !logger.debug "%a stops accepting connections."
+              N.service_print service_name
         | s, _caller ->
             (* Before forking, advance the PRNG so that all children do not
              * re-init their own PRNG with the same number: *)
@@ -1370,7 +1377,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
             flush_all () ;
             (match fork () with
             | 0 ->
-                let what = "forked "^ service_name ^" server" in
+                let what = "forked "^ (service_name :> string) ^" server" in
                 (try
                   (* Server process must not escape this scope or it would
                    * try to use sock again! *)

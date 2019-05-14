@@ -297,7 +297,7 @@ let notify =
 
 let tunneld_port =
   let i = Arg.info ~doc:CliInfo.tunneld_port [ "p"; "port" ] in
-  Arg.(value (opt port Default.tunneld_port i))
+  Arg.(value (opt (some port) None i))
 
 let tunneld =
   Term.(
@@ -315,7 +315,7 @@ let tunneld =
 
 let confserver_port =
   let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "port" ] in
-  Arg.(value (opt port Default.confserver_port i))
+  Arg.(value (opt (some port) None i))
 
 let confserver =
   Term.(

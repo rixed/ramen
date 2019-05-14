@@ -14,6 +14,7 @@ module T = RamenTypes
 module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
+module Services = RamenServices
 
 let () =
   Printexc.register_printer (function
@@ -169,8 +170,27 @@ let notify conf parameters notif_name () =
  * on this one.
  *)
 
-let tunneld conf daemonize to_stdout to_syslog port () =
-  start_daemon conf daemonize to_stdout to_syslog (N.path "tunneld") ;
+let resolve_port conf port_opt def service_name =
+  Option.default_delayed (fun () ->
+    match Services.resolve conf conf.C.site service_name with
+    | exception Not_found ->
+        !logger.warning
+          "No port given and cannot resolve service %a on site %a, will
+           use default %d"
+          N.service_print service_name
+          N.site_print conf.C.site
+          def ;
+        def
+    | se ->
+        se.Services.port
+  ) port_opt
+
+let tunneld conf daemonize to_stdout to_syslog port_opt () =
+  let service_name = ServiceNames.tunneld in
+  let port =
+    resolve_port conf port_opt Default.tunneld_port service_name in
+  start_daemon conf daemonize to_stdout to_syslog
+               (N.path (service_name :> string)) ;
   RamenCopySrv.copy_server conf port ;
   Option.may exit !RamenProcesses.quit
 
@@ -181,8 +201,12 @@ let tunneld conf daemonize to_stdout to_syslog port () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf daemonize to_stdout to_syslog port () =
-  start_daemon conf daemonize to_stdout to_syslog (N.path "confserver") ;
+let confserver conf daemonize to_stdout to_syslog port_opt () =
+  let service_name = ServiceNames.confserver in
+  let port =
+    resolve_port conf port_opt Default.confserver_port service_name in
+  start_daemon conf daemonize to_stdout to_syslog
+               (N.path (service_name :> string)) ;
   RamenSyncService.start conf port ;
   Option.may exit !RamenProcesses.quit
 

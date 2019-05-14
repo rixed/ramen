@@ -703,7 +703,7 @@ let build_must_run conf =
           (* Then parent will be used as well, no need to check *)
           Set.iter (fun (ps, pp, pf) ->
             if ps = conf.C.site then
-              let service = N.service "tunneld" in
+              let service = ServiceNames.tunneld in
               match Services.resolve conf site service with
               | exception Not_found ->
                   !logger.error "No service matching %a:%a"

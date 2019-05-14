@@ -5,7 +5,7 @@
  * This is used by ramen services but not by workers, which are passed all
  * the configuration they need via envvars.
  *
- * This implementation just read a static file.
+ * This implementation just reads a static file.
  * TODO: Alternative implementations. *)
 open Batteries
 open RamenHelpers
