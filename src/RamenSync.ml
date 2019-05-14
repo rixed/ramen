@@ -176,6 +176,7 @@ struct
     | DevNull (* Special, nobody should be allowed to read it *)
     | PerSite of N.site * per_site_key
     | Storage of storage_key
+    | Tail of N.site * N.fq * tail_key
     | Error of string option (* the user name *)
     (* TODO: alerting *)
   and per_site_key =
@@ -194,7 +195,8 @@ struct
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
-    | Tailer of string
+  and tail_key =
+    | Subscriber of string
     | LastTuple of int (* increasing sequence just for ordering *)
   and storage_key =
     | TotalSize
@@ -217,9 +219,7 @@ struct
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
       | Parents i -> "parents/"^ string_of_int i
-      | ArchivedTimes -> "archived_times"
-      | Tailer uid -> "tail/users/"^ uid
-      | LastTuple i -> "tail/lasts/"^ string_of_int i)
+      | ArchivedTimes -> "archived_times")
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -243,6 +243,12 @@ struct
         Printf.fprintf fmt "retention_override/%a"
           Globs.print glob
 
+  let print_tail_key fmt = function
+    | Subscriber uid ->
+        Printf.fprintf fmt "users/%s" uid
+    | LastTuple i ->
+        Printf.fprintf fmt "lasts/%d" i
+
   let print fmt = function
     | DevNull ->
         String.print fmt "devnull"
@@ -253,6 +259,11 @@ struct
     | Storage storage_key ->
         Printf.fprintf fmt "storage/%a"
           print_storage_key storage_key
+    | Tail (site, fq, tail_key) ->
+        Printf.fprintf fmt "tail/%a/%a/%a"
+          N.site_print site
+          N.fq_print fq
+          print_tail_key tail_key
     | Error None ->
         Printf.fprintf fmt "errors/global"
     | Error (Some s) ->
@@ -307,26 +318,18 @@ struct
                           | "startup_time" -> StartupTime
                           | "archived_times" -> ArchivedTimes)
                       with Match_failure _ ->
-                        (try
-                          match rcut ~n:3 fq, s with
-                          | [ fq ; "tail" ; "users" ], s2 ->
-                              PerFunction (N.fq fq, Tailer s2)
-                          | [ fq ; "tail" ; "lasts" ], s2 ->
-                              let i = int_of_string s2 in
-                              PerFunction (N.fq fq, LastTuple i)
-                        with Match_failure _ | Failure _ ->
-                          (match rcut fq, s with
-                          | [ fq ; s1 ], s2 ->
-                              PerFunction (N.fq fq,
-                                match s1, s2 with
-                                | "event_time", "min" -> MinETime
-                                | "event_time", "max" -> MaxETime
-                                | "total", "tuples" -> TotTuples
-                                | "total", "bytes" -> TotBytes
-                                | "total", "cpu" -> TotCpu
-                                | "max", "ram" -> MaxRam
-                                | "parents", i ->
-                                    Parents (int_of_string i))))))
+                        (match rcut fq, s with
+                        | [ fq ; s1 ], s2 ->
+                            PerFunction (N.fq fq,
+                              match s1, s2 with
+                              | "event_time", "min" -> MinETime
+                              | "event_time", "max" -> MaxETime
+                              | "total", "tuples" -> TotTuples
+                              | "total", "bytes" -> TotBytes
+                              | "total", "cpu" -> TotCpu
+                              | "max", "ram" -> MaxRam
+                              | "parents", i ->
+                                  Parents (int_of_string i)))))
         | "storage", s ->
             Storage (
               match cut s with
@@ -334,6 +337,15 @@ struct
               | "recall_cost", "" -> RecallCost
               | "retention_override", s ->
                   RetentionsOverride (Globs.compile s))
+        | "tail", s ->
+            (match cut s with
+            | site, fq_s ->
+                (match rcut ~n:3 fq_s with
+                | [ fq ; "users" ; s ] ->
+                    Tail (N.site site, N.fq fq, Subscriber s)
+                | [ fq ; "lasts" ; s ] ->
+                    let i = int_of_string s in
+                    Tail (N.site site, N.fq fq, LastTuple i)))
         | "errors", s ->
             Error (
               match cut s with

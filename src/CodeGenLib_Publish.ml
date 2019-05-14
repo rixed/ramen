@@ -62,9 +62,9 @@ let ignore_publish _sersize _serialize _skipped _tuple = ()
 let start_zmq_client url creds (site : N.site) (fq : N.fq) k =
   if url = "" then k ignore_publish else
   let topic_sub =
-    (site :> string) ^"/"^ (fq :> string) ^"/tail/users/*"
+    "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =
-    RamenSync.Key.(PerSite (site, PerFunction (fq, LastTuple seq))) in
+    RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
   let on_program stage status =
     !logger.info "Conf.Server: %a: %a"
       ZMQClient.Stage.print stage
