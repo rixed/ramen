@@ -80,3 +80,4 @@ rmadmin/Makefile
 .DS_Store
 .qmake.stash
 qttest
+rmadmin/rmadmin.pro

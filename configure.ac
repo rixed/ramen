@@ -41,5 +41,6 @@ AC_CONFIG_FILES([
   debian.control
   docker/Dockerfile-builder
   docker/Dockerfile
+  rmadmin/rmadmin.pro
 ])
 AC_OUTPUT
