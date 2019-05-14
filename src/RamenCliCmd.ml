@@ -199,7 +199,7 @@ let resolve_port conf port_opt def service_name =
     match Services.resolve conf conf.C.site service_name with
     | exception Not_found ->
         !logger.warning
-          "No port given and cannot resolve service %a on site %a, will
+          "No port given and cannot resolve service %a on site %a, will \
            use default %d"
           N.service_print service_name
           N.site_print conf.C.site
