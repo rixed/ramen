@@ -9,9 +9,11 @@ open RamenNullable
 module T = RamenTypes
 module Files = RamenFiles
 module Channel = RamenChannel
+module Conf = CodeGenLib_Conf
 module IO = CodeGenLib_IO
 module Casing = CodeGenLib_Casing
 module State = CodeGenLib_State
+module Publish = CodeGenLib_Publish
 
 (* Health and Stats
  *
@@ -123,7 +125,6 @@ let stats_perf_commit_others =
 
 let stats_perf_flush_others =
   Perf.make Metric.Names.perf_flush_others Metric.Docs.perf_flush_others
-
 
 let measure_full_out =
   let sum = ref 0 and count = ref 0 in
@@ -474,6 +475,9 @@ let outputer_of
   (* When did we update [stats_avg_full_out_bytes] statistics about the full
    * size of output? *)
   let last_full_out_measurement = ref 0. in
+  (* When did we publish the last tuple in our conf topic? *)
+  let last_publish = ref 0. in
+  let num_skipped_between_publish = ref 0 in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -568,6 +572,15 @@ let outputer_of
           then (
             measure_full_out (sersize_of_tuple all_fields tuple) ;
             last_full_out_measurement := !IO.now) ;
+          (* If we have subscribers, send them something (rate limited): *)
+          if !IO.now -. !last_publish >
+             min_delay_between_publish
+          then (
+            Publish.may_publish !num_skipped_between_publish tuple ;
+            last_publish := !IO.now ;
+            num_skipped_between_publish := 0
+          ) else
+            incr num_skipped_between_publish ;
           (* Update factors possible values: *)
           let start, stop = start_stop |? (0., end_of_times) in
           factors_of_tuple tuple |>
@@ -611,14 +624,8 @@ let outputer_of
              start_stop head tuple_opt
     ) !outputers
 
-type worker_conf =
-  { log_level : log_level ;
-    state_file : N.path ;
-    is_test : bool ;
-    site : N.site }
-
 let info_or_test conf =
-  if conf.is_test then !logger.debug else !logger.info
+  if conf.Conf.is_test then !logger.debug else !logger.info
 
 let worker_start (site : N.site) (worker_name : N.fq) is_top_half
                  get_binocle_tuple k =
@@ -655,7 +662,7 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   (* Then, the sooner a new worker appears in the stats the better: *)
   if report_period > 0. then
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
-  let conf = { log_level ; state_file ; is_test ; site } in
+  let conf = Conf.make log_level state_file is_test site in
   info_or_test conf
     "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
@@ -681,6 +688,10 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   let last_report () =
     if report_period > 0. then
       ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
+  (* Init config sync client if a url was given: *)
+  let conf_url = getenv ~def:"" "sync_url" in
+  let creds = getenv ~def:"worker" "sync_creds" in
+  let k = Publish.start_zmq_client conf_url creds site worker_name k in
   match k conf with
   | exception e ->
       print_exception e ;

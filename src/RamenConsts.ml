@@ -35,6 +35,8 @@ struct
     let event_time = "event_time"
     let avg_full_out_bytes = "avg_full_out_bytes"
     let relocated_groups = "relocated_groups"
+    let num_subscribers = "subscribers"
+    let num_rate_limited_unpublished = "rate_limited_unpublished"
     let perf_per_tuple = "perf_per_tuple"
     let perf_where_fast = "perf_where_fast"
     let perf_find_group = "perf_find_group"
@@ -120,6 +122,9 @@ struct
     let avg_full_out_bytes = "Average size of a fully-fledged out tuple."
     let relocated_groups =
       "How many times a group was moved in the commit precondition heap."
+    let num_subscribers = "Number of tail-subscribers"
+    let num_rate_limited_unpublished =
+      "Number of tuples that were unpublished due to rate limit"
     let perf_per_tuple = "Average time spent processing an incoming tuples."
     let perf_where_fast =
       "Average time spent executing the (fast) WHERE clause for each \
@@ -473,6 +478,10 @@ let end_of_times = 5017590000.
  * produced output size. So do not do this measurement if one has been done
  * that recently: *)
 let min_delay_between_full_out_measurement = 3.
+
+(* Minimum duration between the publication of two tuples by a worker to the
+ * conf-server: *)
+let min_delay_between_publish = 1.
 
 (* Max age of the archivist stat file before it's rebuilt: *)
 let max_archivist_stat_file_age = 3. *. 60.

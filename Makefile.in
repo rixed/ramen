@@ -195,6 +195,7 @@ RAMEN_SOURCES = \
 	src/RamenSyncServer.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenSyncService.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
@@ -240,9 +241,17 @@ CODEGENLIB_SOURCES = \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncClient.ml \
+	src/RamenTimeRange.ml \
+	src/RamenRetention.ml \
+	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
+	src/CodeGenLib_Conf.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \
+	src/CodeGenLib_Publish.ml \
 	src/RamenHeap.ml \
 	src/RamenSzHeap.ml \
 	src/RamenSortBuf.ml \

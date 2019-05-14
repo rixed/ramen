@@ -13,6 +13,7 @@ let incdirs = [
   N.path "ramen" ;
   N.path "stdint" ;
   N.path "syslog" ;
+  N.path "zmq" ;
   N.path "ocaml/threads" ;
 ]
 let objfiles = [
@@ -30,5 +31,6 @@ let objfiles = [
   N.path "lacaml/lacaml.cmxa" ;
   N.path "ppp/PPP-unix.cmxa" ;
   N.path "syslog/syslog.cmxa" ;
+  N.path "zmq/zmq.cmxa" ;
   N.path "ramen/codegen.cmxa" ;
 ]
