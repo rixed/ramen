@@ -9,6 +9,9 @@ open RamenNullable
 module T = RamenTypes
 module Files = RamenFiles
 module Channel = RamenChannel
+module IO = CodeGenLib_IO
+module Casing = CodeGenLib_Casing
+module State = CodeGenLib_State
 
 (* Health and Stats
  *
@@ -366,7 +369,7 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
     ~on:(function
       | RingBuf.NoMoreRoom ->
         !logger.debug "NoMoreRoom in %a" N.path_print out_rb.fname ;
-        (* Can't use CodeGenLib_IO.now if we are stuck in output: *)
+        (* Can't use IO.now if we are stuck in output: *)
         let now = Unix.gettimeofday () in
         (* Also check from time to time that we are still supposed to
          * write in there (we check right after the first error to
@@ -394,11 +397,11 @@ let rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
             !logger.debug "Drop a tuple for %a unknown channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;
       | t ->
-          if not (RamenOutRef.timed_out !CodeGenLib_IO.now t) then (
-            if out_rb.quarantine_until < !CodeGenLib_IO.now then (
+          if not (RamenOutRef.timed_out !IO.now t) then (
+            if out_rb.quarantine_until < !IO.now then (
               output out_rb.rb out_rb.tup_serializer out_rb.tup_sizer
                      start_stop head tuple_opt ;
-              out_rb.last_successful_output <- !CodeGenLib_IO.now ;
+              out_rb.last_successful_output <- !IO.now ;
               if out_rb.quarantine_delay > 0. then (
                 !logger.info "Resuming output to %a"
                   N.path_print out_rb.fname ;
@@ -468,13 +471,15 @@ let outputer_of
   let max_num_fields = 100 (* FIXME *) in
   let factors_values = Array.make max_num_fields possible_values_empty in
   let factors_dir = N.path (getenv ~def:"/tmp/factors" "factors_dir") in
+  (* When did we update [stats_avg_full_out_bytes] statistics about the full
+   * size of output? *)
   let last_full_out_measurement = ref 0. in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
       (* TODO: make this min_delay_restats a parameter: *)
-      if !CodeGenLib_IO.now > !last_stat +. Default.min_delay_restats then (
-        last_stat := !CodeGenLib_IO.now ;
+      if !IO.now > !last_stat +. Default.min_delay_restats then (
+        last_stat := !IO.now ;
         let must_read =
           let t = Files.mtime_def 0. rb_ref_out_fname in
           if t > !last_mtime then (
@@ -485,11 +490,11 @@ let outputer_of
             true
           (* We have to reread the outref from time to time even if not
            * changed because of timeout expiry. *)
-          ) else !CodeGenLib_IO.now > !last_read +. 10.
+          ) else !IO.now > !last_read +. 10.
         in
         if must_read then (
           !logger.debug "Rereading out-ref" ;
-          last_read := !CodeGenLib_IO.now ;
+          last_read := !IO.now ;
           Some (RamenOutRef.read rb_ref_out_fname)
         ) else None
       ) else None
@@ -557,12 +562,12 @@ let outputer_of
         if dest_channel = Channel.live then (
           (* Update stats *)
           IntCounter.add stats_out_tuple_count 1 ;
-          FloatGauge.set stats_last_out !CodeGenLib_IO.now ;
-          if !CodeGenLib_IO.now -. !last_full_out_measurement >
-               min_delay_between_full_out_measurement
+          FloatGauge.set stats_last_out !IO.now ;
+          if !IO.now -. !last_full_out_measurement >
+             min_delay_between_full_out_measurement
           then (
             measure_full_out (sersize_of_tuple all_fields tuple) ;
-            last_full_out_measurement := !CodeGenLib_IO.now) ;
+            last_full_out_measurement := !IO.now) ;
           (* Update factors possible values: *)
           let start, stop = start_stop |? (0., end_of_times) in
           factors_of_tuple tuple |>
@@ -721,7 +726,7 @@ let read_csv_file
         serialize_tuple orc_make_handler orc_write orc_close
         (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
-    CodeGenLib_IO.read_glob_lines
+    IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
       | exception e ->
@@ -755,7 +760,7 @@ let listen_on
         (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
-      CodeGenLib_IO.on_each_input_pre () ;
+      IO.on_each_input_pre () ;
       IntCounter.add stats_in_tuple_count 1 ;
       outputer (Some tup) ;
       ignore (Gc.major_slice 0)))
@@ -834,7 +839,7 @@ let read_well_known
                 let worker, time = worker_time_of_tuple tuple in
                 (* Filter by time and worker *)
                 if time >= start && match_from worker then (
-                  CodeGenLib_IO.on_each_input_pre () ;
+                  IO.on_each_input_pre () ;
                   IntCounter.add stats_in_tuple_count 1 ;
                   outputer (RingBufLib.DataTuple chan) (Some tuple))
             | _ ->
@@ -887,7 +892,7 @@ let notify rb (site : N.site) (worker : N.fq) event_time (name, parameters) =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
   RingBufLib.write_notif ~delay_rec:sleep_out rb
-    ((site :> string), (worker :> string), !CodeGenLib_IO.now, event_time,
+    ((site :> string), (worker :> string), !IO.now, event_time,
      name, firing, certainty, parameters)
 
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
@@ -1234,7 +1239,7 @@ let aggregate
       in
       generate_tuples do_out in
     let with_state =
-      let open CodeGenLib_State.Persistent in
+      let open State.Persistent in
       let init_state () =
         { last_out_tuple = Null ;
           global_state = global_state () ;
@@ -1525,8 +1530,8 @@ let aggregate
         !logger.debug "Read a tuple from channel %a"
           Channel.print channel_id ;
       with_state channel_id (fun s ->
-        (* Set CodeGenLib_IO.now: *)
-        CodeGenLib_IO.on_each_input_pre () ;
+        (* Set IO.now: *)
+        IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
         if channel_id = Channel.live then (
           IntCounter.add stats_in_tuple_count 1 ;
@@ -1610,8 +1615,8 @@ let top_half
       if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
           Channel.print channel_id ;
-      (* Set CodeGenLib_IO.now: *)
-      CodeGenLib_IO.on_each_input_pre () ;
+      (* Set IO.now: *)
+      IO.on_each_input_pre () ;
       (* Update per in-tuple stats *)
       if channel_id = Channel.live then (
         IntCounter.add stats_in_tuple_count 1 ;
@@ -1732,7 +1737,7 @@ let replay
       outputer (RingBufLib.EndOfReplay (channel_id, replayer_id)) None
     ) channel_ids in
   let output_tuple tuple =
-    CodeGenLib_IO.on_each_input_pre () ;
+    IO.on_each_input_pre () ;
     incr num_replayed_tuples ;
     (* As tuples are not ordered in the archive file we have
      * to read it all: *)
@@ -1805,8 +1810,8 @@ let convert
         init_logger ~logdir log_level
       )) ;
   !logger.debug "Going to convert from %s to %s"
-    (CodeGenLib_Casing.string_of_format in_fmt)
-    (CodeGenLib_Casing.string_of_format out_fmt) ;
+    (Casing.string_of_format in_fmt)
+    (Casing.string_of_format out_fmt) ;
   let open Unix in
   if in_fname = out_fname then
     failwith "Input and output files must be distinct" ;
@@ -1816,7 +1821,7 @@ let convert
   in
   let reader =
     match in_fmt with
-    | CodeGenLib_Casing.CSV ->
+    | Casing.CSV ->
         let fd = openfile (in_fname :> string) [O_RDONLY] 0o644 in
         in_fd := Some fd ;
         (fun k ->
@@ -1829,23 +1834,23 @@ let convert
                 line (Printexc.to_string e)
             | tuple ->
               k tuple))
-    | CodeGenLib_Casing.ORC ->
+    | Casing.ORC ->
         (fun f ->
           let num_lines, num_errs = orc_read in_fname 1000 f in
           if num_errs <> 0 then
             !logger.error "%d/%d errors" num_errs num_lines)
-    | CodeGenLib_Casing.RB ->
+    | Casing.RB ->
         let rb = RingBuf.load in_fname in
         in_rb := Some rb ;
         read_whole_archive read_tuple rb
   and writer =
     match out_fmt with
-    | CodeGenLib_Casing.CSV ->
+    | Casing.CSV ->
         let flags = [O_CREAT;O_EXCL;O_WRONLY] in
         let fd = openfile (out_fname :> string) flags 0o644 in
         out_fd := Some fd ;
         csv_write fd
-    | CodeGenLib_Casing.ORC ->
+    | Casing.ORC ->
         let with_index = false (* CLI parameters for those *)
         and batch_size = Default.orc_rows_per_batch
         and num_batches = Default.orc_batches_per_file in
@@ -1856,7 +1861,7 @@ let convert
           let start_stop = time_of_tuple tuple in
           let start, stop = start_stop |? (0., 0.) in
           orc_write hdr tuple start stop)
-    | CodeGenLib_Casing.RB ->
+    | Casing.RB ->
         RingBuf.create ~wrap:false out_fname ;
         let rb = RingBuf.load out_fname in
         out_rb := Some rb ;
