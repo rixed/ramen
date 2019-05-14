@@ -115,24 +115,31 @@ struct
     !logger.debug "Update per-site configuration with graph %a"
       FuncGraph.print graph ;
     (* First, grab all existing keys, to know what to delete later: *)
-    let keys =
-      Server.H.keys srv.Server.h //
-      (function PerSite _ -> true | _ -> false) in
+    let key_used =
+      Server.H.filter_map (fun k hv ->
+        (* Skip over locked keys for now (TODO: timeout every locks!) *)
+        if hv.Server.l <> None && hv.Server.l <> Some User.internal then
+          None
+        else
+          match k with
+          | PerSite _ -> Some false
+          | _ -> None
+      ) srv.Server.h in
     (* For every key the process is the same:
      * - If it's not already there, add it unlocked;
      * - If it is bound to the same value, pass;
      * - If it is bound to another value, and unlocked, set the value;
-     * - If it is bound to another value, and is locked, that's a bug.  *)
+     * - If it is bound to another value, and is locked, that's a bug. *)
     let upd k v ~r ~w ~s =
       match Server.H.find srv.Server.h k with
       | exception Not_found ->
           Server.create_unlocked srv k v ~r ~w ~s
-      | hv when Value.equal hv.Server.v v ->
-          ()
       | Server.{ l = Some u' } when not (User.equal u' u) ->
           !logger.error "Ignoring key %a that is locked by user %a"
             Key.print k User.print u'
-      | hv ->
+      | _ ->
+          Server.H.replace key_used k true ;
+          (* Will deal with equal values itself: *)
           Server.set srv u k v
     in
     Hashtbl.iter (fun site per_site_h ->
@@ -186,7 +193,11 @@ struct
                 (Value.TimeRange stats.FS.archives)
                 ~r:Capa.anybody ~w:Capa.nobody ~s:true) ;
       ) per_site_h
-    ) graph.FuncGraph.h
+    ) graph.FuncGraph.h ;
+    (* Now delete unused keys: *)
+    Server.H.iter (fun k used ->
+      if not used then Server.del srv u k
+    ) key_used
 
 
 end
