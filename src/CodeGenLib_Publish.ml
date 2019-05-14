@@ -24,9 +24,22 @@ let stats_num_rate_limited_unpublished =
   IntCounter.make Metric.Names.num_rate_limited_unpublished
     Metric.Docs.num_rate_limited_unpublished
 
-let on_new _clt _k _v _uid = ()
+let on_new _clt k _v _uid =
+  !logger.info "New subscriber: %a" ZMQClient.Key.print k ;
+  (* TODO: upgrade binocle
+  IntGauge.inc stats_num_subscribers *)
+  let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
+  IntGauge.set stats_num_subscribers (c + 1)
+
 let on_set _clt _k _v = ()
-let on_del _clt _k = ()
+
+let on_del _clt k =
+  !logger.info "Leaving subscriber: %a" ZMQClient.Key.print k ;
+  (* TODO: upgrade binocle
+  IntGauge.dec stats_num_subscribers *)
+  let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
+  IntGauge.set stats_num_subscribers (c - 1)
+
 let on_lock _clt _k _uid = ()
 let on_unlock _clt _k = ()
 
