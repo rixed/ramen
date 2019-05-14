@@ -1,6 +1,7 @@
 (* The bits that are required on workers. See RamenFieldMaskLib for the real
  * thing. *)
 open Batteries
+open RamenConsts
 
 type mask =
   | Skip (* Skip this field and any subfields *)
@@ -60,5 +61,8 @@ let fieldmask_ppp_ocaml =
   "X_" (of_string "X_" |> to_string)
   "X(_XX)" (of_string "X(_XX)" |> to_string)
  *)
+
+(* FIXME: when the output type is a single value, just [| Copy |]: *)
+let all_fields = Array.make num_all_fields Copy
 
 (*$>*)

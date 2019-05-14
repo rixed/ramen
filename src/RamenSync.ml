@@ -92,8 +92,9 @@ struct
     | Anonymous zmq_id ->
         let name, capas =
           match creds with
-          | "tintin" -> "tintin", []
-          | "admin" -> "admin", Capa.[ Admin ]
+          | "tintin" -> creds, []
+          | "admin" -> creds, Capa.[ Admin ]
+          | c when String.starts_with c "worker " -> creds, Capa.[ Ramen ]
           | _ -> failwith "Bad credentials" in
         let capas =
           Capa.Anybody :: Capa.SingleUser name :: capas |>
@@ -191,6 +192,8 @@ struct
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
+    | Tailer of string
+    | LastTuple of int (* increasing sequence just for ordering *)
   and storage_key =
     | TotalSize
     | RecallCost
@@ -212,7 +215,9 @@ struct
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
       | Parents i -> "parents/"^ string_of_int i
-      | ArchivedTimes -> "archived_times")
+      | ArchivedTimes -> "archived_times"
+      | Tailer uid -> "tail/users/"^ uid
+      | LastTuple i -> "tail/lasts/"^ string_of_int i)
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -267,9 +272,13 @@ struct
     let cut s =
       try String.split ~by:"/" s
       with Not_found -> s, "" in
-    let rcut s =
-      try String.rsplit ~by:"/" s
-      with Not_found -> "", s in
+    let rec rcut ?(acc=[]) ?(n=2) s =
+      if n <= 1 then s :: acc else
+      let acc, s =
+        match String.rsplit ~by:"/" s with
+        | exception Not_found -> s :: acc, ""
+        | a, b -> b :: acc, a in
+      rcut ~acc ~n:(n - 1) s in
     fun s ->
       try
         match cut s with
@@ -288,7 +297,7 @@ struct
                         | "port", "" -> Port))
               | "functions", s ->
                   (match rcut s with
-                  | fq, s ->
+                  | [ fq ; s ] ->
                       try
                         PerFunction (N.fq fq,
                           match s with
@@ -296,17 +305,26 @@ struct
                           | "startup_time" -> StartupTime
                           | "archived_times" -> ArchivedTimes)
                       with Match_failure _ ->
-                        (match rcut fq, s with
-                        | (fq, s1), s2 ->
-                            PerFunction (N.fq fq,
-                              match s1, s2 with
-                              | "event_time", "min" -> MinETime
-                              | "event_time", "max" -> MaxETime
-                              | "total", "tuples" -> TotTuples
-                              | "total", "bytes" -> TotBytes
-                              | "total", "cpu" -> TotCpu
-                              | "max", "ram" -> MaxRam
-                              | "parents", i -> Parents (int_of_string i)))))
+                        (try
+                          match rcut ~n:3 fq, s with
+                          | [ fq ; "tail" ; "users" ], s2 ->
+                              PerFunction (N.fq fq, Tailer s2)
+                          | [ fq ; "tail" ; "lasts" ], s2 ->
+                              let i = int_of_string s2 in
+                              PerFunction (N.fq fq, LastTuple i)
+                        with Match_failure _ | Failure _ ->
+                          (match rcut fq, s with
+                          | [ fq ; s1 ], s2 ->
+                              PerFunction (N.fq fq,
+                                match s1, s2 with
+                                | "event_time", "min" -> MinETime
+                                | "event_time", "max" -> MaxETime
+                                | "total", "tuples" -> TotTuples
+                                | "total", "bytes" -> TotBytes
+                                | "total", "cpu" -> TotCpu
+                                | "max", "ram" -> MaxRam
+                                | "parents", i ->
+                                    Parents (int_of_string i))))))
         | "storage", s ->
             Storage (
               match cut s with
@@ -319,7 +337,7 @@ struct
               match cut s with
               | "global", "" -> None
               | "users", s -> Some s)
-    with Match_failure _ ->
+    with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
       failwith
       [@@ocaml.warning "-8"]
@@ -379,6 +397,9 @@ struct
     | Worker of N.site * N.program * N.func
     | Retention of Retention.t
     | TimeRange of TimeRange.t
+    | Tuple of
+        { skipped : int (* How many tuples were skipped before this one *) ;
+          values : bytes (* serialized *) }
 
   let equal v1 v2 =
     match v1, v2 with
@@ -404,6 +425,9 @@ struct
         Retention.print fmt r
     | TimeRange r ->
         TimeRange.print fmt r
+    | Tuple { skipped ; values } ->
+        Printf.fprintf fmt "Tuple of %d bytes (after %d skipped)"
+          (Bytes.length values) skipped
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

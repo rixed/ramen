@@ -36,6 +36,8 @@ struct
     let avg_full_out_bytes = "avg_full_out_bytes"
     let relocated_groups = "relocated_groups"
     let num_subscribers = "subscribers"
+    let num_sync_msgs_in = "sync_msgs_in"
+    let num_sync_msgs_out = "sync_msgs_out"
     let num_rate_limited_unpublished = "rate_limited_unpublished"
     let perf_per_tuple = "perf_per_tuple"
     let perf_where_fast = "perf_where_fast"
@@ -123,6 +125,8 @@ struct
     let relocated_groups =
       "How many times a group was moved in the commit precondition heap."
     let num_subscribers = "Number of tail-subscribers"
+    let num_sync_msgs_in = "Number of received synchronisation messages"
+    let num_sync_msgs_out = "Number of emitted synchronisation messages"
     let num_rate_limited_unpublished =
       "Number of tuples that were unpublished due to rate limit"
     let perf_per_tuple = "Average time spent processing an incoming tuples."

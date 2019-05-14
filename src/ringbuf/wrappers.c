@@ -65,14 +65,19 @@ static value alloc_ringbuf(void)
 // passed from OCaml to C
 
 struct wrap_ringbuf_tx {
-  struct ringbuf *rb;
+  struct ringbuf *rb; // for normal TXs
+  uint8_t *bytes;     // for "bytes" TXs
   struct ringbuf_tx tx;
-  size_t alloced;  // number of bytes alloced, just to check we do not overflow
+  // Number of bytes alloced either in the RB transaction or in *bytes
+  // above; just to check we do not overflow.
+  size_t alloced;
 };
+
+static void wrtx_finalize(value);
 
 static struct custom_operations tx_ops = {
   "org.happyleptic.ramen.ringbuf_tx",
-  custom_finalize_default,
+  wrtx_finalize,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
@@ -82,11 +87,24 @@ static struct custom_operations tx_ops = {
 
 #define RingbufTx_val(v) ((struct wrap_ringbuf_tx *)Data_custom_val(v))
 
+static void wrtx_finalize(value tx)
+{
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  if (wrtx->bytes) {
+    assert(! wrtx->rb);
+    free(wrtx->bytes);
+    wrtx->bytes = NULL;
+  }
+}
+
 static value alloc_tx(void)
 {
   CAMLparam0();
   CAMLlocal1(res);
   res = caml_alloc_custom(&tx_ops, sizeof(struct wrap_ringbuf_tx), 0, 1);
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(res);
+  wrtx->rb = NULL;
+  wrtx->bytes = NULL;
   CAMLreturn(res);
 }
 
@@ -258,13 +276,19 @@ CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
 {
   CAMLparam1(tx);
   CAMLlocal1(bytes_);
-  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
-  struct ringbuf_file *rbf = wrtx->rb->rbf;
-  size_t const size = wrtx->alloced;
 
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  size_t const size = wrtx->alloced;
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc tx bytes");
-  memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
+
+  if (wrtx->rb) {
+    struct ringbuf_file *rbf = wrtx->rb->rbf;
+    memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
+  } else {
+    assert(wrtx->bytes);
+    memcpy(String_val(bytes_), wrtx->bytes + wrtx->tx.record_start, size);
+  }
 
   CAMLreturn(bytes_);
 }
@@ -334,15 +358,18 @@ CAMLprim value wrap_ringbuf_read_next(value tx)
   }
 }
 
-// Return an empty TX, unusable for anything but looking legit to the
-// compiler.
-CAMLprim value wrap_empty_tx(void)
+// Returns a TX that writes into a buffer on the heap instead of a ringbuf:
+CAMLprim value wrap_bytes_tx(value size_)
 {
-  CAMLparam0();
+  CAMLparam1(size_);
   CAMLlocal1(tx);
+  size_t size = Long_val(size_);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   memset(wrtx, 0, sizeof(*wrtx));
+  wrtx->bytes = malloc(size);
+  assert(wrtx->bytes);
+  wrtx->alloced = size;
   CAMLreturn(tx);
 }
 

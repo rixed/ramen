@@ -9,7 +9,6 @@ open RamenNullable
 module T = RamenTypes
 module Files = RamenFiles
 module Channel = RamenChannel
-module Conf = CodeGenLib_Conf
 module IO = CodeGenLib_IO
 module Casing = CodeGenLib_Casing
 module State = CodeGenLib_State
@@ -292,6 +291,16 @@ let save_possible_values prev_fname pvs =
     if not (N.is_empty prev_fname) then
       log_and_ignore_exceptions Files.safe_unlink prev_fname)
 
+(* Configuration *)
+
+type conf =
+  { log_level : log_level ;
+    state_file : N.path ;
+    is_test : bool ;
+    site : N.site }
+
+let make_conf log_level state_file is_test site =
+  { log_level ; state_file ; is_test ; site }
 
 (* Helpers *)
 
@@ -459,14 +468,11 @@ let writer_of_spec serialize_tuple sersize_of_tuple
         | _ -> ()),
       (fun () -> orc_close hdr)
 
-(* FIXME: when the output type is a single value, just [| Copy |]: *)
-let all_fields = Array.make num_all_fields RamenFieldMask.Copy
-
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close =
+      serialize_tuple orc_make_handler orc_write orc_close publish =
   let out_h = ref (Hashtbl.create 15)
   and outputers = ref [] in
   let max_num_fields = 100 (* FIXME *) in
@@ -570,13 +576,15 @@ let outputer_of
           if !IO.now -. !last_full_out_measurement >
              min_delay_between_full_out_measurement
           then (
-            measure_full_out (sersize_of_tuple all_fields tuple) ;
+            measure_full_out
+              (sersize_of_tuple RamenFieldMask.all_fields tuple) ;
             last_full_out_measurement := !IO.now) ;
           (* If we have subscribers, send them something (rate limited): *)
           if !IO.now -. !last_publish >
              min_delay_between_publish
           then (
-            Publish.may_publish !num_skipped_between_publish tuple ;
+            publish sersize_of_tuple serialize_tuple
+                    !num_skipped_between_publish tuple ;
             last_publish := !IO.now ;
             num_skipped_between_publish := 0
           ) else
@@ -625,7 +633,7 @@ let outputer_of
     ) !outputers
 
 let info_or_test conf =
-  if conf.Conf.is_test then !logger.debug else !logger.info
+  if conf.is_test then !logger.debug else !logger.info
 
 let worker_start (site : N.site) (worker_name : N.fq) is_top_half
                  get_binocle_tuple k =
@@ -662,7 +670,7 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   (* Then, the sooner a new worker appears in the stats the better: *)
   if report_period > 0. then
     ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
-  let conf = Conf.make log_level state_file is_test site in
+  let conf = make_conf log_level state_file is_test site in
   info_or_test conf
     "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
@@ -714,7 +722,7 @@ let read_csv_file
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun conf ->
+  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     (* For tests, allow to overwrite what's specified in the operation: *)
@@ -734,7 +742,7 @@ let read_csv_file
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close
+        serialize_tuple orc_make_handler orc_write orc_close publish
         (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
     IO.read_glob_lines
@@ -760,14 +768,14 @@ let listen_on
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun conf ->
+  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close
+        serialize_tuple orc_make_handler orc_write orc_close publish
         (RingBufLib.DataTuple Channel.live) in
     let while_ () = !quit = None in
     collector ~while_ (fun tup ->
@@ -814,7 +822,7 @@ let read_well_known
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun conf ->
+  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
     let bname =
       N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
     let rb_ref_out_fname =
@@ -822,7 +830,7 @@ let read_well_known
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close in
+        serialize_tuple orc_make_handler orc_write orc_close publish in
     let globs = List.map Globs.compile from in
     let match_from worker =
       from = [] ||
@@ -1086,7 +1094,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
 
 let yield_every ~while_ read_tuple every on_tup on_else =
   !logger.debug "YIELD operation"  ;
-  let tx = RingBuf.empty_tx () in
+  let tx = RingBuf.bytes_tx 0 in
   let rec loop prev_start =
     if while_ () then (
       let start =
@@ -1223,7 +1231,7 @@ let aggregate
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
-  worker_start site worker_name false get_binocle_tuple (fun conf ->
+  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
     let rb_in_fnames = getenv_list "input_ringbuf" N.path
     and rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
@@ -1233,7 +1241,7 @@ let aggregate
     let msg_outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close in
+        serialize_tuple orc_make_handler orc_write orc_close publish in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -1604,7 +1612,7 @@ let top_half
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
-  worker_start site worker_name true get_binocle_tuple (fun conf ->
+  worker_start site worker_name true get_binocle_tuple (fun _publish conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
@@ -1730,10 +1738,11 @@ let replay
   set_signals Sys.[sigusr1] Signal_ignore ;
   !logger.debug "Will replay archive from %a"
     N.path_print_quoted rb_archive ;
+  let publish = Publish.ignore_publish in
   let outputer =
     outputer_of
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close in
+      serialize_tuple orc_make_handler orc_write orc_close publish in
   let num_replayed_tuples = ref 0 in
   let while_ () = !quit = None in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
@@ -1881,10 +1890,12 @@ let convert
         (fun tuple ->
           let start_stop = time_of_tuple tuple in
           let start, stop = start_stop |? (0., 0.) in
-          let sz = head_sz + sersize_of_tuple all_fields tuple in
+          let sz = head_sz
+                 + sersize_of_tuple RamenFieldMask.all_fields tuple in
           let tx = RingBuf.enqueue_alloc rb sz in
           RingBufLib.(write_message_header tx 0 head) ;
-          let offs = serialize_tuple all_fields tx head_sz tuple in
+          let offs =
+            serialize_tuple RamenFieldMask.all_fields tx head_sz tuple in
           RingBuf.enqueue_commit tx start stop ;
           assert (offs <= sz))
   in

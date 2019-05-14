@@ -247,7 +247,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenRetention.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
-	src/CodeGenLib_Conf.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
 	src/CodeGenLib_Casing.ml \

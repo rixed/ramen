@@ -62,7 +62,11 @@ external read_raw : t -> int -> int -> bytes = "wrap_ringbuf_read_raw"
 external read_raw_tx : tx -> bytes = "wrap_ringbuf_read_raw_tx"
 external read_first : t -> tx = "wrap_ringbuf_read_first"
 external read_next : tx -> tx = "wrap_ringbuf_read_next"
-external empty_tx : unit -> tx = "wrap_empty_tx"
+(* A TX that serialize things in an internal buffer of the given size (in
+ * bytes) and which is effectively independent of any ringbuffer.
+ * Do not enqueue_alloc in there but write directly!
+ * Then use [read_raw_tx] to get the value. *)
+external bytes_tx : int -> tx = "wrap_bytes_tx"
 
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_str"
