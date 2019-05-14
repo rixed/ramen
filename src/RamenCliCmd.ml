@@ -23,7 +23,8 @@ let () =
 
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
-      forced_variants initial_export_duration site bundle_dir masters =
+      forced_variants initial_export_duration site bundle_dir masters
+      sync_url =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -39,9 +40,32 @@ let make_copts
   let forced_variants = list_of_string_opt forced_variants
   and masters =
     list_of_string_opt masters |> List.map N.site |> Set.of_list in
-  C.make_conf
-    ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
-    ~initial_export_duration ~site ~bundle_dir ~masters persist_dir
+  let conf =
+    C.make_conf
+      ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
+      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
+      persist_dir in
+  (* Find out the ZMQ URL to reach the conf server: *)
+  if conf.sync_url <> "" then conf
+  else
+    let sync_url =
+      match Services.resolve_every_site conf ServiceNames.confserver with
+      | [] ->
+          let host =
+            if Set.is_empty conf.masters then
+              "localhost"
+            else
+              (Set.min_elt conf.masters :> string) in
+          "tcp://"^ host ^":"^ string_of_int Default.confserver_port
+      | (site, se) :: _ ->
+          let url =
+            Printf.sprintf2 "tcp://%a:%d"
+              N.host_print se.Services.host
+              se.port in
+          !logger.debug "Worker will use %S to contact %a:confserver"
+            url N.site_print site ;
+          url in
+    { conf with sync_url }
 
 (*
  * `ramen supervisor`
@@ -210,8 +234,8 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
   RamenSyncService.start conf port ;
   Option.may exit !RamenProcesses.quit
 
-let confclient conf url () =
-  RamenSyncService.test_client conf url
+let confclient conf () =
+  RamenSyncService.test_client conf
 
 (*
  * `ramen compile`

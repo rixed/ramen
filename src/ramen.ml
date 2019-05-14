@@ -105,6 +105,11 @@ let copts =
     let i = Arg.info ~doc:CliInfo.master
                      ~docs ~env ["master"] in
     Arg.(value (opt_all string [] i))
+  and confserver_url =
+    let i = Arg.info ~doc:CliInfo.confserver_url
+                     [ "url" ] in
+    let def = "localhost:"^ string_of_int Default.confserver_port in
+    Arg.(value (opt string def i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -117,7 +122,8 @@ let copts =
     $ initial_export_duration
     $ site
     $ bundle_dir
-    $ masters)
+    $ masters
+    $ confserver_url)
 
 (*
  * Start the process supervisor
@@ -327,17 +333,10 @@ let confserver =
       $ confserver_port),
     info ~doc:CliInfo.confserver "confserver")
 
-let confserver_url =
-  let i = Arg.info ~doc:CliInfo.confserver_url
-                   [ "url" ] in
-  let def = "localhost:"^ string_of_int Default.confserver_port in
-  Arg.(value (opt string def i))
-
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
-      $ copts
-      $ confserver_url),
+      $ copts),
     info ~doc:CliInfo.confclient "confclient")
 
 (*

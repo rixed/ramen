@@ -3,6 +3,7 @@ open Batteries
 open RamenHelpers
 open RamenLog
 open RamenSync
+open RamenConsts
 module Archivist = RamenArchivist
 module Files = RamenFiles
 module Processes = RamenProcesses
@@ -14,6 +15,7 @@ module User = RamenSync.User
 module Capa = RamenSync.Capacity
 module C = RamenConf
 module FS = C.FuncStats
+module Services = RamenServices
 
 let u = User.internal
 
@@ -341,7 +343,7 @@ let start conf port =
  * Test client
  *)
 
-let test_client _conf url =
+let test_client conf =
   let ctx = Zmq.Context.create () in
   finally
     (fun () -> Zmq.Context.terminate ctx)
@@ -350,7 +352,7 @@ let test_client _conf url =
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          let connect_to = "tcp://"^ url in
+          let connect_to = "tcp://"^ conf.C.sync_url in
           !logger.info "Connecting to %s..." connect_to ;
           Zmq.Socket.connect zock connect_to ;
           (* 1: send a wrong message and see what happen *)

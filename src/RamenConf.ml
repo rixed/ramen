@@ -38,7 +38,8 @@ type conf =
     initial_export_duration : float ;
     site : N.site (* this site name *) ;
     masters : N.site Set.t ;
-    bundle_dir : N.path }
+    bundle_dir : N.path ;
+    sync_url : string }
 
 let make_conf
       ?(debug=false) ?(quiet=false)
@@ -47,7 +48,9 @@ let make_conf
       ?(initial_export_duration=Default.initial_export_duration)
       ?(site=N.site "") ?(test=false)
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
-      ?(masters=Set.empty) persist_dir =
+      ?(masters=Set.empty)
+      ?(sync_url="")
+      persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
@@ -55,8 +58,8 @@ let make_conf
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
-    initial_export_duration ; site ; test ; bundle_dir ; masters }
-
+    initial_export_duration ; site ; test ; bundle_dir ; masters ;
+    sync_url }
 
 (*
  * Common comprehensive representation of functions and programs

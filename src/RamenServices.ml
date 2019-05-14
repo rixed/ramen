@@ -41,6 +41,14 @@ let resolve conf site service =
   let directory = load conf in
   Hashtbl.find (Hashtbl.find directory site) service
 
+let resolve_every_site conf service =
+  let directory = load conf in
+  Hashtbl.fold (fun site h lst ->
+    match Hashtbl.find h service with
+    | exception Not_found -> lst
+    | e -> (site, e) :: lst
+  ) directory []
+
 let lookup conf site_glob service =
   if Globs.has_wildcard site_glob then
     let directory = load conf in

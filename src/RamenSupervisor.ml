@@ -476,6 +476,9 @@ let really_start conf proc =
       try Some ((n :> string) ^"="^ Sys.getenv (n :> string))
       with Not_found -> None) |>
     Enum.append more_env in
+  (* Workers must be given the address of a config-server: *)
+  let more_env =
+    Enum.append more_env (Enum.singleton ("sync_url="^ conf.C.sync_url)) in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
     [| if proc.key.part = Whole then Worker_argv0.full_worker
