@@ -2,8 +2,8 @@
 #include "FunctionItem.h"
 #include "GraphView.h"
 
-FunctionItem::FunctionItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
-  OperationsItem(treeParent, name, settings, paletteSize)
+FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
+  GraphItem(treeParent, name, settings, paletteSize)
 {
   // TODO: updateArrows should reallocate the channels:
   channel = std::rand() % settings->numArrowChannels;

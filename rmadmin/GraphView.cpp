@@ -71,25 +71,25 @@ bool GraphView::event(QEvent *event)
   return QGraphicsView::event(event);
 }
 
-void GraphView::setModel(OperationsModel const *model_)
+void GraphView::setModel(GraphModel const *model_)
 {
   assert(! model);
   model = model_;
 
   // Connect to the model signals to learn about updates (notice the race
   // condition)
-  QObject::connect(model, &OperationsModel::rowsInserted, this, &GraphView::insertRows);
+  QObject::connect(model, &GraphModel::rowsInserted, this, &GraphView::insertRows);
   // TODO: same goes for removal
 
   // Also the signals allowing us to learn about functions relationships:
-  QObject::connect(model, &OperationsModel::relationAdded, this, &GraphView::relationAdded);
-  QObject::connect(model, &OperationsModel::relationRemoved, this, &GraphView::relationRemoved);
+  QObject::connect(model, &GraphModel::relationAdded, this, &GraphView::relationAdded);
+  QObject::connect(model, &GraphModel::relationRemoved, this, &GraphView::relationRemoved);
 }
 
 void GraphView::collapse(QModelIndex const &index)
 {
-  OperationsItem *item =
-    static_cast<OperationsItem *>(index.internalPointer());
+  GraphItem *item =
+    static_cast<GraphItem *>(index.internalPointer());
 
   item->setCollapsed(true);
   updateArrows();
@@ -97,8 +97,8 @@ void GraphView::collapse(QModelIndex const &index)
 
 void GraphView::expand(QModelIndex const &index)
 {
-  OperationsItem *item =
-    static_cast<OperationsItem *>(index.internalPointer());
+  GraphItem *item =
+    static_cast<GraphItem *>(index.internalPointer());
 
   item->setCollapsed(false);
   updateArrows();
@@ -107,8 +107,8 @@ void GraphView::expand(QModelIndex const &index)
 // Used to select a graph item from the treeview:
 void GraphView::select(QModelIndex const &index)
 {
-  OperationsItem *item =
-    static_cast<OperationsItem *>(index.internalPointer());
+  GraphItem *item =
+    static_cast<GraphItem *>(index.internalPointer());
 
   // Only allow to select tree leaves:
   if (item->isCollapsed()) {
@@ -128,8 +128,8 @@ void GraphView::insertRows(const QModelIndex &parent, int first, int last)
   // Add those new items in the scene:
   for (int row = first ; row <= last; row++) {
     QModelIndex index = model->index(row, 0, parent);
-    OperationsItem *item =
-      static_cast<OperationsItem *>(index.internalPointer());
+    GraphItem *item =
+      static_cast<GraphItem *>(index.internalPointer());
     scene.addItem(item);
   }
 }
@@ -160,10 +160,10 @@ void GraphView::updateArrows()
   for (auto it : relations) {
     FunctionItem const *srcFunction =
       static_cast<FunctionItem const *>(it.first);
-    OperationsItem const *src =
-      static_cast<OperationsItem const *>(srcFunction);
-    OperationsItem const *dst =
-      static_cast<OperationsItem const *>(it.second);
+    GraphItem const *src =
+      static_cast<GraphItem const *>(srcFunction);
+    GraphItem const *dst =
+      static_cast<GraphItem const *>(it.second);
     unsigned marginSrc = 0, marginDst = 0;
     unsigned const channel = srcFunction->channel;
 
@@ -185,7 +185,7 @@ void GraphView::updateArrows()
     if (src == dst) continue;
 
     // Do we have this arrow already?
-    auto ait = arrows.find(std::pair<OperationsItem const *, OperationsItem const *>(src, dst));
+    auto ait = arrows.find(std::pair<GraphItem const *, GraphItem const *>(src, dst));
     if (ait == arrows.end()) {
       /*std::cout << "Creating Arrow from " << src->x1 << ", " << src->y1
                 << " to " << dst->x0 << ", " << dst->y0 << '\n';*/
@@ -373,7 +373,7 @@ void GraphView::selectionChanged()
   QList<QGraphicsItem *> items = scene.selectedItems();
   if (items.empty()) return;
 
-  OperationsItem *item = dynamic_cast<OperationsItem *>(items.first());
+  GraphItem *item = dynamic_cast<GraphItem *>(items.first());
   if (! item) return;
 
   emit selected(item->index(model));

@@ -3,8 +3,8 @@
 #include <QPainter>
 #include <QFontMetrics>
 #include <QPropertyAnimation>
-#include "OperationsItem.h"
-#include "OperationsModel.h"
+#include "GraphItem.h"
+#include "GraphModel.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "GraphView.h"
@@ -29,7 +29,7 @@ public:
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
+GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
   QGraphicsItem(treeParent_ ? treeParent_->subItems : treeParent_),
   border_(2),
   collapsed(true),
@@ -52,40 +52,40 @@ OperationsItem::OperationsItem(OperationsItem *treeParent_, QString const &name_
   subItems->hide();
 }
 
-OperationsItem::~OperationsItem()
+GraphItem::~GraphItem()
 {
 }
 
-bool OperationsItem::isCollapsed() const
+bool GraphItem::isCollapsed() const
 {
   return collapsed;
 }
 
-void OperationsItem::setCollapsed(bool c)
+void GraphItem::setCollapsed(bool c)
 {
   collapsed = c;
   subItems->setVisible(!c);
 }
 
-QString OperationsItem::fqName() const
+QString GraphItem::fqName() const
 {
   if (! treeParent) return name;
   return treeParent->fqName() + "/" + name;
 }
 
-QColor OperationsItem::color() const
+QColor GraphItem::color() const
 {
   QColor c = brush.color();
   c.setAlpha(collapsed ? 200 : 25);
   return c;
 }
 
-qreal OperationsItem::border() const
+qreal GraphItem::border() const
 {
   return border_;
 }
 
-void OperationsItem::setBorder(qreal b)
+void GraphItem::setBorder(qreal b)
 {
   if (b != border_) {
     border_ = b;
@@ -105,7 +105,7 @@ void OperationsItem::setBorder(qreal b)
  * item itself) inside.
  * The upper-left corner of that frame lays at (0, 0). */
 
-void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels, int y)
+void GraphItem::paintLabels(QPainter *painter, std::vector<std::pair<QString const, QString const>> const &labels, int y)
 {
   QFont boldFont = settings->labelsFont;
   boldFont.setBold(true);
@@ -131,7 +131,7 @@ void OperationsItem::paintLabels(QPainter *painter, std::vector<std::pair<QStrin
   }
 }
 
-QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QString const>> const &labels) const
+QRect GraphItem::labelsBoundingRect(std::vector<std::pair<QString const, QString const>> const &labels) const
 {
   QFont font = settings->labelsFont;
   font.setBold(true);
@@ -150,13 +150,13 @@ QRect OperationsItem::labelsBoundingRect(std::vector<std::pair<QString const, QS
   return QRect(QPoint(0, 0), QSize(totWidth, totHeight));
 }
 
-QModelIndex OperationsItem::index(OperationsModel const *model) const
+QModelIndex GraphItem::index(GraphModel const *model) const
 {
   return model->index(row, 0,
     treeParent ? treeParent->index(model) : QModelIndex());
 }
 
-QRectF OperationsItem::boundingRect() const
+QRectF GraphItem::boundingRect() const
 {
   QRectF bbox = operationRect();
   qreal b = border();
@@ -165,7 +165,7 @@ QRectF OperationsItem::boundingRect() const
 }
 
 // Every node in the graph start by displaying a set of properties:
-void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+void GraphItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
   qreal b = border();
   QBrush bru = brush;
@@ -196,7 +196,7 @@ void OperationsItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, 
   }
 }
 
-QVariant OperationsItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &v)
+QVariant GraphItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &v)
 {
   if (treeParent && change == QGraphicsItem::ItemPositionHasChanged) {
     update();

@@ -36,17 +36,17 @@ HEADERS += \
   AtomicWidget.h \
   AtomicForm.h \
   GraphAnchor.h \
-  OperationsItem.h \
+  GraphItem.h \
   FunctionItem.h \
   ProgramItem.h \
   SiteItem.h \
   GraphViewSettings.h \
-  OperationsModel.h \
-  OperationsView.h \
+  GraphModel.h \
+  GraphView.h \
   GraphArrow.h \
   layoutNode.h \
   layout.h \
-  GraphView.h \
+  OperationsView.h \
   StorageForm.h \
   RmAdminWin.h
 
@@ -61,12 +61,12 @@ SOURCES += \
   conf.cpp \
   AtomicForm.cpp \
   GraphAnchor.cpp \
-  OperationsItem.cpp \
+  GraphItem.cpp \
   FunctionItem.cpp \
   ProgramItem.cpp \
   SiteItem.cpp \
   GraphViewSettings.cpp \
-  OperationsModel.cpp \
+  GraphModel.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

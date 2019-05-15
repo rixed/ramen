@@ -3,16 +3,16 @@
 #include <QSplitter>
 #include <QRadioButton>
 #include <QTreeView>
-#include "OperationsModel.h"
 #include "GraphViewSettings.h"
 
 class NarrowTreeView;
+class GraphModel;
 
 class OperationsView : public QSplitter
 {
   Q_OBJECT
 
-  OperationsModel *model;
+  GraphModel *graphModel;
   GraphViewSettings *settings;
   NarrowTreeView *treeView;
   bool allowReset;

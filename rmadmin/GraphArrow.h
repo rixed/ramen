@@ -5,7 +5,6 @@
 #include <QRectF>
 
 class GraphViewSettings;
-class OperationsItem;
 class QPainterPath;
 
 enum Direction { Right, Left, Up, Down };

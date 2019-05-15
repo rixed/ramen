@@ -2,7 +2,7 @@
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
 #include "OperationsView.h"
-#include "OperationsModel.h"
+#include "GraphModel.h"
 #include "GraphView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
@@ -18,10 +18,10 @@ public:
 OperationsView::OperationsView(QWidget *parent) :
   QSplitter(parent)
 {
-  // An OperationsModel satisfies both the TreeView and the GraphView
+  // A GraphModel satisfies both the TreeView and the GraphView
   // requirements:
   settings = new GraphViewSettings();
-  model = new OperationsModel(settings);
+  graphModel = new GraphModel(settings);
 
   QWidget *leftPannel = new QWidget(this);
   QVBoxLayout *leftPannelLayout = new QVBoxLayout;
@@ -42,7 +42,7 @@ OperationsView::OperationsView(QWidget *parent) :
   leftPannelLayout->addWidget(LODBar);
 
   treeView = new NarrowTreeView();
-  treeView->setModel(model);
+  treeView->setModel(graphModel);
   treeView->setHeaderHidden(true);
   treeView->setUniformRowHeights(true);
   QSizePolicy sp = treeView->sizePolicy();
@@ -60,7 +60,7 @@ OperationsView::OperationsView(QWidget *parent) :
   sp.setHorizontalPolicy(QSizePolicy::Ignored);
   sp.setHorizontalStretch(2);
   graphView->setSizePolicy(sp);
-  graphView->setModel(model);
+  graphView->setModel(graphModel);
   addWidget(graphView);
 
   setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
@@ -85,7 +85,7 @@ OperationsView::OperationsView(QWidget *parent) :
 
 OperationsView::~OperationsView()
 {
-  delete model;
+  delete graphModel;
   delete settings;
 }
 

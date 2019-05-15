@@ -2,10 +2,10 @@
 #include "ProgramItem.h"
 #include "SiteItem.h"
 #include "GraphView.h"
-#include "OperationsModel.h"
+#include "GraphModel.h"
 
-SiteItem::SiteItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
-  OperationsItem(treeParent, name, settings, paletteSize)
+SiteItem::SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
+  GraphItem(treeParent, name, settings, paletteSize)
 {
   setZValue(1);
 }
@@ -23,13 +23,13 @@ QVariant SiteItem::data(int column) const
   return QVariant(name);
 }
 
-void SiteItem::reorder(OperationsModel const *model)
+void SiteItem::reorder(GraphModel const *model)
 {
   for (int i = 0; (size_t)i < programs.size(); i++) {
     if (programs[i]->row != i) {
       programs[i]->row = i;
       programs[i]->setPos(30, i * 90);
-      emit model->positionChanged(model->createIndex(i, 0, static_cast<OperationsItem *>(programs[i])));
+      emit model->positionChanged(model->createIndex(i, 0, static_cast<GraphItem *>(programs[i])));
     }
   }
   prepareGeometryChange();

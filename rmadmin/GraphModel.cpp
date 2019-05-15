@@ -2,13 +2,13 @@
 #include <iostream>
 #include <list>
 #include <QRegularExpression>
-#include "OperationsModel.h"
+#include "GraphModel.h"
 #include "conf.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "SiteItem.h"
 
-OperationsModel::OperationsModel(GraphViewSettings const *settings_, QObject *parent) :
+GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_),
   paletteSize(100)
@@ -17,29 +17,29 @@ OperationsModel::OperationsModel(GraphViewSettings const *settings_, QObject *pa
   conf::autoconnect("sites/", [this](conf::Key const &k, KValue const *kv) {
     // TODO: check we are really interested in k (ie it affects either a row or a column)
     (void)k;
-    QObject::connect(kv, &KValue::valueCreated, this, &OperationsModel::keyUpdated);
-    QObject::connect(kv, &KValue::valueChanged, this, &OperationsModel::keyUpdated);
+    QObject::connect(kv, &KValue::valueCreated, this, &GraphModel::keyUpdated);
+    QObject::connect(kv, &KValue::valueChanged, this, &GraphModel::keyUpdated);
   });
 }
 
-QModelIndex OperationsModel::index(int row, int column, QModelIndex const &parent) const
+QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) const
 {
   assert(column == 0);
   if (!parent.isValid()) { // Asking for a site
     if ((size_t)row >= sites.size()) return QModelIndex();
     SiteItem *site = sites[row];
     assert(site->treeParent == nullptr);
-    return createIndex(row, column, static_cast<OperationsItem *>(site));
+    return createIndex(row, column, static_cast<GraphItem *>(site));
   }
 
-  OperationsItem *parentPtr = static_cast<OperationsItem *>(parent.internalPointer());
+  GraphItem *parentPtr = static_cast<GraphItem *>(parent.internalPointer());
   // Maybe a site?
   SiteItem *parentSite = dynamic_cast<SiteItem *>(parentPtr);
   if (parentSite) { // bingo!
     if ((size_t)row >= parentSite->programs.size()) return QModelIndex();
     ProgramItem *program = parentSite->programs[row];
     assert(program->treeParent == parentPtr);
-    return createIndex(row, column, static_cast<OperationsItem *>(program));
+    return createIndex(row, column, static_cast<GraphItem *>(program));
   }
   // Maybe a program?
   ProgramItem *parentProgram = dynamic_cast<ProgramItem *>(parentPtr);
@@ -47,17 +47,17 @@ QModelIndex OperationsModel::index(int row, int column, QModelIndex const &paren
     if ((size_t)row >= parentProgram->functions.size()) return QModelIndex();
     FunctionItem *function = parentProgram->functions[row];
     assert(function->treeParent == parentPtr);
-    return createIndex(row, column, static_cast<OperationsItem *>(function));
+    return createIndex(row, column, static_cast<GraphItem *>(function));
   }
   // There is no alternative
   assert(!"Someone should RTFM on indexing");
 }
 
-QModelIndex OperationsModel::parent(QModelIndex const &index) const
+QModelIndex GraphModel::parent(QModelIndex const &index) const
 {
-  OperationsItem *item =
-    static_cast<OperationsItem *>(index.internalPointer());
-  OperationsItem *treeParent = item->treeParent;
+  GraphItem *item =
+    static_cast<GraphItem *>(index.internalPointer());
+  GraphItem *treeParent = item->treeParent;
 
   if (! treeParent) {
     // We must be a site then:
@@ -68,15 +68,15 @@ QModelIndex OperationsModel::parent(QModelIndex const &index) const
   return createIndex(treeParent->row, 0, treeParent);
 }
 
-int OperationsModel::rowCount(QModelIndex const &parent) const
+int GraphModel::rowCount(QModelIndex const &parent) const
 {
   if (!parent.isValid()) {
     // That must be "root" then:
     return sites.size();
   }
 
-  OperationsItem *parentPtr =
-    static_cast<OperationsItem *>(parent.internalPointer());
+  GraphItem *parentPtr =
+    static_cast<GraphItem *>(parent.internalPointer());
   SiteItem *parentSite = dynamic_cast<SiteItem *>(parentPtr);
   if (parentSite) {
     return parentSite->programs.size();
@@ -93,30 +93,30 @@ int OperationsModel::rowCount(QModelIndex const &parent) const
   assert(!"how is indexing working, again?");
 }
 
-int OperationsModel::columnCount(QModelIndex const &parent) const
+int GraphModel::columnCount(QModelIndex const &parent) const
 {
   (void)parent;
   return 1;
 }
 
-QVariant OperationsModel::data(QModelIndex const &index, int role) const
+QVariant GraphModel::data(QModelIndex const &index, int role) const
 {
   if (!index.isValid()) return QVariant();
 
   if (role != Qt::DisplayRole) return QVariant();
 
-  OperationsItem *item =
-    static_cast<OperationsItem *>(index.internalPointer());
+  GraphItem *item =
+    static_cast<GraphItem *>(index.internalPointer());
   return item->data(index.column());
 }
 
-void OperationsModel::reorder()
+void GraphModel::reorder()
 {
   for (int i = 0; (size_t)i < sites.size(); i++) {
     if (sites[i]->row != i) {
       sites[i]->row = i;
       sites[i]->setPos(0, i * 130);
-      emit positionChanged(createIndex(i, 0, static_cast<OperationsItem *>(sites[i])));
+      emit positionChanged(createIndex(i, 0, static_cast<GraphItem *>(sites[i])));
     }
   }
 }
@@ -160,7 +160,7 @@ public:
   }
 };
 
-FunctionItem const *OperationsModel::findWorker(std::shared_ptr<conf::Worker const> w)
+FunctionItem const *GraphModel::findWorker(std::shared_ptr<conf::Worker const> w)
 {
   //std::cerr << "Look for worker " << *w << std::endl;
   for (SiteItem const *siteItem : sites) {
@@ -187,7 +187,7 @@ FunctionItem const *OperationsModel::findWorker(std::shared_ptr<conf::Worker con
   return nullptr;
 }
 
-void OperationsModel::setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx)
+void GraphModel::setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx)
 {
   if ((size_t)idx < child->parents.size()) {
     FunctionItem const *prev = child->parents[idx];
@@ -213,7 +213,7 @@ struct PendingSetParent {
 };
 static std::list<PendingSetParent> pendingSetParents;
 
-void OperationsModel::delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const> w)
+void GraphModel::delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const> w)
 {
   // Check that there is no parent already pending for that slot:
   for (PendingSetParent &p : pendingSetParents) {
@@ -225,7 +225,7 @@ void OperationsModel::delaySetFunctionParent(FunctionItem *child, int idx, std::
   pendingSetParents.emplace_back(child, idx, w);
 }
 
-void OperationsModel::retrySetParents()
+void GraphModel::retrySetParents()
 {
   for (auto it = pendingSetParents.begin(); it != pendingSetParents.end(); ) {
     FunctionItem const *parent = findWorker(it->worker);
@@ -239,7 +239,7 @@ void OperationsModel::retrySetParents()
   }
 }
 
-void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
+void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
   static QString const parents_prefix("parents/");
   if (p == "is_used") {
@@ -261,7 +261,6 @@ void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString co
   } else if (p == "total/tuples") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) std::cout << "#TUPLES for " << functionItem->name.toStdString() << ": " << cf->i << '\n';
     if (cf) functionItem->totalTuples = cf->i;
   } else if (p == "total/bytes") {
     std::shared_ptr<conf::Int const> cf =
@@ -283,7 +282,7 @@ void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString co
       std::shared_ptr<conf::Worker const> w =
         std::dynamic_pointer_cast<conf::Worker const>(v);
       if (w) {
-        /* Try to locate the OperationsItem of this worker. If it's not
+        /* Try to locate the GraphItem of this worker. If it's not
          * there yet, enqueue this worker somewhere and revisit this
          * once a new function appears. */
         FunctionItem const *parent = findWorker(w);
@@ -303,11 +302,11 @@ void OperationsModel::setFunctionProperty(FunctionItem *functionItem, QString co
   }
 }
 
-void OperationsModel::setProgramProperty(ProgramItem *, QString const &, std::shared_ptr<conf::Value const>)
+void GraphModel::setProgramProperty(ProgramItem *, QString const &, std::shared_ptr<conf::Value const>)
 {
 }
 
-void OperationsModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
+void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
   if (p == "is_master") {
     std::shared_ptr<conf::Bool const> b =
@@ -316,10 +315,10 @@ void OperationsModel::setSiteProperty(SiteItem *siteItem, QString const &p, std:
   }
 }
 
-void OperationsModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+void GraphModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  /*std::cerr << "OperationsModel key " << k << " set to value " << *v
+  /*std::cerr << "GraphModel key " << k << " set to value " << *v
             << " is valid:" << pk.valid << '\n';*/
 
   if (pk.valid) {
@@ -353,7 +352,7 @@ void OperationsModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value
         programItem = new ProgramItem(siteItem, pk.program, settings, paletteSize);
         int idx = siteItem->programs.size();
         QModelIndex parent =
-          createIndex(siteItem->row, 0, static_cast<OperationsItem *>(siteItem));
+          createIndex(siteItem->row, 0, static_cast<GraphItem *>(siteItem));
         beginInsertRows(parent, idx, idx);
         siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
         siteItem->reorder(this);
@@ -372,7 +371,7 @@ void OperationsModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value
           functionItem = new FunctionItem(programItem, pk.function, settings, paletteSize);
           int idx = programItem->functions.size();
           QModelIndex parent =
-            createIndex(programItem->row, 0, static_cast<OperationsItem *>(programItem));
+            createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));
           beginInsertRows(parent, idx, idx);
           programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
           programItem->reorder(this);

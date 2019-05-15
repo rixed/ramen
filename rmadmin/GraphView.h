@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <QGraphicsView>
 #include <QGraphicsScene>
-#include "OperationsModel.h"
+#include "GraphModel.h"
 
 class GraphArrow;
 
@@ -25,7 +25,7 @@ class GraphArrow;
 class GraphViewSettings;
 
 struct HashStupidPairOfPointers {
-  size_t operator()(const std::pair<OperationsItem const *, OperationsItem const *>& key) const {
+  size_t operator()(const std::pair<GraphItem const *, GraphItem const *>& key) const {
     return (size_t)key.first + (size_t)key.second;
   }
 };
@@ -38,7 +38,7 @@ class GraphView : public QGraphicsView
 
   // Have to save that one because we cannot rely on QModelIndex to provide it:
   // Note: models are supposed to outlive the views, aren't they?
-  OperationsModel const *model;
+  GraphModel const *model;
 
   /* Relationships management:
    *
@@ -51,7 +51,7 @@ class GraphView : public QGraphicsView
 
   /* The current set of arrows, indexed by src+dst.
    * The bool is for tagging while updating. */
-  std::unordered_map<std::pair<OperationsItem const *, OperationsItem const *>, std::pair<GraphArrow *, bool>, HashStupidPairOfPointers> arrows;
+  std::unordered_map<std::pair<GraphItem const *, GraphItem const *>, std::pair<GraphArrow *, bool>, HashStupidPairOfPointers> arrows;
 
   void updateArrows();
 
@@ -59,7 +59,7 @@ class GraphView : public QGraphicsView
    * for a short while: */
   QTimer layoutTimer;
 
-  // Parameters we must share with the OperationsItems:
+  // Parameters we must share with the GraphItems:
   GraphViewSettings const *settings;
 
   qreal currentScale;
@@ -68,7 +68,7 @@ class GraphView : public QGraphicsView
 public:
   GraphView(GraphViewSettings const *, QWidget *parent = nullptr);
   ~GraphView();
-  void setModel(OperationsModel const *);
+  void setModel(GraphModel const *);
   QSize sizeHint() const override;
   bool event(QEvent *) override;
 
@@ -86,6 +86,10 @@ public slots:
 
 signals:
   void selected(QModelIndex const &);
+  void infoClicked(QModelIndex const &);
+  void tailClicked(QModelIndex const &);
+  void storageChilcked(QModelIndex const &);
+  void codeClicked(QModelIndex const &);
 };
 
 #endif

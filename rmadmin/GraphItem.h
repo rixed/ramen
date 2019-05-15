@@ -1,5 +1,5 @@
-#ifndef OPERATIONBSITEM_H_190508
-#define OPERATIONBSITEM_H_190508
+#ifndef GRAPHITEM_H_190508
+#define GRAPHITEM_H_190508
 #include <vector>
 #include <optional>
 #include <QString>
@@ -11,12 +11,12 @@
 #include "confValue.h"
 #include "GraphViewSettings.h"
 
-class OperationsModel;
+class GraphModel;
 
-/* OperationsItem is an Item in the OperationsModel *and* in the
+/* GraphItem is an Item in the GraphModel *and* in the
  * scene of the GraphView. */
 
-class OperationsItem : public QObject, public QGraphicsItem
+class GraphItem : public QObject, public QGraphicsItem
 {
   Q_OBJECT
   Q_PROPERTY(QPointF pos READ pos WRITE setPos)
@@ -48,16 +48,16 @@ public:
   QString const name;
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
-  OperationsItem *treeParent;
+  GraphItem *treeParent;
   int row;
 
-  OperationsItem(OperationsItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
-  virtual ~OperationsItem() = 0;
+  GraphItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
+  virtual ~GraphItem() = 0;
   virtual QVariant data(int) const = 0;
   // Reorder the children after some has been added/removed
-  virtual void reorder(OperationsModel const *) {};
+  virtual void reorder(GraphModel const *) {};
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
-  QModelIndex index(OperationsModel const *) const;
+  QModelIndex index(GraphModel const *) const;
   bool isCollapsed() const;
 
   // For the GraphView:

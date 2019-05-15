@@ -1,5 +1,5 @@
-#ifndef OPERATIONSMODEL_H_190507
-#define OPERATIONSMODEL_H_190507
+#ifndef GRAPHMODEL_H_190507
+#define GRAPHMODEL_H_190507
 #include <vector>
 #include <QVector>
 #include <QPointF>
@@ -7,7 +7,7 @@
 #include <QTimer>
 #include "confKey.h"
 #include "KValue.h"
-#include "OperationsItem.h"
+#include "GraphItem.h"
 
 /* The tree is 3 layers deep:
  *
@@ -34,7 +34,7 @@ class ProgramItem;
 class FunctionItem;
 class GraphViewSettings;
 
-class OperationsModel : public QAbstractItemModel
+class GraphModel : public QAbstractItemModel
 {
   Q_OBJECT
 
@@ -58,7 +58,7 @@ class OperationsModel : public QAbstractItemModel
 public:
   std::vector<SiteItem *> sites;
 
-  OperationsModel(GraphViewSettings const *, QObject *parent = nullptr);
+  GraphModel(GraphViewSettings const *, QObject *parent = nullptr);
 
   /* When subclassing QAbstractItemModel, at the very least you must implement
    * index(), parent(), rowCount(), columnCount(), and data(). These functions
