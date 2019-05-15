@@ -44,76 +44,7 @@ end
 
 module PerSite : CONF_SYNCER =
 struct
-  let init conf srv =
-    let graph = FuncGraph.make conf in
-    !logger.debug "Populate per-site configuration with graph %a"
-      FuncGraph.print graph ;
-    Hashtbl.iter (fun site per_site_h ->
-      let is_master = Set.mem site conf.C.masters in
-      Server.create_unlocked srv
-        (PerSite (site, IsMaster)) (Value.Bool is_master)
-        ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-      (* TODO: PerService *)
-      let stats = Archivist.load_stats ~site conf in
-      Hashtbl.iter (fun (pname, fname) ge ->
-        let fq = N.fq_of_program pname fname in
-        (* IsUsed *)
-        Server.create_unlocked
-          srv (PerSite (site, PerFunction (fq, IsUsed)))
-          (Value.Bool ge.FuncGraph.used)
-          ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-        (* Parents *)
-        set_iteri (fun i (psite, pprog, pfunc) ->
-          Server.create_unlocked
-            srv (PerSite (site, PerFunction (fq, Parents i)))
-            (Value.Worker (psite, pprog, pfunc))
-            ~r:Capa.anybody ~w:Capa.nobody ~s:true
-        ) ge.FuncGraph.parents ;
-        (* Stats *)
-        (match Hashtbl.find stats fq with
-        | exception Not_found -> ()
-        | stats ->
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, StartupTime)))
-              (Value.Float stats.FS.startup_time)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-            Option.may (fun min_etime ->
-              Server.create_unlocked
-                srv (PerSite (site, PerFunction (fq, MinETime)))
-                (Value.Float min_etime)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true
-            ) stats.FS.min_etime ;
-            Option.may (fun max_etime ->
-              Server.create_unlocked
-                srv (PerSite (site, PerFunction (fq, MaxETime)))
-                (Value.Float max_etime)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true
-            ) stats.FS.max_etime ;
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, TotTuples)))
-              (Value.Int stats.FS.tuples)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, TotBytes)))
-              (Value.Int stats.FS.bytes)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, TotCpu)))
-              (Value.Float stats.FS.cpu)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, MaxRam)))
-              (Value.Int stats.FS.ram)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
-            Server.create_unlocked
-              srv (PerSite (site, PerFunction (fq, ArchivedTimes)))
-              (Value.TimeRange stats.FS.archives)
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true) ;
-      ) per_site_h
-    ) graph.FuncGraph.h
-
-  let update conf srv =
-    let graph = FuncGraph.make conf in
+  let update_from_graph conf srv graph =
     !logger.debug "Update per-site configuration with graph %a"
       FuncGraph.print graph ;
     (* First, grab all existing keys, to know what to delete later: *)
@@ -201,7 +132,15 @@ struct
       if not used then Server.del srv u k
     ) key_used
 
+  let init _conf _srv = ()
 
+  let update conf srv =
+    match FuncGraph.make conf with
+    | exception e ->
+        print_exception ~what:"update PerSite" e ;
+        !logger.info "skipping this step..."
+    | graph ->
+        update_from_graph conf srv graph
 end
 
 module Storage : CONF_SYNCER =
@@ -261,9 +200,12 @@ let populate_init conf srv =
   Storage.init conf srv
 
 let sync_step conf srv =
-  DevNull.update conf srv ;
-  PerSite.update conf srv ;
-  Storage.update conf srv
+  log_and_ignore_exceptions ~what:"update DevNull"
+    (DevNull.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update PerSite"
+    (PerSite.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update Storage"
+    (Storage.update conf) srv
 
 let zock_step srv zock =
   let peel_multipart msg =
