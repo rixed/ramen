@@ -37,11 +37,14 @@ HEADERS += \
   AtomicForm.h \
   GraphAnchor.h \
   GraphItem.h \
+  Tuple.h \
   FunctionItem.h \
   ProgramItem.h \
   SiteItem.h \
   GraphViewSettings.h \
   GraphModel.h \
+  TailModel.h \
+  TailSubModel.h \
   GraphView.h \
   GraphArrow.h \
   layoutNode.h \
@@ -62,11 +65,14 @@ SOURCES += \
   AtomicForm.cpp \
   GraphAnchor.cpp \
   GraphItem.cpp \
+  Tuple.cpp \
   FunctionItem.cpp \
   ProgramItem.cpp \
   SiteItem.cpp \
   GraphViewSettings.cpp \
   GraphModel.cpp \
+  TailModel.cpp \
+  TailSubModel.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

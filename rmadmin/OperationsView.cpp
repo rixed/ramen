@@ -1,9 +1,15 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
-#include "OperationsView.h"
+#include <QRadioButton>
+#include <QTreeView>
+#include <QTableView>
 #include "GraphModel.h"
+#include "TailModel.h"
+#include "TailSubModel.h"
 #include "GraphView.h"
+#include "FunctionItem.h"
+#include "OperationsView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
  * of 256, and this is read only. So to change the actual default size of a
@@ -22,8 +28,16 @@ OperationsView::OperationsView(QWidget *parent) :
   // requirements:
   settings = new GraphViewSettings();
   graphModel = new GraphModel(settings);
+  tailModel = new TailModel();
 
-  QWidget *leftPannel = new QWidget(this);
+  // Split the window horizontally:
+  setOrientation(Qt::Vertical);
+
+  // On the top side, we have another splitter to separate the treeview
+  // from the graphview:
+  QSplitter *topSplit = new QSplitter(this);
+
+  QWidget *leftPannel = new QWidget;
   QVBoxLayout *leftPannelLayout = new QVBoxLayout;
   leftPannelLayout->setContentsMargins(1, 1, 1, 1);
   leftPannelLayout->setSpacing(3);
@@ -53,7 +67,7 @@ OperationsView::OperationsView(QWidget *parent) :
 
   leftPannel->setLayout(leftPannelLayout);
 
-  addWidget(leftPannel);
+  topSplit->addWidget(leftPannel);
 
   GraphView *graphView = new GraphView(settings);
   sp = graphView->sizePolicy();
@@ -61,9 +75,12 @@ OperationsView::OperationsView(QWidget *parent) :
   sp.setHorizontalStretch(2);
   graphView->setSizePolicy(sp);
   graphView->setModel(graphModel);
-  addWidget(graphView);
+  topSplit->addWidget(graphView);
 
-  setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+  topSplit->setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+
+  // Then the bottom part is for now just a tabbed view of TailTable.
+  tailTabs = new QTabWidget(this);
 
   // Control the GraphView from the TreeView:
   QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
@@ -81,10 +98,16 @@ OperationsView::OperationsView(QWidget *parent) :
   // Reset the LOD buttons when manually changing the TreeView:
   QObject::connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
   QObject::connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
+
+  // Connect the grpahModel to the tailModel:
+  QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
 }
 
 OperationsView::~OperationsView()
 {
+  // Delete tailModel first as it references FunctionItems belonging to the
+  // graphModel:
+  delete tailModel;
   delete graphModel;
   delete settings;
 }
@@ -118,4 +141,17 @@ void OperationsView::setLOD(bool)
     treeView->expandToDepth(1);
   }
   allowReset = true;
+}
+
+void OperationsView::addTail(FunctionItem const *f)
+{
+  TailSubModel *subModel = new TailSubModel(tailModel, f);
+  if (subModel) {
+    QTableView *table = new QTableView;
+    table->setModel(subModel);
+    tailTabs->addTab(table, f->fqName());
+  } else {
+    std::cerr << "Cannot find submodel for function "
+              << f->fqName().toStdString() << std::endl;
+  }
 }

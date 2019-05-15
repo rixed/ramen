@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 #include "GraphItem.h"
+#include "Tuple.h"
 
 class GraphViewSettings;
 
@@ -10,7 +11,9 @@ class FunctionItem : public GraphItem
 {
 protected:
   std::vector<std::pair<QString const, QString const>> labels() const;
+
 public:
+  std::vector<Tuple> tuples;
   std::optional<bool> isUsed;
   std::optional<double> startupTime;
   std::optional<double> eventTimeMin;
@@ -27,6 +30,8 @@ public:
   ~FunctionItem();
   QVariant data(int) const;
   QRectF operationRect() const;
+
+  unsigned numColumns() const;
 };
 
 std::ostream &operator<<(std::ostream &, FunctionItem const &);

@@ -8,6 +8,7 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
   // TODO: updateArrows should reallocate the channels:
   channel = std::rand() % settings->numArrowChannels;
   setZValue(3);
+  tuples.reserve(1000);
 }
 
 FunctionItem::~FunctionItem() {}
@@ -61,4 +62,10 @@ QRectF FunctionItem::operationRect() const
             settings->functionMarginBottom + settings->programMarginBottom +
             settings->siteMarginBottom + settings->functionMarginTop +
             settings->programMarginTop + settings->siteMarginTop));
+}
+
+unsigned FunctionItem::numColumns() const
+{
+  // TODO: a property for the output type
+  return 2;
 }

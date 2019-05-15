@@ -75,6 +75,8 @@ public slots:
 
 signals:
   void positionChanged(QModelIndex const &index) const;
+  void functionAdded(FunctionItem const *) const;
+  void functionRemoved(FunctionItem const *) const;
   void relationAdded(FunctionItem const *parent, FunctionItem const *child) const;
   void relationRemoved(FunctionItem const *parent, FunctionItem const *child) const;
 };

@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <QPropertyAnimation>
@@ -21,7 +22,7 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   lastScale(1.)
 {
   QString st = styleSheet();
-  std::cout << "ST=" << st.toStdString() << '\n';
+  std::cout << "ST=" << st.toStdString() << std::endl;
 
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
   setDragMode(ScrollHandDrag);
@@ -117,10 +118,12 @@ void GraphView::select(QModelIndex const &index)
   }
 }
 
+static int layoutTimeout = 3000;
+
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
   // Start (or restart) the layoutTimer to trigger a re-layout in 100ms:
-  layoutTimer.start(100);
+  layoutTimer.start(layoutTimeout);
 
   // We only need to add to the scene the toplevel sites:
   if (parent.isValid()) return;
@@ -188,7 +191,7 @@ void GraphView::updateArrows()
     auto ait = arrows.find(std::pair<GraphItem const *, GraphItem const *>(src, dst));
     if (ait == arrows.end()) {
       /*std::cout << "Creating Arrow from " << src->x1 << ", " << src->y1
-                << " to " << dst->x0 << ", " << dst->y0 << '\n';*/
+                << " to " << dst->x0 << ", " << dst->y0 << std::endl;*/
       GraphArrow *arrow =
         new GraphArrow(settings,
           src->x1, src->y1, hmargins[marginSrc],
@@ -223,9 +226,10 @@ void GraphView::updateArrows()
 
 void GraphView::relationAdded(FunctionItem const *parent, FunctionItem const *child)
 {
-  //std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
+  std::cout << "Add " << parent->fqName().toStdString() << "->" << child->fqName().toStdString() << std::endl;
   relations.insert(std::pair<FunctionItem const *, FunctionItem const *>(parent, child));
   updateArrows();
+  layoutTimer.start(layoutTimeout);
 }
 
 void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *child)
@@ -235,8 +239,9 @@ void GraphView::relationRemoved(FunctionItem const *parent, FunctionItem const *
   if (it != relations.end()) {
     relations.erase(it);
     updateArrows();
+    layoutTimer.start(layoutTimeout);
   } else {
-    std::cerr << "Removal of an unknown relation (good riddance!)" << std::endl;
+    std::cout << "Removal of an unknown relation (good riddance!)" << std::endl;
   }
 }
 
@@ -252,7 +257,7 @@ void GraphView::startLayout()
   std::cout << "Starting a re-layout of the functions" << std::endl;
 
   if (! model) {
-    std::cerr << "Cannot relayout without a model\n";
+    std::cout << "Cannot relayout without a model" << std::endl;
     return;
   }
 
@@ -283,8 +288,9 @@ void GraphView::startLayout()
     }
   }
   size_t const numNodes = nodes.size();
-  int const max_x = 1 + numNodes/3;
-  int const max_y = 1 + numNodes/4;
+  int const min_x = std::ceil(std::sqrt(numNodes));
+  int const max_x = min_x * 2;
+  int const max_y = min_x + min_x/2 + 1;
   layout::solve(&nodes, max_x, max_y);
 
   QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;

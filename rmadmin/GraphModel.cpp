@@ -13,10 +13,12 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   settings(settings_),
   paletteSize(100)
 {
-  /* Register callbacks but for now also populate manually: */
   conf::autoconnect("sites/", [this](conf::Key const &k, KValue const *kv) {
-    // TODO: check we are really interested in k (ie it affects either a row or a column)
-    (void)k;
+    // This is going to be called from the OCaml thread. But that should be
+    // OK since connect itself is threadsafe. Once we return, the KV value
+    // is going to be set and therefore a signal emitted. This signal will
+    // be queued for the Qt thread in which lives GraphModel to dequeue.
+    std::cout << "connect a new KValue for " << k << " to the graphModel..." << std::endl;
     QObject::connect(kv, &KValue::valueCreated, this, &GraphModel::keyUpdated);
     QObject::connect(kv, &KValue::valueChanged, this, &GraphModel::keyUpdated);
   });
@@ -162,28 +164,28 @@ public:
 
 FunctionItem const *GraphModel::findWorker(std::shared_ptr<conf::Worker const> w)
 {
-  //std::cerr << "Look for worker " << *w << std::endl;
+  //std::cout << "Look for worker " << *w << std::endl;
   for (SiteItem const *siteItem : sites) {
     if (siteItem->name == w->site) {
       for (ProgramItem const *programItem : siteItem->programs) {
         if (programItem->name == w->program) {
           for (FunctionItem const *functionItem : programItem->functions) {
             if (functionItem->name == w->function) {
-              //std::cerr << "Found: " << functionItem->fqName().toStdString() << std::endl;
+              //std::cout << "Found: " << functionItem->fqName().toStdString() << std::endl;
               return functionItem;
             } else {
-              //std::cerr << "...not " << functionItem->name.toStdString() << std::endl;
+              //std::cout << "...not " << functionItem->name.toStdString() << std::endl;
             }
           }
-          //std::cerr << "No such function: " << w->function.toStdString() << std::endl;
+          //std::cout << "No such function: " << w->function.toStdString() << std::endl;
           return nullptr;
         }
       }
-      //std::cerr << "No such program: " << w->program.toStdString() << std::endl;
+      //std::cout << "No such program: " << w->program.toStdString() << std::endl;
       return nullptr;
     }
   }
-  //std::cerr << "No such site: " << w->site.toStdString() << std::endl;
+  //std::cout << "No such site: " << w->site.toStdString() << std::endl;
   return nullptr;
 }
 
@@ -241,6 +243,7 @@ void GraphModel::retrySetParents()
 
 void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
+  std::cout << "P = " << p.toStdString() << std::endl;
   static QString const parents_prefix("parents/");
   if (p == "is_used") {
     std::shared_ptr<conf::Bool const> cf =
@@ -287,16 +290,18 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
          * once a new function appears. */
         FunctionItem const *parent = findWorker(w);
         if (parent) {
+          std::cout << "Set immediate parent" << std::endl;
           setFunctionParent(parent, functionItem, idx);
         } else {
+          std::cout << "Set delayed parent" << std::endl;
           delaySetFunctionParent(functionItem, idx, w);
         }
       } else {
-        std::cerr << "Ignoring function parent " << idx
+        std::cout << "Ignoring function parent " << idx
                   << " because it is not a worker" << std::endl;
       }
     } else {
-      std::cerr << "Ignoring bogus request to alter function "
+      std::cout << "Ignoring bogus request to alter function "
                 << idx << "th parent" << std::endl;
     }
   }
@@ -318,8 +323,8 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
 void GraphModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  /*std::cerr << "GraphModel key " << k << " set to value " << *v
-            << " is valid:" << pk.valid << '\n';*/
+  /*std::cout << "GraphModel key " << k << " set to value " << *v
+            << " is valid:" << pk.valid << std::endl;*/
 
   if (pk.valid) {
     assert(pk.site.length() > 0);
@@ -379,6 +384,7 @@ void GraphModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value cons
           // Since we have a new function, maybe we can solve some of the
           // pendingSetParents?
           retrySetParents();
+          emit functionAdded(functionItem);
         }
         setFunctionProperty(functionItem, pk.property, v);
         functionItem->update();
@@ -395,18 +401,18 @@ void GraphModel::keyUpdated(conf::Key const &k, std::shared_ptr<conf::Value cons
 
 std::ostream &operator<<(std::ostream &os, SiteItem const &s)
 {
-  os << "Site[" << s.row << "]:" << s.name.toStdString() << '\n';
+  os << "Site[" << s.row << "]:" << s.name.toStdString() << std::endl;
   for (ProgramItem const *program : s.programs) {
-    os << *program << '\n';
+    os << *program << std::endl;
   }
   return os;
 }
 
 std::ostream &operator<<(std::ostream &os, ProgramItem const &p)
 {
-  os << "  Program[" << p.row << "]:" << p.name.toStdString() << '\n';
+  os << "  Program[" << p.row << "]:" << p.name.toStdString() << std::endl;
   for (FunctionItem const *function : p.functions) {
-    os << *function << '\n';
+    os << *function << std::endl;
   }
   return os;
 }
