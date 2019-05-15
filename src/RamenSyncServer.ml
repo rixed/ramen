@@ -145,7 +145,7 @@ struct
         )
 
   let del t u k =
-    !logger.debug "Releting config key %a"
+    !logger.debug "Deleting config key %a"
       Key.print k ;
     match H.find t.h k with
     | exception Not_found ->

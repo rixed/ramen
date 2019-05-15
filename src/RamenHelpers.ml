@@ -889,7 +889,8 @@ let cached2 cache_name reread time =
 
 (* Same as above without the additional user parameter: *)
 let cached cache_name reread time =
-  let c = cached2 cache_name (fun k () -> reread k) (fun k () -> time k) in
+  let c = cached2 cache_name (fun k () -> reread k)
+                             (fun k () -> time k) in
   fun k -> c k ()
 
 (* Addition capped to min_int/max_int *)
