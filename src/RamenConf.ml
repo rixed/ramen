@@ -251,24 +251,24 @@ struct
       ~expected_status:0 ~env fname args Legacy.input_line |>
     bool_of_string
 
-  let of_bin ?(errors_ok=false) =
-    let log fmt =
+  let of_bin =
+    let log errors_ok fmt =
       (if errors_ok then !logger.debug else !logger.error) fmt in
     (* Cache of path to date of last read and program *)
-    let reread_data (program_name, fname) : t =
+    let reread_data (program_name, fname) errors_ok : t =
       !logger.debug "Reading config from %a..." N.path_print fname ;
       match version_of_bin fname with
       | exception e ->
           let err = Printf.sprintf2 "Cannot get version from %a: %s"
                       N.path_print fname (Printexc.to_string e) in
-          log "%s" err ;
+          log errors_ok "%s" err ;
           failwith err
       | v when v <> RamenVersions.codegen ->
         let err = Printf.sprintf2
                     "Executable %a is for version %s (I'm version %s)"
                     N.path_print fname
                     v RamenVersions.codegen in
-        log "%s" err ;
+        log errors_ok "%s" err ;
         failwith err
       | _ ->
           (try info_of_bin program_name fname with e ->
@@ -277,17 +277,17 @@ struct
                          (Printexc.to_string e) in
              !logger.error "%s" err ;
              failwith err)
-    and age_of_data (_, fname) =
+    and age_of_data (_, fname) errors_ok =
       try Files.mtime fname
       with e ->
-        log "Cannot get mtime of %a: %s"
+        log errors_ok "Cannot get mtime of %a: %s"
           N.path_print fname
           (Printexc.to_string e) ;
         0.
     in
-    let get_prog = cached "of_bin" reread_data age_of_data in
-    fun program_name params (fname : N.path) ->
-      let p = get_prog (program_name, fname) in
+    let get_prog = cached2 "of_bin" reread_data age_of_data in
+    fun ?(errors_ok=false) program_name params (fname : N.path) ->
+      let p = get_prog (program_name, fname) errors_ok in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
       { params = RamenTuple.overwrite_params p.params params ;
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
