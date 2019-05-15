@@ -9,6 +9,16 @@ using namespace z3;
 
 namespace layout {
 
+#define SINGLE_COST
+
+//#define TOT_SIZE_SMALL
+#define MIN_BACKLINKS_FUNC
+//#define GLOBAL_TILE_EXCLUSION
+#define SINGLE_MIN_SIZE // not relevant if SINGLE_COST
+//#define MIN_BACKLINKS_PROG
+//#define MIN_BACKLINKS_SITE
+#define SOURCES_AT_0
+
 bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
 {
   assert(max_x * max_y >= nodes->size());
@@ -16,7 +26,7 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   optimize opt(c);
   params p(c);
   p.set("priority", c.str_symbol("pareto"));
-  p.set(":timeout", 5000U); // 1s should be enough for everyone
+  p.set(":timeout", 8000U); // 8s should be enough for everyone
   opt.set(p);
   expr one  = c.int_val(1);
   expr zero = c.int_val(0);
@@ -55,6 +65,10 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     }
   }
 
+# ifdef SINGLE_COST
+  expr cost = zero; // a single expression to minimize is simpler
+# endif
+
   // First set of constraints: keep the sites together.
   // ss is the min and max of the xs and the ys: (xmin, xmax), (ymin, ymnax).
   map<string, pair<pair<expr, expr>, pair<expr, expr>>> ss;
@@ -78,21 +92,35 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   }
   // Minimize the size of each sites:
   for (auto it : ss) {
+#ifdef SINGLE_COST
+    cost = cost +
+      (it.second.first.second  - it.second.first.first) +
+      (it.second.second.second - it.second.second.first);
+#else
+# ifdef SINGLE_MIN_SIZE
+    opt.minimize(
+      (it.second.first.second  - it.second.first.first) +
+      (it.second.second.second - it.second.second.first)
+    );
+# else
     opt.minimize(it.second.first.second  - it.second.first.first);
     opt.minimize(it.second.second.second - it.second.second.first);
+# endif
+#endif
   }
   // Prevent different sites to intersect each others:
   for (auto s1 : ss) {
     for (auto s2 : ss) {
-      if (s1.first == s2.first) continue;
+      if (s1.first >= s2.first) continue;
       opt.add(
-        s1.second.first.first   >= s2.second.first.second ||
-        s1.second.first.second  <= s2.second.first.first ||
-        s1.second.second.first  >= s2.second.second.second ||
-        s1.second.second.second <= s2.second.second.first);
+        s1.second.first.first   > s2.second.first.second ||
+        s1.second.first.second  < s2.second.first.first ||
+        s1.second.second.first  > s2.second.second.second ||
+        s1.second.second.second < s2.second.second.first);
     }
   }
 
+#ifdef MIN_BACKLINKS_SITE
   // Also minimize the number of child sites not at the right of their
   // parents:
   expr numBadSiteLinks = zero;
@@ -100,11 +128,31 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     auto srcSitePos = ss.find(connSites_it.first);
     auto dstSitePos = ss.find(connSites_it.second);
     numBadSiteLinks = numBadSiteLinks
-                    + ite(srcSitePos->second.second.first >=
-                          dstSitePos->second.first.first,
-                          one, zero);
+                    + ite(dstSitePos->second.first.first >
+                          srcSitePos->second.first.second,
+                          zero, one);
   }
+# ifdef SINGLE_COST
+  cost = cost + numBadSiteLinks;
+# else
   opt.minimize(numBadSiteLinks);
+# endif
+#endif
+
+#ifdef TOT_SIZE_SMALL
+  // Also, keep the max x and max y of all the sites as small as possible,
+  // to avoid sprawl (minimize the max of xmax+ymax):
+  expr maxTotSize = zero;
+  for (auto s : ss) {
+    maxTotSize =
+      max(maxTotSize, s.second.first.second + s.second.second.second);
+  }
+# ifdef SINGLE_COST
+  cost = cost + maxTotSize;
+# else
+  opt.minimize(maxTotSize);
+# endif
+#endif
 
   // Then, also keep the programs together.
   // ps is the min and max of the xs and the ys: (xmin, xmax), (ymin, ymnax).
@@ -129,20 +177,36 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
   }
   // Minimize the size of each programs:
   for (auto it : ps) {
+#ifdef SINGLE_COST
+    cost = cost +
+      (it.second.first.second  - it.second.first.first) +
+      (it.second.second.second - it.second.second.first);
+#else
+# ifdef SINGLE_MIN_SIZE
+    opt.minimize(
+      (it.second.first.second  - it.second.first.first) +
+      (it.second.second.second - it.second.second.first)
+    );
+# else
     opt.minimize(it.second.first.second  - it.second.first.first);
     opt.minimize(it.second.second.second - it.second.second.first);
+# endif
+#endif
   }
-  // Prevent different programs to intersect each others:
+  // Prevent different programs (of same site) to intersect each others:
   for (auto p1 : ps) {
     for (auto p2 : ps) {
-      if (p1.first == p2.first) continue;
+      if (p1.first.first != p2.first.first ||
+          p1.first.second >= p2.first.second) continue;
       opt.add(
-        p1.second.first.first   >= p2.second.first.second ||
-        p1.second.first.second  <= p2.second.first.first ||
-        p1.second.second.first  >= p2.second.second.second ||
-        p1.second.second.second <= p2.second.second.first);
+        p1.second.first.first   > p2.second.first.second ||
+        p1.second.first.second  < p2.second.first.first ||
+        p1.second.second.first  > p2.second.second.second ||
+        p1.second.second.second < p2.second.second.first);
     }
   }
+
+#ifdef MIN_BACKLINKS_PROG
   // Also within each site, minimize the number of child programs not at the
   // right of their parents:
   expr numBadProgLinks = zero;
@@ -150,62 +214,115 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     auto srcProgPos = ps.find(connProgs_it.first);
     auto dstProgPos = ps.find(connProgs_it.second);
     numBadProgLinks = numBadProgLinks
-                    + ite(srcProgPos->second.second.first >=
-                          dstProgPos->second.first.first,
-                          one, zero);
+                    + ite(dstProgPos->second.first.first >
+                          srcProgPos->second.first.second,
+                          zero, one);
   }
+# ifdef SINGLE_COST
+  cost = cost + numBadProgLinks;
+# else
   opt.minimize(numBadProgLinks);
+# endif
+#endif
 
-
+#ifdef MIN_BACKLINKS_FUNC
   // Minimize the number of back-links, and the height of links, considering
   // a back link is as bad as 10 steps in y:
   expr back = c.int_val(10);
-  expr dy_ok = c.int_val(4);
+  // Favor going down:
+  expr dy_ok_neg = c.int_val(1);
+  expr dy_ok_pos = c.int_val(4);
   expr numBadLinks = zero;
   for (size_t i = 0; i < nodes->size(); i++) {
     Node &n = (*nodes)[i];
     for (size_t p : n.parents) {
       numBadLinks = numBadLinks
                   + ite(xs[p] >= xs[i], back, zero)
-                  + ite(ys[p] > ys[i] + dy_ok,
-                          ys[p] - ys[i] - dy_ok,
-                          ite(ys[i] > ys[p] + dy_ok,
-                                ys[i] - ys[p] - dy_ok,
+                  + ite(ys[p] > ys[i] + dy_ok_neg,
+                          ys[p] - ys[i] - dy_ok_neg,
+                          ite(ys[i] > ys[p] + dy_ok_pos,
+                                ys[i] - ys[p] - dy_ok_pos,
                                 zero));
     }
   }
+# ifdef SINGLE_COST
+  cost = cost + numBadLinks;
+# else
   opt.minimize(numBadLinks);
+# endif
+#endif
+
+#ifdef SOURCES_AT_0
+  // Any function with no input has X=0:
+  for (size_t i = 0; i < nodes->size(); i++) {
+    Node &n = (*nodes)[i];
+    if (n.parents.size() == 0) {
+      opt.add(xs[i] == zero);
+    }
+  }
+#endif
+
+# ifdef SINGLE_COST
+  opt.minimize(cost);
+# endif
 
   // TODO: optionally, favor preexisting positions
 
   // Finally (for now), do not allow functions to get too close, ie to be
   // in the same "tile".
+  // TODO: we should be able to have a small distinct per program given the
+  // above. try it.
+#ifdef GLOBAL_TILE_EXCLUSION
   expr_vector tiles(c);
   for (size_t i = 0; i < xs.size(); i++) {
     tiles.push_back(ys[i] * c.int_val((int)xs.size()) + xs[i]);
   }
   opt.add(distinct(tiles));
+#else
+  map<pair<string, string>, expr_vector> tilesOfProgram;
+  for (size_t i = 0; i < nodes->size(); i++) {
+    Node &n = (*nodes)[i];
+    cout << "node[" << i <<"] for "<< n.site<<","<<n.program<<endl;
+    pair<string, string> const k(n.site, n.program);
+    expr pos = ys[i] * c.int_val((int)xs.size()) + xs[i];
+    auto it = tilesOfProgram.find(k);
+    if (it == tilesOfProgram.end()) {
+      expr_vector v(c);
+      v.push_back(pos);
+      tilesOfProgram.emplace(k, v);
+    } else {
+      it->second.push_back(pos);
+    }
+  }
+  for (auto &it : tilesOfProgram) {
+    if (it.second.size() > 1)
+      opt.add(distinct(it.second));
+  }
+#endif
 
-  //std::cout << opt << "\n";
+  //cout << opt << endl;
 
   switch (opt.check()) {
     case unsat:
-      cerr << "Cannot solve layout!?\n";
+      cout << "Cannot solve layout!?" << endl;
       return false;
     case unknown:
-      cerr << "Timeout while solving layout, YMMV\n";
+      cout << "Timeout while solving layout, YMMV" << endl;
       break;
     case sat:
       break;
   }
 
   model m = opt.get_model();
-  cout << "num bad links = " << m.eval(numBadLinks, true).get_numeral_uint() << '\n';
+# ifdef MIN_BACKLINKS_FUNC
+//  cout << "num bad links = " << m.eval(numBadLinks, true).get_numeral_uint() << endl;
+  cout << "cost = " << m.eval(cost, true).get_numeral_uint() << endl;
+# endif
   for (size_t i = 0; i < xs.size(); i++) {
     Node &n = (*nodes)[i];
     n.x = m.eval(xs[i], true).get_numeral_uint();
     n.y = m.eval(ys[i], true).get_numeral_uint();
-    cout << n.site << "/" << n.program << "/" << n.function << " at "<< n.x <<", "<< n.y << '\n';
+    cout << n.site << "/" << n.program << "/" << n.function << " at "<< n.x <<", "<< n.y << endl;
   }
 
   return true;
