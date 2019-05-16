@@ -1,6 +1,7 @@
 #include <vector>
 #include <map>
 #include <cassert>
+#include <chrono>
 #include <z3++.h>
 #include "layout.h"
 
@@ -18,6 +19,8 @@ namespace layout {
 //#define MIN_BACKLINKS_PROG
 //#define MIN_BACKLINKS_SITE
 #define SOURCES_AT_0
+#define MATERIALIZE_SITES
+#define MATERIALIZE_PROGS
 
 bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
 {
@@ -49,8 +52,10 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     ys.emplace_back(c.int_const((name + "/y").c_str()));
 
     // Constrain the space to the given square:
+#ifndef MATERIALIZE_SITES
     opt.add(xs.back() >= 0 && xs.back() < c.int_val(max_x));
     opt.add(ys.back() >= 0 && ys.back() < c.int_val(max_y));
+#endif
 
     sites.insert({n.site, i});
     programs.insert({{n.site, n.program}, i});
@@ -90,6 +95,28 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
       it->second.second.second = max(it->second.second.second, ys[idx]);
     }
   }
+#ifdef MATERIALIZE_SITES
+  for (auto it = ss.begin(); it != ss.end(); it++) {
+    string name = it->first;
+
+    expr e = c.int_const((name + "/x/min").c_str());
+    opt.add(e == it->second.first.first && e >= 0 && e < c.int_val(max_x));
+    it->second.first.first = e;
+
+    e = c.int_const((name + "/x/max").c_str());
+    opt.add(e == it->second.first.second && e >= 0 && e < c.int_val(max_x));
+    it->second.first.second = e;
+
+    e = c.int_const((name + "/y/min").c_str());
+    opt.add(e == it->second.second.first && e >= 0 && e < c.int_val(max_y));
+    it->second.second.first = e;
+
+    e = c.int_const((name + "/y/max").c_str());
+    opt.add(e == it->second.second.second && e >= 0 && e < c.int_val(max_y));
+    it->second.second.second= e;
+  }
+#endif
+
   // Minimize the size of each sites:
   for (auto it : ss) {
 #ifdef SINGLE_COST
@@ -175,6 +202,28 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
       it->second.second.second = max(it->second.second.second, ys[idx]);
     }
   }
+#ifdef MATERIALIZE_PROGS
+  for (auto it = ps.begin(); it != ps.end(); it++) {
+    string name = it->first.first +"/"+ it->first.second;
+
+    expr e = c.int_const((name + "/x/min").c_str());
+    opt.add(e == it->second.first.first);
+    it->second.first.first = e;
+
+    e = c.int_const((name + "/x/max").c_str());
+    opt.add(e == it->second.first.second);
+    it->second.first.second = e;
+
+    e = c.int_const((name + "/y/min").c_str());
+    opt.add(e == it->second.second.first);
+    it->second.second.first = e;
+
+    e = c.int_const((name + "/y/max").c_str());
+    opt.add(e == it->second.second.second);
+    it->second.second.second= e;
+  }
+#endif
+
   // Minimize the size of each programs:
   for (auto it : ps) {
 #ifdef SINGLE_COST
@@ -302,6 +351,8 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
 
   //cout << opt << endl;
 
+  auto start = chrono::high_resolution_clock::now();
+
   switch (opt.check()) {
     case unsat:
       cout << "Cannot solve layout!?" << endl;
@@ -310,6 +361,9 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
       cout << "Timeout while solving layout, YMMV" << endl;
       break;
     case sat:
+      auto stop = chrono::high_resolution_clock::now();
+      auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+      cout << "Solved in: " <<duration.count() << endl;
       break;
   }
 
