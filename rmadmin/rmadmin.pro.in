@@ -51,6 +51,7 @@ HEADERS += \
   layout.h \
   ProgramInfoBox.h \
   FunctionInfoBox.h \
+  CodeEdit.h \
   OperationsView.h \
   StorageForm.h \
   RmAdminWin.h
@@ -77,6 +78,7 @@ SOURCES += \
   TailSubModel.cpp \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
+  CodeEdit.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

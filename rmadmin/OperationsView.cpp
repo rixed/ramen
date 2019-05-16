@@ -4,7 +4,6 @@
 #include <QRadioButton>
 #include <QTreeView>
 #include <QTableView>
-#include <QTextEdit>
 #include <QGridLayout>
 #include "GraphModel.h"
 #include "TailModel.h"
@@ -14,6 +13,7 @@
 #include "ProgramItem.h"
 #include "FunctionInfoBox.h"
 #include "ProgramInfoBox.h"
+#include "CodeEdit.h"
 #include "OperationsView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
@@ -189,10 +189,9 @@ void OperationsView::addProgInfo(ProgramItem const *p)
 void OperationsView::addSource(ProgramItem const *p)
 {
   // TODO: If we already have this tab, just focus it!
-  QTextEdit *editor = new QTextEdit;
+  // TODO: find the src_file in the kvs tree, or do nothing.
   QString src_file("TODO:src_file of " + p->name);
-  editor->setPlainText("TODO:source of " + p->name);
-  editor->setReadOnly(true);
+  CodeEdit *editor = new CodeEdit(p);
   dataTabs->addTab(editor, src_file);
 }
 
