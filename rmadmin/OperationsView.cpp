@@ -90,8 +90,12 @@ OperationsView::OperationsView(QWidget *parent) :
   QHBoxLayout *bottomLayout = new QHBoxLayout;
   bottomSplit->setLayout(bottomLayout);
   infoTabs = new QTabWidget(this);
+  infoTabs->setTabsClosable(true);
+  QObject::connect(infoTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeInfo);
   bottomLayout->addWidget(infoTabs);
   dataTabs = new QTabWidget(this);
+  dataTabs->setTabsClosable(true);
+  QObject::connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeData);
   bottomLayout->addWidget(dataTabs);
 
   // Control the GraphView from the TreeView:
@@ -179,41 +183,68 @@ void OperationsView::selectItem(QModelIndex const &index)
   }
 }
 
+static bool tryFocus(QTabWidget *w, QString const &label)
+{
+  for (int i = 0; i < w->count(); i++) {
+    if (w->tabText(i) == label) {
+      w->setCurrentIndex(i);
+      return true;
+    }
+  }
+  return false;
+}
+
 void OperationsView::addProgInfo(ProgramItem const *p)
 {
-  // TODO: If we already have this tab, just focus it!
+  if (tryFocus(infoTabs, p->name)) return;
+
   ProgramInfoBox *box = new ProgramInfoBox(p);
   infoTabs->addTab(box, p->name);
 }
 
 void OperationsView::addSource(ProgramItem const *p)
 {
-  // TODO: If we already have this tab, just focus it!
-  // TODO: find the src_file in the kvs tree, or do nothing.
   QString src_file("TODO:src_file of " + p->name);
+  if (tryFocus(dataTabs, src_file)) return;
+
+  // TODO: find the src_file in the kvs tree, or do nothing.
   CodeEdit *editor = new CodeEdit(p);
   dataTabs->addTab(editor, src_file);
 }
 
 void OperationsView::addFuncInfo(FunctionItem const *f)
 {
-  // TODO: If we already have this tab, just focus it!
+  QString label(f->fqName());
+  if (tryFocus(infoTabs, label)) return;
+
   FunctionInfoBox *box = new FunctionInfoBox(f);
-  infoTabs->addTab(box, f->fqName());
+  infoTabs->addTab(box, label);
 }
 
 void OperationsView::addTail(FunctionItem const *f)
 {
-  // TODO: If we already have this tab, just focus it!
+  QString label(f->fqName());
+  if (tryFocus(dataTabs, label)) return;
+
   // TODO: Delete the submodel (after the table is destroyed + some more
   //       time?)
   TailSubModel *subModel = new TailSubModel(tailModel, f);
   if (subModel) {
     QTableView *table = new QTableView;
     table->setModel(subModel);
-    dataTabs->addTab(table, f->fqName());
+    dataTabs->addTab(table, label);
   } else {
     std::cerr << "Cannot find submodel for function "
               << f->fqName().toStdString() << std::endl;
   }
+}
+
+void OperationsView::closeInfo(int idx)
+{
+  infoTabs->removeTab(idx);
+}
+
+void OperationsView::closeData(int idx)
+{
+  dataTabs->removeTab(idx);
 }

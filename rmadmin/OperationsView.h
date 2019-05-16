@@ -43,6 +43,8 @@ public slots:
   void addFuncInfo(FunctionItem const *);
   // Will retrieve the function and emit functionSelected()
   void selectItem(QModelIndex const &); // the QModelIndex from the graphModel
+  void closeInfo(int);
+  void closeData(int);
 };
 
 #endif
