@@ -50,11 +50,12 @@ let may_publish clt zock key_of_seq
                 sersize_of_tuple serialize_tuple skipped tuple =
   (* Process incoming messages without waiting for them: *)
   let msg_count = ZMQClient.process_in clt zock in
+  if msg_count > 0 then
+    !logger.info "Received %d ZMQ messages" msg_count ;
   IntCounter.add stats_num_sync_msgs_in msg_count ;
   (* Now publish (if there are subscribers) *)
   match IntGauge.get stats_num_subscribers with
   | Some (_mi, num, _ma) when num > 0 ->
-      !logger.debug "TODO: publish that tuple" ;
       IntCounter.add stats_num_rate_limited_unpublished skipped ;
       IntCounter.inc stats_num_sync_msgs_out ;
       (* TODO: *)
@@ -74,6 +75,7 @@ let ignore_publish _sersize _serialize _skipped _tuple = ()
 
 let start_zmq_client url creds (site : N.site) (fq : N.fq) k =
   if url = "" then k ignore_publish else
+  (* TODO: also subscribe to errors! *)
   let topic_sub =
     "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =

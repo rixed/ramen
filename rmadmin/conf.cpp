@@ -136,6 +136,7 @@ void autoconnect(
     if (key.s.length() >= pref_len &&
         0 == key.s.compare(0, pref_len, prefix))
     {
+      std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
     }
   }
@@ -145,12 +146,13 @@ void autoconnect(
 static void do_autoconnect(conf::Key const &key, KValue const *kv)
 {
   size_t k_len = key.s.length();
+  std::cout << "do_autoconnect(k=" << key <<" of length " << k_len <<std::endl;
   for (Autoconnect const &ac : autoconnects) {
     size_t pref_len = ac.prefix.length();
     if (pref_len <= k_len &&
         0 == key.s.compare(0, pref_len, ac.prefix))
     {
-      std::cerr << "autoconnect key " << key << '\n';
+      std::cout << "autoconnect key " << key << std::endl;
       ac.cb(key, kv);
     }
   }
@@ -176,13 +178,16 @@ extern "C" {
     CAMLparam3(k_, v_, u_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    std::cerr << "new key " << k << " with value " << *v << std::endl;
     QString u(String_val(u_));
+
+    std::cout << "new key " << k << " with value " << *v << std::endl;
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
+    // Connect first, and then set the value.
     conf::do_autoconnect(k, &conf::kvs[k]);
     conf::kvs[k].set(k, v);
     conf::kvs[k].lock(k, u);
+    std::cout << "exiting conf_new_key for key " << k << std::endl;
     CAMLreturn(Val_unit);
   }
 
@@ -191,7 +196,7 @@ extern "C" {
     CAMLparam2(k_, v_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    std::cerr << "set key " << k << " to value " << *v << std::endl;
+    std::cout << "set key " << k << " to value " << *v << std::endl;
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);
     CAMLreturn(Val_unit);

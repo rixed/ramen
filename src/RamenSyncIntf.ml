@@ -187,7 +187,7 @@ struct
       | SetKey of Key.t * Value.t
       (* Like SetKey but fail if the key already exists.
        * Capa will be set by the callback on server side. *)
-      | NewKey of Key.t * Value.t
+      | NewKey of Key.t * Value.t (* TODO: and the r/w permissions *)
       | DelKey of Key.t
       | LockKey of Key.t
       | UnlockKey of Key.t

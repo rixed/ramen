@@ -243,7 +243,6 @@ void GraphModel::retrySetParents()
 
 void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
-  std::cout << "P = " << p.toStdString() << std::endl;
   static QString const parents_prefix("parents/");
   if (p == "is_used") {
     std::shared_ptr<conf::Bool const> cf =

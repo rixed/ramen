@@ -118,7 +118,7 @@ void GraphView::select(QModelIndex const &index)
   }
 }
 
-static int layoutTimeout = 3000;
+static int layoutTimeout = 2000;
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
@@ -288,9 +288,9 @@ void GraphView::startLayout()
     }
   }
   size_t const numNodes = nodes.size();
-  int const min_x = std::ceil(std::sqrt(numNodes));
-  int const max_x = min_x * 2;
-  int const max_y = min_x + min_x/2 + 1;
+  int const min_max = std::ceil(std::sqrt(numNodes));
+  int const max_x = min_max * 2;
+  int const max_y = min_max + min_max/2 + 1;
   layout::solve(&nodes, max_x, max_y);
 
   QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;

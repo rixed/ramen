@@ -364,6 +364,7 @@ CAMLprim value wrap_bytes_tx(value size_)
   CAMLparam1(size_);
   CAMLlocal1(tx);
   size_t size = Long_val(size_);
+  printf("wrap_bytes_tx(%zd...\n", size);
   tx = alloc_tx();
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   memset(wrtx, 0, sizeof(*wrtx));

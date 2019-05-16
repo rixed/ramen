@@ -99,7 +99,7 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
   QObject::connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
 
-  // Connect the grpahModel to the tailModel:
+  // Connect the graphModel to the tailModel:
   QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
   // And make a new tabTail when a function is selected in the graphView:
   QObject::connect(graphView, &GraphView::selected, this, &OperationsView::addTail);

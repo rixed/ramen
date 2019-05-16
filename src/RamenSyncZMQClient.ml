@@ -113,6 +113,7 @@ let init_sync ?while_ zock glob on_progress =
 let start ?while_ url creds topic on_progress
           ?(recvtimeo= -1) ?(sndtimeo= -1) k =
   let ctx = Zmq.Context.create () in
+  !logger.info "Subscribing to conf key %s" topic ;
   finally
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
