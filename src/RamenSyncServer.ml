@@ -279,7 +279,7 @@ struct
           set t u k v
 
       | CltMsg.NewKey (k, v) ->
-          let r = User.only_me u
+          let r = Capa.anybody
           and w = User.only_me u
           and s = false in
           create t u k v ~r ~w ~s

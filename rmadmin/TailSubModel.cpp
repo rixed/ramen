@@ -21,7 +21,7 @@ TailSubModel::TailSubModel(TailModel *model_, FunctionItem const *f_) :
   conf::Key k = tailKey(f);
   // TODO: have a VoidType
   std::shared_ptr<conf::Value> v = std::shared_ptr<conf::Value>(new conf::Bool(true));
-  conf::askSet(k, v);
+  conf::askNew(k, v);
 }
 
 TailSubModel::~TailSubModel()

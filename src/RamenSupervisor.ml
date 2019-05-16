@@ -480,7 +480,7 @@ let really_start conf proc =
   let more_env =
     List.enum
       [ "sync_url="^ conf.C.sync_url ;
-        "sync_creds=worker "^ (proc.func.F.name :> string) ] |>
+        "sync_creds=worker "^ (conf.C.site :> string) ^"/"^ fq_str ] |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =

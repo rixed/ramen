@@ -22,6 +22,7 @@ extern QMap<conf::Key, KValue> kvs;
  * But we can ask the server to update a value, using those functions.
  * If we are lucky, the server will soon send an update for those keys
  * reflecting the expected change. */
+void askNew(conf::Key const &, std::shared_ptr<conf::Value const>);
 void askSet(conf::Key const &, std::shared_ptr<conf::Value const>);
 void askLock(conf::Key const &);
 void askUnlock(conf::Key const &);

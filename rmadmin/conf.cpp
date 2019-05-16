@@ -17,7 +17,7 @@ conf::Key my_errors("errors/users/admin");
 QMap<conf::Key, KValue> kvs;
 
 struct ConfRequest {
-  enum Action { Set, Lock, Unlock, Del } action;
+  enum Action { New, Set, Lock, Unlock, Del } action;
   std::string const key;
   std::optional<std::shared_ptr<Value const>> value;
 };
@@ -35,27 +35,42 @@ extern "C" {
     } else {
       ConfRequest cr = pending_requests.takeFirst();
       switch (cr.action) {
-        case ConfRequest::Set:
+        case ConfRequest::New:
           req = caml_alloc(2, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
-        case ConfRequest::Lock:
-          req = caml_alloc(1, 1);
+        case ConfRequest::Set:
+          req = caml_alloc(2, 1);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
-        case ConfRequest::Unlock:
+        case ConfRequest::Lock:
           req = caml_alloc(1, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
-        case ConfRequest::Del:
+        case ConfRequest::Unlock:
           req = caml_alloc(1, 3);
+          Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          break;
+        case ConfRequest::Del:
+          req = caml_alloc(1, 4);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
       }
     }
     CAMLreturn(req);
   }
+}
+
+void askNew(conf::Key const &key, std::shared_ptr<conf::Value const> val)
+{
+  ConfRequest req = {
+    .action = ConfRequest::New,
+    .key = key.s,
+    .value = val
+  };
+  pending_requests.push_back(req);
 }
 
 void askSet(conf::Key const &key, std::shared_ptr<conf::Value const> val)
