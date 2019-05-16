@@ -4,11 +4,16 @@
 #include <QRadioButton>
 #include <QTreeView>
 #include <QTableView>
+#include <QTextEdit>
+#include <QGridLayout>
 #include "GraphModel.h"
 #include "TailModel.h"
 #include "TailSubModel.h"
 #include "GraphView.h"
 #include "FunctionItem.h"
+#include "ProgramItem.h"
+#include "FunctionInfoBox.h"
+#include "ProgramInfoBox.h"
 #include "OperationsView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
@@ -79,8 +84,15 @@ OperationsView::OperationsView(QWidget *parent) :
 
   topSplit->setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
 
-  // Then the bottom part is for now just a tabbed view of TailTable.
-  tailTabs = new QTabWidget(this);
+  // Then the bottom part is made of a info box and a tabbed stack of
+  // TailTable.
+  QWidget *bottomSplit = new QWidget(this);
+  QHBoxLayout *bottomLayout = new QHBoxLayout;
+  bottomSplit->setLayout(bottomLayout);
+  infoTabs = new QTabWidget(this);
+  bottomLayout->addWidget(infoTabs);
+  dataTabs = new QTabWidget(this);
+  bottomLayout->addWidget(dataTabs);
 
   // Control the GraphView from the TreeView:
   QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
@@ -101,14 +113,18 @@ OperationsView::OperationsView(QWidget *parent) :
 
   // Connect the graphModel to the tailModel:
   QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
-  // And make a new tabTail when a function is selected in the graphView:
-  QObject::connect(graphView, &GraphView::selected, this, &OperationsView::addTail);
+  // Also let the infobox and tail-tabs know when a function is selected:
+  QObject::connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
+  QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
+  QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
+  QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
+  QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
 }
 
 OperationsView::~OperationsView()
 {
-  // Delete tailModel first as it references FunctionItems belonging to the
-  // graphModel:
+  // FIXME: Qt will delete the infoTabs and dataTabs that references objects
+  // from the model only *after* we delete the model:
   delete tailModel;
   delete graphModel;
   delete settings;
@@ -145,19 +161,58 @@ void OperationsView::setLOD(bool)
   allowReset = true;
 }
 
-void OperationsView::addTail(QModelIndex const &index)
+void OperationsView::selectItem(QModelIndex const &index)
 {
   if (! index.isValid()) return;
   GraphItem const *gi =
     static_cast<GraphItem const *>(index.internalPointer());
-  FunctionItem const *f = dynamic_cast<FunctionItem const *>(gi);
-  if (! f) return;  // interested only in functions
+  ProgramItem const *p = dynamic_cast<ProgramItem const *>(gi);
+  if (p) {
+    emit programSelected(p);
+    return;
+  }
 
+  FunctionItem const *f = dynamic_cast<FunctionItem const *>(gi);
+  if (f) {
+    emit functionSelected(f);
+    return;
+  }
+}
+
+void OperationsView::addProgInfo(ProgramItem const *p)
+{
+  // TODO: If we already have this tab, just focus it!
+  ProgramInfoBox *box = new ProgramInfoBox(p);
+  infoTabs->addTab(box, p->name);
+}
+
+void OperationsView::addSource(ProgramItem const *p)
+{
+  // TODO: If we already have this tab, just focus it!
+  QTextEdit *editor = new QTextEdit;
+  QString src_file("TODO:src_file of " + p->name);
+  editor->setPlainText("TODO:source of " + p->name);
+  editor->setReadOnly(true);
+  dataTabs->addTab(editor, src_file);
+}
+
+void OperationsView::addFuncInfo(FunctionItem const *f)
+{
+  // TODO: If we already have this tab, just focus it!
+  FunctionInfoBox *box = new FunctionInfoBox(f);
+  infoTabs->addTab(box, f->fqName());
+}
+
+void OperationsView::addTail(FunctionItem const *f)
+{
+  // TODO: If we already have this tab, just focus it!
+  // TODO: Delete the submodel (after the table is destroyed + some more
+  //       time?)
   TailSubModel *subModel = new TailSubModel(tailModel, f);
   if (subModel) {
     QTableView *table = new QTableView;
     table->setModel(subModel);
-    tailTabs->addTab(table, f->fqName());
+    dataTabs->addTab(table, f->fqName());
   } else {
     std::cerr << "Cannot find submodel for function "
               << f->fqName().toStdString() << std::endl;

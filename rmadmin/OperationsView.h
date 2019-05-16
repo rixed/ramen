@@ -9,6 +9,7 @@ class TailModel;
 class QTabWidget;
 class QRadioButton;
 class FunctionItem;
+class ProgramItem;
 
 class OperationsView : public QSplitter
 {
@@ -18,7 +19,8 @@ class OperationsView : public QSplitter
   TailModel *tailModel;
   GraphViewSettings *settings;
   NarrowTreeView *treeView;
-  QTabWidget *tailTabs;
+  QTabWidget *infoTabs;
+  QTabWidget *dataTabs;
   bool allowReset;
 
   // Radio buttons for quickly set the desired Level Of Detail:
@@ -28,10 +30,19 @@ public:
   OperationsView(QWidget *parent = nullptr);
   ~OperationsView();
 
+signals:
+  void functionSelected(FunctionItem const *);
+  void programSelected(ProgramItem const *);
+
 public slots:
   void resetLOD(); // release all LOD radio buttons
   void setLOD(bool); // set a given LOD
-  void addTail(QModelIndex const &); // the QModelIndex from the graphModel
+  void addTail(FunctionItem const *);
+  void addSource(ProgramItem const *);
+  void addProgInfo(ProgramItem const *);
+  void addFuncInfo(FunctionItem const *);
+  // Will retrieve the function and emit functionSelected()
+  void selectItem(QModelIndex const &); // the QModelIndex from the graphModel
 };
 
 #endif
