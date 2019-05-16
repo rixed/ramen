@@ -19,7 +19,9 @@ public:
     AtomicWidget(key),
     valueType(valueType_)
   {
+    conf::kvs_lock.lock_shared();
     KValue &kv = conf::kvs[key];
+    conf::kvs_lock.unlock_shared();
     QObject::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
     QObject::connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
     QObject::connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);

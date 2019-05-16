@@ -72,7 +72,9 @@ void AtomicForm::setCentralWidget(QWidget *w)
 void AtomicForm::addWidget(AtomicWidget *aw)
 {
   aw->setEnabled(false);
+  conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[aw->key];
+  conf::kvs_lock.unlock_shared();
   widgets.push_back(aw);
   QObject::connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
   QObject::connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);

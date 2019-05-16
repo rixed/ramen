@@ -15,6 +15,7 @@ QString my_uid("auth:admin");
 conf::Key my_errors("errors/users/admin");
 
 QMap<conf::Key, KValue> kvs;
+std::shared_mutex kvs_lock;
 
 struct ConfRequest {
   enum Action { New, Set, Lock, Unlock, Del } action;
@@ -122,6 +123,7 @@ struct Autoconnect
 
 static std::list<Autoconnect> autoconnects;
 
+// Called from Qt threads
 void autoconnect(
   std::string const &prefix,
   std::function<void (conf::Key const &, KValue const *)> cb)
@@ -130,6 +132,7 @@ void autoconnect(
 
   // As a convenience, call onCreated for every pre-existing keys:
   size_t pref_len = prefix.length();
+  kvs_lock.lock_shared();
   for (auto it = kvs.constKeyValueBegin(); it != kvs.constKeyValueEnd(); it++) {
     conf::Key const &key((*it).first);
     KValue const *kv = &(*it).second;
@@ -140,8 +143,10 @@ void autoconnect(
       cb(key, kv);
     }
   }
+  kvs_lock.unlock_shared();
 }
 
+// Called from the OCaml thread
 // Given a new KValue, connect it to all interested parties:
 static void do_autoconnect(conf::Key const &key, KValue const *kv)
 {
@@ -184,9 +189,11 @@ extern "C" {
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
     // Connect first, and then set the value.
+    conf::kvs_lock.lock();
     conf::do_autoconnect(k, &conf::kvs[k]);
     conf::kvs[k].set(k, v);
     conf::kvs[k].lock(k, u);
+    conf::kvs_lock.unlock();
     std::cout << "exiting conf_new_key for key " << k << std::endl;
     CAMLreturn(Val_unit);
   }
@@ -197,8 +204,10 @@ extern "C" {
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     std::cout << "set key " << k << " to value " << *v << std::endl;
+    conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);
+    conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -206,8 +215,10 @@ extern "C" {
   {
     CAMLparam1(k_);
     std::string k(String_val(k_));
+    conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
     conf::kvs.remove(k);
+    conf::kvs_lock.unlock();
     // TODO: Or set to uninitialized? Or what?
     CAMLreturn(Val_unit);
   }
@@ -217,7 +228,9 @@ extern "C" {
     CAMLparam1(k_);
     std::string k(String_val(k_));
     QString u(String_val(u_));
+    conf::kvs_lock.lock();
     conf::kvs[k].lock(k, u);
+    conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
 
@@ -225,7 +238,9 @@ extern "C" {
   {
     CAMLparam1(k_);
     std::string k(String_val(k_));
+    conf::kvs_lock.lock();
     conf::kvs[k].unlock(k);
+    conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
 }

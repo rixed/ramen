@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <shared_mutex>
 #include <QMap>
 #include <QString>
 #include <QObject>
@@ -15,8 +16,11 @@ extern QString my_uid;
 extern conf::Key my_errors;
 
 /* We keep all KValues in this map so that it's possible to connect
- * updates to widget slots. */
+ * updates to widget slots.
+ * This is accessed read/write from the OCaml thread and read only from the
+ * Qt thread(s)., thus the shared_mutex: */
 extern QMap<conf::Key, KValue> kvs;
+extern std::shared_mutex kvs_lock;
 
 /* The above map is always updated by the server.
  * But we can ask the server to update a value, using those functions.
