@@ -25,11 +25,11 @@ public:
   void unlock(conf::Key const &);
   KValue& operator=(const KValue&);
 signals:
-  void valueCreated(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void valueLocked(conf::Key const &, QString const &uid);
-  void valueUnlocked(conf::Key const &);
-  void valueDeleted(conf::Key const &);
+  void valueCreated(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
+  void valueLocked(conf::Key const &, QString const &uid) const;
+  void valueUnlocked(conf::Key const &) const;
+  void valueDeleted(conf::Key const &) const;
 };
 
 #endif

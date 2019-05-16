@@ -141,6 +141,8 @@ void autoconnect(
     {
       std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
+      std::cout << "and emit a valueCreated signal." << std::endl;
+      emit kv->valueCreated(key, kv->value()); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
   }
   kvs_lock.unlock_shared();
