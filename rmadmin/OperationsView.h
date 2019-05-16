@@ -31,7 +31,7 @@ public:
 public slots:
   void resetLOD(); // release all LOD radio buttons
   void setLOD(bool); // set a given LOD
-  void addTail(FunctionItem const *);
+  void addTail(QModelIndex const &); // the QModelIndex from the graphModel
 };
 
 #endif

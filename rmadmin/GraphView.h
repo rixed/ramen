@@ -86,10 +86,6 @@ public slots:
 
 signals:
   void selected(QModelIndex const &);
-  void infoClicked(QModelIndex const &);
-  void tailClicked(QModelIndex const &);
-  void storageChilcked(QModelIndex const &);
-  void codeClicked(QModelIndex const &);
 };
 
 #endif

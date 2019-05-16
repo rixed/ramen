@@ -101,6 +101,8 @@ OperationsView::OperationsView(QWidget *parent) :
 
   // Connect the grpahModel to the tailModel:
   QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
+  // And make a new tabTail when a function is selected in the graphView:
+  QObject::connect(graphView, &GraphView::selected, this, &OperationsView::addTail);
 }
 
 OperationsView::~OperationsView()
@@ -143,8 +145,14 @@ void OperationsView::setLOD(bool)
   allowReset = true;
 }
 
-void OperationsView::addTail(FunctionItem const *f)
+void OperationsView::addTail(QModelIndex const &index)
 {
+  if (! index.isValid()) return;
+  GraphItem const *gi =
+    static_cast<GraphItem const *>(index.internalPointer());
+  FunctionItem const *f = dynamic_cast<FunctionItem const *>(gi);
+  if (! f) return;  // interested only in functions
+
   TailSubModel *subModel = new TailSubModel(tailModel, f);
   if (subModel) {
     QTableView *table = new QTableView;
