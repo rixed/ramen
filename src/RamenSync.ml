@@ -175,6 +175,7 @@ struct
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
     | PerSite of N.site * per_site_key
+    | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
     | Tail of N.site * N.fq * tail_key
     | Error of string option (* the user name *)
@@ -186,6 +187,17 @@ struct
   and per_service_key =
     | Host
     | Port
+  and per_prog_key =
+    | MustRun
+    | Debug
+    | ReportPeriod
+    | BinPath
+    | SrcPath
+    | Param of N.field
+    | OnSite
+    | Automatic
+    | SourceText
+    | SourceModTime
   and per_site_fq_key =
     | IsUsed
     (* FIXME: create a single entry of type "stats" for the following: *)
@@ -207,6 +219,19 @@ struct
     String.print fmt (match k with
       | Host -> "host"
       | Port -> "port")
+
+  let print_per_prog_key fmt k =
+    String.print fmt (match k with
+    | MustRun -> "must_run"
+    | Debug -> "debug"
+    | ReportPeriod -> "report_period"
+    | BinPath -> "bin_path"
+    | SrcPath -> "src_path"
+    | Param s -> "param/"^ (s :> string)
+    | OnSite -> "on_site"
+    | Automatic -> "automatic"
+    | SourceText -> "source/text"
+    | SourceModTime -> "source/mtime")
 
   let print_per_site_fq_key fmt k =
     String.print fmt (match k with
@@ -256,6 +281,10 @@ struct
         Printf.fprintf fmt "sites/%a/%a"
           N.site_print site
           print_per_site_key per_site_key
+    | PerProgram (pname, per_prog_key) ->
+        Printf.fprintf fmt "programs/%a/%a"
+          N.program_print pname
+          print_per_prog_key per_prog_key
     | Storage storage_key ->
         Printf.fprintf fmt "storage/%a"
           print_storage_key storage_key
@@ -330,6 +359,21 @@ struct
                               | "max", "ram" -> MaxRam
                               | "parents", i ->
                                   Parents (int_of_string i)))))
+        | "programs", s ->
+            (match cut s with
+            | pname, s ->
+              PerProgram (N.program pname,
+                match cut s with
+                | "must_run", "" -> MustRun
+                | "debug", "" -> Debug
+                | "report_period", "" -> ReportPeriod
+                | "bin_path", "" -> BinPath
+                | "src_path", "" -> SrcPath
+                | "param", n -> Param (N.field n)
+                | "on_site", "" -> OnSite
+                | "automatic", "" -> Automatic
+                | "source", "text" -> SourceText
+                | "source", "mtime" -> SourceModTime))
         | "storage", s ->
             Storage (
               match cut s with

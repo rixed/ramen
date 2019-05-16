@@ -14,7 +14,9 @@ module SrvMsg = Server.SrvMsg
 module User = RamenSync.User
 module Capa = RamenSync.Capacity
 module C = RamenConf
+module RC = C.Running
 module FS = C.FuncStats
+module T = RamenTypes
 module Services = RamenServices
 
 let u = User.internal
@@ -57,10 +59,12 @@ let replace_keys srv f h =
   Enum.iter (fun (k, _hv) -> Server.del srv u k) ;
   (* Now add/update the keys from [h]: *)
   Server.H.iter (fun k (v, r, w, s) ->
-    if Server.H.mem srv.Server.h k then
-      Server.set srv u k v
-    else
-      Server.create_unlocked srv k v ~r ~w ~s
+    Option.may (fun v ->
+      if Server.H.mem srv.Server.h k then
+        Server.set srv u k v
+      else
+        Server.create_unlocked srv k v ~r ~w ~s
+    ) v
   ) h
 
 module GraphInfo : CONF_SYNCER =
@@ -70,7 +74,7 @@ struct
       FuncGraph.print graph ;
     let h = Server.H.create 50 in
     let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
-      Server.H.add h k (v, r, w, s) in
+      Server.H.add h k (Some v, r, w, s) in
     Hashtbl.iter (fun site per_site_h ->
       let is_master = Set.mem site conf.C.masters in
       upd (PerSite (site, IsMaster)) (Value.Bool is_master) ;
@@ -179,6 +183,79 @@ struct
     )
 end
 
+(* Additional infos we get from the binaries *)
+module BinInfo =
+struct
+  let init _conf _srv = ()
+
+  let update conf srv =
+    let h = Server.H.create 20 in
+    let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
+      Server.H.add h k (Some v, r, w, s) in
+    RC.with_rlock conf identity |>
+    Hashtbl.iter (fun pname (rce, _get_rc) ->
+      upd Key.(PerProgram (pname, MustRun))
+          Value.(Bool RC.(rce.status = MustRun)) ;
+      upd Key.(PerProgram (pname, Debug))
+          Value.(Bool rce.debug) ;
+      upd Key.(PerProgram (pname, ReportPeriod))
+          Value.(Float rce.report_period) ;
+      upd Key.(PerProgram (pname, BinPath))
+          Value.(String (rce.bin :> string)) ;
+      upd Key.(PerProgram (pname, SrcPath))
+          Value.(String (rce.src_file :> string)) ;
+      Hashtbl.iter (fun pn pv ->
+        upd Key.(PerProgram (pname, Param pn))
+            Value.(String (IO.to_string T.print pv))
+      ) rce.params ;
+      upd Key.(PerProgram (pname, OnSite))
+          Value.(String (Globs.decompile rce.on_site)) ;
+      upd Key.(PerProgram (pname, Automatic))
+          Value.(Bool rce.automatic)) ;
+    let f = function
+      | Key.PerProgram (_, (MustRun | Debug | ReportPeriod | BinPath |
+                            SrcPath | Param _ | OnSite | Automatic)) -> true
+      | _ -> false in
+    replace_keys srv f h
+end
+
+module SrcInfo =
+struct
+  let init _conf _srv = ()
+
+  let update conf srv =
+    let h = Server.H.create 20 in
+    let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
+      Server.H.add h k (v, r, w, s) in
+    RC.with_rlock conf identity |>
+    Hashtbl.iter (fun pname (rce, _get_rc) ->
+      let fname = rce.RC.src_file in
+      match Files.mtime fname with
+      | exception Unix.(Unix_error (ENOENT, _, _)) ->
+          () (* No file -> No source info *)
+      | mtime ->
+          let km = Key.PerProgram (pname, SourceModTime)
+          and ks = Key.PerProgram (pname, SourceText) in
+          let do_upd () =
+            upd km (Some Value.(Float mtime)) ;
+            upd ks (Some Value.(String (Files.read_whole_file fname)))
+          and keep k =
+            upd k None in
+          (match Server.H.find srv.Server.h km with
+          | exception Not_found -> do_upd ()
+          | { v = Value.(Float prev_mtime) ; _ } ->
+              if mtime > prev_mtime then do_upd ()
+              else (keep km ; keep ks)
+          | hv ->
+              !logger.error
+                "Wrong type for source modification time (%a), deleting"
+                Value.print hv.v)) ;
+    let f = function
+      | Key.PerProgram (_, (SourceModTime | SourceText)) -> true
+      | _ -> false in
+    replace_keys srv f h
+end
+
 (*
  * The service: populate and update in a loop.
  * TODO: Save the conf from time to time in a user friendly format, and get
@@ -190,6 +267,8 @@ let populate_init conf srv =
   DevNull.init conf srv ;
   GraphInfo.init conf srv ;
   Storage.init conf srv ;
+  BinInfo.init conf srv ;
+  SrcInfo.init conf srv
 
 let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update DevNull"
@@ -198,6 +277,10 @@ let sync_step conf srv =
     (GraphInfo.update conf) srv ;
   log_and_ignore_exceptions ~what:"update Storage"
     (Storage.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update BinInfo"
+    (BinInfo.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update SrcInfo"
+    (SrcInfo.update conf) srv
 
 let zock_step srv zock =
   let peel_multipart msg =
