@@ -19,6 +19,8 @@ module Services = RamenServices
 
 let u = User.internal
 
+(* One module per data source so that it's easier to track those *)
+
 module type CONF_SYNCER =
 sig
   val init : C.conf -> Server.t -> unit
@@ -42,95 +44,83 @@ struct
   let update _conf _srv = ()
 end
 
-module PerSite : CONF_SYNCER =
+(* Helper function that takes a key filter and a new set of values, and
+ * replaces all keys matching the filter with the new set of values. *)
+let replace_keys srv f h =
+  (* Start by deleting the extraneous keys: *)
+  Server.H.enum srv.Server.h //
+  (fun (k, hv) ->
+    (* Skip over locked keys for now (TODO: timeout every locks!) *)
+    (hv.Server.l = None || hv.Server.l = Some User.internal) &&
+    f k &&
+    not (Server.H.mem h k)) |>
+  Enum.iter (fun (k, _hv) -> Server.del srv u k) ;
+  (* Now add/update the keys from [h]: *)
+  Server.H.iter (fun k (v, r, w, s) ->
+    if Server.H.mem srv.Server.h k then
+      Server.set srv u k v
+    else
+      Server.create_unlocked srv k v ~r ~w ~s
+  ) h
+
+module GraphInfo : CONF_SYNCER =
 struct
   let update_from_graph conf srv graph =
     !logger.debug "Update per-site configuration with graph %a"
       FuncGraph.print graph ;
-    (* First, grab all existing keys, to know what to delete later: *)
-    let key_used =
-      Server.H.filter_map (fun k hv ->
-        (* Skip over locked keys for now (TODO: timeout every locks!) *)
-        if hv.Server.l <> None && hv.Server.l <> Some User.internal then
-          None
-        else
-          match k with
-          | PerSite _ -> Some false
-          | _ -> None
-      ) srv.Server.h in
-    (* For every key the process is the same:
-     * - If it's not already there, add it unlocked;
-     * - If it is bound to the same value, pass;
-     * - If it is bound to another value, and unlocked, set the value;
-     * - If it is bound to another value, and is locked, that's a bug. *)
-    let upd k v ~r ~w ~s =
-      match Server.H.find srv.Server.h k with
-      | exception Not_found ->
-          Server.create_unlocked srv k v ~r ~w ~s
-      | Server.{ l = Some u' } when not (User.equal u' u) ->
-          !logger.error "Ignoring key %a that is locked by user %a"
-            Key.print k User.print u'
-      | _ ->
-          Server.H.replace key_used k true ;
-          (* Will deal with equal values itself: *)
-          Server.set srv u k v
-    in
+    let h = Server.H.create 50 in
+    let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
+      Server.H.add h k (v, r, w, s) in
     Hashtbl.iter (fun site per_site_h ->
       let is_master = Set.mem site conf.C.masters in
-      upd (PerSite (site, IsMaster)) (Value.Bool is_master)
-          ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+      upd (PerSite (site, IsMaster)) (Value.Bool is_master) ;
       (* TODO: PerService *)
       let stats = Archivist.load_stats ~site conf in
       Hashtbl.iter (fun (pname, fname) ge ->
         let fq = N.fq_of_program pname fname in
         (* IsUsed *)
         upd (PerSite (site, PerFunction (fq, IsUsed)))
-            (Value.Bool ge.FuncGraph.used)
-            ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+            (Value.Bool ge.FuncGraph.used) ;
         (* Parents *)
         set_iteri (fun i (psite, pprog, pfunc) ->
           upd (PerSite (site, PerFunction (fq, Parents i)))
               (Value.Worker (psite, pprog, pfunc))
-              ~r:Capa.anybody ~w:Capa.nobody ~s:true
         ) ge.FuncGraph.parents ;
         (* Stats *)
         (match Hashtbl.find stats fq with
         | exception Not_found -> ()
         | stats ->
             upd (PerSite (site, PerFunction (fq, StartupTime)))
-                (Value.Float stats.FS.startup_time)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+                (Value.Float stats.FS.startup_time) ;
             Option.may (fun min_etime ->
               upd (PerSite (site, PerFunction (fq, MinETime)))
-                  (Value.Float min_etime)
-                  ~r:Capa.anybody ~w:Capa.nobody ~s:true
+                  (Value.Float min_etime) ;
             ) stats.FS.min_etime ;
             Option.may (fun max_etime ->
               upd (PerSite (site, PerFunction (fq, MaxETime)))
-                  (Value.Float max_etime)
-                  ~r:Capa.anybody ~w:Capa.nobody ~s:true
+                  (Value.Float max_etime) ;
             ) stats.FS.max_etime ;
             upd (PerSite (site, PerFunction (fq, TotTuples)))
-                (Value.Int stats.FS.tuples)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+                (Value.Int stats.FS.tuples) ;
             upd (PerSite (site, PerFunction (fq, TotBytes)))
-                (Value.Int stats.FS.bytes)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+                (Value.Int stats.FS.bytes) ;
             upd (PerSite (site, PerFunction (fq, TotCpu)))
-                (Value.Float stats.FS.cpu)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+                (Value.Float stats.FS.cpu) ;
             upd (PerSite (site, PerFunction (fq, MaxRam)))
-                (Value.Int stats.FS.ram)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true ;
+                (Value.Int stats.FS.ram) ;
             upd (PerSite (site, PerFunction (fq, ArchivedTimes)))
-                (Value.TimeRange stats.FS.archives)
-                ~r:Capa.anybody ~w:Capa.nobody ~s:true) ;
+                (Value.TimeRange stats.FS.archives)) ;
       ) per_site_h
     ) graph.FuncGraph.h ;
-    (* Now delete unused keys: *)
-    Server.H.iter (fun k used ->
-      if not used then Server.del srv u k
-    ) key_used
+    let f = function
+      | Key.PerSite
+          (_, (IsMaster |
+              (PerFunction
+                (_, (IsUsed | Parents _ | StartupTime | MinETime |
+                 MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
+                 ArchivedTimes))))) -> true
+      | _ -> false in
+    replace_keys srv f h
 
   let init _conf _srv = ()
 
@@ -190,22 +180,24 @@ struct
 end
 
 (*
- *
+ * The service: populate and update in a loop.
+ * TODO: Save the conf from time to time in a user friendly format, and get
+ * rid of other data sources.
  *)
 
 let populate_init conf srv =
   !logger.info "Populating the configuration..." ;
   DevNull.init conf srv ;
-  PerSite.init conf srv ;
-  Storage.init conf srv
+  GraphInfo.init conf srv ;
+  Storage.init conf srv ;
 
 let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update DevNull"
     (DevNull.update conf) srv ;
-  log_and_ignore_exceptions ~what:"update PerSite"
-    (PerSite.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update GraphInfo"
+    (GraphInfo.update conf) srv ;
   log_and_ignore_exceptions ~what:"update Storage"
-    (Storage.update conf) srv
+    (Storage.update conf) srv ;
 
 let zock_step srv zock =
   let peel_multipart msg =
@@ -306,15 +298,9 @@ let test_client conf =
           !logger.info "Received %a" print_msg answer ;
           assert (String.sub (List.at answer 1) 0 3 = "AU ") ;
           !logger.info "Sending correct auth this time..." ;
-          Zmq.Socket.send_all zock [ "" ; "1 AU tintin" ] ;
-          !logger.info "There should be no answer..." ;
-          Unix.sleepf 0.5 ;
-          (match Zmq.Socket.recv_all ~block:false zock with
-          | exception Unix.(Unix_error (EAGAIN, _, _)) ->
-              !logger.info "Indeed, no answer."
-          | s ->
-              !logger.error "Got answer: %a" print_msg s ;
-              assert false) ;
+          Zmq.Socket.send_all zock [ "" ; "1 AU admin" ] ;
+          let answer = Zmq.Socket.recv_all zock in
+          !logger.info "Auth answer: %a" print_msg answer ;
           !logger.info "Starting to sync..." ;
           Zmq.Socket.send_all zock [ "" ; "2 SS *" ] ;
           !logger.info "Receiving:" ;
