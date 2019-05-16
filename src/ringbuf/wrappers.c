@@ -66,7 +66,7 @@ static value alloc_ringbuf(void)
 
 struct wrap_ringbuf_tx {
   struct ringbuf *rb; // for normal TXs
-  uint8_t *bytes;     // for "bytes" TXs
+  uint32_t *bytes;     // for "bytes" TXs
   struct ringbuf_tx tx;
   // Number of bytes alloced either in the RB transaction or in *bytes
   // above; just to check we do not overflow.
@@ -462,8 +462,15 @@ CAMLprim value wrap_ringbuf_dequeue_commit(value tx)
 static void *where_to(struct wrap_ringbuf_tx const *wrtx, size_t offs)
 {
   assert(!(offs & 3));
-  return wrtx->rb->rbf->data /* Where the mmapped data starts */
-       + wrtx->tx.record_start /* The offset of the record within that data */
+  uint32_t *data;
+  if (wrtx->rb) {
+    data = (uint32_t *)wrtx->rb->rbf->data;
+  } else {
+    assert(wrtx->bytes);
+    data = wrtx->bytes;
+  }
+  return data                  // Where the ringbuffer starts
+       + wrtx->tx.record_start // The offset of the record within that data
        + offs/sizeof(uint32_t);
 }
 
