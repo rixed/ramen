@@ -34,6 +34,15 @@ public:
 
   virtual std::shared_ptr<conf::Value const> getValue() const = 0;
   virtual void setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
+
+  void lockValue(conf::Key const &, QString const &uid)
+  {
+    setEnabled(uid == conf::my_uid);
+  }
+  void unlockValue(conf::Key const &)
+  {
+    setEnabled(false);
+  }
 };
 
 #endif

@@ -8,7 +8,6 @@ class StorageForm : public AtomicForm
 
 public:
   StorageForm(QWidget *parent = nullptr);
-  ~StorageForm();
 };
 
 #endif

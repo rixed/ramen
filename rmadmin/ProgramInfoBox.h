@@ -1,15 +1,23 @@
 #ifndef PROGRAMINFOBOX_H_190516
 #define PROGRAMINFOBOX_H_190516
-#include <QWidget>
+#include "AtomicForm.h"
 
 class ProgramItem;
-class QLabel;
+class KBool;
+class KLineEdit;
+class KLabel;
 
-class ProgramInfoBox : public QWidget
+class ProgramInfoBox : public AtomicForm
 {
   Q_OBJECT
 
   ProgramItem const *p;
+
+  KBool *mustRun;
+  KBool *debug;
+  KLineEdit *reportPeriod;
+  KLabel *binPath;
+  KLabel *srcPath;
 
 public:
   ProgramInfoBox(ProgramItem const *, QWidget *parent = nullptr);

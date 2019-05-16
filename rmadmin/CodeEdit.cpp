@@ -7,23 +7,21 @@ CodeEdit::CodeEdit(ProgramItem const *p_, QWidget *parent) :
 {
   setReadOnly(true);
 
-  std::string k("programs/" + p->name.toStdString() + "/source/text");
-  std::cout << "CodeEdit: autoconnect to " << k << std::endl;
-  conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
-      std::cout << "CodeEdit: CB called!" << std::endl;
-      QObject::connect(kv, &KValue::valueCreated, this, &CodeEdit::setText);
-      QObject::connect(kv, &KValue::valueChanged, this, &CodeEdit::setText);
-      // TODO: valueLocked/valueUnlocked and make this an AtomicForm.
-      // TODO: valueDeleted.
-    }
-  );
+  std::string key("programs/" + p->name.toStdString() + "/source/text");
+  conf::kvs_lock.lock_shared();
+  KValue &kv = conf::kvs[key];
+  conf::kvs_lock.unlock_shared();
+
+  QObject::connect(&kv, &KValue::valueCreated, this, &CodeEdit::setValue);
+  QObject::connect(&kv, &KValue::valueChanged, this, &CodeEdit::setValue);
+  // TODO: valueLocked/valueUnlocked and make this an AtomicForm, cf KLineEdit
+  // TODO: valueDeleted.
+
+  if (kv.isSet()) setValue(key, kv.value());
 }
 
-CodeEdit::~CodeEdit() {}
-
-void CodeEdit::setText(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void CodeEdit::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
 {
-  std::cout << "CodeEdit: setText called!" << std::endl;
   std::shared_ptr<conf::String const>s =
     std::dynamic_pointer_cast<conf::String const>(v);
   if (! s) {

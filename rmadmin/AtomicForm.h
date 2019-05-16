@@ -11,13 +11,13 @@
 #include "confValue.h"
 #include "confKey.h"
 #include "AtomicWidget.h"
+
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
  * "edit", "cancel" and "commit".
  *
- * We are passed a list of KWidgets (Keyed-Widget), which must have those
- * slots:
- * - setEnabled(bool) (all QWidgets have this one),
+ * We are passed a list of KWidgets (Keyed-Widget), which must have a
+ * setEnabled(bool) slot (all QWidgets have this one),
  * and they must have a method to get the confValue out of it, that we call
  * when we commit the form and when we click "edit" to save the initial
  * values.

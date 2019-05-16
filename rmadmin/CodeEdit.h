@@ -13,10 +13,9 @@ class CodeEdit : public QTextEdit
 
 public:
   CodeEdit(ProgramItem const *, QWidget *parent = nullptr);
-  ~CodeEdit();
 
 public slots:
-  void setText(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
 /*  void lockText(conf::Key const &, QString const &uid);
   void unlockText(conf::Key const &);
   void deleteText(conf::Key const &);*/

@@ -9,51 +9,24 @@
 class KLineEdit : public QLineEdit, public AtomicWidget
 {
   Q_OBJECT
-  //Q_INTERFACES(AtomicWidget)
 
   conf::ValueType valueType;
 
 public:
-  KLineEdit(std::string const key, conf::ValueType valueType_, QWidget *parent = nullptr) :
-    QLineEdit(parent),
-    AtomicWidget(key),
-    valueType(valueType_)
-  {
-    conf::kvs_lock.lock_shared();
-    KValue &kv = conf::kvs[key];
-    conf::kvs_lock.unlock_shared();
-    QObject::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
-    QObject::connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
-    QObject::connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
-    QObject::connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
-  }
-  ~KLineEdit() {}
+  KLineEdit(std::string const key, conf::ValueType, QWidget *parent = nullptr);
 
-  virtual std::shared_ptr<conf::Value const> getValue() const
-  {
-    return std::shared_ptr<conf::Value const>(conf::valueOfQString(valueType, text()));
-  }
-
-  void setEnabled(bool enabled)
-  {
-    AtomicWidget::setEnabled(enabled);
-    QLineEdit::setEnabled(enabled);
-  }
+  virtual std::shared_ptr<conf::Value const> getValue() const;
+  void setEnabled(bool);
 
 public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v);
+  void lockValue(conf::Key const &k, QString const &uid)
   {
-    QLineEdit::setText(v->toQString());
+    AtomicWidget::lockValue(k, uid);
   }
-
-  void lockValue(conf::Key const &, QString const &uid)
+  void unlockValue(conf::Key const &k)
   {
-    KLineEdit::setEnabled(uid == conf::my_uid);
-  }
-
-  void unlockValue(conf::Key const &)
-  {
-    KLineEdit::setEnabled(false);
+    AtomicWidget::unlockValue(k);
   }
 };
 
