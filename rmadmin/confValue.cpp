@@ -1,5 +1,6 @@
 #include <string.h>
 #include <cstdlib>
+#include <cstring>
 #include <QtWidgets>
 #include <QString>
 #include "confValue.h"
@@ -86,6 +87,13 @@ Value *valueOfOCaml(value v_)
         range.push_back(std::pair<double, double>(1., 2.));
         ret = new TimeRange(range);
       }
+      break;
+    case TupleType:
+      ret = new Tuple(
+        // If the value is <0 it must have wrapped around in the OCaml side.
+        Int_val(Field(v_, 0)),
+        Bytes_val(Field(v_, 1)),
+        caml_string_length(Field(v_, 1)));
       break;
     default:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -291,30 +299,6 @@ bool Worker::operator==(Value const &other) const
   return site == o.site && program == o.program && function == o.function;
 }
 
-TimeRange::TimeRange(std::vector<std::pair<double, double>> const &range_) :
-  Value(TimeRangeType), range(range_) {}
-
-TimeRange::TimeRange() : TimeRange(std::vector<std::pair<double,double>>()) {}
-
-TimeRange::~TimeRange() {}
-
-QString TimeRange::toQString() const
-{
-  return QString("TODO: TimeRange to string");
-}
-
-value TimeRange::toOCamlValue() const
-{
-  assert(!"Don't know how to convert from a TimeRange");
-}
-
-bool TimeRange::operator==(Value const &other) const
-{
-  if (! Value::operator==(other)) return false;
-  TimeRange const &o = static_cast<TimeRange const &>(other);
-  return range == o.range;
-}
-
 Retention::Retention(double duration_, double period_) :
   Value(RetentionType), duration(duration_), period(period_) {}
 
@@ -340,6 +324,66 @@ QString Retention::toQString() const
 value Retention::toOCamlValue() const
 {
   assert(!"Don't know how to convert form a Retention");
+}
+
+TimeRange::TimeRange(std::vector<std::pair<double, double>> const &range_) :
+  Value(TimeRangeType), range(range_) {}
+
+TimeRange::TimeRange() : TimeRange(std::vector<std::pair<double,double>>()) {}
+
+TimeRange::~TimeRange() {}
+
+QString TimeRange::toQString() const
+{
+  return QString("TODO: TimeRange to string");
+}
+
+value TimeRange::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from a TimeRange");
+}
+
+bool TimeRange::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  TimeRange const &o = static_cast<TimeRange const &>(other);
+  return range == o.range;
+}
+
+Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size_) :
+  Value(TupleType), skipped(skipped_), size(size_)
+{
+  if (bytes_) {
+    bytes = new char[size];
+    memcpy((void *)bytes, (void *)bytes_, size);
+  } else {
+    assert(size == 0);
+    bytes_ = nullptr;
+  }
+}
+
+Tuple::Tuple() : Tuple(0, nullptr, 0) {}
+
+Tuple::~Tuple()
+{
+  if (bytes) delete[](bytes);
+}
+
+QString Tuple::toQString() const
+{
+  return QString::number(size) + QString(" bytes");
+}
+
+value Tuple::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from an Tuple");
+}
+
+bool Tuple::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  Tuple const &o = static_cast<Tuple const &>(other);
+  return size == o.size && 0 == memcmp(bytes, o.bytes, size);
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

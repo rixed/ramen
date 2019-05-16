@@ -90,6 +90,7 @@ type pending_req =
   | Set of string * Value.t
   | Lock of string
   | Unlock of string
+  | Del of string
 
 external next_pending_request : unit -> pending_req = "next_pending_request"
 
@@ -121,6 +122,9 @@ let sync_loop clt zock =
         handle_msgs_out ()
     | Unlock k ->
         send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        handle_msgs_out ()
+    | Del k ->
+        send_cmd zock (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do

@@ -13,6 +13,7 @@ class TailSubModel : public QAbstractItemModel
   FunctionItem const *f;
 public:
   TailSubModel(TailModel *, FunctionItem const *);
+  ~TailSubModel();
   QModelIndex index(int row, int column, QModelIndex const &parent) const;
   QModelIndex parent(QModelIndex const &index) const;
   int rowCount(QModelIndex const &parent) const;

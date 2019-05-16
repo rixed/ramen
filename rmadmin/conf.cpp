@@ -17,7 +17,7 @@ conf::Key my_errors("errors/users/admin");
 QMap<conf::Key, KValue> kvs;
 
 struct ConfRequest {
-  enum Action { Set, Lock, Unlock } action;
+  enum Action { Set, Lock, Unlock, Del } action;
   std::string const key;
   std::optional<std::shared_ptr<Value const>> value;
 };
@@ -46,6 +46,10 @@ extern "C" {
           break;
         case ConfRequest::Unlock:
           req = caml_alloc(1, 2);
+          Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          break;
+        case ConfRequest::Del:
+          req = caml_alloc(1, 3);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
       }
@@ -78,6 +82,16 @@ void askUnlock(conf::Key const &key)
 {
   ConfRequest req = {
     .action = ConfRequest::Unlock,
+    .key = key.s,
+    .value = std::optional<std::shared_ptr<Value const>>()
+  };
+  pending_requests.push_back(req);
+}
+
+void askDel(conf::Key const &key)
+{
+  ConfRequest req = {
+    .action = ConfRequest::Del,
     .key = key.s,
     .value = std::optional<std::shared_ptr<Value const>>()
   };

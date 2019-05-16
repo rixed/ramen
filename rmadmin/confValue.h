@@ -11,7 +11,7 @@ namespace conf {
 
 enum ValueType {
   BoolType = 0, IntType, FloatType, StringType,
-  ErrorType, WorkerType, RetentionType, TimeRangeType,
+  ErrorType, WorkerType, RetentionType, TimeRangeType, TupleType,
   LastValueType
 };
 
@@ -101,6 +101,17 @@ struct Worker : public Value {
   bool operator==(Value const &) const;
 };
 
+struct Retention : public Value {
+  double duration;
+  double period;
+  Retention();
+  ~Retention();
+  Retention(double, double);
+  QString toQString() const;
+  value toOCamlValue() const;
+  bool operator==(Value const &) const;
+};
+
 struct TimeRange : public Value {
   std::vector<std::pair<double, double>> range;
   TimeRange();
@@ -111,12 +122,13 @@ struct TimeRange : public Value {
   bool operator==(Value const &) const;
 };
 
-struct Retention : public Value {
-  double duration;
-  double period;
-  Retention();
-  ~Retention();
-  Retention(double, double);
+struct Tuple : public Value {
+  unsigned skipped;
+  char const *bytes;
+  size_t size;
+  Tuple();
+  ~Tuple();
+  Tuple(unsigned, unsigned char const *, size_t);
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
@@ -133,6 +145,7 @@ Q_DECLARE_METATYPE(conf::Error);
 Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);
+Q_DECLARE_METATYPE(conf::Tuple);
 
 // Defined by OCaml header but conflicting with further Qt includes:
 #undef alloc

@@ -25,6 +25,7 @@ extern QMap<conf::Key, KValue> kvs;
 void askSet(conf::Key const &, std::shared_ptr<conf::Value const>);
 void askLock(conf::Key const &);
 void askUnlock(conf::Key const &);
+void askDel(conf::Key const &);
 
 /* Also, instead of connecting to individual KValues in the map to the
  * GUI actions, it's simpler to register interest for some pattern of keys
