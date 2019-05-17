@@ -124,6 +124,8 @@ struct Autoconnect
 static std::list<Autoconnect> autoconnects;
 
 // Called from Qt threads
+// FIXME: return a handler (the address of the autoconnect?) with which
+//        user can unregister (in destructors...).
 void autoconnect(
   std::string const &prefix,
   std::function<void (conf::Key const &, KValue const *)> cb)
@@ -141,7 +143,6 @@ void autoconnect(
     {
       std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
-      std::cout << "and emit a valueCreated signal." << std::endl;
       emit kv->valueCreated(key, kv->value()); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
   }
@@ -153,7 +154,6 @@ void autoconnect(
 static void do_autoconnect(conf::Key const &key, KValue const *kv)
 {
   size_t k_len = key.s.length();
-  std::cout << "do_autoconnect(k=" << key <<" of length " << k_len <<std::endl;
   for (Autoconnect const &ac : autoconnects) {
     size_t pref_len = ac.prefix.length();
     if (pref_len <= k_len &&
@@ -196,7 +196,6 @@ extern "C" {
     conf::kvs[k].set(k, v);
     conf::kvs[k].lock(k, u);
     conf::kvs_lock.unlock();
-    std::cout << "exiting conf_new_key for key " << k << std::endl;
     CAMLreturn(Val_unit);
   }
 
