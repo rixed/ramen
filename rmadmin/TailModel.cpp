@@ -1,69 +1,68 @@
 #include <cassert>
-#include "TailModel.h"
+#include <string>
+#include <memory>
 #include "FunctionItem.h"
+#include "conf.h"
+#include "confKey.h"
+#include "confValue.h"
+#include "TailModel.h"
 
-TailModel::TailModel()
+static std::string user_id("admin"); // TODO
+
+static conf::Key tailKey(FunctionItem const *f)
 {
-  functions.reserve(20);
+  return conf::Key("tail/" + f->fqName().toStdString() + "/users/" + user_id);
 }
 
-/* We use as index thw row/column and the internalPointer just to point
- * to root (null), in which case row gives us the function index, or to
- * a FunctionItem.
- * InternalPointer does not store Tuple address as they are owned by a
- * resizeable vector (FunctionItems, on another hand, does not move -
- * ProgramItem::functions being a vector of FunctionItem*). */
+TailModel::TailModel(FunctionItem const *f_) :
+  f(f_)
+{
+  // Propagates this function's signals into our beginInsertRows
+  QObject::connect(f, &FunctionItem::beginAddTuple, this, [this](int first, int last) {
+    // Convert the signal by adding the QModelIndex for that function:
+    emit beginInsertRows(QModelIndex(), first, last);
+  });
+  QObject::connect(f, &FunctionItem::endAddTuple, this, &TailModel::endInsertRows);
+
+  // Subscribe to that table tail:
+  conf::Key k = tailKey(f);
+  // TODO: have a VoidType
+  std::shared_ptr<conf::Value> v = std::shared_ptr<conf::Value>(new conf::Bool(true));
+  conf::askNew(k, v);
+}
+
+TailModel::~TailModel()
+{
+  conf::askDel(tailKey(f));
+}
+
+/* Given we only need a flat model (table not tree) we only use an invalid index as
+ * parent and points to this for internal pointer. If we are given a valid parent
+ * we must return an invalid index to signal the end of the tree. */
 QModelIndex TailModel::index(int row, int column, QModelIndex const &parent) const
 {
-  if (!parent.isValid() || !parent.internalPointer()) {
-    if ((size_t)row >= functions.size() ||
-        column > 0)
-      return QModelIndex();
+  if (parent.isValid()) return QModelIndex();
 
-    return createIndex(row, column, nullptr);
-  }
-
-  // Otherwise parent is a functionItem:
-  FunctionItem const *f = static_cast<FunctionItem const *>(parent.internalPointer());
-  if ((ssize_t)row >= (ssize_t)f->tuples.size() ||
-      column >= (int)f->numColumns())
+  if (row >= (int)f->tuples.size() || column >= (int)f->numColumns())
     return QModelIndex();
 
-  return createIndex(row, column, (void *)f);
+  return createIndex(row, column, (void *)this);
 }
 
-QModelIndex TailModel::parent(QModelIndex const &index) const
+QModelIndex TailModel::parent(QModelIndex const &) const
 {
-  if (!index.isValid()) return QModelIndex();  // Should not happen IMHO
-
-  if (!index.internalPointer()) return QModelIndex();
-
-  FunctionItem const *f = static_cast<FunctionItem const *>(index.internalPointer());
-  for (size_t row = 0; row < functions.size(); row++) {
-    if (functions[row] == f)
-      return createIndex(row, 0, nullptr);
-  }
-
   return QModelIndex();
 }
 
 int TailModel::rowCount(QModelIndex const &parent) const
 {
-  if (!parent.isValid()) return 0;  // Should not happen IMHO
-
-  if (!parent.internalPointer()) return functions.size();
-
-  FunctionItem const *f = static_cast<FunctionItem const *>(parent.internalPointer());
+  if (parent.isValid()) return 0;
   return f->tuples.size();
 }
 
 int TailModel::columnCount(QModelIndex const &parent) const
 {
-  if (!parent.isValid()) return 0;  // Should not happen IMHO
-
-  if (!parent.internalPointer()) return 1;
-
-  FunctionItem const *f = static_cast<FunctionItem const *>(parent.internalPointer());
+  if (parent.isValid()) return 0;
   return f->numColumns();
 }
 
@@ -72,49 +71,37 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
   if (!index.isValid()) return QVariant();
 
   int const row = index.row();
-  if (!index.internalPointer()) {
-    if ((ssize_t)row >= (ssize_t)functions.size() ||
-        index.column() > 0)
-      return QVariant();
+  int const column = index.column();
 
-    return functionData(functions[row], role);
-  } else {
-    FunctionItem const *f = static_cast<FunctionItem const *>(index.internalPointer());
-    return tupleData(f, row, index.column(), role);
-  }
-}
+  if (row >= (int)f->tuples.size() || column >= (int)f->numColumns())
+    return QVariant();
 
-QVariant TailModel::functionData(FunctionItem const *f, int role) const
-{
   switch (role) {
     case Qt::DisplayRole:
-      return QVariant(f->fqName());
+      // TODO
+      return QVariant(QString::number(row) + ", " + QString::number(column));
     case Qt::ToolTipRole:
-      return QVariant(QString(tr("Function name")));
+      // TODO
+      return QVariant(QString("Column #") + QString::number(column));
     case Qt::WhatsThisRole:
+      // TODO
       return QVariant(QString(tr("What's \"What's this\"?")));
     default:
       return QVariant();
   }
 }
 
-QVariant TailModel::tupleData(FunctionItem const *f, int row, int column, int role) const
+QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) const
 {
-  if ((ssize_t)row >= (ssize_t)f->tuples.size() ||
-      column >= (int)f->numColumns())
-    return QVariant();
-
-//  Tuple const &tuple = f->tuples[row];
-
-  switch (role) {
-    case Qt::DisplayRole:
-      return QVariant(QString::number(row) + ", " + QString::number(column));
-    default:
-      return QVariant();
+  if (role != Qt::DisplayRole) return QVariant();
+  switch (orient) {
+    case Qt::Horizontal:
+      if (section >= f->numColumns()) return QVariant();
+      f->header(section);
+      break;
+    case Qt::Vertical:
+      if (section >= f->numRows()) return QVariant();
+      return QVariant(QString::number(section));
   }
-}
-
-void TailModel::addFunction(FunctionItem const *f)
-{
-  functions.push_back(f);
+  return QVariant();
 }

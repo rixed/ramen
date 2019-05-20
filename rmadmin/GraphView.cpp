@@ -123,6 +123,7 @@ static int layoutTimeout = 2000;
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {
   // Start (or restart) the layoutTimer to trigger a re-layout in 100ms:
+  std::cout << "insertRow in graphModel from " << first << " to " << last << std::endl;
   layoutTimer.start(layoutTimeout);
 
   // We only need to add to the scene the toplevel sites:

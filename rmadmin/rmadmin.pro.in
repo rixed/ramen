@@ -46,7 +46,6 @@ HEADERS += \
   GraphViewSettings.h \
   GraphModel.h \
   TailModel.h \
-  TailSubModel.h \
   GraphView.h \
   GraphArrow.h \
   layoutNode.h \
@@ -80,7 +79,6 @@ SOURCES += \
   GraphViewSettings.cpp \
   GraphModel.cpp \
   TailModel.cpp \
-  TailSubModel.cpp \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
   CodeEdit.cpp \

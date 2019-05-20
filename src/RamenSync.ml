@@ -6,6 +6,7 @@ open Batteries
 open RamenSyncIntf
 open RamenHelpers
 module N = RamenName
+module T = RamenTypes
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 
@@ -183,7 +184,7 @@ struct
   and per_site_key =
     | IsMaster
     | PerService of N.service * per_service_key
-    | PerFunction of N.fq * per_site_fq_key
+    | PerWorker of N.fq * per_site_fq_key
   and per_service_key =
     | Host
     | Port
@@ -198,6 +199,8 @@ struct
     | Automatic
     | SourceText
     | SourceModTime
+    | RunCondition
+    | PerFunction of N.func * per_func_key
   and per_site_fq_key =
     | IsUsed
     (* FIXME: create a single entry of type "stats" for the following: *)
@@ -207,6 +210,15 @@ struct
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
+  and per_func_key =
+    | Retention
+    | Doc
+    | IsLazy
+    | Operation
+    | InType
+    | OutType
+    | Signature
+    | MergeInputs
   and tail_key =
     | Subscriber of string
     | LastTuple of int (* increasing sequence just for ordering *)
@@ -220,6 +232,17 @@ struct
       | Host -> "host"
       | Port -> "port")
 
+  let print_per_func_key fmt k =
+    String.print fmt (match k with
+      | Retention -> "retention"
+      | Doc -> "doc"
+      | IsLazy -> "is_lazy"
+      | Operation -> "operation"
+      | InType -> "type/in"
+      | OutType -> "type/out"
+      | Signature -> "signature"
+      | MergeInputs -> "merge_inputs")
+
   let print_per_prog_key fmt k =
     String.print fmt (match k with
     | MustRun -> "must_run"
@@ -231,7 +254,12 @@ struct
     | OnSite -> "on_site"
     | Automatic -> "automatic"
     | SourceText -> "source/text"
-    | SourceModTime -> "source/mtime")
+    | SourceModTime -> "source/mtime"
+    | RunCondition -> "run_condition"
+    | PerFunction (fname, per_func_key) ->
+        Printf.sprintf2 "functions/%a/%a"
+          N.func_print fname
+          print_per_func_key per_func_key)
 
   let print_per_site_fq_key fmt k =
     String.print fmt (match k with
@@ -253,7 +281,7 @@ struct
         Printf.fprintf fmt "services/%a/%a"
           N.service_print service
           print_per_service_key per_service_key
-    | PerFunction (fq, per_site_fq_key) ->
+    | PerWorker (fq, per_site_fq_key) ->
         Printf.fprintf fmt "functions/%a/%a"
           N.fq_print fq
           print_per_site_fq_key per_site_fq_key
@@ -341,7 +369,7 @@ struct
                   (match rcut s with
                   | [ fq ; s ] ->
                       try
-                        PerFunction (N.fq fq,
+                        PerWorker (N.fq fq,
                           match s with
                           | "is_used" -> IsUsed
                           | "startup_time" -> StartupTime
@@ -349,7 +377,7 @@ struct
                       with Match_failure _ ->
                         (match rcut fq, s with
                         | [ fq ; s1 ], s2 ->
-                            PerFunction (N.fq fq,
+                            PerWorker (N.fq fq,
                               match s1, s2 with
                               | "event_time", "min" -> MinETime
                               | "event_time", "max" -> MaxETime
@@ -373,7 +401,21 @@ struct
                 | "on_site", "" -> OnSite
                 | "automatic", "" -> Automatic
                 | "source", "text" -> SourceText
-                | "source", "mtime" -> SourceModTime))
+                | "source", "mtime" -> SourceModTime
+                | "run_condition", "" -> RunCondition
+                | "functions", s ->
+                    (match cut s with
+                    | fname, s ->
+                      PerFunction (N.func fname,
+                        match cut s with
+                        | "retention", "" -> Retention
+                        | "doc", "" -> Doc
+                        | "is_lazy", "" -> IsLazy
+                        | "operation", "" -> Operation
+                        | "type", "in" -> InType
+                        | "type", "out" -> OutType
+                        | "signature", "" -> Signature
+                        | "merge_inputs", "" -> MergeInputs))))
         | "storage", s ->
             Storage (
               match cut s with
@@ -401,7 +443,7 @@ struct
       [@@ocaml.warning "-8"]
 
   (*$= of_string & ~printer:Batteries.dump
-    (PerSite (N.site "siteA", PerFunction (N.fq "prog/func", TotBytes))) \
+    (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", TotBytes))) \
       (of_string "sites/siteA/functions/prog/func/total/bytes")
   *)
 
@@ -458,6 +500,7 @@ struct
     | Tuple of
         { skipped : int (* How many tuples were skipped before this one *) ;
           values : bytes (* serialized *) }
+    | RamenType of T.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -486,6 +529,8 @@ struct
     | Tuple { skipped ; values } ->
         Printf.fprintf fmt "Tuple of %d bytes (after %d skipped)"
           (Bytes.length values) skipped
+    | RamenType t ->
+        T.print_typ fmt t
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

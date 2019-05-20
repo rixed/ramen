@@ -1,6 +1,13 @@
 #include <QDateTime>
-#include "FunctionItem.h"
 #include "GraphView.h"
+#include "conf.h"
+#include "TailModel.h"
+#include "FunctionItem.h"
+
+static std::string lastTuplesKey(FunctionItem const *f)
+{
+  return "tail/" + f->fqName().toStdString() + "/lasts/";
+}
 
 FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
   GraphItem(treeParent, name, settings, paletteSize)
@@ -9,9 +16,18 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
   channel = std::rand() % settings->numArrowChannels;
   setZValue(3);
   tuples.reserve(1000);
+  std::string k = lastTuplesKey(this);
+  conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
+    // Although this value will never change we need the create signal:
+      QObject::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
+  });
+  tailModel = new TailModel(this);
 }
 
-FunctionItem::~FunctionItem() {}
+FunctionItem::~FunctionItem()
+{
+  delete tailModel;
+}
 
 QVariant FunctionItem::data(int column) const
 {
@@ -64,8 +80,57 @@ QRectF FunctionItem::operationRect() const
             settings->programMarginTop + settings->siteMarginTop));
 }
 
-unsigned FunctionItem::numColumns() const
+int FunctionItem::numRows() const
 {
-  // TODO: a property for the output type
-  return 2;
+  return tuples.size();
+}
+
+int FunctionItem::numColumns() const
+{
+  // We could get this info from already received tuples or from the
+  // output type in the config tree.
+  // We go for the output type as it also gives us column headers:
+  // TODO: a function to get it and cache it. Or even better: connect
+  // to this KV set/change signals and update the cached type.
+  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
+              name.toStdString() + "/type/out");
+  conf::kvs_lock.lock_shared();
+  KValue &kv = conf::kvs[k];
+  conf::kvs_lock.unlock_shared();
+
+  std::shared_ptr<conf::RamenType const> outType =
+    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
+  if (! outType) return 0;
+
+  return outType->numColumns();
+}
+
+QString FunctionItem::header(unsigned column) const
+{
+  // TODO: see above
+  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
+              name.toStdString() + "/type/out");
+  conf::kvs_lock.lock_shared();
+  KValue &kv = conf::kvs[k];
+  conf::kvs_lock.unlock_shared();
+
+  std::shared_ptr<conf::RamenType const> outType =
+    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
+  if (! outType) return QString("#") + QString::number(column);
+
+  return outType->header(column);
+}
+
+void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
+{
+  std::shared_ptr<conf::Tuple const> t =
+    std::dynamic_pointer_cast<conf::Tuple const>(v);
+  if (! t) {
+    std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
+    return;
+  }
+  // TODO: in theory check the seq number and ensure ordering:
+  emit beginAddTuple(tuples.size(), tuples.size()+1);
+  tuples.push_back(t);
+  emit endAddTuple();
 }

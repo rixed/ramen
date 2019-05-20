@@ -141,7 +141,7 @@ void autoconnect(
     if (key.s.length() >= pref_len &&
         0 == key.s.compare(0, pref_len, prefix))
     {
-      std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
+      //std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
       emit kv->valueCreated(key, kv->value()); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
@@ -159,7 +159,7 @@ static void do_autoconnect(conf::Key const &key, KValue const *kv)
     if (pref_len <= k_len &&
         0 == key.s.compare(0, pref_len, ac.prefix))
     {
-      std::cout << "autoconnect key " << key << std::endl;
+      //std::cout << "autoconnect key " << key << std::endl;
       ac.cb(key, kv);
     }
   }
@@ -187,7 +187,7 @@ extern "C" {
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     QString u(String_val(u_));
 
-    std::cout << "new key " << k << " with value " << *v << std::endl;
+    //std::cout << "new key " << k << " with value " << *v << std::endl;
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
     // Connect first, and then set the value.
@@ -204,7 +204,7 @@ extern "C" {
     CAMLparam2(k_, v_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    std::cout << "set key " << k << " to value " << *v << std::endl;
+    //std::cout << "set key " << k << " to value " << *v << std::endl;
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);

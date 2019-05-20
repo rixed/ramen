@@ -350,6 +350,25 @@ type in_field =
 
 type in_type = in_field list
 
+let record_of_in_type in_type =
+  let rec field_of_path ?(s="") = function
+    | [] -> s
+    | E.Int i :: rest ->
+        let s = s ^"["^ string_of_int i ^"]" in
+        field_of_path ~s rest
+    | E.Name n :: rest ->
+        let n = (n :> string) in
+        let s = if s = "" then n else s ^"."^ n in
+        field_of_path ~s rest
+  in
+  T.make ~nullable:false
+    (T.TRecord (
+      List.enum in_type /@
+      (fun field ->
+        field_of_path field.path,
+        field.typ) |>
+      Array.of_enum))
+
 let in_type_signature =
   List.fold_left (fun s f ->
     (if s = "" then "" else s ^ "_") ^

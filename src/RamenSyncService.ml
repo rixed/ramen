@@ -16,7 +16,10 @@ module Capa = RamenSync.Capacity
 module C = RamenConf
 module RC = C.Running
 module FS = C.FuncStats
+module F = C.Func
+module P = C.Program
 module T = RamenTypes
+module O = RamenOperation
 module Services = RamenServices
 
 let u = User.internal
@@ -83,43 +86,43 @@ struct
       Hashtbl.iter (fun (pname, fname) ge ->
         let fq = N.fq_of_program pname fname in
         (* IsUsed *)
-        upd (PerSite (site, PerFunction (fq, IsUsed)))
+        upd (PerSite (site, PerWorker (fq, IsUsed)))
             (Value.Bool ge.FuncGraph.used) ;
         (* Parents *)
         set_iteri (fun i (psite, pprog, pfunc) ->
-          upd (PerSite (site, PerFunction (fq, Parents i)))
+          upd (PerSite (site, PerWorker (fq, Parents i)))
               (Value.Worker (psite, pprog, pfunc))
         ) ge.FuncGraph.parents ;
         (* Stats *)
         (match Hashtbl.find stats fq with
         | exception Not_found -> ()
         | stats ->
-            upd (PerSite (site, PerFunction (fq, StartupTime)))
+            upd (PerSite (site, PerWorker (fq, StartupTime)))
                 (Value.Float stats.FS.startup_time) ;
             Option.may (fun min_etime ->
-              upd (PerSite (site, PerFunction (fq, MinETime)))
+              upd (PerSite (site, PerWorker (fq, MinETime)))
                   (Value.Float min_etime) ;
             ) stats.FS.min_etime ;
             Option.may (fun max_etime ->
-              upd (PerSite (site, PerFunction (fq, MaxETime)))
+              upd (PerSite (site, PerWorker (fq, MaxETime)))
                   (Value.Float max_etime) ;
             ) stats.FS.max_etime ;
-            upd (PerSite (site, PerFunction (fq, TotTuples)))
+            upd (PerSite (site, PerWorker (fq, TotTuples)))
                 (Value.Int stats.FS.tuples) ;
-            upd (PerSite (site, PerFunction (fq, TotBytes)))
+            upd (PerSite (site, PerWorker (fq, TotBytes)))
                 (Value.Int stats.FS.bytes) ;
-            upd (PerSite (site, PerFunction (fq, TotCpu)))
+            upd (PerSite (site, PerWorker (fq, TotCpu)))
                 (Value.Float stats.FS.cpu) ;
-            upd (PerSite (site, PerFunction (fq, MaxRam)))
+            upd (PerSite (site, PerWorker (fq, MaxRam)))
                 (Value.Int stats.FS.ram) ;
-            upd (PerSite (site, PerFunction (fq, ArchivedTimes)))
+            upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
                 (Value.TimeRange stats.FS.archives)) ;
       ) per_site_h
     ) graph.FuncGraph.h ;
     let f = function
       | Key.PerSite
           (_, (IsMaster |
-              (PerFunction
+              (PerWorker
                 (_, (IsUsed | Parents _ | StartupTime | MinETime |
                  MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
                  ArchivedTimes))))) -> true
@@ -184,7 +187,7 @@ struct
 end
 
 (* Additional infos we get from the binaries *)
-module BinInfo =
+module BinInfo : CONF_SYNCER =
 struct
   let init _conf _srv = ()
 
@@ -219,7 +222,7 @@ struct
     replace_keys srv f h
 end
 
-module SrcInfo =
+module SrcInfo : CONF_SYNCER =
 struct
   let init _conf _srv = ()
 
@@ -228,9 +231,9 @@ struct
     let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
       Server.H.add h k (v, r, w, s) in
     RC.with_rlock conf identity |>
-    Hashtbl.iter (fun pname (rce, _get_rc) ->
+    Hashtbl.iter (fun pname (rce, get_rc) ->
       let fname = rce.RC.src_file in
-      match Files.mtime fname with
+      (match Files.mtime fname with
       | exception Unix.(Unix_error (ENOENT, _, _)) ->
           () (* No file -> No source info *)
       | mtime ->
@@ -250,6 +253,32 @@ struct
               !logger.error
                 "Wrong type for source modification time (%a), deleting"
                 Value.print hv.v)) ;
+      (match get_rc () with
+      | exception _ -> ()
+      | p ->
+          Option.may (fun condition ->
+            upd (Key.PerProgram (pname, RunCondition))
+                (Some Value.(String condition))
+          ) p.P.condition ;
+          List.iter (fun f ->
+            let upd fk v =
+              upd (Key.PerProgram (pname, PerFunction (f.F.name, fk)))
+                  (Some v) in
+            Option.may (fun retention ->
+              upd Key.Retention Value.(Retention retention)
+            ) f.F.retention ;
+            upd Key.Doc Value.(String f.F.doc) ;
+            upd Key.IsLazy Value.(Bool f.F.is_lazy) ;
+            let op = f.F.operation in
+            upd Key.Operation Value.(String
+              (IO.to_string (O.print true) op)) ;
+            upd Key.InType Value.(RamenType
+              (RamenFieldMaskLib.record_of_in_type f.F.in_type)) ;
+            upd Key.OutType Value.(RamenType
+              (O.out_record_of_operation ~with_private:false op)) ;
+            upd Key.Signature Value.(String f.F.signature) ;
+            upd Key.MergeInputs Value.(Bool f.F.merge_inputs)
+          ) p.funcs)) ;
     let f = function
       | Key.PerProgram (_, (SourceModTime | SourceText)) -> true
       | _ -> false in

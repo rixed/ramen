@@ -5,7 +5,6 @@
 
 class NarrowTreeView;
 class GraphModel;
-class TailModel;
 class QTabWidget;
 class QRadioButton;
 class FunctionItem;
@@ -16,7 +15,6 @@ class OperationsView : public QSplitter
   Q_OBJECT
 
   GraphModel *graphModel;
-  TailModel *tailModel;
   GraphViewSettings *settings;
   NarrowTreeView *treeView;
   QTabWidget *infoTabs;

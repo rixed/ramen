@@ -43,7 +43,7 @@ bool Value::operator!=(Value const &other) const
 Value *valueOfOCaml(value v_)
 {
   CAMLparam1(v_);
-  CAMLlocal1(tmp_);
+  CAMLlocal3(tmp_, str_, nul_);
   assert(Is_block(v_));
   ValueType valueType = (ValueType)Tag_val(v_);
   Value *ret = nullptr;
@@ -94,6 +94,13 @@ Value *valueOfOCaml(value v_)
         Int_val(Field(v_, 0)),
         Bytes_val(Field(v_, 1)),
         caml_string_length(Field(v_, 1)));
+      break;
+    case RamenTypeType:
+      tmp_ = Field(v_, 0);
+      str_ = Field(tmp_, 0);  // type structure
+      nul_ = Field(tmp_, 1);  // nullable
+      // TODO: switch (str tag...)
+      ret = new RamenTypeScalar(ser::BoolType, Bool_val(nul_));
       break;
     default:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -384,6 +391,68 @@ bool Tuple::operator==(Value const &other) const
   if (! Value::operator==(other)) return false;
   Tuple const &o = static_cast<Tuple const &>(other);
   return size == o.size && 0 == memcmp(bytes, o.bytes, size);
+}
+
+RamenType::RamenType(ser::ValueType type_, bool nullable_) :
+  Value(RamenTypeType), type(type_), nullable(nullable_)
+{}
+
+RamenType::RamenType() : RamenType(ser::Error, false) {}
+
+RamenType::~RamenType() {}
+
+QString RamenType::toQString() const
+{
+  return QString("TODO: some type");
+}
+
+value RamenType::toOCamlValue() const
+{
+  assert(!"Don't know how to convert from a RamenType");
+}
+
+bool RamenType::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  RamenType const &o = static_cast<RamenType const &>(other);
+  return type == o.type;
+}
+
+QString RamenTypeScalar::header(size_t i) const
+{
+  if (i != 0) return QString();
+
+  switch (type) {
+    case ser::FloatType:
+      return QString(QCoreApplication::translate("QMainWindow", "real"));
+    case ser::StringType:
+      return QString(QCoreApplication::translate("QMainWindow", "string"));
+    case ser::BoolType:
+      return QString(QCoreApplication::translate("QMainWindow", "boolean"));
+    case ser::U8Type:
+    case ser::U16Type:
+    case ser::U32Type:
+    case ser::U64Type:
+    case ser::U128Type:
+    case ser::I8Type:
+    case ser::I16Type:
+    case ser::I32Type:
+    case ser::I64Type:
+    case ser::I128Type:
+      return QString(QCoreApplication::translate("QMainWindow", "integer"));
+    case ser::EthType:
+      return QString(QCoreApplication::translate("QMainWindow", "ethernet address"));
+    case ser::Ipv4Type:
+    case ser::Ipv6Type:
+    case ser::IpType:
+      return QString(QCoreApplication::translate("QMainWindow", "IP address"));
+    case ser::Cidrv4Type:
+    case ser::Cidrv6Type:
+    case ser::CidrType:
+      return QString(QCoreApplication::translate("QMainWindow", "CIDR mask"));
+    default:
+      return QString(QCoreApplication::translate("QMainWindow", "compound type"));
+  }
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

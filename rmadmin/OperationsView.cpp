@@ -7,7 +7,6 @@
 #include <QGridLayout>
 #include "GraphModel.h"
 #include "TailModel.h"
-#include "TailSubModel.h"
 #include "GraphView.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
@@ -33,7 +32,6 @@ OperationsView::OperationsView(QWidget *parent) :
   // requirements:
   settings = new GraphViewSettings();
   graphModel = new GraphModel(settings);
-  tailModel = new TailModel();
 
   // Split the window horizontally:
   setOrientation(Qt::Vertical);
@@ -116,7 +114,7 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
 
   // Connect the graphModel to the tailModel:
-  QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
+//  QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
   // Also let the infobox and tail-tabs know when a function is selected:
   QObject::connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
   QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
@@ -129,7 +127,6 @@ OperationsView::~OperationsView()
 {
   // FIXME: Qt will delete the infoTabs and dataTabs that references objects
   // from the model only *after* we delete the model:
-  delete tailModel;
   delete graphModel;
   delete settings;
 }
@@ -226,17 +223,9 @@ void OperationsView::addTail(FunctionItem const *f)
   QString label(f->fqName());
   if (tryFocus(dataTabs, label)) return;
 
-  // TODO: Delete the submodel (after the table is destroyed + some more
-  //       time?)
-  TailSubModel *subModel = new TailSubModel(tailModel, f);
-  if (subModel) {
-    QTableView *table = new QTableView;
-    table->setModel(subModel);
-    dataTabs->addTab(table, label);
-  } else {
-    std::cerr << "Cannot find submodel for function "
-              << f->fqName().toStdString() << std::endl;
-  }
+  QTableView *table = new QTableView;
+  table->setModel(f->tailModel);
+  dataTabs->addTab(table, label);
 }
 
 void OperationsView::closeInfo(int idx)

@@ -19,14 +19,14 @@ module Key = Client.Key
 let next_id = ref 0
 let send_cmd zock cmd =
     let s = Client.CltMsg.to_string (!next_id, cmd) in
-    !logger.info "Sending command %s" s ;
+    !logger.debug "Sending command %s" s ;
     incr next_id ;
     Zmq.Socket.send_all zock [ "" ; s ]
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
-      !logger.info "srv message (raw): %S" s ;
+      !logger.debug "srv message (raw): %S" s ;
       Client.SrvMsg.of_string s
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
@@ -105,7 +105,7 @@ let sync_loop clt zock =
     | msg ->
         Client.process_msg clt msg ;
         incr msg_count ;
-        !logger.debug "received %d messages" !msg_count ;
+        (*!logger.debug "received %d messages" !msg_count ;*)
         if !msg_count mod 10 = 0 then
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
@@ -143,35 +143,35 @@ let sync_loop clt zock =
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
 let on_new clt k v uid =
-  !logger.info "New key %a with value %a" Key.print k Value.print v ;
+  !logger.debug "New key %a with value %a" Key.print k Value.print v ;
   ignore clt ;
   conf_new_key (Key.to_string k) v uid
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
 let on_set clt k v =
-  !logger.info "Change key %a to value %a" Key.print k Value.print v ;
+  !logger.debug "Change key %a to value %a" Key.print k Value.print v ;
   ignore clt ;
   conf_set_key (Key.to_string k) v
 
 external conf_del_key : string -> unit = "conf_del_key"
 
 let on_del clt k =
-  !logger.info "Del key %a" Key.print k ;
+  !logger.debug "Del key %a" Key.print k ;
   ignore clt ;
   conf_del_key (Key.to_string k)
 
 external conf_lock_key : string -> string -> unit = "conf_lock_key"
 
 let on_lock clt k uid =
-  !logger.info "Lock key %a" Key.print k ;
+  !logger.debug "Lock key %a" Key.print k ;
   ignore clt ;
   conf_lock_key (Key.to_string k) uid
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
 let on_unlock clt k =
-  !logger.info "Unlock key %a" Key.print k ;
+  !logger.debug "Unlock key %a" Key.print k ;
   ignore clt ;
   conf_unlock_key (Key.to_string k)
 
