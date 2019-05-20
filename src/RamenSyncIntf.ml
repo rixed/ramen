@@ -252,8 +252,33 @@ struct
       let i, cmd = String.split ~by:" " s in
       int_of_string i, cmd_of_string cmd
 
+    let print_cmd oc = function
+      | Auth creds ->
+          Printf.fprintf oc "Auth %s"
+            (Key.User.PubCredentials.to_string creds)
+      | StartSync sel ->
+          Printf.fprintf oc "StartSync %s"
+            (Selector.to_string sel)
+      | SetKey (k, v) ->
+          Printf.fprintf oc "SetKey (%a, %a)"
+            Key.print k
+            Value.print v
+      | NewKey (k, v) ->
+          Printf.fprintf oc "NewKey (%a, %a)"
+            Key.print k
+            Value.print v
+      | DelKey k ->
+          Printf.fprintf oc "DelKey %a"
+            Key.print k
+      | LockKey k ->
+          Printf.fprintf oc "LockKey %a"
+            Key.print k
+      | UnlockKey k ->
+          Printf.fprintf oc "UnlockKey %a"
+            Key.print k
+
     let print fmt (i, cmd) =
-      Printf.fprintf fmt "#%d,%s" i (string_of_cmd cmd)
+      Printf.fprintf fmt "#%d, %a" i print_cmd cmd
   end
 
   module SrvMsg =
@@ -266,6 +291,29 @@ struct
       (* With the username of the lock owner: *)
       | LockKey of (Key.t * string)
       | UnlockKey of Key.t
+
+    let print oc = function
+      | Auth creds ->
+          Printf.fprintf oc "Auth %s" creds
+      | SetKey (k, v) ->
+          Printf.fprintf oc "SetKey (%a, %a)"
+            Key.print k
+            Value.print v
+      | NewKey (k, v, uid) ->
+          Printf.fprintf oc "NewKey (%a, %a, %s)"
+            Key.print k
+            Value.print v
+            uid
+      | DelKey k ->
+          Printf.fprintf oc "DelKey %a"
+            Key.print k
+      | LockKey (k, uid) ->
+          Printf.fprintf oc "LockKey (%a, %s)"
+            Key.print k
+            uid
+      | UnlockKey k ->
+          Printf.fprintf oc "UnlockKey %a"
+            Key.print k
 
     let to_string = function
       | Auth s ->

@@ -417,7 +417,13 @@ let test_client conf =
           Zmq.Socket.send_all zock [ "" ; "2 SS *" ] ;
           !logger.info "Receiving:" ;
           forever (fun () ->
-            !logger.info "%a" print_msg (Zmq.Socket.recv_all zock)
+            match Zmq.Socket.recv_all zock with
+            | [ ""; s ] ->
+                let msg = SrvMsg.of_string in
+                !logger.info "%a"
+                  SrvMsg.print SrvMsg.(of_string s)
+            | lst ->
+                !logger.info "%a" print_msg lst
           ) ()
         ) ()
     ) ()
