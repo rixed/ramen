@@ -191,12 +191,18 @@ static bool tryFocus(QTabWidget *w, QString const &label)
   return false;
 }
 
+static void focusLast(QTabWidget *w)
+{
+  w->setCurrentIndex(w->count() - 1);
+}
+
 void OperationsView::addProgInfo(ProgramItem const *p)
 {
   if (tryFocus(infoTabs, p->name)) return;
 
   ProgramInfoBox *box = new ProgramInfoBox(p);
   infoTabs->addTab(box, p->name);
+  focusLast(infoTabs);
 }
 
 void OperationsView::addSource(ProgramItem const *p)
@@ -207,6 +213,7 @@ void OperationsView::addSource(ProgramItem const *p)
   // TODO: find the src_file in the kvs tree, or do nothing.
   CodeEdit *editor = new CodeEdit(p);
   dataTabs->addTab(editor, src_file);
+  focusLast(dataTabs);
 }
 
 void OperationsView::addFuncInfo(FunctionItem const *f)
@@ -216,6 +223,7 @@ void OperationsView::addFuncInfo(FunctionItem const *f)
 
   FunctionInfoBox *box = new FunctionInfoBox(f);
   infoTabs->addTab(box, label);
+  focusLast(infoTabs);
 }
 
 void OperationsView::addTail(FunctionItem const *f)
@@ -226,6 +234,7 @@ void OperationsView::addTail(FunctionItem const *f)
   QTableView *table = new QTableView;
   table->setModel(f->tailModel);
   dataTabs->addTab(table, label);
+  focusLast(dataTabs);
 }
 
 void OperationsView::closeInfo(int idx)
