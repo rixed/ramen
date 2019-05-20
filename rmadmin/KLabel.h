@@ -25,7 +25,8 @@ public:
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    QLabel::setText(v->toQString());
+    int const max_len = 30;
+    QLabel::setText(v->toQString().left(max_len));
   }
 };
 

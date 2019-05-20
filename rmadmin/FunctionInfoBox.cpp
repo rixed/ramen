@@ -1,28 +1,39 @@
 #include <QLabel>
-#include <QGridLayout>
+#include <QFormLayout>
 #include "FunctionItem.h"
+#include "KLabel.h"
 #include "FunctionInfoBox.h"
 
 FunctionInfoBox::FunctionInfoBox(FunctionItem const *f_, QWidget *parent) :
-  QWidget(parent), f(f_)
+  QWidget(parent),
+  f(f_),
+  pref("programs/" + f->treeParent->name.toStdString() + "/functions/" +
+       f->name.toStdString() + "/")
 {
-  QGridLayout *layout = new QGridLayout;
+  QFormLayout *layout = new QFormLayout;
   setLayout(layout);
-  // Title: name of the function
-  QLabel *title = new QLabel(f->fqName());
-  layout->addWidget(title, 0, 0, 1, 2, Qt::AlignHCenter);
 
-  // some more infos...
+  KLabel *retention = new KLabel(pref + "retention", this);
+  layout->addRow(tr("Retention"), retention);
 
-  // Input type:
-  layout->addWidget(new QLabel(tr("input type")), 1, 0);
-  QLabel *inputTypeInfo = new QLabel("TODO");
-  layout->addWidget(inputTypeInfo, 1, 1);
+  KLabel *doc = new KLabel(pref + "doc", this);
+  layout->addRow(tr("Documentation"), doc);
 
-  // Output type:
-  layout->addWidget(new QLabel(tr("output type")), 2, 0);
-  QLabel *outputTypeInfo = new QLabel("TODO");
-  layout->addWidget(outputTypeInfo, 2, 1);
+  KLabel *isLazy = new KLabel(pref + "is_lazy", this);
+  layout->addRow(tr("Lazy?"), isLazy);
 
-  // TODO: Could as well display what's current;y displayed in the graph
+  KLabel *operation = new KLabel(pref + "operation", this);
+  layout->addRow(tr("Operation"), operation);
+
+  KLabel *inType = new KLabel(pref + "type/in", this);
+  layout->addRow(tr("Input Type"), inType);
+
+  KLabel *outType = new KLabel(pref + "type/out", this);
+  layout->addRow(tr("Output Type"), outType);
+
+  KLabel *signature = new KLabel(pref + "signature", this);
+  layout->addRow(tr("Signature"), signature);
+
+  KLabel *mergeInputs = new KLabel(pref + "merge_inputs", this);
+  layout->addRow(tr("Distinct Inputs"), mergeInputs);
 }

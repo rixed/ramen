@@ -12,8 +12,8 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   p(p_),
   pref("programs/" + p->name.toStdString() + "/")
 {
-  QWidget *cw = new QWidget(this);
   QFormLayout *layout = new QFormLayout;
+  QWidget *cw = new QWidget(this);
   cw->setLayout(layout);
   setCentralWidget(cw);
 
@@ -57,6 +57,9 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
 
   KLabel *automatic = new KLabel(pref + "automatic", cw);
   layout->addRow(tr("Automatic"), automatic);
+
+  KLabel *runCondition = new KLabel(pref + "run_condition", cw);
+  layout->addRow(tr("Condition to Run"), runCondition);
 }
 
 static QString paramOfKey(conf::Key const &k, std::string pref)
