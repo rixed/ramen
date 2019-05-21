@@ -311,6 +311,8 @@ let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update SrcInfo"
     (SrcInfo.update conf) srv
 
+let last_tuples = Hashtbl.create 50
+
 let zock_step srv zock =
   let peel_multipart msg =
     let too_short l =
@@ -336,7 +338,28 @@ let zock_step srv zock =
           log_and_ignore_exceptions (fun () ->
             let u = User.of_zmq_id peer in
             let m = CltMsg.of_string msg in
-            Server.process_msg srv u m
+            Server.process_msg srv u m ;
+            (* Special case: we automatically, and silently, prune old
+             * entries under "lasts/" directories (only after a new entry has
+             * successfully been added there).
+             * TODO: in theory, also monitor DelKey to update last_tuples
+             * secondary hash. *)
+            (match m with
+            | _, CltMsg.NewKey (Key.(Tail (site, fq, LastTuple seq)), _) ->
+                Hashtbl.modify_opt (site, fq) (function
+                  | None ->
+                      let seqs =
+                        Array.init max_last_tuples (fun i ->
+                          if i = 0 then seq else seq-1) in
+                      Some (1, seqs)
+                  | Some (n, seqs) ->
+                      let to_del = Key.(Tail (site, fq, LastTuple seqs.(n))) in
+                      !logger.info "Removing old tuple seq %d" seqs.(n) ;
+                      Server.H.remove srv.Server.h to_del ;
+                      seqs.(n) <- seq ;
+                      Some ((n + 1) mod max_last_tuples, seqs)
+                ) last_tuples
+            | _ -> ())
           ) ()
       | _, parts ->
           Printf.sprintf "Invalid message with %d parts"

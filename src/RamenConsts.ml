@@ -510,6 +510,9 @@ let num_all_fields = 100
  * the server side. *)
 let delay_before_replay = 0.5
 
+(* Max number of last tuples kept for each worker in the config tree: *)
+let max_last_tuples = 10
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct
