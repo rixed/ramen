@@ -19,10 +19,7 @@ TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
   f(f_)
 {
   // Propagates this function's signals into our beginInsertRows
-  QObject::connect(f, &FunctionItem::beginAddTuple, this, [this](int first, int last) {
-    // Convert the signal by adding the QModelIndex for that function:
-    emit beginInsertRows(QModelIndex(), first, last);
-  });
+  QObject::connect(f, &FunctionItem::beginAddTuple, this, &TailModel::beginInsertRows);
   QObject::connect(f, &FunctionItem::endAddTuple, this, &TailModel::endInsertRows);
 
   // Subscribe to that table tail:
@@ -40,7 +37,7 @@ TailModel::~TailModel()
 int TailModel::rowCount(QModelIndex const &parent) const
 {
   if (parent.isValid()) return 0;
-  return f->tuples.size();
+  return f->numRows();
 }
 
 int TailModel::columnCount(QModelIndex const &parent) const
@@ -56,7 +53,7 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
   int const row = index.row();
   int const column = index.column();
 
-  if (row < 0 || row >= (int)f->tuples.size() ||
+  if (row < 0 || row >= (int)f->numRows() ||
       column < 0 || column >= (int)f->numColumns())
     return QVariant();
 

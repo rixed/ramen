@@ -138,14 +138,15 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
   }
   std::shared_ptr<conf::RamenType const> type = outType();
   if (! type) { // ignore the tuple
-    std::cout << "Received a tuple before we know the type" << std::endl;
+    std::cout << "Received a tuple for " << fqName().toStdString()
+              << " before we know the type" << std::endl;
     return;
   }
 
   ser::Value const *val = tuple->unserialize(type);
   if (! val) return;
 
-  emit beginAddTuple(tuples.size(), tuples.size()+1);
+  emit beginAddTuple(QModelIndex(), tuples.size(), tuples.size());
   tuples.push_back(val);
   emit endAddTuple();
 }

@@ -113,8 +113,6 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
   QObject::connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
 
-  // Connect the graphModel to the tailModel:
-//  QObject::connect(graphModel, &GraphModel::functionAdded, tailModel, &TailModel::addFunction);
   // Also let the infobox and tail-tabs know when a function is selected:
   QObject::connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
   QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);

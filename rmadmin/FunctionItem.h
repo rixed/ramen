@@ -49,7 +49,7 @@ private slots:
   void addTuple(conf::Key const &, std::shared_ptr<conf::Value const>);
 
 signals:
-  void beginAddTuple(int first, int last);
+  void beginAddTuple(QModelIndex const &, int first, int last);
   void endAddTuple();
 };
 

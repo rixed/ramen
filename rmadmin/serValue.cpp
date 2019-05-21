@@ -338,7 +338,7 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
         std::shared_ptr<conf::RamenTypeVec const> vec =
           std::dynamic_pointer_cast<conf::RamenTypeVec const>(type);
         if (!vec) {
-          std::cout << "Vecot is not a vector." << std::endl;
+          std::cout << "Vector is not a vector." << std::endl;
           return new Error("Cannot unserialize: Invalid tag for vector");
         }
         size_t const nullmaskWidth = type->nullmaskWidth(topLevel);

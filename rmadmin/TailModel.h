@@ -33,10 +33,6 @@ public:
   QVariant data(QModelIndex const &index, int role) const override;
   QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
   void setUsed(bool used_) { used = used_; }
-
-signals:
-  void beginInsertRows(QModelIndex const &, int, int);
-  void endInsertRows();
 };
 
 #endif
