@@ -389,7 +389,7 @@ let start conf port =
  * Test client
  *)
 
-let test_client conf =
+let test_client conf creds =
   let ctx = Zmq.Context.create () in
   finally
     (fun () -> Zmq.Context.terminate ctx)
@@ -410,7 +410,7 @@ let test_client conf =
           !logger.info "Received %a" print_msg answer ;
           assert (String.sub (List.at answer 1) 0 3 = "AU ") ;
           !logger.info "Sending correct auth this time..." ;
-          Zmq.Socket.send_all zock [ "" ; "1 AU admin" ] ;
+          Zmq.Socket.send_all zock [ "" ; "1 AU "^ creds ] ;
           let answer = Zmq.Socket.recv_all zock in
           !logger.info "Auth answer: %a" print_msg answer ;
           !logger.info "Starting to sync..." ;
@@ -419,9 +419,8 @@ let test_client conf =
           forever (fun () ->
             match Zmq.Socket.recv_all zock with
             | [ ""; s ] ->
-                let msg = SrvMsg.of_string in
-                !logger.info "%a"
-                  SrvMsg.print SrvMsg.(of_string s)
+                let msg = SrvMsg.of_string s in
+                !logger.info "%a" SrvMsg.print msg
             | lst ->
                 !logger.info "%a" print_msg lst
           ) ()

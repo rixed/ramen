@@ -234,8 +234,8 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
   RamenSyncService.start conf port ;
   Option.may exit !RamenProcesses.quit
 
-let confclient conf () =
-  RamenSyncService.test_client conf
+let confclient conf creds () =
+  RamenSyncService.test_client conf creds
 
 (*
  * `ramen compile`
