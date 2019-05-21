@@ -206,6 +206,20 @@ QString Vec::toQString() const
   return s;
 }
 
+List::List(std::vector<Value const *> const &values_) :
+  Value(VecType), values(values_) {}
+
+QString List::toQString() const
+{
+  QString s("[");
+  for (unsigned i = 0; i < values.size(); i++) {
+    if (i > 0) s += "; ";
+    s += values[i]->toQString();
+  }
+  s += "]";
+  return s;
+}
+
 Record::Record(std::vector<std::pair<QString, Value const *>> const &fieldValues_) :
   Value(RecordType), fieldValues(fieldValues_) {}
 
@@ -316,6 +330,8 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
         unsigned null_i = 0;
         std::vector<Value const *> fieldValues;
         fieldValues.reserve(tuple->fields.size());
+        // Notice that despite the nullmask is large enough for all items, we
+        // only increment null_i when the field is indeed nullable:
         for (auto &subType : tuple->fields) {
           if (subType->nullable) {
             fieldValues.push_back(
@@ -366,8 +382,40 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
       }
       break;
     case ListType:
-      // TODO
-      return new Error("TODO: unserialize lists");
+      {
+        // Like vectors, but preceeded with the number of items:
+        std::shared_ptr<conf::RamenTypeList const> lst =
+          std::dynamic_pointer_cast<conf::RamenTypeList const>(type);
+        if (!lst) {
+          std::cout << "List is not a list." << std::endl;
+          return new Error("Cannot unserialize: Invalid tag for list");
+        }
+        if (start >= max) return new Error("Invalid start/max");
+        size_t const dim = *(start++);
+        size_t const nullmaskWidth = dim;
+        unsigned char *nullmask = (unsigned char *)start;
+        start += roundUpWords(nullmaskWidth);
+        if (start > max) return new Error("Invalid start/max");
+        unsigned null_i = 0;
+        std::vector<Value const *> values;
+        values.reserve(dim);
+        for (unsigned i = 0; i < dim; i++) {
+          if (lst->subType->nullable) {
+            values.push_back(
+              bitSet(nullmask, null_i) ?
+                unserialize(lst->subType, start, max) :
+                new Null()
+            );
+            null_i++;
+          } else {
+            values.push_back(
+              unserialize(lst->subType, start, max)
+            );
+          }
+        }
+        return new List(values);
+      }
+      break;
     case RecordType:
       {
         std::shared_ptr<conf::RamenTypeRecord const> record =

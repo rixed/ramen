@@ -225,6 +225,20 @@ public:
   QString toQString() const;
 };
 
+class List : public Value
+{
+public:
+  std::vector<Value const *> values;
+  List(std::vector<Value const *> const &);
+  int numColumns() const { return values.size(); }
+  Value const *columnValue(int c) const
+  {
+    if (c > numColumns()) return nullptr;
+    return values[c];
+  }
+  QString toQString() const;
+};
+
 class Record : public Value
 {
 public:

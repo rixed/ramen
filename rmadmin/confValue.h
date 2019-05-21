@@ -235,6 +235,10 @@ struct RamenTypeList : public RamenType
     if (i != 0) return QString();
     return QString(QCoreApplication::translate("QMainWindow", "list"));
   };
+  size_t nullmaskWidth(bool) const
+  {
+    assert(!"List nullmaskWidth is special!");
+  }
 };
 
 // This is the interesting one:
