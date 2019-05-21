@@ -192,6 +192,20 @@ QString Tuple::toQString() const
   return s;
 }
 
+Vec::Vec(std::vector<Value const *> const &values_) :
+  Value(VecType), values(values_) {}
+
+QString Vec::toQString() const
+{
+  QString s("[");
+  for (unsigned i = 0; i < values.size(); i++) {
+    if (i > 0) s += "; ";
+    s += values[i]->toQString();
+  }
+  s += "]";
+  return s;
+}
+
 Record::Record(std::vector<std::pair<QString, Value const *>> const &fieldValues_) :
   Value(RecordType), fieldValues(fieldValues_) {}
 
@@ -320,8 +334,37 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
       }
       break;
     case VecType:
-      // TODO
-      return new Error("TODO: unserialize vecs");
+      {
+        std::shared_ptr<conf::RamenTypeVec const> vec =
+          std::dynamic_pointer_cast<conf::RamenTypeVec const>(type);
+        if (!vec) {
+          std::cout << "Vecot is not a vector." << std::endl;
+          return new Error("Cannot unserialize: Invalid tag for vector");
+        }
+        size_t const nullmaskWidth = type->nullmaskWidth(topLevel);
+        unsigned char *nullmask = (unsigned char *)start;
+        start += roundUpWords(nullmaskWidth);
+        if (start > max) return new Error("Invalid start/max");
+        unsigned null_i = 0;
+        std::vector<Value const *> values;
+        values.reserve(vec->dim);
+        for (unsigned i = 0; i < vec->dim; i++) {
+          if (vec->subType->nullable) {
+            values.push_back(
+              bitSet(nullmask, null_i) ?
+                unserialize(vec->subType, start, max) :
+                new Null()
+            );
+            null_i++;
+          } else {
+            values.push_back(
+              unserialize(vec->subType, start, max)
+            );
+          }
+        }
+        return new Vec(values);
+      }
+      break;
     case ListType:
       // TODO
       return new Error("TODO: unserialize lists");
