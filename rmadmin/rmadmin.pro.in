@@ -27,6 +27,7 @@ HEADERS += \
   PosIntValidator.h \
   PosDoubleValidator.h \
   confKey.h \
+  serValue.h \
   confValue.h \
   KValue.h \
   conf.h \
@@ -63,6 +64,7 @@ SOURCES += \
   PosIntValidator.cpp \
   PosDoubleValidator.cpp \
   confKey.cpp \
+  serValue.cpp \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \

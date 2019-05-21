@@ -363,7 +363,7 @@ bool solve(vector<Node> *nodes, unsigned max_x, unsigned max_y)
     case sat:
       auto stop = chrono::high_resolution_clock::now();
       auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-      cout << "Solved in: " <<duration.count() << endl;
+      cout << "Solved in: " <<duration.count() << "ms" << endl;
       break;
   }
 

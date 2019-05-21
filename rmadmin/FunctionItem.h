@@ -18,7 +18,8 @@ protected:
   std::vector<std::pair<QString const, QString const>> labels() const;
 
 public:
-  std::vector<std::shared_ptr<conf::Tuple const>> tuples;
+  // tuples owned by this object:
+  std::vector<ser::Value const *> tuples;
   std::optional<bool> isUsed;
   std::optional<double> startupTime;
   std::optional<double> eventTimeMin;
@@ -36,11 +37,13 @@ public:
   QVariant data(int) const;
   QRectF operationRect() const;
 
+  std::shared_ptr<conf::RamenType const> outType() const;
   int numRows() const;
   int numColumns() const;
+  ser::Value const *tupleData(int row, int column) const;
   QString header(unsigned) const;
 
-  TailModel *tailModel;
+  TailModel *tailModel; // created only on demand
 
 private slots:
   void addTuple(conf::Key const &, std::shared_ptr<conf::Value const>);

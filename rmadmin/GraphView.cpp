@@ -292,81 +292,83 @@ void GraphView::startLayout()
   int const min_max = std::ceil(std::sqrt(numNodes));
   int const max_x = min_max * 2;
   int const max_y = min_max + min_max/2 + 1;
-  layout::solve(&nodes, max_x, max_y);
+  if (layout::solve(&nodes, max_x, max_y)) {
 
-  QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
-  int const animDuration = 500; // ms
+    QParallelAnimationGroup *animGroup = new QParallelAnimationGroup;
+    int const animDuration = 500; // ms
 
-  // Sites must first be positioned, before programs can be positioned
-  // in the sites, before functions can be positioned in the programs:
-  int const umax = std::numeric_limits<int>::max();
+    // Sites must first be positioned, before programs can be positioned
+    // in the sites, before functions can be positioned in the programs:
+    int const umax = std::numeric_limits<int>::max();
 
-  for (auto siteItem : model->sites) {
-    siteItem->x0 = siteItem->y0 = umax;
-    siteItem->x1 = siteItem->y1 = 0;
+    for (auto siteItem : model->sites) {
+      siteItem->x0 = siteItem->y0 = umax;
+      siteItem->x1 = siteItem->y1 = 0;
 
-    for (auto programItem : siteItem->programs) {
-      for (auto functionItem : programItem->functions) {
-        layout::Node &n = nodes[functionIdxs[functionItem]];
-        siteItem->x0 = std::min(siteItem->x0, n.x);
-        siteItem->y0 = std::min(siteItem->y0, n.y);
-        siteItem->x1 = std::max(siteItem->x1, n.x);
-        siteItem->y1 = std::max(siteItem->y1, n.y);
+      for (auto programItem : siteItem->programs) {
+        for (auto functionItem : programItem->functions) {
+          layout::Node &n = nodes[functionIdxs[functionItem]];
+          siteItem->x0 = std::min(siteItem->x0, n.x);
+          siteItem->y0 = std::min(siteItem->y0, n.y);
+          siteItem->x1 = std::max(siteItem->x1, n.x);
+          siteItem->y1 = std::max(siteItem->y1, n.y);
+        }
       }
-    }
 
-    QPointF sitePos =
-      settings->pointOfTile(siteItem->x0, siteItem->y0) +
-      QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
-    QPropertyAnimation *siteAnim = new QPropertyAnimation(siteItem, "pos");
-    siteAnim->setDuration(animDuration);
-    siteAnim->setEndValue(sitePos);
-    animGroup->addAnimation(siteAnim);
+      QPointF sitePos =
+        settings->pointOfTile(siteItem->x0, siteItem->y0) +
+        QPointF(settings->siteMarginHoriz, settings->siteMarginTop);
+      QPropertyAnimation *siteAnim = new QPropertyAnimation(siteItem, "pos");
+      siteAnim->setDuration(animDuration);
+      siteAnim->setEndValue(sitePos);
+      animGroup->addAnimation(siteAnim);
 
-    // Now position the programs:
-    for (auto programItem : siteItem->programs) {
-      programItem->x0 = programItem->y0 = umax;
-      programItem->x1 = programItem->y1 = 0;
+      // Now position the programs:
+      for (auto programItem : siteItem->programs) {
+        programItem->x0 = programItem->y0 = umax;
+        programItem->x1 = programItem->y1 = 0;
 
-      for (auto functionItem : programItem->functions) {
-        layout::Node &n = nodes[functionIdxs[functionItem]];
-        programItem->x0 = std::min(programItem->x0, n.x);
-        programItem->y0 = std::min(programItem->y0, n.y);
-        programItem->x1 = std::max(programItem->x1, n.x);
-        programItem->y1 = std::max(programItem->y1, n.y);
-      }
-      QPointF progPos =
-        settings->pointOfTile(
-          programItem->x0 - siteItem->x0,
-          programItem->y0 - siteItem->y0) +
-        QPointF(settings->programMarginHoriz, settings->programMarginTop);
-      QPropertyAnimation *progAnim =
-        new QPropertyAnimation(programItem, "pos");
-      progAnim->setDuration(animDuration);
-      progAnim->setEndValue(progPos);
-      animGroup->addAnimation(progAnim);
-
-      // Finally, we can now position the functions:
-      for (auto functionItem : programItem->functions) {
-        layout::Node &n = nodes[functionIdxs[functionItem]];
-        functionItem->x0 = functionItem->x1 = n.x;
-        functionItem->y0 = functionItem->y1 = n.y;
-        QPointF funcPos =
+        for (auto functionItem : programItem->functions) {
+          layout::Node &n = nodes[functionIdxs[functionItem]];
+          programItem->x0 = std::min(programItem->x0, n.x);
+          programItem->y0 = std::min(programItem->y0, n.y);
+          programItem->x1 = std::max(programItem->x1, n.x);
+          programItem->y1 = std::max(programItem->y1, n.y);
+        }
+        QPointF progPos =
           settings->pointOfTile(
-            n.x - programItem->x0,
-            n.y - programItem->y0) +
-          QPointF(settings->functionMarginHoriz,
-                  settings->functionMarginTop);
-        QPropertyAnimation *funcAnim =
-          new QPropertyAnimation(functionItem, "pos");
-        funcAnim->setDuration(animDuration);
-        funcAnim->setEndValue(funcPos);
-        animGroup->addAnimation(funcAnim);
+            programItem->x0 - siteItem->x0,
+            programItem->y0 - siteItem->y0) +
+          QPointF(settings->programMarginHoriz, settings->programMarginTop);
+        QPropertyAnimation *progAnim =
+          new QPropertyAnimation(programItem, "pos");
+        progAnim->setDuration(animDuration);
+        progAnim->setEndValue(progPos);
+        animGroup->addAnimation(progAnim);
+
+        // Finally, we can now position the functions:
+        for (auto functionItem : programItem->functions) {
+          layout::Node &n = nodes[functionIdxs[functionItem]];
+          functionItem->x0 = functionItem->x1 = n.x;
+          functionItem->y0 = functionItem->y1 = n.y;
+          QPointF funcPos =
+            settings->pointOfTile(
+              n.x - programItem->x0,
+              n.y - programItem->y0) +
+            QPointF(settings->functionMarginHoriz,
+                    settings->functionMarginTop);
+          QPropertyAnimation *funcAnim =
+            new QPropertyAnimation(functionItem, "pos");
+          funcAnim->setDuration(animDuration);
+          funcAnim->setEndValue(funcPos);
+          animGroup->addAnimation(funcAnim);
+        }
       }
     }
-  }
 
-  animGroup->start(QAbstractAnimation::DeleteWhenStopped);
+    animGroup->start(QAbstractAnimation::DeleteWhenStopped);
+  } // layout succeeded
+
   updateArrows(); // or rather when the animation ends?
   // TODO: scene.setSceneRect(global bouning box)?
 }

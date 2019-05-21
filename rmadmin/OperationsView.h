@@ -29,13 +29,14 @@ public:
   ~OperationsView();
 
 signals:
-  void functionSelected(FunctionItem const *);
-  void programSelected(ProgramItem const *);
+  void functionSelected(FunctionItem *);
+  void programSelected(ProgramItem *);
 
 public slots:
   void resetLOD(); // release all LOD radio buttons
   void setLOD(bool); // set a given LOD
-  void addTail(FunctionItem const *);
+  void addTail(FunctionItem *);
+  void remTail(int index);
   void addSource(ProgramItem const *);
   void addProgInfo(ProgramItem const *);
   void addFuncInfo(FunctionItem const *);

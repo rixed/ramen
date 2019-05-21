@@ -14,7 +14,8 @@ static conf::Key tailKey(FunctionItem const *f)
   return conf::Key("tail/" + f->fqName().toStdString() + "/users/" + user_id);
 }
 
-TailModel::TailModel(FunctionItem const *f_) :
+TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
+  QAbstractTableModel(parent),
   f(f_)
 {
   // Propagates this function's signals into our beginInsertRows
@@ -36,24 +37,6 @@ TailModel::~TailModel()
   conf::askDel(tailKey(f));
 }
 
-/* Given we only need a flat model (table not tree) we only use an invalid index as
- * parent and points to this for internal pointer. If we are given a valid parent
- * we must return an invalid index to signal the end of the tree. */
-QModelIndex TailModel::index(int row, int column, QModelIndex const &parent) const
-{
-  if (parent.isValid()) return QModelIndex();
-
-  if (row >= (int)f->tuples.size() || column >= (int)f->numColumns())
-    return QModelIndex();
-
-  return createIndex(row, column, (void *)this);
-}
-
-QModelIndex TailModel::parent(QModelIndex const &) const
-{
-  return QModelIndex();
-}
-
 int TailModel::rowCount(QModelIndex const &parent) const
 {
   if (parent.isValid()) return 0;
@@ -73,13 +56,17 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
   int const row = index.row();
   int const column = index.column();
 
-  if (row >= (int)f->tuples.size() || column >= (int)f->numColumns())
+  if (row < 0 || row >= (int)f->tuples.size() ||
+      column < 0 || column >= (int)f->numColumns())
     return QVariant();
 
   switch (role) {
     case Qt::DisplayRole:
-      // TODO
-      return QVariant(QString::number(row) + ", " + QString::number(column));
+      {
+        ser::Value const *v = f->tupleData(row, column);
+        if (!v) return QVariant(QString("No such column"));
+        return QVariant(v->toQString());
+      }
     case Qt::ToolTipRole:
       // TODO
       return QVariant(QString("Column #") + QString::number(column));
@@ -93,14 +80,16 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
 
 QVariant TailModel::headerData(int section, Qt::Orientation orient, int role) const
 {
-  if (role != Qt::DisplayRole) return QVariant();
+  if (role != Qt::DisplayRole)
+    return QAbstractTableModel::headerData(section, orient, role);
+
   switch (orient) {
     case Qt::Horizontal:
-      if (section >= f->numColumns()) return QVariant();
-      f->header(section);
+      if (section < 0 || section >= f->numColumns()) return QVariant();
+      return f->header(section);
       break;
     case Qt::Vertical:
-      if (section >= f->numRows()) return QVariant();
+      if (section < 0 || section >= f->numRows()) return QVariant();
       return QVariant(QString::number(section));
   }
   return QVariant();

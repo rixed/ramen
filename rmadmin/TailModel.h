@@ -18,20 +18,21 @@
 
 class FunctionItem;
 
-class TailModel : public QAbstractItemModel
+class TailModel : public QAbstractTableModel
 {
   Q_OBJECT
 
   FunctionItem const *f;
+  bool used;  // TODO: after a while, functions with unused model destroy them
+
 public:
-  TailModel(FunctionItem const *);
+  TailModel(FunctionItem const *, QObject *parent = nullptr);
   ~TailModel();
-  QModelIndex index(int row, int column, QModelIndex const &parent) const;
-  QModelIndex parent(QModelIndex const &index) const;
-  int rowCount(QModelIndex const &parent) const;
-  int columnCount(QModelIndex const &parent) const;
-  QVariant data(QModelIndex const &index, int role) const;
-  QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const;
+  int rowCount(QModelIndex const &parent) const override;
+  int columnCount(QModelIndex const &parent) const override;
+  QVariant data(QModelIndex const &index, int role) const override;
+  QVariant headerData(int, Qt::Orientation, int role = Qt::DisplayRole) const override;
+  void setUsed(bool used_) { used = used_; }
 
 signals:
   void beginInsertRows(QModelIndex const &, int, int);

@@ -10,7 +10,8 @@ static std::string lastTuplesKey(FunctionItem const *f)
 }
 
 FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
-  GraphItem(treeParent, name, settings, paletteSize)
+  GraphItem(treeParent, name, settings, paletteSize),
+  tailModel(nullptr)
 {
   // TODO: updateArrows should reallocate the channels:
   channel = std::rand() % settings->numArrowChannels;
@@ -21,12 +22,12 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
     // Although this value will never change we need the create signal:
       QObject::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
   });
-  tailModel = new TailModel(this);
 }
 
 FunctionItem::~FunctionItem()
 {
-  delete tailModel;
+  if (tailModel) delete tailModel;
+  for (ser::Value const *t : tuples) delete t;
 }
 
 QVariant FunctionItem::data(int column) const
@@ -85,52 +86,66 @@ int FunctionItem::numRows() const
   return tuples.size();
 }
 
+std::shared_ptr<conf::RamenType const> FunctionItem::outType() const
+{
+  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
+              name.toStdString() + "/type/out");
+  conf::kvs_lock.lock_shared();
+  KValue &kv = conf::kvs[k];
+  conf::kvs_lock.unlock_shared();
+
+  std::shared_ptr<conf::RamenType const> outType =
+    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
+  return outType;
+}
+
 int FunctionItem::numColumns() const
 {
   // We could get this info from already received tuples or from the
   // output type in the config tree.
-  // We go for the output type as it also gives us column headers:
+  // We go for the output type as it is constant, and model numColumns is now
+  // allowed to change.
   // TODO: a function to get it and cache it. Or even better: connect
   // to this KV set/change signals and update the cached type.
-  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
-              name.toStdString() + "/type/out");
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[k];
-  conf::kvs_lock.unlock_shared();
+  std::shared_ptr<conf::RamenType const> t = outType();
+  if (! t) return 0;
+  return t->numColumns();
+}
 
-  std::shared_ptr<conf::RamenType const> outType =
-    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
-  if (! outType) return 0;
+// Returned value owned by FunctionItem:
+ser::Value const *FunctionItem::tupleData(int row, int column) const
+{
+  if (row >= numRows()) return nullptr;
 
-  return outType->numColumns();
+  return tuples[row]->columnValue(column);
 }
 
 QString FunctionItem::header(unsigned column) const
 {
-  // TODO: see above
-  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
-              name.toStdString() + "/type/out");
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[k];
-  conf::kvs_lock.unlock_shared();
+  std::shared_ptr<conf::RamenType const> t = outType();
+  if (! t) return QString("#") + QString::number(column);
 
-  std::shared_ptr<conf::RamenType const> outType =
-    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
-  if (! outType) return QString("#") + QString::number(column);
-
-  return outType->header(column);
+  return t->header(column);
 }
 
 void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
 {
-  std::shared_ptr<conf::Tuple const> t =
+  std::shared_ptr<conf::Tuple const> tuple =
     std::dynamic_pointer_cast<conf::Tuple const>(v);
-  if (! t) {
+  if (! tuple) {
     std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
     return;
   }
-  // TODO: in theory check the seq number and ensure ordering:
+  std::shared_ptr<conf::RamenType const> type = outType();
+  if (! type) { // ignore the tuple
+    std::cout << "Received a tuple before we know the type" << std::endl;
+    return;
+  }
+
+  ser::Value const *val = tuple->unserialize(type);
+  if (! val) return;
+
   emit beginAddTuple(tuples.size(), tuples.size()+1);
-  tuples.push_back(t);
+  tuples.push_back(val);
   emit endAddTuple();
 }

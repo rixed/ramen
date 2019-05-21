@@ -136,6 +136,12 @@ struct TimeRange : public Value
   bool operator==(Value const &) const;
 };
 
+struct RamenType;
+
+/* Tuple of ramen _values_, not to be confused with RamenTypeTuple which is a tuple
+ * of ramen _types_.
+ * Actually, nothing mandates [val] to be a tuple; in the future, when I/O are not
+ * restricted to tuples, rename this Tuple into just RamenValue? */
 struct Tuple : public Value
 {
   unsigned skipped;
@@ -147,6 +153,8 @@ struct Tuple : public Value
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
+  // returned value belongs to caller:
+  ser::Value *unserialize(std::shared_ptr<RamenType const>) const;
 };
 
 struct RamenType : public Value
@@ -156,16 +164,26 @@ struct RamenType : public Value
   RamenType();
   ~RamenType();
   RamenType(ser::ValueType, bool);
-  QString toQString() const;
+  virtual QString structureToQString() const = 0;
+  QString toQString() const
+  {
+    QString s(structureToQString());
+    if (nullable) s.append("?");
+    return s;
+  }
   value toOCamlValue() const;
   virtual bool operator==(Value const &) const;
   virtual unsigned numColumns() const { return 0; };
   virtual QString header(size_t) const { return QString(); };
+  // Return the size of the required nullmask in _bits_
+  // ie. number of nullable subfields.
+  virtual size_t nullmaskWidth(bool) const { return nullable ? 1:0; }
 };
 
 struct RamenTypeScalar : public RamenType
 {
   RamenTypeScalar(ser::ValueType t, bool n) : RamenType(t, n) {}
+  QString structureToQString() const;
   unsigned numColumns() const { return 1; }
   QString header(size_t) const;
 };
@@ -173,9 +191,10 @@ struct RamenTypeScalar : public RamenType
 struct RamenTypeTuple : public RamenType
 {
   // For Tuples and other composed types, subTypes are owned by their parent
-  std::vector<RamenType *> fields;
-  RamenTypeTuple(std::vector<RamenType *> fields_, bool n) :
+  std::vector<std::shared_ptr<RamenType const>> fields;
+  RamenTypeTuple(std::vector<std::shared_ptr<RamenType const>> fields_, bool n) :
     RamenType(ser::TupleType, n), fields(fields_) {}
+  QString structureToQString() const;
   // Maybe displaying a tuple in a single column would be preferable?
   unsigned numColumns() const { return fields.size(); }
   QString header(size_t i) const
@@ -183,14 +202,16 @@ struct RamenTypeTuple : public RamenType
     if (i >= fields.size()) return QString();
     return QString("#") + QString::number(i);
   };
+  size_t nullmaskWidth(bool) const { return fields.size(); }
 };
 
 struct RamenTypeVec : public RamenType
 {
   unsigned dim;
-  RamenType *subType;
-  RamenTypeVec(unsigned dim_, RamenType *subType_, bool n) :
+  std::shared_ptr<RamenType const> subType;
+  RamenTypeVec(unsigned dim_, std::shared_ptr<RamenType const> subType_, bool n) :
     RamenType(ser::VecType, n), dim(dim_), subType(subType_) {}
+  QString structureToQString() const;
   // Maybe displaying a vector in a single column would be preferable?
   unsigned numColumns() const { return dim; }
   QString header(size_t i) const
@@ -202,9 +223,10 @@ struct RamenTypeVec : public RamenType
 
 struct RamenTypeList : public RamenType
 {
-  RamenType *subType;
-  RamenTypeList(RamenType *subType_, bool n) :
+  std::shared_ptr<RamenType const> subType;
+  RamenTypeList(std::shared_ptr<RamenType const> subType_, bool n) :
     RamenType(ser::ListType, n), subType(subType_) {}
+  QString structureToQString() const;
   // Lists are displayed in a single column as they have a variable length
   unsigned numColumns() const { return 1; }
   QString header(size_t i) const
@@ -217,15 +239,33 @@ struct RamenTypeList : public RamenType
 // This is the interesting one:
 struct RamenTypeRecord : public RamenType
 {
-  std::vector<std::pair<QString, RamenType *>> fields;
-  RamenTypeRecord(std::vector<std::pair<QString, RamenType *>> fields_, bool n) :
-    RamenType(ser::RecordType, n), fields(fields_) {}
+  // Fields are ordered in serialization order:
+  std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields;
+  // Here is the serialization order:
+  std::vector<uint16_t> serOrder;
+
+  RamenTypeRecord(std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields_, bool n);
+  QString structureToQString() const;
   unsigned numColumns() const { return fields.size(); }
   QString header(size_t i) const
   {
     if (i >= fields.size()) return QString();
     return fields[i].first;
   };
+  size_t nullmaskWidth(bool topLevel) const
+  {
+    // TODO: fix nullmask for compound types (ie: reserve a bit only to
+    //       nullable subfields)
+    if (topLevel) {
+      size_t w = 0;
+      for (auto &f : fields) {
+        if (f.second->nullable) w++;
+      }
+      return w;
+    } else {
+      return fields.size();
+    }
+  }
 };
 
 };

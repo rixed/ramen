@@ -121,6 +121,7 @@ OperationsView::OperationsView(QWidget *parent) :
   QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
   QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
   QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
+  QObject::connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::remTail);
 }
 
 OperationsView::~OperationsView()
@@ -165,15 +166,15 @@ void OperationsView::setLOD(bool)
 void OperationsView::selectItem(QModelIndex const &index)
 {
   if (! index.isValid()) return;
-  GraphItem const *gi =
-    static_cast<GraphItem const *>(index.internalPointer());
-  ProgramItem const *p = dynamic_cast<ProgramItem const *>(gi);
+  GraphItem *gi =
+    static_cast<GraphItem *>(index.internalPointer());
+  ProgramItem *p = dynamic_cast<ProgramItem *>(gi);
   if (p) {
     emit programSelected(p);
     return;
   }
 
-  FunctionItem const *f = dynamic_cast<FunctionItem const *>(gi);
+  FunctionItem *f = dynamic_cast<FunctionItem *>(gi);
   if (f) {
     emit functionSelected(f);
     return;
@@ -226,15 +227,33 @@ void OperationsView::addFuncInfo(FunctionItem const *f)
   focusLast(infoTabs);
 }
 
-void OperationsView::addTail(FunctionItem const *f)
+void OperationsView::addTail(FunctionItem *f)
 {
   QString label(f->fqName());
   if (tryFocus(dataTabs, label)) return;
 
   QTableView *table = new QTableView;
+  if (! f->tailModel) {
+    f->tailModel = new TailModel(f);
+  }
+  f->tailModel->setUsed(true);
+
   table->setModel(f->tailModel);
   dataTabs->addTab(table, label);
   focusLast(dataTabs);
+}
+
+void OperationsView::remTail(int index)
+{
+  QWidget *w = dataTabs->widget(index);
+  if (!w) return;
+  QTableView *t = dynamic_cast<QTableView *>(w);
+  if (!t) return;
+  QAbstractItemModel *m = t->model();
+  if (!m) return;
+  TailModel *tailModel = dynamic_cast<TailModel *>(m);
+  if (!tailModel) return;
+  tailModel->setUsed(false);  // schedule for destruction after a while
 }
 
 void OperationsView::closeInfo(int idx)

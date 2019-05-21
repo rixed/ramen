@@ -26,8 +26,10 @@ let send_cmd zock cmd =
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
-      !logger.debug "srv message (raw): %S" s ;
-      Client.SrvMsg.of_string s
+      let msg = Client.SrvMsg.of_string s in
+      !logger.debug "srv message: %a"
+        Client.SrvMsg.print msg ;
+      msg
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
         (List.print String.print) m |>
@@ -111,8 +113,11 @@ let sync_loop clt zock =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
               (Client.H.length clt.h) in
-          signal_sync (Ok status_msg) in
+          Gc.compact () ;
+          signal_sync (Ok status_msg) ;
+          Gc.compact () in
   let rec handle_msgs_out () =
+    Gc.compact () ;
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
@@ -132,9 +137,11 @@ let sync_loop clt zock =
         handle_msgs_out ()
   in
   while not (should_quit ()) do
+    Gc.compact () ;
     try
       handle_msgs_in () ;
-      handle_msgs_out ()
+      handle_msgs_out () ;
+      Gc.compact ()
     with e ->
       print_exception ~what:"sync loop" e ;
       signal_sync (Fail (Printexc.to_string e))
@@ -143,37 +150,42 @@ let sync_loop clt zock =
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
 let on_new clt k v uid =
-  !logger.debug "New key %a with value %a" Key.print k Value.print v ;
   ignore clt ;
-  conf_new_key (Key.to_string k) v uid
+  Gc.compact () ;
+  conf_new_key (Key.to_string k) v uid ;
+  Gc.compact ()
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
 let on_set clt k v =
-  !logger.debug "Change key %a to value %a" Key.print k Value.print v ;
   ignore clt ;
-  conf_set_key (Key.to_string k) v
+  Gc.compact () ;
+  conf_set_key (Key.to_string k) v ;
+  Gc.compact ()
 
 external conf_del_key : string -> unit = "conf_del_key"
 
 let on_del clt k =
-  !logger.debug "Del key %a" Key.print k ;
   ignore clt ;
-  conf_del_key (Key.to_string k)
+  Gc.compact () ;
+  conf_del_key (Key.to_string k) ;
+  Gc.compact ()
 
 external conf_lock_key : string -> string -> unit = "conf_lock_key"
 
 let on_lock clt k uid =
-  !logger.debug "Lock key %a" Key.print k ;
   ignore clt ;
-  conf_lock_key (Key.to_string k) uid
+  Gc.compact () ;
+  conf_lock_key (Key.to_string k) uid ;
+  Gc.compact ()
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
 let on_unlock clt k =
-  !logger.debug "Unlock key %a" Key.print k ;
   ignore clt ;
-  conf_unlock_key (Key.to_string k)
+  Gc.compact () ;
+  conf_unlock_key (Key.to_string k) ;
+  Gc.compact ()
 
 let register_senders zock =
   let lock_from_cpp k =
