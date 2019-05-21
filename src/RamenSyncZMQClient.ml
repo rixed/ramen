@@ -10,9 +10,11 @@ module Key = Client.Key
 
 let next_id = ref 0
 let send_cmd zock cmd =
-    let s = Client.CltMsg.to_string (!next_id, cmd) in
-    !logger.info "Sending command %s" s ;
+    let msg = !next_id, cmd in
     incr next_id ;
+    !logger.info "Sending command %a"
+      Client.CltMsg.print msg ;
+    let s = Client.CltMsg.to_string msg in
     Zmq.Socket.send_all zock [ "" ; s ]
 
 let recv_cmd zock =
@@ -87,7 +89,6 @@ let init_connect ?while_ url zock on_progress =
 let init_auth ?while_ creds zock on_progress =
   on_progress Stage.Auth Status.InitStart ;
   try
-    !logger.info "Sending auth..." ;
     send_cmd zock (Client.CltMsg.Auth creds) ;
     match retry_zmq ?while_ recv_cmd zock with
     | Client.SrvMsg.Auth "" ->
@@ -102,7 +103,6 @@ let init_auth ?while_ creds zock on_progress =
 let init_sync ?while_ zock glob on_progress =
   on_progress Stage.Sync Status.InitStart ;
   try
-    !logger.info "Sending StartSync %s..." glob ;
     let glob = Globs.compile glob in
     send_cmd zock (Client.CltMsg.StartSync glob) ;
     on_progress Stage.Sync Status.InitOk

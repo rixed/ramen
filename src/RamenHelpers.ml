@@ -802,7 +802,7 @@ let rec restart_on_failure ?(while_=always) what f x =
       if while_ () then (
         !logger.error "Will restart %s..." what ;
         Unix.sleepf (0.5 +. Random.float 0.5) ;
-        (restart_on_failure ~while_ [@tailcall]) what f x)
+        (restart_on_failure [@tailcall]) ~while_ what f x)
 
 (* Cohttp does not enforce any scheme but we want to be friendlier with
  * user entered urls so we add one if it's missing, assuming http: *)

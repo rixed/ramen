@@ -36,7 +36,7 @@ type t =
   { text : text ;
     uniq_num : int ;
     mutable typ : T.t ;
-    (* Units might be better in T.t *)
+    (* TODO: Units might be better in T.t *)
     mutable units : RamenUnits.t option }
   [@@ppp PPP_OCaml]
 
