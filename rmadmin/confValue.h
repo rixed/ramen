@@ -177,7 +177,7 @@ struct RamenType : public Value
   virtual QString header(size_t) const { return QString(); };
   // Return the size of the required nullmask in _bits_
   // ie. number of nullable subfields.
-  virtual size_t nullmaskWidth(bool) const { return nullable ? 1:0; }
+  virtual size_t nullmaskWidth(bool) const { return 0; }
 };
 
 struct RamenTypeScalar : public RamenType
@@ -219,6 +219,7 @@ struct RamenTypeVec : public RamenType
     if (i >= dim) return QString();
     return QString("#") + QString::number(i);
   };
+  size_t nullmaskWidth(bool) const { return dim; }
 };
 
 struct RamenTypeList : public RamenType
