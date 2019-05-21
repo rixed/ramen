@@ -8,14 +8,27 @@ module Value = RamenSync.Value
 module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
 module Key = Client.Key
 
+let retry_zmq ?while_ f =
+  let on = function
+    (* EWOULDBLOCK: According to 0mq documentation blocking is supposed
+     * to be signaled with EAGAIN but... *)
+    | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK), _, _)) -> true
+    | _ -> false in
+  retry ~on ~first_delay:0.3 ?while_ f
+
 let next_id = ref 0
-let send_cmd zock cmd =
+let send_cmd zock ?while_ cmd =
     let msg = !next_id, cmd in
     incr next_id ;
     !logger.info "Sending command %a"
       Client.CltMsg.print msg ;
     let s = Client.CltMsg.to_string msg in
-    Zmq.Socket.send_all zock [ "" ; s ]
+    match while_ with
+    | None ->
+        Zmq.Socket.send_all zock [ "" ; s ]
+    | Some while_ ->
+        retry_zmq ~while_
+          (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
@@ -70,18 +83,13 @@ struct
     String.print oc (to_string s)
 end
 
-let retry_zmq ?while_ f =
-  let on = function
-    | Unix.(Unix_error (EAGAIN, _, _)) -> true
-    | _ -> false in
-  retry ~on ~first_delay:0.3 ?while_ f
-
 let init_connect ?while_ url zock on_progress =
   let connect_to = "tcp://"^ url in
   on_progress Stage.Conn Status.InitStart ;
   try
     !logger.info "Conning to %s..." connect_to ;
-    Zmq.Socket.connect zock connect_to ;
+    retry_zmq ?while_
+      (Zmq.Socket.connect zock) connect_to ;
     on_progress Stage.Conn Status.InitOk
   with e ->
     on_progress Stage.Conn Status.(InitFail (Printexc.to_string e))
@@ -89,7 +97,7 @@ let init_connect ?while_ url zock on_progress =
 let init_auth ?while_ creds zock on_progress =
   on_progress Stage.Auth Status.InitStart ;
   try
-    send_cmd zock (Client.CltMsg.Auth creds) ;
+    send_cmd zock ?while_ (Client.CltMsg.Auth creds) ;
     match retry_zmq ?while_ recv_cmd zock with
     | Client.SrvMsg.Auth "" ->
         on_progress Stage.Auth Status.InitOk
@@ -104,14 +112,14 @@ let init_sync ?while_ zock glob on_progress =
   on_progress Stage.Sync Status.InitStart ;
   try
     let glob = Globs.compile glob in
-    send_cmd zock (Client.CltMsg.StartSync glob) ;
+    send_cmd zock ?while_ (Client.CltMsg.StartSync glob) ;
     on_progress Stage.Sync Status.InitOk
   with e ->
     on_progress Stage.Sync Status.(InitFail (Printexc.to_string e))
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds topic on_progress
-          ?(recvtimeo= -1) ?(sndtimeo= -1) k =
+          ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) k =
   let ctx = Zmq.Context.create () in
   !logger.info "Subscribing to conf key %s" topic ;
   finally
@@ -122,8 +130,13 @@ let start ?while_ url creds topic on_progress
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
           (* Timeouts must be in place before connect: *)
+          (* Not implemented for some reasons, although there is a
+           * ZMQ_CONNECT_TIMEOUT:
+           * Zmq.Socket.set_connect_timeout zock conntimeo ; *)
+          ignore conntimeo ;
           Zmq.Socket.set_receive_timeout zock recvtimeo ;
           Zmq.Socket.set_send_timeout zock sndtimeo ;
+          Zmq.Socket.set_send_high_water_mark zock 0 ;
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect ?while_ url zock on_progress) ;
           log_exceptions ~what:"init_auth"

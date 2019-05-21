@@ -374,12 +374,12 @@ let service_loop conf zock srv =
     true
   )
 
-let send_msg zock m us =
+let send_msg zock ?block m us =
   let msg = SrvMsg.to_string m in
   Enum.iter (fun u ->
     let peer = User.zmq_id u in
     !logger.debug "0MQ: Sending message %S to %S" msg peer ;
-    Zmq.Socket.send_all ~block:false zock [ peer ; "" ; msg ]
+    Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) us
 
 let start conf port =
@@ -400,6 +400,7 @@ let start conf port =
           (* (* For locally running tools: *)
              Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
           (* For the rest of the world: *)
+          Zmq.Socket.set_send_high_water_mark zock 0 ;
           let bind_to = "tcp://*:"^ string_of_int port in
           !logger.info "Listening to %s..." bind_to ;
           Zmq.Socket.bind zock bind_to ;
