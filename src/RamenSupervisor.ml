@@ -939,107 +939,107 @@ let synchronize_running conf autoreload_delay =
   let fnotifier =
     RamenFileNotify.make_file_notifier [ rc_file ; replays_file ] in
   let rec loop last_must_run last_read_rc last_replays last_read_replays =
-    (* Once we have forked some workers we must not allow an exception to
-     * terminate this function or we'd leave unsupervised workers behind: *)
-    restart_on_failure "process supervisor" (fun () ->
-      let the_end =
+    let the_end =
+      if !Processes.quit <> None then (
+        let num_running =
+          Hashtbl.length running + Hashtbl.length replayers in
+        if num_running = 0 then (
+          !logger.info "All processes stopped, quitting." ;
+          true
+        ) else (
+          if num_running <> !prev_num_running then (
+            prev_num_running := num_running ;
+            info_or_test conf "Still %d workers and %d replayers running"
+              (Hashtbl.length running) (Hashtbl.length replayers)) ;
+          false
+        )
+      ) else false in
+    if not the_end then (
+      let max_wait =
+        ref (
+          if autoreload_delay > 0. then autoreload_delay else 5.
+        ) in
+      let set_max_wait d =
+        if d < !max_wait then max_wait := d in
+      if !Processes.quit <> None then set_max_wait 0.3 ;
+      let now = Unix.gettimeofday () in
+      let must_reread fname last_read autoreload_delay now =
+        let granularity = 0.1 in
+        let last_mod =
+          try Some (Files.mtime fname)
+          with Unix.(Unix_error (ENOENT, _, _)) -> None in
+        let reread =
+          match last_mod with
+          | None -> false
+          | Some lm ->
+              if lm >= last_read ||
+                 autoreload_delay > 0. &&
+                 now -. last_read >= autoreload_delay
+              then (
+                (* To prevent missing the last writes when the file is
+                 * updated faster than mtime granularity, refuse to refresh
+                 * the file unless last mod time is old enough.
+                 * As [now] will be the next [last_read] we are guaranteed to
+                 * have [lm < last_read] in the next calls in the absence of
+                 * writes.  But we also want to make sure that all writes
+                 * occurring after we do read that file will push the mtime
+                 * after (>) [lm], which is true only if now is greater than
+                 * lm + mtime granularity: *)
+                let age_modif = now -. lm in
+                if age_modif > granularity then
+                  true
+                else (
+                  set_max_wait (granularity -. age_modif) ;
+                  false
+                )
+              ) else false in
+        let ret = last_mod <> None && reread in
+        if ret then !logger.debug "%a has changed %gs ago"
+          N.path_print fname (now -. Option.get last_mod) ;
+        ret in
+      let must_run, last_read_rc =
         if !Processes.quit <> None then (
-          let num_running =
-            Hashtbl.length running + Hashtbl.length replayers in
-          if num_running = 0 then (
-            !logger.info "All processes stopped, quitting." ;
-            true
-          ) else (
-            if num_running <> !prev_num_running then (
-              prev_num_running := num_running ;
-              info_or_test conf "Still %d workers and %d replayers running"
-                (Hashtbl.length running) (Hashtbl.length replayers)) ;
-            false
-          )
-        ) else false in
-      if not the_end then (
-        let max_wait =
-          ref (
-            if autoreload_delay > 0. then autoreload_delay else 5.
-          ) in
-        let set_max_wait d =
-          if d < !max_wait then max_wait := d in
-        if !Processes.quit <> None then set_max_wait 0.3 ;
-        let now = Unix.gettimeofday () in
-        let must_reread fname last_read autoreload_delay now =
-          let granularity = 0.1 in
-          let last_mod =
-            try Some (Files.mtime fname)
-            with Unix.(Unix_error (ENOENT, _, _)) -> None in
-          let reread =
-            match last_mod with
-            | None -> false
-            | Some lm ->
-                if lm >= last_read ||
-                   autoreload_delay > 0. &&
-                   now -. last_read >= autoreload_delay
-                then (
-                  (* To prevent missing the last writes when the file is
-                   * updated faster than mtime granularity, refuse to refresh
-                   * the file unless last mod time is old enough.
-                   * As [now] will be the next [last_read] we are guaranteed to
-                   * have [lm < last_read] in the next calls in the absence of
-                   * writes.  But we also want to make sure that all writes
-                   * occurring after we do read that file will push the mtime
-                   * after (>) [lm], which is true only if now is greater than
-                   * lm + mtime granularity: *)
-                  let age_modif = now -. lm in
-                  if age_modif > granularity then
-                    true
-                  else (
-                    set_max_wait (granularity -. age_modif) ;
-                    false
-                  )
-                ) else false in
-          let ret = last_mod <> None && reread in
-          if ret then !logger.debug "%a has changed %gs ago"
-            N.path_print fname (now -. Option.get last_mod) ;
-          ret in
-        let must_run, last_read_rc =
-          if !Processes.quit <> None then (
-            !logger.debug "No more workers should run" ;
-            Hashtbl.create 0, last_read_rc
-          ) else (
-            if must_reread rc_file last_read_rc autoreload_delay now then
-              build_must_run conf, now
-            else
-              last_must_run, last_read_rc
-          ) in
-        process_workers_terminations conf running ;
-        let changed = synchronize_workers must_run running in
-        (* Touch the rc file if anything changed (esp. autoreload) since that
-         * mtime is used to signal cache expirations etc. *)
-        if changed then Files.touch rc_file last_read_rc ;
-        let must_replay, last_read_replays =
-          if !Processes.quit <> None then (
-            !logger.debug "No more replays should run" ;
-            Hashtbl.create 0, last_read_replays
-          ) else (
-            if must_reread replays_file last_read_replays 0. now then
-              (* FIXME: We need to start lazy nodes right *after* having
-               * written into their out-ref but *before* replayers are started
-               *)
-              C.Replays.load conf, now
-            else
-              last_replays, last_read_replays
-          ) in
-        process_replayers_start_stop conf now replayers ;
-        synchronize_replays now must_replay replayers ;
-        if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
-        !logger.debug "Waiting for file changes (max %a)"
-          print_as_duration !max_wait ;
-        Gc.minor () ;
-        let fname = RamenFileNotify.wait_file_changes
-                      ~max_wait:!max_wait fnotifier in
-        !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;
-        RamenWatchdog.reset watchdog ;
-        loop must_run last_read_rc must_replay last_read_replays)) ()
+          !logger.debug "No more workers should run" ;
+          Hashtbl.create 0, last_read_rc
+        ) else (
+          if must_reread rc_file last_read_rc autoreload_delay now then
+            build_must_run conf, now
+          else
+            last_must_run, last_read_rc
+        ) in
+      process_workers_terminations conf running ;
+      let changed = synchronize_workers must_run running in
+      (* Touch the rc file if anything changed (esp. autoreload) since that
+       * mtime is used to signal cache expirations etc. *)
+      if changed then Files.touch rc_file last_read_rc ;
+      let must_replay, last_read_replays =
+        if !Processes.quit <> None then (
+          !logger.debug "No more replays should run" ;
+          Hashtbl.create 0, last_read_replays
+        ) else (
+          if must_reread replays_file last_read_replays 0. now then
+            (* FIXME: We need to start lazy nodes right *after* having
+             * written into their out-ref but *before* replayers are started
+             *)
+            C.Replays.load conf, now
+          else
+            last_replays, last_read_replays
+        ) in
+      process_replayers_start_stop conf now replayers ;
+      synchronize_replays now must_replay replayers ;
+      if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
+      !logger.debug "Waiting for file changes (max %a)"
+        print_as_duration !max_wait ;
+      Gc.minor () ;
+      let fname = RamenFileNotify.wait_file_changes
+                    ~max_wait:!max_wait fnotifier in
+      !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;
+      RamenWatchdog.reset watchdog ;
+      (loop [@tailcall]) must_run last_read_rc must_replay last_read_replays)
   in
   RamenWatchdog.enable watchdog ;
-  loop (Hashtbl.create 0) 0. (Hashtbl.create 0) 0. ;
+  (* Once we have forked some workers we must not allow an exception to
+   * terminate this function or we'd leave unsupervised workers behind: *)
+  restart_on_failure "process supervisor"
+    (loop (Hashtbl.create 0) 0. (Hashtbl.create 0)) 0. ;
   RamenWatchdog.disable watchdog
