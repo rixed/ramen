@@ -116,7 +116,11 @@ struct
             upd (PerSite (site, PerWorker (fq, MaxRam)))
                 (Value.Int stats.FS.ram) ;
             upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
-                (Value.TimeRange stats.FS.archives)) ;
+                (Value.TimeRange stats.FS.archives) ;
+            upd (PerSite (site, PerWorker (fq, NumArcFiles)))
+                (Value.Int (Int64.of_int stats.FS.num_arc_files)) ;
+            upd (PerSite (site, PerWorker (fq, NumArcBytes)))
+                (Value.Int stats.FS.num_arc_bytes)) ;
       ) per_site_h
     ) graph.FuncGraph.h ;
     let f = function
