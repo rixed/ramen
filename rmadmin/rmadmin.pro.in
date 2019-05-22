@@ -11,10 +11,10 @@ VERSION = @PACKAGE_VERSION@
 QT += core widgets
 
 INCLUDEPATH += .
+# For z3 and zmq:
 INCLUDEPATH += /usr/local/include
 INCLUDEPATH += @OCAMLLIB@
 
-QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.14
 QMAKE_CXXFLAGS = -Wall -Wextra -fstandalone-debug
 
 DEFINES += QT_DEPRECATED_WARNINGS

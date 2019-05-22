@@ -1038,7 +1038,7 @@ ramen.$(VERSION).tgz: \
 	@install -d tmp/ramen
 	@install $(INSTALLED_BIN) tmp/ramen/
 	@install $(Z3) tmp/ramen/
-	@for f in $(INSTALLED_BIN) z3; do strip tmp/ramen/$$(basename $$f); done
+	@for f in $(INSTALLED_BIN); do strip tmp/ramen/$$(basename $$f); done
 	@chmod -R a+x tmp/ramen/*
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-examples
 	@$(MAKE) DESTDIR=$(PWD)/tmp/ramen/ lib_dir=/ sample_dir=/examples systemd_dir=/systemd sysconf_dir=/defaults install-bundle

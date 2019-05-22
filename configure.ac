@@ -8,14 +8,14 @@ AC_CONFIG_HEADERS([src/config.h])
 AC_CHECK_FUNCS([fdatasync renamex_np renameat2])
 
 AC_PROG_OCAML
-if test "$OCAMLC" = "no"; then
-  AC_MSG_ERROR([You must install the OCaml compiler])
-fi
+AS_IF(
+  [test "$OCAMLC" = no],
+  AC_MSG_ERROR([You must install the OCaml compiler.]))
 
 AC_PROG_FINDLIB
-if test "$OCAMLFIND" = "no"; then
-  AC_MSG_ERROR([You must install OCaml findlib (the ocamlfind command)])
-fi
+AS_IF(
+  [test "$OCAMLFIND" = no],
+  AC_MSG_ERROR([You must install OCaml findlib (the ocamlfind command).]))
 
 AC_CHECK_OCAML_PKG(batteries)
 AC_CHECK_OCAML_PKG(stdint)
