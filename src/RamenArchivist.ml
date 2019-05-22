@@ -255,7 +255,7 @@ let update_archives conf s func =
           else  lst) () in
   let lst =
     List.sort (fun (ta,_) (tb,_) -> Float.compare ta tb) lst in
-  (* Compress that list: when a gap in between two file is smaller than
+  (* Compress that list: when a gap in between two files is smaller than
    * one tenth of the duration of those two files then assume there is no
    * gap: *)
   let rec loop prev rest =
@@ -535,8 +535,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
                  \t\t%s)))\n"
         (cost i site_fq)
         (perc site_fq)
-          (* Percentage of size_limit required to hold duration [d] of
-           * archives: *)
+          (* Percentage of size_limit required to hold duration [d] of archives: *)
           (ceil_to_int (d *. recall_size *. 100. /.
              float_of_int user_conf.size_limit))
         recall_cost
