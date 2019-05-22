@@ -54,6 +54,9 @@ RUN opam update && \
     opam repo add --priority=1 ocalme \
       git://github.com/rixed/ocalme-opam-repository.git
 
+# Temp before next release of ramen with new deps:
+RUN opam install zmq
+
 # Install all ramen dependencies using opam
 RUN opam install inotify qtest && \
     opam install --deps-only ramen
