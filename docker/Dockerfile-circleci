@@ -20,6 +20,7 @@ RUN apt-get --yes update && \
       git \
       libsasl2-dev \
       libssl-dev \
+      libzmq5-dev \
       m4 \
       make \
       ocaml-nox \
