@@ -63,6 +63,10 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::labels() cons
     labels.emplace_back("tot CPU", QString::number(*totalCpu));
   if (maxRAM)
     labels.emplace_back("max RAM", QString::number(*maxRAM));
+  if (numArcFiles)
+    labels.emplace_back("#arc.files", QString::number(*numArcFiles));
+  if (numArcBytes)
+    labels.emplace_back("#arc.files", QString::number(*numArcBytes));
 
   return labels;
 }

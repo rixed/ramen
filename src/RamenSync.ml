@@ -207,6 +207,8 @@ struct
     | StartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
     | ArchivedTimes
+    | NumArcFiles
+    | NumArcBytes
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
@@ -272,7 +274,9 @@ struct
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
       | Parents i -> "parents/"^ string_of_int i
-      | ArchivedTimes -> "archived_times")
+      | ArchivedTimes -> "archived_times"
+      | NumArcFiles -> "archive_files"
+      | NumArcBytes -> "archive_bytes")
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -373,7 +377,9 @@ struct
                           match s with
                           | "is_used" -> IsUsed
                           | "startup_time" -> StartupTime
-                          | "archived_times" -> ArchivedTimes)
+                          | "archived_times" -> ArchivedTimes
+                          | "archive_files" -> NumArcFiles
+                          | "archive_bytes" -> NumArcBytes)
                       with Match_failure _ ->
                         (match rcut fq, s with
                         | [ fq ; s1 ], s2 ->

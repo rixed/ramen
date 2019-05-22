@@ -28,6 +28,8 @@ public:
   std::optional<int64_t> totalBytes;
   std::optional<double> totalCpu;
   std::optional<int64_t> maxRAM;
+  std::optional<int64_t> numArcFiles;
+  std::optional<int64_t> numArcBytes;
 
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:

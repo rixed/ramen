@@ -138,7 +138,8 @@ public:
           "is_used|parents/\\d|startup_time|"
           "event_time/min|event_time/max|"
           "total/tuples|total/bytes|"
-          "total/cpu|max/ram|archived_times"
+          "total/cpu|max/ram|archived_times|"
+          "archive_files|archive_bytes"
         ")"
       "|"
         "(?<site_property>is_master)"
@@ -277,6 +278,15 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
       std::dynamic_pointer_cast<conf::Int const>(v);
     if (cf) functionItem->maxRAM = cf->i;
   } else if (p == "archived_times") {
+    // TODO
+  } else if (p == "archive_files") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) functionItem->numArcFiles = cf->i;
+  } else if (p == "archive_bytes") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) functionItem->numArcBytes = cf->i;
     // TODO
   } else if (p.startsWith(parents_prefix)) {
     int idx = p.mid(parents_prefix.length()).toInt();
