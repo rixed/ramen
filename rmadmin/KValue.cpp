@@ -5,7 +5,7 @@ KValue::KValue()
 {
 }
 
-KValue::KValue(const KValue& other)
+KValue::KValue(const KValue& other) : QObject()
 {
   owner = other.owner;
   val = other.val;

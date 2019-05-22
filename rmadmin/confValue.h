@@ -1,6 +1,7 @@
 #ifndef CONFVALUE_H_190504
 #define CONFVALUE_H_190504
 #include <iostream>
+#include <cassert>
 #include <QCoreApplication>
 #include <QString>
 #include <QMetaType>

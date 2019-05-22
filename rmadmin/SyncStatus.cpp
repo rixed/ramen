@@ -59,6 +59,7 @@ QString SyncStatus::message()
       return QCoreApplication::translate("QMainWindow", "Failed: ").
              append(msg.c_str());
   }
+  assert(!"Invalid sync status");
 }
 
 bool SyncStatus::isError() const

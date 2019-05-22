@@ -15,7 +15,7 @@ INCLUDEPATH += .
 INCLUDEPATH += /usr/local/include
 INCLUDEPATH += @OCAMLLIB@
 
-QMAKE_CXXFLAGS = -Wall -Wextra -fstandalone-debug
+QMAKE_CXXFLAGS = -Wall -Wextra
 
 DEFINES += QT_DEPRECATED_WARNINGS
 

@@ -538,7 +538,7 @@ rmadmin/GuiHelper.o: \
 	@# Also help qmake Makefile to notice the dependency:
 	@touch rmadmin/main.cpp
 
-rmadmin/Makefile:
+rmadmin/Makefile: rmadmin/rmadmin.pro
 	@echo 'Generating $@'
 	cd rmadmin && @QMAKE@
 

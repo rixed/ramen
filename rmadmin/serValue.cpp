@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstring>
+#include <cassert>
 #include "confValue.h"
 #include "serValue.h"
 
