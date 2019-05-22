@@ -25,14 +25,9 @@ public:
   QSize sizeHint() const { return QSize(100, 42); }
 };
 
-OperationsView::OperationsView(QWidget *parent) :
+OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   QSplitter(parent)
 {
-  // A GraphModel satisfies both the TreeView and the GraphView
-  // requirements:
-  settings = new GraphViewSettings();
-  graphModel = new GraphModel(settings);
-
   // Split the window horizontally:
   setOrientation(Qt::Vertical);
 
@@ -72,7 +67,7 @@ OperationsView::OperationsView(QWidget *parent) :
 
   topSplit->addWidget(leftPannel);
 
-  GraphView *graphView = new GraphView(settings);
+  GraphView *graphView = new GraphView(graphModel->settings);
   sp = graphView->sizePolicy();
   sp.setHorizontalPolicy(QSizePolicy::Ignored);
   sp.setHorizontalStretch(2);
@@ -124,10 +119,6 @@ OperationsView::OperationsView(QWidget *parent) :
 
 OperationsView::~OperationsView()
 {
-  // FIXME: Qt will delete the infoTabs and dataTabs that references objects
-  // from the model only *after* we delete the model:
-  delete graphModel;
-  delete settings;
 }
 
 // slot to reset the LOD radio buttons

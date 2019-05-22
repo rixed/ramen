@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <QGraphicsView>
 #include <QGraphicsScene>
+#include <QTimer>
 #include "GraphModel.h"
 
 class GraphArrow;

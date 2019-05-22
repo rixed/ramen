@@ -118,7 +118,7 @@ void GraphView::select(QModelIndex const &index)
   }
 }
 
-static int layoutTimeout = 2000;
+static int layoutTimeout = 2000; // ms
 
 void GraphView::insertRows(const QModelIndex &parent, int first, int last)
 {

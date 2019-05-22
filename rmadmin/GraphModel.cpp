@@ -10,8 +10,8 @@
 
 GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
-  settings(settings_),
-  paletteSize(100)
+  paletteSize(100),
+  settings(settings_)
 {
   conf::autoconnect("^sites/", [this](conf::Key const &k, KValue const *kv) {
     // This is going to be called from the OCaml thread. But that should be
@@ -279,18 +279,28 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
     if (cf) functionItem->maxRAM = cf->i;
   } else if (p == "archives/times") {
     // TODO
+    emit storagePropertyChanged(functionItem);
   } else if (p == "archives/num_files") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->numArcFiles = cf->i;
+    if (cf) {
+      functionItem->numArcFiles = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "archives/current_size") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->numArcBytes = cf->i;
+    if (cf) {
+      functionItem->numArcBytes = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "archives/alloc_size") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->allocArcBytes = cf->i;
+    if (cf) {
+      functionItem->allocArcBytes = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p.startsWith(parents_prefix)) {
     int idx = p.mid(parents_prefix.length()).toInt();
     if (idx >= 0 && (size_t)idx < functionItem->parents.size()+100000) {

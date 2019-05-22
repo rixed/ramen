@@ -56,6 +56,13 @@ HEADERS += \
   CodeEdit.h \
   OperationsView.h \
   StorageForm.h \
+  StorageAllocs.h \
+  StorageInfoBox.h \
+  StorageInfo.h \
+  StoragePies.h \
+  StorageTimeline.h \
+  StorageView.h \
+  StorageTableView.h \
   RmAdminWin.h
 
 SOURCES += \
@@ -90,6 +97,13 @@ SOURCES += \
   layout.cpp \
   GraphView.cpp \
   StorageForm.cpp \
+  StorageAllocs.cpp \
+  StorageInfoBox.cpp \
+  StorageInfo.cpp \
+  StoragePies.cpp \
+  StorageTimeline.cpp \
+  StorageView.cpp \
+  StorageTableView.cpp \
   RmAdminWin.cpp \
   main.cpp
 

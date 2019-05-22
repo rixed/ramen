@@ -4,7 +4,6 @@
 #include <QVector>
 #include <QPointF>
 #include <QAbstractItemModel>
-#include <QTimer>
 #include "confKey.h"
 #include "KValue.h"
 #include "GraphItem.h"
@@ -43,7 +42,6 @@ class GraphModel : public QAbstractItemModel
   friend class ProgramItem;
   friend class FunctionItem;
 
-  GraphViewSettings const *settings;
   unsigned paletteSize;
 
   void reorder();
@@ -56,6 +54,7 @@ class GraphModel : public QAbstractItemModel
   void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
 
 public:
+  GraphViewSettings const *settings;
   std::vector<SiteItem *> sites;
 
   GraphModel(GraphViewSettings const *, QObject *parent = nullptr);
@@ -79,6 +78,7 @@ signals:
   void functionRemoved(FunctionItem const *) const;
   void relationAdded(FunctionItem const *parent, FunctionItem const *child) const;
   void relationRemoved(FunctionItem const *parent, FunctionItem const *child) const;
+  void storagePropertyChanged(FunctionItem const *) const;
 };
 
 #endif

@@ -1,17 +1,26 @@
 #include <iostream>
 #include <QTabWidget>
 #include "OperationsView.h"
-#include "StorageForm.h"
+#include "GraphModel.h"
+#include "StorageView.h"
 #include "RmAdminWin.h"
 
 RmAdminWin::RmAdminWin(QWidget *parent) :
     QMainWindow(parent)
 {
+  // A GraphModel satisfies both the TreeView and the GraphView
+  // requirements:
+  settings = new GraphViewSettings();
+  graphModel = new GraphModel(settings);
+
   // For now have a tabbar with the available views:
   QTabWidget *tw = new QTabWidget(this);
 
-  tw->addTab(new OperationsView(), tr("&Operations"));
-  tw->addTab(new StorageForm(), tr("&Storage"));
+  tw->addTab(new OperationsView(graphModel), tr("&Operations"));
+  tw->addTab(new StorageView(graphModel), tr("&Storage"));
+
+  // DEBUG:
+  tw->setCurrentIndex(1);
 
   setCentralWidget(tw);
   setWindowTitle(tr("RmAdmin"));
@@ -27,6 +36,10 @@ RmAdminWin::RmAdminWin(QWidget *parent) :
 RmAdminWin::~RmAdminWin()
 {
   delete errorMessage;
+  // FIXME: Qt will delete the infoTabs and dataTabs that references objects
+  // from the model only *after* we delete the model:
+  delete graphModel;
+  delete settings;
 }
 
 void RmAdminWin::setStatusMsg()

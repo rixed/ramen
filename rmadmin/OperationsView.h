@@ -14,8 +14,6 @@ class OperationsView : public QSplitter
 {
   Q_OBJECT
 
-  GraphModel *graphModel;
-  GraphViewSettings *settings;
   NarrowTreeView *treeView;
   QTabWidget *infoTabs;
   QTabWidget *dataTabs;
@@ -25,7 +23,7 @@ class OperationsView : public QSplitter
   QRadioButton *toSites, *toPrograms, *toFunctions;
 
 public:
-  OperationsView(QWidget *parent = nullptr);
+  OperationsView(GraphModel *, QWidget *parent = nullptr);
   ~OperationsView();
 
 signals:

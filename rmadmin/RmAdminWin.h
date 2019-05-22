@@ -7,6 +7,9 @@
 #include "KErrorMsg.h"
 #include "SyncStatus.h"
 
+class GraphModel;
+class GraphViewSettings;
+
 class RmAdminWin : public QMainWindow
 {
   Q_OBJECT
@@ -14,6 +17,8 @@ class RmAdminWin : public QMainWindow
   SyncStatus connStatus, authStatus, syncStatus;
   void setStatusMsg();
   KErrorMsg *errorMessage;
+  GraphModel *graphModel;
+  GraphViewSettings *settings;
 
 public:
   explicit RmAdminWin(QWidget *parent = nullptr);
