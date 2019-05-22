@@ -4,8 +4,8 @@
 #include "GraphView.h"
 #include "GraphModel.h"
 
-SiteItem::SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
-  GraphItem(treeParent, name, settings, paletteSize)
+SiteItem::SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings) :
+  GraphItem(treeParent, name, settings)
 {
   setZValue(1);
 }

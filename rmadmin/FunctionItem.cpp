@@ -9,8 +9,8 @@ static std::string lastTuplesKey(FunctionItem const *f)
   return "^tail/" + f->fqName().toStdString() + "/lasts/";
 }
 
-FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :
-  GraphItem(treeParent, name, settings, paletteSize),
+FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings) :
+  GraphItem(treeParent, name, settings),
   tailModel(nullptr)
 {
   // TODO: updateArrows should reallocate the channels:

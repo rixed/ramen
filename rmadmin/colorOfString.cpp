@@ -13,7 +13,9 @@ static unsigned to256(unsigned x, unsigned from)
   return rescale(x, from, 256);
 }
 
-QColor colorOfString(QString const &s, unsigned paletteSize)
+unsigned paletteSize = 80;
+
+QColor colorOfString(QString const &s)
 {
   unsigned numCat = ceil(std::pow(paletteSize, 1./3));
   uint64_t col = qHash(s);

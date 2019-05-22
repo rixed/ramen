@@ -11,6 +11,8 @@
  * the generated colors does not change too much.
  */
 
-QColor colorOfString(QString const &, unsigned paletteSize);
+extern unsigned paletteSize;
+
+QColor colorOfString(QString const &);
 
 #endif

@@ -51,7 +51,7 @@ public:
   GraphItem *treeParent;
   int row;
 
-  GraphItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
+  GraphItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   virtual ~GraphItem() = 0;
   virtual QVariant data(int) const = 0;
   // Reorder the children after some has been added/removed

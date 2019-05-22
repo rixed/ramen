@@ -29,7 +29,7 @@ public:
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSettings const *settings_, unsigned paletteSize) :
+GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSettings const *settings_) :
   QGraphicsItem(treeParent_ ? treeParent_->subItems : treeParent_),
   border_(2),
   collapsed(true),
@@ -39,7 +39,7 @@ GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSett
   treeParent(treeParent_),
   row(-1)
 {
-  brush = QBrush(colorOfString(name, paletteSize)),
+  brush = QBrush(colorOfString(name)),
 
   // Notifies itemChange whenever the position is changed:
   setFlag(ItemSendsGeometryChanges, true);

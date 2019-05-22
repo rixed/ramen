@@ -35,7 +35,7 @@ public:
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:
   std::vector<FunctionItem const*> parents;
-  FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *, unsigned paletteSize);
+  FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~FunctionItem();
   QVariant data(int) const;
   QRectF operationRect() const;

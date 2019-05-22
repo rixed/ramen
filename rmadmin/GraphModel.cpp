@@ -10,7 +10,6 @@
 
 GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
-  paletteSize(100),
   settings(settings_)
 {
   conf::autoconnect("^sites/", [this](conf::Key const &k, KValue const *kv) {
@@ -359,7 +358,7 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
       }
     }
     if (! siteItem) {
-      siteItem = new SiteItem(nullptr, pk.site, settings, paletteSize);
+      siteItem = new SiteItem(nullptr, pk.site, settings);
       int idx = sites.size(); // as we insert at the end for now
       beginInsertRows(QModelIndex(), idx, idx);
       sites.insert(sites.begin()+idx, siteItem);
@@ -376,7 +375,7 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         }
       }
       if (! programItem) {
-        programItem = new ProgramItem(siteItem, pk.program, settings, paletteSize);
+        programItem = new ProgramItem(siteItem, pk.program, settings);
         int idx = siteItem->programs.size();
         QModelIndex parent =
           createIndex(siteItem->row, 0, static_cast<GraphItem *>(siteItem));
@@ -395,7 +394,7 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
           }
         }
         if (! functionItem) {
-          functionItem = new FunctionItem(programItem, pk.function, settings, paletteSize);
+          functionItem = new FunctionItem(programItem, pk.function, settings);
           int idx = programItem->functions.size();
           QModelIndex parent =
             createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));
