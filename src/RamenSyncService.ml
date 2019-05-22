@@ -24,6 +24,27 @@ module Services = RamenServices
 
 let u = User.internal
 
+(* Helper function that takes a key filter and a new set of values, and
+ * replaces all keys matching the filter with the new set of values. *)
+let replace_keys srv f h =
+  (* Start by deleting the extraneous keys: *)
+  Server.H.enum srv.Server.h //
+  (fun (k, hv) ->
+    (* Skip over locked keys for now (TODO: timeout every locks!) *)
+    (hv.Server.l = None || hv.Server.l = Some User.internal) &&
+    f k &&
+    not (Server.H.mem h k)) |>
+  Enum.iter (fun (k, _hv) -> Server.del srv u k) ;
+  (* Now add/update the keys from [h]: *)
+  Server.H.iter (fun k (v, r, w, s) ->
+    Option.may (fun v ->
+      if Server.H.mem srv.Server.h k then
+        Server.set srv u k v
+      else
+        Server.create_unlocked srv k v ~r ~w ~s
+    ) v
+  ) h
+
 (* One module per data source so that it's easier to track those *)
 
 module type CONF_SYNCER =
@@ -48,27 +69,6 @@ struct
 
   let update _conf _srv = ()
 end
-
-(* Helper function that takes a key filter and a new set of values, and
- * replaces all keys matching the filter with the new set of values. *)
-let replace_keys srv f h =
-  (* Start by deleting the extraneous keys: *)
-  Server.H.enum srv.Server.h //
-  (fun (k, hv) ->
-    (* Skip over locked keys for now (TODO: timeout every locks!) *)
-    (hv.Server.l = None || hv.Server.l = Some User.internal) &&
-    f k &&
-    not (Server.H.mem h k)) |>
-  Enum.iter (fun (k, _hv) -> Server.del srv u k) ;
-  (* Now add/update the keys from [h]: *)
-  Server.H.iter (fun k (v, r, w, s) ->
-    Option.may (fun v ->
-      if Server.H.mem srv.Server.h k then
-        Server.set srv u k v
-      else
-        Server.create_unlocked srv k v ~r ~w ~s
-    ) v
-  ) h
 
 module GraphInfo : CONF_SYNCER =
 struct
@@ -188,6 +188,7 @@ struct
     ) else (
       (* in the other way around: if conf is dirty save the file.
        * TODO *)
+      ignore storage_user_conf_dirty
     )
 end
 
