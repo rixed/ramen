@@ -7,7 +7,7 @@ DUPS_IN  = $(shell ocamlfind query compiler-libs)
 OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamlopt
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
-Z3       = /usr/bin/z3
+Z3       = @Z3@
 WARNS    = -w -40-58+27
 
 override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
@@ -654,6 +654,7 @@ src/RamenCompilConfig.ml: Makefile
 	@echo 'let ocamlpath = "$(OCAMLPATH)"' >> $@
 	@echo 'let ocamllib = N.path "@OCAMLLIB@"' >> $@
 	@echo 'let cpp_compiler = "@CXX@"' >> $@
+	@echo 'let z3_path = "$(Z3)"' >> $@
 
 # Tests
 

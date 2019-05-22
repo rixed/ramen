@@ -30,6 +30,11 @@ AC_CHECK_OCAML_PKG(sqlite3)
 AC_CHECK_OCAML_PKG(net_codecs)
 AC_CHECK_OCAML_PKG(zmq)
 
+AC_PATH_PROG(Z3, z3)
+AS_IF(
+  [test -z "$Z3"],
+  [AC_MSG_ERROR([Cannot find z3 in the path.])])
+
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
 
