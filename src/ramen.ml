@@ -107,7 +107,7 @@ let copts =
     Arg.(value (opt_all string [] i))
   and confserver_url =
     let i = Arg.info ~doc:CliInfo.confserver_url
-                     [ "url" ] in
+                     [ "confserver-url" ] in
     let def = "localhost:"^ string_of_int Default.confserver_port in
     Arg.(value (opt string def i))
   in
