@@ -8,7 +8,7 @@ CONFIG += debug
 TEMPLATE = app
 TARGET = rmadmin
 VERSION = @PACKAGE_VERSION@
-QT += core widgets
+QT += core widgets charts
 
 INCLUDEPATH += .
 # For z3 and zmq:
@@ -59,7 +59,6 @@ HEADERS += \
   StorageAllocs.h \
   StorageInfoBox.h \
   StorageInfo.h \
-  StoragePies.h \
   StorageTimeline.h \
   StorageView.h \
   StorageTableView.h \
@@ -100,7 +99,6 @@ SOURCES += \
   StorageAllocs.cpp \
   StorageInfoBox.cpp \
   StorageInfo.cpp \
-  StoragePies.cpp \
   StorageTimeline.cpp \
   StorageView.cpp \
   StorageTableView.cpp \

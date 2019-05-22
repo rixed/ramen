@@ -42,7 +42,7 @@ StorageInfoBox::StorageInfoBox(GraphModel *graphModel_, QWidget *parent) :
   QObject::connect(&recomputeTimer, &QTimer::timeout, this, &StorageInfoBox::recomputeStats);
 }
 
-static int recomputeTimeout = 2000;
+static int recomputeTimeout = 1000;
 
 static QString orMore(int64_t n, bool knowAll)
 {

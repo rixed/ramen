@@ -14,7 +14,10 @@ class StorageInfoBox : public QWidget
   GraphModel *graphModel;
   QTimer recomputeTimer;
 
-  // Infos to be displayed:
+  /*
+   * Infos to be displayed:
+   */
+
   std::optional<unsigned> numArcWorkers;
   bool knowAllArcWorkers;
   QLabel *numArcWorkersWdg;
