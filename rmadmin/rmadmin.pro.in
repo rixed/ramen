@@ -93,11 +93,14 @@ SOURCES += \
   RmAdminWin.cpp \
   main.cpp
 
+# For some reasons the compiler qmake selected might not look into the same
+# locations than the compiler used by autoconf to locate libs:
+LIBS += -L/usr/local/lib
+
 LIBS += GuiHelper.o
 LIBS += -L@OCAMLLIB@ -lunix -lbigarray -lnums -lcamlstr -lthreads -lasmrun_shared
 # TODO: detect those libs specifically:
 LIBS += -L@OCAMLLIB@/../stdint -lstdint_stubs
 LIBS += -L@OCAMLLIB@/../zmq -lzmq_stubs
-# TODO: Also locate zmq and z3 libs
-LIBS += -L/usr/local/lib -lzmq
-LIBS += -L/usr/local/lib -lz3
+LIBS += -lzmq
+LIBS += -lz3

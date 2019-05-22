@@ -583,6 +583,7 @@ PACKAGE_URL=''
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+QMAKE
 Z3
 OCAML_PKG_zmq
 OCAML_PKG_net_codecs
@@ -4431,6 +4432,145 @@ fi
 
 if test -z "$Z3"; then :
   as_fn_error $? "Cannot find z3 in the path." "$LINENO" 5
+fi
+
+# For rmadmin:
+# Although ramen uses Z3's C++ API, we are lucky that the same library file contains
+# the C API, much easier to check:
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for Z3_algebraic_is_value in -lz3" >&5
+$as_echo_n "checking for Z3_algebraic_is_value in -lz3... " >&6; }
+if ${ac_cv_lib_z3_Z3_algebraic_is_value+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lz3  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char Z3_algebraic_is_value ();
+int
+main ()
+{
+return Z3_algebraic_is_value ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_z3_Z3_algebraic_is_value=yes
+else
+  ac_cv_lib_z3_Z3_algebraic_is_value=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_z3_Z3_algebraic_is_value" >&5
+$as_echo "$ac_cv_lib_z3_Z3_algebraic_is_value" >&6; }
+if test "x$ac_cv_lib_z3_Z3_algebraic_is_value" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBZ3 1
+_ACEOF
+
+  LIBS="-lz3 $LIBS"
+
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for zmq_bind in -lzmq" >&5
+$as_echo_n "checking for zmq_bind in -lzmq... " >&6; }
+if ${ac_cv_lib_zmq_zmq_bind+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lzmq  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char zmq_bind ();
+int
+main ()
+{
+return zmq_bind ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_zmq_zmq_bind=yes
+else
+  ac_cv_lib_zmq_zmq_bind=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_zmq_zmq_bind" >&5
+$as_echo "$ac_cv_lib_zmq_zmq_bind" >&6; }
+if test "x$ac_cv_lib_zmq_zmq_bind" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBZMQ 1
+_ACEOF
+
+  LIBS="-lzmq $LIBS"
+
+fi
+
+
+# Extract the first word of "qmake", so it can be a program name with args.
+set dummy qmake; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_QMAKE+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $QMAKE in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_QMAKE="$QMAKE" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_QMAKE="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+QMAKE=$ac_cv_path_QMAKE
+if test -n "$QMAKE"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $QMAKE" >&5
+$as_echo "$QMAKE" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test -z "$QMAKE"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Cannot find qmake, will not build rmadmin." >&5
+$as_echo "$as_me: WARNING: Cannot find qmake, will not build rmadmin." >&2;}
 fi
 
 ac_ext=cpp

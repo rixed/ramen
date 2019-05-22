@@ -35,6 +35,17 @@ AS_IF(
   [test -z "$Z3"],
   [AC_MSG_ERROR([Cannot find z3 in the path.])])
 
+# For rmadmin:
+# Although ramen uses Z3's C++ API, we are lucky that the same library file contains
+# the C API, much easier to check:
+AC_CHECK_LIB(z3, Z3_algebraic_is_value)
+AC_CHECK_LIB(zmq, zmq_bind)
+
+AC_PATH_PROG(QMAKE, qmake)
+AS_IF(
+  [test -z "$QMAKE"],
+  [AC_MSG_WARN([Cannot find qmake, will not build rmadmin.])])
+
 AC_LANG([C++])
 CXXFLAGS="$CFLAGS -std=c++17"
 

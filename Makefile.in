@@ -8,6 +8,7 @@ OCAMLOPT = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUP
 OCAMLDEP = OCAMLPATH=$(OCAMLPATH) OCAMLRUNPARAM= OCAMLFIND_IGNORE_DUPS_IN="$(DUPS_IN)" ocamlfind ocamldep
 QTEST    = qtest
 Z3       = @Z3@
+QMAKE    = @QMAKE@
 WARNS    = -w -40-58+27
 
 override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
@@ -47,7 +48,11 @@ META_REQUIRES += inotify
 PACKAGES += inotify
 endif
 
-INSTALLED_BIN = src/ramen rmadmin/rmadmin
+INSTALLED_BIN = src/ramen
+ifneq ($(QMAKE),)
+INSTALLED_BIN += rmadmin/rmadmin
+endif
+
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
 	$(filter %.cmi, $(CODEGENLIB_SOURCES:.ml=.cmi)) \
@@ -534,7 +539,7 @@ rmadmin/GuiHelper.o: \
 
 rmadmin/Makefile:
 	@echo 'Generating $@'
-	cd rmadmin && qmake
+	cd rmadmin && @QMAKE@
 
 rmadmin/rmadmin: \
 		rmadmin/GuiHelper.o \
