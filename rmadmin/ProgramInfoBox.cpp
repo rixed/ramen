@@ -41,7 +41,7 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   paramTable = new QTableWidget(this);
   paramTable->setColumnCount(2);
   paramTable->setHorizontalHeaderLabels({ "Name", "Value" });
-  std::string k(pref + "param/");
+  std::string k("^" + pref + "param/");
   conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
     // We only need creation/destruction as the AtomicWidget will take
     // care of the rest:

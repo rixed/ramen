@@ -39,7 +39,7 @@ void askDel(conf::Key const &);
  * As an additional help, these functions will also call the given onCreated
  * for preexisting values. */
 void autoconnect(
-  std::string const &prefix, std::function<void (conf::Key const &, KValue const *)>);
+  std::string const &pattern, std::function<void (conf::Key const &, KValue const *)>);
 };
 
 #endif

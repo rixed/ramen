@@ -6,7 +6,7 @@
 
 static std::string lastTuplesKey(FunctionItem const *f)
 {
-  return "tail/" + f->fqName().toStdString() + "/lasts/";
+  return "^tail/" + f->fqName().toStdString() + "/lasts/";
 }
 
 FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings, unsigned paletteSize) :

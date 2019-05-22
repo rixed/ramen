@@ -1,5 +1,6 @@
 #include <iostream>
 #include <optional>
+#include <regex>
 #include <QLinkedList>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -8,6 +9,8 @@ extern "C" {
 # include <caml/alloc.h>
 }
 #include "conf.h"
+
+static bool const verbose = false;
 
 namespace conf {
 
@@ -117,8 +120,13 @@ void askDel(conf::Key const &key)
 /* List of registered autoconnects: */
 struct Autoconnect
 {
-  std::string const prefix;
+  std::regex re;
   std::function<void (conf::Key const &, KValue const *)> cb;
+
+  Autoconnect(std::string const &pattern, std::function<void (conf::Key const &, KValue const *)> cb_) :
+    re(pattern, std::regex_constants::nosubs |
+                std::regex_constants::optimize |
+                std::regex_constants::basic), cb(cb_) {}
 };
 
 static std::list<Autoconnect> autoconnects;
@@ -127,21 +135,20 @@ static std::list<Autoconnect> autoconnects;
 // FIXME: return a handler (the address of the autoconnect?) with which
 //        user can unregister (in destructors...).
 void autoconnect(
-  std::string const &prefix,
+  std::string const &pattern,
   std::function<void (conf::Key const &, KValue const *)> cb)
 {
-  autoconnects.push_back({ prefix, cb });
+  autoconnects.emplace_back(pattern, cb);
+  std::regex const &re = autoconnects.back().re;
 
   // As a convenience, call onCreated for every pre-existing keys:
-  size_t pref_len = prefix.length();
   kvs_lock.lock_shared();
   for (auto it = kvs.constKeyValueBegin(); it != kvs.constKeyValueEnd(); it++) {
     conf::Key const &key((*it).first);
     KValue const *kv = &(*it).second;
-    if (key.s.length() >= pref_len &&
-        0 == key.s.compare(0, pref_len, prefix))
-    {
-      //std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
+
+    if (std::regex_search(key.s, re)) {
+      if (verbose) std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
       emit kv->valueCreated(key, kv->value()); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
@@ -153,13 +160,9 @@ void autoconnect(
 // Given a new KValue, connect it to all interested parties:
 static void do_autoconnect(conf::Key const &key, KValue const *kv)
 {
-  size_t k_len = key.s.length();
   for (Autoconnect const &ac : autoconnects) {
-    size_t pref_len = ac.prefix.length();
-    if (pref_len <= k_len &&
-        0 == key.s.compare(0, pref_len, ac.prefix))
-    {
-      //std::cout << "autoconnect key " << key << std::endl;
+    if (std::regex_search(key.s, ac.re)) {
+      if (verbose) std::cout << "autoconnect key " << key << std::endl;
       ac.cb(key, kv);
     }
   }
@@ -187,7 +190,7 @@ extern "C" {
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     QString u(String_val(u_));
 
-    //std::cout << "new key " << k << " with value " << *v << std::endl;
+    if (verbose) std::cout << "new key " << k << " with value " << *v << std::endl;
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
     // Connect first, and then set the value.
@@ -204,7 +207,7 @@ extern "C" {
     CAMLparam2(k_, v_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
-    //std::cout << "set key " << k << " to value " << *v << std::endl;
+    if (verbose) std::cout << "set key " << k << " to value " << *v << std::endl;
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
     conf::kvs[k].set(k, v);

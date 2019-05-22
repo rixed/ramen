@@ -13,7 +13,7 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   settings(settings_),
   paletteSize(100)
 {
-  conf::autoconnect("sites/", [this](conf::Key const &k, KValue const *kv) {
+  conf::autoconnect("^sites/", [this](conf::Key const &k, KValue const *kv) {
     // This is going to be called from the OCaml thread. But that should be
     // OK since connect itself is threadsafe. Once we return, the KV value
     // is going to be set and therefore a signal emitted. This signal will
