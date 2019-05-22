@@ -137,9 +137,9 @@ public:
         "(?<function_property>"
           "is_used|parents/\\d|startup_time|"
           "event_time/min|event_time/max|"
-          "total/tuples|total/bytes|"
-          "total/cpu|max/ram|archived_times|"
-          "archive_files|archive_bytes"
+          "total/(tuples|bytes|cpu)|"
+          "max/ram|"
+          "archives/(times|num_files|current_size|alloc_size)"
         ")"
       "|"
         "(?<site_property>is_master)"
@@ -277,17 +277,20 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
     if (cf) functionItem->maxRAM = cf->i;
-  } else if (p == "archived_times") {
+  } else if (p == "archives/times") {
     // TODO
-  } else if (p == "archive_files") {
+  } else if (p == "archives/num_files") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
     if (cf) functionItem->numArcFiles = cf->i;
-  } else if (p == "archive_bytes") {
+  } else if (p == "archives/current_size") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
     if (cf) functionItem->numArcBytes = cf->i;
-    // TODO
+  } else if (p == "archives/alloc_size") {
+    std::shared_ptr<conf::Int const> cf =
+      std::dynamic_pointer_cast<conf::Int const>(v);
+    if (cf) functionItem->allocArcBytes = cf->i;
   } else if (p.startsWith(parents_prefix)) {
     int idx = p.mid(parents_prefix.length()).toInt();
     if (idx >= 0 && (size_t)idx < functionItem->parents.size()+100000) {

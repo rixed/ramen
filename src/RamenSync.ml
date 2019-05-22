@@ -209,6 +209,7 @@ struct
     | ArchivedTimes
     | NumArcFiles
     | NumArcBytes
+    | AllocedArcBytes
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
@@ -274,9 +275,10 @@ struct
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
       | Parents i -> "parents/"^ string_of_int i
-      | ArchivedTimes -> "archived_times"
-      | NumArcFiles -> "archive_files"
-      | NumArcBytes -> "archive_bytes")
+      | ArchivedTimes -> "archives/times"
+      | NumArcFiles -> "archives/num_files"
+      | NumArcBytes -> "archives/current_size"
+      | AllocedArcBytes -> "archives/alloc_size")
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -376,10 +378,7 @@ struct
                         PerWorker (N.fq fq,
                           match s with
                           | "is_used" -> IsUsed
-                          | "startup_time" -> StartupTime
-                          | "archived_times" -> ArchivedTimes
-                          | "archive_files" -> NumArcFiles
-                          | "archive_bytes" -> NumArcBytes)
+                          | "startup_time" -> StartupTime)
                       with Match_failure _ ->
                         (match rcut fq, s with
                         | [ fq ; s1 ], s2 ->
@@ -391,6 +390,10 @@ struct
                               | "total", "bytes" -> TotBytes
                               | "total", "cpu" -> TotCpu
                               | "max", "ram" -> MaxRam
+                              | "archives", "times" -> ArchivedTimes
+                              | "archives", "num_files" -> NumArcFiles
+                              | "archives", "current_size" -> NumArcBytes
+                              | "archives", "alloc_size" -> AllocedArcBytes
                               | "parents", i ->
                                   Parents (int_of_string i)))))
         | "programs", s ->

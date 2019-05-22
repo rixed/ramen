@@ -665,11 +665,14 @@ let save_allocs conf allocs =
   let fname = N.path_cat [ conf_dir conf ; N.path "allocs" ] in
   Files.ppp_to_file ~pretty:true fname per_func_allocs_ser_ppp_ocaml allocs
 
+let allocs_file conf =
+  N.path_cat [ conf_dir conf ; N.path "allocs" ]
+
 let load_allocs =
   let ppp_of_file =
     Files.ppp_of_file ~default:"{}" per_func_allocs_ser_ppp_ocaml in
   fun conf ->
-    N.path_cat [ conf_dir conf ; N.path "allocs" ] |>
+    allocs_file conf |>
     ppp_of_file
 
 let update_storage_allocation conf programs =

@@ -30,6 +30,7 @@ public:
   std::optional<int64_t> maxRAM;
   std::optional<int64_t> numArcFiles;
   std::optional<int64_t> numArcBytes;
+  std::optional<int64_t> allocArcBytes;
 
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:

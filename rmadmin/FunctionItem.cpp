@@ -66,7 +66,9 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::labels() cons
   if (numArcFiles)
     labels.emplace_back("#arc.files", QString::number(*numArcFiles));
   if (numArcBytes)
-    labels.emplace_back("#arc.files", QString::number(*numArcBytes));
+    labels.emplace_back("arc.size", QString::number(*numArcBytes));
+  if (allocArcBytes)
+    labels.emplace_back("arc.allocated", QString::number(*allocArcBytes));
 
   return labels;
 }

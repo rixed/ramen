@@ -291,6 +291,35 @@ struct
     replace_keys srv f h
 end
 
+module AllocInfo : CONF_SYNCER =
+struct
+  let last_read_allocs = ref 0.
+
+  let init _conf _srv = ()
+
+  let update conf srv =
+    let fname = Archivist.allocs_file conf in
+    let t = Files.mtime_def 0. fname in
+    if t > !last_read_allocs then (
+      !logger.info "Updating storage allocations from %a"
+        N.path_print fname ;
+      last_read_allocs := t ;
+      let allocs = Archivist.load_allocs conf in
+      let h = Server.H.create 20 in
+      let upd k v =
+        Server.H.add h k (Some v, Capa.Anybody, Capa.Admin, false) in
+      Hashtbl.iter (fun (site, fq) size ->
+        upd (PerSite (site, PerWorker (fq, AllocedArcBytes)))
+            Value.(Int (Int64.of_int size))
+      ) allocs ;
+      let f = function
+        | Key.PerSite (_, PerWorker (_, AllocedArcBytes)) -> true
+        | _ -> false in
+      replace_keys srv f h
+    )
+end
+
+
 (*
  * The service: populate and update in a loop.
  * TODO: Save the conf from time to time in a user friendly format, and get
@@ -303,7 +332,8 @@ let populate_init conf srv =
   GraphInfo.init conf srv ;
   Storage.init conf srv ;
   BinInfo.init conf srv ;
-  SrcInfo.init conf srv
+  SrcInfo.init conf srv ;
+  AllocInfo.init conf srv
 
 let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update DevNull"
@@ -315,7 +345,9 @@ let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update BinInfo"
     (BinInfo.update conf) srv ;
   log_and_ignore_exceptions ~what:"update SrcInfo"
-    (SrcInfo.update conf) srv
+    (SrcInfo.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update AllocInfo"
+    (AllocInfo.update conf) srv
 
 let last_tuples = Hashtbl.create 50
 
