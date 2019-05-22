@@ -173,13 +173,18 @@ struct
                  Value.(Int (Int64.of_int user_conf.Archivist.size_limit)) ;
       Server.set srv u (Storage RecallCost)
                  Value.(Float user_conf.recall_cost) ;
-      let r = Capa.Anybody and w = Capa.Admin in
+      let h = Server.H.create 20 in
+      let upd k v =
+        Server.H.add h k (Some v, Capa.Anybody, Capa.Admin, false) in
       Hashtbl.iter (fun glob retention ->
-        Server.create_or_update srv (Storage (RetentionsOverride glob))
-                                Value.(Retention retention) ~r ~w ~s:false
-        (* TODO: delete the left over from previous version *)
-        (* TODO: transactions! *)
-      ) user_conf.retentions
+        upd (Storage (RetentionsOverride glob))
+            Value.(Retention retention)
+        (* TODO: transactions! (option of replace_keys?) *)
+      ) user_conf.retentions ;
+      let f = function
+        | Key.Storage (RetentionsOverride _) -> true
+        | _ -> false in
+      replace_keys srv f h
     ) else (
       (* in the other way around: if conf is dirty save the file.
        * TODO *)
