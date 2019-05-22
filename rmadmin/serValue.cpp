@@ -6,6 +6,8 @@
 
 namespace ser {
 
+static bool const verbose = false;
+
 Value::Value(ValueType type_) : type(type_) {}
 
 Value::~Value() {}
@@ -56,7 +58,7 @@ Float::Float(uint32_t const *&start) : Value(FloatType)
 {
   static_assert(sizeof(double) <= 2 * sizeof(uint32_t));
   memcpy(&v, start, sizeof(v));
-  std::cout << "float = " << v << std::endl;
+  if (verbose) std::cout << "float = " << v << std::endl;
   start += 2;
 }
 
@@ -68,7 +70,7 @@ QString Float::toQString() const
 Bool::Bool(uint32_t const *&start) : Value(BoolType)
 {
   v = !! *start;
-  std::cout << "bool = " << v << std::endl;
+  if (verbose) std::cout << "bool = " << v << std::endl;
   start += 1;
 }
 
@@ -84,98 +86,98 @@ String::String(uint32_t const *&start, size_t len) : Value(StringType)
   for (size_t i = 0; i < len; i++) {
     v.append(QChar(c[i]));
   }
-  std::cout << "string = " << v.toStdString() << std::endl;
+  if (verbose) std::cout << "string = " << v.toStdString() << std::endl;
   start += roundUpWords(len);
 }
 
 U8::U8(uint32_t const *&start) : Value(U8Type)
 {
   v = *(uint8_t const *)start;
-  std::cout << "u8 = " << v << std::endl;
+  if (verbose) std::cout << "u8 = " << v << std::endl;
   start += 1;
 }
 
 U16::U16(uint32_t const *&start) : Value(U16Type)
 {
   v = *(uint16_t const *)start;
-  std::cout << "u16 = " << v << std::endl;
+  if (verbose) std::cout << "u16 = " << v << std::endl;
   start += 1;
 }
 
 U32::U32(uint32_t const *&start) : Value(U32Type)
 {
   v = *(uint32_t const *)start;
-  std::cout << "u32 = " << v << std::endl;
+  if (verbose) std::cout << "u32 = " << v << std::endl;
   start += 1;
 }
 
 U64::U64(uint32_t const *&start) : Value(U64Type)
 {
   v = *(uint64_t const *)start;
-  std::cout << "u64 = " << v << std::endl;
+  if (verbose) std::cout << "u64 = " << v << std::endl;
   start += 2;
 }
 
 U128::U128(uint32_t const *&start) : Value(U128Type)
 {
   v = *(uint128_t const *)start;
-  std::cout << "u128 = xyz" << std::endl;
+  if (verbose) std::cout << "u128 = xyz" << std::endl;
   start += 4;
 }
 
 I8::I8(uint32_t const *&start) : Value(I8Type)
 {
   v = *(int8_t const *)start;
-  std::cout << "i8 = " << v << std::endl;
+  if (verbose) std::cout << "i8 = " << v << std::endl;
   start += 1;
 }
 
 I16::I16(uint32_t const *&start) : Value(I16Type)
 {
   v = *(int16_t const *)start;
-  std::cout << "i16 = " << v << std::endl;
+  if (verbose) std::cout << "i16 = " << v << std::endl;
   start += 1;
 }
 
 I32::I32(uint32_t const *&start) : Value(I32Type)
 {
   v = *(int32_t const *)start;
-  std::cout << "i32 = " << v << std::endl;
+  if (verbose) std::cout << "i32 = " << v << std::endl;
   start += 1;
 }
 
 I64::I64(uint32_t const *&start) : Value(I64Type)
 {
   v = *(int64_t const *)start;
-  std::cout << "i64 = " << v << std::endl;
+  if (verbose) std::cout << "i64 = " << v << std::endl;
   start += 2;
 }
 
 I128::I128(uint32_t const *&start) : Value(I128Type)
 {
   v = *(int128_t const *)start;
-  std::cout << "i128 = xxx" << std::endl;
+  if (verbose) std::cout << "i128 = xxx" << std::endl;
   start += 4;
 }
 
 Eth::Eth(uint32_t const *&start) : Value(EthType)
 {
   v = *(uint64_t const *)start;
-  std::cout << "eth = " << v << std::endl;
+  if (verbose) std::cout << "eth = " << v << std::endl;
   start += 2;
 }
 
 Ipv4::Ipv4(uint32_t const *&start) : Value(Ipv4Type)
 {
   v = *(uint64_t const *)start;
-  std::cout << "ipv4 = " << v << std::endl;
+  if (verbose) std::cout << "ipv4 = " << v << std::endl;
   start += 2;
 }
 
 Ipv6::Ipv6(uint32_t const *&start) : Value(Ipv6Type)
 {
   v = *(uint128_t const *)start;
-  std::cout << "ipv6 = xyz" << std::endl;
+  if (verbose) std::cout << "ipv6 = xyz" << std::endl;
   start += 4;
 }
 
@@ -244,10 +246,11 @@ static bool bitSet(unsigned char const *nullmask, unsigned null_i)
 
 Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *&start, uint32_t const *max, bool topLevel)
 {
-  // DEBUG
-  std::cout << "unserialize type " << *type << std::endl;
-  for (uint32_t const *c = start; c < max; c++) {
-    std::cout << (c - start) << ": " << *c << std::endl;
+  if (verbose) {
+    std::cout << "unserialize type " << *type << std::endl;
+    for (uint32_t const *c = start; c < max; c++) {
+      std::cout << (c - start) << ": " << *c << std::endl;
+    }
   }
 
   // TODO top-level output value that can be NULL
@@ -441,11 +444,13 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
             &record->fields[ fieldIdx ];
           QString const &fieldName = field->first;
           std::shared_ptr<conf::RamenType const> subType = field->second;
-          std::cout << "Next field is " << fieldName.toStdString() << ", "
-                    << (subType->nullable ?
-                         (bitSet(nullmask, null_i) ?
-                           "not null" : "null") :
-                         "not nullable") << std::endl;
+          if (verbose) {
+            std::cout << "Next field is " << fieldName.toStdString() << ", "
+                      << (subType->nullable ?
+                           (bitSet(nullmask, null_i) ?
+                             "not null" : "null") :
+                           "not nullable") << std::endl;
+          }
           fieldValues[ fieldIdx ].first = fieldName;
           if (subType->nullable) {
             fieldValues[ fieldIdx ].second =
