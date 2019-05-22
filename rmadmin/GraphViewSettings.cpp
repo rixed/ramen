@@ -19,15 +19,15 @@ GraphViewSettings::GraphViewSettings()
   arrowChannelWidth = 10;
   arrowWidth = 6;
 
-  siteMarginHoriz = 70;
+  siteMarginHoriz = 50;
   programMarginHoriz = 5;
   functionMarginHoriz = 5;
 
-  siteMarginTop = 70;
+  siteMarginTop = 50;
   programMarginTop = 1.5 * titleLineHeight;
   functionMarginTop = 1.5 * titleLineHeight;
 
-  siteMarginBottom = 70;
+  siteMarginBottom = 50;
   programMarginBottom = 5;
   functionMarginBottom = 5;
 

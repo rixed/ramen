@@ -53,8 +53,6 @@ static QString orMore(int64_t n, bool knowAll)
 
 void StorageInfoBox::recomputeStats()
 {
-  std::cout << "RECOMPUTE STATS!" << std::endl;
-
   unsigned countWorkers = 0;
   unsigned countFiles = 0;
   size_t countBytes = 0;
