@@ -44,7 +44,7 @@ export RAMEN_DIR="$master_ramen_dir/$ramen_site"
 
 rc_version=v16
 services_version=v2
-archivist_version=v5
+archivist_version=v6
 
 # Compile the test programs (only once)
 if test "$be_master" = yes; then

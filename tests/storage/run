@@ -25,8 +25,8 @@ tot_sz() {
 # Write the configuration
 # 8GB of max total disk space, with retention for the various aggregation
 # levels (1min for 12 hours, 10 mins for 3 days, 1 hour for 30 days).
-mkdir -p "$RAMEN_DIR/archivist/v5/"
-cat > "$RAMEN_DIR/archivist/v5/config" <<EOF
+mkdir -p "$RAMEN_DIR/archivist/v6/"
+cat > "$RAMEN_DIR/archivist/v6/config" <<EOF
 {
   size_limit = 8000000000;
   retentions = {

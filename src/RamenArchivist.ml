@@ -137,6 +137,8 @@ let func_stats_of_stat s =
     ram = Uint64.(to_int64 s.max_ram) ;
     parents = [] ;
     archives = [] ;
+    num_arc_files = 0 ;
+    num_arc_bytes = 0L ;
     is_running = true }
 
 (* Adds two FS.t together, favoring a *)
@@ -151,6 +153,8 @@ let add_ps_stats a b =
     ram = Int64.add a.ram b.ram ;
     parents = a.parents ;
     archives = a.archives ;
+    num_arc_files = a.num_arc_files + b.num_arc_files ;
+    num_arc_bytes = Int64.add a.num_arc_bytes b.num_arc_bytes ;
     is_running = a.is_running }
 
 (* Those stats are saved on disk: *)
@@ -240,8 +244,12 @@ let update_archives conf s func =
   let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
   let lst =
     RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
-    (fun (_seq_mi, _seq_ma, t1, t2, _typ, _f) ->
-      if Float.(is_nan t1 || is_nan t2) then None else Some (t1, t2)) |>
+    (fun (_seq_mi, _seq_ma, t1, t2, _typ, fname) ->
+      if Float.(is_nan t1 || is_nan t2) then
+        None
+      else (
+        Some (t1, t2, Files.size fname)
+      )) |>
     List.of_enum in
   (* We might also have a current archive: *)
   let lst =
@@ -251,27 +259,36 @@ let update_archives conf s func =
         finally (fun () -> RingBuf.unload rb) (fun () ->
           let st = RingBuf.stats rb in
           if st.t_min <> 0. || st.t_max <> 0. then
-            (st.t_min, st.t_max) :: lst
-          else  lst) () in
+            (st.t_min, st.t_max, st.alloced_words * RingBuf.rb_word_bytes) :: lst
+          else lst) () in
   let lst =
-    List.sort (fun (ta,_) (tb,_) -> Float.compare ta tb) lst in
+    List.sort (fun (ta, _, _) (tb, _, _) -> Float.compare ta tb) lst in
   (* Compress that list: when a gap in between two files is smaller than
    * one tenth of the duration of those two files then assume there is no
    * gap: *)
   let rec loop prev rest =
     match prev, rest with
-    | (t11, t12)::prev', (t21, t22)::rest' ->
+    | (t11, t12, sz1)::prev', (t21, t22, sz2)::rest' ->
         assert (t12 >= t11 && t22 >= t21) ;
         let gap = t21 -. t12 in
         if gap < 0.1 *. abs_float (t22 -. t11) then
-          loop ((t11, t22) :: prev') rest'
+          loop ((t11, t22, sz1+sz2) :: prev') rest'
         else
-          loop ((t21, t22) :: prev) rest'
+          loop ((t21, t22, sz2) :: prev) rest'
     | [], t::rest' ->
         loop [t] rest'
     | prev, [] ->
         List.rev prev in
-  s.FS.archives <- loop [] lst
+  let ranges, num_files, num_bytes =
+    loop [] lst |>
+    List.fold_left (fun (ranges, num_files, num_bytes) (t1, t2, sz) ->
+      (t1, t2) :: ranges,
+      num_files + 1,
+      Int64.(add num_bytes (of_int sz))
+    ) ([], 0, 0L) in
+  s.FS.archives <- List.rev ranges ;
+  s.FS.num_arc_files <- num_files ;
+  s.FS.num_arc_bytes <- num_bytes
 
 let enrich_local_stats conf programs per_func_stats =
   let all_sites = RamenServices.all_sites conf in

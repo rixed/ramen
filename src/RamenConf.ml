@@ -479,6 +479,8 @@ struct
       (* Also gather available history per running workers, to speed up
        * establishing query plans: *)
       mutable archives : TimeRange.t [@ppp_default []] ;
+      mutable num_arc_files : int [@ppp_default 0] ;
+      mutable num_arc_bytes : int64 [@ppp_default 0L] ;
       (* We want to allocate disk space only to those workers that are running,
        * but also want to save stats about workers that's been running recently
        * enough and might resume: *)
