@@ -1548,6 +1548,9 @@ let emit_minimize oc condition funcs =
     | { structure = (TAny | TNum) ; _ } ->
         Printf.fprintf oc " (cost_of_number %s)" eid
     | _ -> () in
+  (* "box" tells z3 to optimize both constraints independently and is
+   * slightly faster: *)
+  Printf.fprintf oc "(set-option :opt.priority box)\n";
   Printf.fprintf oc "(minimize (+ 0" ;
   Option.may (E.iter (cost_of_expr ())) condition ;
   List.iter (fun func ->
