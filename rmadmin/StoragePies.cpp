@@ -4,6 +4,9 @@
 #include <QTimer>
 #include <QString>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QRadioButton>
 #include <QPieSeries>
 #include "GraphModel.h"
 #include "SiteItem.h"
@@ -18,9 +21,26 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   QWidget(parent),
   graphModel(graphModel_),
   reallocTimer(this),
+  dataMode(CurrentBytes),
   sumAllSites(false)
 {
-  QVBoxLayout *layout = new QVBoxLayout(this);
+  QVBoxLayout *layout = new QVBoxLayout;
+
+  QGroupBox *modeSelect = new QGroupBox(tr("Select size:"), this);
+  { // the button group to select the dataMode:
+    QHBoxLayout *modeLayout = new QHBoxLayout;
+    QRadioButton *current = new QRadioButton(tr("&current"));
+    modeLayout->addWidget(current);
+    QRadioButton *alloced = new QRadioButton(tr("&allocated"));
+    modeLayout->addWidget(alloced);
+    modeSelect->setLayout(modeLayout);
+    current->setChecked(true);
+    connect(current, &QRadioButton::toggled, [this](bool set) {
+      dataMode = set ? CurrentBytes : AllocedBytes;
+      refreshChart();
+    });
+  }
+  layout->addWidget(modeSelect);
 
   QChartView *chartView = new QChartView;
   chartView->setRenderHint(QPainter::Antialiasing);
@@ -39,18 +59,6 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
 
 static int reallocTimeout = 1000;
 
-static QString const &titleOfDataMode(DataMode dataMode)
-{
-  static QString const allocedBytes("Allocated Sizes");
-  static QString const currentBytes("Current Sizes");
-  switch (dataMode) {
-    case AllocedBytes:
-      return allocedBytes;
-    case CurrentBytes:
-      return currentBytes;
-  }
-}
-
 void StoragePies::refreshChart()
 {
   bool collapse[3] = { false, false, false };
@@ -60,10 +68,7 @@ void StoragePies::refreshChart()
    * Third ring is keyed etc. */
   std::map<Key, int64_t, KeyCompare> rings[3];
   QString collapsed;
-  DataMode dataMode = AllocedBytes;
   int64_t totValue = 0;
-
-  chart->setTitle(titleOfDataMode(dataMode));
 
   for (auto &site : graphModel->sites) {
     QString const &siteName =

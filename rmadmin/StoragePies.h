@@ -26,6 +26,8 @@ class StoragePies : public QWidget
   QtCharts::QChart *chart;
   Key selected; // unless invalid
 
+  DataMode dataMode;
+
   /* Pie Chart displaying the storage size per site+program+function or
    * program+function.
    * So up to three concentric donuts: */
