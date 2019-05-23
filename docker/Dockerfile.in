@@ -16,6 +16,7 @@ RUN apt-get --yes update && \
         libsasl2-dev \
         libsqlite3-0 \
         libssl-dev \
+        libzmq5-dev \
         util-linux \
         coreutils
 
