@@ -1,5 +1,5 @@
-#ifndef STORAGEALLOCS_H_190522
-#define STORAGEALLOCS_H_190522
+#ifndef STORAGEPIES_H_190522
+#define STORAGEPIES_H_190522
 #include <QWidget>
 #include <QTimer>
 
@@ -14,7 +14,7 @@ namespace QtCharts {
  * programs, functions, sites+programs or sites+programs+function.
  */
 
-class StorageAllocs : public QWidget
+class StoragePies : public QWidget
 {
   Q_OBJECT
 
@@ -28,7 +28,7 @@ class StorageAllocs : public QWidget
   bool sumAllSites;
 
 public:
-  StorageAllocs(GraphModel *, QWidget *parent = nullptr);
+  StoragePies(GraphModel *, QWidget *parent = nullptr);
 
 private slots:
   void rearmReallocTimer(FunctionItem const *);

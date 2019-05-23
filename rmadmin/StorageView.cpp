@@ -1,7 +1,7 @@
 #include <QGridLayout>
 #include "StorageInfo.h"
 #include "StorageTableView.h"
-#include "StorageAllocs.h"
+#include "StoragePies.h"
 #include "StorageTimeline.h"
 #include "StorageView.h"
 
@@ -20,7 +20,7 @@ StorageView::StorageView(GraphModel *graphModel, QWidget *parent) :
   layout->addWidget(tblView, 1, 0);
 
   // Then some pie charts
-  StorageAllocs *pies = new StorageAllocs(graphModel, this);
+  StoragePies *pies = new StoragePies(graphModel, this);
   layout->addWidget(pies, 0, 1, 2, 1);
 
   // Then a timeline for the selected worker

@@ -10,9 +10,9 @@
 #include "ProgramItem.h"
 #include "FunctionItem.h"
 #include "colorOfString.h"
-#include "StorageAllocs.h"
+#include "StoragePies.h"
 
-StorageAllocs::StorageAllocs(GraphModel *graphModel_, QWidget *parent) :
+StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   QWidget(parent),
   graphModel(graphModel_),
   reallocTimer(this),
@@ -30,8 +30,8 @@ StorageAllocs::StorageAllocs(GraphModel *graphModel_, QWidget *parent) :
 
   // Refresh the chart whenever some allocation property changes:
   reallocTimer.setSingleShot(true);
-  QObject::connect(graphModel, &GraphModel::storagePropertyChanged, this, &StorageAllocs::rearmReallocTimer);
-  QObject::connect(&reallocTimer, &QTimer::timeout, this, &StorageAllocs::refreshChart);
+  QObject::connect(graphModel, &GraphModel::storagePropertyChanged, this, &StoragePies::rearmReallocTimer);
+  QObject::connect(&reallocTimer, &QTimer::timeout, this, &StoragePies::refreshChart);
 }
 
 static int reallocTimeout = 1000;
@@ -50,7 +50,7 @@ static QString const &titleOfDataMode(DataMode dataMode)
   }
 }
 
-void StorageAllocs::refreshChart()
+void StoragePies::refreshChart()
 {
   bool collapse[3] = { false, false, false };
   struct Key {
@@ -146,7 +146,7 @@ void StorageAllocs::refreshChart()
   }
 }
 
-void StorageAllocs::rearmReallocTimer(FunctionItem const *)
+void StoragePies::rearmReallocTimer(FunctionItem const *)
 {
   reallocTimer.start(reallocTimeout);
 }
