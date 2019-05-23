@@ -12,12 +12,18 @@ struct Key {
   void reset() {
     for (unsigned r = 0; r < 3; r++) name[r].clear();
   }
-  bool isValid() { return name[0].length() || name[1].length() || name[2].length(); }
+
+  bool isValid() const
+  {
+    return name[0].length() || name[1].length() || name[2].length();
+  }
+
   Key &operator=(Key const &rhs)
   {
     for (unsigned r = 0; r < 3; r ++) name[r] = rhs.name[r];
     return *this;
   }
+
   bool operator==(Key const &other) const
   {
     for (unsigned r = 0; r < 3; r ++)
@@ -38,6 +44,25 @@ struct KeyCompare {
   }
 };
 
+enum DataMode { AllocedBytes, CurrentBytes };
+
+struct Values {
+  int64_t current, allocated;
+
+  int64_t forMode(DataMode mode) const {
+    switch (mode) {
+      case CurrentBytes:
+        return current;
+      case AllocedBytes:
+        return allocated;
+    }
+  }
+  void operator+=(Values const &other) {
+    current += other.current;
+    allocated += other.allocated;
+  }
+};
+
 class StorageSlice : public QPieSlice {
   Q_OBJECT
 
@@ -45,12 +70,14 @@ class StorageSlice : public QPieSlice {
   std::vector<StorageSlice *> children;
   QString longLabel, shortLabel;
 
+  bool labelNormallyVisible;
+
 public:
-  StorageSlice(QColor, bool labelVisible, Key, qreal value, QObject *parent = nullptr);
+  StorageSlice(QColor, bool labelVisible, Key, Values, DataMode, QObject *parent = nullptr);
   void addChild(StorageSlice *);
 
-  bool labelNormallyVisible;
   Key key;
+  Values val;
 
 public slots:
   void setSelected(bool selected = true);

@@ -14,11 +14,12 @@ static QString labelOfKey(Key k)
   return label;
 }
 
-StorageSlice::StorageSlice(QColor color_, bool labelVisible_, Key key_, qreal value, QObject *parent) :
-  QPieSlice(labelOfKey(key_), value, parent),
+StorageSlice::StorageSlice(QColor color_, bool labelVisible_, Key key_, Values val_, DataMode dataMode, QObject *parent) :
+  QPieSlice(labelOfKey(key_), val_.forMode(dataMode), parent),
   color(color_),
   labelNormallyVisible(labelVisible_),
-  key(key_)
+  key(key_),
+  val(val_)
 {
   longLabel = label();
   for (unsigned r = 0; r < 3; r++) {

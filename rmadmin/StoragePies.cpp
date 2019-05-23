@@ -5,6 +5,7 @@
 #include <QString>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QRadioButton>
 #include <QCheckBox>
@@ -27,8 +28,9 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
 {
   QVBoxLayout *layout = new QVBoxLayout;
 
+  // A button group to select what to display:
   QGroupBox *modeSelect = new QGroupBox(tr("Select size:"), this);
-  { // the button group to select the dataMode:
+  {
     QHBoxLayout *modeLayout = new QHBoxLayout;
     QRadioButton *current = new QRadioButton(tr("&current"));
     modeLayout->addWidget(current);
@@ -50,13 +52,41 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
   }
   layout->addWidget(modeSelect);
 
+  // the pie chart:
   QChartView *chartView = new QChartView;
   chartView->setRenderHint(QPainter::Antialiasing);
   chart = chartView->chart();
   chart->legend()->setVisible(false);
-
   layout->addWidget(chartView);
-  // TODO: also add a selector for what to sum
+
+  // The small info box with detail on selection:
+  QWidget *info = new QWidget(this);
+  {
+    QGridLayout *infoLayout = new QGridLayout;
+    selectionSiteLabel = new QLabel;
+    infoLayout->addWidget(new QLabel(tr("Site:")), 0, 0, Qt::AlignRight);
+    infoLayout->addWidget(selectionSiteLabel, 0, 1, Qt::AlignLeft);
+
+    selectionProgLabel = new QLabel;
+    infoLayout->addWidget(new QLabel(tr("Program:")), 1, 0, Qt::AlignRight);
+    infoLayout->addWidget(selectionProgLabel, 1, 1, Qt::AlignLeft);
+
+    selectionFuncLabel = new QLabel;
+    infoLayout->addWidget(new QLabel(tr("Function:")), 2, 0, Qt::AlignRight);
+    infoLayout->addWidget(selectionFuncLabel, 2, 1, Qt::AlignLeft);
+
+    selectionCurrentInfo = new QLabel;
+    infoLayout->addWidget(new QLabel(tr("Current size:")), 0, 2, Qt::AlignRight);
+    infoLayout->addWidget(selectionCurrentInfo, 0, 3, Qt::AlignLeft);
+
+    selectionAllocInfo = new QLabel;
+    infoLayout->addWidget(new QLabel(tr("Allocated size:")), 1, 2, Qt::AlignRight);
+    infoLayout->addWidget(selectionAllocInfo, 1, 3, Qt::AlignLeft);
+
+    info->setLayout(infoLayout);
+  }
+  layout->addWidget(info);
+
   setLayout(layout);
 
   // Refresh the chart whenever some allocation property changes:
@@ -74,9 +104,9 @@ void StoragePies::refreshChart()
   /* First ring is keyed by site alone, of "" if collapse[0].
    * Second ring is keyed by (site or "") and (program or "").
    * Third ring is keyed etc. */
-  std::map<Key, int64_t, KeyCompare> rings[3];
+  std::map<Key, Values, KeyCompare> rings[3];
   QString collapsed;
-  int64_t totValue = 0;
+  Values totValue = { 0, 0 };
 
   for (auto &site : graphModel->sites) {
     QString const &siteName =
@@ -90,15 +120,10 @@ void StoragePies::refreshChart()
         QString const &funcName =
           collapse[2] ? collapsed : function->name;
         Key k2 { siteName, progName, funcName };
-        int64_t v;
-        switch (dataMode) {
-          case AllocedBytes:
-            v = function->allocArcBytes ? *function->allocArcBytes : 0;
-            break;
-          case CurrentBytes:
-            v = function->numArcBytes ? *function->numArcBytes : 0;
-            break;
-        }
+        Values v = {
+          function->numArcBytes ? *function->numArcBytes : 0,
+          function->allocArcBytes ? *function->allocArcBytes : 0
+        };
         rings[0][k0] += v;
         rings[1][k1] += v;
         rings[2][k2] += v;
@@ -119,7 +144,7 @@ void StoragePies::refreshChart()
   }
   qreal const totRadius = radius[3];
   unsigned currentRing = 0;
-  int64_t minValueForLabel = totValue / 30;
+  int64_t minValueForLabel = totValue.forMode(dataMode) / 30;
   std::map<Key, StorageSlice *, KeyCompare> slices;
   chart->removeAllSeries();
   for (unsigned r = 0; r < 3; r++) {
@@ -130,12 +155,12 @@ void StoragePies::refreshChart()
       bool const isLastRing = currentRing == numRings-1;
       for (auto it : rings[r]) {
         Key const &k = it.first;
-        int64_t const v = it.second;
+        Values const v = it.second;
         QColor c(colorOfString(k.name[r]));
         c.setAlpha(isLastRing ? 200 : 25);
-        bool labelVisible = v >= minValueForLabel && isLastRing;
+        bool labelVisible = v.forMode(dataMode) >= minValueForLabel && isLastRing;
         StorageSlice *slice =
-          new StorageSlice(c, labelVisible, k, v);
+          new StorageSlice(c, labelVisible, k, v, dataMode);
         slice->setBorderWidth(1.5 * (currentRing + 1));
         slice->setBorderColor(Qt::white);
         // Set this slice on top of previous ones:
@@ -168,6 +193,16 @@ void StoragePies::rearmReallocTimer(FunctionItem const *)
   reallocTimer.start(reallocTimeout);
 }
 
+void StoragePies::displaySelection(Key const &k, Values const &val)
+{
+  selectionSiteLabel->setText(k.isValid() ? k.name[0] : "");
+  selectionProgLabel->setText(k.isValid() ? k.name[1] : "");
+  selectionFuncLabel->setText(k.isValid() ? k.name[2] : "");
+
+  selectionCurrentInfo->setText(val.current >= 0 ? QString::number(val.current) : "");
+  selectionAllocInfo->setText(val.allocated >= 0 ? QString::number(val.allocated) : "");
+}
+
 void StoragePies::toggleSelection()
 {
   if (! selected.isValid()) return;
@@ -187,6 +222,7 @@ void StoragePies::showDetail(bool isSelected)
   slice->setSelected(isSelected); // for now
   if (isSelected) {
     selected = slice->key;
+    displaySelection(slice->key, slice->val);
   } else {
     selected.reset();
   }
