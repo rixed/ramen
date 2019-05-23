@@ -150,7 +150,7 @@ void StoragePies::refreshChart()
         slices[k] = slice;
 
         connect(slice, &StorageSlice::hovered, this, &StoragePies::showDetail);
-        connect(slice, SIGNAL(clicked()), this, SLOT(showDetail()));
+        connect(slice, &StorageSlice::clicked, this, &StoragePies::toggleSelection);
         pie->append(slice);
       }
       chart->addSeries(pie);
@@ -168,11 +168,26 @@ void StoragePies::rearmReallocTimer(FunctionItem const *)
   reallocTimer.start(reallocTimeout);
 }
 
+void StoragePies::toggleSelection()
+{
+  if (! selected.isValid()) return;
+  staysSelected = !staysSelected;
+  if (! staysSelected) {
+    selected.reset();
+    refreshChart();  // will unselect the slice
+  }
+}
+
 void StoragePies::showDetail(bool isSelected)
 {
-  // For now just select the slice, but later also animate the whole thing?
+  if (staysSelected) return;
+
   StorageSlice *slice = dynamic_cast<StorageSlice *>(sender());
   assert(slice);
   slice->setSelected(isSelected); // for now
-  selected = isSelected ? slice->key : Key();
+  if (isSelected) {
+    selected = slice->key;
+  } else {
+    selected.reset();
+  }
 }

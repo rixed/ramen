@@ -25,6 +25,7 @@ class StoragePies : public QWidget
   QTimer reallocTimer;
   QtCharts::QChart *chart;
   Key selected; // unless invalid
+  bool staysSelected; // when hover ceases
 
   DataMode dataMode;
 
@@ -39,8 +40,8 @@ public:
 private slots:
   void rearmReallocTimer(FunctionItem const *);
   void refreshChart();
-public slots:
-  void showDetail(bool state = true);
+  void toggleSelection();
+  void showDetail(bool state);
 };
 
 #endif

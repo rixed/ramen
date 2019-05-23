@@ -9,6 +9,9 @@ using namespace QtCharts;
 struct Key {
   QString name[3];
 
+  void reset() {
+    for (unsigned r = 0; r < 3; r++) name[r].clear();
+  }
   bool isValid() { return name[0].length() || name[1].length() || name[2].length(); }
   Key &operator=(Key const &rhs)
   {
