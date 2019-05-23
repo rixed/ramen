@@ -114,13 +114,15 @@ let checked (params, run_cond, funcs) =
   let anonymous = N.func "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %s is not unique" name |> failwith in
+  (* Check parameters have unique names: *)
   List.fold_left (fun s p ->
     if Set.mem p.RamenTuple.ptyp.name s then
       name_not_unique (p.ptyp.name :> string) ;
     Set.add p.ptyp.name s
   ) Set.empty params |> ignore ;
-  let funcs, _ =
-    List.fold_left (fun (funcs, names) n ->
+  (* Check all functions in turn: *)
+  let funcs, used_params, _ =
+    List.fold_left (fun (funcs, used_params, names) n ->
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
@@ -140,7 +142,7 @@ let checked (params, run_cond, funcs) =
         !logger.warning
           "Function %s defined as LAZY but emits notifications"
           (N.func_color (n.name |? anonymous)) ;
-      (* Finally, check that the name is valid and unique: *)
+      (* Check that the name is valid and unique: *)
       let names =
         match n.name with
         | Some name ->
@@ -154,8 +156,33 @@ let checked (params, run_cond, funcs) =
             if Set.mem name names then name_not_unique ns ;
             Set.add name names
         | None -> names in
-      { n with operation = op } :: funcs, names
-    ) ([], Set.empty) funcs in
+      (* Collect all parameters that are used: *)
+      let used_params =
+        O.fold_expr used_params (fun _ _ used_params e ->
+          match e.E.text with
+          | Stateless (SL2 (Get, n, { text = Variable TupleParam ; _ })) ->
+              (match E.string_of_const n with
+              | None ->
+                  !logger.warning
+                    "Cannot determine the name of parameter in expression %a"
+                    (E.print false) e ;
+                  used_params
+              | Some name ->
+                  Set.add (N.field name) used_params)
+          | _ -> used_params
+        ) op in
+      { n with operation = op } :: funcs, used_params, names
+    ) ([], Set.empty, Set.empty) funcs in
+  (* Remove unused parameters from params
+   * See https://github.com/rixed/ramen/issues/731 *)
+  let params =
+    List.filter (fun p ->
+      let name = p.RamenTuple.ptyp.name in
+      let is_used = Set.mem name used_params in
+      if not is_used then
+        !logger.warning "Parameter %s is unused" (N.field_color name) ;
+      is_used
+    ) params in
   params, run_cond, funcs
 
 module Parser =
