@@ -179,6 +179,11 @@ let compile conf get_parent ~exec_file source_file
      * This constraint programs to be compiled in a given order. *)
     (* Hash from function name to Func.t list of parents: *)
     let compiler_parents = Hashtbl.create 7 in
+    let parent_prog_func = function
+      | _, None, func_name -> program_name, func_name
+      | _, Some rel_prog, func_name ->
+          N.program_of_rel_program program_name rel_prog,
+          func_name in
     List.iter (fun parsed_func ->
       O.parents_of_operation
         parsed_func.RamenProgram.operation |>
@@ -189,12 +194,7 @@ let compile conf get_parent ~exec_file source_file
          * For compiling, we want the 'virtual' parents with no parameters
          * and absolute names, as we are only interested in their output
          * type: *)
-        let parent_prog_name, parent_func_name =
-          match parent with
-          | _, None, func_name -> program_name, func_name
-          | _, Some rel_prog, func_name ->
-              N.program_of_rel_program program_name rel_prog,
-              func_name in
+        let parent_prog_name, parent_func_name = parent_prog_func parent in
         let parent_name =
           N.fq_of_program parent_prog_name parent_func_name in
         try Hashtbl.find compiler_funcs parent_name
@@ -395,9 +395,48 @@ let compile conf get_parent ~exec_file source_file
                   parsed_params smt2_file) in
     add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
-    Hashtbl.iter (fun _ func ->
-      finalize_func compiler_parents parsed_params func
-    ) compiler_funcs ;
+    (* For the inference of event times and factors performed by
+     * [finalize_func] to work, we should process functions from topmost
+     * to bottom (parents to children). But loops are allowed within a
+     * program, so such an order is not guaranteed to exist. Therefore,
+     * inference is best effort.
+     *
+     * While rem_funcs is not null, try to find a function in there with no parents
+     * in rem_funcs and process it. If no such function can be found, just process
+     * all the remaining functions in any order: *)
+    let has_parent_in fs fname =
+      let func = Hashtbl.find compiler_funcs fname in
+      List.exists (fun parent ->
+        let parent_prog_name, parent_func_name = parent_prog_func parent in
+        let parent_fq =
+          N.fq_of_program parent_prog_name parent_func_name in
+        List.mem parent_fq fs
+      ) func.F.parents in
+    let finalize fname =
+      let func = Hashtbl.find compiler_funcs fname in
+      finalize_func compiler_parents parsed_params func in
+    let rec loop = function
+      | [] -> ()
+      | [fname] ->
+          finalize fname
+      | fname :: next ->
+          let rec search prev fname next =
+            let prev' =
+              if has_parent_in prev fname ||
+                 has_parent_in next fname
+              then
+                fname :: prev
+              else (
+                finalize fname ;
+                prev
+              ) in
+            match next with
+            | [] -> prev'
+            | fname' :: next' -> search prev' fname' next' in
+          let rem = search [] fname next in
+          List.iter finalize rem
+    in
+    loop (Hashtbl.keys compiler_funcs |> List.of_enum) ;
     (* Also check that the running condition have been typed: *)
     Option.may (fun cond ->
       E.iter (check_typed "Running condition") cond
