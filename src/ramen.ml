@@ -108,8 +108,7 @@ let copts =
   and confserver_url =
     let i = Arg.info ~doc:CliInfo.confserver_url
                      [ "confserver-url" ] in
-    let def = "localhost:"^ string_of_int Default.confserver_port in
-    Arg.(value (opt string def i))
+    Arg.(value (opt string "" i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug

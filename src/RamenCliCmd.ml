@@ -51,12 +51,14 @@ let make_copts
     let sync_url =
       match Services.resolve_every_site conf ServiceNames.confserver with
       | [] ->
+          (* TODO: Only when the sync_server experiment have started:
           let host =
             if Set.is_empty conf.masters then
               "localhost"
             else
               (Set.min_elt conf.masters :> string) in
-          "tcp://"^ host ^":"^ string_of_int Default.confserver_port
+          "tcp://"^ host ^":"^ string_of_int Default.confserver_port *)
+          ""
       | (site, se) :: _ ->
           let url =
             Printf.sprintf2 "tcp://%a:%d"
