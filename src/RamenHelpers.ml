@@ -209,6 +209,15 @@ let list_revmap_3 f l1 l2 l3 =
         invalid_arg "list_revmap_3" in
   loop [] l1 l2 l3
 
+let rec list_longer_than n lst =
+  if n < 0 then true else
+  match lst with
+  | [] -> false
+  | _ :: lst -> list_longer_than (n - 1) lst
+
+let rec list_shorter_than n lst =
+  not (list_longer_than (n -  1) lst)
+
 let hashtbl_find_first f h =
   let res = ref None in
   try

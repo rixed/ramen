@@ -310,13 +310,6 @@ let emit_assert_id_le_smt2 ?name id oc smt2 =
 
 let emit_assert_id_le_id = emit_assert_id_le_smt2
 
-let emit_assert_id_eq_any_of_typ ?name tuple_sizes records field_names
-                                 id oc lst =
-  emit_assert ?name oc (fun oc ->
-    Printf.fprintf oc "(or %a)"
-      (List.print ~first:"" ~last:"" ~sep:" "
-        (emit_id_eq_typ tuple_sizes records field_names id)) lst)
-
 (* Named constraint used when an argument type is constrained: *)
 let arg_is_nullable oc e =
   let name = expr_err e (Err.Nullability true) in
@@ -1052,10 +1045,15 @@ let emit_constraints tuple_sizes records field_names
                   Printf.sprintf2 "Subfield %S is still unknown!" i |>
                   failwith in
               assert (rec_lst <> []) ;
+              let had_several = list_longer_than 1 rec_lst in
+              if had_several then
+                emit_comment oc "Field %a is present in %d records!"
+                  N.field_print k
+                  (List.length rec_lst) ;
               let name = expr_err x Err.GettableByName in
               emit_assert ~name oc (fun oc ->
                 Printf.fprintf oc
-                  "(or %a)"
+                  (if not had_several then "%a" else "(or %a)")
                   (List.print ~first:"" ~last:"" ~sep:" "
                     (fun oc (name_idx, rec_size, field_pos) ->
                       Printf.fprintf oc
