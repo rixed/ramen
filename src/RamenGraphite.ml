@@ -527,18 +527,28 @@ let render conf headers body =
     (Set.print N.field_print) with_factors ;
   let resp =
     List.map (fun ((data_field : N.field), target, datapoints) ->
+      let factors =
+        List.filter (fun (fact_name, _fact_val) ->
+          Set.mem fact_name with_factors
+        ) target in
+      let target_field =
+        if with_data_field || factors = [] then
+          (data_field :> string) ^" "
+        else ""
+      and target_factors =
+        match factors with
+        | [] -> ""
+        | [ _n, v ] -> IO.to_string T.print v
+        | _ ->
+            IO.to_string
+              (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
+                Printf.fprintf oc "%a=%a"
+                  N.field_print n
+                  T.print v)) factors in
       let target =
-        Printf.sprintf2 "%s%a"
-          (if with_data_field then
-            (data_field :> string) ^" "
-           else "")
-          (List.print ~first:"" ~last:"" ~sep:" " (fun oc (n, v) ->
-            Printf.fprintf oc "%a=%a"
-              N.field_print n
-              T.print v))
-            (List.filter (fun (fact_name, _fact_val) ->
-              Set.mem fact_name with_factors
-             ) target) in
+        if target_field = "" then target_factors else
+        if target_factors = "" then target_field else
+        target_field ^" "^ target_factors in
       { target ; datapoints }
     ) resp in
   let body = PPP.to_string render_resp_ppp_json resp in
