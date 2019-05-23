@@ -56,6 +56,7 @@ HEADERS += \
   CodeEdit.h \
   OperationsView.h \
   StorageForm.h \
+  StorageSlice.h \
   StoragePies.h \
   StorageInfoBox.h \
   StorageInfo.h \
@@ -96,6 +97,7 @@ SOURCES += \
   layout.cpp \
   GraphView.cpp \
   StorageForm.cpp \
+  StorageSlice.cpp \
   StoragePies.cpp \
   StorageInfoBox.cpp \
   StorageInfo.cpp \

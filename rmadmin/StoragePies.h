@@ -1,5 +1,6 @@
 #ifndef STORAGEPIES_H_190522
 #define STORAGEPIES_H_190522
+#include "StorageSlice.h"
 #include <QWidget>
 #include <QTimer>
 
@@ -8,6 +9,8 @@ class FunctionItem;
 namespace QtCharts {
   class QChart;
 }
+
+enum DataMode { AllocedBytes, CurrentBytes };
 
 /*
  * A Pie chart displaying how the total storage size is divided amongst sites,
@@ -21,6 +24,7 @@ class StoragePies : public QWidget
   GraphModel *graphModel;
   QTimer reallocTimer;
   QtCharts::QChart *chart;
+  Key selected; // unless invalid
 
   /* Pie Chart displaying the storage size per site+program+function or
    * program+function.
@@ -33,6 +37,8 @@ public:
 private slots:
   void rearmReallocTimer(FunctionItem const *);
   void refreshChart();
+public slots:
+  void showDetail(bool state = true);
 };
 
 #endif
