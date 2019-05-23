@@ -33,6 +33,7 @@ cat > "$RAMEN_DIR/archivist/v6/config" <<EOF
     "1min/http" => { duration = 43200 };
     "10mins/http" => { duration = 259200 };
     "1hour/http" => { duration = 2592000 };
+    "*/stats" => { duration = 0 };
   }
 }
 EOF

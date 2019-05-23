@@ -118,6 +118,7 @@ if test "$be_master" = yes; then
     "logs/http" => { duration = 43200 };
     "10mins/http" => { duration = 259200 };
     "1hour/http" => { duration = 2592000 };
+    "*/stats" => { duration = 0 };
   }
 }
 EOF
