@@ -3,6 +3,12 @@
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
 
+/* Define to 1 if you have the `z3' library (-lz3). */
+#undef HAVE_LIBZ3
+
+/* Define to 1 if you have the `zmq' library (-lzmq). */
+#undef HAVE_LIBZMQ
+
 /* Define to 1 if you have the `renameat2' function. */
 #undef HAVE_RENAMEAT2
 

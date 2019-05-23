@@ -1,4 +1,4 @@
-AC_INIT(ramen, 3.4.0)
+AC_INIT(ramen, 3.4.1)
 m4_include([m4/ocaml.m4])
 
 AC_PROG_CC
