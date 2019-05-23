@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QRadioButton>
+#include <QCheckBox>
 #include <QPieSeries>
 #include "GraphModel.h"
 #include "SiteItem.h"
@@ -33,10 +34,17 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
     modeLayout->addWidget(current);
     QRadioButton *alloced = new QRadioButton(tr("&allocated"));
     modeLayout->addWidget(alloced);
+    QCheckBox *sum = new QCheckBox(tr("&sum all sites"));
+    modeLayout->addWidget(sum);
     modeSelect->setLayout(modeLayout);
+
     current->setChecked(true);
     connect(current, &QRadioButton::toggled, [this](bool set) {
       dataMode = set ? CurrentBytes : AllocedBytes;
+      refreshChart();
+    });
+    connect(sum, &QCheckBox::stateChanged, [this](bool state) {
+      sumAllSites = state;
       refreshChart();
     });
   }
@@ -61,7 +69,7 @@ static int reallocTimeout = 1000;
 
 void StoragePies::refreshChart()
 {
-  bool collapse[3] = { false, false, false };
+  bool collapse[3] = { sumAllSites, false, false };
 
   /* First ring is keyed by site alone, of "" if collapse[0].
    * Second ring is keyed by (site or "") and (program or "").
