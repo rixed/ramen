@@ -693,7 +693,7 @@ let build_must_run conf =
           else
             None) |>
         Hashtbl.of_enum in
-  !logger.info "%d workers must run in full" (Hashtbl.length must_run) ;
+  !logger.debug "%d workers must run in full" (Hashtbl.length must_run) ;
   (* We need a top half for every function running locally with a child
    * running remotely.
    * If we shared the same top-half for several local parents, then we would
