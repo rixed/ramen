@@ -70,12 +70,18 @@ let print_flush_method oc = function
 type file_spec = { fname : E.t ; unlink : E.t }
   [@@ppp PPP_OCaml]
 type csv_specs =
-  { separator : string ; null : string ; fields : RamenTuple.typ }
+  { separator : string ;
+    null : string ;
+    (* If true, expect some quoted fields. Otherwise quotes are just part
+     * of the value. *)
+    may_quote : bool [@ppp_default false] ;
+    fields : RamenTuple.typ }
   [@@ppp PPP_OCaml]
 
 let print_csv_specs oc specs =
-  Printf.fprintf oc "SEPARATOR %S NULL %S %a"
+  Printf.fprintf oc "SEPARATOR %S NULL %S %s %a"
     specs.separator specs.null
+    (if specs.may_quote then "QUOTES" else "NO QUOTES")
     RamenTuple.print_typ specs.fields
 
 let print_file_spec oc specs =
@@ -1102,7 +1108,7 @@ let fields_schema m =
     opt_blanks +- char ')'
   ) m
 
-  (* FIXME: It should be allowed to enter separator, null, preprocessor in
+  (* FIXME: It should be allowed to enter separator, null, preprocessor etc in
    * any order *)
   let read_file_specs m =
     let m = "read file operation" :: m in
@@ -1123,11 +1129,14 @@ let fields_schema m =
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:"" (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
+     optional ~def:true (
+       optional ~def:true (strinG "no" -- blanks >>: fun () -> false) +-
+       strinGs "quote" +- blanks) ++
      fields_schema >>:
-     fun ((separator, null), fields) ->
+     fun (((separator, null), may_quote), fields) ->
        if separator = null || separator = "" then
          raise (Reject "Invalid CSV separator") ;
-       { separator ; null ; fields }) m
+       { separator ; null ; may_quote ; fields }) m
 
   let preprocessor_clause m =
     let m = "file preprocessor" :: m in
@@ -1460,13 +1469,13 @@ let fields_schema m =
     "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
 
-    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \
+    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
       (test_op "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
 
-    "READ AND DELETE IF true FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" (f1 BOOL?, f2 I32)" \
-      (test_op "read and delete file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
+    "READ AND DELETE IF true FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" NO QUOTES (f1 BOOL?, f2 I32)" \
+      (test_op "read and delete file \"/tmp/toto.csv\" no quote (f1 bool?, f2 i32)")
 
-    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \"\\t\" NULL \"<NULL>\" (f1 BOOL?, f2 I32)" \
+    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \"\\t\" NULL \"<NULL>\" QUOTES (f1 BOOL?, f2 I32)" \
       (test_op "read file \"/tmp/toto.csv\" \\
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")

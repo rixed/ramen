@@ -158,14 +158,15 @@ let id_of_typ = function
   | TList _ -> "list"
   | TNum | TAny | TEmpty -> assert false
 
-let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
+let rec emit_value_of_string
+    indent t str_var offs_var emit_is_null fins may_quote oc =
   let p fmt = emit oc indent fmt in
   if t.T.nullable then (
     p "let is_null_, o_ = %t in" (emit_is_null fins str_var offs_var) ;
     p "if is_null_ then Null, o_ else" ;
     p "let x_, o_ =" ;
     let t = { t with nullable = false } in
-    emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins oc ;
+    emit_value_of_string (indent+1) t str_var "o_" emit_is_null fins may_quote oc ;
     p "  in" ;
     p "NotNull x_, o_"
   ) else (
@@ -178,7 +179,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
       p "  if %s.[o_] = ']' then prevs_, o_ + 1 else" str_var ;
       p "  let x_, o_ =" ;
       emit_value_of_string
-        (indent + 2) t str_var "o_" emit_is_null (';' :: ']' :: fins) oc ;
+        (indent + 2) t str_var "o_" emit_is_null (';' :: ']' :: fins) may_quote oc ;
       p "    in" ;
       p "  let prevs_ = x_ :: prevs_ in" ;
       p "  let o_ = string_skip_blanks %s o_ in" str_var ;
@@ -204,7 +205,7 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         let fins = ';' :: fins in
         let fins = if i = Array.length ts - 1 then ')' :: fins else fins in
         emit_value_of_string
-          (indent + 1) ts.(i) str_var "offs_" emit_is_null fins oc ;
+          (indent + 1) ts.(i) str_var "offs_" emit_is_null fins may_quote oc ;
         p "  in" ;
         p "let offs_ = string_skip_blanks %s offs_ in" str_var ;
         p "let offs_ =" ;
@@ -247,10 +248,12 @@ let rec emit_value_of_string indent t str_var offs_var emit_is_null fins oc =
         let ts = Array.map snd kts in
         emit_parse_tuple indent ts oc
     | TString ->
-        (* This one is a bit harder than the others due to optional quoting,
-         * and could benefit from [fins]: *)
-        p "RamenTypeConverters.string_of_string ~fins:%a %s %s"
-          (List.print char_print_quoted) fins str_var offs_var
+        (* This one is a bit harder than the others due to optional quoting
+         * (from the command line parameters, as CSV strings have been unquoted
+         * already), and could benefit from [fins]: *)
+        p "RamenTypeConverters.string_of_string ~fins:%a ~may_quote:%b %s %s"
+          (List.print char_print_quoted) fins
+          may_quote str_var offs_var
     | _ ->
         p "RamenTypeConverters.%s_of_string %s %s"
           (id_of_typ t.T.structure) str_var offs_var
@@ -2420,7 +2423,7 @@ let emit_tuple_of_strings indent name csv_null oc typ =
     p "        Printf.sprintf \"Expected more values than %d\" |>" i ;
     p "        failwith in" ;
     p "    (try check_parse_all s_ (" ;
-    emit_value_of_string 3 ft.RamenTuple.typ "s_" "0" emit_is_null [] oc ;
+    emit_value_of_string 3 ft.RamenTuple.typ "s_" "0" emit_is_null [] false oc ;
     p "    ) with exn -> (" ;
     p "      !logger.error \"Cannot parse field #%d (%s): %%S: %%s\""
       (i+1) (ft.name :> string) ;
@@ -2460,7 +2463,7 @@ let emit_factors_of_tuple name func oc =
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file opc param_env env_env name csv_fname unlink
-                       csv_separator csv_null preprocessor =
+                       csv_separator csv_null csv_quotes preprocessor =
   let env = param_env @ env_env in
   let const_string_of e =
     Printf.sprintf2 "(%a)"
@@ -2496,7 +2499,7 @@ let emit_read_csv_file opc param_env env_env name csv_fname unlink
     p "  let unlink_ = %a in"
       (emit_expr ~env ~context:Finalize ~opc) unlink ;
     p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
-    p "    unlink_ %S sersize_of_tuple_ time_of_tuple_" csv_separator ;
+    p "    unlink_ %S %b sersize_of_tuple_ time_of_tuple_" csv_separator csv_quotes ;
     p "    factors_of_tuple_ serialize_tuple_" ;
     p "    tuple_of_strings_ %s field_of_params_" preprocessor ;
     p "    orc_make_handler_ orc_write orc_close\n")
@@ -3548,7 +3551,7 @@ let emit_parameters oc params envvars =
           offs_var str_var
           (List.print char_print_quoted) fins str_var offs_var
           offs_var offs_var in
-      emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] oc ;
+      emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] true oc ;
       Printf.fprintf oc
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n"
@@ -3640,9 +3643,9 @@ let emit_operation name top_half_name func
   (* Emit code for all the operations: *)
   match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                  what = { separator ; null ; _ } ; _ } ->
+                  what = { separator ; null ; may_quote ; _ } ; _ } ->
     emit_read_csv_file opc param_env env_env name fname unlink
-                       separator null preprocessor
+                       separator null may_quote preprocessor
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->

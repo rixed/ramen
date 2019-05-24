@@ -506,33 +506,39 @@ let quote_at_end s =
 
 exception InvalidCSVQuoting
 
-let strings_of_csv separator line =
+(* If [may_quote] is false, no attempt at unquoting is performed. *)
+let strings_of_csv separator may_quote line =
   (* If line is the empty string, String.nsplit returns an empty list
    * instead of a list with a single empty value. *)
   let strings =
     if line = "" then [ "" ]
     else String.nsplit line separator in
-  (* Handle quoting in CSV values. TODO: enable/disable based on operation flag *)
-  let strings', rem_s, has_quote =
-    List.fold_left (fun (lst, prev_s, has_quote) s ->
-      if prev_s = "" then (
-        if quote_at_start s then (
-          if quote_at_end s then (
-            let len = String.length s in
-            if len > 1 then String.sub s 1 (len - 2) :: lst, "", true
-            else s :: lst, "", has_quote
-          ) else lst, s, true
-        ) else s :: lst, "", has_quote
-      ) else (
-        if quote_at_end s then (String.(lchop prev_s ^ rchop s) :: lst, "", true)
-        else lst, prev_s ^ s, true
-      )) ([], "", false) strings in
-  if rem_s <> "" then raise InvalidCSVQuoting ;
-  if has_quote then List.rev strings' else strings
+  if not may_quote then
+    strings
+  else
+    (* Handle quoting in CSV values. *)
+    let strings', rem_s, has_quote =
+      List.fold_left (fun (lst, prev_s, has_quote) s ->
+        if prev_s = "" then (
+          if quote_at_start s then (
+            if quote_at_end s then (
+              let len = String.length s in
+              if len > 1 then String.sub s 1 (len - 2) :: lst, "", true
+              else s :: lst, "", has_quote
+            ) else lst, s, true
+          ) else s :: lst, "", has_quote
+        ) else (
+          if quote_at_end s then (String.(lchop prev_s ^ rchop s) :: lst, "", true)
+          else lst, prev_s ^ s, true
+        )) ([], "", false) strings in
+    if rem_s <> "" then raise InvalidCSVQuoting ;
+    if has_quote then List.rev strings' else strings
 
 (*$= strings_of_csv & ~printer:(IO.to_string (List.print String.print))
-  [ "glop" ; "glop" ] (strings_of_csv " " "glop glop")
-  [ "John" ; "+500" ] (strings_of_csv "," "\"John\",+500")
+  [ "glop" ; "glop" ] (strings_of_csv " " true "glop glop")
+  [ "John" ; "+500" ] (strings_of_csv "," true "\"John\",+500")
+  [ "\"John" ; "+500" ] (strings_of_csv "," false "\"John,+500")
+  [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\"John\",+500")
  *)
 
 let getenv ?def n =

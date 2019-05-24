@@ -11,19 +11,26 @@ open RamenHelpers
 (* When we convert a string to a string we quote it, so now we must
  * unquote. But this is also used when we read CSV, where we try to
  * unquote every fields, and for command line parameters, etc. Be
- * lenient in what you receive... So here we also accept unquoted values.
- * In that case, we use fins as a list of terminating characters. *)
-let string_of_string ?(fins=[]) s o =
+ * lenient in what you receive...
+ * But being lenient only goes that far; what if the quotes are actually
+ * part of the value? The [quotes] boolean parameter, if false, let us
+ * know that no quoting must be going on.
+ * In case the value is unquoted, we use fins as a list of terminating
+ * characters. *)
+let string_of_string ?(fins=[]) ?(may_quote=true) s o =
   let l = String.length s in
   (* Skip leading spaces if the string is quoted: *)
-  let maybe_start =
-    let rec loop n =
-      if n < l && Char.is_whitespace s.[n] then loop (n + 1) else n in
-    loop o in
   let o =
-    if maybe_start < l && s.[maybe_start] = '"' then maybe_start else o in
+    if may_quote then
+      let maybe_start =
+        let rec loop n =
+          if n < l && Char.is_whitespace s.[n] then loop (n + 1) else n in
+        loop o in
+      if maybe_start < l && s.[maybe_start] = '"' then maybe_start else o
+    else o
+  in
   (* If the string is unquoted, grab everything until the end: *)
-  if l < o + 2 || s.[o] <> '"' then (
+  if not may_quote || l < o + 2 || s.[o] <> '"' then (
     (* Until end of s or any of fins: *)
     let end_ =
       if fins = [] then l else
@@ -33,7 +40,7 @@ let string_of_string ?(fins=[]) s o =
       loop o in
     String.sub s o (end_ - o), end_
   ) else
-    (* FIXME: skip escaped quotes: *)
+    (* FIXME: skip escaped quotes, and more generally convert escaped chars: *)
     match String.index_from s (o + 1) '"' with
     | exception Not_found ->
         String.sub s o (l - o), l
@@ -41,17 +48,18 @@ let string_of_string ?(fins=[]) s o =
         String.sub s (o + 1) (o' - o - 1), (o' + 1)
 
 (*$= string_of_string & ~printer:(BatIO.to_string (BatTuple.Tuple2.print BatString.print BatInt.print))
-  ("", 0)     (string_of_string "" 0)
-  ("", 1)     (string_of_string "x" 1)
-  ("x", 1)    (string_of_string "x" 0)
-  ("xy", 2)   (string_of_string "xy" 0)
-  ("xy", 4)   (string_of_string "\"xy\"" 0)
-  ("\"xy", 3) (string_of_string "\"xy" 0)
-  ("xy\"", 3) (string_of_string "xy\"" 0)
-  ("xy", 6)   (string_of_string "ab\"xy\"cd" 2)
-  ("xy", 6)   (string_of_string "  \"xy\"cd" 0)
-  (" xy", 3)  (string_of_string ~fins:[';';','] " xy,X" 0)
-  ("x,y", 6)  (string_of_string ~fins:[';';','] " \"x,y\"X" 0)
+  ("", 0)       (string_of_string "" 0)
+  ("", 1)       (string_of_string "x" 1)
+  ("x", 1)      (string_of_string "x" 0)
+  ("xy", 2)     (string_of_string "xy" 0)
+  ("xy", 4)     (string_of_string "\"xy\"" 0)
+  ("\"xy", 3)   (string_of_string "\"xy" 0)
+  ("xy\"", 3)   (string_of_string "xy\"" 0)
+  ("\"xy\"", 4) (string_of_string ~may_quote:false "\"xy\"" 0)
+  ("xy", 6)     (string_of_string "ab\"xy\"cd" 2)
+  ("xy", 6)     (string_of_string "  \"xy\"cd" 0)
+  (" xy", 3)    (string_of_string ~fins:[';';','] " xy,X" 0)
+  ("x,y", 6)    (string_of_string ~fins:[';';','] " \"x,y\"X" 0)
 *)
 
 let bool_of_string b o =

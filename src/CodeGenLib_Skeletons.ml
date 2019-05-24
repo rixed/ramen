@@ -714,7 +714,7 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
  *)
 
 let read_csv_file
-    filename do_unlink separator sersize_of_tuple
+    filename do_unlink separator may_quote sersize_of_tuple
     time_of_tuple factors_of_tuple serialize_tuple
     tuple_of_strings preprocessor field_of_params
     orc_make_handler orc_write orc_close =
@@ -736,7 +736,7 @@ let read_csv_file
     info_or_test conf "Will read CSV file %S using separator %S"
       filename separator ;
     let of_string line =
-      let strings = strings_of_csv separator line in
+      let strings = strings_of_csv separator may_quote line in
       tuple_of_strings strings
     in
     let outputer =
@@ -1847,7 +1847,7 @@ let convert
         (fun k ->
           read_lines fd |>
           Enum.iter (fun line ->
-            let strings = strings_of_csv Default.csv_separator line in
+            let strings = strings_of_csv Default.csv_separator true line in
             match tuple_of_strings strings with
             | exception e ->
               !logger.error "Cannot parse line %S: %s"
