@@ -43,7 +43,7 @@
 
 <h3>Strings</h3>
 
-<p>The type for character strings is called <code>string</code>.  A literal string is double quoted (with <code>"</code>). To include a double-quote within a string, backslash it.  Other characters can be backslashed: single quote (<code>"\'"</code>), newlines (<code>"\n"</code> and <code>"\r"</code>), horizontal tab (<code>"\t"</code>), backspace (<code>"\b"</code>) and the backslash itself (<code>"\\"</code>).</p>
+<p>The type for character strings is called <code>string</code>.  A literal string is double quoted (with <code>"</code>). To include a double-quote within a string, backslash it.  Other characters have a special meaning when backslashed: <code>"\n"</code> stands for linefeed, <code>"\r"</code> for a carriage return, <code>"\b"</code> for a backspace, <code>"\t"</code> stands for tab and <code>"\\"</code> stands for slach itself. If another character is preceded with a backslash then the pair is replaced with that character without the backslash.</p>
 
 <p>Some functions consider strings as UTF-8 encoded, some consider strings as mere sequence of bytes.</p>
 

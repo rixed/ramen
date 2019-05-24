@@ -797,6 +797,12 @@ struct
                                   (test_p p "[0; 1; 2]")
   *)
 
+  (* Also check string escape characters: *)
+  (*$= p & ~printer:(test_printer print)
+     (Ok (VString "glop", (8,[]))) (test_p p "\"gl\\o\\p\"")
+     (Ok (VString "new\nline", (11,[]))) (test_p p "\"new\\nline\"")
+  *)
+
   let rec typ m =
     let m = "type" :: m in
     (scalar_typ ||| tuple_typ ||| vector_typ ||| list_typ) m
