@@ -388,7 +388,8 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     TermTable.print_head (i+1) "Factors" ;
     TermTable.print (i+2) "%a"
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
-    print_endline "" ;
+    TermTable.print_head (i+1) "Operation" ;
+    TermTable.print (i+2) "%a" (O.print true) func.operation ;
     if func.F.retention <> None || func.F.is_lazy then (
       let lst = [] in
       let lst =
@@ -402,7 +403,8 @@ let info _conf params program_name_opt bin_file opt_func_name () =
       TermTable.print_head (i+1) "Misc" ;
       TermTable.print (i+2) "%a"
         (List.print ~first:"" ~last:"" ~sep:", " String.print) lst
-    )
+    ) ;
+    print_endline ""
   in
   match opt_func_name with
   | None ->
