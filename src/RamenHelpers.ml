@@ -498,21 +498,45 @@ let waitall ?(while_=always) ?expected_status ~what pids =
 let waitpid_log ?expected_status ~what pid =
   waitall ?expected_status ~what (Set.Int.singleton pid)
 
-let quote_at_start s =
-  String.length s > 0 && s.[0] = '"'
-
-let quote_at_end s =
-  String.length s > 0 && s.[String.length s - 1] = '"'
-
 exception InvalidCSVQuoting
 
-(* If [may_quote] is false, no attempt at unquoting is performed. *)
-let strings_of_csv separator may_quote line =
+(* If [may_quote] is false, no attempt at unquoting is performed.
+ * Also, if not empty, interpret the escape sequence [escape_seq] "as usual".
+ * The output are strings that are ready for [RamenTypeConverters.XXX_of_string]
+ * family of functions.
+ * For instance, if we end up converting this CSV field into a string, then it is
+ * expected to be a valid Ramen string literals, for instance being escaped using
+ * the usual \b, \n etc. So, if [escape_seq] is anything different it must be
+ * converted. TODO. *)
+let strings_of_csv separator may_quote escape_seq line =
+  let quote_at_start s =
+    String.length s > 0 && s.[0] = '"'
+  and quote_at_end s =
+    String.length s > 0 && s.[String.length s - 1] = '"' in
   (* If line is the empty string, String.nsplit returns an empty list
    * instead of a list with a single empty value. *)
   let strings =
     if line = "" then [ "" ]
     else String.nsplit line separator in
+  (* The escape sequence may be used to cancel a separator, but not at the end of line
+   * (we are not MySQL): *)
+  let strings =
+    if escape_seq = "" then strings else
+    let strings', acc, had_change =
+      List.fold_left (fun (prev, acc, had_change) field ->
+        if String.ends_with field escape_seq then
+          prev, acc ^ String.rchop ~n:(String.length escape_seq) field, true
+        else
+          (acc ^ field) :: prev, "", had_change
+      ) ([], "", false) strings in
+    if not had_change then strings else
+    List.rev (
+      if acc <> "" then (
+        !logger.warning "Ignoring escape sequence at end of line in: %s" line ;
+        acc :: strings'
+      ) else strings')
+  in
+  (* TODO: convert escape sequence within the fields *)
   if not may_quote then
     strings
   else
@@ -535,10 +559,10 @@ let strings_of_csv separator may_quote line =
     if has_quote then List.rev strings' else strings
 
 (*$= strings_of_csv & ~printer:(IO.to_string (List.print String.print))
-  [ "glop" ; "glop" ] (strings_of_csv " " true "glop glop")
-  [ "John" ; "+500" ] (strings_of_csv "," true "\"John\",+500")
-  [ "\"John" ; "+500" ] (strings_of_csv "," false "\"John,+500")
-  [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\"John\",+500")
+  [ "glop" ; "glop" ] (strings_of_csv " " true "\\" "glop glop")
+  [ "John" ; "+500" ] (strings_of_csv "," true "\\" "\"John\",+500")
+  [ "\"John" ; "+500" ] (strings_of_csv "," false "\\" "\"John,+500")
+  [ "\"John\"" ; "+500" ] (strings_of_csv "," false "\\" "\"John\",+500")
  *)
 
 let getenv ?def n =

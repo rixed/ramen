@@ -75,13 +75,16 @@ type csv_specs =
     (* If true, expect some quoted fields. Otherwise quotes are just part
      * of the value. *)
     may_quote : bool [@ppp_default false] ;
+    escape_seq : string [@ppp_default ""] ;
     fields : RamenTuple.typ }
   [@@ppp PPP_OCaml]
 
 let print_csv_specs oc specs =
-  Printf.fprintf oc "SEPARATOR %S NULL %S %s %a"
+  Printf.fprintf oc "SEPARATOR %S NULL %S %s %s%a"
     specs.separator specs.null
     (if specs.may_quote then "QUOTES" else "NO QUOTES")
+    (if specs.escape_seq = "" then "" else
+     "ESCAPE WITH "^ String.quote specs.escape_seq ^" ")
     RamenTuple.print_typ specs.fields
 
 let print_file_spec oc specs =
@@ -1132,11 +1135,14 @@ let fields_schema m =
      optional ~def:true (
        optional ~def:true (strinG "no" -- blanks >>: fun () -> false) +-
        strinGs "quote" +- blanks) ++
+     optional ~def:"" (
+      strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
+      opt_blanks -+ quoted_string +- opt_blanks) ++
      fields_schema >>:
-     fun (((separator, null), may_quote), fields) ->
+     fun ((((separator, null), may_quote), escape_seq), fields) ->
        if separator = null || separator = "" then
          raise (Reject "Invalid CSV separator") ;
-       { separator ; null ; may_quote ; fields }) m
+       { separator ; null ; may_quote ; escape_seq ; fields }) m
 
   let preprocessor_clause m =
     let m = "file preprocessor" :: m in

@@ -2401,8 +2401,8 @@ let rec emit_indent oc n =
   )
 
 (* Emit a function that, given an array of strings (corresponding to a line of
- * CSV) will return the tuple defined by [typ] or raises
- * some exception *)
+ * CSV, once properly unquoted and unescaped) will return the tuple defined by [typ]
+ * or raises some exception *)
 let emit_tuple_of_strings indent name csv_null oc typ =
   let p fmt = emit oc indent fmt in
   let emit_is_null fins str_var offs_var oc =
@@ -2463,7 +2463,8 @@ let emit_factors_of_tuple name func oc =
 
 (* Given a tuple type, generate the ReadCSVFile operation. *)
 let emit_read_csv_file opc param_env env_env name csv_fname unlink
-                       csv_separator csv_null csv_quotes preprocessor =
+                       csv_separator csv_null csv_quotes csv_escape_seq
+                       preprocessor =
   let env = param_env @ env_env in
   let const_string_of e =
     Printf.sprintf2 "(%a)"
@@ -2499,7 +2500,8 @@ let emit_read_csv_file opc param_env env_env name csv_fname unlink
     p "  let unlink_ = %a in"
       (emit_expr ~env ~context:Finalize ~opc) unlink ;
     p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
-    p "    unlink_ %S %b sersize_of_tuple_ time_of_tuple_" csv_separator csv_quotes ;
+    p "    unlink_ %S %b %S sersize_of_tuple_ time_of_tuple_"
+      csv_separator csv_quotes csv_escape_seq ;
     p "    factors_of_tuple_ serialize_tuple_" ;
     p "    tuple_of_strings_ %s field_of_params_" preprocessor ;
     p "    orc_make_handler_ orc_write orc_close\n")
@@ -3643,9 +3645,10 @@ let emit_operation name top_half_name func
   (* Emit code for all the operations: *)
   match func.F.operation with
   | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                  what = { separator ; null ; may_quote ; _ } ; _ } ->
+                  what = { separator ; null ; may_quote ;
+                           escape_seq ; _ } ; _ } ->
     emit_read_csv_file opc param_env env_env name fname unlink
-                       separator null may_quote preprocessor
+                       separator null may_quote escape_seq preprocessor
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->
