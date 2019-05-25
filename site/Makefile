@@ -19,7 +19,8 @@ PAGES = \
 	blog/2018-12.html \
 	blog/2019-01.html \
 	blog/2019-02.html \
-	blog/2019-03.html
+	blog/2019-03.html \
+	blog/2019-05.html
 
 MANPAGES = \
 	man/ramen.html \

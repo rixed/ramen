@@ -127,6 +127,9 @@ $info_pages = [
         'title' => 'Benchmark against KSQL' ],
       'blog/2019-03.html' => [
         'date' => 'Mars 2019',
-        'title' => 'One degree of scale' ] ] ],
+        'title' => 'One degree of scale' ],
+      'blog/2019-05.html' => [
+        'date' => 'May 2019',
+        'title' => 'Who need two different message queues?' ] ] ],
 ];
 ?>
