@@ -3,10 +3,10 @@
 #include <QItemSelectionModel>
 #include <QRadioButton>
 #include <QTreeView>
-#include <QTableView>
 #include <QGridLayout>
 #include "GraphModel.h"
 #include "TailModel.h"
+#include "TailTable.h"
 #include "GraphView.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
@@ -221,7 +221,22 @@ void OperationsView::addTail(FunctionItem *f)
   QString label(f->fqName());
   if (tryFocus(dataTabs, label)) return;
 
-  QTableView *table = new QTableView;
+  /* TODO: When we select one or more column headers, enable two buttons:
+   * one to open a quick chart window with that/those field(s).
+   * The other is to add those fields into a named chart.
+   * Named charts are saved on the server side, can be added to dashboards,
+   * etc.
+   * Once in a chart, timeseries can serve various purpose depending on the
+   * type of the chart. The possible types depend on the number of time series
+   * and their type. The type of a chart, how timeseries are used, the colors,
+   * title, etc, are attributes that can be changed at any time; no need to
+   * build a new chart. But if we wanted to have several different views of
+   * the same data we cold clone a chart.
+   * But for now, all we want is the quick-view window, that's added to the
+   * data tabs and given a temporary name (usable to add new fields into it
+   * as with any other chart. Unless a chart is "saved" it will be definitively
+   * forgotten once its tab is closed. */
+  TailTable *table = new TailTable;
   if (! f->tailModel) {
     f->tailModel = new TailModel(f);
   }
@@ -236,7 +251,7 @@ void OperationsView::remTail(int index)
 {
   QWidget *w = dataTabs->widget(index);
   if (!w) return;
-  QTableView *t = dynamic_cast<QTableView *>(w);
+  TailTable *t = dynamic_cast<TailTable *>(w);
   if (!t) return;
   QAbstractItemModel *m = t->model();
   if (!m) return;
