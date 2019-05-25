@@ -236,13 +236,12 @@ void OperationsView::addTail(FunctionItem *f)
    * data tabs and given a temporary name (usable to add new fields into it
    * as with any other chart. Unless a chart is "saved" it will be definitively
    * forgotten once its tab is closed. */
-  TailTable *table = new TailTable;
   if (! f->tailModel) {
     f->tailModel = new TailModel(f);
   }
   f->tailModel->setUsed(true);
 
-  table->setModel(f->tailModel);
+  TailTable *table = new TailTable(f->tailModel);
   dataTabs->addTab(table, label);
   focusLast(dataTabs);
 }

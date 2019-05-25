@@ -4,7 +4,9 @@
  * selected columns */
 #include <QWidget>
 #include <QTableView>
+#include <QList>
 
+class TailModel;
 class TailTableBar;
 
 class TailTable : public QWidget
@@ -13,11 +15,15 @@ class TailTable : public QWidget
 
   QTableView *tableView;
   TailTableBar *tableBar;
+  QList<int> selectedColumns;
 
 public:
-  TailTable(QWidget *parent = nullptr);
-  void setModel(QAbstractItemModel *model) { tableView->setModel(model); }
+  TailTable(TailModel *, QWidget *parent = nullptr);
   QAbstractItemModel *model() const { return tableView->model(); }
+
+private slots:
+  void enableBar(QItemSelection const &, QItemSelection const &);
+  void extendSelection(QModelIndex const &parent, int first, int last);
 };
 
 #endif

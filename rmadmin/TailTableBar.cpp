@@ -8,13 +8,17 @@ TailTableBar::TailTableBar(QWidget *parent) :
 {
   QHBoxLayout *layout = new QHBoxLayout;
 
-  QPushButton *quickChartButton = new QPushButton(tr("Plot the selected columns"));
-  quickChartButton->setEnabled(false);
+  quickChartButton = new QPushButton(tr("Plot the selected columns"));
   layout->addWidget(quickChartButton);
 
-  QComboBox *addToCombo = new QComboBox;
-  addToCombo->setEnabled(false);
+  addToCombo = new QComboBox;
   layout->addWidget(addToCombo);
 
   setLayout(layout);
+}
+
+void TailTableBar::setEnabled(bool enabled)
+{
+  quickChartButton->setEnabled(enabled);
+  addToCombo->setEnabled(enabled);
 }
