@@ -84,10 +84,12 @@ struct
 end
 
 let init_connect ?while_ url zock on_progress =
+  let url = if String.contains url ':' then url
+            else url ^":"^ string_of_int Default.confserver_port in
   let connect_to = "tcp://"^ url in
   on_progress Stage.Conn Status.InitStart ;
   try
-    !logger.info "Conning to %s..." connect_to ;
+    !logger.info "Connecting to %s..." connect_to ;
     retry_zmq ?while_
       (Zmq.Socket.connect zock) connect_to ;
     on_progress Stage.Conn Status.InitOk

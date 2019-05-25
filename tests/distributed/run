@@ -101,7 +101,7 @@ else
   ln -s "$RAMEN_DIR/../aggregator/replays" "$RAMEN_DIR/"
 fi
 
-"$ramen" supervisor --master=aggregator --site="$ramen_site" &
+"$ramen" supervisor --master=aggregator --confserver=localhost --site="$ramen_site" &
 supervisor_pid=$!
 at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 
