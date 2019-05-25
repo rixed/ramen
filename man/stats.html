@@ -80,7 +80,12 @@ stats</b> [<i>OPTION</i>]...</p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--help</b>[=<i>FMT</i>]
+<p style="margin-left:11%; margin-top: 1em"><b>--confserver-url</b>=<i>VAL</i></p>
+
+<p style="margin-left:17%;">host:port of Ramen
+confserver</p>
+
+<p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
 <p style="margin-left:17%;">Show this help in format
@@ -90,11 +95,6 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;plain' whenever the <b>TERM</b> env var is
 &lsquo;dumb' or undefined.</p>
 
-<p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
-(absent <b>HOSTNAME</b> env)</p>
-
-<p style="margin-left:17%;">The name of this site</p>
-
 <p style="margin-left:11%;"><b>--version</b></p>
 
 <p style="margin-left:17%;">Show version information.</p>
@@ -103,8 +103,19 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 <h2>COMMON OPTIONS</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>-d</b>,
-<b>--debug</b> (absent <b>RAMEN_DEBUG</b> env)</p>
+
+<p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
+<br>
+
+(absent=/Users/rixed/.opam/ramen.4.07.1.flambda/lib/ramen/bundle/
+or <b><br>
+RAMEN_LIBS</b> env)</p>
+
+<p style="margin-left:17%;">Directory where to find
+libraries for the embedded compiler</p>
+
+<p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
+(absent <b>RAMEN_DEBUG</b> env)</p>
 
 <p style="margin-left:17%;">Increase verbosity</p>
 
@@ -114,6 +125,12 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it</p>
+
+<p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
+(absent <b>RAMEN_MASTERS</b> env)</p>
+
+<p style="margin-left:17%;">Indicates that Ramen must run
+in distributed mode and what sites play the master role</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
@@ -127,6 +144,11 @@ persisted on disc</p>
 
 <p style="margin-left:17%;">Decrease verbosity</p>
 
+<p style="margin-left:11%;"><b>--reuse-prev-files</b>
+(absent <b>RAMEN_REUSE_PREV_FILES</b> env)</p>
+
+<p style="margin-left:17%;">Reuse existing source files</p>
+
 <p style="margin-left:11%;"><b>-S</b>,
 <b>--keep-temp-files</b> (absent
 <b>RAMEN_KEEP_TEMP_FILES</b> env)</p>
@@ -139,6 +161,11 @@ persisted on disc</p>
 
 <p style="margin-left:17%;">Seed to initialize the random
 generator with (will use a random one if unset)</p>
+
+<p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
+(absent <b>HOSTNAME</b> env)</p>
+
+<p style="margin-left:17%;">The name of this site</p>
 
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
@@ -177,6 +204,15 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--keep-temp-files</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_LIBS</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--bundle-dir</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
+
+<p style="margin-left:17%;">See option <b>--master</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 
 <p style="margin-left:17%;">See option <b>--quiet</b>.</p>
@@ -184,6 +220,12 @@ HOSTNAME</b></p>
 <p style="margin-left:11%;"><b>RAMEN_RANDOM_SEED</b></p>
 
 <p style="margin-left:17%;">See option <b>--seed</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_REUSE_PREV_FILES</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--reuse-prev-files</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 

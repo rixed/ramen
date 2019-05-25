@@ -91,11 +91,10 @@ and field names, or code statement</p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
-(absent=/usr/lib/ramen/bundle/ or <b>RAMEN_LIBS</b> env)</p>
+<p style="margin-left:11%; margin-top: 1em"><b>--confserver-url</b>=<i>VAL</i></p>
 
-<p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler</p>
+<p style="margin-left:17%;">host:port of Ramen
+confserver</p>
 
 <p style="margin-left:11%;"><b>--flush</b></p>
 
@@ -152,15 +151,10 @@ values</p>
 <p style="margin-left:17%;">Timestamp of the first
 point</p>
 
-<p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
-(absent <b>HOSTNAME</b> env)</p>
-
-<p style="margin-left:17%;">The name of this site</p>
-
 <p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
-<b>--smt-solver</b>=<i>VAL</i> (absent=z3 -t:20000 -smt2 %s
-or <b><br>
-RAMEN_SMT_SOLVER</b> env)</p>
+<b>--smt-solver</b>=<i>VAL</i> (absent=/usr/local/bin/z3
+-t:60000 -smt2 <br>
+%s or <b>RAMEN_SMT_SOLVER</b> env)</p>
 
 <p style="margin-left:17%;">Command to run the SMT solver
 (with %s in place of the SMT2 file name)</p>
@@ -204,8 +198,19 @@ field match the given value</p>
 <h2>COMMON OPTIONS</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>-d</b>,
-<b>--debug</b> (absent <b>RAMEN_DEBUG</b> env)</p>
+
+<p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
+<br>
+
+(absent=/Users/rixed/.opam/ramen.4.07.1.flambda/lib/ramen/bundle/
+or <b><br>
+RAMEN_LIBS</b> env)</p>
+
+<p style="margin-left:17%;">Directory where to find
+libraries for the embedded compiler</p>
+
+<p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
+(absent <b>RAMEN_DEBUG</b> env)</p>
 
 <p style="margin-left:17%;">Increase verbosity</p>
 
@@ -215,6 +220,12 @@ field match the given value</p>
 
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it</p>
+
+<p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
+(absent <b>RAMEN_MASTERS</b> env)</p>
+
+<p style="margin-left:17%;">Indicates that Ramen must run
+in distributed mode and what sites play the master role</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
@@ -228,6 +239,11 @@ persisted on disc</p>
 
 <p style="margin-left:17%;">Decrease verbosity</p>
 
+<p style="margin-left:11%;"><b>--reuse-prev-files</b>
+(absent <b>RAMEN_REUSE_PREV_FILES</b> env)</p>
+
+<p style="margin-left:17%;">Reuse existing source files</p>
+
 <p style="margin-left:11%;"><b>-S</b>,
 <b>--keep-temp-files</b> (absent
 <b>RAMEN_KEEP_TEMP_FILES</b> env)</p>
@@ -240,6 +256,11 @@ persisted on disc</p>
 
 <p style="margin-left:17%;">Seed to initialize the random
 generator with (will use a random one if unset)</p>
+
+<p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
+(absent <b>HOSTNAME</b> env)</p>
+
+<p style="margin-left:17%;">The name of this site</p>
 
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
@@ -292,6 +313,10 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--bundle-dir</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
+
+<p style="margin-left:17%;">See option <b>--master</b>.</p>
+
 
 <p style="margin-left:11%;"><b>RAMEN_MAX_SIMULT_COMPILATIONS</b></p>
 
@@ -305,6 +330,12 @@ HOSTNAME</b></p>
 <p style="margin-left:11%;"><b>RAMEN_RANDOM_SEED</b></p>
 
 <p style="margin-left:17%;">See option <b>--seed</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_REUSE_PREV_FILES</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--reuse-prev-files</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
 
