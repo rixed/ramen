@@ -82,3 +82,5 @@ rmadmin/Makefile
 qttest
 rmadmin/rmadmin.pro
 .z3-trace
+rmadmin/qcustomplot.cpp
+rmadmin/qcustomplot.h

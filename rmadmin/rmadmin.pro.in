@@ -8,7 +8,7 @@ CONFIG += debug
 TEMPLATE = app
 TARGET = rmadmin
 VERSION = @PACKAGE_VERSION@
-QT += core widgets charts
+QT += core widgets charts printsupport
 
 INCLUDEPATH += .
 # For z3 and zmq:
@@ -21,6 +21,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 # Input
 HEADERS += \
+  qcustomplot.h \
   LazyRef.h \
   colorOfString.h \
   SyncStatus.h \
@@ -68,6 +69,7 @@ HEADERS += \
   RmAdminWin.h
 
 SOURCES += \
+  qcustomplot.cpp \
   colorOfString.cpp \
   SyncStatus.cpp \
   PosIntValidator.cpp \
