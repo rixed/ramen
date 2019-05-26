@@ -1040,7 +1040,8 @@ let graphite_expand conf for_render since until query () =
  *)
 
 let archivist conf loop daemonize stats allocs reconf
-              to_stdout to_syslog () =
+              to_stdout to_syslog smt_solver () =
+  RamenSmt.solver := smt_solver ;
   if not stats && not allocs && not reconf then
     failwith "Must specify at least one of --stats, --allocs or --reconf" ;
   if daemonize && loop = Some 0. then

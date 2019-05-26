@@ -1050,7 +1050,8 @@ let archivist =
       $ update_allocs
       $ reconf_workers
       $ to_stdout
-      $ to_syslog),
+      $ to_syslog
+      $ smt_solver),
     info ~doc:CliInfo.archivist "archivist")
 
 (*
