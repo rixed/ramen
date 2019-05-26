@@ -282,6 +282,9 @@ struct
             let op = f.F.operation in
             upd Key.Operation Value.(String
               (IO.to_string (O.print true) op)) ;
+            List.iteri (fun i (field : N.field) ->
+              upd Key.(Factors i) Value.(String (field :> string))
+            ) (O.factors_of_operation op) ;
             upd Key.InType Value.(RamenType
               (RamenFieldMaskLib.record_of_in_type f.F.in_type)) ;
             upd Key.OutType Value.(RamenType

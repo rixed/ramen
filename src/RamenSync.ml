@@ -218,6 +218,7 @@ struct
     | Doc
     | IsLazy
     | Operation
+    | Factors of int
     | InType
     | OutType
     | Signature
@@ -241,6 +242,7 @@ struct
       | Doc -> "doc"
       | IsLazy -> "is_lazy"
       | Operation -> "operation"
+      | Factors i -> "factors/"^ string_of_int i
       | InType -> "type/in"
       | OutType -> "type/out"
       | Signature -> "signature"
@@ -421,6 +423,7 @@ struct
                         | "doc", "" -> Doc
                         | "is_lazy", "" -> IsLazy
                         | "operation", "" -> Operation
+                        | "factors", i -> Factors (int_of_string i)
                         | "type", "in" -> InType
                         | "type", "out" -> OutType
                         | "signature", "" -> Signature
