@@ -12,8 +12,8 @@ CodeEdit::CodeEdit(ProgramItem const *p_, QWidget *parent) :
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();
 
-  QObject::connect(&kv, &KValue::valueCreated, this, &CodeEdit::setValue);
-  QObject::connect(&kv, &KValue::valueChanged, this, &CodeEdit::setValue);
+  connect(&kv, &KValue::valueCreated, this, &CodeEdit::setValue);
+  connect(&kv, &KValue::valueChanged, this, &CodeEdit::setValue);
   // TODO: valueLocked/valueUnlocked and make this an AtomicForm, cf KLineEdit
   // TODO: valueDeleted.
 

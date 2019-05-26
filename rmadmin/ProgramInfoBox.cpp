@@ -45,8 +45,8 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
     // We only need creation/destruction as the AtomicWidget will take
     // care of the rest:
-    QObject::connect(kv, &KValue::valueCreated, this, &ProgramInfoBox::setParam);
-    QObject::connect(kv, &KValue::valueDeleted, this, &ProgramInfoBox::delParam);
+    connect(kv, &KValue::valueCreated, this, &ProgramInfoBox::setParam);
+    connect(kv, &KValue::valueDeleted, this, &ProgramInfoBox::delParam);
   });
   layout->addRow(tr("Parameters"), paramTable);
 

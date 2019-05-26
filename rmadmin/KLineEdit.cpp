@@ -23,10 +23,10 @@ KLineEdit::KLineEdit(std::string const key, conf::ValueType valueType_, QWidget 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();
-  QObject::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
-  QObject::connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
-  QObject::connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
-  QObject::connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
+  connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
+  connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
+  connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
+  connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
 
   if (kv.isSet()) setValue(key, kv.value());
 }

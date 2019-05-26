@@ -38,8 +38,8 @@ StorageInfoBox::StorageInfoBox(GraphModel *graphModel_, QWidget *parent) :
   setLayout(layout);
 
   recomputeTimer.setSingleShot(true);
-  QObject::connect(graphModel, &GraphModel::storagePropertyChanged, this, &StorageInfoBox::rearmRecomputeTimer);
-  QObject::connect(&recomputeTimer, &QTimer::timeout, this, &StorageInfoBox::recomputeStats);
+  connect(graphModel, &GraphModel::storagePropertyChanged, this, &StorageInfoBox::rearmRecomputeTimer);
+  connect(&recomputeTimer, &QTimer::timeout, this, &StorageInfoBox::recomputeStats);
 }
 
 static int recomputeTimeout = 1000;

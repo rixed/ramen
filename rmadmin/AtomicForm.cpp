@@ -24,12 +24,12 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   // The button bar
   QWidget *buttonBar = new QWidget(this);
   editButton = new QPushButton(tr("edit"), buttonBar);
-  QObject::connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
+  connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
   cancelButton = new QPushButton(tr("cancel"), buttonBar);
-  QObject::connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
+  connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
   submitButton = new QPushButton(tr("submit"), buttonBar);
-  QObject::connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
+  connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
   QHBoxLayout *buttonsLayout = new QHBoxLayout(buttonBar);
   buttonsLayout->addWidget(editButton);
@@ -76,8 +76,8 @@ void AtomicForm::addWidget(AtomicWidget *aw)
   KValue &kv = conf::kvs[aw->key];
   conf::kvs_lock.unlock_shared();
   widgets.push_back(aw);
-  QObject::connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
-  QObject::connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
+  connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
+  connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
 }
 
 void AtomicForm::lockAll()

@@ -20,7 +20,7 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
   std::string k = lastTuplesKey(this);
   conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
     // Although this value will never change we need the create signal:
-      QObject::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
+      connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
   });
 }
 

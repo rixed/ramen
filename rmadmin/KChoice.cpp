@@ -19,10 +19,10 @@ KChoice::KChoice(std::string const key, std::vector<std::pair<QString const, std
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();
-  QObject::connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
-  QObject::connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
-  QObject::connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
-  QObject::connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
+  connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
+  connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
+  connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
+  connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
   if (kv.isSet()) setValue(key, kv.value());
 }
 

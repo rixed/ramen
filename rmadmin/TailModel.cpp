@@ -19,8 +19,8 @@ TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
   f(f_)
 {
   // Propagates this function's signals into our beginInsertRows
-  QObject::connect(f, &FunctionItem::beginAddTuple, this, &TailModel::beginInsertRows);
-  QObject::connect(f, &FunctionItem::endAddTuple, this, &TailModel::endInsertRows);
+  connect(f, &FunctionItem::beginAddTuple, this, &TailModel::beginInsertRows);
+  connect(f, &FunctionItem::endAddTuple, this, &TailModel::endInsertRows);
 
   // Subscribe to that table tail:
   conf::Key k = tailKey(f);

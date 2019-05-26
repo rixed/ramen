@@ -91,8 +91,8 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
 
   // Refresh the chart whenever some allocation property changes:
   reallocTimer.setSingleShot(true);
-  QObject::connect(graphModel, &GraphModel::storagePropertyChanged, this, &StoragePies::rearmReallocTimer);
-  QObject::connect(&reallocTimer, &QTimer::timeout, this, &StoragePies::refreshChart);
+  connect(graphModel, &GraphModel::storagePropertyChanged, this, &StoragePies::rearmReallocTimer);
+  connect(&reallocTimer, &QTimer::timeout, this, &StoragePies::refreshChart);
 }
 
 static int reallocTimeout = 1000;

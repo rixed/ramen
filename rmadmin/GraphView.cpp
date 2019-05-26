@@ -31,11 +31,11 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   setScene(&scene);
 
   layoutTimer.setSingleShot(true);
-  QObject::connect(&layoutTimer, &QTimer::timeout, this, &GraphView::startLayout);
+  connect(&layoutTimer, &QTimer::timeout, this, &GraphView::startLayout);
 
   /* Connect selectionChanged to our selectionChanged slot that will then
    * get the first item of the list (should be a singleton) and emit that */
-  QObject::connect(&scene, &QGraphicsScene::selectionChanged, this, &GraphView::selectionChanged);
+  connect(&scene, &QGraphicsScene::selectionChanged, this, &GraphView::selectionChanged);
 
   grabGesture(Qt::PinchGesture);
 }
@@ -79,12 +79,12 @@ void GraphView::setModel(GraphModel const *model_)
 
   // Connect to the model signals to learn about updates (notice the race
   // condition)
-  QObject::connect(model, &GraphModel::rowsInserted, this, &GraphView::insertRows);
+  connect(model, &GraphModel::rowsInserted, this, &GraphView::insertRows);
   // TODO: same goes for removal
 
   // Also the signals allowing us to learn about functions relationships:
-  QObject::connect(model, &GraphModel::relationAdded, this, &GraphView::relationAdded);
-  QObject::connect(model, &GraphModel::relationRemoved, this, &GraphView::relationRemoved);
+  connect(model, &GraphModel::relationAdded, this, &GraphView::relationAdded);
+  connect(model, &GraphModel::relationRemoved, this, &GraphView::relationRemoved);
 }
 
 void GraphView::collapse(QModelIndex const &index)

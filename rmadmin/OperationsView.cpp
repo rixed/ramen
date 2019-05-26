@@ -82,37 +82,37 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   QSplitter *bottomSplit = new QSplitter(this);
   infoTabs = new QTabWidget(bottomSplit);
   infoTabs->setTabsClosable(true);
-  QObject::connect(infoTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeInfo);
+  connect(infoTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeInfo);
   dataTabs = new QTabWidget(bottomSplit);
   dataTabs->setTabsClosable(true);
-  QObject::connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeData);
+  connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeData);
   bottomSplit->setStretchFactor(0, 0);
   bottomSplit->setStretchFactor(1, 1);
 
   // Control the GraphView from the TreeView:
-  QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
-  QObject::connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
-  QObject::connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
+  connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
+  connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
+  connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
   // And the other way arround:
-  QObject::connect(graphView, &GraphView::selected, treeView, &NarrowTreeView::setCurrentIndex);
+  connect(graphView, &GraphView::selected, treeView, &NarrowTreeView::setCurrentIndex);
 
   allowReset = true;
   // Control the TreeView from the LOD buttons:
-  QObject::connect(toSites, &QRadioButton::clicked, this, &OperationsView::setLOD);
-  QObject::connect(toPrograms, &QRadioButton::clicked, this, &OperationsView::setLOD);
-  QObject::connect(toFunctions, &QRadioButton::clicked, this, &OperationsView::setLOD);
+  connect(toSites, &QRadioButton::clicked, this, &OperationsView::setLOD);
+  connect(toPrograms, &QRadioButton::clicked, this, &OperationsView::setLOD);
+  connect(toFunctions, &QRadioButton::clicked, this, &OperationsView::setLOD);
 
   // Reset the LOD buttons when manually changing the TreeView:
-  QObject::connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
-  QObject::connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
+  connect(treeView, &NarrowTreeView::collapsed, this, &OperationsView::resetLOD);
+  connect(treeView, &NarrowTreeView::expanded, this, &OperationsView::resetLOD);
 
   // Also let the infobox and tail-tabs know when a function is selected:
-  QObject::connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
-  QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
-  QObject::connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
-  QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
-  QObject::connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
-  QObject::connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::remTail);
+  connect(graphView, &GraphView::selected, this, &OperationsView::selectItem);
+  connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
+  connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
+  connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
+  connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
+  connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::remTail);
 }
 
 OperationsView::~OperationsView()

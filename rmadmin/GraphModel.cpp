@@ -18,8 +18,8 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
     // is going to be set and therefore a signal emitted. This signal will
     // be queued for the Qt thread in which lives GraphModel to dequeue.
     std::cout << "connect a new KValue for " << k << " to the graphModel..." << std::endl;
-    QObject::connect(kv, &KValue::valueCreated, this, &GraphModel::updateKey);
-    QObject::connect(kv, &KValue::valueChanged, this, &GraphModel::updateKey);
+    connect(kv, &KValue::valueCreated, this, &GraphModel::updateKey);
+    connect(kv, &KValue::valueChanged, this, &GraphModel::updateKey);
   });
 }
 

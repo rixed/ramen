@@ -16,7 +16,7 @@ public:
     conf::kvs_lock.lock_shared();
     KValue &kv = conf::kvs[key];
     conf::kvs_lock.unlock_shared();
-    QObject::connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
+    connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
 
     if (kv.isSet()) setValue(key, kv.value());
   }
