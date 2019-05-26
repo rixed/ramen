@@ -79,17 +79,15 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
 
   // Then the bottom part is made of a info box and a tabbed stack of
   // TailTable.
-  QWidget *bottomSplit = new QWidget(this);
-  QHBoxLayout *bottomLayout = new QHBoxLayout;
-  bottomSplit->setLayout(bottomLayout);
-  infoTabs = new QTabWidget(this);
+  QSplitter *bottomSplit = new QSplitter(this);
+  infoTabs = new QTabWidget(bottomSplit);
   infoTabs->setTabsClosable(true);
   QObject::connect(infoTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeInfo);
-  bottomLayout->addWidget(infoTabs);
-  dataTabs = new QTabWidget(this);
+  dataTabs = new QTabWidget(bottomSplit);
   dataTabs->setTabsClosable(true);
   QObject::connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::closeData);
-  bottomLayout->addWidget(dataTabs);
+  bottomSplit->setStretchFactor(0, 0);
+  bottomSplit->setStretchFactor(1, 1);
 
   // Control the GraphView from the TreeView:
   QObject::connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
