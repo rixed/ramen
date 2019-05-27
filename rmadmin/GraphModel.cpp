@@ -131,7 +131,7 @@ public:
     static QRegularExpression re(
       "^sites/(?<site>[^/]+)/"
       "("
-        "functions/(?<program>.+)/"
+        "workers/(?<program>.+)/"
         "(?<function>[^/]+)/"
         "(?<function_property>"
           "is_used|parents/\\d|startup_time|"

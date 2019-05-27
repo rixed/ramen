@@ -290,7 +290,7 @@ struct
           N.service_print service
           print_per_service_key per_service_key
     | PerWorker (fq, per_site_fq_key) ->
-        Printf.fprintf fmt "functions/%a/%a"
+        Printf.fprintf fmt "workers/%a/%a"
           N.fq_print fq
           print_per_site_fq_key per_site_fq_key
 
@@ -373,7 +373,7 @@ struct
                         match cut s with
                         | "host", "" -> Host
                         | "port", "" -> Port))
-              | "functions", s ->
+              | "workers", s ->
                   (match rcut s with
                   | [ fq ; s ] ->
                       try
@@ -456,7 +456,7 @@ struct
 
   (*$= of_string & ~printer:Batteries.dump
     (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", TotBytes))) \
-      (of_string "sites/siteA/functions/prog/func/total/bytes")
+      (of_string "sites/siteA/workers/prog/func/total/bytes")
   *)
 
   (*$>*)
