@@ -53,7 +53,7 @@
 
 <p>Some of the options I quickly envisaged and eventually turned away from:</p>
 <ul>
-<li><em>Redis</em>: it's not embeddable, it lacks any form of authentication or authorization and is generally not considered internet-worthy (at least the open source version);</li>
+<li><em>Redis</em>: it's not embeddable, it lacks proper authentication or authorization and is generally considered not internet-worthy (at least the open source version);</li>
 <li><em>Etcd</em>: not embeddable neither, has a ton of dependencies, and like ZooKeeper does not look like a particularly good fit for small scale deployment;</li>
 <li><em>Consul</em>: still not embeddable, still does not look appropriate for Ramen scale, and also apparently lacks a notification mechanism, and is bound to HTTP as a protocol (which is not a good start for anything lightweight);</li>
 <li><em>Riak</em>: not embeddable, also no notifications it seems;</li>
@@ -81,6 +81,6 @@
 
 <p>Hopefully, the "MUST" are the easy parts to implement, also the parts that I'm happy to have 100% control over.</p>
 
-<p>Next time I might write about how I went shopping for again, this time for a GUI toolkit to help with the new proof-of-concept client interface that should come with this new configuration synchronisation service.</p>
+<p>Next time I might write about how I went shopping again, this time for a GUI toolkit.</p>
 
 <? include 'footer.php' ?>
