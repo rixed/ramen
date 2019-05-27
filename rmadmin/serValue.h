@@ -2,6 +2,7 @@
 #define SERVALUE_H_190516
 #include <memory>
 #include <vector>
+#include <optional>
 #include <QString>
 
 typedef unsigned __int128 uint128_t;
@@ -47,6 +48,7 @@ public:
   virtual Value const *columnValue(int) const;
 
   virtual QString toQString() const = 0;
+  virtual std::optional<double> toDouble() const { return std::optional<double>(); }
   virtual bool operator==(Value const &) const;
   bool operator!=(Value const &) const;
 };
@@ -75,6 +77,7 @@ public:
   double v;
   Float(uint32_t const *&);
   QString toQString() const;
+  virtual std::optional<double> toDouble() const { return v; }
 };
 
 class Bool : public Value
@@ -83,6 +86,7 @@ public:
   bool v;
   Bool(uint32_t const *&);
   QString toQString() const;
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class String : public Value
@@ -99,6 +103,7 @@ public:
   uint_least8_t v;
   U8(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class U16 : public Value
@@ -107,6 +112,7 @@ public:
   uint_least16_t v;
   U16(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class U32 : public Value
@@ -115,6 +121,7 @@ public:
   uint_least32_t v;
   U32(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class U64 : public Value
@@ -123,6 +130,7 @@ public:
   uint_least64_t v;
   U64(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class U128 : public Value
@@ -131,6 +139,7 @@ public:
   uint128_t v;
   U128(uint32_t const *&);
   QString toQString() const { return QString("TODO"); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class I8 : public Value
@@ -139,6 +148,7 @@ public:
   int_least8_t v;
   I8(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class I16 : public Value
@@ -147,6 +157,7 @@ public:
   int_least16_t v;
   I16(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class I32 : public Value
@@ -155,6 +166,7 @@ public:
   int_least32_t v;
   I32(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class I64 : public Value
@@ -163,6 +175,7 @@ public:
   int_least64_t v;
   I64(uint32_t const *&);
   QString toQString() const { return QString::number(v); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class I128 : public Value
@@ -171,6 +184,7 @@ public:
   int128_t v;
   I128(uint32_t const *&);
   QString toQString() const { return QString("TODO"); }
+  virtual std::optional<double> toDouble() const { return (double)v; }
 };
 
 class Eth : public Value

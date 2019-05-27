@@ -37,7 +37,8 @@ Graphic *Chart::defaultGraphic()
   /* Selection of a default chart type: */
   if (dataSets.length() == 2 &&
       dataSets[0]->isNumeric() &&
-      dataSets[1]->isNumeric()) {
+      dataSets[1]->isNumeric() &&
+      dataSets[0]->numRows() > 0) {
     return new TimeSeries(this); // That was easy!
   }
 

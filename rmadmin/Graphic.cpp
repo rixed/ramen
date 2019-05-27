@@ -1,6 +1,9 @@
+#include <limits>
 #include <QVBoxLayout>
 #include "qcustomplot.h"
 #include "Chart.h"
+#include "ChartDataSet.h"
+#include "FunctionItem.h"
 #include "Graphic.h"
 
 InvalidGraphic::InvalidGraphic(Chart *chart_, QString errorMessage) :
@@ -22,20 +25,34 @@ TimeSeries::TimeSeries(Chart *chart_) :
   setLayout(layout);
 
   // Random content:
-  QVector<double> x(101), y(101); // initialize with entries 0..100
-  for (int i=0; i<101; ++i) {
-    x[i] = i/50.0 - 1; // x goes from -1 to 1
-    y[i] = x[i]*x[i]; // let's plot a quadratic function
+  size_t numTuples = chart->dataSets[0]->numRows();
+  QVector<double> x(numTuples), y(numTuples);
+  assert(numTuples > 0);
+  double xMin = std::numeric_limits<double>::max(), xMax = std::numeric_limits<double>::min();
+  double yMin = std::numeric_limits<double>::max(), yMax = std::numeric_limits<double>::min();
+  for (unsigned i = 0; i < numTuples; ++i) {
+    std::optional<double> v = chart->dataSets[0]->value(i)->toDouble();
+    if (v) {
+      x[i] = *v;
+      if (*v > xMax) xMax = *v;
+      if (*v < xMin) xMin = *v;
+    }
+    v = chart->dataSets[1]->value(i)->toDouble();
+    if (v) {
+      y[i] = *v;
+      if (*v > yMax) yMax = *v;
+      if (*v < yMin) yMin = *v;
+    }
   }
   // create graph and assign data to it:
   plot->addGraph();
   plot->graph(0)->setData(x, y);
   // give the axes some labels:
-  plot->xAxis->setLabel("x");
-  plot->yAxis->setLabel("y");
+  plot->xAxis->setLabel(chart->dataSets[0]->name());
+  plot->yAxis->setLabel(chart->dataSets[1]->name());
   // set axes ranges, so we see all data:
-  plot->xAxis->setRange(-1, 1);
-  plot->yAxis->setRange(0, 1);
+  plot->xAxis->setRange(xMin, xMax);
+  plot->yAxis->setRange(yMin, yMax); // Option to force 0 in the range
   plot->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectPlottables);
 
   /* TODO:

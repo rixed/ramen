@@ -8,14 +8,17 @@ class Graphic;
 
 class Chart : public QWidget
 {
-  Q_OBJECT
+  friend class TimeSeries;
 
-  QList<ChartDataSet *> dataSets;
+  Q_OBJECT
 
   QGridLayout *layout;
   Graphic *graphic;
 
   Graphic *defaultGraphic();
+
+protected:
+  QList<ChartDataSet *> dataSets;
 
 public:
   Chart(QWidget *parent = nullptr);

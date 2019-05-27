@@ -1,8 +1,10 @@
 #include <memory>
+#include <cassert>
 #include <QString>
 #include "FunctionItem.h"
 #include "conf.h"
 #include "confValue.h"
+#include "serValue.h"
 #include "ChartDataSet.h"
 
 ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, QObject *parent) :
@@ -10,6 +12,7 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
 {
   std::shared_ptr<conf::RamenType const> outType = functionItem->outType();
   type = outType->columnType(column);
+  name_ = outType->columnName(column);
   QString const name = outType->columnName(column);
 
   // Retrieve whether this column is a factor:
@@ -36,4 +39,20 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
 bool ChartDataSet::isNumeric() const
 {
   return type->isNumeric();
+}
+
+unsigned ChartDataSet::numRows() const
+{
+  return functionItem->tuples.size();
+}
+
+ser::Value const *ChartDataSet::value(unsigned row) const
+{
+  assert(row < numRows());
+  return functionItem->tuples[row]->columnValue(column);
+}
+
+QString ChartDataSet::name() const
+{
+  return name_;
 }
