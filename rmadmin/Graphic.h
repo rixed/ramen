@@ -31,6 +31,9 @@ public:
   Graphic(Chart *chart_, ChartType chartType_) :
     QWidget(chart_), chartType(chartType_), chart(chart_) {}
   virtual void update() const = 0;
+
+protected slots:
+  virtual void appendValues() {}
 };
 
 class InvalidGraphic : public Graphic
@@ -48,9 +51,14 @@ class TimeSeries : public Graphic
   Q_OBJECT
 
   QCustomPlot *plot;
+  double xMin, xMax, yMin, yMax;
 public:
   TimeSeries(Chart *);
   void update() const;
+  bool addPoints(unsigned first = 0);
+
+protected slots:
+  virtual void appendValues();
 };
 
 #endif

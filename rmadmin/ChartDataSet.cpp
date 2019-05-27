@@ -34,6 +34,9 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
     }
   }
   conf::kvs_lock.unlock_shared();
+
+  // Relay FunctionItem signal about addition of a tuple
+  connect(functionItem, &FunctionItem::endAddTuple, this, &ChartDataSet::valueAdded);
 }
 
 bool ChartDataSet::isNumeric() const

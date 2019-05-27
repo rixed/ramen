@@ -27,6 +27,9 @@ public:
   unsigned numRows() const;
   ser::Value const *value(unsigned row) const;
   QString name() const;
+
+signals:
+  void valueAdded() const;
 };
 
 #endif
