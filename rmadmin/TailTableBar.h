@@ -9,12 +9,15 @@ class TailTableBar : public QWidget
 {
   Q_OBJECT
 
-  QPushButton *quickChartButton;
+  QPushButton *quickPlotButton;
   QComboBox *addToCombo;
 
 public:
   TailTableBar(QWidget *parent = nullptr);
   void setEnabled(bool);
+
+signals:
+  void quickPlotClicked();
 };
 
 #endif

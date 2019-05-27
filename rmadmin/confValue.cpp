@@ -552,7 +552,7 @@ QString RamenTypeScalar::structureToQString() const
   }
 }
 
-QString RamenTypeScalar::header(size_t i) const
+QString RamenTypeScalar::columnName(unsigned i) const
 {
   if (i != 0) return QString();
 
@@ -586,6 +586,26 @@ QString RamenTypeScalar::header(size_t i) const
       return QString(QCoreApplication::translate("QMainWindow", "CIDR mask"));
     default:
       return QString(QCoreApplication::translate("QMainWindow", "compound type"));
+  }
+}
+
+bool RamenTypeScalar::isNumeric() const
+{
+  switch (type) {
+    case ser::FloatType:
+    case ser::U8Type:
+    case ser::U16Type:
+    case ser::U32Type:
+    case ser::U64Type:
+    case ser::U128Type:
+    case ser::I8Type:
+    case ser::I16Type:
+    case ser::I32Type:
+    case ser::I64Type:
+    case ser::I128Type:
+      return true;
+    default:
+      return false;
   }
 }
 

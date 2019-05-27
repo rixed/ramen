@@ -57,6 +57,9 @@ HEADERS += \
   ProgramInfoBox.h \
   FunctionInfoBox.h \
   CodeEdit.h \
+  ChartDataSet.h \
+  Graphic.h \
+  Chart.h \
   OperationsView.h \
   StorageForm.h \
   StorageSlice.h \
@@ -97,6 +100,9 @@ SOURCES += \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
   CodeEdit.cpp \
+  ChartDataSet.cpp \
+  Graphic.cpp \
+  Chart.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

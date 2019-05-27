@@ -92,10 +92,15 @@ int FunctionItem::numRows() const
   return tuples.size();
 }
 
+conf::Key FunctionItem::functionKey(std::string perFuncKey) const
+{
+  return conf::Key("programs/" + treeParent->name.toStdString() + "/functions/" +
+                   name.toStdString() + perFuncKey);
+}
+
 std::shared_ptr<conf::RamenType const> FunctionItem::outType() const
 {
-  conf::Key k("programs/" + treeParent->name.toStdString() + "/functions/" +
-              name.toStdString() + "/type/out");
+  conf::Key k = functionKey("/type/out");
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[k];
   conf::kvs_lock.unlock_shared();
@@ -131,7 +136,7 @@ QString FunctionItem::header(unsigned column) const
   std::shared_ptr<conf::RamenType const> t = outType();
   if (! t) return QString("#") + QString::number(column);
 
-  return t->header(column);
+  return t->columnName(column);
 }
 
 void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)

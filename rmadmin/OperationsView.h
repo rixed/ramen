@@ -38,6 +38,7 @@ public slots:
   void addSource(ProgramItem const *);
   void addProgInfo(ProgramItem const *);
   void addFuncInfo(FunctionItem const *);
+  void addQuickPlot(FunctionItem const *, QList<int> const &);
   // Will retrieve the function and emit functionSelected()
   void selectItem(QModelIndex const &); // the QModelIndex from the graphModel
   void closeInfo(int);

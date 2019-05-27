@@ -28,6 +28,9 @@ TailTable::TailTable(TailModel *model, QWidget *parent) :
    * last values of a selected column won't be selected, with the effect that
    * the column will no longer be considered selected: */
   connect(model, &TailModel::rowsInserted, this, &TailTable::extendSelection);
+
+  /* Enrich the quickPlotClicked signal with the selected columns: */
+  connect(tableBar, &TailTableBar::quickPlotClicked, this, &TailTable::enrichQuickPlotClicked);
 }
 
 void TailTable::enableBar(QItemSelection const &, QItemSelection const &)
@@ -54,4 +57,9 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
     sm->select(model()->index(first, col, parent),
                QItemSelectionModel::Select | QItemSelectionModel::Columns);
   }
+}
+
+void TailTable::enrichQuickPlotClicked()
+{
+  emit quickPlotClicked(selectedColumns);
 }

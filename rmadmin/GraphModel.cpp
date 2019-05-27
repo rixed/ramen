@@ -302,7 +302,7 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
     }
   } else if (p.startsWith(parents_prefix)) {
     int idx = p.mid(parents_prefix.length()).toInt();
-    if (idx >= 0 && (size_t)idx < functionItem->parents.size()+100000) {
+    if (idx >= 0 && (size_t)idx < functionItem->parents.size()+1000) {
       std::shared_ptr<conf::Worker const> w =
         std::dynamic_pointer_cast<conf::Worker const>(v);
       if (w) {

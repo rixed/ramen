@@ -24,6 +24,10 @@ public:
 private slots:
   void enableBar(QItemSelection const &, QItemSelection const &);
   void extendSelection(QModelIndex const &parent, int first, int last);
+  void enrichQuickPlotClicked();
+
+signals:
+  void quickPlotClicked(QList<int> const &selectedColumns);
 };
 
 #endif

@@ -13,6 +13,8 @@
 #include "FunctionInfoBox.h"
 #include "ProgramInfoBox.h"
 #include "CodeEdit.h"
+#include "Chart.h"
+#include "ChartDataSet.h"
 #include "OperationsView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
@@ -242,6 +244,35 @@ void OperationsView::addTail(FunctionItem *f)
   TailTable *table = new TailTable(f->tailModel);
   dataTabs->addTab(table, label);
   focusLast(dataTabs);
+
+  // Add a Plot when the user ask for it:
+  connect(table, &TailTable::quickPlotClicked, this, [this, f](QList<int> const &selectedColumns) {
+    this->addQuickPlot(f, selectedColumns);
+  });
+}
+
+void OperationsView::addQuickPlot(FunctionItem const *f, QList<int> const &selectedColumns)
+{
+  TailTable *table = dynamic_cast<TailTable *>(sender());
+  if (! table) {
+    std::cout << "Received addQuickPlot from non TailTable!?" << std::endl;
+    return;
+  }
+
+  // TODO: uniquify the name:
+  QString name("Plot: " + f->fqName());
+
+  Chart *chart = new Chart;
+
+  std::shared_ptr<conf::RamenType const> outType = f->outType();
+  /* Make a chartDataSet out of each column: */
+  for (auto col : selectedColumns) {
+    ChartDataSet *ds = new ChartDataSet(f, col);
+    chart->addData(ds);
+  }
+  dataTabs->addTab(chart, name);
+  focusLast(dataTabs);
+  chart->update();
 }
 
 void OperationsView::remTail(int index)

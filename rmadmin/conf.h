@@ -19,6 +19,7 @@ extern conf::Key my_errors;
  * updates to widget slots.
  * This is accessed read/write from the OCaml thread and read only from the
  * Qt thread(s)., thus the shared_mutex: */
+// TODO: a prefix tree
 extern QMap<conf::Key, KValue> kvs;
 extern std::shared_mutex kvs_lock;
 

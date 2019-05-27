@@ -40,6 +40,8 @@ public:
   QVariant data(int) const;
   QRectF operationRect() const;
 
+  conf::Key functionKey(std::string perFuncKey) const;
+
   std::shared_ptr<conf::RamenType const> outType() const;
   int numRows() const;
   int numColumns() const;

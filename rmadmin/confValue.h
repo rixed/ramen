@@ -175,10 +175,12 @@ struct RamenType : public Value
   value toOCamlValue() const;
   virtual bool operator==(Value const &) const;
   virtual unsigned numColumns() const { return 0; };
-  virtual QString header(size_t) const { return QString(); };
+  virtual QString columnName(unsigned) const = 0;
+  virtual std::shared_ptr<RamenType const> columnType(unsigned) const = 0;
   // Return the size of the required nullmask in _bits_
   // ie. number of nullable subfields.
   virtual size_t nullmaskWidth(bool) const { return 0; }
+  virtual bool isNumeric() const = 0;
 };
 
 struct RamenTypeScalar : public RamenType
@@ -186,7 +188,9 @@ struct RamenTypeScalar : public RamenType
   RamenTypeScalar(ser::ValueType t, bool n) : RamenType(t, n) {}
   QString structureToQString() const;
   unsigned numColumns() const { return 1; }
-  QString header(size_t) const;
+  QString columnName(unsigned) const;
+  std::shared_ptr<RamenType const> columnType(unsigned) const { return nullptr; }
+  bool isNumeric() const;
 };
 
 struct RamenTypeTuple : public RamenType
@@ -198,12 +202,18 @@ struct RamenTypeTuple : public RamenType
   QString structureToQString() const;
   // Maybe displaying a tuple in a single column would be preferable?
   unsigned numColumns() const { return fields.size(); }
-  QString header(size_t i) const
+  QString columnName(unsigned i) const
   {
     if (i >= fields.size()) return QString();
     return QString("#") + QString::number(i);
-  };
+  }
+  std::shared_ptr<RamenType const> columnType(unsigned i) const
+  {
+    if (i >= fields.size()) return nullptr;
+    return fields[i];
+  }
   size_t nullmaskWidth(bool) const { return fields.size(); }
+  bool isNumeric() const { return false; }
 };
 
 struct RamenTypeVec : public RamenType
@@ -215,12 +225,18 @@ struct RamenTypeVec : public RamenType
   QString structureToQString() const;
   // Maybe displaying a vector in a single column would be preferable?
   unsigned numColumns() const { return dim; }
-  QString header(size_t i) const
+  QString columnName(unsigned i) const
   {
     if (i >= dim) return QString();
     return QString("#") + QString::number(i);
-  };
+  }
+  std::shared_ptr<RamenType const> columnType(unsigned i) const
+  {
+    if (i >= dim) return nullptr;
+    return subType;
+  }
   size_t nullmaskWidth(bool) const { return dim; }
+  bool isNumeric() const { return false; }
 };
 
 struct RamenTypeList : public RamenType
@@ -231,15 +247,21 @@ struct RamenTypeList : public RamenType
   QString structureToQString() const;
   // Lists are displayed in a single column as they have a variable length
   unsigned numColumns() const { return 1; }
-  QString header(size_t i) const
+  QString columnName(unsigned i) const
   {
     if (i != 0) return QString();
     return QString(QCoreApplication::translate("QMainWindow", "list"));
-  };
+  }
+  std::shared_ptr<RamenType const> columnType(unsigned i) const
+  {
+    if (i != 0) return nullptr;
+    return std::shared_ptr<RamenType const>(new RamenTypeList(subType, nullable));;
+  }
   size_t nullmaskWidth(bool) const
   {
     assert(!"List nullmaskWidth is special!");
   }
+  bool isNumeric() const { return false; }
 };
 
 // This is the interesting one:
@@ -253,11 +275,16 @@ struct RamenTypeRecord : public RamenType
   RamenTypeRecord(std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields_, bool n);
   QString structureToQString() const;
   unsigned numColumns() const { return fields.size(); }
-  QString header(size_t i) const
+  QString columnName(unsigned i) const
   {
     if (i >= fields.size()) return QString();
     return fields[i].first;
-  };
+  }
+  std::shared_ptr<RamenType const> columnType(unsigned i) const
+  {
+    if (i >= fields.size()) return nullptr;
+    return fields[i].second;
+  }
   size_t nullmaskWidth(bool topLevel) const
   {
     // TODO: fix nullmask for compound types (ie: reserve a bit only to
@@ -272,6 +299,7 @@ struct RamenTypeRecord : public RamenType
       return fields.size();
     }
   }
+  bool isNumeric() const { return false; }
 };
 
 };
@@ -287,7 +315,7 @@ Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);
 Q_DECLARE_METATYPE(conf::Tuple);
 
-// Defined by OCaml header but conflicting with further Qt includes:
+// Defined by OCaml columnName but conflicting with further Qt includes:
 #undef alloc
 
 #endif
