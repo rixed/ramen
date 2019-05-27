@@ -61,7 +61,7 @@ all: $(PAGES) $(MANPAGES) $(IMAGES) $(OTHERS)
 
 favicon.ico: icon.png
 	@echo 'Building $@'
-	@convert $< -size 32x32 $@
+	@convert $< -resize 32x32 $@
 
 menuicon.png: icon.png
 	@echo 'Building $@'
