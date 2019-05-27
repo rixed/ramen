@@ -547,11 +547,39 @@ rmadmin/rmadmin: \
 		rmadmin/Makefile
 	@echo 'Generating RMAdmin $@'
 	$(MAKE) -C rmadmin
-	@if ! test -e $@ && test -e rmadmin/rmadmin.app ; then \
+	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \
 	  echo '#!/bin/sh' > $@ ;\
-	  echo 'exec ./rmadmin/rmadmin.app/Contents/MacOS/rmadmin' >> $@ ;\
+	  echo 'exec ./rmadmin/RmAdmin.app/Contents/MacOS/RmAdmin' >> $@ ;\
 	  chmod a+x $@ ;\
 	fi
+
+rmadmin/rmadmin.ico: site/icon.png
+	@echo 'Generating $@'
+	@convert $< $@
+
+rmadmin/rmadmin.icns: site/icon.png
+	@echo 'Generating $@'
+	@$(RM) -r icon.iconset
+	@mkdir icon.iconset
+	@convert $< -resize 16x16 icon.iconset/icon_16x16.png
+	@convert $< -resize 32x32 icon.iconset/icon_16x16@2x.png
+	@convert $< -resize 32x32 icon.iconset/icon_32x32.png
+	@convert $< -resize 64x64 icon.iconset/icon_32x32@2x.png
+	@convert $< -resize 128x128 icon.iconset/icon_128x128@.png
+	@convert $< -resize 256x256 icon.iconset/icon_128x128@2x.png
+	@convert $< -resize 256x256 icon.iconset/icon_256x256.png
+	@convert $< -resize 512x512 icon.iconset/icon_256x256@2x.png
+	@convert $< -resize 512x512 icon.iconset/icon_512x512.png
+	@convert $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
+	@iconutil --convert icns --output $@ icon.iconset
+
+rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/rmadmin rmadmin/rmadmin.ico
+	@echo 'Generating MaxOS disk image $@'
+	@cd rmadmin &&\
+	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
+	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
+	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
+	 macdeployqt RmAdmin.app -libpath=/usr/local/lib -dmg
 
 # embedded compiler version: build a bundle of all libraries
 OCAML_WHERE = $(shell dirname $(shell ocamlfind ocamlc -where))
@@ -572,13 +600,13 @@ bundle: \
 
 $(BUNDLE_DIR)/date:
 	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
-	@$(RM) -rf '$(BUNDLE_DIR)'
+	@$(RM) -r '$(BUNDLE_DIR)'
 	@mkdir -p '$(BUNDLE_DIR)'
 	@touch $@
 
 $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	@echo 'Bundling libs together into $(BUNDLE_DIR)'
-	@$(RM) -rf '$(BUNDLE_DIR).tmp'
+	@$(RM) -r '$(BUNDLE_DIR).tmp'
 	@mkdir '$(BUNDLE_DIR).tmp'
 	@set -e ;\
 	 deps=$$( \
@@ -974,7 +1002,9 @@ install: $(INSTALLED) install-bundle
 	@echo 'Installing binaries into $(bin_dir)'
 	@install -d $(bin_dir)
 	@install $(INSTALLED_BIN) $(bin_dir)/
-	@for f in $(INSTALLED_BIN); do strip $(bin_dir)/$$(basename $$f); done
+	@for f in $(INSTALLED_BIN); do \
+	   strip $(bin_dir)/$$(basename $$f) || true ;\
+	 done
 
 # We need ocamlfind to find ramen package before we can install the lib bundle.
 # Therefore we simply build it as a separate, optional step (that's only
@@ -1113,6 +1143,8 @@ clean-dist: clean clean-temp
 	@sudo rm -rf debtmp
 	@$(RM) -r tmp
 	@$(RM) ramen.*.deb ramen.*.tgz
+	@$(RM) rmadmin/rmadmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
+	@$(RM) -r rmadmin/RmAdmin.app
 	@$(RM) $(PAGES)
 	@$(RM) META
 
@@ -1127,5 +1159,7 @@ clean:
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
-	@$(RM) rmadmin/rmadmin
+	@$(MAKE) -C rmadmin clean
+	@$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
+	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg rmadmin/rmadmin.pro
 	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a

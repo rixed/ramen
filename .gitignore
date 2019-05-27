@@ -76,7 +76,9 @@ src/orc/orc_writer
 moc_*.cpp
 moc_*.h
 rmadmin/rmadmin.app
+rmadmin/RmAdmin.app
 rmadmin/Makefile
+rmadmin/*.dmg
 .DS_Store
 .qmake.stash
 qttest
@@ -84,3 +86,4 @@ rmadmin/rmadmin.pro
 .z3-trace
 rmadmin/qcustomplot.cpp
 rmadmin/qcustomplot.h
+icon.iconset
