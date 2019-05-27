@@ -118,6 +118,14 @@ restart</p>
 <p style="margin-left:17%;">change the workers export
 configuration</p>
 
+<p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
+<b>--smt-solver</b>=<i>VAL</i> (absent=/usr/local/bin/z3
+-t:60000 -smt2 <br>
+%s or <b>RAMEN_SMT_SOLVER</b> env)</p>
+
+<p style="margin-left:17%;">Command to run the SMT solver
+(with %s in place of the SMT2 file name)</p>
+
 <p style="margin-left:11%;"><b>--stats</b></p>
 
 <p style="margin-left:17%;">update the workers stats
@@ -282,6 +290,11 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--reuse-prev-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--smt-solver</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 
