@@ -80,12 +80,12 @@ let start_zmq_client url creds (site : N.site) (fq : N.fq) k =
     "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =
     RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
-  let on_program stage status =
+  let on_progress stage status =
     !logger.info "Conf.Server: %a: %a"
       ZMQClient.Stage.print stage
       ZMQClient.Status.print status in
   fun conf ->
-    ZMQClient.start url creds topic_sub on_program
+    ZMQClient.start url creds topic_sub on_progress
                     ~recvtimeo:0 ~sndtimeo:0 (fun zock ->
       let clt =
         ZMQClient.Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in

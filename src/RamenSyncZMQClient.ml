@@ -72,12 +72,12 @@ module Status =
 struct
   type t =
     | InitStart | InitOk | InitFail of string (* For the init stage *)
-    | Ok | Fail of string
+    | Ok of string | Fail of string
   let to_string = function
     | InitStart -> "Starting"
     | InitOk -> "Established"
     | InitFail s -> "Not established: "^ s
-    | Ok -> "Done"
+    | Ok s -> "Ok: "^ s
     | Fail s -> "Failed: "^ s
   let print oc s =
     String.print oc (to_string s)
@@ -120,7 +120,7 @@ let init_sync ?while_ zock glob on_progress =
     on_progress Stage.Sync Status.(InitFail (Printexc.to_string e))
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start ?while_ url creds topic on_progress
+let start ?while_ url creds topic on_progress ?(on_sock=ignore)
           ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) k =
   let ctx = Zmq.Context.create () in
   !logger.info "Subscribing to conf key %s" topic ;
@@ -131,6 +131,7 @@ let start ?while_ url creds topic on_progress
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
+          on_sock zock ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:

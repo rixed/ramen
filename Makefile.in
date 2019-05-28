@@ -287,6 +287,7 @@ RMADMIN_SOURCES = \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
 	rmadmin/GuiHelper.ml
 
 LIBRINGBUF_SOURCES = \

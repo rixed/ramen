@@ -2,6 +2,7 @@ open Batteries
 open RamenConsts
 open RamenLog
 open RamenHelpers
+module ZMQClient = RamenSyncZMQClient
 
 (*
  * SyncConf client
@@ -40,11 +41,7 @@ let unexpected_reply cmd =
     (Client.SrvMsg.to_string cmd) |>
   failwith
 
-type sync_status =
-  | InitStart | InitOk | InitFail of string (* For the init stage *)
-  | Ok of string | Fail of string
-
-external signal_conn : string -> sync_status -> unit = "signal_conn"
+external signal_conn : string -> ZMQClient.Status.t -> unit = "signal_conn"
 let init_connect url zock =
   let connect_to = "tcp://"^ url in
   signal_conn url InitStart ;
@@ -55,7 +52,7 @@ let init_connect url zock =
   with e ->
     signal_conn url (InitFail (Printexc.to_string e))
 
-external signal_auth : sync_status -> unit = "signal_auth"
+external signal_auth : ZMQClient.Status.t -> unit = "signal_auth"
 
 let init_auth creds zock =
   signal_auth InitStart ;
@@ -72,7 +69,7 @@ let init_auth creds zock =
   with e ->
     signal_auth (InitFail (Printexc.to_string e))
 
-external signal_sync : sync_status -> unit = "signal_sync"
+external signal_sync : ZMQClient.Status.t -> unit = "signal_sync"
 
 let init_sync zock glob =
   signal_sync InitStart ;
@@ -97,7 +94,48 @@ type pending_req =
 
 external next_pending_request : unit -> pending_req = "next_pending_request"
 
-let sync_loop clt zock =
+external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
+
+let on_new clt k v uid =
+  ignore clt ;
+  Gc.compact () ;
+  conf_new_key (Key.to_string k) v uid ;
+  Gc.compact ()
+
+external conf_set_key : string -> Value.t -> unit = "conf_set_key"
+
+let on_set clt k v =
+  ignore clt ;
+  Gc.compact () ;
+  conf_set_key (Key.to_string k) v ;
+  Gc.compact ()
+
+external conf_del_key : string -> unit = "conf_del_key"
+
+let on_del clt k =
+  ignore clt ;
+  Gc.compact () ;
+  conf_del_key (Key.to_string k) ;
+  Gc.compact ()
+
+external conf_lock_key : string -> string -> unit = "conf_lock_key"
+
+let on_lock clt k uid =
+  ignore clt ;
+  Gc.compact () ;
+  conf_lock_key (Key.to_string k) uid ;
+  Gc.compact ()
+
+external conf_unlock_key : string -> unit = "conf_unlock_key"
+
+let on_unlock clt k =
+  ignore clt ;
+  Gc.compact () ;
+  conf_unlock_key (Key.to_string k) ;
+  Gc.compact ()
+
+let sync_loop zock =
+  let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
   let msg_count = ref 0 in
   Zmq.Socket.set_receive_timeout zock 100 ;
   let handle_msgs_in () =
@@ -147,45 +185,11 @@ let sync_loop clt zock =
       signal_sync (Fail (Printexc.to_string e))
   done
 
-external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
-
-let on_new clt k v uid =
-  ignore clt ;
-  Gc.compact () ;
-  conf_new_key (Key.to_string k) v uid ;
-  Gc.compact ()
-
-external conf_set_key : string -> Value.t -> unit = "conf_set_key"
-
-let on_set clt k v =
-  ignore clt ;
-  Gc.compact () ;
-  conf_set_key (Key.to_string k) v ;
-  Gc.compact ()
-
-external conf_del_key : string -> unit = "conf_del_key"
-
-let on_del clt k =
-  ignore clt ;
-  Gc.compact () ;
-  conf_del_key (Key.to_string k) ;
-  Gc.compact ()
-
-external conf_lock_key : string -> string -> unit = "conf_lock_key"
-
-let on_lock clt k uid =
-  ignore clt ;
-  Gc.compact () ;
-  conf_lock_key (Key.to_string k) uid ;
-  Gc.compact ()
-
-external conf_unlock_key : string -> unit = "conf_unlock_key"
-
-let on_unlock clt k =
-  ignore clt ;
-  Gc.compact () ;
-  conf_unlock_key (Key.to_string k) ;
-  Gc.compact ()
+let on_progress url stage status =
+  (match stage with
+  | ZMQClient.Stage.Conn -> signal_conn url
+  | ZMQClient.Stage.Auth -> signal_auth
+  | ZMQClient.Stage.Sync -> signal_sync) status
 
 let register_senders zock =
   let lock_from_cpp k =
@@ -198,27 +202,8 @@ let register_senders zock =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url creds () =
-  let ctx = Zmq.Context.create () in
-  finally
-    (fun () -> Zmq.Context.terminate ctx)
-    (fun () ->
-      let zock = Zmq.Socket.(create ctx dealer) in
-      finally
-        (fun () -> Zmq.Socket.close zock)
-        (fun () ->
-          register_senders zock ;
-          log_exceptions ~what:"init_connect"
-            (fun () -> init_connect url zock) ;
-          log_exceptions ~what:"init_auth"
-            (fun () -> init_auth creds zock) ;
-          log_exceptions ~what:"init_sync"
-            (fun () -> init_sync zock "*") ;
-          let clt =
-            Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
-          log_exceptions ~what:"sync_loop"
-            (fun () -> sync_loop clt zock)
-        ) ()
-    ) ()
+  ZMQClient.start
+    url creds "*" (on_progress url) ~on_sock:register_senders sync_loop
 
 let init debug quiet url creds =
   if debug && quiet then
