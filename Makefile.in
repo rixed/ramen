@@ -1144,6 +1144,7 @@ clean-dist: clean clean-temp
 	@$(RM) -r tmp
 	@$(RM) ramen.*.deb ramen.*.tgz
 	@$(RM) rmadmin/rmadmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
+	@$(RM) rmadmin/rmadmin.pro
 	@$(RM) -r rmadmin/RmAdmin.app
 	@$(RM) $(PAGES)
 	@$(RM) META
@@ -1161,5 +1162,5 @@ clean:
 	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 	@$(MAKE) -C rmadmin clean
 	@$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
-	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg rmadmin/rmadmin.pro
+	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
