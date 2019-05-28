@@ -342,6 +342,8 @@ let update_local_worker_stats ?while_ conf programs =
             (* Worker has restarted. We assume it's still mostly the
              * same operation. Maybe consider the function signature
              * (and add it to the stats?) *)
+            (* FIXME: Is this annoying warning going to be output each time
+             * archivist is run from now on?! *)
             !logger.warning
               "Merging stats of a new instance of worker %a that started \
                at %a with the previous run that started at %a"

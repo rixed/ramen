@@ -318,6 +318,7 @@ struct
 
   (* Saved configuration is merely a hash from (unique) program names
    * to their binaries, and parameters (actual ones, not default values): *)
+  (* TODO: add a startup_time? *)
   type entry =
     { (* Tells whether the entry must actually be started. Set to true
          at exit so that we do not loose information of previously run

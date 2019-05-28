@@ -344,23 +344,4 @@ let spawn_source_replay conf programs sfq since until channels replayer_id =
     N.fq_print fq pid ;
   pid
 
-(* Spawn all (local) replayers and return the set of pids and the
- * set of replayer ids. *)
-let spawn_all_local_sources conf programs t =
-  let what = Printf.sprintf2 "Spawning local replayers for channel %a"
-               RamenChannel.print t.channel in
-  Set.fold (fun (ssite, sfq) pids ->
-    if conf.C.site = ssite then
-      let replayer_id = Random.int RingBufLib.max_replayer_id in
-      let channels = Set.singleton t.channel in
-      match spawn_source_replay
-              conf programs sfq t.since t.until channels replayer_id with
-      | exception e ->
-          print_exception ~what e ;
-          pids
-      | pid ->
-          Set.add (pid, ref 0.) pids
-    else pids
-  ) t.sources Set.empty
-
 (*$>*)

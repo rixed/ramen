@@ -681,26 +681,28 @@ let parse_func_name_of_code conf what func_name_or_code =
     !logger.info "Going to use source file %a"
       N.path_print_quoted src_file ;
     let exec_file = Files.change_ext "x" src_file in
-    on_error (fun () ->
-      if not conf.C.keep_temp_files then (
-        Files.safe_unlink src_file ;
-        Files.safe_unlink exec_file))
-             (fun () ->
-      Printf.fprintf oc
-        "-- Temporary file created on %a for %s\n\
-         DEFINE '%s' AS %a\n"
-        print_as_date (Unix.time ())
-        what
-        (func_name :> string)
-        (List.print ~first:"" ~last:"" ~sep:" " String.print)
-          func_name_or_code ;
-      close_out oc ;
-      Files.safe_unlink exec_file ; (* hahaha! *)
-      RamenMake.build conf get_parent program_name src_file exec_file ;
-      (* Run it, making sure it archives its history straight from the start: *)
-      let debug = conf.C.log_level = Debug in
-      RamenRun.run conf ~report_period:0. ~src_file ~debug
-                   exec_file (Some program_name)) ;
+    on_error
+      (fun () ->
+        if not conf.C.keep_temp_files then (
+          Files.safe_unlink src_file ;
+          Files.safe_unlink exec_file))
+      (fun () ->
+        Printf.fprintf oc
+          "-- Temporary file created on %a for %s\n\
+           DEFINE '%s' AS\n%a\n"
+          print_as_date (Unix.time ())
+          what
+          (func_name :> string)
+          (List.print ~first:"" ~last:"" ~sep:" " String.print)
+            func_name_or_code ;
+        close_out oc ;
+        Files.safe_unlink exec_file ; (* hahaha! *)
+        RamenMake.build conf get_parent program_name src_file exec_file ;
+        (* Run it, making sure it archives its history straight from the
+         * start: *)
+        let debug = conf.C.log_level = Debug in
+        RamenRun.run conf ~report_period:0. ~src_file ~debug
+                     exec_file (Some program_name)) ;
     let fq = N.fq_of_program program_name func_name in
     fq, [], [ program_name ]
   in
@@ -815,7 +817,10 @@ let tail_ conf fq field_names with_header with_units sep null raw
               | -1 -> Some (ValDate t1)
               | idx -> formatter head_typ.(i).units tuple.(idx)
             ) head_idx in
-          print cols)
+          print cols
+        ) else (
+          !logger.debug "evtime %f..%f filtered out" t1 t2
+        )
     | _ -> ()) ;
   print [||]
 

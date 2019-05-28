@@ -35,7 +35,8 @@ let pour_into_bucket b bi ci v r =
   b.(bi).(ci).count <- b.(bi).(ci).count +. r ;
   b.(bi).(ci).min <- min b.(bi).(ci).min v ;
   b.(bi).(ci).max <- max b.(bi).(ci).max v ;
-  b.(bi).(ci).sum <- b.(bi).(ci).sum +. v
+  b.(bi).(ci).sum <- b.(bi).(ci).sum +. v ;
+  !logger.debug "  v=%f, r=%f -> b.(%d).(%d) = %a" v r bi ci print_bucket b.(bi).(ci)
 
 (* Returns both the index and the ratio of this bucket on the left of t
  * (between 0 inc. and 1 excl.) *)
