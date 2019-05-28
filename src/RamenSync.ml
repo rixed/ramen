@@ -82,8 +82,7 @@ struct
   struct
     (* TODO *)
     type t = string
-    let to_string s = s
-    let of_string s = s
+    let print = String.print
   end
 
   (* FIXME: when to delete from these? *)
@@ -491,9 +490,6 @@ struct
     List.enum s.lst //@
     fun (t, id) ->
       if Globs.matches t k then Some id else None
-
-  let to_string s = IO.to_string Globs.print s
-  let of_string s = Globs.compile s
 end
 
 (* Unfortunately there is no association between the key and the type for
@@ -546,11 +542,4 @@ struct
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
-  let to_string ?prev (t : t) =
-    ignore prev ;
-    Marshal.(to_string t [ No_sharing ])
-
-  let of_string ?prev b : t =
-    ignore prev ;
-    Marshal.from_string b 0
 end

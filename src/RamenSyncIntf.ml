@@ -102,8 +102,7 @@ sig
   module PubCredentials :
   sig
     type t
-    val to_string : t -> string
-    val of_string : string -> t
+    val print : 'a BatIO.output -> t -> unit
   end
 
   (* Promote the user based on some creds: *)
@@ -138,6 +137,7 @@ sig
   val hash : t -> int
   val equal : t -> t -> bool
 
+  (* For regexpr/prefix hooks: *)
   val to_string : t -> string
   val of_string : string -> t
 end
@@ -154,9 +154,6 @@ sig
   type id
   val add : set -> t -> id
   val matches : Key.t -> set -> id Enum.t
-
-  val to_string : t -> string
-  val of_string : string -> t
 end
 
 module type VALUE =
@@ -168,9 +165,6 @@ sig
 
   (* Special values for error messages, with an int and a message. : *)
   val err_msg : int -> string -> t
-
-  val to_string : ?prev:t -> t -> string
-  val of_string : ?prev:t -> string -> t
 end
 
 (* Now we want the user view of the store (ie. all they are allowed to view
@@ -194,71 +188,19 @@ struct
 
     type t = int * cmd
 
-    let string_of_cmd = function
-      | Auth cred ->
-          Printf.sprintf2 "AU %s"
-            (Key.User.PubCredentials.to_string cred)
-      | StartSync sel ->
-          Printf.sprintf2 "SS %s"
-            (Selector.to_string sel)
-      | SetKey (k, v) ->
-          Printf.sprintf2 "SK %S %S"
-            (Key.to_string k)
-            (Value.to_string v)
-      | NewKey (k, v) ->
-          Printf.sprintf2 "NK %S %S"
-            (Key.to_string k)
-            (Value.to_string v)
-      | DelKey k ->
-          Printf.sprintf2 "DK %s"
-            (Key.to_string k)
-      | LockKey k ->
-          Printf.sprintf2 "LK %s"
-            (Key.to_string k)
-      | UnlockKey k ->
-          Printf.sprintf2 "UK %s"
-            (Key.to_string k)
+    let to_string (m : t) =
+      Marshal.(to_string m [ No_sharing ])
 
-    let to_string (i, cmd) =
-      string_of_int i ^" "^ string_of_cmd cmd
-
-    let cmd_of_string s =
-      if String.length s < 3 then
-        Printf.sprintf "Message too short (%S)" s |>
-        failwith ;
-      let args = String.lchop ~n:3 s in
-      match s.[0], s.[1], s.[2] with
-      | 'A', 'U', ' ' ->
-          Auth (Key.User.PubCredentials.of_string args)
-      | 'S', 'S', ' ' ->
-          StartSync (Selector.of_string args)
-      | 'S', 'K', ' ' ->
-          Scanf.sscanf args "%S %S" (fun k v ->
-            SetKey (Key.of_string k, Value.of_string v))
-      | 'N', 'K', ' ' ->
-          Scanf.sscanf args "%S %S" (fun k v ->
-            NewKey (Key.of_string k, Value.of_string v))
-      | 'D', 'K', ' ' ->
-          DelKey (Key.of_string args)
-      | 'L', 'K', ' ' ->
-          LockKey (Key.of_string args)
-      | 'U', 'K', ' ' ->
-          UnlockKey (Key.of_string args)
-      | _ ->
-          Printf.sprintf "Cannot parse message (%S)" s |>
-          failwith
-
-    let of_string s =
-      let i, cmd = String.split ~by:" " s in
-      int_of_string i, cmd_of_string cmd
+    let of_string s : t =
+      Marshal.from_string s 0
 
     let print_cmd oc = function
       | Auth creds ->
-          Printf.fprintf oc "Auth %s"
-            (Key.User.PubCredentials.to_string creds)
+          Printf.fprintf oc "Auth %a"
+            Key.User.PubCredentials.print creds
       | StartSync sel ->
-          Printf.fprintf oc "StartSync %s"
-            (Selector.to_string sel)
+          Printf.fprintf oc "StartSync %a"
+            Selector.print sel
       | SetKey (k, v) ->
           Printf.fprintf oc "SetKey (%a, %a)"
             Key.print k
@@ -315,52 +257,11 @@ struct
           Printf.fprintf oc "UnlockKey %a"
             Key.print k
 
-    let to_string = function
-      | Auth s ->
-          Printf.sprintf2 "AU %s" s
-      | SetKey (k, v) ->
-          Printf.sprintf2 "SK %S %S"
-            (Key.to_string k)
-            (Value.to_string v)
-      | NewKey (k, v, u) ->
-          Printf.sprintf2 "NK %S %S %S"
-            (Key.to_string k)
-            (Value.to_string v)
-            u
-      | DelKey k ->
-          Printf.sprintf2 "DK %s"
-            (Key.to_string k)
-      | LockKey (k, u) ->
-          Printf.sprintf2 "LK %S %S"
-            (Key.to_string k)
-            u
-      | UnlockKey k ->
-          Printf.sprintf2 "UK %s"
-            (Key.to_string k)
+    let to_string (m : t) =
+      Marshal.(to_string m [ No_sharing ])
 
-    let of_string s =
-      if String.length s < 3 then
-        Printf.sprintf "Message too short (%S)" s |>
-        failwith ;
-      let args = String.lchop ~n:3 s in
-      match s.[0], s.[1], s.[2] with
-      | 'A', 'U', ' ' ->
-          Auth args
-      | 'S', 'K', ' ' ->
-          Scanf.sscanf args "%S %S" (fun k v ->
-            SetKey (Key.of_string k, Value.of_string v))
-      | 'N', 'K', ' ' ->
-          Scanf.sscanf args "%S %S %S" (fun k v u ->
-            NewKey (Key.of_string k, Value.of_string v, u))
-      | 'D', 'K', ' ' ->
-          DelKey (Key.of_string args)
-      | 'L', 'K', ' ' ->
-          Scanf.sscanf args "%S %S" (fun k u ->
-            LockKey (Key.of_string k, u))
-      | 'U', 'K', ' ' ->
-          UnlockKey (Key.of_string args)
-      | _ ->
-          Printf.sprintf "Cannot parse message (%S)" s |>
-          failwith
+    let of_string s : t =
+      Marshal.from_string s 0
+
   end
 end
