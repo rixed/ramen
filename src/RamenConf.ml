@@ -487,6 +487,11 @@ struct
       mutable is_running : bool [@ppp_default false] }
     [@@ppp PPP_OCaml]
 
+  let make ~startup_time ~is_running =
+    { startup_time ; is_running ; min_etime = None ; max_etime = None ;
+      tuples = 0L ; bytes = 0L ; cpu = 0. ; ram = 0L ; parents = [] ;
+      archives = TimeRange.empty ; num_arc_files = 0 ; num_arc_bytes = 0L }
+
   let archives_print oc =
     List.print (Tuple2.print Float.print Float.print) oc
 end

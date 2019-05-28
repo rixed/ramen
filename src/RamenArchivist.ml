@@ -299,12 +299,16 @@ let enrich_local_stats conf programs per_func_stats =
       | prog ->
           List.iter (fun func ->
             let fq = N.fq_of_program func.F.program_name func.F.name in
-            match Hashtbl.find per_func_stats fq with
-            | exception Not_found -> ()
-            | s ->
-                s.FS.is_running <- rce.RC.status = MustRun ;
-                update_parents conf programs s all_sites program_name func ;
-                update_archives conf s func
+            let s =
+              hashtbl_find_option_delayed (fun () ->
+                !logger.debug "%a not already in the stats, adding it"
+                  N.fq_print fq ;
+                let now = Unix.gettimeofday () in
+                FS.make ~startup_time:now ~is_running:true)
+                per_func_stats fq in
+            s.FS.is_running <- rce.RC.status = MustRun ;
+            update_parents conf programs s all_sites program_name func ;
+            update_archives conf s func ;
           ) prog.P.funcs
   ) programs
 
