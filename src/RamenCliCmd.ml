@@ -875,7 +875,8 @@ let replay_ conf fq field_names with_header with_units sep null raw
       (fun _t1 _t2 tuple ->
         let vals =
           Array.mapi (fun i -> formatter head.(i).units) tuple in
-        print vals), ignore)
+        print vals),
+      (fun () -> print [||]))
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
