@@ -429,6 +429,38 @@ err0:
   return ret;
 }
 
+enum ringbuf_error rotate_file(struct ringbuf *rb)
+{
+  struct ringbuf_file *rbf = rb->rbf;
+  if (rbf->wrap) return RB_OK;
+
+  //printf("Rotating buffer '%s'!\n", rb->fname);
+
+  enum ringbuf_error err = RB_ERR_FAILURE;
+
+  // We have filled the non-wrapping buffer: rotate the file!
+  // We need a lock to ensure no other writers is rotating at the same time
+  int lock_fd = lock(rb->fname, LOCK_EX, false);
+  if (lock_fd < 0) goto err0;
+
+  // Wait, maybe some other process rotated the file already while we were
+  // waiting for that lock? In that case it would have written the EOF:
+  if (atomic_load(rbf->data + atomic_load(&rbf->prod_head)) != UINT32_MAX) {
+    if (0 != rotate_file_locked(rb)) goto err1;
+  } else {
+    //printf("...actually not, someone did already.\n");
+  }
+
+err1:
+  if (0 != unlock(lock_fd)) goto err0;
+  err = RB_OK;
+  // Too bad we cannot unlink that lockfile without a race condition
+err0:
+  fflush(stdout);
+  fflush(stderr);
+  return err;
+}
+
 static enum ringbuf_error may_rotate(struct ringbuf *rb, uint32_t num_words)
 {
   struct ringbuf_file *rbf = rb->rbf;

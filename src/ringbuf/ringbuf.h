@@ -286,6 +286,9 @@ extern enum ringbuf_error ringbuf_load(struct ringbuf *rb, uint64_t version, cha
 /* Unmap the ringbuffer. */
 extern enum ringbuf_error ringbuf_unload(struct ringbuf *);
 
+/* Rotate the underlying disk file: */
+extern enum ringbuf_error rotate_file(struct ringbuf *);
+
 /* When one stops/crash with an allocated tx then the ringbuffer will remains
  * unusable (since the next process that tries to commit will wait forever
  * until the cons catch up with the observed head. So whenever it is certain

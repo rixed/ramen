@@ -455,7 +455,8 @@ let writer_of_spec serialize_tuple sersize_of_tuple
             (* retry_for_ringbuf failing because the recipient is no more in
              * our out_ref: *)
             | Exit -> ()),
-      (fun () -> RingBuf.unload rb)
+      (fun () ->
+        RingBuf.may_archive_and_unload rb)
   | Orc { with_index ; batch_size ; num_batches } ->
       let hdr =
         orc_make_handler fname with_index batch_size num_batches true in

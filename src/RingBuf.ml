@@ -46,6 +46,8 @@ let load = prepend_rb_name (load_ RamenVersions.ringbuf)
 external unload : t -> unit = "wrap_ringbuf_unload"
 external stats : t -> stats = "wrap_ringbuf_stats"
 external repair : t -> bool = "wrap_ringbuf_repair"
+(* Same as unload, but if the ringbuf is non wrapping tries to archive it: *)
+external may_archive_and_unload : t -> unit = "wrap_ringbuf_may_archive"
 
 type tx (* abstract, represents an ongoing (de)queueing operation *)
 

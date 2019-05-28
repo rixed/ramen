@@ -166,6 +166,14 @@ CAMLprim value wrap_ringbuf_unload(value rb_)
   CAMLreturn(Val_unit);
 }
 
+CAMLprim value wrap_ringbuf_may_archive(value rb_)
+{
+  CAMLparam1(rb_);
+  struct ringbuf *rb = Ringbuf_val(rb_);
+  (void)rotate_file(rb); // will only rotate if !wrap
+  CAMLreturn(wrap_ringbuf_unload(rb_));
+}
+
 CAMLprim value wrap_ringbuf_stats(value rb_)
 {
   CAMLparam1(rb_);
