@@ -87,3 +87,5 @@ rmadmin/rmadmin.pro
 rmadmin/qcustomplot.cpp
 rmadmin/qcustomplot.h
 icon.iconset
+*.icns
+*.ico
