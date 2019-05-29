@@ -22,25 +22,10 @@ module Processes = RamenProcesses
 module Channel = RamenChannel
 module FuncGraph = RamenFuncGraph
 module TimeRange = RamenTimeRange
+module ZMQClient = RamenSyncZMQClient
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
-
-(* FIXME: parent_num is not good enough because a parent num might change
- * when another parent is added/removed. *)
-type top_half_spec =
-  { tunneld : Services.entry ; parent_num : int }
-
-(* What is run from a worker: *)
-type worker_part =
-  | Whole
-  (* Top half: only the filtering part of that function is run, once for
-   * every local parent; output is forwarded to another site. *)
-  | TopHalf of top_half_spec list
-
-let print_worker_part oc = function
-  | Whole -> String.print oc "whole worker"
-  | TopHalf _ -> String.print oc "top half"
 
 (* We use the same key for both [must_run] and [running] to make the
  * comparison easier, although strictly speaking the signature is useless
@@ -50,7 +35,7 @@ type key =
     func_name : N.func ;
     func_signature : string ;
     params : RamenTuple.params ;
-    part : worker_part }
+    role : ZMQClient.Value.worker_role }
 
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
@@ -90,7 +75,7 @@ let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (%a) (parents=%a)"
     (proc.func.F.program_name :> string)
     (proc.func.F.name :> string)
-    print_worker_part proc.key.part
+    ZMQClient.Value.print_worker_role proc.key.role
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf must_run mre =
@@ -227,15 +212,15 @@ let rescue_worker conf func params =
   let out_ref = C.out_ringbuf_names_ref conf func in
   Files.move_away out_ref
 
-let cut_from_parents_outrefs conf proc =
-  let input_ringbufs = C.in_ringbuf_names conf proc.func in
+let cut_from_parents_outrefs conf func parents =
+  let input_ringbufs = C.in_ringbuf_names conf func in
   List.iter (fun (_, _, pfunc) ->
     let parent_out_ref =
       C.out_ringbuf_names_ref conf pfunc in
     List.iter (fun this_in ->
       OutRef.remove parent_out_ref this_in Channel.live
     ) input_ringbufs
-  ) proc.parents
+  ) parents
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
@@ -271,7 +256,7 @@ let process_workers_terminations conf running =
           ) ;
           (* In case the worker stopped on it's own, remove it from its
            * parents out_ref: *)
-          cut_from_parents_outrefs conf proc ;
+          cut_from_parents_outrefs conf proc.func proc.parents ;
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
@@ -347,26 +332,26 @@ let process_replayers_start_stop conf now replayers =
           true
   ) replayers
 
-let really_start conf proc =
+let start_worker
+      conf func params envvars role log_level report_period bin parents children =
   (* Create the input ringbufs.
-   * We now start the workers one by one in no
-   * particular order. The input and out-ref ringbufs are created when the
-   * worker start, and the out-ref is filled with the running (or should
-   * be running) children. Therefore, if a children fails to run the
-   * parents might block. Also, if a child has not been started yet its
-   * inbound ringbuf will not exist yet, again implying this worker will
-   * block.
-   * Each time a new worker is started or stopped the parents outrefs
-   * are updated. *)
-  let fq_str = (F.fq_name proc.func :> string) in
+   * Workers are started one by one in no particular order.
+   * The input and out-ref ringbufs are created when the worker start, and the
+   * out-ref is filled with the running (or should be running) children.
+   * Therefore, if a children fails to run the parents might block.
+   * Also, if a child has not been started yet its inbound ringbuf will not exist,
+   * again implying this worker will block.
+   * Each time a new worker is started or stopped the parents outrefs are updated. *)
+  let fq = F.fq_name func in
+  let fq_str = (fq :> string) in
   let is_top_half =
-    match proc.key.part with Whole -> false | TopHalf _ -> true in
+    match role with ZMQClient.Value.Whole -> false | TopHalf _ -> true in
   !logger.debug "Creating in buffers..." ;
   let input_ringbufs =
     if is_top_half then
-      [ C.in_ringbuf_name_single conf proc.func ]
+      [ C.in_ringbuf_name_single conf func ]
     else
-      C.in_ringbuf_names conf proc.func in
+      C.in_ringbuf_names conf func in
   List.iter (fun rb_name ->
     RingBuf.create rb_name ;
     let rb = RingBuf.load rb_name in
@@ -379,22 +364,22 @@ let really_start conf proc =
   let out_ringbuf_ref =
     if is_top_half then None else (
       !logger.debug "Updating out-ref buffers..." ;
-      let out_ringbuf_ref = C.out_ringbuf_names_ref conf proc.func in
+      let out_ringbuf_ref = C.out_ringbuf_names_ref conf func in
       List.iter (fun cfunc ->
-        let fname = C.input_ringbuf_fname conf proc.func cfunc
-        and fieldmask = F.make_fieldmask proc.func cfunc in
+        let fname = C.input_ringbuf_fname conf func cfunc
+        and fieldmask = F.make_fieldmask func cfunc in
         (* The destination ringbuffer must exist before it's referenced in an
          * out-ref, or the worker might err and throw away the tuples: *)
         RingBuf.create fname ;
         OutRef.add out_ringbuf_ref fname fieldmask
-      ) proc.children ;
+      ) children ;
       Some out_ringbuf_ref
     ) in
   (* Export for a little while at the beginning (help with both automatic
    * and manual tests): *)
   if not is_top_half then (
     Processes.start_export
-      ~duration:conf.initial_export_duration conf proc.func |>
+      ~duration:conf.initial_export_duration conf func |>
     ignore
   ) ;
   (* Now actually start the binary *)
@@ -405,18 +390,18 @@ let really_start conf proc =
      * but instead to a ringbuffer specific to the test_id. *)
     C.notify_ringbuf conf in
   let ocamlrunparam =
-    let def = if proc.log_level = Debug then "b" else "" in
+    let def = if log_level = Debug then "b" else "" in
     getenv ~def "OCAMLRUNPARAM" in
   let env = [|
     "OCAMLRUNPARAM="^ ocamlrunparam ;
-    "log_level="^ string_of_log_level proc.log_level ;
+    "log_level="^ string_of_log_level log_level ;
     (* To know what to log: *)
     "is_test="^ string_of_bool conf.C.test ;
     (* Select the function to be executed: *)
-    "name="^ (proc.func.F.name :> string) ;
+    "name="^ (func.F.name :> string) ;
     "fq_name="^ fq_str ; (* Used for monitoring *)
     "report_ringbuf="^ (C.report_ringbuf conf :> string) ;
-    "report_period="^ string_of_float proc.report_period ;
+    "report_period="^ string_of_float report_period ;
     "notify_ringbuf="^ (notify_ringbuf :> string) ;
     "rand_seed="^ (match !rand_seed with None -> ""
                   | Some s -> string_of_int s) ;
@@ -424,36 +409,34 @@ let really_start conf proc =
     (match !logger.output with
       | Directory _ ->
         let dir = N.path_cat [ conf.C.persist_dir ; N.path "log/workers" ;
-                               F.path proc.func ] in
+                               F.path func ] in
         "log="^ (dir :> string)
       | Stdout -> "no_log" (* aka stdout/err *)
       | Syslog -> "log=syslog") |] in
   let more_env =
-    match proc.key.part with
+    match role with
     | Whole ->
         List.enum
           [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
             (* We need to change this dir whenever the func signature or
              * params change to prevent it to reload an incompatible state *)
-            "state_file="^ (C.worker_state conf proc.func proc.params :>
-                              string) ;
-            "factors_dir="^ (C.factors_of_function conf proc.func :>
-                              string) ]
+            "state_file="^ (C.worker_state conf func params :> string) ;
+            "factors_dir="^ (C.factors_of_function conf func :> string) ]
     | TopHalf ths ->
         Enum.append
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_host_"^ string_of_int i ^"="^
-              (th.tunneld.Services.host :> string)))
+              (th.ZMQClient.Value.tunneld_host :> string)))
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_port_"^ string_of_int i ^"="^
-              string_of_int th.tunneld.Services.port)) |>
+              string_of_int th.ZMQClient.Value.tunneld_port)) |>
         Enum.append
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "parent_num_"^ string_of_int i ^"="^
-              string_of_int th.parent_num)) in
+              string_of_int th.ZMQClient.Value.parent_num)) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
@@ -467,15 +450,14 @@ let really_start conf proc =
    * on from the shell. Notice that we pass all the parameters including
    * those omitted by the user. *)
   let more_env =
-    P.env_of_params_and_exps conf proc.params |>
+    P.env_of_params_and_exps conf params |>
     Enum.append more_env in
   (* Also add all envvars that are defined and used in the operation: *)
-  let envvars = O.envvars_of_operation proc.func.operation in
   let more_env =
     List.enum envvars //@
-    (fun (n : N.field) ->
-      try Some ((n :> string) ^"="^ Sys.getenv (n :> string))
-      with Not_found -> None) |>
+    (function
+      | (n : N.field), Some v -> Some ((n :> string) ^"="^ v)
+      | _, None -> None) |>
     Enum.append more_env in
   (* Workers must be given the address of a config-server: *)
   let more_env =
@@ -485,22 +467,33 @@ let really_start conf proc =
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
-    [| if proc.key.part = Whole then Worker_argv0.full_worker
-                                else Worker_argv0.top_half ;
+    [| if role = Whole then Worker_argv0.full_worker
+                       else Worker_argv0.top_half ;
        fq_str |] in
-  let pid = Processes.run_worker ~and_stop:conf.C.test proc.bin args env in
-  !logger.debug "Function %a now runs under pid %d"
-    print_running_process proc pid ;
-  proc.pid <- Some pid ;
-  proc.last_killed := 0. ;
+  let pid = Processes.run_worker ~and_stop:conf.C.test bin args env in
+  !logger.debug "%a for %a now runs under pid %d"
+    ZMQClient.Value.print_worker_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
   List.iter (fun (_, _, pfunc) ->
     let out_ref =
       C.out_ringbuf_names_ref conf pfunc in
-    let fname = C.input_ringbuf_fname conf pfunc proc.func
-    and fieldmask = F.make_fieldmask pfunc proc.func in
+    let fname = C.input_ringbuf_fname conf pfunc func
+    and fieldmask = F.make_fieldmask pfunc func in
     OutRef.add out_ref fname fieldmask
-  ) proc.parents
+  ) parents ;
+  pid
+
+let really_start conf proc =
+  let envvars =
+    O.envvars_of_operation proc.func.operation |>
+    List.map (fun (n : N.field) ->
+      n, Sys.getenv_opt (n :> string))
+  in
+  let pid = start_worker conf proc.func proc.params envvars proc.key.role
+                         proc.log_level proc.report_period proc.bin
+                         proc.parents proc.children in
+  proc.pid <- Some pid ;
+  proc.last_killed := 0.
 
 (* Try to start the given proc.
  * Check links (ie.: do parents and children have the proper types?) *)
@@ -567,19 +560,18 @@ let kill_politely conf last_killed what pid stats_sigkills =
     IntCounter.inc (stats_sigkills conf.C.persist_dir)
   )
 
-let try_kill conf (proc : running_process) =
-  let pid = Option.get proc.pid in
+let try_kill conf pid func parents last_killed =
   (* There is no reason to wait before we remove this worker from its
    * parent out-ref: if it's not replaced then the last unprocessed
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
-  cut_from_parents_outrefs conf proc ;
+  cut_from_parents_outrefs conf func parents ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
   let what = Printf.sprintf2 "worker %a (pid %d)"
-               N.fq_print (F.fq_name proc.func) pid in
-  kill_politely conf proc.last_killed what pid stats_worker_sigkills
+               N.fq_print (F.fq_name func) pid in
+  kill_politely conf last_killed what pid stats_worker_sigkills
 
 (* This is used to check that we do not check too often nor too rarely: *)
 let last_checked_outref = ref 0.
@@ -687,7 +679,7 @@ let build_must_run conf =
                 func_name = ge.func.F.name ;
                 func_signature = ge.func.F.signature ;
                 params = ge.prog.P.params ;
-                part = Whole } in
+                role = Whole } in
             let v =
               { key ; rce = ge.rce ; func = ge.func ; parents } in
             Some (key, v)
@@ -740,14 +732,19 @@ let build_must_run conf =
    * to [must_run]: *)
   Hashtbl.iter (fun (pp, pf, cprog, cfunc, sign, params)
                     (rce, func, tunnelds) ->
-    let part =
-      TopHalf (List.mapi (fun i tunneld ->
-        { tunneld ; parent_num = i }) tunnelds) in
+    let role =
+      ZMQClient.Value.TopHalf (
+        List.mapi (fun i tunneld ->
+          ZMQClient.Value.{
+            tunneld_host = tunneld.Services.host ;
+            tunneld_port = tunneld.Services.port ;
+            parent_num = i }
+        ) tunnelds) in
     let key =
       { program_name = cprog ;
         func_name = cfunc ;
         func_signature = sign ;
-        params ; part } in
+        params ; role } in
     let parents =
       let pge = FuncGraph.find graph conf.C.site pp pf in
       [ conf.C.site, pge.prog, pge.func ] in
@@ -760,6 +757,169 @@ let build_must_run conf =
 
 (* Have a single watchdog even when supervisor is restarted: *)
 let watchdog = ref None
+
+(* Stop/Start processes so that [running] corresponds to [must_run].
+ * [must_run] is a hash from the function mount point (program and function
+ * name), signature, parameters and top-half info, to the
+ * [C.must_run_entry], prog and func.
+ *
+ * [running] is a hash from the same key to its running_process (mutable
+ * pid, cleared asynchronously when the worker terminates).
+ *
+ * FIXME: it would be nice if all parents were resolved once and for all
+ * in [must_run] as well, as a list of optional function mount point (FQ).
+ * When a function is reparented we would then detect it and could fix the
+ * outref immediately.
+ * Similarly, [running] should keep the previous set of parents (or rather,
+ * the name of their out_ref). *)
+let synchronize_workers conf must_run running =
+  (* First, remove from running all terminated processes that must not run
+   * any longer. Send a kill to those that are still running. *)
+  IntGauge.set stats_worker_count (Hashtbl.length must_run) ;
+  IntGauge.set stats_worker_running (Hashtbl.length running) ;
+  let to_kill = ref [] and to_start = ref []
+  and (+=) r x = r := x :: !r in
+  Hashtbl.filteri_inplace (fun k (proc : running_process) ->
+    if Hashtbl.mem must_run k then true else
+    if proc.pid <> None then (to_kill += proc ; true) else
+    false
+  ) running ;
+  (* Then, add/restart all those that must run. *)
+  Hashtbl.iter (fun k (mre : must_run_entry) ->
+    match Hashtbl.find running k with
+    | exception Not_found ->
+        let proc = make_running_process conf must_run mre in
+        Hashtbl.add running k proc ;
+        to_start += proc
+    | proc ->
+        (* If it's dead, restart it: *)
+        if proc.pid = None then to_start += proc else
+        (* If we were killing it, it's safer to keep killing it until it's
+         * dead and then restart it. *)
+        if !(proc.last_killed) <> 0. then to_kill += proc
+  ) must_run ;
+  (* See preamble discussion about autoreload for why workers must be
+   * started only after all the kills: *)
+  if !to_kill <> [] then !logger.debug "Starting the kills" ;
+  List.iter (fun (proc : running_process) ->
+    try_kill conf (Option.get proc.pid) proc.func proc.parents proc.last_killed
+  ) !to_kill ;
+  if !to_start <> [] then !logger.debug "Starting the starts" ;
+  (* FIXME: sort it so that parents are started before children,
+   * so that in case of linkage error we do not end up with orphans
+   * preventing parents to be run. *)
+  List.iter (fun proc ->
+    try_start conf proc ;
+    (* If we had to compile a program this is worth resetting the watchdog: *)
+    RamenWatchdog.reset (Option.get !watchdog)
+  ) !to_start ;
+  (* Try to fix any issue with out_refs: *)
+  let now = Unix.time () in
+  if (now > !last_checked_outref +. 30. ||
+      now > !last_checked_outref +. 5. && !to_start = [] && !to_kill = []) &&
+     !Processes.quit = None
+  then (
+    last_checked_outref := now ;
+    log_and_ignore_exceptions ~what:"checking out_refs"
+      (check_out_ref conf must_run) running) ;
+  if !to_start = [] && conf.C.test then signal_all_cont running ;
+  (* Return if anything changed: *)
+  !to_kill <> [] || !to_start <> []
+
+(* Similarly, try to make [replayers] the same as [must_replay] *)
+let synchronize_replays conf now must_replay replayers =
+  (* Kill the replayers of channels that are not configured any longer,
+   * and create new replayers for new channels: *)
+  let run_chans =
+    Hashtbl.fold (fun _ r m ->
+      Map.union r.replays m
+    ) replayers Map.empty
+  and def_chans =
+    Hashtbl.fold Map.add must_replay Map.empty in
+  let kill_replayer r =
+    match r.pid with
+    | None ->
+        !logger.debug "Replay stopped before replayer even started"
+    | Some pid ->
+        if not r.stopped then
+          let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
+          kill_politely conf r.last_killed what pid stats_replayer_sigkills in
+  let get_programs =
+    memoize (fun () -> RC.with_rlock conf identity) in
+  let to_rem chan replay =
+    (* Remove this chan from all replayers. If a replayer has no more
+     * channels left and has a pid, then kill it (and warn). But first,
+     * tear down the channel: *)
+    let programs = get_programs () in
+    Replay.teardown_links conf programs replay ;
+    Hashtbl.iter (fun _ r ->
+      if not (Map.is_empty r.replays) then (
+        r.replays <- Map.remove chan r.replays ;
+        if Map.is_empty r.replays then kill_replayer r)
+    ) replayers in
+  let to_add chan replay =
+    let programs = get_programs () in
+    Replay.settup_links conf programs replay ;
+    (* Find or create all replayers: *)
+    Set.iter (fun (site, _ as site_fq) ->
+      if site = conf.C.site then (
+        let rs = Hashtbl.find_all replayers site_fq in
+        let r =
+          try
+            List.find (fun r ->
+              r.pid = None &&
+              TimeRange.approx_eq
+                [ replay.since, replay.until ] r.time_range
+            ) rs
+          with Not_found ->
+            let r = make_replayer now in
+            Hashtbl.add replayers site_fq r ;
+            r in
+        !logger.debug
+          "Adding replay for channel %a into replayer created at %a"
+          Channel.print chan print_as_date r.creation ;
+        r.time_range <-
+          TimeRange.merge r.time_range [ replay.since, replay.until ] ;
+        r.replays <- Map.add chan replay r.replays)
+    ) replay.C.Replays.sources
+  in
+  Map.diff run_chans def_chans |> Map.iter to_rem ;
+  Map.diff def_chans run_chans |> Map.iter to_add
+
+let must_reread fname last_read autoreload_delay now set_max_wait =
+  let granularity = 0.1 in
+  let last_mod =
+    try Some (Files.mtime fname)
+    with Unix.(Unix_error (ENOENT, _, _)) -> None in
+  let reread =
+    match last_mod with
+    | None -> false
+    | Some lm ->
+        if lm >= last_read ||
+           autoreload_delay > 0. &&
+           now -. last_read >= autoreload_delay
+        then (
+          (* To prevent missing the last writes when the file is
+           * updated faster than mtime granularity, refuse to refresh
+           * the file unless last mod time is old enough.
+           * As [now] will be the next [last_read] we are guaranteed to
+           * have [lm < last_read] in the next calls in the absence of
+           * writes.  But we also want to make sure that all writes
+           * occurring after we do read that file will push the mtime
+           * after (>) [lm], which is true only if now is greater than
+           * lm + mtime granularity: *)
+          let age_modif = now -. lm in
+          if age_modif > granularity then
+            true
+          else (
+            set_max_wait (granularity -. age_modif) ;
+            false
+          )
+        ) else false in
+  let ret = last_mod <> None && reread in
+  if ret then !logger.debug "%a has changed %gs ago"
+    N.path_print fname (now -. Option.get last_mod) ;
+  ret
 
 (*
  * Synchronisation of the rc file of programs we want to run with the
@@ -792,7 +952,7 @@ let watchdog = ref None
  * unblock all workers. This mechanism enforces that CSV readers do not start
  * to read tuples before all their children are attached to their out_ref file.
  *)
-let synchronize_running conf autoreload_delay =
+let synchronize_running_with_files conf autoreload_delay =
   (* Avoid memoizing this at every call to build_must_run: *)
   if !watchdog = None then
     watchdog :=
@@ -803,131 +963,6 @@ let synchronize_running conf autoreload_delay =
                                "supervisor" Processes.quit) ;
   let watchdog = Option.get !watchdog in
   let prev_num_running = ref 0 in
-  (* Stop/Start processes so that [running] corresponds to [must_run].
-   * [must_run] is a hash from the function mount point (program and function
-   * name), signature, parameters and top-half info, to the
-   * [C.must_run_entry], prog and func.
-   *
-   * [running] is a hash from the same key to its running_process (mutable
-   * pid, cleared asynchronously when the worker terminates).
-   *
-   * FIXME: it would be nice if all parents were resolved once and for all
-   * in [must_run] as well, as a list of optional function mount point (FQ).
-   * When a function is reparented we would then detect it and could fix the
-   * outref immediately.
-   * Similarly, [running] should keep the previous set of parents (or rather,
-   * the name of their out_ref). *)
-  let synchronize_workers must_run running =
-    (* First, remove from running all terminated processes that must not run
-     * any longer. Send a kill to those that are still running. *)
-    IntGauge.set stats_worker_count (Hashtbl.length must_run) ;
-    IntGauge.set stats_worker_running (Hashtbl.length running) ;
-    let to_kill = ref [] and to_start = ref []
-    and (+=) r x = r := x :: !r in
-    Hashtbl.filteri_inplace (fun k (proc : running_process) ->
-      if Hashtbl.mem must_run k then true else
-      if proc.pid <> None then (to_kill += proc ; true) else
-      false
-    ) running ;
-    (* Then, add/restart all those that must run. *)
-    Hashtbl.iter (fun k (mre : must_run_entry) ->
-      match Hashtbl.find running k with
-      | exception Not_found ->
-          let proc = make_running_process conf must_run mre in
-          Hashtbl.add running k proc ;
-          to_start += proc
-      | proc ->
-          (* If it's dead, restart it: *)
-          if proc.pid = None then to_start += proc else
-          (* If we were killing it, it's safer to keep killing it until it's
-           * dead and then restart it. *)
-          if !(proc.last_killed) <> 0. then to_kill += proc
-    ) must_run ;
-    (* See preamble discussion about autoreload for why workers must be
-     * started only after all the kills: *)
-    if !to_kill <> [] then !logger.debug "Starting the kills" ;
-    List.iter (try_kill conf) !to_kill ;
-    if !to_start <> [] then !logger.debug "Starting the starts" ;
-    (* FIXME: sort it so that parents are started before children,
-     * so that in case of linkage error we do not end up with orphans
-     * preventing parents to be run. *)
-    List.iter (fun proc ->
-      try_start conf proc ;
-      (* If we had to compile a program this is worth resetting the watchdog: *)
-      RamenWatchdog.reset watchdog
-    ) !to_start ;
-    (* Try to fix any issue with out_refs: *)
-    let now = Unix.time () in
-    if (now > !last_checked_outref +. 30. ||
-        now > !last_checked_outref +. 5. && !to_start = [] && !to_kill = []) &&
-       !Processes.quit = None
-    then (
-      last_checked_outref := now ;
-      log_and_ignore_exceptions ~what:"checking out_refs"
-        (check_out_ref conf must_run) running) ;
-    if !to_start = [] && conf.C.test then signal_all_cont running ;
-    (* Return if anything changed: *)
-    !to_kill <> [] || !to_start <> []
-  (* Similarly, try to make [replayers] the same as [must_replay] *)
-  and synchronize_replays now must_replay replayers =
-    (* Kill the replayers of channels that are not configured any longer,
-     * and create new replayers for new channels: *)
-    let run_chans =
-      Hashtbl.fold (fun _ r m ->
-        Map.union r.replays m
-      ) replayers Map.empty
-    and def_chans =
-      Hashtbl.fold Map.add must_replay Map.empty in
-    let kill_replayer r =
-      match r.pid with
-      | None ->
-          !logger.debug "Replay stopped before replayer even started"
-      | Some pid ->
-          if not r.stopped then
-            let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
-            kill_politely conf r.last_killed what pid stats_replayer_sigkills in
-    let get_programs =
-      memoize (fun () -> RC.with_rlock conf identity) in
-    let to_rem chan replay =
-      (* Remove this chan from all replayers. If a replayer has no more
-       * channels left and has a pid, then kill it (and warn). But first,
-       * tear down the channel: *)
-      let programs = get_programs () in
-      Replay.teardown_links conf programs replay ;
-      Hashtbl.iter (fun _ r ->
-        if not (Map.is_empty r.replays) then (
-          r.replays <- Map.remove chan r.replays ;
-          if Map.is_empty r.replays then kill_replayer r)
-      ) replayers in
-    let to_add chan replay =
-      let programs = get_programs () in
-      Replay.settup_links conf programs replay ;
-      (* Find or create all replayers: *)
-      Set.iter (fun (site, _ as site_fq) ->
-        if site = conf.C.site then (
-          let rs = Hashtbl.find_all replayers site_fq in
-          let r =
-            try
-              List.find (fun r ->
-                r.pid = None &&
-                TimeRange.approx_eq
-                  [ replay.since, replay.until ] r.time_range
-              ) rs
-            with Not_found ->
-              let r = make_replayer now in
-              Hashtbl.add replayers site_fq r ;
-              r in
-          !logger.debug
-            "Adding replay for channel %a into replayer created at %a"
-            Channel.print chan print_as_date r.creation ;
-          r.time_range <-
-            TimeRange.merge r.time_range [ replay.since, replay.until ] ;
-          r.replays <- Map.add chan replay r.replays)
-      ) replay.C.Replays.sources
-    in
-    Map.diff run_chans def_chans |> Map.iter to_rem ;
-    Map.diff def_chans run_chans |> Map.iter to_add
-  in
   (* The workers that are currently running: *)
   let running = Hashtbl.create 307 in
   (* The replayers: description of the replayer worker that are running (or
@@ -964,52 +999,18 @@ let synchronize_running conf autoreload_delay =
         if d < !max_wait then max_wait := d in
       if !Processes.quit <> None then set_max_wait 0.3 ;
       let now = Unix.gettimeofday () in
-      let must_reread fname last_read autoreload_delay now =
-        let granularity = 0.1 in
-        let last_mod =
-          try Some (Files.mtime fname)
-          with Unix.(Unix_error (ENOENT, _, _)) -> None in
-        let reread =
-          match last_mod with
-          | None -> false
-          | Some lm ->
-              if lm >= last_read ||
-                 autoreload_delay > 0. &&
-                 now -. last_read >= autoreload_delay
-              then (
-                (* To prevent missing the last writes when the file is
-                 * updated faster than mtime granularity, refuse to refresh
-                 * the file unless last mod time is old enough.
-                 * As [now] will be the next [last_read] we are guaranteed to
-                 * have [lm < last_read] in the next calls in the absence of
-                 * writes.  But we also want to make sure that all writes
-                 * occurring after we do read that file will push the mtime
-                 * after (>) [lm], which is true only if now is greater than
-                 * lm + mtime granularity: *)
-                let age_modif = now -. lm in
-                if age_modif > granularity then
-                  true
-                else (
-                  set_max_wait (granularity -. age_modif) ;
-                  false
-                )
-              ) else false in
-        let ret = last_mod <> None && reread in
-        if ret then !logger.debug "%a has changed %gs ago"
-          N.path_print fname (now -. Option.get last_mod) ;
-        ret in
       let must_run, last_read_rc =
         if !Processes.quit <> None then (
           !logger.debug "No more workers should run" ;
           Hashtbl.create 0, last_read_rc
         ) else (
-          if must_reread rc_file last_read_rc autoreload_delay now then
+          if must_reread rc_file last_read_rc autoreload_delay now set_max_wait then
             build_must_run conf, now
           else
             last_must_run, last_read_rc
         ) in
       process_workers_terminations conf running ;
-      let changed = synchronize_workers must_run running in
+      let changed = synchronize_workers conf must_run running in
       (* Touch the rc file if anything changed (esp. autoreload) since that
        * mtime is used to signal cache expirations etc. *)
       if changed then Files.touch rc_file last_read_rc ;
@@ -1018,7 +1019,7 @@ let synchronize_running conf autoreload_delay =
           !logger.debug "No more replays should run" ;
           Hashtbl.create 0, last_read_replays
         ) else (
-          if must_reread replays_file last_read_replays 0. now then
+          if must_reread replays_file last_read_replays 0. now set_max_wait then
             (* FIXME: We need to start lazy nodes right *after* having
              * written into their out-ref but *before* replayers are started
              *)
@@ -1027,7 +1028,7 @@ let synchronize_running conf autoreload_delay =
             last_replays, last_read_replays
         ) in
       process_replayers_start_stop conf now replayers ;
-      synchronize_replays now must_replay replayers ;
+      synchronize_replays conf now must_replay replayers ;
       if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
       !logger.debug "Waiting for file changes (max %a)"
         print_as_duration !max_wait ;
@@ -1044,3 +1045,155 @@ let synchronize_running conf autoreload_delay =
   restart_on_failure "process supervisor"
     (loop (Hashtbl.create 0) 0. (Hashtbl.create 0)) 0. ;
   RamenWatchdog.disable watchdog
+
+(* Using the conf server to supervise the workers goes in two stages:
+ *
+ * First, client tools such as `ramen run` and `ramen kill` write in the
+ * PerProgram keys. Then, supervisor must react to those changes and recompute
+ * the FuncGraph and expose it back on the configuration.
+ * This could actually be done by the conf server (almost as of today, BTW, but
+ * instead of building the graph from the rc_file the confserver should build it
+ * from the config tree itself).
+ *
+ * Then, supervisor should listen on the PerWorker subtree of the config and
+ * merely start/stop the processes.
+ * Contrary to the above, it then uses only the conftree to store the current
+ * state of running workers (clients can inspect this for free).
+ *
+ * The only issue is that when we write a process state we cannot read it again
+ * before a round-trip to the conf server ; an issue that will not cause great harm
+ * and that should be alleviated entirely later when the confclient writes in its
+ * local hash (at least optionally) the values that it sets. *)
+(*
+let synchronize_running_with_sync conf autoreload_delay =
+  let while_ () = !Processes.quit = None in
+  let topic = "sites/*/workers/*/instances/*" in
+  let process_workers_terminations_with_sync clt =
+    ignore clt ;
+    todo "process_workers_terminations_with_sync" in
+  (* We store all program details in their binary, because we want to keep
+   * compilation separate from running the confserver (if only for make).
+   * In another hand, all sites will have to have the binaries and so will
+   * have to compile them from the operation source present in the conftree.
+   * REgardless, some clients that have no access to those files still want
+   * to know those details.
+   *
+   * So this is how it's done:
+   *
+   * Compilation can be separate, and produce only the binary. Nothing is
+   * changed here. But when a supervisor need to start a binary it compiles
+   * it from the source found in the conftree. There is a source/$program
+   * subptree that's like a small file system. The compiler ought to be able
+   * to tell the language from the content so we may need to add an
+   * explicit mention of the language at some point like in SQL.
+   *
+   * Then, `ramen run` write the program source in the source tree and
+   * creates the Process in the config tree, which refers to that source by
+   * name. `Ramen run` must therefore be turned into a sync
+   * client, subscribing only to its error file, and create the MustRunEntry
+   * in running_config (single value of type running_config, so that there
+   * is no race condition possible.
+   * Linkage checks are performed against the rest of the running configuration
+   * by the confserver (that has access to the bin files).
+   *
+   * Then, the conf server take this and create or update the logical and
+   * physical views: first it creates a must_run_entry programs/$name/info
+   * (regroup all the stuff in per_prog_key in a single value of type
+   * must_run_entry, and add operation, in_types, etc). All this is static
+   * data just for informational purpose (including internally for supervisor),
+   * in a single value to avoid race conditions and to shorten access.
+   * It also updates the FuncGraph and updates sites/$site/workers/$fq/info
+   * accordingly, but only after the per-program info has been written.
+   * The GraphFunc is what supervisor listens to. It is a single value of type
+   * Process (with the values specific to that worker: role, actual parents
+   * and children, log levels, log paths, envvars...).
+   * Other not worker specific info that supervisor need, it takes from the
+   * per-program value.
+   * Supervisor then write Process information in sites/$site/worker/$fq/process.
+   * It is the only writer and main reader of those (although the GUI can also
+   * read and display this).
+   *
+   * Alternatively, users may want to override a few things, such as
+   * parameters or envvars. In that case we might want to add an override entry
+   * with only those info that the confserver would also listen to and take
+   * into account when generating the info entries. It's better than to directly
+   * write into the info keys because we can then go back to the default value.
+   * We could even have users override each others.
+   *
+   * The conf server (on the same file system where the
+   * binaries are) will from now on monitor the binary file and also
+   * optionally the source file if filled in, and will recompile and maintain
+   * the info entries so that supervisor do not need to read the binaries any
+   * longer at all.
+   *)
+  let func_of_program_name program_name func_name params bin_file =
+    let program = P.of_bin program_name params bin_file in
+    List.find (fun f -> f.F.name = func_name) program.P.funcs in
+  ZMQClient.start ~while_ conf.C.sync_url "ramen supervisor" topic (fun zock ->
+    let open ZMQClient.Key in
+    let open ZMQClient.Value in
+    let on_new clt k v _uid =
+      process_workers_terminations_with_sync clt ;
+      match k, v with
+      | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
+        Process { params ; envvars ; role ; log_level ; report_period ;
+                  bin_file ; src_file ; parents }
+        when site = conf.C.site ->
+          let program_name, func_name = N.fq_parse fq in
+          !logger.info "Must now run worker %a for %a"
+            print_worker_role role
+            N.fq_print fq ;
+          let params = RamenTuple.hash_of_params params in
+          let func = func_of_program_name program_name func_name params bin_file in
+          let parents =
+            (* All we need from parents is their operation to build the
+             * fieldmasks to write in the out_ref files, and a few paths;
+             * So we do not bother with params. *)
+            List.map (fun (sname, program_name, func_name, bin_file) ->
+              sname, program_name,
+              func_of_program_name program_name func_name (Hashtbl.create 0) bin_file
+            ) parents in
+          let pid = start_worker conf func params envvars role log_level
+                                 report_period bin_file parents children in
+          let k =
+            PerSite (site, PerWorker (fq, PerInstance (signature, Pid))) in
+          ZMQClient.send_cmd zock ~while_ (SetKey (k, Value.(Int pid))) ;
+          let k =
+            PerSite (site, PerWorker (fq, PerInstance (signature, LastKilled))) in
+          ZMQClient.send_cmd zock ~while_ (DelKey k)
+    and on_del clt k v =
+      process_workers_terminations_with_sync clt ;
+      match k, v with
+      | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
+        Process { parents ; bin_file ; _ }
+        when site = conf.C.site ->
+          let program_name, func_name = N.fq_parse fq in
+          !logger.info "Must now stop %s %aa"
+            print_worker_role role
+            N.fq_print fq ;
+          let params = RamenTuple.hash_of_params params in
+          let func = func_of_program_name program_name func_name params bin_file in
+          let k =
+            PerSite (site, PerWorker (fq, PerInstance (signature, LastKilled))) in
+          let last_killed = ref (
+            match Client.H.find clt.h k with
+            | exception Not_found ->
+                !logger.error "Cannot find %a" Key.print k ;
+                0.
+            | Value.Float v -> v
+            | v ->
+                !logger.error "Bad type for %a: %a" Key.print k Value.print v ;
+                0.) in
+          (match Client.H.find clt.h k with
+          | exception Not_found ->
+              !logger.error "Cannot find %a" Key.print k
+          | Value.Int pid ->
+              try_kill pid conf func parents last_killed ;
+              ZMQClient.send_cmd zock ~while_ (SetKey (k, Value.(Float !last_killed)))
+          | v ->
+              !logger.error "Bad type for %a: %a" Key.print k Value.print v)
+      | _ -> () in
+    ZMQClient.process_in zock ~on_new ~on_set ~on_del ~on_lock ~on_unlock) *)
+
+let synchronize_running conf autoreload_delay =
+  synchronize_running_with_files conf autoreload_delay

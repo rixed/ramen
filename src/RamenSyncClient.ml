@@ -20,14 +20,15 @@ struct
   type t =
     { h : hash_value H.t ;
       on_new : t -> Key.t -> Value.t -> string -> unit ;
-      on_set : t -> Key.t -> Value.t -> unit ;
-      on_del : t -> Key.t -> unit ;
+      on_set : t -> Key.t -> Value.t -> string -> unit ;
+      on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
       on_lock : t -> Key.t -> string -> unit ;
       on_unlock : t -> Key.t -> unit }
 
   and hash_value =
     { mutable v : Value.t ;
-      mutable locked : string option }
+      mutable locked : string option ;
+      mutable set_by : string }
 
   let make ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
     { h = H.create 99 ;
@@ -39,13 +40,13 @@ struct
           Printf.sprintf "Cannot authenticate to the server: %s" err |>
           failwith
 
-    | SrvMsg.SetKey (k, v) ->
+    | SrvMsg.SetKey (k, v, uid) ->
         (match H.find t.h k with
         | exception Not_found ->
             !logger.error
               "Server set key %a that has not been created"
               Key.print k ;
-            let hv = { v ; locked = None } in
+            let hv = { v ; locked = None ; set_by = uid} in
             H.add t.h k hv ;
             t.on_new t k v "unknown"
         | prev ->
@@ -57,14 +58,15 @@ struct
               (* TODO: count this *)
             ) else (
               prev.v <- v ;
-              t.on_set t k v
+              prev.set_by <- uid ;
+              t.on_set t k v uid
             )
         )
 
     | SrvMsg.NewKey (k, v, uid) ->
         (match H.find t.h k with
         | exception Not_found ->
-            let hv = { v ; locked = Some uid } in
+            let hv = { v ; locked = Some uid ; set_by = uid } in
             H.add t.h k hv ;
             t.on_new t k v uid
         | prev ->
@@ -72,16 +74,18 @@ struct
               "Server create key %a that already exist, updating"
               Key.print k ;
             prev.v <- v ;
-            t.on_set t k v
+            prev.set_by <- uid ;
+            t.on_set t k v uid
         )
 
     | SrvMsg.DelKey k ->
-        if H.mem t.h k then (
-          H.remove t.h k ;
-          t.on_del t k
-        ) else
-          !logger.error "Server wanted to delete an unknown key %a"
-            Key.print k
+        (match H.find t.h k with
+        | exception Not_found ->
+            !logger.error "Server wanted to delete an unknown key %a"
+              Key.print k
+        | hv ->
+            H.remove t.h k ;
+            t.on_del t k hv.v)
 
     | SrvMsg.LockKey (k, u) ->
         (match H.find t.h k with

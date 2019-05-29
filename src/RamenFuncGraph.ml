@@ -33,6 +33,7 @@ and entry =
     prog : P.t ;
     func : F.t ;
     parents : parent Set.t ;
+    (* TODO: add if the function must run in full or only the top half *)
     (* False if the node has no child, no notification, no active
      * export... *)
     mutable used : bool }

@@ -31,17 +31,14 @@ let on_new _clt k _v _uid =
   let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
   IntGauge.set stats_num_subscribers (c + 1)
 
-let on_set _clt _k _v = ()
+let on_set _clt _k _v _u = ()
 
-let on_del _clt k =
+let on_del _clt k _v =
   !logger.info "Leaving subscriber: %a" ZMQClient.Key.print k ;
   (* TODO: upgrade binocle
   IntGauge.dec stats_num_subscribers *)
   let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
   IntGauge.set stats_num_subscribers (c - 1)
-
-let on_lock _clt _k _uid = ()
-let on_unlock _clt _k = ()
 
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
@@ -81,9 +78,8 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   and topic_pub seq =
     RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
   fun conf ->
-    ZMQClient.start ?while_ url creds topic_sub
-                    ~recvtimeo:0 ~sndtimeo:0 (fun zock ->
-      let clt =
-        ZMQClient.Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+    ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
+                    ~on_new ~on_set ~on_del
+                    ~recvtimeo:0 ~sndtimeo:0 (fun zock clt ->
       let publish = may_publish clt zock topic_pub in
       k publish conf)

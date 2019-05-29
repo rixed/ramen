@@ -104,7 +104,7 @@ let on_new clt k v uid =
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
-let on_set clt k v =
+let on_set clt k v _u =
   ignore clt ;
   Gc.compact () ;
   conf_set_key (Key.to_string k) v ;
@@ -112,7 +112,7 @@ let on_set clt k v =
 
 external conf_del_key : string -> unit = "conf_del_key"
 
-let on_del clt k =
+let on_del clt k _v =
   ignore clt ;
   Gc.compact () ;
   conf_del_key (Key.to_string k) ;
@@ -134,8 +134,7 @@ let on_unlock clt k =
   conf_unlock_key (Key.to_string k) ;
   Gc.compact ()
 
-let sync_loop zock =
-  let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+let sync_loop zock clt =
   let msg_count = ref 0 in
   let handle_msgs_in () =
     match recv_cmd zock with
@@ -202,8 +201,9 @@ let register_senders zock =
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url creds () =
   ZMQClient.start
-    url creds "*" ~on_progress:(on_progress url) ~on_sock:register_senders
-              ~recvtimeo:100 sync_loop
+    url creds ~topics:["*"] ~on_progress:(on_progress url) ~on_sock:register_senders
+    ~on_new ~on_set ~on_del ~on_lock ~on_unlock
+    ~recvtimeo:100 sync_loop
 
 let init debug quiet url creds =
   if debug && quiet then

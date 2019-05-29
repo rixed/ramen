@@ -668,7 +668,7 @@ let save_alert conf program_name alert_info =
   if Files.replace_if_different ~src:tmp_src_file ~dst:src_file then (
     !logger.info "Saved new alert into %a" N.path_print src_file ;
     try
-      let exec_file = Files.add_ext basename "x" in
+      let bin_file = Files.add_ext basename "x" in
       let is_new_alert =
         RC.with_rlock conf (fun programs ->
           (* If this is a new alert we must compile it before we can add it to
@@ -676,13 +676,13 @@ let save_alert conf program_name alert_info =
            * the recompilation to the supervisor (or we would race). *)
           if RC.is_program_running programs program_name then false else (
             let get_parent = RamenCompiler.parent_from_programs programs in
-            RamenMake.build conf get_parent program_name src_file exec_file ;
+            RamenMake.build conf get_parent program_name src_file bin_file ;
             true)) in
       if is_new_alert then (
         let debug = conf.C.log_level = Debug in
         let params = Hashtbl.create 0 in
         RamenRun.run conf ~replace:true ~params ~src_file ~debug
-                     exec_file (Some program_name))
+                     ~bin_file (Some program_name))
     with e ->
       (* In case of error, do not leave the alert definition file so that the
        * client can retry, but keep it for later inspection: *)

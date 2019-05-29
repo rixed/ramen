@@ -15,6 +15,8 @@ module N = RamenName
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Services = RamenServices
+module Processes = RamenProcesses
+module ZMQClient = RamenSyncZMQClient
 
 let () =
   Printexc.register_printer (function
@@ -24,7 +26,7 @@ let () =
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants initial_export_duration site bundle_dir masters
-      sync_url =
+      sync_url login =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -43,7 +45,7 @@ let make_copts
   let conf =
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
-      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
+      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url ~login
       persist_dir in
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
@@ -247,13 +249,10 @@ let confclient conf creds () =
  *)
 
 (* Note: We need a program name to identify relative parents. *)
-let compile conf lib_path use_external_compiler
-            max_simult_compils smt_solver source_files
-            output_file_opt program_name_opt () =
-  let many_source_files = List.length source_files > 1 in
-  if many_source_files && program_name_opt <> None then
-    failwith "Cannot specify the program name for several source files" ;
-  init_logger conf.C.log_level ;
+let compile_local
+    conf lib_path use_external_compiler
+    max_simult_compils smt_solver source_file
+    output_file_opt program_name_opt =
   (* There is a long way to calling the compiler so we configure it from
    * here: *)
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
@@ -264,48 +263,84 @@ let compile conf lib_path use_external_compiler
     else
       List.map Files.absolute_path_of lib_path |>
       RamenCompiler.parent_from_lib_path in
-  let all_ok = ref true in
-  let compile_file source_file =
-    let program_name_opt =
-      if program_name_opt <> None then
-        program_name_opt
-      else
-        (* Try to get an idea from the lib-path: *)
-        match lib_path with
-        | p::_ ->
-          (try
-            let p =
-              Files.remove_ext source_file |>
-              Files.rel_path_from (Files.absolute_path_of p) in
-            Some (N.program (p :> string))
-          with Failure s ->
-            !logger.debug "%s" s ;
-            None)
-        | [] -> None in
-    let program_name =
-      match program_name_opt with
-      | Some p -> p
-      | None -> RamenRun.default_program_name source_file
-    in
-    let output_file =
-      Option.default_delayed (fun () ->
-        Files.change_ext "x" source_file
-      ) output_file_opt in
-    RamenMake.build conf ~force_rebuild:true get_parent program_name
-                    source_file output_file
+  let program_name_opt =
+    if program_name_opt <> None then
+      program_name_opt
+    else
+      (* Try to get an idea from the lib-path: *)
+      match lib_path with
+      | p::_ ->
+        (try
+          let p =
+            Files.remove_ext source_file |>
+            Files.rel_path_from (Files.absolute_path_of p) in
+          Some (N.program (p :> string))
+        with Failure s ->
+          !logger.debug "%s" s ;
+          None)
+      | [] -> None in
+  let program_name =
+    match program_name_opt with
+    | Some p -> p
+    | None -> RamenRun.default_program_name source_file
   in
-  List.iter (fun source_file ->
-    try
-      compile_file source_file
-    with
-    | Failure msg ->
-        !logger.error "Error: %s" msg ;
-        all_ok := false
-    | e ->
-        print_exception e ;
-        all_ok := false
-  ) source_files ;
-  if not !all_ok then exit 1
+  let output_file =
+    Option.default_delayed (fun () ->
+      Files.change_ext "x" source_file
+    ) output_file_opt in
+  RamenMake.build conf ~force_rebuild:true get_parent program_name
+                  source_file output_file
+
+(* We store sources separately from programs, as the same source can run under
+ * several program names (given different parameters, for instance).
+ *
+ * The ConfServer must not compile the source down to an executable file.
+ * Only the supervisor daemons must.
+ * One can check that a source is valid by compiling it locally.
+ * But the ConfServer must parse it and type it in order to extract the META
+ * informations. Only the code generation is not required.
+ * For parsing and typing, the confserver (as the supervisors) resolve
+ * parent names against the running config.
+ *
+ * Therefore, a source has several values attached to it:
+ * - the text, that anyone can read/write
+ * - and the info, that only the confserver can write.
+ * - When compiling the confserver locks the source (therefore the creator
+ *   must unlock it). Then it writes the info and unlock all.
+ * - The info contains the same thing as the Program.t today (no program name
+ *   and no param values and no env values), and the typed operation.
+ *
+ * When generating code, the supervisors do not restart from the source but from
+ * the (typed!) operation, thus speeding the process and aleviating the need for
+ * a solver on the sites.
+ *)
+let compile_sync conf src_file target_file_opt =
+  let open RamenSync in
+  let source = Files.read_whole_file src_file
+  and target_file = N.simplified_path (target_file_opt |? src_file)
+  and on_ko () = Processes.quit := Some 1 in
+  ZMQClient.start ~while_ conf.C.sync_url conf.C.login
+    (fun zock _clt ->
+      let k_source = Key.(Sources (target_file, SourceText)) in
+      ZMQClient.(send_cmd zock ~while_
+        (* TODO: a --replace flag *)
+        (NewKey (k_source, Value.(String source)))
+        ~on_ko ~on_ok:(fun () ->
+          send_cmd zock ~while_ (UnlockKey k_source)
+            ~on_ko ~on_ok:(fun () -> Processes.quit := Some 0))))
+
+let compile conf lib_path use_external_compiler
+            max_simult_compils smt_solver source_file
+            output_file_opt program_name_opt () =
+  init_logger conf.C.log_level ;
+  if conf.C.sync_url = "" then
+    compile_local conf lib_path use_external_compiler
+                  max_simult_compils smt_solver source_file
+                  output_file_opt program_name_opt
+  else
+    let target_file_opt =
+      Option.map (fun (s : N.program) -> N.path (s :> string)) program_name_opt in
+    compile_sync conf source_file target_file_opt
 
 (*
  * `ramen run`
@@ -320,7 +355,7 @@ let run conf params replace kill_if_disabled report_period program_name_opt
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file ~on_site bin_file program_name_opt
+               ?src_file ~on_site ~bin_file program_name_opt
 
 (*
  * `ramen kill`
@@ -680,12 +715,12 @@ let parse_func_name_of_code conf what func_name_or_code =
     let src_file = N.path src_file in
     !logger.info "Going to use source file %a"
       N.path_print_quoted src_file ;
-    let exec_file = Files.change_ext "x" src_file in
+    let bin_file = Files.change_ext "x" src_file in
     on_error
       (fun () ->
         if not conf.C.keep_temp_files then (
           Files.safe_unlink src_file ;
-          Files.safe_unlink exec_file))
+          Files.safe_unlink bin_file))
       (fun () ->
         Printf.fprintf oc
           "-- Temporary file created on %a for %s\n\
@@ -696,13 +731,13 @@ let parse_func_name_of_code conf what func_name_or_code =
           (List.print ~first:"" ~last:"" ~sep:" " String.print)
             func_name_or_code ;
         close_out oc ;
-        Files.safe_unlink exec_file ; (* hahaha! *)
-        RamenMake.build conf get_parent program_name src_file exec_file ;
+        Files.safe_unlink bin_file ; (* hahaha! *)
+        RamenMake.build conf get_parent program_name src_file bin_file ;
         (* Run it, making sure it archives its history straight from the
          * start: *)
         let debug = conf.C.log_level = Debug in
         RamenRun.run conf ~report_period:0. ~src_file ~debug
-                     exec_file (Some program_name)) ;
+                     ~bin_file (Some program_name)) ;
     let fq = N.fq_of_program program_name func_name in
     fq, [], [ program_name ]
   in

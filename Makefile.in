@@ -182,6 +182,10 @@ RAMEN_SOURCES = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -200,11 +204,7 @@ RAMEN_SOURCES = \
 	src/RamenHttpd.ml \
 	src/RamenCopy.ml \
 	src/RamenCopySrv.ml \
-	src/RamenSyncIntf.ml \
 	src/RamenSyncServer.ml \
-	src/RamenSyncClient.ml \
-	src/RamenSync.ml \
-	src/RamenSyncZMQClient.ml \
 	src/RamenSyncService.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
@@ -254,10 +254,17 @@ CODEGENLIB_SOURCES = \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
+	src/RamenParams.ml \
+	src/RamenLang.ml \
+	src/RamenExpr.ml \
+	src/RamenProtocols.ml \
+	src/RamenTuple.ml \
+	src/RamenOperation.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
 	src/RamenTimeRange.ml \
 	src/RamenRetention.ml \
+	src/RamenConf.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/CodeGenLib_IO.ml \
@@ -292,6 +299,24 @@ RMADMIN_SOURCES = \
 	src/RamenTypes.ml \
 	src/RamenRetention.ml \
 	src/Globs.ml \
+	src/RamenParams.ml \
+	src/RamenEventTime.ml \
+	src/RamenUnits.ml \
+	src/RamenLang.ml \
+	src/RamenExpr.ml \
+	src/RamenCollectd.ml \
+	src/RamenWorkerStats.ml \
+	src/RamenTypeConverters.ml \
+	src/RamenChannel.mli \
+	src/RamenChannel.ml \
+	src/RamenNotification.ml \
+	src/RamenNullable.ml \
+	src/RamenGraphiteSink.ml \
+	src/RamenNetflow.ml \
+	src/RamenProtocols.ml \
+	src/RamenEventTime.ml \
+	src/RamenTuple.ml \
+	src/RamenOperation.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
 	src/RamenSync.ml \
@@ -738,12 +763,15 @@ TESTABLE_SOURCES = \
 	src/RamenServices.ml \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenSampling.ml \
 	src/CodeGenLib.ml \
 	src/RamenOutRef.ml \
-	src/RamenOCamlCompiler.ml \
-	src/RamenSync.ml
+	src/RamenOCamlCompiler.ml
 
 # For the actual command line building all_tests.opt:
 LINKED_FOR_TESTS = \
@@ -820,6 +848,10 @@ LINKED_FOR_TESTS = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -832,8 +864,7 @@ LINKED_FOR_TESTS = \
 	src/RamenNullable.ml \
 	src/CodeGenLib_IO.ml \
 	src/RamenSampling.ml \
-	src/CodeGenLib.ml \
-	src/RamenSync.ml
+	src/CodeGenLib.ml
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'

@@ -207,7 +207,7 @@ struct
       Server.H.add h k (Some v, r, w, s) in
     RC.with_rlock conf identity |>
     Hashtbl.iter (fun pname (rce, _get_rc) ->
-      upd Key.(PerProgram (pname, MustRun))
+      upd Key.(PerProgram (pname, Enabled))
           Value.(Bool RC.(rce.status = MustRun)) ;
       upd Key.(PerProgram (pname, Debug))
           Value.(Bool rce.debug) ;
@@ -226,7 +226,7 @@ struct
       upd Key.(PerProgram (pname, Automatic))
           Value.(Bool rce.automatic)) ;
     let f = function
-      | Key.PerProgram (_, (MustRun | Debug | ReportPeriod | BinPath |
+      | Key.PerProgram (_, (Enabled | Debug | ReportPeriod | BinPath |
                             SrcPath | Param _ | OnSite | Automatic)) -> true
       | _ -> false in
     replace_keys srv f h
@@ -242,16 +242,15 @@ struct
       Server.H.add h k (v, r, w, s) in
     RC.with_rlock conf identity |>
     Hashtbl.iter (fun pname (rce, get_rc) ->
-      let fname = rce.RC.src_file in
-      (match Files.mtime fname with
+      (match Files.mtime rce.RC.src_file with
       | exception Unix.(Unix_error (ENOENT, _, _)) ->
           () (* No file -> No source info *)
       | mtime ->
           let km = Key.PerProgram (pname, SourceModTime)
-          and ks = Key.PerProgram (pname, SourceText) in
+          and ks = Key.PerProgram (pname, SourceFile) in
           let do_upd () =
             upd km (Some Value.(Float mtime)) ;
-            upd ks (Some Value.(String (Files.read_whole_file fname)))
+            upd ks (Some Value.(String (rce.RC.src_file :> string)))
           and keep k =
             upd k None in
           (match Server.H.find srv.Server.h km with
@@ -293,7 +292,7 @@ struct
             upd Key.MergeInputs Value.(Bool f.F.merge_inputs)
           ) p.funcs)) ;
     let f = function
-      | Key.PerProgram (_, (SourceModTime | SourceText)) -> true
+      | Key.PerProgram (_, (SourceModTime | SourceFile)) -> true
       | _ -> false in
     replace_keys srv f h
 end

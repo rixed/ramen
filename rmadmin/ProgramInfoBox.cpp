@@ -17,10 +17,10 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   cw->setLayout(layout);
   setCentralWidget(cw);
 
-  KBool *mustRun =
-    new KBool(pref + "must_run", tr("run that program"), tr("do not run"));
-  layout->addRow(tr("&Enabled"), mustRun);
-  addWidget(mustRun);
+  KBool *enabled =
+    new KBool(pref + "enabled", tr("run that program"), tr("do not run"));
+  layout->addRow(tr("&Enabled"), enabled);
+  addWidget(enabled);
 
   KBool *debug =
     new KBool(pref + "debug", tr("normal"), tr("verbose logs"));

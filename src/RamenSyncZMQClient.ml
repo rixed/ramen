@@ -6,7 +6,7 @@ open RamenHelpers
 
 module Value = RamenSync.Value
 module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
-module Key = Client.Key
+module Key = RamenSync.Key
 
 let retry_zmq ?while_ f =
   let on = function
@@ -16,9 +16,43 @@ let retry_zmq ?while_ f =
     | _ -> false in
   retry ~on ~first_delay:0.3 ?while_ f
 
+(* To help with RPC like interaction, we have two callbacks here that can be set
+ * when calling send_cmd, and that are automatically called when the Error message
+ * (that is automatically subscribed by the server) is updated. This is a hash
+ * from command id to continuation. *)
+let on_oks = Hashtbl.create 5
+let on_kos = Hashtbl.create 5
+let my_login = ref ""
+
+(* Given a callback, return another cllback that intercept error messages and call
+ * RPC continuations first: *)
+let check_err on_msg =
+  let maybe_cb h cmd_id =
+    match Hashtbl.find h cmd_id with
+    | exception Not_found -> ()
+    | k -> k () in
+  fun clt k v u ->
+    (match k with
+    | Key.Error (Some n) when n = !my_login ->
+        (match v with
+        | Value.(Error (_ts, cmd_id, err_msg)) ->
+            if err_msg = "" then (
+              !logger.debug "Cmd %d: OK" cmd_id ;
+              maybe_cb on_oks cmd_id
+            ) else (
+              !logger.error "Cmd %d: %s" cmd_id err_msg ;
+              maybe_cb on_kos cmd_id
+            )
+        | v ->
+            !logger.error "Error value is not an error: %a" Value.print v)
+    | _ -> ()) ;
+    on_msg clt k v u
+
 let next_id = ref 0
-let send_cmd zock ?while_ cmd =
+let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
     let msg = !next_id, cmd in
+    Option.may (Hashtbl.add on_oks !next_id) on_ok ;
+    Option.may (Hashtbl.add on_kos !next_id) on_ko ;
     incr next_id ;
     !logger.info "Sending command %a"
       Client.CltMsg.print msg ;
@@ -91,10 +125,11 @@ let init_connect ?while_ url zock on_progress =
   with e ->
     on_progress Stage.Conn Status.(InitFail (Printexc.to_string e))
 
-let init_auth ?while_ creds zock on_progress =
+let init_auth ?while_ login zock on_progress =
+  my_login := login ;
   on_progress Stage.Auth Status.InitStart ;
   try
-    send_cmd zock ?while_ (Client.CltMsg.Auth creds) ;
+    send_cmd zock ?while_ (Client.CltMsg.Auth login) ;
     match retry_zmq ?while_ recv_cmd zock with
     | Client.SrvMsg.Auth "" ->
         on_progress Stage.Auth Status.InitOk
@@ -105,20 +140,34 @@ let init_auth ?while_ creds zock on_progress =
   with e ->
     on_progress Stage.Auth Status.(InitFail (Printexc.to_string e))
 
-let init_sync ?while_ zock glob on_progress =
+let init_sync ?while_ zock topics on_progress =
   on_progress Stage.Sync Status.InitStart ;
+  let globs = List.map Globs.compile topics in
+  (* Also subscribe to the error messages, unless it's covered already: *)
+  let my_errors = "errors/"^ !my_login in
+  let globs =
+    if List.exists (fun glob -> Globs.matches glob my_errors) globs then (
+      !logger.debug "subscribed topics already cover error stream %S, \
+                     not subscribing separately" my_errors ;
+      globs
+    ) else
+      Globs.escape my_errors :: globs
+  in
   try
-    let glob = Globs.compile glob in
-    send_cmd zock ?while_ (Client.CltMsg.StartSync glob) ;
+    List.iter (fun glob ->
+      send_cmd zock ?while_ (Client.CltMsg.StartSync glob)
+    ) globs ;
     on_progress Stage.Sync Status.InitOk
   with e ->
     on_progress Stage.Sync Status.(InitFail (Printexc.to_string e))
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start ?while_ url creds topic ?(on_progress=default_on_progress) ?(on_sock=ignore)
+let start ?while_ url creds ?(topics=[])
+          ?(on_progress=default_on_progress) ?(on_sock=ignore)
+          ?(on_new=ignore4) ?(on_set=ignore4) ?(on_del=ignore3)
+          ?(on_lock=ignore3) ?(on_unlock=ignore2)
           ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) sync_loop =
   let ctx = Zmq.Context.create () in
-  !logger.info "Subscribing to conf key %s" topic ;
   finally
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
@@ -140,9 +189,12 @@ let start ?while_ url creds topic ?(on_progress=default_on_progress) ?(on_sock=i
           log_exceptions ~what:"init_auth"
             (fun () -> init_auth ?while_ creds zock on_progress) ;
           log_exceptions ~what:"init_sync"
-            (fun () -> init_sync ?while_ zock topic on_progress) ;
+            (fun () -> init_sync ?while_ zock topics on_progress) ;
+          let on_new = check_err on_new
+          and on_set = check_err on_set in
+          let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
           log_exceptions ~what:"sync_loop"
-            (fun () -> sync_loop zock)
+            (fun () -> sync_loop zock clt)
         ) ()
     ) ()
 

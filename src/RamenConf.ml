@@ -39,7 +39,8 @@ type conf =
     site : N.site (* this site name *) ;
     masters : N.site Set.t ;
     bundle_dir : N.path ;
-    sync_url : string }
+    sync_url : string ;
+    login : string }
 
 let make_conf
       ?(debug=false) ?(quiet=false)
@@ -50,6 +51,7 @@ let make_conf
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
       ?(masters=Set.empty)
       ?(sync_url="")
+      ?(login="")
       persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
@@ -59,7 +61,7 @@ let make_conf
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters ;
-    sync_url }
+    sync_url ; login }
 
 (*
  * Common comprehensive representation of functions and programs
@@ -99,10 +101,11 @@ struct
   module Serialized = struct
     type t = (* A version of the above without redundancy: *)
       { name : N.func ;
-        retention : Retention.t option  ;
+        retention : Retention.t option ;
         is_lazy : bool ;
         doc : string ;
         operation : O.t ;
+        (* FIXME: why storing the signature? *)
         signature : string }
       [@@ppp PPP_OCaml]
   end
@@ -311,14 +314,6 @@ end
 
 module Running =
 struct
-  (* Killed programs are kept in the RC file unless --purged, so it's still
-   * possible to get their stats etc. *)
-  type worker_status = MustRun | Killed
-    [@@ppp PPP_OCaml]
-
-  (* Saved configuration is merely a hash from (unique) program names
-   * to their binaries, and parameters (actual ones, not default values): *)
-  (* TODO: add a startup_time? *)
   type entry =
     { (* Tells whether the entry must actually be started. Set to true
          at exit so that we do not loose information of previously run
@@ -341,6 +336,11 @@ struct
       on_site : Globs.t [@ppp_default Globs.all] ;
       (* For nodes added automatically, that were not in the RC file proper *)
       automatic : bool [@ppp_default false] }
+    [@@ppp PPP_OCaml]
+
+  (* Killed programs are kept in the RC file unless --purged, so it's still
+   * possible to get their stats etc. *)
+  and worker_status = MustRun | Killed
     [@@ppp PPP_OCaml]
 
   (* The rc file keyed by program name: *)

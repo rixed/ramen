@@ -66,6 +66,11 @@ type param =
 
 type params = param list [@@ppp PPP_OCaml]
 
+let hash_of_params params =
+  List.enum params /@
+  (fun p -> p.ptyp.name, p.value) |>
+  Hashtbl.of_enum
+
 let print_param oc p =
   Printf.fprintf oc "%a=%a"
     N.field_print p.ptyp.name

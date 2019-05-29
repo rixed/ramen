@@ -5,7 +5,9 @@
 open Batteries
 open RamenSyncIntf
 open RamenHelpers
+open RamenLog
 module N = RamenName
+module O = RamenOperation
 module T = RamenTypes
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
@@ -59,6 +61,8 @@ struct
 
   type zmq_id = string
   type t =
+    (* Internal implies no authn at all, only for when the messages do not go
+     * through ZMQ: *)
     | Internal
     | Auth of { zmq_id : zmq_id ; name : string ; capas : Capa.t Set.t }
     | Anonymous of zmq_id
@@ -97,6 +101,7 @@ struct
           | "tintin" -> creds, []
           | "admin" -> creds, Capa.[ Admin ]
           | c when String.starts_with c "worker " -> creds, Capa.[ Ramen ]
+          | c when String.starts_with c "ramen " -> creds, Capa.[ Ramen ]
           | _ -> failwith "Bad credentials" in
         let capas =
           Capa.Anybody :: Capa.SingleUser name :: capas |>
@@ -174,24 +179,30 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
+    | Sources of (N.path * per_source_key)
+    | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
     | Tail of N.site * N.fq * tail_key
     | Error of string option (* the user name *)
     (* TODO: alerting *)
+
+  and per_source_key =
+    | SourceText
+    | SourceInfo
+
   and per_site_key =
     | IsMaster
     | PerService of N.service * per_service_key
-    | PerWorker of N.fq * per_site_fq_key
+    | PerWorker of N.fq * per_worker_key
+
   and per_service_key =
     | Host
     | Port
+
   and per_prog_key =
-    (* This is what the user ask for (via `ramen run` etc).
-     * Not to be confused with the MustRun value, created by the confserver
-     * out of those user set values. *)
-    | MustRun
+    | Enabled (* Equivalent to MustRun *)
     | Debug
     | ReportPeriod
     | BinPath
@@ -199,10 +210,11 @@ struct
     | Param of N.field
     | OnSite
     | Automatic
-    | SourceText
+    | SourceFile
     | SourceModTime
     | RunCondition
     | PerFunction of N.func * per_func_key
+
   and per_worker_key =
     | IsUsed
     (* FIXME: create a single entry of type "stats" for the following: *)
@@ -215,6 +227,22 @@ struct
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
+    (* Process level control has to be per signature: *)
+    | PerInstance of string (* func signature *) * per_instance_key
+
+  and per_instance_key =
+    (* A single entry with all parameters required to actually run a worker, to avoid
+     * race condition: *)
+    | Process
+    (* These are contributed back by the supervisor: *)
+    | Pid
+    | LastKilled
+    | Unstopped (* whether this worker has been signaled to CONT *)
+    | LastExit
+    | LastExitStatus
+    | SuccessiveFailures
+    | QuarantineUntil
+
   and per_func_key =
     | Retention
     | Doc
@@ -225,9 +253,11 @@ struct
     | OutType
     | Signature
     | MergeInputs
+
   and tail_key =
     | Subscriber of string
     | LastTuple of int (* increasing sequence just for ordering *)
+
   and storage_key =
     | TotalSize
     | RecallCost
@@ -252,7 +282,7 @@ struct
 
   let print_per_prog_key fmt k =
     String.print fmt (match k with
-    | MustRun -> "must_run"
+    | Enabled -> "enabled"
     | Debug -> "debug"
     | ReportPeriod -> "report_period"
     | BinPath -> "bin_path"
@@ -260,13 +290,24 @@ struct
     | Param s -> "param/"^ (s :> string)
     | OnSite -> "on_site"
     | Automatic -> "automatic"
-    | SourceText -> "source/text"
+    | SourceFile -> "source/file"
     | SourceModTime -> "source/mtime"
     | RunCondition -> "run_condition"
     | PerFunction (fname, per_func_key) ->
         Printf.sprintf2 "functions/%a/%a"
           N.func_print fname
           print_per_func_key per_func_key)
+
+  let print_per_instance fmt k =
+    String.print fmt (match k with
+    | Process -> "process"
+    | Pid -> "pid"
+    | LastKilled -> "last_killed"
+    | Unstopped -> "unstopped"
+    | LastExit -> "last_exit"
+    | LastExitStatus -> "last_exit_status"
+    | SuccessiveFailures -> "successive_failures"
+    | QuarantineUntil -> "quarantine_until")
 
   let print_per_worker_key fmt k =
     String.print fmt (match k with
@@ -282,7 +323,11 @@ struct
       | ArchivedTimes -> "archives/times"
       | NumArcFiles -> "archives/num_files"
       | NumArcBytes -> "archives/current_size"
-      | AllocedArcBytes -> "archives/alloc_size")
+      | AllocedArcBytes -> "archives/alloc_size"
+      | PerInstance (signature, per_instance_key) ->
+          Printf.sprintf2 "instances/%s/%a"
+            signature
+            print_per_instance per_instance_key)
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -312,9 +357,19 @@ struct
     | LastTuple i ->
         Printf.fprintf fmt "lasts/%d" i
 
+  let print_per_source_key fmt = function
+    | SourceText -> String.print fmt "text"
+    | SourceInfo -> String.print fmt "info"
+
   let print fmt = function
     | DevNull ->
         String.print fmt "devnull"
+    | Sources (p, per_source_key) ->
+        Printf.fprintf fmt "sources/%a/%a"
+          N.path_print p
+          print_per_source_key per_source_key
+    | TargetConfig ->
+        String.print fmt "target_config"
     | PerSite (site, per_site_key) ->
         Printf.fprintf fmt "sites/%a/%a"
           N.site_print site
@@ -362,6 +417,15 @@ struct
     fun s ->
       try
         match cut s with
+        | "devnull", "" -> DevNull
+        | "sources", s ->
+            (match rcut s with
+            | [ source ; s ] ->
+                Sources (N.path source,
+                  match s with
+                  | "text" -> SourceText
+                  | "info" -> SourceInfo))
+        | "target_config", "" -> TargetConfig
         | "sites", s ->
             let site, s = cut s in
             PerSite (N.site site,
@@ -386,26 +450,40 @@ struct
                       with Match_failure _ ->
                         (match rcut fq, s with
                         | [ fq ; s1 ], s2 ->
-                            PerWorker (N.fq fq,
-                              match s1, s2 with
-                              | "event_time", "min" -> MinETime
-                              | "event_time", "max" -> MaxETime
-                              | "total", "tuples" -> TotTuples
-                              | "total", "bytes" -> TotBytes
-                              | "total", "cpu" -> TotCpu
-                              | "max", "ram" -> MaxRam
-                              | "archives", "times" -> ArchivedTimes
-                              | "archives", "num_files" -> NumArcFiles
-                              | "archives", "current_size" -> NumArcBytes
-                              | "archives", "alloc_size" -> AllocedArcBytes
-                              | "parents", i ->
-                                  Parents (int_of_string i)))))
+                            try
+                              PerWorker (N.fq fq,
+                                match s1, s2 with
+                                | "event_time", "min" -> MinETime
+                                | "event_time", "max" -> MaxETime
+                                | "total", "tuples" -> TotTuples
+                                | "total", "bytes" -> TotBytes
+                                | "total", "cpu" -> TotCpu
+                                | "max", "ram" -> MaxRam
+                                | "archives", "times" -> ArchivedTimes
+                                | "archives", "num_files" -> NumArcFiles
+                                | "archives", "current_size" -> NumArcBytes
+                                | "archives", "alloc_size" -> AllocedArcBytes
+                                | "parents", i ->
+                                    Parents (int_of_string i))
+                            with Match_failure _ ->
+                              (match rcut fq, s1, s2 with
+                              | [ fq ; "instance" ], sign, s ->
+                                  PerWorker (N.fq fq, PerInstance (sign,
+                                    match s with
+                                    | "process" -> Process
+                                    | "pid" -> Pid
+                                    | "last_killed" -> LastKilled
+                                    | "unstopped" -> Unstopped
+                                    | "last_exit" -> LastExit
+                                    | "last_exit_status" -> LastExitStatus
+                                    | "successive_failures" -> SuccessiveFailures
+                                    | "quarantine_until" -> QuarantineUntil))))))
         | "programs", s ->
             (match cut s with
             | pname, s ->
               PerProgram (N.program pname,
                 match cut s with
-                | "must_run", "" -> MustRun
+                | "enabled", "" -> Enabled
                 | "debug", "" -> Debug
                 | "report_period", "" -> ReportPeriod
                 | "bin_path", "" -> BinPath
@@ -413,7 +491,7 @@ struct
                 | "param", n -> Param (N.field n)
                 | "on_site", "" -> OnSite
                 | "automatic", "" -> Automatic
-                | "source", "text" -> SourceText
+                | "source", "file" -> SourceFile
                 | "source", "mtime" -> SourceModTime
                 | "run_condition", "" -> RunCondition
                 | "functions", s ->
@@ -505,6 +583,7 @@ struct
     | Float of float
     | String of string
     | Error of float * int * string
+    (* Used for instance to reference parents of a worker: *)
     | Worker of N.site * N.program * N.func
     | Retention of Retention.t
     | TimeRange of TimeRange.t
@@ -512,6 +591,63 @@ struct
         { skipped : int (* How many tuples were skipped before this one *) ;
           values : bytes (* serialized *) }
     | RamenType of T.t
+    | TargetConfig of (N.program * rc_entry) list
+    (* Used to describe all the required parameter to run a worker (need atomicity
+     * as it's used to spawn processes): *)
+    | Process of
+        { params : RamenTuple.params ;
+          (* EnvVars are captured at confserver location. For simplicity we set
+           * all params, even default ones with default value if not overridden: *)
+          envvars : (N.field * string option) list ;
+          role : worker_role ;
+          log_level : log_level ;
+          report_period : float ;
+          bin_file : N.path ;
+          src_file : N.path ;
+          (* Actual workers not only logical parents as in func.parent: *)
+          parents : (N.site * N.program * N.func) list ;
+          children : (N.site * N.program * N.func) list }
+    (* Holds all info from the compilation of a source ; what we used to have in the
+     * executable binary itself. *)
+    | SourceInfo of source_info
+
+  and worker_role =
+    | Whole
+    (* Top half: only the filtering part of that function is run, once for
+     * every local parent; output is forwarded to another site. *)
+    | TopHalf of top_half_spec list
+  (* FIXME: parent_num is not good enough because a parent num might change
+   * when another parent is added/removed. *)
+
+  and top_half_spec =
+    (* FIXME: the workers should resolve themselves, onces they become proper
+     * confsync clients: *)
+    { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
+
+  and rc_entry =
+    { enabled : bool ;
+      debug : bool ;
+      report_period : float ;
+      params : RamenParams.param list ;
+      src_file : N.path ;
+      on_site : Globs.t ;
+      automatic : bool }
+
+  and source_info =
+    { default_params : RamenParams.param list ;
+      condition : string option ; (* For debug only for now *)
+      funcs : function_info list }
+
+  and function_info =
+    { name : N.func ;
+      retention : Retention.t option ;
+      is_lazy : bool ;
+      doc : string ;
+      operation : O.t }
+
+  let print_worker_role oc = function
+    | Whole -> String.print oc "whole worker"
+    | TopHalf _ -> String.print oc "top half"
 
   let equal v1 v2 =
     match v1, v2 with
@@ -542,6 +678,12 @@ struct
           (Bytes.length values) skipped
     | RamenType t ->
         T.print_typ fmt t
+    | Process p ->
+        Printf.fprintf fmt "Process { bin:%a... }" N.path_print p.bin_file
+    | TargetConfig _ ->
+        Printf.fprintf fmt "TargetConfig { ... }"
+    | SourceInfo _ ->
+        Printf.fprintf fmt "SourceInfo { ... }"
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

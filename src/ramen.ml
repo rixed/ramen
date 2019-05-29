@@ -107,7 +107,12 @@ let copts =
     Arg.(value (opt_all string [] i))
   and confserver_url =
     let i = Arg.info ~doc:CliInfo.confserver_url
-                     [ "confserver-url" ] in
+                     ~docs [ "confserver-url" ] in
+    Arg.(value (opt string "" i))
+  and confserver_login =
+    let env = Term.env_info "USER" in
+    let i = Arg.info ~doc:CliInfo.confserver_login
+                     ~docs ~env [ "confserver-login" ] in
     Arg.(value (opt string "" i))
   in
   Term.(const RamenCliCmd.make_copts
@@ -122,7 +127,8 @@ let copts =
     $ site
     $ bundle_dir
     $ masters
-    $ confserver_url)
+    $ confserver_url
+    $ confserver_login)
 
 (*
  * Start the process supervisor
@@ -508,13 +514,8 @@ let lib_path =
                    ~env [ "lib-path" ; "L" ] in
   Arg.(value (opt_all path [] i))
 
-let src_files =
+let compile_src_file =
   let i = Arg.info ~doc:CliInfo.src_files
-                   ~docv:"FILE" [] in
-  Arg.(non_empty (pos_all path [] i))
-
-let bin_file =
-  let i = Arg.info ~doc:CliInfo.bin_file
                    ~docv:"FILE" [] in
   Arg.(required (pos 0 (some path) None i))
 
@@ -543,7 +544,7 @@ let compile =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
-      $ src_files
+      $ compile_src_file
       $ output_file
       $ as_),
     info ~doc:CliInfo.compile "compile")
@@ -572,6 +573,11 @@ let src_file =
 let on_site =
   let i = Arg.info ~doc:CliInfo.on_site [ "on-site" ] in
   Arg.(value (opt glob Globs.all i))
+
+let bin_file =
+  let i = Arg.info ~doc:CliInfo.bin_file
+                   ~docv:"FILE" [] in
+  Arg.(required (pos 0 (some path) None i))
 
 let run =
   Term.(

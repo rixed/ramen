@@ -180,8 +180,12 @@ struct
       | StartSync of Selector.t
       | SetKey of Key.t * Value.t
       (* Like SetKey but fail if the key already exists.
-       * Capa will be set by the callback on server side. *)
+       * Capa will be set by the callback on server side.
+       * Notice that Set works also when the key is new. So NewKey is really
+       * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
       | NewKey of Key.t * Value.t (* TODO: and the r/w permissions *)
+      (* Like SetKey but fails if the key does not exist yet: *)
+      | UpdKey of Key.t * Value.t
       | DelKey of Key.t
       | LockKey of Key.t
       | UnlockKey of Key.t
@@ -194,7 +198,12 @@ struct
     let of_string s : t =
       Marshal.from_string s 0
 
-    let print_cmd oc = function
+    let print_cmd oc cmd =
+      let print1 n k =
+        Printf.fprintf oc "%s %a" n Key.print k
+      and print2 n k v =
+        Printf.fprintf oc "%s (%a, %a)" n Key.print k Value.print v in
+      match cmd with
       | Auth creds ->
           Printf.fprintf oc "Auth %a"
             Key.User.PubCredentials.print creds
@@ -202,22 +211,17 @@ struct
           Printf.fprintf oc "StartSync %a"
             Selector.print sel
       | SetKey (k, v) ->
-          Printf.fprintf oc "SetKey (%a, %a)"
-            Key.print k
-            Value.print v
+          print2 "SetKey" k v
       | NewKey (k, v) ->
-          Printf.fprintf oc "NewKey (%a, %a)"
-            Key.print k
-            Value.print v
+          print2 "NewKey" k v
+      | UpdKey (k, v) ->
+          print2 "UpdKey" k v
       | DelKey k ->
-          Printf.fprintf oc "DelKey %a"
-            Key.print k
+          print1 "DelKey" k
       | LockKey k ->
-          Printf.fprintf oc "LockKey %a"
-            Key.print k
+          print1 "LockKey" k
       | UnlockKey k ->
-          Printf.fprintf oc "UnlockKey %a"
-            Key.print k
+          print1 "UnlockKey" k
 
     let print fmt (i, cmd) =
       Printf.fprintf fmt "#%d, %a" i print_cmd cmd
@@ -227,7 +231,7 @@ struct
   struct
     type t =
       | Auth of string
-      | SetKey of (Key.t * Value.t)
+      | SetKey of (Key.t * Value.t * string)
       | NewKey of (Key.t * Value.t * string)
       | DelKey of Key.t
       (* With the username of the lock owner: *)
@@ -237,10 +241,11 @@ struct
     let print oc = function
       | Auth creds ->
           Printf.fprintf oc "Auth %s" creds
-      | SetKey (k, v) ->
-          Printf.fprintf oc "SetKey (%a, %a)"
+      | SetKey (k, v, uid) ->
+          Printf.fprintf oc "SetKey (%a, %ai, %s)"
             Key.print k
             Value.print v
+            uid
       | NewKey (k, v, uid) ->
           Printf.fprintf oc "NewKey (%a, %a, %s)"
             Key.print k

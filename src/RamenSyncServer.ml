@@ -128,7 +128,7 @@ struct
           Key.print k |>
         failwith
 
-  let set t u k v =
+  let update t u k v =
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
@@ -141,8 +141,17 @@ struct
           check_can_update k prev u ;
           let v = do_cbs t.on_sets t k v in
           prev.v <- v ;
-          notify t k (User.has_capa prev.r) (SetKey (k, v))
+          let uid = IO.to_string User.print_id (User.id u) in
+          notify t k (User.has_capa prev.r) (SetKey (k, v, uid))
         )
+
+  let set t u k v = (* TODO: H.find and pass prev item to update *)
+    if H.mem t.h k then update t u k v
+    else
+      let r = Capa.anybody
+      and w = User.only_me u
+      and s = false in
+      create t u k v ~r ~w ~s
 
   let del t u k =
     !logger.debug "Deleting config key %a"
@@ -153,7 +162,7 @@ struct
     | prev ->
         (* TODO: think about making locking mandatory *)
         check_can_delete k prev u ;
-        let _ = do_cbs t.on_dels t k Value.dummy in
+        let _ = do_cbs t.on_dels t k prev.v in
         H.remove t.h k ;
         notify t k (User.has_capa prev.r) (DelKey k)
 
@@ -283,6 +292,9 @@ struct
           and w = User.only_me u
           and s = false in
           create t u k v ~r ~w ~s
+
+      | CltMsg.UpdKey (k, v) ->
+          update t u k v
 
       | CltMsg.DelKey k ->
           del t u k

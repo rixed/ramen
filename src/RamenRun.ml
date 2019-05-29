@@ -9,6 +9,8 @@ module P = C.Program
 module O = RamenOperation
 module N = RamenName
 module Files = RamenFiles
+module Processes = RamenProcesses
+module ZMQClient = RamenSyncZMQClient
 
 (*
  * Stopping a worker from running.
@@ -185,43 +187,89 @@ let default_program_name bin_file =
   let f = Files.(remove_ext (basename bin_file)) in
   N.program (f :> string)
 
+let make_entry replace (program_name : N.program) report_period
+               (bin : N.path) (src_file : N.path) on_site debug params programs =
+  if not replace then
+    (match Hashtbl.find programs program_name with
+    | exception Not_found -> ()
+    | rce ->
+      if rce.RC.status = RC.MustRun then
+        Printf.sprintf "A program named %s is already running"
+          (program_name :> string) |>
+        failwith) ;
+  RC.{
+    bin ; params ; status = MustRun ; debug ; report_period ;
+    src_file ; on_site ; automatic = false }
+
+(*
+let run_sync source
+      program_name replace kill_if_disabled purge report_period on_site
+      debug params =
+  let while_ () = !Processes.quit = None in
+  let login = conf.C.login in
+  let topics = [] in
+  ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url login topics
+    (fun zock ->
+      ZMQClient.sent_msg zock
+        RamenSync.Key.(PerProgram program_name, DoCompile)
+        RamenSync.Value.(CompileOptions { 
+        ~on_ok:(fun () -> Process.quit := ExitCodes.ok)
+        ~on_ko:(fun () -> Process.quit := ExitCodes.error))
+*)
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)
+let run_local conf bin_file src_file
+      program_name replace kill_if_disabled purge report_period on_site
+      debug params =
+  let bin = Files.absolute_path_of bin_file in
+  let can_run = P.wants_to_run conf bin params in
+  if not can_run then (
+    !logger.info "Program %a is disabled"
+      N.program_print program_name ;
+    if kill_if_disabled then
+      log_and_ignore_exceptions ~what:"Killing disabled program"
+        (fun () ->
+          let program_name = Globs.(escape (program_name :> string)) in
+          let nb_killed = kill conf ?purge [ program_name ] in
+          if nb_killed > 0 then !logger.info "...and has been killed") ()
+  ) else (
+    if N.is_empty bin_file then
+      failwith "Without a --confserver a executable file must be provided." ;
+    RC.with_wlock conf (fun programs ->
+      (* Check linkage. *)
+      let prog = P.of_bin program_name params bin_file in
+      check_params prog (Hashtbl.keys params |> Set.of_enum) ;
+      check_links program_name prog programs ;
+      make_entry replace program_name report_period bin_file src_file on_site
+                 debug params programs |>
+      Hashtbl.replace programs program_name)
+  )
+
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(report_period=Default.report_period) ?(src_file=N.path "")
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
-        bin_file program_name_opt =
+        ?(bin_file=N.path "") program_name_opt =
+  if program_name_opt = None && N.is_empty src_file && N.is_empty bin_file then
+    failwith "You must provide either the program name, a source file or \
+              an executable file." ;
   let program_name =
     Option.default_delayed (fun () ->
-      default_program_name bin_file
+      if not (N.is_empty bin_file) then default_program_name bin_file
+      else default_program_name src_file
     ) program_name_opt in
-  RC.with_wlock conf (fun programs ->
-    let bin = Files.absolute_path_of bin_file in
-    let can_run = P.wants_to_run conf bin params in
-    if not can_run then (
-      !logger.info "Program %a is disabled"
-        N.program_print program_name ;
-      if kill_if_disabled then
-        log_and_ignore_exceptions ~what:"Killing disabled program"
-          (fun () ->
-            let program_name =
-              Globs.(escape (program_name :> string)) in
-            let nb_killed =
-              kill_locked ?purge [ program_name ] programs in
-            if nb_killed > 0 then !logger.info "...and has been killed") ()
+  let k =
+    if conf.C.sync_url = "" then (
+      if N.is_empty bin_file then
+        failwith "executable file is mandatory unless --confserver." ;
+      run_local conf bin_file src_file
     ) else (
-      let prog = P.of_bin program_name params bin in
-      check_params prog (Hashtbl.keys params |> Set.of_enum) ;
-      check_links program_name prog programs ;
-      if not replace then
-        (match Hashtbl.find programs program_name with
-        | exception Not_found -> ()
-        | rce ->
-          if rce.RC.status = RC.MustRun then
-            Printf.sprintf "A program named %s is already running"
-              (program_name :> string) |>
-            failwith) ;
-      (* TODO: Make sure this key is authoritative on a program name: *)
-      Hashtbl.replace programs program_name
-        C.{ bin ; params ; status = MustRun ; debug ; report_period ;
-            src_file ; on_site ; automatic = false }))
+      if N.is_empty src_file then
+        failwith "with --confserver a source file must be provided." ;
+      if not (N.is_empty bin_file) then
+        failwith "with --confserver the executable file is useless and must not be \
+                  given." ;
+      (*let source = Files.read_whole_file src_file in
+      run_sync source*)
+      todo "run_sync"
+    ) in
+  k program_name replace kill_if_disabled purge report_period on_site debug params
