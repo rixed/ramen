@@ -342,6 +342,8 @@ let output rb serialize_tuple sersize_of_tuple
 
 let quit = ref None
 
+let while_ () = !quit = None
+
 type 'a out_rb =
   { fname : N.path ;
     rb : RingBuf.t ;
@@ -700,7 +702,7 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
   (* Init config sync client if a url was given: *)
   let conf_url = getenv ~def:"" "sync_url" in
   let creds = getenv ~def:"worker" "sync_creds" in
-  let k = Publish.start_zmq_client conf_url creds site worker_name k in
+  let k = Publish.start_zmq_client ~while_ conf_url creds site worker_name k in
   match k conf with
   | exception e ->
       print_exception e ;
@@ -745,7 +747,6 @@ let read_csv_file
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close publish
         (RingBufLib.DataTuple Channel.live) in
-    let while_ () = !quit = None in
     IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
@@ -778,7 +779,6 @@ let listen_on
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close publish
         (RingBufLib.DataTuple Channel.live) in
-    let while_ () = !quit = None in
     collector ~while_ (fun tup ->
       IO.on_each_input_pre () ;
       IntCounter.add stats_in_tuple_count 1 ;
@@ -838,7 +838,6 @@ let read_well_known
       List.exists (fun g -> Globs.matches g worker) globs
     in
     let start = Unix.gettimeofday () in
-    let while_ () = !quit = None in
     let rec loop last_seq =
       if while_ () then (
         let rb = RingBuf.load bname in
@@ -1534,7 +1533,6 @@ let aggregate
     in
     (* The event loop: *)
     let rate_limit_log_reads = rate_limit 1 1. in
-    let while_ () = !quit = None in
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)
@@ -1630,7 +1628,6 @@ let top_half
       retry ~on ~min_delay:1.0 RingBuf.load rb_in_fname
     in
     let rate_limit_log_reads = rate_limit 1 1. in
-    let while_ () = !quit = None in
     let on_tup tx tx_size channel_id in_tuple =
       if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"
@@ -1745,7 +1742,6 @@ let replay
       rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
       serialize_tuple orc_make_handler orc_write orc_close publish in
   let num_replayed_tuples = ref 0 in
-  let while_ () = !quit = None in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
   let time_overlap t1 t2 = since < t2 && until >= t1 in

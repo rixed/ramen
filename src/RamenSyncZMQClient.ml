@@ -40,18 +40,6 @@ let recv_cmd zock =
         (List.print String.print) m |>
       failwith
 
-(* Receive and process incoming commands until timeout.
- * Returns the number of messages that have been read. *)
-let process_in clt zock =
-  let rec loop msg_count =
-    match recv_cmd zock with
-    | exception Unix.(Unix_error (EAGAIN, _, _)) ->
-        msg_count
-    | msg ->
-        Client.process_msg clt msg ;
-        loop (msg_count + 1) in
-  loop 0
-
 let unexpected_reply cmd =
   Printf.sprintf "Unexpected reply %s"
     (Client.SrvMsg.to_string cmd) |>
@@ -82,6 +70,13 @@ struct
   let print oc s =
     String.print oc (to_string s)
 end
+
+let default_on_progress stage status =
+  (match status with
+  | Status.InitStart | InitOk -> !logger.info
+  | InitFail _ | Fail _ -> !logger.error
+  | _ -> !logger.debug)
+    "%a: %a" Stage.print stage Status.print status
 
 let init_connect ?while_ url zock on_progress =
   let url = if String.contains url ':' then url
@@ -120,8 +115,8 @@ let init_sync ?while_ zock glob on_progress =
     on_progress Stage.Sync Status.(InitFail (Printexc.to_string e))
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start ?while_ url creds topic on_progress ?(on_sock=ignore)
-          ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) k =
+let start ?while_ url creds topic ?(on_progress=default_on_progress) ?(on_sock=ignore)
+          ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) sync_loop =
   let ctx = Zmq.Context.create () in
   !logger.info "Subscribing to conf key %s" topic ;
   finally
@@ -147,6 +142,18 @@ let start ?while_ url creds topic on_progress ?(on_sock=ignore)
           log_exceptions ~what:"init_sync"
             (fun () -> init_sync ?while_ zock topic on_progress) ;
           log_exceptions ~what:"sync_loop"
-            (fun () -> k zock)
+            (fun () -> sync_loop zock)
         ) ()
     ) ()
+
+(* Receive and process incoming commands until timeout.
+ * Returns the number of messages that have been read. *)
+let process_in zock clt =
+  let rec loop msg_count =
+    match recv_cmd zock with
+    | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+        msg_count
+    | msg ->
+        Client.process_msg clt msg ;
+        loop (msg_count + 1) in
+  loop 0

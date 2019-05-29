@@ -49,7 +49,7 @@ let on_unlock _clt _k = ()
 let may_publish clt zock key_of_seq
                 sersize_of_tuple serialize_tuple skipped tuple =
   (* Process incoming messages without waiting for them: *)
-  let msg_count = ZMQClient.process_in clt zock in
+  let msg_count = ZMQClient.process_in zock clt in
   if msg_count > 0 then
     !logger.info "Received %d ZMQ messages" msg_count ;
   IntCounter.add stats_num_sync_msgs_in msg_count ;
@@ -73,19 +73,15 @@ let may_publish clt zock key_of_seq
 
 let ignore_publish _sersize _serialize _skipped _tuple = ()
 
-let start_zmq_client url creds (site : N.site) (fq : N.fq) k =
+let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   if url = "" then k ignore_publish else
   (* TODO: also subscribe to errors! *)
   let topic_sub =
     "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =
     RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
-  let on_progress stage status =
-    !logger.info "Conf.Server: %a: %a"
-      ZMQClient.Stage.print stage
-      ZMQClient.Status.print status in
   fun conf ->
-    ZMQClient.start url creds topic_sub on_progress
+    ZMQClient.start ?while_ url creds topic_sub
                     ~recvtimeo:0 ~sndtimeo:0 (fun zock ->
       let clt =
         ZMQClient.Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in

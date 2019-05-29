@@ -112,7 +112,7 @@ struct
   let zmq_id = function
     | Auth { zmq_id ; _ } | Anonymous zmq_id -> zmq_id
     | Internal ->
-        invalid_arg "zqm_id"
+        invalid_arg "zmq_id"
 
   let print fmt = function
     | Internal -> String.print fmt "internal"
@@ -188,6 +188,9 @@ struct
     | Host
     | Port
   and per_prog_key =
+    (* This is what the user ask for (via `ramen run` etc).
+     * Not to be confused with the MustRun value, created by the confserver
+     * out of those user set values. *)
     | MustRun
     | Debug
     | ReportPeriod
@@ -200,7 +203,7 @@ struct
     | SourceModTime
     | RunCondition
     | PerFunction of N.func * per_func_key
-  and per_site_fq_key =
+  and per_worker_key =
     | IsUsed
     (* FIXME: create a single entry of type "stats" for the following: *)
     | StartupTime | MinETime | MaxETime
@@ -265,7 +268,7 @@ struct
           N.func_print fname
           print_per_func_key per_func_key)
 
-  let print_per_site_fq_key fmt k =
+  let print_per_worker_key fmt k =
     String.print fmt (match k with
       | IsUsed -> "is_used"
       | StartupTime -> "startup_time"
@@ -288,10 +291,10 @@ struct
         Printf.fprintf fmt "services/%a/%a"
           N.service_print service
           print_per_service_key per_service_key
-    | PerWorker (fq, per_site_fq_key) ->
+    | PerWorker (fq, per_worker_key) ->
         Printf.fprintf fmt "workers/%a/%a"
           N.fq_print fq
-          print_per_site_fq_key per_site_fq_key
+          print_per_worker_key per_worker_key
 
   let print_storage_key fmt = function
     | TotalSize ->

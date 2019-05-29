@@ -57,6 +57,7 @@ type must_run_entry =
   { key : key ;
     rce : RC.entry ;
     func : F.t ;
+    (* Actual workers not only logical parents as in func.parent: *)
     parents : (N.site * P.t * F.t) list }
 
 let print_must_run_entry oc mre =
@@ -71,7 +72,7 @@ type running_process =
   { key : key ;
     params : RamenParams.t ; (* The ones in RCE only! *)
     bin : N.path ;
-    func : C.Func.t ;
+    func : F.t ;
     parents : (N.site * P.t * F.t) list ;
     children : F.t list ;
     log_level : log_level ;

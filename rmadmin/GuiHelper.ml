@@ -137,7 +137,6 @@ let on_unlock clt k =
 let sync_loop zock =
   let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
   let msg_count = ref 0 in
-  Zmq.Socket.set_receive_timeout zock 100 ;
   let handle_msgs_in () =
     match recv_cmd zock with
     | exception Unix.(Unix_error (EAGAIN, _, _)) ->
@@ -203,7 +202,8 @@ let register_senders zock =
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url creds () =
   ZMQClient.start
-    url creds "*" (on_progress url) ~on_sock:register_senders sync_loop
+    url creds "*" ~on_progress:(on_progress url) ~on_sock:register_senders
+              ~recvtimeo:100 sync_loop
 
 let init debug quiet url creds =
   if debug && quiet then
