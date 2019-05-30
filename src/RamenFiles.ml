@@ -164,6 +164,11 @@ let write_whole_string fd str =
   let len = String.length str in
   Unix.single_write_substring fd str 0 len |> ignore
 
+let write_whole_file fname str =
+  mkdir_all ~is_file:true fname ;
+  File.with_file_out ~mode:[`text; `create; `trunc] (fname :> string) (fun oc ->
+    String.print oc str)
+
 let rec ensure_exists ?(contents="") ?min_size fname =
   mkdir_all ~is_file:true fname ;
   (* If needed, create the file with the initial content, atomically: *)

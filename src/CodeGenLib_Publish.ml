@@ -24,16 +24,14 @@ let stats_num_rate_limited_unpublished =
   IntCounter.make Metric.Names.num_rate_limited_unpublished
     Metric.Docs.num_rate_limited_unpublished
 
-let on_new _clt k _v _uid =
+let on_new _zock _clt k _v _uid =
   !logger.info "New subscriber: %a" ZMQClient.Key.print k ;
   (* TODO: upgrade binocle
   IntGauge.inc stats_num_subscribers *)
   let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
   IntGauge.set stats_num_subscribers (c + 1)
 
-let on_set _clt _k _v _u = ()
-
-let on_del _clt k _v =
+let on_del _zock _clt k _v =
   !logger.info "Leaving subscriber: %a" ZMQClient.Key.print k ;
   (* TODO: upgrade binocle
   IntGauge.dec stats_num_subscribers *)
@@ -79,7 +77,7 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
     RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
   fun conf ->
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
-                    ~on_new ~on_set ~on_del
+                    ~on_new ~on_del
                     ~recvtimeo:0 ~sndtimeo:0 (fun zock clt ->
       let publish = may_publish clt zock topic_pub in
       k publish conf)

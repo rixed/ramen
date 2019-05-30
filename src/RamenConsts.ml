@@ -169,6 +169,7 @@ struct
   let tunneld = "Start the tuple forward service"
   let confserver = "Start the configuration synchronization service"
   let confclient = "Test client for the confserver"
+  let compserver = "Service that (pre)compiles programs"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"
@@ -513,6 +514,9 @@ let delay_before_replay = 0.5
 
 (* Max number of last tuples kept for each worker in the config tree: *)
 let max_last_tuples = 10
+
+(* OCaml stdlib Random won't go further: *)
+let max_int_for_random = 0x3FFFFFFF
 
 (* Well known entry points in generated code: *)
 module EntryPoints =

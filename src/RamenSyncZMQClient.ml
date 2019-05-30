@@ -20,17 +20,20 @@ let retry_zmq ?while_ f =
  * when calling send_cmd, and that are automatically called when the Error message
  * (that is automatically subscribed by the server) is updated. This is a hash
  * from command id to continuation. *)
-let on_oks = Hashtbl.create 5
-let on_kos = Hashtbl.create 5
+let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
+let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let my_login = ref ""
 
 (* Given a callback, return another cllback that intercept error messages and call
  * RPC continuations first: *)
 let check_err on_msg =
   let maybe_cb h cmd_id =
-    match Hashtbl.find h cmd_id with
-    | exception Not_found -> ()
-    | k -> k () in
+    Hashtbl.modify_opt cmd_id (function
+      | None -> None
+      | Some k ->
+          !logger.debug "Calling back pending function for cmd %d" cmd_id ;
+          k () ; None
+    ) h in
   fun clt k v u ->
     (match k with
     | Key.Error (Some n) when n = !my_login ->
@@ -48,8 +51,13 @@ let check_err on_msg =
     | _ -> ()) ;
     on_msg clt k v u
 
+(* As the same user might be sending commands at the same time, rather use
+ * start from a random cmd_id so different client programs can tell their
+ * errors apart; but wait for the random seed to have been set: *)
 let next_id = ref 0
 let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
+    if !next_id = 0 then
+      next_id := Random.int max_int_for_random ;
     let msg = !next_id, cmd in
     Option.may (Hashtbl.add on_oks !next_id) on_ok ;
     Option.may (Hashtbl.add on_kos !next_id) on_ko ;
@@ -57,12 +65,14 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
     !logger.info "Sending command %a"
       Client.CltMsg.print msg ;
     let s = Client.CltMsg.to_string msg in
-    match while_ with
+    (match while_ with
     | None ->
         Zmq.Socket.send_all zock [ "" ; s ]
     | Some while_ ->
+        !logger.debug "send without blocking..." ;
         retry_zmq ~while_
-          (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]
+          (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+    !logger.debug "done sending"
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
@@ -144,7 +154,7 @@ let init_sync ?while_ zock topics on_progress =
   on_progress Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
   (* Also subscribe to the error messages, unless it's covered already: *)
-  let my_errors = "errors/"^ !my_login in
+  let my_errors = Key.(Error (Some !my_login) |> to_string) in
   let globs =
     if List.exists (fun glob -> Globs.matches glob my_errors) globs then (
       !logger.debug "subscribed topics already cover error stream %S, \
@@ -164,8 +174,8 @@ let init_sync ?while_ zock topics on_progress =
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
           ?(on_progress=default_on_progress) ?(on_sock=ignore)
-          ?(on_new=ignore4) ?(on_set=ignore4) ?(on_del=ignore3)
-          ?(on_lock=ignore3) ?(on_unlock=ignore2)
+          ?(on_new=ignore5) ?(on_set=ignore5) ?(on_del=ignore4)
+          ?(on_lock=ignore4) ?(on_unlock=ignore3)
           ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) sync_loop =
   let ctx = Zmq.Context.create () in
   finally
@@ -190,8 +200,11 @@ let start ?while_ url creds ?(topics=[])
             (fun () -> init_auth ?while_ creds zock on_progress) ;
           log_exceptions ~what:"init_sync"
             (fun () -> init_sync ?while_ zock topics on_progress) ;
-          let on_new = check_err on_new
-          and on_set = check_err on_set in
+          let on_new = check_err (on_new zock)
+          and on_set = check_err (on_set zock)
+          and on_del = on_del zock
+          and on_lock = on_lock zock
+          and on_unlock = on_unlock zock in
           let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
           log_exceptions ~what:"sync_loop"
             (fun () -> sync_loop zock clt)
@@ -200,9 +213,9 @@ let start ?while_ url creds ?(topics=[])
 
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
-let process_in zock clt =
+let process_in ?while_ zock clt =
   let rec loop msg_count =
-    match recv_cmd zock with
+    match retry_zmq ?while_ recv_cmd zock with
     | exception Unix.(Unix_error (EAGAIN, _, _)) ->
         msg_count
     | msg ->

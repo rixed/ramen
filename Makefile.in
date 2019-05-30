@@ -170,6 +170,8 @@ RAMEN_SOURCES = \
 	src/HeavyHitters.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
@@ -182,9 +184,7 @@ RAMEN_SOURCES = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
-	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
-	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
@@ -392,6 +392,8 @@ ORCWRITER_SOURCES = \
 	src/RamenSerialization.ml \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
@@ -832,11 +834,12 @@ LINKED_FOR_TESTS = \
 	src/RamenOCamlCompiler.ml \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
+	src/RamenSyncIntf.ml \
+	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenBitmask.ml \
 	src/RamenSerialization.ml \
 	src/HeavyHitters.ml \
-	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
@@ -848,9 +851,7 @@ LINKED_FOR_TESTS = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
-	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
-	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \

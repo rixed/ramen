@@ -8,6 +8,7 @@ open RamenHelpers
 open RamenLog
 module N = RamenName
 module O = RamenOperation
+module E = RamenExpr
 module T = RamenTypes
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
@@ -98,11 +99,11 @@ struct
     | Anonymous zmq_id ->
         let name, capas =
           match creds with
-          | "tintin" -> creds, []
           | "admin" -> creds, Capa.[ Admin ]
           | c when String.starts_with c "worker " -> creds, Capa.[ Ramen ]
           | c when String.starts_with c "ramen " -> creds, Capa.[ Ramen ]
-          | _ -> failwith "Bad credentials" in
+          | "" -> failwith "Bad credentials"
+          | _ -> creds, [] in
         let capas =
           Capa.Anybody :: Capa.SingleUser name :: capas |>
           Set.of_list in
@@ -634,16 +635,47 @@ struct
       automatic : bool }
 
   and source_info =
-    { default_params : RamenParams.param list ;
-      condition : string option ; (* For debug only for now *)
+    { md5 : string ;
+      detail : detail_source_info }
+
+  and detail_source_info =
+    | CompiledSourceInfo of compiled_source_info
+    (* Maybe distinguish linking errors that can go away independently?*)
+    | FailedSourceInfo of failed_source_info
+
+  and compiled_source_info =
+    { default_params : RamenTuple.param list ;
+      condition : E.t option ;
       funcs : function_info list }
+
+  and failed_source_info =
+    { err_msg : string }
 
   and function_info =
     { name : N.func ;
       retention : Retention.t option ;
       is_lazy : bool ;
       doc : string ;
-      operation : O.t }
+      operation : O.t ;
+      signature : string }
+
+  let source_compiled i =
+    match i.detail with
+    | CompiledSourceInfo _ -> true
+    | _ -> false
+
+  let print_failed_source_info oc i =
+    Printf.fprintf oc "err:%S" i.err_msg
+
+  let print_compiled_source_info oc _i =
+    Printf.fprintf oc "compiled (TODO)"
+
+  let print_detail_source_info oc = function
+    | CompiledSourceInfo i -> print_compiled_source_info oc i
+    | FailedSourceInfo i -> print_failed_source_info oc i
+
+  let print_source_info oc s =
+    Printf.fprintf oc "md5:%S, %a" s.md5 print_detail_source_info s.detail
 
   let print_worker_role oc = function
     | Whole -> String.print oc "whole worker"

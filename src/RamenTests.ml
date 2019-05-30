@@ -418,8 +418,7 @@ let bin_of_program conf get_parent program_name program_code =
                  Files.add_ext (N.path_of_program program_name) "ramen" ] in
   File.with_file_out ~mode:[`create; `text ; `trunc] (source_file :> string)
     (fun oc -> String.print oc program_code) ;
-  RamenCompiler.compile conf get_parent ~exec_file
-                        source_file program_name ;
+  RamenMake.build conf get_parent program_name source_file exec_file ;
   exec_file
 
 let run_test conf notify_rb dirname test =

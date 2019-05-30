@@ -96,7 +96,7 @@ external next_pending_request : unit -> pending_req = "next_pending_request"
 
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
-let on_new clt k v uid =
+let on_new _zock clt k v uid =
   ignore clt ;
   Gc.compact () ;
   conf_new_key (Key.to_string k) v uid ;
@@ -104,7 +104,7 @@ let on_new clt k v uid =
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
-let on_set clt k v _u =
+let on_set _zock clt k v _u =
   ignore clt ;
   Gc.compact () ;
   conf_set_key (Key.to_string k) v ;
@@ -112,7 +112,7 @@ let on_set clt k v _u =
 
 external conf_del_key : string -> unit = "conf_del_key"
 
-let on_del clt k _v =
+let on_del _zock clt k _v =
   ignore clt ;
   Gc.compact () ;
   conf_del_key (Key.to_string k) ;
@@ -120,7 +120,7 @@ let on_del clt k _v =
 
 external conf_lock_key : string -> string -> unit = "conf_lock_key"
 
-let on_lock clt k uid =
+let on_lock _zock clt k uid =
   ignore clt ;
   Gc.compact () ;
   conf_lock_key (Key.to_string k) uid ;
@@ -128,7 +128,7 @@ let on_lock clt k uid =
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
-let on_unlock clt k =
+let on_unlock _zock clt k =
   ignore clt ;
   Gc.compact () ;
   conf_unlock_key (Key.to_string k) ;

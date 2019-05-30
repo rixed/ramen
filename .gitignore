@@ -89,3 +89,4 @@ rmadmin/qcustomplot.h
 icon.iconset
 *.icns
 *.ico
+*.info

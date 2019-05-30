@@ -18,6 +18,7 @@ module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
+module SV = RamenSync.Value
 module Orc = RamenOrc
 module Files = RamenFiles
 open RamenTypingHelpers
@@ -102,18 +103,11 @@ let parent_from_programs programs pn =
   let rce, get_rc = Hashtbl.find programs pn in
   if rce.RC.status <> MustRun then raise Not_found else get_rc ()
 
-(* [program_name] is used to resolve relative parent names, and name a few
- * temp files.
- * [get_parent] is a function that returns the P.t of a given
- * N.program, used to get the output types of pre-existing
- * functions. *)
-let compile conf get_parent ~exec_file source_file
-            (program_name : N.program) =
-  let program_code = Files.read_whole_file source_file in
-  (*
-   * If all goes well, many temporary files are going to be created. Here
-   * we collect all their name so we delete them at the end:
-   *)
+(*
+ * (Pre)Compilation creates a lot of temporary files. Here
+ * we collect all their name so we delete them at the end:
+ *)
+let clean_temporary_files conf f =
   let temp_files = ref Set.empty in
   let add_single_temp_file f = temp_files := Set.add f !temp_files in
   let add_temp_file f =
@@ -134,8 +128,18 @@ let compile conf get_parent ~exec_file source_file
       ) !temp_files
   in
   finally del_temp_files (fun () ->
+    f add_single_temp_file add_temp_file)
+
+(* [program_name] is used to resolve relative parent names, and name a few
+ * temp files.
+ * [get_parent] is a function that returns the P.t of a given
+ * N.program, used to get the output types of pre-existing
+ * functions. *)
+let precompile conf get_parent source_file (program_name : N.program) =
+  let program_code = Files.read_whole_file source_file in
+  clean_temporary_files conf (fun add_single_temp_file _add_temp_file ->
     (*
-     * Now that we've set up the stage, we have to parse that program,
+     * First thing is to parse that program,
      * turning the program_code into a list of RamenProgram.fun:
      *)
     !logger.info "Parsing program %s"
@@ -164,7 +168,7 @@ let compile conf get_parent ~exec_file source_file
             doc = parsed_func.doc ;
             operation = op ;
             in_type = RamenFieldMaskLib.in_type_of_operation op ;
-            signature = "" ;
+            signature = "" ; (* set later by finalize_func *)
             parents = O.parents_of_operation op ;
             merge_inputs = O.is_merging op } in
       let fq_name = N.fq_of_program program_name name in
@@ -263,12 +267,36 @@ let compile conf get_parent ~exec_file source_file
               N.field_print field
               (Option.print RamenUnits.print) units ;
             ft.units <- units) in
+(*
+    (* We need to reify in_type and out_type for each function so that we
+     * can update their units and let the unit computation reach a fixed
+     * point. So let's reify them here: *)
+    let input_of_func =
+      let h = Hashtbl.create 5 in
+      fun func ->
+        try Hashtbl.find h func.SV.name
+        with Not_found ->
+          let inp =
+            RamenFieldMaskLib.in_type_of_operation func.SV.operation in
+          Hashtbl.add h func.SV.name inp ;
+          inp
+    and output_of_func =
+      let h = Hashtbl.create 5 in
+      fun func ->
+        try Hashtbl.find h func.SV.name
+        with Not_found ->
+          let out =
+            O.out_type_of_operation ~with_private:true func.SV.operation in
+          Hashtbl.add h func.SV.name out ;
+          out in *)
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
         N.field_print name
         (func.F.name :> string) ;
       let out_type =
         O.out_type_of_operation ~with_private:true func.F.operation in
+(*        (func.SV.name :> string) ;
+     let out_type = output_of_func func in *)
       match List.find (fun ft ->
               ft.RamenTuple.name = name
             ) out_type with
@@ -296,6 +324,9 @@ let compile conf get_parent ~exec_file source_file
       (* Patch the input type: *)
       if units <> None then
         patch_in_typ field units func.F.in_type ;
+(*      if units <> None then (
+        let inp = input_of_func func in
+        patch_in_typ field units inp) ;*)
       units in
     let set_expr_units uoi uoo what e =
       if e.E.units = None then (
@@ -361,6 +392,8 @@ let compile conf get_parent ~exec_file source_file
     Hashtbl.iter (fun fq func ->
       !logger.debug "Substituting cherry-picked fields in %a"
         N.fq_print fq ;
+(*      let inp =
+        input_of_func func in *)
       !logger.debug "in_type: %a"
         RamenFieldMaskLib.print_in_type func.F.in_type ;
       let op = func.F.operation in
@@ -441,7 +474,26 @@ let compile conf get_parent ~exec_file source_file
     Option.may (fun cond ->
       E.iter (check_typed "Running condition") cond
     ) condition ;
+    let funcs =
+      Hashtbl.values compiler_funcs /@
+      (fun f ->
+        SV.{ name = f.F.name ;
+             retention = f.F.retention ;
+             is_lazy = f.F.is_lazy ;
+             doc = f.F.doc ;
+             operation = f.F.operation ;
+             signature = f.F.signature }) |>
+      List.of_enum in
+    SV.{ default_params = parsed_params ; condition ; funcs }
+  ) () (* and finally, delete temp files! *)
 
+(* [program_name] is used to resolve relative parent names, and name a few
+ * temp files.
+ * [get_parent] is a function that returns the P.t of a given
+ * N.program, used to get the output types of pre-existing
+ * functions. *)
+let compile conf info ~exec_file base_file (program_name : N.program) =
+  clean_temporary_files conf (fun _add_single_temp_file add_temp_file ->
     (*
      * Now the (OCaml) code can be generated and compiled.
      *
@@ -463,17 +515,17 @@ let compile conf get_parent ~exec_file source_file
     (* Start by producing a module (used by all funcs and the running_condition
      * in the casing) with the parameters: *)
     let params_obj_name =
-      N.cat (Files.remove_ext source_file)
+      N.cat base_file
             (N.path ("_params_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
     (* We need to collect all envvars used in the whole program (same as
      * the env tuple that's just been typed): *)
     let envvars =
-      Hashtbl.fold (fun _ func envvars ->
+      List.fold_left (fun envvars func ->
         List.rev_append
-          (O.envvars_of_operation func.F.operation)
+          (O.envvars_of_operation func.SV.operation)
           envvars
-      ) compiler_funcs [] |>
+      ) [] info.SV.funcs |>
       List.fast_sort N.compare in
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
@@ -487,7 +539,7 @@ let compile conf get_parent ~exec_file source_file
           open RamenLog\n\
           open RamenConsts\n"
           (program_name :> string) ;
-        CodeGen_OCaml.emit_parameters oc parsed_params envvars) in
+        CodeGen_OCaml.emit_parameters oc info.default_params envvars) in
     add_temp_file params_src_file ;
     let keep_temp_files = conf.C.keep_temp_files in
     RamenOCamlCompiler.compile
@@ -495,17 +547,17 @@ let compile conf get_parent ~exec_file source_file
     let params_mod_name =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
     let src_name_of_func func =
-      N.cat (Files.remove_ext source_file)
-            (N.path ("_"^ func.F.signature ^
+      N.cat base_file
+            (N.path ("_"^ func.SV.signature ^
                      "_"^ RamenVersions.codegen)) |>
       RamenOCamlCompiler.make_valid_for_module in
     let obj_files =
-      Hashtbl.fold (fun _ func obj_files ->
+      List.fold_left (fun obj_files func ->
         (* Start with the C++ object file for ORC support: *)
-        let orc_write_func = "orc_write_"^ func.F.signature
-        and orc_read_func = "orc_read_"^ func.F.signature
+        let orc_write_func = "orc_write_"^ func.SV.signature
+        and orc_read_func = "orc_read_"^ func.SV.signature
         and rtyp =
-          O.out_record_of_operation ~with_private:true func.F.operation in
+          O.out_record_of_operation ~with_private:true func.SV.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
@@ -520,17 +572,17 @@ let compile conf get_parent ~exec_file source_file
         (try
           CodeGen_OCaml.compile
             conf func obj_name params_mod_name orc_write_func orc_read_func
-            parsed_params envvars
+            info.default_params envvars
         with e ->
           let bt = Printexc.get_raw_backtrace () in
           let exn =
             Failure (
               Printf.sprintf2 "Cannot generate code for %s: %s"
-                (func.name :> string) (Printexc.to_string e)) in
+                (func.SV.name :> string) (Printexc.to_string e)) in
           Printexc.raise_with_backtrace exn bt) ;
         add_temp_file obj_name ;
         obj_name :: obj_files
-      ) compiler_funcs [ params_obj_name ] in
+      ) [ params_obj_name ] info.funcs in
     (* It might happen that we have compiled twice the same thing, if two
      * operations where identical. We must not ask the linker to include
      * the same module twice, though: *)
@@ -544,37 +596,47 @@ let compile conf get_parent ~exec_file source_file
      * above).
      *)
     let casing_obj_name =
-      N.cat (Files.remove_ext source_file)
+      N.cat base_file
             (N.path ("_casing_"^ RamenVersions.codegen ^".cmx")) |>
       RamenOCamlCompiler.make_valid_for_module in
     let src_file =
       RamenOCamlCompiler.with_code_file_for
         casing_obj_name conf.C.reuse_prev_files (fun oc ->
-        let params = parsed_params in
+        let params = info.default_params in
         Printf.fprintf oc "(* Ramen Casing for program %s *)\n"
           (program_name :> string) ;
         CodeGen_OCaml.emit_header params_mod_name oc ;
         (* Emit the running condition: *)
-        CodeGen_OCaml.emit_running_condition oc params envvars condition ;
+        CodeGen_OCaml.emit_running_condition oc params envvars info.SV.condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. We
          * embed this under the shape of the typed operation, as it makes it
          * possible to also analyze the program. For simplicity, all those
          * info are also computed from the operation when we load a program. *)
-        let funcs = Hashtbl.values compiler_funcs |> List.of_enum in
-        let condition =
-          Option.map (IO.to_string (E.print false)) condition in
         let runconf =
-          P.{ funcs ; params ; condition } in
+          P.Serialized.{
+            funcs =
+              List.map (fun func ->
+                F.Serialized.{
+                  name = func.SV.name ;
+                  retention = func.SV.retention ;
+                  is_lazy = func.SV.is_lazy ;
+                  doc = func.SV.doc ;
+                  operation = func.SV.operation ;
+                  signature = func.SV.signature }
+              ) info.SV.funcs ;
+            params ;
+            condition = Option.map (IO.to_string (E.print false)) info.SV.condition
+          } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
-          (Marshal.(to_string (P.serialized runconf) [])) ;
+          (Marshal.(to_string runconf [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
           "let () = CodeGenLib_Casing.run %S rc_marsh_ run_condition_\n"
             RamenVersions.codegen ;
         Printf.fprintf oc "\t[\n" ;
-        Hashtbl.iter (fun _ func ->
+        List.iter (fun func ->
           let mod_name =
             ((src_name_of_func func |> Files.basename) :> string) |>
             String.capitalize_ascii in
@@ -584,12 +646,12 @@ let compile conf get_parent ~exec_file source_file
              \t\t\t  top_half_entry_point = %s.%s ;\n\
              \t\t\t  replay_entry_point = %s.%s ;\n\
              \t\t\t  convert_entry_point = %s.%s } ;\n"
-            (func.F.name :> string)
+            (func.SV.name :> string)
             mod_name EntryPoints.worker
             mod_name EntryPoints.top_half
             mod_name EntryPoints.replay
             mod_name EntryPoints.convert
-        ) compiler_funcs ;
+        ) info.SV.funcs ;
         Printf.fprintf oc "\t]\n"
       ) in
     (*

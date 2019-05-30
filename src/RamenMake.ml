@@ -82,19 +82,53 @@ let builders : (string, string * check * builder) Hashtbl.t = Hashtbl.create 11
 let register from to_ check build =
   Hashtbl.add builders from (to_, check, build)
 
-(* Register a builder from ".ramen" to ".x" and converters from various
- * versioned ramen language files.
+let write_source_info fname (i : RamenSync.Value.source_info) =
+  Marshal.(to_string i [ No_sharing ]) |>
+  Files.write_whole_file fname
+
+let read_source_info fname : RamenSync.Value.source_info =
+  let s = Files.read_whole_file fname in
+  Marshal.from_string s 0
+
+(* Register separate builders from ".ramen" to ".info" and from there to
+ * ".x". From ramen to info, use the md5 within the info (likely to be a
+ * temp file which mtime is meaningless) to determine obsolescence.
  * Unlike the command line compiler, this compiler can only find parents in
  * the running-config (not on disc) and has no option to set a different
  * program name. (FIXME: try to get rid of that option) *)
 let () =
-  register "ramen" "x"
+  register "ramen" "info"
+    (fun src_file target_file ->
+      not (Files.exists target_file) || (
+        let info = read_source_info target_file in
+        let text = Files.read_whole_file src_file in
+        info.RamenSync.Value.md5 <> (N.md5 text)))
+    (fun conf get_parent program_name src_file target_file ->
+      let info =
+        let md5 = Files.read_whole_file src_file |> N.md5 in
+        match RamenCompiler.precompile conf get_parent src_file program_name with
+        | exception e ->
+            let s = Printexc.to_string e in
+            RamenSync.Value.{ md5 ; detail = FailedSourceInfo { err_msg = s } }
+        | i ->
+            RamenSync.Value.{ md5 ; detail = CompiledSourceInfo i } in
+      write_source_info target_file info)
+
+(* Register a builder that will carry on from ".info" and generate actual
+ * executable in ".x". *)
+let () =
+  register "info" "x"
     (fun src_file target_file ->
       target_is_older src_file target_file ||
       target_is_obsolete target_file)
-    (fun conf get_parent program_name src_file exec_file ->
-      RamenCompiler.compile conf get_parent ~exec_file src_file
-                            program_name)
+    (fun conf _get_parent program_name src_file exec_file ->
+      let info = read_source_info src_file in
+      match info.detail with
+      | CompiledSourceInfo info ->
+          let base_file = Files.remove_ext src_file in
+          RamenCompiler.compile conf info ~exec_file base_file program_name
+      | FailedSourceInfo { err_msg } ->
+          failwith err_msg)
 
 (* Return the list of builders, brute force (N is small, loops are rare): *)
 let find_path src dst =

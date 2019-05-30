@@ -107,12 +107,12 @@ let copts =
     Arg.(value (opt_all string [] i))
   and confserver_url =
     let i = Arg.info ~doc:CliInfo.confserver_url
-                     ~docs [ "confserver-url" ] in
+                     ~docs [ "confserver" ] in
     Arg.(value (opt string "" i))
   and confserver_login =
     let env = Term.env_info "USER" in
     let i = Arg.info ~doc:CliInfo.confserver_login
-                     ~docs ~env [ "confserver-login" ] in
+                     ~docs ~env [ "login" ] in
     Arg.(value (opt string "" i))
   in
   Term.(const RamenCliCmd.make_copts
@@ -548,6 +548,18 @@ let compile =
       $ output_file
       $ as_),
     info ~doc:CliInfo.compile "compile")
+
+let compserver =
+  Term.(
+    (const RamenCliCmd.compserver
+      $ copts
+      $ daemonize
+      $ to_stdout
+      $ to_syslog
+      $ external_compiler
+      $ max_simult_compilations
+      $ smt_solver),
+    info ~doc:CliInfo.compserver "compserver")
 
 let replace =
   let i = Arg.info ~doc:CliInfo.replace
@@ -1121,7 +1133,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ;
+        confserver ; confclient ; compserver ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)
