@@ -358,9 +358,11 @@ struct
   let non_persisted_programs = ref (Hashtbl.create 11)
 
   let read_file =
+    let ppp_of_fd = Files.ppp_of_fd ~default:"{}" running_config_ppp_ocaml in
     let ppp_of_fd fname fd =
-      fail_with_context "Reading RC file" (fun () ->
-        Files.ppp_of_fd ~default:"{}" running_config_ppp_ocaml fname fd) in
+      fail_with_context "Reading RC file" (fun () -> ppp_of_fd fname fd) |>
+      (* Prevent the caller from altering the cached hashtable: *)
+      Hashtbl.copy in
     fun conf fname fd ->
       if not (N.is_empty conf.persist_dir) then (
         let rc = ppp_of_fd fname fd in
