@@ -213,12 +213,15 @@ let start ?while_ url creds ?(topics=[])
 
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
-let process_in ?while_ zock clt =
+let process_in ?(while_=always) zock clt =
   let rec loop msg_count =
-    match retry_zmq ?while_ recv_cmd zock with
-    | exception Unix.(Unix_error (EAGAIN, _, _)) ->
-        msg_count
-    | msg ->
-        Client.process_msg clt msg ;
-        loop (msg_count + 1) in
+    if while_ () then
+      match recv_cmd zock with
+      | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+          msg_count
+      | msg ->
+          Client.process_msg clt msg ;
+          loop (msg_count + 1)
+    else
+      msg_count in
   loop 0

@@ -1093,7 +1093,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
   loop ()
 
 let yield_every ~while_ read_tuple every on_tup on_else =
-  !logger.debug "YIELD operation"  ;
+  !logger.debug "YIELD operation" ;
   let tx = RingBuf.bytes_tx 0 in
   let rec loop prev_start =
     if while_ () then (

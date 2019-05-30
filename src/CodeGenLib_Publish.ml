@@ -25,26 +25,32 @@ let stats_num_rate_limited_unpublished =
     Metric.Docs.num_rate_limited_unpublished
 
 let on_new _zock _clt k _v _uid =
-  !logger.info "New subscriber: %a" ZMQClient.Key.print k ;
-  (* TODO: upgrade binocle
-  IntGauge.inc stats_num_subscribers *)
-  let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
-  IntGauge.set stats_num_subscribers (c + 1)
+  match k with
+  | RamenSync.Key.Tail (_, _, Subscriber uid) ->
+      !logger.info "New subscriber: %s" uid ;
+      (* TODO: upgrade binocle
+      IntGauge.inc stats_num_subscribers *)
+      let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
+      IntGauge.set stats_num_subscribers (c + 1)
+  | _ -> ()
 
 let on_del _zock _clt k _v =
-  !logger.info "Leaving subscriber: %a" ZMQClient.Key.print k ;
-  (* TODO: upgrade binocle
-  IntGauge.dec stats_num_subscribers *)
-  let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
-  IntGauge.set stats_num_subscribers (c - 1)
+  match k with
+  | RamenSync.Key.Tail (_, _, Subscriber uid) ->
+      !logger.info "Leaving subscriber: %s" uid ;
+      (* TODO: upgrade binocle
+      IntGauge.dec stats_num_subscribers *)
+      let _mi, c, _ma = IntGauge.get stats_num_subscribers |? (0, 0, 0) in
+      IntGauge.set stats_num_subscribers (c - 1)
+  | _ -> ()
 
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
  * topic and received messages can only impact what this function does. *)
-let may_publish clt zock key_of_seq
+let may_publish clt zock ?while_ key_of_seq
                 sersize_of_tuple serialize_tuple skipped tuple =
   (* Process incoming messages without waiting for them: *)
-  let msg_count = ZMQClient.process_in zock clt in
+  let msg_count = ZMQClient.process_in ?while_ zock clt in
   if msg_count > 0 then
     !logger.info "Received %d ZMQ messages" msg_count ;
   IntCounter.add stats_num_sync_msgs_in msg_count ;
@@ -79,5 +85,5 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del
                     ~recvtimeo:0 ~sndtimeo:0 (fun zock clt ->
-      let publish = may_publish clt zock topic_pub in
+      let publish = may_publish clt zock ?while_ topic_pub in
       k publish conf)
