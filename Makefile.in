@@ -139,7 +139,9 @@ RAMEN_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
+	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
+	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
@@ -149,7 +151,9 @@ RAMEN_SOURCES = \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
 	src/RamenWorkerStats.ml \
+	src/RamenWorkerStatsSerialization.ml \
 	src/RamenNotification.ml \
+	src/RamenNotificationSerialization.ml \
 	src/RamenExpr.ml \
 	src/Globs.ml \
 	src/RamenOperation.ml \
@@ -235,14 +239,18 @@ CODEGENLIB_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
+	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
+	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RingBuf.ml \
 	src/RamenTypeConverters.ml \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
 	src/RamenWorkerStats.ml \
+	src/RamenWorkerStatsSerialization.ml \
 	src/RamenNotification.ml \
+	src/RamenNotificationSerialization.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenSampling.ml \
 	src/RamenFileNotify.ml \
@@ -333,7 +341,9 @@ ORCWRITER_SOURCES = \
 	src/RamenEventTime.ml \
 	src/RamenUnits.ml \
 	src/RamenCollectd.ml \
+	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
+	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
@@ -343,7 +353,9 @@ ORCWRITER_SOURCES = \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
 	src/RamenWorkerStats.ml \
+	src/RamenWorkerStatsSerialization.ml \
 	src/RamenNotification.ml \
+	src/RamenNotificationSerialization.ml \
 	src/RamenExpr.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \
@@ -761,7 +773,9 @@ LINKED_FOR_TESTS = \
 	src/RamenUnits.ml \
 	src/RamenNullable.ml \
 	src/RamenCollectd.ml \
+	src/RamenCollectdSerialization.ml \
 	src/RamenNetflow.ml \
+	src/RamenNetflowSerialization.ml \
 	src/RamenGraphiteSink.ml \
 	src/RamenProtocols.ml \
 	src/RamenTypeConverters.ml \
@@ -773,7 +787,9 @@ LINKED_FOR_TESTS = \
 	src/RingBufLib.ml \
 	src/RamenOrc.ml \
 	src/RamenWorkerStats.ml \
+	src/RamenWorkerStatsSerialization.ml \
 	src/RamenNotification.ml \
+	src/RamenNotificationSerialization.ml \
 	src/Globs.ml \
 	src/RamenOperation.ml \
 	src/RamenFieldMask.ml \

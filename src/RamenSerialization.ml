@@ -65,7 +65,7 @@ let read_tuples ?while_ unserialize rb f =
 
 let read_notifs ?while_ rb f =
   (* Ignore all notifications but on live channel. *)
-  read_tuples ?while_ RamenNotification.unserialize rb (function
+  read_tuples ?while_ RamenNotificationSerialization.unserialize rb (function
     | DataTuple chan, Some notif
       when chan = RamenChannel.live ->
         f notif

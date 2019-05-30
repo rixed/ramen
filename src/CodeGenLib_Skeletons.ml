@@ -222,13 +222,13 @@ let send_stats
   let head = RingBufLib.DataTuple Channel.live in
   let sersize =
     RingBufLib.message_header_sersize head +
-    RamenWorkerStats.max_sersize_of_tuple tuple in
+    RamenWorkerStatsSerialization.max_sersize_of_tuple tuple in
   match enqueue_alloc rb sersize with
   | exception NoMoreRoom -> () (* Just skip *)
   | tx ->
     RingBufLib.(write_message_header tx 0 head) ;
     let offs = RingBufLib.message_header_sersize head in
-    let offs = RamenWorkerStats.serialize tx offs tuple in
+    let offs = RamenWorkerStatsSerialization.serialize tx offs tuple in
     enqueue_commit tx time time ;
     assert (offs <= sersize)
 
