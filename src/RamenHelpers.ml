@@ -5,8 +5,6 @@ module Atomic = RamenAtomic
 
 (*$inject open Batteries *)
 
-let max_int_for_random = 0x3FFFFFFF
-
 (* Small helper to return the ith entry of an array, capped to the last one.
  * Useful when we reach the last defined attempt while escalating an alert. *)
 let get_cap a i =

@@ -2,6 +2,7 @@
 open Batteries
 open RamenLog
 open RamenHelpers
+open RamenConsts
 
 (* TODO: use RamenBitmask *)
 type t =
