@@ -59,25 +59,17 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   treeView->setModel(graphModel);
   treeView->setHeaderHidden(true);
   treeView->setUniformRowHeights(true);
-  QSizePolicy sp = treeView->sizePolicy();
-  sp.setHorizontalPolicy(QSizePolicy::Preferred);
-  sp.setHorizontalStretch(1);
-  treeView->setSizePolicy(sp);
   leftPannelLayout->addWidget(treeView);
 
   leftPannel->setLayout(leftPannelLayout);
 
   topSplit->addWidget(leftPannel);
+  topSplit->setStretchFactor(0, 0);
 
   GraphView *graphView = new GraphView(graphModel->settings);
-  sp = graphView->sizePolicy();
-  sp.setHorizontalPolicy(QSizePolicy::Ignored);
-  sp.setHorizontalStretch(2);
-  graphView->setSizePolicy(sp);
   graphView->setModel(graphModel);
   topSplit->addWidget(graphView);
-
-  topSplit->setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+  topSplit->setStretchFactor(1, 1);
 
   // Then the bottom part is made of a info box and a tabbed stack of
   // TailTable.

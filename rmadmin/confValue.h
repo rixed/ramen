@@ -91,7 +91,7 @@ struct String : public Value
 struct Error : public Value
 {
   double time;
-  unsigned cmd_id;
+  unsigned cmdId;
   std::string msg;
   Error();
   ~Error();

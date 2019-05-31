@@ -346,77 +346,76 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
   ParsedKey pk(k);
   /*std::cout << "GraphModel key " << k << " set to value " << *v
             << " is valid:" << pk.valid << std::endl;*/
+  if (!pk.valid) return;
 
-  if (pk.valid) {
-    assert(pk.site.length() > 0);
+  assert(pk.site.length() > 0);
 
-    SiteItem *siteItem = nullptr;
-    for (SiteItem *si : sites) {
-      if (si->name == pk.site) {
-        siteItem = si;
+  SiteItem *siteItem = nullptr;
+  for (SiteItem *si : sites) {
+    if (si->name == pk.site) {
+      siteItem = si;
+      break;
+    }
+  }
+  if (! siteItem) {
+    siteItem = new SiteItem(nullptr, pk.site, settings);
+    int idx = sites.size(); // as we insert at the end for now
+    beginInsertRows(QModelIndex(), idx, idx);
+    sites.insert(sites.begin()+idx, siteItem);
+    reorder();
+    endInsertRows();
+  }
+
+  if (pk.program.length() > 0) {
+    ProgramItem *programItem = nullptr;
+    for (ProgramItem *pi : siteItem->programs) {
+      if (pi->name == pk.program) {
+        programItem = pi;
         break;
       }
     }
-    if (! siteItem) {
-      siteItem = new SiteItem(nullptr, pk.site, settings);
-      int idx = sites.size(); // as we insert at the end for now
-      beginInsertRows(QModelIndex(), idx, idx);
-      sites.insert(sites.begin()+idx, siteItem);
-      reorder();
+    if (! programItem) {
+      programItem = new ProgramItem(siteItem, pk.program, settings);
+      int idx = siteItem->programs.size();
+      QModelIndex parent =
+        createIndex(siteItem->row, 0, static_cast<GraphItem *>(siteItem));
+      beginInsertRows(parent, idx, idx);
+      siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
+      siteItem->reorder(this);
       endInsertRows();
     }
 
-    if (pk.program.length() > 0) {
-      ProgramItem *programItem = nullptr;
-      for (ProgramItem *pi : siteItem->programs) {
-        if (pi->name == pk.program) {
-          programItem = pi;
+    if (pk.function.length() > 0) {
+      FunctionItem *functionItem = nullptr;
+      for (FunctionItem *fi : programItem->functions) {
+        if (fi->name == pk.function) {
+          functionItem = fi;
           break;
         }
       }
-      if (! programItem) {
-        programItem = new ProgramItem(siteItem, pk.program, settings);
-        int idx = siteItem->programs.size();
+      if (! functionItem) {
+        functionItem = new FunctionItem(programItem, pk.function, settings);
+        int idx = programItem->functions.size();
         QModelIndex parent =
-          createIndex(siteItem->row, 0, static_cast<GraphItem *>(siteItem));
+          createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));
         beginInsertRows(parent, idx, idx);
-        siteItem->programs.insert(siteItem->programs.begin()+idx, programItem);
-        siteItem->reorder(this);
+        programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
+        programItem->reorder(this);
         endInsertRows();
+        // Since we have a new function, maybe we can solve some of the
+        // pendingSetParents?
+        retrySetParents();
+        emit functionAdded(functionItem);
       }
-
-      if (pk.function.length() > 0) {
-        FunctionItem *functionItem = nullptr;
-        for (FunctionItem *fi : programItem->functions) {
-          if (fi->name == pk.function) {
-            functionItem = fi;
-            break;
-          }
-        }
-        if (! functionItem) {
-          functionItem = new FunctionItem(programItem, pk.function, settings);
-          int idx = programItem->functions.size();
-          QModelIndex parent =
-            createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));
-          beginInsertRows(parent, idx, idx);
-          programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
-          programItem->reorder(this);
-          endInsertRows();
-          // Since we have a new function, maybe we can solve some of the
-          // pendingSetParents?
-          retrySetParents();
-          emit functionAdded(functionItem);
-        }
-        setFunctionProperty(functionItem, pk.property, v);
-        functionItem->update();
-      } else {
-        setProgramProperty(programItem, pk.property, v);
-        programItem->update();
-      }
+      setFunctionProperty(functionItem, pk.property, v);
+      functionItem->update();
     } else {
-      setSiteProperty(siteItem, pk.property, v);
-      siteItem->update();
+      setProgramProperty(programItem, pk.property, v);
+      programItem->update();
     }
+  } else {
+    setSiteProperty(siteItem, pk.property, v);
+    siteItem->update();
   }
 }
 

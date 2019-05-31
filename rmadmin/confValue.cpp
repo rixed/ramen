@@ -339,8 +339,8 @@ bool String::operator==(Value const &other) const
   return s == o.s;
 }
 
-Error::Error(double time_, unsigned cmd_id_, std::string const &msg_) :
-  Value(ErrorType), time(time_), cmd_id(cmd_id_), msg(msg_) {}
+Error::Error(double time_, unsigned cmdId_, std::string const &msg_) :
+  Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
 
 Error::Error() : Error(0., 0, "") {}
 
@@ -361,7 +361,7 @@ bool Error::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Error const &o = static_cast<Error const &>(other);
-  return cmd_id == o.cmd_id;
+  return cmdId == o.cmdId;
 }
 
 Worker::Worker(QString const &site_, QString const &program_, QString const &function_) :

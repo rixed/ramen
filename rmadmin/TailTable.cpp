@@ -12,6 +12,7 @@ TailTable::TailTable(TailModel *model, QWidget *parent) :
 
   tableView = new QTableView(this);
   tableView->setModel(model);
+  tableView->setAlternatingRowColors(true);
   layout->addWidget(tableView);
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
   tableView->setSelectionMode(QAbstractItemView::MultiSelection);

@@ -228,13 +228,9 @@ struct
     | Parents of int
     (* TODO: add children in the FuncGraph
     | Children of int *)
-    (* Process level control has to be per signature: *)
     | PerInstance of string (* func signature *) * per_instance_key
 
   and per_instance_key =
-    (* A single entry with all parameters required to actually run a worker, to avoid
-     * race condition: *)
-    | Process
     (* These are contributed back by the supervisor: *)
     | Pid
     | LastKilled
@@ -301,7 +297,6 @@ struct
 
   let print_per_instance fmt k =
     String.print fmt (match k with
-    | Process -> "process"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
     | Unstopped -> "unstopped"
@@ -471,7 +466,6 @@ struct
                               | [ fq ; "instance" ], sign, s ->
                                   PerWorker (N.fq fq, PerInstance (sign,
                                     match s with
-                                    | "process" -> Process
                                     | "pid" -> Pid
                                     | "last_killed" -> LastKilled
                                     | "unstopped" -> Unstopped
@@ -593,21 +587,6 @@ struct
           values : bytes (* serialized *) }
     | RamenType of T.t
     | TargetConfig of (N.program * rc_entry) list
-    (* Used to describe all the required parameter to run a worker (need atomicity
-     * as it's used to spawn processes): *)
-    | Process of
-        { params : RamenTuple.params ;
-          (* EnvVars are captured at confserver location. For simplicity we set
-           * all params, even default ones with default value if not overridden: *)
-          envvars : (N.field * string option) list ;
-          role : worker_role ;
-          log_level : log_level ;
-          report_period : float ;
-          bin_file : N.path ;
-          src_file : N.path ;
-          (* Actual workers not only logical parents as in func.parent: *)
-          parents : (N.site * N.program * N.func) list ;
-          children : (N.site * N.program * N.func) list }
     (* Holds all info from the compilation of a source ; what we used to have in the
      * executable binary itself. *)
     | SourceInfo of source_info
@@ -710,8 +689,6 @@ struct
           (Bytes.length values) skipped
     | RamenType t ->
         T.print_typ fmt t
-    | Process p ->
-        Printf.fprintf fmt "Process { bin:%a... }" N.path_print p.bin_file
     | TargetConfig _ ->
         Printf.fprintf fmt "TargetConfig { ... }"
     | SourceInfo _ ->

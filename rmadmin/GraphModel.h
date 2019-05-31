@@ -69,7 +69,7 @@ public:
   int columnCount(QModelIndex const &parent) const;
   QVariant data(QModelIndex const &index, int role) const;
 
-public slots:
+private slots:
   void updateKey(conf::Key const &, std::shared_ptr<conf::Value const>);
 
 signals:
