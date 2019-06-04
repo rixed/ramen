@@ -586,6 +586,7 @@ struct
         { skipped : int (* How many tuples were skipped before this one *) ;
           values : bytes (* serialized *) }
     | RamenType of T.t
+    | RamenValue of T.value
     | TargetConfig of (N.program * rc_entry) list
     (* Holds all info from the compilation of a source ; what we used to have in the
      * executable binary itself. *)

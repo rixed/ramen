@@ -1,15 +1,40 @@
+#include <cassert>
 #include <string.h>
 #include <cstdlib>
 #include <cstring>
 #include <QtWidgets>
 #include <QString>
-#include "confValue.h"
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
 }
+#include "misc.h"
+#include "confRamenValue.h"
+#include "confValue.h"
 
 namespace conf {
+
+static QString const stringOfValueType(ValueType valueType)
+{
+  static QString const stringOfValueTypes[] = {
+    [BoolType] = "BoolType",
+    [IntType] = "IntType",
+    [FloatType] = "FloatType",
+    [StringType] = "StringType",
+    [ErrorType] = "ErrorType",
+    [WorkerType] = "WorkerType",
+    [RetentionType] = "RetentionType",
+    [TimeRangeType] = "TimeRangeType",
+    [TupleType] = "TupleType",
+    [RamenTypeType] = "RamenTypeType",
+    [RamenValueType] = "RamenValueType",
+    [TargetConfigType] = "TargetConfigType",
+    [SourceInfoType] = "SourceInfoType",
+    [LastValueType] = "LastValueType",
+  };
+  assert((size_t)valueType < SIZEOF_ARRAY(stringOfValueTypes));
+  return stringOfValueTypes[(size_t)valueType];
+}
 
 Value::Value()
 {
@@ -22,7 +47,7 @@ Value::~Value() {}
 
 QString Value::toQString() const
 {
-  return QString("undefined value");
+  return QString("TODO: toQString for ") + stringOfValueType(valueType);
 }
 
 value Value::toOCamlValue() const
@@ -128,7 +153,7 @@ static RamenType *ramenTypeOfOCaml(value v_)
 Value *valueOfOCaml(value v_)
 {
   CAMLparam1(v_);
-  CAMLlocal3(tmp_, str_, nul_);
+  CAMLlocal3(tmp1_, tmp2_, tmp3_);
   assert(Is_block(v_));
   ValueType valueType = (ValueType)Tag_val(v_);
   Value *ret = nullptr;
@@ -158,11 +183,11 @@ Value *valueOfOCaml(value v_)
         String_val(Field(v_, 2)));
       break;
     case RetentionType:
-      tmp_ = Field(v_, 0);
-      assert(Tag_val(tmp_) == Double_array_tag);
+      tmp1_ = Field(v_, 0);
+      assert(Tag_val(tmp1_) == Double_array_tag);
       ret = new Retention(
-        Double_field(tmp_, 0),
-        Double_field(tmp_, 1));
+        Double_field(tmp1_, 0),
+        Double_field(tmp1_, 1));
       break;
     case TimeRangeType:
       {
@@ -182,6 +207,48 @@ Value *valueOfOCaml(value v_)
       break;
     case RamenTypeType:
       ret = ramenTypeOfOCaml(Field(v_, 0));
+      break;
+    case RamenValueType:
+      ret = new RamenValueValue(
+        RamenValueOfOCaml(Field(v_, 0)));
+      break;
+    case TargetConfigType:
+      assert(!"TODO: TargetConfigType of OCaml");
+    case SourceInfoType:
+      {
+        v_ = Field(v_, 0);
+        QString md5(String_val(Field(v_, 0)));
+        v_ = Field(v_, 1);
+        switch (Tag_val(v_)) {
+          case 0: // CompiledSourceInfo
+            {
+              v_ = Field(v_, 0);
+              // `Some expression` for the running condition
+              bool hasRunCond = Is_block(Field(v_, 1));
+              SourceInfo *sourceInfo = new SourceInfo(md5, hasRunCond);
+              ret = sourceInfo;
+              // Iter over the cons cells of the RamenTuple.params:
+              for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+                tmp2_ = Field(tmp1_, 0);  // the RamenTuple.param
+                tmp3_ = Field(tmp2_, 0);  // the ptyp field
+                CompiledProgramParam *p =
+                  new CompiledProgramParam(
+                    String_val(Field(tmp3_, 0)),  // name
+                    String_val(Field(tmp3_, 3)),  // doc
+                    RamenValueOfOCaml(Field(tmp2_, 1))); // value
+                sourceInfo->addParam(p);
+              }
+              // TODO: Same for funcs -> CompiledFunctionInfo
+            }
+            break;
+          case 1: // FailedSourceInfo
+            v_ = Field(v_, 0);
+            ret = new SourceInfo(md5, String_val(Field(v_, 0)));
+            break;
+          default:
+            assert(!"Not a detail_source_info?!");
+        }
+      }
       break;
     case LastValueType:
     default:
@@ -230,7 +297,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
 
 Bool::Bool(bool b_) : Value(BoolType), b(b_) {}
 
-Bool::Bool() : Bool(true) {}
+Bool::Bool() : Bool(false) {}
 
 Bool::~Bool() {}
 
@@ -657,6 +724,38 @@ QString RamenTypeRecord::structureToQString() const
   s.append("}");
   return s;
 }
+
+bool RamenValueValue::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  RamenValueValue const &o = static_cast<RamenValueValue const &>(other);
+  return value == o.value;
+}
+
+SourceInfo::SourceInfo() : SourceInfo(QString(), QString()) {}
+
+SourceInfo::~SourceInfo()
+{
+  while (! params.isEmpty()) {
+    delete (params.takeLast());
+  }
+  while (! infos.isEmpty()) {
+    delete (infos.takeLast());
+  }
+}
+
+bool SourceInfo::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  SourceInfo const &o = static_cast<SourceInfo const &>(other);
+  if (md5 != o.md5) return false;
+  if (isInfo()) {
+    return o.isInfo() && params == o.params && infos == o.infos;
+  } else {
+    return !o.isInfo() && errMsg == o.errMsg;
+  }
+}
+
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
 {

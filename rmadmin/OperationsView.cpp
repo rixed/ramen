@@ -12,9 +12,9 @@
 #include "ProgramItem.h"
 #include "FunctionInfoBox.h"
 #include "ProgramInfoBox.h"
-#include "CodeEdit.h"
 #include "Chart.h"
 #include "ChartDataSet.h"
+#include "widgetTools.h"
 #include "OperationsView.h"
 
 /* For some unfathomable reason the QTreeView sizeHint always return a width
@@ -162,56 +162,35 @@ void OperationsView::selectItem(QModelIndex const &index)
   }
 }
 
-static bool tryFocus(QTabWidget *w, QString const &label)
-{
-  for (int i = 0; i < w->count(); i++) {
-    if (w->tabText(i) == label) {
-      w->setCurrentIndex(i);
-      return true;
-    }
-  }
-  return false;
-}
-
-static void focusLast(QTabWidget *w)
-{
-  w->setCurrentIndex(w->count() - 1);
-}
-
 void OperationsView::addProgInfo(ProgramItem const *p)
 {
-  if (tryFocus(infoTabs, p->name)) return;
+  if (tryFocusTab(infoTabs, p->name)) return;
 
   ProgramInfoBox *box = new ProgramInfoBox(p);
   infoTabs->addTab(box, p->name);
-  focusLast(infoTabs);
+  focusLastTab(infoTabs);
 }
 
-void OperationsView::addSource(ProgramItem const *p)
+void OperationsView::addSource(ProgramItem const *)
 {
-  QString src_file("TODO:src_file of " + p->name);
-  if (tryFocus(dataTabs, src_file)) return;
-
-  // TODO: find the src_file in the kvs tree, or do nothing.
-  CodeEdit *editor = new CodeEdit(p);
-  dataTabs->addTab(editor, src_file);
-  focusLast(dataTabs);
+  // TODO: show the program in the SourcesView
+  std::cout << "TODO" << std::endl;
 }
 
 void OperationsView::addFuncInfo(FunctionItem const *f)
 {
   QString label(f->fqName());
-  if (tryFocus(infoTabs, label)) return;
+  if (tryFocusTab(infoTabs, label)) return;
 
   FunctionInfoBox *box = new FunctionInfoBox(f);
   infoTabs->addTab(box, label);
-  focusLast(infoTabs);
+  focusLastTab(infoTabs);
 }
 
 void OperationsView::addTail(FunctionItem *f)
 {
   QString label(f->fqName());
-  if (tryFocus(dataTabs, label)) return;
+  if (tryFocusTab(dataTabs, label)) return;
 
   /* TODO: When we select one or more column headers, enable two buttons:
    * one to open a quick chart window with that/those field(s).
@@ -235,7 +214,7 @@ void OperationsView::addTail(FunctionItem *f)
 
   TailTable *table = new TailTable(f->tailModel);
   dataTabs->addTab(table, label);
-  focusLast(dataTabs);
+  focusLastTab(dataTabs);
 
   // Add a Plot when the user ask for it:
   connect(table, &TailTable::quickPlotClicked, this, [this, f](QList<int> const &selectedColumns) {
@@ -263,7 +242,7 @@ void OperationsView::addQuickPlot(FunctionItem const *f, QList<int> const &selec
     chart->addData(ds);
   }
   dataTabs->addTab(chart, name);
-  focusLast(dataTabs);
+  focusLastTab(dataTabs);
   chart->update();
 }
 

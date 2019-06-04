@@ -21,6 +21,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 # Input
 HEADERS += \
+  misc.h \
   qcustomplot.h \
   LazyRef.h \
   colorOfString.h \
@@ -29,6 +30,7 @@ HEADERS += \
   PosDoubleValidator.h \
   confKey.h \
   serValue.h \
+  confRamenValue.h \
   confValue.h \
   KValue.h \
   conf.h \
@@ -45,6 +47,7 @@ HEADERS += \
   FunctionItem.h \
   ProgramItem.h \
   SiteItem.h \
+  widgetTools.h \
   GraphViewSettings.h \
   GraphModel.h \
   TailModel.h \
@@ -60,6 +63,10 @@ HEADERS += \
   ChartDataSet.h \
   Graphic.h \
   Chart.h \
+  SourcesModel.h \
+  CompiledProgramParam.h \
+  CompiledFunctionInfo.h \
+  SourcesView.h \
   OperationsView.h \
   StorageForm.h \
   StorageSlice.h \
@@ -79,6 +86,7 @@ SOURCES += \
   PosDoubleValidator.cpp \
   confKey.cpp \
   serValue.cpp \
+  confRamenValue.cpp \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \
@@ -92,6 +100,7 @@ SOURCES += \
   FunctionItem.cpp \
   ProgramItem.cpp \
   SiteItem.cpp \
+  widgetTools.cpp \
   GraphViewSettings.cpp \
   GraphModel.cpp \
   TailModel.cpp \
@@ -103,6 +112,10 @@ SOURCES += \
   ChartDataSet.cpp \
   Graphic.cpp \
   Chart.cpp \
+  SourcesModel.cpp \
+  CompiledProgramParam.cpp \
+  CompiledFunctionInfo.cpp \
+  SourcesView.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

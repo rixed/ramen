@@ -5,20 +5,29 @@
 #include <QCoreApplication>
 #include <QString>
 #include <QMetaType>
+#include <QObject>
 extern "C" {
 # include <caml/mlvalues.h>
 }
 #include "serValue.h"
+#include "CompiledProgramParam.h"
+#include "CompiledFunctionInfo.h"
+#include "confRamenValue.h"
 
 namespace conf {
 
 enum ValueType {
+  // TODO: get rid of duplicates with RamenValueType
   BoolType = 0, IntType, FloatType, StringType,
   ErrorType, WorkerType, RetentionType, TimeRangeType,
   // Beware: conf::TupleType is the type of a tuple received for tailling
   // (ie number of skipped tuples + serialized value), while
   // ser::TupleType is the type of a RamenValue (equivalent to T.TTuple).
-  TupleType, RamenTypeType,
+  TupleType,
+  RamenTypeType,  // For RamenTypes.t
+  RamenValueType,  // For RamenTypes.value
+  TargetConfigType,
+  SourceInfoType,
   LastValueType
 };
 
@@ -302,6 +311,44 @@ struct RamenTypeRecord : public RamenType
   bool isNumeric() const { return false; }
 };
 
+struct RamenValueValue : public Value
+{
+  conf::RamenValue *value;
+  RamenValueValue(RamenValue *value_) :
+    Value(RamenValueType), value(value_) {}
+  ~RamenValueValue() { delete value; }
+
+  QString toQString() const { return value->toQString(); }
+  bool operator==(Value const &) const;
+};
+
+// Read only (pre)compilation output for a program:
+struct SourceInfo : public Value
+{
+  QString md5;
+  // If this is not empty then everything else is irrelevant.
+  QString errMsg;
+  QList<CompiledProgramParam *> params;
+  bool hasRunCondition;
+  QList<CompiledFunctionInfo *> infos;
+
+  SourceInfo();
+  SourceInfo(QString md5_, QString errMsg_) :
+    Value(SourceInfoType), md5(md5_), errMsg(errMsg_) {}
+  SourceInfo(QString md5_, bool hasRunCondition_) :
+    Value(SourceInfoType), md5(md5_), hasRunCondition(hasRunCondition_) {}
+  ~SourceInfo();
+
+  bool operator==(Value const &) const;
+
+  bool isInfo() const { return errMsg.isEmpty(); }
+  bool isError() const { return !isInfo(); }
+
+  // Takes ownership
+  void addParam(CompiledProgramParam *p) { params.append(p); }
+  void addOInfo(CompiledFunctionInfo *i) { infos.append(i); }
+};
+
 };
 
 Q_DECLARE_METATYPE(std::shared_ptr<conf::Value const>);
@@ -310,6 +357,7 @@ Q_DECLARE_METATYPE(conf::Int);
 Q_DECLARE_METATYPE(conf::Float);
 Q_DECLARE_METATYPE(conf::String);
 Q_DECLARE_METATYPE(conf::Error);
+Q_DECLARE_METATYPE(conf::SourceInfo);
 Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);

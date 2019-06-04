@@ -1,6 +1,7 @@
 #ifndef CODEEDIT_H_190516
 #define CODEEDIT_H_190516
 #include <QTextEdit>
+#include "confKey.h"
 #include "KValue.h"
 
 class ProgramItem;
@@ -9,10 +10,10 @@ class CodeEdit : public QTextEdit
 {
   Q_OBJECT
 
-  ProgramItem const *p;
+  conf::Key const key;
 
 public:
-  CodeEdit(ProgramItem const *, QWidget *parent = nullptr);
+  CodeEdit(conf::Key const &, QWidget *parent = nullptr);
 
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

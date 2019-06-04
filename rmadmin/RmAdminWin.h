@@ -7,6 +7,7 @@
 #include "KErrorMsg.h"
 #include "SyncStatus.h"
 
+class SourcesModel;
 class GraphModel;
 class GraphViewSettings;
 
@@ -17,6 +18,7 @@ class RmAdminWin : public QMainWindow
   SyncStatus connStatus, authStatus, syncStatus;
   void setStatusMsg();
   KErrorMsg *errorMessage;
+  SourcesModel *sourcesModel;
   GraphModel *graphModel;
   GraphViewSettings *settings;
 

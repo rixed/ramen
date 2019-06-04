@@ -46,18 +46,7 @@ rc_version=v16
 services_version=v2
 archivist_version=v6
 
-# Compile the test programs (only once)
 if test "$be_master" = yes; then
-  log "Compiling programs..."
-
-  root="examples/programs/monitoring"
-  if needs_recompile "$root/logs.x"; then
-    "$ramen" compile "$root/logs.ramen"
-  fi
-  if needs_recompile "$root/logs_aggr.x"; then
-    "$ramen" compile -L "$root" "$root/logs_aggr.ramen"
-  fi
-
   log "Run the tunneling server..."
   "$ramen" tunneld --master=aggregator --port "$master_port" &
   tunneld_pid=$!
@@ -79,12 +68,32 @@ if test "$be_master" = yes; then
   done
   echo '}' >> $services
 
-  log "Starting programs..."
-  export RAMEN_REPORT_PERIOD=2
-  "$ramen" run "$root/logs.x"      --src "$root/logs.ramen"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
-  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
-  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
-  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
+  log "Run the http, config and compilation servers..."
+
+  "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
+  httpd_pid=$!
+  at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
+
+  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
+  confserver_pid=$!
+  at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
+
+  "$ramen" compserver --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
+  compserver_pid=$!
+  at_exit "echo 'Killing compserver'; kill '$compserver_pid'"
+
+  log "Compiling programs via the confserver..."
+
+  root="examples/programs/monitoring"
+  "$ramen" compile --confserver=localhost "$root/logs.ramen"
+  "$ramen" compile --confserver=localhost -L "$root" "$root/logs_aggr.ramen"
+
+#  log "Starting programs..."
+#  export RAMEN_REPORT_PERIOD=2
+#  "$ramen" run "$root/logs.x"      --src "$root/logs.ramen"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
+#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
+#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
+#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
 
 else
   log "Linking config files from aggregator" ;
@@ -129,19 +138,6 @@ else
   archivist_pid=$!
 fi
 at_exit "echo 'Killing archivist'; kill '$archivist_pid'"
-
-# httpd and confserver run only on the master site:
-if test "$be_master" = yes; then
-  log "Run the http and config servers..."
-
-  "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
-  httpd_pid=$!
-  at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
-
-  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
-  confserver_pid=$!
-  at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
-fi
 
 if test "$be_master" = yes; then
 

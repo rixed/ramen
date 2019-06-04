@@ -1,6 +1,8 @@
 #include <iostream>
 #include <QTabWidget>
+#include "SourcesView.h"
 #include "OperationsView.h"
+#include "SourcesModel.h"
 #include "GraphModel.h"
 #include "StorageView.h"
 #include "RmAdminWin.h"
@@ -11,16 +13,17 @@ RmAdminWin::RmAdminWin(QWidget *parent) :
   // A GraphModel satisfies both the TreeView and the GraphView
   // requirements:
   settings = new GraphViewSettings();
+  sourcesModel = new SourcesModel(this);
   graphModel = new GraphModel(settings);
 
   // For now have a tabbar with the available views:
   QTabWidget *tw = new QTabWidget(this);
 
+  tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
   tw->addTab(new OperationsView(graphModel), tr("&Operations"));
   tw->addTab(new StorageView(graphModel), tr("&Storage"));
 
-  // DEBUG:
-  tw->setCurrentIndex(1);
+  tw->setCurrentIndex(0);
 
   setCentralWidget(tw);
   setWindowTitle(tr("RmAdmin"));

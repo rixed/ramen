@@ -4,9 +4,7 @@
 #include <vector>
 #include <optional>
 #include <QString>
-
-typedef unsigned __int128 uint128_t;
-typedef __int128 int128_t;
+#include "misc.h"
 
 /* Allow to manipulate (for now, just turn into a printable string)
  * serialized values (from a received Tuple but one day also from the
@@ -272,7 +270,7 @@ public:
 
 std::ostream &operator<<(std::ostream &, Value const &);
 
-// Construct from a type and bytes
+// Construct from a type and serialized bytes
 extern Value *unserialize(std::shared_ptr<conf::RamenType const>, uint32_t const *&, uint32_t const *max, bool topLevel=false);
 
 };

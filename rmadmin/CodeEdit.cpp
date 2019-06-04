@@ -2,12 +2,11 @@
 #include "conf.h"
 #include "CodeEdit.h"
 
-CodeEdit::CodeEdit(ProgramItem const *p_, QWidget *parent) :
-  QTextEdit(parent), p(p_)
+CodeEdit::CodeEdit(conf::Key const &key_, QWidget *parent) :
+  QTextEdit(parent), key(key_)
 {
   setReadOnly(true);
 
-  std::string key("programs/" + p->name.toStdString() + "/source/text");
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();
@@ -22,7 +21,7 @@ CodeEdit::CodeEdit(ProgramItem const *p_, QWidget *parent) :
 
 void CodeEdit::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
 {
-  std::shared_ptr<conf::String const>s =
+  std::shared_ptr<conf::String const> s =
     std::dynamic_pointer_cast<conf::String const>(v);
   if (! s) {
     std::cout << "CodeEdit: Code text not a string!?" << std::endl;
