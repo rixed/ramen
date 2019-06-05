@@ -31,7 +31,9 @@ public:
     last_enabled = enabled;
   }
 
-  virtual std::shared_ptr<conf::Value const> getValue() const = 0;
+  // By default do not set any value (read-only):
+  virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
+
   virtual void setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
 
   void lockValue(conf::Key const &, QString const &uid)

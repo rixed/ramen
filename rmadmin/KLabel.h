@@ -10,8 +10,6 @@ class KLabel : public QLabel, public AtomicWidget
 {
   Q_OBJECT
 
-  std::shared_ptr<conf::Value const> value;
-
 public:
   KLabel(conf::Key const key, QWidget *parent = nullptr) :
     QLabel(parent), AtomicWidget(key)
@@ -27,13 +25,8 @@ public:
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    value = v;
     int const max_len = 30;
     QLabel::setText(v->toQString().left(max_len));
-  }
-  std::shared_ptr<conf::Value const> getValue() const
-  {
-    return value;
   }
 };
 

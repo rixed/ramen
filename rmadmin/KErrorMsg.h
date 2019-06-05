@@ -10,8 +10,6 @@ class KErrorMsg : public QLabel, public AtomicWidget
 {
   Q_OBJECT
 
-  std::shared_ptr<conf::Value const> value;
-
 public:
   KErrorMsg(conf::Key const key, QWidget *parent = nullptr) :
     QLabel(parent), AtomicWidget(key)
@@ -26,7 +24,6 @@ public:
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    value = v;
     QString s(v->toQString());
     QLabel::setStyleSheet(
       s.length() == 0 ?
@@ -34,8 +31,6 @@ public slots:
         "background-color: pink");
     QLabel::setText(s);
   }
-
-  std::shared_ptr<conf::Value const> getValue() const { return value; }
 };
 
 #endif
