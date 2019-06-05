@@ -75,6 +75,9 @@ public:
   // and take ownership of those QWidgets:
   void addWidget(AtomicWidget *);
 
+  // In case one want to add buttons in there:
+  QHBoxLayout *buttonsLayout;
+
 public slots:
   void setEnabled(bool);
   void setValue(conf::Key const &, conf::Value const &) {}

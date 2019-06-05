@@ -18,8 +18,7 @@ public:
   AtomicWidget(conf::Key const &key_) :
     last_enabled(true),
     key(key_)
-  {
-  }
+  {}
 
   virtual ~AtomicWidget() {}
 

@@ -21,7 +21,8 @@ public:
 
 public slots:
   // Request that this program be Shown/focused
-  void showFile(conf::Key const &);
+  void showFile(QString const sourceName);
+  void closeSource(int idx);
 };
 
 #endif

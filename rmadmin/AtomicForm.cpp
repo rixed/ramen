@@ -1,4 +1,5 @@
 #include <iostream>
+#include <QVBoxLayout>
 #include <QHBoxLayout>
 #include "AtomicForm.h"
 #include "conf.h"
@@ -10,39 +11,41 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
 {
   widgets.reserve(5);
 
+  groupLayout = new QVBoxLayout(this);
+  this->setLayout(groupLayout);
+
   /* So we want 3 vertical areas:
    * - the "central widget" (to be set later)
    * - an error area
    * - the button bar "edit" / "cancel"+"submit"
    */
   // The central widget
-  centralWidget = new QWidget(this);
+  centralWidget = new QWidget;
+  groupLayout->addWidget(centralWidget, 1);
 
   // The errors area
-  errorArea = new QWidget(this);
+  errorArea = new QWidget;
+  groupLayout->addWidget(errorArea);
 
   // The button bar
-  QWidget *buttonBar = new QWidget(this);
-  editButton = new QPushButton(tr("edit"), buttonBar);
+  QWidget *buttonBar = new QWidget;
+  buttonsLayout = new QHBoxLayout(buttonBar);
+  buttonBar->setLayout(buttonsLayout);
+  editButton = new QPushButton(tr("&edit"));
+  buttonsLayout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
-  cancelButton = new QPushButton(tr("cancel"), buttonBar);
+  cancelButton = new QPushButton(tr("&cancel"));
+  buttonsLayout->addWidget(cancelButton);
   connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
-  submitButton = new QPushButton(tr("submit"), buttonBar);
+  submitButton = new QPushButton(tr("&submit"));
+  buttonsLayout->addWidget(submitButton);
   connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
-  QHBoxLayout *buttonsLayout = new QHBoxLayout(buttonBar);
-  buttonsLayout->addWidget(editButton);
-  buttonsLayout->addWidget(cancelButton);
-  buttonsLayout->addWidget(submitButton);
-
-  groupLayout = new QVBoxLayout(this);
-  groupLayout->addWidget(centralWidget);
-  groupLayout->addWidget(errorArea);
   groupLayout->addWidget(buttonBar);
 
   /* Also prepare the confirmation dialog: */
-  confirmationDialog = new QMessageBox();
+  confirmationDialog = new QMessageBox(this);
   confirmationDialog->setText("Some values have been modified.");
   confirmationDialog->setInformativeText("Are you sure you want to cancel?");
   confirmationDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
@@ -52,13 +55,6 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
 AtomicForm::~AtomicForm()
 {
   // TODO: unlock whatever widget is locked
-  delete centralWidget;
-  delete errorArea;
-  delete editButton;
-  delete cancelButton;
-  delete submitButton;
-  delete groupLayout;
-  delete confirmationDialog;
 }
 
 void AtomicForm::setCentralWidget(QWidget *w)

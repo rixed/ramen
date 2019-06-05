@@ -64,6 +64,8 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
   sourceTabs = new QTabWidget(this);
   sourceTabs->setTabsClosable(true);
+  connect(sourceTabs, &QTabWidget::tabCloseRequested,
+          this, &SourcesView::closeSource);
   setStretchFactor(1, 1);
 
   // Connect selection of a program to showing its code:
@@ -75,15 +77,19 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
       static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
     SourcesModel::FileItem const *file =
       dynamic_cast<SourcesModel::FileItem const *>(item);
-    if (file) showFile(file->origKey);
+    if (file) showFile(file->sourceName);
   });
 }
 
-void SourcesView::showFile(conf::Key const &key)
+void SourcesView::showFile(QString const sourceName)
 {
-  QString label = QString::fromStdString(key.s); // TODO: extract the actual program name
-  if (tryFocusTab(sourceTabs, label)) return;
-  CodeEdit *editor = new CodeEdit(key);
-  sourceTabs->addTab(editor, label);
+  if (tryFocusTab(sourceTabs, sourceName)) return;
+  CodeEdit *editor = new CodeEdit(sourceName);
+  sourceTabs->addTab(editor, sourceName);
   focusLastTab(sourceTabs);
+}
+
+void SourcesView::closeSource(int idx)
+{
+  sourceTabs->removeTab(idx);
 }

@@ -73,14 +73,14 @@ void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value
     QString::fromStdString(k.s.substr(8, k.s.length() - numTrimmed));
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
-  FileItem *file = createAll(sourceName, k, root);
+  FileItem *file = createAll(sourceName, root);
   if (file) {
     std::shared_ptr<conf::String const> s =
       std::dynamic_pointer_cast<conf::String const>(v);
     if (s) {
       file->setText(s);
     } else {
-      std::cout << "SourceText not of string type?!" << std::endl;
+      std::cout << "Source text not of string type?!" << std::endl;
     }
   }
 }
@@ -90,9 +90,24 @@ void SourcesModel::updateSourceText(conf::Key const &, std::shared_ptr<conf::Val
   // TODO
 }
 
-void SourcesModel::addSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>)
+void SourcesModel::addSourceInfo(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  // TODO
+  int const numTrimmed = 8 + 5;
+  assert(k.s.length() > numTrimmed);
+  QString sourceName =
+    QString::fromStdString(k.s.substr(8, k.s.length() - numTrimmed));
+
+  // Will create all the intermediary TreeItems, calling begin/endInsertRows::
+  FileItem *file = createAll(sourceName, root);
+  if (file) {
+    std::shared_ptr<conf::SourceInfo const> s =
+      std::dynamic_pointer_cast<conf::SourceInfo const>(v);
+    if (s) {
+      file->setInfo(s);
+    } else {
+      std::cout << "Source info not of SourceInfo type?!" << std::endl;
+    }
+  }
 }
 
 void SourcesModel::updateSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>)
@@ -118,8 +133,9 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
   return createIndex(row, 0, (void *)item);
 }
 
-SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, conf::Key const &origKey, DirItem *root)
+SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirItem *root)
 {
+  std::cout << "createAll for " << sourceName.toStdString() << std::endl;
   QStringList names = sourceName.split("/", QString::SkipEmptyParts);
   if (names.isEmpty()) return nullptr;
 
@@ -130,23 +146,41 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, conf:
     // Look for either a dir by that name or where to add it:
     int row = 0;
     bool needNewItem = true;
-    for (auto it = root->children.constBegin(); it != root->children.constEnd(); it++) {
-      if (! lastName && (*it)->name == nextName && (*it)->isDir()) {
-        DirItem *sub = dynamic_cast<DirItem *>(*it);
-        assert(sub);  // because isDir
-        root = sub;
-        needNewItem = false;
-        break;
+    for (auto it = root->children.constBegin();
+         it != root->children.constEnd();
+         it++
+    ) {
+      if ((*it)->name == nextName) {
+        if (! lastName && (*it)->isDir()) {
+          std::cout << "createAll: Same directory name" << std::endl;
+          DirItem *sub = dynamic_cast<DirItem *>(*it);
+          assert(sub);  // because isDir()
+          root = sub;
+          needNewItem = false;
+          break;
+        } else if (lastName && ! (*it)->isDir()) {
+          std::cout << "createAll: Same file" << std::endl;
+          ret = dynamic_cast<FileItem *>(*it);
+          assert(ret);  // because !isDir()
+          needNewItem = false;
+          break;
+        } else {
+          /* Same name while not same type: Create a new dir with same name,
+           * this is not UNIX. */
+          std::cout << "createAll: file and dir with same name!" << std::endl;
+          break;
+        }
       } else if ((*it)->name > nextName) {
         break;
       }
       row ++;
     }
     if (needNewItem) {
+      std::cout << "createAll: create new " << lastName << std::endl;
       emit beginInsertRows(indexOfItem(root), row, row);
       if (lastName) {
         // Create the final file
-        ret = new FileItem(nextName, origKey, root);
+        ret = new FileItem(nextName, sourceName, root);
         root->addItem(ret, row);
       } else {
         // Add a subdirectory and "recurse"

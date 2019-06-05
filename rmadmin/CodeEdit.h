@@ -1,25 +1,25 @@
 #ifndef CODEEDIT_H_190516
 #define CODEEDIT_H_190516
-#include <QTextEdit>
+#include <QWidget>
 #include "confKey.h"
 #include "KValue.h"
 
 class ProgramItem;
+class KTextEdit;
+class AtomicForm;
 
-class CodeEdit : public QTextEdit
+class CodeEdit : public QWidget
 {
   Q_OBJECT
 
-  conf::Key const key;
+  QString const sourceName;
+  conf::Key const keyText, keyInfo;
+
+  KTextEdit *textEdit;
+  AtomicForm *editorForm;
 
 public:
-  CodeEdit(conf::Key const &, QWidget *parent = nullptr);
-
-public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-/*  void lockText(conf::Key const &, QString const &uid);
-  void unlockText(conf::Key const &);
-  void deleteText(conf::Key const &);*/
+  CodeEdit(QString const &sourceName, QWidget *parent = nullptr);
 };
 
 #endif

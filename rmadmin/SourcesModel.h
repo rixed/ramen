@@ -41,18 +41,19 @@ protected:
 
   struct FileItem : public TreeItem
   {
-    // As the key might have additional '/' it's safer to store it as is:
-    conf::Key origKey;
-    std::shared_ptr<conf::String const> origText;
-    std::optional<conf::SourceInfo> sourceInfo;
-    // TODO: current key and text, if they have been changed
+    // With original '/' conserved, so can be used to reconstruct the kvs keys:
+    QString const sourceName;
 
-    FileItem(conf::Key const &origKey_) : origKey(origKey_) {}
-    FileItem(QString name_, conf::Key const &origKey_, TreeItem *parent_ = nullptr) :
-      TreeItem(name_, parent_), origKey(origKey_) {}
+    std::shared_ptr<conf::String const> origText;
+    std::shared_ptr<conf::SourceInfo const> sourceInfo;
+
+    FileItem(QString const sourceName_) : sourceName(sourceName_) {}
+    FileItem(QString name_, QString const &sourceName_, TreeItem *parent_ = nullptr) :
+      TreeItem(name_, parent_), sourceName(sourceName_) {}
     int numRows() const { return 0; }
     bool isDir() const { return false; }
     void setText(std::shared_ptr<conf::String const> s) { origText = s; }
+    void setInfo(std::shared_ptr<conf::SourceInfo const> s) { sourceInfo = s; }
   };
 
   DirItem *root;
@@ -62,7 +63,7 @@ private:
 
   // Construct from the root and the "absolute" name; returns the created
   // file (or nullptr if the sourceName was empty):
-  FileItem *createAll(QString const &sourceName, conf::Key const &origKey, DirItem *);
+  FileItem *createAll(QString const &sourceName, DirItem *);
 
 public:
   SourcesModel(QObject *parent = nullptr);
