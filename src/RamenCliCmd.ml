@@ -238,8 +238,20 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
   RamenSyncService.start conf port ;
   Option.may exit !RamenProcesses.quit
 
-let confclient conf creds () =
-  RamenSyncService.test_client conf creds
+let confclient conf () =
+  let topics = [ "*" ] in
+  let on_new _zock _clt k v _u =
+    !logger.info "%a = %a"
+      RamenSync.Key.print k
+      RamenSync.Value.print v
+  in
+  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~on_new
+    (fun zock clt ->
+      !logger.info "Receiving:" ;
+      forever (fun () ->
+        let num_msg = ZMQClient.process_in ~while_ zock clt in
+        !logger.debug "Received %d messages" num_msg
+      ) ())
 
 (*
  * `ramen compile`

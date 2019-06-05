@@ -338,15 +338,10 @@ let confserver =
       $ confserver_port),
     info ~doc:CliInfo.confserver "confserver")
 
-let creds =
-  let i = Arg.info ~doc:CliInfo.creds [ "creds" ] in
-  Arg.(required (opt (some string) None i))
-
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
-      $ copts
-      $ creds),
+      $ copts),
     info ~doc:CliInfo.confclient "confclient")
 
 (*

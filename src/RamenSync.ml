@@ -690,6 +690,8 @@ struct
           (Bytes.length values) skipped
     | RamenType t ->
         T.print_typ fmt t
+    | RamenValue v ->
+        T.print fmt v
     | TargetConfig _ ->
         Printf.fprintf fmt "TargetConfig { ... }"
     | SourceInfo _ ->
