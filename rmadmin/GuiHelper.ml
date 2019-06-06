@@ -53,33 +53,7 @@ let init_connect url zock =
     signal_conn url (InitFail (Printexc.to_string e))
 
 external signal_auth : ZMQClient.Status.t -> unit = "signal_auth"
-
-let init_auth creds zock =
-  signal_auth InitStart ;
-  try
-    !logger.info "Sending auth..." ;
-    send_cmd zock (Client.CltMsg.Auth creds) ;
-    match recv_cmd zock with
-    | Auth "" ->
-        signal_auth InitOk
-    | Auth err ->
-        failwith err
-    | rep ->
-        unexpected_reply rep
-  with e ->
-    signal_auth (InitFail (Printexc.to_string e))
-
 external signal_sync : ZMQClient.Status.t -> unit = "signal_sync"
-
-let init_sync zock glob =
-  signal_sync InitStart ;
-  try
-    !logger.info "Sending StartSync %s..." glob ;
-    let glob = Globs.compile glob in
-    send_cmd zock (Client.CltMsg.StartSync glob) ;
-    signal_sync InitOk
-  with e ->
-    signal_sync (InitFail (Printexc.to_string e))
 
 (* Will be set form the C++ thread when the sync thread should exit *)
 external should_quit : unit -> bool = "should_quit"
@@ -142,6 +116,7 @@ let sync_loop zock clt =
     | exception Unix.(Unix_error (EAGAIN, _, _)) ->
         ()
     | msg ->
+        !logger.debug "Received: %a" Client.SrvMsg.print msg ;
         Client.process_msg clt msg ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)

@@ -141,7 +141,7 @@ static RamenType *ramenTypeOfOCaml(value v_)
             QString(String_val(Field(str_, 0))),
             ramenTypeOfOCaml(Field(str_, 1))
           );
-          std::cout << "Record type field#" << f <<" is " << fields.back().first.toStdString() << std::endl;
+          //std::cout << "Record type field#" << f <<" is " << fields.back().first.toStdString() << std::endl;
         }
         ret = new RamenTypeRecord(fields, Bool_val(nul_));
       }
