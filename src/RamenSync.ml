@@ -623,6 +623,11 @@ struct
     | CompiledSourceInfo _ -> true
     | _ -> false
 
+  let source_compilation_error i =
+    match i.detail with
+    | FailedSourceInfo { err_msg } -> err_msg
+    | _ -> invalid_arg "source_compilation_error"
+
   let print_failed_source_info oc i =
     Printf.fprintf oc "err:%S" i.err_msg
 

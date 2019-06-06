@@ -363,8 +363,12 @@ let compile_sync conf replace src_file target_file_opt =
           (* FIXME: if we see this during the initial sync we might not
            * have received the error message yet ; or not even sent the
            * source code actually. *)
-          Processes.quit :=
-            Some (if Value.source_compiled s then 0 else 1)
+          if not (Value.source_compiled s ) then (
+            Processes.quit := Some 1 ;
+            !logger.error "Cannot compile: %s"
+              (Value.source_compilation_error s)
+          ) else
+            Processes.quit := Some 0
         ) else (
           !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
             N.path_print source_name s.Value.md5 md5

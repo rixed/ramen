@@ -20,7 +20,7 @@ Feature: It is possible to compile a program via the confserver
 
   Scenario: Relative parent resolution happens via the source tree (failure mode)
     When I run ramen with arguments compile --confserver localhost:29341 children/child.ramen
-    Then ramen must mention "err:"Cannot find parent program child/..""
+    Then ramen must mention "err:"Cannot find parent program testme""
     And ramen must fail gracefully
 
   Scenario: Relative parent resolution happens via the source tree (success)
