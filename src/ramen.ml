@@ -531,6 +531,11 @@ let as_ =
                    ~docv:"NAME" [ "as" ] in
   Arg.(value (opt (some program) None i))
 
+let replace =
+  let i = Arg.info ~doc:CliInfo.replace
+                   [ "replace" ; "r" ] in
+  Arg.(value (flag i))
+
 let compile =
   Term.(
     (const RamenCliCmd.compile
@@ -541,7 +546,8 @@ let compile =
       $ smt_solver
       $ compile_src_file
       $ output_file
-      $ as_),
+      $ as_
+      $ replace),
     info ~doc:CliInfo.compile "compile")
 
 let compserver =
@@ -555,11 +561,6 @@ let compserver =
       $ max_simult_compilations
       $ smt_solver),
     info ~doc:CliInfo.compserver "compserver")
-
-let replace =
-  let i = Arg.info ~doc:CliInfo.replace
-                   [ "replace" ; "r" ] in
-  Arg.(value (flag i))
 
 let kill_if_disabled =
   let i = Arg.info ~doc:CliInfo.kill_if_disabled

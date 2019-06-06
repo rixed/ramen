@@ -337,10 +337,11 @@ let compile_local
  * compiler can do that, for simpler design and parallelising for free.
  *)
 
-let compile_sync conf src_file target_file_opt =
+let compile_sync conf replace src_file target_file_opt =
   let open RamenSync in
   let source = Files.read_whole_file src_file in
   let md5 = N.md5 source in
+  let value = Value.(String source) in
   let target_file = N.simplified_path (target_file_opt |? src_file) in
   let k_source = Key.(Sources (target_file, SourceText)) in
   let on_ko () = Processes.quit := Some 1 in
@@ -361,14 +362,21 @@ let compile_sync conf src_file target_file_opt =
   let topics = [
     (N.path_cat [ N.path "sources" ; target_file ; N.path "info" ] :> string)
   ] in
-  ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
+  let open ZMQClient in
+  start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
                   ~topics (fun zock clt ->
-      ZMQClient.(send_cmd zock ~while_
-        (* TODO: a --replace flag *)
-        (NewKey (k_source, Value.(String source)))
-        ~on_ko ~on_ok:(fun () -> send_cmd zock ~while_ (UnlockKey k_source)) ;
+      if replace then
+        send_cmd zock ~while_ (LockKey k_source)
+          ~on_ko ~on_ok:(fun () ->
+            send_cmd zock ~while_ (SetKey (k_source, value))
+              ~on_ko ~on_ok:(fun () ->
+                send_cmd zock ~while_ (UnlockKey k_source)))
+      else
+        send_cmd zock ~while_ (NewKey (k_source, value))
+          ~on_ko ~on_ok:(fun () ->
+            send_cmd zock ~while_ (UnlockKey k_source)) ;
       let num_msg = ZMQClient.process_in ~while_ zock clt in
-      !logger.debug "Received %d messages" num_msg))
+      !logger.debug "Received %d messages" num_msg)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -426,7 +434,7 @@ let compserver conf daemonize to_stdout to_syslog
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_file
-            output_file_opt program_name_opt () =
+            output_file_opt program_name_opt replace () =
   init_logger conf.C.log_level ;
   if conf.C.sync_url = "" then
     compile_local conf lib_path use_external_compiler
@@ -435,7 +443,7 @@ let compile conf lib_path use_external_compiler
   else
     let target_file_opt =
       Option.map (fun (s : N.program) -> N.path (s :> string)) program_name_opt in
-    compile_sync conf source_file target_file_opt
+    compile_sync conf replace source_file target_file_opt
 
 (*
  * `ramen run`
