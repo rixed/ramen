@@ -1,21 +1,25 @@
 #ifndef CODEINFOPANEL_H_190605
 #define CODEINFOPANEL_H_190605
 #include <memory>
-#include <QLabel>
+#include <QWidget>
 #include "AtomicWidget.h"
 #include "confValue.h"
 
-class CodeInfoPanel : public QLabel, public AtomicWidget
+class QLabel;
+class QGridLayout;
+class QGroupBox;
+
+class CodeInfoPanel : public QWidget, public AtomicWidget
 {
   Q_OBJECT
 
-  std::shared_ptr<conf::Value const> value;
+  QGridLayout *infoLayout;
+  QLabel *md5Label, *condRunLabel, *errLabel;
+  QGroupBox *paramBox, *functionBox;
 
+  void setInfoVisible(bool visible);
 public:
-  CodeInfoPanel(conf::Key const &key, QWidget *parent = nullptr) :
-    QLabel(parent), AtomicWidget(key) {}
-
-  std::shared_ptr<conf::Value const> getValue() const { return value; }
+  CodeInfoPanel(QString const &sourceName, QWidget *parent = nullptr);
 
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

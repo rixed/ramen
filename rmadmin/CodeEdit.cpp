@@ -18,8 +18,8 @@ CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
   QHBoxLayout *layout = new QHBoxLayout(this);
   setLayout(layout);
 
-  QWidget *placeholder = new CodeInfoPanel(keyInfo);
-  layout->addWidget(placeholder);
+  QWidget *codeInfoPanel = new CodeInfoPanel(sourceName);
+  layout->addWidget(codeInfoPanel);
 
   QString formLabel("Source code for " + QString::fromStdString(keyText.s));
   editorForm = new AtomicForm(formLabel);
@@ -28,7 +28,7 @@ CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
   QPushButton *cloneButton = new QPushButton("&Clone");
   editorForm->buttonsLayout->insertWidget(0, cloneButton);
 
-  textEdit = new KTextEdit(keyText.s);
+  textEdit = new KTextEdit(sourceName);
   editorForm->setCentralWidget(textEdit);
   editorForm->addWidget(textEdit);
 }

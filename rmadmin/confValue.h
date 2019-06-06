@@ -346,7 +346,7 @@ struct SourceInfo : public Value
 
   // Takes ownership
   void addParam(CompiledProgramParam *p) { params.append(p); }
-  void addOInfo(CompiledFunctionInfo *i) { infos.append(i); }
+  void addInfo(CompiledFunctionInfo *i) { infos.append(i); }
 };
 
 };

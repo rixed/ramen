@@ -9,7 +9,7 @@ class KTextEdit : public QTextEdit, public AtomicWidget
   Q_OBJECT
 
 public:
-  KTextEdit(std::string const key, QWidget *parent = nullptr);
+  KTextEdit(QString const &sourceName, QWidget *parent = nullptr);
 
   virtual std::shared_ptr<conf::Value const> getValue() const;
   void setEnabled(bool);

@@ -6,15 +6,15 @@ namespace conf {
   struct RamenValue;
 };
 
-class CompiledProgramParam
+struct CompiledProgramParam
 {
   // For now a parameter is just a name, a value and a docstring.
   QString name;
   QString doc;
   conf::RamenValue const *value;  // owned
 
-public:
-  CompiledProgramParam(QString const &name_, QString const &doc_, conf::RamenValue const *value);
+  CompiledProgramParam(QString const &name_, QString const &doc_, conf::RamenValue const *);
+  ~CompiledProgramParam();
 };
 
 #endif

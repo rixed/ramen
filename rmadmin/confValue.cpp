@@ -238,12 +238,38 @@ Value *valueOfOCaml(value v_)
                     RamenValueOfOCaml(Field(tmp2_, 1))); // value
                 sourceInfo->addParam(p);
               }
-              // TODO: Same for funcs -> CompiledFunctionInfo
+              // Iter over the cons cells of the function_info:
+              for (tmp1_ = Field(v_, 2); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+                tmp2_ = Field(tmp1_, 0);  // the function_info
+                tmp3_ = Field(tmp2_, 1);  // the (optional) retention
+                Retention *retention = nullptr;
+                if (Is_block(tmp3_)) {
+                  tmp3_ = Field(tmp3_, 0);
+                  assert(Tag_val(tmp3_) == Double_array_tag);
+                  retention =
+                    new Retention(Double_field(tmp3_, 0), Double_field(tmp3_, 1));
+                }
+                CompiledFunctionInfo *f =
+                  new CompiledFunctionInfo(
+                    String_val(Field(tmp2_, 0)),  // name
+                    retention,
+                    Bool_val(Field(tmp2_, 2)),    // is_lazy
+                    String_val(Field(tmp2_, 3)),  // doc
+                    /* We skip the operation, too hard to parse. We'd need a proxy
+                     * in the OCaml receiver that turns it into a string. */
+                    String_val(Field(tmp2_, 5))); // signature
+                sourceInfo->addInfo(f);
+              }
             }
             break;
           case 1: // FailedSourceInfo
+            {
             v_ = Field(v_, 0);
-            ret = new SourceInfo(md5, String_val(Field(v_, 0)));
+            assert(Tag_val(Field(v_, 0)) == String_tag);
+            SourceInfo *sourceInfo = new SourceInfo(md5, QString(String_val(Field(v_, 0))));
+            std::cout << "info is error!! '" << sourceInfo->errMsg.toStdString() << "'" << std::endl;
+            ret = sourceInfo;
+            }
             break;
           default:
             assert(!"Not a detail_source_info?!");

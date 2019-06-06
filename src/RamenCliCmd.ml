@@ -341,14 +341,16 @@ let compile_local
  * See `ramen compserver`.
  *)
 
-let compile_sync conf replace src_file target_file_opt =
+let compile_sync conf replace src_file source_name_opt =
   let open RamenSync in
   let source = Files.read_whole_file src_file in
   let md5 = N.md5 source in
   let value = Value.(String source) in
-  let target_file = N.simplified_path (target_file_opt |? src_file) in
-  let ext = Files.ext target_file in
-  let source_name = Files.remove_ext target_file in
+  let source_name =
+    Option.default_delayed (fun () ->
+      Files.remove_ext (N.simplified_path src_file)
+    ) source_name_opt in
+  let ext = Files.ext src_file in
   if ext = "" then
     failwith "Need an extension to build a source file" ;
   let k_source = Key.(Sources (source_name, ext)) in

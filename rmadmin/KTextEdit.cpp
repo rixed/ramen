@@ -1,8 +1,9 @@
 #include <iostream>
 #include "KTextEdit.h"
 
-KTextEdit::KTextEdit(std::string const key, QWidget *parent) :
-  QTextEdit(parent), AtomicWidget(key)
+KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
+  QTextEdit(parent),
+  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/ramen"))
 {
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
