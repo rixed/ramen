@@ -76,7 +76,8 @@ let rec simplified_path =
     else s in
   let res =
     [ regexp "/[^/]+/\\.\\./", "/" ;
-      regexp "/[^/]+/\\.\\.$", "" ;
+      regexp "^[^/]+/\\.\\./", "" ;
+      regexp "\\(^\\|/\\)[^/]+/\\.\\.$", "" ;
       regexp "/\\./", "/" ;
       regexp "//", "/" ;
       regexp "/\\.?$", "" ;
@@ -108,6 +109,8 @@ let rec simplified_path =
   "/glop/glop" (simplified_path_ "/glop/pas glop/..//pas glop/.././//glop//")
   "/glop"      (simplified_path_ "/glop/glop/..")
   "/glop"      (simplified_path_ "/glop/glop/../")
+  "t"          (simplified_path_ "c1/c2/../../t")
+  "/t"         (simplified_path_ "/c1/c2/../../t")
 *)
 
 let program s =
