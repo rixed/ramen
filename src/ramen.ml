@@ -9,6 +9,7 @@ open RamenConsts
 module T = RamenTypes
 module N = RamenName
 module C = RamenConf
+module Processes = RamenProcesses
 
 (*
  * Common options
@@ -1148,4 +1149,6 @@ let () =
   | `Error _ -> exit 1
   | `Version | `Help -> exit 0
   | `Ok f ->
-      print_exn f
+      print_exn f ;
+      (* If we have set the exit code, use it: *)
+      exit (!Processes.quit |? 0)
