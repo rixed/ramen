@@ -85,8 +85,8 @@ if test "$be_master" = yes; then
   log "Compiling programs via the confserver..."
 
   root="examples/programs/monitoring"
-  "$ramen" compile --confserver=localhost "$root/logs.ramen"
-  "$ramen" compile --confserver=localhost -L "$root" "$root/logs_aggr.ramen"
+  "$ramen" compile --confserver=localhost --as logs "$root/logs.ramen"
+  "$ramen" compile --confserver=localhost --as logs_aggr "$root/logs_aggr.ramen"
 
 #  log "Starting programs..."
 #  export RAMEN_REPORT_PERIOD=2

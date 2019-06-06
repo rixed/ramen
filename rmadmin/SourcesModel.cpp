@@ -7,11 +7,11 @@ SourcesModel::SourcesModel(QObject *parent) :
 {
   root = new DirItem("");
 
-  conf::autoconnect("^sources/.*/ramen", [this](conf::Key const &, KValue const *kv) {
+  conf::autoconnect("^sources/.*/ramen$", [this](conf::Key const &, KValue const *kv) {
     connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceText);
     connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceText);
   });
-  conf::autoconnect("^sources/.*/info", [this](conf::Key const &, KValue const *kv) {
+  conf::autoconnect("^sources/.*/info$", [this](conf::Key const &, KValue const *kv) {
     connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceInfo);
     connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceInfo);
   });
@@ -65,12 +65,21 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
   }
 }
 
+QString const sourceNameOfKey(conf::Key const &k)
+{
+  // Take everything after first slash and before last:
+  size_t fst = k.s.find('/');
+  size_t lst = k.s.rfind('/');
+  if (fst == std::string::npos || lst <= fst) {
+    std::cout << "Key " << k << " is invalid for a source" << std::endl;
+    return QString();
+  }
+  return QString::fromStdString(k.s.substr(fst + 1, lst - fst - 1));
+}
+
 void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  int const numTrimmed = 8 + 5;
-  assert(k.s.length() > numTrimmed);
-  QString sourceName =
-    QString::fromStdString(k.s.substr(8, k.s.length() - numTrimmed));
+  QString sourceName(sourceNameOfKey(k));
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
   FileItem *file = createAll(sourceName, root);
@@ -92,10 +101,8 @@ void SourcesModel::updateSourceText(conf::Key const &, std::shared_ptr<conf::Val
 
 void SourcesModel::addSourceInfo(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  int const numTrimmed = 8 + 5;
-  assert(k.s.length() > numTrimmed);
-  QString sourceName =
-    QString::fromStdString(k.s.substr(8, k.s.length() - numTrimmed));
+  QString sourceName = sourceNameOfKey(k);
+  std::cout << "addSourceInfo for " << sourceName.toStdString() << std::endl;
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
   FileItem *file = createAll(sourceName, root);

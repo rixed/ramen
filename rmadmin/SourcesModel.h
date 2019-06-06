@@ -81,4 +81,7 @@ private slots:
   void updateSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
+// Helpers:
+QString const sourceNameOfKey(conf::Key const &);
+
 #endif

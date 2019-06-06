@@ -183,7 +183,7 @@ struct
          * creator. In that case a lock will create a new (Void) value. *)
         if must_exist then no_such_key k else
         let me = User.only_me u in
-        create t u k Value.dummy ~r:me ~w:me ~s:false
+        create t u k Value.dummy ~r:Capa.anybody ~w:me ~s:false
     | prev ->
         check_can_update k prev u ;
         (match prev.l with
