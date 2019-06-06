@@ -77,7 +77,7 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
-      !logger.info "srv message (raw): %S" s ;
+      !logger.debug "srv message (raw): %S" s ;
       Client.SrvMsg.of_string s
   | m ->
       Printf.sprintf2 "Received unexpected message %a"

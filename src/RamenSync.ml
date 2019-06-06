@@ -694,8 +694,9 @@ struct
         T.print fmt v
     | TargetConfig _ ->
         Printf.fprintf fmt "TargetConfig { ... }"
-    | SourceInfo _ ->
-        Printf.fprintf fmt "SourceInfo { ... }"
+    | SourceInfo i ->
+        Printf.fprintf fmt "SourceInfo { %a }"
+          print_source_info i
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
