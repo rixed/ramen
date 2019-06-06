@@ -12,7 +12,7 @@
 CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
   QWidget(parent),
   sourceName(sourceName_),
-  keyText(conf::Key("sources/" + sourceName.toStdString() + "/text")),
+  keyText(conf::Key("sources/" + sourceName.toStdString() + "/ramen")),
   keyInfo(conf::Key("sources/" + sourceName.toStdString() + "/info"))
 {
   QHBoxLayout *layout = new QHBoxLayout(this);

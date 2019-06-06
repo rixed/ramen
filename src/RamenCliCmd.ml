@@ -240,10 +240,11 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
 
 let confclient conf () =
   let topics = [ "*" ] in
-  let on_new _zock _clt k v _u =
-    !logger.info "%a = %a"
+  let on_new _zock _clt k v u mtime =
+    !logger.info "%a = %a (set by %s, mtime=%f)"
       RamenSync.Key.print k
       RamenSync.Value.print v
+      u mtime
   in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~on_new
     (fun zock clt ->
@@ -292,10 +293,9 @@ let compile_local
           None)
       | [] -> None in
   let program_name =
-    match program_name_opt with
-    | Some p -> p
-    | None -> RamenRun.default_program_name source_file
-  in
+    Option.default_delayed (fun () ->
+      RamenRun.default_program_name source_file
+    ) program_name_opt in
   let output_file =
     Option.default_delayed (fun () ->
       Files.change_ext "x" source_file
@@ -305,7 +305,7 @@ let compile_local
 
 (* We store sources separately from programs, as the same source can run under
  * several program names (given different parameters, for instance).
- * for simplicity, there is no separate command to upload a file: the
+ * For simplicity there is no separate command to upload a file: the
  * confserver will taste and rate any uploaded source file.
  *
  * The ConfServer must not compile the source down to an executable file.
@@ -313,28 +313,32 @@ let compile_local
  * One can check that a source is valid by compiling it locally.
  * But the ConfServer must parse it and type it in order to extract the META
  * informations. Only the code generation is not required.
- * For parsing and typing, the confserver (as the supervisors) resolve
- * parent names against the running config.
+ *
+ * For parsing and typing, the confserver resolves parent names against the
+ * source tree only. Remember that supervisor will link against the running
+ * config. Both hierarchies must largely match each other anyway.
  *
  * Therefore, a source has several values attached to it:
  * - the text, that anyone can read/write
  * - and the info, that only the confserver can write.
- * - When compiling the confserver locks the source (therefore the creator
- *   must unlock it). Then it writes the info and unlock all.
- * - The info contains the same thing as the Program.t today (no program name
- *   and no param values and no env values), and the typed operation.
+ *
+ * When compiling the confserver locks the source (therefore the creator
+ * must unlock it). Then it writes the info and unlock all.
+ * The info contains the same thing as the Program.t today (no program name
+ * and no param values and no env values), and the typed operation.
  *
  * When generating code, the supervisors do not restart from the source but from
- * the (typed!) operation, thus speeding the process and alleviating the need
+ * the (typed!) operation, thus speeding up the process and alleviating the need
  * for a solver on the sites.
  *
  * Given there are two different keys for the source text and the source info,
  * how to we know the info relate to the version of the source that has just
  * been written? We know because of the MD5 of the source that's present in
- * the info (the md5 of the full text so that the client can easily check it).
+ * the info (the MD5 of the full text so that the client can easily check it).
  *
  * Now of course the confserver does not pre-compile itself. Indeed, a daemon
  * compiler can do that, for simpler design and parallelising for free.
+ * See `ramen compserver`.
  *)
 
 let compile_sync conf replace src_file target_file_opt =
@@ -343,30 +347,37 @@ let compile_sync conf replace src_file target_file_opt =
   let md5 = N.md5 source in
   let value = Value.(String source) in
   let target_file = N.simplified_path (target_file_opt |? src_file) in
-  let k_source = Key.(Sources (target_file, SourceText)) in
+  let ext = Files.ext target_file in
+  let source_name = Files.remove_ext target_file in
+  if ext = "" then
+    failwith "Need an extension to build a source file" ;
+  let k_source = Key.(Sources (source_name, ext)) in
   let on_ko () = Processes.quit := Some 1 in
-  let on_set _zock _clt k v _u =
+  let on_set _zock _clt k v _u _mtime =
     match k, v with
-    | Key.(Sources (p, SourceInfo)), Value.(SourceInfo s)
-      when p = target_file ->
+    | Key.(Sources (p, "info")), Value.(SourceInfo s)
+      when p = source_name ->
         if s.Value.md5 = md5 then (
           !logger.info "%a" Value.print_source_info s ;
           !logger.debug "Quitting..." ;
+          (* FIXME: if we see this during the initial sync we might not
+           * have received the error message yet ; or not even sent the
+           * source code actually. *)
           Processes.quit :=
             Some (if Value.source_compiled s then 0 else 1)
         ) else (
           !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
-            N.path_print target_file s.Value.md5 md5
+            N.path_print source_name s.Value.md5 md5
         )
     | _ -> () in
   let topics = [
-    (N.path_cat [ N.path "sources" ; target_file ; N.path "info" ] :> string)
+    (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
   let open ZMQClient in
   start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
                   ~topics (fun zock clt ->
       if replace then
-        send_cmd zock ~while_ (LockKey k_source)
+        send_cmd zock ~while_ (LockOrCreateKey k_source)
           ~on_ko ~on_ok:(fun () ->
             send_cmd zock ~while_ (SetKey (k_source, value))
               ~on_ko ~on_ok:(fun () ->
@@ -393,33 +404,78 @@ let compserver conf daemonize to_stdout to_syslog
     failwith "Cannot start the compilation service without --confserver" ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "compserver") ;
-  let topics = [ "sources/*/text" ] in
-  let on_ko () = Processes.quit := Some 1 in
+  let topics = [ "sources/*" ] in
   let open RamenSync in
-  let on_set zock _clt k v _uid =
+  let on_set zock clt k v _uid mtime =
+    let get_parent (program_name : N.program) =
+      let info_key =
+        (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
+        Key.Sources (N.path (program_name :> string), "info") in
+      !logger.info "Looking for key %a" Key.print info_key ;
+      match ZMQClient.Client.H.find clt.ZMQClient.Client.h info_key with
+      | { v = Value.SourceInfo { detail = CompiledSourceInfo info } ; _ } ->
+          P.{ params = info.default_params ;
+              condition =
+                Option.map (IO.to_string (E.print false)) info.condition ;
+              funcs =
+                List.map (fun f ->
+                  F.Serialized.{
+                    name = f.Value.name ;
+                    retention = f.Value.retention ;
+                    is_lazy = f.Value.is_lazy ;
+                    doc = f.Value.doc ;
+                    operation = f.Value.operation ;
+                    signature = f.Value.signature } |>
+                  F.unserialized program_name
+                ) info.funcs }
+      | _ -> raise Not_found in
     match k, v with
-    | Key.(Sources (src_file, SourceText)), Value.(String text) ->
-        let tmp_src_file =
-          N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ; src_file ] in
-        !logger.debug "Creating temporary source file %a" N.path_print tmp_src_file ;
-        Files.write_whole_file tmp_src_file text ;
-        let target_file = Files.change_ext "info" tmp_src_file in
-        let get_parent =
-          let programs = RC.with_rlock conf identity in
-          RamenCompiler.parent_from_programs programs in
-        let program_name = RamenRun.default_program_name src_file in
-        RamenMake.build conf get_parent program_name tmp_src_file target_file ;
-        !logger.debug "Read result from info file %a" N.path_print target_file ;
-        let info = RamenMake.read_source_info target_file in
-        !logger.info "(pre)Compiled %a into %a"
-          N.path_print src_file Value.print_source_info info ;
-        let k_info = Key.(Sources (src_file, SourceInfo)) in
-        ZMQClient.(send_cmd zock ~while_
-          (SetKey (k_info, Value.(SourceInfo info)))
-          ~on_ko ~on_ok:(fun () ->
-            (* TODO: an option of SetKey to not lock *)
-            ZMQClient.send_cmd zock ~while_
-              (UnlockKey k_info) ~on_ko))
+    | Key.(Sources (_, "info")), _ -> ()
+    | Key.(Sources (src_file, ext)), Value.(String text) ->
+        assert (ext <> "info") ;
+        let k_info = Key.(Sources (src_file, "info")) in
+        let open ZMQClient in
+        let unlock () =
+          send_cmd zock ~while_ (UnlockKey k_info) in
+        send_cmd zock ~while_ (LockOrCreateKey k_info)
+          ~on_ko:unlock ~on_ok:(fun () ->
+            let tmp_src_file =
+              N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
+                           N.path ((src_file :> string) ^"."^ ext) ] in
+            let target_file = Files.change_ext "info" tmp_src_file in
+            !logger.debug "Creating temporary source files %a and %a"
+              N.path_print tmp_src_file
+              N.path_print target_file ;
+            Files.write_whole_file tmp_src_file text ;
+            (* Replicate the mtimes in the local FS temporary files, for the
+             * builder to use the usual mtime comparison to determine
+             * obsolescence: *)
+            Files.touch tmp_src_file mtime ;
+            (match Client.H.find clt.Client.h Key.(Sources (src_file, "info")) with
+            | exception Not_found -> ()
+            | { mtime ; _ } ->
+                if Files.exists target_file then Files.touch target_file mtime) ;
+            (* Program name used to resolve relative names is the location in the
+             * source tree: *)
+            let program_name = N.program (Files.remove_ext src_file :> string) in
+            let info =
+              match RamenMake.build conf get_parent program_name
+                                     tmp_src_file target_file with
+              | exception e ->
+                !logger.error "Cannot build %a into %a: %s"
+                  N.path_print src_file
+                  N.path_print target_file
+                  (Printexc.to_string e) ;
+                { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
+                  detail = FailedSourceInfo { err_msg = Printexc.to_string e } }
+            | () ->
+              !logger.debug "Read result from info file %a" N.path_print target_file ;
+              RamenMake.read_source_info target_file in
+            !logger.info "(pre)Compiled %a into %a"
+              N.path_print src_file Value.print_source_info info ;
+            send_cmd zock ~while_
+              (SetKey (k_info, Value.(SourceInfo info)))
+              ~on_ko:unlock ~on_ok:unlock)
     | Key.Error _, _  ->
         (* Errors have been logged already *)
         ()

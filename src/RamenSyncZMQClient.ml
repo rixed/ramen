@@ -34,7 +34,7 @@ let check_err on_msg =
           !logger.debug "Calling back pending function for cmd %d" cmd_id ;
           k () ; None
     ) h in
-  fun clt k v u ->
+  fun clt k v u mt ->
     (match k with
     | Key.Error (Some n) when n = !my_login ->
         (match v with
@@ -49,30 +49,36 @@ let check_err on_msg =
         | v ->
             !logger.error "Error value is not an error: %a" Value.print v)
     | _ -> ()) ;
-    on_msg clt k v u
+    on_msg clt k v u mt
 
 (* As the same user might be sending commands at the same time, rather use
  * start from a random cmd_id so different client programs can tell their
  * errors apart; but wait for the random seed to have been set: *)
 let next_id = ref 0
 let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
-    if !next_id = 0 then
-      next_id := Random.int max_int_for_random ;
-    let msg = !next_id, cmd in
-    Option.may (Hashtbl.add on_oks !next_id) on_ok ;
-    Option.may (Hashtbl.add on_kos !next_id) on_ko ;
-    incr next_id ;
-    !logger.info "Sending command %a"
-      Client.CltMsg.print msg ;
-    let s = Client.CltMsg.to_string msg in
-    (match while_ with
-    | None ->
-        Zmq.Socket.send_all zock [ "" ; s ]
-    | Some while_ ->
-        !logger.debug "send without blocking..." ;
-        retry_zmq ~while_
-          (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
-    !logger.debug "done sending"
+  if !next_id = 0 then
+    next_id := Random.int max_int_for_random ;
+  let msg = !next_id, cmd in
+  let rem h h_name cb =
+    Option.may (fun cb ->
+      Hashtbl.add h !next_id cb ;
+      let h_len = Hashtbl.length h in
+      if h_len > 10 then !logger.error "%s size is not %d" h_name h_len
+    ) cb in
+  rem on_oks "SyncZMQClient.on_oks" on_ok ;
+  rem on_kos "SyncZMQClient.on_kos" on_ko ;
+  incr next_id ;
+  !logger.info "Sending command %a"
+    Client.CltMsg.print msg ;
+  let s = Client.CltMsg.to_string msg in
+  (match while_ with
+  | None ->
+      Zmq.Socket.send_all zock [ "" ; s ]
+  | Some while_ ->
+      !logger.debug "send without blocking..." ;
+      retry_zmq ~while_
+        (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+  !logger.debug "done sending"
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
@@ -174,7 +180,7 @@ let init_sync ?while_ zock topics on_progress =
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
           ?(on_progress=default_on_progress) ?(on_sock=ignore)
-          ?(on_new=ignore5) ?(on_set=ignore5) ?(on_del=ignore4)
+          ?(on_new=ignore6) ?(on_set=ignore6) ?(on_del=ignore4)
           ?(on_lock=ignore4) ?(on_unlock=ignore3)
           ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) sync_loop =
   let ctx = Zmq.Context.create () in

@@ -91,18 +91,12 @@ let read_source_info fname : RamenSync.Value.source_info =
   Marshal.from_string s 0
 
 (* Register separate builders from ".ramen" to ".info" and from there to
- * ".x". From ramen to info, use the md5 within the info (likely to be a
- * temp file which mtime is meaningless) to determine obsolescence.
- * Unlike the command line compiler, this compiler can only find parents in
- * the running-config (not on disc) and has no option to set a different
- * program name. (FIXME: try to get rid of that option) *)
+ * ".x". *)
 let () =
   register "ramen" "info"
     (fun src_file target_file ->
-      not (Files.exists target_file) || (
-        let info = read_source_info target_file in
-        let text = Files.read_whole_file src_file in
-        info.RamenSync.Value.md5 <> (N.md5 text)))
+      not (Files.exists target_file) ||
+      target_is_older src_file target_file)
     (fun conf get_parent program_name src_file target_file ->
       let info =
         let md5 = Files.read_whole_file src_file |> N.md5 in

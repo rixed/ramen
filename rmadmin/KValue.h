@@ -14,6 +14,7 @@ class KValue : public QObject
 
   std::optional<QString> owner;
   std::shared_ptr<conf::Value const> val; // may not be set
+  // TODO: bring the set_by and mtime down there
 
 public:
   KValue();

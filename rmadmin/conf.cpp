@@ -21,7 +21,7 @@ QMap<conf::Key, KValue> kvs;
 std::shared_mutex kvs_lock;
 
 struct ConfRequest {
-  enum Action { New, Set, Lock, Unlock, Del } action;
+  enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;
   std::string const key;
   std::optional<std::shared_ptr<Value const>> value;
 };
@@ -53,12 +53,16 @@ extern "C" {
           req = caml_alloc(1, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
-        case ConfRequest::Unlock:
+        case ConfRequest::LockOrCreate:
           req = caml_alloc(1, 3);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
-        case ConfRequest::Del:
+        case ConfRequest::Unlock:
           req = caml_alloc(1, 4);
+          Store_field(req, 0, caml_copy_string(cr.key.c_str()));
+          break;
+        case ConfRequest::Del:
+          req = caml_alloc(1, 5);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
       }

@@ -19,8 +19,8 @@ struct
 
   type t =
     { h : hash_value H.t ;
-      on_new : t -> Key.t -> Value.t -> string -> unit ;
-      on_set : t -> Key.t -> Value.t -> string -> unit ;
+      on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
+      on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
       on_lock : t -> Key.t -> string -> unit ;
       on_unlock : t -> Key.t -> unit }
@@ -28,7 +28,9 @@ struct
   and hash_value =
     { mutable v : Value.t ;
       mutable locked : string option ;
-      mutable set_by : string }
+      (* All these metadata are set exclusively by the confserver: *)
+      mutable set_by : string ;
+      mutable mtime : float }
 
   let make ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
     { h = H.create 99 ;
@@ -40,17 +42,19 @@ struct
           Printf.sprintf "Cannot authenticate to the server: %s" err |>
           failwith
 
-    | SrvMsg.SetKey (k, v, uid) ->
+    | SrvMsg.SetKey (k, v, set_by, mtime) ->
         (match H.find t.h k with
         | exception Not_found ->
             !logger.error
               "Server set key %a that has not been created"
               Key.print k ;
-            let hv = { v ; locked = None ; set_by = uid} in
+            let hv = { v ; locked = None ; set_by ; mtime } in
             H.add t.h k hv ;
-            t.on_new t k v "unknown"
+            t.on_new t k v set_by mtime
         | prev ->
             if Value.equal prev.v v then (
+              prev.set_by <- set_by ;
+              prev.mtime <- mtime ;
               !logger.error
                 "Server wanted to replace a value of key %a by the same: %a"
                 Key.print k
@@ -58,24 +62,25 @@ struct
               (* TODO: count this *)
             ) else (
               prev.v <- v ;
-              prev.set_by <- uid ;
-              t.on_set t k v uid
+              prev.set_by <- set_by ;
+              t.on_set t k v set_by mtime
             )
         )
 
-    | SrvMsg.NewKey (k, v, uid) ->
+    | SrvMsg.NewKey (k, v, set_by, mtime) ->
         (match H.find t.h k with
         | exception Not_found ->
-            let hv = { v ; locked = Some uid ; set_by = uid } in
+            let hv = { v ; locked = Some set_by ; set_by ; mtime } in
             H.add t.h k hv ;
-            t.on_new t k v uid
+            t.on_new t k v set_by mtime
         | prev ->
             !logger.error
               "Server create key %a that already exist, updating"
               Key.print k ;
             prev.v <- v ;
-            prev.set_by <- uid ;
-            t.on_set t k v uid
+            prev.set_by <- set_by ;
+            prev.mtime <- mtime ;
+            t.on_set t k v set_by mtime
         )
 
     | SrvMsg.DelKey k ->

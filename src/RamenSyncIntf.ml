@@ -97,6 +97,11 @@ sig
   (* The conf server itself: *)
   val internal : t
 
+  (* Users can be connected via various "sockets", with a selection different
+   * for each. *)
+  type socket
+  val of_socket : socket -> t
+
   (* Whatever the user has to transmit to authenticate, such as a TLS
    * certificate for instance: *)
   module PubCredentials :
@@ -106,7 +111,7 @@ sig
   end
 
   (* Promote the user based on some creds: *)
-  val authenticate : t -> PubCredentials.t -> t
+  val authenticate : t -> PubCredentials.t -> socket -> t
   val authenticated : t -> bool
 
   type id (* Something we can hash, compare, etc... *)
@@ -116,11 +121,6 @@ sig
   val has_capa : Capa.t -> t -> bool
 
   val only_me : t -> Capa.t
-
-  (* We also use ZMQ for communication, so we need to create or retrieve a
-   * user from a ZMQ id and the other way around: *)
-  val of_zmq_id : string -> t
-  val zmq_id : t -> string
 end
 
 module type KEY =
@@ -142,6 +142,7 @@ sig
   val of_string : string -> t
 end
 
+(* A way to select part of the key tree. *)
 module type SELECTOR =
 sig
   module Key : KEY
@@ -187,7 +188,10 @@ struct
       (* Like SetKey but fails if the key does not exist yet: *)
       | UpdKey of Key.t * Value.t
       | DelKey of Key.t
+      (* Will fail if the key does not exist yet: *)
       | LockKey of Key.t
+      (* Will create a dummy value (locked) if the key does not exist yet: *)
+      | LockOrCreateKey of Key.t
       | UnlockKey of Key.t
 
     type t = int * cmd
@@ -220,6 +224,8 @@ struct
           print1 "DelKey" k
       | LockKey k ->
           print1 "LockKey" k
+      | LockOrCreateKey k ->
+          print1 "LockOrCreateKey" k
       | UnlockKey k ->
           print1 "UnlockKey" k
 
@@ -231,8 +237,8 @@ struct
   struct
     type t =
       | Auth of string
-      | SetKey of (Key.t * Value.t * string)
-      | NewKey of (Key.t * Value.t * string)
+      | SetKey of (Key.t * Value.t * string * float)
+      | NewKey of (Key.t * Value.t * string * float)
       | DelKey of Key.t
       (* With the username of the lock owner: *)
       | LockKey of (Key.t * string)
@@ -241,16 +247,18 @@ struct
     let print oc = function
       | Auth creds ->
           Printf.fprintf oc "Auth %s" creds
-      | SetKey (k, v, uid) ->
-          Printf.fprintf oc "SetKey (%a, %ai, %s)"
+      | SetKey (k, v, uid, mtime) ->
+          Printf.fprintf oc "SetKey (%a, %ai, %s, %f)"
             Key.print k
             Value.print v
             uid
-      | NewKey (k, v, uid) ->
-          Printf.fprintf oc "NewKey (%a, %a, %s)"
+            mtime
+      | NewKey (k, v, uid, mtime) ->
+          Printf.fprintf oc "NewKey (%a, %a, %s, %f)"
             Key.print k
             Value.print v
             uid
+            mtime
       | DelKey k ->
           Printf.fprintf oc "DelKey %a"
             Key.print k

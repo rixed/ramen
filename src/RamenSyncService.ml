@@ -380,9 +380,9 @@ let zock_step srv zock =
       (match peel_multipart parts with
       | peer, [ msg ] ->
           log_and_ignore_exceptions (fun () ->
-            let u = User.of_zmq_id peer in
+            let u = User.of_socket peer in
             let m = CltMsg.of_string msg in
-            Server.process_msg srv u m ;
+            Server.process_msg srv peer u m ;
             (* Special case: we automatically, and silently, prune old
              * entries under "lasts/" directories (only after a new entry has
              * successfully been added there).
@@ -418,13 +418,12 @@ let service_loop conf zock srv =
     true
   )
 
-let send_msg zock ?block m us =
+let send_msg zock ?block m sockets =
   let msg = SrvMsg.to_string m in
-  Enum.iter (fun u ->
-    let peer = User.zmq_id u in
+  Enum.iter (fun peer ->
     !logger.debug "0MQ: Sending message %S to %S" msg peer ;
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
-  ) us
+  ) sockets
 
 let start conf port =
   let ctx = Zmq.Context.create () in

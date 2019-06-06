@@ -60,26 +60,20 @@ module User =
 struct
   module Capa = Capacity
 
-  type zmq_id = string
+  type socket = string (* ZMQ peer *)
+
   type t =
     (* Internal implies no authn at all, only for when the messages do not go
      * through ZMQ: *)
     | Internal
-    | Auth of { zmq_id : zmq_id ; name : string ; capas : Capa.t Set.t }
-    | Anonymous of zmq_id
+    | Auth of { name : string ; capas : Capa.t Set.t }
+    | Anonymous
 
-  let equal u1 u2 =
-    match u1, u2 with
-    | Internal, Internal -> true
-    (* A user (identifier by name) could be connected several times, have
-     * different zmq_id, and still be the same user: *)
-    | Auth { name = n1 ; _ }, Auth { name = n2 ; _ } -> n1 = n2
-    | Anonymous z1, Anonymous z2 -> z1 = z2
-    | _ -> false
+  let equal = (=)
 
   let authenticated = function
     | Auth _ | Internal -> true
-    | Anonymous _ -> false
+    | Anonymous -> false
 
   let internal = Internal
 
@@ -91,12 +85,13 @@ struct
   end
 
   (* FIXME: when to delete from these? *)
-  let zmq_id_to_user = Hashtbl.create 30
+  let socket_to_user : (socket, t) Hashtbl.t =
+    Hashtbl.create 90
 
-  let authenticate u creds =
+  let authenticate u creds socket =
     match u with
     | Auth _ | Internal as u -> u (* ? *)
-    | Anonymous zmq_id ->
+    | Anonymous ->
         let name, capas =
           match creds with
           | "admin" -> creds, Capa.[ Admin ]
@@ -107,23 +102,18 @@ struct
         let capas =
           Capa.Anybody :: Capa.SingleUser name :: capas |>
           Set.of_list in
-        let u = Auth { zmq_id ; name ; capas } in
-        Hashtbl.replace zmq_id_to_user zmq_id u ;
+        let u = Auth { name ; capas } in
+        Hashtbl.replace socket_to_user socket u ;
         u
 
-  let of_zmq_id zmq_id =
-    try Hashtbl.find zmq_id_to_user zmq_id
-    with Not_found -> Anonymous zmq_id
-
-  let zmq_id = function
-    | Auth { zmq_id ; _ } | Anonymous zmq_id -> zmq_id
-    | Internal ->
-        invalid_arg "zmq_id"
+  let of_socket socket =
+    try Hashtbl.find socket_to_user socket
+    with Not_found -> Anonymous
 
   let print fmt = function
     | Internal -> String.print fmt "internal"
     | Auth { name ; _ } -> Printf.fprintf fmt "auth:%s" name
-    | Anonymous zmq_id -> Printf.fprintf fmt "anonymous:%s" zmq_id
+    | Anonymous -> Printf.fprintf fmt "anonymous"
 
   type id = string
 
@@ -135,12 +125,12 @@ struct
   let has_capa c = function
     | Internal -> true
     | Auth { capas ; _ } -> Set.mem c capas
-    | Anonymous _ -> c = Capa.anybody
+    | Anonymous -> c = Capa.anybody
 
   let only_me = function
     | Internal -> Capa.nobody
     | Auth { name ; _ } -> Capa.SingleUser name
-    | Anonymous _ -> invalid_arg "only_me"
+    | Anonymous -> invalid_arg "only_me"
 end
 
 (* The configuration keys are either:
@@ -180,7 +170,7 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
-    | Sources of (N.path * per_source_key)
+    | Sources of (N.path * string (* extension *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | PerProgram of (N.program * per_prog_key)
@@ -188,10 +178,6 @@ struct
     | Tail of N.site * N.fq * tail_key
     | Error of string option (* the user name *)
     (* TODO: alerting *)
-
-  and per_source_key =
-    | SourceText
-    | SourceInfo
 
   and per_site_key =
     | IsMaster
@@ -353,17 +339,13 @@ struct
     | LastTuple i ->
         Printf.fprintf fmt "lasts/%d" i
 
-  let print_per_source_key fmt = function
-    | SourceText -> String.print fmt "text"
-    | SourceInfo -> String.print fmt "info"
-
   let print fmt = function
     | DevNull ->
         String.print fmt "devnull"
-    | Sources (p, per_source_key) ->
-        Printf.fprintf fmt "sources/%a/%a"
+    | Sources (p, ext) ->
+        Printf.fprintf fmt "sources/%a/%s"
           N.path_print p
-          print_per_source_key per_source_key
+          ext
     | TargetConfig ->
         String.print fmt "target_config"
     | PerSite (site, per_site_key) ->
@@ -392,7 +374,7 @@ struct
   let user_errs = function
     | User.Internal -> DevNull
     | User.Auth { name ; _ } -> Error (Some name)
-    | User.Anonymous _ -> DevNull
+    | User.Anonymous -> DevNull
 
   let hash = Hashtbl.hash
   let equal = (=)
@@ -416,11 +398,8 @@ struct
         | "devnull", "" -> DevNull
         | "sources", s ->
             (match rcut s with
-            | [ source ; s ] ->
-                Sources (N.path source,
-                  match s with
-                  | "text" -> SourceText
-                  | "info" -> SourceInfo))
+            | [ source ; ext ] ->
+                Sources (N.path source, ext))
         | "target_config", "" -> TargetConfig
         | "sites", s ->
             let site, s = cut s in

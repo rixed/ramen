@@ -89,6 +89,7 @@ type pending_req =
   | New of string * Value.t
   | Set of string * Value.t
   | Lock of string
+  | LockOrCreate of string
   | Unlock of string
   | Del of string
 
@@ -96,7 +97,7 @@ external next_pending_request : unit -> pending_req = "next_pending_request"
 
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
-let on_new _zock clt k v uid =
+let on_new _zock clt k v uid _mtime =
   ignore clt ;
   Gc.compact () ;
   conf_new_key (Key.to_string k) v uid ;
@@ -104,7 +105,7 @@ let on_new _zock clt k v uid =
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
-let on_set _zock clt k v _u =
+let on_set _zock clt k v _u _mtime =
   ignore clt ;
   Gc.compact () ;
   conf_set_key (Key.to_string k) v ;
@@ -165,6 +166,9 @@ let sync_loop zock clt =
     | Lock k ->
         send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
         handle_msgs_out ()
+    | LockOrCreate k ->
+        send_cmd zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
+        handle_msgs_out ()
     | Unlock k ->
         send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
@@ -191,7 +195,7 @@ let on_progress url stage status =
 
 let register_senders zock =
   let lock_from_cpp k =
-    send_cmd zock (Client.CltMsg.LockKey k)
+    send_cmd zock (Client.CltMsg.LockOrCreateKey k)
   and unlock_from_cpp k =
     send_cmd zock (Client.CltMsg.UnlockKey k)
   in

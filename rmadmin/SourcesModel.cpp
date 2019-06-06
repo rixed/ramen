@@ -7,7 +7,7 @@ SourcesModel::SourcesModel(QObject *parent) :
 {
   root = new DirItem("");
 
-  conf::autoconnect("^sources/.*/text", [this](conf::Key const &, KValue const *kv) {
+  conf::autoconnect("^sources/.*/ramen", [this](conf::Key const &, KValue const *kv) {
     connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceText);
     connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceText);
   });

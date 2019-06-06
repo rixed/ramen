@@ -16,21 +16,24 @@ struct
 
   type t =
     { h : hash_value H.t ;
-      send_msg : SrvMsg.t -> User.t Enum.t -> unit ;
+      send_msg : SrvMsg.t -> User.socket Enum.t -> unit ;
       (* Inverted match: who is using what: *)
       cb_selectors : Selector.set ;
       on_sets : (Selector.id, callback) Hashtbl.t ;
       on_news : (Selector.id, callback) Hashtbl.t ;
       on_dels : (Selector.id, callback) Hashtbl.t ;
       user_selectors : Selector.set ;
-      subscriptions : (Selector.id, (User.id, User.t) Map.t) Hashtbl.t }
+      subscriptions : (Selector.id, (User.socket, User.t) Map.t) Hashtbl.t }
 
   and hash_value =
     { mutable v : Value.t ;
       r : Capa.t ; (* Read perm *)
       w : Capa.t ; (* Write perm *)
       s : bool (* Sticky, ie cannot be deleted *) ;
-      mutable l : User.t option (* Locked by that user. TODO: add a recursion count? *) }
+      mutable l : User.t option (* Locked by that user. TODO: add a recursion count? *) ;
+      (* Also some metadata: *)
+      mutable set_by : User.t ;
+      mutable mtime : float }
 
   (* Callbacks return either None, meaning the change is refused, or some
    * new (or identical) value to be written instead of the user supplied
@@ -68,13 +71,15 @@ struct
         v
 
   let notify t k has_capa m =
-    (Selector.matches k t.user_selectors |>
-    Enum.fold (fun users sel_id ->
-      Hashtbl.find_default t.subscriptions sel_id Map.empty |>
-      Map.union users
-    ) Map.empty |>
-    Map.values) //
-    has_capa |>
+    let subscriber_sockets =
+      Selector.matches k t.user_selectors |>
+      Enum.fold (fun sockets sel_id ->
+        Hashtbl.find_default t.subscriptions sel_id Map.empty |>
+        Map.union sockets
+      ) Map.empty in
+    Map.enum subscriber_sockets //@
+    (fun (socket, user) ->
+      if has_capa user then Some socket else None) |>
     t.send_msg m
 
   let no_such_key k =
@@ -120,9 +125,10 @@ struct
         (* As long as there is a callback for this, that's ok: *)
         let v = do_cbs t.on_news t k v in
         let l = Some u in (* objects are created locked *)
-        H.add t.h k { v ; r ; w ; s ; l } ;
+        let mtime = Unix.gettimeofday () in
+        H.add t.h k { v ; r ; w ; s ; l ; set_by = u ; mtime } ;
         let uid = IO.to_string User.print_id (User.id u) in
-        notify t k (User.has_capa r) (NewKey (k, v, uid))
+        notify t k (User.has_capa r) (NewKey (k, v, uid, mtime))
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
           Key.print k |>
@@ -141,8 +147,10 @@ struct
           check_can_update k prev u ;
           let v = do_cbs t.on_sets t k v in
           prev.v <- v ;
+          prev.set_by <- u ;
+          prev.mtime <- Unix.gettimeofday () ;
           let uid = IO.to_string User.print_id (User.id u) in
-          notify t k (User.has_capa prev.r) (SetKey (k, v, uid))
+          notify t k (User.has_capa prev.r) (SetKey (k, v, uid, prev.mtime))
         )
 
   let set t u k v = (* TODO: H.find and pass prev item to update *)
@@ -166,12 +174,16 @@ struct
         H.remove t.h k ;
         notify t k (User.has_capa prev.r) (DelKey k)
 
-  let lock t u k =
+  let lock t u k ~must_exist =
     !logger.debug "Locking config key %a"
       Key.print k ;
     match H.find t.h k with
     | exception Not_found ->
-        no_such_key k
+        (* We must allow to lock a non-existent key to reserve the key to its
+         * creator. In that case a lock will create a new (Void) value. *)
+        if must_exist then no_such_key k else
+        let me = User.only_me u in
+        create t u k Value.dummy ~r:me ~w:me ~s:false
     | prev ->
         check_can_update k prev u ;
         (match prev.l with
@@ -215,19 +227,18 @@ struct
           set srv User.internal k v
         )
 
-  let subscribe_user t u sel =
+  let subscribe_user t socket u sel =
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
-    let uid = User.id u in
     let id = Selector.add t.user_selectors sel in
-    let def = Map.singleton uid u in
-    Hashtbl.modify_def def id (Map.add uid u) t.subscriptions
+    let def = Map.singleton socket u in
+    Hashtbl.modify_def def id (Map.add socket u) t.subscriptions
 
   let register_callback t cbs f sel =
     let id = Selector.add t.cb_selectors sel in
     Hashtbl.add cbs id f
 
-  let initial_sync t u sel =
+  let initial_sync t socket u sel =
     !logger.info "Initial synchronisation for user %a" User.print u ;
     let s = Selector.make_set () in
     let _ = Selector.add s sel in
@@ -236,11 +247,12 @@ struct
          not (Enum.is_empty (Selector.matches k s))
       then (
         let uid =
-          IO.to_string User.print_id (User.id (hv.l |? User.internal)) in
-        t.send_msg (SrvMsg.NewKey (k, hv.v, uid)) (Enum.singleton u) ;
+          IO.to_string User.print_id (User.id hv.set_by) in
+        t.send_msg (SrvMsg.NewKey (k, hv.v, uid, hv.mtime))
+                   (Enum.singleton socket) ;
         (* Will be created locked by client: *)
         if hv.l = None then
-          t.send_msg (SrvMsg.UnlockKey k) (Enum.singleton u)
+          t.send_msg (SrvMsg.UnlockKey k) (Enum.singleton socket)
       )
     ) t.h ;
     !logger.info "...done"
@@ -250,7 +262,7 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
-  let process_msg t u (i, cmd as msg) =
+  let process_msg t socket u (i, cmd as msg) =
     try
       !logger.debug "Received msg %a from %a"
         CltMsg.print msg
@@ -261,7 +273,7 @@ struct
            * returned directly. *)
           let err =
             try
-              let u' = User.authenticate u creds in
+              let u' = User.authenticate u creds socket in
               !logger.info "User %a authenticated out of user %a"
                 User.print u'
                 User.print u ;
@@ -276,13 +288,13 @@ struct
               !logger.info "While authenticating %a: %s" User.print u err ;
               err
           in
-          t.send_msg (SrvMsg.Auth err) (Enum.singleton u)
+          t.send_msg (SrvMsg.Auth err) (Enum.singleton socket)
 
       | CltMsg.StartSync sel ->
-          subscribe_user t u sel ;
+          subscribe_user t socket u sel ;
           (* Then send everything that matches this selection and that the
            * user can read: *)
-          initial_sync t u sel
+          initial_sync t socket u sel
 
       | CltMsg.SetKey (k, v) ->
           set t u k v
@@ -300,7 +312,10 @@ struct
           del t u k
 
       | CltMsg.LockKey k ->
-          lock t u k
+          lock t u k ~must_exist:true
+
+      | CltMsg.LockOrCreateKey k ->
+          lock t u k ~must_exist:false
 
       | CltMsg.UnlockKey k ->
           unlock t u k
