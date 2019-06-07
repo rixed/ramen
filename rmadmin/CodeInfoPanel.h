@@ -8,6 +8,7 @@
 class QLabel;
 class QGridLayout;
 class QGroupBox;
+class RCEditor;
 
 class CodeInfoPanel : public QWidget, public AtomicWidget
 {
@@ -16,6 +17,7 @@ class CodeInfoPanel : public QWidget, public AtomicWidget
   QGridLayout *infoLayout;
   QLabel *md5Label, *condRunLabel, *errLabel;
   QGroupBox *paramBox, *functionBox;
+  RCEditor *runBox;
 
   void setInfoVisible(bool visible);
 public:

@@ -6,4 +6,7 @@
 typedef unsigned __int128 uint128_t;
 typedef __int128 int128_t;
 
+bool startsWith(std::string const &, std::string const &);
+bool endsWith(std::string const &, std::string const &);
+
 #endif

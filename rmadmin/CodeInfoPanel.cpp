@@ -4,6 +4,7 @@
 #include <QGroupBox>
 #include <QToolBox>
 #include "SourcesModel.h"
+#include "RCEditor.h"
 #include "CodeInfoPanel.h"
 
 CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
@@ -43,11 +44,10 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
     layout->addWidget(infoBox);
   }
 
-  /* Then the "run" area, to start a new program (ask for name, sites, etc). */
-  {
-    // TODO
-    layout->addWidget(new QLabel("TODO: run box"));
-  }
+  /* Then the "run" area, to start a new program (ask for name, sites, etc).
+   * Use a RC widget with a configurable name. */
+  runBox = new RCEditor(sourceName);
+  layout->addWidget(runBox);
 
   /* Then a toolbox with, for each running program using that source, display
    * (read/write) its site filter, its parameters, debug mode flag, report
@@ -76,6 +76,7 @@ void CodeInfoPanel::setInfoVisible(bool visible)
   errLabel->setVisible(! visible);
   condRunLabel->setVisible(visible);
   if (paramBox) paramBox->setVisible(visible);
+  runBox->setVisible(visible);
   if (functionBox) functionBox->setVisible(visible);
 }
 
@@ -96,6 +97,7 @@ void CodeInfoPanel::setValue(conf::Key const &, std::shared_ptr<conf::Value cons
     setInfoVisible(true);
     condRunLabel->setText(info->hasRunCondition ? tr("true") : tr("false"));
 
+    // TODO: a simple table would be nicer
     delete paramBox;
     paramBox = nullptr;
     if (! info->params.isEmpty()) {

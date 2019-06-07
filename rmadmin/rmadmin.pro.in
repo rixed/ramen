@@ -60,6 +60,7 @@ HEADERS += \
   layout.h \
   ProgramInfoBox.h \
   FunctionInfoBox.h \
+  RCEditor.h \
   CodeInfoPanel.h \
   CodeEdit.h \
   ChartDataSet.h \
@@ -81,6 +82,7 @@ HEADERS += \
   RmAdminWin.h
 
 SOURCES += \
+  misc.cpp \
   qcustomplot.cpp \
   colorOfString.cpp \
   SyncStatus.cpp \
@@ -111,6 +113,7 @@ SOURCES += \
   TailTable.cpp \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
+  RCEditor.cpp \
   CodeInfoPanel.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \
