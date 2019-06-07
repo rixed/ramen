@@ -8,22 +8,21 @@
 
 class QFormLayout;
 class QLabel;
+class QComboBox;
 
 class RCEditor : public QWidget
 {
   Q_OBJECT
 
-  QWidget *sourceBox; // either a QComboBox or a mere QLabel
+  QComboBox *sourceBox; // either a QComboBox or a mere QLabel
   QLabel *deletedSourceWarning;
   bool sourceDoesExist;
 
   // Parameters are reset whenever the sourceBox changes:
   QFormLayout *paramsForm;
 
-  QString const currentSource() const;
-
 public:
-  QString sourceName;
+  QString sourceName; // if forced
 
   // If sourceName is empty then offer to pick one:
   RCEditor(QString const &sourceName, QWidget *parent = nullptr);

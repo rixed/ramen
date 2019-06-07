@@ -24,11 +24,10 @@ RCEditor::RCEditor(QString const &sourceName_, QWidget *parent) :
 
   { // source
     QVBoxLayout *sourceLayout = new QVBoxLayout;
-    if (sourceName.isEmpty()) {
-      sourceBox = new QComboBox;
-    } else {
-      sourceBox = new QLabel(sourceName);
-    }
+    sourceBox = new QComboBox;
+    if (! sourceName.isEmpty())
+      sourceBox->setEnabled(false);
+
     sourceLayout->addWidget(sourceBox);
 
     deletedSourceWarning =
@@ -48,7 +47,7 @@ RCEditor::RCEditor(QString const &sourceName_, QWidget *parent) :
     QCheckBox *automaticBox = new QCheckBox("automatic");
     automaticBox->setEnabled(false);
     flagsLayout->addWidget(automaticBox);
-    layout->addRow(tr("&Flags:"), flagsLayout);
+    layout->addRow(tr("Flags:"), flagsLayout);
   }
 
   QLineEdit *sitesEdit = new QLineEdit;
@@ -62,7 +61,6 @@ RCEditor::RCEditor(QString const &sourceName_, QWidget *parent) :
   layout->addRow(paramsForm);
 
   resetSources();
-  if (! sourceName.isEmpty()) changedSource();
 }
 
 static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt)
@@ -80,12 +78,7 @@ static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt
 
 void RCEditor::resetSources()
 {
-  QComboBox *combo = dynamic_cast<QComboBox *>(sourceBox);
-  QLabel *sourceLabel = dynamic_cast<QLabel *>(sourceBox);
-  assert(combo || sourceLabel);
-  QString const fixedSourceName(
-    combo ? QString() : sourceLabel->text());
-  bool const comboWasEmpty = combo && combo->count() == 0;
+  bool const comboWasEmpty = sourceBox->count() == 0;
 
   /* Iter over both the list of existing sources and the combo and update the
    * combo. Do not delete the selected entry but make the deletedSourceWarning
@@ -97,8 +90,7 @@ void RCEditor::resetSources()
   int comboIdx = 0;
 
   sourceDoesExist = true;
-  while (kvIt != conf::kvs.constEnd() || comboIdx < (combo ? combo->count() : 1)) {
-    int const comboCount = combo ? combo->count() : 1;
+  while (kvIt != conf::kvs.constEnd() || comboIdx < sourceBox->count()) {
     /* "Left" being the kvs enumeration and "right" being the combo entries,
      * at each step those actions are possible:
      * - advance left, whenever it's not a source
@@ -117,18 +109,16 @@ void RCEditor::resetSources()
         kvIt ++;
       } else { // left is a compiled source (or exhausted)
         QString const left = sourceNameOfKey(kvIt.key());
-        if (comboIdx >= comboCount) {
+        if (comboIdx >= sourceBox->count()) {
           // insert at the end before there is nothing left to compare with
-          if (combo) {
-            std::cout << "Append " << left.toStdString() << " to combo" << std::endl;
-            combo->addItem(left);
-            comboIdx ++;
-          }
+          std::cout << "Append " << left.toStdString() << " to combo" << std::endl;
+          sourceBox->addItem(left);
+          if (left == sourceName) sourceBox->setCurrentIndex(comboIdx);
+          comboIdx ++;
           kvIt ++;
         } else {
           // there is a left and a right, compare them:
-          QString const right =
-            combo ? combo->itemText(comboIdx) : fixedSourceName;
+          QString const right = sourceBox->itemText(comboIdx);
           int const cmp = QString::compare(left, right);
           if (cmp == 0) {
             std::cout << "Same key: " << left.toStdString() << std::endl;
@@ -136,10 +126,9 @@ void RCEditor::resetSources()
             comboIdx ++;
           } else if (cmp < 0) {
             std::cout << "Insert key " << left.toStdString() << " at " << comboIdx << std::endl;
-            if (combo) {
-              combo->insertItem(comboIdx, left);
-              comboIdx ++;
-            }
+            sourceBox->insertItem(comboIdx, left);
+            if (left == sourceName) sourceBox->setCurrentIndex(comboIdx);
+            comboIdx ++;
             kvIt ++;
           } else {
             std::cout << "Removing key from combo" << std::endl;
@@ -148,21 +137,20 @@ void RCEditor::resetSources()
         }
       }
     }
-    if (removeRight && comboIdx < comboCount) {
-      if (comboIdx == (combo ? combo->currentIndex() : 0)) {
+    if (removeRight && comboIdx < sourceBox->count()) {
+      if (comboIdx == sourceBox->currentIndex()) {
         std::cout << "Selected combo entry does not exist" << std::endl;
         sourceDoesExist = false;
         comboIdx ++;
       } else {
-        if (combo) combo->removeItem(comboIdx);
-        else comboIdx ++;
+        sourceBox->removeItem(comboIdx);
       }
     }
   }
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
 
-  if (comboWasEmpty && combo->count() > 0) changedSource();
+  if (comboWasEmpty && sourceBox->count() > 0) changedSource();
 
   conf::kvs_lock.unlock_shared();
 }
@@ -172,15 +160,6 @@ void RCEditor::setSourceExists(bool s)
   sourceDoesExist = s;
   deletedSourceWarning->setVisible(!s);
   // TODO: also disable the rest of the form
-}
-
-QString const RCEditor::currentSource() const
-{
-  QComboBox *combo = dynamic_cast<QComboBox *>(sourceBox);
-  if (combo) return combo->currentText();
-  QLabel *sourceLabel = dynamic_cast<QLabel *>(sourceBox);
-  assert(sourceLabel);
-  return sourceLabel->text();
 }
 
 void RCEditor::clearParams()
@@ -195,7 +174,7 @@ void RCEditor::changedSource()
    * Maybe save the values that are set in a global map of parameter_name to
    * value, to populate next param lists? Also do this when submitting that
    * form. */
-  QString const sourceName = currentSource();
+  QString const sourceName = sourceBox->currentText();
   conf::Key infoKey("sources/" + sourceName.toStdString() + "/info");
 
   conf::kvs_lock.lock_shared();
