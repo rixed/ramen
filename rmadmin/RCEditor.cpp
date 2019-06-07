@@ -58,9 +58,11 @@ RCEditor::RCEditor(QString const &sourceName_, QWidget *parent) :
   layout->addRow(tr("&Reporting Period:"), reportEdit);
 
   paramsForm = new QFormLayout;
-  layout->addRow(tr("Parameters:"), paramsForm);
+  layout->addRow(new QLabel(tr("Parameters:")));
+  layout->addRow(paramsForm);
 
   resetSources();
+  if (! sourceName.isEmpty()) changedSource();
 }
 
 static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt)
@@ -83,6 +85,7 @@ void RCEditor::resetSources()
   assert(combo || sourceLabel);
   QString const fixedSourceName(
     combo ? QString() : sourceLabel->text());
+  bool const comboWasEmpty = combo && combo->count() == 0;
 
   /* Iter over both the list of existing sources and the combo and update the
    * combo. Do not delete the selected entry but make the deletedSourceWarning
@@ -111,7 +114,6 @@ void RCEditor::resetSources()
       removeRight = true;
     } else {
       if (! isCompiledSource(kvIt)) {
-        std::cout << "Not a sourceinfo" << std::endl;
         kvIt ++;
       } else { // left is a compiled source (or exhausted)
         QString const left = sourceNameOfKey(kvIt.key());
@@ -160,7 +162,31 @@ void RCEditor::resetSources()
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
 
+  if (comboWasEmpty && combo->count() > 0) changedSource();
+
   conf::kvs_lock.unlock_shared();
+}
+
+void RCEditor::setSourceExists(bool s)
+{
+  sourceDoesExist = s;
+  deletedSourceWarning->setVisible(!s);
+  // TODO: also disable the rest of the form
+}
+
+QString const RCEditor::currentSource() const
+{
+  QComboBox *combo = dynamic_cast<QComboBox *>(sourceBox);
+  if (combo) return combo->currentText();
+  QLabel *sourceLabel = dynamic_cast<QLabel *>(sourceBox);
+  assert(sourceLabel);
+  return sourceLabel->text();
+}
+
+void RCEditor::clearParams()
+{
+  while (paramsForm->rowCount() > 0)
+    paramsForm->removeRow(0);
 }
 
 void RCEditor::changedSource()
@@ -169,4 +195,24 @@ void RCEditor::changedSource()
    * Maybe save the values that are set in a global map of parameter_name to
    * value, to populate next param lists? Also do this when submitting that
    * form. */
+  QString const sourceName = currentSource();
+  conf::Key infoKey("sources/" + sourceName.toStdString() + "/info");
+
+  conf::kvs_lock.lock_shared();
+  std::shared_ptr<conf::SourceInfo const> info =
+    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].value());
+  conf::kvs_lock.unlock_shared();
+
+  clearParams();
+
+  if (! info) {
+    std::cout << "Cannot get info for " << sourceName.toStdString() << std::endl;
+    setSourceExists(false);
+    return;
+  }
+
+  for (auto const p : info->params) {
+    QLineEdit *paramEdit = new QLineEdit;
+    paramsForm->addRow(p->name, paramEdit);
+  }
 }

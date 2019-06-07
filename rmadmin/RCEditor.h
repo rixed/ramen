@@ -20,11 +20,17 @@ class RCEditor : public QWidget
   // Parameters are reset whenever the sourceBox changes:
   QFormLayout *paramsForm;
 
+  QString const currentSource() const;
+
 public:
   QString sourceName;
 
   // If sourceName is empty then offer to pick one:
   RCEditor(QString const &sourceName, QWidget *parent = nullptr);
+
+  void setSourceExists(bool);
+
+  void clearParams();
 
   bool isValid() const { return sourceDoesExist; }
 
