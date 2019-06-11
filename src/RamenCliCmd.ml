@@ -495,17 +495,22 @@ let compserver conf daemonize to_stdout to_syslog
     !logger.debug "Received %d messages" num_msg)
 
 let compile conf lib_path use_external_compiler
-            max_simult_compils smt_solver source_file
+            max_simult_compils smt_solver source_files
             output_file_opt program_name_opt replace () =
+  let many_source_files = List.length source_files > 1 in
+  if many_source_files && program_name_opt <> None then
+    failwith "Cannot specify the program name for several source files" ;
   init_logger conf.C.log_level ;
-  if conf.C.sync_url = "" then
-    compile_local conf lib_path use_external_compiler
-                  max_simult_compils smt_solver source_file
-                  output_file_opt program_name_opt
-  else
-    let target_file_opt =
-      Option.map (fun (s : N.program) -> N.path (s :> string)) program_name_opt in
-    compile_sync conf replace source_file target_file_opt
+  List.iter (fun source_file ->
+    if conf.C.sync_url = "" then
+      compile_local conf lib_path use_external_compiler
+                    max_simult_compils smt_solver source_file
+                    output_file_opt program_name_opt
+    else
+      let target_file_opt =
+        Option.map (fun (s : N.program) -> N.path (s :> string)) program_name_opt in
+      compile_sync conf replace source_file target_file_opt
+  ) source_files
 
 (*
  * `ramen run`

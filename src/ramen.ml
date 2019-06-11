@@ -510,10 +510,10 @@ let lib_path =
                    ~env [ "lib-path" ; "L" ] in
   Arg.(value (opt_all path [] i))
 
-let compile_src_file =
+let src_files =
   let i = Arg.info ~doc:CliInfo.src_files
                    ~docv:"FILE" [] in
-  Arg.(required (pos 0 (some path) None i))
+  Arg.(non_empty (pos_all path [] i))
 
 let program =
   let parse s = Pervasives.Ok (N.program s)
@@ -545,7 +545,7 @@ let compile =
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
-      $ compile_src_file
+      $ src_files
       $ output_file
       $ as_
       $ replace),
