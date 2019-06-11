@@ -124,7 +124,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   (* Also attempt to repair the report/notifs ringbufs.
    * This is OK because there can be no writer right now, and the report
    * ringbuf being a non-wrapping buffer then reader part cannot be damaged
-   * any way. For notifications we could have the alerter reading though,
+   * anyway. For notifications we could have the alerter reading though,
    * so FIXME: smarter ringbuf_repair that spins before repairing. *)
   let reports_rb = prepare_reports conf in
   RingBuf.unload reports_rb ;

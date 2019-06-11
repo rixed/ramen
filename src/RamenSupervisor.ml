@@ -952,7 +952,7 @@ let must_reread fname last_read autoreload_delay now set_max_wait =
  * unblock all workers. This mechanism enforces that CSV readers do not start
  * to read tuples before all their children are attached to their out_ref file.
  *)
-let synchronize_running_with_files conf autoreload_delay =
+let synchronize_running_local conf autoreload_delay =
   (* Avoid memoizing this at every call to build_must_run: *)
   if !watchdog = None then
     watchdog :=
@@ -1046,31 +1046,30 @@ let synchronize_running_with_files conf autoreload_delay =
     (loop (Hashtbl.create 0) 0. (Hashtbl.create 0)) 0. ;
   RamenWatchdog.disable watchdog
 
-(* Using the conf server to supervise the workers goes in two stages:
+(* Using the conf server to supervise the workers goes in several stages:
  *
- * First, client tools such as `ramen run` and `ramen kill` write in the
- * PerProgram keys. Then, supervisor must react to those changes and recompute
- * the FuncGraph and expose it back on the configuration.
- * This could actually be done by the conf server (almost as of today, BTW, but
- * instead of building the graph from the rc_file the confserver should build it
- * from the config tree itself).
+ * First, client tools such as `ramen run`, `ramen kill` and `ramen replay`
+ * write the whole TargetConfig value into the TargetConfig key.
+ * Then, the global supervisor (choregrapher?) must react to that change and
+ * recompute the FuncGraph and expose it back on the configuration.
+ * Finally, the supervisor will react to the exposed FuncGraph and try to
+ * make the running configuration for the local site comply with it.
  *
  * Then, supervisor should listen on the PerWorker subtree of the config and
  * merely start/stop the processes.
  * Contrary to the above, it then uses only the conftree to store the current
- * state of running workers (clients can inspect this for free).
+ * state of running workers (that clients can inspect for free).
  *
  * The only issue is that when we write a process state we cannot read it again
  * before a round-trip to the conf server ; an issue that will not cause great harm
  * and that should be alleviated entirely later when the confclient writes in its
  * local hash (at least optionally) the values that it sets. *)
-(*
-let synchronize_running_with_sync conf autoreload_delay =
+(*let synchronize_running_sync conf autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let topic = "sites/*/workers/*/instances/*" in
-  let process_workers_terminations_with_sync clt =
+  let topics = [ "sites/"^ conf.C.site ^"/workers/*" ] in
+  let process_workers_terminations_sync clt =
     ignore clt ;
-    todo "process_workers_terminations_with_sync" in
+    todo "process_workers_terminations_sync" in
   (* We store all program details in their binary, because we want to keep
    * compilation separate from running the confserver (if only for make).
    * In another hand, all sites will have to have the binaries and so will
@@ -1133,7 +1132,7 @@ let synchronize_running_with_sync conf autoreload_delay =
     let open ZMQClient.Key in
     let open ZMQClient.Value in
     let on_new clt k v _uid =
-      process_workers_terminations_with_sync clt ;
+      process_workers_terminations_sync clt ;
       match k, v with
       | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
         Process { params ; envvars ; role ; log_level ; report_period ;
@@ -1162,7 +1161,7 @@ let synchronize_running_with_sync conf autoreload_delay =
             PerSite (site, PerWorker (fq, PerInstance (signature, LastKilled))) in
           ZMQClient.send_cmd zock ~while_ (DelKey k)
     and on_del clt k v =
-      process_workers_terminations_with_sync clt ;
+      process_workers_terminations_sync clt ;
       match k, v with
       | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
         Process { parents ; bin_file ; _ }
@@ -1193,7 +1192,9 @@ let synchronize_running_with_sync conf autoreload_delay =
           | v ->
               !logger.error "Bad type for %a: %a" Key.print k Value.print v)
       | _ -> () in
-    ZMQClient.process_in zock ~on_new ~on_set ~on_del ~on_lock ~on_unlock) *)
+    ZMQClient.process_in zock ~on_new ~on_set ~on_del ~on_lock ~on_unlock)
+*)
 
 let synchronize_running conf autoreload_delay =
-  synchronize_running_with_files conf autoreload_delay
+  (if conf.C.sync_url = "" then synchronize_running_local
+  else synchronize_running_local (* _sync *)) conf autoreload_delay

@@ -182,6 +182,7 @@ struct
   and per_site_key =
     | IsMaster
     | PerService of N.service * per_service_key
+    (* FIXME: keep program and func name distinct *)
     | PerWorker of N.fq * per_worker_key
 
   and per_service_key =
@@ -203,7 +204,7 @@ struct
     | PerFunction of N.func * per_func_key
 
   and per_worker_key =
-    | IsUsed
+    | IsUsed   (* Supervisor might not run lazy workers that are unused *)
     (* FIXME: create a single entry of type "stats" for the following: *)
     | StartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
@@ -645,6 +646,16 @@ struct
     | Whole -> String.print oc "whole worker"
     | TopHalf _ -> String.print oc "top half"
 
+  let print_rc_entry oc rc =
+    Printf.fprintf oc
+      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; src_file=%a; \
+         on_site=%a; automatic=%b }"
+      rc.enabled rc.debug rc.report_period
+      RamenParams.print_list rc.params
+      N.path_print rc.src_file
+      Globs.print rc.on_site
+      rc.automatic
+
   let equal v1 v2 =
     match v1, v2 with
     (* For errors, avoid comparing timestamps as after Auth we would
@@ -676,8 +687,11 @@ struct
         T.print_typ fmt t
     | RamenValue v ->
         T.print fmt v
-    | TargetConfig _ ->
-        Printf.fprintf fmt "TargetConfig { ... }"
+    | TargetConfig rcs ->
+        Printf.fprintf fmt "TargetConfig %a"
+          (List.print (fun oc (pname, rce) ->
+            Printf.fprintf oc "%a=>%a"
+              N.program_print pname print_rc_entry rce)) rcs
     | SourceInfo i ->
         Printf.fprintf fmt "SourceInfo { %a }"
           print_source_info i
