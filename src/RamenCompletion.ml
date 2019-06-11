@@ -46,6 +46,9 @@ let complete_commands s =
       "dequeue", CliInfo.dequeue ;
       "repair-ringbuf", CliInfo.repair ;
       "dump-ringbuf", CliInfo.dump ;
+      "confserver", CliInfo.confserver ;
+      "confclient", CliInfo.confclient ;
+      "compserver", CliInfo.compserver ;
       "choreographer", CliInfo.choreographer ] in
   complete commands s
 
@@ -384,6 +387,23 @@ let complete str () =
             "--stop", CliInfo.stop_word ] @
           copts @
           (complete_rb_file last_tok)
+      | "confserver" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--port", CliInfo.confserver_port ] @
+          copts
+      | "confclient" ->
+          copts
+      | "compserver" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ;
+            "--external-compiler=", CliInfo.external_compiler ;
+            "--max-simult-compilations",
+              CliInfo.max_simult_compilations ;
+            "--solver=", CliInfo.smt_solver ] @
+          copts
       | "choreographer" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
