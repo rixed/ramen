@@ -45,7 +45,8 @@ let complete_commands s =
       "ringbuf-summary", CliInfo.summary ;
       "dequeue", CliInfo.dequeue ;
       "repair-ringbuf", CliInfo.repair ;
-      "dump-ringbuf", CliInfo.dump ] in
+      "dump-ringbuf", CliInfo.dump ;
+      "choreographer", CliInfo.choreographer ] in
   complete commands s
 
 let complete_global_options s =
@@ -383,5 +384,10 @@ let complete str () =
             "--stop", CliInfo.stop_word ] @
           copts @
           (complete_rb_file last_tok)
+      | "choreographer" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ] @
+          copts
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

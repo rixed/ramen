@@ -70,6 +70,38 @@ struct
   let update _conf _srv = ()
 end
 
+(* TODO: Ideally `ramen run` and friends write directly in the confserver *)
+module TargetConfig : CONF_SYNCER =
+struct
+  let init _conf srv =
+    let k = Key.TargetConfig
+    and v = Value.TargetConfig []
+    and r = Capa.anybody
+    and w = User.only_me u
+    and s = true in
+    Server.create_unlocked srv k v ~r ~w ~s
+
+  let update conf srv =
+    let programs = RC.with_rlock conf identity in
+    let rcs =
+      Hashtbl.fold (fun pname (rce, _get_rc) rcs ->
+        let params = alist_of_hashtbl rce.RC.params in
+        let entry =
+          RamenSync.Value.{
+            enabled = rce.RC.status = RC.MustRun ;
+            debug = rce.debug ;
+            report_period = rce.report_period ;
+            params ;
+            src_file = rce.RC.src_file ;
+            on_site = rce.RC.on_site ;
+            automatic = rce.RC.automatic } in
+        (pname, entry) :: rcs
+      ) programs [] in
+    let v = Value.TargetConfig rcs in
+    let k = Key.TargetConfig in
+    Server.set srv u k v
+end
+
 module GraphInfo : CONF_SYNCER =
 struct
   let update_from_graph conf srv graph =
@@ -78,56 +110,43 @@ struct
     let h = Server.H.create 50 in
     let upd ?(r=Capa.anybody) ?(w=Capa.nobody) ?(s=true) k v =
       Server.H.add h k (Some v, r, w, s) in
-    Hashtbl.iter (fun site per_site_h ->
+    Hashtbl.iter (fun site _per_site_h ->
       let is_master = Set.mem site conf.C.masters in
       upd (PerSite (site, IsMaster)) (Value.Bool is_master) ;
       (* TODO: PerService *)
       let stats = Archivist.load_stats ~site conf in
-      Hashtbl.iter (fun (pname, fname) ge ->
-        let fq = N.fq_of_program pname fname in
-        (* IsUsed *)
-        upd (PerSite (site, PerWorker (fq, IsUsed)))
-            (Value.Bool ge.FuncGraph.used) ;
-        (* Parents *)
-        set_iteri (fun i (psite, pprog, pfunc) ->
-          upd (PerSite (site, PerWorker (fq, Parents i)))
-              (Value.Worker (psite, pprog, pfunc))
-        ) ge.FuncGraph.parents ;
-        (* Stats *)
-        (match Hashtbl.find stats fq with
-        | exception Not_found -> ()
-        | stats ->
-            upd (PerSite (site, PerWorker (fq, StartupTime)))
-                (Value.Float stats.FS.startup_time) ;
-            Option.may (fun min_etime ->
-              upd (PerSite (site, PerWorker (fq, MinETime)))
-                  (Value.Float min_etime) ;
-            ) stats.FS.min_etime ;
-            Option.may (fun max_etime ->
-              upd (PerSite (site, PerWorker (fq, MaxETime)))
-                  (Value.Float max_etime) ;
-            ) stats.FS.max_etime ;
-            upd (PerSite (site, PerWorker (fq, TotTuples)))
-                (Value.Int stats.FS.tuples) ;
-            upd (PerSite (site, PerWorker (fq, TotBytes)))
-                (Value.Int stats.FS.bytes) ;
-            upd (PerSite (site, PerWorker (fq, TotCpu)))
-                (Value.Float stats.FS.cpu) ;
-            upd (PerSite (site, PerWorker (fq, MaxRam)))
-                (Value.Int stats.FS.ram) ;
-            upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
-                (Value.TimeRange stats.FS.archives) ;
-            upd (PerSite (site, PerWorker (fq, NumArcFiles)))
-                (Value.Int (Int64.of_int stats.FS.num_arc_files)) ;
-            upd (PerSite (site, PerWorker (fq, NumArcBytes)))
-                (Value.Int stats.FS.num_arc_bytes)) ;
-      ) per_site_h
+      Hashtbl.iter (fun fq stats ->
+        upd (PerSite (site, PerWorker (fq, StartupTime)))
+            (Value.Float stats.FS.startup_time) ;
+        Option.may (fun min_etime ->
+          upd (PerSite (site, PerWorker (fq, MinETime)))
+              (Value.Float min_etime) ;
+        ) stats.FS.min_etime ;
+        Option.may (fun max_etime ->
+          upd (PerSite (site, PerWorker (fq, MaxETime)))
+              (Value.Float max_etime) ;
+        ) stats.FS.max_etime ;
+        upd (PerSite (site, PerWorker (fq, TotTuples)))
+            (Value.Int stats.FS.tuples) ;
+        upd (PerSite (site, PerWorker (fq, TotBytes)))
+            (Value.Int stats.FS.bytes) ;
+        upd (PerSite (site, PerWorker (fq, TotCpu)))
+            (Value.Float stats.FS.cpu) ;
+        upd (PerSite (site, PerWorker (fq, MaxRam)))
+            (Value.Int stats.FS.ram) ;
+        upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
+            (Value.TimeRange stats.FS.archives) ;
+        upd (PerSite (site, PerWorker (fq, NumArcFiles)))
+            (Value.Int (Int64.of_int stats.FS.num_arc_files)) ;
+        upd (PerSite (site, PerWorker (fq, NumArcBytes)))
+            (Value.Int stats.FS.num_arc_bytes)
+      ) stats
     ) graph.FuncGraph.h ;
     let f = function
       | Key.PerSite
           (_, (IsMaster |
               (PerWorker
-                (_, (IsUsed | Parents _ | StartupTime | MinETime |
+                (_, (StartupTime | MinETime |
                  MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
                  ArchivedTimes))))) -> true
       | _ -> false in
@@ -335,6 +354,7 @@ end
 let populate_init conf srv =
   !logger.info "Populating the configuration..." ;
   DevNull.init conf srv ;
+  TargetConfig.init conf srv ;
   GraphInfo.init conf srv ;
   Storage.init conf srv ;
   BinInfo.init conf srv ;
@@ -344,6 +364,8 @@ let populate_init conf srv =
 let sync_step conf srv =
   log_and_ignore_exceptions ~what:"update DevNull"
     (DevNull.update conf) srv ;
+  log_and_ignore_exceptions ~what:"update TargetConfig"
+    (TargetConfig.update conf) srv ;
   log_and_ignore_exceptions ~what:"update GraphInfo"
     (GraphInfo.update conf) srv ;
   log_and_ignore_exceptions ~what:"update Storage"

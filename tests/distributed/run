@@ -82,18 +82,22 @@ if test "$be_master" = yes; then
   compserver_pid=$!
   at_exit "echo 'Killing compserver'; kill '$compserver_pid'"
 
+  "$ramen" choreographer --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
+  choreographer_pid=$!
+  at_exit "echo 'Killing choreographer'; kill '$choreographer_pid'"
+
   log "Compiling programs via the confserver..."
 
   root="examples/programs/monitoring"
   "$ramen" compile --confserver=localhost --as logs "$root/logs.ramen"
   "$ramen" compile --confserver=localhost --as logs_aggr "$root/logs_aggr.ramen"
 
-#  log "Starting programs..."
-#  export RAMEN_REPORT_PERIOD=2
-#  "$ramen" run "$root/logs.x"      --src "$root/logs.ramen"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
-#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
-#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
-#  "$ramen" run "$root/logs_aggr.x" --src "$root/logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
+log "Starting programs..."
+export RAMEN_REPORT_PERIOD=2
+"$ramen" run "$root/logs.x"      --src "logs.ramen"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
+"$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
+"$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
+"$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
 
 else
   log "Linking config files from aggregator" ;

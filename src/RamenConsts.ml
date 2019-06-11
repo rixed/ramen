@@ -170,6 +170,7 @@ struct
   let confserver = "Start the configuration synchronization service"
   let confclient = "Test client for the confserver"
   let compserver = "Service that (pre)compiles programs"
+  let choreographer = "Service that decides where to run what"
   let notify = "Send a notification"
   let compile = "Compile each given source file into an executable"
   let run = "Run one (or several) compiled program(s)"

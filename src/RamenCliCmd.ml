@@ -541,6 +541,19 @@ let kill conf program_names purge () =
     num_kills (if num_kills > 1 then "s" else "")
 
 (*
+ * `ramen choreographer`
+ *
+ * Turn the MustRun config into a FuncGraph and expose it in the configuration
+ * for the supervisor.
+ *)
+let choreographer conf daemonize to_stdout to_syslog () =
+  if conf.C.sync_url = "" then
+    failwith "Cannot start the choreographer without --confserver" ;
+  start_daemon conf daemonize to_stdout to_syslog (N.path "choreographer") ;
+  RamenChoreographer.start conf ~while_
+
+
+(*
  * `ramen info`
  *
  * Display a program or function meta information from the binary.

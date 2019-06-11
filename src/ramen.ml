@@ -639,6 +639,19 @@ let info =
     info ~doc:CliInfo.info "info")
 
 (*
+ * `ramen choreographer`
+ *)
+
+let choreographer =
+  Term.(
+    (const RamenCliCmd.choreographer
+      $ copts
+      $ daemonize
+      $ to_stdout
+      $ to_syslog),
+    info ~doc:CliInfo.choreographer "choreographer")
+
+(*
  * Display the output of any operation
  *)
 
@@ -1130,7 +1143,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ; compserver ;
+        confserver ; confclient ; compserver ; choreographer ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)

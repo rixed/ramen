@@ -95,6 +95,14 @@ let unexpected_reply cmd =
     (Client.SrvMsg.to_string cmd) |>
   failwith
 
+let lock_matching clt f =
+  (* TODO *)
+  ignore clt ; ignore f
+
+let unlock_matching clt f =
+  (* TODO *)
+  ignore clt ; ignore f
+
 module Stage =
 struct
   type t = | Conn | Auth | Sync

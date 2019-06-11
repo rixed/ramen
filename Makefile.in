@@ -206,6 +206,7 @@ RAMEN_SOURCES = \
 	src/RamenCopySrv.ml \
 	src/RamenSyncServer.ml \
 	src/RamenSyncService.ml \
+	src/RamenChoreographer.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
 	src/RamenCompletion.ml \
