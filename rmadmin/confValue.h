@@ -13,6 +13,7 @@ extern "C" {
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
 #include "confRamenValue.h"
+#include "confRCEntry.h"
 
 namespace conf {
 
@@ -348,6 +349,23 @@ struct SourceInfo : public Value
   void addParam(CompiledProgramParam *p) { params.append(p); }
   void addInfo(CompiledFunctionInfo *i) { infos.append(i); }
 };
+
+struct TargetConfig : public Value
+{
+  std::map<std::string const, RCEntry *> entries;
+
+  TargetConfig() {}
+  ~TargetConfig();
+
+  bool operator==(Value const &) const;
+
+  // Takes ownership
+  void addEntry(RCEntry *entry)
+  {
+    entries[entry->programName] = entry;
+  }
+};
+
 
 };
 

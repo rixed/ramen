@@ -11,6 +11,7 @@ extern "C" {
 #include "misc.h"
 #include "confRamenValue.h"
 #include "confValue.h"
+#include "confRCEntryParam.h"
 
 namespace conf {
 
@@ -153,7 +154,7 @@ static RamenType *ramenTypeOfOCaml(value v_)
 Value *valueOfOCaml(value v_)
 {
   CAMLparam1(v_);
-  CAMLlocal3(tmp1_, tmp2_, tmp3_);
+  CAMLlocal4(tmp1_, tmp2_, tmp3_, tmp4_);
   assert(Is_block(v_));
   ValueType valueType = (ValueType)Tag_val(v_);
   Value *ret = nullptr;
@@ -213,7 +214,38 @@ Value *valueOfOCaml(value v_)
         RamenValueOfOCaml(Field(v_, 0)));
       break;
     case TargetConfigType:
-      assert(!"TODO: TargetConfigType of OCaml");
+      {
+        TargetConfig *targetConfig = new TargetConfig();
+        ret = targetConfig;
+        // Iter over the cons cells:
+        for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+          std::cout << "pname*rce entry..." << std::endl;
+          tmp2_ = Field(tmp1_, 0);  // the pname * rc_entry pair
+          assert(Is_block(tmp2_));
+          tmp3_ = Field(tmp2_, 1);  // the rc_entry
+          assert(Is_block(tmp3_)); // XXX
+          assert(Is_block(Field(tmp2_, 0)));
+          std::cout << "  pname = " << String_val(Field(tmp2_, 0)) << std::endl;
+          RCEntry *rcEntry = new RCEntry(
+            String_val(Field(tmp2_, 0)),  // pname
+            Bool_val(Field(tmp3_, 0)),  // enabled
+            Bool_val(Field(tmp3_, 1)),  // debug
+            Double_val(Field(tmp3_, 2)),  // report_period
+            String_val(Field(tmp3_, 4)),  // src_file
+            String_val(Field(tmp3_, 5)),  // on_site (as a string)
+            Bool_val(Field(tmp3_, 6)));  // automatic
+          // Add the params:
+          for (tmp2_ = Field(tmp3_, 3); Is_block(tmp2_); tmp2_ = Field(tmp2_, 1)) {
+            tmp4_ = Field(tmp2_, 0);  // the name * value
+            RCEntryParam *param = new RCEntryParam(
+              String_val(Field(tmp4_, 0)),  // name
+              RamenValueOfOCaml(Field(tmp4_, 1))); // value
+            rcEntry->addParam(param);
+          }
+          targetConfig->addEntry(rcEntry);
+        }
+      }
+      break;
     case SourceInfoType:
       {
         v_ = Field(v_, 0);
@@ -780,6 +812,20 @@ bool SourceInfo::operator==(Value const &other) const
   } else {
     return !o.isInfo() && errMsg == o.errMsg;
   }
+}
+
+TargetConfig::~TargetConfig()
+{
+  for (auto entry : entries) {
+    delete entry.second;
+  }
+}
+
+bool TargetConfig::operator==(Value const &other) const
+{
+  if (! Value::operator==(other)) return false;
+  TargetConfig const &o = static_cast<TargetConfig const &>(other);
+  return entries == o.entries;
 }
 
 

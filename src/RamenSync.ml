@@ -591,7 +591,7 @@ struct
       report_period : float ;
       params : RamenParams.param list ;
       src_file : N.path ;
-      on_site : Globs.t ;
+      on_site : string ; (* Globs as a string for simplicity *)
       automatic : bool }
 
   and source_info =
@@ -649,11 +649,11 @@ struct
   let print_rc_entry oc rc =
     Printf.fprintf oc
       "{ enabled=%b; debug=%b; report_period=%f; params={%a}; src_file=%a; \
-         on_site=%a; automatic=%b }"
+         on_site=%S; automatic=%b }"
       rc.enabled rc.debug rc.report_period
       RamenParams.print_list rc.params
       N.path_print rc.src_file
-      Globs.print rc.on_site
+      rc.on_site
       rc.automatic
 
   let equal v1 v2 =

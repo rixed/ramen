@@ -93,7 +93,7 @@ struct
             report_period = rce.report_period ;
             params ;
             src_file = rce.RC.src_file ;
-            on_site = rce.RC.on_site ;
+            on_site = Globs.decompile rce.RC.on_site ;
             automatic = rce.RC.automatic } in
         (pname, entry) :: rcs
       ) programs [] in

@@ -35,7 +35,8 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
             parents
           ) else (
             (* Where are the parents running? *)
-            let where_running = sites_matching rce.on_site sites in
+            let where_running =
+              sites_matching (Globs.compile rce.on_site) sites in
             (* Restricted to where [func] selects from: *)
             let psites =
               match psite with
@@ -61,10 +62,11 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
   let all_parents = ref Map.empty in
   List.iter (fun (pname, rce) ->
     if rce.RamenSync.Value.enabled then (
-      let where_running = sites_matching rce.on_site sites in
-      !logger.debug "%a must run on sites matching %a: %a"
+      let where_running =
+        sites_matching (Globs.compile rce.on_site) sites in
+      !logger.debug "%a must run on sites matching %S: %a"
         N.program_print pname
-        Globs.print rce.on_site
+        rce.on_site
         (Set.print N.site_print_quoted) where_running ;
       (* Look for rce.src_file in the configuration: *)
       let k_info = RamenSync.Key.Sources (Files.remove_ext rce.src_file, "info") in
