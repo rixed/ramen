@@ -62,7 +62,7 @@ HEADERS += \
   layout.h \
   ProgramInfoBox.h \
   FunctionInfoBox.h \
-  RCEditor.h \
+  RCEntryEditor.h \
   CodeInfoPanel.h \
   CodeEdit.h \
   ChartDataSet.h \
@@ -115,7 +115,7 @@ SOURCES += \
   TailTable.cpp \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
-  RCEditor.cpp \
+  RCEntryEditor.cpp \
   CodeInfoPanel.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \

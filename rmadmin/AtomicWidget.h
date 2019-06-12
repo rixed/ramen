@@ -36,6 +36,8 @@ public:
 
   virtual void setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
 
+  /* AtomicWidget not being a QObject, we won't be able to connect to virtual
+   * slots so no need to declare those virtual: */
   void lockValue(conf::Key const &, QString const &uid)
   {
     setEnabled(uid == conf::my_uid);

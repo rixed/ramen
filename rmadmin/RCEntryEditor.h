@@ -1,5 +1,5 @@
-#ifndef RCEDITOR_H_190607
-#define RCEDITOR_H_190607
+#ifndef RCENTRYEDITOR_H_190607
+#define RCENTRYEDITOR_H_190607
 #include <QWidget>
 
 /* An editor for a single entry of the target configuration.
@@ -10,7 +10,7 @@ class QFormLayout;
 class QLabel;
 class QComboBox;
 
-class RCEditor : public QWidget
+class RCEntryEditor : public QWidget
 {
   Q_OBJECT
 
@@ -25,7 +25,7 @@ public:
   QString sourceName; // if forced
 
   // If sourceName is empty then offer to pick one:
-  RCEditor(QString const &sourceName, QWidget *parent = nullptr);
+  RCEntryEditor(QString const &sourceName, QWidget *parent = nullptr);
 
   void setSourceExists(bool);
 

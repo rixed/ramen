@@ -10,9 +10,9 @@
 #include "conf.h"
 #include "misc.h"
 #include "SourcesModel.h"  // for sourceNameOfKey
-#include "RCEditor.h"
+#include "RCEntryEditor.h"
 
-RCEditor::RCEditor(QString const &sourceName_, QWidget *parent) :
+RCEntryEditor::RCEntryEditor(QString const &sourceName_, QWidget *parent) :
   QWidget(parent),
   sourceName(sourceName_)
 {
@@ -76,7 +76,7 @@ static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt
   return info->isInfo();
 }
 
-void RCEditor::resetSources()
+void RCEntryEditor::resetSources()
 {
   bool const comboWasEmpty = sourceBox->count() == 0;
 
@@ -155,20 +155,20 @@ void RCEditor::resetSources()
   conf::kvs_lock.unlock_shared();
 }
 
-void RCEditor::setSourceExists(bool s)
+void RCEntryEditor::setSourceExists(bool s)
 {
   sourceDoesExist = s;
   deletedSourceWarning->setVisible(!s);
   // TODO: also disable the rest of the form
 }
 
-void RCEditor::clearParams()
+void RCEntryEditor::clearParams()
 {
   while (paramsForm->rowCount() > 0)
     paramsForm->removeRow(0);
 }
 
-void RCEditor::changedSource()
+void RCEntryEditor::changedSource()
 {
   /* Clear the paramsForm and rebuilt it.
    * Maybe save the values that are set in a global map of parameter_name to

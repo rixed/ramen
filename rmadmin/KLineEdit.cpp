@@ -3,7 +3,7 @@
 #include "PosDoubleValidator.h"
 #include "PosIntValidator.h"
 
-KLineEdit::KLineEdit(std::string const key, conf::ValueType valueType_, QWidget *parent) :
+KLineEdit::KLineEdit(std::string const &key, conf::ValueType valueType_, QWidget *parent) :
   QLineEdit(parent),
   AtomicWidget(key),
   valueType(valueType_)
@@ -19,7 +19,6 @@ KLineEdit::KLineEdit(std::string const key, conf::ValueType valueType_, QWidget 
       // TODO: others
       break;
   }
-  std::cout << "KLineEdit for key " << key << std::endl;
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();

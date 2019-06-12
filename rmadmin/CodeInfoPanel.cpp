@@ -4,7 +4,7 @@
 #include <QGroupBox>
 #include <QToolBox>
 #include "SourcesModel.h"
-#include "RCEditor.h"
+#include "RCEntryEditor.h"
 #include "CodeInfoPanel.h"
 
 CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
@@ -46,7 +46,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 
   /* Then the "run" area, to start a new program (ask for name, sites, etc).
    * Use a RC widget with a configurable name. */
-  runBox = new RCEditor(sourceName);
+  runBox = new RCEntryEditor(sourceName);
   layout->addWidget(runBox);
 
   /* Then a toolbox with, for each running program using that source, display
