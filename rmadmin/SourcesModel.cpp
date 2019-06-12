@@ -167,7 +167,6 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
 
 SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirItem *root)
 {
-  std::cout << "createAll for " << sourceName.toStdString() << std::endl;
   QStringList names = sourceName.split("/", QString::SkipEmptyParts);
   if (names.isEmpty()) return nullptr;
 

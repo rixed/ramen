@@ -48,12 +48,12 @@ public slots:
   /* Refresh the sourceBox with the list of currently existing sources.
    * May be called every time a source (dis)appear but tries to maintain the
    * selection. */
-  void resetSources(bool locked=false);
+  void resetSources();
 
-  /* Refresh the form each time another source is selected (automatically
+  /* Refresh the params each time another source is selected (automatically
    * called by resetSources when needed).
    * Used to reset the parameter table */
-  void changedSource(bool locked=false);
+  void resetParams();
 
   /* Set the form values according to this RCEntry: */
   void setValue(conf::RCEntry const *);

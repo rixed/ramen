@@ -9,6 +9,7 @@
 #include <QObject>
 #include "KValue.h"
 #include "confKey.h"
+#include "rec_shared_mutex.h"
 
 namespace conf {
 
@@ -21,7 +22,7 @@ extern conf::Key my_errors;
  * Qt thread(s)., thus the shared_mutex: */
 // TODO: a prefix tree
 extern QMap<conf::Key, KValue> kvs;
-extern std::shared_mutex kvs_lock;
+extern rec_shared_mutex kvs_lock;
 
 /* The above map is always updated by the server.
  * But we can ask the server to update a value, using those functions.

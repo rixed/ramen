@@ -18,7 +18,7 @@ QString my_uid("auth:admin");
 conf::Key my_errors("errors/users/admin");
 
 QMap<conf::Key, KValue> kvs;
-std::shared_mutex kvs_lock;
+rec_shared_mutex kvs_lock;
 
 struct ConfRequest {
   enum Action { New, Set, Lock, LockOrCreate, Unlock, Del } action;

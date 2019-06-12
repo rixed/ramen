@@ -46,12 +46,19 @@ RCEntryEditor::RCEntryEditor(QString const &sourceName, bool sourceEditable_, QW
     sourceBox = new QComboBox;
     /* We may receive the source only later.
      * We do not want to select anything else though. So, create the combo
-     * entry for the expected source right now and make sure changedSource
+     * entry for the expected source right now and make sure resetSources
      * can deal with this situation: */
     sourceBox->addItem(sourceName);
     sourceBox->setEnabled(sourceEditable);
 
     sourceLayout->addWidget(sourceBox);
+
+    /* This is also going to be called immediately as the selected index
+     * just changed from -1 to 0: */
+//    connect(sourceBox, &QComboBox::currentIndexChanged,
+//            this, &RCEntryEditor::resetParams);
+    connect(sourceBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [=](int){ resetParams(); });
 
     deletedSourceWarning =
       new QLabel(tr("This source does not exist any longer!"));
@@ -84,7 +91,7 @@ RCEntryEditor::RCEntryEditor(QString const &sourceName, bool sourceEditable_, QW
   layout->addRow(paramsForm);
 
   conf::autoconnect("^sources/.*", [this](conf::Key const &k, KValue const *) {
-    if (isSourceFile(k.s)) resetSources(true);
+    if (isSourceFile(k.s)) resetSources();
   });
 }
 
@@ -94,16 +101,14 @@ RCEntryEditor::RCEntryEditor(conf::RCEntry const *rcEntry, QWidget *parent) :
   setValue(rcEntry);
 }
 
-void RCEntryEditor::resetSources(bool locked)
+void RCEntryEditor::resetSources()
 {
-  bool const comboWasEmpty = sourceBox->count() == 0;
-
   /* Iter over both the list of existing sources and the combo and update the
    * combo. Do not delete the selected entry but make the deletedSourceWarning
    * visible instead (otherwise, make it invisible).
-   * If the combobox was empty, select the first item and call changedSource.
+   * If the combobox was empty, select the first item and call resetParams.
    */
-  if (! locked) conf::kvs_lock.lock_shared();
+  conf::kvs_lock.lock_shared();
   QMap<conf::Key, KValue>::const_iterator kvIt(conf::kvs.constBegin());
   int comboIdx = 0;
 
@@ -164,11 +169,9 @@ void RCEntryEditor::resetSources(bool locked)
       }
     }
   }
-  if (! locked) conf::kvs_lock.unlock_shared();
+  conf::kvs_lock.unlock_shared();
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
-
-  if (comboWasEmpty && sourceBox->count() > 0) changedSource(locked);
 }
 
 void RCEntryEditor::setSourceExists(bool s)
@@ -184,7 +187,7 @@ void RCEntryEditor::clearParams()
     paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
 
-void RCEntryEditor::changedSource(bool locked)
+void RCEntryEditor::resetParams()
 {
   /* Clear the paramsForm and rebuilt it.
    * Maybe save the values that are set in a global map of parameter_name to
@@ -193,10 +196,10 @@ void RCEntryEditor::changedSource(bool locked)
   QString const baseName = removeExtQ(sourceBox->currentText());
   conf::Key infoKey("sources/" + baseName.toStdString() + "/info");
 
-  if (! locked) conf::kvs_lock.lock_shared();
+  conf::kvs_lock.lock_shared();
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].value());
-  if (! locked) conf::kvs_lock.unlock_shared();
+  conf::kvs_lock.unlock_shared();
 
   clearParams();
 
