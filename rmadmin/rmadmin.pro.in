@@ -63,6 +63,7 @@ HEADERS += \
   ProgramInfoBox.h \
   FunctionInfoBox.h \
   RCEntryEditor.h \
+  TargetConfigEditor.h \
   CodeInfoPanel.h \
   CodeEdit.h \
   ChartDataSet.h \
@@ -72,6 +73,7 @@ HEADERS += \
   CompiledProgramParam.h \
   CompiledFunctionInfo.h \
   SourcesView.h \
+  ProgramsView.h \
   OperationsView.h \
   StorageForm.h \
   StorageSlice.h \
@@ -116,6 +118,7 @@ SOURCES += \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
   RCEntryEditor.cpp \
+  TargetConfigEditor.cpp \
   CodeInfoPanel.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \
@@ -125,6 +128,7 @@ SOURCES += \
   CompiledProgramParam.cpp \
   CompiledFunctionInfo.cpp \
   SourcesView.cpp \
+  ProgramsView.cpp \
   OperationsView.cpp \
   GraphArrow.cpp \
   layoutNode.cpp \

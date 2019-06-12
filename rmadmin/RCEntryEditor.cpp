@@ -9,61 +9,10 @@
 #include <QLabel>
 #include "conf.h"
 #include "misc.h"
-#include "SourcesModel.h"  // for sourceNameOfKey
+#include "SourcesModel.h"  // for sourceNameOfKey and friends
 #include "RCEntryEditor.h"
 
-RCEntryEditor::RCEntryEditor(QString const &sourceName_, QWidget *parent) :
-  QWidget(parent),
-  sourceName(sourceName_)
-{
-  QFormLayout *layout = new QFormLayout;
-  setLayout(layout);
-
-  QLineEdit *nameEdit = new QLineEdit;
-  layout->addRow(tr("Program &Name:"), nameEdit);
-
-  { // source
-    QVBoxLayout *sourceLayout = new QVBoxLayout;
-    sourceBox = new QComboBox;
-    if (! sourceName.isEmpty())
-      sourceBox->setEnabled(false);
-
-    sourceLayout->addWidget(sourceBox);
-
-    deletedSourceWarning =
-      new QLabel(tr("This source does not exist any longer!"));
-    deletedSourceWarning->setVisible(false);
-    sourceLayout->addWidget(deletedSourceWarning);
-
-    layout->addRow(tr("&Source:"), sourceLayout);
-  }
-
-  { // flags
-    QVBoxLayout *flagsLayout = new QVBoxLayout;
-    QCheckBox *enabledBox = new QCheckBox("enabled");
-    flagsLayout->addWidget(enabledBox);
-    QCheckBox *debugBox = new QCheckBox("debug mode");
-    flagsLayout->addWidget(debugBox);
-    QCheckBox *automaticBox = new QCheckBox("automatic");
-    automaticBox->setEnabled(false);
-    flagsLayout->addWidget(automaticBox);
-    layout->addRow(tr("Flags:"), flagsLayout);
-  }
-
-  QLineEdit *sitesEdit = new QLineEdit;
-  layout->addRow(tr("&Only on Sites:"), sitesEdit);
-
-  QLineEdit *reportEdit = new QLineEdit;
-  layout->addRow(tr("&Reporting Period:"), reportEdit);
-
-  paramsForm = new QFormLayout;
-  layout->addRow(new QLabel(tr("Parameters:")));
-  layout->addRow(paramsForm);
-
-  resetSources();
-}
-
-static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt)
+/* static bool isCompiledFile(QMap<conf::Key, KValue>::const_iterator const &kvIt)
 {
   std::string const &key = kvIt.key().s;
   if (! startsWith(key, "sources/") || ! endsWith(key, "/info")) return false;
@@ -74,9 +23,78 @@ static bool isCompiledSource(QMap<conf::Key, KValue>::const_iterator const &kvIt
   if (! info) return false;
 
   return info->isInfo();
+} */
+
+static bool isSourceFile(std::string const &key)
+{
+  return startsWith(key, "sources/") && ! endsWith(key, "/info");
 }
 
-void RCEntryEditor::resetSources()
+RCEntryEditor::RCEntryEditor(QString const &sourceName, bool sourceEditable_, QWidget *parent) :
+  QWidget(parent),
+  sourceEditable(sourceEditable_)
+{
+  QFormLayout *layout = new QFormLayout;
+  setLayout(layout);
+
+  nameEdit = new QLineEdit;
+  layout->addRow(tr("Program &Name:"), nameEdit);
+
+  { // source
+
+    QVBoxLayout *sourceLayout = new QVBoxLayout;
+    sourceBox = new QComboBox;
+    /* We may receive the source only later.
+     * We do not want to select anything else though. So, create the combo
+     * entry for the expected source right now and make sure changedSource
+     * can deal with this situation: */
+    sourceBox->addItem(sourceName);
+    sourceBox->setEnabled(sourceEditable);
+
+    sourceLayout->addWidget(sourceBox);
+
+    deletedSourceWarning =
+      new QLabel(tr("This source does not exist any longer!"));
+    deletedSourceWarning->setVisible(false);
+    sourceLayout->addWidget(deletedSourceWarning);
+
+    layout->addRow(tr("Source:"), sourceLayout);
+  }
+
+  { // flags
+    QVBoxLayout *flagsLayout = new QVBoxLayout;
+    enabledBox = new QCheckBox("enabled");
+    flagsLayout->addWidget(enabledBox);
+    debugBox = new QCheckBox("debug mode");
+    flagsLayout->addWidget(debugBox);
+    automaticBox = new QCheckBox("automatic");
+    automaticBox->setEnabled(false);
+    flagsLayout->addWidget(automaticBox);
+    layout->addRow(tr("Flags:"), flagsLayout);
+  }
+
+  sitesEdit = new QLineEdit;
+  layout->addRow(tr("&Only on Sites:"), sitesEdit);
+
+  reportEdit = new QLineEdit;
+  layout->addRow(tr("&Reporting Period:"), reportEdit);
+
+  paramsForm = new QFormLayout;
+  layout->addRow(new QLabel(tr("Parameters:")));
+  layout->addRow(paramsForm);
+
+  conf::autoconnect("^sources/.*", [this](conf::Key const &k, KValue const *) {
+    if (isSourceFile(k.s)) resetSources(true);
+  });
+}
+
+RCEntryEditor::RCEntryEditor(conf::RCEntry const *rcEntry, QWidget *parent) :
+  RCEntryEditor(QString::fromStdString(rcEntry->source), true, parent)
+{
+  setValue(rcEntry);
+}
+
+void RCEntryEditor::resetSources(bool locked)
 {
   bool const comboWasEmpty = sourceBox->count() == 0;
 
@@ -85,7 +103,7 @@ void RCEntryEditor::resetSources()
    * visible instead (otherwise, make it invisible).
    * If the combobox was empty, select the first item and call changedSource.
    */
-  conf::kvs_lock.lock_shared();
+  if (! locked) conf::kvs_lock.lock_shared();
   QMap<conf::Key, KValue>::const_iterator kvIt(conf::kvs.constBegin());
   int comboIdx = 0;
 
@@ -105,15 +123,14 @@ void RCEntryEditor::resetSources()
       std::cout << "At end of keys" << std::endl;
       removeRight = true;
     } else {
-      if (! isCompiledSource(kvIt)) {
+      if (! isSourceFile(kvIt.key().s)) {
         kvIt ++;
-      } else { // left is a compiled source (or exhausted)
+      } else { // left is a source file (or exhausted)
         QString const left = sourceNameOfKey(kvIt.key());
         if (comboIdx >= sourceBox->count()) {
           // insert at the end before there is nothing left to compare with
           std::cout << "Append " << left.toStdString() << " to combo" << std::endl;
           sourceBox->addItem(left);
-          if (left == sourceName) sourceBox->setCurrentIndex(comboIdx);
           comboIdx ++;
           kvIt ++;
         } else {
@@ -127,7 +144,6 @@ void RCEntryEditor::resetSources()
           } else if (cmp < 0) {
             std::cout << "Insert key " << left.toStdString() << " at " << comboIdx << std::endl;
             sourceBox->insertItem(comboIdx, left);
-            if (left == sourceName) sourceBox->setCurrentIndex(comboIdx);
             comboIdx ++;
             kvIt ++;
           } else {
@@ -143,16 +159,16 @@ void RCEntryEditor::resetSources()
         sourceDoesExist = false;
         comboIdx ++;
       } else {
+        std::cout << "Removing combo entry " << sourceBox->itemText(comboIdx).toStdString() << std::endl;
         sourceBox->removeItem(comboIdx);
       }
     }
   }
+  if (! locked) conf::kvs_lock.unlock_shared();
 
   deletedSourceWarning->setVisible(!sourceDoesExist);
 
-  if (comboWasEmpty && sourceBox->count() > 0) changedSource();
-
-  conf::kvs_lock.unlock_shared();
+  if (comboWasEmpty && sourceBox->count() > 0) changedSource(locked);
 }
 
 void RCEntryEditor::setSourceExists(bool s)
@@ -165,27 +181,27 @@ void RCEntryEditor::setSourceExists(bool s)
 void RCEntryEditor::clearParams()
 {
   while (paramsForm->rowCount() > 0)
-    paramsForm->removeRow(0);
+    paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
 
-void RCEntryEditor::changedSource()
+void RCEntryEditor::changedSource(bool locked)
 {
   /* Clear the paramsForm and rebuilt it.
    * Maybe save the values that are set in a global map of parameter_name to
    * value, to populate next param lists? Also do this when submitting that
    * form. */
-  QString const sourceName = sourceBox->currentText();
-  conf::Key infoKey("sources/" + sourceName.toStdString() + "/info");
+  QString const baseName = removeExtQ(sourceBox->currentText());
+  conf::Key infoKey("sources/" + baseName.toStdString() + "/info");
 
-  conf::kvs_lock.lock_shared();
+  if (! locked) conf::kvs_lock.lock_shared();
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].value());
-  conf::kvs_lock.unlock_shared();
+  if (! locked) conf::kvs_lock.unlock_shared();
 
   clearParams();
 
   if (! info) {
-    std::cout << "Cannot get info for " << sourceName.toStdString() << std::endl;
+    std::cout << "Cannot get info for " << baseName.toStdString() << std::endl;
     setSourceExists(false);
     return;
   }
@@ -194,4 +210,33 @@ void RCEntryEditor::changedSource()
     QLineEdit *paramEdit = new QLineEdit;
     paramsForm->addRow(p->name, paramEdit);
   }
+}
+
+void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
+{
+  nameEdit->setText(QString::fromStdString(rcEntry->programName));
+
+  if (rcEntry->source.length() == 0) {
+    sourceBox->setEnabled(false);
+  } else {
+    sourceBox->setEnabled(sourceEditable);
+    QString source = QString::fromStdString(rcEntry->source);
+    int i;
+    for (i = 0; i < sourceBox->count(); i++) {
+      if (sourceBox->itemText(i) == source) {
+        sourceBox->setCurrentIndex(i);
+        break;
+      }
+    }
+    if (i == sourceBox->count()) {
+      std::cout << "Cannot find source " << source.toStdString() << std::endl;
+    }
+    setSourceExists(i < sourceBox->count());
+  }
+
+  enabledBox->setCheckState(rcEntry->enabled ? Qt::Checked : Qt::Unchecked);
+  debugBox->setCheckState(rcEntry->debug ? Qt::Checked : Qt::Unchecked);
+  automaticBox->setCheckState(rcEntry->automatic ? Qt::Checked : Qt::Unchecked);
+  sitesEdit->setText(QString::fromStdString(rcEntry->onSite));
+  reportEdit->setText(QString::number(rcEntry->reportPeriod));
 }

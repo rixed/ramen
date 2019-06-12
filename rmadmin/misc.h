@@ -9,4 +9,10 @@ typedef __int128 int128_t;
 bool startsWith(std::string const &, std::string const &);
 bool endsWith(std::string const &, std::string const &);
 
+std::string const removeExt(std::string const &);
+
+#include <QString>
+
+QString const removeExtQ(QString const &);
+
 #endif

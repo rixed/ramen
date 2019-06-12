@@ -65,7 +65,7 @@ QVariant SourcesModel::data(QModelIndex const &index, int role) const
   }
 }
 
-QString const sourceNameOfKey(conf::Key const &k)
+QString const baseNameOfKey(conf::Key const &k)
 {
   // Take everything after first slash and before last:
   size_t fst = k.s.find('/');
@@ -77,9 +77,34 @@ QString const sourceNameOfKey(conf::Key const &k)
   return QString::fromStdString(k.s.substr(fst + 1, lst - fst - 1));
 }
 
+QString const sourceNameOfKey(conf::Key const &k)
+{
+  // Take everything after first slash and before last:
+  size_t fst = k.s.find('/');
+  size_t lst = k.s.rfind('/');
+  if (fst == std::string::npos || lst <= fst) {
+    std::cout << "Key " << k << " is invalid for a source" << std::endl;
+    return QString();
+  }
+  return QString::fromStdString(k.s.substr(fst + 1, lst - fst - 1) +
+                                "." + k.s.substr(lst+1));
+}
+
+conf::Key const keyOfSourceName(QString const &sourceName)
+{
+  std::string f(sourceName.toStdString());
+  size_t i = f.rfind('.');
+  /* Any source name is supposed to have an extension from which to tell the
+   * language it's written in. */
+  assert(i != std::string::npos);
+
+  return conf::Key("sources/" + f.substr(0, i) + "/" +
+                   f.substr(i+1, f.length() - i - 1));
+}
+
 void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString sourceName(sourceNameOfKey(k));
+  QString sourceName(baseNameOfKey(k));
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
   FileItem *file = createAll(sourceName, root);
@@ -101,7 +126,7 @@ void SourcesModel::updateSourceText(conf::Key const &, std::shared_ptr<conf::Val
 
 void SourcesModel::addSourceInfo(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString sourceName = sourceNameOfKey(k);
+  QString sourceName(baseNameOfKey(k));
   std::cout << "addSourceInfo for " << sourceName.toStdString() << std::endl;
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::

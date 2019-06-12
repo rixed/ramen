@@ -81,7 +81,17 @@ private slots:
   void updateSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
-// Helpers:
+/*
+ * Helpers:
+ */
+
+// Returns the source file name with extension
 QString const sourceNameOfKey(conf::Key const &);
+
+// Returns the source file name without extension
+QString const baseNameOfKey(conf::Key const &);
+
+// The other way around:
+conf::Key const keyOfSourceName(QString const &);
 
 #endif

@@ -2,7 +2,6 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QGroupBox>
-#include <QToolBox>
 #include "SourcesModel.h"
 #include "RCEntryEditor.h"
 #include "CodeInfoPanel.h"
@@ -46,19 +45,8 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 
   /* Then the "run" area, to start a new program (ask for name, sites, etc).
    * Use a RC widget with a configurable name. */
-  runBox = new RCEntryEditor(sourceName);
+  runBox = new RCEntryEditor(sourceName, false);
   layout->addWidget(runBox);
-
-  /* Then a toolbox with, for each running program using that source, display
-   * (read/write) its site filter, its parameters, debug mode flag, report
-   * period... + the important "enabled" checkbox.
-   * Make this form an actual widget as it's going to be reused.
-   */
-  {
-    QToolBox *rcBox = new QToolBox;
-
-    layout->addWidget(rcBox);
-  }
 
   // Connect the kvs value to setValue (read-only)
   conf::kvs_lock.lock_shared();
