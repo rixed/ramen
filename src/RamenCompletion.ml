@@ -388,7 +388,8 @@ let complete str () =
           copts @
           (complete_rb_file last_tok)
       | "confserver" ->
-          [ "--daemonize", CliInfo.daemonize ;
+          [ "--loop", CliInfo.loop ;
+            "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--port", CliInfo.confserver_port ] @

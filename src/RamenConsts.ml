@@ -216,6 +216,8 @@ struct
   let loop =
     "Do not return after the work is over. Instead, wait for the specified \
      amount of time and restart"
+  let confserver_loop =
+    "How long to sleep in between two configuration update passes."
   let dry_run = "Just display what would be deleted"
   let del_ratio = "Only delete that ratio of in-excess archive files"
   let compress_older = "Convert to ORC archive files older than this"
@@ -392,8 +394,11 @@ struct
   (* Minimum delay between two successive stats of the out-ref file: *)
   let min_delay_restats = 0.1
 
-  (* How frequently to run the GC: *)
+  (* How long to sleep between two GC passes: *)
   let gc_loop = 3600.
+
+  (* How long to sleep between two confserver updates: *)
+  let confserver_loop = 5.
 
   (* Do not delete all excess files at once but only that ratio: *)
   let del_ratio = 0.3

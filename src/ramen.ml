@@ -329,10 +329,16 @@ let confserver_port =
   let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "port" ] in
   Arg.(value (opt (some port) None i))
 
+let confserver_loop =
+  let env = Term.env_info "RAMEN_CONFSERVER_LOOP" in
+  let i = Arg.info ~doc:CliInfo.confserver_loop ~env ["loop"] in
+  Arg.(value (opt float Default.confserver_loop i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
       $ copts
+      $ confserver_loop
       $ daemonize
       $ to_stdout
       $ to_syslog

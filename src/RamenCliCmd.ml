@@ -229,13 +229,13 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf daemonize to_stdout to_syslog port_opt () =
+let confserver conf loop daemonize to_stdout to_syslog port_opt () =
   let service_name = ServiceNames.confserver in
   let port =
     resolve_port conf port_opt Default.confserver_port service_name in
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
-  RamenSyncService.start conf port ;
+  RamenSyncService.start conf port loop ;
   Option.may exit !RamenProcesses.quit
 
 let confclient conf () =
