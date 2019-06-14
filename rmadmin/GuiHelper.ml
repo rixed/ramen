@@ -17,12 +17,22 @@ module Key = Client.Key
  * Then, at every message, in addition to maintaining the conf tree we also,
  * depending on the message, call a C wrapper to the Qt signal. *)
 
-let next_id = ref 0
+let next_id = ref None
+let init_next_id () =
+  next_id := Some (Random.int max_int_for_random)
+
 let send_cmd zock cmd =
-    let s = Client.CltMsg.to_string (!next_id, cmd) in
-    !logger.debug "Sending command %s" s ;
-    incr next_id ;
-    Zmq.Socket.send_all zock [ "" ; s ]
+  let cmd_id =
+    match !next_id with
+    | None ->
+        init_next_id () ;
+        Option.get !next_id
+    | Some i ->
+        next_id := Some (i + 1) ;
+        i in
+  let s = Client.CltMsg.to_string (cmd_id, cmd) in
+  !logger.debug "Sending command %s" s ;
+  Zmq.Socket.send_all zock [ "" ; s ]
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
