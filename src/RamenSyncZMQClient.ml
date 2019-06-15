@@ -67,9 +67,8 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
     | None ->
         init_next_id () ;
         Option.get !next_id
-    | Some i ->
-        next_id := Some (i + 1) ;
-        i in
+    | Some i -> i in
+  next_id := Some (cmd_id + 1) ;
   let msg = cmd_id, cmd in
   let rem h h_name cb =
     Option.may (fun cb ->
