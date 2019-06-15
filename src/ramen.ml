@@ -349,16 +349,11 @@ let confclient =
  * Synchronize config files with config tree (temporary)
  *)
 
-let filesyncer_loop =
-  let env = Term.env_info "RAMEN_FILESYNCER_LOOP" in
-  let i = Arg.info ~doc:CliInfo.filesyncer_loop ~env ["loop"] in
-  Arg.(value (opt float Default.filesyncer_loop i))
-
 let filesyncer =
   Term.(
     (const RamenCliCmd.filesyncer
       $ copts
-      $ filesyncer_loop
+      $ loop
       $ daemonize
       $ to_stdout
       $ to_syslog),

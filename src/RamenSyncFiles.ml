@@ -296,16 +296,20 @@ let service_loop conf upd_period zock clt =
     let num_msg = ZMQClient.process_in zock clt in
     !logger.debug "Received %d messages" num_msg ;
     let now = Unix.gettimeofday () in
-    if now >= !last_upd +. upd_period then (
+    if now >= !last_upd +. upd_period &&
+       (upd_period > 0. || !last_upd = 0.)
+    then (
       last_upd := now ;
-      sync_step conf clt zock
+      sync_step conf clt zock ;
     ) ;
+    if upd_period <= 0. && ZMQClient.pending_callbacks () = 0 then
+      raise Exit ;
     true
   )
 
-let start conf upd_period =
+let start conf loop =
   (* Given filesyncer carry on with updates only when the lock have succeeded,
    * no other keys than the error logs are actually needed: *)
   let topics = [] in
   ZMQClient.start ~recvtimeo:1. ~while_ conf.C.sync_url conf.C.login ~topics
-    (service_loop conf upd_period)
+    (service_loop conf loop)

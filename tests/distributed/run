@@ -78,10 +78,6 @@ if test "$be_master" = yes; then
   confserver_pid=$!
   at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 
-  "$ramen" filesyncer --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
-  filesyncer_pid=$!
-  at_exit "echo 'Killing filesyncer'; kill '$filesyncer_pid'"
-
   "$ramen" compserver --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
   compserver_pid=$!
   at_exit "echo 'Killing compserver'; kill '$compserver_pid'"
@@ -92,7 +88,8 @@ if test "$be_master" = yes; then
 
   log "Compiling programs via the confserver..."
 
-  root="examples/programs/monitoring"
+  # Note: _absolute_ bin paths are stored in the RC to help filesyncer:
+  root="$PWD/examples/programs/monitoring"
   "$ramen" compile --confserver=localhost --as logs "$root/logs.ramen"
   "$ramen" compile --confserver=localhost --as logs_aggr "$root/logs_aggr.ramen"
 
@@ -103,6 +100,9 @@ if test "$be_master" = yes; then
   "$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
   "$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
 
+  # Run once and then leave it to the GUI
+  log "Upload the configuration into the confserver"
+  "$ramen" filesyncer --master=aggregator --site="$ramen_site" --to-stdout --confserver=localhost
 
 else
 

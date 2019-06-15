@@ -26,6 +26,11 @@ let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let my_login = ref ""
 
+(* Return the number of pending callbacks.
+ * Also a good place to time them out. *)
+let pending_callbacks () =
+  Hashtbl.length on_oks + Hashtbl.length on_kos
+
 (* Given a callback, return another cllback that intercept error messages and call
  * RPC continuations first: *)
 let check_err on_msg =
