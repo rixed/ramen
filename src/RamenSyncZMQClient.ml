@@ -54,20 +54,28 @@ let check_err on_msg =
 (* As the same user might be sending commands at the same time, rather use
  * start from a random cmd_id so different client programs can tell their
  * errors apart; but wait for the random seed to have been set: *)
-let next_id = ref 0
+let next_id = ref None
+let init_next_id () =
+  next_id := Some (Random.int max_int_for_random)
+
 let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
-  if !next_id = 0 then
-    next_id := Random.int max_int_for_random ;
-  let msg = !next_id, cmd in
+  let cmd_id =
+    match !next_id with
+    | None ->
+        init_next_id () ;
+        Option.get !next_id
+    | Some i ->
+        next_id := Some (i + 1) ;
+        i in
+  let msg = cmd_id, cmd in
   let rem h h_name cb =
     Option.may (fun cb ->
-      Hashtbl.add h !next_id cb ;
+      Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
       if h_len > 10 then !logger.error "%s size is not %d" h_name h_len
     ) cb in
   rem on_oks "SyncZMQClient.on_oks" on_ok ;
   rem on_kos "SyncZMQClient.on_kos" on_ko ;
-  incr next_id ;
   !logger.info "Sending command %a"
     Client.CltMsg.print msg ;
   let s = Client.CltMsg.to_string msg in

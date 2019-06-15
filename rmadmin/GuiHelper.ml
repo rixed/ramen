@@ -8,31 +8,14 @@ module ZMQClient = RamenSyncZMQClient
  * SyncConf client
  *)
 
-module Value = RamenSync.Value
-module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
-module Key = Client.Key
+module Value = ZMQClient.Value
+module Client = ZMQClient.Client
+module Key = ZMQClient.Key
 
 (* The idea is to do the networking work of connecting, sending/receiving
  * messages and maintaining the config in OCaml.
  * Then, at every message, in addition to maintaining the conf tree we also,
  * depending on the message, call a C wrapper to the Qt signal. *)
-
-let next_id = ref None
-let init_next_id () =
-  next_id := Some (Random.int max_int_for_random)
-
-let send_cmd zock cmd =
-  let cmd_id =
-    match !next_id with
-    | None ->
-        init_next_id () ;
-        Option.get !next_id
-    | Some i ->
-        next_id := Some (i + 1) ;
-        i in
-  let s = Client.CltMsg.to_string (cmd_id, cmd) in
-  !logger.debug "Sending command %s" s ;
-  Zmq.Socket.send_all zock [ "" ; s ]
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
@@ -143,22 +126,22 @@ let sync_loop zock clt =
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
-        send_cmd zock (Client.CltMsg.NewKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.NewKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        send_cmd zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        send_cmd zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Unlock k ->
-        send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
-        send_cmd zock (Client.CltMsg.DelKey (Key.of_string k)) ;
+        ZMQClient.send_cmd zock (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do
@@ -180,9 +163,9 @@ let on_progress url stage status =
 
 let register_senders zock =
   let lock_from_cpp k =
-    send_cmd zock (Client.CltMsg.LockOrCreateKey k)
+    ZMQClient.send_cmd zock (Client.CltMsg.LockOrCreateKey k)
   and unlock_from_cpp k =
-    send_cmd zock (Client.CltMsg.UnlockKey k)
+    ZMQClient.send_cmd zock (Client.CltMsg.UnlockKey k)
   in
   ignore (Callback.register "lock_from_cpp" lock_from_cpp) ;
   ignore (Callback.register "unlock_from_cpp" unlock_from_cpp)
