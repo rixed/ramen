@@ -27,13 +27,14 @@ let my_login = ref ""
 (* Given a callback, return another cllback that intercept error messages and call
  * RPC continuations first: *)
 let check_err on_msg =
-  let maybe_cb h cmd_id =
+  let maybe_cb ~do_ ~dont cmd_id =
     Hashtbl.modify_opt cmd_id (function
       | None -> None
       | Some k ->
           !logger.debug "Calling back pending function for cmd %d" cmd_id ;
           k () ; None
-    ) h in
+    ) do_ ;
+    Hashtbl.remove dont cmd_id in
   fun clt k v u mt ->
     (match k with
     | Key.Error (Some n) when n = !my_login ->
@@ -41,10 +42,10 @@ let check_err on_msg =
         | Value.(Error (_ts, cmd_id, err_msg)) ->
             if err_msg = "" then (
               !logger.debug "Cmd %d: OK" cmd_id ;
-              maybe_cb on_oks cmd_id
+              maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
             ) else (
               !logger.error "Cmd %d: %s" cmd_id err_msg ;
-              maybe_cb on_kos cmd_id
+              maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
             )
         | v ->
             !logger.error "Error value is not an error: %a" Value.print v)
