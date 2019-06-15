@@ -9,7 +9,6 @@ open RamenConsts
 module Archivist = RamenArchivist
 module Files = RamenFiles
 module Processes = RamenProcesses
-module FuncGraph = RamenFuncGraph
 module ZMQClient = RamenSyncZMQClient
 module Client = ZMQClient.Client
 module CltMsg = Client.CltMsg
@@ -83,16 +82,15 @@ struct
 end
 
 (* FIXME: Archivist should write the stats in there directly *)
-module GraphInfo =
+module StatsInfo =
 struct
-  let update_from_graph conf clt zock graph =
-    !logger.debug "Update per-site configuration with graph %a"
-      FuncGraph.print graph ;
+  let update conf clt zock =
     let h = Client.H.create 50 in
     let upd k v =
       let r = Capa.anybody and w = Capa.nobody in
       Client.H.add h k (Some v, r, w) in
-    Hashtbl.iter (fun site _per_site_h ->
+    Services.all_sites conf |>
+    Set.iter (fun site ->
       let is_master = Set.mem site conf.C.masters in
       upd (PerSite (site, IsMaster)) (Value.Bool is_master) ;
       (* TODO: PerService *)
@@ -122,8 +120,7 @@ struct
             (Value.Int (Int64.of_int stats.FS.num_arc_files)) ;
         upd (PerSite (site, PerWorker (fq, NumArcBytes)))
             (Value.Int stats.FS.num_arc_bytes)
-      ) stats
-    ) graph.FuncGraph.h ;
+      ) stats) ;
     let f = function
       | Key.PerSite
           (_, (IsMaster |
@@ -134,14 +131,6 @@ struct
       | _ -> false in
     lock_keys clt zock f (fun () ->
       replace_keys clt zock f h (* Also unlock *))
-
-  let update conf clt zock =
-    match FuncGraph.make conf with
-    | exception e ->
-        print_exception ~what:"update PerSite" e ;
-        !logger.info "skipping this step..."
-    | graph ->
-        update_from_graph conf clt zock graph
 end
 
 (* FIXME: User conf file should be stored in the conftree to begin with,
@@ -281,8 +270,8 @@ end
 let sync_step conf clt zock =
   log_and_ignore_exceptions ~what:"update TargetConfig"
     (TargetConfig.update conf clt) zock ;
-  log_and_ignore_exceptions ~what:"update GraphInfo"
-    (GraphInfo.update conf clt) zock ;
+  log_and_ignore_exceptions ~what:"update StatsInfo"
+    (StatsInfo.update conf clt) zock ;
   log_and_ignore_exceptions ~what:"update Storage"
     (Storage.update conf clt) zock ;
   log_and_ignore_exceptions ~what:"update SrcInfo"
