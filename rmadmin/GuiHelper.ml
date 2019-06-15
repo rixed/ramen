@@ -175,7 +175,7 @@ let start_sync url creds () =
   ZMQClient.start
     url creds ~topics:["*"] ~on_progress:(on_progress url) ~on_sock:register_senders
     ~on_new ~on_set ~on_del ~on_lock ~on_unlock
-    ~recvtimeo:100 sync_loop
+    ~recvtimeo:0.1 sync_loop
 
 let init debug quiet url creds =
   if debug && quiet then

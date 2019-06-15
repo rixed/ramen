@@ -198,7 +198,9 @@ let start ?while_ url creds ?(topics=[])
           ?(on_progress=default_on_progress) ?(on_sock=ignore)
           ?(on_new=ignore6) ?(on_set=ignore6) ?(on_del=ignore4)
           ?(on_lock=ignore4) ?(on_unlock=ignore3)
-          ?(conntimeo= 0) ?(recvtimeo= -1) ?(sndtimeo= -1) sync_loop =
+          ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
+  let to_ms f =
+    if f < 0. then -1 else int_of_float (f *. 1000.) in
   let ctx = Zmq.Context.create () in
   finally
     (fun () -> Zmq.Context.terminate ctx)
@@ -213,8 +215,8 @@ let start ?while_ url creds ?(topics=[])
            * ZMQ_CONNECT_TIMEOUT:
            * Zmq.Socket.set_connect_timeout zock conntimeo ; *)
           ignore conntimeo ;
-          Zmq.Socket.set_receive_timeout zock recvtimeo ;
-          Zmq.Socket.set_send_timeout zock sndtimeo ;
+          Zmq.Socket.set_receive_timeout zock (to_ms recvtimeo) ;
+          Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
           Zmq.Socket.set_send_high_water_mark zock 0 ;
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect ?while_ url zock on_progress) ;

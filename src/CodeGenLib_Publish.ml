@@ -84,6 +84,6 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   fun conf ->
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del
-                    ~recvtimeo:0 ~sndtimeo:0 (fun zock clt ->
+                    ~recvtimeo:0. ~sndtimeo:0. (fun zock clt ->
       let publish = may_publish clt zock ?while_ topic_pub in
       k publish conf)
