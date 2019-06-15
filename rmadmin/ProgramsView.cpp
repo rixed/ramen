@@ -8,4 +8,5 @@ ProgramsView::ProgramsView(QWidget *parent) :
 
   rcEditor = new TargetConfigEditor("target_config");
   setCentralWidget(rcEditor);
+  addWidget(rcEditor);
 }

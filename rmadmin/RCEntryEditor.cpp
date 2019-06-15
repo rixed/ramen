@@ -245,3 +245,22 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
   sitesEdit->setText(QString::fromStdString(rcEntry->onSite));
   reportEdit->setText(QString::number(rcEntry->reportPeriod));
 }
+
+conf::RCEntry *RCEntryEditor::getValue() const
+{
+  bool ok;
+  double reportPeriod = reportEdit->text().toDouble(&ok);
+  if (! ok) {
+    std::cout << "Cannot convert report period " << reportEdit->text().toStdString()
+              << " into a double" << std::endl;
+    // so be it
+  }
+  return new conf::RCEntry(
+    nameEdit->text().toStdString(),
+    enabledBox->checkState() == Qt::Checked,
+    debugBox->checkState() == Qt::Checked,
+    reportPeriod,
+    sourceBox->currentText().toStdString(),
+    sitesEdit->text().toStdString(),
+    automaticBox->checkState() == Qt::Checked);
+}

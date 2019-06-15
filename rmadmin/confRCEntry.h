@@ -2,6 +2,9 @@
 #define CONFRCENTRY_H_190611
 #include <string>
 #include <vector>
+extern "C" {
+# include <caml/mlvalues.h>
+}
 
 namespace conf {
 
@@ -33,6 +36,8 @@ struct RCEntry
   {
     params.push_back(param);
   }
+
+  value toOCamlValue() const;
 };
 
 };

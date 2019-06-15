@@ -44,6 +44,9 @@ public:
 
   bool isValid() const { return sourceDoesExist; }
 
+  // Caller takes ownership
+  conf::RCEntry *getValue() const;
+
 public slots:
   /* Refresh the sourceBox with the list of currently existing sources.
    * May be called every time a source (dis)appear but tries to maintain the

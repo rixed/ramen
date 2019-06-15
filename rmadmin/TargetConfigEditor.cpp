@@ -1,3 +1,4 @@
+#include <iostream>
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
 #include "TargetConfigEditor.h"
@@ -18,13 +19,29 @@ TargetConfigEditor::TargetConfigEditor(std::string const &key, QWidget *parent) 
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
 {
-  return nullptr;  // TODO
+  std::shared_ptr<conf::TargetConfig> rc(new conf::TargetConfig());
+
+  // Rebuilt the whole RC from the form:
+  for (int i = 0; i < count(); i++) {
+    RCEntryEditor const *entry =
+      dynamic_cast<RCEntryEditor const *>(widget(i));
+    if (! entry) {
+      std::cout << "TargetConfigEditor entry " << i << " not a RCEntryEditor?!" << std::endl;
+      continue;
+    }
+    rc->addEntry(entry->getValue());
+  }
+  return rc;
 }
 
 void TargetConfigEditor::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
-  // TODO
+  for (int i = 0; i < count(); i++) {
+    RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(widget(i));
+    if (! entry) continue;
+    entry->setEnabled(enabled);
+  }
 }
 
 void TargetConfigEditor::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)

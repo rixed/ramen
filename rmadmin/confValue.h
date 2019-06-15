@@ -357,6 +357,8 @@ struct TargetConfig : public Value
   TargetConfig() {}
   ~TargetConfig();
 
+  value toOCamlValue() const;
+
   bool operator==(Value const &) const;
 
   // Takes ownership

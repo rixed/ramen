@@ -819,6 +819,28 @@ TargetConfig::~TargetConfig()
   }
 }
 
+value TargetConfig::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal4(ret, lst, cons, pair);
+  ret = caml_alloc(1, TargetConfigType);
+  // Then a list of program_name * rc_enrtry:
+  lst = Val_emptylist;  // Ala Val_int(0)
+  for (auto const it : entries) {
+    RCEntry const *entry = it.second;
+    pair = caml_alloc_tuple(2);
+    Store_field(pair, 0, caml_copy_string(it.first.c_str()));
+    Store_field(pair, 1, entry->toOCamlValue());
+    cons = caml_alloc(2, Tag_cons);
+    Store_field(cons, 1, lst);
+    Store_field(cons, 0, pair);
+    lst = cons;
+  }
+  Store_field(ret, 0, lst);
+  CAMLreturn(ret);
+}
+
+
 bool TargetConfig::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;

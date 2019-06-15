@@ -97,6 +97,8 @@ SOURCES += \
   confKey.cpp \
   serValue.cpp \
   confRamenValue.cpp \
+  confRCEntryParam.cpp \
+  confRCEntry.cpp \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \
