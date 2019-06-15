@@ -229,13 +229,13 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf loop daemonize to_stdout to_syslog port_opt () =
+let confserver conf daemonize to_stdout to_syslog port_opt () =
   let service_name = ServiceNames.confserver in
   let port =
     resolve_port conf port_opt Default.confserver_port service_name in
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
-  RamenSyncService.start conf port loop ;
+  RamenSyncService.start conf port ;
   Option.may exit !RamenProcesses.quit
 
 let confclient conf () =
@@ -253,6 +253,12 @@ let confclient conf () =
         let num_msg = ZMQClient.process_in ~while_ zock clt in
         !logger.debug "Received %d messages" num_msg
       ) ())
+
+let filesyncer conf loop daemonize to_stdout to_syslog () =
+  start_daemon conf daemonize to_stdout to_syslog (N.path "filesyncer") ;
+  RamenSyncFiles.start conf loop ;
+  Option.may exit !RamenProcesses.quit
+
 
 (*
  * `ramen compile`

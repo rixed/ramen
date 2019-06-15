@@ -194,6 +194,7 @@ struct
   let gc = "Delete old or unused files"
   let stats = "Display internal statistics"
   let archivist = "Allocate disk for storage"
+  let filesyncer = "Synchronize config files with the confserver"
 
   (* Options *)
   let help = "Show manual page"
@@ -216,8 +217,8 @@ struct
   let loop =
     "Do not return after the work is over. Instead, wait for the specified \
      amount of time and restart"
-  let confserver_loop =
-    "How long to sleep in between two configuration update passes."
+  let filesyncer_loop =
+    "How many seconds to wait in between two passes of filesyncer."
   let dry_run = "Just display what would be deleted"
   let del_ratio = "Only delete that ratio of in-excess archive files"
   let compress_older = "Convert to ORC archive files older than this"
@@ -397,8 +398,8 @@ struct
   (* How long to sleep between two GC passes: *)
   let gc_loop = 3600.
 
-  (* How long to sleep between two confserver updates: *)
-  let confserver_loop = 5.
+  (* How long to sleep between two filesyncer passes: *)
+  let filesyncer_loop = 5.
 
   (* Do not delete all excess files at once but only that ratio: *)
   let del_ratio = 0.3

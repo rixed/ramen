@@ -104,13 +104,37 @@ let unexpected_reply cmd =
     (Client.SrvMsg.to_string cmd) |>
   failwith
 
-let lock_matching clt f =
-  (* TODO *)
-  ignore clt ; ignore f
+(* This locks keys one by one (waiting for the answer at every step.
+ * FIXME: lock all then wait for all answers *)
+let matching_keys clt f =
+  Client.H.enum clt.Client.h //@
+  (fun (k, _) -> if f k then Some k else None) |>
+  List.of_enum
 
-let unlock_matching clt f =
-  (* TODO *)
-  ignore clt ; ignore f
+let lock_matching clt zock ?while_ f k =
+  let keys = matching_keys clt f in
+  let rec loop on_ko = function
+    | [] -> k ()
+    | key :: rest ->
+        let on_ko' () =
+          send_cmd zock ?while_ ~on_ok:on_ko ~on_ko
+            (Client.CltMsg.UnlockKey key) in
+        let cont () =
+          loop on_ko' rest in
+        send_cmd zock ?while_ ~on_ok:cont ~on_ko
+          (Client.CltMsg.LockKey key) in
+  loop ignore keys
+
+(* FIXME: handle errors somehow *)
+let unlock_matching clt zock ?while_ f k =
+  let keys = matching_keys clt f in
+  let rec loop = function
+    | [] -> k ()
+    | key :: rest ->
+        let cont () = loop rest in
+        send_cmd zock ?while_ ~on_ok:cont
+          (Client.CltMsg.LockKey key) in
+  loop keys
 
 module Stage =
 struct

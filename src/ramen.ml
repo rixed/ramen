@@ -329,16 +329,10 @@ let confserver_port =
   let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "port" ] in
   Arg.(value (opt (some port) None i))
 
-let confserver_loop =
-  let env = Term.env_info "RAMEN_CONFSERVER_LOOP" in
-  let i = Arg.info ~doc:CliInfo.confserver_loop ~env ["loop"] in
-  Arg.(value (opt float Default.confserver_loop i))
-
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
       $ copts
-      $ confserver_loop
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -350,6 +344,25 @@ let confclient =
     (const RamenCliCmd.confclient
       $ copts),
     info ~doc:CliInfo.confclient "confclient")
+
+(*
+ * Synchronize config files with config tree (temporary)
+ *)
+
+let filesyncer_loop =
+  let env = Term.env_info "RAMEN_FILESYNCER_LOOP" in
+  let i = Arg.info ~doc:CliInfo.filesyncer_loop ~env ["loop"] in
+  Arg.(value (opt float Default.filesyncer_loop i))
+
+let filesyncer =
+  Term.(
+    (const RamenCliCmd.filesyncer
+      $ copts
+      $ filesyncer_loop
+      $ daemonize
+      $ to_stdout
+      $ to_syslog),
+    info ~doc:CliInfo.filesyncer "filesyncer")
 
 (*
  * Examine the ringbuffers
@@ -1149,7 +1162,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ; compserver ; choreographer ;
+        confserver ; confclient ; compserver ; choreographer ; filesyncer ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)

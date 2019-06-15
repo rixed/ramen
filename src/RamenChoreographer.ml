@@ -149,12 +149,12 @@ let start conf ~while_ =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig rc  ->
         let open ZMQClient in
-        lock_matching clt is_my_key ;
-        finally
-          (fun () -> unlock_matching clt is_my_key)
-          (fun () ->
-            let sites = Services.all_sites conf in
-            update_conf_server conf ~while_ zock clt sites rc) ()
+        lock_matching clt zock ~while_ is_my_key (fun () ->
+          finally
+            (fun () -> unlock_matching clt zock ~while_ is_my_key ignore)
+            (fun () ->
+              let sites = Services.all_sites conf in
+              update_conf_server conf ~while_ zock clt sites rc) ())
     | _ -> ()
   in
   ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login

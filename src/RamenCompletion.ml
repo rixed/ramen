@@ -47,6 +47,7 @@ let complete_commands s =
       "repair-ringbuf", CliInfo.repair ;
       "dump-ringbuf", CliInfo.dump ;
       "confserver", CliInfo.confserver ;
+      "filesyncer", CliInfo.filesyncer ;
       "confclient", CliInfo.confclient ;
       "compserver", CliInfo.compserver ;
       "choreographer", CliInfo.choreographer ] in
@@ -388,11 +389,15 @@ let complete str () =
           copts @
           (complete_rb_file last_tok)
       | "confserver" ->
-          [ "--loop", CliInfo.loop ;
-            "--daemonize", CliInfo.daemonize ;
+          [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--port", CliInfo.confserver_port ] @
+          copts
+      | "filesyncer" ->
+          [ "--daemonize", CliInfo.daemonize ;
+            "--to-stdout", CliInfo.to_stdout ;
+            "--syslog", CliInfo.to_syslog ] @
           copts
       | "confclient" ->
           copts
