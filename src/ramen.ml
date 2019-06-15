@@ -50,7 +50,7 @@ let port =
   in
   Arg.conv ~docv:"PORT" (parse, print)
 
-let copts =
+let copts = (* TODO: default login *)
   let docs = Manpage.s_common_options in
   let debug =
     let env = Term.env_info "RAMEN_DEBUG" in

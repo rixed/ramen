@@ -16,10 +16,12 @@ let retry_zmq ?while_ f =
     | _ -> false in
   retry ~on ~first_delay:0.3 ?while_ f
 
-(* To help with RPC like interaction, we have two callbacks here that can be set
- * when calling send_cmd, and that are automatically called when the Error message
- * (that is automatically subscribed by the server) is updated. This is a hash
- * from command id to continuation. *)
+(* To help with RPC like interaction, we have two callbacks here that can be
+ * set when calling send_cmd, and that are automatically called when the Error
+ * message (that is automatically subscribed by the server) is updated. This is
+ * a hash from command id to continuation.
+ * FIXME: timeout after a while and replace the continuation with
+ * `raise Timeout` in that case. *)
 let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let my_login = ref ""
@@ -73,7 +75,8 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
     Option.may (fun cb ->
       Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
-      if h_len > 10 then !logger.error "%s size is not %d" h_name h_len
+      (if h_len > 10 then !logger.warning else !logger.debug)
+        "%s size is now %d" h_name h_len
     ) cb in
   rem on_oks "SyncZMQClient.on_oks" on_ok ;
   rem on_kos "SyncZMQClient.on_kos" on_ko ;
@@ -84,7 +87,6 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
   | None ->
       Zmq.Socket.send_all zock [ "" ; s ]
   | Some while_ ->
-      !logger.debug "send without blocking..." ;
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
   !logger.debug "done sending"
@@ -92,8 +94,10 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
-      !logger.debug "srv message (raw): %S" s ;
-      Client.SrvMsg.of_string s
+      (* !logger.debug "srv message (raw): %S" s ; *)
+      let msg = Client.SrvMsg.of_string s in
+      !logger.debug "Srv msg: %a" Client.SrvMsg.print msg ;
+      msg
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
         (List.print String.print) m |>

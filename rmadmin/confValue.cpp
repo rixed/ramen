@@ -219,13 +219,11 @@ Value *valueOfOCaml(value v_)
         ret = targetConfig;
         // Iter over the cons cells:
         for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
-          std::cout << "pname*rce entry..." << std::endl;
           tmp2_ = Field(tmp1_, 0);  // the pname * rc_entry pair
           assert(Is_block(tmp2_));
           tmp3_ = Field(tmp2_, 1);  // the rc_entry
           assert(Is_block(tmp3_)); // XXX
           assert(Is_block(Field(tmp2_, 0)));
-          std::cout << "  pname = " << String_val(Field(tmp2_, 0)) << std::endl;
           RCEntry *rcEntry = new RCEntry(
             String_val(Field(tmp2_, 0)),  // pname
             Bool_val(Field(tmp3_, 0)),  // enabled

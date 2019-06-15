@@ -356,6 +356,20 @@ extern RamenValue *RamenValueOfOCaml(value v_)
       case VEthType:
         ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
+      case VIpv4Type:
+      case VIpv6Type:
+      case VIpType:
+      case VCidrv4Type:
+      case VCidrv6Type:
+      case VCidrType:
+      case VTupleType:
+      case VVecType:
+      case VListType:
+      case VRecordType:
+        assert(!"TODO: missing RamenValueOfOCaml cases");
+      case LastRamenValueType:
+      default:
+        assert(!"Invalid tag, not a RamenValueType");
     }
   } else {
     assert(Long_val(v_) == VNullType);

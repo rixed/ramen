@@ -2,6 +2,8 @@
 #include "conf.h"
 #include "SourcesModel.h"
 
+static bool const debug = false;
+
 SourcesModel::SourcesModel(QObject *parent) :
   QAbstractItemModel(parent)
 {
@@ -127,7 +129,7 @@ void SourcesModel::updateSourceText(conf::Key const &, std::shared_ptr<conf::Val
 void SourcesModel::addSourceInfo(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   QString sourceName(baseNameOfKey(k));
-  std::cout << "addSourceInfo for " << sourceName.toStdString() << std::endl;
+  if (debug) std::cout << "addSourceInfo for " << sourceName.toStdString() << std::endl;
 
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
   FileItem *file = createAll(sourceName, root);
@@ -183,14 +185,14 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirIt
     ) {
       if ((*it)->name == nextName) {
         if (! lastName && (*it)->isDir()) {
-          std::cout << "createAll: Same directory name" << std::endl;
+          if (debug) std::cout << "createAll: Same directory name" << std::endl;
           DirItem *sub = dynamic_cast<DirItem *>(*it);
           assert(sub);  // because isDir()
           root = sub;
           needNewItem = false;
           break;
         } else if (lastName && ! (*it)->isDir()) {
-          std::cout << "createAll: Same file" << std::endl;
+          if (debug) std::cout << "createAll: Same file" << std::endl;
           ret = dynamic_cast<FileItem *>(*it);
           assert(ret);  // because !isDir()
           needNewItem = false;
@@ -198,7 +200,7 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirIt
         } else {
           /* Same name while not same type: Create a new dir with same name,
            * this is not UNIX. */
-          std::cout << "createAll: file and dir with same name!" << std::endl;
+          if (debug) std::cout << "createAll: file and dir with same name!" << std::endl;
           break;
         }
       } else if ((*it)->name > nextName) {
@@ -207,7 +209,7 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirIt
       row ++;
     }
     if (needNewItem) {
-      std::cout << "createAll: create new " << lastName << std::endl;
+      if (debug) std::cout << "createAll: create new " << lastName << std::endl;
       emit beginInsertRows(indexOfItem(root), row, row);
       if (lastName) {
         // Create the final file

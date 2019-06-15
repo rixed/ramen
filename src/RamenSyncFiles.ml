@@ -25,8 +25,6 @@ module T = RamenTypes
 module O = RamenOperation
 module Services = RamenServices
 
-let login = "filesyncer"
-
 let while_ () = !Processes.quit = None
 
 (* Try to lock all the keys we care about. If a lock fail, unlock everything.

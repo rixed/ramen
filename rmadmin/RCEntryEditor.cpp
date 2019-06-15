@@ -12,6 +12,8 @@
 #include "SourcesModel.h"  // for sourceNameOfKey and friends
 #include "RCEntryEditor.h"
 
+static bool const debug = false;
+
 /* static bool isCompiledFile(QMap<conf::Key, KValue>::const_iterator const &kvIt)
 {
   std::string const &key = kvIt.key().s;
@@ -125,7 +127,7 @@ void RCEntryEditor::resetSources()
      */
     bool removeRight = false;
     if (kvIt == conf::kvs.constEnd()) {
-      std::cout << "At end of keys" << std::endl;
+      if (debug) std::cout << "At end of keys" << std::endl;
       removeRight = true;
     } else {
       if (! isSourceFile(kvIt.key().s)) {
@@ -134,7 +136,7 @@ void RCEntryEditor::resetSources()
         QString const left = sourceNameOfKey(kvIt.key());
         if (comboIdx >= sourceBox->count()) {
           // insert at the end before there is nothing left to compare with
-          std::cout << "Append " << left.toStdString() << " to combo" << std::endl;
+          if (debug) std::cout << "Append " << left.toStdString() << " to combo" << std::endl;
           sourceBox->addItem(left);
           comboIdx ++;
           kvIt ++;
@@ -143,16 +145,16 @@ void RCEntryEditor::resetSources()
           QString const right = sourceBox->itemText(comboIdx);
           int const cmp = QString::compare(left, right);
           if (cmp == 0) {
-            std::cout << "Same key: " << left.toStdString() << std::endl;
+            if (debug) std::cout << "Same key: " << left.toStdString() << std::endl;
             kvIt ++;
             comboIdx ++;
           } else if (cmp < 0) {
-            std::cout << "Insert key " << left.toStdString() << " at " << comboIdx << std::endl;
+            if (debug) std::cout << "Insert key " << left.toStdString() << " at " << comboIdx << std::endl;
             sourceBox->insertItem(comboIdx, left);
             comboIdx ++;
             kvIt ++;
           } else {
-            std::cout << "Removing key from combo" << std::endl;
+            if (debug) std::cout << "Removing key from combo" << std::endl;
             removeRight = true;
           }
         }
@@ -164,7 +166,7 @@ void RCEntryEditor::resetSources()
         sourceDoesExist = false;
         comboIdx ++;
       } else {
-        std::cout << "Removing combo entry " << sourceBox->itemText(comboIdx).toStdString() << std::endl;
+        if (debug) std::cout << "Removing combo entry " << sourceBox->itemText(comboIdx).toStdString() << std::endl;
         sourceBox->removeItem(comboIdx);
       }
     }
