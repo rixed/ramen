@@ -19,6 +19,7 @@ struct
 
   type t =
     { h : hash_value H.t ;
+      uid : User.id ;
       on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
       on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
@@ -26,15 +27,20 @@ struct
       on_unlock : t -> Key.t -> unit }
 
   and hash_value =
-    { mutable v : Value.t ;
+    { mutable value : Value.t ;
       mutable locked : string option ;
-      (* All these metadata are set exclusively by the confserver: *)
+      (* These metadata are set exclusively by the confserver.
+       * Unreliable if eager. *)
       mutable set_by : string ;
-      mutable mtime : float }
+      mutable mtime : float ;
+      (* If set eagerly but not received from the server yet: *)
+      mutable eagerly : eagerly }
 
-  let make ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
+  and eagerly = Nope | Created | Overwritten | Deleted
+
+  let make ~uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
     { h = H.create 99 ;
-      on_new ; on_set ; on_del ; on_lock ; on_unlock }
+      uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let process_msg t = function
     | SrvMsg.Auth err ->
@@ -48,38 +54,42 @@ struct
             !logger.error
               "Server set key %a that has not been created"
               Key.print k ;
-            let hv = { v ; locked = None ; set_by ; mtime } in
+            let hv =
+              { value = v ;
+                locked = None ;
+                set_by ;
+                mtime ;
+                eagerly = Nope } in
             H.add t.h k hv ;
             t.on_new t k v set_by mtime
         | prev ->
-            if Value.equal prev.v v then (
-              prev.set_by <- set_by ;
-              prev.mtime <- mtime ;
-              !logger.error
-                "Server wanted to replace a value of key %a by the same: %a"
-                Key.print k
-                Value.print v
-              (* TODO: count this *)
-            ) else (
-              prev.v <- v ;
-              prev.set_by <- set_by ;
-              t.on_set t k v set_by mtime
-            )
+            prev.set_by <- set_by ;
+            prev.mtime <- mtime ;
+            prev.eagerly <- Nope ;
+            prev.value <- v ;
+            t.on_set t k v set_by mtime
         )
 
     | SrvMsg.NewKey (k, v, set_by, mtime) ->
         (match H.find t.h k with
         | exception Not_found ->
-            let hv = { v ; locked = Some set_by ; set_by ; mtime } in
+            let hv =
+              { value = v ;
+                locked = Some set_by ;
+                set_by ;
+                mtime ;
+                eagerly = Nope } in
             H.add t.h k hv ;
             t.on_new t k v set_by mtime
         | prev ->
-            !logger.error
-              "Server create key %a that already exist, updating"
-              Key.print k ;
-            prev.v <- v ;
+            if prev.eagerly = Nope then
+              !logger.error
+                "Server create key %a that already exist, updating"
+                Key.print k ;
+            prev.value <- v ;
             prev.set_by <- set_by ;
             prev.mtime <- mtime ;
+            prev.eagerly <- Nope ;
             t.on_set t k v set_by mtime
         )
 
@@ -90,7 +100,7 @@ struct
               Key.print k
         | hv ->
             H.remove t.h k ;
-            t.on_del t k hv.v)
+            t.on_del t k hv.value)
 
     | SrvMsg.LockKey (k, u) ->
         (match H.find t.h k with
@@ -98,7 +108,7 @@ struct
             !logger.error "Server want to lock unknown key %a"
               Key.print k
         | prev ->
-            if prev.locked <> None then (
+            if prev.locked <> None && prev.eagerly = Nope then (
               !logger.error "Server locked key %a that is already locked"
                 Key.print k ;
             ) else (

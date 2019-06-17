@@ -177,6 +177,8 @@ RAMEN_SOURCES = \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
@@ -184,8 +186,6 @@ RAMEN_SOURCES = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
-	src/RamenSyncClient.ml \
-	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
@@ -403,6 +403,8 @@ ORCWRITER_SOURCES = \
 	src/RamenTypingHelpers.ml \
 	src/RamenTyping.ml \
 	src/RamenProgram.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/orc/orc_writer.ml
 
@@ -846,6 +848,8 @@ LINKED_FOR_TESTS = \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
+	src/RamenSyncClient.ml \
+	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
@@ -853,8 +857,6 @@ LINKED_FOR_TESTS = \
 	src/RamenProcesses.ml \
 	src/RamenReplay.ml \
 	src/RamenFuncGraph.ml \
-	src/RamenSyncClient.ml \
-	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \

@@ -368,21 +368,21 @@ let compile_sync conf replace src_file source_name_opt =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = source_name ->
-        if s.Value.md5 = md5 then (
-          !logger.info "%a" Value.print_source_info s ;
+        if s.Value.SourceInfo.md5 = md5 then (
+          !logger.info "%a" Value.SourceInfo.print s ;
           !logger.debug "Quitting..." ;
           (* FIXME: if we see this during the initial sync we might not
            * have received the error message yet ; or not even sent the
            * source code actually. *)
-          if not (Value.source_compiled s ) then (
+          if not (Value.SourceInfo.compiled s ) then (
             Processes.quit := Some 1 ;
             !logger.error "Cannot compile: %s"
-              (Value.source_compilation_error s)
+              (Value.SourceInfo.compilation_error s)
           ) else
             Processes.quit := Some 0
         ) else (
           !logger.warning "Server MD5 for %a is %S instead of %S, waiting..."
-            N.path_print source_name s.Value.md5 md5
+            N.path_print source_name s.Value.SourceInfo.md5 md5
         )
     | _ -> () in
   let topics = [
@@ -392,15 +392,15 @@ let compile_sync conf replace src_file source_name_opt =
   start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
                   ~topics (fun zock clt ->
       if replace then
-        send_cmd zock ~while_ (LockOrCreateKey k_source)
+        send_cmd clt zock ~while_ (LockOrCreateKey k_source)
           ~on_ko ~on_ok:(fun () ->
-            send_cmd zock ~while_ (SetKey (k_source, value))
+            send_cmd clt zock ~while_ (SetKey (k_source, value))
               ~on_ko ~on_ok:(fun () ->
-                send_cmd zock ~while_ (UnlockKey k_source)))
+                send_cmd clt zock ~while_ (UnlockKey k_source)))
       else
-        send_cmd zock ~while_ (NewKey (k_source, value))
+        send_cmd clt zock ~while_ (NewKey (k_source, value))
           ~on_ko ~on_ok:(fun () ->
-            send_cmd zock ~while_ (UnlockKey k_source)) ;
+            send_cmd clt zock ~while_ (UnlockKey k_source)) ;
       let num_msg = ZMQClient.process_in ~while_ zock clt in
       !logger.debug "Received %d messages" num_msg)
 
@@ -422,28 +422,7 @@ let compserver conf daemonize to_stdout to_syslog
   let topics = [ "sources/*" ] in
   let open RamenSync in
   let on_set zock clt k v _uid mtime =
-    let get_parent (program_name : N.program) =
-      let info_key =
-        (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
-        Key.Sources (N.path (program_name :> string), "info") in
-      !logger.info "Looking for key %a" Key.print info_key ;
-      match ZMQClient.Client.H.find clt.ZMQClient.Client.h info_key with
-      | { v = Value.SourceInfo { detail = CompiledSourceInfo info } ; _ } ->
-          P.{ params = info.default_params ;
-              condition =
-                Option.map (IO.to_string (E.print false)) info.condition ;
-              funcs =
-                List.map (fun f ->
-                  F.Serialized.{
-                    name = f.Value.name ;
-                    retention = f.Value.retention ;
-                    is_lazy = f.Value.is_lazy ;
-                    doc = f.Value.doc ;
-                    operation = f.Value.operation ;
-                    signature = f.Value.signature } |>
-                  F.unserialized program_name
-                ) info.funcs }
-      | _ -> raise Not_found in
+    let get_parent = RamenCompiler.parent_from_confserver clt in
     match k, v with
     | Key.(Sources (_, "info")), _ -> ()
     | Key.(Sources (src_file, ext)), Value.(String text) ->
@@ -451,8 +430,8 @@ let compserver conf daemonize to_stdout to_syslog
         let k_info = Key.(Sources (src_file, "info")) in
         let open ZMQClient in
         let unlock () =
-          send_cmd zock ~while_ (UnlockKey k_info) in
-        send_cmd zock ~while_ (LockOrCreateKey k_info)
+          send_cmd clt zock ~while_ (UnlockKey k_info) in
+        send_cmd clt zock ~while_ (LockOrCreateKey k_info)
           ~on_ko:unlock ~on_ok:(fun () ->
             let tmp_src_file =
               N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
@@ -475,20 +454,21 @@ let compserver conf daemonize to_stdout to_syslog
             let program_name = N.program (Files.remove_ext src_file :> string) in
             let info =
               match RamenMake.build conf get_parent program_name
-                                     tmp_src_file target_file with
+                                    tmp_src_file target_file with
               | exception e ->
                 !logger.error "Cannot build %a into %a: %s"
                   N.path_print src_file
                   N.path_print target_file
                   (Printexc.to_string e) ;
                 { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
-                  detail = FailedSourceInfo { err_msg = Printexc.to_string e } }
-            | () ->
-              !logger.debug "Read result from info file %a" N.path_print target_file ;
-              RamenMake.read_source_info target_file in
+                  detail = Failed { err_msg = Printexc.to_string e } }
+              | () ->
+                !logger.debug "Read result from info file %a"
+                  N.path_print target_file ;
+                RamenMake.read_source_info target_file in
             !logger.info "(pre)Compiled %a into %a"
-              N.path_print src_file Value.print_source_info info ;
-            send_cmd zock ~while_
+              N.path_print src_file Value.SourceInfo.print info ;
+            send_cmd clt zock ~while_
               (SetKey (k_info, Value.(SourceInfo info)))
               ~on_ko:unlock ~on_ok:unlock)
     | Key.Error _, _  ->

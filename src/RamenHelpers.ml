@@ -1636,6 +1636,9 @@ let hashtbl_merge h1 h2 f =
 let alist_of_hashtbl h =
   Hashtbl.enum h |> List.of_enum
 
+let hashtbl_of_alist l =
+  List.enum l |> Hashtbl.of_enum
+
 let invalid_byte_for what x =
   !logger.error "Invalid byte 0x%0xd for %s" x what ;
   assert false

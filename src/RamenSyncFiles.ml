@@ -39,16 +39,16 @@ let replace_keys clt zock f h =
   Client.H.enum clt.Client.h //
   (fun (k, _) -> f k && not (Client.H.mem h k)) |>
   Enum.iter (fun (k, _) ->
-    ZMQClient.send_cmd zock ~while_ (CltMsg.DelKey k)) ;
+    ZMQClient.send_cmd clt zock ~while_ (CltMsg.DelKey k)) ;
   (* Now add/update the keys from [h]: *)
   Client.H.iter (fun k (v, r, w) ->
     (* FIXME: add r and w in NewKey *)
     Option.may (fun v ->
       if Client.H.mem clt.Client.h k then
-        ZMQClient.send_cmd zock ~while_ (CltMsg.UpdKey (k, v))
+        ZMQClient.send_cmd clt zock ~while_ (CltMsg.UpdKey (k, v))
       else
-        ZMQClient.send_cmd zock ~while_ (CltMsg.NewKey (k, v)) ;
-      ZMQClient.send_cmd zock ~while_ (CltMsg.UnlockKey k)
+        ZMQClient.send_cmd clt zock ~while_ (CltMsg.NewKey (k, v)) ;
+      ZMQClient.send_cmd clt zock ~while_ (CltMsg.UnlockKey k)
     ) v
   ) h
 
@@ -56,28 +56,28 @@ let replace_keys clt zock f h =
 
 module TargetConfig =
 struct
-  let update conf _clt zock =
+  let update conf clt zock =
     let k = Key.TargetConfig in
     let unlock () =
-      ZMQClient.send_cmd zock ~while_ (CltMsg.UnlockKey k) in
-    ZMQClient.send_cmd zock ~while_ (CltMsg.LockKey k) ~on_ok:(fun () ->
+      ZMQClient.send_cmd clt zock ~while_ (CltMsg.UnlockKey k) in
+    ZMQClient.send_cmd clt zock ~while_ (CltMsg.LockKey k) ~on_ok:(fun () ->
       let programs = RC.with_rlock conf identity in
       let rcs =
         Hashtbl.fold (fun pname (rce, _get_rc) rcs ->
           let params = alist_of_hashtbl rce.RC.params in
           let entry =
-            RamenSync.Value.{
+            RamenSync.Value.TargetConfig.{
               enabled = rce.RC.status = RC.MustRun ;
               debug = rce.debug ;
               report_period = rce.report_period ;
               params ;
-              src_file = rce.RC.src_file ;
+              src_path = rce.RC.src_file ;
               on_site = Globs.decompile rce.RC.on_site ;
               automatic = rce.RC.automatic } in
           (pname, entry) :: rcs
         ) programs [] in
       let v = Value.TargetConfig rcs in
-      ZMQClient.send_cmd zock ~while_ (CltMsg.SetKey (k, v))
+      ZMQClient.send_cmd clt zock ~while_ (CltMsg.SetKey (k, v))
                          ~on_ok:unlock ~on_ko:unlock)
 end
 
@@ -195,13 +195,13 @@ struct
               upd k None in
             (match Client.H.find clt.Client.h km with
             | exception Not_found -> do_upd ()
-            | { v = Value.(Float prev_mtime) ; _ } ->
+            | { value = Value.(Float prev_mtime) ; _ } ->
                 if mtime > prev_mtime then do_upd ()
                 else (keep km ; keep ks)
             | hv ->
                 !logger.error
                   "Wrong type for source modification time (%a), deleting"
-                  Value.print hv.v)) ;
+                  Value.print hv.value)) ;
         (match get_rc () with
         | exception _ -> ()
         | p ->

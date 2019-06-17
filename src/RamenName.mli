@@ -112,4 +112,4 @@ val expr_color : string -> string
 
 val md5 : string -> string (* used internally but others might want this *)
 
-(* TODO: notif names... *)
+(* TODO: notif names, signatures... *)

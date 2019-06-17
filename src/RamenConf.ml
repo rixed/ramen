@@ -599,17 +599,17 @@ end
 let type_signature_hash = N.md5 % RamenTuple.type_signature
 
 (* Each workers regularly snapshot its internal state in this file.
- * This data contains tuples and statefull function internal states, so
- * that it has to depend on not only worker_state version (which versions
+ * This data contains tuples and stateful function internal states, so
+ * that it has to depend not only on worker_state version (which versions
  * the structure of the state structure itself), but also on codegen
- * version (which versions the language/state), and also the ocaml
- * version itself as we use stdlib's Marshaller for this: *)
-let worker_state conf func params =
+ * version (which versions the language/state), the parameters signature,
+ * and also the OCaml version itself since we use stdlib's Marshaller: *)
+let worker_state conf func params_sign =
   N.path_cat
     [ conf.persist_dir ; N.path "workers/states" ;
       N.path RamenVersions.(worker_state ^"_"^ codegen) ;
       N.path Config.version ; Func.path func ;
-      N.path func.signature ; N.path (RamenParams.signature params) ;
+      N.path func.signature ; N.path params_sign ;
       N.path "snapshot" ]
 
 (* The "in" ring-buffers are used to store tuple received by an operation.
@@ -753,6 +753,13 @@ let test_literal_programs_root conf =
 (* Where are SMT files (used for type-checking) written temporarily *)
 let smt_file src_file =
   Files.change_ext "smt2" src_file
+
+let cache_compiled_file ext conf sign =
+  N.path_cat [ conf.persist_dir ; N.path "supervisor/tmp/compiled" ;
+               N.path (sign ^"."^ ext) ]
+
+let cache_info_file = cache_compiled_file "info"
+let cache_bin_file = cache_compiled_file "x"
 
 (* Create a temporary program name: *)
 let make_transient_program () =

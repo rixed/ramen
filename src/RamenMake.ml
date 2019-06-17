@@ -82,11 +82,11 @@ let builders : (string, string * check * builder) Hashtbl.t = Hashtbl.create 11
 let register from to_ check build =
   Hashtbl.add builders from (to_, check, build)
 
-let write_source_info fname (i : RamenSync.Value.source_info) =
+let write_source_info fname (i : RamenSync.Value.SourceInfo.t) =
   Marshal.(to_string i [ No_sharing ]) |>
   Files.write_whole_file fname
 
-let read_source_info fname : RamenSync.Value.source_info =
+let read_source_info fname : RamenSync.Value.SourceInfo.t =
   let s = Files.read_whole_file fname in
   Marshal.from_string s 0
 
@@ -103,9 +103,9 @@ let () =
         match RamenCompiler.precompile conf get_parent src_file program_name with
         | exception e ->
             let s = Printexc.to_string e in
-            RamenSync.Value.{ md5 ; detail = FailedSourceInfo { err_msg = s } }
+            RamenSync.Value.SourceInfo.{ md5 ; detail = Failed { err_msg = s } }
         | i ->
-            RamenSync.Value.{ md5 ; detail = CompiledSourceInfo i } in
+            RamenSync.Value.SourceInfo.{ md5 ; detail = Compiled i } in
       write_source_info target_file info)
 
 (* Register a builder that will carry on from ".info" and generate actual
@@ -118,10 +118,10 @@ let () =
     (fun conf _get_parent program_name src_file exec_file ->
       let info = read_source_info src_file in
       match info.detail with
-      | CompiledSourceInfo info ->
+      | Compiled info ->
           let base_file = Files.remove_ext src_file in
           RamenCompiler.compile conf info ~exec_file base_file program_name
-      | FailedSourceInfo { err_msg } ->
+      | Failed { err_msg } ->
           failwith err_msg)
 
 (* Return the list of builders, brute force (N is small, loops are rare): *)

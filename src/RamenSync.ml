@@ -204,21 +204,25 @@ struct
     | PerFunction of N.func * per_func_key
 
   and per_worker_key =
-    | IsUsed   (* Supervisor might not run lazy workers that are unused *)
     (* FIXME: create a single entry of type "stats" for the following: *)
+    (* FIXME: The stats sum all various instances. Probably not what's wanted. *)
     | StartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
     | ArchivedTimes
     | NumArcFiles
     | NumArcBytes
     | AllocedArcBytes
-    | Parents of int
-    (* TODO: add children in the FuncGraph
-    | Children of int *)
-    | PerInstance of string (* func signature *) * per_instance_key
+    (* Set by the Choreographer: *)
+    | Worker
+    (* Set by the supervisor: *)
+    | PerInstance of string (* func + params signature *) * per_instance_key
 
   and per_instance_key =
-    (* These are contributed back by the supervisor: *)
+    (* All these are set by supervisor. First 3 are RamenValues. *)
+    | StateFile  (* Local file where the worker snapshot its state *)
+    | OutRefFile (* Local file where to write output specifications *)
+    | InputRingFiles  (* Local ringbufs where worker reads its input from *)
+    | ParentOutRefs  (* Local out_ref files of each parents *)
     | Pid
     | LastKilled
     | Unstopped (* whether this worker has been signaled to CONT *)
@@ -284,6 +288,10 @@ struct
 
   let print_per_instance fmt k =
     String.print fmt (match k with
+    | StateFile -> "state_file"
+    | OutRefFile -> "outref"
+    | InputRingFiles -> "inputs_ringbufs"
+    | ParentOutRefs -> "parent_outrefs"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
     | Unstopped -> "unstopped"
@@ -294,7 +302,6 @@ struct
 
   let print_per_worker_key fmt k =
     String.print fmt (match k with
-      | IsUsed -> "is_used"
       | StartupTime -> "startup_time"
       | MinETime -> "event_time/min"
       | MaxETime -> "event_time/max"
@@ -302,11 +309,11 @@ struct
       | TotBytes -> "total/bytes"
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
-      | Parents i -> "parents/"^ string_of_int i
       | ArchivedTimes -> "archives/times"
       | NumArcFiles -> "archives/num_files"
       | NumArcBytes -> "archives/current_size"
       | AllocedArcBytes -> "archives/alloc_size"
+      | Worker -> "worker"
       | PerInstance (signature, per_instance_key) ->
           Printf.sprintf2 "instances/%s/%a"
             signature
@@ -421,7 +428,6 @@ struct
                       try
                         PerWorker (N.fq fq,
                           match s with
-                          | "is_used" -> IsUsed
                           | "startup_time" -> StartupTime)
                       with Match_failure _ ->
                         (match rcut fq, s with
@@ -439,13 +445,16 @@ struct
                                 | "archives", "num_files" -> NumArcFiles
                                 | "archives", "current_size" -> NumArcBytes
                                 | "archives", "alloc_size" -> AllocedArcBytes
-                                | "parents", i ->
-                                    Parents (int_of_string i))
+                                | "worker", "" -> Worker)
                             with Match_failure _ ->
                               (match rcut fq, s1, s2 with
                               | [ fq ; "instance" ], sign, s ->
                                   PerWorker (N.fq fq, PerInstance (sign,
                                     match s with
+                                    | "state_file" -> StateFile
+                                    | "outref" -> OutRefFile
+                                    | "input_ringbufs" -> InputRingFiles
+                                    | "parent_outrefs" -> ParentOutRefs
                                     | "pid" -> Pid
                                     | "last_killed" -> LastKilled
                                     | "unstopped" -> Unstopped
@@ -552,6 +561,139 @@ end
  * now. *)
 module Value =
 struct
+  module Worker =
+  struct
+    type t =
+      { (* From the rc_entry: *)
+        enabled : bool ;
+        debug : bool ;
+        report_period : float ;
+        src_path : N.path ; (* Without extension *)
+        signature : string ; (* Mash both function and parameters *)
+        is_used : bool ;
+        params : RamenParams.param list ;
+        envvars : N.field list ; (* Actual values taken from the site host *)
+        role : role ;
+        parents : ref list ;
+        children : ref list }
+
+    and ref =
+      { site : N.site ; program : N.program ; func : N.func }
+
+    and role =
+      | Whole
+      (* Top half: only the filtering part of that function is run, once for
+       * every local parent; output is forwarded to another site. *)
+      | TopHalf of top_half_spec list
+    (* FIXME: parent_num is not good enough because a parent num might change
+     * when another parent is added/removed. *)
+
+    and top_half_spec =
+      (* FIXME: the workers should resolve themselves, once they become proper
+       * confsync clients: *)
+      { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
+
+    let print_role oc = function
+      | Whole -> String.print oc "whole worker"
+      | TopHalf _ -> String.print oc "top half"
+
+    let print oc w =
+      Printf.fprintf oc "%a for %a (sign:%S, %d parents, %d children)"
+        print_role w.role
+        N.path_print w.src_path
+        w.signature
+        (List.length w.parents)
+        (List.length w.children)
+
+    let is_top_half = function
+      | TopHalf _ -> true
+      | Whole -> false
+  end
+
+  module TargetConfig =
+  struct
+    type t = (N.program * entry) list
+
+    and entry =
+      { enabled : bool ;
+        debug : bool ;
+        report_period : float ;
+        params : RamenParams.param list ;
+        src_path : N.path ; (* With extension *)
+        on_site : string ; (* Globs as a string for simplicity *)
+        automatic : bool }
+
+  let print_entry oc rce =
+    Printf.fprintf oc
+      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; src_path=%a; \
+         on_site=%S; automatic=%b }"
+      rce.enabled rce.debug rce.report_period
+      RamenParams.print_list rce.params
+      N.path_print rce.src_path
+      rce.on_site
+      rce.automatic
+
+  let print oc rcs =
+    Printf.fprintf oc "TargetConfig %a"
+      (List.print (fun oc (pname, rce) ->
+        Printf.fprintf oc "%a=>%a"
+          N.program_print pname
+          print_entry rce)) rcs
+  end
+
+  module SourceInfo =
+  struct
+    type t =
+      { md5 : string ;
+        detail : detail }
+
+    and detail =
+      | Compiled of compiled
+      (* Maybe distinguish linking errors that can go away independently?*)
+      | Failed of failed
+
+    and compiled =
+      { default_params : RamenTuple.param list ;
+        condition : E.t option ;
+        funcs : function_info list }
+
+    and failed =
+      { err_msg : string }
+
+    and function_info = RamenConf.Func.Serialized.t
+      (*{ name : N.func ;
+        retention : Retention.t option ;
+        is_lazy : bool ;
+        doc : string ;
+        operation : O.t ;
+        signature : string }*)
+
+    let compiled i =
+      match i.detail with
+      | Compiled _ -> true
+      | _ -> false
+
+    let compilation_error i =
+      match i.detail with
+      | Failed { err_msg } -> err_msg
+      | _ -> invalid_arg "compilation_error"
+
+    let print_failed oc i =
+      Printf.fprintf oc "err:%S" i.err_msg
+
+    let print_compiled oc _i =
+      Printf.fprintf oc "compiled (TODO)"
+
+    let print_detail oc = function
+      | Compiled i -> print_compiled oc i
+      | Failed i -> print_failed oc i
+
+    let print oc s =
+      Printf.fprintf oc "SourceInfo { md5:%S, %a }"
+        s.md5
+        print_detail s.detail
+  end
+
   type t =
     | Bool of bool
     | Int of int64
@@ -559,7 +701,7 @@ struct
     | String of string
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
-    | Worker of N.site * N.program * N.func
+    | Worker of Worker.t
     | Retention of Retention.t
     | TimeRange of TimeRange.t
     | Tuple of
@@ -567,94 +709,10 @@ struct
           values : bytes (* serialized *) }
     | RamenType of T.t
     | RamenValue of T.value
-    | TargetConfig of (N.program * rc_entry) list
+    | TargetConfig of TargetConfig.t
     (* Holds all info from the compilation of a source ; what we used to have in the
      * executable binary itself. *)
-    | SourceInfo of source_info
-
-  and worker_role =
-    | Whole
-    (* Top half: only the filtering part of that function is run, once for
-     * every local parent; output is forwarded to another site. *)
-    | TopHalf of top_half_spec list
-  (* FIXME: parent_num is not good enough because a parent num might change
-   * when another parent is added/removed. *)
-
-  and top_half_spec =
-    (* FIXME: the workers should resolve themselves, onces they become proper
-     * confsync clients: *)
-    { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
-
-  and rc_entry =
-    { enabled : bool ;
-      debug : bool ;
-      report_period : float ;
-      params : RamenParams.param list ;
-      src_file : N.path ;
-      on_site : string ; (* Globs as a string for simplicity *)
-      automatic : bool }
-
-  and source_info =
-    { md5 : string ;
-      detail : detail_source_info }
-
-  and detail_source_info =
-    | CompiledSourceInfo of compiled_source_info
-    (* Maybe distinguish linking errors that can go away independently?*)
-    | FailedSourceInfo of failed_source_info
-
-  and compiled_source_info =
-    { default_params : RamenTuple.param list ;
-      condition : E.t option ;
-      funcs : function_info list }
-
-  and failed_source_info =
-    { err_msg : string }
-
-  and function_info =
-    { name : N.func ;
-      retention : Retention.t option ;
-      is_lazy : bool ;
-      doc : string ;
-      operation : O.t ;
-      signature : string }
-
-  let source_compiled i =
-    match i.detail with
-    | CompiledSourceInfo _ -> true
-    | _ -> false
-
-  let source_compilation_error i =
-    match i.detail with
-    | FailedSourceInfo { err_msg } -> err_msg
-    | _ -> invalid_arg "source_compilation_error"
-
-  let print_failed_source_info oc i =
-    Printf.fprintf oc "err:%S" i.err_msg
-
-  let print_compiled_source_info oc _i =
-    Printf.fprintf oc "compiled (TODO)"
-
-  let print_detail_source_info oc = function
-    | CompiledSourceInfo i -> print_compiled_source_info oc i
-    | FailedSourceInfo i -> print_failed_source_info oc i
-
-  let print_source_info oc s =
-    Printf.fprintf oc "md5:%S, %a" s.md5 print_detail_source_info s.detail
-
-  let print_worker_role oc = function
-    | Whole -> String.print oc "whole worker"
-    | TopHalf _ -> String.print oc "top half"
-
-  let print_rc_entry oc rc =
-    Printf.fprintf oc
-      "{ enabled=%b; debug=%b; report_period=%f; params={%a}; src_file=%a; \
-         on_site=%S; automatic=%b }"
-      rc.enabled rc.debug rc.report_period
-      RamenParams.print_list rc.params
-      N.path_print rc.src_file
-      rc.on_site
-      rc.automatic
+    | SourceInfo of SourceInfo.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -665,37 +723,31 @@ struct
 
   let dummy = String "undefined"
 
-  let rec print fmt = function
-    | Bool b -> Bool.print fmt b
-    | Int i -> Int64.print fmt i
-    | Float f -> Float.print fmt f
-    | String s -> String.print fmt s
+  let rec print oc = function
+    | Bool b -> Bool.print oc b
+    | Int i -> Int64.print oc i
+    | Float f -> Float.print oc f
+    | String s -> String.print oc s
     | Error (t, i, s) ->
-        Printf.fprintf fmt "%a:%d:%s"
+        Printf.fprintf oc "%a:%d:%s"
           print_as_date t i s
-    | Worker (s, p, f) ->
-        Printf.fprintf fmt "%a/%a/%a"
-          N.site_print s N.program_print p N.func_print f
+    | Worker w ->
+        Worker.print oc w
     | Retention r ->
-        Retention.print fmt r
+        Retention.print oc r
     | TimeRange r ->
-        TimeRange.print fmt r
+        TimeRange.print oc r
     | Tuple { skipped ; values } ->
-        Printf.fprintf fmt "Tuple of %d bytes (after %d skipped)"
+        Printf.fprintf oc "Tuple of %d bytes (after %d skipped)"
           (Bytes.length values) skipped
     | RamenType t ->
-        T.print_typ fmt t
+        T.print_typ oc t
     | RamenValue v ->
-        T.print fmt v
-    | TargetConfig rcs ->
-        Printf.fprintf fmt "TargetConfig %a"
-          (List.print (fun oc (pname, rce) ->
-            Printf.fprintf oc "%a=>%a"
-              N.program_print pname print_rc_entry rce)) rcs
+        T.print oc v
+    | TargetConfig rc ->
+        TargetConfig.print oc rc
     | SourceInfo i ->
-        Printf.fprintf fmt "SourceInfo { %a }"
-          print_source_info i
+        SourceInfo.print oc i
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
-
 end

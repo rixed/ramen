@@ -69,7 +69,7 @@ let may_publish clt zock ?while_ key_of_seq
       let seq = IntCounter.get stats_num_sync_msgs_out in
       let k = key_of_seq seq in
       let cmd = ZMQClient.Client.CltMsg.NewKey (k, v) in
-      ZMQClient.send_cmd zock cmd
+      ZMQClient.send_cmd clt zock cmd
   | _ -> ()
 
 let ignore_publish _sersize _serialize _skipped _tuple = ()

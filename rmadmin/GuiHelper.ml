@@ -126,22 +126,22 @@ let sync_loop zock clt =
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
-        ZMQClient.send_cmd zock (Client.CltMsg.NewKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.NewKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        ZMQClient.send_cmd zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        ZMQClient.send_cmd zock (Client.CltMsg.LockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.LockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        ZMQClient.send_cmd zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Unlock k ->
-        ZMQClient.send_cmd zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
-        ZMQClient.send_cmd zock (Client.CltMsg.DelKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt zock (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do
@@ -161,11 +161,11 @@ let on_progress url stage status =
   | ZMQClient.Stage.Auth -> signal_auth
   | ZMQClient.Stage.Sync -> signal_sync) status
 
-let register_senders zock =
+let register_senders zock clt =
   let lock_from_cpp k =
-    ZMQClient.send_cmd zock (Client.CltMsg.LockOrCreateKey k)
+    ZMQClient.send_cmd clt zock (Client.CltMsg.LockOrCreateKey k)
   and unlock_from_cpp k =
-    ZMQClient.send_cmd zock (Client.CltMsg.UnlockKey k)
+    ZMQClient.send_cmd clt zock (Client.CltMsg.UnlockKey k)
   in
   ignore (Callback.register "lock_from_cpp" lock_from_cpp) ;
   ignore (Callback.register "unlock_from_cpp" unlock_from_cpp)

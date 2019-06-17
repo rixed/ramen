@@ -26,3 +26,6 @@ let to_string t =
   IO.to_string print t
 
 let signature = N.md5 % to_string
+
+let signature_of_list params =
+  IO.to_string print_list params |> N.md5

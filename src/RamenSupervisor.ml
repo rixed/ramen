@@ -8,12 +8,13 @@ open RamenHelpers
 open RamenConsts
 module C = RamenConf
 module RC = C.Running
-module FS = C.FuncStats
 module F = C.Func
+module FS = F.Serialized
 module P = C.Program
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
+module T = RamenTypes
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Services = RamenServices
@@ -23,6 +24,7 @@ module Channel = RamenChannel
 module FuncGraph = RamenFuncGraph
 module TimeRange = RamenTimeRange
 module ZMQClient = RamenSyncZMQClient
+module Client = ZMQClient.Client
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -35,7 +37,7 @@ type key =
     func_name : N.func ;
     func_signature : string ;
     params : RamenTuple.params ;
-    role : ZMQClient.Value.worker_role }
+    role : RamenSync.Value.Worker.role }
 
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
@@ -75,7 +77,7 @@ let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (%a) (parents=%a)"
     (proc.func.F.program_name :> string)
     (proc.func.F.name :> string)
-    ZMQClient.Value.print_worker_role proc.key.role
+    RamenSync.Value.Worker.print_role proc.key.role
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf must_run mre =
@@ -198,29 +200,25 @@ let info_or_test conf =
 
 (* When a worker seems to crashloop, assume it's because of a bad file and
  * delete them! *)
-let rescue_worker conf func params =
+let rescue_worker fq state_file input_ringbufs out_ref =
   (* Maybe the state file is poisoned? At this stage it's probably safer
    * to move it away: *)
-  !logger.info "Worker %s is deadlooping. Deleting its state file, \
+  !logger.info "Worker %a is deadlooping. Deleting its state file, \
                 input ringbuffers and out_ref."
-    ((F.fq_name func) :> string) ;
-  let state_file = C.worker_state conf func params in
+    N.fq_print fq ;
   Files.move_away state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
-  let input_ringbufs = C.in_ringbuf_names conf func in
   List.iter Files.move_away input_ringbufs ;
-  let out_ref = C.out_ringbuf_names_ref conf func in
   Files.move_away out_ref
 
-let cut_from_parents_outrefs conf func parents =
-  let input_ringbufs = C.in_ringbuf_names conf func in
-  List.iter (fun (_, _, pfunc) ->
-    let parent_out_ref =
-      C.out_ringbuf_names_ref conf pfunc in
+(* TODO: workers should monitor the conftree for change in children
+ * and need no out_ref any longer *)
+let cut_from_parents_outrefs input_ringbufs out_refs =
+  List.iter (fun parent_out_ref ->
     List.iter (fun this_in ->
       OutRef.remove parent_out_ref this_in Channel.live
     ) input_ringbufs
-  ) parents
+  ) out_refs
 
 (* Then this function is cleaning the running hash: *)
 let process_workers_terminations conf running =
@@ -245,18 +243,27 @@ let process_workers_terminations conf running =
             "%s %s." what status_str ;
           proc.last_exit <- now ;
           proc.last_exit_status <- status_str ;
+          let input_ringbufs = C.in_ringbuf_names conf proc.func in
           if is_err then (
             proc.succ_failures <- proc.succ_failures + 1 ;
             IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
             if proc.succ_failures = 5 then (
               IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
-              rescue_worker conf proc.func proc.params)
+              let fq = F.fq_name proc.func in
+              let params_sign = RamenParams.signature proc.params in
+              let state_file = C.worker_state conf proc.func params_sign in
+              let out_ref = C.out_ringbuf_names_ref conf proc.func in
+              rescue_worker fq state_file input_ringbufs out_ref)
           ) else (
             proc.succ_failures <- 0
           ) ;
-          (* In case the worker stopped on it's own, remove it from its
+          (* In case the worker stopped on its own, remove it from its
            * parents out_ref: *)
-          cut_from_parents_outrefs conf proc.func proc.parents ;
+          let out_refs =
+            List.map (fun (_, _, pfunc) ->
+              C.out_ringbuf_names_ref conf pfunc
+            ) proc.parents in
+          cut_from_parents_outrefs input_ringbufs out_refs ;
           (* Wait before attempting to restart a failing worker: *)
           let max_delay = float_of_int proc.succ_failures in
           proc.quarantine_until <-
@@ -333,7 +340,8 @@ let process_replayers_start_stop conf now replayers =
   ) replayers
 
 let start_worker
-      conf func params envvars role log_level report_period bin parents children =
+      conf func params envvars role log_level report_period bin parent_links
+      children input_ringbufs (state_file : N.path) out_ringbuf_ref =
   (* Create the input ringbufs.
    * Workers are started one by one in no particular order.
    * The input and out-ref ringbufs are created when the worker start, and the
@@ -344,14 +352,7 @@ let start_worker
    * Each time a new worker is started or stopped the parents outrefs are updated. *)
   let fq = F.fq_name func in
   let fq_str = (fq :> string) in
-  let is_top_half =
-    match role with ZMQClient.Value.Whole -> false | TopHalf _ -> true in
   !logger.debug "Creating in buffers..." ;
-  let input_ringbufs =
-    if is_top_half then
-      [ C.in_ringbuf_name_single conf func ]
-    else
-      C.in_ringbuf_names conf func in
   List.iter (fun rb_name ->
     RingBuf.create rb_name ;
     let rb = RingBuf.load rb_name in
@@ -361,23 +362,20 @@ let start_worker
         IntCounter.inc (stats_ringbuf_repairs conf.C.persist_dir)) ()
   ) input_ringbufs ;
   (* And the pre-filled out_ref: *)
-  let out_ringbuf_ref =
-    if is_top_half then None else (
-      !logger.debug "Updating out-ref buffers..." ;
-      let out_ringbuf_ref = C.out_ringbuf_names_ref conf func in
-      List.iter (fun cfunc ->
-        let fname = C.input_ringbuf_fname conf func cfunc
-        and fieldmask = F.make_fieldmask func cfunc in
-        (* The destination ringbuffer must exist before it's referenced in an
-         * out-ref, or the worker might err and throw away the tuples: *)
-        RingBuf.create fname ;
-        OutRef.add out_ringbuf_ref fname fieldmask
-      ) children ;
-      Some out_ringbuf_ref
-    ) in
+  Option.may (fun out_ringbuf_ref ->
+    !logger.debug "Updating out-ref buffers..." ;
+    List.iter (fun cfunc ->
+      let fname = C.input_ringbuf_fname conf func cfunc
+      and fieldmask = F.make_fieldmask func cfunc in
+      (* The destination ringbuffer must exist before it's referenced in an
+       * out-ref, or the worker might err and throw away the tuples: *)
+      RingBuf.create fname ;
+      OutRef.add out_ringbuf_ref fname fieldmask
+    ) children ;
+  ) out_ringbuf_ref ;
   (* Export for a little while at the beginning (help with both automatic
    * and manual tests): *)
-  if not is_top_half then (
+  if not (RamenSync.Value.Worker.is_top_half role) then (
     Processes.start_export
       ~duration:conf.initial_export_duration conf func |>
     ignore
@@ -420,23 +418,23 @@ let start_worker
           [ "output_ringbufs_ref="^ (Option.get out_ringbuf_ref :> string) ;
             (* We need to change this dir whenever the func signature or
              * params change to prevent it to reload an incompatible state *)
-            "state_file="^ (C.worker_state conf func params :> string) ;
+            "state_file="^ (state_file :> string) ;
             "factors_dir="^ (C.factors_of_function conf func :> string) ]
     | TopHalf ths ->
         Enum.append
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_host_"^ string_of_int i ^"="^
-              (th.ZMQClient.Value.tunneld_host :> string)))
+              (th.RamenSync.Value.Worker.tunneld_host :> string)))
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_port_"^ string_of_int i ^"="^
-              string_of_int th.ZMQClient.Value.tunneld_port)) |>
+              string_of_int th.RamenSync.Value.Worker.tunneld_port)) |>
         Enum.append
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "parent_num_"^ string_of_int i ^"="^
-              string_of_int th.ZMQClient.Value.parent_num)) in
+              string_of_int th.RamenSync.Value.Worker.parent_num)) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
@@ -472,16 +470,18 @@ let start_worker
        fq_str |] in
   let pid = Processes.run_worker ~and_stop:conf.C.test bin args env in
   !logger.debug "%a for %a now runs under pid %d"
-    ZMQClient.Value.print_worker_role role N.fq_print fq pid ;
+    RamenSync.Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
-  List.iter (fun (_, _, pfunc) ->
-    let out_ref =
-      C.out_ringbuf_names_ref conf pfunc in
-    let fname = C.input_ringbuf_fname conf pfunc func
-    and fieldmask = F.make_fieldmask pfunc func in
-    OutRef.add out_ref fname fieldmask
-  ) parents ;
+  List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
+    OutRef.add out_ref in_ringbuf fieldmask
+  ) parent_links ;
   pid
+
+let input_ringbufs conf func role =
+  if RamenSync.Value.Worker.is_top_half role then
+    [ C.in_ringbuf_name_single conf func ]
+  else
+    C.in_ringbuf_names conf func
 
 let really_start conf proc =
   let envvars =
@@ -489,9 +489,23 @@ let really_start conf proc =
     List.map (fun (n : N.field) ->
       n, Sys.getenv_opt (n :> string))
   in
-  let pid = start_worker conf proc.func proc.params envvars proc.key.role
-                         proc.log_level proc.report_period proc.bin
-                         proc.parents proc.children in
+  let input_ringbufs =
+    input_ringbufs conf proc.func proc.key.role
+  and state_file =
+    C.worker_state conf proc.func (RamenParams.signature proc.params)
+  and out_ringbuf_ref =
+    if RamenSync.Value.Worker.is_top_half proc.key.role then None
+    else Some (C.out_ringbuf_names_ref conf proc.func)
+  and parent_links =
+    List.map (fun (_, _, pfunc) ->
+      C.out_ringbuf_names_ref conf pfunc,
+      C.input_ringbuf_fname conf pfunc proc.func,
+      F.make_fieldmask pfunc proc.func
+    ) proc.parents in
+  let pid =
+    start_worker conf proc.func proc.params envvars proc.key.role
+                 proc.log_level proc.report_period proc.bin parent_links
+                 proc.children input_ringbufs state_file out_ringbuf_ref in
   proc.pid <- Some pid ;
   proc.last_killed := 0.
 
@@ -565,7 +579,12 @@ let try_kill conf pid func parents last_killed =
    * parent out-ref: if it's not replaced then the last unprocessed
    * tuples are lost. If it's indeed a replacement then the new version
    * will have a chance to process the left overs. *)
-  cut_from_parents_outrefs conf func parents ;
+  let input_ringbufs = C.in_ringbuf_names conf func in
+  let out_refs =
+    List.map (fun (_, _, pfunc) ->
+      C.out_ringbuf_names_ref conf pfunc
+    ) parents in
+  cut_from_parents_outrefs input_ringbufs out_refs ;
   (* If it's still stopped, unblock first: *)
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
@@ -733,9 +752,9 @@ let build_must_run conf =
   Hashtbl.iter (fun (pp, pf, cprog, cfunc, sign, params)
                     (rce, func, tunnelds) ->
     let role =
-      ZMQClient.Value.TopHalf (
+      RamenSync.Value.Worker.TopHalf (
         List.mapi (fun i tunneld ->
-          ZMQClient.Value.{
+          RamenSync.Value.Worker.{
             tunneld_host = tunneld.Services.host ;
             tunneld_port = tunneld.Services.port ;
             parent_num = i }
@@ -1048,153 +1067,362 @@ let synchronize_running_local conf autoreload_delay =
 
 (* Using the conf server to supervise the workers goes in several stages:
  *
- * First, client tools such as `ramen run`, `ramen kill` and `ramen replay`
- * write the whole TargetConfig value into the TargetConfig key.
- * Then, the global supervisor (choregrapher?) must react to that change and
- * recompute the FuncGraph and expose it back on the configuration.
- * Finally, the supervisor will react to the exposed FuncGraph and try to
- * make the running configuration for the local site comply with it.
+ * First, client tools such as `ramen run`, `ramen kill`, `ramen replay`
+ * or rmadmin, write the whole TargetConfig value into the TargetConfig key
+ * (alternatively, into the RC file and then filesyncer copy it into
+ * TargetConfig).
  *
- * Then, supervisor should listen on the PerWorker subtree of the config and
- * merely start/stop the processes.
- * Contrary to the above, it then uses only the conftree to store the current
- * state of running workers (that clients can inspect for free).
+ * Then, the choregrapher react to that change, recompute the FuncGraph
+ * and expose it back on the configuration, into the per site / per
+ * worker configuration tree. In particular, the presence of the IsUsed
+ * key (be it true or false) tells that a worker must run (Archivist and
+ * others might also store per worker info for non-running workers).
  *
- * The only issue is that when we write a process state we cannot read it again
- * before a round-trip to the conf server ; an issue that will not cause great harm
- * and that should be alleviated entirely later when the confclient writes in its
- * local hash (at least optionally) the values that it sets. *)
-(*let synchronize_running_sync conf autoreload_delay =
+ * Finally, the supervisor will react to the exposed FuncGraph for the
+ * site it's in charge of, and try to make the running configuration for the
+ * local site comply with it. In turn, it will expose the actual state
+ * into the per site / per worker configuration tree.
+ *
+ * The only issue is that when a process state is written, it cannot be
+ * read back before a round-trip to the conf server ; an issue that will not
+ * cause great harm and that should be alleviated entirely later when the
+ * confclient writes in its local hash (at least optionally) the values that
+ * it sets.
+ *
+ * A process is running if its pid is stored (as an int) in the worker
+ * info. If not, and there is a binary (a string), then spawn it. If there
+ * is no binary, compile the source (ref to the info, as well as its md5,
+ * found in the per site config). If there is no such info, wait for the
+ * choreographer to finish its job.
+ *
+ * When a process has a pid but must not be running, send a kill (which signal
+ * depends on the last killed info also in the config tree).
+ *
+ * When a children terminates, also update the config tree (remove the pid,
+ * write the last exit status).
+ *
+ * Info regarding former workers that are no longer running are kept until
+ * it becomes clear when to delete them. Maybe a specific command, equivalent
+ * to the `ramen kill --purge`?
+ *)
+let per_instance_key site fq sign k =
+  RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, k)))
+
+let err_sync_type k v what =
+  !logger.error "%a should be %s not %a"
+    RamenSync.Key.print k
+    what
+    RamenSync.Value.print v
+
+let invalid_sync_type k v what =
+  Printf.sprintf2 "%a should be %s not %a"
+    RamenSync.Key.print k
+    what
+    RamenSync.Value.print v |>
+  failwith
+
+let find_or_fail what clt k f =
+  let v =
+    match Client.H.find clt.Client.h k with
+    | exception Not_found ->
+        None
+    | hv ->
+        Some hv.value in
+  match f v with
+  | None ->
+      (match v with
+      | None ->
+          Printf.sprintf2 "Cannot find %s: no such key %a"
+            what
+            RamenSync.Key.print k |>
+          failwith
+      | Some v ->
+          invalid_sync_type k v what)
+  | Some v' ->
+      v'
+
+let get_string = function
+  | Some (RamenSync.Value.RamenValue (T.VString s)) -> Some s
+  | _ -> None
+
+let get_string_list =
+  let is_string = function
+    | T.VString _ -> true
+    | _ -> false in
+  function
+  | Some (RamenSync.Value.RamenValue (T.VList vs))
+    when Array.for_all is_string vs ->
+      Array.enum vs /@
+      (function VString s -> N.path s | _ -> assert false) |>
+      List.of_enum |>
+      Option.some
+  | _ -> None
+
+let update_child_status conf ~while_ clt zock site fq sign pid =
+  let what =
+    Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
+  (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
+  | exception exn ->
+      !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
+  | 0, _ -> () (* Nothing to report *)
+  | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+      !logger.debug "%s got stopped" what
+  | _, status ->
+      let status_str = string_of_process_status status in
+      let is_err =
+        status <> WEXITED ExitCodes.terminated in
+      (if is_err then !logger.error else info_or_test conf)
+        "%s %s." what status_str ;
+      let now = Unix.gettimeofday () in
+      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+        (SetKey (per_instance_key site fq sign LastExit,
+                 RamenSync.Value.Float now)) ;
+      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+        (SetKey (per_instance_key site fq sign LastExitStatus,
+                 RamenSync.Value.String status_str)) ;
+      let input_ringbufs =
+        let k = per_instance_key site fq sign InputRingFiles in
+        find_or_fail "a list of strings" clt k get_string_list in
+      let succ_fail_k =
+        per_instance_key site fq sign SuccessiveFailures in
+      let succ_failures =
+        find_or_fail "an integer" clt succ_fail_k (function
+          | None -> Some 0
+          | Some (RamenSync.Value.Int i) -> Some (Int64.to_int i)
+          | _ -> None) in
+      if is_err then (
+        ZMQClient.send_cmd clt zock ~while_ ~eager:true
+          (SetKey (succ_fail_k,
+                   RamenSync.Value.Int (Int64.of_int (succ_failures + 1)))) ;
+        IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
+        if succ_failures = 5 then (
+          IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
+          let state_file =
+            let k = per_instance_key site fq sign StateFile in
+            find_or_fail "a string" clt k get_string
+          and out_ref =
+            let k = per_instance_key site fq sign OutRefFile in
+            find_or_fail "a string" clt k get_string in
+          rescue_worker fq (N.path state_file) input_ringbufs
+                        (N.path out_ref))
+      ) ;
+      (* In case the worker stopped on its own, remove it from its
+       * parents out_ref. Temporary. The out_refs were stored in the conftree,
+       * but ideally the workers listen to children directly, no more need for
+       * out_ref files: *)
+      let out_refs =
+        let k = per_instance_key site fq sign ParentOutRefs in
+        find_or_fail "a list of strings" clt k get_string_list in
+      cut_from_parents_outrefs input_ringbufs out_refs ;
+      (* Wait before attempting to restart a failing worker: *)
+      let max_delay = float_of_int succ_failures in
+      let quarantine_until = now +. Random.float (min 90. max_delay) in
+      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+        (SetKey (per_instance_key site fq sign QuarantineUntil,
+                 RamenSync.Value.Float quarantine_until)) ;
+      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+        (DelKey (per_instance_key site fq sign Pid)))
+
+(* This worker is running. Should it? *)
+let should_run clt site fq sign =
+  let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
+  match Client.H.find clt.Client.h k with
+  | exception Not_found -> false
+  | { value = RamenSync.Value.Worker worker ; _ } ->
+      worker.enabled && worker.signature = sign
+  | hv ->
+      invalid_sync_type k hv.value "a worker"
+
+let may_kill conf ~while_ clt zock site fq sign pid =
+  let last_killed_k = per_instance_key site fq sign LastKilled in
+  let last_killed = ref (
+    find_or_fail "a float" clt last_killed_k (function
+      | None -> Some 0.
+      | Some (RamenSync.Value.Float t) -> Some t
+      | _ -> None)) in
+  let input_ringbufs =
+    let k = per_instance_key site fq sign InputRingFiles in
+    find_or_fail "a list of strings" clt k get_string_list in
+  let out_refs =
+    let k = per_instance_key site fq sign ParentOutRefs in
+    find_or_fail "a list of strings" clt k get_string_list in
+  cut_from_parents_outrefs input_ringbufs out_refs ;
+  log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
+    (Unix.kill pid) Sys.sigcont ;
+  let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
+  kill_politely conf last_killed what pid stats_worker_sigkills ;
+  ZMQClient.send_cmd clt zock ~while_ ~eager:true
+    (SetKey (last_killed_k, RamenSync.Value.Float !last_killed))
+
+(* This worker is considered running as soon as it has a pid: *)
+let is_running clt site fq sign =
+  Client.H.mem clt.Client.h (per_instance_key site fq sign Pid)
+
+let get_precompiled clt src_path =
+  let source_k = RamenSync.Key.Sources (src_path, "info") in
+  match Client.H.find clt.Client.h source_k with
+  | exception Not_found ->
+      Printf.sprintf2 "No such source %a"
+        RamenSync.Key.print source_k |>
+      failwith
+  | { value = RamenSync.Value.SourceInfo
+                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
+      info, compiled
+  | { value = RamenSync.Value.SourceInfo
+                { detail = Failed { err_msg } } ; _ } ->
+      Printf.sprintf2 "Compilation failed: %s"
+        err_msg |>
+      failwith
+  | hv ->
+      invalid_sync_type source_k hv.value "a source info"
+
+let get_bin_file conf clt _site fq sign info =
+  let program_name, _func_name = N.fq_parse fq in
+  let get_parent = RamenCompiler.parent_from_confserver clt in
+  let info_file = C.cache_info_file conf sign in
+  let bin_file = C.cache_bin_file conf sign in
+  if not (Files.exists bin_file) then (
+    RamenMake.write_source_info info_file info ;
+    RamenMake.build
+      conf get_parent program_name info_file bin_file
+  ) ;
+  bin_file
+
+(* First we need to compile (or use a cached of) the source info, that
+ * we know from the SourcePath set by the Choreographer.
+ * Then for each parent we need the required fieldmask, that the
+ * Choreographer also should have set, and update those parents out_ref.
+ * Then we can spawn that binary, with the parameters also set by
+ * the choreographer. *)
+let try_start_instance conf ~while_ clt zock site fq sign worker =
+  !logger.info "Must start %a for %a"
+    RamenSync.Value.Worker.print worker
+    N.fq_print fq ;
+  let info, precompiled =
+    get_precompiled clt worker.RamenSync.Value.Worker.src_path in
+  let bin_file = get_bin_file conf clt site fq sign info in
+  let func_of_precompiled precompiled pname fname =
+    List.find (fun f -> f.FS.name = fname)
+      precompiled.RamenSync.Value.SourceInfo.funcs |>
+    (* Temporarily: *)
+    F.unserialized pname in
+  let worker_of_ref what ref =
+    let fq = N.fq_of_program ref.RamenSync.Value.Worker.program ref.func in
+    let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
+    find_or_fail ("a worker for "^ what) clt k (function
+      | Some (RamenSync.Value.Worker w) -> Some w
+      | _ -> None) in
+  let func_of_ref what ref =
+    let worker = worker_of_ref what ref in
+    let _info, precompiled =
+      get_precompiled clt worker.RamenSync.Value.Worker.src_path in
+    func_of_precompiled precompiled ref.program ref.func in
+  let program_name, func_name = N.fq_parse fq in
+  let func = func_of_precompiled precompiled program_name func_name in
+  let params = hashtbl_of_alist worker.params in
+  let children =
+    List.map (func_of_ref "child") worker.children in
+  let envvars =
+    List.map (fun (name : N.field) ->
+      name, Sys.getenv_opt (name :> string)
+    ) worker.envvars in
+  let log_level =
+    if worker.debug then Debug else Normal in
+  (* Workers use local files/ringbufs which name depends on input and/or
+   * output types, operation, etc, and that must be stored alongside the
+   * pid for later manipulation since they would not be easy to recompute
+   * should the Worker config entry change. Esp, other services might
+   * want to know them and, again, would have a hard time recomputing
+   * them in the face of a Worker change.
+   * Therefore it's much simpler to store those paths in the config tree. *)
+  let input_ringbufs = input_ringbufs conf func worker.role
+  and state_file =
+    N.path_cat
+      [ conf.persist_dir ; N.path "workers/states" ;
+        N.path RamenVersions.(worker_state ^"_"^ codegen) ;
+        N.path Config.version ; worker.src_path ;
+        N.path worker.signature ; N.path "snapshot" ]
+  and out_ringbuf_ref =
+    if RamenSync.Value.Worker.is_top_half worker.role then None
+    else Some (C.out_ringbuf_names_ref conf func)
+  and parent_links =
+    List.map (fun p_ref ->
+      let pfunc = func_of_ref "parent" p_ref in
+      C.out_ringbuf_names_ref conf pfunc,
+      C.input_ringbuf_fname conf pfunc func,
+      F.make_fieldmask pfunc func
+    ) worker.parents in
+  let pid =
+    start_worker conf func params envvars worker.role log_level
+                 worker.report_period bin_file parent_links children
+                 input_ringbufs state_file out_ringbuf_ref in
+  let k = per_instance_key site fq sign LastKilled in
+  ZMQClient.send_cmd clt zock ~eager:true ~while_ (DelKey k) ;
+  let k = per_instance_key site fq sign Pid in
+  ZMQClient.send_cmd clt zock ~eager:true ~while_
+                     (SetKey (k, RamenSync.Value.(Int (Int64.of_int pid)))) ;
+  let k = per_instance_key site fq sign StateFile
+  and v = RamenSync.Value.(String (state_file :> string)) in
+  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v)) ;
+  Option.may (fun out_ringbuf_ref ->
+    let k = per_instance_key site fq sign OutRefFile
+    and v = RamenSync.Value.(String out_ringbuf_ref) in
+    ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v))
+  ) (out_ringbuf_ref :> string option) ;
+  let k = per_instance_key site fq sign InputRingFiles
+  and v =
+    let l = List.enum (input_ringbufs :> string list) /@
+            (fun f -> T.VString f) |>
+            Array.of_enum in
+    RamenSync.Value.(RamenValue (VList l)) in
+  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v)) ;
+  let k = per_instance_key site fq sign ParentOutRefs
+  and v =
+    let l = List.enum parent_links /@
+            (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
+            Array.of_enum in
+    RamenSync.Value.(RamenValue (VList l)) in
+  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v))
+
+(* Loop over all keys, which is mandatory to monitor pid terminations,
+ * and synchronize running pids with the choreographer output.
+ * This is simpler and more robust than reacting to individual key changes. *)
+let synchronize_once conf ~while_ clt zock =
+  Client.H.iter (fun k hv ->
+    match k, hv.Client.value with
+    | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
+      RamenSync.Value.Int pid
+      when site = conf.C.site ->
+        let pid = Int64.to_int pid in
+        (* First, update this child status: *)
+        update_child_status conf ~while_ clt zock site fq sign pid ;
+        if not (should_run clt site fq sign) then
+          may_kill conf ~while_ clt zock site fq sign pid
+    | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
+      RamenSync.Value.Worker worker
+      when site = conf.C.site ->
+        if worker.enabled && not (is_running clt site fq worker.signature) then
+          try_start_instance
+            conf ~while_ clt zock site fq worker.signature worker
+    | _ -> ()
+  ) clt.Client.h
+
+let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let topics = [ "sites/"^ conf.C.site ^"/workers/*" ] in
-  let process_workers_terminations_sync clt =
-    ignore clt ;
-    todo "process_workers_terminations_sync" in
-  (* We store all program details in their binary, because we want to keep
-   * compilation separate from running the confserver (if only for make).
-   * In another hand, all sites will have to have the binaries and so will
-   * have to compile them from the operation source present in the conftree.
-   * REgardless, some clients that have no access to those files still want
-   * to know those details.
-   *
-   * So this is how it's done:
-   *
-   * Compilation can be separate, and produce only the binary. Nothing is
-   * changed here. But when a supervisor need to start a binary it compiles
-   * it from the source found in the conftree. There is a source/$program
-   * subptree that's like a small file system. The compiler ought to be able
-   * to tell the language from the content so we may need to add an
-   * explicit mention of the language at some point like in SQL.
-   *
-   * Then, `ramen run` write the program source in the source tree and
-   * creates the Process in the config tree, which refers to that source by
-   * name. `Ramen run` must therefore be turned into a sync
-   * client, subscribing only to its error file, and create the MustRunEntry
-   * in running_config (single value of type running_config, so that there
-   * is no race condition possible.
-   * Linkage checks are performed against the rest of the running configuration
-   * by the confserver (that has access to the bin files).
-   *
-   * Then, the conf server take this and create or update the logical and
-   * physical views: first it creates a must_run_entry programs/$name/info
-   * (regroup all the stuff in per_prog_key in a single value of type
-   * must_run_entry, and add operation, in_types, etc). All this is static
-   * data just for informational purpose (including internally for supervisor),
-   * in a single value to avoid race conditions and to shorten access.
-   * It also updates the FuncGraph and updates sites/$site/workers/$fq/info
-   * accordingly, but only after the per-program info has been written.
-   * The GraphFunc is what supervisor listens to. It is a single value of type
-   * Process (with the values specific to that worker: role, actual parents
-   * and children, log levels, log paths, envvars...).
-   * Other not worker specific info that supervisor need, it takes from the
-   * per-program value.
-   * Supervisor then write Process information in sites/$site/worker/$fq/process.
-   * It is the only writer and main reader of those (although the GUI can also
-   * read and display this).
-   *
-   * Alternatively, users may want to override a few things, such as
-   * parameters or envvars. In that case we might want to add an override entry
-   * with only those info that the confserver would also listen to and take
-   * into account when generating the info entries. It's better than to directly
-   * write into the info keys because we can then go back to the default value.
-   * We could even have users override each others.
-   *
-   * The conf server (on the same file system where the
-   * binaries are) will from now on monitor the binary file and also
-   * optionally the source file if filled in, and will recompile and maintain
-   * the info entries so that supervisor do not need to read the binaries any
-   * longer at all.
-   *)
-  let func_of_program_name program_name func_name params bin_file =
-    let program = P.of_bin program_name params bin_file in
-    List.find (fun f -> f.F.name = func_name) program.P.funcs in
-  ZMQClient.start ~while_ conf.C.sync_url "ramen supervisor" topic (fun zock ->
-    let open ZMQClient.Key in
-    let open ZMQClient.Value in
-    let on_new clt k v _uid =
-      process_workers_terminations_sync clt ;
-      match k, v with
-      | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
-        Process { params ; envvars ; role ; log_level ; report_period ;
-                  bin_file ; src_file ; parents }
-        when site = conf.C.site ->
-          let program_name, func_name = N.fq_parse fq in
-          !logger.info "Must now run worker %a for %a"
-            print_worker_role role
-            N.fq_print fq ;
-          let params = RamenTuple.hash_of_params params in
-          let func = func_of_program_name program_name func_name params bin_file in
-          let parents =
-            (* All we need from parents is their operation to build the
-             * fieldmasks to write in the out_ref files, and a few paths;
-             * So we do not bother with params. *)
-            List.map (fun (sname, program_name, func_name, bin_file) ->
-              sname, program_name,
-              func_of_program_name program_name func_name (Hashtbl.create 0) bin_file
-            ) parents in
-          let pid = start_worker conf func params envvars role log_level
-                                 report_period bin_file parents children in
-          let k =
-            PerSite (site, PerWorker (fq, PerInstance (signature, Pid))) in
-          ZMQClient.send_cmd zock ~while_ (SetKey (k, Value.(Int pid))) ;
-          let k =
-            PerSite (site, PerWorker (fq, PerInstance (signature, LastKilled))) in
-          ZMQClient.send_cmd zock ~while_ (DelKey k)
-    and on_del clt k v =
-      process_workers_terminations_sync clt ;
-      match k, v with
-      | PerSite (site, PerWorker (fq, PerInstance (signature, Process))),
-        Process { parents ; bin_file ; _ }
-        when site = conf.C.site ->
-          let program_name, func_name = N.fq_parse fq in
-          !logger.info "Must now stop %s %aa"
-            print_worker_role role
-            N.fq_print fq ;
-          let params = RamenTuple.hash_of_params params in
-          let func = func_of_program_name program_name func_name params bin_file in
-          let k =
-            PerSite (site, PerWorker (fq, PerInstance (signature, LastKilled))) in
-          let last_killed = ref (
-            match Client.H.find clt.h k with
-            | exception Not_found ->
-                !logger.error "Cannot find %a" Key.print k ;
-                0.
-            | Value.Float v -> v
-            | v ->
-                !logger.error "Bad type for %a: %a" Key.print k Value.print v ;
-                0.) in
-          (match Client.H.find clt.h k with
-          | exception Not_found ->
-              !logger.error "Cannot find %a" Key.print k
-          | Value.Int pid ->
-              try_kill pid conf func parents last_killed ;
-              ZMQClient.send_cmd zock ~while_ (SetKey (k, Value.(Float !last_killed)))
-          | v ->
-              !logger.error "Bad type for %a: %a" Key.print k Value.print v)
-      | _ -> () in
-    ZMQClient.process_in zock ~on_new ~on_set ~on_del ~on_lock ~on_unlock)
-*)
+  let open ZMQClient.Key in
+  let open ZMQClient.Value in
+  let rec loop zock clt =
+    while while_ () do
+      log_and_ignore_exceptions (fun () ->
+        let msg_count = ZMQClient.process_in ~while_ zock clt in
+        !logger.debug "Processed %d messages" msg_count ;
+        synchronize_once conf ~while_ clt zock
+      ) ()
+    done in
+  let topics = [ "sites/"^ (conf.C.site :> string) ^"/workers/*" ] in
+  ZMQClient.(start ~while_ conf.C.sync_url conf.C.login ~topics
+                   ~recvtimeo:1. ~sndtimeo:1. loop)
 
 let synchronize_running conf autoreload_delay =
   (if conf.C.sync_url = "" then synchronize_running_local
-  else synchronize_running_local (* _sync *)) conf autoreload_delay
+  else synchronize_running_sync) conf autoreload_delay

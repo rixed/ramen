@@ -15,12 +15,13 @@ module C = RamenConf
 module RC = C.Running
 module F = C.Func
 module P = C.Program
+module FS = F.Serialized
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
-module SV = RamenSync.Value
 module Orc = RamenOrc
 module Files = RamenFiles
+module ZMQClient = RamenSyncZMQClient
 open RamenTypingHelpers
 open RamenConsts
 
@@ -102,6 +103,21 @@ let parent_from_lib_path lib_path pn =
 let parent_from_programs programs pn =
   let rce, get_rc = Hashtbl.find programs pn in
   if rce.RC.status <> MustRun then raise Not_found else get_rc ()
+
+let parent_from_confserver clt (pn : N.program) =
+  let open RamenSync in
+  let info_key =
+    (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
+    Key.Sources (N.path (pn :> string), "info") in
+  !logger.debug "Looking for key %a" Key.print info_key ;
+  match ZMQClient.Client.H.find clt.ZMQClient.Client.h info_key with
+  | { value = Value.SourceInfo { detail = Compiled info } ; _ } ->
+      P.{ params = info.default_params ;
+          condition =
+            Option.map (IO.to_string (E.print false)) info.condition ;
+          funcs =
+            List.map (F.unserialized pn) info.funcs }
+  | _ -> raise Not_found
 
 (*
  * (Pre)Compilation creates a lot of temporary files. Here
@@ -274,20 +290,20 @@ let precompile conf get_parent source_file (program_name : N.program) =
     let input_of_func =
       let h = Hashtbl.create 5 in
       fun func ->
-        try Hashtbl.find h func.SV.name
+        try Hashtbl.find h func.FS.name
         with Not_found ->
           let inp =
-            RamenFieldMaskLib.in_type_of_operation func.SV.operation in
-          Hashtbl.add h func.SV.name inp ;
+            RamenFieldMaskLib.in_type_of_operation func.FS.operation in
+          Hashtbl.add h func.FS.name inp ;
           inp
     and output_of_func =
       let h = Hashtbl.create 5 in
       fun func ->
-        try Hashtbl.find h func.SV.name
+        try Hashtbl.find h func.FS.name
         with Not_found ->
           let out =
-            O.out_type_of_operation ~with_private:true func.SV.operation in
-          Hashtbl.add h func.SV.name out ;
+            O.out_type_of_operation ~with_private:true func.FS.operation in
+          Hashtbl.add h func.FS.name out ;
           out in *)
     let units_of_output func name =
       !logger.debug "Looking for units of output field %a in %S"
@@ -295,7 +311,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
         (func.F.name :> string) ;
       let out_type =
         O.out_type_of_operation ~with_private:true func.F.operation in
-(*        (func.SV.name :> string) ;
+(*        (func.FS.name :> string) ;
      let out_type = output_of_func func in *)
       match List.find (fun ft ->
               ft.RamenTuple.name = name
@@ -474,17 +490,13 @@ let precompile conf get_parent source_file (program_name : N.program) =
     Option.may (fun cond ->
       E.iter (check_typed "Running condition") cond
     ) condition ;
-    let funcs =
-      Hashtbl.values compiler_funcs /@
-      (fun f ->
-        SV.{ name = f.F.name ;
-             retention = f.F.retention ;
-             is_lazy = f.F.is_lazy ;
-             doc = f.F.doc ;
-             operation = f.F.operation ;
-             signature = f.F.signature }) |>
-      List.of_enum in
-    SV.{ default_params = parsed_params ; condition ; funcs }
+    RamenSync.Value.SourceInfo.{
+      default_params = parsed_params ;
+      condition ;
+      funcs =
+        Hashtbl.values compiler_funcs /@
+        F.serialized |>
+        List.of_enum }
   ) () (* and finally, delete temp files! *)
 
 (* [program_name] is used to resolve relative parent names, and name a few
@@ -523,9 +535,9 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
     let envvars =
       List.fold_left (fun envvars func ->
         List.rev_append
-          (O.envvars_of_operation func.SV.operation)
+          (O.envvars_of_operation func.FS.operation)
           envvars
-      ) [] info.SV.funcs |>
+      ) [] info.RamenSync.Value.SourceInfo.funcs |>
       List.fast_sort N.compare in
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
@@ -548,16 +560,16 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
       RamenOCamlCompiler.module_name_of_file_name params_src_file in
     let src_name_of_func func =
       N.cat base_file
-            (N.path ("_"^ func.SV.signature ^
+            (N.path ("_"^ func.FS.signature ^
                      "_"^ RamenVersions.codegen)) |>
       RamenOCamlCompiler.make_valid_for_module in
     let obj_files =
       List.fold_left (fun obj_files func ->
         (* Start with the C++ object file for ORC support: *)
-        let orc_write_func = "orc_write_"^ func.SV.signature
-        and orc_read_func = "orc_read_"^ func.SV.signature
+        let orc_write_func = "orc_write_"^ func.FS.signature
+        and orc_read_func = "orc_read_"^ func.FS.signature
         and rtyp =
-          O.out_record_of_operation ~with_private:true func.SV.operation in
+          O.out_record_of_operation ~with_private:true func.FS.operation in
         let obj_files =
           !logger.debug "Generating ORC support modules" ;
           let obj_file, _ = orc_codec conf orc_write_func orc_read_func
@@ -578,7 +590,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           let exn =
             Failure (
               Printf.sprintf2 "Cannot generate code for %s: %s"
-                (func.SV.name :> string) (Printexc.to_string e)) in
+                (func.FS.name :> string) (Printexc.to_string e)) in
           Printexc.raise_with_backtrace exn bt) ;
         add_temp_file obj_name ;
         obj_name :: obj_files
@@ -607,7 +619,8 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           (program_name :> string) ;
         CodeGen_OCaml.emit_header params_mod_name oc ;
         (* Emit the running condition: *)
-        CodeGen_OCaml.emit_running_condition oc params envvars info.SV.condition ;
+        CodeGen_OCaml.emit_running_condition
+          oc params envvars info.RamenSync.Value.SourceInfo.condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. We
@@ -619,15 +632,17 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
             funcs =
               List.map (fun func ->
                 F.Serialized.{
-                  name = func.SV.name ;
-                  retention = func.SV.retention ;
-                  is_lazy = func.SV.is_lazy ;
-                  doc = func.SV.doc ;
-                  operation = func.SV.operation ;
-                  signature = func.SV.signature }
-              ) info.SV.funcs ;
+                  name = func.FS.name ;
+                  retention = func.FS.retention ;
+                  is_lazy = func.FS.is_lazy ;
+                  doc = func.FS.doc ;
+                  operation = func.FS.operation ;
+                  signature = func.FS.signature }
+              ) info.RamenSync.Value.SourceInfo.funcs ;
             params ;
-            condition = Option.map (IO.to_string (E.print false)) info.SV.condition
+            condition =
+              Option.map (IO.to_string (E.print false))
+                         info.RamenSync.Value.SourceInfo.condition
           } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;
@@ -646,12 +661,12 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
              \t\t\t  top_half_entry_point = %s.%s ;\n\
              \t\t\t  replay_entry_point = %s.%s ;\n\
              \t\t\t  convert_entry_point = %s.%s } ;\n"
-            (func.SV.name :> string)
+            (func.FS.name :> string)
             mod_name EntryPoints.worker
             mod_name EntryPoints.top_half
             mod_name EntryPoints.replay
             mod_name EntryPoints.convert
-        ) info.SV.funcs ;
+        ) info.RamenSync.Value.SourceInfo.funcs ;
         Printf.fprintf oc "\t]\n"
       ) in
     (*

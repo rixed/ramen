@@ -66,7 +66,7 @@ let next_id = ref None
 let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
-let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
+let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
   let cmd_id =
     match !next_id with
     | None ->
@@ -75,15 +75,15 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
     | Some i -> i in
   next_id := Some (cmd_id + 1) ;
   let msg = cmd_id, cmd in
-  let rem h h_name cb =
+  let save_cb h h_name cb =
     Option.may (fun cb ->
       Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
       (if h_len > 10 then !logger.warning else !logger.debug)
         "%s size is now %d" h_name h_len
     ) cb in
-  rem on_oks "SyncZMQClient.on_oks" on_ok ;
-  rem on_kos "SyncZMQClient.on_kos" on_ko ;
+  save_cb on_oks "SyncZMQClient.on_oks" on_ok ;
+  save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
   !logger.info "Sending command %a"
     Client.CltMsg.print msg ;
   let s = Client.CltMsg.to_string msg in
@@ -93,6 +93,30 @@ let send_cmd zock ?while_ ?on_ok ?on_ko cmd =
   | Some while_ ->
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+  if eager then (
+    match cmd with
+    | SetKey (k, v) | NewKey (k, v) | UpdKey (k, v) ->
+        (match Client.H.find clt.Client.h k with
+        | exception Not_found ->
+            let hv =
+              Client.{ value = v ;
+                       locked = Some clt.Client.uid ;
+                       set_by = clt.Client.uid ;
+                       mtime = Unix.gettimeofday () ;
+                       eagerly = Created } in
+            Client.H.add clt.Client.h k hv
+        | hv ->
+            hv.value <- v ;
+            hv.eagerly <- Overwritten)
+    | DelKey k ->
+        (match Client.H.find clt.Client.h k with
+        | exception Not_found -> ()
+        | hv ->
+            hv.eagerly <- Deleted)
+    | _ ->
+        !logger.debug "Cannot do %a eagerly"
+          Client.CltMsg.print_cmd cmd
+  ) ;
   !logger.debug "done sending"
 
 let recv_cmd zock =
@@ -125,11 +149,11 @@ let lock_matching clt zock ?while_ f k =
     | [] -> k ()
     | key :: rest ->
         let on_ko' () =
-          send_cmd zock ?while_ ~on_ok:on_ko ~on_ko
+          send_cmd clt zock ?while_ ~on_ok:on_ko ~on_ko
             (Client.CltMsg.UnlockKey key) in
         let cont () =
           loop on_ko' rest in
-        send_cmd zock ?while_ ~on_ok:cont ~on_ko
+        send_cmd clt zock ?while_ ~on_ok:cont ~on_ko
           (Client.CltMsg.LockKey key) in
   loop ignore keys
 
@@ -140,7 +164,7 @@ let unlock_matching clt zock ?while_ f k =
     | [] -> k ()
     | key :: rest ->
         let cont () = loop rest in
-        send_cmd zock ?while_ ~on_ok:cont
+        send_cmd clt zock ?while_ ~on_ok:cont
           (Client.CltMsg.LockKey key) in
   loop keys
 
@@ -190,11 +214,11 @@ let init_connect ?while_ url zock on_progress =
   with e ->
     on_progress Stage.Conn Status.(InitFail (Printexc.to_string e))
 
-let init_auth ?while_ login zock on_progress =
+let init_auth ?while_ login clt zock on_progress =
   my_login := login ;
   on_progress Stage.Auth Status.InitStart ;
   try
-    send_cmd zock ?while_ (Client.CltMsg.Auth login) ;
+    send_cmd clt zock ?while_ (Client.CltMsg.Auth login) ;
     match retry_zmq ?while_ recv_cmd zock with
     | Client.SrvMsg.Auth "" ->
         on_progress Stage.Auth Status.InitOk
@@ -205,7 +229,7 @@ let init_auth ?while_ login zock on_progress =
   with e ->
     on_progress Stage.Auth Status.(InitFail (Printexc.to_string e))
 
-let init_sync ?while_ zock topics on_progress =
+let init_sync ?while_ clt zock topics on_progress =
   on_progress Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
   (* Also subscribe to the error messages, unless it's covered already: *)
@@ -220,7 +244,7 @@ let init_sync ?while_ zock topics on_progress =
   in
   try
     List.iter (fun glob ->
-      send_cmd zock ?while_ (Client.CltMsg.StartSync glob)
+      send_cmd clt zock ?while_ (Client.CltMsg.StartSync glob)
     ) globs ;
     on_progress Stage.Sync Status.InitOk
   with e ->
@@ -228,7 +252,7 @@ let init_sync ?while_ zock topics on_progress =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
-          ?(on_progress=default_on_progress) ?(on_sock=ignore)
+          ?(on_progress=default_on_progress) ?(on_sock=ignore2)
           ?(on_new=ignore6) ?(on_set=ignore6) ?(on_del=ignore4)
           ?(on_lock=ignore4) ?(on_unlock=ignore3)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
@@ -239,10 +263,17 @@ let start ?while_ url creds ?(topics=[])
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
       let zock = Zmq.Socket.(create ctx dealer) in
+      let on_new = check_err (on_new zock)
+      and on_set = check_err (on_set zock)
+      and on_del = on_del zock
+      and on_lock = on_lock zock
+      and on_unlock = on_unlock zock in
+      let clt =
+        Client.make ~uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          on_sock zock ;
+          on_sock zock clt ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:
@@ -254,15 +285,9 @@ let start ?while_ url creds ?(topics=[])
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect ?while_ url zock on_progress) ;
           log_exceptions ~what:"init_auth"
-            (fun () -> init_auth ?while_ creds zock on_progress) ;
+            (fun () -> init_auth ?while_ creds clt zock on_progress) ;
           log_exceptions ~what:"init_sync"
-            (fun () -> init_sync ?while_ zock topics on_progress) ;
-          let on_new = check_err (on_new zock)
-          and on_set = check_err (on_set zock)
-          and on_del = on_del zock
-          and on_lock = on_lock zock
-          and on_unlock = on_unlock zock in
-          let clt = Client.make ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+            (fun () -> init_sync ?while_ clt zock topics on_progress) ;
           log_exceptions ~what:"sync_loop"
             (fun () -> sync_loop zock clt)
         ) ()
