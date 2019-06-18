@@ -150,7 +150,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
         envvars = O.envvars_of_operation func.FS.operation ;
         role ;
         parents ;
-        children = Map.find worker_ref !all_children } in
+        children = Map.find_default [] worker_ref !all_children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
         (RamenSync.Value.Worker worker)
@@ -167,7 +167,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
 let start conf ~while_ =
   let topics =
     [ (* Read target config from this key: *)
-      "must_run" ;
+      "target_config" ;
       (* Write the function graph into these keys: *)
       "sites/*/workers/*/worker" ;
       (* Get source info from these: *)
