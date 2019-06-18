@@ -24,7 +24,6 @@ let retry_zmq ?while_ f =
  * `raise Timeout` in that case. *)
 let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
-let my_login = ref ""
 
 (* Return the number of pending callbacks.
  * Also a good place to time them out. *)
@@ -43,20 +42,19 @@ let check_err on_msg =
     ) do_ ;
     Hashtbl.remove dont cmd_id in
   fun clt k v u mt ->
-    (match k with
-    | Key.Error (Some n) when n = !my_login ->
-        (match v with
-        | Value.(Error (_ts, cmd_id, err_msg)) ->
-            if err_msg = "" then (
-              !logger.debug "Cmd %d: OK" cmd_id ;
-              maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
-            ) else (
-              !logger.error "Cmd %d: %s" cmd_id err_msg ;
-              maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
-            )
-        | v ->
-            !logger.error "Error value is not an error: %a" Value.print v)
-    | _ -> ()) ;
+    if clt.Client.my_errors = Some k then (
+      match v with
+      | Value.(Error (_ts, cmd_id, err_msg)) ->
+          if err_msg = "" then (
+            !logger.debug "Cmd %d: OK" cmd_id ;
+            maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
+          ) else (
+            !logger.error "Cmd %d: %s" cmd_id err_msg ;
+            maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
+          )
+      | v ->
+          !logger.error "Error value is not an error: %a" Value.print v
+    ) ;
     on_msg clt k v u mt
 
 (* As the same user might be sending commands at the same time, rather use
@@ -78,6 +76,7 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
   !logger.debug "> Clt msg: %a" Client.CltMsg.print msg ;
   let save_cb h h_name cb =
     Option.may (fun cb ->
+      assert (clt.Client.my_errors <> None) ;
       Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
       (if h_len > 10 then !logger.warning else !logger.debug)
@@ -213,15 +212,16 @@ let init_connect ?while_ url zock on_progress =
     on_progress Stage.Conn Status.(InitFail (Printexc.to_string e))
 
 let init_auth ?while_ login clt zock on_progress =
-  my_login := login ;
   on_progress Stage.Auth Status.InitStart ;
   try
     send_cmd clt zock ?while_ (Client.CltMsg.Auth login) ;
     match retry_zmq ?while_ recv_cmd zock with
-    | Client.SrvMsg.Auth "" ->
-        on_progress Stage.Auth Status.InitOk
-    | Client.SrvMsg.Auth err ->
-        failwith err
+    | Client.SrvMsg.AuthOk _ as msg ->
+        on_progress Stage.Auth Status.InitOk ;
+        Client.process_msg clt msg
+    | Client.SrvMsg.AuthErr s as msg ->
+        on_progress Stage.Auth (Status.InitFail s) ;
+        Client.process_msg clt msg
     | rep ->
         unexpected_reply rep
   with e ->
@@ -231,7 +231,8 @@ let init_sync ?while_ clt zock topics on_progress =
   on_progress Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
   (* Also subscribe to the error messages, unless it's covered already: *)
-  let my_errors = Key.(Error (Some !my_login) |> to_string) in
+  assert (clt.Client.my_errors <> None) ;
+  let my_errors = Option.get clt.Client.my_errors |> Key.to_string in
   let globs =
     if List.exists (fun glob -> Globs.matches glob my_errors) globs then (
       !logger.debug "subscribed topics already cover error stream %S, \

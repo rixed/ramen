@@ -101,6 +101,8 @@ sig
    * for each. *)
   type socket
   val of_socket : socket -> t
+  val print_socket : 'a BatIO.output -> socket -> unit
+  val socket_of_string : string -> socket
 
   (* Whatever the user has to transmit to authenticate, such as a TLS
    * certificate for instance: *)
@@ -132,7 +134,7 @@ sig
 
   (* Special key for error reporting: *)
   val global_errs : t
-  val user_errs : User.t -> t
+  val user_errs : User.t -> User.socket -> t
 
   val hash : t -> int
   val equal : t -> t -> bool
@@ -236,7 +238,8 @@ struct
   module SrvMsg =
   struct
     type t =
-      | Auth of string
+      | AuthOk of Key.t (* the key used for error logs *)
+      | AuthErr of string (* an error message *)
       | SetKey of (Key.t * Value.t * string * float)
       | NewKey of (Key.t * Value.t * string * float)
       | DelKey of Key.t
@@ -245,8 +248,10 @@ struct
       | UnlockKey of Key.t
 
     let print oc = function
-      | Auth creds ->
-          Printf.fprintf oc "Auth %s" creds
+      | AuthOk err_key ->
+          Printf.fprintf oc "AuthOk %a" Key.print err_key
+      | AuthErr msg ->
+          Printf.fprintf oc "AuthErr %s" msg
       | SetKey (k, v, uid, mtime) ->
           Printf.fprintf oc "SetKey (%a, %ai, %s, %f)"
             Key.print k

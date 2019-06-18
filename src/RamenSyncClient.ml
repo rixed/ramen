@@ -20,6 +20,7 @@ struct
   type t =
     { h : hash_value H.t ;
       uid : User.id ;
+      mutable my_errors : Key.t option ; (* As returned by AuthOK *)
       on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
       on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
@@ -39,14 +40,17 @@ struct
   and eagerly = Nope | Created | Overwritten | Deleted
 
   let make ~uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
-    { h = H.create 99 ;
+    { h = H.create 99 ; my_errors = None ;
       uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let process_msg t = function
-    | SrvMsg.Auth err ->
-        if err <> "" then
-          Printf.sprintf "Cannot authenticate to the server: %s" err |>
-          failwith
+    | SrvMsg.AuthOk k ->
+        !logger.debug "Will receive errors in %a" Key.print k ;
+        t.my_errors <- Some k
+
+    | SrvMsg.AuthErr s ->
+        Printf.sprintf "Cannot authenticate to the server: %s" s |>
+        failwith
 
     | SrvMsg.SetKey (k, v, set_by, mtime) ->
         (match H.find t.h k with

@@ -257,8 +257,8 @@ struct
     ) t.h ;
     !logger.info "...done"
 
-  let set_user_err t u i str =
-    let k = Key.user_errs u
+  let set_user_err t u socket i str =
+    let k = Key.user_errs u socket
     and v = Value.err_msg i str in
     set t User.internal k v
 
@@ -271,24 +271,21 @@ struct
       | CltMsg.Auth creds ->
           (* Auth is special: as we have no user yet, errors must be
            * returned directly. *)
-          let err =
-            try
-              let u' = User.authenticate u creds socket in
-              !logger.info "User %a authenticated out of user %a"
-                User.print u'
-                User.print u ;
-              (* Must create this user's error object if not already there.
-               * Value will be set below: *)
-              let k = Key.user_errs u' in
-              create_or_update t k (Value.err_msg i "")
-                               ~r:(User.only_me u') ~w:Capa.nobody ~s:false ;
-              ""
-            with e ->
-              let err = Printexc.to_string e in
-              !logger.info "While authenticating %a: %s" User.print u err ;
-              err
-          in
-          t.send_msg (SrvMsg.Auth err) (Enum.singleton socket)
+          (try
+            let u' = User.authenticate u creds socket in
+            !logger.info "User %a authenticated out of user %a"
+              User.print u'
+              User.print u ;
+            (* Must create this user's error object if not already there.
+             * Value will be set below: *)
+            let k = Key.user_errs u' socket in
+            create_or_update t k (Value.err_msg i "")
+                             ~r:(User.only_me u') ~w:Capa.nobody ~s:false ;
+            t.send_msg (SrvMsg.AuthOk k) (Enum.singleton socket)
+          with e ->
+            let err = Printexc.to_string e in
+            !logger.info "While authenticating %a: %s" User.print u err ;
+            t.send_msg (SrvMsg.AuthErr err) (Enum.singleton socket))
 
       | CltMsg.StartSync sel ->
           subscribe_user t socket u sel ;
@@ -320,7 +317,7 @@ struct
       | CltMsg.UnlockKey k ->
           unlock t u k
       ) ;
-      if User.authenticated u then  set_user_err t u i ""
+      if User.authenticated u then set_user_err t u socket i ""
     with e ->
-      set_user_err t u i (Printexc.to_string e)
+      set_user_err t u socket i (Printexc.to_string e)
 end

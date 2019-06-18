@@ -62,6 +62,12 @@ struct
 
   type socket = string (* ZMQ peer *)
 
+  let print_socket oc s =
+    String.print oc (Base64.str_encode s)
+
+  let socket_of_string s =
+    Base64.str_decode s
+
   type t =
     (* Internal implies no authn at all, only for when the messages do not go
      * through ZMQ: *)
@@ -175,7 +181,7 @@ struct
     | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
     | Tail of N.site * N.fq * tail_key
-    | Error of string option (* the user name *)
+    | Error of User.socket option
     (* TODO: alerting *)
 
   and per_site_key =
@@ -374,13 +380,14 @@ struct
     | Error None ->
         Printf.fprintf fmt "errors/global"
     | Error (Some s) ->
-        Printf.fprintf fmt "errors/users/%s" s
+        Printf.fprintf fmt "errors/sockets/%a" User.print_socket s
 
   (* Special key for error reporting: *)
   let global_errs = Error None
-  let user_errs = function
+  let user_errs user socket =
+    match user with
     | User.Internal -> DevNull
-    | User.Auth { name ; _ } -> Error (Some name)
+    | User.Auth _ -> Error (Some socket)
     | User.Anonymous -> DevNull
 
   let hash = Hashtbl.hash
@@ -511,7 +518,7 @@ struct
             Error (
               match cut s with
               | "global", "" -> None
-              | "users", s -> Some s)
+              | "sockets", s -> Some (User.socket_of_string s))
     with Match_failure _ | Failure _ ->
       Printf.sprintf "Cannot parse key (%S)" s |>
       failwith
