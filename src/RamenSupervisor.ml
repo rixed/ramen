@@ -1419,7 +1419,9 @@ let synchronize_running_sync conf _autoreload_delay =
         synchronize_once conf ~while_ clt zock
       ) ()
     done in
-  let topics = [ "sites/"^ (conf.C.site :> string) ^"/workers/*" ] in
+  let topics =
+    [ "sites/"^ (conf.C.site :> string) ^"/workers/*" ;
+      "sources/*/info" ] in
   ZMQClient.(start ~while_ conf.C.sync_url conf.C.login ~topics
                    ~recvtimeo:1. ~sndtimeo:1. loop)
 
