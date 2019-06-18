@@ -1389,22 +1389,24 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt zock =
   Client.H.iter (fun k hv ->
-    match k, hv.Client.value with
-    | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
-      RamenSync.Value.Int pid
-      when site = conf.C.site ->
-        let pid = Int64.to_int pid in
-        (* First, update this child status: *)
-        update_child_status conf ~while_ clt zock site fq sign pid ;
-        if not (should_run clt site fq sign) then
-          may_kill conf ~while_ clt zock site fq sign pid
-    | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
-      RamenSync.Value.Worker worker
-      when site = conf.C.site ->
-        if worker.enabled && not (is_running clt site fq worker.signature) then
-          try_start_instance
-            conf ~while_ clt zock site fq worker.signature worker
-    | _ -> ()
+    let what = Printf.sprintf2 "Processing key %a" RamenSync.Key.print k in
+    log_and_ignore_exceptions ~what (fun () ->
+      match k, hv.Client.value with
+      | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
+        RamenSync.Value.Int pid
+        when site = conf.C.site ->
+          let pid = Int64.to_int pid in
+          (* First, update this child status: *)
+          update_child_status conf ~while_ clt zock site fq sign pid ;
+          if not (should_run clt site fq sign) then
+            may_kill conf ~while_ clt zock site fq sign pid
+      | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
+        RamenSync.Value.Worker worker
+        when site = conf.C.site ->
+          if worker.enabled && not (is_running clt site fq worker.signature) then
+            try_start_instance
+              conf ~while_ clt zock site fq worker.signature worker
+      | _ -> ()) ()
   ) clt.Client.h
 
 let synchronize_running_sync conf _autoreload_delay =
