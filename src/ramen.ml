@@ -50,7 +50,7 @@ let port =
   in
   Arg.conv ~docv:"PORT" (parse, print)
 
-let copts = (* TODO: default login *)
+let copts default_login =
   let docs = Manpage.s_common_options in
   let debug =
     let env = Term.env_info "RAMEN_DEBUG" in
@@ -111,10 +111,13 @@ let copts = (* TODO: default login *)
                      ~docs [ "confserver" ] in
     Arg.(value (opt string "" i))
   and confserver_login =
-    let env = Term.env_info "USER" in
+    let env =
+      (* Take $USER only for non-service commands: *)
+      if default_login = "" then Some (Term.env_info "USER")
+                            else None in
     let i = Arg.info ~doc:CliInfo.confserver_login
-                     ~docs ~env [ "login" ] in
-    Arg.(value (opt string "" i))
+                     ~docs ?env [ "login" ] in
+    Arg.(value (opt string default_login i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -189,7 +192,7 @@ let fail_for_good =
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
-      $ copts
+      $ copts "_supervisor"
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -237,7 +240,7 @@ let compress_older =
 let gc =
   Term.(
     (const RamenCliCmd.gc
-      $ copts
+      $ copts "_gc"
       $ dry_run
       $ del_ratio
       $ compress_older
@@ -265,7 +268,7 @@ let max_fpr =
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
-      $ copts
+      $ copts "_alerter"
       $ conf_file ~env:"ALERTER_CONFIG"
                   ~doc:CliInfo.conffile ()
       $ max_fpr
@@ -298,7 +301,7 @@ let text_params =
 let notify =
   Term.(
     (const RamenCliCmd.notify
-      $ copts
+      $ copts ""
       $ text_params
       $ text_pos ~doc:"notification name" ~docv:"NAME" 0),
     info ~doc:CliInfo.notify "notify")
@@ -314,7 +317,7 @@ let tunneld_port =
 let tunneld =
   Term.(
     (const RamenCliCmd.tunneld
-      $ copts
+      $ copts "_tunneld"
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -332,7 +335,7 @@ let confserver_port =
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
-      $ copts
+      $ copts "_confserver"
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -342,7 +345,7 @@ let confserver =
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
-      $ copts),
+      $ copts ""),
     info ~doc:CliInfo.confclient "confclient")
 
 (*
@@ -352,7 +355,7 @@ let confclient =
 let filesyncer =
   Term.(
     (const RamenCliCmd.filesyncer
-      $ copts
+      $ copts "_filesyncer"
       $ loop
       $ daemonize
       $ to_stdout
@@ -377,7 +380,7 @@ let num_tuples =
 let dequeue =
   Term.(
     (const RingBufCmd.dequeue
-      $ copts
+      $ copts ""
       $ rb_file
       $ num_tuples),
     info ~doc:CliInfo.dequeue "dequeue")
@@ -395,7 +398,7 @@ let rb_files =
 let summary =
   Term.(
     (const RingBufCmd.summary
-      $ copts
+      $ copts ""
       $ max_bytes
       $ rb_files),
     info ~doc:CliInfo.summary "ringbuf-summary")
@@ -403,7 +406,7 @@ let summary =
 let repair =
   Term.(
     (const RingBufCmd.repair
-      $ copts
+      $ copts ""
       $ rb_files),
     info ~doc:CliInfo.repair "repair-ringbuf")
 
@@ -420,7 +423,7 @@ let stop_word =
 let dump =
   Term.(
     (const RingBufCmd.dump
-      $ copts
+      $ copts ""
       $ start_word
       $ stop_word
       $ rb_file),
@@ -471,7 +474,7 @@ let top =
 let links =
   Term.(
     (const RingBufCmd.links
-      $ copts
+      $ copts ""
       $ no_abbrev
       $ show_all
       $ as_tree
@@ -554,7 +557,7 @@ let replace =
 let compile =
   Term.(
     (const RamenCliCmd.compile
-      $ copts
+      $ copts ""
       $ lib_path
       $ external_compiler
       $ max_simult_compilations
@@ -568,7 +571,7 @@ let compile =
 let compserver =
   Term.(
     (const RamenCliCmd.compserver
-      $ copts
+      $ copts "_compserver"
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -605,7 +608,7 @@ let bin_file =
 let run =
   Term.(
     (const RamenCliCmd.run
-      $ copts
+      $ copts ""
       $ params
       $ replace
       $ kill_if_disabled
@@ -624,7 +627,7 @@ let purge =
 let kill =
   Term.(
     (const RamenCliCmd.kill
-      $ copts
+      $ copts ""
       $ program_globs
       $ purge),
     info ~doc:CliInfo.kill "kill")
@@ -645,7 +648,7 @@ let opt_function_name p =
 let info =
   Term.(
     (const RamenCliCmd.info
-      $ copts
+      $ copts ""
       $ params
       $ as_
       $ bin_file
@@ -659,7 +662,7 @@ let info =
 let choreographer =
   Term.(
     (const RamenCliCmd.choreographer
-      $ copts
+      $ copts "_choreographer"
       $ daemonize
       $ to_stdout
       $ to_syslog),
@@ -794,7 +797,7 @@ let func_name_or_code =
 let tail =
   Term.(
     (const RamenCliCmd.tail
-      $ copts
+      $ copts ""
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -854,7 +857,7 @@ let since_mandatory =
 let replay =
   Term.(
     (const RamenCliCmd.replay
-      $ copts
+      $ copts ""
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -911,7 +914,7 @@ let factors =
 let timeseries =
   Term.(
     (const RamenCliCmd.timeseries
-      $ copts
+      $ copts ""
       $ func_name_or_code
       $ since
       $ until
@@ -937,7 +940,7 @@ let timeseries =
 let timerange =
   Term.(
     (const RamenCliCmd.timerange
-      $ copts
+      $ copts ""
       $ function_name 0),
     info ~doc:CliInfo.timerange "timerange")
 
@@ -958,7 +961,7 @@ let all =
 let ps =
   Term.(
     (const RamenCliCmd.ps
-      $ copts
+      $ copts ""
       $ short
       $ pretty
       $ with_header
@@ -971,7 +974,7 @@ let ps =
 let profile =
   Term.(
     (const RamenCliCmd.profile
-      $ copts
+      $ copts ""
       $ short
       $ pretty
       $ with_header
@@ -1008,7 +1011,7 @@ let fault_injection_rate =
 let httpd =
   Term.(
     (const RamenCliCmd.httpd
-      $ copts
+      $ copts "_httpd"
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -1034,7 +1037,7 @@ let query =
 let expand =
   Term.(
     (const RamenCliCmd.graphite_expand
-      $ copts
+      $ copts ""
       $ for_render
       $ since
       $ until
@@ -1053,7 +1056,7 @@ let test_file =
 let test =
   Term.(
     (const RamenTests.run
-      $ copts
+      $ copts ""
       $ server_url ""
       $ api
       $ graphite
@@ -1085,7 +1088,7 @@ let reconf_workers =
 let archivist =
   Term.(
     (const RamenCliCmd.archivist
-      $ copts
+      $ copts "_archivist"
       $ loop
       $ daemonize
       $ update_stats
@@ -1102,7 +1105,8 @@ let archivist =
 
 let variants =
   Term.(
-    (const RamenCliCmd.variants $ copts),
+    (const RamenCliCmd.variants
+      $ copts ""),
     info ~doc:CliInfo.variants "variants")
 
 (*
@@ -1111,7 +1115,8 @@ let variants =
 
 let stats =
   Term.(
-    (const RamenCliCmd.stats $ copts),
+    (const RamenCliCmd.stats
+      $ copts ""),
     info ~doc:CliInfo.stats "stats")
 
 (*

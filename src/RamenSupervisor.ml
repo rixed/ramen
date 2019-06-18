@@ -461,7 +461,7 @@ let start_worker
   let more_env =
     List.enum
       [ "sync_url="^ conf.C.sync_url ;
-        "sync_creds=worker "^ (conf.C.site :> string) ^"/"^ fq_str ] |>
+        "sync_creds=_worker "^ (conf.C.site :> string) ^"/"^ fq_str ] |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =

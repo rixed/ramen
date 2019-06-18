@@ -95,8 +95,7 @@ struct
         let name, capas =
           match creds with
           | "admin" -> creds, Capa.[ Admin ]
-          | c when String.starts_with c "worker " -> creds, Capa.[ Ramen ]
-          | c when String.starts_with c "ramen " -> creds, Capa.[ Ramen ]
+          | c when String.starts_with c "_" -> creds, Capa.[ Ramen ]
           | "" -> failwith "Bad credentials"
           | _ -> creds, [] in
         let capas =
