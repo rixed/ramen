@@ -75,6 +75,7 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
     | Some i -> i in
   next_id := Some (cmd_id + 1) ;
   let msg = cmd_id, cmd in
+  !logger.debug "> Clt msg: %a" Client.CltMsg.print msg ;
   let save_cb h h_name cb =
     Option.may (fun cb ->
       Hashtbl.add h cmd_id cb ;
@@ -84,8 +85,6 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
     ) cb in
   save_cb on_oks "SyncZMQClient.on_oks" on_ok ;
   save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
-  !logger.info "Sending command %a"
-    Client.CltMsg.print msg ;
   let s = Client.CltMsg.to_string msg in
   (match while_ with
   | None ->
@@ -116,15 +115,14 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
     | _ ->
         !logger.debug "Cannot do %a eagerly"
           Client.CltMsg.print_cmd cmd
-  ) ;
-  !logger.debug "done sending"
+  )
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
       (* !logger.debug "srv message (raw): %S" s ; *)
       let msg = Client.SrvMsg.of_string s in
-      !logger.debug "Srv msg: %a" Client.SrvMsg.print msg ;
+      !logger.debug "< Srv msg: %a" Client.SrvMsg.print msg ;
       msg
   | m ->
       Printf.sprintf2 "Received unexpected message %a"

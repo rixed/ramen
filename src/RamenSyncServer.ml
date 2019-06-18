@@ -269,7 +269,7 @@ struct
         User.print u ;
       (match cmd with
       | CltMsg.Auth creds ->
-          (* Auth is special: as we have not yet a user, errors must be
+          (* Auth is special: as we have no user yet, errors must be
            * returned directly. *)
           let err =
             try

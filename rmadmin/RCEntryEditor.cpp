@@ -162,7 +162,7 @@ void RCEntryEditor::resetSources()
     }
     if (removeRight && comboIdx < sourceBox->count()) {
       if (comboIdx == sourceBox->currentIndex()) {
-        std::cout << "Selected combo entry does not exist" << std::endl;
+        std::cout << "Selected combo entry (" << sourceBox->currentText().toStdString() << ") does not exist" << std::endl;
         sourceDoesExist = false;
         comboIdx ++;
       } else {
