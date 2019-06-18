@@ -59,6 +59,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
   in
   let all_used = ref Set.empty in
   let all_parents = ref Map.empty in
+  let all_top_halves = ref Map.empty in
   List.iter (fun (pname, rce) ->
     let where_running =
       let glob = Globs.compile rce.RamenSync.Value.TargetConfig.on_site in
@@ -129,7 +130,6 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
     set_keys := Set.add k !set_keys ;
     ZMQClient.send_cmd clt zock ~while_ (SetKey (k, v)) in
   Map.iter (fun worker_ref (rce, info, func, parents) ->
-    (* TODO: also add top halves *)
     let role = RamenSync.Value.Worker.Whole in
     let rc_params =
       List.enum rce.RamenSync.Value.TargetConfig.params |>
@@ -138,23 +138,78 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
       RamenTuple.overwrite_params
         info.RamenSync.Value.SourceInfo.default_params rc_params |>
       List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
+    let is_used = Set.mem worker_ref used in
+    let children = Map.find_default [] worker_ref !all_children in
+    let envvars = O.envvars_of_operation func.FS.operation in
+    let signature =
+      func.FS.signature ^"_"^ RamenParams.signature_of_list params in
     let worker : RamenSync.Value.Worker.t =
-      { enabled = rce.enabled ;
-        debug = rce.debug ;
+      { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
         src_path = Files.remove_ext rce.src_path ;
-        signature =
-          func.FS.signature ^"_"^ RamenParams.signature_of_list params ;
-        is_used = Set.mem worker_ref used ;
-        params ;
-        envvars = O.envvars_of_operation func.FS.operation ;
-        role ;
-        parents ;
-        children = Map.find_default [] worker_ref !all_children } in
+        envvars ; signature ; is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
-        (RamenSync.Value.Worker worker)
+        (RamenSync.Value.Worker worker) ;
+    (* We need a top half for every function with a remote child.
+     * If we shared the same top-half for several local parents, then we would
+     * have to deal with merging/sorting in the top-half.
+     * On the other way around, if we have N remote children with the same FQ
+     * names and signatures (therefore the same WHERE filter) then we need only
+     * one top-half. *)
+    if is_used then (
+      (* for each parent... *)
+      List.iter (fun parent_ref ->
+        (* ..running on a different site... *)
+        if parent_ref.RamenSync.Value.Worker.site <> worker_ref.site then (
+          let top_half_k =
+            (* local part *)
+            parent_ref,
+            (* remote part *)
+            worker_ref.program, worker_ref.func,
+            signature, params in
+          all_top_halves :=
+            Map.modify_opt top_half_k (function
+              | None ->
+                  Some (rce, func, [ worker_ref.site ])
+              | Some (rce, func, sites) ->
+                  Some (rce, func, worker_ref.site :: sites)
+            ) !all_top_halves
+        ) (* else child runs on same site *)
+      ) parents
+    ) (* else this worker is unused, thus we need no top-half for it *)
   ) !all_parents ;
+  (* Now that we have aggregated all top-halves children, actually run them: *)
+  Map.iter (fun (parent_ref, child_prog, child_func, signature, params)
+                (rce, func, sites) ->
+    let service = ServiceNames.tunneld in
+    let tunnelds, _ =
+      List.fold_left (fun (tunnelds, i) site ->
+        match Services.resolve conf site service with
+        | exception Not_found ->
+            !logger.error "No service matching %a:%a, skipping this remote child"
+              N.site_print site
+              N.service_print service ;
+            tunnelds, i + 1
+        | srv ->
+            RamenSync.Value.Worker.{
+              tunneld_host = srv.Services.host ;
+              tunneld_port = srv.Services.port ;
+              parent_num = i
+            } :: tunnelds, i + 1
+      ) ([], 0) sites in
+    let role = RamenSync.Value.Worker.TopHalf tunnelds in
+    let envvars = O.envvars_of_operation func.FS.operation in
+    let worker : RamenSync.Value.Worker.t =
+      { enabled = rce.RamenSync.Value.TargetConfig.enabled ;
+        debug = rce.debug ; report_period = rce.report_period ;
+        src_path = Files.remove_ext rce.src_path ;
+        envvars ; signature ; is_used = true ; params ; role ;
+        parents = [ parent_ref ] ; children = [] } in
+    let fq = N.fq_of_program child_prog child_func in
+    upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))
+        (RamenSync.Value.Worker worker)
+  ) !all_top_halves ;
   (* And delete unused: *)
   ZMQClient.Client.H.iter (fun k _ ->
     if not (Set.mem k !set_keys) then
