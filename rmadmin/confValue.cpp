@@ -11,6 +11,8 @@ extern "C" {
 #include "misc.h"
 #include "confRamenValue.h"
 #include "confValue.h"
+#include "confWorkerRole.h"
+#include "confWorkerRef.h"
 #include "confRCEntryParam.h"
 
 namespace conf {
@@ -178,17 +180,31 @@ Value *valueOfOCaml(value v_)
         String_val(Field(v_, 2)));
       break;
     case WorkerType:
-      ret = new Worker(
-        String_val(Field(v_, 0)),
-        String_val(Field(v_, 1)),
-        String_val(Field(v_, 2)));
+      {
+        v_ = Field(v_, 0);
+        Worker *w = new Worker(
+          Bool_val(Field(v_, 0)), // enabled
+          Bool_val(Field(v_, 1)), // debug
+          Double_val(Field(v_, 2)), // reportPeriod
+          String_val(Field(v_, 3)), // srcPath
+          String_val(Field(v_, 4)), // signature
+          Bool_val(Field(v_, 5)), // used
+          WorkerRole::ofOCamlValue(Field(v_, 8)));
+        // TODO: params etc...
+        // Add the parents:
+        for (tmp1_ = Field(v_, 9); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+          WorkerRef *p = WorkerRef::ofOCamlValue(Field(tmp1_, 0));
+          w->parent_refs.push_back(p);
+        }
+        ret = w;
+      }
       break;
     case RetentionType:
-      tmp1_ = Field(v_, 0);
-      assert(Tag_val(tmp1_) == Double_array_tag);
+      v_ = Field(v_, 0);
+      assert(Tag_val(v_) == Double_array_tag);
       ret = new Retention(
-        Double_field(tmp1_, 0),
-        Double_field(tmp1_, 1));
+        Double_field(v_, 0),
+        Double_field(v_, 1));
       break;
     case TimeRangeType:
       {
@@ -487,28 +503,31 @@ bool Error::operator==(Value const &other) const
   return cmdId == o.cmdId;
 }
 
-Worker::Worker(QString const &site_, QString const &program_, QString const &function_) :
-  Value(WorkerType), site(site_), program(program_), function(function_) {}
+Worker::Worker(bool enabled_, bool debug_, double reportPeriod_, QString const &srcPath_, QString const &signature_, bool used_, WorkerRole *role_) :
+  Value(WorkerType),
+  enabled(enabled_),
+  debug(debug_),
+  reportPeriod(reportPeriod_),
+  srcPath(srcPath_),
+  signature(signature_),
+  used(used_),
+  role(role_) {}
 
-Worker::Worker() : Worker("", "", "") {}
+Worker::Worker() : Worker(false, false, 0., "", "", false, nullptr) {}
 
-Worker::~Worker() {}
-
-QString Worker::toQString() const
+Worker::~Worker()
 {
-  return site + "/" + program + "/" + function;
-}
-
-value Worker::toOCamlValue() const
-{
-  assert(!"Don't know how to convert from a Worker");
+  if (role) delete role;
+  for (auto p : parent_refs) {
+    delete p;
+  }
 }
 
 bool Worker::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Worker const &o = static_cast<Worker const &>(other);
-  return site == o.site && program == o.program && function == o.function;
+  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && signature == o.signature && used == o.used && role == o.role;
 }
 
 Retention::Retention(double duration_, double period_) :

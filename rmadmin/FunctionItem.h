@@ -20,7 +20,7 @@ protected:
 public:
   // tuples owned by this object:
   std::vector<ser::Value const *> tuples;
-  std::optional<bool> isUsed;
+  std::shared_ptr<conf::Worker const> worker;
   std::optional<double> startupTime;
   std::optional<double> eventTimeMin;
   std::optional<double> eventTimeMax;
@@ -34,7 +34,7 @@ public:
 
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:
-  std::vector<FunctionItem const*> parents;
+  std::vector<FunctionItem const *> parents;
   FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~FunctionItem();
   QVariant data(int) const;

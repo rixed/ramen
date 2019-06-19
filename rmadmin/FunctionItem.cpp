@@ -41,7 +41,7 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::labels() cons
   std::vector<std::pair<QString const, QString const>> labels;
   labels.reserve(8);
 
-  if (isUsed && !(*isUsed))
+  if (worker && !worker->used)
     labels.emplace_back("", "UNUSED");
   if (startupTime) {
     QDateTime dt = QDateTime::fromSecsSinceEpoch(*startupTime);

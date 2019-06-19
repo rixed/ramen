@@ -14,6 +14,7 @@ extern "C" {
 #include "CompiledFunctionInfo.h"
 #include "confRamenValue.h"
 #include "confRCEntry.h"
+#include "confWorkerRef.h"
 
 namespace conf {
 
@@ -111,16 +112,22 @@ struct Error : public Value
   bool operator==(Value const &) const;
 };
 
+struct WorkerRole;
+
 struct Worker : public Value
 {
-  QString site;
-  QString program;
-  QString function;
+  bool enabled;
+  bool debug;
+  double reportPeriod;
+  QString const srcPath;
+  QString const signature;
+  bool used;
+  WorkerRole *role;
+  std::list<WorkerRef *> parent_refs; // WorkerRef are owned
+
   Worker();
   ~Worker();
-  Worker(QString const &, QString const &, QString const &);
-  QString toQString() const;
-  value toOCamlValue() const;
+  Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &signature, bool used, WorkerRole *role);
   bool operator==(Value const &) const;
 };
 

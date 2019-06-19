@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cstdio>
 #include <cinttypes>
 #include <QCoreApplication>
@@ -313,7 +314,8 @@ extern RamenValue *RamenValueOfOCaml(value v_)
   RamenValue *ret = nullptr;
 
   if (Is_block(v_)) {
-    switch ((RamenValueType)Tag_val(v_)) {
+    RamenValueType valueType((RamenValueType)Tag_val(v_));
+    switch (valueType) {
       case VFloatType:
         ret = new VFloat(Double_val(Field(v_, 0)));
         break;
@@ -366,7 +368,11 @@ extern RamenValue *RamenValueOfOCaml(value v_)
       case VVecType:
       case VListType:
       case VRecordType:
-        assert(!"TODO: missing RamenValueOfOCaml cases");
+        std::cout << "Unimplemented RamenValueOfOCaml for type "
+                  << QStringOfRamenValueType(true, valueType).toStdString()
+                  << std::endl;
+        ret = new VNull();
+        break;
       case LastRamenValueType:
       default:
         assert(!"Invalid tag, not a RamenValueType");

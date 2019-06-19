@@ -4,19 +4,29 @@
 #include <QVector>
 #include <QPointF>
 #include <QAbstractItemModel>
+#include "confValue.h"
 #include "confKey.h"
 #include "KValue.h"
 #include "GraphItem.h"
 
-/* The tree is 3 layers deep:
+/* The "Graph" described here is the graph of
+ *
+ *   site/$SITE/workers/$FQ/(worker|stats...)
+ *
+ * That we save as a 3 layers tree:
  *
  * - site, with a name and a few other properties like number of workers and
  *   an is_master flag;
  * - programs, with again a name etc;
- * - function, with name etc.
+ * - function, with name, stats, worker etc.
  *
- * The tree model corresponds exactly to this structure, and is populated
- * using callbacks from the conf synchroniser.
+ * The "PerInstance" layer is not feature, but all information about (past)
+ * running processes are instead stored in the function (it would not be
+ * very stimulating to display a graph of instances distinct from the graph of
+ * functions, at least as long as we are supposed to have one process per
+ * function).
+ *
+ * This tree is populated using callbacks from the conf synchroniser.
  *
  * The GraphView uses the same data model. So the model must also be able
  * to return another set of parents (graph ancestors). The graphView slots
@@ -45,10 +55,16 @@ class GraphModel : public QAbstractItemModel
   unsigned paletteSize;
 
   void reorder();
-  FunctionItem const *findWorker(std::shared_ptr<conf::Worker const>);
-  void setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx);
-  void delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const>);
-  void retrySetParents();
+  FunctionItem const *find(QString const &site, QString const &program, QString const &function);
+
+  /* Parents are (re)set when we receive the "worker" object. But some parents
+   * may still be unknown, so we also have a pending list of parents, that
+   * must also be cleared for that child when its "worker" is received. */
+  void addFunctionParent(FunctionItem const *parent, FunctionItem *child);
+  void delayAddFunctionParent(FunctionItem *child, QString const &site, QString const &program, QString const &function);
+  void removeParents(FunctionItem *child);  // also from pendings!
+  void retryAddParents();
+
   void setFunctionProperty(FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setProgramProperty(ProgramItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);

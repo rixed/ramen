@@ -125,7 +125,7 @@ void GraphModel::reorder()
 class ParsedKey {
 public:
   bool valid;
-  QString site, program, function, property;
+  QString site, program, function, property, signature;
   ParsedKey(conf::Key const &k)
   {
     static QRegularExpression re(
@@ -134,11 +134,12 @@ public:
         "workers/(?<program>.+)/"
         "(?<function>[^/]+)/"
         "(?<function_property>"
-          "is_used|parents/\\d|startup_time|"
-          "event_time/min|event_time/max|"
+          "worker|startup_time|"
+          "event_time/(min|max)|"
           "total/(tuples|bytes|cpu)|"
           "max/ram|"
-          "archives/(times|num_files|current_size|alloc_size)"
+          "archives/(times|num_files|current_size|alloc_size)|"
+          "instances/(?<signature>[^/]+)/(?<instance_property>[^/]+)"
         ")"
       "|"
         "(?<site_property>is_master)"
@@ -156,126 +157,173 @@ public:
       function = match.captured("function");
       property = match.captured("function_property");
       if (property.isNull()) {
+        signature = match.captured("signature");
+        property = match.captured("instance_property");
+      }
+      if (property.isNull()) {
         property = match.captured("site_property");
       }
     }
   }
 };
 
-FunctionItem const *GraphModel::findWorker(std::shared_ptr<conf::Worker const> w)
+FunctionItem const *GraphModel::find(QString const &site, QString const &program, QString const &function)
 {
-  //std::cout << "Look for worker " << *w << std::endl;
+  /*std::cout << "Look for function " << site.toStdString() << "/"
+                                      << program.toStdString() << "/"
+                                      << function.toStdString() << std::endl;*/
   for (SiteItem const *siteItem : sites) {
-    if (siteItem->name == w->site) {
+    if (siteItem->name == site) {
       for (ProgramItem const *programItem : siteItem->programs) {
-        if (programItem->name == w->program) {
+        if (programItem->name == program) {
           for (FunctionItem const *functionItem : programItem->functions) {
-            if (functionItem->name == w->function) {
+            if (functionItem->name == function) {
               //std::cout << "Found: " << functionItem->fqName().toStdString() << std::endl;
               return functionItem;
             } else {
               //std::cout << "...not " << functionItem->name.toStdString() << std::endl;
             }
           }
-          //std::cout << "No such function: " << w->function.toStdString() << std::endl;
+          //std::cout << "No such function: " << function.toStdString() << std::endl;
           return nullptr;
         }
       }
-      //std::cout << "No such program: " << w->program.toStdString() << std::endl;
+      //std::cout << "No such program: " << program.toStdString() << std::endl;
       return nullptr;
     }
   }
-  //std::cout << "No such site: " << w->site.toStdString() << std::endl;
+  //std::cout << "No such site: " << site.toStdString() << std::endl;
   return nullptr;
 }
 
-void GraphModel::setFunctionParent(FunctionItem const *parent, FunctionItem *child, int idx)
+void GraphModel::addFunctionParent(FunctionItem const *parent, FunctionItem *child)
 {
-  if ((size_t)idx < child->parents.size()) {
-    FunctionItem const *prev = child->parents[idx];
-    if (prev) emit relationRemoved(prev, child);
-  } else {
-    child->parents.resize(idx+1);
-  }
-  child->parents[idx] = parent;
+  child->parents.push_back(parent);
   emit relationAdded(parent, child);
 }
 
 /* In case we receive a child before its parents we have to wait for the
  * parent before setting up the relationship: */
-struct PendingSetParent {
+struct PendingAddParent {
   /* FIXME: FunctionItem destructors should look in here and remove pending
-   * SetParent for them! */
+   * AddParent for them! */
   FunctionItem *child;
-  int idx;
-  std::shared_ptr<conf::Worker const> worker;
+  QString const site, program, function;
 
-  PendingSetParent(FunctionItem *child_, int idx_, std::shared_ptr<conf::Worker const> worker_) :
-    child(child_), idx(idx_), worker(worker_) {}
+  PendingAddParent(FunctionItem *child_, QString const &site_, QString const &program_, QString const function_) :
+    child(child_), site(site_), program(program_), function(function_) {}
 };
-static std::list<PendingSetParent> pendingSetParents;
+static std::list<PendingAddParent> pendingAddParents;
 
-void GraphModel::delaySetFunctionParent(FunctionItem *child, int idx, std::shared_ptr<conf::Worker const> w)
+void GraphModel::removeParents(FunctionItem *child)
 {
-  // Check that there is no parent already pending for that slot:
-  for (PendingSetParent &p : pendingSetParents) {
-    if (p.child == child && p.idx == idx) {
-      p.worker = w;
-      return;
+  for (size_t i = 0; i < child->parents.size(); i ++) {
+    emit relationRemoved(child->parents[i], child);
+  }
+  child->parents.clear();
+
+  // Also go through the pendingAddParents:
+  for (auto it = pendingAddParents.begin(); it != pendingAddParents.end(); ) {
+    if (it->child == child) {
+      it = pendingAddParents.erase(it);
+    } else {
+      it ++;
     }
   }
-  pendingSetParents.emplace_back(child, idx, w);
 }
 
-void GraphModel::retrySetParents()
+void GraphModel::delayAddFunctionParent(FunctionItem *child, QString const &site, QString const &program, QString const &function)
 {
-  for (auto it = pendingSetParents.begin(); it != pendingSetParents.end(); ) {
-    FunctionItem const *parent = findWorker(it->worker);
+  pendingAddParents.emplace_back(child, site, program, function);
+}
+
+void GraphModel::retryAddParents()
+{
+  for (auto it = pendingAddParents.begin(); it != pendingAddParents.end(); ) {
+    FunctionItem const *parent = find(it->site, it->program, it->function);
     if (parent) {
       //std::cout << "Resolved pending parent" << std::endl;
-      setFunctionParent(parent, it->child, it->idx);
-      it = pendingSetParents.erase(it);
+      addFunctionParent(parent, it->child);
+      it = pendingAddParents.erase(it);
     } else {
-      it++;
+      it ++;
     }
   }
 }
 
 void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
-  static QString const parents_prefix("parents/");
-  if (p == "is_used") {
-    std::shared_ptr<conf::Bool const> cf =
-      std::dynamic_pointer_cast<conf::Bool const>(v);
-    if (cf) functionItem->isUsed = cf->b;
+  if (p == "worker") {
+    std::shared_ptr<conf::Worker const> cf =
+      std::dynamic_pointer_cast<conf::Worker const>(v);
+    if (cf) {
+      functionItem->worker = cf;
+
+      for (auto ref : cf->parent_refs) {
+        /* Try to locate the GraphItem of this parent. If it's not
+         * there yet, enqueue this worker somewhere and revisit this
+         * once a new function appears. */
+        FunctionItem const *parent = find(ref->site, ref->program, ref->function);
+        if (parent) {
+          std::cout << "Set immediate parent" << std::endl;
+          addFunctionParent(parent, functionItem);
+        } else {
+          std::cout << "Set delayed parent" << std::endl;
+          delayAddFunctionParent(functionItem, ref->site, ref->program, ref->function);
+        }
+      }
+
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "startup_time") {
     std::shared_ptr<conf::Float const> cf =
       std::dynamic_pointer_cast<conf::Float const>(v);
-    if (cf) functionItem->startupTime = cf->d;
+    if (cf) {
+      functionItem->startupTime = cf->d;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "event_time/min") {
     std::shared_ptr<conf::Float const> cf =
       std::dynamic_pointer_cast<conf::Float const>(v);
-    if (cf) functionItem->eventTimeMin = cf->d;
+    if (cf) {
+      functionItem->eventTimeMin = cf->d;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "event_time/max") {
     std::shared_ptr<conf::Float const> cf =
       std::dynamic_pointer_cast<conf::Float const>(v);
-    if (cf) functionItem->eventTimeMax = cf->d;
+    if (cf) {
+      functionItem->eventTimeMax = cf->d;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "total/tuples") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->totalTuples = cf->i;
+    if (cf) {
+      functionItem->totalTuples = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "total/bytes") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->totalBytes = cf->i;
+    if (cf) {
+      functionItem->totalBytes = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "total/cpu") {
     std::shared_ptr<conf::Float const> cf =
       std::dynamic_pointer_cast<conf::Float const>(v);
-    if (cf) functionItem->totalCpu = cf->d;
+    if (cf) {
+      functionItem->totalCpu = cf->d;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "max/ram") {
     std::shared_ptr<conf::Int const> cf =
       std::dynamic_pointer_cast<conf::Int const>(v);
-    if (cf) functionItem->maxRAM = cf->i;
+    if (cf) {
+      functionItem->maxRAM = cf->i;
+      emit storagePropertyChanged(functionItem);
+    }
   } else if (p == "archives/times") {
     // TODO
     emit storagePropertyChanged(functionItem);
@@ -299,31 +347,6 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
     if (cf) {
       functionItem->allocArcBytes = cf->i;
       emit storagePropertyChanged(functionItem);
-    }
-  } else if (p.startsWith(parents_prefix)) {
-    int idx = p.mid(parents_prefix.length()).toInt();
-    if (idx >= 0 && (size_t)idx < functionItem->parents.size()+1000) {
-      std::shared_ptr<conf::Worker const> w =
-        std::dynamic_pointer_cast<conf::Worker const>(v);
-      if (w) {
-        /* Try to locate the GraphItem of this worker. If it's not
-         * there yet, enqueue this worker somewhere and revisit this
-         * once a new function appears. */
-        FunctionItem const *parent = findWorker(w);
-        if (parent) {
-          std::cout << "Set immediate parent" << std::endl;
-          setFunctionParent(parent, functionItem, idx);
-        } else {
-          std::cout << "Set delayed parent" << std::endl;
-          delaySetFunctionParent(functionItem, idx, w);
-        }
-      } else {
-        std::cout << "Ignoring function parent " << idx
-                  << " because it is not a worker" << std::endl;
-      }
-    } else {
-      std::cout << "Ignoring bogus request to alter function "
-                << idx << "th parent" << std::endl;
     }
   }
 }
@@ -403,8 +426,8 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         programItem->reorder(this);
         endInsertRows();
         // Since we have a new function, maybe we can solve some of the
-        // pendingSetParents?
-        retrySetParents();
+        // pendingAddParents?
+        retryAddParents();
         emit functionAdded(functionItem);
       }
       setFunctionProperty(functionItem, pk.property, v);
