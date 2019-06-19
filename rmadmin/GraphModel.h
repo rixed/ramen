@@ -65,7 +65,7 @@ class GraphModel : public QAbstractItemModel
   void removeParents(FunctionItem *child);  // also from pendings!
   void retryAddParents();
 
-  void setFunctionProperty(FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
+  void setFunctionProperty(SiteItem const *, ProgramItem const *, FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setProgramProperty(ProgramItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
 

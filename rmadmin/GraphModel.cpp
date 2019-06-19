@@ -251,8 +251,9 @@ void GraphModel::retryAddParents()
   }
 }
 
-void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
+void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const *programItem, FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
+  std::cout << "setFunctionProperty for property " << p.toStdString() << std::endl;
   if (p == "worker") {
     std::shared_ptr<conf::Worker const> cf =
       std::dynamic_pointer_cast<conf::Worker const>(v);
@@ -260,16 +261,28 @@ void GraphModel::setFunctionProperty(FunctionItem *functionItem, QString const &
       functionItem->worker = cf;
 
       for (auto ref : cf->parent_refs) {
+        /* If the parent is not local then assume the existence of a top-half
+         * for this function running on the remote site: */
+        QString psite, pprog, pfunc;
+        if (ref->site == siteItem->name) {
+          psite = ref->site;
+          pprog = ref->program;
+          pfunc = ref->function;
+        } else {
+          psite = ref->site;
+          pprog = programItem->name;
+          pfunc = functionItem->name;
+        }
         /* Try to locate the GraphItem of this parent. If it's not
          * there yet, enqueue this worker somewhere and revisit this
          * once a new function appears. */
-        FunctionItem const *parent = find(ref->site, ref->program, ref->function);
+        FunctionItem const *parent = find(psite, pprog, pfunc);
         if (parent) {
           std::cout << "Set immediate parent" << std::endl;
           addFunctionParent(parent, functionItem);
         } else {
           std::cout << "Set delayed parent" << std::endl;
-          delayAddFunctionParent(functionItem, ref->site, ref->program, ref->function);
+          delayAddFunctionParent(functionItem, psite, pprog, pfunc);
         }
       }
 
@@ -430,7 +443,7 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         retryAddParents();
         emit functionAdded(functionItem);
       }
-      setFunctionProperty(functionItem, pk.property, v);
+      setFunctionProperty(siteItem, programItem, functionItem, pk.property, v);
       functionItem->update();
     } else {
       setProgramProperty(programItem, pk.property, v);
