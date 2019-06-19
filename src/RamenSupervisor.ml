@@ -1308,7 +1308,7 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
     F.unserialized pname in
   let worker_of_ref what ref =
     let fq = N.fq_of_program ref.RamenSync.Value.Worker.program ref.func in
-    let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
+    let k = RamenSync.Key.PerSite (ref.site, PerWorker (fq, Worker)) in
     find_or_fail ("a worker for "^ what) clt k (function
       | Some (RamenSync.Value.Worker w) -> Some w
       | _ -> None) in
@@ -1422,7 +1422,11 @@ let synchronize_running_sync conf _autoreload_delay =
       ) ()
     done in
   let topics =
-    [ "sites/"^ (conf.C.site :> string) ^"/workers/*" ;
+    [ (* All sites are needed because we need parent worker :(
+         TODO: add whatever is needed from the parents (ie. output type)
+         in this site workers so we need to listen at only the local
+         site. *)
+      "sites/*/workers/*" ;
       "sources/*/info" ] in
   ZMQClient.(start ~while_ conf.C.sync_url conf.C.login ~topics
                    ~recvtimeo:1. ~sndtimeo:1. loop)
