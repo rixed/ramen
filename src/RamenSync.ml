@@ -599,17 +599,23 @@ struct
        * confsync clients: *)
       { tunneld_host : N.host ; tunneld_port : int ; parent_num : int }
 
+    let print_ref oc ref =
+      Printf.fprintf oc "%a:%a/%a"
+        N.site_print ref.site
+        N.program_print ref.program
+        N.func_print ref.func
+
     let print_role oc = function
       | Whole -> String.print oc "whole worker"
       | TopHalf _ -> String.print oc "top half"
 
     let print oc w =
-      Printf.fprintf oc "%a for %a (sign:%S, %d parents, %d children)"
+      Printf.fprintf oc "%a for %a (sign:%S, parents:%a, children:%a)"
         print_role w.role
         N.path_print w.src_path
         w.signature
-        (List.length w.parents)
-        (List.length w.children)
+        (List.print print_ref) w.parents
+        (List.print print_ref) w.children
 
     let is_top_half = function
       | TopHalf _ -> true
