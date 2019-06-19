@@ -129,6 +129,15 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
   let upd k v =
     set_keys := Set.add k !set_keys ;
     ZMQClient.send_cmd clt zock ~while_ (SetKey (k, v)) in
+  (* Notes regarding non-local children/parents:
+   * We never ref top-halves (a ref is only site/program/function, no
+   * role). But every time a children is not local, it can be assumed
+   * that a top-half will run on the local site for that program/function.
+   * Similarly, every time a parent is not local it can be assumed
+   * a top-half runs on the remote site for the present program/function.
+   * Top halves created by the choreographer will have no children (the
+   * tunnelds they connect to are to be found in the role record) and
+   * the actual parent as parents. *)
   Map.iter (fun worker_ref (rce, info, func, parents) ->
     let role = RamenSync.Value.Worker.Whole in
     let rc_params =
@@ -139,7 +148,8 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
         info.RamenSync.Value.SourceInfo.default_params rc_params |>
       List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
     let is_used = Set.mem worker_ref used in
-    let children = Map.find_default [] worker_ref !all_children in
+    let children =
+      Map.find_default [] worker_ref !all_children in
     let envvars = O.envvars_of_operation func.FS.operation in
     let signature =
       func.FS.signature ^"_"^ RamenParams.signature_of_list params in
@@ -160,7 +170,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
     if is_used then (
       (* for each parent... *)
       List.iter (fun parent_ref ->
-        (* ..running on a different site... *)
+        (* ...running on a different site... *)
         if parent_ref.RamenSync.Value.Worker.site <> worker_ref.site then (
           let top_half_k =
             (* local part *)
