@@ -75,8 +75,69 @@ let kill_locked ?(purge=false) program_names programs =
     ) running_killed_prog_names ;
   List.length killed_prog_names
 
+let cannot what k : unit =
+  let open RamenSync in
+  Printf.sprintf2 "Cannot %s key %a" what Key.print k |>
+  failwith
+
+let bad_type expected actual k =
+  let open RamenSync in
+  Printf.sprintf2 "Invalid type for key %a: got %a but wanted a %s"
+    Key.print k
+    Value.print actual
+    expected |>
+  failwith
+
+let get_key clt zock ~while_ k cont =
+  let open RamenSync in
+  !logger.debug "get_key %a" Key.print k ;
+  ZMQClient.(send_cmd clt zock ~while_ (LockKey k)
+    ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
+      match ZMQClient.Client.(H.find clt.h) k with
+      | exception Not_found ->
+          cannot "find" k
+      | hv ->
+          cont hv.value ;
+          ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k))))
+
+let kill_sync conf program_names =
+  let done_ = ref false in
+  let while_ () = !Processes.quit = None && not !done_ in
+  let num_kills = ref 0 in
+  let topics = [ "target_config" ] in
+  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
+    (fun zock clt ->
+      let open RamenSync in
+      get_key clt zock ~while_ Key.TargetConfig (function
+        | Value.TargetConfig rcs ->
+            (* TODO: check_orphans running_killed_prog_names programs ; *)
+            let rcs =
+              List.filter (fun ((program_name : N.program), _rce) ->
+                if List.exists (fun glob ->
+                     Globs.matches glob (program_name :> string)
+                   ) program_names
+                then (
+                  incr num_kills ;
+                  false
+                ) else true
+              ) rcs in
+            let rcs = Value.TargetConfig rcs in
+            ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
+              ~on_done:(fun () ->
+                !logger.info "Done!" ;
+                done_ := true)
+
+        | v -> bad_type "TargetConfig" v Key.TargetConfig) ;
+      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      !logger.debug "Received %d messages" msg_count) ;
+    !num_kills
+
 let kill conf ?purge program_names =
-  RC.with_wlock conf (kill_locked ?purge program_names)
+  if conf.C.sync_url = "" then (
+    RC.with_wlock conf (kill_locked ?purge program_names)
+  ) else (
+    kill_sync conf program_names
+  )
 
 (*
  * Starting a new worker from a binary.
@@ -205,37 +266,17 @@ let run_sync src_path conf (program_name : N.program) replace report_period
              on_site debug params =
   let done_ = ref false in
   let while_ () = !Processes.quit = None && not !done_ in
-  let login = conf.C.login in
   let src_path = Files.remove_ext src_path in
   let topics =
     [ "target_config" ;
       "sources/"^ (src_path :> string) ^ "/info" ] in
-  ZMQClient.start ~while_ conf.C.sync_url login ~topics
+  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
     (fun zock clt ->
       let open RamenSync in
-      let cannot what k : unit =
-        Printf.sprintf2 "Cannot %s key %a" what Key.print k |>
-        failwith in
-      let bad_type expected actual k =
-        Printf.sprintf2 "Invalid type for key %a: got %a but wanted a %s"
-          Key.print k
-          Value.print actual
-          expected |>
-        failwith in
-      let get_key k cont =
-        !logger.debug "get_key %a" Key.print k ;
-        ZMQClient.(send_cmd clt zock ~while_ (LockKey k)
-          ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
-            match ZMQClient.Client.(H.find clt.h) k with
-            | exception Not_found ->
-                cannot "find" k
-            | hv ->
-                cont hv.value ;
-                ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k)))) in
-      get_key Key.TargetConfig (function
+      get_key clt zock ~while_ Key.TargetConfig (function
         | Value.TargetConfig rcs ->
             let src_key = Key.(Sources (src_path, "info")) in
-            get_key src_key (function
+            get_key clt zock ~while_ src_key (function
               | Value.SourceInfo { detail = Compiled prog ; _ } ->
                   (* Check linkage. *)
                   let param_names = Hashtbl.keys params |> Set.of_enum in
