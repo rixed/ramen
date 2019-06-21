@@ -610,12 +610,14 @@ struct
       | TopHalf _ -> String.print oc "top half"
 
     let print oc w =
-      Printf.fprintf oc "%a for %a (sign:%S, parents:%a, children:%a)"
+      Printf.fprintf oc
+        "%a with source:%a, sign:%S, parents:%a, children:%a, params:%a"
         print_role w.role
         N.path_print w.src_path
         w.signature
         (List.print print_ref) w.parents
         (List.print print_ref) w.children
+        RamenParams.print_list w.params
 
     let is_top_half = function
       | TopHalf _ -> true

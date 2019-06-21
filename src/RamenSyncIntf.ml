@@ -253,7 +253,7 @@ struct
       | AuthErr msg ->
           Printf.fprintf oc "AuthErr %s" msg
       | SetKey (k, v, uid, mtime) ->
-          Printf.fprintf oc "SetKey (%a, %ai, %s, %f)"
+          Printf.fprintf oc "SetKey (%a, %a, %s, %f)"
             Key.print k
             Value.print v
             uid
