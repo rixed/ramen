@@ -16,6 +16,7 @@ module RC = C.Running
 module F = C.Func
 module P = C.Program
 module FS = F.Serialized
+module PS = P.Serialized
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
@@ -112,11 +113,7 @@ let parent_from_confserver clt (pn : N.program) =
   !logger.debug "Looking for key %a" Key.print info_key ;
   match ZMQClient.Client.H.find clt.ZMQClient.Client.h info_key with
   | { value = Value.SourceInfo { detail = Compiled info } ; _ } ->
-      P.{ params = info.default_params ;
-          condition =
-            Option.map (IO.to_string (E.print false)) info.condition ;
-          funcs =
-            List.map (F.unserialized pn) info.funcs }
+      P.unserialized pn info
   | _ -> raise Not_found
 
 (*
@@ -392,8 +389,7 @@ let precompile conf get_parent source_file (program_name : N.program) =
     if not (reach_fixed_point (fun () ->
         let no_io _ = assert false in (* conditions cannot use in/out tuples *)
         let changed =
-          Option.map_default
-            (set_expr_units no_io no_io "run condition") false condition in
+          set_expr_units no_io no_io "run condition" condition in
         Hashtbl.fold (fun _ func changed ->
           set_operation_units func || changed
         ) compiler_funcs changed)) then
@@ -487,10 +483,8 @@ let precompile conf get_parent source_file (program_name : N.program) =
     in
     loop (Hashtbl.keys compiler_funcs |> List.of_enum) ;
     (* Also check that the running condition have been typed: *)
-    Option.may (fun cond ->
-      E.iter (check_typed "Running condition") cond
-    ) condition ;
-    RamenSync.Value.SourceInfo.{
+    E.iter (check_typed "Running condition") condition ;
+    PS.{
       default_params = parsed_params ;
       condition ;
       funcs =
@@ -537,7 +531,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         List.rev_append
           (O.envvars_of_operation func.FS.operation)
           envvars
-      ) [] info.RamenSync.Value.SourceInfo.funcs |>
+      ) [] info.PS.funcs |>
       List.fast_sort N.compare in
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
@@ -620,7 +614,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
         CodeGen_OCaml.emit_header params_mod_name oc ;
         (* Emit the running condition: *)
         CodeGen_OCaml.emit_running_condition
-          oc params envvars info.RamenSync.Value.SourceInfo.condition ;
+          oc params envvars info.PS.condition ;
         (* Embed in the binary all info required for running it: the program
          * name, the function names, their signature, input and output types,
          * force export and merge flags, and parameters default values. We
@@ -628,7 +622,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
          * possible to also analyze the program. For simplicity, all those
          * info are also computed from the operation when we load a program. *)
         let runconf =
-          P.Serialized.{
+          PS.{
             funcs =
               List.map (fun func ->
                 F.Serialized.{
@@ -638,11 +632,9 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
                   doc = func.FS.doc ;
                   operation = func.FS.operation ;
                   signature = func.FS.signature }
-              ) info.RamenSync.Value.SourceInfo.funcs ;
-            params ;
-            condition =
-              Option.map (IO.to_string (E.print false))
-                         info.RamenSync.Value.SourceInfo.condition
+              ) info.PS.funcs ;
+            default_params = params ;
+            condition = info.PS.condition
           } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
           (Marshal.(to_string runconf [])) ;
@@ -666,7 +658,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
             mod_name EntryPoints.top_half
             mod_name EntryPoints.replay
             mod_name EntryPoints.convert
-        ) info.RamenSync.Value.SourceInfo.funcs ;
+        ) info.PS.funcs ;
         Printf.fprintf oc "\t]\n"
       ) in
     (*

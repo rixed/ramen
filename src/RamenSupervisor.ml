@@ -11,6 +11,7 @@ module RC = C.Running
 module F = C.Func
 module FS = F.Serialized
 module P = C.Program
+module PS = P.Serialized
 module E = RamenExpr
 module O = RamenOperation
 module N = RamenName
@@ -697,7 +698,7 @@ let build_must_run conf =
               { program_name = ge.func.F.program_name ;
                 func_name = ge.func.F.name ;
                 func_signature = ge.func.F.signature ;
-                params = ge.prog.P.params ;
+                params = ge.prog.P.default_params ;
                 role = Whole } in
             let v =
               { key ; rce = ge.rce ; func = ge.func ; parents } in
@@ -733,7 +734,7 @@ let build_must_run conf =
                     pp, pf,
                     (* remote part *)
                     ge.FuncGraph.func.F.program_name, ge.func.F.name,
-                    ge.func.F.signature, ge.prog.P.params in
+                    ge.func.F.signature, ge.prog.P.default_params in
                   (* We could meet several times the same func on different
                    * sites, but that would be the same rce and func! *)
                   Hashtbl.modify_opt k (function
@@ -1303,7 +1304,7 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
   let bin_file = get_bin_file conf clt site fq sign info in
   let func_of_precompiled precompiled pname fname =
     List.find (fun f -> f.FS.name = fname)
-      precompiled.RamenSync.Value.SourceInfo.funcs |>
+      precompiled.PS.funcs |>
     (* Temporarily: *)
     F.unserialized pname in
   let worker_of_ref what ref =

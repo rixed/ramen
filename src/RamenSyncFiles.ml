@@ -205,10 +205,9 @@ struct
         (match get_rc () with
         | exception _ -> ()
         | p ->
-            Option.may (fun condition ->
-              upd (Key.PerProgram (pname, RunCondition))
-                  (Some Value.(String condition))
-            ) p.P.condition ;
+            upd (Key.PerProgram (pname, RunCondition))
+                (Some Value.(String
+                  (IO.to_string (E.print false) p.P.condition))) ;
             List.iter (fun f ->
               let upd fk v =
                 upd (Key.PerProgram (pname, PerFunction (f.F.name, fk)))

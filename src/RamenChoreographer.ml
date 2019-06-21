@@ -7,6 +7,8 @@ open RamenConsts
 module C = RamenConf
 module F = C.Func
 module FS = F.Serialized
+module P = C.Program
+module PS = P.Serialized
 module O = RamenOperation
 module N = RamenName
 module Services = RamenServices
@@ -145,7 +147,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
       Hashtbl.of_enum in
     let params =
       RamenTuple.overwrite_params
-        info.RamenSync.Value.SourceInfo.default_params rc_params |>
+        info.PS.default_params rc_params |>
       List.map (fun p -> p.RamenTuple.ptyp.name, p.value) in
     let is_used = Set.mem worker_ref used in
     let children =

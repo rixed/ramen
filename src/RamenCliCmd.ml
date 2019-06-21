@@ -555,13 +555,11 @@ let info _conf params program_name_opt bin_file opt_func_name () =
       RamenRun.default_program_name bin_file
     ) program_name_opt in
   let prog = P.of_bin program_name params bin_file in
-  if prog.params <> [] then (
+  if prog.default_params <> [] then (
     TermTable.print_head 0 "Parameters" ;
-    TermTable.print 1 "%a" RamenTuple.print_params prog.params) ;
-  Option.may (fun run_cond ->
-    TermTable.print_head 0 "Running condition" ;
-    TermTable.print_string 1 run_cond
-  ) prog.condition ;
+    TermTable.print 1 "%a" RamenTuple.print_params prog.default_params) ;
+  TermTable.print_head 0 "Running condition" ;
+  TermTable.print 1 "%a" (RamenExpr.print true) prog.condition ;
   let info_func i func =
     TermTable.print i "%s" (N.func_color func.F.name) ;
     if func.doc <> "" then TermTable.print_abstract i func.doc ;
@@ -1195,7 +1193,7 @@ let timerange conf fq () =
         O.out_type_of_operation ~with_private:false func.F.operation in
       let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ |>
                 List.map fst in
-      let params = prog.P.params in
+      let params = prog.P.default_params in
       let event_time =
         O.event_time_of_operation func.operation in
       RamenSerialization.time_range bname ser params event_time

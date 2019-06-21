@@ -86,7 +86,7 @@ let read_output conf ?duration (fq : N.fq) where =
             RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
             List.map fst in
           let filter = RamenSerialization.filter_tuple_by ser where in
-          bname, true, filter, ser, prog.P.params, event_time)
+          bname, true, filter, ser, prog.P.default_params, event_time)
 
 (* Returns an array of index in [typ] tuple * field type.
  * Index -1 it for t1 and index -2 for t2. *)
@@ -184,7 +184,7 @@ let replay conf ?(while_=always) fq field_names where since until
                 else (fun _ -> 0., 0.)
             | Some et ->
                 RamenSerialization.event_time_of_tuple
-                  ser prog.P.params et
+                  ser prog.P.default_params et
           in
           let unserialize =
             RamenSerialization.read_array_of_values ser in

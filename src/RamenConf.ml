@@ -18,6 +18,7 @@ open RamenHelpers
 open RamenConsts
 module O = RamenOperation
 module N = RamenName
+module E = RamenExpr
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Retention = RamenRetention
@@ -195,26 +196,26 @@ end
 module Program =
 struct
   type t =
-    { params : RamenTuple.params [@ppp_default []] ;
-      condition : string option ; (* for debug only *)
+    { default_params : RamenTuple.params ;
+      condition : E.t ; (* for debug only *)
       funcs : Func.t list }
 
   module Serialized = struct
     type t =
-      { params : RamenTuple.params [@ppp_default []] ;
-        condition : string option ; (* for debug only *)
+      { default_params : RamenTuple.params [@ppp_default []] ;
+        condition : E.t ; (* for debug only *)
         funcs : Func.Serialized.t list }
       [@@ppp PPP_OCaml]
   end
 
   let serialized (t : t) =
     Serialized.{
-      params = t.params ;
+      default_params = t.default_params ;
       condition = t.condition ;
       funcs = List.map Func.serialized t.funcs }
 
   let unserialized program_name (t : Serialized.t) =
-    { params = t.params ;
+    { default_params = t.default_params ;
       condition = t.condition ;
       funcs = List.map (Func.unserialized program_name) t.funcs }
 
@@ -292,7 +293,7 @@ struct
     fun ?(errors_ok=false) program_name params (fname : N.path) ->
       let p = get_prog (program_name, fname) errors_ok in
       (* Patch actual parameters (in a _new_ prog not the cached one!): *)
-      { params = RamenTuple.overwrite_params p.params params ;
+      { default_params = RamenTuple.overwrite_params p.default_params params ;
         funcs = List.map (fun f -> Func.{ f with program_name }) p.funcs ;
         condition = p.condition }
 

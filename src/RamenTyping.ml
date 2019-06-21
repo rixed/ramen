@@ -1552,7 +1552,7 @@ let emit_minimize oc condition funcs =
    * slightly faster: *)
   Printf.fprintf oc "(set-option :opt.priority box)\n";
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (E.iter (cost_of_expr ())) condition ;
+  E.iter (cost_of_expr ()) condition ;
   List.iter (fun func ->
     O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
@@ -1569,7 +1569,7 @@ let emit_minimize oc condition funcs =
         Printf.fprintf oc " (cost_of_sign %s)" eid
     | _ -> () in
   Printf.fprintf oc "(minimize (+ 0" ;
-  Option.may (E.iter (cost_of_expr ())) condition ;
+  E.iter (cost_of_expr ()) condition ;
   List.iter (fun func ->
     O.iter_expr cost_of_expr func.F.operation
   ) funcs ;
@@ -1688,10 +1688,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     Hashtbl.replace h field_name e
   in
   let program_iter f condition funcs =
-    Option.may (fun cond ->
-        E.iter (f ?func:None "Running condition" "") cond |>
-        ignore
-    ) condition ;
+    E.iter (f ?func:None "Running condition" "") condition |>
+    ignore ;
     List.iter (fun func ->
       let what =
         Printf.sprintf2 "Function %a" N.func_print func.F.name in
@@ -2059,10 +2057,8 @@ let emit_smt2 parents tuple_sizes records field_names condition funcs params oc 
   let in_types, param_type, env_type =
     emit_in_types decls io_types tuple_sizes records field_names parents
                   params condition funcs in
-  Option.may (
-    emit_running_condition declare tuple_sizes records field_names
-                           param_type env_type expr_types
-  ) condition ;
+  emit_running_condition declare tuple_sizes records field_names
+                         param_type env_type expr_types condition ;
   emit_program declare tuple_sizes records field_names
                in_types out_types param_type env_type expr_types funcs ;
   if optimize then emit_minimize expr_types condition funcs ;
@@ -2374,7 +2370,7 @@ let apply_types parents condition funcs h =
         !logger.warning "No type for expression %a"
           (E.print true) e
     | typ -> e.E.typ <- typ in
-  Option.may (E.iter (apply ())) condition ;
+  E.iter (apply ()) condition ;
   Hashtbl.iter (fun _ func ->
     O.iter_expr apply func.F.operation
   ) funcs ;

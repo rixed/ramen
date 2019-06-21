@@ -3609,16 +3609,12 @@ let emit_running_condition oc params envvars cond =
     { op = None ; event_time = None ; func_name = None ;
       params ; code ; consts ; typ = [] } in
   fail_with_context "running condition" (fun () ->
-    (match cond with
-    | Some cond ->
-        (* Running condition has no input/output tuple but must have a
-         * value once and for all depending on params/env only: *)
-        let env_env, param_env = static_environments params envvars in
-        let env = param_env @ env_env in
-        Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
-          (emit_expr ~env ~context:Finalize ~opc) cond
-    | None ->
-        Printf.fprintf opc.code "let run_condition_ () = true") ;
+    (* Running condition has no input/output tuple but must have a
+     * value once and for all depending on params/env only: *)
+    let env_env, param_env = static_environments params envvars in
+    let env = param_env @ env_env in
+    Printf.fprintf opc.code "let run_condition_ () =\n\t%a\n\n"
+      (emit_expr ~env ~context:Finalize ~opc) cond ;
     Printf.fprintf oc "%s\n%s\n"
       (IO.close_out opc.consts) (IO.close_out opc.code))
 

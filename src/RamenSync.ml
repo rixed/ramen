@@ -664,21 +664,12 @@ struct
       (* Maybe distinguish linking errors that can go away independently?*)
       | Failed of failed
 
-    and compiled =
-      { default_params : RamenTuple.param list ;
-        condition : E.t option ;
-        funcs : function_info list }
+    and compiled = RamenConf.Program.Serialized.t
 
     and failed =
       { err_msg : string }
 
     and function_info = RamenConf.Func.Serialized.t
-      (*{ name : N.func ;
-        retention : Retention.t option ;
-        is_lazy : bool ;
-        doc : string ;
-        operation : O.t ;
-        signature : string }*)
 
     let compiled i =
       match i.detail with

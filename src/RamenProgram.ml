@@ -89,28 +89,25 @@ let print_func oc n =
 
 let print oc (params, run_cond, funcs) =
   List.print ~first:"" ~last:"" ~sep:"" print_param oc params ;
-  Option.may
-    (Printf.fprintf oc "RUN IF %a;" (E.print false))
-    run_cond ;
+  if not (E.is_true run_cond) then
+    Printf.fprintf oc "RUN IF %a;\n" (E.print false) run_cond ;
   List.print ~first:"" ~last:"" ~sep:"\n" print_func oc funcs
 
 (* Check that a syntactically valid program is actually valid: *)
 
 let checked (params, run_cond, funcs) =
   let run_cond =
-    Option.map (O.prefix_def params TupleEnv) run_cond in
-  Option.may (
-    (* Check the running condition does not use any IO tuple: *)
-    E.iter (fun _s e ->
-      match e.E.text with
-      | Variable tuple when
-        tuple_has_type_input tuple ||
-        tuple_has_type_output tuple ->
-          Printf.sprintf "Running condition cannot use tuple %s"
-            (string_of_prefix tuple) |>
-          failwith
-      | _ -> ())
-  ) run_cond ;
+    O.prefix_def params TupleEnv run_cond in
+  (* Check the running condition does not use any IO tuple: *)
+  E.iter (fun _s e ->
+    match e.E.text with
+    | Variable tuple when
+      tuple_has_type_input tuple ||
+      tuple_has_type_output tuple ->
+        Printf.sprintf "Running condition cannot use tuple %s"
+          (string_of_prefix tuple) |>
+        failwith
+    | _ -> ()) run_cond ;
   let anonymous = N.func "<anonymous>" in
   let name_not_unique name =
     Printf.sprintf "Name %s is not unique" name |> failwith in
@@ -322,22 +319,24 @@ struct
 
   let p m =
     let m = "program" :: m in
+    let default_run_cond = E.of_bool true in
     let sep = opt_blanks -- char ';' -- opt_blanks in
     (
       several ~sep ((func >>: fun f -> DefFunc f) |||
                     (params >>: fun lst -> DefParams lst) |||
                     (run_cond >>: fun e -> DefRunCond e)) +-
       optional ~def:() (opt_blanks -- char ';') >>: fun defs ->
-        let params, run_cond, funcs =
-          List.fold_left (fun (params, run_cond, funcs) -> function
-            | DefFunc func -> params, run_cond, func::funcs
-            | DefParams lst -> List.rev_append lst params, run_cond, funcs
+        let params, run_cond_opt, funcs =
+          List.fold_left (fun (params, run_cond_opt, funcs) -> function
+            | DefFunc func -> params, run_cond_opt, func::funcs
+            | DefParams lst -> List.rev_append lst params, run_cond_opt, funcs
             | DefRunCond e ->
-                if run_cond <> None then
+                if run_cond_opt <> None then
                   raise (Reject "Cannot have more than one global running \
                                  condition") ;
                 params, Some e, funcs
           ) ([], None, []) defs in
+        let run_cond = run_cond_opt |? default_run_cond in
         RamenTuple.params_sort params, run_cond, funcs
     ) m
 
