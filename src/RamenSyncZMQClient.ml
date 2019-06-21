@@ -5,8 +5,11 @@ open RamenLog
 open RamenHelpers
 
 module Value = RamenSync.Value
-module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
 module Key = RamenSync.Key
+module User = RamenSync.User
+module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
+module CltMsg = Client.CltMsg
+module SrvMsg = Client.SrvMsg
 
 let retry_zmq ?while_ f =
   let on = function
@@ -24,15 +27,24 @@ let retry_zmq ?while_ f =
  * `raise Timeout` in that case. *)
 let on_oks : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
 let on_kos : (int, unit -> unit) Hashtbl.t = Hashtbl.create 5
+(* When we exec a command we might also want to have a callback when it's
+ * actually effective (which is not the same as the command being accepted).
+ * So here we register call backs that will be triggered automatically when a
+ * given server command is received (regardless of mtime etc). *)
+let on_dones : (Key.t, int * (SrvMsg.t -> bool) * (unit -> unit)) Hashtbl.t =
+  Hashtbl.create 5
 
 (* Return the number of pending callbacks.
  * Also a good place to time them out. *)
 let pending_callbacks () =
-  Hashtbl.length on_oks + Hashtbl.length on_kos
+  Hashtbl.length on_oks + Hashtbl.length on_kos + Hashtbl.length on_dones
+
+let log_done cmd_id =
+  !logger.debug "Cmd %d: done!" cmd_id
 
 (* Given a callback, return another cllback that intercept error messages and call
  * RPC continuations first: *)
-let check_err on_msg =
+let check_set_cbs new_key on_msg =
   let maybe_cb ~do_ ~dont cmd_id =
     Hashtbl.modify_opt cmd_id (function
       | None -> None
@@ -55,7 +67,49 @@ let check_err on_msg =
       | v ->
           !logger.error "Error value is not an error: %a" Value.print v
     ) ;
+    Hashtbl.modify_opt k (function
+      | None -> None
+      | Some (cmd_id, filter, cb) as prev ->
+          let srv_cmd =
+            if new_key then SrvMsg.NewKey (k, v, u, mt)
+                       else SrvMsg.SetKey (k, v, u, mt) in
+          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
+    ) on_dones ;
     on_msg clt k v u mt
+
+let check_del_cbs on_msg =
+  fun clt k prev_v ->
+    Hashtbl.modify_opt k (function
+      | None -> None
+      | Some (cmd_id, filter, cb) as prev ->
+          let srv_cmd = SrvMsg.DelKey k in
+          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
+    ) on_dones ;
+    on_msg clt k prev_v
+
+let check_lock_cbs on_msg =
+  fun clt k uid ->
+    Hashtbl.modify_opt k (function
+      | None ->
+          !logger.debug "No done cb for key %a" Key.print k ;
+          None
+      | Some (cmd_id, filter, cb) as prev ->
+          !logger.debug "Found a done filter for unlock of %a"
+            Key.print k ;
+          let srv_cmd = SrvMsg.LockKey (k, uid) in
+          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
+    ) on_dones ;
+    on_msg clt k uid
+
+let check_unlock_cbs on_msg =
+  fun clt k ->
+    Hashtbl.modify_opt k (function
+      | None -> None
+      | Some (cmd_id, filter, cb) as prev ->
+          let srv_cmd = SrvMsg.UnlockKey k in
+          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
+    ) on_dones ;
+    on_msg clt k
 
 (* As the same user might be sending commands at the same time, rather use
  * start from a random cmd_id so different client programs can tell their
@@ -64,7 +118,9 @@ let next_id = ref None
 let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
-let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
+let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
+  let my_uid =
+    IO.to_string User.print_id clt.Client.uid in
   let cmd_id =
     match !next_id with
     | None ->
@@ -73,7 +129,7 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
     | Some i -> i in
   next_id := Some (cmd_id + 1) ;
   let msg = cmd_id, cmd in
-  !logger.debug "> Clt msg: %a" Client.CltMsg.print msg ;
+  !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
     Option.may (fun cb ->
       assert (clt.Client.my_errors <> None) ;
@@ -84,7 +140,45 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
     ) cb in
   save_cb on_oks "SyncZMQClient.on_oks" on_ok ;
   save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
-  let s = Client.CltMsg.to_string msg in
+  Option.may (fun cb ->
+    let add_done_cb cb k filter =
+      Hashtbl.add on_dones k (cmd_id, filter, cb) in
+    match cmd with
+    | CltMsg.Auth _
+    | CltMsg.StartSync _ ->
+        ()
+    | CltMsg.SetKey (k, v)
+    | CltMsg.NewKey (k, v)
+    | CltMsg.UpdKey (k, v) ->
+        add_done_cb cb k
+          (function
+          | SrvMsg.SetKey (_, v', _, _)
+          | SrvMsg.NewKey (_, v', _, _) when Value.equal v v' -> true
+          | _ -> false)
+    | CltMsg.DelKey k ->
+        add_done_cb cb k
+          (function
+          | SrvMsg.DelKey _ -> true
+          | _ -> false)
+    | CltMsg.LockKey k
+    | CltMsg.LockOrCreateKey k ->
+        add_done_cb cb k
+          (function
+          | SrvMsg.LockKey (_, uid) when uid = my_uid -> true
+          | SrvMsg.LockKey (k, uid) ->
+              !logger.debug
+                "Received an unlock for key %a but for user %S instead of %S"
+                Key.print k
+                uid my_uid ;
+              false
+          | _ -> false)
+    | CltMsg.UnlockKey k ->
+        add_done_cb cb k
+          (function
+          | SrvMsg.UnlockKey _ -> true
+          | _ -> false)
+  ) on_done ;
+  let s = CltMsg.to_string msg in
   (match while_ with
   | None ->
       Zmq.Socket.send_all zock [ "" ; s ]
@@ -113,15 +207,15 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko cmd =
             hv.eagerly <- Deleted)
     | _ ->
         !logger.debug "Cannot do %a eagerly"
-          Client.CltMsg.print_cmd cmd
+          CltMsg.print_cmd cmd
   )
 
 let recv_cmd zock =
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
       (* !logger.debug "srv message (raw): %S" s ; *)
-      let msg = Client.SrvMsg.of_string s in
-      !logger.debug "< Srv msg: %a" Client.SrvMsg.print msg ;
+      let msg = SrvMsg.of_string s in
+      !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
       msg
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
@@ -130,7 +224,7 @@ let recv_cmd zock =
 
 let unexpected_reply cmd =
   Printf.sprintf "Unexpected reply %s"
-    (Client.SrvMsg.to_string cmd) |>
+    (SrvMsg.to_string cmd) |>
   failwith
 
 (* This locks keys one by one (waiting for the answer at every step.
@@ -147,11 +241,11 @@ let lock_matching clt zock ?while_ f k =
     | key :: rest ->
         let on_ko' () =
           send_cmd clt zock ?while_ ~on_ok:on_ko ~on_ko
-            (Client.CltMsg.UnlockKey key) in
+            (CltMsg.UnlockKey key) in
         let cont () =
           loop on_ko' rest in
         send_cmd clt zock ?while_ ~on_ok:cont ~on_ko
-          (Client.CltMsg.LockKey key) in
+          (CltMsg.LockKey key) in
   loop ignore keys
 
 (* FIXME: handle errors somehow *)
@@ -162,16 +256,16 @@ let unlock_matching clt zock ?while_ f k =
     | key :: rest ->
         let cont () = loop rest in
         send_cmd clt zock ?while_ ~on_ok:cont
-          (Client.CltMsg.LockKey key) in
+          (CltMsg.LockKey key) in
   loop keys
 
 module Stage =
 struct
   type t = | Conn | Auth | Sync
   let to_string = function
-    | Conn -> "Connecting"
-    | Auth -> "Authenticating"
-    | Sync -> "Synchronizing"
+    | Conn -> "Connection"
+    | Auth -> "Authentication"
+    | Sync -> "Synchronization"
   let print oc s =
     String.print oc (to_string s)
 end
@@ -214,12 +308,12 @@ let init_connect ?while_ url zock on_progress =
 let init_auth ?while_ login clt zock on_progress =
   on_progress Stage.Auth Status.InitStart ;
   try
-    send_cmd clt zock ?while_ (Client.CltMsg.Auth login) ;
+    send_cmd clt zock ?while_ (CltMsg.Auth login) ;
     match retry_zmq ?while_ recv_cmd zock with
-    | Client.SrvMsg.AuthOk _ as msg ->
+    | SrvMsg.AuthOk _ as msg ->
         on_progress Stage.Auth Status.InitOk ;
         Client.process_msg clt msg
-    | Client.SrvMsg.AuthErr s as msg ->
+    | SrvMsg.AuthErr s as msg ->
         on_progress Stage.Auth (Status.InitFail s) ;
         Client.process_msg clt msg
     | rep ->
@@ -243,7 +337,7 @@ let init_sync ?while_ clt zock topics on_progress =
   in
   try
     List.iter (fun glob ->
-      send_cmd clt zock ?while_ (Client.CltMsg.StartSync glob)
+      send_cmd clt zock ?while_ (CltMsg.StartSync glob)
     ) globs ;
     on_progress Stage.Sync Status.InitOk
   with e ->
@@ -262,11 +356,11 @@ let start ?while_ url creds ?(topics=[])
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
       let zock = Zmq.Socket.(create ctx dealer) in
-      let on_new = check_err (on_new zock)
-      and on_set = check_err (on_set zock)
-      and on_del = on_del zock
-      and on_lock = on_lock zock
-      and on_unlock = on_unlock zock in
+      let on_new = check_set_cbs true (on_new zock)
+      and on_set = check_set_cbs false (on_set zock)
+      and on_del = check_del_cbs (on_del zock)
+      and on_lock = check_lock_cbs (on_lock zock)
+      and on_unlock = check_unlock_cbs (on_unlock zock) in
       let clt =
         Client.make ~uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
       finally

@@ -165,13 +165,13 @@ let check_links program_name prog running_programs =
   ) running_programs
 
 (* Check that all params are actually used by some functions: *)
-let check_params prog params =
+let check_params funcs params =
   let used =
     List.fold_left (fun s func ->
       (* Get the result as a set: *)
       let used = O.vars_of_operation TupleParam func.F.operation in
       Set.union used s
-    ) Set.empty prog.P.funcs in
+    ) Set.empty funcs in
   let unused = Set.diff params used in
   if not (Set.is_empty unused) then
     let single = set_is_singleton unused in
@@ -201,25 +201,87 @@ let make_entry replace (program_name : N.program) report_period
     bin ; params ; status = MustRun ; debug ; report_period ;
     src_file ; on_site ; automatic = false }
 
-(*
-let run_sync source
-      program_name replace kill_if_disabled purge report_period on_site
-      debug params =
-  let while_ () = !Processes.quit = None in
+let run_sync src_path conf (program_name : N.program) replace report_period
+             on_site debug params =
+  let done_ = ref false in
+  let while_ () = !Processes.quit = None && not !done_ in
   let login = conf.C.login in
-  let topics = [] in
-  ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url login topics
-    (fun zock ->
-      ZMQClient.sent_msg zock
-        RamenSync.Key.(PerProgram program_name, DoCompile)
-        RamenSync.Value.(CompileOptions { 
-        ~on_ok:(fun () -> Process.quit := ExitCodes.ok)
-        ~on_ko:(fun () -> Process.quit := ExitCodes.error))
-*)
+  let src_path = Files.remove_ext src_path in
+  let topics =
+    [ "target_config" ;
+      "sources/"^ (src_path :> string) ^ "/info" ] in
+  ZMQClient.start ~while_ conf.C.sync_url login ~topics
+    (fun zock clt ->
+      let open RamenSync in
+      let cannot what k : unit =
+        Printf.sprintf2 "Cannot %s key %a" what Key.print k |>
+        failwith in
+      let bad_type expected actual k =
+        Printf.sprintf2 "Invalid type for key %a: got %a but wanted a %s"
+          Key.print k
+          Value.print actual
+          expected |>
+        failwith in
+      let get_key k cont =
+        !logger.debug "get_key %a" Key.print k ;
+        ZMQClient.(send_cmd clt zock ~while_ (LockKey k)
+          ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
+            match ZMQClient.Client.(H.find clt.h) k with
+            | exception Not_found ->
+                cannot "find" k
+            | hv ->
+                cont hv.value ;
+                ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k)))) in
+      get_key Key.TargetConfig (function
+        | Value.TargetConfig rcs ->
+            let src_key = Key.(Sources (src_path, "info")) in
+            get_key src_key (function
+              | Value.SourceInfo { detail = Compiled prog ; _ } ->
+                  (* Check linkage. *)
+                  let param_names = Hashtbl.keys params |> Set.of_enum in
+                  let prog = P.unserialized program_name prog in
+                  check_params prog.P.funcs param_names ;
+                  (*check_links_sync program_name prog programs ; TODO *)
+                  let rcs =
+                    match List.assoc program_name rcs with
+                    | exception Not_found ->
+                        rcs
+                    | rc ->
+                        if not replace then
+                          Printf.sprintf2 "A %sprogram named %a is already present"
+                            (if rc.Value.TargetConfig.enabled then ""
+                             else "(disabled) ")
+                            N.program_print program_name |>
+                          failwith ;
+                        List.filter (fun (pn, _) -> pn <> program_name) rcs in
+                  let rce =
+                    let on_site = Globs.decompile on_site
+                    and params = alist_of_hashtbl params in
+                    Value.TargetConfig.{
+                      enabled = true ; automatic = false ;
+                      debug ; report_period ; params ; src_path ; on_site } in
+                  let rcs =
+                    Value.TargetConfig ((program_name, rce) :: rcs) in
+                  ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
+                    ~on_done:(fun () ->
+                      !logger.info "Done!" ;
+                      done_ := true)
+
+              | Value.SourceInfo { detail = Failed failed ; _ } ->
+                  Printf.sprintf2 "Cannot start %a: %s"
+                    N.path_print src_path
+                    failed.Value.SourceInfo.err_msg |>
+                  failwith
+              | v ->
+                  bad_type "SourceInfo" v src_key)
+        | v -> bad_type "TargetConfig" v Key.TargetConfig) ;
+      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      !logger.debug "Received %d messages" msg_count)
+
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)
-let run_local conf bin_file src_file
-      program_name replace kill_if_disabled purge report_period on_site
+let run_local src_file kill_if_disabled purge
+      bin_file conf program_name replace report_period on_site
       debug params =
   let bin = Files.absolute_path_of bin_file in
   let can_run = P.wants_to_run conf bin params in
@@ -238,7 +300,7 @@ let run_local conf bin_file src_file
     RC.with_wlock conf (fun programs ->
       (* Check linkage. *)
       let prog = P.of_bin program_name params bin_file in
-      check_params prog (Hashtbl.keys params |> Set.of_enum) ;
+      check_params prog.P.funcs (Hashtbl.keys params |> Set.of_enum) ;
       check_links program_name prog programs ;
       make_entry replace program_name report_period bin_file src_file on_site
                  debug params programs |>
@@ -248,7 +310,7 @@ let run_local conf bin_file src_file
 let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
         ?(report_period=Default.report_period) ?(src_file=N.path "")
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
-        ?(bin_file=N.path "") program_name_opt =
+        bin_file program_name_opt =
   if program_name_opt = None && N.is_empty src_file && N.is_empty bin_file then
     failwith "You must provide either the program name, a source file or \
               an executable file." ;
@@ -257,19 +319,13 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       if not (N.is_empty bin_file) then default_program_name bin_file
       else default_program_name src_file
     ) program_name_opt in
-  let k =
+  let f =
     if conf.C.sync_url = "" then (
-      if N.is_empty bin_file then
-        failwith "executable file is mandatory unless --confserver." ;
-      run_local conf bin_file src_file
+      run_local src_file kill_if_disabled purge
     ) else (
-      if N.is_empty src_file then
-        failwith "with --confserver a source file must be provided." ;
-      if not (N.is_empty bin_file) then
-        failwith "with --confserver the executable file is useless and must not be \
-                  given." ;
-      (*let source = Files.read_whole_file src_file in
-      run_sync source*)
-      todo "run_sync"
+      if not (N.is_empty src_file) then
+        failwith "with --confserver the source file is useless and must not be given." ;
+      (* Here the "bin" file is actually the path of the info file: *)
+      run_sync
     ) in
-  k program_name replace kill_if_disabled purge report_period on_site debug params
+  f bin_file conf program_name replace report_period on_site debug params

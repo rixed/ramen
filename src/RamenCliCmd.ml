@@ -514,7 +514,7 @@ let run conf params replace kill_if_disabled report_period program_name_opt
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
   RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file ~on_site ~bin_file program_name_opt
+               ?src_file ~on_site bin_file program_name_opt
 
 (*
  * `ramen kill`
@@ -907,7 +907,7 @@ let parse_func_name_of_code conf what func_name_or_code =
          * start: *)
         let debug = conf.C.log_level = Debug in
         RamenRun.run conf ~report_period:0. ~src_file ~debug
-                     ~bin_file (Some program_name)) ;
+                     bin_file (Some program_name)) ;
     let fq = N.fq_of_program program_name func_name in
     fq, [], [ program_name ]
   in

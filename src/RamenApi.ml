@@ -682,7 +682,7 @@ let save_alert conf program_name alert_info =
         let debug = conf.C.log_level = Debug in
         let params = Hashtbl.create 0 in
         RamenRun.run conf ~replace:true ~params ~src_file ~debug
-                     ~bin_file (Some program_name))
+                     bin_file (Some program_name))
     with e ->
       (* In case of error, do not leave the alert definition file so that the
        * client can retry, but keep it for later inspection: *)

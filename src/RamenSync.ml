@@ -100,6 +100,8 @@ struct
     | Anonymous ->
         let name, capas =
           match creds with
+          | "internal" | "anonymous" ->
+              failwith "Reserved usernames"
           | "admin" -> creds, Capa.[ Admin ]
           | c when String.starts_with c "_" -> creds, Capa.[ Ramen ]
           | "" -> failwith "Bad credentials"
@@ -117,7 +119,7 @@ struct
 
   let print fmt = function
     | Internal -> String.print fmt "internal"
-    | Auth { name ; _ } -> Printf.fprintf fmt "auth:%s" name
+    | Auth { name ; _ } -> Printf.fprintf fmt "%s" name
     | Anonymous -> Printf.fprintf fmt "anonymous"
 
   type id = string

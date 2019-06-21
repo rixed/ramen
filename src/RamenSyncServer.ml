@@ -30,7 +30,9 @@ struct
       r : Capa.t ; (* Read perm *)
       w : Capa.t ; (* Write perm *)
       s : bool (* Sticky, ie cannot be deleted *) ;
-      mutable l : User.t option (* Locked by that user. TODO: add a recursion count? *) ;
+      (* Locked by the user who's on top of the list. Others are waiting: *)
+      (* TODO: Distinct reader locks (a set) from /writer locks (that list). *)
+      mutable locks : User.t list ;
       (* Also some metadata: *)
       mutable set_by : User.t ;
       mutable mtime : float }
@@ -79,7 +81,10 @@ struct
       ) Map.empty in
     Map.enum subscriber_sockets //@
     (fun (socket, user) ->
-      if has_capa user then Some socket else None) |>
+      if has_capa user then Some socket else (
+        !logger.debug "User %a has no capa" User.print user ;
+        None
+      )) |>
     t.send_msg m
 
   let no_such_key k =
@@ -94,12 +99,12 @@ struct
     failwith
 
   let check_unlocked hv k u =
-    match hv.l with
-    | Some u' when not (User.equal u' u) ->
+    match hv.locks with
+    | u' :: _ when not (User.equal u' u) ->
         locked_by k u'
     | _ -> ()
 
-  let check_can_update k hv u =
+  let check_can_write k hv u =
     if not (User.has_capa hv.w u) then (
       Printf.sprintf2 "Key %a: read only" Key.print k |>
       failwith
@@ -111,7 +116,7 @@ struct
       Printf.sprintf2 "Key %a: is sticky" Key.print k |>
       failwith
     ) ;
-    check_can_update k hv u
+    check_can_write k hv u
 
   let create t u k v ~r ~w ~s =
     !logger.debug "Creating config key %a with value %a, r:%a w:%a%s"
@@ -124,9 +129,9 @@ struct
     | exception Not_found ->
         (* As long as there is a callback for this, that's ok: *)
         let v = do_cbs t.on_news t k v in
-        let l = Some u in (* objects are created locked *)
+        let locks = [ u ] in (* objects are created locked *)
         let mtime = Unix.gettimeofday () in
-        H.add t.h k { v ; r ; w ; s ; l ; set_by = u ; mtime } ;
+        H.add t.h k { v ; r ; w ; s ; locks ; set_by = u ; mtime } ;
         let uid = IO.to_string User.print_id (User.id u) in
         notify t k (User.has_capa r) (NewKey (k, v, uid, mtime))
     | _ ->
@@ -144,7 +149,7 @@ struct
             Key.print k
             Value.print v ;
           (* TODO: Think about making locking mandatory *)
-          check_can_update k prev u ;
+          check_can_write k prev u ;
           let v = do_cbs t.on_sets t k v in
           prev.v <- v ;
           prev.set_by <- u ;
@@ -185,13 +190,16 @@ struct
         let me = User.only_me u in
         create t u k Value.dummy ~r:Capa.anybody ~w:me ~s:false
     | prev ->
-        check_can_update k prev u ;
-        (match prev.l with
-        | Some u' when User.equal u u' -> ()
-        | _ ->
+        !logger.debug "Current lockers: %a" (List.print User.print) prev.locks ;
+        (* only for wlocks: check_can_write k prev u ; *)
+        (match prev.locks with
+        | [] ->
+            (* We have a new locker: *)
             let uid = IO.to_string User.print_id (User.id u) in
             notify t k (User.has_capa prev.r) (LockKey (k, uid)) ;
-            prev.l <- Some u)
+            prev.locks <- [ u ]
+        | lst ->
+            prev.locks <- lst @ [ u ] (* FIXME *))
 
   let unlock t u k =
     !logger.debug "Unlocking config key %a"
@@ -200,14 +208,18 @@ struct
     | exception Not_found ->
         no_such_key k
     | prev ->
-        check_can_update k prev u ;
-        (match prev.l with
-        | Some u' when User.equal u u' ->
+        (match prev.locks with
+        | u' :: lst when User.equal u u' ->
             notify t k (User.has_capa prev.r) (UnlockKey k) ;
-            prev.l <- None
-        | Some u' ->
+            prev.locks <- lst ;
+            (match lst with
+            | [] -> ()
+            | u :: _ ->
+                let uid = IO.to_string User.print_id (User.id u) in
+                notify t k (User.has_capa prev.r) (LockKey (k, uid)))
+        | u' :: _ ->
             locked_by k u'
-        | None ->
+        | [] ->
             Printf.sprintf2 "Key %a: not locked" Key.print k |>
             failwith)
 
@@ -251,7 +263,7 @@ struct
         t.send_msg (SrvMsg.NewKey (k, hv.v, uid, hv.mtime))
                    (Enum.singleton socket) ;
         (* Will be created locked by client: *)
-        if hv.l = None then
+        if hv.locks = [] then
           t.send_msg (SrvMsg.UnlockKey k) (Enum.singleton socket)
       )
     ) t.h ;

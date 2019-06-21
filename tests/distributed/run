@@ -95,10 +95,10 @@ if test "$be_master" = yes; then
 
   log "Starting programs..."
   export RAMEN_REPORT_PERIOD=15
-  "$ramen" run "$root/logs.x"      --src "logs.ramen"      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
-  "$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
-  "$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
-  "$ramen" run "$root/logs_aggr.x" --src "logs_aggr.ramen" --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
+  "$ramen" run --confserver=localhost logs      --master=aggregator --on-site="logger*"    --as logs   -p hit_rate=$hit_rate
+  "$ramen" run --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
+  "$ramen" run --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
+  "$ramen" run --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
 
   # Run once and then leave it to the GUI. Storage info won't be synced then.
   log "Upload the configuration into the confserver"
