@@ -215,6 +215,7 @@ struct
     (* FIXME: The stats sum all various instances. Probably not what's wanted. *)
     | FirstStartupTime | LastStartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
+    | RuntimeStats
     | ArchivedTimes
     | NumArcFiles
     | NumArcBytes
@@ -317,6 +318,7 @@ struct
       | TotBytes -> "total/bytes"
       | TotCpu -> "total/cpu"
       | MaxRam -> "max/ram"
+      | RuntimeStats -> "stats/runtime"
       | ArchivedTimes -> "archives/times"
       | NumArcFiles -> "archives/num_files"
       | NumArcBytes -> "archives/current_size"
@@ -447,6 +449,7 @@ struct
                               | "total", "bytes" -> TotBytes
                               | "total", "cpu" -> TotCpu
                               | "max", "ram" -> MaxRam
+                              | "stats", "runtime" -> RuntimeStats
                               | "archives", "times" -> ArchivedTimes
                               | "archives", "num_files" -> NumArcFiles
                               | "archives", "current_size" -> NumArcBytes
@@ -699,6 +702,30 @@ struct
         print_detail s.detail
   end
 
+  module RuntimeStats =
+  struct
+    type t =
+      { stats_time : float ;
+        first_startup : float ;
+        last_startup : float ;
+        min_etime : float option ;
+        max_etime : float option ;
+        first_input : float ;
+        last_input : float ;
+        first_output : float ;
+        last_output : float ;
+        tot_in_tuples : int ;
+        tot_out_tuples : int ;
+        tot_in_bytes : int ;
+        tot_out_bytes : int ;
+        tot_notifs : int ;
+        tot_cpu : float ;
+        max_ram : Stdint.Uint64.t }
+
+    let print oc _s =
+      Printf.fprintf oc "RuntimeStats{ TODO }"
+  end
+
   type t =
     | Bool of bool
     | Int of int64
@@ -718,6 +745,7 @@ struct
     (* Holds all info from the compilation of a source ; what we used to have in the
      * executable binary itself. *)
     | SourceInfo of SourceInfo.t
+    | RuntimeStats of RuntimeStats.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -753,6 +781,21 @@ struct
         TargetConfig.print oc rc
     | SourceInfo i ->
         SourceInfo.print oc i
+    | RuntimeStats s ->
+        RuntimeStats.print oc s
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 end
+
+let err_sync_type k v what =
+  !logger.error "%a should be %s not %a"
+    Key.print k
+    what
+    Value.print v
+
+let invalid_sync_type k v what =
+  Printf.sprintf2 "%a should be %s not %a"
+    Key.print k
+    what
+    Value.print v |>
+  failwith

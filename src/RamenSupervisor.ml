@@ -1109,19 +1109,6 @@ let synchronize_running_local conf autoreload_delay =
 let per_instance_key site fq sign k =
   RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, k)))
 
-let err_sync_type k v what =
-  !logger.error "%a should be %s not %a"
-    RamenSync.Key.print k
-    what
-    RamenSync.Value.print v
-
-let invalid_sync_type k v what =
-  Printf.sprintf2 "%a should be %s not %a"
-    RamenSync.Key.print k
-    what
-    RamenSync.Value.print v |>
-  failwith
-
 let find_or_fail what clt k f =
   let v =
     match Client.H.find clt.Client.h k with
@@ -1138,7 +1125,7 @@ let find_or_fail what clt k f =
             RamenSync.Key.print k |>
           failwith
       | Some v ->
-          invalid_sync_type k v what)
+          RamenSync.invalid_sync_type k v what)
   | Some v' ->
       v'
 
@@ -1232,7 +1219,7 @@ let should_run clt site fq sign =
   | { value = RamenSync.Value.Worker worker ; _ } ->
       worker.enabled && worker.signature = sign
   | hv ->
-      invalid_sync_type k hv.value "a worker"
+      RamenSync.invalid_sync_type k hv.value "a worker"
 
 let may_kill conf ~while_ clt zock site fq sign pid =
   let last_killed_k = per_instance_key site fq sign LastKilled in
@@ -1275,7 +1262,7 @@ let get_precompiled clt src_path =
         err_msg |>
       failwith
   | hv ->
-      invalid_sync_type source_k hv.value "a source info"
+      RamenSync.invalid_sync_type source_k hv.value "a source info"
 
 let get_bin_file conf clt _site fq sign info =
   let program_name, _func_name = N.fq_parse fq in

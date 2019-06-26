@@ -297,10 +297,14 @@ type conf =
   { log_level : log_level ;
     state_file : N.path ;
     is_test : bool ;
-    site : N.site }
+    site : N.site ;
+    report_period : float }
 
 let make_conf log_level state_file is_test site =
-  { log_level ; state_file ; is_test ; site }
+  let report_period =
+    getenv ~def:(string_of_float Default.report_period)
+           "report_period" |> float_of_string in
+  { log_level ; state_file ; is_test ; site ; report_period }
 
 (* Helpers *)
 
@@ -473,9 +477,14 @@ let writer_of_spec serialize_tuple sersize_of_tuple
 
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
+(* FIXME: For now, publish_stats is called only when a tuple is emitted.
+ *        We should have a separate thread for this, as we do for binocle
+ *        stats. But then we should have a dedicated thread with ZMQ only,
+ *        and communicate with it via another internal ZMQ socket *)
 let outputer_of
-      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close publish =
+      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple orc_make_handler orc_write orc_close publish_tail
+      publish_stats =
   let out_h = ref (Hashtbl.create 15)
   and outputers = ref [] in
   let max_num_fields = 100 (* FIXME *) in
@@ -484,9 +493,42 @@ let outputer_of
   (* When did we update [stats_avg_full_out_bytes] statistics about the full
    * size of output? *)
   let last_full_out_measurement = ref 0. in
-  (* When did we publish the last tuple in our conf topic? *)
-  let last_publish = ref 0. in
+  (* When did we publish the last tuple in our conf topic and the runtime
+   * stats? *)
+  let last_publish_tail = ref 0. in
+  let last_publish_stats = ref 0. in
   let num_skipped_between_publish = ref 0 in
+  let may_publish_stats () =
+    let now = !IO.now in
+    if now -. !last_publish_stats > conf.report_period
+    then (
+      last_publish_stats := now ;
+      let max_ram =
+        match IntGauge.get stats_ram with
+        | None -> Uint64.zero
+        | Some (_mi, _cur, ma) -> Uint64.of_int ma
+      and min_etime, max_etime =
+        match FloatGauge.get stats_event_time with
+        | None -> None, None
+        | Some (mi, _, ma) -> Some mi, Some ma in
+      let stats = RamenSync.Value.RuntimeStats.{
+        stats_time = now ;
+        first_startup = startup_time ;
+        last_startup = startup_time ;
+        min_etime ; max_etime ;
+        first_input = 0. (* TODO *) ;
+        last_input = 0. (* TODO *) ;
+        first_output = 0. (* TODO *) ;
+        last_output = 0. (* TODO *) ;
+        tot_in_tuples = 0 (* TODO *) ;
+        tot_out_tuples = IntCounter.get stats_out_tuple_count ;
+        tot_in_bytes = 0 (* TODO *) ;
+        tot_out_bytes = 0 (* TODO *) ;
+        tot_notifs = 0 (* TODO *) ;
+        tot_cpu = FloatCounter.get stats_cpu ;
+        max_ram } in
+      publish_stats stats
+    ) in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -583,12 +625,12 @@ let outputer_of
               (sersize_of_tuple RamenFieldMask.all_fields tuple) ;
             last_full_out_measurement := !IO.now) ;
           (* If we have subscribers, send them something (rate limited): *)
-          if !IO.now -. !last_publish >
+          if !IO.now -. !last_publish_tail >
              min_delay_between_publish
           then (
-            publish sersize_of_tuple serialize_tuple
-                    !num_skipped_between_publish tuple ;
-            last_publish := !IO.now ;
+            publish_tail sersize_of_tuple serialize_tuple
+                         !num_skipped_between_publish tuple ;
+            last_publish_tail := !IO.now ;
             num_skipped_between_publish := 0
           ) else
             incr num_skipped_between_publish ;
@@ -628,6 +670,7 @@ let outputer_of
         start_stop
       | None -> None in
     update_outputers () ;
+    may_publish_stats () ;
     List.iter (fun (file_spec, last_check_outref, writer, _) ->
       (* Also pass file_spec to keep the writer posted about channel
        * changes: *)
@@ -661,19 +704,16 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
         Files.mkdir_all (N.path logdir) ;
         init_logger ~logdir log_level
       )) ;
-  let report_period =
-    getenv ~def:(string_of_float Default.report_period)
-           "report_period" |> float_of_string in
   let report_rb_fname =
     N.path (getenv ~def:"/tmp/ringbuf_in_report.r" "report_ringbuf") in
   let report_rb = RingBuf.load report_rb_fname in
   (* Must call this once before get_binocle_tuple because cpu/ram gauges
    * must not be NULL: *)
   update_stats () ;
-  (* Then, the sooner a new worker appears in the stats the better: *)
-  if report_period > 0. then
-    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   let conf = make_conf log_level state_file is_test site in
+  (* Then, the sooner a new worker appears in the stats the better: *)
+  if conf.report_period > 0. then
+    ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) ;
   info_or_test conf
     "Starting %a%s process (pid=%d). Will log into %s at level %s."
     N.fq_print worker_name (if is_top_half then " (TOP-HALF)" else "")
@@ -693,11 +733,11 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
     Binocle.display_console ())) ;
   Thread.create (
     restart_on_failure "update_stats_rb"
-      (update_stats_rb report_period report_rb)) get_binocle_tuple |>
+      (update_stats_rb conf.report_period report_rb)) get_binocle_tuple |>
     ignore ;
   (* Sending stats for one last time: *)
   let last_report () =
-    if report_period > 0. then
+    if conf.report_period > 0. then
       ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)
   let conf_url = getenv ~def:"" "sync_url" in
@@ -725,7 +765,8 @@ let read_csv_file
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
+  worker_start site worker_name false get_binocle_tuple
+               (fun publish_tail publish_stats conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
     (* For tests, allow to overwrite what's specified in the operation: *)
@@ -744,9 +785,9 @@ let read_csv_file
     in
     let outputer =
       outputer_of
-        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish
-        (RingBufLib.DataTuple Channel.live) in
+        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail
+        publish_stats (RingBufLib.DataTuple Channel.live) in
     IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
@@ -770,15 +811,16 @@ let listen_on
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
+  worker_start site worker_name false get_binocle_tuple
+               (fun publish_tail publish_stats conf ->
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
       outputer_of
-        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish
-        (RingBufLib.DataTuple Channel.live) in
+        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail
+        publish_stats (RingBufLib.DataTuple Channel.live) in
     collector ~while_ (fun tup ->
       IO.on_each_input_pre () ;
       IntCounter.add stats_in_tuple_count 1 ;
@@ -823,15 +865,17 @@ let read_well_known
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
     get_binocle_tuple site worker_name false None None None in
-  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
+  worker_start site worker_name false get_binocle_tuple
+    (fun publish_tail publish_stats conf ->
     let bname =
       N.path (getenv ~def:"/tmp/ringbuf_in_report.r" ringbuf_envvar) in
     let rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     let outputer =
       outputer_of
-        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish in
+        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail
+        publish_stats in
     let globs = List.map Globs.compile from in
     let match_from worker =
       from = [] ||
@@ -1231,7 +1275,8 @@ let aggregate
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       (IntGauge.get stats_group_count |> Option.map gauge_current |> i) in
-  worker_start site worker_name false get_binocle_tuple (fun publish conf ->
+  worker_start site worker_name false get_binocle_tuple
+    (fun publish_tail publish_stats conf ->
     let rb_in_fnames = getenv_list "input_ringbuf" N.path
     and rb_ref_out_fname =
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
@@ -1240,8 +1285,9 @@ let aggregate
     let notify_rb = RingBuf.load notify_rb_name in
     let msg_outputer =
       outputer_of
-        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish in
+        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail
+        publish_stats in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -1611,7 +1657,8 @@ let top_half
       (IntCounter.get stats_in_tuple_count |> si)
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
-  worker_start site worker_name true get_binocle_tuple (fun _publish conf ->
+  worker_start site worker_name true get_binocle_tuple
+    (fun _publish_tail _publish_stats conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
@@ -1736,11 +1783,15 @@ let replay
   set_signals Sys.[sigusr1] Signal_ignore ;
   !logger.debug "Will replay archive from %a"
     N.path_print_quoted rb_archive ;
-  let publish = Publish.ignore_publish in
+  let site = N.site (getenv ~def:"" "site") in
+  let conf = make_conf log_level (N.path "") false site in
+  let publish_tail = ignore4
+  and publish_stats = ignore1 in
   let outputer =
     outputer_of
-      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close publish in
+      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple orc_make_handler orc_write orc_close publish_tail
+      publish_stats in
   let num_replayed_tuples = ref 0 in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in

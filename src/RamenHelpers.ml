@@ -1662,6 +1662,7 @@ let finally handler f x =
 
 let char_print_quoted oc = Printf.fprintf oc "%C"
 
+let ignore1 = ignore
 let ignore2 _ _ = ()
 let ignore3 _ _ _ = ()
 let ignore4 _ _ _ _ = ()

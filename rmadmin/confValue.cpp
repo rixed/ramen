@@ -33,6 +33,7 @@ static QString const stringOfValueType(ValueType valueType)
     [RamenValueType] = "RamenValueType",
     [TargetConfigType] = "TargetConfigType",
     [SourceInfoType] = "SourceInfoType",
+    [RuntimeStatsType] = "RuntimeStatsType",
     [LastValueType] = "LastValueType",
   };
   assert((size_t)valueType < SIZEOF_ARRAY(stringOfValueTypes));
@@ -322,6 +323,9 @@ Value *valueOfOCaml(value v_)
         }
       }
       break;
+    case RuntimeStatsType:
+      assert(!"TODO valueOfOCaml for RuntimeStatsType");
+      break;
     case LastValueType:
     default:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -357,11 +361,21 @@ Value *valueOfQString(ValueType vt, QString const &s)
     case ErrorType:
     case WorkerType:
     case RetentionType:
-      assert(!"Cannot convert that into a retention");
+    case TimeRangeType:
+    case TupleType:
+    case RamenTypeType:
+    case TargetConfigType:
+    case SourceInfoType:
+    case RuntimeStatsType:
+      assert(!"TODO: valueOfQString for exotic types");
       break;
-    default:
-      assert(!"Tag_val(v_) <= LastValueType");
+    case RamenValueType:
+      assert(!"Cannot convert to RamenValue without a RamenType");
+    case LastValueType:
+      assert(!"Invalid conf::ValueType");
   }
+  if (! ret)
+    assert(!"Tag_val(v_) <= LastValueType");
   if (! ok)
     std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
   return ret;

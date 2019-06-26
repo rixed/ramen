@@ -30,6 +30,7 @@ enum ValueType {
   RamenValueType,  // For RamenTypes.value
   TargetConfigType,
   SourceInfoType,
+  RuntimeStatsType,
   LastValueType
 };
 
