@@ -134,7 +134,7 @@ public:
         "workers/(?<program>.+)/"
         "(?<function>[^/]+)/"
         "(?<function_property>"
-          "worker|startup_time|"
+          "worker|startup_time/(first|last)|"
           "event_time/(min|max)|"
           "total/(tuples|bytes|cpu)|"
           "max/ram|"
@@ -288,11 +288,18 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
 
       emit storagePropertyChanged(functionItem);
     }
-  } else if (p == "startup_time") {
+  } else if (p == "startup_time/first") {
     std::shared_ptr<conf::Float const> cf =
       std::dynamic_pointer_cast<conf::Float const>(v);
     if (cf) {
-      functionItem->startupTime = cf->d;
+      functionItem->firstStartupTime = cf->d;
+      emit storagePropertyChanged(functionItem);
+    }
+  } else if (p == "startup_time/last") {
+    std::shared_ptr<conf::Float const> cf =
+      std::dynamic_pointer_cast<conf::Float const>(v);
+    if (cf) {
+      functionItem->lastStartupTime = cf->d;
       emit storagePropertyChanged(functionItem);
     }
   } else if (p == "event_time/min") {

@@ -213,7 +213,7 @@ struct
   and per_worker_key =
     (* FIXME: create a single entry of type "stats" for the following: *)
     (* FIXME: The stats sum all various instances. Probably not what's wanted. *)
-    | StartupTime | MinETime | MaxETime
+    | FirstStartupTime | LastStartupTime | MinETime | MaxETime
     | TotTuples | TotBytes | TotCpu | MaxRam
     | ArchivedTimes
     | NumArcFiles
@@ -309,7 +309,8 @@ struct
 
   let print_per_worker_key fmt k =
     String.print fmt (match k with
-      | StartupTime -> "startup_time"
+      | FirstStartupTime -> "startup_time/first"
+      | LastStartupTime -> "startup_time/last"
       | MinETime -> "event_time/min"
       | MaxETime -> "event_time/max"
       | TotTuples -> "total/tuples"
@@ -433,43 +434,40 @@ struct
               | "workers", s ->
                   (match rcut s with
                   | [ fq ; s ] ->
-                      try
-                        PerWorker (N.fq fq,
-                          match s with
-                          | "startup_time" -> StartupTime)
-                      with Match_failure _ ->
-                        (match rcut fq, s with
-                        | [ fq ; s1 ], s2 ->
-                            try
-                              PerWorker (N.fq fq,
-                                match s1, s2 with
-                                | "event_time", "min" -> MinETime
-                                | "event_time", "max" -> MaxETime
-                                | "total", "tuples" -> TotTuples
-                                | "total", "bytes" -> TotBytes
-                                | "total", "cpu" -> TotCpu
-                                | "max", "ram" -> MaxRam
-                                | "archives", "times" -> ArchivedTimes
-                                | "archives", "num_files" -> NumArcFiles
-                                | "archives", "current_size" -> NumArcBytes
-                                | "archives", "alloc_size" -> AllocedArcBytes
-                                | "worker", "" -> Worker)
-                            with Match_failure _ ->
-                              (match rcut fq, s1, s2 with
-                              | [ fq ; "instance" ], sign, s ->
-                                  PerWorker (N.fq fq, PerInstance (sign,
-                                    match s with
-                                    | "state_file" -> StateFile
-                                    | "outref" -> OutRefFile
-                                    | "input_ringbufs" -> InputRingFiles
-                                    | "parent_outrefs" -> ParentOutRefs
-                                    | "pid" -> Pid
-                                    | "last_killed" -> LastKilled
-                                    | "unstopped" -> Unstopped
-                                    | "last_exit" -> LastExit
-                                    | "last_exit_status" -> LastExitStatus
-                                    | "successive_failures" -> SuccessiveFailures
-                                    | "quarantine_until" -> QuarantineUntil))))))
+                      (match rcut fq, s with
+                      | [ fq ; s1 ], s2 ->
+                          try
+                            PerWorker (N.fq fq,
+                              match s1, s2 with
+                              | "startup_time", "first" -> FirstStartupTime
+                              | "startup_time", "last" -> LastStartupTime
+                              | "event_time", "min" -> MinETime
+                              | "event_time", "max" -> MaxETime
+                              | "total", "tuples" -> TotTuples
+                              | "total", "bytes" -> TotBytes
+                              | "total", "cpu" -> TotCpu
+                              | "max", "ram" -> MaxRam
+                              | "archives", "times" -> ArchivedTimes
+                              | "archives", "num_files" -> NumArcFiles
+                              | "archives", "current_size" -> NumArcBytes
+                              | "archives", "alloc_size" -> AllocedArcBytes
+                              | "worker", "" -> Worker)
+                          with Match_failure _ ->
+                            (match rcut fq, s1, s2 with
+                            | [ fq ; "instance" ], sign, s ->
+                                PerWorker (N.fq fq, PerInstance (sign,
+                                  match s with
+                                  | "state_file" -> StateFile
+                                  | "outref" -> OutRefFile
+                                  | "input_ringbufs" -> InputRingFiles
+                                  | "parent_outrefs" -> ParentOutRefs
+                                  | "pid" -> Pid
+                                  | "last_killed" -> LastKilled
+                                  | "unstopped" -> Unstopped
+                                  | "last_exit" -> LastExit
+                                  | "last_exit_status" -> LastExitStatus
+                                  | "successive_failures" -> SuccessiveFailures
+                                  | "quarantine_until" -> QuarantineUntil))))))
         | "programs", s ->
             (match cut s with
             | pname, s ->

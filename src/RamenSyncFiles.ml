@@ -96,7 +96,7 @@ struct
       (* TODO: PerService *)
       let stats = Archivist.load_stats ~site conf in
       Hashtbl.iter (fun fq stats ->
-        upd (PerSite (site, PerWorker (fq, StartupTime)))
+        upd (PerSite (site, PerWorker (fq, FirstStartupTime)))
             (Value.Float stats.FS.startup_time) ;
         Option.may (fun min_etime ->
           upd (PerSite (site, PerWorker (fq, MinETime)))
@@ -125,7 +125,7 @@ struct
       | Key.PerSite
           (_, (IsMaster |
               (PerWorker
-                (_, (StartupTime | MinETime |
+                (_, (FirstStartupTime | LastStartupTime | MinETime |
                  MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
                  ArchivedTimes))))) -> true
       | _ -> false in

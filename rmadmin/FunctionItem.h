@@ -21,7 +21,8 @@ public:
   // tuples owned by this object:
   std::vector<ser::Value const *> tuples;
   std::shared_ptr<conf::Worker const> worker;
-  std::optional<double> startupTime;
+  std::optional<double> firstStartupTime;
+  std::optional<double> lastStartupTime;
   std::optional<double> eventTimeMin;
   std::optional<double> eventTimeMax;
   std::optional<int64_t> totalTuples;
