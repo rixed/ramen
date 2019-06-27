@@ -188,20 +188,25 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   if eager then (
     match cmd with
     | SetKey (k, v) | NewKey (k, v) | UpdKey (k, v) ->
+        let new_hv () =
+          Client.{ value = v ;
+                   locked = Some clt.Client.uid ;
+                   set_by = clt.Client.uid ;
+                   mtime = Unix.gettimeofday () ;
+                   eagerly = Created } in
         (match Client.H.find clt.Client.h k with
         | exception Not_found ->
-            let hv =
-              Client.{ value = v ;
-                       locked = Some clt.Client.uid ;
-                       set_by = clt.Client.uid ;
-                       mtime = Unix.gettimeofday () ;
-                       eagerly = Created } in
-            Client.H.add clt.Client.h k hv
-        | hv ->
+            let hv = new_hv () in
+            Client.H.add clt.Client.h k (Value hv)
+        | Waiters conts ->
+            let hv = new_hv () in
+            List.iter (fun cont -> cont hv) conts ;
+            Client.H.add clt.Client.h k (Value hv)
+        | Value hv ->
             hv.value <- v ;
             hv.eagerly <- Overwritten)
     | DelKey k ->
-        (match Client.H.find clt.Client.h k with
+        (match Client.find clt k with
         | exception Not_found -> ()
         | hv ->
             hv.eagerly <- Deleted)

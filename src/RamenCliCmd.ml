@@ -445,7 +445,7 @@ let compserver conf daemonize to_stdout to_syslog
              * builder to use the usual mtime comparison to determine
              * obsolescence: *)
             Files.touch tmp_src_file mtime ;
-            (match Client.H.find clt.Client.h Key.(Sources (src_file, "info")) with
+            (match Client.find clt Key.(Sources (src_file, "info")) with
             | exception Not_found -> ()
             | { mtime ; _ } ->
                 if Files.exists target_file then Files.touch target_file mtime) ;
@@ -478,10 +478,10 @@ let compserver conf daemonize to_stdout to_syslog
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v
   in
-  ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
-                  ~topics (fun zock clt ->
-    let num_msg = ZMQClient.process_in zock clt in
-    !logger.debug "Received %d messages" num_msg)
+  let num_msg =
+    ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
+                    ~topics (ZMQClient.process_in ~while_) in
+  !logger.debug "Received %d messages" num_msg
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files

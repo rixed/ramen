@@ -193,7 +193,7 @@ struct
               upd ks (Some Value.(String (rce.RC.src_file :> string)))
             and keep k =
               upd k None in
-            (match Client.H.find clt.Client.h km with
+            (match Client.find clt km with
             | exception Not_found -> do_upd ()
             | { value = Value.(Float prev_mtime) ; _ } ->
                 if mtime > prev_mtime then do_upd ()

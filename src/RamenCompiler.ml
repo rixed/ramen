@@ -111,7 +111,7 @@ let parent_from_confserver clt (pn : N.program) =
     (* Contrary to P.bin_of_program_name, no need to abbreviate here: *)
     Key.Sources (N.path (pn :> string), "info") in
   !logger.debug "Looking for key %a" Key.print info_key ;
-  match ZMQClient.Client.H.find clt.ZMQClient.Client.h info_key with
+  match ZMQClient.Client.find clt info_key with
   | { value = Value.SourceInfo { detail = Compiled info } ; _ } ->
       P.unserialized pn info
   | _ -> raise Not_found

@@ -1111,7 +1111,7 @@ let per_instance_key site fq sign k =
 
 let find_or_fail what clt k f =
   let v =
-    match Client.H.find clt.Client.h k with
+    match Client.find clt k with
     | exception Not_found ->
         None
     | hv ->
@@ -1214,7 +1214,7 @@ let update_child_status conf ~while_ clt zock site fq sign pid =
 (* This worker is running. Should it? *)
 let should_run clt site fq sign =
   let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
-  match Client.H.find clt.Client.h k with
+  match Client.find clt k with
   | exception Not_found -> false
   | { value = RamenSync.Value.Worker worker ; _ } ->
       worker.enabled && worker.signature = sign
@@ -1248,7 +1248,7 @@ let is_running clt site fq sign =
 
 let get_precompiled clt src_path =
   let source_k = RamenSync.Key.Sources (src_path, "info") in
-  match Client.H.find clt.Client.h source_k with
+  match Client.find clt source_k with
   | exception Not_found ->
       Printf.sprintf2 "No such source %a"
         RamenSync.Key.print source_k |>
@@ -1376,12 +1376,12 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt zock =
-  Client.H.iter (fun k hv ->
+  Client.iter_keys clt (fun k hv ->
     let what = Printf.sprintf2 "Processing key %a" RamenSync.Key.print k in
     log_and_ignore_exceptions ~what (fun () ->
-      match k, hv.Client.value with
+      match k, hv with
       | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
-        RamenSync.Value.Int pid
+        { value = RamenSync.Value.Int pid ; _ }
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
           (* First, update this child status: *)
@@ -1389,13 +1389,13 @@ let synchronize_once conf ~while_ clt zock =
           if not (should_run clt site fq sign) then
             may_kill conf ~while_ clt zock site fq sign pid
       | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
-        RamenSync.Value.Worker worker
+        { value = RamenSync.Value.Worker worker ; _ }
         when site = conf.C.site ->
           if worker.enabled && not (is_running clt site fq worker.signature) then
             try_start_instance
               conf ~while_ clt zock site fq worker.signature worker
       | _ -> ()) ()
-  ) clt.Client.h
+  )
 
 let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in

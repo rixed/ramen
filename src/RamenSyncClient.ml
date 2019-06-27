@@ -18,7 +18,7 @@ struct
   include Messages (Key) (Value) (Selector)
 
   type t =
-    { h : hash_value H.t ;
+    { h : hash_maybe_value H.t ;
       uid : User.id ;
       mutable my_errors : Key.t option ; (* As returned by AuthOK *)
       on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
@@ -26,6 +26,10 @@ struct
       on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
       on_lock : t -> Key.t -> string -> unit ;
       on_unlock : t -> Key.t -> unit }
+
+  and hash_maybe_value =
+    | Value of hash_value
+    | Waiters of (hash_value -> unit) list
 
   and hash_value =
     { mutable value : Value.t ;
@@ -43,6 +47,33 @@ struct
     { h = H.create 99 ; my_errors = None ;
       uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
+  let with_value t k cont =
+    match H.find t.h k with
+    | exception Not_found ->
+        H.add t.h k (Waiters [ cont ])
+    | Value hv ->
+        cont hv
+    | Waiters conts ->
+        H.replace t.h k (Waiters (cont :: conts))
+
+  let find t k =
+    match H.find t.h k with
+    | Waiters _ -> raise Not_found
+    | Value hv -> hv
+
+  let find_option t k =
+    match H.find t.h k with
+    | exception Not_found -> None
+    | Waiters _ -> None
+    | Value hv -> Some hv
+
+  let iter_keys t f =
+    H.iter (fun k v ->
+      match v with
+      | Waiters _ -> ()
+      | Value hv -> f k hv
+    ) t.h
+
   let process_msg t = function
     | SrvMsg.AuthOk k ->
         !logger.debug "Will receive errors in %a" Key.print k ;
@@ -53,20 +84,26 @@ struct
         failwith
 
     | SrvMsg.SetKey (k, v, set_by, mtime) ->
+        let new_hv () =
+          { value = v ;
+            locked = None ;
+            set_by ;
+            mtime ;
+            eagerly = Nope } in
+        let add_hv hv =
+          !logger.error
+            "Server set key %a that has not been created"
+            Key.print k ;
+          H.add t.h k (Value hv) ;
+          t.on_new t k v set_by mtime in
         (match H.find t.h k with
         | exception Not_found ->
-            !logger.error
-              "Server set key %a that has not been created"
-              Key.print k ;
-            let hv =
-              { value = v ;
-                locked = None ;
-                set_by ;
-                mtime ;
-                eagerly = Nope } in
-            H.add t.h k hv ;
-            t.on_new t k v set_by mtime
-        | prev ->
+            add_hv (new_hv ())
+        | Waiters conts ->
+            let hv = new_hv () in
+            add_hv hv ;
+            List.iter (fun cont -> cont hv) conts
+        | Value prev ->
             prev.set_by <- set_by ;
             prev.mtime <- mtime ;
             prev.eagerly <- Nope ;
@@ -75,17 +112,23 @@ struct
         )
 
     | SrvMsg.NewKey (k, v, set_by, mtime) ->
+        let new_hv ()  =
+          { value = v ;
+            locked = Some set_by ;
+            set_by ;
+            mtime ;
+            eagerly = Nope } in
+        let add_hv hv =
+            H.add t.h k (Value hv) ;
+            t.on_new t k v set_by mtime in
         (match H.find t.h k with
         | exception Not_found ->
-            let hv =
-              { value = v ;
-                locked = Some set_by ;
-                set_by ;
-                mtime ;
-                eagerly = Nope } in
-            H.add t.h k hv ;
-            t.on_new t k v set_by mtime
-        | prev ->
+            add_hv (new_hv ())
+        | Waiters conts ->
+            let hv = new_hv () in
+            List.iter (fun cont -> cont hv) conts ;
+            add_hv hv
+        | Value prev ->
             if prev.eagerly = Nope then
               !logger.error
                 "Server create key %a that already exist, updating"
@@ -102,7 +145,11 @@ struct
         | exception Not_found ->
             !logger.error "Server wanted to delete an unknown key %a"
               Key.print k
-        | hv ->
+        | Waiters conts ->
+            !logger.error "%d waiters were waiting for key %a at deletion"
+              (List.length conts)
+              Key.print k
+        | Value hv ->
             H.remove t.h k ;
             t.on_del t k hv.value)
 
@@ -111,7 +158,10 @@ struct
         | exception Not_found ->
             !logger.error "Server want to lock unknown key %a"
               Key.print k
-        | prev ->
+        | Waiters _ ->
+            !logger.error "Server want to lock unknown key %a"
+              Key.print k
+        | Value prev ->
             if prev.locked <> None && prev.eagerly = Nope then (
               !logger.error "Server locked key %a that is already locked"
                 Key.print k ;
@@ -126,7 +176,10 @@ struct
         | exception Not_found ->
             !logger.error "Server want to unlock unknown key %a"
               Key.print k
-        | prev ->
+        | Waiters _ ->
+            !logger.error "Server want to unlock unknown key %a"
+              Key.print k
+        | Value prev ->
             if prev.locked = None then (
               !logger.error "Server unlocked key %a that is not locked"
                 Key.print k ;

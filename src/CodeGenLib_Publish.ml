@@ -121,7 +121,7 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
       let stats_key =
         RamenSync.Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
       let init_stats =
-        match ZMQClient.Client.H.find clt.h stats_key with
+        match ZMQClient.Client.find clt stats_key with
         | exception Not_found ->
             None
         | ZMQClient.Client.{ value = RamenSync.Value.RuntimeStats s ; _ } ->
