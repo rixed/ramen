@@ -1420,6 +1420,7 @@ let forking_server ~while_ ~service_name sockaddr server_fun =
                   (* Server process must not escape this scope or it would
                    * try to use sock again! *)
                   Random.init prng_init ;
+                  set_prefix (string_of_int (Unix.getpid ())) ;
                   close sock ;
                   (try
                     server_fun s ;
