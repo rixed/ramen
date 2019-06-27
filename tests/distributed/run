@@ -47,8 +47,12 @@ services_version=v2
 archivist_version=v6
 
 if test "$be_master" = yes; then
+  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
+  confserver_pid=$!
+  at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
+
   log "Run the tunneling server..."
-  "$ramen" tunneld --master=aggregator --port "$master_port" &
+  "$ramen" tunneld --master=aggregator --port "$master_port" --debug --confserver=localhost &
   tunneld_pid=$!
   at_exit "echo 'Killing tunneld'; kill '$tunneld_pid'"
 
@@ -68,15 +72,11 @@ if test "$be_master" = yes; then
   done
   echo '}' >> $services
 
-  log "Run the http, config and compilation servers..."
+  log "Run the http, compilation and choreographer services"
 
   "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
   httpd_pid=$!
   at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
-
-  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
-  confserver_pid=$!
-  at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 
   "$ramen" compserver --master=aggregator --site="$ramen_site" --debug --confserver=localhost &
   compserver_pid=$!

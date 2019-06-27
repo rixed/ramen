@@ -35,7 +35,7 @@ let replace_keys clt zock f h =
   Enum.iter (fun (k, _) ->
     ZMQClient.send_cmd clt zock ~while_ (CltMsg.DelKey k)) ;
   (* Now add/update the keys from [h]: *)
-  Client.H.iter (fun k (v, r, w) ->
+  Client.H.iter (fun k (v, _r, _w) ->
     (* FIXME: add r and w in NewKey *)
     Option.may (fun v ->
       if Client.H.mem clt.Client.h k then
@@ -47,7 +47,7 @@ let replace_keys clt zock f h =
 
 (* One module per data source so that it's easier to track those *)
 
-(* FIXME: Archivist should write the stats in there directly *)
+(* FIXME: Workers should write the stats in there directly *)
 module StatsInfo =
 struct
   let update conf clt zock =
@@ -62,6 +62,7 @@ struct
       (* TODO: PerService *)
       let stats = Archivist.load_stats ~site conf in
       Hashtbl.iter (fun fq stats ->
+        (* Should be set by the worker itself: *)
         upd (PerSite (site, PerWorker (fq, FirstStartupTime)))
             (Value.Float stats.FS.startup_time) ;
         Option.may (fun min_etime ->
@@ -80,6 +81,7 @@ struct
             (Value.Float stats.FS.cpu) ;
         upd (PerSite (site, PerWorker (fq, MaxRam)))
             (Value.Int stats.FS.ram) ;
+        (* Should be set by the GC: *)
         upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
             (Value.TimeRange stats.FS.archives) ;
         upd (PerSite (site, PerWorker (fq, NumArcFiles)))

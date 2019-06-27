@@ -136,7 +136,9 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
       Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
       (if h_len > 10 then !logger.warning else !logger.debug)
-        "%s size is now %d" h_name h_len
+        "%s size is now %d (%a)"
+        h_name h_len
+        (Enum.print Int.print) (Hashtbl.keys h)
     ) cb in
   save_cb on_oks "SyncZMQClient.on_oks" on_ok ;
   save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
@@ -343,7 +345,8 @@ let init_sync ?while_ clt zock topics on_progress =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
-          ?(on_progress=default_on_progress) ?(on_sock=ignore2)
+          ?(on_progress=default_on_progress)
+          ?(on_sock=ignore2) ?(on_synced=ignore2)
           ?(on_new=ignore6) ?(on_set=ignore6) ?(on_del=ignore4)
           ?(on_lock=ignore4) ?(on_unlock=ignore3)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
@@ -379,6 +382,7 @@ let start ?while_ url creds ?(topics=[])
             (fun () -> init_auth ?while_ creds clt zock on_progress) ;
           log_exceptions ~what:"init_sync"
             (fun () -> init_sync ?while_ clt zock topics on_progress) ;
+          on_synced clt zock ;
           log_exceptions ~what:"sync_loop"
             (fun () -> sync_loop zock clt)
         ) ()
