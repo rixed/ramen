@@ -8,6 +8,7 @@ TEMPLATE = app
 TARGET = RmAdmin
 VERSION = @PACKAGE_VERSION@
 QT += core widgets charts printsupport
+QMAKE_CXXFLAGS += -fstandalone-debug
 
 RC_ICONS = rmadmin.ico
 ICON = rmadmin.icns
@@ -39,6 +40,7 @@ HEADERS += \
   confValue.h \
   KValue.h \
   conf.h \
+  RamenValueEditor.h \
   AtomicWidget.h \
   KLineEdit.h \
   KLabel.h \
@@ -106,6 +108,7 @@ SOURCES += \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \
+  RamenValueEditor.cpp \
   KLineEdit.cpp \
   KChoice.cpp \
   KBool.cpp \

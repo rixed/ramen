@@ -124,6 +124,7 @@ struct Worker : public Value
   QString const signature;
   bool used;
   WorkerRole *role;
+  std::list<RCEntryParam *> params; // Params are owned
   std::list<WorkerRef *> parent_refs; // WorkerRef are owned
 
   Worker();
@@ -331,7 +332,7 @@ struct RamenValueValue : public Value
   bool operator==(Value const &) const;
 };
 
-// Read only (pre)compilation output for a program:
+// Read-only (pre)compilation output for a program:
 struct SourceInfo : public Value
 {
   QString md5;
@@ -376,6 +377,21 @@ struct TargetConfig : public Value
   }
 };
 
+struct RuntimeStats : public Value
+{
+  double statsTime, firstStartup, lastStartup;
+  std::optional<double> minEventTime, maxEventTime;
+  double firstInput, lastInput;
+  double firstOutput, lastOutput;
+  int totInputTuples, totOutputTuples;
+  size_t totInputBytes, totOutputBytes;
+  int totNotifs;
+  double totCpu;
+  size_t maxRam;
+
+  RuntimeStats() {};
+  RuntimeStats(value);
+};
 
 };
 
@@ -386,6 +402,7 @@ Q_DECLARE_METATYPE(conf::Float);
 Q_DECLARE_METATYPE(conf::String);
 Q_DECLARE_METATYPE(conf::Error);
 Q_DECLARE_METATYPE(conf::SourceInfo);
+Q_DECLARE_METATYPE(conf::RuntimeStats);
 Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);

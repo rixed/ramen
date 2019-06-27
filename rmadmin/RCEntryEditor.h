@@ -1,6 +1,9 @@
 #ifndef RCENTRYEDITOR_H_190607
 #define RCENTRYEDITOR_H_190607
+#include <memory>
+#include <string>
 #include <QWidget>
+#include <QMap>
 
 /* An editor for a single entry of the target configuration.
  * The actual TargetConfigEditor, bound to the TargetConfig entry in the
@@ -13,7 +16,9 @@ class QLineEdit;
 class QCheckBox;
 namespace conf {
   struct RCEntry;
+  struct RamenValue;
 };
+struct CompiledProgramParam;
 
 class RCEntryEditor : public QWidget
 {
@@ -27,7 +32,25 @@ class RCEntryEditor : public QWidget
   QLineEdit *sitesEdit;
   QLineEdit *reportEdit;
 
-  // Parameters are reset whenever the sourceBox changes:
+  /* The SourceInfo defines the possible parameters (as CompiledProgramParam
+   * objects), with a name, a doc and a default value. On top of that, the
+   * conf::RCEntry comes with a set of conf::RCEntryParams overwriting the
+   * defaults.
+   * The form must offer to edit every defined param for that source, taking
+   * values from all defined RCEntryParams and then CompiledProgramParam.
+   * When the sourceBox is changed, the set of defined parameters change,
+   * yet we keep the former values for the RCEntryParams, so no value is
+   * ever lost by changing this combobox.
+   * When computing the value of the RCEntryEditor, though, we take only the
+   * parameters that are defined in the selected source. */
+  // Returned value still owned by the callee
+  std::shared_ptr<conf::RamenValue const> paramValue(CompiledProgramParam const *) const;
+
+  // Bag of previously set parameter values:
+  QMap<std::string, std::shared_ptr<conf::RamenValue const>> setParamValues;
+
+  /* Keep the layout so it can be reset and also the widget and param
+   * names can be retrieved: */
   QFormLayout *paramsForm;
 
 public:
@@ -44,7 +67,8 @@ public:
 
   bool isValid() const { return sourceDoesExist; }
 
-  // Caller takes ownership
+  /* Build a new RCEntry according to current content.
+   * Caller takes ownership */
   conf::RCEntry *getValue() const;
 
 public slots:
@@ -58,7 +82,7 @@ public slots:
    * Used to reset the parameter table */
   void resetParams();
 
-  /* Set the form values according to this RCEntry: */
+  // Set the form values according to this RCEntry:
   void setValue(conf::RCEntry const *);
 };
 

@@ -6,17 +6,19 @@ extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
 # include <caml/custom.h>
+# include <caml/threads.h>
+# include <caml/callback.h>
 }
+#include "misc.h"
 #include "confRamenValue.h"
 
 namespace conf {
 
-static QString QStringOfRamenValueType(bool isBlock, enum RamenValueType t)
+static QString QStringOfRamenValueType(enum RamenValueType t)
 {
   switch (t) {
-    case VNullType:
-      if (isBlock) return QString("VFloat");
-      else return QString("VNull");
+    case VNullType: return QString("VNull");
+    case VFloatType: return QString("VFloat");
     case VStringType: return QString("VString");
     case VBoolType: return QString("VBool");
     case VU8Type: return QString("VU8");
@@ -46,7 +48,7 @@ static QString QStringOfRamenValueType(bool isBlock, enum RamenValueType t)
 
 QString RamenValue::toQString() const
 {
-  return QString("Some ") + QStringOfRamenValueType(true, type);
+  return QString("Some ") + QStringOfRamenValueType(type);
 }
 
 value RamenValue::toOCamlValue() const
@@ -62,7 +64,7 @@ bool RamenValue::operator==(RamenValue const &other) const
 value VNull::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLreturn(Val_int(0));
+  CAMLreturn(Val_int(0)); // Do not use (int)VNullType here!
 }
 
 value VFloat::toOCamlValue() const
@@ -308,7 +310,7 @@ bool VI128::operator==(RamenValue const &other) const
 }
 
 
-extern RamenValue *RamenValueOfOCaml(value v_)
+RamenValue *RamenValue::ofOCaml(value v_)
 {
   CAMLparam1(v_);
   RamenValue *ret = nullptr;
@@ -369,7 +371,7 @@ extern RamenValue *RamenValueOfOCaml(value v_)
       case VListType:
       case VRecordType:
         std::cout << "Unimplemented RamenValueOfOCaml for type "
-                  << QStringOfRamenValueType(true, valueType).toStdString()
+                  << QStringOfRamenValueType(valueType).toStdString()
                   << std::endl;
         ret = new VNull();
         break;
@@ -378,11 +380,153 @@ extern RamenValue *RamenValueOfOCaml(value v_)
         assert(!"Invalid tag, not a RamenValueType");
     }
   } else {
-    assert(Long_val(v_) == VNullType);
+    assert(Long_val(v_) == 0);
     return new VNull();
   }
 
   CAMLreturnT(RamenValue *, ret);
+}
+
+#if 0
+static int structureOfValueType(enum RamenValueType type)
+{
+  switch (type) {
+    case VNullType: return 5; // TAny. NULL can have any type. Good luck.
+    case VFloatType: return 1;
+    case VStringType: return 2;
+    case VBoolType: return 3;
+    case VU8Type: return 6;
+    case VU16Type: return 7;
+    case VU32Type: return 8;
+    case VU64Type: return 9;
+    case VU128Type: return 10;
+    case VI8Type: return 11;
+    case VI16Type: return 12;
+    case VI32Type: return 13;
+    case VI64Type: return 14;
+    case VI128Type: return 15;
+    case VEthType: return 16;
+    case VIpv4Type: return 17;
+    case VIpv6Type: return 18;
+    case VIpType: return 19;
+    case VCidrv4Type: return 20;
+    case VCidrv6Type: return 21;
+    case VCidrType: return 22;
+    // For those RamenValueType is not enough.
+    case VTupleType:
+    case VVecType:
+    case VListType:
+    case VRecordType:
+      return 0;
+    case LastRamenValueType:
+      assert(!"Invalid type in structureOfValueType");
+  };
+  assert(!"Missing case in structureOfValueType");
+}
+
+RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
+{
+  if (1 == caml_c_thread_register()) { // Must be done before we use local_roots!
+    std::cout << "Registered new thread to OCaml" << std::endl;
+  }
+
+  {
+//  return new VString("lol");
+/*    CAMLparam0();
+    CAMLlocal1(ret_);*/
+    value ret_;
+    caml_acquire_runtime_system();
+    static value *valueOfString = nullptr;
+    if (! valueOfString) {
+      valueOfString = caml_named_value("value_of_string");
+    }
+    /* That function expect the structure (for instance, TBool) but type is
+     * the tag of the value; So, convert: */
+    int structure = structureOfValueType(type);
+    ret_ = caml_callback2(*valueOfString, Val_int(structure), caml_copy_string(s.toStdString().c_str()));
+
+    RamenValue *ret = ofOCaml(ret_);
+    caml_release_runtime_system();
+
+    //CAMLreturnT(RamenValue *, ret);
+    return ret;
+  }
+}
+#endif
+
+RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
+{
+  bool ok = true;
+  RamenValue *ret = nullptr;
+  switch (type) {
+    case VNullType:
+      ret = new VNull();
+      break;
+    case VFloatType:
+      ret = new VFloat(s.toDouble(&ok));
+      break;
+    case VStringType:
+      ret = new VString(s);
+      break;
+    case VBoolType:
+      ret = new VBool(looks_like_true(s));
+      break;
+    case VU8Type:
+      ret = new VU8(s.toLong(&ok));
+      break;
+    case VU16Type:
+      ret = new VU16(s.toLong(&ok));
+      break;
+    case VU32Type:
+      ret = new VU32(s.toLong(&ok));
+      break;
+    case VU64Type:
+      ret = new VU64(s.toLong(&ok));
+      break;
+    case VU128Type:
+      ret = new VU128(s.toLong(&ok));
+      break;
+    case VI8Type:
+      ret = new VI8(s.toLong(&ok));
+      break;
+    case VI16Type:
+      ret = new VI16(s.toLong(&ok));
+      break;
+    case VI32Type:
+      ret = new VI32(s.toLong(&ok));
+      break;
+    case VI64Type:
+      ret = new VI64(s.toLong(&ok));
+      break;
+    case VI128Type:
+      ret = new VI128(s.toLong(&ok));
+      break;
+    case VEthType:
+      ret = new VEth(s.toLong(&ok));
+      break;
+    case VIpv4Type:
+    case VIpv6Type:
+    case VIpType:
+    case VCidrv4Type:
+    case VCidrv6Type:
+    case VCidrType:
+    case VTupleType:
+    case VVecType:
+    case VListType:
+    case VRecordType:
+      std::cout << "Unimplemented RamenValueOfOCaml for type "
+                << QStringOfRamenValueType(type).toStdString()
+                << std::endl;
+      ret = new VNull();
+      break;
+    case LastRamenValueType:
+      assert(!"Invalid RamenValueType");
+  }
+  if (! ret)
+    assert(!"Invalid RamenValueType");
+  if (! ok)
+    std::cerr << "Cannot convert " << s.toStdString() << " into a RamenValue" << std::endl;
+  return ret;
 }
 
 };

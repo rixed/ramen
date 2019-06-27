@@ -7,6 +7,7 @@
 extern "C" {
 # include <caml/memory.h>
 # include <caml/alloc.h>
+# include <caml/custom.h>
 }
 #include "misc.h"
 #include "confRamenValue.h"
@@ -191,12 +192,19 @@ Value *valueOfOCaml(value v_)
           String_val(Field(v_, 4)), // signature
           Bool_val(Field(v_, 5)), // used
           WorkerRole::ofOCamlValue(Field(v_, 8)));
-        // TODO: params etc...
+        // Add the params:
+        for (tmp1_ = Field(v_, 6); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+          RCEntryParam *p = new RCEntryParam(
+            String_val(Field(tmp1_, 0)), // name
+            std::shared_ptr<conf::RamenValue const>(RamenValue::ofOCaml(Field(tmp1_, 1))));
+          w->params.push_back(p);
+        }
         // Add the parents:
         for (tmp1_ = Field(v_, 9); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
           WorkerRef *p = WorkerRef::ofOCamlValue(Field(tmp1_, 0));
           w->parent_refs.push_back(p);
         }
+        // TODO: add everything else
         ret = w;
       }
       break;
@@ -228,7 +236,7 @@ Value *valueOfOCaml(value v_)
       break;
     case RamenValueType:
       ret = new RamenValueValue(
-        RamenValueOfOCaml(Field(v_, 0)));
+        RamenValue::ofOCaml(Field(v_, 0)));
       break;
     case TargetConfigType:
       {
@@ -254,7 +262,7 @@ Value *valueOfOCaml(value v_)
             tmp4_ = Field(tmp2_, 0);  // the name * value
             RCEntryParam *param = new RCEntryParam(
               String_val(Field(tmp4_, 0)),  // name
-              RamenValueOfOCaml(Field(tmp4_, 1))); // value
+              std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp4_, 1)))); // value
             rcEntry->addParam(param);
           }
           targetConfig->addEntry(rcEntry);
@@ -282,7 +290,7 @@ Value *valueOfOCaml(value v_)
                   new CompiledProgramParam(
                     String_val(Field(tmp3_, 0)),  // name
                     String_val(Field(tmp3_, 3)),  // doc
-                    RamenValueOfOCaml(Field(tmp2_, 1))); // value
+                    std::shared_ptr<conf::RamenValue const>(RamenValue::ofOCaml(Field(tmp2_, 1)))); // value
                 sourceInfo->addParam(p);
               }
               // Iter over the cons cells of the function_info:
@@ -324,21 +332,13 @@ Value *valueOfOCaml(value v_)
       }
       break;
     case RuntimeStatsType:
-      assert(!"TODO valueOfOCaml for RuntimeStatsType");
+      ret = new RuntimeStats(Field(v_, 0));
       break;
     case LastValueType:
     default:
       assert(!"Tag_val(v_) <= LastValueType");
   }
   CAMLreturnT(Value *, ret);
-}
-
-static bool looks_like_true(QString s_)
-{
-  QString s = s_.simplified();
-  if (s.isEmpty() ||
-      s[0] == '0' || s[0] == 'f' || s[0] == 'F') return false;
-  return true;
 }
 
 Value *valueOfQString(ValueType vt, QString const &s)
@@ -881,6 +881,30 @@ bool TargetConfig::operator==(Value const &other) const
   return entries == o.entries;
 }
 
+RuntimeStats::RuntimeStats(value v_)
+{
+  assert(16 == Wosize_val(v_));
+  statsTime = Double_val(Field(v_, 0));
+  firstStartup = Double_val(Field(v_, 1));
+  lastStartup = Double_val(Field(v_, 2));
+  minEventTime = Is_block(Field(v_, 3)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 3), 0))) :
+    std::optional<double>(),
+  maxEventTime = Is_block(Field(v_, 4)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 4), 0))) :
+    std::optional<double>(),
+  firstInput = Double_val(Field(v_, 5));
+  lastInput = Double_val(Field(v_, 6));
+  firstOutput = Double_val(Field(v_, 7));
+  lastOutput = Double_val(Field(v_, 8));
+  totInputTuples = Long_val(Field(v_, 9));
+  totOutputTuples = Long_val(Field(v_, 10));
+  totInputBytes = *(uint64_t *)Data_custom_val(Field(v_, 11));
+  totOutputBytes = *(uint64_t *)Data_custom_val(Field(v_, 12));
+  totNotifs = Long_val(Field(v_, 13));
+  totCpu = Double_val(Field(v_, 14));
+  maxRam = *(uint64_t *)Data_custom_val(Field(v_, 15));
+}
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
 {

@@ -94,9 +94,9 @@ void CodeInfoPanel::setValue(conf::Key const &, std::shared_ptr<conf::Value cons
       paramBox->setLayout(layout);
       int row = 0, column = 0;
       for (auto const param : info->params) {
-        QLabel *pname = new QLabel(param->name + ":");
+        QLabel *pname = new QLabel(QString::fromStdString(param->name) + ":");
         layout->addWidget(pname, row, column, Qt::AlignRight);
-        QLabel *pvalue = new QLabel(param->value->toQString());
+        QLabel *pvalue = new QLabel(param->val->toQString());
         layout->addWidget(pvalue, row, column+1, Qt::AlignLeft);
         if (column >= 2) {
           column = 0;

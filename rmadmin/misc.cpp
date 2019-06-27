@@ -26,3 +26,11 @@ QString const removeExtQ(QString const &s)
   if (i == -1) return s;
   return s.left(i);
 }
+
+bool looks_like_true(QString s_)
+{
+  QString s = s_.simplified();
+  if (s.isEmpty() ||
+      s[0] == '0' || s[0] == 'f' || s[0] == 'F') return false;
+  return true;
+}

@@ -2,7 +2,21 @@ open Batteries
 open RamenConsts
 open RamenLog
 open RamenHelpers
+module T = RamenTypes
 module ZMQClient = RamenSyncZMQClient
+
+(*
+ * Helpers to convert from/to T.value and string:
+ *)
+
+let value_of_string structure s =
+  let typ = T.{ structure ; nullable = false } in
+  match T.of_string ~typ s with
+  | Result.Ok v -> v
+  | Result.Bad msg ->
+      !logger.error "Cannot convert %S into a value of type %a: %s"
+        s T.print_structure structure msg ;
+      VNull
 
 (*
  * SyncConf client
@@ -16,18 +30,6 @@ module Key = ZMQClient.Key
  * messages and maintaining the config in OCaml.
  * Then, at every message, in addition to maintaining the conf tree we also,
  * depending on the message, call a C wrapper to the Qt signal. *)
-
-let recv_cmd zock =
-  match Zmq.Socket.recv_all zock with
-  | [ "" ; s ] ->
-      let msg = Client.SrvMsg.of_string s in
-      !logger.debug "srv message: %a"
-        Client.SrvMsg.print msg ;
-      msg
-  | m ->
-      Printf.sprintf2 "Received unexpected message %a"
-        (List.print String.print) m |>
-      failwith
 
 let unexpected_reply cmd =
   Printf.sprintf "Unexpected reply %s"
@@ -103,24 +105,25 @@ let on_unlock _zock clt k =
   Gc.compact ()
 
 let sync_loop zock clt =
+  Gc.compact () ;
   let msg_count = ref 0 in
   let handle_msgs_in () =
-    match recv_cmd zock with
+    match ZMQClient.recv_cmd zock with
     | exception Unix.(Unix_error (EAGAIN, _, _)) ->
         ()
     | msg ->
-        !logger.debug "Received: %a" Client.SrvMsg.print msg ;
         Client.process_msg clt msg ;
         incr msg_count ;
         (*!logger.debug "received %d messages" !msg_count ;*)
-        if !msg_count mod 10 = 0 then
+        if !msg_count mod 10 = 0 then (
           let status_msg =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
               (Client.H.length clt.h) in
           Gc.compact () ;
           signal_sync (Ok status_msg) ;
-          Gc.compact () in
+          Gc.compact ()
+        ) in
   let rec handle_msgs_out () =
     Gc.compact () ;
     match next_pending_request () with
@@ -172,6 +175,7 @@ let register_senders zock clt =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url creds () =
+  Gc.compact () ;
   ZMQClient.start
     url creds ~topics:["*"] ~on_progress:(on_progress url) ~on_sock:register_senders
     ~on_new ~on_set ~on_del ~on_lock ~on_unlock
@@ -185,6 +189,7 @@ let init debug quiet url creds =
   init_logger log_level ;
   (* Register the functions that will be called from C++ *)
   ignore (Callback.register "start_sync" (start_sync url creds)) ;
+  ignore (Callback.register "value_of_string" value_of_string) ;
   !logger.info "Done with the command line"
 
 (*
@@ -221,6 +226,7 @@ let print_exn f =
          exit 1
 
 let cli_parse_result =
+  ignore (Thread.self ()) ;
   let version = RamenVersions.release_tag in
   let i = Term.info ~doc:"RamenAdmin" ~version "rmadmin" in
   match

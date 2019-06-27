@@ -12,7 +12,7 @@ namespace conf {
 
 enum RamenValueType {
   // VNull not a block though:
-  VNullType = 0, VFloatType = 0, VStringType, VBoolType,
+  VNullType = -1, VFloatType = 0, VStringType, VBoolType,
   VU8Type, VU16Type, VU32Type, VU64Type, VU128Type,
   VI8Type, VI16Type, VI32Type, VI64Type, VI128Type,
   VEthType, VIpv4Type, VIpv6Type, VIpType, VCidrv4Type, VCidrv6Type, VCidrType,
@@ -27,6 +27,12 @@ struct RamenValue {
   virtual QString toQString() const;
   virtual value toOCamlValue() const;
   virtual bool operator==(RamenValue const &) const;
+
+  // Construct from an OCaml value of type RamenTypes.value
+  static RamenValue *ofOCaml(value);
+
+  // Construct the value from a string (uses ofOCaml under the hood):
+  static RamenValue *ofQString(enum RamenValueType, QString const &);
 };
 
 struct VNull : public RamenValue {
@@ -221,9 +227,6 @@ struct VRecord : public RamenValue {
   VRecord() : RamenValue(VRecordType) {};
   void append(QString field, RamenValue const *i) { v.emplace_back(field, i); }
 };
-
-// Construct from an OCaml value of type RamenTypes.value
-extern RamenValue *RamenValueOfOCaml(value);
 
 };
 

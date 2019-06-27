@@ -2,12 +2,13 @@
 #include <cassert>
 #include <string>
 extern "C" {
-#  include <caml/mlvalues.h>
-#  include <caml/memory.h>
-#  include <caml/alloc.h>
-#  include <caml/custom.h>
-#  include <caml/startup.h>
-#  include <caml/callback.h>
+# include <caml/mlvalues.h>
+# include <caml/memory.h>
+# include <caml/alloc.h>
+# include <caml/custom.h>
+# include <caml/startup.h>
+# include <caml/callback.h>
+# include <caml/threads.h>
 }
 #include <QApplication>
 #include <QtWidgets>
@@ -57,6 +58,7 @@ extern "C" {
   }
 }
 
+// The only thread that will ever call OCaml runtime:
 static void do_sync_thread(char *argv[])
 {
   caml_startup(argv);

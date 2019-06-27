@@ -16,4 +16,6 @@ std::string const removeExt(std::string const &);
 
 QString const removeExtQ(QString const &);
 
+bool looks_like_true(QString);
+
 #endif

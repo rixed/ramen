@@ -1,6 +1,7 @@
 #include <cassert>
 #include <string>
 #include <memory>
+#include <iostream>
 #include <QFormLayout>
 #include <QVBoxLayout>
 #include <QLineEdit>
@@ -10,6 +11,8 @@
 #include "conf.h"
 #include "misc.h"
 #include "SourcesModel.h"  // for sourceNameOfKey and friends
+#include "RamenValueEditor.h"
+#include "confRCEntryParam.h"
 #include "RCEntryEditor.h"
 
 static bool const debug = false;
@@ -55,8 +58,6 @@ RCEntryEditor::RCEntryEditor(QString const &sourceName, bool sourceEditable_, QW
 
     sourceLayout->addWidget(sourceBox);
 
-    /* This is also going to be called immediately as the selected index
-     * just changed from -1 to 0: */
 //    connect(sourceBox, &QComboBox::currentIndexChanged,
 //            this, &RCEntryEditor::resetParams);
     connect(sourceBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -189,12 +190,31 @@ void RCEntryEditor::clearParams()
     paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
 
+std::shared_ptr<conf::RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam const *p) const
+{
+  /* Try to find a set parameter by that name, falling back on the
+   * compiled default: */
+  std::cout << "paramValue(" << p->name << ") is "
+            << (setParamValues.contains(p->name) ? "present" : "absent") << std::endl;
+  return setParamValues.value(p->name, p->val);
+}
+
 void RCEntryEditor::resetParams()
 {
   /* Clear the paramsForm and rebuilt it.
-   * Maybe save the values that are set in a global map of parameter_name to
-   * value, to populate next param lists? Also do this when submitting that
-   * form. */
+   * But first, save the values that are currently set (and that can be
+   * parsed) into setParamValues, for later reuse. */
+  for (int row = 0; row < paramsForm->rowCount(); row ++) {
+    QLayoutItem *item = paramsForm->itemAt(row, QFormLayout::LabelRole);
+    QLabel *label = dynamic_cast<QLabel *>(item->widget());
+    assert(label);
+    std::string const &pname = label->text().toStdString();
+    item = paramsForm->itemAt(row, QFormLayout::FieldRole);
+    RamenValueEditor *editor = dynamic_cast<RamenValueEditor *>(item->widget());
+    assert(editor);
+    setParamValues[pname] = std::shared_ptr<conf::RamenValue const>(editor->getValue());
+  }
+
   QString const baseName = removeExtQ(sourceBox->currentText());
   conf::Key infoKey("sources/" + baseName.toStdString() + "/info");
 
@@ -212,8 +232,13 @@ void RCEntryEditor::resetParams()
   }
 
   for (auto const p : info->params) {
-    QLineEdit *paramEdit = new QLineEdit;
-    paramsForm->addRow(p->name, paramEdit);
+    /* TODO: instead of a generic QLineEdit, use p->value->editor(), given p
+     * is a CompiledProgramParam and p->value a RamenValue, which should
+     * be able to create its own editor. */
+    // TODO: a tooltip with the parameter doc (CompiledProgramParam doc)
+    std::shared_ptr<conf::RamenValue const> val = paramValue(p);
+    RamenValueEditor *paramEdit = RamenValueEditor::ofType(p->val->type, val.get());
+    paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
   }
 }
 
@@ -244,6 +269,13 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
   automaticBox->setCheckState(rcEntry->automatic ? Qt::Checked : Qt::Unchecked);
   sitesEdit->setText(QString::fromStdString(rcEntry->onSite));
   reportEdit->setText(QString::number(rcEntry->reportPeriod));
+
+  // Also save the parameter values:
+  for (auto param : rcEntry->params) {
+    std::cout << "Save value for param " << param->name << std::endl;
+    setParamValues[param->name] = std::shared_ptr<conf::RamenValue const>(param->val);
+  }
+  resetParams();
 }
 
 conf::RCEntry *RCEntryEditor::getValue() const
@@ -255,7 +287,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
               << " into a double" << std::endl;
     // so be it
   }
-  return new conf::RCEntry(
+  conf::RCEntry *rce = new conf::RCEntry(
     nameEdit->text().toStdString(),
     enabledBox->checkState() == Qt::Checked,
     debugBox->checkState() == Qt::Checked,
@@ -263,4 +295,9 @@ conf::RCEntry *RCEntryEditor::getValue() const
     sourceBox->currentText().toStdString(),
     sitesEdit->text().toStdString(),
     automaticBox->checkState() == Qt::Checked);
+
+  // Add parameters:
+
+
+  return rce;
 }
