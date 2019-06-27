@@ -522,8 +522,8 @@ let outputer_of
         last_output = 0. (* TODO *) ;
         tot_in_tuples = 0 (* TODO *) ;
         tot_out_tuples = IntCounter.get stats_out_tuple_count ;
-        tot_in_bytes = 0 (* TODO *) ;
-        tot_out_bytes = 0 (* TODO *) ;
+        tot_in_bytes = Uint64.zero (* TODO *) ;
+        tot_out_bytes = Uint64.zero (* TODO *) ;
         tot_notifs = 0 (* TODO *) ;
         tot_cpu = FloatCounter.get stats_cpu ;
         max_ram } in

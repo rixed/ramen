@@ -716,8 +716,8 @@ struct
         last_output : float ;
         tot_in_tuples : int ;
         tot_out_tuples : int ;
-        tot_in_bytes : int ;
-        tot_out_bytes : int ;
+        tot_in_bytes : Stdint.Uint64.t ;
+        tot_out_bytes : Stdint.Uint64.t ;
         tot_notifs : int ;
         tot_cpu : float ;
         max_ram : Stdint.Uint64.t }

@@ -1,5 +1,6 @@
 (* Interface between workers and the confserver.  *)
 open Batteries
+open Stdint
 open RamenLog
 open RamenHelpers
 open RamenConsts
@@ -97,8 +98,8 @@ let publish_stats clt zock ?while_ stats_key init_stats stats =
           last_output = stats.last_output ;
           tot_in_tuples = init.tot_in_tuples + stats.tot_in_tuples ;
           tot_out_tuples = init.tot_out_tuples + stats.tot_out_tuples ;
-          tot_in_bytes = init.tot_in_bytes + stats.tot_in_bytes ;
-          tot_out_bytes = init.tot_out_bytes + stats.tot_out_bytes ;
+          tot_in_bytes = Uint64.add init.tot_in_bytes stats.tot_in_bytes ;
+          tot_out_bytes = Uint64.add init.tot_out_bytes stats.tot_out_bytes ;
           tot_notifs = init.tot_notifs + stats.tot_notifs ;
           tot_cpu = init.tot_cpu +. stats.tot_cpu ;
           max_ram = max init.max_ram stats.max_ram } in
