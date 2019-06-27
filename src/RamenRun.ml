@@ -97,8 +97,8 @@ let get_key clt zock ~while_ k cont =
       | exception Not_found ->
           cannot "find" k
       | hv ->
-          cont hv.value ;
-          ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k))))
+          cont hv.value (fun () ->
+            ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k)))))
 
 let kill_sync conf program_names =
   let done_ = ref false in
@@ -108,7 +108,8 @@ let kill_sync conf program_names =
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
     (fun zock clt ->
       let open RamenSync in
-      get_key clt zock ~while_ Key.TargetConfig (function
+      get_key clt zock ~while_ Key.TargetConfig (fun v fin ->
+        match v with
         | Value.TargetConfig rcs ->
             (* TODO: check_orphans running_killed_prog_names programs ; *)
             let rcs =
@@ -125,9 +126,12 @@ let kill_sync conf program_names =
             ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
               ~on_done:(fun () ->
                 !logger.info "Done!" ;
+                fin () ;
                 done_ := true)
 
-        | v -> bad_type "TargetConfig" v Key.TargetConfig) ;
+        | v ->
+            fin () ;
+            bad_type "TargetConfig" v Key.TargetConfig) ;
       let msg_count = ZMQClient.process_in ~while_ zock clt in
       !logger.debug "Received %d messages" msg_count) ;
     !num_kills
@@ -273,10 +277,13 @@ let run_sync src_path conf (program_name : N.program) replace report_period
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
     (fun zock clt ->
       let open RamenSync in
-      get_key clt zock ~while_ Key.TargetConfig (function
+      get_key clt zock ~while_ Key.TargetConfig (fun v fin ->
+        match v with
         | Value.TargetConfig rcs ->
             let src_key = Key.(Sources (src_path, "info")) in
-            get_key clt zock ~while_ src_key (function
+            get_key clt zock ~while_ src_key (fun v fin' ->
+              let fin () = fin' () ; fin () in
+              match v with
               | Value.SourceInfo { detail = Compiled prog ; _ } ->
                   (* Check linkage. *)
                   let param_names = Hashtbl.keys params |> Set.of_enum in
@@ -306,16 +313,21 @@ let run_sync src_path conf (program_name : N.program) replace report_period
                   ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
                     ~on_done:(fun () ->
                       !logger.info "Done!" ;
+                      fin () ;
                       done_ := true)
 
               | Value.SourceInfo { detail = Failed failed ; _ } ->
+                  fin () ;
                   Printf.sprintf2 "Cannot start %a: %s"
                     N.path_print src_path
                     failed.Value.SourceInfo.err_msg |>
                   failwith
               | v ->
+                  fin () ;
                   bad_type "SourceInfo" v src_key)
-        | v -> bad_type "TargetConfig" v Key.TargetConfig) ;
+        | v ->
+            fin () ;
+            bad_type "TargetConfig" v Key.TargetConfig) ;
       let msg_count = ZMQClient.process_in ~while_ zock clt in
       !logger.debug "Received %d messages" msg_count)
 
