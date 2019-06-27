@@ -239,30 +239,23 @@ let matching_keys clt f =
   (fun (k, _) -> if f k then Some k else None) |>
   List.of_enum
 
-let lock_matching clt zock ?while_ f cont =
+let with_locked_matching clt zock ?while_ f cb =
   let keys = matching_keys clt f in
-  let rec loop on_ko = function
-    | [] -> cont ()
+  let rec loop unlock_all = function
+    | [] ->
+        !logger.debug "All keys locked, calling back user" ;
+        cb () ;
+        !logger.debug "...Back from user, unlocking everything" ;
+        unlock_all ()
     | key :: rest ->
-        let on_ko' () =
-          send_cmd clt zock ?while_ ~on_ok:on_ko ~on_ko
+        let unlock_all' () =
+          send_cmd clt zock ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
             (CltMsg.UnlockKey key) in
-        let cont () =
-          loop on_ko' rest in
-        send_cmd clt zock ?while_ ~on_ok:cont ~on_ko
+        let on_ok () =
+          loop unlock_all' rest in
+        send_cmd clt zock ?while_ ~on_ok ~on_ko:unlock_all
           (CltMsg.LockKey key) in
   loop ignore keys
-
-(* FIXME: handle errors somehow *)
-let unlock_matching clt zock ?while_ f cont =
-  let keys = matching_keys clt f in
-  let rec loop = function
-    | [] -> cont ()
-    | key :: rest ->
-        let cont () = loop rest in
-        send_cmd clt zock ?while_ ~on_ok:cont
-          (CltMsg.LockKey key) in
-  loop keys
 
 module Stage =
 struct

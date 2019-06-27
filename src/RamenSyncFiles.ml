@@ -26,12 +26,6 @@ module Services = RamenServices
 
 let while_ () = !Processes.quit = None
 
-(* Try to lock all the keys we care about. If a lock fail, unlock everything.
- * Otherwise call the continuation [k].
- * Typically, [k] is then supposed to update and unlock. *)
-let lock_keys clt zock f k =
-  ZMQClient.lock_matching clt zock ~while_ f k
-
 (* Helper function that takes a key filter and a new set of values, and
  * replaces all keys matching the filter with the new set of values. *)
 let replace_keys clt zock f h =
@@ -47,8 +41,7 @@ let replace_keys clt zock f h =
       if Client.H.mem clt.Client.h k then
         ZMQClient.send_cmd clt zock ~while_ (CltMsg.UpdKey (k, v))
       else
-        ZMQClient.send_cmd clt zock ~while_ (CltMsg.NewKey (k, v)) ;
-      ZMQClient.send_cmd clt zock ~while_ (CltMsg.UnlockKey k)
+        ZMQClient.send_cmd clt zock ~while_ (CltMsg.NewKey (k, v))
     ) v
   ) h
 
@@ -102,8 +95,8 @@ struct
                  MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
                  ArchivedTimes))))) -> true
       | _ -> false in
-    lock_keys clt zock f (fun () ->
-      replace_keys clt zock f h (* Also unlock *))
+    ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
+      replace_keys clt zock f h)
 end
 
 (* FIXME: User conf file should be stored in the conftree to begin with,
@@ -121,7 +114,7 @@ struct
       let f = function
         | Key.Storage (RetentionsOverride _ | TotalSize | RecallCost) -> true
         | _ -> false in
-      lock_keys clt zock f (fun () ->
+      ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
         let h = Client.H.create 20 in
         let upd k v =
           Client.H.add h k (Some v, Capa.Anybody, Capa.Admin) in
@@ -135,7 +128,7 @@ struct
           upd (Storage (RetentionsOverride glob))
               Value.(Retention retention)
         ) user_conf.retentions ;
-        replace_keys clt zock f h (* And unlock *))
+        replace_keys clt zock f h)
     )
 end
 
@@ -148,7 +141,7 @@ struct
     let f = function
       | Key.PerProgram (_, (SourceModTime | SourceFile)) -> true
       | _ -> false in
-    lock_keys clt zock f (fun () ->
+    ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
       let h = Client.H.create 20 in
       let upd k v =
         let r = Capa.anybody and w = Capa.nobody in
@@ -203,7 +196,7 @@ struct
               upd Key.Signature Value.(String f.F.signature) ;
               upd Key.MergeInputs Value.(Bool f.F.merge_inputs)
             ) p.funcs)) ;
-      replace_keys clt zock f h (* and unlock *))
+      replace_keys clt zock f h)
 end
 
 (* FIXME: Archivist is supposed to write directly in the conf tree *)
@@ -221,7 +214,7 @@ struct
       let f = function
         | Key.PerSite (_, PerWorker (_, AllocedArcBytes)) -> true
         | _ -> false in
-      lock_keys clt zock f (fun () ->
+      ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
         let allocs = Archivist.load_allocs conf in
         let h = Client.H.create 20 in
         let upd k v =
@@ -230,7 +223,7 @@ struct
           upd (PerSite (site, PerWorker (fq, AllocedArcBytes)))
               Value.(Int (Int64.of_int size))
         ) allocs ;
-        replace_keys clt zock f h (* and unlock *))
+        replace_keys clt zock f h)
     )
 end
 
