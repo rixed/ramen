@@ -239,10 +239,10 @@ let matching_keys clt f =
   (fun (k, _) -> if f k then Some k else None) |>
   List.of_enum
 
-let lock_matching clt zock ?while_ f k =
+let lock_matching clt zock ?while_ f cont =
   let keys = matching_keys clt f in
   let rec loop on_ko = function
-    | [] -> k ()
+    | [] -> cont ()
     | key :: rest ->
         let on_ko' () =
           send_cmd clt zock ?while_ ~on_ok:on_ko ~on_ko
@@ -254,10 +254,10 @@ let lock_matching clt zock ?while_ f k =
   loop ignore keys
 
 (* FIXME: handle errors somehow *)
-let unlock_matching clt zock ?while_ f k =
+let unlock_matching clt zock ?while_ f cont =
   let keys = matching_keys clt f in
   let rec loop = function
-    | [] -> k ()
+    | [] -> cont ()
     | key :: rest ->
         let cont () = loop rest in
         send_cmd clt zock ?while_ ~on_ok:cont

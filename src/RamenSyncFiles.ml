@@ -54,33 +54,6 @@ let replace_keys clt zock f h =
 
 (* One module per data source so that it's easier to track those *)
 
-module TargetConfig =
-struct
-  let update conf clt zock =
-    let k = Key.TargetConfig in
-    let unlock () =
-      ZMQClient.send_cmd clt zock ~while_ (CltMsg.UnlockKey k) in
-    ZMQClient.send_cmd clt zock ~while_ (CltMsg.LockKey k) ~on_ok:(fun () ->
-      let programs = RC.with_rlock conf identity in
-      let rcs =
-        Hashtbl.fold (fun pname (rce, _get_rc) rcs ->
-          let params = alist_of_hashtbl rce.RC.params in
-          let entry =
-            RamenSync.Value.TargetConfig.{
-              enabled = rce.RC.status = RC.MustRun ;
-              debug = rce.debug ;
-              report_period = rce.report_period ;
-              params ;
-              src_path = rce.RC.src_file ;
-              on_site = Globs.decompile rce.RC.on_site ;
-              automatic = rce.RC.automatic } in
-          (pname, entry) :: rcs
-        ) programs [] in
-      let v = Value.TargetConfig rcs in
-      ZMQClient.send_cmd clt zock ~while_ (CltMsg.SetKey (k, v))
-                         ~on_ok:unlock ~on_ko:unlock)
-end
-
 (* FIXME: Archivist should write the stats in there directly *)
 module StatsInfo =
 struct
@@ -267,8 +240,6 @@ end
  *)
 
 let sync_step conf clt zock =
-  log_and_ignore_exceptions ~what:"update TargetConfig"
-    (TargetConfig.update conf clt) zock ;
   log_and_ignore_exceptions ~what:"update StatsInfo"
     (StatsInfo.update conf clt) zock ;
   log_and_ignore_exceptions ~what:"update Storage"
