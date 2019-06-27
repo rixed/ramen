@@ -123,7 +123,7 @@ struct
         last_read_user_conf := t ;
         let user_conf = Archivist.get_user_conf conf in
         upd (Storage TotalSize)
-            Value.(Int (Int64.of_int user_conf.Archivist.size_limit)) ;
+            Value.(Int user_conf.Archivist.size_limit) ;
         upd (Storage RecallCost)
             Value.(Float user_conf.recall_cost) ;
         Hashtbl.iter (fun glob retention ->
@@ -201,34 +201,6 @@ struct
       replace_keys clt zock f h)
 end
 
-(* FIXME: Archivist is supposed to write directly in the conf tree *)
-module AllocInfo =
-struct
-  let last_read_allocs = ref 0.
-
-  let update conf clt zock =
-    let fname = Archivist.allocs_file conf in
-    let t = Files.mtime_def 0. fname in
-    if t > !last_read_allocs then (
-      !logger.info "Updating storage allocations from %a"
-        N.path_print fname ;
-      last_read_allocs := t ;
-      let f = function
-        | Key.PerSite (_, PerWorker (_, AllocedArcBytes)) -> true
-        | _ -> false in
-      ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
-        let allocs = Archivist.load_allocs conf in
-        let h = Client.H.create 20 in
-        let upd k v =
-          Client.H.add h k (Some v, Capa.Anybody, Capa.Admin) in
-        Hashtbl.iter (fun (site, fq) size ->
-          upd (PerSite (site, PerWorker (fq, AllocedArcBytes)))
-              Value.(Int (Int64.of_int size))
-        ) allocs ;
-        replace_keys clt zock f h)
-    )
-end
-
 
 (*
  * The service: update conftree from files in a loop.
@@ -240,9 +212,7 @@ let sync_step conf clt zock =
   log_and_ignore_exceptions ~what:"update Storage"
     (Storage.update conf clt) zock ;
   log_and_ignore_exceptions ~what:"update SrcInfo"
-    (SrcInfo.update conf clt) zock ;
-  log_and_ignore_exceptions ~what:"update AllocInfo"
-    (AllocInfo.update conf clt) zock
+    (SrcInfo.update conf clt) zock
 
 let service_loop conf upd_period zock clt =
   let last_upd = ref 0. in

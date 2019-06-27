@@ -19,6 +19,7 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
 module Retention = RamenRetention
+module ZMQClient = RamenSyncZMQClient
 
 let conf_dir conf =
   N.path_cat [ conf.C.persist_dir ; N.path "archivist" ;
@@ -34,7 +35,7 @@ let conf_dir conf =
 type user_conf =
   { (* Global size limit, in byte (although the SMT uses coarser grained
        sizes): *)
-    size_limit : int ;
+    size_limit : int64 ;
     (* The cost to retrieve one byte of archived data, expressed in the
      * unit of CPU time (ie. the time it takes to retrieve that byte if
      * you value the IO time as much as the CPU time): *)
@@ -67,6 +68,31 @@ let retention_of_fq src_retention user_conf (fq : N.fq) =
     with Not_found ->
       { duration = 0. ; period = 0. })
 
+(* The stats we need about each worker to compute: *)
+
+type arc_stats =
+  { min_etime : float option ;
+    max_etime : float option ;
+    bytes : int64 ;
+    cpu : float ;
+    is_running : bool ;
+    parents : (N.site * N.fq) list }
+
+let arc_stats_of_func_stats s =
+  { min_etime = s.FS.min_etime ;
+    max_etime = s.FS.max_etime ;
+    bytes = s.FS.bytes ;
+    cpu = s.FS.cpu ;
+    is_running = s.FS.is_running ;
+    parents = s.FS.parents }
+
+let arc_stats_of_runtime_stats is_running parents s =
+  { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
+    max_etime = s.max_etime ;
+    bytes = Uint64.to_int64 s.tot_out_bytes ;
+    cpu = s.tot_cpu ;
+    is_running ; parents }
+
 (*
  * Then the first stage is to gather statistics about all running workers.
  * We do this by continuously listening to the health reports and maintaining
@@ -98,7 +124,7 @@ let default_populate_user_conf user_conf per_func_stats =
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
       Hashtbl.iter (fun (_, (fq : N.fq)) s ->
-        if s.FS.parents = [] then
+        if s.parents = [] then
           let pat = Globs.(escape (fq :> string)) in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
@@ -468,10 +494,10 @@ let cost i site_fq =
 (* The "compute cost" per second is the CPU time it takes to
  * process one second worth of data. *)
 let compute_cost s =
-  match s.FS.min_etime, s.FS.max_etime with
+  match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
       let running_time = ma -. mi in
-      s.FS.cpu /. running_time
+      s.cpu /. running_time
   | _ ->
       Default.compute_cost
 
@@ -479,10 +505,10 @@ let compute_cost s =
  * The recall cost of a second worth of output will be this size
  * times the user_conf.recall_cost. *)
 let recall_size s =
-  match s.FS.min_etime, s.FS.max_etime with
+  match s.min_etime, s.max_etime with
   | Some mi, Some ma ->
       let running_time = ma -. mi in
-      Int64.to_float s.FS.bytes /. running_time
+      Int64.to_float s.bytes /. running_time
   | _ ->
       Default.recall_size
 
@@ -531,7 +557,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
       (list_print (fun oc (site, fq) ->
         Printf.fprintf oc "%a:%a"
           N.site_print site
-          N.fq_print fq)) s.FS.parents ;
+          N.fq_print fq)) s.parents ;
     List.iteri (fun i d ->
       let recall_size = recall_size s in
       let recall_cost =
@@ -560,7 +586,7 @@ let emit_query_costs user_conf durations oc per_func_stats =
         (perc site_fq)
           (* Percentage of size_limit required to hold duration [d] of archives: *)
           (ceil_to_int (d *. recall_size *. 100. /.
-             float_of_int user_conf.size_limit))
+             Int64.to_float user_conf.size_limit))
         recall_cost
         compute_cost
     ) durations
@@ -604,13 +630,13 @@ let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
    * non running parents! *)
   let per_func_stats =
     let h =
-      Hashtbl.filter (fun s -> s.FS.is_running) per_func_stats in
+      Hashtbl.filter (fun s -> s.is_running) per_func_stats in
     let rec loop () =
       let mia =
         Hashtbl.fold (fun _site_fq s mia ->
           List.fold_left (fun mia psite_fq ->
             if Hashtbl.mem h psite_fq then mia else psite_fq::mia
-          ) mia s.FS.parents
+          ) mia s.parents
         ) h [] in
       if mia <> [] then (
         List.iter (fun (psite, pfq as psite_fq) ->
@@ -681,13 +707,13 @@ let load_allocs =
     allocs_file conf |>
     ppp_of_file
 
-let update_storage_allocation conf programs =
+let site_fq_print oc (site, fq) =
+  Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq
+
+let update_storage_allocation conf user_conf per_func_stats src_retention =
   let open RamenSmtParser in
   let solution = Hashtbl.create 17 in
-  let per_func_stats = get_global_stats_no_refresh conf in
-  let user_conf = get_user_conf conf in
   let user_conf = default_populate_user_conf user_conf per_func_stats in
-  let src_retention = get_retention_from_src programs in
   let fname = N.path_cat [ conf_dir conf ; N.path "allocations.smt2" ]
   and emit = emit_smt2 src_retention user_conf per_func_stats
   and parse_result sym vars sort term =
@@ -720,8 +746,6 @@ let update_storage_allocation conf programs =
    * stats or if the solver decided that all functions were equally important
    * and give them each 0% of storage.
    * In that case, we'd rather have each function share the available space: *)
-  let site_fq_print oc (site, fq) =
-    Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq in
   let tot_perc = Hashtbl.fold (fun _ p s -> s + p) solution 0 in
   !logger.debug "solution: %a, tot-perc = %d"
     (Hashtbl.print site_fq_print Int.print) solution
@@ -744,7 +768,7 @@ let update_storage_allocation conf programs =
       (* Next scale will scale this properly *)
       let solution =
         Hashtbl.filter_map (fun site_fq s ->
-          if s.FS.is_running && mentionned_in_user_conf site_fq
+          if s.is_running && mentionned_in_user_conf site_fq
           then Some 1 else None
         ) per_func_stats in
       (* Have to recompute [tot_perc]: *)
@@ -755,12 +779,22 @@ let update_storage_allocation conf programs =
   (* Scale it up to 100% and convert to bytes: *)
   let scale =
     if tot_perc > 0 then
-      float_of_int user_conf.size_limit /. float_of_int tot_perc
+      Int64.to_float user_conf.size_limit /. float_of_int tot_perc
     else 1. in
   let allocs =
     Hashtbl.map (fun _ p ->
       round_to_int (float_of_int p *. scale)
     ) solution in
+  allocs
+
+let update_storage_allocation_file conf programs =
+  let user_conf = get_user_conf conf in
+  let per_func_stats =
+    get_global_stats_no_refresh conf |>
+    Hashtbl.map (fun _ v -> arc_stats_of_func_stats v) in
+  let src_retention = get_retention_from_src programs in
+  let allocs =
+    update_storage_allocation conf user_conf per_func_stats src_retention in
   (* Warn of any large change: *)
   let prev_allocs = load_allocs conf in
   Hashtbl.iter (fun site_fq prev_p ->
@@ -816,7 +850,7 @@ let run_once conf ?while_ ?export_duration
    * and everything: *)
   if allocs then (
     !logger.info "Updating storage allocations" ;
-    update_storage_allocation conf programs) ;
+    update_storage_allocation_file conf programs) ;
   (* Now update the archiving configuration of running workers: *)
   if reconf then (
     !logger.info "Updating workers export configuration" ;
@@ -837,6 +871,154 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
     RamenWatchdog.reset watchdog ;
     Processes.sleep_or_exit ?while_ (jitter sleep_time)
   done
+
+let realloc_sync conf ~while_ zock clt =
+  (* Collect all stats and retention info: *)
+  !logger.debug "Recomputing storage allocations" ;
+  let per_func_stats : (C.N.site * N.fq, arc_stats) Batteries.Hashtbl.t =
+    Hashtbl.create 10 in
+  let size_limit = ref 1073741824L
+  and recall_cost = ref 1e-6
+  and retentions = Hashtbl.create 11
+  and src_retention = Hashtbl.create 11
+  and prev_allocs = Hashtbl.create 11 in
+  let open RamenSync in
+  ZMQClient.Client.iter_keys clt (fun k v ->
+    match k, v.ZMQClient.Client.value with
+    | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
+      Value.RuntimeStats stats ->
+        let worker_key = Key.PerSite (site, PerWorker (fq, Worker)) in
+        (match (ZMQClient.Client.find clt worker_key).value with
+        | exception Not_found ->
+            !logger.debug "Ignoring stats %a with no current worker"
+              Key.print k
+        | Value.Worker worker ->
+            if worker.Value.Worker.role = Whole then
+              let is_running = true
+              and parents =
+                worker.Value.Worker.parents |>
+                List.map (fun ref ->
+                  ref.Value.Worker.site,
+                  N.fq_of_program ref.program ref.func) in
+              let stats =
+                arc_stats_of_runtime_stats is_running parents stats in
+              Hashtbl.add per_func_stats (site, fq) stats
+            else
+              !logger.debug "Ignoring top-half %a" Value.Worker.print worker
+        | v ->
+            invalid_sync_type worker_key v "a Worker")
+    | Key.PerSite (_site, PerWorker (fq, Worker)),
+      Value.Worker worker ->
+        let info_key = Key.Sources (worker.Value.Worker.src_path, "info") in
+        (match (ZMQClient.Client.find clt info_key).value with
+        | exception Not_found ->
+            !logger.error
+              "Cannot find source %a for worker %a, assuming no retention"
+              Key.print info_key
+              N.fq_print fq
+        | Value.SourceInfo { detail = Compiled prog ; _ } ->
+            List.iter (fun func ->
+              Option.may (Hashtbl.replace src_retention fq)
+                         func.F.Serialized.retention
+            ) prog.P.Serialized.funcs
+        | v ->
+            invalid_sync_type info_key v "a compiled SourceInfo")
+    | Key.Storage TotalSize,
+      Value.Int v ->
+        size_limit := v
+    | Key.Storage RecallCost,
+      Value.Float v ->
+        recall_cost := v
+    | Key.Storage (RetentionsOverride pat),
+      Value.Retention v ->
+        Hashtbl.replace retentions pat v
+    | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
+      Value.Int bytes ->
+        Hashtbl.add prev_allocs (site, fq) bytes
+    | _ ->
+        ()) ;
+  let user_conf =
+    { size_limit = !size_limit ;
+      recall_cost = !recall_cost ;
+      retentions } in
+  let allocs : ((N.site * N.fq), int) Hashtbl.t =
+    update_storage_allocation conf user_conf per_func_stats src_retention in
+  (* Write new allocs and warn of any large change: *)
+  Hashtbl.iter (fun (site, fq as hk) bytes ->
+    let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes))
+    and v = Value.Int (Int64.of_int bytes) in
+    (match Hashtbl.find prev_allocs hk with
+    | exception Not_found ->
+        !logger.info "Newly allocated storage: %d bytes for %a"
+          bytes
+          site_fq_print (site, fq) ;
+        ZMQClient.send_cmd clt zock ~while_ (NewKey (k, v)) ;
+    | prev_bytes ->
+        if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
+        then
+          !logger.warning "Allocation for %a is jumping from %Ld to %d bytes"
+            site_fq_print (site, fq) prev_bytes bytes ;
+        ZMQClient.send_cmd clt zock ~while_ (UpdKey (k, v)) ;
+        Hashtbl.remove prev_allocs hk)
+  ) allocs ;
+  (* Delete what's left in prev_allocs: *)
+  Hashtbl.iter (fun (site, fq as site_fq) _ ->
+    let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
+    !logger.info "No more allocated storage for %a"
+      site_fq_print site_fq ;
+    ZMQClient.send_cmd clt zock ~while_ (DelKey k)
+  ) prev_allocs
+
+let run_sync conf ~while_ _loop _stats allocs _reconf =
+  (* We need retentions (that we get from the info files), user config,
+   * runtime stats and workers (to get src_path and running flag).
+   * Results are written in PerWorker AllocedArcBytes, that we must also read
+   * to warn about large changes. *)
+  let topics =
+    [ "sources/*/info" ;
+      "storage/*" ;
+      "sites/*/workers/*/stats/runtime" ;
+      "sites/*/workers/*/archives/alloc_size" ;
+      "sites/*/workers/*/worker" ] in
+  (* We listen to all of those and any change will reset an alarm after which
+   * the allocations are recomputed. *)
+  (* Try to have the first realloc as soon as possible while still giving
+   * time for first stats to arrive: *)
+  let last_change = ref 0.
+  and last_realloc = ref (Unix.time () -. min_duration_between_storage_alloc
+                                       +. Default.report_period *. 2.) in
+  let on_del _zock _clt k _v =
+    let open RamenSync in
+    match k with
+    | Key.PerSite (_, PerWorker (_, RuntimeStats))
+    | Key.Storage _ ->
+        last_change := Unix.gettimeofday ()
+    | _ ->
+        () in
+  let on_set zock clt k v _uid _mtime =
+    on_del zock clt k v in
+  (* TODO: update the allocs using accumulated stats already in the conftree
+   * and write the result back in the conftree, where supervisor will take it
+   * to configure the export *)
+  ZMQClient.start ~while_ conf.C.sync_url conf.C.login
+                  ~on_set ~on_new:on_set ~on_del
+                  ~topics ~recvtimeo:5. (fun zock clt ->
+    Processes.until_quit (fun () ->
+      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      !logger.debug "Received %d messages" msg_count ;
+      let now = Unix.gettimeofday () in
+      if allocs &&
+         now > !last_change +. archivist_settle_delay &&
+         !last_change > !last_realloc &&
+         now > !last_realloc +. min_duration_between_storage_alloc
+      then (
+        realloc_sync conf ~while_ zock clt ;
+        last_realloc := now
+      ) ;
+      (* TODO: Also reconf the workers *)
+      true
+    )
+  )
 
 (* Helpers: get the stats (maybe refreshed) *)
 

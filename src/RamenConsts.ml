@@ -522,6 +522,15 @@ let max_last_tuples = 10
 (* OCaml stdlib Random won't go further: *)
 let max_int_for_random = 0x3FFFFFFF
 
+(* Number of seconds to wait between the last conf update impacting the
+ * allocations and their recomputation. Must be shorter than expected
+ * update rate but above interval during burst. *)
+let archivist_settle_delay = 1.
+
+(* Do not attempt to realloc if last reallocation was less than that number
+ * of seconds ago: *)
+let min_duration_between_storage_alloc = 600.
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

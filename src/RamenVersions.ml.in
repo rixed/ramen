@@ -36,7 +36,7 @@ let binocle = Binocle.version
 let experiment = "v1"
 
 (* Format of the archivist user constraints and other intermediary files *)
-let archivist_conf = "v6" (* last: query period replaces query_freq *)
+let archivist_conf = "v7" (* last: size_limit now explicitly an int64 *)
 
 (* Format used for factor possible values (content and file name) *)
 let factors = "v2" (* last: no more max_time in file name *)

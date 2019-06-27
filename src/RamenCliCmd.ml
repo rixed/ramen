@@ -1259,10 +1259,14 @@ let archivist conf loop daemonize stats allocs reconf
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog (N.path "archivist") ;
-  if loop <= 0. then
-    RamenArchivist.run_once conf ~while_ stats allocs reconf
-  else
-    RamenArchivist.run_loop conf ~while_ loop stats allocs reconf ;
+  if conf.C.sync_url = "" then (
+    if loop <= 0. then
+      RamenArchivist.run_once conf ~while_ stats allocs reconf
+    else
+      RamenArchivist.run_loop conf ~while_ loop stats allocs reconf
+  ) else (
+    RamenArchivist.run_sync conf ~while_ loop stats allocs reconf
+  ) ;
   Option.may exit !RamenProcesses.quit
 
 (*
