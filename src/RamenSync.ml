@@ -785,6 +785,9 @@ struct
         RuntimeStats.print oc s
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
+
+  let of_int v = Int (Int64.of_int v)
+  let of_float v = Float v
 end
 
 let err_sync_type k v what =

@@ -56,11 +56,13 @@ struct
 
   let init srv =
     (* Create the minimal set of (sticky) keys: *)
-    let r = Capa.Anybody
-    and w = Capa.Admin
-    and s = true in
-    Server.create_unlocked srv (Storage TotalSize) Value.dummy ~r ~w ~s ;
-    Server.create_unlocked srv (Storage RecallCost) Value.dummy ~r ~w ~s
+    let r = Capa.anybody
+    and w = Capa.anybody (* admin *)
+    and s = true
+    and total_size = Value.of_int 1073741824
+    and recall_cost = Value.of_float 1e-6 in
+    Server.create_unlocked srv (Storage TotalSize) total_size  ~r ~w ~s ;
+    Server.create_unlocked srv (Storage RecallCost) recall_cost ~r ~w ~s
 end
 
 (*

@@ -72,6 +72,24 @@ if test "$be_master" = yes; then
   done
   echo '}' >> $services
 
+  # Must be done before filesyncer and archivist are run:
+  log "create archivist user conf..."
+  mkdir -p "$RAMEN_DIR/archivist/$archivist_version/"
+  # The idea behind this conf is that aggregated values are kept for a
+  # longer time while 1min aggregate is not kept, but could be reconstructed
+  # from raw logs (thus allowing to test distributed replay)
+  cat > "$RAMEN_DIR/archivist/$archivist_version/config" <<EOF
+{
+  size_limit = 8000000000;
+  retentions = {
+    "logs/http" => { duration = 43200 };
+    "10mins/http" => { duration = 259200 };
+    "1hour/http" => { duration = 2592000 };
+    "*/stats" => { duration = 0 };
+  }
+}
+EOF
+
   log "Run the http, compilation and choreographer services"
 
   "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
@@ -126,21 +144,6 @@ at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 
 # Archivist --reconf and --stats must also run everywhere, and fully on master
 if test "$be_master" = yes; then
-  mkdir -p "$RAMEN_DIR/archivist/$archivist_version/"
-  # The idea behind this conf is that aggregated values are kept for a
-  # longer time while 1min aggregate is not kept, but could be reconstructed
-  # from raw logs (thus allowing to test distributed replay)
-  cat > "$RAMEN_DIR/archivist/$archivist_version/config" <<EOF
-{
-  size_limit = 8000000000;
-  retentions = {
-    "logs/http" => { duration = 43200 };
-    "10mins/http" => { duration = 259200 };
-    "1hour/http" => { duration = 2592000 };
-    "*/stats" => { duration = 0 };
-  }
-}
-EOF
   "$ramen" archivist --master=aggregator --site="$ramen_site" --loop=5 --reconf --allocs --debug --confserver=localhost &
   archivist_pid=$!
 else

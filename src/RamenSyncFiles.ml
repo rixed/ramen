@@ -38,10 +38,9 @@ let replace_keys clt zock f h =
   Client.H.iter (fun k (v, _r, _w) ->
     (* FIXME: add r and w in NewKey *)
     Option.may (fun v ->
-      if Client.H.mem clt.Client.h k then
-        ZMQClient.send_cmd clt zock ~while_ (CltMsg.UpdKey (k, v))
-      else
-        ZMQClient.send_cmd clt zock ~while_ (CltMsg.NewKey (k, v))
+      (* We have no idea which key preexist or not as we subscribe to no
+       * topics, so we have to SetKey: *)
+      ZMQClient.send_cmd clt zock ~while_ (CltMsg.SetKey (k, v))
     ) v
   ) h
 
