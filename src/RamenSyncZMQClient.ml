@@ -285,44 +285,44 @@ struct
     String.print oc (to_string s)
 end
 
-let default_on_progress stage status =
+let default_on_progress _clt stage status =
   (match status with
   | Status.InitStart | InitOk -> !logger.info
   | InitFail _ | Fail _ -> !logger.error
   | _ -> !logger.debug)
     "%a: %a" Stage.print stage Status.print status
 
-let init_connect ?while_ url zock on_progress =
+let init_connect ?while_ url clt zock on_progress =
   let url = if String.contains url ':' then url
             else url ^":"^ string_of_int Default.confserver_port in
   let connect_to = "tcp://"^ url in
-  on_progress Stage.Conn Status.InitStart ;
+  on_progress clt Stage.Conn Status.InitStart ;
   try
     !logger.info "Connecting to %s..." connect_to ;
     retry_zmq ?while_
       (Zmq.Socket.connect zock) connect_to ;
-    on_progress Stage.Conn Status.InitOk
+    on_progress clt Stage.Conn Status.InitOk
   with e ->
-    on_progress Stage.Conn Status.(InitFail (Printexc.to_string e))
+    on_progress clt Stage.Conn Status.(InitFail (Printexc.to_string e))
 
 let init_auth ?while_ login clt zock on_progress =
-  on_progress Stage.Auth Status.InitStart ;
+  on_progress clt Stage.Auth Status.InitStart ;
   try
     send_cmd clt zock ?while_ (CltMsg.Auth login) ;
     match retry_zmq ?while_ recv_cmd zock with
     | SrvMsg.AuthOk _ as msg ->
-        on_progress Stage.Auth Status.InitOk ;
-        Client.process_msg clt msg
+        Client.process_msg clt msg ;
+        on_progress clt Stage.Auth Status.InitOk
     | SrvMsg.AuthErr s as msg ->
-        on_progress Stage.Auth (Status.InitFail s) ;
-        Client.process_msg clt msg
+        Client.process_msg clt msg ;
+        on_progress clt Stage.Auth (Status.InitFail s)
     | rep ->
         unexpected_reply rep
   with e ->
-    on_progress Stage.Auth Status.(InitFail (Printexc.to_string e))
+    on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e))
 
 let init_sync ?while_ clt zock topics on_progress =
-  on_progress Stage.Sync Status.InitStart ;
+  on_progress clt Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
   (* Also subscribe to the error messages, unless it's covered already: *)
   assert (clt.Client.my_errors <> None) ;
@@ -339,9 +339,9 @@ let init_sync ?while_ clt zock topics on_progress =
     List.iter (fun glob ->
       send_cmd clt zock ?while_ (CltMsg.StartSync glob)
     ) globs ;
-    on_progress Stage.Sync Status.InitOk
+    on_progress clt Stage.Sync Status.InitOk
   with e ->
-    on_progress Stage.Sync Status.(InitFail (Printexc.to_string e))
+    on_progress clt Stage.Sync Status.(InitFail (Printexc.to_string e))
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
@@ -377,7 +377,7 @@ let start ?while_ url creds ?(topics=[])
           Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
           Zmq.Socket.set_send_high_water_mark zock 0 ;
           log_exceptions ~what:"init_connect"
-            (fun () -> init_connect ?while_ url zock on_progress) ;
+            (fun () -> init_connect ?while_ url clt zock on_progress) ;
           log_exceptions ~what:"init_auth"
             (fun () -> init_auth ?while_ creds clt zock on_progress) ;
           log_exceptions ~what:"init_sync"

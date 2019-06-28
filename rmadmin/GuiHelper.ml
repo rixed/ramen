@@ -158,7 +158,15 @@ let sync_loop zock clt =
       signal_sync (Fail (Printexc.to_string e))
   done
 
-let on_progress url stage status =
+external set_my_errors : string -> unit = "set_my_errors"
+
+let on_progress url clt stage status =
+  if stage = ZMQClient.Stage.Auth && status = ZMQClient.Status.InitOk then (
+    let my_errors = option_get "my_errors" clt.Client.my_errors |>
+                    Key.to_string in
+    !logger.info "Setting my errors key to %S" my_errors ;
+    set_my_errors my_errors
+  ) ;
   (match stage with
   | ZMQClient.Stage.Conn -> signal_conn url
   | ZMQClient.Stage.Auth -> signal_auth
@@ -181,12 +189,15 @@ let start_sync url creds () =
     ~on_new ~on_set ~on_del ~on_lock ~on_unlock
     ~recvtimeo:0.1 sync_loop
 
+external set_my_uid : string -> unit = "set_my_uid"
+
 let init debug quiet url creds =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
   init_logger log_level ;
+  set_my_uid creds ;
   (* Register the functions that will be called from C++ *)
   ignore (Callback.register "start_sync" (start_sync url creds)) ;
   ignore (Callback.register "value_of_string" value_of_string) ;

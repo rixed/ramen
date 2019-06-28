@@ -162,8 +162,12 @@ void AtomicForm::setEnabled(bool enabled)
 
 void AtomicForm::lockValue(conf::Key const &k, QString const &u)
 {
-  std::cerr << "locked key " << k << " to user " << u.toStdString() << std::endl;
-  if (u == conf::my_uid) {
+  bool const is_me = conf::my_uid && *conf::my_uid == u;
+
+  std::cout << "locked key " << k << " to user " << u.toStdString()
+            << " (I am " << conf::my_uid->toStdString()
+            << (is_me ? ", that's me!)" : ", not me)") << std::endl;
+  if (is_me) {
     locked.insert(k);
   } else {
     locked.erase(k);

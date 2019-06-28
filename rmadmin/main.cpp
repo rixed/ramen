@@ -56,6 +56,22 @@ extern "C" {
     CAMLparam0();
     CAMLreturn(Val_int(quit ? 1:0));
   }
+
+  value set_my_uid(value uid_)
+  {
+    CAMLparam1(uid_);
+    conf::my_uid = QString(String_val(uid_));
+    CAMLreturn(Val_unit);
+  }
+
+  value set_my_errors(value key_)
+  {
+    CAMLparam1(key_);
+    conf::Key k(String_val(key_));
+    conf::my_errors = k;
+    QMetaObject::invokeMethod(w, "setErrorKey", Qt::QueuedConnection, Q_ARG(conf::Key, k));
+    CAMLreturn(Val_unit);
+  }
 }
 
 // The only thread that will ever call OCaml runtime:

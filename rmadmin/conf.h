@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <optional>
 #include <shared_mutex>
 #include <QMap>
 #include <QString>
@@ -13,8 +14,8 @@
 
 namespace conf {
 
-extern QString my_uid;
-extern conf::Key my_errors;
+extern std::optional<QString> my_uid;
+extern std::optional<conf::Key> my_errors;
 
 /* We keep all KValues in this map so that it's possible to connect
  * updates to widget slots.

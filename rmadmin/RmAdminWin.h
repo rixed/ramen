@@ -4,8 +4,9 @@
 #include <string>
 #include <QWidget>
 #include <QMainWindow>
-#include "KErrorMsg.h"
 #include "SyncStatus.h"
+#include "confKey.h"
+#include "KErrorMsg.h"
 
 class SourcesModel;
 class GraphModel;
@@ -32,6 +33,7 @@ public slots:
   void connProgress(SyncStatus);
   void authProgress(SyncStatus);
   void syncProgress(SyncStatus);
+  void setErrorKey(conf::Key const key) { errorMessage->setKey(key); }
 };
 
 #endif

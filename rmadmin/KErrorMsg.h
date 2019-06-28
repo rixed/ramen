@@ -1,19 +1,26 @@
 #ifndef KLABEL_H_190505
 #define KLABEL_H_190505
 #include <iostream>
+#include <optional>
 #include <QLabel>
 #include "confValue.h"
 #include "conf.h"
-#include "AtomicWidget.h"
 
-class KErrorMsg : public QLabel, public AtomicWidget
+class KErrorMsg : public QLabel
 {
   Q_OBJECT
 
+  bool keyIsSet;
+
 public:
-  KErrorMsg(conf::Key const key, QWidget *parent = nullptr) :
-    QLabel(parent), AtomicWidget(key)
+  KErrorMsg(QWidget *parent = nullptr) : QLabel(parent), keyIsSet(false) {}
+
+public slots:
+  void setKey(conf::Key const key)
   {
+    assert(! keyIsSet);
+    keyIsSet = true;
+    std::cout << "KErrorMsg: setting key to " << key << std::endl;
     conf::kvs_lock.lock_shared();
     KValue &kv = conf::kvs[key];
     conf::kvs_lock.unlock_shared();
@@ -21,7 +28,6 @@ public:
     if (kv.isSet()) setValue(key, kv.value());
   }
 
-public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
     QString s(v->toQString());

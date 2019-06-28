@@ -1,5 +1,6 @@
 #include <iostream>
 #include <QTabWidget>
+#include "KErrorMsg.h"
 #include "SourcesView.h"
 #include "ProgramsView.h"
 #include "OperationsView.h"
@@ -30,7 +31,7 @@ RmAdminWin::RmAdminWin(QWidget *parent) :
   setCentralWidget(tw);
   setWindowTitle(tr("RmAdmin"));
 
-  errorMessage = new KErrorMsg(conf::my_errors);
+  errorMessage = new KErrorMsg();
   statusBar()->addPermanentWidget(errorMessage);
 
   /* Must not wait that the connProgress slot create the statusBar, as

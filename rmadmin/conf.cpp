@@ -1,5 +1,4 @@
 #include <iostream>
-#include <optional>
 #include <regex>
 #include <QLinkedList>
 extern "C" {
@@ -14,8 +13,8 @@ static bool const verbose = false;
 
 namespace conf {
 
-QString my_uid("auth:admin");
-conf::Key my_errors("errors/users/admin");
+std::optional<QString> my_uid;
+std::optional<conf::Key> my_errors;
 
 QMap<conf::Key, KValue> kvs;
 rec_shared_mutex kvs_lock;
