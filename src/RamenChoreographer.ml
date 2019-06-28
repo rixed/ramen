@@ -73,7 +73,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
     (* Look for rce.src_path in the configuration: *)
     let src_path = Files.remove_ext rce.src_path in
     let k_info = RamenSync.Key.Sources (src_path, "info") in
-    match ZMQClient.Client.find clt k_info with
+    match RamenSync.Client.find clt k_info with
     | exception Not_found ->
         !logger.error
           "Cannot find pre-compiled info for source %a for program %a, \
@@ -223,13 +223,13 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
         (RamenSync.Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
-  ZMQClient.Client.iter_keys clt (fun k _ ->
+  !logger.debug "set_keys: %a" (Set.print RamenSync.Key.print) !set_keys ;
+  RamenSync.Client.iter_keys clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
           ZMQClient.send_cmd clt zock ~while_ (DelKey k)
-      | _ -> ()
-  )
+      | _ -> ())
 
 let start conf ~while_ =
   let topics =

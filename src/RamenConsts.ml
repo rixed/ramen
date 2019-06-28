@@ -531,6 +531,10 @@ let archivist_settle_delay = 1.
  * of seconds ago: *)
 let min_duration_between_storage_alloc = 600.
 
+(* Similarly, do not attempt to reconfigure workers out-ref for archiving
+ * unless that number of seconds have passed: *)
+let min_duration_between_archive_reconf = 300.
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

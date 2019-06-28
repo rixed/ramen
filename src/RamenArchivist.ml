@@ -835,6 +835,37 @@ let update_local_workers_export
             Processes.start_export
               ~file_type ~duration:export_duration conf func |> ignore)
 
+let reconf_workers_sync
+    ?(export_duration=Default.archivist_export_duration) conf clt =
+  let open RamenSync in
+  Client.iter_keys clt (fun k hv ->
+    match k, hv.Client.value with
+    | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
+      Value.Int size
+      when site = conf.C.site && size > 0L ->
+        (* Start the export: *)
+        let prog_name, _func_name = N.fq_parse fq in
+        (match function_of_worker clt site fq with
+        | exception e ->
+            !logger.debug "Cannot find function %a: %s, skipping"
+              N.fq_print fq
+              (Printexc.to_string e)
+        | func ->
+            let func = F.unserialized prog_name func in
+            let file_type =
+              if RamenExperiments.archive_in_orc.variant = 0 then
+                OutRef.RingBuf
+              else
+                OutRef.Orc {
+                  with_index = false ;
+                  batch_size = Default.orc_rows_per_batch ;
+                  num_batches = Default.orc_batches_per_file } in
+            !logger.info "Make %a to archive"
+              N.fq_print fq ;
+            Processes.start_export
+              ~file_type ~duration:export_duration conf func |> ignore)
+    | _ -> ())
+
 (*
  * CLI
  *)
@@ -883,18 +914,18 @@ let realloc_sync conf ~while_ zock clt =
   and src_retention = Hashtbl.create 11
   and prev_allocs = Hashtbl.create 11 in
   let open RamenSync in
-  ZMQClient.Client.iter_keys clt (fun k v ->
-    match k, v.ZMQClient.Client.value with
+  Client.iter_keys clt (fun k v ->
+    match k, v.Client.value with
     | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats stats ->
         let worker_key = Key.PerSite (site, PerWorker (fq, Worker)) in
-        (match (ZMQClient.Client.find clt worker_key).value with
+        (match (Client.find clt worker_key).value with
         | exception Not_found ->
             !logger.debug "Ignoring stats %a with no current worker"
               Key.print k
         | Value.Worker worker ->
             if worker.Value.Worker.role = Whole then
-              let is_running = true
+              let is_running = true (* Disabled workers do not loose storage *)
               and parents =
                 worker.Value.Worker.parents |>
                 List.map (fun ref ->
@@ -909,20 +940,17 @@ let realloc_sync conf ~while_ zock clt =
             invalid_sync_type worker_key v "a Worker")
     | Key.PerSite (_site, PerWorker (fq, Worker)),
       Value.Worker worker ->
-        let info_key = Key.Sources (worker.Value.Worker.src_path, "info") in
-        (match (ZMQClient.Client.find clt info_key).value with
-        | exception Not_found ->
+        (match program_of_src_path clt worker.Value.Worker.src_path with
+        | exception e ->
             !logger.error
-              "Cannot find source %a for worker %a, assuming no retention"
-              Key.print info_key
+              "Cannot find program for worker %a: %s, assuming no retention"
               N.fq_print fq
-        | Value.SourceInfo { detail = Compiled prog ; _ } ->
+              (Printexc.to_string e)
+        | prog ->
             List.iter (fun func ->
               Option.may (Hashtbl.replace src_retention fq)
                          func.F.Serialized.retention
-            ) prog.P.Serialized.funcs
-        | v ->
-            invalid_sync_type info_key v "a compiled SourceInfo")
+            ) prog.P.Serialized.funcs)
     | Key.Storage TotalSize,
       Value.Int v ->
         size_limit := v
@@ -969,7 +997,7 @@ let realloc_sync conf ~while_ zock clt =
     ZMQClient.send_cmd clt zock ~while_ (DelKey k)
   ) prev_allocs
 
-let run_sync conf ~while_ _loop _stats allocs _reconf =
+let run_sync conf ~while_ loop allocs reconf =
   (* We need retentions (that we get from the info files), user config,
    * runtime stats and workers (to get src_path and running flag).
    * Results are written in PerWorker AllocedArcBytes, that we must also read
@@ -986,7 +1014,8 @@ let run_sync conf ~while_ _loop _stats allocs _reconf =
    * time for first stats to arrive: *)
   let last_change = ref 0.
   and last_realloc = ref (Unix.time () -. min_duration_between_storage_alloc
-                                       +. Default.report_period *. 2.) in
+                                       +. Default.report_period *. 2.)
+  and last_reconf = ref 0. in
   let on_del _zock _clt k _v =
     let open RamenSync in
     match k with
@@ -1012,11 +1041,20 @@ let run_sync conf ~while_ _loop _stats allocs _reconf =
          !last_change > !last_realloc &&
          now > !last_realloc +. min_duration_between_storage_alloc
       then (
-        realloc_sync conf ~while_ zock clt ;
-        last_realloc := now
-      ) ;
-      (* TODO: Also reconf the workers *)
-      true
+        last_realloc := now ;
+        !logger.info "Updating storage allocations" ;
+        realloc_sync conf ~while_ zock clt) ;
+      (* Note: for now we update the outref files (thus the restriction
+       * to local workers and the need to run this on all sites). In the
+       * future we'd rather have the outref content on the config tree,
+       * and then a single archivist will be enough. *)
+      if reconf &&
+         now > !last_reconf +. min_duration_between_archive_reconf
+      then (
+        last_reconf := now ;
+        !logger.info "Updating workers export configuration" ;
+        reconf_workers_sync conf clt) ;
+      loop > 0.
     )
   )
 

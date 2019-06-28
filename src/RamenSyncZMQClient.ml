@@ -3,11 +3,8 @@ open Batteries
 open RamenConsts
 open RamenLog
 open RamenHelpers
+open RamenSync
 
-module Value = RamenSync.Value
-module Key = RamenSync.Key
-module User = RamenSync.User
-module Client = RamenSyncClient.Make (Value) (RamenSync.Selector)
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
 
@@ -46,12 +43,16 @@ let log_done cmd_id =
  * RPC continuations first: *)
 let check_set_cbs new_key on_msg =
   let maybe_cb ~do_ ~dont cmd_id =
-    Hashtbl.modify_opt cmd_id (function
-      | None -> None
-      | Some k ->
-          !logger.debug "Calling back pending function for cmd %d" cmd_id ;
-          k () ; None
-    ) do_ ;
+    (match Hashtbl.find do_ cmd_id with
+    | exception Not_found ->
+        !logger.debug "No callback pending for cmd #%d, only for %a"
+          cmd_id
+          (Enum.print Int.print) (Hashtbl.keys do_)
+    | k ->
+        !logger.debug "Calling back pending function for cmd #%d" cmd_id ;
+        k () ;
+        (* TODO: Hashtbl.take *)
+        Hashtbl.remove do_ cmd_id) ;
     Hashtbl.remove dont cmd_id in
   fun clt k v u mt ->
     if clt.Client.my_errors = Some k then (
@@ -67,48 +68,61 @@ let check_set_cbs new_key on_msg =
       | v ->
           !logger.error "Error value is not an error: %a" Value.print v
     ) ;
-    Hashtbl.modify_opt k (function
-      | None -> None
-      | Some (cmd_id, filter, cb) as prev ->
-          let srv_cmd =
-            if new_key then SrvMsg.NewKey (k, v, u, mt)
-                       else SrvMsg.SetKey (k, v, u, mt) in
-          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
-    ) on_dones ;
+    (match Hashtbl.find on_dones k with
+    | exception Not_found ->
+        !logger.debug "no on_dones cb for %a" Key.print k
+    | cmd_id, filter, cb ->
+        let srv_cmd =
+          if new_key then SrvMsg.NewKey (k, v, u, mt)
+                     else SrvMsg.SetKey (k, v, u, mt) in
+        if filter srv_cmd then (
+          Hashtbl.remove on_dones k ;
+          !logger.debug "on_dones cb filter pass, calling back." ;
+          log_done cmd_id ;
+          cb ()
+        ) else (
+          !logger.debug "on_dones cb filter does not pass."
+        )) ;
     on_msg clt k v u mt
 
 let check_del_cbs on_msg =
   fun clt k prev_v ->
-    Hashtbl.modify_opt k (function
-      | None -> None
-      | Some (cmd_id, filter, cb) as prev ->
-          let srv_cmd = SrvMsg.DelKey k in
-          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
-    ) on_dones ;
+    (match Hashtbl.find on_dones k with
+    | exception Not_found -> ()
+    | cmd_id, filter, cb ->
+        let srv_cmd = SrvMsg.DelKey k in
+        if filter srv_cmd then (
+          Hashtbl.remove on_dones k ;
+          log_done cmd_id ;
+          cb ())) ;
     on_msg clt k prev_v
 
 let check_lock_cbs on_msg =
   fun clt k uid ->
-    Hashtbl.modify_opt k (function
-      | None ->
-          !logger.debug "No done cb for key %a" Key.print k ;
-          None
-      | Some (cmd_id, filter, cb) as prev ->
-          !logger.debug "Found a done filter for unlock of %a"
-            Key.print k ;
-          let srv_cmd = SrvMsg.LockKey (k, uid) in
-          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
-    ) on_dones ;
+    (* uid check is part of the filter *)
+    (match Hashtbl.find on_dones k with
+    | exception Not_found ->
+        !logger.debug "No done cb for key %a" Key.print k
+    | cmd_id, filter, cb ->
+        !logger.debug "Found a done filter for lock of %a"
+          Key.print k ;
+        let srv_cmd = SrvMsg.LockKey (k, uid) in
+        if filter srv_cmd then (
+          Hashtbl.remove on_dones k ;
+          log_done cmd_id ;
+          cb ())) ;
     on_msg clt k uid
 
 let check_unlock_cbs on_msg =
   fun clt k ->
-    Hashtbl.modify_opt k (function
-      | None -> None
-      | Some (cmd_id, filter, cb) as prev ->
-          let srv_cmd = SrvMsg.UnlockKey k in
-          if filter srv_cmd then (log_done cmd_id ; cb () ; None) else prev
-    ) on_dones ;
+    (match Hashtbl.find on_dones k with
+    | exception Not_found -> ()
+    | cmd_id, filter, cb ->
+        let srv_cmd = SrvMsg.UnlockKey k in
+        if filter srv_cmd then (
+          Hashtbl.remove on_dones k ;
+          log_done cmd_id ;
+          cb ())) ;
     on_msg clt k
 
 (* As the same user might be sending commands at the same time, rather use
@@ -144,7 +158,10 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   save_cb on_kos "SyncZMQClient.on_kos" on_ko ;
   Option.may (fun cb ->
     let add_done_cb cb k filter =
-      Hashtbl.add on_dones k (cmd_id, filter, cb) in
+      Hashtbl.add on_dones k (cmd_id, filter, cb) ;
+      !logger.debug "on_dones size is now %d (%a)"
+        (Hashtbl.length on_dones)
+        (Enum.print Key.print) (Hashtbl.keys on_dones) in
     match cmd with
     | CltMsg.Auth _
     | CltMsg.StartSync _ ->

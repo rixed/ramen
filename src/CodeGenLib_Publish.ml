@@ -71,10 +71,10 @@ let may_publish_tail clt zock ?while_ key_of_seq
       let tx = RingBuf.bytes_tx ser_len in
       serialize_tuple mask tx 0 tuple ;
       let values = RingBuf.read_raw_tx tx in
-      let v = ZMQClient.Value.Tuple { skipped ; values } in
+      let v = RamenSync.Value.Tuple { skipped ; values } in
       let seq = IntCounter.get stats_num_sync_msgs_out in
       let k = key_of_seq seq in
-      let cmd = ZMQClient.Client.CltMsg.NewKey (k, v) in
+      let cmd = RamenSync.Client.CltMsg.NewKey (k, v) in
       ZMQClient.send_cmd ?while_ clt zock cmd
   | _ -> ()
 
@@ -104,7 +104,7 @@ let publish_stats clt zock ?while_ stats_key init_stats stats =
           tot_cpu = init.tot_cpu +. stats.tot_cpu ;
           max_ram = max init.max_ram stats.max_ram } in
   let v = RamenSync.Value.RuntimeStats tot_stats in
-  let cmd = ZMQClient.Client.CltMsg.SetKey (stats_key, v) in
+  let cmd = RamenSync.Client.CltMsg.SetKey (stats_key, v) in
   ZMQClient.send_cmd ?while_ clt zock cmd
 
 let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
@@ -122,12 +122,12 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
       let stats_key =
         RamenSync.Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
       let init_stats =
-        match ZMQClient.Client.find clt stats_key with
+        match RamenSync.Client.find clt stats_key with
         | exception Not_found ->
             None
-        | ZMQClient.Client.{ value = RamenSync.Value.RuntimeStats s ; _ } ->
+        | RamenSync.Client.{ value = RamenSync.Value.RuntimeStats s ; _ } ->
             Some s
-        | ZMQClient.Client.{ value ; _ } ->
+        | RamenSync.Client.{ value ; _ } ->
             RamenSync.invalid_sync_type stats_key value "RuntimeStats" in
       let publish_stats = publish_stats clt zock ?while_ stats_key init_stats in
       k publish_tail publish_stats conf)

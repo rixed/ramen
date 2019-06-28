@@ -109,12 +109,12 @@ let serve_sync conf ~while_ fd =
        * those keys if not there yet. *)
       let worker_key =
         RamenSync.Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
-      ZMQClient.Client.with_value clt worker_key (function
+      RamenSync.Client.with_value clt worker_key (function
         | { value = RamenSync.Value.Worker worker ; _ } ->
             let ringbufs_key =
               Supervisor.per_instance_key
                 conf.C.site id.child worker.signature InputRingFiles in
-            ZMQClient.Client.with_value clt ringbufs_key (fun hv ->
+            RamenSync.Client.with_value clt ringbufs_key (fun hv ->
               match Supervisor.get_string_list (Some hv.value) with
               | Some lst ->
                   (* No idea what to do whan parent_num is beyond the end of

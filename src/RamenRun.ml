@@ -93,7 +93,7 @@ let get_key clt zock ~while_ k cont =
   !logger.debug "get_key %a" Key.print k ;
   ZMQClient.(send_cmd clt zock ~while_ (LockKey k)
     ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
-      match ZMQClient.Client.find clt k with
+      match Client.find clt k with
       | exception Not_found ->
           cannot "find" k
       | hv ->

@@ -25,7 +25,6 @@ module Channel = RamenChannel
 module FuncGraph = RamenFuncGraph
 module TimeRange = RamenTimeRange
 module ZMQClient = RamenSyncZMQClient
-module Client = ZMQClient.Client
 
 (* Seed to pass to workers to init their random generator: *)
 let rand_seed = ref None
@@ -1111,7 +1110,7 @@ let per_instance_key site fq sign k =
 
 let find_or_fail what clt k f =
   let v =
-    match Client.find clt k with
+    match RamenSync.Client.find clt k with
     | exception Not_found ->
         None
     | hv ->
@@ -1214,7 +1213,7 @@ let update_child_status conf ~while_ clt zock site fq sign pid =
 (* This worker is running. Should it? *)
 let should_run clt site fq sign =
   let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
-  match Client.find clt k with
+  match RamenSync.Client.find clt k with
   | exception Not_found -> false
   | { value = RamenSync.Value.Worker worker ; _ } ->
       worker.enabled && worker.signature = sign
@@ -1244,11 +1243,11 @@ let may_kill conf ~while_ clt zock site fq sign pid =
 
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq sign =
-  Client.H.mem clt.Client.h (per_instance_key site fq sign Pid)
+  RamenSync.Client.(H.mem clt.h (per_instance_key site fq sign Pid))
 
 let get_precompiled clt src_path =
   let source_k = RamenSync.Key.Sources (src_path, "info") in
-  match Client.find clt source_k with
+  match RamenSync.Client.find clt source_k with
   | exception Not_found ->
       Printf.sprintf2 "No such source %a"
         RamenSync.Key.print source_k |>
@@ -1376,7 +1375,7 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt zock =
-  Client.iter_keys clt (fun k hv ->
+  RamenSync.Client.iter_keys clt (fun k hv ->
     let what = Printf.sprintf2 "Processing key %a" RamenSync.Key.print k in
     log_and_ignore_exceptions ~what (fun () ->
       match k, hv with
@@ -1399,8 +1398,8 @@ let synchronize_once conf ~while_ clt zock =
 
 let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let open ZMQClient.Key in
-  let open ZMQClient.Value in
+  let open RamenSync.Key in
+  let open RamenSync.Value in
   let rec loop zock clt =
     while while_ () do
       log_and_ignore_exceptions (fun () ->

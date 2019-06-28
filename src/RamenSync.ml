@@ -790,6 +790,12 @@ struct
   let of_float v = Float v
 end
 
+(*
+ * Helpers
+ *)
+
+module Client = RamenSyncClient.Make (Value) (Selector)
+
 let err_sync_type k v what =
   !logger.error "%a should be %s not %a"
     Key.print k
@@ -802,3 +808,40 @@ let invalid_sync_type k v what =
     what
     Value.print v |>
   failwith
+
+let program_of_src_path clt src_path =
+  let info_key = Key.Sources (src_path, "info") in
+  match (Client.find clt info_key).value with
+  | exception Not_found ->
+      Printf.sprintf2
+        "Cannot find source %a" Key.print info_key |>
+      failwith
+  | Value.SourceInfo { detail = Compiled prog ; _ } ->
+      prog
+  | v ->
+      invalid_sync_type info_key v "a compiled SourceInfo"
+
+let function_of_worker clt site fq =
+  let worker_key = Key.(PerSite (site, PerWorker (fq, Worker))) in
+  match (Client.find clt worker_key).value with
+  | Value.Worker worker ->
+      (match program_of_src_path clt worker.Value.Worker.src_path with
+      | exception e ->
+          Printf.sprintf2
+            "Cannot find program for worker %a: %s"
+            N.fq_print fq
+            (Printexc.to_string e) |>
+          failwith
+      | prog ->
+          let prog_name, func_name = N.fq_parse fq in
+          (try List.find (fun func ->
+                 func.RamenConf.Func.Serialized.name = func_name
+               ) prog.funcs
+          with Not_found ->
+              Printf.sprintf2
+                "No function named %a in program %a"
+                N.func_print func_name
+                N.program_print prog_name |>
+              failwith))
+  | v ->
+      invalid_sync_type worker_key v "a Worker"

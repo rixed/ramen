@@ -22,9 +22,9 @@ let value_of_string structure s =
  * SyncConf client
  *)
 
-module Value = ZMQClient.Value
-module Client = ZMQClient.Client
-module Key = ZMQClient.Key
+module Value = RamenSync.Value
+module Client = RamenSync.Client
+module Key = RamenSync.Key
 
 (* The idea is to do the networking work of connecting, sending/receiving
  * messages and maintaining the config in OCaml.

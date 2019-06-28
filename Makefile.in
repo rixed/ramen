@@ -36,7 +36,7 @@ META_REQUIRES = \
 
 PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
-	syslog num binocle unix lacaml \
+	syslog num binocle unix lacaml threads \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
 	compiler-libs.optcomp net_codecs sqlite3 zmq
 
@@ -171,13 +171,13 @@ RAMEN_SOURCES = \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/RamenSyncIntf.ml \
-	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
@@ -395,7 +395,6 @@ ORCWRITER_SOURCES = \
 	src/RamenDepLibs.ml \
 	src/RamenOCamlCompiler.ml \
 	src/RamenSyncIntf.ml \
-	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenSmtParser.ml \
 	src/RamenSmt.ml \
@@ -404,6 +403,7 @@ ORCWRITER_SOURCES = \
 	src/RamenTyping.ml \
 	src/RamenProgram.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/orc/orc_writer.ml
@@ -839,7 +839,6 @@ LINKED_FOR_TESTS = \
 	src/RamenHeap.ml \
 	src/RamenSortBuf.ml \
 	src/RamenSyncIntf.ml \
-	src/RamenSync.ml \
 	src/CodeGen_OCaml.ml \
 	src/RamenBitmask.ml \
 	src/RamenSerialization.ml \
@@ -849,6 +848,7 @@ LINKED_FOR_TESTS = \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
