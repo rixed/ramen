@@ -277,7 +277,7 @@ let cleanup_once_sync conf clt dry_run del_ratio compress_older =
         Value.Worker worker
         when site = conf.C.site ->
           let prog_name, _func_name = N.fq_parse fq in
-          let func = function_of_worker clt site fq |>
+          let func = function_of_worker clt fq worker |>
                      F.unserialized prog_name
           and bin = C.cache_bin_file conf worker.signature in
           (bin, func) :: lst
@@ -286,13 +286,41 @@ let cleanup_once_sync conf clt dry_run del_ratio compress_older =
   in
   cleanup_once conf dry_run del_ratio compress_older get_alloced_worker worker_bins
 
+let update_archives ~while_ conf dry_run zock clt =
+  !logger.info "Updating archive stats." ;
+  let open RamenSync in
+  Client.iter clt (fun k hv ->
+    match k, hv.value with
+    | Key.PerSite (site, PerWorker (fq, Worker)),
+      Value.Worker worker
+      when site = conf.C.site ->
+        let prog_name, _func_name = N.fq_parse fq in
+        let func = function_of_worker clt fq worker |>
+                   F.unserialized prog_name in
+        let archives, num_files, num_bytes =
+          RamenArchivist.compute_archives conf func in
+        if not dry_run then (
+          let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
+          and arctimes = Value.TimeRange archives in
+          ZMQClient.send_cmd clt zock ~while_ (SetKey (arctimes_k, arctimes)) ;
+          let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
+          and numfiles = Value.of_int num_files in
+          ZMQClient.send_cmd clt zock ~while_ (SetKey (numfiles_k, numfiles)) ;
+          let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
+          and numbytes = Value.Int num_bytes in
+          ZMQClient.send_cmd clt zock ~while_ (SetKey (numbytes_k, numbytes)))
+    | _ -> ())
+
 let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
   (* The GC needs all allocation size per worker for this site.
    * On the other hand storage stats will be written back (ArchivedTimes,
    * NumArcFiles, NumArcBytes) for any discovered archives (which was done
-   * by `archivist --stats` whithout confserver * (see [update_archives]). *)
+   * by `archivist --stats` whithout confserver.
+   * Also need workers and infos to iter over functions: *)
   let topics =
-    [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ] in
+    [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ;
+      "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
+      "sources/*/info" ] in
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login
                   ~topics ~recvtimeo:5. (fun zock clt ->
     if loop <= 0. then
@@ -308,5 +336,6 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
         let now = Unix.gettimeofday () in
         if now > !last_run +. loop then (
           last_run := now ;
-          cleanup_once_sync conf clt dry_run del_ratio compress_older) ;
+          cleanup_once_sync conf clt dry_run del_ratio compress_older ;
+          update_archives ~while_ conf dry_run zock clt) ;
       done)

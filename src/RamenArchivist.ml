@@ -263,11 +263,14 @@ let update_parents conf programs s all_sites program_name func =
           ) psites parents
     ) [] func.F.parents
 
-let update_archives conf s func =
+let compute_archives conf func =
   (* We are going to scan the current archive, which is always in RingBuf
    * format. arc_dir_of_bname would return the same directory for an Orc
    * file anyway: *)
+  let fq = F.fq_name func in
   let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
+  !logger.debug "Computing archive size of function %a, from dir %a"
+    N.fq_print fq N.path_print bname ;
   let lst =
     RingBufLib.(arc_dir_of_bname bname |> arc_files_of) //@
     (fun (_seq_mi, _seq_ma, t1, t2, _typ, fname) ->
@@ -312,9 +315,9 @@ let update_archives conf s func =
       num_files + 1,
       Int64.(add num_bytes (of_int sz))
     ) ([], 0, 0L) in
-  s.FS.archives <- List.rev ranges ;
-  s.FS.num_arc_files <- num_files ;
-  s.FS.num_arc_bytes <- num_bytes
+  !logger.debug "Function %a has %Ld bytes of archive in %d files"
+    N.fq_print fq num_bytes num_files ;
+  List.rev ranges, num_files, num_bytes
 
 let enrich_local_stats conf programs per_func_stats =
   let all_sites = RamenServices.all_sites conf in
@@ -334,7 +337,10 @@ let enrich_local_stats conf programs per_func_stats =
                 per_func_stats fq in
             s.FS.is_running <- rce.RC.status = MustRun ;
             update_parents conf programs s all_sites program_name func ;
-            update_archives conf s func ;
+            let archives, num_files, num_bytes = compute_archives conf func in
+            s.FS.archives <- archives ;
+            s.FS.num_arc_files <- num_files ;
+            s.FS.num_arc_bytes <- num_bytes
           ) prog.P.funcs
   ) programs
 
@@ -845,7 +851,7 @@ let reconf_workers_sync
       when site = conf.C.site && size > 0L ->
         (* Start the export: *)
         let prog_name, _func_name = N.fq_parse fq in
-        (match function_of_worker clt site fq with
+        (match function_of_site_fq clt site fq with
         | exception e ->
             !logger.debug "Cannot find function %a: %s, skipping"
               N.fq_print fq

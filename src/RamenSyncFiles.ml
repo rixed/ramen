@@ -44,7 +44,7 @@ let replace_keys clt zock f h =
 
 (* One module per data source so that it's easier to track those *)
 
-(* FIXME: Workers should write the stats in there directly *)
+(* TODO: RuntimeStats replace all of this. Update rmadmin. *)
 module StatsInfo =
 struct
   let update conf clt zock =
@@ -77,14 +77,7 @@ struct
         upd (PerSite (site, PerWorker (fq, TotCpu)))
             (Value.Float stats.FS.cpu) ;
         upd (PerSite (site, PerWorker (fq, MaxRam)))
-            (Value.Int stats.FS.ram) ;
-        (* Should be set by the GC: *)
-        upd (PerSite (site, PerWorker (fq, ArchivedTimes)))
-            (Value.TimeRange stats.FS.archives) ;
-        upd (PerSite (site, PerWorker (fq, NumArcFiles)))
-            (Value.Int (Int64.of_int stats.FS.num_arc_files)) ;
-        upd (PerSite (site, PerWorker (fq, NumArcBytes)))
-            (Value.Int stats.FS.num_arc_bytes)
+            (Value.Int stats.FS.ram)
       ) stats) ;
     let f = function
       | Key.PerSite

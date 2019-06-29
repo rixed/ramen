@@ -142,7 +142,7 @@ fi
 supervisor_pid=$!
 at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
 
-"$ramen" gc --debug --loop --master=aggregator --confserver=localhost --site="$ramen_site" &
+"$ramen" gc --debug --loop=15 --master=aggregator --confserver=localhost --site="$ramen_site" &
 gc_pid=$!
 at_exit "echo 'Killing gc'; kill '$gc_pid'"
 
