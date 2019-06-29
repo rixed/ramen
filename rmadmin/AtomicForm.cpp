@@ -78,7 +78,7 @@ void AtomicForm::addWidget(AtomicWidget *aw)
 
 void AtomicForm::lockAll()
 {
-  std::cerr << "lock all!" << std::endl;
+  std::cout << "lock all!" << std::endl;
   state = Locking;
 }
 
@@ -147,7 +147,7 @@ void AtomicForm::wantSubmit()
   if (someEdited()) {
     doSubmit();
   } else {
-    std::cerr << "Cancelling rather, as no edition was done." << std::endl;
+    std::cout << "Cancelling rather, as no edition was done." << std::endl;
     doCancel();
   }
 }

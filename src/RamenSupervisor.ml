@@ -1375,12 +1375,12 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt zock =
-  RamenSync.Client.iter_keys clt (fun k hv ->
+  RamenSync.Client.iter clt (fun k hv ->
     let what = Printf.sprintf2 "Processing key %a" RamenSync.Key.print k in
     log_and_ignore_exceptions ~what (fun () ->
-      match k, hv with
+      match k, hv.value with
       | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
-        { value = RamenSync.Value.Int pid ; _ }
+        RamenSync.Value.Int pid
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
           (* First, update this child status: *)
@@ -1388,7 +1388,7 @@ let synchronize_once conf ~while_ clt zock =
           if not (should_run clt site fq sign) then
             may_kill conf ~while_ clt zock site fq sign pid
       | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
-        { value = RamenSync.Value.Worker worker ; _ }
+        RamenSync.Value.Worker worker
         when site = conf.C.site ->
           if worker.enabled && not (is_running clt site fq worker.signature) then
             try_start_instance

@@ -102,6 +102,7 @@ struct
     match hv.locks with
     | u' :: _ when not (User.equal u' u) ->
         locked_by k u'
+    (* TODO: Think about making locking mandatory *)
     | _ -> ()
 
   let check_can_write k hv u =
@@ -148,7 +149,6 @@ struct
           !logger.debug "Setting config key %a to value %a"
             Key.print k
             Value.print v ;
-          (* TODO: Think about making locking mandatory *)
           check_can_write k prev u ;
           let v = do_cbs t.on_sets t k v in
           prev.v <- v ;

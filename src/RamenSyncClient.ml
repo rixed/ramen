@@ -67,12 +67,15 @@ struct
     | Waiters _ -> None
     | Value hv -> Some hv
 
-  let iter_keys t f =
-    H.iter (fun k v ->
+  let fold t f u =
+    H.fold (fun k v u ->
       match v with
-      | Waiters _ -> ()
-      | Value hv -> f k hv
-    ) t.h
+      | Waiters _ -> u
+      | Value hv -> f k hv u
+    ) t.h u
+
+  let iter t f =
+    fold t (fun k hv () -> f k hv) ()
 
   let process_msg t = function
     | SrvMsg.AuthOk k ->

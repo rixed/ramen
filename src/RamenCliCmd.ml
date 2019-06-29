@@ -361,7 +361,7 @@ let compile_sync conf replace src_file source_name_opt =
     ) source_name_opt in
   let ext = Files.ext src_file in
   if ext = "" then
-    failwith "Need an extension to build a source file" ;
+    failwith "Need an extension to build a source file." ;
   let k_source = Key.(Sources (source_name, ext)) in
   let on_ko () = Processes.quit := Some 1 in
   let on_set _zock _clt k v _u _mtime =
@@ -416,7 +416,7 @@ let compile_sync conf replace src_file source_name_opt =
 let compserver conf daemonize to_stdout to_syslog
                use_external_compiler max_simult_compils smt_solver () =
   if conf.C.sync_url = "" then
-    failwith "Cannot start the compilation service without --confserver" ;
+    failwith "Cannot start the compilation service without --confserver." ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "compserver") ;
   let topics = [ "sources/*" ] in
@@ -430,6 +430,7 @@ let compserver conf daemonize to_stdout to_syslog
         let k_info = Key.(Sources (src_file, "info")) in
         let open ZMQClient in
         let unlock () =
+          !logger.debug "Unlocking %a" Key.print k_info ;
           send_cmd clt zock ~while_ (UnlockKey k_info) in
         send_cmd clt zock ~while_ (LockOrCreateKey k_info)
           ~on_ko:unlock ~on_ok:(fun () ->
@@ -488,7 +489,7 @@ let compile conf lib_path use_external_compiler
             output_file_opt program_name_opt replace () =
   let many_source_files = List.length source_files > 1 in
   if many_source_files && program_name_opt <> None then
-    failwith "Cannot specify the program name for several source files" ;
+    failwith "Cannot specify the program name for several source files." ;
   init_logger conf.C.log_level ;
   List.iter (fun source_file ->
     if conf.C.sync_url = "" then
@@ -537,7 +538,7 @@ let kill conf program_names purge () =
  *)
 let choreographer conf daemonize to_stdout to_syslog () =
   if conf.C.sync_url = "" then
-    failwith "Cannot start the choreographer without --confserver" ;
+    failwith "Cannot start the choreographer without --confserver." ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "choreographer") ;
   RamenChoreographer.start conf ~while_
 
@@ -942,7 +943,7 @@ let tail_ conf fq field_names with_header with_units sep null raw
   if continuous && next <> None then
     failwith "Option --next and --continuous are incompatible." ;
   if with_units && with_header = 0 then
-    failwith "Option --with-units makes no sense without --with-header" ;
+    failwith "Option --with-units makes no sense without --with-header." ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
     if last = None && next = None && min_seq = None && max_seq = None &&
@@ -1073,7 +1074,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
 let replay_ conf fq field_names with_header with_units sep null raw
             where since until with_event_time pretty flush =
   if with_units && with_header = 0 then
-    failwith "Option --with-units makes no sense without --with-header" ;
+    failwith "Option --with-units makes no sense without --with-header." ;
   let until = until |? Unix.gettimeofday () in
   let formatter = table_formatter pretty raw null in
   RamenExport.replay conf ~while_ fq field_names where since until
@@ -1254,7 +1255,7 @@ let archivist conf loop daemonize stats allocs reconf
               to_stdout to_syslog smt_solver () =
   RamenSmt.solver := smt_solver ;
   if not stats && not allocs && not reconf then
-    failwith "Must specify at least one of --stats, --allocs or --reconf" ;
+    failwith "Must specify at least one of --stats, --allocs or --reconf." ;
   if daemonize && loop = Some 0. then
     failwith "It makes no sense to --daemonize without --loop." ;
   if stats && conf.C.sync_url <> "" then

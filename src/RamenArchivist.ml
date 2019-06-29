@@ -838,7 +838,7 @@ let update_local_workers_export
 let reconf_workers_sync
     ?(export_duration=Default.archivist_export_duration) conf clt =
   let open RamenSync in
-  Client.iter_keys clt (fun k hv ->
+  Client.iter clt (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
       Value.Int size
@@ -914,7 +914,7 @@ let realloc_sync conf ~while_ zock clt =
   and src_retention = Hashtbl.create 11
   and prev_allocs = Hashtbl.create 11 in
   let open RamenSync in
-  Client.iter_keys clt (fun k v ->
+  Client.iter clt (fun k v ->
     match k, v.Client.value with
     | Key.PerSite (site, PerWorker (fq, RuntimeStats)),
       Value.RuntimeStats stats ->

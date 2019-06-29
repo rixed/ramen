@@ -224,7 +224,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
   ) !all_top_halves ;
   (* And delete unused: *)
   !logger.debug "set_keys: %a" (Set.print RamenSync.Key.print) !set_keys ;
-  RamenSync.Client.iter_keys clt (fun k _ ->
+  RamenSync.Client.iter clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
