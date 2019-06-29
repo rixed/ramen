@@ -637,10 +637,13 @@ let gc conf dry_run del_ratio compress_older loop daemonize
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog (N.path "gc") ;
-  if loop <= 0. then
-    RamenGc.cleanup_once conf dry_run del_ratio compress_older
+  if conf.C.sync_url = "" then
+    if loop <= 0. then
+      RamenGc.cleanup_once_local conf dry_run del_ratio compress_older
+    else
+      RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop
   else
-    RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop ;
+    RamenGc.cleanup_sync ~while_ conf dry_run del_ratio compress_older loop ;
   Option.may exit !RamenProcesses.quit
 
 (*
