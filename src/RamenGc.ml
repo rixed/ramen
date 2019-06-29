@@ -293,7 +293,8 @@ let update_archives ~while_ conf dry_run zock clt =
     match k, hv.value with
     | Key.PerSite (site, PerWorker (fq, Worker)),
       Value.Worker worker
-      when site = conf.C.site ->
+      when site = conf.C.site &&
+           worker.role = Whole ->
         let prog_name, _func_name = N.fq_parse fq in
         let func = function_of_worker clt fq worker |>
                    F.unserialized prog_name in
