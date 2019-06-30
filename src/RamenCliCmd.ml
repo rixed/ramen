@@ -674,8 +674,7 @@ let sort_col_of_string spec str =
             String.print_quoted oc s)) l |>
         failwith)
 
-let ps_ profile conf short pretty with_header sort_col top pattern all () =
-  init_logger conf.C.log_level ;
+let ps_local profile conf short pretty with_header sort_col top pattern all =
   let must_run_here rce =
     rce.RC.status = RC.MustRun && RC.match_localsite conf rce.RC.on_site in
   (* Start by reading the last minute of instrumentation data: *)
@@ -826,6 +825,68 @@ let ps_ profile conf short pretty with_header sort_col top pattern all () =
                 print)
       ) stats) ;
       print [||]
+
+(* TODO: add an option to select the site *)
+let ps_sync conf short pretty with_header sort_col top pattern =
+  let head =
+    [| "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
+       "#groups" ; "last out" ; "min event time" ; "max event time" ;
+       "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
+       "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
+       "#parents" ; "#children" ; "signature" |] in
+  let open TermTable in
+  let sort_col = sort_col_of_string head sort_col in
+  let print_tbl = print_table ~pretty ~sort_col ~with_header ?top head in
+  let topics =
+    [ "sites/*/workers/*/stats/runtime" ;
+      "sites/*/workers/*/worker" ] in
+  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+    (fun zock clt ->
+      let open RamenSync in
+      Client.iter clt (fun k v ->
+        match k, v.value with
+        | Key.PerSite (site, PerWorker (fq, Worker)),
+          Value.Worker worker ->
+            let stats_k = Key.PerSite (site, PerWorker (fq, RuntimeStats)) in
+            let s =
+              match (Client.find clt stats_k).value with
+              | exception Not_found -> None
+              | Value.RuntimeStats s -> Some s
+              | v -> invalid_sync_type k v "RuntimeStats" in
+            let open Value.RuntimeStats in
+            [| Some (ValStr (fq :> string)) ;
+               Some (ValBool (worker.Value.Worker.role <> Whole)) ;
+               Option.map (fun s -> ValInt s.tot_in_tuples) s ;
+               None (* s.selected_count ; TODO: selected *) ;
+               Option.map (fun s -> ValInt s.tot_out_tuples) s ;
+               None (* s.group_count TODO *) ;
+               Option.map (fun s -> ValDate s.last_output) s ;
+               Option.bind s (fun s -> date_or_na s.min_etime) ;
+               Option.bind s (fun s -> date_or_na s.max_etime) ;
+               Option.map (fun s -> ValFlt s.tot_cpu) s ;
+               None (* TODO s.wait_in *) ;
+               None (* TODO s.wait_out *) ;
+               None (* TODO (Uint64.to_int s.ram) *) ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.max_ram)) s ;
+               Option.map (fun s -> ValFlt (Uint64.to_float s.tot_in_bytes)) s ;
+               Option.map (fun s -> ValFlt (Uint64.to_float s.tot_out_bytes)) s ;
+               None (*(Option.map Uint64.to_float s.avg_full_bytes) *) ;
+               Option.map (fun s -> ValDate s.last_startup) s ;
+               Some (ValInt (List.length worker.parents)) ;
+               Some (ValInt (List.length worker.children)) ;
+               Some (ValStr worker.signature) |] |>
+            print_tbl
+        | _ -> ())) ;
+  print_tbl [||]
+
+let ps_ profile conf short pretty with_header sort_col top pattern all () =
+  if profile && conf.C.sync_url <> "" then
+    failwith "The profile command is incompatible with --confserver." ;
+  init_logger conf.C.log_level ;
+  if conf.C.sync_url <> "" then
+    ps_sync conf short pretty with_header sort_col top pattern
+  else
+    ps_local profile conf short pretty with_header sort_col top pattern all
 
 let ps = ps_ false
 let profile = ps_ true

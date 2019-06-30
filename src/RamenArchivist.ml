@@ -89,7 +89,7 @@ let arc_stats_of_func_stats s =
 let arc_stats_of_runtime_stats is_running parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
-    bytes = Uint64.to_int64 s.tot_out_bytes ;
+    bytes = Uint64.to_int64 s.tot_out_bytes (* FIXME: we need avg_full_bytes * tot_out_tuple! *);
     cpu = s.tot_cpu ;
     is_running ; parents }
 
@@ -1032,9 +1032,6 @@ let run_sync conf ~while_ loop allocs reconf =
         () in
   let on_set zock clt k v _uid _mtime =
     on_del zock clt k v in
-  (* TODO: update the allocs using accumulated stats already in the conftree
-   * and write the result back in the conftree, where supervisor will take it
-   * to configure the export *)
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login
                   ~on_set ~on_new:on_set ~on_del
                   ~topics ~recvtimeo:5. (fun zock clt ->
