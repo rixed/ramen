@@ -338,6 +338,21 @@ let init_auth ?while_ login clt zock on_progress =
   with e ->
     on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e))
 
+(* Receive and process incoming commands until timeout.
+ * Returns the number of messages that have been read. *)
+let process_in ?(while_=always) zock clt =
+  let rec loop msg_count =
+    if while_ () then
+      match recv_cmd zock with
+      | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+          msg_count
+      | msg ->
+          Client.process_msg clt msg ;
+          loop (msg_count + 1)
+    else
+      msg_count in
+  loop 0
+
 let init_sync ?while_ clt zock topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
@@ -352,13 +367,31 @@ let init_sync ?while_ clt zock topics on_progress =
     ) else
       Globs.escape my_errors :: globs
   in
-  try
-    List.iter (fun glob ->
-      send_cmd clt zock ?while_ (CltMsg.StartSync glob)
-    ) globs ;
-    on_progress clt Stage.Sync Status.InitOk
-  with e ->
-    on_progress clt Stage.Sync Status.(InitFail (Printexc.to_string e))
+  let synced = ref false in
+  let rec loop = function
+    | [] ->
+        () (* Nothing to sync to -> nothing to wait for *)
+    | [glob] ->
+        (* Last command: wait until it's acked *)
+        let on_ok () = synced := true in
+        send_cmd clt zock ?while_ ~on_ok (CltMsg.StartSync glob)
+    | glob :: rest ->
+        send_cmd clt zock ?while_ (CltMsg.StartSync glob) ;
+        loop rest in
+  match loop globs with
+  | exception e ->
+      on_progress clt Stage.Sync Status.(InitFail (Printexc.to_string e))
+  | () ->
+      on_progress clt Stage.Sync Status.InitOk ;
+      (* Wait until it's acked *)
+      let while_ () =
+        not !synced &&
+        (match while_ with Some f -> f () | None -> true) in
+      while while_ () do
+        !logger.debug "Wait for end of sync..." ;
+        let msg_count = process_in ~while_ zock clt in
+        !logger.debug "Received %d messages" msg_count
+      done
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
@@ -404,18 +437,3 @@ let start ?while_ url creds ?(topics=[])
             (fun () -> sync_loop zock clt)
         ) ()
     ) ()
-
-(* Receive and process incoming commands until timeout.
- * Returns the number of messages that have been read. *)
-let process_in ?(while_=always) zock clt =
-  let rec loop msg_count =
-    if while_ () then
-      match recv_cmd zock with
-      | exception Unix.(Unix_error (EAGAIN, _, _)) ->
-          msg_count
-      | msg ->
-          Client.process_msg clt msg ;
-          loop (msg_count + 1)
-    else
-      msg_count in
-  loop 0
