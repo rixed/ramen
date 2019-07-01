@@ -124,12 +124,12 @@ let tuple_typ =
     { name = N.field "bytes_in" ;
       typ = { structure = TU64 ; nullable = true } ;
       units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.rb_read_bytes ;
+      doc = Metric.Docs.worker_read_bytes ;
       aggr = None } ;
     { name = N.field "bytes_out" ;
       typ = { structure = TU64 ; nullable = true } ;
       units = Some RamenUnits.bytes ;
-      doc = Metric.Docs.rb_write_bytes ;
+      doc = Metric.Docs.worker_write_bytes ;
       aggr = None } ;
     { name = N.field "avg_out_bytes" ;
       typ = { structure = TU64 ; nullable = true } ;

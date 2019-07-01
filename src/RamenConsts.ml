@@ -31,8 +31,8 @@ struct
     let ram_usage = "ram_usage"
     let rb_wait_read = "in_sleep"
     let rb_wait_write = "out_sleep"
-    let rb_read_bytes = "in_bytes"
-    let rb_write_bytes = "out_bytes"
+    let worker_read_bytes = "in_bytes"
+    let worker_write_bytes = "out_bytes"
     let last_out = "last_out"
     let event_time = "event_time"
     let avg_full_out_bytes = "avg_full_out_bytes"
@@ -112,12 +112,13 @@ struct
        (regardless of the channel)."
     let max_ram_usage =
       "Maximum observed value of ram_usage."
-    let rb_read_bytes =
+    let worker_read_bytes =
       "Number of bytes read from the input ring buffers so far (for the \
        live channel only)."
-    let rb_write_bytes =
-      "Number of bytes written in all output ring buffers since that worker \
-       has started (regardless of the channel)."
+    let worker_write_bytes =
+      "Number of bytes written in all output ring buffers or output socket \
+       (for top-halves) since that worker has started (regardless of the \
+       channel)."
     let rb_wait_read =
       "Total number of seconds spent waiting for the input to refill."
     let rb_wait_write =

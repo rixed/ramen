@@ -66,24 +66,24 @@ let stats_ram =
   IntGauge.make Metric.Names.ram_usage
     Metric.Docs.ram_usage
 
-let stats_rb_read_bytes =
-  IntCounter.make Metric.Names.rb_read_bytes
-    Metric.Docs.rb_read_bytes
+let stats_read_bytes =
+  IntCounter.make Metric.Names.worker_read_bytes
+    Metric.Docs.worker_read_bytes
 
-let stats_rb_write_bytes =
-  IntCounter.make Metric.Names.rb_write_bytes
-    Metric.Docs.rb_write_bytes
+let stats_write_bytes =
+  IntCounter.make Metric.Names.worker_write_bytes
+    Metric.Docs.worker_write_bytes
 
-let stats_rb_read_sleep_time =
+let stats_read_sleep_time =
   FloatCounter.make Metric.Names.rb_wait_read
     Metric.Docs.rb_wait_read
 
-let stats_rb_write_sleep_time =
+let stats_write_sleep_time =
   FloatCounter.make Metric.Names.rb_wait_write
     Metric.Docs.rb_wait_write
 
-let sleep_in d = FloatCounter.add stats_rb_read_sleep_time d
-let sleep_out d = FloatCounter.add stats_rb_write_sleep_time d
+let sleep_in d = FloatCounter.add stats_read_sleep_time d
+let sleep_out d = FloatCounter.add stats_write_sleep_time d
 
 let stats_last_out =
   FloatGauge.make Metric.Names.last_out
@@ -216,10 +216,10 @@ let get_binocle_tuple (site : N.site) (worker : N.fq) is_top_half ic sc gc =
    Perf.get stats_perf_update_group |> sp,
    Perf.get stats_perf_where_fast |> sp,
    Perf.get stats_perf_where_slow |> sp),
-  FloatCounter.get stats_rb_read_sleep_time |> s,
-  FloatCounter.get stats_rb_write_sleep_time |> s,
-  IntCounter.get stats_rb_read_bytes |> si,
-  IntCounter.get stats_rb_write_bytes |> si,
+  FloatCounter.get stats_read_sleep_time |> s,
+  FloatCounter.get stats_write_sleep_time |> s,
+  IntCounter.get stats_read_bytes |> si,
+  IntCounter.get stats_write_bytes |> si,
   IntGauge.get stats_avg_full_out_bytes |> sg,
   FloatGauge.get stats_last_out |>
     Option.map gauge_current |> nullable_of_option,
@@ -340,7 +340,7 @@ let output rb serialize_tuple sersize_of_tuple
    * a ringbuf. Want a signal when a notification is sent? SELECT some
    * value! *)
   if tuple_opt = None || tuple_sersize > 0 then
-    IntCounter.add stats_rb_write_bytes sersize ;
+    IntCounter.add stats_write_bytes sersize ;
     let tx = enqueue_alloc rb sersize in
     let offs =
       RingBufLib.write_message_header tx 0 head ;
@@ -485,36 +485,23 @@ let writer_of_spec serialize_tuple sersize_of_tuple
         | _ -> ()),
       (fun () -> orc_close hdr)
 
-(* Each func can write in several ringbuffers (one per children). This list
- * will change dynamically as children are added/removed. *)
 (* FIXME: For now, publish_stats is called only when a tuple is emitted.
  *        We should have a separate thread for this, as we do for binocle
  *        stats. But then we should have a dedicated thread with ZMQ only,
- *        and communicate with it via another internal ZMQ socket *)
-let outputer_of
-      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close publish_tail
-      publish_stats =
-  let out_h = ref (Hashtbl.create 15)
-  and outputers = ref [] in
-  let max_num_fields = 100 (* FIXME *) in
-  let factors_values = Array.make max_num_fields possible_values_empty in
-  let factors_dir = N.path (getenv ~def:"/tmp/factors" "factors_dir") in
-  (* When did we update [stats_avg_full_out_bytes] statistics about the full
-   * size of output? *)
-  let last_full_out_measurement = ref 0. in
-  let first_output = ref None
-  and last_output = ref None in
-  let update_output_times () =
-    if !first_output = None then first_output := Some !CodeGenLib_IO.now ;
-    last_output := Some !CodeGenLib_IO.now in
+ *        and communicate with it via another internal ZMQ socket. Also,
+ *        beware of race conditions then (see avg_full_bytes) *)
+let first_output = ref None
+let last_output = ref None
+let update_output_times () =
+  if !first_output = None then first_output := Some !CodeGenLib_IO.now ;
+  last_output := Some !CodeGenLib_IO.now
+
+let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
-  let last_publish_tail = ref 0. in
   let last_publish_stats = ref 0. in
-  let num_skipped_between_publish = ref 0 in
   (* TODO: publish stats event when not outputting anything *)
-  let may_publish_stats () =
+  fun conf publish_stats ->
     let now = !IO.now in
     if now -. !last_publish_stats > conf.report_period
     then (
@@ -548,11 +535,11 @@ let outputer_of
           Uint64.of_int ((IntGauge.get stats_group_count |>
                           Option.map gauge_current) |? 0) ;
         tot_in_bytes =
-          Uint64.of_int (IntCounter.get stats_rb_read_bytes) ;
+          Uint64.of_int (IntCounter.get stats_read_bytes) ;
         tot_out_bytes =
-          Uint64.of_int (IntCounter.get stats_rb_write_bytes) ;
-        tot_wait_in = FloatCounter.get stats_rb_read_sleep_time ;
-        tot_wait_out = FloatCounter.get stats_rb_write_sleep_time ;
+          Uint64.of_int (IntCounter.get stats_write_bytes) ;
+        tot_wait_in = FloatCounter.get stats_read_sleep_time ;
+        tot_wait_out = FloatCounter.get stats_write_sleep_time ;
         tot_firing_notifs =
           Uint64.of_int (IntCounter.get stats_firing_notif_count) ;
         tot_extinguished_notifs =
@@ -560,7 +547,22 @@ let outputer_of
         tot_cpu = FloatCounter.get stats_cpu ;
         cur_ram ; max_ram } in
       publish_stats stats
-    ) in
+    )
+
+(* Each func can write in several ringbuffers (one per children). This list
+ * will change dynamically as children are added/removed. *)
+let outputer_of
+      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple orc_make_handler orc_write orc_close publish_tail
+      publish_stats =
+  let out_h = ref (Hashtbl.create 15)
+  and outputers = ref [] in
+  let max_num_fields = 100 (* FIXME *) in
+  let factors_values = Array.make max_num_fields possible_values_empty in
+  let factors_dir = N.path (getenv ~def:"/tmp/factors" "factors_dir") in
+  (* When did we update [stats_avg_full_out_bytes] statistics about the full
+   * size of output? *)
+  let last_full_out_measurement = ref 0. in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -638,8 +640,9 @@ let outputer_of
               ) else cur
           | None, None ->
               assert false)) ;
-      outputers := Hashtbl.values !out_h |> List.of_enum
-  in
+      outputers := Hashtbl.values !out_h |> List.of_enum in
+  let last_publish_tail = ref 0.
+  and num_skipped_between_publish = ref 0 in
   fun head tuple_opt ->
     let dest_channel = RingBufLib.channel_of_message_header head in
     let start_stop =
@@ -648,7 +651,7 @@ let outputer_of
         let start_stop = time_of_tuple tuple in
         if dest_channel = Channel.live then (
           (* Update stats *)
-          IntCounter.add stats_out_tuple_count 1 ;
+          IntCounter.inc stats_out_tuple_count ;
           FloatGauge.set stats_last_out !IO.now ;
           if !IO.now -. !last_full_out_measurement >
              min_delay_between_full_out_measurement
@@ -658,7 +661,7 @@ let outputer_of
             last_full_out_measurement := !IO.now) ;
           (* If we have subscribers, send them something (rate limited): *)
           if !IO.now -. !last_publish_tail >
-             min_delay_between_publish
+            min_delay_between_publish
           then (
             publish_tail sersize_of_tuple serialize_tuple
                          !num_skipped_between_publish tuple ;
@@ -703,7 +706,7 @@ let outputer_of
       | None -> None in
     update_output_times () ;
     update_outputers () ;
-    may_publish_stats () ;
+    may_publish_stats conf publish_stats ;
     List.iter (fun (file_spec, last_check_outref, writer, _) ->
       (* Also pass file_spec to keep the writer posted about channel
        * changes: *)
@@ -828,7 +831,7 @@ let read_csv_file
         !logger.error "Cannot parse line %S: %s"
           line (Printexc.to_string e)
       | tuple ->
-        IntCounter.add stats_in_tuple_count 1 ;
+        IntCounter.inc stats_in_tuple_count ;
         outputer (Some tuple)))
 
 (*
@@ -856,7 +859,7 @@ let listen_on
         publish_stats (RingBufLib.DataTuple Channel.live) in
     collector ~while_ (fun tup ->
       IO.on_each_input_pre () ;
-      IntCounter.add stats_in_tuple_count 1 ;
+      IntCounter.inc stats_in_tuple_count ;
       outputer (Some tup) ;
       ignore (Gc.major_slice 0)))
 
@@ -936,7 +939,7 @@ let read_well_known
                 (* Filter by time and worker *)
                 if time >= start && match_from worker then (
                   IO.on_each_input_pre () ;
-                  IntCounter.add stats_in_tuple_count 1 ;
+                  IntCounter.inc stats_in_tuple_count ;
                   outputer (RingBufLib.DataTuple chan) (Some tuple))
             | _ ->
                 ()) ;
@@ -1546,7 +1549,7 @@ let aggregate
       | Some g ->
         (* 5. Post-condition to commit and flush *)
         if channel_id = Channel.live then
-          IntCounter.add stats_selected_tuple_count 1 ;
+          IntCounter.inc stats_selected_tuple_count ;
         if not commit_before then
           update_states g.last_in s.last_out_tuple
                         g.local_state s.global_state g.current_out ;
@@ -1629,8 +1632,8 @@ let aggregate
         IO.on_each_input_pre () ;
         (* Update per in-tuple stats *)
         if channel_id = Channel.live then (
-          IntCounter.add stats_in_tuple_count 1 ;
-          IntCounter.add stats_rb_read_bytes tx_size) ;
+          IntCounter.inc stats_in_tuple_count ;
+          IntCounter.add stats_read_bytes tx_size) ;
         (* Sort: add in_tuple into the heap of sorted tuples, update
          * smallest/greatest, and consider extracting the smallest. *)
         (* If we assume sort_last >= 2 then the sort buffer will never
@@ -1688,7 +1691,7 @@ let top_half
       (IntCounter.get stats_selected_tuple_count |> si)
       None in
   worker_start site worker_name true get_binocle_tuple
-    (fun _publish_tail _publish_stats conf ->
+    (fun _publish_tail publish_stats conf ->
     let rb_in_fname = N.path (getenv "input_ringbuf_0") in
     !logger.debug "Will read ringbuffer %a" N.path_print rb_in_fname ;
     let forwarders =
@@ -1697,6 +1700,8 @@ let top_half
           conf.site t.host t.port worker_name t.parent_num
       ) tunnelds in
     let forward_bytes b =
+      may_publish_stats conf publish_stats ;
+      !logger.debug "Forwarding %d bytes to tunneld" (Bytes.length b) ;
       List.iter (fun forwarder -> forwarder b) forwarders in
     let rb_in =
       let on _ =
@@ -1713,13 +1718,16 @@ let top_half
       IO.on_each_input_pre () ;
       (* Update per in-tuple stats *)
       if channel_id = Channel.live then (
-        IntCounter.add stats_in_tuple_count 1 ;
-        IntCounter.add stats_rb_read_bytes tx_size) ;
+        IntCounter.inc stats_in_tuple_count ;
+        IntCounter.add stats_read_bytes tx_size ;
+        IntCounter.inc stats_out_tuple_count ;
+        FloatGauge.set stats_last_out !IO.now) ;
       let perf = Perf.start () in
       let pass = where in_tuple in
       Perf.add stats_perf_where_fast (Perf.stop perf) ;
       if pass then Some (RingBuf.read_raw_tx tx) else None
     in
+    !logger.debug "Starting forwarding loop..." ;
     RingBufLib.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       match read_tuple tx with
       | exception e ->
@@ -1736,6 +1744,8 @@ let top_half
                 None, Some (RingBuf.read_raw_tx tx)
             | _ -> assert false in
           RingBuf.dequeue_commit tx ;
+          IntCounter.add stats_write_bytes
+            (Option.map Bytes.length to_forward |? 0) ;
           Option.may forward_bytes to_forward ;
           if chan = Some Channel.live then
             Perf.add stats_perf_per_tuple (Perf.stop perf_per_tuple)))
