@@ -87,6 +87,7 @@ let serve_local conf ~while_ fd =
 let serve_sync conf ~while_ fd =
   !logger.debug "New connection to copy service on fd %d!"
     (Files.int_of_fd fd) ;
+  let open RamenSync in
   IntCounter.inc (stats_accepts conf.C.persist_dir) ;
   (* First message is supposed to identify the client and what the
    * target is: *)
@@ -98,9 +99,11 @@ let serve_sync conf ~while_ fd =
     id.parent_num ;
   let topics =
     let pref =
-      "sites/"^ (conf.C.site :> string) ^"/workers/"^ (id.child :> string) in
-    [ pref ^"/worker" ;
-      pref ^"/instances/*/input_ringbufs" ] in
+      N.path_cat [
+        N.path "sites" ; N.path (conf.C.site :> string) ;
+        N.path "workers" ; N.path (id.child :> string) ] in
+    [ (pref :> string) ^"/worker" ;
+      (pref :> string) ^"/instances/*/input_ringbufs" ] in
   let msg_count =
     ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
                     (fun zock clt ->
@@ -108,13 +111,13 @@ let serve_sync conf ~while_ fd =
        * current signature for the worker and then read it, waiting to receive
        * those keys if not there yet. *)
       let worker_key =
-        RamenSync.Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
-      RamenSync.Client.with_value clt worker_key (function
-        | { value = RamenSync.Value.Worker worker ; _ } ->
+        Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
+      Client.with_value clt worker_key (function
+        | { value = Value.Worker worker ; _ } ->
             let ringbufs_key =
               Supervisor.per_instance_key
                 conf.C.site id.child worker.signature InputRingFiles in
-            RamenSync.Client.with_value clt ringbufs_key (fun hv ->
+            Client.with_value clt ringbufs_key (fun hv ->
               match Supervisor.get_string_list (Some hv.value) with
               | Some lst ->
                   (* No idea what to do whan parent_num is beyond the end of
@@ -127,10 +130,10 @@ let serve_sync conf ~while_ fd =
                   copy_all ~while_ conf id.client_site bname fd rb
               | None ->
                   Printf.sprintf2 "Cannot find input ringbufs at %a"
-                    RamenSync.Key.print ringbufs_key |>
+                    Key.print ringbufs_key |>
                   failwith)
         | hv ->
-            RamenSync.invalid_sync_type worker_key hv.value "a worker") ;
+            invalid_sync_type worker_key hv.value "a worker") ;
       (* with_value just register a callback but we still have to turn the
        * crank: *)
       ZMQClient.process_in ~while_ zock clt) in

@@ -298,7 +298,7 @@ struct
     String.print fmt (match k with
     | StateFile -> "state_file"
     | OutRefFile -> "outref"
-    | InputRingFiles -> "inputs_ringbufs"
+    | InputRingFiles -> "input_ringbufs"
     | ParentOutRefs -> "parent_outrefs"
     | Pid -> "pid"
     | LastKilled -> "last_killed"
