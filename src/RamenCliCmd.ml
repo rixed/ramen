@@ -829,7 +829,7 @@ let ps_local profile conf short pretty with_header sort_col top pattern all =
 (* TODO: add an option to select the site *)
 let ps_sync conf short pretty with_header sort_col top pattern =
   let head =
-    [| "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
+    [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
        "#groups" ; "last out" ; "min event time" ; "max event time" ;
        "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
        "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
@@ -854,7 +854,8 @@ let ps_sync conf short pretty with_header sort_col top pattern =
               | Value.RuntimeStats s -> Some s
               | v -> invalid_sync_type k v "RuntimeStats" in
             let open Value.RuntimeStats in
-            [| Some (ValStr (fq :> string)) ;
+            [| Some (ValStr (site :> string)) ;
+               Some (ValStr (fq :> string)) ;
                Some (ValBool (worker.Value.Worker.role <> Whole)) ;
                Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
                Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
