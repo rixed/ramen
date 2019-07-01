@@ -856,21 +856,26 @@ let ps_sync conf short pretty with_header sort_col top pattern =
             let open Value.RuntimeStats in
             [| Some (ValStr (fq :> string)) ;
                Some (ValBool (worker.Value.Worker.role <> Whole)) ;
-               Option.map (fun s -> ValInt s.tot_in_tuples) s ;
-               None (* s.selected_count ; TODO: selected *) ;
-               Option.map (fun s -> ValInt s.tot_out_tuples) s ;
-               None (* s.group_count TODO *) ;
-               Option.map (fun s -> ValDate s.last_output) s ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;
+               Option.bind s (fun s -> date_or_na s.last_output) ;
                Option.bind s (fun s -> date_or_na s.min_etime) ;
                Option.bind s (fun s -> date_or_na s.max_etime) ;
                Option.map (fun s -> ValFlt s.tot_cpu) s ;
-               None (* TODO s.wait_in *) ;
-               None (* TODO s.wait_out *) ;
-               None (* TODO (Uint64.to_int s.ram) *) ;
+               Option.map (fun s -> ValFlt s.tot_wait_in) s ;
+               Option.map (fun s -> ValFlt s.tot_wait_out) s ;
+               Option.map (fun s -> ValInt (Uint64.to_int s.cur_ram)) s ;
                Option.map (fun s -> ValInt (Uint64.to_int s.max_ram)) s ;
                Option.map (fun s -> ValFlt (Uint64.to_float s.tot_in_bytes)) s ;
                Option.map (fun s -> ValFlt (Uint64.to_float s.tot_out_bytes)) s ;
-               None (*(Option.map Uint64.to_float s.avg_full_bytes) *) ;
+               Option.bind s (fun s ->
+                 if Uint64.(compare s.tot_full_bytes_samples zero) > 0 then
+                   Some (ValFlt (Uint64.to_float s.tot_full_bytes /.
+                                 Uint64.to_float s.tot_full_bytes_samples))
+                 else
+                   None) ;
                Option.map (fun s -> ValDate s.last_startup) s ;
                Some (ValInt (List.length worker.parents)) ;
                Some (ValInt (List.length worker.children)) ;

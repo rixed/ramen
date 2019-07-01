@@ -704,23 +704,33 @@ struct
 
   module RuntimeStats =
   struct
+    open Stdint
     type t =
       { stats_time : float ;
         first_startup : float ;
         last_startup : float ;
         min_etime : float option ;
         max_etime : float option ;
-        first_input : float ;
-        last_input : float ;
-        first_output : float ;
-        last_output : float ;
-        tot_in_tuples : int ;
-        tot_out_tuples : int ;
-        tot_in_bytes : Stdint.Uint64.t ;
-        tot_out_bytes : Stdint.Uint64.t ;
-        tot_notifs : int ;
+        first_input : float option ;
+        last_input : float option ;
+        first_output : float option ;
+        last_output : float option ;
+        tot_in_tuples : Uint64.t ;
+        tot_sel_tuples : Uint64.t ;
+        tot_out_tuples : Uint64.t ;
+        (* Those two measure the average size of all output fields: *)
+        tot_full_bytes : Uint64.t ;
+        tot_full_bytes_samples : Uint64.t ;
+        cur_groups : Uint64.t ;
+        tot_in_bytes : Uint64.t ;
+        tot_out_bytes : Uint64.t ;
+        tot_wait_in : float ;
+        tot_wait_out : float ;
+        tot_firing_notifs : Uint64.t ;
+        tot_extinguished_notifs : Uint64.t ;
         tot_cpu : float ;
-        max_ram : Stdint.Uint64.t }
+        cur_ram : Uint64.t ;
+        max_ram : Uint64.t }
 
     let print oc _s =
       Printf.fprintf oc "RuntimeStats{ TODO }"

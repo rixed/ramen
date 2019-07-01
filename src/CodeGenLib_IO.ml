@@ -7,9 +7,14 @@ module N = RamenName
 module Files = RamenFiles
 
 let now = ref (gettimeofday ())
+let first_input = ref None
+let last_input = ref None
 
 let on_each_input_pre () =
-  now := gettimeofday ()
+  let t = gettimeofday () in
+  now := t ;
+  if !first_input = None then first_input := Some t ;
+  last_input := Some t
 
 let read_file_lines ?(while_=always) ?(do_unlink=false)
                     (filename : N.path) preprocessor watchdog k =

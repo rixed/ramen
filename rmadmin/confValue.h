@@ -381,13 +381,16 @@ struct RuntimeStats : public Value
 {
   double statsTime, firstStartup, lastStartup;
   std::optional<double> minEventTime, maxEventTime;
-  double firstInput, lastInput;
-  double firstOutput, lastOutput;
-  int totInputTuples, totOutputTuples;
+  std::optional<double> firstInput, lastInput;
+  std::optional<double> firstOutput, lastOutput;
+  unsigned totInputTuples, totSelectedTuples, totOutputTuples;
+  size_t totFullBytes, totFullBytesSamples; // Measure the full size of output tuples
+  unsigned curGroups;
   size_t totInputBytes, totOutputBytes;
-  int totNotifs;
+  double totWaitIn, totWaitOut;
+  unsigned totFiringNotifs, totExtinguishedNotifs;
   double totCpu;
-  size_t maxRam;
+  size_t curRam, maxRam;
 
   RuntimeStats() {};
   RuntimeStats(value);

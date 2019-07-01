@@ -38,13 +38,25 @@ let stats_in_tuple_count =
   IntCounter.make Metric.Names.in_tuple_count
     Metric.Docs.in_tuple_count
 
-let make_stats_selected_tuple_count () =
+let stats_selected_tuple_count =
   IntCounter.make Metric.Names.selected_tuple_count
     Metric.Docs.selected_tuple_count
 
 let stats_out_tuple_count =
   IntCounter.make Metric.Names.out_tuple_count
     Metric.Docs.out_tuple_count
+
+let stats_firing_notif_count =
+  IntCounter.make Metric.Names.firing_notif_count
+    Metric.Docs.firing_notif_count
+
+let stats_extinguished_notif_count =
+  IntCounter.make Metric.Names.extinguished_notif_count
+    Metric.Docs.extinguished_notif_count
+
+let stats_group_count =
+  IntGauge.make Metric.Names.group_count
+                Metric.Docs.group_count
 
 let stats_cpu =
   FloatCounter.make Metric.Names.cpu_time
@@ -88,6 +100,10 @@ let stats_avg_full_out_bytes =
   IntGauge.make Metric.Names.avg_full_out_bytes
     Metric.Docs.avg_full_out_bytes
 
+(* For confserver values, where no race conditions are possible: *)
+let tot_full_bytes = ref Uint64.zero
+let tot_full_bytes_samples = ref Uint64.zero
+
 (* TODO: add in the instrumentation tuple? *)
 let stats_relocated_groups =
   IntCounter.make Metric.Names.relocated_groups
@@ -125,20 +141,14 @@ let stats_perf_commit_others =
 let stats_perf_flush_others =
   Perf.make Metric.Names.perf_flush_others Metric.Docs.perf_flush_others
 
-let measure_full_out =
-  let sum = ref 0 and count = ref 0 in
-  fun sz ->
-    !logger.debug "Measured fully fledged out tuple of size %d" sz ;
-    let prev_sum = !sum in
-    sum := !sum + sz ;
-    if !sum < prev_sum then (
-      count := !count / 2 ;
-      sum := prev_sum / 2 + sz
-    ) ;
-    incr count ;
-    float_of_int !sum /. float_of_int !count |>
-    round_to_int |>
-    IntGauge.set stats_avg_full_out_bytes
+let measure_full_out sz =
+  !logger.debug "Measured fully fledged out tuple of size %d" sz ;
+  tot_full_bytes := Uint64.(add !tot_full_bytes (of_int sz)) ;
+  tot_full_bytes_samples := Uint64.succ !tot_full_bytes_samples ;
+  Uint64.to_float !tot_full_bytes /.
+  Uint64.to_float !tot_full_bytes_samples |>
+  round_to_int |>
+  IntGauge.set stats_avg_full_out_bytes
 
 let tot_cpu_time () =
   let open Unix in
@@ -493,20 +503,26 @@ let outputer_of
   (* When did we update [stats_avg_full_out_bytes] statistics about the full
    * size of output? *)
   let last_full_out_measurement = ref 0. in
+  let first_output = ref None
+  and last_output = ref None in
+  let update_output_times () =
+    if !first_output = None then first_output := Some !CodeGenLib_IO.now ;
+    last_output := Some !CodeGenLib_IO.now in
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
   let last_publish_tail = ref 0. in
   let last_publish_stats = ref 0. in
   let num_skipped_between_publish = ref 0 in
+  (* TODO: publish stats event when not outputting anything *)
   let may_publish_stats () =
     let now = !IO.now in
     if now -. !last_publish_stats > conf.report_period
     then (
       last_publish_stats := now ;
-      let max_ram =
+      let cur_ram, max_ram =
         match IntGauge.get stats_ram with
-        | None -> Uint64.zero
-        | Some (_mi, _cur, ma) -> Uint64.of_int ma
+        | None -> Uint64.(zero, zero)
+        | Some (_mi, cur, ma) -> Uint64.(of_int cur, of_int ma)
       and min_etime, max_etime =
         match FloatGauge.get stats_event_time with
         | None -> None, None
@@ -516,17 +532,33 @@ let outputer_of
         first_startup = startup_time ;
         last_startup = startup_time ;
         min_etime ; max_etime ;
-        first_input = 0. (* TODO *) ;
-        last_input = 0. (* TODO *) ;
-        first_output = 0. (* TODO *) ;
-        last_output = 0. (* TODO *) ;
-        tot_in_tuples = 0 (* TODO *) ;
-        tot_out_tuples = IntCounter.get stats_out_tuple_count ;
-        tot_in_bytes = Uint64.zero (* TODO *) ;
-        tot_out_bytes = Uint64.zero (* TODO *) ;
-        tot_notifs = 0 (* TODO *) ;
+        first_input = !CodeGenLib_IO.first_input ;
+        last_input = !CodeGenLib_IO.last_input ;
+        first_output = !first_output ;
+        last_output = !last_output ;
+        tot_in_tuples =
+          Uint64.of_int (IntCounter.get stats_in_tuple_count) ;
+        tot_sel_tuples =
+          Uint64.of_int (IntCounter.get stats_selected_tuple_count) ;
+        tot_out_tuples =
+          Uint64.of_int (IntCounter.get stats_out_tuple_count) ;
+        tot_full_bytes = !tot_full_bytes ;
+        tot_full_bytes_samples = !tot_full_bytes_samples ;
+        cur_groups =
+          Uint64.of_int ((IntGauge.get stats_group_count |>
+                          Option.map gauge_current) |? 0) ;
+        tot_in_bytes =
+          Uint64.of_int (IntCounter.get stats_rb_read_bytes) ;
+        tot_out_bytes =
+          Uint64.of_int (IntCounter.get stats_rb_write_bytes) ;
+        tot_wait_in = FloatCounter.get stats_rb_read_sleep_time ;
+        tot_wait_out = FloatCounter.get stats_rb_write_sleep_time ;
+        tot_firing_notifs =
+          Uint64.of_int (IntCounter.get stats_firing_notif_count) ;
+        tot_extinguished_notifs =
+          Uint64.of_int (IntCounter.get stats_extinguished_notif_count) ;
         tot_cpu = FloatCounter.get stats_cpu ;
-        max_ram } in
+        cur_ram ; max_ram } in
       publish_stats stats
     ) in
   let get_out_fnames =
@@ -669,6 +701,7 @@ let outputer_of
           ) start_stop) ;
         start_stop
       | None -> None in
+    update_output_times () ;
     update_outputers () ;
     may_publish_stats () ;
     List.iter (fun (file_spec, last_check_outref, writer, _) ->
@@ -954,6 +987,8 @@ let notify rb (site : N.site) (worker : N.fq) event_time (name, parameters) =
   let firing, certainty, parameters =
     RingBufLib.normalize_notif_parameters parameters in
   let parameters = Array.of_list parameters in
+  IntCounter.inc (if firing |? true then stats_firing_notif_count
+                                    else stats_extinguished_notif_count) ;
   RingBufLib.write_notif ~delay_rec:sleep_out rb
     ((site :> string), (worker :> string), !IO.now, event_time,
      name, firing, certainty, parameters)
@@ -1258,11 +1293,7 @@ let aggregate
         'tuple_in -> 'tuple_out -> (string * (string * string) list) list)
       (every : float option)
       orc_make_handler orc_write orc_close =
-  let stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and stats_group_count =
-    IntGauge.make Metric.Names.group_count
-                  Metric.Docs.group_count
-  and cmp_g0 cmp g1 g2 =
+  let cmp_g0 cmp g1 g2 =
     cmp (option_get "g0" g1.g0) (option_get "g0" g2.g0) in
   IntGauge.set stats_group_count 0 ;
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
@@ -1640,8 +1671,7 @@ type tunneld_dest = { host : N.host ; port : int ; parent_num : int }
 let top_half
       (read_tuple : RingBuf.tx -> RingBufLib.message_header * 'tuple_in option)
       (where : 'tuple_in ->  bool) =
-  let stats_selected_tuple_count = make_stats_selected_tuple_count ()
-  and worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name")
+  let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name")
   and site = N.site (getenv ~def:"" "site")
   and tunnelds =
     let hosts = getenv_list "tunneld_host" N.host

@@ -96,38 +96,62 @@ let publish_stats clt zock ?while_ stats_key init_stats stats =
           last_input = stats.last_input ;
           first_output = init.first_output ;
           last_output = stats.last_output ;
-          tot_in_tuples = init.tot_in_tuples + stats.tot_in_tuples ;
-          tot_out_tuples = init.tot_out_tuples + stats.tot_out_tuples ;
-          tot_in_bytes = Uint64.add init.tot_in_bytes stats.tot_in_bytes ;
-          tot_out_bytes = Uint64.add init.tot_out_bytes stats.tot_out_bytes ;
-          tot_notifs = init.tot_notifs + stats.tot_notifs ;
+          tot_in_tuples =
+            Uint64.add init.tot_in_tuples stats.tot_in_tuples ;
+          tot_sel_tuples =
+            Uint64.add init.tot_sel_tuples stats.tot_sel_tuples ;
+          tot_out_tuples =
+            Uint64.add init.tot_out_tuples stats.tot_out_tuples ;
+          tot_full_bytes =
+            Uint64.add init.tot_full_bytes stats.tot_full_bytes ;
+          tot_full_bytes_samples =
+            Uint64.add init.tot_full_bytes_samples
+                       stats.tot_full_bytes_samples ;
+          cur_groups =
+            Uint64.add init.cur_groups stats.cur_groups ;
+          tot_in_bytes =
+            Uint64.add init.tot_in_bytes stats.tot_in_bytes ;
+          tot_out_bytes =
+            Uint64.add init.tot_out_bytes stats.tot_out_bytes ;
+          tot_wait_in = init.tot_wait_in +. stats.tot_wait_in ;
+          tot_wait_out = init.tot_wait_out +. stats.tot_wait_out ;
+          tot_firing_notifs =
+            Uint64.add init.tot_firing_notifs stats.tot_firing_notifs ;
+          tot_extinguished_notifs =
+            Uint64.add init.tot_extinguished_notifs
+                       stats.tot_extinguished_notifs ;
           tot_cpu = init.tot_cpu +. stats.tot_cpu ;
+          cur_ram = stats.cur_ram ;
           max_ram = max init.max_ram stats.max_ram } in
   let v = RamenSync.Value.RuntimeStats tot_stats in
   let cmd = RamenSync.Client.CltMsg.SetKey (stats_key, v) in
   ZMQClient.send_cmd ?while_ clt zock cmd
 
 let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
+  let open RamenSync in
   if url = "" then k ignore4 ignore else
   (* TODO: also subscribe to errors! *)
   let topic_sub =
     "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =
-    RamenSync.Key.(Tail (site, fq, LastTuple seq)) in
+    Key.(Tail (site, fq, LastTuple seq)) in
   fun conf ->
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del
                     ~recvtimeo:0. ~sndtimeo:0. (fun zock clt ->
       let publish_tail = may_publish_tail clt zock ?while_ topic_pub in
       let stats_key =
-        RamenSync.Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
+        Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
       let init_stats =
-        match RamenSync.Client.find clt stats_key with
+        match (Client.find clt stats_key).value with
         | exception Not_found ->
             None
-        | RamenSync.Client.{ value = RamenSync.Value.RuntimeStats s ; _ } ->
+        | Value.RuntimeStats s ->
             Some s
-        | RamenSync.Client.{ value ; _ } ->
-            RamenSync.invalid_sync_type stats_key value "RuntimeStats" in
+        | v ->
+            !logger.error "Invalid type for %a: %a"
+              Key.print stats_key
+              Value.print v ;
+            None in
       let publish_stats = publish_stats clt zock ?while_ stats_key init_stats in
       k publish_tail publish_stats conf)

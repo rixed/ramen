@@ -23,6 +23,8 @@ struct
     let in_tuple_count = "in_tuple_count"
     let selected_tuple_count = "selected_tuple_count"
     let out_tuple_count = "out_tuple_count"
+    let firing_notif_count = "firing_notif_count"
+    let extinguished_notif_count = "extinguished_notif_count"
     let group_count = "group_count"
     let cpu_time = "cpu_time"
     let ram_usage = "ram_usage"
@@ -96,6 +98,10 @@ struct
     let out_tuple_count =
       "Number of tuples sent to each child of this worker since it \
        started (on live channel)."
+    let firing_notif_count =
+      "Number of notifications sent for a firing alert."
+    let extinguished_notif_count =
+      "Number of notifications sent for a no-longer firing alert."
     let group_count =
       "Number of groups currently maintained (for the live channel)."
     let cpu_time =

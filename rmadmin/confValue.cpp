@@ -883,7 +883,7 @@ bool TargetConfig::operator==(Value const &other) const
 
 RuntimeStats::RuntimeStats(value v_)
 {
-  assert(16 == Wosize_val(v_));
+  assert(24 == Wosize_val(v_));
   statsTime = Double_val(Field(v_, 0));
   firstStartup = Double_val(Field(v_, 1));
   lastStartup = Double_val(Field(v_, 2));
@@ -893,17 +893,33 @@ RuntimeStats::RuntimeStats(value v_)
   maxEventTime = Is_block(Field(v_, 4)) ?
     std::optional<double>(Double_val(Field(Field(v_, 4), 0))) :
     std::optional<double>(),
-  firstInput = Double_val(Field(v_, 5));
-  lastInput = Double_val(Field(v_, 6));
-  firstOutput = Double_val(Field(v_, 7));
-  lastOutput = Double_val(Field(v_, 8));
+  firstInput = Is_block(Field(v_, 5)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 5), 0))) :
+    std::optional<double>(),
+  lastInput = Is_block(Field(v_, 6)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 6), 0))) :
+    std::optional<double>(),
+  firstOutput = Is_block(Field(v_, 7)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 7), 0))) :
+    std::optional<double>(),
+  lastOutput = Is_block(Field(v_, 8)) ?
+    std::optional<double>(Double_val(Field(Field(v_, 8), 0))) :
+    std::optional<double>(),
   totInputTuples = Long_val(Field(v_, 9));
-  totOutputTuples = Long_val(Field(v_, 10));
-  totInputBytes = *(uint64_t *)Data_custom_val(Field(v_, 11));
-  totOutputBytes = *(uint64_t *)Data_custom_val(Field(v_, 12));
-  totNotifs = Long_val(Field(v_, 13));
-  totCpu = Double_val(Field(v_, 14));
-  maxRam = *(uint64_t *)Data_custom_val(Field(v_, 15));
+  totSelectedTuples = Long_val(Field(v_, 10));
+  totOutputTuples = Long_val(Field(v_, 11));
+  totFullBytes = *(uint64_t *)Data_custom_val(Field(v_, 12));
+  totFullBytesSamples = *(uint64_t *)Data_custom_val(Field(v_, 13));
+  curGroups = Long_val(Field(v_, 14));
+  totInputBytes = *(uint64_t *)Data_custom_val(Field(v_, 15));
+  totOutputBytes = *(uint64_t *)Data_custom_val(Field(v_, 16));
+  totWaitIn = Double_val(Field(v_, 17));
+  totWaitOut = Double_val(Field(v_, 18));
+  totFiringNotifs = Long_val(Field(v_, 19));
+  totExtinguishedNotifs = Long_val(Field(v_, 20));
+  totCpu = Double_val(Field(v_, 21));
+  curRam = *(uint64_t *)Data_custom_val(Field(v_, 22));
+  maxRam = *(uint64_t *)Data_custom_val(Field(v_, 23));
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

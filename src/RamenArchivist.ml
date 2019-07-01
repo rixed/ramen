@@ -89,7 +89,12 @@ let arc_stats_of_func_stats s =
 let arc_stats_of_runtime_stats is_running parents s =
   { min_etime = s.RamenSync.Value.RuntimeStats.min_etime ;
     max_etime = s.max_etime ;
-    bytes = Uint64.to_int64 s.tot_out_bytes (* FIXME: we need avg_full_bytes * tot_out_tuple! *);
+    bytes =
+      (if Uint64.(compare s.tot_full_bytes_samples zero) > 0 then
+        let avg = Uint64.to_float s.tot_full_bytes /.
+                  Uint64.to_float s.tot_full_bytes_samples in
+        Int64.of_float (avg *. Uint64.to_float s.tot_out_tuples)
+      else 0L) ;
     cpu = s.tot_cpu ;
     is_running ; parents }
 
