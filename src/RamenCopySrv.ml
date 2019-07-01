@@ -38,6 +38,7 @@ let stats_tuples =
 (* Server: *)
 
 let copy_all ~while_ _conf (client_site : N.site) (bname : N.path) fd rb =
+  !logger.debug "Copying all from %a" N.site_print client_site ;
   let labels = [ "client", (client_site :> string) ] in
   while while_ () do
     let bytes : RamenCopy.append_msg =

@@ -827,7 +827,7 @@ let ps_local profile conf short pretty with_header sort_col top pattern all =
       print [||]
 
 (* TODO: add an option to select the site *)
-let ps_sync conf short pretty with_header sort_col top pattern =
+let ps_sync conf _short pretty with_header sort_col top _pattern =
   let head =
     [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
        "#groups" ; "last out" ; "min event time" ; "max event time" ;
@@ -841,7 +841,7 @@ let ps_sync conf short pretty with_header sort_col top pattern =
     [ "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/worker" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun zock clt ->
+    (fun _zock clt ->
       let open RamenSync in
       Client.iter clt (fun k v ->
         match k, v.value with

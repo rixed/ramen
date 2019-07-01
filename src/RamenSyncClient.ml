@@ -50,10 +50,12 @@ struct
   let with_value t k cont =
     match H.find t.h k with
     | exception Not_found ->
+        !logger.debug "Waiting for value of %a" Key.print k ;
         H.add t.h k (Waiters [ cont ])
     | Value hv ->
         cont hv
     | Waiters conts ->
+        !logger.debug "Waiting for value of %a" Key.print k ;
         H.replace t.h k (Waiters (cont :: conts))
 
   let find t k =
