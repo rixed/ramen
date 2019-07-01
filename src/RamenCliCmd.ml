@@ -833,13 +833,15 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
        "#groups" ; "last out" ; "min event time" ; "max event time" ;
        "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
        "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
-       "#parents" ; "#children" ; "signature" |] in
+       "#parents" ; "#children" ; "archive size" ; "oldest archived" ;
+       "archive duration" ; "signature" |] in
   let open TermTable in
   let sort_col = sort_col_of_string head sort_col in
   let print_tbl = print_table ~pretty ~sort_col ~with_header ?top head in
   let topics =
     [ "sites/*/workers/*/stats/runtime" ;
-      "sites/*/workers/*/worker" ] in
+      "sites/*/workers/*/worker" ;
+      "sites/*/workers/*/archives/*" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
     (fun _zock clt ->
       let open RamenSync in
@@ -847,12 +849,26 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
         match k, v.value with
         | Key.PerSite (site, PerWorker (fq, Worker)),
           Value.Worker worker ->
-            let stats_k = Key.PerSite (site, PerWorker (fq, RuntimeStats)) in
-            let s =
-              match (Client.find clt stats_k).value with
+            let get_k k what f =
+              let k = Key.PerSite (site, PerWorker (fq, k)) in
+              match (Client.find clt k).value with
               | exception Not_found -> None
-              | Value.RuntimeStats s -> Some s
-              | v -> invalid_sync_type k v "RuntimeStats" in
+              | v ->
+                  (match f v with
+                  | None -> invalid_sync_type k v what
+                  | x -> x) in
+            let s = get_k RuntimeStats "RuntimeStats" (function
+              | Value.RuntimeStats x -> Some x
+              | _ -> None) in
+            let arc_size = get_k NumArcBytes "NumArcBytes" (function
+              | Value.Int x -> Some x
+              | _ -> None) |? 0L in
+            let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
+              | Value.TimeRange x -> Some x
+              | _ -> None) |? [] in
+            let arc_oldest = if List.is_empty arc_times then None
+                             else Some (List.hd arc_times |> fst) in
+            let arc_duration = TimeRange.span arc_times in
             let open Value.RuntimeStats in
             [| Some (ValStr (site :> string)) ;
                Some (ValStr (fq :> string)) ;
@@ -880,6 +896,9 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
                Option.map (fun s -> ValDate s.last_startup) s ;
                Some (ValInt (List.length worker.parents)) ;
                Some (ValInt (List.length worker.children)) ;
+               Some (ValInt (Int64.to_int arc_size)) ;
+               Option.map (fun s -> ValDate s) arc_oldest ;
+               Some (ValDuration arc_duration) ;
                Some (ValStr worker.signature) |] |>
             print_tbl
         | _ -> ())) ;
@@ -1243,35 +1262,6 @@ let timeseries conf func_name_or_code
                  since until with_header where factors num_points
                  time_step sep null consolidation
                  bucket_time) pretty
-
-(*
- * `ramen timerange`
- *
- * Obtain information about the time range available for time series.
- *)
-
-let timerange conf fq () =
-  init_logger conf.C.log_level ;
-  RC.with_rlock conf (fun programs ->
-    let _mre, prog, func = RC.find_func_or_fail programs fq in
-    let mi_ma =
-      (* We need the func to know its buffer location.
-       * Nothing better to do in case of error than to exit.
-       * The archive dir is going to be scanned, then this file in case
-       * it exists: *)
-      let bname = C.archive_buf_name ~file_type:OutRef.RingBuf conf func in
-      let typ =
-        O.out_type_of_operation ~with_private:false func.F.operation in
-      let ser = RingBufLib.ser_tuple_typ_of_tuple_typ typ |>
-                List.map fst in
-      let params = prog.P.default_params in
-      let event_time =
-        O.event_time_of_operation func.operation in
-      RamenSerialization.time_range bname ser params event_time
-    in
-    match mi_ma with
-      | None -> Printf.printf "No time info or no output yet.\n"
-      | Some (mi, ma) -> Printf.printf "%f %f\n" mi ma)
 
 (*
  * `ramen httpd`

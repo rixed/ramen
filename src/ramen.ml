@@ -935,17 +935,6 @@ let timeseries =
     info ~doc:CliInfo.timeseries "timeseries")
 
 (*
- * Time Ranges
- *)
-
-let timerange =
-  Term.(
-    (const RamenCliCmd.timerange
-      $ copts ""
-      $ function_name 0),
-    info ~doc:CliInfo.timerange "timerange")
-
-(*
  * Info
  *)
 
@@ -1167,7 +1156,7 @@ let () =
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)
-        tail ; replay ; timeseries ; timerange ;
+        tail ; replay ; timeseries ;
         (* writing tuples: *)
         notify ;
         (* ringbuffers management: *)
