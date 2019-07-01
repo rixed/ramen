@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align=center>ramen-alerter</h1>
+<h1 align=center>RAMEN-ALERTER</h1>
 
 
 
@@ -84,12 +84,6 @@ alerter</b> [<i>OPTION</i>]...</p>
 <b>ALERTER_CONFIG</b> env)</p>
 
 <p style="margin-left:17%;">configuration file</p>
-
-
-<p style="margin-left:11%;"><b>--confserver-url</b>=<i>VAL</i></p>
-
-<p style="margin-left:17%;">host:port of Ramen
-confserver</p>
 
 <p style="margin-left:11%;"><b>--daemonize</b> (absent
 <b>RAMEN_DAEMONIZE</b> env)</p>
@@ -146,6 +140,12 @@ RAMEN_LIBS</b> env)</p>
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler</p>
 
+<p style="margin-left:11%;"><b>--confserver</b>=<i>VAL</i>
+(absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:17%;">host:port of Ramen
+confserver</p>
+
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
@@ -157,6 +157,11 @@ libraries for the embedded compiler</p>
 
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it</p>
+
+<p style="margin-left:11%;"><b>--login</b>=<i>VAL</i>
+(absent=_alerter)</p>
+
+<p style="margin-left:17%;">login for the confserver</p>
 
 <p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
@@ -228,6 +233,11 @@ ALERTER_CONFIG</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--to-syslog</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DAEMONIZE</b></p>
 

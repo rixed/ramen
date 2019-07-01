@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align=center>ramen-timerange</h1>
+<h1 align=center>RAMEN-TIMERANGE</h1>
 
 
 
@@ -92,12 +92,7 @@ timerange</b> [<i>OPTION</i>]... <i>OPERATION</i></p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--confserver-url</b>=<i>VAL</i></p>
-
-<p style="margin-left:17%;">host:port of Ramen
-confserver</p>
-
-<p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
+<p style="margin-left:11%; margin-top: 1em"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
 <p style="margin-left:17%;">Show this help in format
@@ -126,6 +121,12 @@ RAMEN_LIBS</b> env)</p>
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler</p>
 
+<p style="margin-left:11%;"><b>--confserver</b>=<i>VAL</i>
+(absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:17%;">host:port of Ramen
+confserver</p>
+
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
@@ -137,6 +138,11 @@ libraries for the embedded compiler</p>
 
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it</p>
+
+<p style="margin-left:11%;"><b>--login</b>=<i>VAL</i>
+(absent <b>USER</b> env)</p>
+
+<p style="margin-left:17%;">login for the confserver</p>
 
 <p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
@@ -195,6 +201,11 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
@@ -243,6 +254,10 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--variant</b>.</p>
+
+<p style="margin-left:11%;"><b>USER</b></p>
+
+<p style="margin-left:17%;">See option <b>--login</b>.</p>
 </div>
 </body>
 </html>
