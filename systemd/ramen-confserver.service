@@ -1,0 +1,14 @@
+[Unit]
+Description=Maintain the configuration as a remotely accessible KV store
+PartOf=ramen.target
+Documentation=https://rixed.github.io/ramen/man/confserver.html
+
+[Install]
+WantedBy=ramen.target
+
+[Service]
+EnvironmentFile=-/etc/default/ramen
+ExecStart=/usr/bin/ramen confserver --stdout
+User=ramen
+Restart=always
+RestartSec=60

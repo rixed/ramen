@@ -107,8 +107,9 @@ let copts default_login =
                      ~docs ~env ["master"] in
     Arg.(value (opt_all string [] i))
   and confserver_url =
+    let env = Term.env_info "RAMEN_CONFSERVER" in
     let i = Arg.info ~doc:CliInfo.confserver_url
-                     ~docs [ "confserver" ] in
+                     ~docs ~env [ "confserver" ] in
     Arg.(value (opt string "" i))
   and confserver_login =
     let env =
