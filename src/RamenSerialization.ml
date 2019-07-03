@@ -21,8 +21,9 @@ let read_array_of_values tuple_typ =
   let nullmask_size = nullmask_bytes_of_tuple_type ser_tuple_typ in
   fun tx start_offs ->
     if verbose_serialization then
-      !logger.debug "De-serializing a tuple of type %a"
-        RamenTuple.print_typ ser_tuple_typ ;
+      !logger.debug "De-serializing a tuple of type %a with nullmask of %d bytes"
+        RamenTuple.print_typ ser_tuple_typ
+        nullmask_size ;
     let tuple = Array.make tuple_len VNull in
     List.fold_lefti (fun (offs, b) i typ ->
       let value, offs', b' =
@@ -189,11 +190,10 @@ let find_param params n =
   let open RamenTuple in
   try (params_find n params).value
   with Not_found ->
-    let err_msg =
-      Printf.sprintf2 "Field %a is not a parameter (parameters are: %a)"
-        N.field_print n
-        RamenTuple.print_params_names params in
-    failwith err_msg
+    Printf.sprintf2 "Field %a is not a parameter (parameters are: %a)"
+      N.field_print n
+      RamenTuple.print_params_names params |>
+    failwith
 
 (* Build a filter function for tuples of the given type: *)
 let filter_tuple_by ser where =

@@ -748,7 +748,7 @@ struct
     | TimeRange of TimeRange.t
     | Tuple of
         { skipped : int (* How many tuples were skipped before this one *) ;
-          values : bytes (* serialized *) }
+          values : bytes (* serialized, without header *) }
     | RamenType of T.t
     | RamenValue of T.value
     | TargetConfig of TargetConfig.t
@@ -764,6 +764,7 @@ struct
     | Error (_, i1, _), Error (_, i2, _) -> i1 = i2
     | v1, v2 -> v1 = v2
 
+  (* TODO: A void type? *)
   let dummy = String "undefined"
 
   let rec print oc = function

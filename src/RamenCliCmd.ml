@@ -16,6 +16,7 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Services = RamenServices
 module Processes = RamenProcesses
+module EventTime = RamenEventTime
 module ZMQClient = RamenSyncZMQClient
 
 let () =
@@ -590,7 +591,7 @@ let info _conf params program_name_opt bin_file opt_func_name () =
     O.event_time_of_operation func.operation |>
     Option.may (fun et ->
       TermTable.print_head (i+1) "Event time" ;
-      TermTable.print (i+2) "%a" RamenEventTime.print et) ;
+      TermTable.print (i+2) "%a" EventTime.print et) ;
     TermTable.print_head (i+1) "Factors" ;
     TermTable.print (i+2) "%a"
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
