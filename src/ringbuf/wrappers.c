@@ -381,6 +381,24 @@ CAMLprim value wrap_bytes_tx(value size_)
   CAMLreturn(tx);
 }
 
+// returns a TX that reads from a buffer on the heap instead of a ringbuf:
+CAMLprim value wrap_tx_of_bytes(value bytes_)
+{
+  CAMLparam1(bytes_);
+  CAMLlocal1(tx);
+  retrieve_exceptions();
+  char const *s = String_val(bytes_);
+  size_t const size = caml_string_length(bytes_);
+  tx = alloc_tx();
+  struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
+  memset(wrtx, 0, sizeof(*wrtx));
+  wrtx->bytes = malloc(size);
+  assert(wrtx->bytes || !size);
+  wrtx->alloced = size;
+  memcpy(wrtx->bytes, s, size);
+  CAMLreturn(tx);
+}
+
 /* Lower level API */
 
 CAMLprim value wrap_ringbuf_enqueue_alloc(value rb_, value size_)

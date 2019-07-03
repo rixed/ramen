@@ -21,11 +21,11 @@ struct
     { h : hash_maybe_value H.t ;
       uid : User.id ;
       mutable my_errors : Key.t option ; (* As returned by AuthOK *)
-      on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
-      on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
-      on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
-      on_lock : t -> Key.t -> string -> unit ;
-      on_unlock : t -> Key.t -> unit }
+      mutable on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
+      mutable on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
+      mutable on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
+      mutable on_lock : t -> Key.t -> string -> unit ;
+      mutable on_unlock : t -> Key.t -> unit }
 
   and hash_maybe_value =
     | Value of hash_value

@@ -69,6 +69,9 @@ external read_next : tx -> tx = "wrap_ringbuf_read_next"
  * Do not enqueue_alloc in there but write directly!
  * Then use [read_raw_tx] to get the value. *)
 external bytes_tx : int -> tx = "wrap_bytes_tx"
+(* Build a special TX from the given bytes, that can then be used to
+ * deserialize. Independent of any ringbuffer. *)
+external tx_of_bytes : Bytes.t -> tx = "wrap_tx_of_bytes"
 
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_string : tx -> int -> string -> unit = "write_str"

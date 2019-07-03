@@ -8,6 +8,7 @@ open RamenConsts
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
+module FS = F.Serialized
 module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
@@ -960,13 +961,20 @@ let parse_func_name_of_code conf what func_name_or_code =
         if String.ends_with func_name ("#"^ SpecialFunctions.stats) ||
            String.ends_with func_name ("#"^ SpecialFunctions.notifs) then
           ret
-        else (
+        else
           (* Check this function exists: *)
-          RC.with_rlock conf (fun programs ->
-            RC.find_func programs fq |> ignore) ;
-          ret)
+          if conf.C.sync_url = "" then (
+            RC.with_rlock conf (fun programs ->
+              RC.find_func programs fq |> ignore) ;
+            ret
+          ) else
+            (* FIXME: Assume the function exists.* In the future, have
+             * the connection to confserver already setup. *)
+            ret
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
+    if conf.C.sync_url <> "" then
+      failwith "TODO: confserver support for immediate code" ;
     let program_name = C.make_transient_program () in
     let func_name = N.func "f" in
     let programs = RC.with_rlock conf identity in (* best effort *)
@@ -1023,9 +1031,10 @@ let head_of_types ~with_units head_typ =
        else "")
   ) head_typ
 
-let tail_ conf fq field_names with_header with_units sep null raw
-          last next min_seq max_seq continuous where since until
-          with_event_time duration pretty flush =
+let tail_local
+      conf fq field_names with_header with_units sep null raw
+      last next min_seq max_seq continuous where since until
+      with_event_time duration pretty flush =
   if (last <> None || next <> None || continuous) &&
      (min_seq <> None || max_seq <> None) then
     failwith "Options --{last,next,continuous} and \
@@ -1120,6 +1129,185 @@ let tail_ conf fq field_names with_header with_units sep null raw
     | _ -> ()) ;
   print [||]
 
+(* Sync version of tail cannot use seqnums nor since/until; use replay for
+ * that, which is more generic and does not depends on local files. *)
+(* TODO: add with_site *)
+(* FIXME: last/next semantic is unclear. For now we just print last+next
+ * tuples. Use the max seqnum found just after sync as the current seqnum?
+ * Also, if workers used tuple seqnum as the sequence id to identify tuples,
+ * we would need no skipped counter and could use min/max_seq.
+ * FIXME: regarding tail rate limit: To make tail more useful make the rate
+ * limit progressive? *)
+let tail_sync
+      conf (fq : N.fq) field_names with_header with_units sep null raw
+      last next min_seq max_seq continuous where since until
+      with_event_time _duration pretty flush =
+  if min_seq <> None || max_seq <> None then
+    failwith "Options --{min,max}-seq are incompatible with --confserver." ;
+  if since <> None || until <> None then
+    !logger.warning
+      "With --confserver, options --since/--until filter but do not select." ;
+  if continuous && next <> None then
+    failwith "Option --next and --continuous are incompatible." ;
+  if with_units && with_header = 0 then
+    failwith "Option --with-units makes no sense without --with-header." ;
+  (* Do something useful by default: display the 10 last lines *)
+  let last =
+    if last = None && next = None && min_seq = None && max_seq = None &&
+       since = None && until = None
+    then 10 else last |? 0 in
+  let flush = flush || continuous in
+  let next = if continuous then max_int else next |? 0 in
+  (* We need to check that this worker is indeed running, get its output type,
+   * and then we want to receive its tail.
+   * No need to receive its subscribers though. *)
+  (* TODO: a way to specify another glob: *)
+  let sites = "*" in
+  let topics =
+    [ "sites/"^ sites ^"/workers/"^ (fq :> string) ^"/worker" ;
+      (* TODO: would be faster to sync the specific sources once we know
+       * their name, rather than all defined sources. *)
+      "sources/*/info" ;
+      "tail/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
+  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+    (fun zock clt ->
+      let open RamenSync in
+      (* Get the workers and their types: *)
+      !logger.debug "Looking for running workers %a on sites %S"
+        N.fq_print fq
+        sites ;
+      let workers =
+        Client.fold clt (fun k v lst ->
+          match k, v.value with
+          | PerSite (site, PerWorker (fq', Worker)),
+            Worker worker
+            when worker.role = Whole ->
+              assert (fq = fq') ;
+              (site, worker) :: lst
+          | _ -> lst
+        ) [] in
+      !logger.debug "Found sites: %a"
+        (Enum.print N.site_print) (List.enum workers /@ fst) ;
+      if workers = [] then
+        Printf.sprintf2 "Function %a is not running anywhere"
+          N.fq_print fq |>
+        failwith ;
+      let out_types =
+        (List.enum workers /@ snd |>
+        (* enumerates workers with distinct src_path *)
+        Enum.uniq_by
+          (fun w1 w2 -> N.eq w1.Value.Worker.src_path w2.src_path)) /@
+        function_of_worker clt fq /@
+        (fun func ->
+          O.out_type_of_operation ~with_private:false func.FS.operation,
+          O.event_time_of_operation func.operation) |>
+        Enum.uniq_by
+          (fun (t1, et1) (t2, et2) ->
+            RamenTuple.eq_types t1 t2 &&
+            (not with_event_time && since = None && until = None ||
+             et1 = et2)) |>
+        List.of_enum in
+      if List.length out_types <> 1 then
+        Printf.sprintf2 "Running workers for %a output different types: %a"
+          N.fq_print fq
+          (List.print (Tuple2.print RamenTuple.print_typ
+                                    (Option.print EventTime.print)))
+            out_types |>
+        failwith ;
+      let out_type, event_time = List.hd out_types in
+      let out_type =
+        RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+        List.map fst in
+      !logger.debug "Tuple serialized type: %a"
+        RamenTuple.print_typ out_type ;
+      !logger.debug "Nullmask size: %d"
+        (RingBufLib.nullmask_bytes_of_tuple_type out_type) ;
+      (* Prepare to print the tails *)
+      let field_names = RamenExport.check_field_names out_type field_names in
+      let head_idx, head_typ =
+        RamenExport.header_of_type ~with_event_time field_names out_type in
+      let open TermTable in
+      let head_typ = Array.of_list head_typ in
+      let head = head_of_types ~with_units head_typ in
+      let print = print_table ~sep ~pretty ~with_header ~flush head in
+      (* Pick a "printer" for each column according to the field type: *)
+      let formatter = table_formatter pretty raw null
+      in
+      let open RamenSerialization in
+      let event_time_of_tuple = match event_time with
+        | None ->
+            if with_event_time then
+              failwith "Function has no event time information"
+            else (fun _ -> 0., 0.)
+        | Some et ->
+            (* As we might be tailling from several instance of the same
+             * worker, we have already lost track of the params at this point.
+             * Problem solved by removing the event-time notation and type
+             * altogether and use only the conventional start/stop fields. *)
+            let params = [] in
+            event_time_of_tuple out_type params et
+      in
+      let unserialize = RamenSerialization.read_array_of_values out_type in
+      let filter = RamenSerialization.filter_tuple_by out_type where in
+      (* Callback for each tuple: *)
+      let count_last = ref last and count_next = ref next in
+      let on_key counter _clt k v _uid _mtim =
+        match k, v with
+        | Key.Tail (_site, _fq, LastTuple _seq),
+          Value.Tuple { skipped ; values } ->
+            if skipped > 0 then
+              !logger.warning "Skipped %d tuples" skipped ;
+            let tx = RingBuf.tx_of_bytes values in
+            (match unserialize tx 0 with
+            | exception RingBuf.Damaged ->
+                !logger.error "Cannot unserialize tail tuple: %a"
+                  (hex_print ~from_rb:false ?num_cols:None) values
+            | tuple when filter tuple ->
+                let t1, t2 = event_time_of_tuple tuple in
+                if Option.map_default (fun since -> t2 > since) true since &&
+                   Option.map_default (fun until -> t1 <= until) true until
+                then (
+                  let cols =
+                    Array.mapi (fun i idx ->
+                      match idx with
+                      | -2 -> Some (ValDate t2)
+                      | -1 -> Some (ValDate t1)
+                      | idx -> formatter head_typ.(i).units tuple.(idx)
+                    ) head_idx in
+                  print cols ;
+                  decr counter
+                ) else
+                  !logger.debug "evtime %f..%f filtered out" t1 t2
+            | _ -> ())
+        | _ -> () in
+      (* Iter over tuples received at sync: *)
+      Client.iter clt (fun k hv ->
+        on_key count_last clt k hv.value "" 0.) ;
+      (* Subscribe to all those tails: *)
+      !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
+      let subscriber =
+        conf.C.login ^"-tail-"^ string_of_int (Unix.getpid ()) in
+      List.iter (fun (site, _w) ->
+        let k = Key.Tail (site, fq, Subscriber subscriber) in
+        let cmd = Client.CltMsg.NewKey (k, Value.dummy) in
+        ZMQClient.send_cmd clt zock ~while_ cmd
+      ) workers ;
+      (* Loop *)
+      !logger.debug "Waiting for tuples..." ;
+      let while_' () =
+        while_ () && (!count_last > 0 || !count_next > 0) in
+      clt.Client.on_new <- on_key count_next ;
+      let msg_count = ZMQClient.process_in ~while_:while_' zock clt in
+      !logger.debug "Processed %d messages" msg_count ;
+      print [||] ;
+      (* Unsubscribe *)
+      !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
+      List.iter (fun (site, _w) ->
+        let k = Key.Tail (site, fq, Subscriber subscriber) in
+        let cmd = Client.CltMsg.DelKey k in
+        ZMQClient.send_cmd clt zock ~while_ cmd
+      ) workers)
+
 let purge_transient conf to_purge () =
   if to_purge <> [] then
     let patterns =
@@ -1140,9 +1328,10 @@ let tail conf func_name_or_code with_header with_units sep null raw
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
-    (tail_ conf fq field_names with_header with_units sep null raw
-           last next min_seq max_seq continuous where since until
-           with_event_time duration pretty) flush
+    ((if conf.C.sync_url = "" then  tail_local else tail_sync)
+        conf fq field_names with_header with_units sep null raw
+        last next min_seq max_seq continuous where since until
+        with_event_time duration pretty) flush
 
 (*
  * `ramen replay`

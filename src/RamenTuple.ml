@@ -19,6 +19,9 @@ type field_typ =
     (* Also disp name, etc... *) }
   [@@ppp PPP_OCaml]
 
+let eq_field_typ t1 t2 =
+  t1.name = t2.name && t1.typ = t2.typ
+
 (* Some "well known" type that we might need on the fly: *)
 let seq_typ =
   { name = N.field "Seq" ;
@@ -43,6 +46,13 @@ let stop_typ =
 
 (* TODO: have an array instead? *)
 type typ = field_typ list [@@ppp PPP_OCaml]
+
+let rec eq_types t1s t2s =
+  match t1s, t2s with
+  | [], [] -> true
+  | t1::t1s, t2::t2s ->
+      eq_field_typ t1 t2 && eq_types t1s t2s
+  | _ -> false
 
 let print_field_typ oc field =
   Printf.fprintf oc "%a %a"

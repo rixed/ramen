@@ -240,6 +240,7 @@ type 'a any =
    | `Path | `Host | `Site | `Service ] as 'a
 
 let compare = String.compare
+let eq a b = compare a b = 0
 let cat = (^)
 let length = String.length
 let is_empty s = String.length s = 0
