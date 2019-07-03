@@ -32,7 +32,6 @@ let complete_commands s =
       "tail", CliInfo.tail ;
       "replay", CliInfo.replay ;
       "timeseries", CliInfo.timeseries ;
-      "timerange", CliInfo.timerange ;
       "ps", CliInfo.ps ;
       "links", CliInfo.links ;
       "test", CliInfo.test ;
@@ -303,10 +302,6 @@ let complete str () =
           copts @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
-      | "timerange" ->
-          let persist_dir = persist_dir toks in
-          copts @
-          (complete_running_function persist_dir)
       | "ps" ->
           let persist_dir = persist_dir toks in
           ("--short", CliInfo.short) ::

@@ -186,8 +186,6 @@ struct
   let tail = "Display the last outputs of an operation"
   let replay = "Rebuild the past output of the given operation"
   let timeseries = "Extract a time series from an operation"
-  let timerange =
-    "Retrieve the available time range of an operation output"
   let ps = "Display info about running programs"
   let profile = "Display profiling information about running programs"
   let test = "Test a configuration against one or several tests"

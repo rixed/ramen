@@ -41,7 +41,6 @@ MANPAGES = \
 	man/supervisor.html \
 	man/tail.html \
 	man/test.html \
-	man/timerange.html \
 	man/timeseries.html \
 	man/variants.html
 
@@ -87,10 +86,6 @@ man/variants.groff: ../src/ramen
 man/test.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen test --help=groff > $@
-
-man/timerange.groff: ../src/ramen
-	@echo 'Extracting $@'
-	@../src/ramen timerange --help=groff > $@
 
 man/stats.groff: ../src/ramen
 	@echo 'Extracting $@'
