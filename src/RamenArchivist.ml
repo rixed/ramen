@@ -861,7 +861,7 @@ let reconf_workers_sync
             !logger.debug "Cannot find function %a: %s, skipping"
               N.fq_print fq
               (Printexc.to_string e)
-        | func ->
+        | _prog, func ->
             let func = F.unserialized prog_name func in
             let file_type =
               if RamenExperiments.archive_in_orc.variant = 0 then

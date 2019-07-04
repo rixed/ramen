@@ -419,8 +419,8 @@ let get_timeseries conf msg =
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      get conf num_points since until filters
-          data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
+      get_local conf num_points since until filters
+                data_spec.factors ?consolidation ~bucket_time fq data_spec.select in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =

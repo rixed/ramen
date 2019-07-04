@@ -340,7 +340,7 @@ let init_auth ?while_ login clt zock on_progress =
 
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
-let process_in ?(while_=always) zock clt =
+let process_in ?(while_=always) ?(single=false) zock clt =
   let rec loop msg_count =
     if while_ () then
       match recv_cmd zock with
@@ -348,7 +348,8 @@ let process_in ?(while_=always) zock clt =
           msg_count
       | msg ->
           Client.process_msg clt msg ;
-          loop (msg_count + 1)
+          let msg_count = msg_count + 1 in
+          if single then msg_count else loop msg_count
     else
       msg_count in
   loop 0

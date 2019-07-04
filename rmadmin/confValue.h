@@ -31,6 +31,8 @@ enum ValueType {
   TargetConfigType,
   SourceInfoType,
   RuntimeStatsType,
+  ReplayType,
+  ReplayerType,
   LastValueType
 };
 
@@ -396,6 +398,20 @@ struct RuntimeStats : public Value
   RuntimeStats(value);
 };
 
+struct Replay : public Value
+{
+  // wtv
+  Replay() {}
+  Replay(value);
+};
+
+struct Replayer : public Value
+{
+  // wtv
+  Replayer() {}
+  Replayer(value);
+};
+
 };
 
 Q_DECLARE_METATYPE(std::shared_ptr<conf::Value const>);
@@ -406,6 +422,8 @@ Q_DECLARE_METATYPE(conf::String);
 Q_DECLARE_METATYPE(conf::Error);
 Q_DECLARE_METATYPE(conf::SourceInfo);
 Q_DECLARE_METATYPE(conf::RuntimeStats);
+Q_DECLARE_METATYPE(conf::Replay);
+Q_DECLARE_METATYPE(conf::Replayer);
 Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);

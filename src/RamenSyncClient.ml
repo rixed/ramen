@@ -79,6 +79,25 @@ struct
   let iter t f =
     fold t (fun k hv () -> f k hv) ()
 
+  (* Same as [fold], but allow the called back function to modify the hash.
+   * If a value is modified, it is undefined whether the callback will see the
+   * old or the new value.
+   * If an entry is added the callback won't see it.
+   * It an entry is removed the callback will not see it if it hasn't already. *)
+  let fold_safe t f u =
+    let keys = H.keys t.h |> Array.of_enum in
+    Array.fold_left (fun u k ->
+      match H.find t.h k with
+      | exception Not_found -> u
+      | Waiters _ -> u
+      | Value hv -> f k hv u
+    ) u keys
+
+  let iter_safe t f =
+    fold_safe t (fun k hv () -> f k hv) ()
+
+  let mem t k = H.mem t.h k
+
   let process_msg t = function
     | SrvMsg.AuthOk k ->
         !logger.debug "Will receive errors in %a" Key.print k ;

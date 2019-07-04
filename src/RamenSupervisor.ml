@@ -277,9 +277,7 @@ let process_workers_terminations conf running =
     ) proc.pid
   ) running
 
-let process_replayers_start_stop conf now replayers =
-  let get_programs =
-    memoize (fun () -> RC.with_rlock conf identity) in
+let process_replayers_start_stop get_bin_func conf now replayers =
   let open Unix in
   Hashtbl.filteri_inplace (fun (_, fq as site_fq) replayer ->
     match replayer.pid with
@@ -295,14 +293,14 @@ let process_replayers_start_stop conf now replayers =
           ) else (
             let channels = Map.keys replayer.replays |> Set.of_enum
             and since, until = TimeRange.bounds replayer.time_range
-            and programs = get_programs () in
+            and bin, func = get_bin_func fq in
             !logger.info
               "Starting a %a replayer created %gs ago for channels %a"
               N.fq_print fq
               (now -. replayer.creation)
               (Set.print Channel.print) channels ;
             match Replay.spawn_source_replay
-                    conf programs fq since until channels replayer.id with
+                    conf func bin since until channels replayer.id with
             | exception e ->
                 let what =
                   Printf.sprintf2 "spawning replayer %d for channels %a"
@@ -851,7 +849,7 @@ let synchronize_workers conf must_run running =
   !to_kill <> [] || !to_start <> []
 
 (* Similarly, try to make [replayers] the same as [must_replay] *)
-let synchronize_replays conf now must_replay replayers =
+let synchronize_replays conf func_of_fq now must_replay replayers =
   (* Kill the replayers of channels that are not configured any longer,
    * and create new replayers for new channels: *)
   let run_chans =
@@ -868,22 +866,18 @@ let synchronize_replays conf now must_replay replayers =
         if not r.stopped then
           let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
           kill_politely conf r.last_killed what pid stats_replayer_sigkills in
-  let get_programs =
-    memoize (fun () -> RC.with_rlock conf identity) in
   let to_rem chan replay =
     (* Remove this chan from all replayers. If a replayer has no more
      * channels left and has a pid, then kill it (and warn). But first,
      * tear down the channel: *)
-    let programs = get_programs () in
-    Replay.teardown_links conf programs replay ;
+    Replay.teardown_links conf func_of_fq replay ;
     Hashtbl.iter (fun _ r ->
       if not (Map.is_empty r.replays) then (
         r.replays <- Map.remove chan r.replays ;
         if Map.is_empty r.replays then kill_replayer r)
     ) replayers in
   let to_add chan replay =
-    let programs = get_programs () in
-    Replay.settup_links conf programs replay ;
+    Replay.settup_links conf func_of_fq replay ;
     (* Find or create all replayers: *)
     Set.iter (fun (site, _ as site_fq) ->
       if site = conf.C.site then (
@@ -1051,8 +1045,16 @@ let synchronize_running_local conf autoreload_delay =
           else
             last_replays, last_read_replays
         ) in
-      process_replayers_start_stop conf now replayers ;
-      synchronize_replays conf now must_replay replayers ;
+      let get_programs =
+        memoize (fun () -> RC.with_rlock conf identity) in
+      let get_bin_func fq =
+        let programs = get_programs () in
+        let rce, _prog, func = RC.find_func_or_fail programs fq in
+        rce.RC.bin, func in
+      let func_of_fq fq =
+        get_bin_func fq |> snd in
+      process_replayers_start_stop get_bin_func conf now replayers ;
+      synchronize_replays conf func_of_fq now must_replay replayers ;
       if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
       !logger.debug "Waiting for file changes (max %a)"
         print_as_duration !max_wait ;
@@ -1268,7 +1270,7 @@ let get_precompiled clt src_path =
   | hv ->
       RamenSync.invalid_sync_type source_k hv.value "a source info"
 
-let get_bin_file conf clt _site fq sign info =
+let get_bin_file conf clt fq sign info =
   let program_name, _func_name = N.fq_parse fq in
   let get_parent = RamenCompiler.parent_from_confserver clt in
   let info_file = C.cache_info_file conf sign in
@@ -1292,7 +1294,7 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
     N.fq_print fq ;
   let info, precompiled =
     get_precompiled clt worker.RamenSync.Value.Worker.src_path in
-  let bin_file = get_bin_file conf clt site fq sign info in
+  let bin_file = get_bin_file conf clt fq sign info in
   let func_of_precompiled precompiled pname fname =
     List.find (fun f -> f.FS.name = fname)
       precompiled.PS.funcs |>
@@ -1376,42 +1378,153 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
     RamenSync.Value.(RamenValue (VList l)) in
   ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v))
 
+let remove_dead_chans conf clt zock ~while_ replayer_k replayer =
+  let open RamenSync in
+  let channels, changed =
+    Set.fold (fun chan (channels, changed) ->
+      let replay_k = Key.Replays chan in
+      if Client.mem clt replay_k then
+        Set.add chan channels, changed
+      else
+        channels, true
+    ) replayer.Value.Replayer.channels (Set.empty, false) in
+  if changed then
+    let last_killed = ref replayer.last_killed in
+    if Set.is_empty channels then (
+      match replayer.pid with
+      | None ->
+          !logger.debug "Replays stopped before replayer even started"
+      | Some pid ->
+          if replayer.exit_status = None then
+            let what =
+              Printf.sprintf2 "%a (pid %d)"
+                Key.print replayer_k pid in
+            kill_politely conf last_killed what pid stats_replayer_sigkills
+    ) ;
+    let replayer =
+      Value.Replayer { replayer with channels ; last_killed = !last_killed } in
+    ZMQClient.send_cmd clt zock ~while_ ~eager:true
+      (UpdKey (replayer_k, replayer))
+
+let update_replayer_status
+      conf clt zock ~while_ now site fq replayer_id replayer_k replayer =
+  let open RamenSync in
+  let rem_replayer () =
+    ZMQClient.send_cmd clt zock ~while_ (DelKey replayer_k) in
+  match replayer.Value.Replayer.pid with
+  | None ->
+      (* Maybe start it? *)
+      if now -. replayer.creation > delay_before_replay then
+        if
+          Set.is_empty replayer.channels ||
+          TimeRange.is_empty replayer.time_range
+        then
+          (* Do away with it *)
+          rem_replayer ()
+        else
+          let what =
+            Printf.sprintf2 "spawning replayer %d for channels %a"
+              replayer_id
+              (Set.print Channel.print) replayer.channels in
+          log_and_ignore_exceptions ~what (fun () ->
+            let since, until = TimeRange.bounds replayer.time_range in
+            let worker_k =
+              Key.PerSite (site, PerWorker (fq, Worker)) in
+            let worker =
+              match (Client.find clt worker_k).value with
+              | Value.Worker worker -> worker
+              | v -> invalid_sync_type worker_k v "a Worker" in
+            let info_k = Key.Sources (worker.Value.Worker.src_path, "info") in
+            let info =
+              match (Client.find clt info_k).value with
+              | Value.SourceInfo info -> info
+              | v -> invalid_sync_type info_k v "a SourceInfo" in
+            let bin = get_bin_file conf clt fq worker.signature info in
+            let _prog, func = function_of_worker clt fq worker in
+            let prog_name, _ = N.fq_parse fq in
+            let func = F.unserialized prog_name func in
+            !logger.info
+              "Starting a %a replayer created %gs ago for channels %a"
+              N.fq_print fq
+              (now -. replayer.creation)
+              (Set.print Channel.print) replayer.channels ;
+            let pid =
+              Replay.spawn_source_replay
+                conf func bin since until replayer.channels replayer_id in
+            let v = Value.Replayer { replayer with pid = Some pid } in
+            ZMQClient.send_cmd clt zock ~while_ ~eager:true
+              (UpdKey (replayer_k, v)) ;
+            Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
+                          (float_of_int (Set.cardinal replayer.channels))
+          ) ()
+  | Some pid ->
+      if replayer.exit_status <> None then (
+        if Set.is_empty replayer.channels then rem_replayer ()
+      ) else
+        let what =
+          Printf.sprintf2 "Replayer for %a (pid %d)"
+            C.Replays.site_fq_print (site, fq) pid in
+        (match Unix.(restart_on_EINTR
+                       (waitpid [ WNOHANG ; WUNTRACED ])) pid with
+        | exception exn ->
+            !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
+            (* assume the replayer is safe *)
+        | 0, _ ->
+            () (* Nothing to report *)
+        | _, (WSIGNALED s | WSTOPPED s) when s = Sys.sigstop ->
+            !logger.debug "%s got stopped" what
+        | _, status ->
+            let status_str = string_of_process_status status in
+            let is_err =
+              status <> WEXITED ExitCodes.terminated in
+            (if is_err then !logger.error else info_or_test conf)
+              "%s %s." what status_str ;
+            if is_err then
+              IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
+            let replayer =
+              Value.Replayer { replayer with exit_status = Some status_str } in
+            ZMQClient.send_cmd clt zock ~while_ ~eager:true
+              (UpdKey (replayer_k, replayer)))
+
 (* Loop over all keys, which is mandatory to monitor pid terminations,
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt zock =
-  RamenSync.Client.iter clt (fun k hv ->
-    let what = Printf.sprintf2 "Processing key %a" RamenSync.Key.print k in
+  let now = Unix.gettimeofday () in
+  let open RamenSync in
+  Client.iter_safe clt (fun k hv ->
+    let what = Printf.sprintf2 "Processing key %a" Key.print k in
     log_and_ignore_exceptions ~what (fun () ->
-      match k, hv.value with
-      | RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
-        RamenSync.Value.Int pid
+      match k, hv.Client.value with
+      | Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
+        Value.Int pid
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
-          (* First, update this child status: *)
           update_child_status conf ~while_ clt zock site fq sign pid ;
           if not (should_run clt site fq sign) then
             may_kill conf ~while_ clt zock site fq sign pid
-      | RamenSync.Key.PerSite (site, PerWorker (fq, Worker)),
-        RamenSync.Value.Worker worker
+      | Key.PerSite (site, PerWorker (fq, Worker)),
+        Value.Worker worker
         when site = conf.C.site ->
           if worker.enabled && not (is_running clt site fq worker.signature) then
             try_start_instance
               conf ~while_ clt zock site fq worker.signature worker
+      | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
+        Value.Replayer replayer
+        when site = conf.C.site ->
+          remove_dead_chans conf clt zock ~while_ replayer_k replayer ;
+          update_replayer_status
+            conf clt zock ~while_ now site fq id replayer_k replayer
       | _ -> ()) ()
   )
 
 let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let open RamenSync.Key in
-  let open RamenSync.Value in
   let rec loop zock clt =
     while while_ () do
-      log_and_ignore_exceptions (fun () ->
-        let msg_count = ZMQClient.process_in ~while_ zock clt in
-        !logger.debug "Processed %d messages" msg_count ;
-        synchronize_once conf ~while_ clt zock
-      ) ()
+      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      !logger.debug "Processed %d messages" msg_count ;
+      synchronize_once conf ~while_ clt zock
     done in
   let topics =
     [ (* All sites are needed because we need parent worker :(
@@ -1419,9 +1532,79 @@ let synchronize_running_sync conf _autoreload_delay =
          in this site workers so we need to listen at only the local
          site. *)
       "sites/*/workers/*" ;
-      "sources/*/info" ] in
-  ZMQClient.(start ~while_ conf.C.sync_url conf.C.login ~topics
-                   ~recvtimeo:1. ~sndtimeo:1. loop)
+      "sources/*/info" ;
+      (* Replays are read directly. Would not add much to go through the
+       * Choreographer but latency. *)
+      "replays/*" ;
+      "sites/"^ (conf.C.site :> string) ^"/workers/*/replayers/*" ] in
+  (* Setting up/Tearing down replays is easier when they are added/removed: *)
+  let open RamenSync in
+  let on_del _zock clt k v =
+    match k, v with
+    | Key.Replays chan,
+      Value.Replay replay ->
+        (* Replayers chan list will be updated in the loop but we need the replay
+         * here to teardown all the links: *)
+        !logger.info "Tearing down replay %a" Channel.print chan ;
+        let func_of_fq fq =
+          let _prog, func = function_of_site_fq clt conf.C.site fq in
+          let prog_name, _ = N.fq_parse fq in
+          F.unserialized prog_name func in
+        Replay.teardown_links conf func_of_fq replay
+    | _ -> ()
+  and on_new zock clt k v _uid _mtime =
+    match k, v with
+    | Key.Replays chan,
+      Value.Replay replay ->
+        let func_of_fq fq =
+          let _prog, func = function_of_site_fq clt conf.C.site fq in
+          let prog_name, _ = N.fq_parse fq in
+          F.unserialized prog_name func in
+        Replay.settup_links conf func_of_fq replay ;
+        (* Find or create all replayers: *)
+        Set.iter (fun (site, fq) ->
+          if site = conf.C.site then (
+            let rs =
+              Client.fold clt (fun k hv rs ->
+                match k, hv.value with
+                | Key.PerSite (site', PerWorker (fq', PerReplayer _id)) as k,
+                  Value.Replayer replayer
+                  when N.eq site site' && N.eq fq fq' ->
+                    (k, replayer) :: rs
+                | _ -> rs
+              ) [] in
+            match List.find (fun (_, r) ->
+                    r.Value.Replayer.pid = None &&
+                    TimeRange.approx_eq
+                    [ replay.since, replay.until ] r.time_range
+                  ) rs with
+            | exception Not_found ->
+                let id = Random.int RingBufLib.max_replayer_id in
+                let now = Unix.gettimeofday () in
+                let time_range = [ replay.since, replay.until ] in
+                let channels = Set.singleton chan in
+                let r = Value.Replayer.make now time_range channels in
+                let replayer_k =
+                  Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
+                ZMQClient.send_cmd clt zock ~while_ ~eager:true
+                  (NewKey (replayer_k, Value.Replayer r))
+            | k, r ->
+                !logger.debug
+                  "Adding replay for channel %a into replayer created at %a"
+                  Channel.print chan print_as_date r.creation ;
+                let time_range =
+                  TimeRange.merge r.time_range [ replay.since, replay.until ]
+                and channels = Set.add chan r.channels in
+                let replayer = Value.Replayer { r with time_range ; channels } in
+                ZMQClient.send_cmd clt zock ~while_ ~eager:true
+                  (UpdKey (k, replayer)))
+        ) replay.sources
+    | _ -> ()
+  in
+  (* Timeout has to be much shorter than delay_before_replay *)
+  let timeo = delay_before_replay *. 0.5 in
+  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
+                  ~recvtimeo:timeo ~sndtimeo:timeo ~on_new ~on_del loop
 
 let synchronize_running conf autoreload_delay =
   (if conf.C.sync_url = "" then synchronize_running_local

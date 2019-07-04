@@ -35,6 +35,8 @@ static QString const stringOfValueType(ValueType valueType)
     [TargetConfigType] = "TargetConfigType",
     [SourceInfoType] = "SourceInfoType",
     [RuntimeStatsType] = "RuntimeStatsType",
+    [ReplayType] = "ReplayType",
+    [ReplayerType] = "ReplayerType",
     [LastValueType] = "LastValueType",
   };
   assert((size_t)valueType < SIZEOF_ARRAY(stringOfValueTypes));
@@ -334,6 +336,12 @@ Value *valueOfOCaml(value v_)
     case RuntimeStatsType:
       ret = new RuntimeStats(Field(v_, 0));
       break;
+    case ReplayType:
+      ret = new Replay(Field(v_, 0));
+      break;
+    case ReplayerType:
+      ret = new Replayer(Field(v_, 0));
+      break;
     case LastValueType:
     default:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -367,6 +375,8 @@ Value *valueOfQString(ValueType vt, QString const &s)
     case TargetConfigType:
     case SourceInfoType:
     case RuntimeStatsType:
+    case ReplayType:
+    case ReplayerType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -920,6 +930,18 @@ RuntimeStats::RuntimeStats(value v_)
   totCpu = Double_val(Field(v_, 21));
   curRam = *(uint64_t *)Data_custom_val(Field(v_, 22));
   maxRam = *(uint64_t *)Data_custom_val(Field(v_, 23));
+}
+
+Replay::Replay(value v_)
+{
+  assert(9 == Wosize_val(v_));
+  // wtv, not used anywhere in the GUI for now
+}
+
+Replayer::Replayer(value v_)
+{
+  assert(6 == Wosize_val(v_));
+  // wtv, not used anywhere in the GUI for now
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)

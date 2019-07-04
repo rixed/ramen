@@ -1198,7 +1198,7 @@ let tail_sync
         Enum.uniq_by
           (fun w1 w2 -> N.eq w1.Value.Worker.src_path w2.src_path)) /@
         function_of_worker clt fq /@
-        (fun func ->
+        (fun (_prog, func) ->
           O.out_type_of_operation ~with_private:false func.FS.operation,
           O.event_time_of_operation func.operation) |>
         Enum.uniq_by
@@ -1356,17 +1356,24 @@ let replay_ conf fq field_names with_header with_units sep null raw
     failwith "Option --with-units makes no sense without --with-header." ;
   let until = until |? Unix.gettimeofday () in
   let formatter = table_formatter pretty raw null in
-  RamenExport.replay conf ~while_ fq field_names where since until
-                     ~with_event_time (fun head ->
-      let head = Array.of_list head in
-      let head' = head_of_types ~with_units head in
-      let print = TermTable.print_table ~na:null ~sep ~pretty ~with_header
-                                        ~flush head' in
-      (fun _t1 _t2 tuple ->
-        let vals =
-          Array.mapi (fun i -> formatter head.(i).units) tuple in
-        print vals),
-      (fun () -> print [||]))
+  let callback head =
+    let head = Array.of_list head in
+    let head' = head_of_types ~with_units head in
+    let print = TermTable.print_table ~na:null ~sep ~pretty ~with_header
+                                      ~flush head' in
+    (fun _t1 _t2 tuple ->
+      let vals =
+        Array.mapi (fun i -> formatter head.(i).units) tuple in
+      print vals),
+    (fun () -> print [||]) in
+  if conf.C.sync_url = "" then
+    RamenExport.replay_local conf ~while_ fq field_names where since until
+                             ~with_event_time callback
+  else
+    let topics = RamenExport.replay_topics in
+    ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+      (RamenExport.replay_sync conf ~while_ fq field_names where since until
+                               ~with_event_time callback)
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
@@ -1404,7 +1411,7 @@ let timeseries_ conf fq data_fields
   let num_points, since, until =
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
-    RamenTimeseries.get conf num_points since until where factors
+    RamenTimeseries.get_local conf num_points since until where factors
         ~consolidation ~bucket_time fq data_fields in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in

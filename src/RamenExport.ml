@@ -14,6 +14,7 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Processes = RamenProcesses
 module Replay = RamenReplay
+module ZMQClient = RamenSyncZMQClient
 
 exception FuncHasNoEventTimeInfo of string
 let () =
@@ -125,9 +126,8 @@ let check_field_names typ field_names =
     ) field_names ;
     field_names)
 
-
-let replay conf ?(while_=always) fq field_names where since until
-           ~with_event_time f =
+let replay_local conf ?(while_=always) fq field_names where since until
+                 ~with_event_time f =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   (* First, make sure the operation actually exist: *)
@@ -145,7 +145,6 @@ let replay conf ?(while_=always) fq field_names where since until
     RamenTuple.print_typ head_typ
     (Array.print Int.print) head_idx ;
   let on_tuple, on_exit = f head_typ in
-  (* Using the archivist stats, find out all required sources: *)
   (* FIXME: here we assume fq (the target) is local. Instead, what we
    * want is to tail from all instances of running fq.
    * The only thing that we should do here is to create a new temporary
@@ -156,77 +155,217 @@ let replay conf ?(while_=always) fq field_names where since until
    * the new channel is not broadcasted to all children to avoid spamming
    * the whole function tree! So we may want a special kind of entry in
    * the RC, or a special file altogether. *)
-  let stats = RamenArchivist.get_global_stats ~while_ conf in
+  let stats =
+    RamenArchivist.get_global_stats ~while_ conf |>
+    Hashtbl.map (fun _k s ->
+      Replay.{ parents = s.C.FuncStats.parents ;
+               archives = s.archives }) in
+  (* Using the archivist stats, find out all required sources: *)
   match Replay.create conf stats func since until with
-  | exception Replay.NoData -> on_exit ()
+  | exception Replay.NoData ->
+      (* When a required function is not in the stats. *)
+      on_exit ()
   | replay ->
-    !logger.debug "Creating replay target ringbuf %a"
-      N.path_print replay.final_rb ;
-    RingBuf.create replay.final_rb ;
-    C.Replays.add conf replay ;
-    let rb = RingBuf.load replay.final_rb in
-    let ret =
-      finally
-        (fun () ->
-          C.Replays.remove conf replay.channel ;
-          RingBuf.unload rb)
-        (fun () ->
-          (* Read the rb while monitoring children: *)
-          let eofs_num = ref 0 in
-          let while_ () =
-            !eofs_num < Set.cardinal replay.sources && while_ () in
-          let event_time =
-            O.event_time_of_operation func.F.operation in
-          let event_time_of_tuple = match event_time with
-            | None ->
-                if with_event_time then
-                  failwith "Function has no event time information"
-                else (fun _ -> 0., 0.)
-            | Some et ->
-                RamenSerialization.event_time_of_tuple
-                  ser prog.P.default_params et
-          in
-          let unserialize =
-            RamenSerialization.read_array_of_values ser in
-          let filter = RamenSerialization.filter_tuple_by ser where in
-          RingBufLib.read_ringbuf ~while_ rb (fun tx ->
-            let msg = RamenSerialization.read_tuple unserialize tx in
-            RingBuf.dequeue_commit tx ;
-            match msg with
-            | RingBufLib.EndOfReplay (chan, _replay_id), None ->
-                if chan = replay.channel then
-                  incr eofs_num
-                else
-                  !logger.error "Received EndOfReplay for channel %a not %a"
-                    RamenChannel.print chan RamenChannel.print replay.channel
-            | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
-                if chan = replay.channel then (
-                  if filter tuple then (
-                    let t1, t2 = event_time_of_tuple tuple in
-                    if t2 > since && t1 <= until then (
-                      let cols =
-                        Array.map (fun idx ->
-                          match idx with
-                          | -2 -> T.VFloat t2
-                          | -1 -> T.VFloat t1
-                          | idx -> tuple.(idx)
-                        ) head_idx in
-                      on_tuple t1 t2 cols
-                    ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
-                  ) else !logger.debug "tuple filtered out"
-                ) else
-                  !logger.error "Received EndOfReplay for channel %a not %a"
-                    RamenChannel.print chan RamenChannel.print replay.channel
-            | _ ->
-                !logger.error "Received an unknown message in tx") ;
-          (* Signal the end of the replay: *)
-          on_exit ()
-        ) () in
-    (* If all went well, delete the ringbuf: *)
-    !logger.debug "Deleting replay target ringbuf %a"
-      N.path_print replay.final_rb ;
-    Files.safe_unlink replay.final_rb ;
-    (* ringbuf lib also create a lock with the rb: *)
-    let lock_fname = N.cat replay.final_rb (N.path ".lock") in
-    ignore_exceptions Files.safe_unlink lock_fname ;
-    ret
+      !logger.debug "Creating replay target ringbuf %a"
+        N.path_print replay.final_rb ;
+      (* As replays are always created on the target site, we can create the RB
+       * and read data from there directly: *)
+      RingBuf.create replay.final_rb ;
+      C.Replays.add conf replay ;
+      let rb = RingBuf.load replay.final_rb in
+      let ret =
+        finally
+          (fun () ->
+            C.Replays.remove conf replay.channel ;
+            RingBuf.unload rb)
+          (fun () ->
+            (* Read the rb while monitoring children: *)
+            let eofs_num = ref 0 in
+            let while_ () =
+              !eofs_num < Set.cardinal replay.sources && while_ () in
+            let event_time =
+              O.event_time_of_operation func.F.operation in
+            let event_time_of_tuple = match event_time with
+              | None ->
+                  if with_event_time then
+                    failwith "Function has no event time information"
+                  else (fun _ -> 0., 0.)
+              | Some et ->
+                  RamenSerialization.event_time_of_tuple
+                    ser prog.P.default_params et
+            in
+            let unserialize =
+              RamenSerialization.read_array_of_values ser in
+            let filter = RamenSerialization.filter_tuple_by ser where in
+            RingBufLib.read_ringbuf ~while_ rb (fun tx ->
+              let msg = RamenSerialization.read_tuple unserialize tx in
+              RingBuf.dequeue_commit tx ;
+              match msg with
+              | RingBufLib.EndOfReplay (chan, _replay_id), None ->
+                  if chan = replay.channel then
+                    incr eofs_num
+                  else
+                    !logger.error "Received EndOfReplay for channel %a not %a"
+                      RamenChannel.print chan RamenChannel.print replay.channel
+              | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
+                  if chan = replay.channel then (
+                    if filter tuple then (
+                      let t1, t2 = event_time_of_tuple tuple in
+                      if t2 > since && t1 <= until then (
+                        let cols =
+                          Array.map (fun idx ->
+                            match idx with
+                            | -2 -> T.VFloat t2
+                            | -1 -> T.VFloat t1
+                            | idx -> tuple.(idx)
+                          ) head_idx in
+                        on_tuple t1 t2 cols
+                      ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                    ) else !logger.debug "tuple filtered out"
+                  ) else
+                    !logger.error "Received EndOfReplay for channel %a not %a"
+                      RamenChannel.print chan RamenChannel.print replay.channel
+              | _ ->
+                  !logger.error "Received an unknown message in tx") ;
+            (* Signal the end of the replay: *)
+            on_exit ()
+          ) () in
+      (* If all went well, delete the ringbuf: *)
+      !logger.debug "Deleting replay target ringbuf %a"
+        N.path_print replay.final_rb ;
+      Files.safe_unlink replay.final_rb ;
+      (* ringbuf lib also create a lock with the rb: *)
+      let lock_fname = N.cat replay.final_rb (N.path ".lock") in
+      ignore_exceptions Files.safe_unlink lock_fname ;
+      ret
+
+(* We need the worker and precompiled infos of the target,
+ * as well as the parents and archives of all workers (parents we
+ * find in workers): *)
+let replay_topics =
+  [ "sites/*/workers/*/worker" ;
+    "sites/*/workers/*/archives/times" ;
+    "sources/*/info" ]
+
+let replay_sync conf ~while_ fq field_names where since until
+                ~with_event_time f zock clt =
+  (* Start with the most hazardous and interesting part: find a way to
+   * get the data that's being asked: *)
+  let open RamenSync in
+  let prog_name, _ = N.fq_parse fq in
+  let prog, func = function_of_site_fq clt conf.C.site fq in
+  let func = F.unserialized prog_name func in
+  let out_type =
+    O.out_type_of_operation ~with_private:false func.F.operation in
+  let field_names = check_field_names out_type field_names in
+  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+            List.map fst in
+  let head_idx, head_typ =
+    header_of_type ~with_event_time field_names ser in
+  !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
+    (List.print N.field_print) field_names
+    RamenTuple.print_typ head_typ
+    (Array.print Int.print) head_idx ;
+  let on_tuple, on_exit = f head_typ in
+  (* The target fq is always local. We need this to retrieve the result tuples
+   * from a local ringbuffer. To get the output of a remote function it is
+   * easy enough to replay a local transient function that select * from the
+   * remote one. *)
+  let stats = Hashtbl.create 30 in
+  Client.iter clt (fun k hv ->
+    match k, hv.value with
+    | Key.PerSite (site, PerWorker (fq, Worker)),
+      Value.Worker worker ->
+        let archives_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes)) in
+        let archives =
+          match (Client.find clt archives_k).value with
+          | exception Not_found -> []
+          | Value.TimeRange archives -> archives
+          | v -> err_sync_type archives_k v "a TimeRange" ; [] in
+        let parents =
+          List.map (fun r ->
+            r.Value.Worker.site, N.fq_of_program r.program r.func
+          ) worker.Value.Worker.parents in
+        let s = Replay.{ parents ; archives } in
+        Hashtbl.add stats (site, fq) s
+    | _ -> ()) ;
+  (* Find out all required sources: *)
+  match Replay.create conf stats func since until with
+  | exception Replay.NoData ->
+      (* When we have not enough archives to replay anything *)
+      on_exit ()
+  | replay ->
+      !logger.debug "Creating replay target ringbuf %a"
+        N.path_print replay.final_rb ;
+      (* As replays are always created on the target site, we can create the RB
+       * and read data from there directly: *)
+      RingBuf.create replay.final_rb ;
+      let replay_k = Key.Replays replay.channel
+      and v = Value.Replay replay in
+      ZMQClient.(send_cmd clt zock ~while_ (CltMsg.NewKey (replay_k, v))) ;
+      let rb = RingBuf.load replay.final_rb in
+      let ret =
+        finally
+          (fun () ->
+            ZMQClient.(send_cmd clt zock ~while_ (CltMsg.DelKey replay_k)) ;
+            RingBuf.unload rb)
+          (fun () ->
+            (* Read the rb while monitoring children: *)
+            let eofs_num = ref 0 in
+            let while_ () =
+              !eofs_num < Set.cardinal replay.sources && while_ () in
+            let event_time =
+              O.event_time_of_operation func.F.operation in
+            let event_time_of_tuple = match event_time with
+              | None ->
+                  if with_event_time then
+                    failwith "Function has no event time information"
+                  else (fun _ -> 0., 0.)
+              | Some et ->
+                  RamenSerialization.event_time_of_tuple
+                    ser prog.P.Serialized.default_params et
+            in
+            let unserialize =
+              RamenSerialization.read_array_of_values ser in
+            let filter = RamenSerialization.filter_tuple_by ser where in
+            RingBufLib.read_ringbuf ~while_ rb (fun tx ->
+              let msg = RamenSerialization.read_tuple unserialize tx in
+              RingBuf.dequeue_commit tx ;
+              match msg with
+              | RingBufLib.EndOfReplay (chan, _replay_id), None ->
+                  if chan = replay.channel then
+                    incr eofs_num
+                  else
+                    !logger.error "Received EndOfReplay for channel %a not %a"
+                      RamenChannel.print chan RamenChannel.print replay.channel
+              | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
+                  if chan = replay.channel then (
+                    if filter tuple then (
+                      let t1, t2 = event_time_of_tuple tuple in
+                      if t2 > since && t1 <= until then (
+                        let cols =
+                          Array.map (fun idx ->
+                            match idx with
+                            | -2 -> T.VFloat t2
+                            | -1 -> T.VFloat t1
+                            | idx -> tuple.(idx)
+                          ) head_idx in
+                        on_tuple t1 t2 cols
+                      ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
+                    ) else !logger.debug "tuple filtered out"
+                  ) else
+                    !logger.error "Received EndOfReplay for channel %a not %a"
+                      RamenChannel.print chan RamenChannel.print replay.channel
+              | _ ->
+                  !logger.error "Received an unknown message in tx") ;
+            (* Signal the end of the replay: *)
+            on_exit ()
+          ) () in
+      (* If all went well, delete the ringbuf: *)
+      !logger.debug "Deleting replay target ringbuf %a"
+        N.path_print replay.final_rb ;
+      Files.safe_unlink replay.final_rb ;
+      (* ringbuf lib also create a lock with the rb: *)
+      let lock_fname = N.cat replay.final_rb (N.path ".lock") in
+      ignore_exceptions Files.safe_unlink lock_fname ;
+      ret

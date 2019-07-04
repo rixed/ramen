@@ -12,6 +12,7 @@ module E = RamenExpr
 module T = RamenTypes
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
+module Channel = RamenChannel
 
 (* The only capacity we need is:
  * - One per user for personal communications (err messages...)
@@ -183,6 +184,7 @@ struct
     | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
     | Tails of N.site * N.fq * tail_key
+    | Replays of Channel.t
     | Error of User.socket option
     (* TODO: alerting *)
 
@@ -224,6 +226,7 @@ struct
     | Worker
     (* Set by the supervisor: *)
     | PerInstance of string (* func + params signature *) * per_instance_key
+    | PerReplayer of int (* id used to count the end of retransmissions: *)
 
   and per_instance_key =
     (* All these are set by supervisor. First 3 are RamenValues. *)
@@ -327,7 +330,9 @@ struct
       | PerInstance (signature, per_instance_key) ->
           Printf.sprintf2 "instances/%s/%a"
             signature
-            print_per_instance per_instance_key)
+            print_per_instance per_instance_key
+      | PerReplayer id ->
+          Printf.sprintf2 "replayers/%d" id)
 
   let print_per_site_key fmt = function
     | IsMaster ->
@@ -382,6 +387,9 @@ struct
           N.site_print site
           N.fq_print fq
           print_tail_key tail_key
+    | Replays chan ->
+        Printf.fprintf fmt "replays/%a"
+          Channel.print chan
     | Error None ->
         Printf.fprintf fmt "errors/global"
     | Error (Some s) ->
@@ -517,6 +525,8 @@ struct
                 | [ fq ; "lasts" ; s ] ->
                     let i = int_of_string s in
                     Tails (N.site site, N.fq fq, LastTuple i)))
+        | "replays", s ->
+            Replays (Channel.of_string s)
         | "errors", s ->
             Error (
               match cut s with
@@ -736,6 +746,50 @@ struct
       Printf.fprintf oc "RuntimeStats{ TODO }"
   end
 
+  module Replay =
+  struct
+    type t = RamenConf.Replays.entry
+
+    let site_fq_print oc (site, fq) =
+      Printf.fprintf oc "%a:%a"
+        N.site_print site
+        N.fq_print fq
+
+    let print oc t =
+      Printf.fprintf oc "Replay { channel=%a; target=%a; sources=%a; ... }"
+        Channel.print t.RamenConf.Replays.channel
+        site_fq_print t.target
+        (Set.print site_fq_print) t.sources
+  end
+
+  module Replayer =
+  struct
+    type t =
+      { (* Aggregated from all replays. Won't change once the replayer is
+         * spawned. *)
+        time_range : TimeRange.t ;
+        (* Actual process is spawned only a bit later: *)
+        creation : float ;
+        (* Set when the replayer has started and then always set.
+         * Until then new channels can be added. *)
+        pid : int option ;
+        last_killed : float ;
+        (* When the replayer actually stopped (remember pids stays set): *)
+        exit_status : string option ;
+        (* What running chanels are using this process.
+         * The replayer can be killed/deleted when empty. *)
+        channels : Channel.t Set.t }
+
+    let print oc t =
+      Printf.fprintf oc "Replayer { pid=%a; channels=%a }"
+        (Option.print Int.print) t.pid
+        (Set.print Channel.print) t.channels
+
+    let make creation time_range channels =
+      { time_range ; creation ; pid = None ; last_killed = 0. ;
+        exit_status = None ; channels }
+  end
+
   type t =
     | Bool of bool
     | Int of int64
@@ -756,6 +810,8 @@ struct
      * executable binary itself. *)
     | SourceInfo of SourceInfo.t
     | RuntimeStats of RuntimeStats.t
+    | Replay of Replay.t
+    | Replayer of Replayer.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -794,6 +850,10 @@ struct
         SourceInfo.print oc i
     | RuntimeStats s ->
         RuntimeStats.print oc s
+    | Replay r ->
+        Replay.print oc r
+    | Replayer r ->
+        Replayer.print oc r
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
@@ -842,7 +902,7 @@ let function_of_worker clt fq worker =
       failwith
   | prog ->
       let prog_name, func_name = N.fq_parse fq in
-      (try List.find (fun func ->
+      (try prog, List.find (fun func ->
              func.RamenConf.Func.Serialized.name = func_name
            ) prog.funcs
       with Not_found ->

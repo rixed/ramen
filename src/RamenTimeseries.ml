@@ -76,8 +76,8 @@ let bucket_count b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 type bucket_time = Begin | Middle | End
-let get conf num_points since until where factors
-        ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields =
+let get_local conf num_points since until where factors
+              ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields =
   !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
     (fq :> string)
     (List.print N.field_print) data_fields
@@ -113,8 +113,8 @@ let get conf num_points since until where factors
   !logger.debug "tuple_fields = %a"
     (List.print N.field_print) tuple_fields ;
   (* Must not add event time in front of factors: *)
-  RamenExport.replay conf fq tuple_fields where since until
-                     ~with_event_time:false (fun head ->
+  RamenExport.replay_local conf fq tuple_fields where since until
+                           ~with_event_time:false (fun head ->
     (* TODO: RamenTuple.typ should be an array *)
     let head = Array.of_list head in
     (* Extract fields of interest (data fields, keys...) from a tuple: *)
@@ -202,6 +202,135 @@ let get conf num_points since until where factors
             ) buckets.(i)
           ) ts in
         t, v)))
+
+let get_sync conf num_points since until where factors
+             ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields
+             zock clt =
+  !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
+    (fq :> string)
+    (List.print N.field_print) data_fields
+    (List.print (fun oc (field, op, value) ->
+      Printf.fprintf oc "%a %s %a"
+        N.field_print field
+        op
+        T.print value)) where
+    (List.print N.field_print) factors ;
+  let num_data_fields = List.length data_fields
+  and num_factors = List.length factors in
+  (* Prepare the buckets in which to aggregate the data fields: *)
+  let dt = (until -. since) /. float_of_int num_points in
+  let per_factor_buckets = Hashtbl.create 11 in
+  let bucket_of_time = bucket_of_time since dt
+  and time_of_bucket =
+    match bucket_time with
+    | Begin -> fun i -> since +. dt *. float_of_int i
+    | Middle -> fun i -> since +. dt *. (float_of_int i +. 0.5)
+    | End -> fun i -> since +. dt *. float_of_int (i + 1)
+  in
+  (* And the aggregation function: *)
+  let consolidate aggr_str =
+    match String.lowercase aggr_str with
+    | "min" -> bucket_min | "max" -> bucket_max | "sum" -> bucket_sum
+    | "count" -> bucket_count | "avg" -> bucket_avg
+    | _ -> invalid_arg "RamenTimeseries.get: unknown consoliation function"
+  in
+  (* The data fields we are really interested about are: the data fields +
+   * the factors.
+   * Note that order of factors does matter, so do not rev_append here! *)
+  let tuple_fields = factors @ data_fields in
+  !logger.debug "tuple_fields = %a"
+    (List.print N.field_print) tuple_fields ;
+  let callback (head : RamenTuple.field_typ list) =
+    (* TODO: RamenTuple.typ should be an array *)
+    let head = Array.of_list head in
+    (* Extract fields of interest (data fields, keys...) from a tuple: *)
+    (* So tuple will be composed of rev factors then data_fields: *)
+    let key_of_factors tuple =
+      Array.sub tuple 0 num_factors in
+    let open RamenSerialization in
+    let def_aggr =
+      Array.init num_data_fields (fun i ->
+        match head.(num_factors + i).aggr with
+        | Some str -> consolidate str
+        | None ->
+            (match consolidation with
+            | None -> bucket_avg
+            | Some str -> consolidate str))
+    in
+    (* If we asked for some factors and have no data, then there will be no
+     * columns in the result, which is OK (cartesian product of data fields and
+     * factors). But if we asked for no factors then we expect one column per
+     * data field, whether there is data or not. So in that case let's create
+     * the buckets in advance, in case on_tuple is not called at all: *)
+    if num_factors = 0 then (
+      let buckets = make_buckets num_points num_data_fields in
+      Hashtbl.add per_factor_buckets [||] buckets) ;
+    (fun t1 t2 tuple ->
+      let k = key_of_factors tuple in
+      let buckets =
+        try Hashtbl.find per_factor_buckets k
+        with Not_found ->
+          !logger.debug "New time series for column key %a"
+            (Array.print T.print) k ;
+          let buckets = make_buckets num_points num_data_fields in
+          Hashtbl.add per_factor_buckets k buckets ;
+          buckets in
+      let bi1, r1 = bucket_of_time t1 and bi2, r2 = bucket_of_time t2 in
+      !logger.debug "bi1=%d (r1=%f), bi2=%d (r2=%f)" bi1 r1 bi2 r2 ;
+      (* If bi2 ends up right on the boundary, speed things up by shortening
+       * the range: *)
+      let bi2, r2 =
+        if r2 = 0. && bi2 > bi1 then bi2 - 1, 1. else bi2, r2 in
+      (* Iter over all data_fields, that are the last components of tuple: *)
+      for i = 0 to num_data_fields - 1 do
+        (* We assume that the value is "intensive" rather than "extensive",
+         * and so contribute the same amount to each buckets of the interval,
+         * instead of distributing the value (TODO: extensive values) *)
+        let v = T.float_of_scalar tuple.(num_factors + i) in
+        Option.may (fun v ->
+          let v, bi1, bi2, r =
+            if bi1 = bi2 then (
+              (* Special case: just soften v *)
+              let r = r2 -. r1 in
+              abs_float r *. v, bi1, bi2, r
+            ) else (
+              (* Values on the edge should contribute in proportion to overlap: *)
+              let v1 = v *. (1. -. r1) and v2 = v *. r2 in
+              if bi1 > 0 && bi1 < Array.length buckets then
+                pour_into_bucket buckets bi1 i v1 (1. -. r1) ;
+              if bi2 > 0 && bi2 < Array.length buckets then
+                pour_into_bucket buckets bi2 i v2 r2 ;
+              v, bi1 + 1, bi2 - 1, 1.
+            ) in
+          for bi = max bi1 0 to min bi2 (Array.length buckets - 1) do
+            pour_into_bucket buckets bi i v r
+          done
+        ) v
+      done),
+    (fun () ->
+      (* Extract the results as an Enum, one value per key *)
+      let indices = Enum.range 0 ~until:(num_points - 1) in
+      (* Assume keys and values will enumerate keys in the same orders: *)
+      let columns =
+        Hashtbl.keys per_factor_buckets |>
+        Array.of_enum in
+      let ts =
+        Hashtbl.values per_factor_buckets |>
+        Array.of_enum in
+      columns,
+      indices /@
+      (fun i ->
+        let t = time_of_bucket i
+        and v =
+          Array.map (fun buckets ->
+            Array.mapi (fun data_field_idx bucket ->
+              def_aggr.(data_field_idx) bucket
+            ) buckets.(i)
+          ) ts in
+        t, v)) in
+  (* Must not add event time in front of factors: *)
+  RamenExport.replay_sync conf fq tuple_fields where since until
+                          ~with_event_time:false callback zock clt
 
 (* [get] uses the number of points but users can specify either num-points or
  * the time-step (in which case [since] and [until] are aligned to a multiple

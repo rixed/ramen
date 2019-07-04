@@ -17,7 +17,6 @@ module C = RamenConf
 module RC = C.Running
 module F = C.Func
 module O = RamenOperation
-module FS = C.FuncStats
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module TimeRange = RamenTimeRange
@@ -63,6 +62,10 @@ open C.Replays
 exception NotInStats of (N.site * N.fq)
 exception NoData
 
+type replay_stats =
+  { parents : (N.site * N.fq) list ;
+    archives : TimeRange.t [@ppp_default []] }
+
 (* Find a way to get the data out of fq for that time range.
  * Note that there could be several ways to obtain those. For instance,
  * we could ask for a 1year retention of some node that queried very
@@ -85,7 +88,8 @@ exception NoData
  * But its sources might not. In particular, for each parent we have to
  * take into account the optional host identifier and follow there. During
  * recursion we will have to keep track of the current local site. *)
-let find_sources stats local_site fq since until =
+let find_sources
+      (stats : (site_fq, replay_stats) Hashtbl.t) local_site fq since until =
   let since, until =
     if since <= until then since, until
     else until, since in
@@ -154,7 +158,7 @@ let find_sources stats local_site fq since until =
       List.fold_left (fun range (t1, t2) ->
         if t1 > until || t2 < since then range else
         TimeRange.merge range (TimeRange.make (max t1 since) (min t2 until))
-      ) TimeRange.empty s.FS.archives in
+      ) TimeRange.empty s.archives in
     !logger.debug "From %a:%a, range from archives = %a"
       N.site_print local_site
       N.fq_print fq
@@ -211,6 +215,7 @@ let find_sources stats local_site fq since until =
         N.fq_print fq |>
       failwith
   | [] ->
+      !logger.debug "No archives" ;
       raise NoData
   | ways ->
       !logger.debug "Found those ways: %a"
@@ -228,7 +233,9 @@ let find_sources stats local_site fq since until =
  * then one can easily replay from an immediate expression, expressing
  * this complex selection in ramen language directly.
  * So, here [func] is supposed to mean the local instance of it only. *)
-let create conf stats ?(timeout=Default.replay_timeout) func since until =
+let create
+      conf (stats : (site_fq, replay_stats) Hashtbl.t)
+      ?(timeout=Default.replay_timeout) func since until =
   let timeout = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
   let out_type =
@@ -265,16 +272,15 @@ let create conf stats ?(timeout=Default.replay_timeout) func since until =
   { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
     since ; until ; final_rb ; sources ; links ; timeout }
 
-let teardown_links conf programs t =
-  let rem_out_from site_fq =
-    let site, fq = site_fq in
+let teardown_links conf func_of_fq t =
+  let rem_out_from (site, fq) =
     if site = conf.C.site then
-      match RC.find_func programs fq with
+      match func_of_fq fq with
       | exception Not_found -> (* Not a big deal really *)
           !logger.warning
             "While tearing down channel %a, cannot find function %a"
             RamenChannel.print t.channel N.fq_print fq
-      | _rce, _prog, func ->
+      | func ->
           let out_ref = C.out_ringbuf_names_ref conf func in
           OutRef.remove_channel out_ref t.channel
   in
@@ -283,7 +289,7 @@ let teardown_links conf programs t =
   Set.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
-let settup_links conf programs t =
+let settup_links conf func_of_fq t =
   (* Connect the target first, then the graph: *)
   let connect_to_rb func fname fieldmask =
     let out_ref = C.out_ringbuf_names_ref conf func in
@@ -295,13 +301,13 @@ let settup_links conf programs t =
                RamenChannel.print t.channel in
   log_and_ignore_exceptions ~what (fun () ->
     if conf.C.site = target_site then (
-      let _rce, _prog, func = RC.find_func_or_fail programs target_fq in
+      let func = func_of_fq target_fq in
       connect_to_rb func t.final_rb t.target_fieldmask)) () ;
   Set.iter (fun ((psite, pfq), (_, cfq)) ->
     if conf.C.site = psite then
       log_and_ignore_exceptions ~what (fun () ->
-        let _rce, _prog, cfunc = RC.find_func_or_fail programs cfq in
-        let _rce, _prog, pfunc = RC.find_func_or_fail programs pfq in
+        let cfunc = func_of_fq cfq in
+        let pfunc = func_of_fq pfq in
         let fname = C.input_ringbuf_fname conf pfunc cfunc
         and fieldmask = F.make_fieldmask pfunc cfunc in
         connect_to_rb pfunc fname fieldmask) ()
@@ -313,8 +319,7 @@ let settup_links conf programs t =
  * Pass to each replayer the name of the function, the out_ref files to
  * obey, the channel id to tag tuples with, and since/until dates.
  * Returns the pid. *)
-let spawn_source_replay conf programs sfq since until channels replayer_id =
-  let rce, _prog, func = RC.find_func_or_fail programs sfq in
+let spawn_source_replay conf func bin since until channels replayer_id =
   let fq = F.fq_name func in
   let args = [| Worker_argv0.replay ; (fq :> string) |]
   and out_ringbuf_ref = C.out_ringbuf_names_ref conf func
@@ -339,7 +344,7 @@ let spawn_source_replay conf programs sfq since until channels replayer_id =
                          (Set.print ~first:"" ~last:"" ~sep:","
                                     RamenChannel.print) channels ;
        "replayer_id="^ string_of_int replayer_id |] in
-  let pid = RamenProcesses.run_worker rce.RC.bin args env in
+  let pid = RamenProcesses.run_worker bin args env in
   !logger.debug "Replay for %a is running under pid %d"
     N.fq_print fq pid ;
   pid
