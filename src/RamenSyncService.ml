@@ -113,7 +113,7 @@ let zock_step srv zock =
              * TODO: in theory, also monitor DelKey to update last_tuples
              * secondary hash. *)
             (match m with
-            | _, CltMsg.NewKey (Key.(Tail (site, fq, LastTuple seq)), _) ->
+            | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _) ->
                 Hashtbl.modify_opt (site, fq) (function
                   | None ->
                       let seqs =
@@ -121,7 +121,7 @@ let zock_step srv zock =
                           if i = 0 then seq else seq-1) in
                       Some (1, seqs)
                   | Some (n, seqs) ->
-                      let to_del = Key.(Tail (site, fq, LastTuple seqs.(n))) in
+                      let to_del = Key.(Tails (site, fq, LastTuple seqs.(n))) in
                       !logger.info "Removing old tuple seq %d" seqs.(n) ;
                       Server.H.remove srv.Server.h to_del ;
                       seqs.(n) <- seq ;

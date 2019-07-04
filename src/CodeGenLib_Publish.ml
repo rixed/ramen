@@ -27,7 +27,7 @@ let stats_num_rate_limited_unpublished =
 
 let on_new _zock _clt k _v _uid _mtime =
   match k with
-  | RamenSync.Key.Tail (_, _, Subscriber uid) ->
+  | RamenSync.Key.Tails (_, _, Subscriber uid) ->
       !logger.info "New subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.inc stats_num_subscribers *)
@@ -37,7 +37,7 @@ let on_new _zock _clt k _v _uid _mtime =
 
 let on_del _zock _clt k _v =
   match k with
-  | RamenSync.Key.Tail (_, _, Subscriber uid) ->
+  | RamenSync.Key.Tails (_, _, Subscriber uid) ->
       !logger.info "Leaving subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.dec stats_num_subscribers *)
@@ -132,9 +132,9 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   if url = "" then k ignore4 ignore else
   (* TODO: also subscribe to errors! *)
   let topic_sub =
-    "tail/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
+    "tails/"^ (site :> string) ^"/"^ (fq :> string) ^"/users/*"
   and topic_pub seq =
-    Key.(Tail (site, fq, LastTuple seq)) in
+    Key.(Tails (site, fq, LastTuple seq)) in
   fun conf ->
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del

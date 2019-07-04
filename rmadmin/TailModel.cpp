@@ -11,7 +11,7 @@ static std::string user_id("admin"); // TODO
 
 static conf::Key tailKey(FunctionItem const *f)
 {
-  return conf::Key("tail/" + f->fqName().toStdString() + "/users/" + user_id);
+  return conf::Key("tails/" + f->fqName().toStdString() + "/users/" + user_id);
 }
 
 TailModel::TailModel(FunctionItem const *f_, QObject *parent) :

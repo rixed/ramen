@@ -1168,7 +1168,7 @@ let tail_sync
       (* TODO: would be faster to sync the specific sources once we know
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
-      "tail/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
+      "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
     (fun zock clt ->
       let open RamenSync in
@@ -1253,7 +1253,7 @@ let tail_sync
       let count_last = ref last and count_next = ref next in
       let on_key counter _clt k v _uid _mtim =
         match k, v with
-        | Key.Tail (_site, _fq, LastTuple _seq),
+        | Key.Tails (_site, _fq, LastTuple _seq),
           Value.Tuple { skipped ; values } ->
             if skipped > 0 then
               !logger.warning "Skipped %d tuples" skipped ;
@@ -1288,7 +1288,7 @@ let tail_sync
       let subscriber =
         conf.C.login ^"-tail-"^ string_of_int (Unix.getpid ()) in
       List.iter (fun (site, _w) ->
-        let k = Key.Tail (site, fq, Subscriber subscriber) in
+        let k = Key.Tails (site, fq, Subscriber subscriber) in
         let cmd = Client.CltMsg.NewKey (k, Value.dummy) in
         ZMQClient.send_cmd clt zock ~while_ cmd
       ) workers ;
@@ -1303,7 +1303,7 @@ let tail_sync
       (* Unsubscribe *)
       !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
       List.iter (fun (site, _w) ->
-        let k = Key.Tail (site, fq, Subscriber subscriber) in
+        let k = Key.Tails (site, fq, Subscriber subscriber) in
         let cmd = Client.CltMsg.DelKey k in
         ZMQClient.send_cmd clt zock ~while_ cmd
       ) workers)

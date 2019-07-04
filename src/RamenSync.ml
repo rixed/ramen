@@ -182,7 +182,7 @@ struct
     | PerSite of N.site * per_site_key
     | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
-    | Tail of N.site * N.fq * tail_key
+    | Tails of N.site * N.fq * tail_key
     | Error of User.socket option
     (* TODO: alerting *)
 
@@ -377,8 +377,8 @@ struct
     | Storage storage_key ->
         Printf.fprintf fmt "storage/%a"
           print_storage_key storage_key
-    | Tail (site, fq, tail_key) ->
-        Printf.fprintf fmt "tail/%a/%a/%a"
+    | Tails (site, fq, tail_key) ->
+        Printf.fprintf fmt "tails/%a/%a/%a"
           N.site_print site
           N.fq_print fq
           print_tail_key tail_key
@@ -508,15 +508,15 @@ struct
               | "recall_cost", "" -> RecallCost
               | "retention_override", s ->
                   RetentionsOverride (Globs.compile s))
-        | "tail", s ->
+        | "tails", s ->
             (match cut s with
             | site, fq_s ->
                 (match rcut ~n:3 fq_s with
                 | [ fq ; "users" ; s ] ->
-                    Tail (N.site site, N.fq fq, Subscriber s)
+                    Tails (N.site site, N.fq fq, Subscriber s)
                 | [ fq ; "lasts" ; s ] ->
                     let i = int_of_string s in
-                    Tail (N.site site, N.fq fq, LastTuple i)))
+                    Tails (N.site site, N.fq fq, LastTuple i)))
         | "errors", s ->
             Error (
               match cut s with

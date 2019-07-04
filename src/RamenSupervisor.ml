@@ -105,6 +105,11 @@ let make_running_process conf must_run mre =
     last_exit = 0. ; last_exit_status = "" ; succ_failures = 0 ;
     quarantine_until = 0. }
 
+(* A single worker can replay for several channels. This is very useful
+ * when a dashboard reloads with many graphs requesting the same time interval.
+ * So replayers are aggregated for a little while before spawning them.
+ * No need to persist this hash though. *)
+
 type replayers = (C.Replays.site_fq, replayer) Hashtbl.t
 
 and replayer =
