@@ -1411,8 +1411,15 @@ let timeseries_ conf fq data_fields
   let num_points, since, until =
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
-    RamenTimeseries.get_local conf num_points since until where factors
-        ~consolidation ~bucket_time fq data_fields in
+    if conf.C.sync_url = "" then
+      RamenTimeseries.get_local conf num_points since until where factors
+          ~consolidation ~bucket_time fq data_fields
+    else
+      let topics = RamenExport.replay_topics in
+      ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+        (RamenTimeseries.get_sync conf num_points since until where factors
+          ~consolidation ~bucket_time fq data_fields ~while_)
+  in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
   let head =
