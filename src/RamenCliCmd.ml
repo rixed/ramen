@@ -551,14 +551,8 @@ let choreographer conf daemonize to_stdout to_syslog () =
  * Display a program or function meta information from the binary.
  *)
 
-let info _conf params program_name_opt bin_file opt_func_name () =
-  let params = List.enum params |> Hashtbl.of_enum in
-  let program_name =
-    Option.default_delayed (fun () ->
-      RamenRun.default_program_name bin_file
-    ) program_name_opt in
-  let prog = P.of_bin program_name params bin_file in
-  if prog.default_params <> [] then (
+let prog_info prog opt_func_name =
+  if prog.P.default_params <> [] then (
     TermTable.print_head 0 "Parameters" ;
     TermTable.print 1 "%a" RamenTuple.print_params prog.default_params) ;
   TermTable.print_head 0 "Running condition" ;
@@ -626,6 +620,32 @@ let info _conf params program_name_opt bin_file opt_func_name () =
             N.func_print func_name |>
           failwith
       | func -> info_func 0 func)
+
+let info_local params program_name_opt bin_file opt_func_name =
+  let params = List.enum params |> Hashtbl.of_enum in
+  let program_name =
+    Option.default_delayed (fun () ->
+      RamenRun.default_program_name bin_file
+    ) program_name_opt in
+  let prog = P.of_bin program_name params bin_file in
+  prog_info prog opt_func_name
+
+let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
+  let program_name = program_name_opt |? (N.program (src_path :> string)) in
+  let topics =
+    [ "sources/"^ (src_path :> string) ^"/info" ] in
+  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+    (fun _zock clt ->
+      let prog = RamenSync.program_of_src_path clt src_path |>
+                 P.unserialized program_name in
+      prog_info prog opt_func_name)
+
+let info conf params program_name_opt bin_file opt_func_name () =
+  if conf.C.sync_url = "" then
+    info_local params program_name_opt bin_file opt_func_name
+  else
+    (* bin_file is then the source path! *)
+    info_sync conf program_name_opt bin_file opt_func_name
 
 (*
  * `ramen gc`
