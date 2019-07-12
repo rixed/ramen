@@ -77,6 +77,69 @@ let populate_init srv =
   TargetConfig.init srv ;
   Storage.init srv
 
+(*
+ * Snapshots
+ *
+ * The confserver saves on disc the whole tree from time to time and when
+ * it terminates, in order to load it at next startup.
+ *)
+
+module Snapshot =
+struct
+  type t =
+    V1 of (Key.t * Server.hash_value) list
+
+  let file_name conf =
+    N.path_cat [ conf.C.persist_dir ; N.path "confserver/snapshot" ]
+
+  let load conf srv =
+    let fname = file_name conf in
+    try
+      let fd = Files.safe_open fname [ O_RDONLY ] 0o640 in
+      finally
+        (fun () -> Files.safe_close fd)
+        (fun () ->
+          match Files.marshal_from_fd fname fd with
+          | V1 lst ->
+              !logger.info "Loading %d configuration keys from %a"
+                (List.length lst)
+                N.path_print fname ;
+              List.iter (fun (k, hv) ->
+                Server.H.replace srv.Server.h k hv ;
+                !logger.debug "Loading configuration key %a" Key.print k ;
+              ) lst ;
+              true) ()
+    with Unix.(Unix_error (ENOENT, _, _)) ->
+          !logger.info
+            "No previous configuration state, will start empty" ;
+          false
+       | e ->
+          !logger.error
+            "Cannot read configuration initial state, will start empty: %s"
+            (Printexc.to_string e) ;
+          false
+
+  let save conf srv =
+    let fname = file_name conf in
+    let what = "Saving confserver snapshot" in
+    log_and_ignore_exceptions ~what (fun () ->
+      let fd = Files.safe_open fname [ O_WRONLY ; O_CREAT ] 0o640 in
+      finally
+        (fun () -> Files.safe_close fd)
+        (fun () ->
+          let lst = Server.H.enum srv.Server.h |> List.of_enum in
+          !logger.debug "Saving %d configuration keys into %a"
+            (Server.H.length srv.Server.h)
+            N.path_print fname ;
+          Files.marshal_into_fd fd (V1 lst)
+        ) ()
+    ) ()
+
+  let init conf =
+    let fname = file_name conf in
+    Files.mkdir_all ~is_file:true fname
+end
+
 let last_tuples = Hashtbl.create 50
 
 (* Process a single input message *)
@@ -134,11 +197,15 @@ let zock_step srv zock =
             (List.length parts) |>
           failwith)
 
-let service_loop zock srv =
+let service_loop conf zock srv =
+  Snapshot.init conf ;
+  let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
   Processes.until_quit (fun () ->
     zock_step srv zock ;
+    if save_rate () then Snapshot.save conf srv ;
     true
-  )
+  ) ;
+  Snapshot.save conf srv
 
 let send_msg zock ?block m sockets =
   let msg = SrvMsg.to_string m in
@@ -147,7 +214,7 @@ let send_msg zock ?block m sockets =
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) sockets
 
-let start _conf port =
+let start conf port =
   let ctx = Zmq.Context.create () in
   finally
     (fun () ->
@@ -158,7 +225,8 @@ let start _conf port =
       Zmq.Socket.set_send_high_water_mark zock 0 ;
       let send_msg = send_msg zock in
       let srv = Server.make ~send_msg in
-      populate_init srv ;
+      if not (Snapshot.load conf srv) then
+        populate_init srv ;
       finally
         (fun () ->
           Zmq.Socket.close zock)
@@ -169,6 +237,6 @@ let start _conf port =
           let bind_to = "tcp://*:"^ string_of_int port in
           !logger.info "Listening to %s..." bind_to ;
           Zmq.Socket.bind zock bind_to ;
-          service_loop zock srv
+          service_loop conf zock srv
         ) ()
     ) ()
