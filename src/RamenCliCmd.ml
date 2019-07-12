@@ -1070,8 +1070,9 @@ let tail_local
     then Some 10 else last in
   let flush = flush || continuous in
   let next = if continuous then Some max_int else next in
+  let programs = RC.with_rlock conf identity in
   let bname, is_temp_export, filter, ser, params, event_time =
-    RamenExport.read_output conf ~duration fq where
+    RamenExport.read_output conf ~duration fq where programs
   in
   (* Find out which seqnums we want to scan: *)
   let mi, ma = match last, next with

@@ -658,8 +658,7 @@ let signal_all_cont running =
  * Start by getting a list of sites and then populate it with all workers
  * that must run there, with for each the set of their parents. *)
 
-let build_must_run conf =
-  let programs = RC.with_rlock conf identity in
+let build_must_run conf programs =
   (* Start by rebuilding what needs to be before calling any get_rc() : *)
   Hashtbl.iter (fun program_name (rce, _get_rc) ->
     if rce.RC.status = RC.MustRun && not (N.is_empty rce.RC.src_file) then (
@@ -673,7 +672,7 @@ let build_must_run conf =
             conf get_parent program_name rce.RC.src_file
             rce.RC.bin) ())
   ) programs ;
-  let graph = FuncGraph.make conf in
+  let graph = FuncGraph.make conf programs in
   !logger.debug "Graph of functions: %a" FuncGraph.print graph ;
   (* Now building the hash of functions that must run from graph is easy: *)
   let must_run =
@@ -833,7 +832,7 @@ let synchronize_workers conf must_run running =
   List.iter (fun proc ->
     try_start conf proc ;
     (* If we had to compile a program this is worth resetting the watchdog: *)
-    RamenWatchdog.reset (Option.get !watchdog)
+    Option.may RamenWatchdog.reset !watchdog
   ) !to_start ;
   (* Try to fix any issue with out_refs: *)
   let now = Unix.time () in
@@ -1023,7 +1022,8 @@ let synchronize_running_local conf autoreload_delay =
           Hashtbl.create 0, last_read_rc
         ) else (
           if must_reread rc_file last_read_rc autoreload_delay now set_max_wait then
-            build_must_run conf, now
+            let programs = RC.with_rlock conf identity in
+            build_must_run conf programs, now
           else
             last_must_run, last_read_rc
         ) in

@@ -268,36 +268,3 @@ let http_service conf port url_prefix router fault_injection_rate topics =
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !RamenProcesses.quit = None in
   forking_server ~while_ ~service_name:ServiceNames.httpd addr srv
-
-(* FIXME: hack to mix fils/sync code.
- * To be cleaned once we get rid of local files: *)
-
-(* Returns a hash of program_name to Program.t *)
-let get_programs_sync () =
-  let open RamenSync in
-  let _zock, clt = ZMQClient.get_connection () in
-  let programs = Hashtbl.create 30 in
-  Client.iter clt (fun k hv ->
-    match k, hv.value with
-    | Key.PerSite (_site, PerWorker (fq, Worker)),
-      Value.Worker w ->
-        let prog_name, _func_name = N.fq_parse fq in
-        if not (Hashtbl.mem programs prog_name) then
-          let prog = program_of_src_path clt w.Value.Worker.src_path |>
-                     RamenConf.Program.unserialized prog_name in
-          Hashtbl.add programs prog_name prog
-    | _ -> ()) ;
-  programs
-
-let get_programs_local conf =
-  RC.with_rlock conf identity |>
-  Hashtbl.filter_map (fun _func_name (_mre, get_rc) ->
-    match get_rc () with
-    | exception _ -> None
-    | prog -> Some prog)
-
-let get_programs conf =
-  if conf.C.sync_url = "" then
-    get_programs_local conf
-  else
-    get_programs_sync ()

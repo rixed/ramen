@@ -125,10 +125,9 @@ let parents_sites local_site programs sites func =
 
 (* Build a map from site name to the map of (prog, func names) to
  * prog*func*parents, where parents is a set of site*prog*func: *)
-let make conf =
+let make conf programs =
   let t = empty () in
   let sites = Services.all_sites conf in
-  let programs = RC.with_rlock conf identity in
   with_time (fun () ->
     Hashtbl.iter (fun _ (rce, get_rc) ->
       if rce.RC.status = RC.MustRun then (

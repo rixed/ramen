@@ -193,11 +193,11 @@ let tuple_print typ oc vs =
   ) typ ;
   String.print oc " }"
 
-let test_output conf fq output_spec end_flag =
+let test_output conf fq output_spec programs end_flag =
   (* Notice that although we do not provide a filter read_output can
    * return one, to select the worker in well-known functions: *)
   let bname, _is_temp_export, filter, ser, _params, _event_time =
-    RamenExport.read_output conf fq [] in
+    RamenExport.read_output conf fq [] programs in
   (* Change the hashtable of field to string value into a list of field
    * index and value: *)
   let field_indices_of_tuples =
@@ -272,9 +272,9 @@ let test_output conf fq output_spec end_flag =
   success, msg
 
 (* Wait for the given tuple: *)
-let test_until conf count end_flag fq spec =
+let test_until conf count end_flag fq spec programs =
   let bname, _is_temp_export, filter, typ, _params, _event_time =
-    RamenExport.read_output conf fq [] in
+    RamenExport.read_output conf fq [] programs in
   let filter_spec = filter_spec_of_spec fq typ spec in
   let unserialize = RamenSerialization.read_array_of_values typ in
   let got_it = ref false in
@@ -338,7 +338,7 @@ let test_notifications notify_rb notif_spec end_flag =
 
 (* Perform all kind of checks before spawning testing threads, such as
  * check the existence of all mentioned programs and functions: *)
-let check_test_spec conf test =
+let check_test_spec test programs =
   let fold_funcs i f =
     let maybe_f fq tuples (s, i as prev) =
       if Set.mem fq s then prev else (
@@ -377,37 +377,36 @@ let check_test_spec conf test =
       s
     ) |> ignore
   in
-  RC.with_rlock conf (fun programs ->
-    iter_programs
-      ~per_prog:(fun pn ->
-        if not (Hashtbl.mem programs pn) then
-          Printf.sprintf2 "Unknown program %s (have %a)"
-            (N.program_color pn)
-            (pretty_enum_print N.program_print) (Hashtbl.keys programs) |>
-          failwith)
-      ~per_func:(fun pn fn tuple ->
-        let _mre, get_rc = Hashtbl.find programs pn in
-        let prog = get_rc () in
-        match List.find (fun func -> func.F.name = fn) prog.P.funcs with
-        | exception Not_found ->
-            Printf.sprintf "Unknown function %s in program %s"
-              (N.func_color fn)
-              (N.program_color pn) |>
-            failwith ;
-        | func ->
-            let out_type =
-              O.out_type_of_operation ~with_private:false
-                                      func.F.operation in
-            Hashtbl.iter (fun field_name _ ->
-              if not (List.exists (fun ft ->
-                        ft.RamenTuple.name = field_name
-                      ) out_type) then
-                Printf.sprintf2 "Unknown field %a in %a (have %a)"
-                  N.field_print_quoted field_name
-                  N.fq_print_quoted (N.fq_of_program pn fn)
-                  RamenTuple.print_typ_names out_type |>
-                failwith
-            ) tuple))
+  iter_programs
+    ~per_prog:(fun pn ->
+      if not (Hashtbl.mem programs pn) then
+        Printf.sprintf2 "Unknown program %s (have %a)"
+          (N.program_color pn)
+          (pretty_enum_print N.program_print) (Hashtbl.keys programs) |>
+        failwith)
+    ~per_func:(fun pn fn tuple ->
+      let _mre, get_rc = Hashtbl.find programs pn in
+      let prog = get_rc () in
+      match List.find (fun func -> func.F.name = fn) prog.P.funcs with
+      | exception Not_found ->
+          Printf.sprintf "Unknown function %s in program %s"
+            (N.func_color fn)
+            (N.program_color pn) |>
+          failwith ;
+      | func ->
+          let out_type =
+            O.out_type_of_operation ~with_private:false
+                                    func.F.operation in
+          Hashtbl.iter (fun field_name _ ->
+            if not (List.exists (fun ft ->
+                      ft.RamenTuple.name = field_name
+                    ) out_type) then
+              Printf.sprintf2 "Unknown field %a in %a (have %a)"
+                N.field_print_quoted field_name
+                N.fq_print_quoted (N.fq_of_program pn fn)
+                RamenTuple.print_typ_names out_type |>
+              failwith
+          ) tuple)
 
 let bin_of_program conf get_parent program_name program_code =
   let exec_file =
@@ -421,6 +420,42 @@ let bin_of_program conf get_parent program_name program_code =
   RamenMake.build conf get_parent program_name source_file exec_file ;
   exec_file
 
+(* A version of RamenSupervisor.synchronize_running that runs on a distinct
+ * thread and synchronize against a fixed hash of programs that has to run: *)
+let synchronize_running_static conf must_run =
+  let open RamenSupervisor in
+  let prev_num_running = ref 0 in
+  (* The workers that are currently running: *)
+  let running = Hashtbl.create 10 in
+  let rec loop () =
+    let the_end =
+      if !Processes.quit <> None then (
+        let num_running = Hashtbl.length running in
+        if num_running = 0 then (
+          !logger.info "Every worker has stopped, quitting." ;
+          true
+        ) else (
+          if num_running <> !prev_num_running then (
+            prev_num_running := num_running ;
+            !logger.info "Still %d workers running" (Hashtbl.length running)) ;
+          false
+        )
+      ) else false in
+    if not the_end then (
+      if !Processes.quit <> None then (
+        !logger.debug "No more workers should run" ;
+        Hashtbl.clear must_run
+      ) ;
+      process_workers_terminations conf running ;
+      let _changed = synchronize_workers conf must_run running in
+      let delay = if !Processes.quit = None then 1. else 0.3 in
+      Unix.sleepf delay ;
+      (loop [@tailcall]) ()
+    ) in
+  (* Once we have forked some workers we must not allow an exception to
+   * terminate this function or we'd leave unsupervised workers behind: *)
+  restart_on_failure "process supervisor" loop ()
+
 let run_test conf notify_rb dirname test =
   (* Hash from func fq name to its rc and mmapped input ring-buffer: *)
   let workers = Hashtbl.create 11 in
@@ -430,41 +465,45 @@ let run_test conf notify_rb dirname test =
    * the process synchronizer, the worker feeder, and the output evaluator: *)
   (* First, write the list of programs that must run and fill workers
    * hash-table: *)
-  RC.with_wlock conf (fun programs ->
-    Hashtbl.clear programs ;
-    Hashtbl.iter (fun program_name p ->
-      let bin =
-        if not (N.is_empty p.bin) then (
-          (* The path to the binary is relative to the test file: *)
-          if Files.is_absolute p.bin then p.bin
-          else N.path_cat [ dirname ; p.bin ]
-        ) else (
-          if p.code = "" then failwith "Either the binary file or the code of \
-                                        a program must be specified" ;
-          let get_parent n =
-            match Hashtbl.find test.programs n with
-            | exception Not_found ->
-                Printf.sprintf "Cannot find program %s" (N.program_color n) |>
-                fail_and_quit
-            | par -> P.of_bin n par.params par.bin
-          in
-          bin_of_program conf get_parent program_name p.code) in
-      let prog = P.of_bin program_name p.params bin in
-      Hashtbl.add programs program_name
-        C.{ bin ; params = p.params ; status = MustRun ; debug = false ;
-            report_period = RamenConsts.Default.report_period ;
-            src_file = N.path "" ; on_site = Globs.all ; automatic = false } ;
-      List.iter (fun func ->
-        Hashtbl.add workers (F.fq_name func) (func, ref None)
-      ) prog.P.funcs
-    ) test.programs) ;
-  check_test_spec conf test ;
+  let programs = Hashtbl.create 10 in
+  Hashtbl.iter (fun program_name p ->
+    let bin =
+      if not (N.is_empty p.bin) then (
+        (* The path to the binary is relative to the test file: *)
+        if Files.is_absolute p.bin then p.bin
+        else N.path_cat [ dirname ; p.bin ]
+      ) else (
+        if p.code = "" then failwith "Either the binary file or the code of \
+                                      a program must be specified" ;
+        let get_parent n =
+          match Hashtbl.find test.programs n with
+          | exception Not_found ->
+              Printf.sprintf "Cannot find program %s" (N.program_color n) |>
+              fail_and_quit
+          | par -> P.of_bin n par.params par.bin
+        in
+        bin_of_program conf get_parent program_name p.code) in
+    (* Mimic the rc file structure.
+     * TODO: Make the synchronizer work directly from the set of bins *)
+    let prog = P.of_bin program_name p.params bin in
+    let get_rc () = prog in
+    let rce =
+      RC.{ bin ; params = p.params ; status = MustRun ; debug = false ;
+           report_period = RamenConsts.Default.report_period ;
+          src_file = N.path "" ; on_site = Globs.all ; automatic = false } in
+    Hashtbl.add programs program_name (rce, get_rc) ;
+    List.iter (fun func ->
+      Hashtbl.add workers (F.fq_name func) (func, ref None)
+    ) prog.P.funcs
+  ) test.programs ;
+  check_test_spec test programs ;
   (* Now that the running config is complete we can start the worker
    * supervisor: *)
-  let sync =
+  let must_run = RamenSupervisor.build_must_run conf programs in
+  let supervisor =
     Thread.create (
       restart_on_failure "synchronize_running"
-        (RamenSupervisor.synchronize_running conf)) 0. in
+        (synchronize_running_static conf)) must_run in
   (* Start the test proper: *)
   let worker_feeder () =
     let feed_input input =
@@ -510,7 +549,7 @@ let run_test conf notify_rb dirname test =
   (* One tester thread per operation *)
   let tester_threads =
     Hashtbl.fold (fun user_fq_name output_spec thds ->
-      test_output conf user_fq_name output_spec :: thds
+      test_output conf user_fq_name output_spec programs :: thds
     ) test.outputs [] in
   (* Similarly, test the notifications: *)
   let tester_threads =
@@ -545,7 +584,9 @@ let run_test conf notify_rb dirname test =
     else (
       Thread.create (fun () ->
         Hashtbl.fold (fun user_fq_name tuple_spec thds ->
-          Thread.create (test_until conf until_count end_flag user_fq_name) tuple_spec :: thds
+          Thread.create
+            (test_until conf until_count end_flag user_fq_name tuple_spec)
+            programs :: thds
         ) test.until [] |>
         List.iter Thread.join ;
         !logger.debug "Early termination detectors ended." ;
@@ -558,7 +599,7 @@ let run_test conf notify_rb dirname test =
     ((Thread.create worker_feeder ()) :: tester_threads) ;
   !logger.debug "Waiting for thread early_terminator..." ;
   Thread.join early_terminator ;
-  !all_good, sync
+  !all_good, supervisor
 
 let run conf server_url api graphite
         use_external_compiler max_simult_compils smt_solver
@@ -591,7 +632,7 @@ let run conf server_url api graphite
   RingBuf.unload report_rb ;
   (* Run all tests. Also return the syn thread that's still running: *)
   !logger.info "Starting tests..." ;
-  let res, sync = run_test conf notify_rb (Files.dirname test) test_spec in
+  let res, supervisor = run_test conf notify_rb (Files.dirname test) test_spec in
   !logger.debug "Finished tests" ;
   RingBuf.unload notify_rb ;
   (* Show resources consumption: *)
@@ -611,7 +652,7 @@ let run conf server_url api graphite
     RamenProcesses.quit := Some 0 ;
   (* else wait for the user to kill *)
   !logger.debug "Waiting for workers supervisor..." ;
-  Thread.join sync ;
+  Thread.join supervisor ;
   Option.may (fun thd ->
     !logger.debug "Waiting for http server..." ;
     Thread.join thd

@@ -7,6 +7,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
+open RamenSyncHelpers
 open RamenLang
 open RamenConsts
 module C = RamenConf

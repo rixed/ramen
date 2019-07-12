@@ -179,6 +179,7 @@ RAMEN_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenSyncHelpers.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
@@ -863,6 +864,7 @@ LINKED_FOR_TESTS = \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml \
+	src/RamenSyncHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/RamenGraphite.ml \
 	src/TestHelpers.ml \

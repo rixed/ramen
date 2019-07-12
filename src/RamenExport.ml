@@ -43,7 +43,7 @@ let read_well_known (fq : N.fq) where suffix bname typ () =
 (* Returns the ringbuf name, a bool indicating if it's a temporary export or not,
  * the filter corresponding to [where], the tuple serialized type, the parameters
  * and event time of [fq]: *)
-let read_output conf ?duration (fq : N.fq) where =
+let read_output conf ?duration (fq : N.fq) where programs =
   (* Read directly from the instrumentation ringbuf when fq ends
    * with "#stats": *)
   match read_well_known fq where ("#"^ SpecialFunctions.stats)
@@ -69,16 +69,16 @@ let read_output conf ?duration (fq : N.fq) where =
            * archives of other format must not be read, as on the long term
            * format can indeed switch (worker would restart in between). *)
           let prog, func, bname =
-            RC.with_rlock conf (fun programs ->
-              match RC.find_func programs fq with
-              | exception Not_found ->
-                  failwith ("Function "^ (fq :> string) ^
-                            " does not exist")
-              | _rce, prog, func ->
-                  let bname =
-                    Processes.start_export
-                      conf ~file_type:OutRef.RingBuf ?duration func in
-                  prog, func, bname) in
+            match RC.find_func programs fq with
+            | exception Not_found ->
+                Printf.sprintf2 "Function %a does not exist"
+                  N.fq_print fq |>
+                failwith
+            | _rce, prog, func ->
+                let bname =
+                  Processes.start_export
+                    conf ~file_type:OutRef.RingBuf ?duration func in
+                prog, func, bname in
           let out_type =
             O.out_type_of_operation ~with_private:false func.F.operation
           and event_time =

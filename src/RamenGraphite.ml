@@ -20,6 +20,7 @@ open BatOption.Infix
 open RamenLog
 open RamenHelpers
 open RamenHttpHelpers
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
