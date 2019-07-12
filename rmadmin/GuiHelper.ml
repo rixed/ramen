@@ -119,16 +119,18 @@ let sync_loop clt =
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
-        ZMQClient.send_cmd clt (Client.CltMsg.NewKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
         handle_msgs_out ()
     | Set (k, v) ->
         ZMQClient.send_cmd clt (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        ZMQClient.send_cmd clt (Client.CltMsg.LockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt
+          (Client.CltMsg.LockKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        ZMQClient.send_cmd clt (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt
+          (Client.CltMsg.LockOrCreateKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | Unlock k ->
         ZMQClient.send_cmd clt (Client.CltMsg.UnlockKey (Key.of_string k)) ;
@@ -162,20 +164,11 @@ let on_progress url clt stage status =
   | ZMQClient.Stage.Auth -> signal_auth
   | ZMQClient.Stage.Sync -> signal_sync) status
 
-let register_senders clt =
-  let lock_from_cpp k =
-    ZMQClient.send_cmd clt (Client.CltMsg.LockOrCreateKey k)
-  and unlock_from_cpp k =
-    ZMQClient.send_cmd clt (Client.CltMsg.UnlockKey k)
-  in
-  ignore (Callback.register "lock_from_cpp" lock_from_cpp) ;
-  ignore (Callback.register "unlock_from_cpp" unlock_from_cpp)
-
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url creds () =
   Gc.compact () ;
   ZMQClient.start
-    url creds ~topics:["*"] ~on_progress:(on_progress url) ~on_sock:register_senders
+    url creds ~topics:["*"] ~on_progress:(on_progress url)
     ~on_new ~on_set ~on_del ~on_lock ~on_unlock
     ~recvtimeo:0.1 sync_loop
 

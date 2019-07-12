@@ -2,6 +2,7 @@ open Batteries
 open RamenHelpers
 open RamenLog
 open RamenSyncIntf
+open RamenConsts
 
 (* A KV store implementing sync mechanism, with still no side effects *)
 module Make (Value : VALUE) (Selector : SELECTOR) =
@@ -32,10 +33,14 @@ struct
       s : bool (* Sticky, ie cannot be deleted *) ;
       (* Locked by the user who's on top of the list. Others are waiting: *)
       (* TODO: Distinct reader locks (a set) from /writer locks (that list). *)
-      mutable locks : User.t list ;
+      mutable locks : lock list ;
       (* Also some metadata: *)
       mutable set_by : User.t ;
       mutable mtime : float }
+
+  (* that float is an absolute time at the head of the list and a
+   * duration for other lockers: *)
+  and lock = User.t * float
 
   (* Callbacks return either None, meaning the change is refused, or some
    * new (or identical) value to be written instead of the user supplied
@@ -53,6 +58,15 @@ struct
       on_dels = Hashtbl.create 10 ;
       user_selectors = Selector.make_set () ;
       subscriptions = Hashtbl.create 99 }
+
+  let print_lockers oc = function
+    | [] ->
+        Printf.fprintf oc "None"
+    | (current_locker, expiry) :: rest ->
+        Printf.fprintf oc "%a (until %a) (then: %a)"
+          User.print current_locker
+          print_as_date expiry
+          (List.print (Tuple2.print User.print print_as_duration)) rest
 
   let do_cbs cbs t k v =
     match
@@ -98,28 +112,51 @@ struct
       User.print u |>
     failwith
 
-  let check_unlocked hv k u =
+  (* Notify the unlock and remove the head locker *)
+  let do_unlock t k hv =
+    notify t k (User.has_capa hv.r) (UnlockKey k) ;
+    match List.tl hv.locks with
+    | [] ->
+        hv.locks <- []
+    | (u, duration) :: rest ->
+        let expiry = Unix.gettimeofday () +. duration in
+        hv.locks <- (u, expiry) :: rest ;
+        let uid = IO.to_string User.print_id (User.id u) in
+        notify t k (User.has_capa hv.r) (LockKey (k, uid))
+
+  let timeout_locks t k hv =
     match hv.locks with
-    | u' :: _ when not (User.equal u' u) ->
+    | [] -> ()
+    | (_, expiry) :: _ ->
+        let now = Unix.gettimeofday () in
+        if expiry < now then (
+          !logger.warning "Timing out lock of config key %a"
+            Key.print k ;
+          do_unlock t k hv)
+
+  let check_unlocked t hv k u =
+    timeout_locks t k hv ;
+    match hv.locks with
+    | (u', _) :: _ when not (User.equal u' u) ->
         locked_by k u'
     (* TODO: Think about making locking mandatory *)
     | _ -> ()
 
-  let check_can_write k hv u =
+  let check_can_write t k hv u =
     if not (User.has_capa hv.w u) then (
       Printf.sprintf2 "Key %a: read only" Key.print k |>
       failwith
     ) ;
-    check_unlocked hv k u
+    check_unlocked t hv k u
 
-  let check_can_delete k hv u =
+  let check_can_delete t k hv u =
     if hv.s then (
       Printf.sprintf2 "Key %a: is sticky" Key.print k |>
       failwith
     ) ;
-    check_can_write k hv u
+    check_can_write t k hv u
 
-  let create t u k v ~r ~w ~s =
+  let create t u k v ?(lock_timeo=Default.sync_lock_timeout) ~r ~w ~s =
     !logger.debug "Creating config key %a with value %a, r:%a w:%a%s"
       Key.print k
       Value.print v
@@ -130,8 +167,10 @@ struct
     | exception Not_found ->
         (* As long as there is a callback for this, that's ok: *)
         let v = do_cbs t.on_news t k v in
-        let locks = [ u ] in (* objects are created locked *)
+        (* Objects are created locked: *)
         let mtime = Unix.gettimeofday () in
+        let expiry = mtime +. lock_timeo in
+        let locks = [ u, expiry ] in
         H.add t.h k { v ; r ; w ; s ; locks ; set_by = u ; mtime } ;
         let uid = IO.to_string User.print_id (User.id u) in
         notify t k (User.has_capa r) (NewKey (k, v, uid, mtime))
@@ -149,7 +188,7 @@ struct
           !logger.debug "Setting config key %a to value %a"
             Key.print k
             Value.print v ;
-          check_can_write k prev u ;
+          check_can_write t k prev u ;
           let v = do_cbs t.on_sets t k v in
           prev.v <- v ;
           prev.set_by <- u ;
@@ -158,13 +197,14 @@ struct
           notify t k (User.has_capa prev.r) (SetKey (k, v, uid, prev.mtime))
         )
 
-  let set t u k v = (* TODO: H.find and pass prev item to update *)
-    if H.mem t.h k then update t u k v
+  let set t u ?lock_timeo k v = (* TODO: H.find and pass prev item to update *)
+    if H.mem t.h k then
+      update t u k v (* Does no lock *)
     else
       let r = Capa.anybody
       and w = User.only_me u
       and s = false in
-      create t u k v ~r ~w ~s
+      create t u k v ?lock_timeo ~r ~w ~s (* Does lock *)
 
   let del t u k =
     !logger.debug "Deleting config key %a"
@@ -174,12 +214,12 @@ struct
         ()
     | prev ->
         (* TODO: think about making locking mandatory *)
-        check_can_delete k prev u ;
+        check_can_delete t k prev u ;
         let _ = do_cbs t.on_dels t k prev.v in
         H.remove t.h k ;
         notify t k (User.has_capa prev.r) (DelKey k)
 
-  let lock t u k ~must_exist =
+  let lock t u k ~must_exist ~lock_timeo =
     !logger.debug "Locking config key %a"
       Key.print k ;
     match H.find t.h k with
@@ -188,18 +228,20 @@ struct
          * creator. In that case a lock will create a new (Void) value. *)
         if must_exist then no_such_key k else
         let me = User.only_me u in
-        create t u k Value.dummy ~r:Capa.anybody ~w:me ~s:false
+        create t u k Value.dummy ~r:Capa.anybody ~w:me ~s:false ~lock_timeo
     | prev ->
-        !logger.debug "Current lockers: %a" (List.print User.print) prev.locks ;
-        (* only for wlocks: check_can_write k prev u ; *)
+        timeout_locks t k prev ;
+        !logger.debug "Current lockers: %a" print_lockers prev.locks ;
+        (* only for wlocks: check_can_write t k prev u ; *)
         (match prev.locks with
         | [] ->
             (* We have a new locker: *)
             let uid = IO.to_string User.print_id (User.id u) in
             notify t k (User.has_capa prev.r) (LockKey (k, uid)) ;
-            prev.locks <- [ u ]
+            let expiry = Unix.gettimeofday () +. lock_timeo in
+            prev.locks <- [ u, expiry ]
         | lst ->
-            prev.locks <- lst @ [ u ] (* FIXME *))
+            prev.locks <- lst @ [ u, lock_timeo ] (* FIXME *))
 
   let unlock t u k =
     !logger.debug "Unlocking config key %a"
@@ -209,34 +251,26 @@ struct
         no_such_key k
     | prev ->
         (match prev.locks with
-        | u' :: lst when User.equal u u' ->
-            notify t k (User.has_capa prev.r) (UnlockKey k) ;
-            prev.locks <- lst ;
-            (match lst with
-            | [] -> ()
-            | u :: _ ->
-                let uid = IO.to_string User.print_id (User.id u) in
-                notify t k (User.has_capa prev.r) (LockKey (k, uid)))
-        | u' :: _ ->
+        | (u', _) :: _ when User.equal u u' ->
+            do_unlock t k prev
+        | (u', _) :: _ ->
             locked_by k u'
         | [] ->
             Printf.sprintf2 "Key %a: not locked" Key.print k |>
             failwith)
 
   (* Helper for internal user: *)
-  let create_unlocked srv k v ~r ~w ~s =
-    create srv User.internal k v ~r ~w ~s ;
+  let create_unlocked srv ?lock_timeo k v ~r ~w ~s =
+    create srv User.internal k v ?lock_timeo ~r ~w ~s ;
     unlock srv User.internal k
 
-  let create_or_update srv k v ~r ~w ~s =
+  let create_or_update srv ?lock_timeo k v ~r ~w ~s =
     match H.find srv.h k with
     | exception Not_found ->
-        create_unlocked srv k v ~r ~w ~s
+        create_unlocked srv ?lock_timeo k v ~r ~w ~s
     | hv ->
         if not (Value.equal hv.v v) then (
-          (* We have to disregard locks, as config file has priority
-           * (until it goes away) *)
-          set srv User.internal k v
+          set srv User.internal ?lock_timeo k v
         )
 
   let subscribe_user t socket u sel =
@@ -263,6 +297,7 @@ struct
         t.send_msg (SrvMsg.NewKey (k, hv.v, uid, hv.mtime))
                    (Enum.singleton socket) ;
         (* Will be created locked by client: *)
+        timeout_locks t k hv ;
         if hv.locks = [] then
           t.send_msg (SrvMsg.UnlockKey k) (Enum.singleton socket)
       )
@@ -308,11 +343,11 @@ struct
       | CltMsg.SetKey (k, v) ->
           set t u k v
 
-      | CltMsg.NewKey (k, v) ->
+      | CltMsg.NewKey (k, v, lock_timeo) ->
           let r = Capa.anybody
           and w = User.only_me u
           and s = false in
-          create t u k v ~r ~w ~s
+          create t u k v ~r ~w ~s ~lock_timeo
 
       | CltMsg.UpdKey (k, v) ->
           update t u k v
@@ -320,11 +355,11 @@ struct
       | CltMsg.DelKey k ->
           del t u k
 
-      | CltMsg.LockKey k ->
-          lock t u k ~must_exist:true
+      | CltMsg.LockKey (k, lock_timeo) ->
+          lock t u k ~must_exist:true ~lock_timeo
 
-      | CltMsg.LockOrCreateKey k ->
-          lock t u k ~must_exist:false
+      | CltMsg.LockOrCreateKey (k, lock_timeo) ->
+          lock t u k ~must_exist:false ~lock_timeo
 
       | CltMsg.UnlockKey k ->
           unlock t u k

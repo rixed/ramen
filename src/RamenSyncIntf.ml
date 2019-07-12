@@ -65,6 +65,7 @@
  * So let's put all this into types:
  *)
 open Batteries
+open RamenHelpers
 
 (* We call "id" a type that identifies something and that must be comparable
  * and hashable for cheap. *)
@@ -187,14 +188,14 @@ struct
        * Capa will be set by the callback on server side.
        * Notice that Set works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
-      | NewKey of Key.t * Value.t (* TODO: and the r/w permissions *)
+      | NewKey of Key.t * Value.t * float (* TODO: and the r/w permissions *)
       (* Like SetKey but fails if the key does not exist yet: *)
       | UpdKey of Key.t * Value.t
       | DelKey of Key.t
       (* Will fail if the key does not exist yet: *)
-      | LockKey of Key.t
+      | LockKey of Key.t * float
       (* Will create a dummy value (locked) if the key does not exist yet: *)
-      | LockOrCreateKey of Key.t
+      | LockOrCreateKey of Key.t * float
       | UnlockKey of Key.t
 
     type t = int * cmd
@@ -207,9 +208,17 @@ struct
 
     let print_cmd oc cmd =
       let print1 n k =
-        Printf.fprintf oc "%s %a" n Key.print k
+        Printf.fprintf oc "%s %a"
+          n Key.print k
       and print2 n k v =
-        Printf.fprintf oc "%s (%a, %a)" n Key.print k Value.print v in
+        Printf.fprintf oc "%s (%a, %a)"
+          n Key.print k Value.print v
+      and print1d n k d =
+        Printf.fprintf oc "%s (%a, %a)"
+          n Key.print k print_as_duration d
+      and print2d n k v d =
+        Printf.fprintf oc "%s (%a, %a, %a)"
+          n Key.print k Value.print v print_as_duration d in
       match cmd with
       | Auth creds ->
           Printf.fprintf oc "Auth %a"
@@ -219,16 +228,16 @@ struct
             Selector.print sel
       | SetKey (k, v) ->
           print2 "SetKey" k v
-      | NewKey (k, v) ->
-          print2 "NewKey" k v
+      | NewKey (k, v, d) ->
+          print2d "NewKey" k v d
       | UpdKey (k, v) ->
           print2 "UpdKey" k v
       | DelKey k ->
           print1 "DelKey" k
-      | LockKey k ->
-          print1 "LockKey" k
-      | LockOrCreateKey k ->
-          print1 "LockOrCreateKey" k
+      | LockKey (k, d) ->
+          print1d "LockKey" k d
+      | LockOrCreateKey (k, d) ->
+          print1d "LockOrCreateKey" k d
       | UnlockKey k ->
           print1 "UnlockKey" k
 
@@ -242,7 +251,7 @@ struct
       | AuthOk of Key.t (* the key used for error logs *)
       | AuthErr of string (* an error message *)
       (* Set or create unlocked: *)
-      | SetKey of (Key.t * Value.t * string * float)
+      | SetKey of (Key.t * Value.t * string * float (* mtime *))
       (* Create and set, locked: *)
       | NewKey of (Key.t * Value.t * string * float)
       | DelKey of Key.t

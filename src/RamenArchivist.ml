@@ -991,7 +991,7 @@ let realloc_sync conf ~while_ clt =
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
           site_fq_print (site, fq) ;
-        ZMQClient.send_cmd clt ~while_ (NewKey (k, v)) ;
+        ZMQClient.send_cmd clt ~while_ (NewKey (k, v, 0.)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then

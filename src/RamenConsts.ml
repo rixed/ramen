@@ -457,6 +457,14 @@ struct
   (* Default query period when unspecified in a retention configuration: *)
   let query_period = 600.
 
+  (* Default lock timeout: *)
+  let sync_lock_timeout = 2.
+
+  (* Lock timeout used when compiling a program: *)
+  let sync_compile_timeo = 240.
+
+  (* Lock timeout used when a human is editing the configuration: *)
+  let sync_gui_lock_timeout = 600.
 end
 
 module SpecialFunctions =

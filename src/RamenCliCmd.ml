@@ -394,15 +394,14 @@ let compile_sync conf replace src_file source_name_opt =
   start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
                   ~topics (fun clt ->
       if replace then
-        send_cmd clt ~while_ (LockOrCreateKey k_source)
+        send_cmd clt ~while_
+          (LockOrCreateKey (k_source, Default.sync_lock_timeout))
           ~on_ko ~on_ok:(fun () ->
             send_cmd clt ~while_ (SetKey (k_source, value))
               ~on_ko ~on_ok:(fun () ->
                 send_cmd clt ~while_ (UnlockKey k_source)))
       else
-        send_cmd clt ~while_ (NewKey (k_source, value))
-          ~on_ko ~on_ok:(fun () ->
-            send_cmd clt ~while_ (UnlockKey k_source)) ;
+        send_cmd clt ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
       let num_msg = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" num_msg)
 
@@ -434,7 +433,8 @@ let compserver conf daemonize to_stdout to_syslog
         let unlock () =
           !logger.debug "Unlocking %a" Key.print k_info ;
           send_cmd clt ~while_ (UnlockKey k_info) in
-        send_cmd clt ~while_ (LockOrCreateKey k_info)
+        send_cmd clt ~while_
+          (LockOrCreateKey (k_info, Default.sync_compile_timeo))
           ~on_ko:unlock ~on_ok:(fun () ->
             let tmp_src_file =
               N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
@@ -1310,7 +1310,7 @@ let tail_sync
         conf.C.login ^"-tail-"^ string_of_int (Unix.getpid ()) in
       List.iter (fun (site, _w) ->
         let k = Key.Tails (site, fq, Subscriber subscriber) in
-        let cmd = Client.CltMsg.NewKey (k, Value.dummy) in
+        let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
         ZMQClient.send_cmd clt ~while_ cmd
       ) workers ;
       (* Loop *)

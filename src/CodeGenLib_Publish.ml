@@ -74,7 +74,7 @@ let may_publish_tail clt ?while_ key_of_seq
       let v = RamenSync.Value.Tuple { skipped ; values } in
       let seq = IntCounter.get stats_num_sync_msgs_out in
       let k = key_of_seq seq in
-      let cmd = RamenSync.Client.CltMsg.NewKey (k, v) in
+      let cmd = RamenSync.Client.CltMsg.NewKey (k, v, 0.) in
       ZMQClient.send_cmd clt ?while_ cmd
   | _ -> ()
 

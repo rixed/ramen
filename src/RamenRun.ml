@@ -91,7 +91,7 @@ let bad_type expected actual k =
 let get_key clt ~while_ k cont =
   let open RamenSync in
   !logger.debug "get_key %a" Key.print k ;
-  ZMQClient.(send_cmd clt ~while_ (LockKey k)
+  ZMQClient.(send_cmd clt ~while_ (LockKey (k, Default.sync_lock_timeout))
     ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
       match Client.find clt k with
       | exception Not_found ->

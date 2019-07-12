@@ -1587,7 +1587,7 @@ let synchronize_running_sync conf _autoreload_delay =
                 let replayer_k =
                   Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
                 ZMQClient.send_cmd clt ~while_ ~eager:true
-                  (NewKey (replayer_k, Value.Replayer r))
+                  (NewKey (replayer_k, Value.Replayer r, 0.))
             | k, r ->
                 !logger.debug
                   "Adding replay for channel %a into replayer created at %a"

@@ -181,7 +181,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
     | CltMsg.StartSync _ ->
         ()
     | CltMsg.SetKey (k, v)
-    | CltMsg.NewKey (k, v)
+    | CltMsg.NewKey (k, v, _)
     | CltMsg.UpdKey (k, v) ->
         add_done_cb cb k
           (function
@@ -193,8 +193,8 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
           (function
           | SrvMsg.DelKey _ -> true
           | _ -> false)
-    | CltMsg.LockKey k
-    | CltMsg.LockOrCreateKey k ->
+    | CltMsg.LockKey (k, _)
+    | CltMsg.LockOrCreateKey (k, _) ->
         add_done_cb cb k
           (function
           | SrvMsg.LockKey (_, uid) when uid = my_uid -> true
@@ -220,7 +220,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
         (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
   if eager then (
     match cmd with
-    | SetKey (k, v) | NewKey (k, v) | UpdKey (k, v) ->
+    | SetKey (k, v) | NewKey (k, v, _) | UpdKey (k, v) ->
         let new_hv () =
           Client.{ value = v ;
                    locked = Some clt.Client.uid ;
@@ -273,7 +273,8 @@ let matching_keys clt f =
   (fun (k, _) -> if f k then Some k else None) |>
   List.of_enum
 
-let with_locked_matching ?while_ clt f cb =
+let with_locked_matching
+      ?while_ ?(lock_timeo=Default.sync_lock_timeout) clt f cb =
   let keys = matching_keys clt f in
   let rec loop unlock_all = function
     | [] ->
@@ -288,7 +289,7 @@ let with_locked_matching ?while_ clt f cb =
         let on_ok () =
           loop unlock_all' rest in
         send_cmd ?while_ ~on_ok ~on_ko:unlock_all clt
-          (CltMsg.LockKey key) in
+          (CltMsg.LockKey (key, lock_timeo)) in
   loop ignore keys
 
 module Stage =

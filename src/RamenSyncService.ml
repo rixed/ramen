@@ -177,7 +177,7 @@ let zock_step srv zock =
              * TODO: in theory, also monitor DelKey to update last_tuples
              * secondary hash. *)
             (match m with
-            | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _) ->
+            | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
                 Hashtbl.modify_opt (site, fq) (function
                   | None ->
                       let seqs =

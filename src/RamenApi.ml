@@ -687,7 +687,7 @@ let save_alert_local conf program_name alert_info =
     with e ->
       (* In case of error, do not leave the alert definition file so that the
        * client can retry, but keep it for later inspection: *)
-      log_and_ignore_exceptions Files.move_away src_file ;
+      log_and_ignore_exceptions Files.move_aside src_file ;
       raise e
   ) else
     (* TODO: demote back into debug once the dust has settled down: *)
