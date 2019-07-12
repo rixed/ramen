@@ -1214,7 +1214,9 @@ clean:
 	@$(RM) .depend src/*.opt src/*.byte
 	@$(RM) src/RamenFileNotify.ml src/RamenCompilConfig.ml
 	@$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
+ifneq ($(QMAKE),)
 	@$(MAKE) -C rmadmin clean
+endif
 	@$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
 	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
