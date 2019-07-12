@@ -2,6 +2,7 @@
   programs = { "in" => { bin = "in.x" } };
   outputs = {
     "in/f1" => {
+      timeout = 15;
       present = [
         { "t1" => "true"; "t2" => "true"; "t3" => "true"; "t4" => "true";
           "t5" => "true"; "t6" => "true"; "t7" => "true"; "t8" => "true";
