@@ -105,7 +105,7 @@ let safe_open (fname : N.path) flags perms =
 let safe_close fd =
   log_and_ignore_exceptions Unix.(restart_on_EINTR close) fd
 
-let move_away (fname : N.path) =
+let move_aside (fname : N.path) =
   let bad_file = N.cat fname (N.path ".bad?") in
   ignore_exceptions safe_unlink bad_file ;
   (try restart_on_eintr (rename fname) bad_file
@@ -199,7 +199,7 @@ let rec ensure_exists ?(contents="") ?min_size fname =
       (* Not my business, wait until the file length is at least min_size,
        * which realistically should not take more than 1s: *)
       let redo () =
-        move_away fname ;
+        move_aside fname ;
         ensure_exists ~contents ?min_size fname
       in
       if is_older_than ~on_err:true 3. fname then (

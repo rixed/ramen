@@ -181,8 +181,9 @@ struct
     type cmd =
       | Auth of Key.User.PubCredentials.t
       | StartSync of Selector.t
+      (* Set or create unlocked: *)
       | SetKey of Key.t * Value.t
-      (* Like SetKey but fail if the key already exists.
+      (* Create and lock, or fail if already exist.
        * Capa will be set by the callback on server side.
        * Notice that Set works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
@@ -240,7 +241,9 @@ struct
     type t =
       | AuthOk of Key.t (* the key used for error logs *)
       | AuthErr of string (* an error message *)
+      (* Set or create unlocked: *)
       | SetKey of (Key.t * Value.t * string * float)
+      (* Create and set, locked: *)
       | NewKey of (Key.t * Value.t * string * float)
       | DelKey of Key.t
       (* With the username of the lock owner: *)

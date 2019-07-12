@@ -211,10 +211,10 @@ let rescue_worker fq state_file input_ringbufs out_ref =
   !logger.info "Worker %a is deadlooping. Deleting its state file, \
                 input ringbuffers and out_ref."
     N.fq_print fq ;
-  Files.move_away state_file ;
+  Files.move_aside state_file ;
   (* At this stage there should be no writers since this worker is stopped. *)
-  List.iter Files.move_away input_ringbufs ;
-  Files.move_away out_ref
+  List.iter Files.move_aside input_ringbufs ;
+  Files.move_aside out_ref
 
 (* TODO: workers should monitor the conftree for change in children
  * and need no out_ref any longer *)
