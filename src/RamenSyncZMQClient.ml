@@ -8,6 +8,19 @@ open RamenSync
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
 
+(* FIXME: We want to make all extra parameters (clt and zock) disappear in order
+ * to simplify passing them to httpd router functions. But we also need clt
+ * for inspecting the hash. Both zock and clt should go into the conf parameter
+ * which role it is! So we need to reorder the conf type so that it can
+ * have a SyncClient and a Zocket, or move Sync modules much higher up the
+ * list of modules. This requires to rethink module dependencies though. *)
+
+(* Set once synchronized *)
+let zock_clt : ([`Dealer] Zmq.Socket.t * Client.t) option ref = ref None
+
+let get_connection () =
+  option_get "zock_clt" !zock_clt
+
 let retry_zmq ?while_ f =
   let on = function
     (* EWOULDBLOCK: According to 0mq documentation blocking is supposed
@@ -132,7 +145,8 @@ let next_id = ref None
 let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
-let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
+let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
+  let zock, _clt = get_connection () in
   let my_uid =
     IO.to_string User.print_id clt.Client.uid in
   let cmd_id =
@@ -234,7 +248,8 @@ let send_cmd clt zock ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
           CltMsg.print_cmd cmd
   )
 
-let recv_cmd zock =
+let recv_cmd _clt =
+  let zock, _clt = get_connection () in
   match Zmq.Socket.recv_all zock with
   | [ "" ; s ] ->
       (* !logger.debug "srv message (raw): %S" s ; *)
@@ -258,7 +273,7 @@ let matching_keys clt f =
   (fun (k, _) -> if f k then Some k else None) |>
   List.of_enum
 
-let with_locked_matching clt zock ?while_ f cb =
+let with_locked_matching ?while_ clt f cb =
   let keys = matching_keys clt f in
   let rec loop unlock_all = function
     | [] ->
@@ -268,11 +283,11 @@ let with_locked_matching clt zock ?while_ f cb =
         unlock_all ()
     | key :: rest ->
         let unlock_all' () =
-          send_cmd clt zock ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
+          send_cmd ?while_ ~on_ok:unlock_all ~on_ko:unlock_all clt
             (CltMsg.UnlockKey key) in
         let on_ok () =
           loop unlock_all' rest in
-        send_cmd clt zock ?while_ ~on_ok ~on_ko:unlock_all
+        send_cmd ?while_ ~on_ok ~on_ko:unlock_all clt
           (CltMsg.LockKey key) in
   loop ignore keys
 
@@ -309,7 +324,8 @@ let default_on_progress _clt stage status =
   | _ -> !logger.debug)
     "%a: %a" Stage.print stage Status.print status
 
-let init_connect ?while_ url clt zock on_progress =
+let init_connect clt ?while_ url on_progress =
+  let zock, _clt = get_connection () in
   let url = if String.contains url ':' then url
             else url ^":"^ string_of_int Default.confserver_port in
   let connect_to = "tcp://"^ url in
@@ -322,11 +338,11 @@ let init_connect ?while_ url clt zock on_progress =
   with e ->
     on_progress clt Stage.Conn Status.(InitFail (Printexc.to_string e))
 
-let init_auth ?while_ login clt zock on_progress =
+let init_auth ?while_ clt login on_progress =
   on_progress clt Stage.Auth Status.InitStart ;
   try
-    send_cmd clt zock ?while_ (CltMsg.Auth login) ;
-    match retry_zmq ?while_ recv_cmd zock with
+    send_cmd ?while_ clt (CltMsg.Auth login) ;
+    match retry_zmq ?while_ recv_cmd clt with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg clt msg ;
         on_progress clt Stage.Auth Status.InitOk
@@ -340,10 +356,10 @@ let init_auth ?while_ login clt zock on_progress =
 
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
-let process_in ?(while_=always) ?(single=false) zock clt =
+let process_in ?(while_=always) ?(single=false) clt =
   let rec loop msg_count =
     if while_ () then
-      match recv_cmd zock with
+      match recv_cmd clt with
       | exception Unix.(Unix_error (EAGAIN, _, _)) ->
           msg_count
       | msg ->
@@ -354,7 +370,7 @@ let process_in ?(while_=always) ?(single=false) zock clt =
       msg_count in
   loop 0
 
-let init_sync ?while_ clt zock topics on_progress =
+let init_sync ?while_ clt topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;
   let globs = List.map Globs.compile topics in
   (* Also subscribe to the error messages, unless it's covered already: *)
@@ -375,9 +391,9 @@ let init_sync ?while_ clt zock topics on_progress =
     | [glob] ->
         (* Last command: wait until it's acked *)
         let on_ok () = synced := true in
-        send_cmd clt zock ?while_ ~on_ok (CltMsg.StartSync glob)
+        send_cmd ?while_ ~on_ok clt (CltMsg.StartSync glob)
     | glob :: rest ->
-        send_cmd clt zock ?while_ (CltMsg.StartSync glob) ;
+        send_cmd ?while_ clt (CltMsg.StartSync glob) ;
         loop rest in
   match loop globs with
   | exception e ->
@@ -390,16 +406,16 @@ let init_sync ?while_ clt zock topics on_progress =
         (match while_ with Some f -> f () | None -> true) in
       while while_ () do
         !logger.debug "Wait for end of sync..." ;
-        let msg_count = process_in ~while_ zock clt in
+        let msg_count = process_in ~while_ clt in
         !logger.debug "Received %d messages" msg_count
       done
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ url creds ?(topics=[])
           ?(on_progress=default_on_progress)
-          ?(on_sock=ignore2) ?(on_synced=ignore2)
-          ?(on_new=ignore6) ?(on_set=ignore6) ?(on_del=ignore4)
-          ?(on_lock=ignore4) ?(on_unlock=ignore3)
+          ?(on_sock=ignore1) ?(on_synced=ignore1)
+          ?(on_new=ignore5) ?(on_set=ignore5) ?(on_del=ignore3)
+          ?(on_lock=ignore3) ?(on_unlock=ignore2)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
   let to_ms f =
     if f < 0. then -1 else int_of_float (f *. 1000.) in
@@ -408,17 +424,18 @@ let start ?while_ url creds ?(topics=[])
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
       let zock = Zmq.Socket.(create ctx dealer) in
-      let on_new = check_set_cbs true (on_new zock)
-      and on_set = check_set_cbs false (on_set zock)
-      and on_del = check_del_cbs (on_del zock)
-      and on_lock = check_lock_cbs (on_lock zock)
-      and on_unlock = check_unlock_cbs (on_unlock zock) in
+      let on_new = check_set_cbs true on_new
+      and on_set = check_set_cbs false on_set
+      and on_del = check_del_cbs on_del
+      and on_lock = check_lock_cbs on_lock
+      and on_unlock = check_unlock_cbs on_unlock in
       let clt =
         Client.make ~uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+      zock_clt := Some (zock, clt) ;
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          on_sock zock clt ;
+          on_sock clt ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:
@@ -428,13 +445,12 @@ let start ?while_ url creds ?(topics=[])
           Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
           Zmq.Socket.set_send_high_water_mark zock 0 ;
           log_exceptions ~what:"init_connect"
-            (fun () -> init_connect ?while_ url clt zock on_progress) ;
+            (fun () -> init_connect clt ?while_ url on_progress) ;
           log_exceptions ~what:"init_auth"
-            (fun () -> init_auth ?while_ creds clt zock on_progress) ;
+            (fun () -> init_auth ?while_ clt creds on_progress) ;
           log_exceptions ~what:"init_sync"
-            (fun () -> init_sync ?while_ clt zock topics on_progress) ;
-          on_synced clt zock ;
-          log_exceptions ~what:"sync_loop"
-            (fun () -> sync_loop zock clt)
+            (fun () -> init_sync ?while_ clt topics on_progress) ;
+          on_synced () ;
+          log_exceptions ~what:"sync_loop" (fun () -> sync_loop clt)
         ) ()
     ) ()

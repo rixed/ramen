@@ -1152,7 +1152,7 @@ let get_string_list =
       Option.some
   | _ -> None
 
-let update_child_status conf ~while_ clt zock site fq sign pid =
+let update_child_status conf ~while_ clt site fq sign pid =
   let what =
     Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
@@ -1168,10 +1168,10 @@ let update_child_status conf ~while_ clt zock site fq sign pid =
       (if is_err then !logger.error else info_or_test conf)
         "%s %s." what status_str ;
       let now = Unix.gettimeofday () in
-      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+      ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key site fq sign LastExit,
                  RamenSync.Value.Float now)) ;
-      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+      ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key site fq sign LastExitStatus,
                  RamenSync.Value.String status_str)) ;
       let input_ringbufs =
@@ -1185,7 +1185,7 @@ let update_child_status conf ~while_ clt zock site fq sign pid =
           | Some (RamenSync.Value.Int i) -> Some (Int64.to_int i)
           | _ -> None) in
       if is_err then (
-        ZMQClient.send_cmd clt zock ~while_ ~eager:true
+        ZMQClient.send_cmd clt ~while_ ~eager:true
           (SetKey (succ_fail_k,
                    RamenSync.Value.Int (Int64.of_int (succ_failures + 1)))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
@@ -1211,10 +1211,10 @@ let update_child_status conf ~while_ clt zock site fq sign pid =
       (* Wait before attempting to restart a failing worker: *)
       let max_delay = float_of_int succ_failures in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
-      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+      ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key site fq sign QuarantineUntil,
                  RamenSync.Value.Float quarantine_until)) ;
-      ZMQClient.send_cmd clt zock ~while_ ~eager:true
+      ZMQClient.send_cmd clt ~while_ ~eager:true
         (DelKey (per_instance_key site fq sign Pid)))
 
 (* This worker is running. Should it? *)
@@ -1227,7 +1227,7 @@ let should_run clt site fq sign =
   | hv ->
       RamenSync.invalid_sync_type k hv.value "a worker"
 
-let may_kill conf ~while_ clt zock site fq sign pid =
+let may_kill conf ~while_ clt site fq sign pid =
   let last_killed_k = per_instance_key site fq sign LastKilled in
   let last_killed = ref (
     find_or_fail "a float" clt last_killed_k (function
@@ -1245,7 +1245,7 @@ let may_kill conf ~while_ clt zock site fq sign pid =
     (Unix.kill pid) Sys.sigcont ;
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   kill_politely conf last_killed what pid stats_worker_sigkills ;
-  ZMQClient.send_cmd clt zock ~while_ ~eager:true
+  ZMQClient.send_cmd clt ~while_ ~eager:true
     (SetKey (last_killed_k, RamenSync.Value.Float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
@@ -1288,7 +1288,7 @@ let get_bin_file conf clt fq sign info =
  * Choreographer also should have set, and update those parents out_ref.
  * Then we can spawn that binary, with the parameters also set by
  * the choreographer. *)
-let try_start_instance conf ~while_ clt zock site fq sign worker =
+let try_start_instance conf ~while_ clt site fq sign worker =
   !logger.info "Must start %a for %a"
     RamenSync.Value.Worker.print worker
     N.fq_print fq ;
@@ -1351,17 +1351,17 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
                  worker.report_period bin_file parent_links children
                  input_ringbufs state_file out_ringbuf_ref in
   let k = per_instance_key site fq sign LastKilled in
-  ZMQClient.send_cmd clt zock ~eager:true ~while_ (DelKey k) ;
+  ZMQClient.send_cmd clt ~eager:true ~while_ (DelKey k) ;
   let k = per_instance_key site fq sign Pid in
-  ZMQClient.send_cmd clt zock ~eager:true ~while_
+  ZMQClient.send_cmd clt ~eager:true ~while_
                      (SetKey (k, RamenSync.Value.(Int (Int64.of_int pid)))) ;
   let k = per_instance_key site fq sign StateFile
   and v = RamenSync.Value.(String (state_file :> string)) in
-  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v)) ;
+  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   Option.may (fun out_ringbuf_ref ->
     let k = per_instance_key site fq sign OutRefFile
     and v = RamenSync.Value.(String out_ringbuf_ref) in
-    ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v))
+    ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
   let k = per_instance_key site fq sign InputRingFiles
   and v =
@@ -1369,16 +1369,16 @@ let try_start_instance conf ~while_ clt zock site fq sign worker =
             (fun f -> T.VString f) |>
             Array.of_enum in
     RamenSync.Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v)) ;
+  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   let k = per_instance_key site fq sign ParentOutRefs
   and v =
     let l = List.enum parent_links /@
             (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
             Array.of_enum in
     RamenSync.Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd clt zock ~eager:true ~while_ (SetKey (k, v))
+  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
 
-let remove_dead_chans conf clt zock ~while_ replayer_k replayer =
+let remove_dead_chans conf clt ~while_ replayer_k replayer =
   let open RamenSync in
   let channels, changed =
     Set.fold (fun chan (channels, changed) ->
@@ -1403,14 +1403,14 @@ let remove_dead_chans conf clt zock ~while_ replayer_k replayer =
     ) ;
     let replayer =
       Value.Replayer { replayer with channels ; last_killed = !last_killed } in
-    ZMQClient.send_cmd clt zock ~while_ ~eager:true
+    ZMQClient.send_cmd clt ~while_ ~eager:true
       (UpdKey (replayer_k, replayer))
 
 let update_replayer_status
-      conf clt zock ~while_ now site fq replayer_id replayer_k replayer =
+      conf clt ~while_ now site fq replayer_id replayer_k replayer =
   let open RamenSync in
   let rem_replayer () =
-    ZMQClient.send_cmd clt zock ~while_ (DelKey replayer_k) in
+    ZMQClient.send_cmd clt ~while_ (DelKey replayer_k) in
   match replayer.Value.Replayer.pid with
   | None ->
       (* Maybe start it? *)
@@ -1452,7 +1452,7 @@ let update_replayer_status
               Replay.spawn_source_replay
                 conf func bin since until replayer.channels replayer_id in
             let v = Value.Replayer { replayer with pid = Some pid } in
-            ZMQClient.send_cmd clt zock ~while_ ~eager:true
+            ZMQClient.send_cmd clt ~while_ ~eager:true
               (UpdKey (replayer_k, v)) ;
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
                           (float_of_int (Set.cardinal replayer.channels))
@@ -1483,13 +1483,13 @@ let update_replayer_status
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
             let replayer =
               Value.Replayer { replayer with exit_status = Some status_str } in
-            ZMQClient.send_cmd clt zock ~while_ ~eager:true
+            ZMQClient.send_cmd clt ~while_ ~eager:true
               (UpdKey (replayer_k, replayer)))
 
 (* Loop over all keys, which is mandatory to monitor pid terminations,
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
-let synchronize_once conf ~while_ clt zock =
+let synchronize_once conf ~while_ clt =
   let now = Unix.gettimeofday () in
   let open RamenSync in
   Client.iter_safe clt (fun k hv ->
@@ -1500,31 +1500,31 @@ let synchronize_once conf ~while_ clt zock =
         Value.Int pid
         when site = conf.C.site ->
           let pid = Int64.to_int pid in
-          update_child_status conf ~while_ clt zock site fq sign pid ;
+          update_child_status conf ~while_ clt site fq sign pid ;
           if not (should_run clt site fq sign) then
-            may_kill conf ~while_ clt zock site fq sign pid
+            may_kill conf ~while_ clt site fq sign pid
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker
         when site = conf.C.site ->
           if worker.enabled && not (is_running clt site fq worker.signature) then
             try_start_instance
-              conf ~while_ clt zock site fq worker.signature worker
+              conf ~while_ clt site fq worker.signature worker
       | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
         Value.Replayer replayer
         when site = conf.C.site ->
-          remove_dead_chans conf clt zock ~while_ replayer_k replayer ;
+          remove_dead_chans conf clt ~while_ replayer_k replayer ;
           update_replayer_status
-            conf clt zock ~while_ now site fq id replayer_k replayer
+            conf clt ~while_ now site fq id replayer_k replayer
       | _ -> ()) ()
   )
 
 let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let rec loop zock clt =
+  let rec loop clt =
     while while_ () do
-      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Processed %d messages" msg_count ;
-      synchronize_once conf ~while_ clt zock
+      synchronize_once conf ~while_ clt 
     done in
   let topics =
     [ (* All sites are needed because we need parent worker :(
@@ -1539,7 +1539,7 @@ let synchronize_running_sync conf _autoreload_delay =
       "sites/"^ (conf.C.site :> string) ^"/workers/*/replayers/*" ] in
   (* Setting up/Tearing down replays is easier when they are added/removed: *)
   let open RamenSync in
-  let on_del _zock clt k v =
+  let on_del clt k v =
     match k, v with
     | Key.Replays chan,
       Value.Replay replay ->
@@ -1552,7 +1552,7 @@ let synchronize_running_sync conf _autoreload_delay =
           F.unserialized prog_name func in
         Replay.teardown_links conf func_of_fq replay
     | _ -> ()
-  and on_new zock clt k v _uid _mtime =
+  and on_new clt k v _uid _mtime =
     match k, v with
     | Key.Replays chan,
       Value.Replay replay ->
@@ -1586,7 +1586,7 @@ let synchronize_running_sync conf _autoreload_delay =
                 let r = Value.Replayer.make now time_range channels in
                 let replayer_k =
                   Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
-                ZMQClient.send_cmd clt zock ~while_ ~eager:true
+                ZMQClient.send_cmd clt ~while_ ~eager:true
                   (NewKey (replayer_k, Value.Replayer r))
             | k, r ->
                 !logger.debug
@@ -1596,7 +1596,7 @@ let synchronize_running_sync conf _autoreload_delay =
                   TimeRange.merge r.time_range [ replay.since, replay.until ]
                 and channels = Set.add chan r.channels in
                 let replayer = Value.Replayer { r with time_range ; channels } in
-                ZMQClient.send_cmd clt zock ~while_ ~eager:true
+                ZMQClient.send_cmd clt ~while_ ~eager:true
                   (UpdKey (k, replayer)))
         ) replay.sources
     | _ -> ()

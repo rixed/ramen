@@ -178,7 +178,7 @@ struct
 
   type t =
     | DevNull (* Special, nobody should be allowed to read it *)
-    | Sources of (N.path * string (* extension *))
+    | Sources of (N.path * string (* extension ; FIXME: a type for file type *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
     | PerProgram of (N.program * per_prog_key)
@@ -712,6 +712,46 @@ struct
         print_detail s.detail
   end
 
+  module Alert =
+  struct
+    type t =
+      | V1 of v1
+      (* ... and so on *)
+
+    and v1 =
+      { table : N.fq ;
+        column : N.field ;
+        enabled : bool ;
+        where : simple_filter list ;
+        having : simple_filter list ;
+        threshold : float ;
+        recovery : float ;
+        duration : float ;
+        ratio : float ;
+        time_step : float ;
+        (* Unused, for the client purpose only *)
+        id : string ;
+        (* Desc to use when firing/recovering: *)
+        desc_title : string ;
+        desc_firing : string ;
+        desc_recovery : string }
+
+    and simple_filter =
+      { lhs : N.field ;
+        rhs : string ;
+        op : string }
+
+    let print_v1 oc a =
+      Printf.fprintf oc "Alert { %a/%a %s %f }"
+        N.fq_print a.table
+        N.field_print a.column
+        (if a.threshold > a.recovery then ">" else "<")
+        a.threshold
+
+    let print oc = function
+      | V1 a -> print_v1 oc a
+  end
+
   module RuntimeStats =
   struct
     open Stdint
@@ -812,6 +852,7 @@ struct
     | RuntimeStats of RuntimeStats.t
     | Replay of Replay.t
     | Replayer of Replayer.t
+    | Alert of Alert.t
 
   let equal v1 v2 =
     match v1, v2 with
@@ -854,6 +895,8 @@ struct
         Replay.print oc r
     | Replayer r ->
         Replayer.print oc r
+    | Alert a ->
+        Alert.print oc a
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 

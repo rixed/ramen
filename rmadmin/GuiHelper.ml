@@ -37,16 +37,6 @@ let unexpected_reply cmd =
   failwith
 
 external signal_conn : string -> ZMQClient.Status.t -> unit = "signal_conn"
-let init_connect url zock =
-  let connect_to = "tcp://"^ url in
-  signal_conn url InitStart ;
-  try
-    !logger.info "Connecting to %s..." connect_to ;
-    Zmq.Socket.connect zock connect_to ;
-    signal_conn url InitOk
-  with e ->
-    signal_conn url (InitFail (Printexc.to_string e))
-
 external signal_auth : ZMQClient.Status.t -> unit = "signal_auth"
 external signal_sync : ZMQClient.Status.t -> unit = "signal_sync"
 
@@ -66,7 +56,7 @@ external next_pending_request : unit -> pending_req = "next_pending_request"
 
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
-let on_new _zock clt k v uid _mtime =
+let on_new clt k v uid _mtime =
   ignore clt ;
   Gc.compact () ;
   conf_new_key (Key.to_string k) v uid ;
@@ -74,7 +64,7 @@ let on_new _zock clt k v uid _mtime =
 
 external conf_set_key : string -> Value.t -> unit = "conf_set_key"
 
-let on_set _zock clt k v _u _mtime =
+let on_set clt k v _u _mtime =
   ignore clt ;
   Gc.compact () ;
   conf_set_key (Key.to_string k) v ;
@@ -82,7 +72,7 @@ let on_set _zock clt k v _u _mtime =
 
 external conf_del_key : string -> unit = "conf_del_key"
 
-let on_del _zock clt k _v =
+let on_del clt k _v =
   ignore clt ;
   Gc.compact () ;
   conf_del_key (Key.to_string k) ;
@@ -90,7 +80,7 @@ let on_del _zock clt k _v =
 
 external conf_lock_key : string -> string -> unit = "conf_lock_key"
 
-let on_lock _zock clt k uid =
+let on_lock clt k uid =
   ignore clt ;
   Gc.compact () ;
   conf_lock_key (Key.to_string k) uid ;
@@ -98,17 +88,17 @@ let on_lock _zock clt k uid =
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
-let on_unlock _zock clt k =
+let on_unlock clt k =
   ignore clt ;
   Gc.compact () ;
   conf_unlock_key (Key.to_string k) ;
   Gc.compact ()
 
-let sync_loop zock clt =
+let sync_loop clt =
   Gc.compact () ;
   let msg_count = ref 0 in
   let handle_msgs_in () =
-    match ZMQClient.recv_cmd zock with
+    match ZMQClient.recv_cmd () with
     | exception Unix.(Unix_error (EAGAIN, _, _)) ->
         ()
     | msg ->
@@ -129,22 +119,22 @@ let sync_loop zock clt =
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.NewKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.NewKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.LockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.LockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.LockOrCreateKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Unlock k ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
-        ZMQClient.send_cmd clt zock (Client.CltMsg.DelKey (Key.of_string k)) ;
+        ZMQClient.send_cmd clt (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do
@@ -172,11 +162,11 @@ let on_progress url clt stage status =
   | ZMQClient.Stage.Auth -> signal_auth
   | ZMQClient.Stage.Sync -> signal_sync) status
 
-let register_senders zock clt =
+let register_senders clt =
   let lock_from_cpp k =
-    ZMQClient.send_cmd clt zock (Client.CltMsg.LockOrCreateKey k)
+    ZMQClient.send_cmd clt (Client.CltMsg.LockOrCreateKey k)
   and unlock_from_cpp k =
-    ZMQClient.send_cmd clt zock (Client.CltMsg.UnlockKey k)
+    ZMQClient.send_cmd clt (Client.CltMsg.UnlockKey k)
   in
   ignore (Callback.register "lock_from_cpp" lock_from_cpp) ;
   ignore (Callback.register "unlock_from_cpp" unlock_from_cpp)

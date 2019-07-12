@@ -88,59 +88,66 @@ let bad_type expected actual k =
     expected |>
   failwith
 
-let get_key clt zock ~while_ k cont =
+let get_key clt ~while_ k cont =
   let open RamenSync in
   !logger.debug "get_key %a" Key.print k ;
-  ZMQClient.(send_cmd clt zock ~while_ (LockKey k)
+  ZMQClient.(send_cmd clt ~while_ (LockKey k)
     ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
       match Client.find clt k with
       | exception Not_found ->
           cannot "find" k
       | hv ->
           cont hv.value (fun () ->
-            ZMQClient.(send_cmd clt zock ~while_ (UnlockKey k)))))
+            ZMQClient.(send_cmd clt ~while_ (UnlockKey k)))))
 
-let kill_sync conf program_names =
+let kill_sync conf ?(purge=false) program_names =
+  let nb_kills = ref 0 in
   let done_ = ref false in
   let while_ () = !Processes.quit = None && not !done_ in
-  let num_kills = ref 0 in
   let topics = [ "target_config" ] in
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
-    (fun zock clt ->
+    (fun clt ->
       let open RamenSync in
-      get_key clt zock ~while_ Key.TargetConfig (fun v fin ->
+      get_key clt ~while_ Key.TargetConfig (fun v fin ->
         match v with
         | Value.TargetConfig rcs ->
             (* TODO: check_orphans running_killed_prog_names programs ; *)
-            let rcs =
-              List.filter (fun ((program_name : N.program), _rce) ->
-                if List.exists (fun glob ->
+            let to_keep, to_kill =
+              List.partition (fun ((program_name : N.program), _rce) ->
+                not (List.exists (fun glob ->
                      Globs.matches glob (program_name :> string)
-                   ) program_names
-                then (
-                  incr num_kills ;
-                  false
-                ) else true
+                   ) program_names)
               ) rcs in
-            let rcs = Value.TargetConfig rcs in
-            ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
+            let rcs = Value.TargetConfig to_keep in
+            ZMQClient.send_cmd clt ~while_ (SetKey (Key.TargetConfig, rcs))
               ~on_done:(fun () ->
-                !logger.info "Done!" ;
+                (* Also delete the info and sources. Used for instance when
+                 * deleting alerts. *)
+                if purge then
+                  List.iter (fun (_, rcs) ->
+                    let k typ =
+                      Key.Sources (rcs.Value.TargetConfig.src_path, typ) in
+                    (* TODO: A way to delete all keys matching a pattern *)
+                    ZMQClient.send_cmd clt ~while_ (DelKey (k "info")) ;
+                    ZMQClient.send_cmd clt ~while_ (DelKey (k "ramen")) ;
+                    ZMQClient.send_cmd clt ~while_ (DelKey (k "alert"))
+                  ) to_kill ;
+                nb_kills := List.length to_kill ;
                 fin () ;
                 done_ := true)
 
         | v ->
             fin () ;
             bad_type "TargetConfig" v Key.TargetConfig) ;
-      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count) ;
-    !num_kills
+  !nb_kills
 
 let kill conf ?purge program_names =
   if conf.C.sync_url = "" then (
     RC.with_wlock conf (kill_locked ?purge program_names)
   ) else (
-    kill_sync conf program_names
+    kill_sync conf ?purge program_names
   )
 
 (*
@@ -275,13 +282,13 @@ let run_sync src_path conf (program_name : N.program) replace report_period
     [ "target_config" ;
       "sources/"^ (src_path :> string) ^ "/info" ] in
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
-    (fun zock clt ->
+    (fun clt ->
       let open RamenSync in
-      get_key clt zock ~while_ Key.TargetConfig (fun v fin ->
+      get_key clt ~while_ Key.TargetConfig (fun v fin ->
         match v with
         | Value.TargetConfig rcs ->
             let src_key = Key.(Sources (src_path, "info")) in
-            get_key clt zock ~while_ src_key (fun v fin' ->
+            get_key clt ~while_ src_key (fun v fin' ->
               let fin () = fin' () ; fin () in
               match v with
               | Value.SourceInfo { detail = Compiled prog ; _ } ->
@@ -310,7 +317,7 @@ let run_sync src_path conf (program_name : N.program) replace report_period
                       debug ; report_period ; params ; src_path ; on_site } in
                   let rcs =
                     Value.TargetConfig ((program_name, rce) :: rcs) in
-                  ZMQClient.send_cmd clt zock ~while_ (SetKey (Key.TargetConfig, rcs))
+                  ZMQClient.send_cmd clt ~while_ (SetKey (Key.TargetConfig, rcs))
                     ~on_done:(fun () ->
                       !logger.info "Done!" ;
                       fin () ;
@@ -328,7 +335,7 @@ let run_sync src_path conf (program_name : N.program) replace report_period
         | v ->
             fin () ;
             bad_type "TargetConfig" v Key.TargetConfig) ;
-      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count)
 
 (* The binary must have been produced already as it's going to be read for

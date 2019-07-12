@@ -914,7 +914,7 @@ let run_loop conf ?while_ sleep_time stats allocs reconf =
     Processes.sleep_or_exit ?while_ (jitter sleep_time)
   done
 
-let realloc_sync conf ~while_ zock clt =
+let realloc_sync conf ~while_ clt =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Batteries.Hashtbl.t =
@@ -991,13 +991,13 @@ let realloc_sync conf ~while_ zock clt =
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
           site_fq_print (site, fq) ;
-        ZMQClient.send_cmd clt zock ~while_ (NewKey (k, v)) ;
+        ZMQClient.send_cmd clt ~while_ (NewKey (k, v)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
           !logger.warning "Allocation for %a is jumping from %Ld to %d bytes"
             site_fq_print (site, fq) prev_bytes bytes ;
-        ZMQClient.send_cmd clt zock ~while_ (UpdKey (k, v)) ;
+        ZMQClient.send_cmd clt ~while_ (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
   ) allocs ;
   (* Delete what's left in prev_allocs: *)
@@ -1005,7 +1005,7 @@ let realloc_sync conf ~while_ zock clt =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     !logger.info "No more allocated storage for %a"
       site_fq_print site_fq ;
-    ZMQClient.send_cmd clt zock ~while_ (DelKey k)
+    ZMQClient.send_cmd clt ~while_ (DelKey k)
   ) prev_allocs
 
 let run_sync conf ~while_ loop allocs reconf =
@@ -1027,7 +1027,7 @@ let run_sync conf ~while_ loop allocs reconf =
   and last_realloc = ref (Unix.time () -. min_duration_between_storage_alloc
                                        +. Default.report_period *. 2.)
   and last_reconf = ref 0. in
-  let on_del _zock _clt k _v =
+  let on_del _clt k _v =
     let open RamenSync in
     match k with
     | Key.PerSite (_, PerWorker (_, RuntimeStats))
@@ -1035,13 +1035,13 @@ let run_sync conf ~while_ loop allocs reconf =
         last_change := Unix.gettimeofday ()
     | _ ->
         () in
-  let on_set zock clt k v _uid _mtime =
-    on_del zock clt k v in
+  let on_set clt k v _uid _mtime =
+    on_del clt k v in
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login
                   ~on_set ~on_new:on_set ~on_del
-                  ~topics ~recvtimeo:5. (fun zock clt ->
+                  ~topics ~recvtimeo:5. (fun clt ->
     Processes.until_quit (fun () ->
-      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count ;
       let now = Unix.gettimeofday () in
       if allocs &&
@@ -1051,7 +1051,7 @@ let run_sync conf ~while_ loop allocs reconf =
       then (
         last_realloc := now ;
         !logger.info "Updating storage allocations" ;
-        realloc_sync conf ~while_ zock clt) ;
+        realloc_sync conf ~while_ clt) ;
       (* Note: for now we update the outref files (thus the restriction
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,

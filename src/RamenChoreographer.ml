@@ -19,7 +19,7 @@ let sites_matching p =
   Set.filter (fun (s : N.site) -> Globs.matches p (s :> string))
 
 (* Do not build a hashtbl but update the confserver directly. *)
-let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
+let update_conf_server conf ?(while_=always) clt sites rc_entries =
   assert (conf.C.sync_url <> "") ;
   let locate_parents site pname func =
     O.parents_of_operation func.FS.operation |>
@@ -130,7 +130,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
   let set_keys = ref Set.empty in
   let upd k v =
     set_keys := Set.add k !set_keys ;
-    ZMQClient.send_cmd clt zock ~while_ (SetKey (k, v)) in
+    ZMQClient.send_cmd clt ~while_ (SetKey (k, v)) in
   (* Notes regarding non-local children/parents:
    * We never ref top-halves (a ref is only site/program/function, no
    * role). But every time a children is not local, it can be assumed
@@ -228,7 +228,7 @@ let update_conf_server conf ?(while_=always) zock clt sites rc_entries =
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
-          ZMQClient.send_cmd clt zock ~while_ (DelKey k)
+          ZMQClient.send_cmd clt ~while_ (DelKey k)
       | _ -> ())
 
 let start conf ~while_ =
@@ -244,16 +244,16 @@ let start conf ~while_ =
     | RamenSync.Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
   let open RamenSync in
-  let on_set zock clt k v _uid _mtime =
+  let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig rc  ->
         let open ZMQClient in
-        with_locked_matching clt zock ~while_ is_my_key (fun () ->
+        with_locked_matching clt ~while_ is_my_key (fun () ->
           let sites = Services.all_sites conf in
-          update_conf_server conf ~while_ zock clt sites rc)
+          update_conf_server conf ~while_ clt sites rc)
     | _ -> ()
   in
   ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
-                  ~topics (fun zock clt ->
-    let num_msg = ZMQClient.process_in zock clt in
+                  ~topics (fun clt ->
+    let num_msg = ZMQClient.process_in clt in
     !logger.debug "Received %d messages" num_msg)

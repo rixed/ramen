@@ -37,6 +37,7 @@ static QString const stringOfValueType(ValueType valueType)
     [RuntimeStatsType] = "RuntimeStatsType",
     [ReplayType] = "ReplayType",
     [ReplayerType] = "ReplayerType",
+    [AlertType] = "AlertType",
     [LastValueType] = "LastValueType",
   };
   assert((size_t)valueType < SIZEOF_ARRAY(stringOfValueTypes));
@@ -342,6 +343,8 @@ Value *valueOfOCaml(value v_)
     case ReplayerType:
       ret = new Replayer(Field(v_, 0));
       break;
+    case AlertType:
+      ret = new Alert(Field(v_, 0));
     case LastValueType:
     default:
       assert(!"Tag_val(v_) <= LastValueType");
@@ -377,6 +380,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
     case RuntimeStatsType:
     case ReplayType:
     case ReplayerType:
+    case AlertType:
       assert(!"TODO: valueOfQString for exotic types");
       break;
     case RamenValueType:
@@ -941,6 +945,12 @@ Replay::Replay(value v_)
 Replayer::Replayer(value v_)
 {
   assert(6 == Wosize_val(v_));
+  // wtv, not used anywhere in the GUI for now
+}
+
+Alert::Alert(value v_)
+{
+  assert(1 == Wosize_val(v_)); // v1
   // wtv, not used anywhere in the GUI for now
 }
 

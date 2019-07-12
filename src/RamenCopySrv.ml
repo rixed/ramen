@@ -107,7 +107,7 @@ let serve_sync conf ~while_ fd =
       (pref :> string) ^"/instances/*/input_ringbufs" ] in
   let msg_count =
     ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
-                    (fun zock clt ->
+                    (fun clt ->
       (* We need the input ringbuf for this parent index. We need to get the
        * current signature for the worker and then read it, waiting to receive
        * those keys if not there yet. *)
@@ -137,7 +137,7 @@ let serve_sync conf ~while_ fd =
             invalid_sync_type worker_key hv.value "a worker") ;
       (* with_value just register a callback but we still have to turn the
        * crank: *)
-      ZMQClient.process_in ~while_ zock clt) in
+      ZMQClient.process_in ~while_ clt) in
   !logger.debug "Processed %d messages" msg_count
 
 (* Start the service: *)

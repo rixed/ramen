@@ -248,7 +248,7 @@ let replay_topics =
     "sources/*/info" ]
 
 let replay_sync conf ~while_ fq field_names where since until
-                ~with_event_time f zock clt =
+                ~with_event_time f clt =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   let open RamenSync in
@@ -302,12 +302,12 @@ let replay_sync conf ~while_ fq field_names where since until
       RingBuf.create replay.final_rb ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd clt zock ~while_ (CltMsg.NewKey (replay_k, v))) ;
+      ZMQClient.(send_cmd clt ~while_ (CltMsg.NewKey (replay_k, v))) ;
       let rb = RingBuf.load replay.final_rb in
       let ret =
         finally
           (fun () ->
-            ZMQClient.(send_cmd clt zock ~while_ (CltMsg.DelKey replay_k)) ;
+            ZMQClient.(send_cmd clt ~while_ (CltMsg.DelKey replay_k)) ;
             RingBuf.unload rb)
           (fun () ->
             (* Read the rb while monitoring children: *)

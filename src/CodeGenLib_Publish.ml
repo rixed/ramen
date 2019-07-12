@@ -25,7 +25,7 @@ let stats_num_rate_limited_unpublished =
   IntCounter.make Metric.Names.num_rate_limited_unpublished
     Metric.Docs.num_rate_limited_unpublished
 
-let on_new _zock _clt k _v _uid _mtime =
+let on_new _clt k _v _uid _mtime =
   match k with
   | RamenSync.Key.Tails (_, _, Subscriber uid) ->
       !logger.info "New subscriber: %s" uid ;
@@ -35,7 +35,7 @@ let on_new _zock _clt k _v _uid _mtime =
       IntGauge.set stats_num_subscribers (c + 1)
   | _ -> ()
 
-let on_del _zock _clt k _v =
+let on_del _clt k _v =
   match k with
   | RamenSync.Key.Tails (_, _, Subscriber uid) ->
       !logger.info "Leaving subscriber: %s" uid ;
@@ -47,8 +47,8 @@ let on_del _zock _clt k _v =
 
 (* Try to process input messages before any attempt to send anything
  * (non-blocking): *)
-let process_in ?while_ zock clt =
-  let msg_count = ZMQClient.process_in ?while_ zock clt in
+let process_in ?while_ clt =
+  let msg_count = ZMQClient.process_in ?while_ clt in
   if msg_count > 0 then
     !logger.info "Received %d ZMQ messages" msg_count ;
   IntCounter.add stats_num_sync_msgs_in msg_count
@@ -56,10 +56,10 @@ let process_in ?while_ zock clt =
 (* This is called for every output tuple. It is enough to read sync messages
  * that infrequently, as long as we subscribe only to this low frequency
  * topic and received messages can only impact what this function does. *)
-let may_publish_tail clt zock ?while_ key_of_seq
+let may_publish_tail clt ?while_ key_of_seq
                      sersize_of_tuple serialize_tuple skipped tuple =
   (* Process incoming messages without waiting for them: *)
-  process_in ?while_ zock clt ;
+  process_in ?while_ clt ;
   (* Now publish (if there are subscribers) *)
   match IntGauge.get stats_num_subscribers with
   | Some (_mi, num, _ma) when num > 0 ->
@@ -75,10 +75,10 @@ let may_publish_tail clt zock ?while_ key_of_seq
       let seq = IntCounter.get stats_num_sync_msgs_out in
       let k = key_of_seq seq in
       let cmd = RamenSync.Client.CltMsg.NewKey (k, v) in
-      ZMQClient.send_cmd ?while_ clt zock cmd
+      ZMQClient.send_cmd clt ?while_ cmd
   | _ -> ()
 
-let publish_stats clt zock ?while_ stats_key init_stats stats =
+let publish_stats clt ?while_ stats_key init_stats stats =
   (* Those stats are the stats since startup. Combine them with whatever was
    * present previously: *)
   let tot_stats =
@@ -125,7 +125,7 @@ let publish_stats clt zock ?while_ stats_key init_stats stats =
           max_ram = max init.max_ram stats.max_ram } in
   let v = RamenSync.Value.RuntimeStats tot_stats in
   let cmd = RamenSync.Client.CltMsg.SetKey (stats_key, v) in
-  ZMQClient.send_cmd ?while_ clt zock cmd
+  ZMQClient.send_cmd clt ?while_ cmd
 
 let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   let open RamenSync in
@@ -138,8 +138,8 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   fun conf ->
     ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del
-                    ~recvtimeo:0. ~sndtimeo:0. (fun zock clt ->
-      let publish_tail = may_publish_tail clt zock ?while_ topic_pub in
+                    ~recvtimeo:0. ~sndtimeo:0. (fun clt ->
+      let publish_tail = may_publish_tail clt ?while_ topic_pub in
       let stats_key =
         Key.(PerSite (site, PerWorker (fq, RuntimeStats))) in
       let init_stats =
@@ -153,5 +153,5 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
               Key.print stats_key
               Value.print v ;
             None in
-      let publish_stats = publish_stats clt zock ?while_ stats_key init_stats in
+      let publish_stats = publish_stats clt ?while_ stats_key init_stats in
       k publish_tail publish_stats conf)

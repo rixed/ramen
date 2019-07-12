@@ -206,7 +206,7 @@ let get_local conf num_points since until where factors
 (* Assumes the confclient has RamenExport.replay_topics in sync: *)
 let get_sync conf num_points since until where factors
              ?consolidation ?(bucket_time=Middle) (fq : N.fq) data_fields
-             ~while_ zock clt =
+             ~while_ clt =
   !logger.debug "Build time series for %s, data=%a, where=%a, factors=%a"
     (fq :> string)
     (List.print N.field_print) data_fields
@@ -331,7 +331,7 @@ let get_sync conf num_points since until where factors
         t, v)) in
   (* Must not add event time in front of factors: *)
   RamenExport.replay_sync conf ~while_ fq tuple_fields where since until
-                          ~with_event_time:false callback zock clt
+                          ~with_event_time:false callback clt
 
 (* [get] uses the number of points but users can specify either num-points or
  * the time-step (in which case [since] and [until] are aligned to a multiple

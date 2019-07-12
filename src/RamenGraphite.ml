@@ -27,6 +27,9 @@ module P = C.Program
 module O = RamenOperation
 module T = RamenTypes
 module N = RamenName
+module ZMQClient = RamenSyncZMQClient
+
+let while_ () = !RamenProcesses.quit = None
 
 type comp_section =
   | ProgPath
@@ -67,6 +70,7 @@ let fix_quote s =
 (* We might want to expand the last component of a metrics_find query: *)
 type factor_expansion = No | OnlyLast | All
 
+(* Need the map of prog_name -> P.t *)
 let inverted_tree_of_programs
     conf ?since ?until ~only_with_event_time ~only_num_fields
     ~factor_expansion filters programs =
@@ -88,13 +92,12 @@ let inverted_tree_of_programs
     factor_expansion = OnlyLast && filter_is_last flt_idx
   in
   let programs = Hashtbl.enum programs |> Array.of_enum in
-  let cmp ((n1 : N.program), _) ((n2 : N.program), _) =
-    String.compare (n1 :> string) (n2 :> string) in
+  let cmp (n1, _) (n2, _) = N.compare n1 n2 in
   Array.fast_sort cmp programs ;
   (* For each of these programs, we will build an enumeration of lists from
    * leaves to root (empty if the filter is not matched): *)
   Array.enum programs /@
-  (fun (program_name, (_mre, get_rc)) ->
+  (fun ((program_name : N.program), prog) ->
     let program_name = (program_name :> string) in
     (* Enumerate all data fields (numeric that is not a factor) as
      * leaves: *)
@@ -152,27 +155,26 @@ let inverted_tree_of_programs
           Enum.flatten
     (* Loop over all functions of the program: *)
     and loop_func prev flt_idx =
-      if end_of_filters flt_idx then Enum.singleton prev else
-      match get_rc () with
-      | exception _ -> Enum.empty ()
-      | prog ->
-          (* TODO: sort alphabetically *)
-          let funcs =
-            if only_with_event_time then
-              List.enum prog.P.funcs //
-              (fun func ->
-                O.event_time_of_operation func.F.operation <>
-                  None)
-            else
-              List.enum prog.P.funcs in
-          funcs /@ (fun func ->
-            let value = (func.F.name :> string) in
-            if filters_match flt_idx value then
-              let comp = { value ; section = OpName func } in
-              let factors =
-                O.factors_of_operation func.F.operation in
-              loop_factor (comp :: prev) (flt_idx + 1) func factors else
-            Enum.empty ()) |> Enum.flatten
+      if end_of_filters flt_idx then
+        Enum.singleton prev
+      else
+        (* TODO: sort alphabetically *)
+        let funcs =
+          if only_with_event_time then
+            List.enum prog.P.funcs //
+            (fun func ->
+              O.event_time_of_operation func.F.operation <>
+                None)
+          else
+            List.enum prog.P.funcs in
+        funcs /@ (fun func ->
+          let value = (func.F.name :> string) in
+          if filters_match flt_idx value then
+            let comp = { value ; section = OpName func } in
+            let factors =
+              O.factors_of_operation func.F.operation in
+            loop_factor (comp :: prev) (flt_idx + 1) func factors else
+          Enum.empty ()) |> Enum.flatten
     (* Loop over all path components of the program name: *)
     and loop_prog prev chr_idx flt_idx =
       if chr_idx >= String.length program_name then
@@ -284,7 +286,7 @@ let metrics_find conf ?since ?until query =
   let filter = filter_of_query split_q in
   !logger.debug "metrics_find: filter = %a"
     (Array.print Globs.print) filter ;
-  let programs = RC.with_rlock conf identity in
+  let programs = get_programs conf in
   (* We are going to compute all possible values for the query, expanding
    * also intermediary globs. But in here we want to return only one result
    * per terminal expansion. So we are going to uniquify the results.
@@ -367,7 +369,7 @@ let targets_for_render conf ?since ?until queries =
    * for field/function names with matches. *)
   let filters =
     List.map (filter_of_query % split_query) queries
-  and programs = RC.with_rlock conf identity in
+  and programs = get_programs conf in
   inverted_tree_of_programs conf ?since ?until ~only_with_event_time:true
                             ~only_num_fields:true ~factor_expansion:All
                             filters programs //@
@@ -484,8 +486,13 @@ let render conf headers body =
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
     let columns, datapoints =
-      RamenTimeseries.get_local conf max_data_points since until where factors
-                                fq data_fields in
+      if conf.C.sync_url = "" then
+        RamenTimeseries.get_local conf max_data_points since until where
+                                  factors fq data_fields
+      else
+        let _zock, clt = ZMQClient.get_connection () in
+        RamenTimeseries.get_sync conf max_data_points since until where
+                                 factors fq data_fields ~while_ clt in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->

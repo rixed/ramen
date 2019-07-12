@@ -6,6 +6,8 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 module C = RamenConf
+module RC = C.Running
+module ZMQClient = RamenSyncZMQClient
 
 (*
  * Ramen can serve various API over HTTP
@@ -220,7 +222,7 @@ let on_all_err err =
   !logger.error "Error: %a"
     (HttpParser.P.print_bad_result (Option.print CodecHttp.Msg.print)) err
 
-let http_service conf port url_prefix router fault_injection_rate =
+let http_service conf port url_prefix router fault_injection_rate topics =
   (* This will run in another process: *)
   let srv fd =
     !logger.debug "New connection! I'm so excited!!" ;
@@ -240,20 +242,62 @@ let http_service conf port url_prefix router fault_injection_rate =
           loop stream'
       | Ok (None, _) ->
           !logger.info "Client disconnected"
-      | Bad err -> on_all_err err in
-    try loop (make_stream fd) with
-    | Unix.(Unix_error (EPIPE, "write", _)) ->
-        !logger.warning "EPIPE while write, client probably closed its \
-                         connection" ;
-    | exn ->
-        print_exception exn ;
-        let str = Printexc.to_string exn ^"\n"^
-                  Printexc.get_backtrace () in
-        kaputt str |>
-        respond fd
+      | Bad err ->
+          on_all_err err in
+    let do_loop stream =
+      try loop stream with
+      | Unix.(Unix_error (EPIPE, syscall, _)) ->
+          !logger.warning "EPIPE while in %s, client probably closed its \
+                           connection" syscall
+      | exn ->
+          print_exception exn ;
+          let str = Printexc.to_string exn ^"\n"^
+                    Printexc.get_backtrace () in
+          kaputt str |>
+          respond fd in
+    let stream = make_stream fd in
+    if conf.C.sync_url = "" then
+      do_loop stream
+    else
+      let while_ () = !RamenProcesses.quit = None in
+      ZMQClient.start conf.C.sync_url conf.C.login ~while_ ~topics
+        (fun _clt -> do_loop stream)
   in
   !logger.info "Starting HTTP server on port %d" port ;
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)
   let addr = Unix.(ADDR_INET (inet, port)) in
   let while_ () = !RamenProcesses.quit = None in
   forking_server ~while_ ~service_name:ServiceNames.httpd addr srv
+
+(* FIXME: hack to mix fils/sync code.
+ * To be cleaned once we get rid of local files: *)
+
+(* Returns a hash of program_name to Program.t *)
+let get_programs_sync () =
+  let open RamenSync in
+  let _zock, clt = ZMQClient.get_connection () in
+  let programs = Hashtbl.create 30 in
+  Client.iter clt (fun k hv ->
+    match k, hv.value with
+    | Key.PerSite (_site, PerWorker (fq, Worker)),
+      Value.Worker w ->
+        let prog_name, _func_name = N.fq_parse fq in
+        if not (Hashtbl.mem programs prog_name) then
+          let prog = program_of_src_path clt w.Value.Worker.src_path |>
+                     RamenConf.Program.unserialized prog_name in
+          Hashtbl.add programs prog_name prog
+    | _ -> ()) ;
+  programs
+
+let get_programs_local conf =
+  RC.with_rlock conf identity |>
+  Hashtbl.filter_map (fun _func_name (_mre, get_rc) ->
+    match get_rc () with
+    | exception _ -> None
+    | prog -> Some prog)
+
+let get_programs conf =
+  if conf.C.sync_url = "" then
+    get_programs_local conf
+  else
+    get_programs_sync ()

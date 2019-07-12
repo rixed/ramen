@@ -26,19 +26,19 @@ let while_ () = !Processes.quit = None
 
 (* Helper function that takes a key filter and a new set of values, and
  * replaces all keys matching the filter with the new set of values. *)
-let replace_keys clt zock f h =
+let replace_keys clt f h =
   (* Start by deleting the extraneous keys: *)
   Client.H.enum clt.Client.h //
   (fun (k, _) -> f k && not (Client.H.mem h k)) |>
   Enum.iter (fun (k, _) ->
-    ZMQClient.send_cmd clt zock ~while_ (CltMsg.DelKey k)) ;
+    ZMQClient.send_cmd clt ~while_ (CltMsg.DelKey k)) ;
   (* Now add/update the keys from [h]: *)
   Client.H.iter (fun k (v, _r, _w) ->
     (* FIXME: add r and w in NewKey *)
     Option.may (fun v ->
       (* We have no idea which key preexist or not as we subscribe to no
        * topics, so we have to SetKey: *)
-      ZMQClient.send_cmd clt zock ~while_ (CltMsg.SetKey (k, v))
+      ZMQClient.send_cmd clt ~while_ (CltMsg.SetKey (k, v))
     ) v
   ) h
 
@@ -47,7 +47,7 @@ let replace_keys clt zock f h =
 (* TODO: RuntimeStats replace all of this. Update rmadmin. *)
 module StatsInfo =
 struct
-  let update conf clt zock =
+  let update conf clt =
     let h = Client.H.create 50 in
     let upd k v =
       let r = Capa.anybody and w = Capa.nobody in
@@ -87,8 +87,8 @@ struct
                  MaxETime | TotTuples | TotBytes | TotCpu | MaxRam |
                  ArchivedTimes))))) -> true
       | _ -> false in
-    ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
-      replace_keys clt zock f h)
+    ZMQClient.with_locked_matching clt ~while_ f (fun () ->
+      replace_keys clt f h)
 end
 
 (* FIXME: User conf file should be stored in the conftree to begin with,
@@ -97,7 +97,7 @@ module Storage =
 struct
   let last_read_user_conf = ref 0.
 
-  let update conf clt zock =
+  let update conf clt =
     let fname = Archivist.user_conf_file conf in
     let t = Files.mtime_def 0. fname in
     if t > !last_read_user_conf then (
@@ -106,7 +106,7 @@ struct
       let f = function
         | Key.Storage (RetentionsOverride _ | TotalSize | RecallCost) -> true
         | _ -> false in
-      ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
+      ZMQClient.with_locked_matching clt ~while_ f (fun () ->
         let h = Client.H.create 20 in
         let upd k v =
           Client.H.add h k (Some v, Capa.Anybody, Capa.Admin) in
@@ -120,7 +120,7 @@ struct
           upd (Storage (RetentionsOverride glob))
               Value.(Retention retention)
         ) user_conf.retentions ;
-        replace_keys clt zock f h)
+        replace_keys clt f h)
     )
 end
 
@@ -129,11 +129,11 @@ end
  * at once: *)
 module SrcInfo =
 struct
-  let update conf clt zock =
+  let update conf clt =
     let f = function
       | Key.PerProgram (_, (SourceModTime | SourceFile)) -> true
       | _ -> false in
-    ZMQClient.with_locked_matching clt zock ~while_ f (fun () ->
+    ZMQClient.with_locked_matching clt ~while_ f (fun () ->
       let h = Client.H.create 20 in
       let upd k v =
         let r = Capa.anybody and w = Capa.nobody in
@@ -188,7 +188,7 @@ struct
               upd Key.Signature Value.(String f.F.signature) ;
               upd Key.MergeInputs Value.(Bool f.F.merge_inputs)
             ) p.funcs)) ;
-      replace_keys clt zock f h)
+      replace_keys clt f h)
 end
 
 
@@ -196,25 +196,25 @@ end
  * The service: update conftree from files in a loop.
  *)
 
-let sync_step conf clt zock =
+let sync_step conf clt =
   log_and_ignore_exceptions ~what:"update StatsInfo"
-    (StatsInfo.update conf clt) zock ;
+    (StatsInfo.update conf) clt ;
   log_and_ignore_exceptions ~what:"update Storage"
-    (Storage.update conf clt) zock ;
+    (Storage.update conf) clt ;
   log_and_ignore_exceptions ~what:"update SrcInfo"
-    (SrcInfo.update conf clt) zock
+    (SrcInfo.update conf) clt
 
-let service_loop conf upd_period zock clt =
+let service_loop conf upd_period clt =
   let last_upd = ref 0. in
   Processes.until_quit (fun () ->
-    let num_msg = ZMQClient.process_in zock clt in
+    let num_msg = ZMQClient.process_in clt in
     !logger.debug "Received %d messages" num_msg ;
     let now = Unix.gettimeofday () in
     if now >= !last_upd +. upd_period &&
        (upd_period > 0. || !last_upd = 0.)
     then (
       last_upd := now ;
-      sync_step conf clt zock ;
+      sync_step conf clt
     ) ;
     if upd_period <= 0. && ZMQClient.pending_callbacks () = 0 then
       raise Exit ;

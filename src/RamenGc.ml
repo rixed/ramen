@@ -286,7 +286,7 @@ let cleanup_once_sync conf clt dry_run del_ratio compress_older =
   in
   cleanup_once conf dry_run del_ratio compress_older get_alloced_worker worker_bins
 
-let update_archives ~while_ conf dry_run zock clt =
+let update_archives ~while_ conf dry_run clt =
   !logger.info "Updating archive stats." ;
   let open RamenSync in
   Client.iter clt (fun k hv ->
@@ -303,13 +303,13 @@ let update_archives ~while_ conf dry_run zock clt =
         if not dry_run then (
           let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
           and arctimes = Value.TimeRange archives in
-          ZMQClient.send_cmd clt zock ~while_ (SetKey (arctimes_k, arctimes)) ;
+          ZMQClient.send_cmd clt ~while_ (SetKey (arctimes_k, arctimes)) ;
           let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
           and numfiles = Value.of_int num_files in
-          ZMQClient.send_cmd clt zock ~while_ (SetKey (numfiles_k, numfiles)) ;
+          ZMQClient.send_cmd clt ~while_ (SetKey (numfiles_k, numfiles)) ;
           let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
           and numbytes = Value.Int num_bytes in
-          ZMQClient.send_cmd clt zock ~while_ (SetKey (numbytes_k, numbytes)))
+          ZMQClient.send_cmd clt ~while_ (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 
 let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
@@ -323,20 +323,20 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
       "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
       "sources/*/info" ] in
   ZMQClient.start ~while_ conf.C.sync_url conf.C.login
-                  ~topics ~recvtimeo:5. (fun zock clt ->
+                  ~topics ~recvtimeo:5. (fun clt ->
     if loop <= 0. then
-      let msg_count = ZMQClient.process_in ~while_ zock clt in
+      let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count ;
       cleanup_once_sync conf clt dry_run del_ratio compress_older
     else
       let last_run =
         ref (if loop <= 0. then 0. else Unix.time () -. Random.float loop) in
       while while_ () do
-        let msg_count = ZMQClient.process_in ~while_ zock clt in
+        let msg_count = ZMQClient.process_in ~while_ clt in
         !logger.debug "Received %d messages" msg_count ;
         let now = Unix.gettimeofday () in
         if now > !last_run +. loop then (
           last_run := now ;
           cleanup_once_sync conf clt dry_run del_ratio compress_older ;
-          update_archives ~while_ conf dry_run zock clt) ;
+          update_archives ~while_ conf dry_run clt) ;
       done)

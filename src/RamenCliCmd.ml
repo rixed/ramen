@@ -242,17 +242,17 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
 
 let confclient conf () =
   let topics = [ "*" ] in
-  let on_new _zock _clt k v u mtime =
+  let on_new _clt k v u mtime =
     !logger.info "%a = %a (set by %s, mtime=%f)"
       RamenSync.Key.print k
       RamenSync.Value.print v
       u mtime
   in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~on_new
-    (fun zock clt ->
+    (fun clt ->
       !logger.info "Receiving:" ;
       forever (fun () ->
-        let num_msg = ZMQClient.process_in ~while_ zock clt in
+        let num_msg = ZMQClient.process_in ~while_ clt in
         !logger.debug "Received %d messages" num_msg
       ) ())
 
@@ -366,7 +366,7 @@ let compile_sync conf replace src_file source_name_opt =
     failwith "Need an extension to build a source file." ;
   let k_source = Key.(Sources (source_name, ext)) in
   let on_ko () = Processes.quit := Some 1 in
-  let on_set _zock _clt k v _u _mtime =
+  let on_set _clt k v _u _mtime =
     match k, v with
     | Key.(Sources (p, "info")), Value.(SourceInfo s)
       when p = source_name ->
@@ -392,18 +392,18 @@ let compile_sync conf replace src_file source_name_opt =
   ] in
   let open ZMQClient in
   start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
-                  ~topics (fun zock clt ->
+                  ~topics (fun clt ->
       if replace then
-        send_cmd clt zock ~while_ (LockOrCreateKey k_source)
+        send_cmd clt ~while_ (LockOrCreateKey k_source)
           ~on_ko ~on_ok:(fun () ->
-            send_cmd clt zock ~while_ (SetKey (k_source, value))
+            send_cmd clt ~while_ (SetKey (k_source, value))
               ~on_ko ~on_ok:(fun () ->
-                send_cmd clt zock ~while_ (UnlockKey k_source)))
+                send_cmd clt ~while_ (UnlockKey k_source)))
       else
-        send_cmd clt zock ~while_ (NewKey (k_source, value))
+        send_cmd clt ~while_ (NewKey (k_source, value))
           ~on_ko ~on_ok:(fun () ->
-            send_cmd clt zock ~while_ (UnlockKey k_source)) ;
-      let num_msg = ZMQClient.process_in ~while_ zock clt in
+            send_cmd clt ~while_ (UnlockKey k_source)) ;
+      let num_msg = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" num_msg)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
@@ -423,7 +423,7 @@ let compserver conf daemonize to_stdout to_syslog
   start_daemon conf daemonize to_stdout to_syslog (N.path "compserver") ;
   let topics = [ "sources/*" ] in
   let open RamenSync in
-  let on_set zock clt k v _uid mtime =
+  let on_set clt k v _uid mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
     match k, v with
     | Key.(Sources (_, "info")), _ -> ()
@@ -433,8 +433,8 @@ let compserver conf daemonize to_stdout to_syslog
         let open ZMQClient in
         let unlock () =
           !logger.debug "Unlocking %a" Key.print k_info ;
-          send_cmd clt zock ~while_ (UnlockKey k_info) in
-        send_cmd clt zock ~while_ (LockOrCreateKey k_info)
+          send_cmd clt ~while_ (UnlockKey k_info) in
+        send_cmd clt ~while_ (LockOrCreateKey k_info)
           ~on_ko:unlock ~on_ok:(fun () ->
             let tmp_src_file =
               N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
@@ -471,7 +471,7 @@ let compserver conf daemonize to_stdout to_syslog
                 RamenMake.read_source_info target_file in
             !logger.info "(pre)Compiled %a into %a"
               N.path_print src_file Value.SourceInfo.print info ;
-            send_cmd clt zock ~while_
+            send_cmd clt ~while_
               (SetKey (k_info, Value.(SourceInfo info)))
               ~on_ko:unlock ~on_ok:unlock)
     | Key.Error _, _  ->
@@ -635,7 +635,7 @@ let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun _zock clt ->
+    (fun clt ->
       let prog = RamenSync.program_of_src_path clt src_path |>
                  P.unserialized program_name in
       prog_info prog opt_func_name)
@@ -865,7 +865,7 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun _zock clt ->
+    (fun clt ->
       let open RamenSync in
       Client.iter clt (fun k v ->
         match k, v.value with
@@ -1190,7 +1190,7 @@ let tail_sync
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun zock clt ->
+    (fun clt ->
       let open RamenSync in
       (* Get the workers and their types: *)
       !logger.debug "Looking for running workers %a on sites %S"
@@ -1310,14 +1310,14 @@ let tail_sync
       List.iter (fun (site, _w) ->
         let k = Key.Tails (site, fq, Subscriber subscriber) in
         let cmd = Client.CltMsg.NewKey (k, Value.dummy) in
-        ZMQClient.send_cmd clt zock ~while_ cmd
+        ZMQClient.send_cmd clt ~while_ cmd
       ) workers ;
       (* Loop *)
       !logger.debug "Waiting for tuples..." ;
       let while_' () =
         while_ () && (!count_last > 0 || !count_next > 0) in
       clt.Client.on_new <- on_key count_next ;
-      let msg_count = ZMQClient.process_in ~while_:while_' zock clt in
+      let msg_count = ZMQClient.process_in ~while_:while_' clt in
       !logger.debug "Processed %d messages" msg_count ;
       print [||] ;
       (* Unsubscribe *)
@@ -1325,7 +1325,7 @@ let tail_sync
       List.iter (fun (site, _w) ->
         let k = Key.Tails (site, fq, Subscriber subscriber) in
         let cmd = Client.CltMsg.DelKey k in
-        ZMQClient.send_cmd clt zock ~while_ cmd
+        ZMQClient.send_cmd clt ~while_ cmd
       ) workers)
 
 let purge_transient conf to_purge () =
