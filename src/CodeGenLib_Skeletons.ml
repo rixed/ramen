@@ -458,8 +458,8 @@ let writer_of_spec serialize_tuple sersize_of_tuple
           last_successful_output = 0. ;
           quarantine_until = 0. ;
           quarantine_delay = 0. ;
-          rate_limit_log_writes = rate_limit 1 1. ;
-          rate_limit_log_drops = rate_limit 1 1. } in
+          rate_limit_log_writes = rate_limiter 1 1. ;
+          rate_limit_log_drops = rate_limiter 1 1. } in
       (fun rb_ref_out_fname file_spec last_check_outref dest_channel
            start_stop head tuple_opt ->
           try rb_writer out_rb rb_ref_out_fname file_spec last_check_outref
@@ -1612,7 +1612,7 @@ let aggregate
       s
     in
     (* The event loop: *)
-    let rate_limit_log_reads = rate_limit 1 1. in
+    let rate_limit_log_reads = rate_limiter 1 1. in
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)
@@ -1709,7 +1709,7 @@ let top_half
         true in
       retry ~on ~min_delay:1.0 RingBuf.load rb_in_fname
     in
-    let rate_limit_log_reads = rate_limit 1 1. in
+    let rate_limit_log_reads = rate_limiter 1 1. in
     let on_tup tx tx_size channel_id in_tuple =
       if channel_id <> Channel.live && rate_limit_log_reads () then
         !logger.debug "Read a tuple from channel %a"

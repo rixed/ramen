@@ -1469,7 +1469,7 @@ let strip_control_chars =
     ) msg res
 
 (* Return whether we are _below_ the rate limit *)
-let rate_limit max_events duration =
+let rate_limiter max_events duration =
   let last_period = ref 0
   and count = ref 0 in
   fun () ->

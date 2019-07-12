@@ -863,9 +863,9 @@ let set_alerts conf msg =
 let router conf prefix =
   (* The function called for each HTTP request: *)
   let set_alerts =
-    let r = rate_limit 10 10. in
+    let rate_limit = rate_limiter 10 10. in
     fun conf msg ->
-      if r () then set_alerts conf msg
+      if rate_limit () then set_alerts conf msg
       else raise RateLimited in
   fun _meth path _params _headers body ->
     let prefix = list_of_prefix prefix in
