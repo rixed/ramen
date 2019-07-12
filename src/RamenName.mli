@@ -42,6 +42,7 @@ val rel_program_color : rel_program -> string
 (* For logs, not paths! *)
 type fq = [`FQ] t
 val fq_ppp_ocaml : fq PPP.t
+val fq_ppp_json : fq PPP.t
 val fq : string -> fq
 val fq_of_program : program -> func -> fq
 val fq_print : 'a BatInnerIO.output -> fq -> unit

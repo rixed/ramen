@@ -199,7 +199,7 @@ and simple_filter =
 
 (* Alerts are saved on disc under this format: *)
 and alert_source =
-  | V1 of { table : string ; column : N.field ; alert : alert_info_v1 }
+  | V1 of { table : N.fq ; column : N.field ; alert : alert_info_v1 }
   (* ... and so on *)
   [@@ppp PPP_OCaml]
 
@@ -445,7 +445,7 @@ let get_timeseries conf msg =
  *)
 
 type set_alerts_req =
-  (string, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
+  (N.fq, (N.field, alert_info_v1 list) Hashtbl.t) Hashtbl.t
   [@@ppp PPP_JSON]
 
 (* Alert ids are used to uniquely identify alerts (for instance when
@@ -473,8 +473,7 @@ let alert_id (column : N.field) =
          (filterspec having) |> N.md5
 
 let func_of_table programs table =
-  let pn, fn =
-    N.(fq table |> fq_parse) in
+  let pn, fn = N.fq_parse table in
   let no_such_program () =
     Printf.sprintf "Program %s does not exist"
       (pn :> string) |>
@@ -502,8 +501,9 @@ let field_typ_of_column programs table column =
                             func.F.operation |>
     List.find (fun t -> t.name = column)
   with Not_found ->
-    Printf.sprintf "No column %s in table %s"
-      (column :> string) table |>
+    Printf.sprintf2 "No column %a in table %a"
+      N.field_print column
+      N.fq_print table |>
     bad_request
 
 let generate_alert programs (src_file : N.path)
@@ -557,7 +557,7 @@ let generate_alert programs (src_file : N.path)
        ) group_keys |> not in
     Printf.fprintf oc "-- Alerting program\n\n" ;
     Printf.fprintf oc "DEFINE filtered AS\n" ;
-    Printf.fprintf oc "  FROM %s\n" (ramen_quote table) ;
+    Printf.fprintf oc "  FROM %s\n" (ramen_quote (table :> string)) ;
     Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
     Printf.fprintf oc "  SELECT\n" ;
     if need_reaggr then (
@@ -630,7 +630,7 @@ let generate_alert programs (src_file : N.path)
       Printf.fprintf oc "    (IF firing THEN %s ELSE %s) AS desc\n"
         desc_firing desc_recovery ;
       Printf.fprintf oc "  NOTIFY %S || \" (\" || %S || \") triggered\" || %S,\n"
-        (column :> string) table
+        (column :> string) (table :> string)
         (if a.desc_title = "" then "" else " on "^ a.desc_title) ;
       (* TODO: a way to add zone, service, etc, if present in the
        * parent table *)
@@ -701,7 +701,7 @@ let set_alerts conf msg =
   let old_alerts = ref Set.String.empty
   and new_alerts = ref Set.String.empty in
   Hashtbl.iter (fun table columns ->
-    !logger.debug "set-alerts: table %s" table ;
+    !logger.debug "set-alerts: table %a" N.fq_print table ;
     Hashtbl.iter (fun column alerts ->
       !logger.debug "set-alerts: column %a" N.field_print column ;
       (* All non listed alerts must be suppressed *)
@@ -731,20 +731,22 @@ let set_alerts conf msg =
         RC.with_rlock conf (fun programs ->
           let ft = field_typ_of_column programs table column in
           if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
-            Printf.sprintf "Column %s of table %s is not numeric"
-              (column :> string) table |>
+            Printf.sprintf2 "Column %a of table %a is not numeric"
+              N.field_print column
+              N.fq_print table |>
             bad_request ;
           (* Also check that table has event time info: *)
           let func = func_of_table programs table in
           if O.event_time_of_operation func.F.operation = None
           then
-            Printf.sprintf "Table %s has no event time information" table |>
+            Printf.sprintf2 "Table %a has no event time information"
+              N.fq_print table |>
             bad_request) ;
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
         let id = alert_id column alert_source in
-        let program_name = "alerts/"^ table ^"/"^
-                           (column :> string) ^"/"^ id in
+        let program_name =
+          "alerts/"^ (table :> string) ^"/"^ (column :> string) ^"/"^ id in
         new_alerts := Set.String.add program_name !new_alerts ;
         save_alert conf program_name alert_source
       ) alerts

@@ -160,6 +160,7 @@ let rel_program_print_quoted = String.print_quoted
 type fq = [`FQ] t
 
 let fq_ppp_ocaml = t_ppp_ocaml
+let fq_ppp_json = t_ppp_json
 
 external fq : string -> fq = "%identity"
 
