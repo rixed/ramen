@@ -114,6 +114,7 @@ struct
             "No previous configuration state, will start empty" ;
           false
        | e ->
+          Files.move_aside fname ;
           !logger.error
             "Cannot read configuration initial state, will start empty: %s"
             (Printexc.to_string e) ;
