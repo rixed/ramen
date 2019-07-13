@@ -13,8 +13,8 @@ let tuple_typ_of_proto = function
   | Graphite -> RamenGraphiteSink.tuple_typ
 
 let collector_of_proto = function
-  | Collectd -> "RamenCollectd.collector"
-  | NetflowV5 -> "RamenNetflow.collector"
+  | Collectd -> "RamenCollectdSerialization.collector"
+  | NetflowV5 -> "RamenNetflowSerialization.collector"
   | Graphite -> "RamenGraphiteSink.collector"
 
 let event_time_of_proto = function
