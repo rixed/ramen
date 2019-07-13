@@ -117,7 +117,7 @@ let serve_sync conf ~while_ fd =
         | { value = Value.Worker worker ; _ } ->
             let ringbufs_key =
               Supervisor.per_instance_key
-                conf.C.site id.child worker.signature InputRingFiles in
+                conf.C.site id.child worker.worker_signature InputRingFiles in
             Client.with_value clt ringbufs_key (fun hv ->
               match Supervisor.get_string_list (Some hv.value) with
               | Some lst ->

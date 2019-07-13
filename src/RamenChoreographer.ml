@@ -153,13 +153,17 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     let children =
       Map.find_default [] worker_ref !all_children in
     let envvars = O.envvars_of_operation func.FS.operation in
-    let signature =
-      func.FS.signature ^"_"^ RamenParams.signature_of_list params in
+    let worker_signature =
+      func.FS.signature ^"_"^ RamenParams.signature_of_list params |>
+      N.md5 in
+    let bin_signature =
+      RamenSync.Value.SourceInfo.signature_of_compiled info in
     let worker : RamenSync.Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
         src_path = Files.remove_ext rce.src_path ;
-        envvars ; signature ; is_used ; params ; role ; parents ; children } in
+        envvars ; worker_signature ; bin_signature ;
+        is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
         (RamenSync.Value.Worker worker) ;
@@ -179,7 +183,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             parent_ref,
             (* remote part *)
             worker_ref.program, worker_ref.func,
-            signature, params in
+            worker_signature, bin_signature, params in
           all_top_halves :=
             Map.modify_opt top_half_k (function
               | None ->
@@ -192,7 +196,8 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     ) (* else this worker is unused, thus we need no top-half for it *)
   ) !all_parents ;
   (* Now that we have aggregated all top-halves children, actually run them: *)
-  Map.iter (fun (parent_ref, child_prog, child_func, signature, params)
+  Map.iter (fun (parent_ref, child_prog, child_func,
+                 worker_signature, bin_signature, params)
                 (rce, func, sites) ->
     let service = ServiceNames.tunneld in
     let tunnelds, _ =
@@ -216,7 +221,8 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       { enabled = rce.RamenSync.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
         src_path = Files.remove_ext rce.src_path ;
-        envvars ; signature ; is_used = true ; params ; role ;
+        envvars ; worker_signature ; bin_signature ;
+        is_used = true ; params ; role ;
         parents = [ parent_ref ] ; children = [] } in
     let fq = N.fq_of_program child_prog child_func in
     upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))

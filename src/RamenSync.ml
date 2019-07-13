@@ -13,6 +13,7 @@ module T = RamenTypes
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module Channel = RamenChannel
+module Versions = RamenVersions
 
 (* The only capacity we need is:
  * - One per user for personal communications (err messages...)
@@ -225,7 +226,7 @@ struct
     (* Set by the Choreographer: *)
     | Worker
     (* Set by the supervisor: *)
-    | PerInstance of string (* func + params signature *) * per_instance_key
+    | PerInstance of string (* worker signature *) * per_instance_key
     | PerReplayer of int (* id used to count the end of retransmissions: *)
 
   and per_instance_key =
@@ -588,7 +589,11 @@ struct
         debug : bool ;
         report_period : float ;
         src_path : N.path ; (* Without extension *)
-        signature : string ; (* Mash both function and parameters *)
+        (* Mash both function and parameters, identifies a running worker: *)
+        worker_signature : string ;
+        (* Mash program operation including default parameters, identifies a
+         * compiled binary: *)
+        bin_signature : string ;
         is_used : bool ;
         params : RamenParams.param list ;
         envvars : N.field list ; (* Actual values taken from the site host *)
@@ -624,10 +629,12 @@ struct
 
     let print oc w =
       Printf.fprintf oc
-        "%a with source:%a, sign:%S, parents:%a, children:%a, params:%a"
+        "%a with source:%a, worker_signature:%S, bin_signature:%S, \
+         parents:%a, children:%a, params:%a"
         print_role w.role
         N.path_print w.src_path
-        w.signature
+        w.worker_signature
+        w.bin_signature
         (List.print print_ref) w.parents
         (List.print print_ref) w.children
         RamenParams.print_list w.params
@@ -710,6 +717,16 @@ struct
       Printf.fprintf oc "SourceInfo { md5:%S, %a }"
         s.md5
         print_detail s.detail
+
+    let signature_of_compiled info =
+      Printf.sprintf2 "%s_%a_%a_%s"
+        Versions.codegen
+        (E.print true) info.RamenConf.Program.Serialized.condition
+        (List.print (fun oc func ->
+          String.print oc func.RamenConf.Func.Serialized.signature))
+          info.funcs
+        (RamenTuple.params_signature info.RamenConf.Program.Serialized.default_params) |>
+      N.md5
   end
 
   module Alert =

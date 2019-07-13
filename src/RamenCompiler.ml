@@ -545,6 +545,10 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
           open RamenLog\n\
           open RamenConsts\n"
           (program_name :> string) ;
+        (* FIXME: too bad default values are encoded in the binary. We could pass
+         * default value at spawning time, and use only the signature of parameter
+         * types in program signature in order to reuse the bonary when only the
+         * default value of a parameter changes. *)
         CodeGen_OCaml.emit_parameters oc info.default_params envvars) in
     add_temp_file params_src_file ;
     let keep_temp_files = conf.C.keep_temp_files in

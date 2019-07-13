@@ -203,7 +203,7 @@ struct
   module Serialized = struct
     type t =
       { default_params : RamenTuple.params [@ppp_default []] ;
-        condition : E.t ; (* for debug only *)
+        condition : E.t ; (* part of the program signature *)
         funcs : Func.Serialized.t list }
       [@@ppp PPP_OCaml]
   end

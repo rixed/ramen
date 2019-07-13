@@ -113,6 +113,15 @@ let type_signature =
 let params_type_signature =
   type_signature % List.map (fun p -> p.ptyp) % params_sort
 
+let params_signature params =
+  params_sort params |>
+  List.fold_left (fun s param ->
+    (if s = "" then "" else s ^ "_") ^
+    (param.ptyp.name :> string) ^ ":" ^
+    T.string_of_typ param.ptyp.typ ^ ":" ^
+    T.to_string param.value
+  ) ""
+
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =

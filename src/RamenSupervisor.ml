@@ -1112,8 +1112,8 @@ let synchronize_running_local conf autoreload_delay =
  * it becomes clear when to delete them. Maybe a specific command, equivalent
  * to the `ramen kill --purge`?
  *)
-let per_instance_key site fq sign k =
-  RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (sign, k)))
+let per_instance_key site fq worker_sign k =
+  RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, k)))
 
 let find_or_fail what clt k f =
   let v =
@@ -1152,7 +1152,8 @@ let get_string_list =
       Option.some
   | _ -> None
 
-let update_child_status conf ~while_ clt site fq sign pid =
+let update_child_status conf ~while_ clt site fq worker_sign pid =
+  let per_instance_key = per_instance_key site fq worker_sign in
   let what =
     Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
@@ -1169,16 +1170,16 @@ let update_child_status conf ~while_ clt site fq sign pid =
         "%s %s." what status_str ;
       let now = Unix.gettimeofday () in
       ZMQClient.send_cmd clt ~while_ ~eager:true
-        (SetKey (per_instance_key site fq sign LastExit,
+        (SetKey (per_instance_key LastExit,
                  RamenSync.Value.Float now)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
-        (SetKey (per_instance_key site fq sign LastExitStatus,
+        (SetKey (per_instance_key LastExitStatus,
                  RamenSync.Value.String status_str)) ;
       let input_ringbufs =
-        let k = per_instance_key site fq sign InputRingFiles in
+        let k = per_instance_key InputRingFiles in
         find_or_fail "a list of strings" clt k get_string_list in
       let succ_fail_k =
-        per_instance_key site fq sign SuccessiveFailures in
+        per_instance_key SuccessiveFailures in
       let succ_failures =
         find_or_fail "an integer" clt succ_fail_k (function
           | None -> Some 0
@@ -1192,10 +1193,10 @@ let update_child_status conf ~while_ clt site fq sign pid =
         if succ_failures = 5 then (
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
           let state_file =
-            let k = per_instance_key site fq sign StateFile in
+            let k = per_instance_key StateFile in
             find_or_fail "a string" clt k get_string
           and out_ref =
-            let k = per_instance_key site fq sign OutRefFile in
+            let k = per_instance_key OutRefFile in
             find_or_fail "a string" clt k get_string in
           rescue_worker fq (N.path state_file) input_ringbufs
                         (N.path out_ref))
@@ -1205,40 +1206,41 @@ let update_child_status conf ~while_ clt site fq sign pid =
        * but ideally the workers listen to children directly, no more need for
        * out_ref files: *)
       let out_refs =
-        let k = per_instance_key site fq sign ParentOutRefs in
+        let k = per_instance_key ParentOutRefs in
         find_or_fail "a list of strings" clt k get_string_list in
       cut_from_parents_outrefs input_ringbufs out_refs ;
       (* Wait before attempting to restart a failing worker: *)
       let max_delay = float_of_int succ_failures in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
       ZMQClient.send_cmd clt ~while_ ~eager:true
-        (SetKey (per_instance_key site fq sign QuarantineUntil,
+        (SetKey (per_instance_key QuarantineUntil,
                  RamenSync.Value.Float quarantine_until)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
-        (DelKey (per_instance_key site fq sign Pid)))
+        (DelKey (per_instance_key Pid)))
 
 (* This worker is running. Should it? *)
-let should_run clt site fq sign =
+let should_run clt site fq worker_sign =
   let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
   match RamenSync.Client.find clt k with
   | exception Not_found -> false
   | { value = RamenSync.Value.Worker worker ; _ } ->
-      worker.enabled && worker.signature = sign
+      worker.enabled && worker.worker_signature = worker_sign
   | hv ->
       RamenSync.invalid_sync_type k hv.value "a worker"
 
-let may_kill conf ~while_ clt site fq sign pid =
-  let last_killed_k = per_instance_key site fq sign LastKilled in
+let may_kill conf ~while_ clt site fq worker_sign pid =
+  let per_instance_key = per_instance_key site fq worker_sign in
+  let last_killed_k = per_instance_key LastKilled in
   let last_killed = ref (
     find_or_fail "a float" clt last_killed_k (function
       | None -> Some 0.
       | Some (RamenSync.Value.Float t) -> Some t
       | _ -> None)) in
   let input_ringbufs =
-    let k = per_instance_key site fq sign InputRingFiles in
+    let k = per_instance_key InputRingFiles in
     find_or_fail "a list of strings" clt k get_string_list in
   let out_refs =
-    let k = per_instance_key site fq sign ParentOutRefs in
+    let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
   cut_from_parents_outrefs input_ringbufs out_refs ;
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
@@ -1249,8 +1251,8 @@ let may_kill conf ~while_ clt site fq sign pid =
     (SetKey (last_killed_k, RamenSync.Value.Float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
-let is_running clt site fq sign =
-  RamenSync.Client.(H.mem clt.h (per_instance_key site fq sign Pid))
+let is_running clt site fq worker_sign =
+  RamenSync.Client.(H.mem clt.h (per_instance_key site fq worker_sign Pid))
 
 let get_precompiled clt src_path =
   let source_k = RamenSync.Key.Sources (src_path, "info") in
@@ -1270,12 +1272,16 @@ let get_precompiled clt src_path =
   | hv ->
       RamenSync.invalid_sync_type source_k hv.value "a source info"
 
-let get_bin_file conf clt fq sign info =
+let get_bin_file conf clt fq bin_sign info =
   let program_name, _func_name = N.fq_parse fq in
   let get_parent = RamenCompiler.parent_from_confserver clt in
-  let info_file = C.cache_info_file conf sign in
-  let bin_file = C.cache_bin_file conf sign in
-  if not (Files.exists bin_file) then (
+  let info_file = C.cache_info_file conf bin_sign in
+  let bin_file = C.cache_bin_file conf bin_sign in
+  if Files.exists bin_file then
+    !logger.debug "Reusing bin file %a" N.path_print bin_file
+  else (
+    !logger.info "Binary file %a does not exist yet, building..."
+      N.path_print bin_file ;
     RamenMake.write_source_info info_file info ;
     RamenMake.build
       conf get_parent program_name info_file bin_file
@@ -1288,13 +1294,13 @@ let get_bin_file conf clt fq sign info =
  * Choreographer also should have set, and update those parents out_ref.
  * Then we can spawn that binary, with the parameters also set by
  * the choreographer. *)
-let try_start_instance conf ~while_ clt site fq sign worker =
+let try_start_instance conf ~while_ clt site fq worker =
   !logger.info "Must start %a for %a"
     RamenSync.Value.Worker.print worker
     N.fq_print fq ;
   let info, precompiled =
     get_precompiled clt worker.RamenSync.Value.Worker.src_path in
-  let bin_file = get_bin_file conf clt fq sign info in
+  let bin_file = get_bin_file conf clt fq worker.bin_signature info in
   let func_of_precompiled precompiled pname fname =
     List.find (fun f -> f.FS.name = fname)
       precompiled.PS.funcs |>
@@ -1335,7 +1341,7 @@ let try_start_instance conf ~while_ clt site fq sign worker =
       [ conf.persist_dir ; N.path "workers/states" ;
         N.path RamenVersions.(worker_state ^"_"^ codegen) ;
         N.path Config.version ; worker.src_path ;
-        N.path worker.signature ; N.path "snapshot" ]
+        N.path worker.worker_signature ; N.path "snapshot" ]
   and out_ringbuf_ref =
     if RamenSync.Value.Worker.is_top_half worker.role then None
     else Some (C.out_ringbuf_names_ref conf func)
@@ -1350,27 +1356,28 @@ let try_start_instance conf ~while_ clt site fq sign worker =
     start_worker conf func params envvars worker.role log_level
                  worker.report_period bin_file parent_links children
                  input_ringbufs state_file out_ringbuf_ref in
-  let k = per_instance_key site fq sign LastKilled in
+  let per_instance_key = per_instance_key site fq worker.worker_signature in
+  let k = per_instance_key LastKilled in
   ZMQClient.send_cmd clt ~eager:true ~while_ (DelKey k) ;
-  let k = per_instance_key site fq sign Pid in
+  let k = per_instance_key Pid in
   ZMQClient.send_cmd clt ~eager:true ~while_
                      (SetKey (k, RamenSync.Value.(Int (Int64.of_int pid)))) ;
-  let k = per_instance_key site fq sign StateFile
+  let k = per_instance_key StateFile
   and v = RamenSync.Value.(String (state_file :> string)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   Option.may (fun out_ringbuf_ref ->
-    let k = per_instance_key site fq sign OutRefFile
+    let k = per_instance_key OutRefFile
     and v = RamenSync.Value.(String out_ringbuf_ref) in
     ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
-  let k = per_instance_key site fq sign InputRingFiles
+  let k = per_instance_key InputRingFiles
   and v =
     let l = List.enum (input_ringbufs :> string list) /@
             (fun f -> T.VString f) |>
             Array.of_enum in
     RamenSync.Value.(RamenValue (VList l)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
-  let k = per_instance_key site fq sign ParentOutRefs
+  let k = per_instance_key ParentOutRefs
   and v =
     let l = List.enum parent_links /@
             (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
@@ -1439,7 +1446,7 @@ let update_replayer_status
               match (Client.find clt info_k).value with
               | Value.SourceInfo info -> info
               | v -> invalid_sync_type info_k v "a SourceInfo" in
-            let bin = get_bin_file conf clt fq worker.signature info in
+            let bin = get_bin_file conf clt fq worker.bin_signature info in
             let _prog, func = function_of_worker clt fq worker in
             let prog_name, _ = N.fq_parse fq in
             let func = F.unserialized prog_name func in
@@ -1498,19 +1505,20 @@ let synchronize_once conf ~while_ clt =
       let what = Printf.sprintf2 "Processing key %a" Key.print k in
       log_and_ignore_exceptions ~what (fun () ->
         match k, hv.Client.value with
-        | Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
+        | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
           Value.Int pid
           when site = conf.C.site ->
             let pid = Int64.to_int pid in
-            update_child_status conf ~while_ clt site fq sign pid ;
-            if not (should_run clt site fq sign) then
-              may_kill conf ~while_ clt site fq sign pid
+            update_child_status conf ~while_ clt site fq worker_sign pid ;
+            if not (should_run clt site fq worker_sign) then
+              may_kill conf ~while_ clt site fq worker_sign pid
         | Key.PerSite (site, PerWorker (fq, Worker)),
           Value.Worker worker
           when site = conf.C.site ->
-            if worker.enabled && not (is_running clt site fq worker.signature) then
-              try_start_instance
-                conf ~while_ clt site fq worker.signature worker
+            if worker.enabled &&
+               not (is_running clt site fq worker.worker_signature)
+            then
+              try_start_instance conf ~while_ clt site fq worker
         | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
           Value.Replayer replayer
           when site = conf.C.site ->
