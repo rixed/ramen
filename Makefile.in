@@ -940,7 +940,7 @@ RAMEN_TESTS_SOURCES = \
 
 %.x: %.ramen $(BUNDLE_DIR)/ramen/codegen.a src/ramen src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	@src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
+	@RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
@@ -1021,7 +1021,7 @@ err-check: \
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
+	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>&1 >/dev/null |\
 	    sed 1d > $$t ;\
 	  if ! diff -q $$f.err $$t ; then \
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
