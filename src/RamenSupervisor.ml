@@ -1493,29 +1493,31 @@ let synchronize_once conf ~while_ clt =
   let now = Unix.gettimeofday () in
   let open RamenSync in
   Client.iter_safe clt (fun k hv ->
-    let what = Printf.sprintf2 "Processing key %a" Key.print k in
-    log_and_ignore_exceptions ~what (fun () ->
-      match k, hv.Client.value with
-      | Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
-        Value.Int pid
-        when site = conf.C.site ->
-          let pid = Int64.to_int pid in
-          update_child_status conf ~while_ clt site fq sign pid ;
-          if not (should_run clt site fq sign) then
-            may_kill conf ~while_ clt site fq sign pid
-      | Key.PerSite (site, PerWorker (fq, Worker)),
-        Value.Worker worker
-        when site = conf.C.site ->
-          if worker.enabled && not (is_running clt site fq worker.signature) then
-            try_start_instance
-              conf ~while_ clt site fq worker.signature worker
-      | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
-        Value.Replayer replayer
-        when site = conf.C.site ->
-          remove_dead_chans conf clt ~while_ replayer_k replayer ;
-          update_replayer_status
-            conf clt ~while_ now site fq id replayer_k replayer
-      | _ -> ()) ()
+    (* try_start_instance can take some time so better skip it at exit: *)
+    if while_ () then
+      let what = Printf.sprintf2 "Processing key %a" Key.print k in
+      log_and_ignore_exceptions ~what (fun () ->
+        match k, hv.Client.value with
+        | Key.PerSite (site, PerWorker (fq, PerInstance (sign, Pid))),
+          Value.Int pid
+          when site = conf.C.site ->
+            let pid = Int64.to_int pid in
+            update_child_status conf ~while_ clt site fq sign pid ;
+            if not (should_run clt site fq sign) then
+              may_kill conf ~while_ clt site fq sign pid
+        | Key.PerSite (site, PerWorker (fq, Worker)),
+          Value.Worker worker
+          when site = conf.C.site ->
+            if worker.enabled && not (is_running clt site fq worker.signature) then
+              try_start_instance
+                conf ~while_ clt site fq worker.signature worker
+        | Key.PerSite (site, PerWorker (fq, PerReplayer id)) as replayer_k,
+          Value.Replayer replayer
+          when site = conf.C.site ->
+            remove_dead_chans conf clt ~while_ replayer_k replayer ;
+            update_replayer_status
+              conf clt ~while_ now site fq id replayer_k replayer
+        | _ -> ()) ()
   )
 
 let synchronize_running_sync conf _autoreload_delay =
@@ -1524,7 +1526,7 @@ let synchronize_running_sync conf _autoreload_delay =
     while while_ () do
       let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Processed %d messages" msg_count ;
-      synchronize_once conf ~while_ clt 
+      synchronize_once conf ~while_ clt
     done in
   let topics =
     [ (* All sites are needed because we need parent worker :(
