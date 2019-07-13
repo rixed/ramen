@@ -190,7 +190,6 @@ RAMEN_SOURCES = \
 	src/RamenSupervisor.ml \
 	src/RamenPs.ml \
 	src/RamenArchivist.ml \
-	src/RamenSyncFiles.ml \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
 	src/RamenHttpHelpers.ml \

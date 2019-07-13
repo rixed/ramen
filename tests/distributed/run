@@ -72,7 +72,7 @@ if test "$be_master" = yes; then
   done
   echo '}' >> $services
 
-  # Must be done before filesyncer and archivist are run:
+  # Must be done before archivist is run:
   log "create archivist user conf..."
   mkdir -p "$RAMEN_DIR/archivist/$archivist_version/"
   # The idea behind this conf is that aggregated values are kept for a
@@ -117,10 +117,6 @@ EOF
   "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1min   -p time_period=60
   "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 10mins -p time_period=600
   "$ramen" run --debug --confserver=localhost logs_aggr --master=aggregator --on-site="aggregator" --as 1hour  -p time_period=3600
-
-  # Run once and then leave it to the GUI. Storage info won't be synced then.
-  log "Upload the configuration into the confserver"
-  "$ramen" filesyncer --master=aggregator --site="$ramen_site" --to-stdout --confserver=localhost --debug
 
 else
 

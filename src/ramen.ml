@@ -350,20 +350,6 @@ let confclient =
     info ~doc:CliInfo.confclient "confclient")
 
 (*
- * Synchronize config files with config tree (temporary)
- *)
-
-let filesyncer =
-  Term.(
-    (const RamenCliCmd.filesyncer
-      $ copts "_filesyncer"
-      $ loop
-      $ daemonize
-      $ to_stdout
-      $ to_syslog),
-    info ~doc:CliInfo.filesyncer "filesyncer")
-
-(*
  * Examine the ringbuffers
  *)
 
@@ -1152,7 +1138,7 @@ let () =
       Term.eval_choice ~catch:false default [
         (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
-        confserver ; confclient ; compserver ; choreographer ; filesyncer ;
+        confserver ; confclient ; compserver ; choreographer ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
         (* reading tuples: *)

@@ -257,15 +257,6 @@ let confclient conf () =
         !logger.debug "Received %d messages" num_msg
       ) ())
 
-let filesyncer conf loop daemonize to_stdout to_syslog () =
-  if daemonize && loop = Some 0. then
-    failwith "It makes no sense to --daemonize without --loop." ;
-  let loop = loop |? Default.filesyncer_loop in
-  start_daemon conf daemonize to_stdout to_syslog (N.path "filesyncer") ;
-  RamenSyncFiles.start conf loop ;
-  Option.may exit !RamenProcesses.quit
-
-
 (*
  * `ramen compile`
  *
