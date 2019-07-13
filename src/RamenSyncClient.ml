@@ -19,12 +19,12 @@ struct
 
   type t =
     { h : hash_maybe_value H.t ;
-      uid : User.id ;
+      my_uid : User.id ;
       mutable my_errors : Key.t option ; (* As returned by AuthOK *)
-      mutable on_new : t -> Key.t -> Value.t -> string -> float -> unit ;
+      mutable on_new : t -> Key.t -> Value.t -> string -> float -> string -> float -> unit ;
       mutable on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       mutable on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
-      mutable on_lock : t -> Key.t -> string -> unit ;
+      mutable on_lock : t -> Key.t -> string -> float -> unit ;
       mutable on_unlock : t -> Key.t -> unit }
 
   and hash_maybe_value =
@@ -33,19 +33,20 @@ struct
 
   and hash_value =
     { mutable value : Value.t ;
-      mutable locked : string option ;
       (* These metadata are set exclusively by the confserver.
        * Unreliable if eager. *)
-      mutable set_by : string ;
+      mutable uid : string ;
       mutable mtime : float ;
+      mutable owner : string ; (* empty is none *)
+      mutable expiry : float ; (* irrelevant if not owned *)
       (* If set eagerly but not received from the server yet: *)
       mutable eagerly : eagerly }
 
   and eagerly = Nope | Created | Overwritten | Deleted
 
-  let make ~uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
+  let make ~my_uid ~on_new ~on_set ~on_del ~on_lock ~on_unlock =
     { h = H.create 99 ; my_errors = None ;
-      uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
+      my_uid ; on_new ; on_set ; on_del ; on_lock ; on_unlock }
 
   let with_value t k cont =
     match H.find t.h k with
@@ -107,61 +108,60 @@ struct
         Printf.sprintf "Cannot authenticate to the server: %s" s |>
         failwith
 
-    | SrvMsg.SetKey (k, v, set_by, mtime) ->
+    | SrvMsg.SetKey { k ; v ; uid ; mtime } ->
         let new_hv () =
-          { value = v ;
-            locked = None ;
-            set_by ;
-            mtime ;
+          { value = v ; uid ; mtime ; owner = "" ; expiry = 0. ;
             eagerly = Nope } in
-        let add_hv hv =
+        let set_hv hv =
           !logger.error
             "Server set key %a that has not been created"
             Key.print k ;
-          H.add t.h k (Value hv) ;
-          t.on_new t k v set_by mtime in
+          H.replace t.h k (Value hv) ;
+          t.on_new t k v uid mtime "" 0. in
         (match H.find t.h k with
         | exception Not_found ->
-            add_hv (new_hv ())
+            set_hv (new_hv ())
         | Waiters conts ->
             let hv = new_hv () in
-            add_hv hv ;
+            set_hv hv ;
             List.iter (fun cont -> cont hv) conts
         | Value prev ->
-            prev.set_by <- set_by ;
-            prev.mtime <- mtime ;
-            prev.eagerly <- Nope ;
+            t.on_set t k v uid mtime ;
             prev.value <- v ;
-            t.on_set t k v set_by mtime
+            prev.uid <- uid ;
+            prev.mtime <- mtime ;
+            prev.eagerly <- Nope
         )
 
-    | SrvMsg.NewKey (k, v, set_by, mtime) ->
+    | SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } ->
         let new_hv ()  =
-          { value = v ;
-            locked = Some set_by ;
-            set_by ;
-            mtime ;
-            eagerly = Nope } in
-        let add_hv hv =
-            H.add t.h k (Value hv) ;
-            t.on_new t k v set_by mtime in
+          { value = v ; uid ; mtime ; owner ; expiry ; eagerly = Nope } in
+        let set_hv hv =
+            H.replace t.h k (Value hv) ;
+            t.on_new t k v uid mtime owner expiry in
         (match H.find t.h k with
         | exception Not_found ->
-            add_hv (new_hv ())
+            set_hv (new_hv ())
         | Waiters conts ->
             let hv = new_hv () in
-            List.iter (fun cont -> cont hv) conts ;
-            add_hv hv
+            set_hv hv ;
+            List.iter (fun cont -> cont hv) conts
         | Value prev ->
             if prev.eagerly = Nope then
               !logger.error
                 "Server create key %a that already exist, updating"
                 Key.print k ;
+            t.on_set t k v uid mtime ;
+            if prev.owner = "" && owner <> "" then
+              t.on_lock t k owner expiry
+            else if prev.owner <> "" && owner = "" then
+              t.on_unlock t k ;
             prev.value <- v ;
-            prev.set_by <- set_by ;
+            prev.uid <- uid ;
             prev.mtime <- mtime ;
-            prev.eagerly <- Nope ;
-            t.on_set t k v set_by mtime
+            prev.owner <- owner ;
+            prev.expiry <- expiry ;
+            prev.eagerly <- Nope
         )
 
     | SrvMsg.DelKey k ->
@@ -177,22 +177,23 @@ struct
             H.remove t.h k ;
             t.on_del t k hv.value)
 
-    | SrvMsg.LockKey (k, u) ->
-        (match H.find t.h k with
-        | exception Not_found ->
-            !logger.error "Server want to lock unknown key %a"
-              Key.print k
-        | Waiters _ ->
-            !logger.error "Server want to lock unknown key %a"
-              Key.print k
-        | Value prev ->
-            if prev.locked <> None && prev.eagerly = Nope then (
-              !logger.error "Server locked key %a that is already locked"
-                Key.print k ;
-            ) else (
-              prev.locked <- Some u ;
-              t.on_lock t k u
-            )
+    | SrvMsg.LockKey { k ; owner ; expiry } ->
+        if owner = "" then
+          !logger.error "Server locked key %a with empty owner (and expiry=%f)"
+            Key.print k
+            expiry
+        else (
+          match H.find t.h k with
+          | exception Not_found ->
+              !logger.error "Server want to lock unknown key %a"
+                Key.print k
+          | Waiters _ ->
+              !logger.error "Server want to lock unknown key %a"
+                Key.print k
+          | Value prev ->
+              prev.owner <- owner ;
+              prev.expiry <- expiry ;
+              t.on_lock t k owner expiry
         )
 
     | SrvMsg.UnlockKey k ->
@@ -204,11 +205,11 @@ struct
             !logger.error "Server want to unlock unknown key %a"
               Key.print k
         | Value prev ->
-            if prev.locked = None then (
+            if prev.owner = "" then (
               !logger.error "Server unlocked key %a that is not locked"
                 Key.print k ;
             ) else (
-              prev.locked <- None ;
+              prev.owner <- "" ;
               t.on_unlock t k
             )
         )

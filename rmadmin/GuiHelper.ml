@@ -56,7 +56,8 @@ external next_pending_request : unit -> pending_req = "next_pending_request"
 
 external conf_new_key : string -> Value.t -> string -> unit = "conf_new_key"
 
-let on_new clt k v uid _mtime =
+(* TODO: also pass owner and expiry to C++ cb *)
+let on_new clt k v uid _mtime _owner _expiry =
   ignore clt ;
   Gc.compact () ;
   conf_new_key (Key.to_string k) v uid ;
@@ -80,10 +81,11 @@ let on_del clt k _v =
 
 external conf_lock_key : string -> string -> unit = "conf_lock_key"
 
-let on_lock clt k uid =
+(* TODO: also pass expiry to C++ cb *)
+let on_lock clt k owner _expiry =
   ignore clt ;
   Gc.compact () ;
-  conf_lock_key (Key.to_string k) uid ;
+  conf_lock_key (Key.to_string k) owner ;
   Gc.compact ()
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"

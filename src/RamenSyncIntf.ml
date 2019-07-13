@@ -250,39 +250,51 @@ struct
     type t =
       | AuthOk of Key.t (* the key used for error logs *)
       | AuthErr of string (* an error message *)
-      (* Set or create unlocked: *)
-      | SetKey of (Key.t * Value.t * string * float (* mtime *))
-      (* Create and set, locked: *)
-      | NewKey of (Key.t * Value.t * string * float)
+      (* Change a value: *)
+      | SetKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float }
+      (* Create a new value, locked if owner <> "".
+       * We cannot create keys unlocked then lock them to avoid races
+       * in clients.
+       * For clients, expiry is indicative only! *)
+      | NewKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float ; owner : string ; expiry : float }
       | DelKey of Key.t
-      (* With the username of the lock owner: *)
-      | LockKey of (Key.t * string)
+      (* New lock or change of lock owner. owner must be <> "". *)
+      | LockKey of { k : Key.t ; owner : string ; expiry : float }
       | UnlockKey of Key.t
 
-    let print oc = function
+    let print oc msg =
+      let print_lock_owner owner expiry oc =
+        if owner = "" then
+          Printf.fprintf oc "unlocked"
+        else
+          Printf.fprintf oc "owner=%s; expiry=%a;"
+            owner
+            print_as_date expiry in
+      match msg with
       | AuthOk err_key ->
           Printf.fprintf oc "AuthOk %a" Key.print err_key
       | AuthErr msg ->
           Printf.fprintf oc "AuthErr %s" msg
-      | SetKey (k, v, uid, mtime) ->
-          Printf.fprintf oc "SetKey (%a, %a, %s, %f)"
+      | SetKey { k ; v ; uid ; mtime } ->
+          Printf.fprintf oc "SetKey { k=%a; v=%a; uid=%s; mtime=%a; }"
             Key.print k
             Value.print v
             uid
-            mtime
-      | NewKey (k, v, uid, mtime) ->
-          Printf.fprintf oc "NewKey (%a, %a, %s, %f)"
+            print_as_date mtime
+      | NewKey { k ; v ; uid ; mtime ; owner ; expiry } ->
+          Printf.fprintf oc "NewKey { k=%a; v=%a; uid=%s; mtime=%a; %t }"
             Key.print k
             Value.print v
             uid
-            mtime
+            print_as_date mtime
+            (print_lock_owner owner expiry)
       | DelKey k ->
           Printf.fprintf oc "DelKey %a"
             Key.print k
-      | LockKey (k, uid) ->
-          Printf.fprintf oc "LockKey (%a, %s)"
+      | LockKey { k ; owner ; expiry } ->
+          Printf.fprintf oc "LockKey { k=%a; %t }"
             Key.print k
-            uid
+            (print_lock_owner owner expiry)
       | UnlockKey k ->
           Printf.fprintf oc "UnlockKey %a"
             Key.print k

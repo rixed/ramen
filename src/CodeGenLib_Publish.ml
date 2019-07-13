@@ -25,7 +25,7 @@ let stats_num_rate_limited_unpublished =
   IntCounter.make Metric.Names.num_rate_limited_unpublished
     Metric.Docs.num_rate_limited_unpublished
 
-let on_new _clt k _v _uid _mtime =
+let on_new _clt k _v _uid _mtime _owner _expiry =
   match k with
   | RamenSync.Key.Tails (_, _, Subscriber uid) ->
       !logger.info "New subscriber: %s" uid ;

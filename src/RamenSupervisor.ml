@@ -1552,7 +1552,7 @@ let synchronize_running_sync conf _autoreload_delay =
           F.unserialized prog_name func in
         Replay.teardown_links conf func_of_fq replay
     | _ -> ()
-  and on_new clt k v _uid _mtime =
+  and on_new clt k v _uid _mtime _owner _expiry =
     match k, v with
     | Key.Replays chan,
       Value.Replay replay ->

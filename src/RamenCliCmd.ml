@@ -242,11 +242,12 @@ let confserver conf daemonize to_stdout to_syslog port_opt () =
 
 let confclient conf () =
   let topics = [ "*" ] in
-  let on_new _clt k v u mtime =
-    !logger.info "%a = %a (set by %s, mtime=%f)"
+  let on_new _clt k v u mtime owner expiry =
+    !logger.info "%a = %a (set by %s, mtime=%f, owner=%S, expiry=%f)"
       RamenSync.Key.print k
       RamenSync.Value.print v
       u mtime
+      owner expiry
   in
   ZMQClient.start conf.C.sync_url conf.C.login ~topics ~on_new
     (fun clt ->
@@ -387,11 +388,12 @@ let compile_sync conf replace src_file source_name_opt =
             N.path_print source_name s.Value.SourceInfo.md5 md5
         )
     | _ -> () in
+  let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
   let topics = [
     (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
   let open ZMQClient in
-  start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
+  start ~while_ ~on_new ~on_set conf.C.sync_url conf.C.login
                   ~topics (fun clt ->
       if replace then
         send_cmd clt ~while_
@@ -479,10 +481,10 @@ let compserver conf daemonize to_stdout to_syslog
         ()
     | k, v ->
         !logger.warning "Irrelevant: %a, %a"
-          Key.print k Value.print v
-  in
+          Key.print k Value.print v in
+  let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
   let num_msg =
-    ZMQClient.start ~while_ ~on_new:on_set ~on_set conf.C.sync_url conf.C.login
+    ZMQClient.start ~while_ ~on_new ~on_set conf.C.sync_url conf.C.login
                     ~topics (ZMQClient.process_in ~while_) in
   !logger.debug "Received %d messages" num_msg
 
@@ -1272,7 +1274,7 @@ let tail_sync
       let filter = RamenSerialization.filter_tuple_by out_type where in
       (* Callback for each tuple: *)
       let count_last = ref last and count_next = ref next in
-      let on_key counter _clt k v _uid _mtim =
+      let on_key counter k v =
         match k, v with
         | Key.Tails (_site, _fq, LastTuple _seq),
           Value.Tuple { skipped ; values } ->
@@ -1302,8 +1304,7 @@ let tail_sync
             | _ -> ())
         | _ -> () in
       (* Iter over tuples received at sync: *)
-      Client.iter clt (fun k hv ->
-        on_key count_last clt k hv.value "" 0.) ;
+      Client.iter clt (fun k hv -> on_key count_last k hv.value) ;
       (* Subscribe to all those tails: *)
       !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
       let subscriber =
@@ -1317,7 +1318,8 @@ let tail_sync
       !logger.debug "Waiting for tuples..." ;
       let while_' () =
         while_ () && (!count_last > 0 || !count_next > 0) in
-      clt.Client.on_new <- on_key count_next ;
+      clt.Client.on_new <-
+        fun _ k v _ _ _ _ -> on_key count_next k v ;
       let msg_count = ZMQClient.process_in ~while_:while_' clt in
       !logger.debug "Processed %d messages" msg_count ;
       print [||] ;

@@ -52,9 +52,9 @@ let pending_callbacks () =
 let log_done cmd_id =
   !logger.debug "Cmd %d: done!" cmd_id
 
-(* Given a callback, return another cllback that intercept error messages and call
+(* Given a callback, return another one that intercept error messages and call
  * RPC continuations first: *)
-let check_set_cbs new_key on_msg =
+let check_ok clt k v =
   let maybe_cb ~do_ ~dont cmd_id =
     (match Hashtbl.find do_ cmd_id with
     | exception Not_found ->
@@ -67,27 +67,28 @@ let check_set_cbs new_key on_msg =
         (* TODO: Hashtbl.take *)
         Hashtbl.remove do_ cmd_id) ;
     Hashtbl.remove dont cmd_id in
-  fun clt k v u mt ->
-    if clt.Client.my_errors = Some k then (
-      match v with
-      | Value.(Error (_ts, cmd_id, err_msg)) ->
-          if err_msg = "" then (
-            !logger.debug "Cmd %d: OK" cmd_id ;
-            maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
-          ) else (
-            !logger.error "Cmd %d: %s" cmd_id err_msg ;
-            maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
-          )
-      | v ->
-          !logger.error "Error value is not an error: %a" Value.print v
-    ) ;
+  if clt.Client.my_errors = Some k then (
+    match v with
+    | Value.(Error (_ts, cmd_id, err_msg)) ->
+        if err_msg = "" then (
+          !logger.debug "Cmd %d: OK" cmd_id ;
+          maybe_cb ~do_:on_oks ~dont:on_kos cmd_id
+        ) else (
+          !logger.error "Cmd %d: %s" cmd_id err_msg ;
+          maybe_cb ~do_:on_kos ~dont:on_oks cmd_id
+        )
+    | v ->
+        !logger.error "Error value is not an error: %a" Value.print v
+  )
+
+let check_new_cbs on_msg =
+  fun clt k v uid mtime owner expiry ->
+    check_ok clt k v ;
     (match Hashtbl.find on_dones k with
     | exception Not_found ->
         !logger.debug "no on_dones cb for %a" Key.print k
     | cmd_id, filter, cb ->
-        let srv_cmd =
-          if new_key then SrvMsg.NewKey (k, v, u, mt)
-                     else SrvMsg.SetKey (k, v, u, mt) in
+        let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } in
         if filter srv_cmd then (
           Hashtbl.remove on_dones k ;
           !logger.debug "on_dones cb filter pass, calling back." ;
@@ -96,7 +97,25 @@ let check_set_cbs new_key on_msg =
         ) else (
           !logger.debug "on_dones cb filter does not pass."
         )) ;
-    on_msg clt k v u mt
+    on_msg clt k v uid mtime owner expiry
+
+let check_set_cbs on_msg =
+  fun clt k v uid mtime ->
+    check_ok clt k v ;
+    (match Hashtbl.find on_dones k with
+    | exception Not_found ->
+        !logger.debug "no on_dones cb for %a" Key.print k
+    | cmd_id, filter, cb ->
+        let srv_cmd = SrvMsg.SetKey { k ; v ; uid ; mtime } in
+        if filter srv_cmd then (
+          Hashtbl.remove on_dones k ;
+          !logger.debug "on_dones cb filter pass, calling back." ;
+          log_done cmd_id ;
+          cb ()
+        ) else (
+          !logger.debug "on_dones cb filter does not pass."
+        )) ;
+    on_msg clt k v uid mtime
 
 let check_del_cbs on_msg =
   fun clt k prev_v ->
@@ -111,20 +130,20 @@ let check_del_cbs on_msg =
     on_msg clt k prev_v
 
 let check_lock_cbs on_msg =
-  fun clt k uid ->
-    (* uid check is part of the filter *)
+  fun clt k owner expiry ->
+    (* owner check is part of the filter *)
     (match Hashtbl.find on_dones k with
     | exception Not_found ->
         !logger.debug "No done cb for key %a" Key.print k
     | cmd_id, filter, cb ->
         !logger.debug "Found a done filter for lock of %a"
           Key.print k ;
-        let srv_cmd = SrvMsg.LockKey (k, uid) in
+        let srv_cmd = SrvMsg.LockKey { k ; owner ; expiry } in
         if filter srv_cmd then (
           Hashtbl.remove on_dones k ;
           log_done cmd_id ;
           cb ())) ;
-    on_msg clt k uid
+    on_msg clt k owner expiry
 
 let check_unlock_cbs on_msg =
   fun clt k ->
@@ -148,7 +167,7 @@ let init_next_id () =
 let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   let zock, _clt = get_connection () in
   let my_uid =
-    IO.to_string User.print_id clt.Client.uid in
+    IO.to_string User.print_id clt.Client.my_uid in
   let cmd_id =
     match !next_id with
     | None ->
@@ -185,8 +204,8 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
     | CltMsg.UpdKey (k, v) ->
         add_done_cb cb k
           (function
-          | SrvMsg.SetKey (_, v', _, _)
-          | SrvMsg.NewKey (_, v', _, _) when Value.equal v v' -> true
+          | SrvMsg.SetKey { v = v' ; _ }
+          | SrvMsg.NewKey { v = v' ; _ } when Value.equal v v' -> true
           | _ -> false)
     | CltMsg.DelKey k ->
         add_done_cb cb k
@@ -197,12 +216,12 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
     | CltMsg.LockOrCreateKey (k, _) ->
         add_done_cb cb k
           (function
-          | SrvMsg.LockKey (_, uid) when uid = my_uid -> true
-          | SrvMsg.LockKey (k, uid) ->
+          | SrvMsg.LockKey { owner ; _ } when owner = my_uid -> true
+          | SrvMsg.LockKey { owner ; _ } ->
               !logger.debug
-                "Received an unlock for key %a but for user %S instead of %S"
+                "Received a lock for key %a but for user %S instead of %S"
                 Key.print k
-                uid my_uid ;
+                owner my_uid ;
               false
           | _ -> false)
     | CltMsg.UnlockKey k ->
@@ -218,26 +237,31 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   | Some while_ ->
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+  let set_eagerly k v lock_timeo =
+    let new_hv () =
+      Client.{ value = v ;
+               uid = clt.Client.my_uid ;
+               mtime = Unix.gettimeofday () ;
+               owner = if lock_timeo > 0. then clt.Client.my_uid else "" ;
+               expiry = 0. ; (* whatever *)
+               eagerly = Created } in
+    match Client.H.find clt.Client.h k with
+    | exception Not_found ->
+        let hv = new_hv () in
+        Client.H.add clt.Client.h k (Value hv)
+    | Waiters conts ->
+        let hv = new_hv () in
+        Client.H.replace clt.Client.h k (Value hv) ;
+        List.iter (fun cont -> cont hv) conts
+    | Value hv ->
+        hv.value <- v ;
+        hv.eagerly <- Overwritten in
   if eager then (
     match cmd with
-    | SetKey (k, v) | NewKey (k, v, _) | UpdKey (k, v) ->
-        let new_hv () =
-          Client.{ value = v ;
-                   locked = Some clt.Client.uid ;
-                   set_by = clt.Client.uid ;
-                   mtime = Unix.gettimeofday () ;
-                   eagerly = Created } in
-        (match Client.H.find clt.Client.h k with
-        | exception Not_found ->
-            let hv = new_hv () in
-            Client.H.add clt.Client.h k (Value hv)
-        | Waiters conts ->
-            let hv = new_hv () in
-            List.iter (fun cont -> cont hv) conts ;
-            Client.H.add clt.Client.h k (Value hv)
-        | Value hv ->
-            hv.value <- v ;
-            hv.eagerly <- Overwritten)
+    | SetKey (k, v) | UpdKey (k, v) ->
+        set_eagerly k v 0.
+    | NewKey (k, v, lock_timeo) ->
+        set_eagerly k v lock_timeo
     | DelKey k ->
         (match Client.find clt k with
         | exception Not_found -> ()
@@ -415,8 +439,8 @@ let init_sync ?while_ clt topics on_progress =
 let start ?while_ url creds ?(topics=[])
           ?(on_progress=default_on_progress)
           ?(on_sock=ignore1) ?(on_synced=ignore1)
-          ?(on_new=ignore5) ?(on_set=ignore5) ?(on_del=ignore3)
-          ?(on_lock=ignore3) ?(on_unlock=ignore2)
+          ?(on_new=ignore7) ?(on_set=ignore5) ?(on_del=ignore3)
+          ?(on_lock=ignore4) ?(on_unlock=ignore2)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
   let to_ms f =
     if f < 0. then -1 else int_of_float (f *. 1000.) in
@@ -425,13 +449,13 @@ let start ?while_ url creds ?(topics=[])
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
       let zock = Zmq.Socket.(create ctx dealer) in
-      let on_new = check_set_cbs true on_new
-      and on_set = check_set_cbs false on_set
+      let on_new = check_new_cbs on_new
+      and on_set = check_set_cbs on_set
       and on_del = check_del_cbs on_del
       and on_lock = check_lock_cbs on_lock
       and on_unlock = check_unlock_cbs on_unlock in
       let clt =
-        Client.make ~uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+        Client.make ~my_uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
       zock_clt := Some (zock, clt) ;
       finally
         (fun () -> Zmq.Socket.close zock)
