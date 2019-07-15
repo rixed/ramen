@@ -96,6 +96,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::Worker>();
   qRegisterMetaType<conf::TimeRange>();
   qRegisterMetaType<conf::Retention>();
+  qRegisterMetaType<QVector<int>>();
 
   w = new RmAdminWin();
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
