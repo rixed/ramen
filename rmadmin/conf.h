@@ -37,7 +37,7 @@ void askDel(conf::Key const &);
 
 /* Also, instead of connecting to individual KValues in the map to the
  * GUI actions, it's simpler to register interest for some pattern of keys
- * and be automatically connected whenever a new key arrive (otherwise there
+ * and be automatically connected whenever a new key arrives (otherwise there
  * would be a chicken/egg issue for new keys).
  * As an additional help, these functions will also call the given onCreated
  * for preexisting values. */

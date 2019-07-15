@@ -21,9 +21,6 @@ GraphView::GraphView(GraphViewSettings const *settings_, QWidget *parent) :
   currentScale(1.),
   lastScale(1.)
 {
-  QString st = styleSheet();
-  std::cout << "ST=" << st.toStdString() << std::endl;
-
   setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
   setDragMode(ScrollHandDrag);
   setRenderHint(QPainter::Antialiasing);

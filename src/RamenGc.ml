@@ -316,7 +316,7 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
   (* The GC needs all allocation size per worker for this site.
    * On the other hand storage stats will be written back (ArchivedTimes,
    * NumArcFiles, NumArcBytes) for any discovered archives (which was done
-   * by `archivist --stats` whithout confserver.
+   * by `archivist --stats` whithout confserver).
    * Also need workers and infos to iter over functions: *)
   let topics =
     [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ;

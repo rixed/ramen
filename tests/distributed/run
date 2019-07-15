@@ -122,16 +122,9 @@ else
 
   log "Linking config files from aggregator" ;
 
-  mkdir -p "$RAMEN_DIR/configuration/$rc_version/"
-  ln "$RAMEN_DIR/../aggregator/configuration/$rc_version/rc" \
-     "$RAMEN_DIR/configuration/$rc_version/"
   mkdir -p "$RAMEN_DIR/services/$services_version/"
   ln "$RAMEN_DIR/../aggregator/services/$services_version/services" \
      "$RAMEN_DIR/services/$services_version/"
-  mkdir -p "$RAMEN_DIR/archivist/"
-  ln -s "$RAMEN_DIR/../aggregator/archivist/$archivist_version" \
-        "$RAMEN_DIR/archivist/"
-  ln -s "$RAMEN_DIR/../aggregator/replays" "$RAMEN_DIR/"
 fi
 
 "$ramen" supervisor --debug --master=aggregator --confserver=localhost --site="$ramen_site" &

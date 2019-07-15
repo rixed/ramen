@@ -151,8 +151,9 @@ void autoconnect(
     KValue const *kv = &(*it).second;
 
     if (std::regex_search(key.s, re)) {
-      if (verbose) std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
+      if (verbose) std::cout << "Autoconnect: Calling callback immediately on past object..." << std::endl;
       cb(key, kv);
+      if (verbose) std::cout << "Autoconnect: Also emit the valueCreated signal" << std::endl;
       emit kv->valueCreated(key, kv->val, kv->uid, kv->mtime); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
   }

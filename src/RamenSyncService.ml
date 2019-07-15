@@ -162,7 +162,7 @@ let zock_step srv zock =
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
       Server.timeout_all_locks srv
   | parts ->
-      !logger.info "0MQ: Received message %a" 
+      !logger.info "0MQ: Received message %a"
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
       | peer, [ msg ] ->
