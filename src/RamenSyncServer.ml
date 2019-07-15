@@ -135,6 +135,18 @@ struct
             Key.print k ;
           do_unlock t k hv)
 
+  (* Early cleaning of timed out locks is just for nicer visualisation in
+   * clients but is not required for proper working of locks. *)
+  let timeout_all_locks =
+    let last_timeout = ref 0. in
+    fun t ->
+      let now = Unix.time () in
+      if now -. !last_timeout >= 1. then (
+        last_timeout := now ;
+        (* FIXME: have a heap of locks *)
+        H.iter (timeout_locks t) t.h
+      )
+
   let check_unlocked t hv k u =
     timeout_locks t k hv ;
     match hv.locks with

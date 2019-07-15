@@ -160,7 +160,7 @@ let zock_step srv zock =
   in
   match Zmq.Socket.recv_all ~block:true zock with
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
-      ()
+      Server.timeout_all_locks srv
   | parts ->
       !logger.info "0MQ: Received message %a" 
         (List.print String.print_quoted) parts ;
@@ -224,6 +224,7 @@ let start conf port =
     (fun () ->
       let zock = Zmq.Socket.(create ctx router) in
       Zmq.Socket.set_send_high_water_mark zock 0 ;
+      Zmq.Socket.set_receive_timeout zock 1000 ; (* in msec *)
       let send_msg = send_msg zock in
       let srv = Server.make ~send_msg in
       if not (Snapshot.load conf srv) then
