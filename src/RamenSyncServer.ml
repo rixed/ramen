@@ -249,6 +249,12 @@ struct
             prev.locks <- [ u, expiry ] ;
             notify t k (User.has_capa prev.r) (LockKey { k ; owner ; expiry })
         | lst ->
+            (* Reject it if it's already in the lockers: *)
+            if List.exists (fun (u', _) -> User.equal u u') lst then
+              Printf.sprintf2 "User %a is already waiting for %a lock"
+                User.print u
+                Key.print k |>
+              failwith ;
             prev.locks <- lst @ [ u, lock_timeo ] (* FIXME *))
 
   let unlock t u k =
