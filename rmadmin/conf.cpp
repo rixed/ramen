@@ -200,7 +200,7 @@ extern "C" {
     conf::kvs_lock.lock();
     conf::do_autoconnect(k, &conf::kvs[k]);
     conf::kvs[k].set(k, v);
-    conf::kvs[k].lock(k, u);
+    conf::kvs[k].lock(k, u);  // FIXME: only if actually locked
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
@@ -224,6 +224,7 @@ extern "C" {
     std::string k(String_val(k_));
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
+    emit conf::kvs[k].valueDeleted(k);  // better here than in the KValue destructor
     conf::kvs.remove(k);
     conf::kvs_lock.unlock();
     // TODO: Or set to uninitialized? Or what?

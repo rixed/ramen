@@ -8,6 +8,7 @@
 #include "confKey.h"
 #include "KErrorMsg.h"
 
+class ConfTreeModel;
 class SourcesModel;
 class GraphModel;
 class GraphViewSettings;
@@ -19,6 +20,7 @@ class RmAdminWin : public QMainWindow
   SyncStatus connStatus, authStatus, syncStatus;
   void setStatusMsg();
   KErrorMsg *errorMessage;
+  ConfTreeModel *confTreeModel;
   SourcesModel *sourcesModel;
   GraphModel *graphModel;
   GraphViewSettings *settings;

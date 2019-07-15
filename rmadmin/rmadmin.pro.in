@@ -74,9 +74,11 @@ HEADERS += \
   ChartDataSet.h \
   Graphic.h \
   Chart.h \
+  ConfTreeItem.h \
   SourcesModel.h \
   CompiledProgramParam.h \
   CompiledFunctionInfo.h \
+  ConfTreeWidget.h \
   SourcesView.h \
   ProgramsView.h \
   OperationsView.h \
@@ -135,9 +137,11 @@ SOURCES += \
   ChartDataSet.cpp \
   Graphic.cpp \
   Chart.cpp \
+  ConfTreeItem.cpp \
   SourcesModel.cpp \
   CompiledProgramParam.cpp \
   CompiledFunctionInfo.cpp \
+  ConfTreeWidget.cpp \
   SourcesView.cpp \
   ProgramsView.cpp \
   OperationsView.cpp \

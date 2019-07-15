@@ -20,11 +20,6 @@ std::shared_ptr<conf::Value const> KValue::value() const
   return val;
 }
 
-bool KValue::isSet() const
-{
-  return val != nullptr;
-}
-
 KValue& KValue::operator=(const KValue& other)
 {
   owner = other.owner;

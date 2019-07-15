@@ -21,11 +21,17 @@ public:
   KValue(const KValue&);
   ~KValue();
   void set(conf::Key const &, std::shared_ptr<conf::Value const>);
-  bool isSet() const;
+  bool isSet() const {
+    return val != nullptr;
+  }
+  bool isLocked() const {
+    return isSet() && owner != nullptr;
+  }
   std::shared_ptr<conf::Value const> value() const;
   void lock(conf::Key const &, QString const &);
   void unlock(conf::Key const &);
   KValue& operator=(const KValue&);
+
 signals:
   void valueCreated(conf::Key const &, std::shared_ptr<conf::Value const>) const;
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
