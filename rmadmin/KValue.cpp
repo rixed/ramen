@@ -47,7 +47,6 @@ void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 
 void KValue::lock(conf::Key const &k, QString const &uid)
 {
-  assert(! owner);
   owner = uid;
   emit valueLocked(k, uid);
 }

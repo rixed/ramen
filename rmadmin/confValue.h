@@ -124,7 +124,8 @@ struct Worker : public Value
   bool debug;
   double reportPeriod;
   QString const srcPath;
-  QString const signature;
+  QString const worker_sign;
+  QString const bin_sign;
   bool used;
   WorkerRole *role;
   std::list<RCEntryParam *> params; // Params are owned
@@ -132,7 +133,7 @@ struct Worker : public Value
 
   Worker();
   ~Worker();
-  Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &signature, bool used, WorkerRole *role);
+  Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &worker_sign, QString const &bin_sign, bool used, WorkerRole *role);
   bool operator==(Value const &) const;
 };
 

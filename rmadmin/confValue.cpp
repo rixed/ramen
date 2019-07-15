@@ -187,23 +187,25 @@ Value *valueOfOCaml(value v_)
     case WorkerType:
       {
         v_ = Field(v_, 0);
+        assert(Wosize_val(v_) == 12);
         Worker *w = new Worker(
           Bool_val(Field(v_, 0)), // enabled
           Bool_val(Field(v_, 1)), // debug
           Double_val(Field(v_, 2)), // reportPeriod
           String_val(Field(v_, 3)), // srcPath
-          String_val(Field(v_, 4)), // signature
-          Bool_val(Field(v_, 5)), // used
-          WorkerRole::ofOCamlValue(Field(v_, 8)));
+          String_val(Field(v_, 4)), // worker_signature
+          String_val(Field(v_, 5)), // bin_signature
+          Bool_val(Field(v_, 6)), // used
+          WorkerRole::ofOCamlValue(Field(v_, 9)));
         // Add the params:
-        for (tmp1_ = Field(v_, 6); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+        for (tmp1_ = Field(v_, 7); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
           RCEntryParam *p = new RCEntryParam(
             String_val(Field(tmp1_, 0)), // name
             std::shared_ptr<conf::RamenValue const>(RamenValue::ofOCaml(Field(tmp1_, 1))));
           w->params.push_back(p);
         }
         // Add the parents:
-        for (tmp1_ = Field(v_, 9); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
+        for (tmp1_ = Field(v_, 10); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
           WorkerRef *p = WorkerRef::ofOCamlValue(Field(tmp1_, 0));
           w->parent_refs.push_back(p);
         }
@@ -531,17 +533,18 @@ bool Error::operator==(Value const &other) const
   return cmdId == o.cmdId;
 }
 
-Worker::Worker(bool enabled_, bool debug_, double reportPeriod_, QString const &srcPath_, QString const &signature_, bool used_, WorkerRole *role_) :
+Worker::Worker(bool enabled_, bool debug_, double reportPeriod_, QString const &srcPath_, QString const &worker_sign_, QString const &bin_sign_, bool used_, WorkerRole *role_) :
   Value(WorkerType),
   enabled(enabled_),
   debug(debug_),
   reportPeriod(reportPeriod_),
   srcPath(srcPath_),
-  signature(signature_),
+  worker_sign(worker_sign_),
+  bin_sign(bin_sign_),
   used(used_),
   role(role_) {}
 
-Worker::Worker() : Worker(false, false, 0., "", "", false, nullptr) {}
+Worker::Worker() : Worker(false, false, 0., "", "", "", false, nullptr) {}
 
 Worker::~Worker()
 {
@@ -555,7 +558,7 @@ bool Worker::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Worker const &o = static_cast<Worker const &>(other);
-  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && signature == o.signature && used == o.used && role == o.role;
+  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && worker_sign == o.worker_sign && bin_sign == o.bin_sign && used == o.used && role == o.role;
 }
 
 Retention::Retention(double duration_, double period_) :
