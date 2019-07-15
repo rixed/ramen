@@ -41,11 +41,11 @@ StoragePies::StoragePies(GraphModel *graphModel_, QWidget *parent) :
     modeSelect->setLayout(modeLayout);
 
     current->setChecked(true);
-    connect(current, &QRadioButton::toggled, [this](bool set) {
+    connect(current, &QRadioButton::toggled, this, [this](bool set) {
       dataMode = set ? CurrentBytes : AllocedBytes;
       refreshChart();
     });
-    connect(sum, &QCheckBox::stateChanged, [this](bool state) {
+    connect(sum, &QCheckBox::stateChanged, this, [this](bool state) {
       sumAllSites = state;
       refreshChart();
     });
