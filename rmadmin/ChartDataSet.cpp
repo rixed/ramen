@@ -21,7 +21,7 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
     conf::Key k = functionItem->functionKey("/factors/" + std::to_string(i));
     auto const &it = conf::kvs.find(k);
     if (it == conf::kvs.end()) break;
-    std::shared_ptr<conf::Value const> v_(it.value().value());
+    std::shared_ptr<conf::Value const> v_(it.value().val);
     std::shared_ptr<conf::String const> v =
       std::dynamic_pointer_cast<conf::String const>(v_);
     if (! v) {

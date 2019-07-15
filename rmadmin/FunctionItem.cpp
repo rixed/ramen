@@ -110,7 +110,7 @@ std::shared_ptr<conf::RamenType const> FunctionItem::outType() const
   conf::kvs_lock.unlock_shared();
 
   std::shared_ptr<conf::RamenType const> outType =
-    std::dynamic_pointer_cast<conf::RamenType const>(kv.value());
+    std::dynamic_pointer_cast<conf::RamenType const>(kv.val);
   return outType;
 }
 

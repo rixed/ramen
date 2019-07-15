@@ -14,7 +14,7 @@ TargetConfigEditor::TargetConfigEditor(std::string const &key, QWidget *parent) 
   connect(&kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
   connect(&kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);
-  if (kv.isSet()) setValue(key, kv.value());
+  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const

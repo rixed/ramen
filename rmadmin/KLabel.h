@@ -19,7 +19,7 @@ public:
     conf::kvs_lock.unlock_shared();
     connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
 
-    if (kv.isSet()) setValue(key, kv.value());
+    if (kv.isSet()) setValue(key, kv.val);
   }
 
 public slots:

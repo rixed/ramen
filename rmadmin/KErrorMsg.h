@@ -25,7 +25,7 @@ public slots:
     KValue &kv = conf::kvs[key];
     conf::kvs_lock.unlock_shared();
     connect(&kv, &KValue::valueChanged, this, &KErrorMsg::setValue);
-    if (kv.isSet()) setValue(key, kv.value());
+    if (kv.isSet()) setValue(key, kv.val);
   }
 
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)

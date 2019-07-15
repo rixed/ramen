@@ -13,7 +13,7 @@ KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
   connect(&kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
   // TODO: valueDeleted.
-  if (kv.isSet()) setValue(key, kv.value());
+  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const

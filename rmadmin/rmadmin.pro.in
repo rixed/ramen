@@ -28,6 +28,7 @@ HEADERS += \
   LazyRef.h \
   colorOfString.h \
   SyncStatus.h \
+  Resources.h \
   PosIntValidator.h \
   PosDoubleValidator.h \
   confKey.h \
@@ -98,6 +99,7 @@ SOURCES += \
   qcustomplot.cpp \
   colorOfString.cpp \
   SyncStatus.cpp \
+  Resources.cpp \
   PosIntValidator.cpp \
   PosDoubleValidator.cpp \
   confKey.cpp \
@@ -159,6 +161,8 @@ SOURCES += \
   StorageTableView.cpp \
   RmAdminWin.cpp \
   main.cpp
+
+RESOURCES = resources.qrc
 
 # For some reasons the compiler qmake selected might not look into the same
 # locations than the compiler used by autoconf to locate libs:

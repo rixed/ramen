@@ -55,7 +55,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
   connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
   connect(&kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
   // TODO: valueDeleted.
-  if (kv.isSet()) setValue(key, kv.value());
+  if (kv.isSet()) setValue(key, kv.val);
 }
 
 // If not visible then the error message will be visible

@@ -220,7 +220,7 @@ void RCEntryEditor::resetParams()
 
   conf::kvs_lock.lock_shared();
   std::shared_ptr<conf::SourceInfo const> info =
-    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].value());
+    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].val);
   conf::kvs_lock.unlock_shared();
 
   clearParams();

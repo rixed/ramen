@@ -23,7 +23,7 @@ KChoice::KChoice(std::string const key, std::vector<std::pair<QString const, std
   connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
   connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
-  if (kv.isSet()) setValue(key, kv.value());
+  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> KChoice::getValue() const

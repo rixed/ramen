@@ -1,0 +1,6 @@
+<RCC>
+  <qresource>
+    <file>pix/locked.svg</file>
+    <file>pix/unlocked.svg</file>
+  </qresource>
+</RCC>

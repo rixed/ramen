@@ -27,7 +27,7 @@ KLineEdit::KLineEdit(std::string const &key, conf::ValueType valueType_, QWidget
   connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);
 
-  if (kv.isSet()) setValue(key, kv.value());
+  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> KLineEdit::getValue() const

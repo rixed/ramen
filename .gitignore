@@ -75,6 +75,7 @@ site/menuicon.png
 src/orc/orc_writer
 moc_*.cpp
 moc_*.h
+qrc_*.cpp
 rmadmin/rmadmin.app
 rmadmin/RmAdmin.app
 rmadmin/Makefile

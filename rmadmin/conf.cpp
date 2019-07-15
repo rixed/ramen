@@ -153,7 +153,7 @@ void autoconnect(
     if (std::regex_search(key.s, re)) {
       if (verbose) std::cout << "calling autoconnect callback immediately on past object..." << std::endl;
       cb(key, kv);
-      emit kv->valueCreated(key, kv->value()); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
+      emit kv->valueCreated(key, kv->val, kv->uid, kv->mtime); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
     }
   }
   kvs_lock.unlock_shared();
@@ -186,34 +186,53 @@ extern "C" {
    * Called at reception of commands from the server:
    */
 
-  value conf_new_key(value k_, value v_, value u_)
+  value conf_new_key(value k_, value v_, value u_, value mt_, value o_, value ex_)
   {
-    CAMLparam3(k_, v_, u_);
+    CAMLparam5(k_, v_, u_, mt_, o_);
+    CAMLxparam1(ex_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     QString u(String_val(u_));
+    double mt(Double_val(mt_));
 
     if (verbose) std::cout << "new key " << k << " with value " << *v << std::endl;
     // key might already be bound (to uninitialized value) due to widget
     // connecting to it.
     // Connect first, and then set the value.
     conf::kvs_lock.lock();
+
     conf::do_autoconnect(k, &conf::kvs[k]);
-    conf::kvs[k].set(k, v);
-    conf::kvs[k].lock(k, u);  // FIXME: only if actually locked
+    conf::kvs[k].set(k, v, u, mt);
+
+    if (caml_string_length(o_) > 0) {
+      QString o(String_val(o_));
+      double ex(Double_val(ex_));
+      conf::kvs[k].lock(k, o, ex);
+    }
+
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
 
-  value conf_set_key(value k_, value v_)
+  value no_use_for_bytecode(value *, int)
   {
-    CAMLparam2(k_, v_);
+    assert(false);
+  }
+
+  value conf_set_key(value k_, value v_, value u_, value mt_)
+  {
+    CAMLparam4(k_, v_, u_, mt_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
+    QString u(String_val(u_));
+    double mt(Double_val(mt_));
+
     if (verbose) std::cout << "set key " << k << " to value " << *v << std::endl;
     conf::kvs_lock.lock();
+
     assert(conf::kvs.contains(k));
-    conf::kvs[k].set(k, v);
+    conf::kvs[k].set(k, v, u, mt);
+
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
@@ -231,13 +250,16 @@ extern "C" {
     CAMLreturn(Val_unit);
   }
 
-  value conf_lock_key(value k_, value u_)
+  value conf_lock_key(value k_, value o_, value ex_)
   {
-    CAMLparam1(k_);
+    CAMLparam3(k_, o_, ex_);
     std::string k(String_val(k_));
-    QString u(String_val(u_));
+    assert(caml_string_length(o_) > 0);
+    QString o(String_val(o_));
+    double ex(Double_val(ex_));
+
     conf::kvs_lock.lock();
-    conf::kvs[k].lock(k, u);
+    conf::kvs[k].lock(k, o, ex);
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
