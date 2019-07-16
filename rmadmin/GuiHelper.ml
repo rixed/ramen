@@ -175,16 +175,14 @@ let start_sync url creds () =
     ~recvtimeo:0.1 sync_loop
 
 external set_my_uid : string -> unit = "set_my_uid"
-external set_beta : bool -> unit = "set_beta"
 
-let init debug quiet url creds beta =
+let init debug quiet url creds =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
   init_logger log_level ;
   set_my_uid creds ;
-  set_beta beta ;
   (* Register the functions that will be called from C++ *)
   ignore (Callback.register "start_sync" (start_sync url creds)) ;
   ignore (Callback.register "value_of_string" value_of_string) ;
@@ -215,10 +213,6 @@ let confserver_url =
   let def = "localhost:"^ string_of_int Default.confserver_port in
   Arg.(value (opt string def i))
 
-let beta =
-  let i = Arg.info ~doc:CliInfo.beta [ "beta" ] in
-  Arg.(value (flag i))
-
 (* Run the program printing exceptions, and exit *)
 let print_exn f =
   try f ()
@@ -238,8 +232,7 @@ let cli_parse_result =
           $ debug
           $ quiet
           $ confserver_url
-          $ const "admin"
-          $ beta, i))
+          $ const "admin", i))
   with `Error _ -> exit 1
      | `Version | `Help -> exit 0
      | `Ok () -> ()
