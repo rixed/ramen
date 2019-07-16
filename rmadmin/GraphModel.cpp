@@ -292,8 +292,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VFloat const> v =
-        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      std::shared_ptr<VFloat const> v =
+        std::dynamic_pointer_cast<VFloat const>(cf->v);
       if (v) {
         functionItem->firstStartupTime = v->v;
         emit storagePropertyChanged(functionItem);
@@ -303,8 +303,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VFloat const> v =
-        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      std::shared_ptr<VFloat const> v =
+        std::dynamic_pointer_cast<VFloat const>(cf->v);
       if (v) {
         functionItem->lastStartupTime = v->v;
         emit storagePropertyChanged(functionItem);
@@ -314,8 +314,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VFloat const> v =
-        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      std::shared_ptr<VFloat const> v =
+        std::dynamic_pointer_cast<VFloat const>(cf->v);
       if (v) {
         functionItem->eventTimeMin = v->v;
         emit storagePropertyChanged(functionItem);
@@ -325,8 +325,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VFloat const> v =
-        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      std::shared_ptr<VFloat const> v =
+        std::dynamic_pointer_cast<VFloat const>(cf->v);
       if (v) {
         functionItem->eventTimeMax = v->v;
         emit storagePropertyChanged(functionItem);
@@ -336,8 +336,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->totalTuples = v->v;
         emit storagePropertyChanged(functionItem);
@@ -347,8 +347,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->totalBytes = v->v;
         emit storagePropertyChanged(functionItem);
@@ -358,8 +358,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VFloat const> v =
-        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      std::shared_ptr<VFloat const> v =
+        std::dynamic_pointer_cast<VFloat const>(cf->v);
       if (v) {
         functionItem->totalCpu = v->v;
         emit storagePropertyChanged(functionItem);
@@ -369,8 +369,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->maxRAM = v->v;
         emit storagePropertyChanged(functionItem);
@@ -383,8 +383,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->numArcFiles = v->v;
         emit storagePropertyChanged(functionItem);
@@ -394,8 +394,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->numArcBytes = v->v;
         emit storagePropertyChanged(functionItem);
@@ -405,8 +405,8 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      std::shared_ptr<conf::VI64 const> v =
-        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      std::shared_ptr<VI64 const> v =
+        std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->allocArcBytes = v->v;
         emit storagePropertyChanged(functionItem);
@@ -425,8 +425,8 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
     std::shared_ptr<conf::RamenValueValue const> rv =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (rv) {
-      std::shared_ptr<conf::VBool const> v =
-        std::dynamic_pointer_cast<conf::VBool const>(rv->value);
+      std::shared_ptr<VBool const> v =
+        std::dynamic_pointer_cast<VBool const>(rv->v);
       if (v) siteItem->isMaster = v->v;
     }
   }

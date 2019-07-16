@@ -4,6 +4,9 @@
 #include "KLabel.h"
 #include "FunctionInfoBox.h"
 
+/* FIXME: Broken as the programs/.* keys does not exist any longer.
+ * Use the source info instead. */
+
 FunctionInfoBox::FunctionInfoBox(FunctionItem const *f_, QWidget *parent) :
   QWidget(parent),
   f(f_),

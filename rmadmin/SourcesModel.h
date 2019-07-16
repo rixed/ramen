@@ -44,7 +44,7 @@ protected:
     // With original '/' conserved, so can be used to reconstruct the kvs keys:
     QString const sourceName;
 
-    std::shared_ptr<conf::RamenValue const> origText;
+    std::shared_ptr<RamenValue const> origText;
     std::shared_ptr<conf::SourceInfo const> sourceInfo;
 
     FileItem(QString const sourceName_) : sourceName(sourceName_) {}
@@ -52,7 +52,7 @@ protected:
       TreeItem(name_, parent_), sourceName(sourceName_) {}
     int numRows() const { return 0; }
     bool isDir() const { return false; }
-    void setText(std::shared_ptr<conf::RamenValue const> s) { origText = s; }
+    void setText(std::shared_ptr<RamenValue const> s) { origText = s; }
     void setInfo(std::shared_ptr<conf::SourceInfo const> s) { sourceInfo = s; }
   };
 

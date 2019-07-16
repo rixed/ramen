@@ -7,18 +7,17 @@
 extern "C" {
 # include <caml/mlvalues.h>
 }
+#include "RamenTypeStructure.h"
 #include "serValue.h"
 
 struct RamenType
 {
-  /* TODO: Rename ser::ValueType into RamenTypeStructure and maybe get rid of
-   * it entirely and rely solely on the class type (that can be templated,
-   * unlike that enum) */
-  ser::ValueType type;
+  RamenTypeStructure structure;
   bool nullable;
 
-  RamenType();
-  RamenType(ser::ValueType, bool);
+  RamenType(RamenTypeStructure, bool);
+  RamenType() : RamenType(EmptyType, false) {}
+
   virtual ~RamenType() {}
 
   virtual QString structureToQString() const = 0;
@@ -29,7 +28,6 @@ struct RamenType
     return s;
   }
   value toOCamlValue() const;
-  //virtual bool operator==(RamenType const &) const;
   virtual unsigned numColumns() const { return 0; };
   virtual QString columnName(unsigned) const = 0;
   virtual std::shared_ptr<RamenType const> columnType(unsigned) const = 0;
@@ -41,7 +39,7 @@ struct RamenType
 
 struct RamenTypeScalar : public RamenType
 {
-  RamenTypeScalar(ser::ValueType t, bool n) : RamenType(t, n) {}
+  RamenTypeScalar(RamenTypeStructure t, bool n) : RamenType(t, n) {}
   QString structureToQString() const;
   unsigned numColumns() const { return 1; }
   QString columnName(unsigned) const;
@@ -54,7 +52,7 @@ struct RamenTypeTuple : public RamenType
   // For Tuples and other composed types, subTypes are owned by their parent
   std::vector<std::shared_ptr<RamenType const>> fields;
   RamenTypeTuple(std::vector<std::shared_ptr<RamenType const>> fields_, bool n) :
-    RamenType(ser::TupleType, n), fields(fields_) {}
+    RamenType(TupleType, n), fields(fields_) {}
   QString structureToQString() const;
   // Maybe displaying a tuple in a single column would be preferable?
   unsigned numColumns() const { return fields.size(); }
@@ -77,7 +75,7 @@ struct RamenTypeVec : public RamenType
   unsigned dim;
   std::shared_ptr<RamenType const> subType;
   RamenTypeVec(unsigned dim_, std::shared_ptr<RamenType const> subType_, bool n) :
-    RamenType(ser::VecType, n), dim(dim_), subType(subType_) {}
+    RamenType(VecType, n), dim(dim_), subType(subType_) {}
   QString structureToQString() const;
   // Maybe displaying a vector in a single column would be preferable?
   unsigned numColumns() const { return dim; }
@@ -100,7 +98,7 @@ struct RamenTypeList : public RamenType
   std::shared_ptr<RamenType const> subType;
 
   RamenTypeList(std::shared_ptr<RamenType const> subType_, bool n) :
-    RamenType(ser::ListType, n), subType(subType_) {}
+    RamenType(ListType, n), subType(subType_) {}
 
   QString structureToQString() const;
   // Lists are displayed in a single column as they have a variable length

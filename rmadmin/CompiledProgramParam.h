@@ -4,18 +4,16 @@
 #include <QString>
 #include <string>
 
-namespace conf {
-  struct RamenValue;
-};
+struct RamenValue;
 
 struct CompiledProgramParam
 {
   // For now a parameter is just a name, a value and a docstring.
   std::string name;
   std::string doc;
-  std::shared_ptr<conf::RamenValue const> val;
+  std::shared_ptr<RamenValue const> val;
 
-  CompiledProgramParam(std::string const &name_, std::string const &doc_, std::shared_ptr<conf::RamenValue const>);
+  CompiledProgramParam(std::string const &name_, std::string const &doc_, std::shared_ptr<RamenValue const>);
 };
 
 #endif

@@ -12,7 +12,7 @@ extern "C" {
 #include "serValue.h"
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
-#include "confRamenValue.h"
+#include "RamenValue.h"
 #include "confRCEntry.h"
 #include "confWorkerRef.h"
 
@@ -80,8 +80,8 @@ struct Worker : public Value
   bool debug;
   double reportPeriod;
   QString const srcPath;
-  QString const worker_sign;
-  QString const bin_sign;
+  QString const workerSign;
+  QString const binSign;
   bool used;
   WorkerRole *role;
   std::list<RCEntryParam *> params; // Params are owned
@@ -135,15 +135,15 @@ struct Tuple : public Value
   ser::Value *unserialize(std::shared_ptr<RamenType const>) const;
 };
 
-// FIXME: make this a template over conf::RamenValue
 struct RamenValueValue : public Value
 {
-  std::shared_ptr<conf::RamenValue> value;
+  std::shared_ptr<RamenValue> v;
 
-  RamenValueValue(RamenValue *value_) :
-    Value(RamenValueType), value(value_) {}
+  RamenValueValue(RamenValue *v_) :
+    Value(RamenValueType), v(v_) {}
 
-  QString toQString() const { return value->toQString(); }
+  QString toQString() const { return v->toQString(); }
+  value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
 

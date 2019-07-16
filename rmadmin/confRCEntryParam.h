@@ -5,16 +5,16 @@
 extern "C" {
 # include <caml/mlvalues.h>
 }
-#include "confRamenValue.h"
+#include "RamenValue.h"
 
 namespace conf {
 
 struct RCEntryParam
 {
   std::string const name;
-  std::shared_ptr<conf::RamenValue const> val; // "value" conflicts with OCaml value type
+  std::shared_ptr<RamenValue const> val; // "value" conflicts with OCaml value type
 
-  RCEntryParam(std::string const &name_, std::shared_ptr<conf::RamenValue const> val_) :
+  RCEntryParam(std::string const &name_, std::shared_ptr<RamenValue const> val_) :
     name(name_), val(val_) {}
 
   value toOCamlValue() const;

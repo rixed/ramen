@@ -17,24 +17,13 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
   QString const name = outType->columnName(column);
 
   // Retrieve whether this column is a factor:
-  conf::kvs_lock.lock_shared();
-  for (unsigned i = 0; i < 1000; i++) {
-    conf::Key k = functionItem->functionKey("/factors/" + std::to_string(i));
-    auto const &it = conf::kvs.find(k);
-    if (it == conf::kvs.end()) break;
-    std::shared_ptr<conf::Value const> v_(it.value().val);
-    std::shared_ptr<conf::RamenValueValue const> v =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v_);
-    if (! v) {
-      std::cout << "Factor #" << i << " is not a string!?" << std::endl;
-      continue;
-    }
-    if (v->toQString() == name) {
+  CompiledFunctionInfo const *func = functionItem->compiledInfo();
+  for (QString factor : func->factors) {
+    if (factor == name) {
       isFactor = true;
       break;
     }
   }
-  conf::kvs_lock.unlock_shared();
 
   // Relay FunctionItem signal about addition of a tuple
   connect(functionItem, &FunctionItem::endAddTuple, this, &ChartDataSet::valueAdded);

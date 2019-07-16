@@ -114,7 +114,7 @@ void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value
     std::shared_ptr<conf::RamenValueValue const> s =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (s) {
-      file->setText(s->value);
+      file->setText(s->v);
     } else {
       std::cout << "Source text not of string type?!" << std::endl;
     }

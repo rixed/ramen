@@ -25,7 +25,7 @@ TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
   // Subscribe to that table tail:
   conf::Key k = tailKey(f);
   // TODO: have a VoidType
-  std::shared_ptr<conf::Value> v = std::shared_ptr<conf::Value>(new conf::RamenValueValue(new conf::VBool(true)));
+  std::shared_ptr<conf::Value> v(new conf::RamenValueValue(new VBool(true)));
   conf::askNew(k, v);
 }
 

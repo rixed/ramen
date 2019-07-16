@@ -10,45 +10,11 @@ extern "C" {
 # include <caml/callback.h>
 }
 #include "misc.h"
-#include "confRamenValue.h"
-
-namespace conf {
-
-static QString QStringOfRamenValueType(enum RamenValueType t)
-{
-  switch (t) {
-    case VNullType: return QString("VNull");
-    case VFloatType: return QString("VFloat");
-    case VStringType: return QString("VString");
-    case VBoolType: return QString("VBool");
-    case VU8Type: return QString("VU8");
-    case VU16Type: return QString("VU16");
-    case VU32Type: return QString("VU32");
-    case VU64Type: return QString("VU64");
-    case VU128Type: return QString("VU128");
-    case VI8Type: return QString("VI8");
-    case VI16Type: return QString("VI16");
-    case VI32Type: return QString("VI32");
-    case VI64Type: return QString("VI64");
-    case VI128Type: return QString("VI128");
-    case VEthType: return QString("VEth");
-    case VIpv4Type: return QString("VIpv4");
-    case VIpv6Type: return QString("VIpv6");
-    case VIpType: return QString("VIp");
-    case VCidrv4Type: return QString("Cidrv4");
-    case VCidrv6Type: return QString("Cidrv6");
-    case VCidrType: return QString("Cidr");
-    case VTupleType: return QString("VTuple");
-    case VVecType: return QString("VVec");
-    case VListType: return QString("VList");
-    case VRecordType: return QString("VRecord");
-    case LastRamenValueType: assert(!"invalid RamenValueType");
-  }
-}
+#include "RamenValue.h"
 
 QString RamenValue::toQString() const
 {
-  return QString("Some ") + QStringOfRamenValueType(type);
+  return QString("Some ") + QStringOfRamenTypeStructure(structure);
 }
 
 value RamenValue::toOCamlValue() const
@@ -58,20 +24,20 @@ value RamenValue::toOCamlValue() const
 
 bool RamenValue::operator==(RamenValue const &other) const
 {
-  return type == other.type;
+  return structure == other.structure;
 }
 
 value VNull::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLreturn(Val_int(0)); // Do not use (int)VNullType here!
+  CAMLreturn(Val_int(0)); // Do not use (int)NullType here!
 }
 
 value VFloat::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VFloatType);
+  ret = caml_alloc(1, FloatType);
   Store_field(ret, 0, caml_copy_double(v));
   CAMLreturn(ret);
 }
@@ -87,7 +53,7 @@ value VString::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VStringType);
+  ret = caml_alloc(1, StringType);
   Store_field(ret, 0, caml_copy_string(v.toStdString().c_str()));
   CAMLreturn(ret);
 }
@@ -111,7 +77,7 @@ value VBool::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VBoolType);
+  ret = caml_alloc(1, BoolType);
   Store_field(ret, 0, Val_bool(v));
   CAMLreturn(ret);
 }
@@ -136,7 +102,7 @@ value VU8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VU8Type);
+  ret = caml_alloc(1, U8Type);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -152,7 +118,7 @@ value VU16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VU16Type);
+  ret = caml_alloc(1, U16Type);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -224,7 +190,7 @@ value VI8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VI8Type);
+  ret = caml_alloc(1, I8Type);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -240,7 +206,7 @@ value VI16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, VI16Type);
+  ret = caml_alloc(1, I16Type);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -316,66 +282,64 @@ RamenValue *RamenValue::ofOCaml(value v_)
   RamenValue *ret = nullptr;
 
   if (Is_block(v_)) {
-    RamenValueType valueType((RamenValueType)Tag_val(v_));
-    switch (valueType) {
-      case VFloatType:
+    // v_ is a RamenTypes.value:
+    switch (Tag_val(v_)) {
+      case 0:
         ret = new VFloat(Double_val(Field(v_, 0)));
         break;
-      case VStringType:
+      case 1:
         ret = new VString(String_val(Field(v_, 0)));
         break;
-      case VBoolType:
+      case 2:
         ret = new VBool(Bool_val(Field(v_, 0)));
         break;
-      case VU8Type:
+      case 3:
         ret = new VU8(Int_val(Field(v_, 0)));
         break;
-      case VU16Type:
+      case 4:
         ret = new VU16(Int_val(Field(v_, 0)));
         break;
-      case VU32Type:
+      case 5:
         ret = new VU32(*(uint32_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VU64Type:
+      case 6:
         ret = new VU64(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VU128Type:
+      case 7:
         ret = new VU128(*(uint128_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VI8Type:
+      case 8:
         ret = new VI8(Int_val(Field(v_, 0)));
         break;
-      case VI16Type:
+      case 9:
         ret = new VI16(Int_val(Field(v_, 0)));
         break;
-      case VI32Type:
+      case 10:
         ret = new VI32(*(int32_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VI64Type:
+      case 11:
         ret = new VI64(*(int64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VI128Type:
+      case 12:
         ret = new VI128(*(int128_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VEthType:
+      case 13:
         ret = new VEth(*(uint64_t *)Data_custom_val(Field(v_, 0)));
         break;
-      case VIpv4Type:
-      case VIpv6Type:
-      case VIpType:
-      case VCidrv4Type:
-      case VCidrv6Type:
-      case VCidrType:
-      case VTupleType:
-      case VVecType:
-      case VListType:
-      case VRecordType:
-        std::cout << "Unimplemented RamenValueOfOCaml for type "
-                  << QStringOfRamenValueType(valueType).toStdString()
+      case 14:
+      case 15:
+      case 16:
+      case 17:
+      case 18:
+      case 19:
+      case 20:
+      case 21:
+      case 22:
+      case 23:
+        std::cout << "Unimplemented RamenValueOfOCaml for tag " << Tag_val(v_)
                   << std::endl;
         ret = new VNull();
         break;
-      case LastRamenValueType:
       default:
         assert(!"Invalid tag, not a RamenValueType");
     }
@@ -391,32 +355,32 @@ RamenValue *RamenValue::ofOCaml(value v_)
 static int structureOfValueType(enum RamenValueType type)
 {
   switch (type) {
-    case VNullType: return 5; // TAny. NULL can have any type. Good luck.
-    case VFloatType: return 1;
-    case VStringType: return 2;
-    case VBoolType: return 3;
-    case VU8Type: return 6;
-    case VU16Type: return 7;
-    case VU32Type: return 8;
-    case VU64Type: return 9;
-    case VU128Type: return 10;
-    case VI8Type: return 11;
-    case VI16Type: return 12;
-    case VI32Type: return 13;
-    case VI64Type: return 14;
-    case VI128Type: return 15;
-    case VEthType: return 16;
-    case VIpv4Type: return 17;
-    case VIpv6Type: return 18;
-    case VIpType: return 19;
-    case VCidrv4Type: return 20;
-    case VCidrv6Type: return 21;
-    case VCidrType: return 22;
+    case NullType: return 5; // TAny. NULL can have any type. Good luck.
+    case FloatType: return 1;
+    case StringType: return 2;
+    case BoolType: return 3;
+    case U8Type: return 6;
+    case U16Type: return 7;
+    case U32Type: return 8;
+    case U64Type: return 9;
+    case U128Type: return 10;
+    case I8Type: return 11;
+    case I16Type: return 12;
+    case I32Type: return 13;
+    case I64Type: return 14;
+    case I128Type: return 15;
+    case EthType: return 16;
+    case Ipv4Type: return 17;
+    case Ipv6Type: return 18;
+    case IpType: return 19;
+    case Cidrv4Type: return 20;
+    case Cidrv6Type: return 21;
+    case CidrType: return 22;
     // For those RamenValueType is not enough.
-    case VTupleType:
-    case VVecType:
-    case VListType:
-    case VRecordType:
+    case TupleType:
+    case VecType:
+    case ListType:
+    case RecordType:
       return 0;
     case LastRamenValueType:
       assert(!"Invalid type in structureOfValueType");
@@ -454,73 +418,74 @@ RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
 }
 #endif
 
-RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
+RamenValue *RamenValue::ofQString(enum RamenTypeStructure structure, QString const &s)
 {
   bool ok = true;
   RamenValue *ret = nullptr;
-  switch (type) {
-    case VNullType:
-      ret = new VNull();
-      break;
-    case VFloatType:
+  switch (structure) {
+    case EmptyType:
+      assert("Cannot build a value of EmptyType");
+    case FloatType:
       ret = new VFloat(s.toDouble(&ok));
       break;
-    case VStringType:
+    case StringType:
       ret = new VString(s);
       break;
-    case VBoolType:
+    case BoolType:
       ret = new VBool(looks_like_true(s));
       break;
-    case VU8Type:
+    case NumType:
+    case AnyType:
+      ret = new VNull();
+      break;
+    case U8Type:
       ret = new VU8(s.toLong(&ok));
       break;
-    case VU16Type:
+    case U16Type:
       ret = new VU16(s.toLong(&ok));
       break;
-    case VU32Type:
+    case U32Type:
       ret = new VU32(s.toLong(&ok));
       break;
-    case VU64Type:
+    case U64Type:
       ret = new VU64(s.toLong(&ok));
       break;
-    case VU128Type:
+    case U128Type:
       ret = new VU128(s.toLong(&ok));
       break;
-    case VI8Type:
+    case I8Type:
       ret = new VI8(s.toLong(&ok));
       break;
-    case VI16Type:
+    case I16Type:
       ret = new VI16(s.toLong(&ok));
       break;
-    case VI32Type:
+    case I32Type:
       ret = new VI32(s.toLong(&ok));
       break;
-    case VI64Type:
+    case I64Type:
       ret = new VI64(s.toLong(&ok));
       break;
-    case VI128Type:
+    case I128Type:
       ret = new VI128(s.toLong(&ok));
       break;
-    case VEthType:
+    case EthType:
       ret = new VEth(s.toLong(&ok));
       break;
-    case VIpv4Type:
-    case VIpv6Type:
-    case VIpType:
-    case VCidrv4Type:
-    case VCidrv6Type:
-    case VCidrType:
-    case VTupleType:
-    case VVecType:
-    case VListType:
-    case VRecordType:
-      std::cout << "Unimplemented RamenValueOfOCaml for type "
-                << QStringOfRamenValueType(type).toStdString()
+    case Ipv4Type:
+    case Ipv6Type:
+    case IpType:
+    case Cidrv4Type:
+    case Cidrv6Type:
+    case CidrType:
+    case TupleType:
+    case VecType:
+    case ListType:
+    case RecordType:
+      std::cout << "Unimplemented RamenValueOfOCaml for structure "
+                << QStringOfRamenTypeStructure(structure).toStdString()
                 << std::endl;
       ret = new VNull();
       break;
-    case LastRamenValueType:
-      assert(!"Invalid RamenValueType");
   }
   if (! ret)
     assert(!"Invalid RamenValueType");
@@ -528,5 +493,3 @@ RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
     std::cerr << "Cannot convert " << s.toStdString() << " into a RamenValue" << std::endl;
   return ret;
 }
-
-};

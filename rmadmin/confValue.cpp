@@ -10,7 +10,7 @@ extern "C" {
 # include <caml/custom.h>
 }
 #include "misc.h"
-#include "confRamenValue.h"
+#include "RamenValue.h"
 #include "confValue.h"
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
@@ -99,7 +99,7 @@ Value *valueOfOCaml(value v_)
         for (tmp1_ = Field(v_, 7); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
           RCEntryParam *p = new RCEntryParam(
             String_val(Field(tmp1_, 0)), // name
-            std::shared_ptr<conf::RamenValue const>(RamenValue::ofOCaml(Field(tmp1_, 1))));
+            std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp1_, 1))));
           w->params.push_back(p);
         }
         // Add the parents:
@@ -190,30 +190,13 @@ Value *valueOfOCaml(value v_)
                   new CompiledProgramParam(
                     String_val(Field(tmp3_, 0)),  // name
                     String_val(Field(tmp3_, 3)),  // doc
-                    std::shared_ptr<conf::RamenValue const>(RamenValue::ofOCaml(Field(tmp2_, 1)))); // value
+                    std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp2_, 1)))); // value
                 sourceInfo->addParam(p);
               }
               // Iter over the cons cells of the function_info:
               for (tmp1_ = Field(v_, 2); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
                 tmp2_ = Field(tmp1_, 0);  // the function_info
-                tmp3_ = Field(tmp2_, 1);  // the (optional) retention
-                Retention *retention = nullptr;
-                if (Is_block(tmp3_)) {
-                  tmp3_ = Field(tmp3_, 0);
-                  assert(Tag_val(tmp3_) == Double_array_tag);
-                  retention =
-                    new Retention(Double_field(tmp3_, 0), Double_field(tmp3_, 1));
-                }
-                CompiledFunctionInfo *f =
-                  new CompiledFunctionInfo(
-                    String_val(Field(tmp2_, 0)),  // name
-                    retention,
-                    Bool_val(Field(tmp2_, 2)),    // is_lazy
-                    String_val(Field(tmp2_, 3)),  // doc
-                    /* We skip the operation, too hard to parse. We'd need a proxy
-                     * in the OCaml receiver that turns it into a string. */
-                    String_val(Field(tmp2_, 5))); // signature
-                sourceInfo->addInfo(f);
+                sourceInfo->addInfo(new CompiledFunctionInfo(tmp2_));
               }
             }
             break;
@@ -304,14 +287,14 @@ bool Error::operator==(Value const &other) const
   return cmdId == o.cmdId;
 }
 
-Worker::Worker(bool enabled_, bool debug_, double reportPeriod_, QString const &srcPath_, QString const &worker_sign_, QString const &bin_sign_, bool used_, WorkerRole *role_) :
+Worker::Worker(bool enabled_, bool debug_, double reportPeriod_, QString const &srcPath_, QString const &workerSign_, QString const &binSign_, bool used_, WorkerRole *role_) :
   Value(WorkerType),
   enabled(enabled_),
   debug(debug_),
   reportPeriod(reportPeriod_),
   srcPath(srcPath_),
-  worker_sign(worker_sign_),
-  bin_sign(bin_sign_),
+  workerSign(workerSign_),
+  binSign(binSign_),
   used(used_),
   role(role_) {}
 
@@ -329,7 +312,7 @@ bool Worker::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Worker const &o = static_cast<Worker const &>(other);
-  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && worker_sign == o.worker_sign && bin_sign == o.bin_sign && used == o.used && role == o.role;
+  return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
 }
 
 Retention::Retention(double duration_, double period_) :
@@ -428,11 +411,20 @@ bool Tuple::operator==(Value const &other) const
   return size == o.size && 0 == memcmp(bytes, o.bytes, size);
 }
 
+value RamenValueValue::toOCamlValue() const
+{
+  CAMLparam0();
+  CAMLlocal1(ret);
+  ret = caml_alloc(1, RamenValueType);
+  Store_field(ret, 0, v->toOCamlValue());
+  CAMLreturn(ret);
+}
+
 bool RamenValueValue::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   RamenValueValue const &o = static_cast<RamenValueValue const &>(other);
-  return value == o.value;
+  return v == o.v;
 }
 
 SourceInfo::SourceInfo() : SourceInfo(QString(), QString()) {}

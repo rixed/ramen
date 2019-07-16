@@ -41,8 +41,9 @@ public:
   QVariant data(int) const;
   QRectF operationRect() const;
 
-  conf::Key functionKey(std::string perFuncKey) const;
-
+  // Returns nullptr if the info is not available yet
+  CompiledFunctionInfo const *compiledInfo() const;
+  // Returns nullptr is the type is still unknown:
   std::shared_ptr<RamenType const> outType() const;
   int numRows() const;
   int numColumns() const;

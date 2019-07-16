@@ -182,7 +182,6 @@ struct
     | Sources of (N.path * string (* extension ; FIXME: a type for file type *))
     | TargetConfig (* Where to store the desired configuration *)
     | PerSite of N.site * per_site_key
-    | PerProgram of (N.program * per_prog_key)
     | Storage of storage_key
     | Tails of N.site * N.fq * tail_key
     | Replays of Channel.t
@@ -198,20 +197,6 @@ struct
   and per_service_key =
     | Host
     | Port
-
-  and per_prog_key =
-    | Enabled (* Equivalent to MustRun *)
-    | Debug
-    | ReportPeriod
-    | BinPath
-    | SrcPath
-    | Param of N.field
-    | OnSite
-    | Automatic
-    | SourceFile
-    | SourceModTime
-    | RunCondition
-    | PerFunction of N.func * per_func_key
 
   and per_worker_key =
     (* FIXME: create a single entry of type "stats" for the following: *)
@@ -243,17 +228,6 @@ struct
     | SuccessiveFailures
     | QuarantineUntil
 
-  and per_func_key =
-    | Retention
-    | Doc
-    | IsLazy
-    | Operation
-    | Factors of int
-    | InType
-    | OutType
-    | Signature
-    | MergeInputs
-
   and tail_key =
     | Subscriber of string
     | LastTuple of int (* increasing sequence just for ordering *)
@@ -267,36 +241,6 @@ struct
     String.print fmt (match k with
       | Host -> "host"
       | Port -> "port")
-
-  let print_per_func_key fmt k =
-    String.print fmt (match k with
-      | Retention -> "retention"
-      | Doc -> "doc"
-      | IsLazy -> "is_lazy"
-      | Operation -> "operation"
-      | Factors i -> "factors/"^ string_of_int i
-      | InType -> "type/in"
-      | OutType -> "type/out"
-      | Signature -> "signature"
-      | MergeInputs -> "merge_inputs")
-
-  let print_per_prog_key fmt k =
-    String.print fmt (match k with
-    | Enabled -> "enabled"
-    | Debug -> "debug"
-    | ReportPeriod -> "report_period"
-    | BinPath -> "bin_path"
-    | SrcPath -> "src_path"
-    | Param s -> "param/"^ (s :> string)
-    | OnSite -> "on_site"
-    | Automatic -> "automatic"
-    | SourceFile -> "source/file"
-    | SourceModTime -> "source/mtime"
-    | RunCondition -> "run_condition"
-    | PerFunction (fname, per_func_key) ->
-        Printf.sprintf2 "functions/%a/%a"
-          N.func_print fname
-          print_per_func_key per_func_key)
 
   let print_per_instance fmt k =
     String.print fmt (match k with
@@ -376,10 +320,6 @@ struct
         Printf.fprintf fmt "sites/%a/%a"
           N.site_print site
           print_per_site_key per_site_key
-    | PerProgram (pname, per_prog_key) ->
-        Printf.fprintf fmt "programs/%a/%a"
-          N.program_print pname
-          print_per_prog_key per_prog_key
     | Storage storage_key ->
         Printf.fprintf fmt "storage/%a"
           print_storage_key storage_key
@@ -480,36 +420,6 @@ struct
                                   | "last_exit_status" -> LastExitStatus
                                   | "successive_failures" -> SuccessiveFailures
                                   | "quarantine_until" -> QuarantineUntil))))))
-        | "programs", s ->
-            (match cut s with
-            | pname, s ->
-              PerProgram (N.program pname,
-                match cut s with
-                | "enabled", "" -> Enabled
-                | "debug", "" -> Debug
-                | "report_period", "" -> ReportPeriod
-                | "bin_path", "" -> BinPath
-                | "src_path", "" -> SrcPath
-                | "param", n -> Param (N.field n)
-                | "on_site", "" -> OnSite
-                | "automatic", "" -> Automatic
-                | "source", "file" -> SourceFile
-                | "source", "mtime" -> SourceModTime
-                | "run_condition", "" -> RunCondition
-                | "functions", s ->
-                    (match cut s with
-                    | fname, s ->
-                      PerFunction (N.func fname,
-                        match cut s with
-                        | "retention", "" -> Retention
-                        | "doc", "" -> Doc
-                        | "is_lazy", "" -> IsLazy
-                        | "operation", "" -> Operation
-                        | "factors", i -> Factors (int_of_string i)
-                        | "type", "in" -> InType
-                        | "type", "out" -> OutType
-                        | "signature", "" -> Signature
-                        | "merge_inputs", "" -> MergeInputs))))
         | "storage", s ->
             Storage (
               match cut s with

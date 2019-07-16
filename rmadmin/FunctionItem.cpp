@@ -97,22 +97,40 @@ int FunctionItem::numRows() const
   return tuples.size();
 }
 
-conf::Key FunctionItem::functionKey(std::string perFuncKey) const
+/* Look for in in the kvs at every call rather than caching a value that
+ * could change at any time. */
+CompiledFunctionInfo const *FunctionItem::compiledInfo() const
 {
-  return conf::Key("programs/" + treeParent->name.toStdString() + "/functions/" +
-                   name.toStdString() + perFuncKey);
-}
+  if (! worker) return nullptr;
 
-std::shared_ptr<RamenType const> FunctionItem::outType() const
-{
-  conf::Key k = functionKey("/type/out");
+  conf::Key k = "sources/" + worker->srcPath.toStdString() + "/info";
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[k];
   conf::kvs_lock.unlock_shared();
 
-  std::shared_ptr<RamenType const> outType =
-    std::dynamic_pointer_cast<RamenType const>(kv.val);
-  return outType;
+  std::shared_ptr<conf::SourceInfo const> info =
+    std::dynamic_pointer_cast<conf::SourceInfo const>(kv.val);
+  if (! info) {
+    std::cerr << k << " is not a SourceInfo" << std::endl;
+    return nullptr;
+  }
+  if (info->errMsg.length() > 0) {
+    std::cerr << k << " is not compiled" << std::endl;
+    return nullptr;
+  }
+  for (CompiledFunctionInfo const *func : info->infos) {
+    if (func->name == name) return func;
+  }
+
+  return nullptr;
+}
+
+std::shared_ptr<RamenType const> FunctionItem::outType() const
+{
+  CompiledFunctionInfo const *func = compiledInfo();
+  if (! func) return nullptr;
+
+  return func->out_type;
 }
 
 int FunctionItem::numColumns() const

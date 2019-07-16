@@ -7,6 +7,9 @@
 #include "KBool.h"
 #include "ProgramInfoBox.h"
 
+/* FIXME: This is uterly broken since we have no more programs/.* keys.
+ * Use source info for the program instead. */
+
 ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   AtomicForm(p_->name, parent),
   p(p_),

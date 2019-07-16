@@ -5,6 +5,7 @@
 #include <optional>
 #include <QString>
 #include "misc.h"
+#include "RamenTypeStructure.h"
 
 /* Allow to manipulate (for now, just turn into a printable string)
  * serialized values (from a received Tuple but one day also from the
@@ -18,42 +19,19 @@ struct RamenType;
 
 namespace ser {
 
-// FIXME: Make this a class instead (templated for compound types)
-enum ValueType {
-  // Those constructors have no parameters, so they are integers:
-  EmptyType = 0,    // That we use for errors
-  FloatType,
-  StringType,
-  BoolType,
-  // RamenTypes has TNum there
-  AnyType = 5,    // Used for NULLs
-  U8Type = 6, U16Type, U32Type, U64Type, U128Type,
-  I8Type, I16Type, I32Type, I64Type, I128Type,
-  EthType, Ipv4Type, Ipv6Type, IpType,
-  Cidrv4Type, Cidrv6Type, CidrType,
-  // Those constructors have parameters, so they are blocks which tag starts at 0:
-  TupleType, VecType, ListType, RecordType
-};
-
 class Value {
-  enum ValueType type;
-
 public:
-  Value(ValueType);
-  virtual ~Value();
+  virtual ~Value() {}
   virtual int numColumns() const;
   virtual Value const *columnValue(int) const;
 
   virtual QString toQString() const = 0;
   virtual std::optional<double> toDouble() const { return std::optional<double>(); }
-  virtual bool operator==(Value const &) const;
-  bool operator!=(Value const &) const;
 };
 
 class Null : public Value
 {
 public:
-  Null();
   QString toQString() const;
 };
 

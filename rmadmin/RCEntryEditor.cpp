@@ -190,7 +190,7 @@ void RCEntryEditor::clearParams()
     paramsForm->removeRow(0); // Note: this also deletes the widgets
 }
 
-std::shared_ptr<conf::RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam const *p) const
+std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam const *p) const
 {
   /* Try to find a set parameter by that name, falling back on the
    * compiled default: */
@@ -212,7 +212,7 @@ void RCEntryEditor::resetParams()
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     RamenValueEditor *editor = dynamic_cast<RamenValueEditor *>(item->widget());
     assert(editor);
-    setParamValues[pname] = std::shared_ptr<conf::RamenValue const>(editor->getValue());
+    setParamValues[pname] = std::shared_ptr<RamenValue const>(editor->getValue());
   }
 
   QString const baseName = removeExtQ(sourceBox->currentText());
@@ -236,8 +236,8 @@ void RCEntryEditor::resetParams()
      * is a CompiledProgramParam and p->value a RamenValue, which should
      * be able to create its own editor. */
     // TODO: a tooltip with the parameter doc (CompiledProgramParam doc)
-    std::shared_ptr<conf::RamenValue const> val = paramValue(p);
-    RamenValueEditor *paramEdit = RamenValueEditor::ofType(p->val->type, val.get());
+    std::shared_ptr<RamenValue const> val = paramValue(p);
+    RamenValueEditor *paramEdit = RamenValueEditor::ofType(p->val->structure, val.get());
     paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
   }
 }
@@ -273,7 +273,7 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
   // Also save the parameter values:
   for (auto param : rcEntry->params) {
     std::cout << "Save value for param " << param->name << std::endl;
-    setParamValues[param->name] = std::shared_ptr<conf::RamenValue const>(param->val);
+    setParamValues[param->name] = std::shared_ptr<RamenValue const>(param->val);
   }
   resetParams();
 }

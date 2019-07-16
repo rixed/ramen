@@ -14,9 +14,9 @@ class QLabel;
 class QComboBox;
 class QLineEdit;
 class QCheckBox;
+struct RamenValue;
 namespace conf {
   struct RCEntry;
-  struct RamenValue;
 };
 struct CompiledProgramParam;
 
@@ -44,10 +44,10 @@ class RCEntryEditor : public QWidget
    * When computing the value of the RCEntryEditor, though, we take only the
    * parameters that are defined in the selected source. */
   // Returned value still owned by the callee
-  std::shared_ptr<conf::RamenValue const> paramValue(CompiledProgramParam const *) const;
+  std::shared_ptr<RamenValue const> paramValue(CompiledProgramParam const *) const;
 
   // Bag of previously set parameter values:
-  QMap<std::string, std::shared_ptr<conf::RamenValue const>> setParamValues;
+  QMap<std::string, std::shared_ptr<RamenValue const>> setParamValues;
 
   /* Keep the layout so it can be reset and also the widget and param
    * names can be retrieved: */

@@ -9,10 +9,6 @@ namespace ser {
 
 static bool const verbose = false;
 
-Value::Value(ValueType type_) : type(type_) {}
-
-Value::~Value() {}
-
 int Value::numColumns() const
 {
   return 1;
@@ -22,16 +18,6 @@ Value const *Value::columnValue(int c) const
 {
   assert(c == 0);
   return this;
-}
-
-bool Value::operator==(Value const &other) const
-{
-  return other.type == type;
-}
-
-bool Value::operator!=(Value const &other) const
-{
-  return !operator==(other);
 }
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
@@ -46,16 +32,14 @@ static size_t roundUpWords(size_t sz)
   return (sz + 3) >> 2;
 }
 
-Null::Null() : Value(AnyType) {}
-
-Error::Error(QString const &errMsg_) : Value(EmptyType), errMsg(errMsg_) {}
+Error::Error(QString const &errMsg_) : errMsg(errMsg_) {}
 
 QString Null::toQString() const
 {
   return QString("NULL");
 }
 
-Float::Float(uint32_t const *&start) : Value(FloatType)
+Float::Float(uint32_t const *&start)
 {
   static_assert(sizeof(double) <= 2 * sizeof(uint32_t));
   memcpy(&v, start, sizeof(v));
@@ -68,7 +52,7 @@ QString Float::toQString() const
   return QString::number(v);
 }
 
-Bool::Bool(uint32_t const *&start) : Value(BoolType)
+Bool::Bool(uint32_t const *&start)
 {
   v = !! *start;
   if (verbose) std::cout << "bool = " << v << std::endl;
@@ -81,7 +65,7 @@ QString Bool::toQString() const
   else return QString(QCoreApplication::translate("QMainWindow", "false"));
 }
 
-String::String(uint32_t const *&start, size_t len) : Value(StringType)
+String::String(uint32_t const *&start, size_t len)
 {
   char const *c = (char const *)start;
   for (size_t i = 0; i < len; i++) {
@@ -91,91 +75,91 @@ String::String(uint32_t const *&start, size_t len) : Value(StringType)
   start += roundUpWords(len);
 }
 
-U8::U8(uint32_t const *&start) : Value(U8Type)
+U8::U8(uint32_t const *&start)
 {
   v = *(uint8_t const *)start;
   if (verbose) std::cout << "u8 = " << v << std::endl;
   start += 1;
 }
 
-U16::U16(uint32_t const *&start) : Value(U16Type)
+U16::U16(uint32_t const *&start)
 {
   v = *(uint16_t const *)start;
   if (verbose) std::cout << "u16 = " << v << std::endl;
   start += 1;
 }
 
-U32::U32(uint32_t const *&start) : Value(U32Type)
+U32::U32(uint32_t const *&start)
 {
   v = *(uint32_t const *)start;
   if (verbose) std::cout << "u32 = " << v << std::endl;
   start += 1;
 }
 
-U64::U64(uint32_t const *&start) : Value(U64Type)
+U64::U64(uint32_t const *&start)
 {
   v = *(uint64_t const *)start;
   if (verbose) std::cout << "u64 = " << v << std::endl;
   start += 2;
 }
 
-U128::U128(uint32_t const *&start) : Value(U128Type)
+U128::U128(uint32_t const *&start)
 {
   v = *(uint128_t const *)start;
   if (verbose) std::cout << "u128 = xyz" << std::endl;
   start += 4;
 }
 
-I8::I8(uint32_t const *&start) : Value(I8Type)
+I8::I8(uint32_t const *&start)
 {
   v = *(int8_t const *)start;
   if (verbose) std::cout << "i8 = " << v << std::endl;
   start += 1;
 }
 
-I16::I16(uint32_t const *&start) : Value(I16Type)
+I16::I16(uint32_t const *&start)
 {
   v = *(int16_t const *)start;
   if (verbose) std::cout << "i16 = " << v << std::endl;
   start += 1;
 }
 
-I32::I32(uint32_t const *&start) : Value(I32Type)
+I32::I32(uint32_t const *&start)
 {
   v = *(int32_t const *)start;
   if (verbose) std::cout << "i32 = " << v << std::endl;
   start += 1;
 }
 
-I64::I64(uint32_t const *&start) : Value(I64Type)
+I64::I64(uint32_t const *&start)
 {
   v = *(int64_t const *)start;
   if (verbose) std::cout << "i64 = " << v << std::endl;
   start += 2;
 }
 
-I128::I128(uint32_t const *&start) : Value(I128Type)
+I128::I128(uint32_t const *&start)
 {
   v = *(int128_t const *)start;
   if (verbose) std::cout << "i128 = xxx" << std::endl;
   start += 4;
 }
 
-Eth::Eth(uint32_t const *&start) : Value(EthType)
+Eth::Eth(uint32_t const *&start)
 {
   v = *(uint64_t const *)start;
   if (verbose) std::cout << "eth = " << v << std::endl;
   start += 2;
 }
 
-Ipv4::Ipv4(uint32_t const *&start) : Value(Ipv4Type)
+Ipv4::Ipv4(uint32_t const *&start)
 {
   v = *(uint64_t const *)start;
   if (verbose) std::cout << "ipv4 = " << v << std::endl;
   start += 2;
 }
 
-Ipv6::Ipv6(uint32_t const *&start) : Value(Ipv6Type)
+Ipv6::Ipv6(uint32_t const *&start)
 {
   v = *(uint128_t const *)start;
   if (verbose) std::cout << "ipv6 = xyz" << std::endl;
@@ -183,7 +167,7 @@ Ipv6::Ipv6(uint32_t const *&start) : Value(Ipv6Type)
 }
 
 Tuple::Tuple(std::vector<Value const *> const &fieldValues_) :
-  Value(TupleType), fieldValues(fieldValues_) {}
+  fieldValues(fieldValues_) {}
 
 QString Tuple::toQString() const
 {
@@ -197,7 +181,7 @@ QString Tuple::toQString() const
 }
 
 Vec::Vec(std::vector<Value const *> const &values_) :
-  Value(VecType), values(values_) {}
+  values(values_) {}
 
 QString Vec::toQString() const
 {
@@ -211,7 +195,7 @@ QString Vec::toQString() const
 }
 
 List::List(std::vector<Value const *> const &values_) :
-  Value(VecType), values(values_) {}
+  values(values_) {}
 
 QString List::toQString() const
 {
@@ -225,7 +209,7 @@ QString List::toQString() const
 }
 
 Record::Record(std::vector<std::pair<QString, Value const *>> const &fieldValues_) :
-  Value(RecordType), fieldValues(fieldValues_) {}
+  fieldValues(fieldValues_) {}
 
 QString Record::toQString() const
 {
@@ -257,8 +241,7 @@ Value *unserialize(std::shared_ptr<RamenType const> type, uint32_t const *&start
   // TODO top-level output value that can be NULL
   assert(!topLevel || !type->nullable);
 
-  ValueType const valueType = type->type;
-  switch (valueType) {
+  switch (type->structure) {
     case FloatType:
       if (start + 2 > max) return new Error("Cannot unserialize float");
       return new Float(start);

@@ -19,6 +19,7 @@ open RamenConsts
 module O = RamenOperation
 module N = RamenName
 module E = RamenExpr
+module T = RamenTypes
 module OutRef = RamenOutRef
 module Files = RamenFiles
 module Retention = RamenRetention
@@ -106,6 +107,14 @@ struct
         is_lazy : bool ;
         doc : string ;
         operation : O.t ;
+        (* out type, factors...? store them in addition for the client, or use
+         * the OCaml helper lib? Or have additional keys? Those keys are:
+         * Retention, Doc, IsLazy, Factors, InType, OutType, Signature, MergeInputs.
+         * Or replace the compiled info at reception by another object in RmAdmin?
+         * For now just add the two that are important for RmAdmin: out_type and
+         * factors. FIXME. *)
+        out_record : T.t ;
+        factors : N.field list ;
         (* FIXME: why storing the signature? *)
         signature : string }
       [@@ppp PPP_OCaml]
@@ -118,6 +127,8 @@ struct
       is_lazy = t.is_lazy ;
       doc = t.doc ;
       operation = t.operation ;
+      out_record = O.out_record_of_operation ~with_private:false t.operation ;
+      factors = O.factors_of_operation t.operation ;
       signature = t.signature }
 
   let unserialized program_name (t : Serialized.t) =
