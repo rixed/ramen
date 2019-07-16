@@ -8,17 +8,6 @@ KLineEdit::KLineEdit(std::string const &key, conf::ValueType valueType_, QWidget
   AtomicWidget(key),
   valueType(valueType_)
 {
-  switch (valueType) {
-    case conf::FloatType:
-      setValidator(&posDoubleValidator);
-      break;
-    case conf::IntType:
-      setValidator(&posIntValidator);
-      break;
-    default:
-      // TODO: others
-      break;
-  }
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   conf::kvs_lock.unlock_shared();

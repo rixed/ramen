@@ -268,7 +268,7 @@ let cleanup_once_sync conf clt dry_run del_ratio compress_older =
     let k = Key.PerSite (conf.C.site, PerWorker (fq, AllocedArcBytes)) in
     match (Client.find clt k).value with
     | exception Not_found -> 0
-    | Value.Int i -> Int64.to_int i
+    | Value.RamenValue (VI64 i) -> Int64.to_int i
     | v -> invalid_sync_type k v "an integer"
   and worker_bins =
     Client.fold clt (fun k hv lst ->
@@ -308,7 +308,7 @@ let update_archives ~while_ conf dry_run clt =
           and numfiles = Value.of_int num_files in
           ZMQClient.send_cmd clt ~while_ (SetKey (numfiles_k, numfiles)) ;
           let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
-          and numbytes = Value.Int num_bytes in
+          and numbytes = Value.of_int64 num_bytes in
           ZMQClient.send_cmd clt ~while_ (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 

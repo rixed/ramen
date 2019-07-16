@@ -30,13 +30,12 @@ struct
     let on_set _ v =
       !logger.debug "Some clown wrote into DevNull: %a"
         Value.print v ;
-      Some (Value.String "")
+      Some Value.dummy
     in
     Server.register_callback
       srv srv.on_sets on_set (Globs.escape "devnull") ;
-    let devnull = Value.String "Waldo" in
     Server.create_unlocked
-      srv DevNull devnull ~r:Capa.nobody ~w:Capa.anybody ~s:true
+      srv DevNull Value.dummy ~r:Capa.nobody ~w:Capa.anybody ~s:true
 end
 
 module TargetConfig =

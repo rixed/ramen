@@ -18,7 +18,7 @@ KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
 
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const
 {
-  return std::shared_ptr<conf::Value const>(new conf::String(toPlainText()));
+  return std::shared_ptr<conf::Value const>(new conf::RamenValueValue(new conf::VString(toPlainText())));
 }
 
 void KTextEdit::setEnabled(bool enabled)

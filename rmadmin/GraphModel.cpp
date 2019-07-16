@@ -289,84 +289,128 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
       emit storagePropertyChanged(functionItem);
     }
   } else if (p == "startup_time/first") {
-    std::shared_ptr<conf::Float const> cf =
-      std::dynamic_pointer_cast<conf::Float const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->firstStartupTime = cf->d;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VFloat const> v =
+        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      if (v) {
+        functionItem->firstStartupTime = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "startup_time/last") {
-    std::shared_ptr<conf::Float const> cf =
-      std::dynamic_pointer_cast<conf::Float const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->lastStartupTime = cf->d;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VFloat const> v =
+        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      if (v) {
+        functionItem->lastStartupTime = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "event_time/min") {
-    std::shared_ptr<conf::Float const> cf =
-      std::dynamic_pointer_cast<conf::Float const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->eventTimeMin = cf->d;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VFloat const> v =
+        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      if (v) {
+        functionItem->eventTimeMin = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "event_time/max") {
-    std::shared_ptr<conf::Float const> cf =
-      std::dynamic_pointer_cast<conf::Float const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->eventTimeMax = cf->d;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VFloat const> v =
+        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      if (v) {
+        functionItem->eventTimeMax = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "total/tuples") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->totalTuples = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->totalTuples = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "total/bytes") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->totalBytes = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->totalBytes = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "total/cpu") {
-    std::shared_ptr<conf::Float const> cf =
-      std::dynamic_pointer_cast<conf::Float const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->totalCpu = cf->d;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VFloat const> v =
+        std::dynamic_pointer_cast<conf::VFloat const>(cf->value);
+      if (v) {
+        functionItem->totalCpu = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "max/ram") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->maxRAM = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->maxRAM = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "archives/times") {
     // TODO
     emit storagePropertyChanged(functionItem);
   } else if (p == "archives/num_files") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->numArcFiles = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->numArcFiles = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "archives/current_size") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->numArcBytes = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->numArcBytes = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   } else if (p == "archives/alloc_size") {
-    std::shared_ptr<conf::Int const> cf =
-      std::dynamic_pointer_cast<conf::Int const>(v);
+    std::shared_ptr<conf::RamenValueValue const> cf =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (cf) {
-      functionItem->allocArcBytes = cf->i;
-      emit storagePropertyChanged(functionItem);
+      std::shared_ptr<conf::VI64 const> v =
+        std::dynamic_pointer_cast<conf::VI64 const>(cf->value);
+      if (v) {
+        functionItem->allocArcBytes = v->v;
+        emit storagePropertyChanged(functionItem);
+      }
     }
   }
 }
@@ -378,9 +422,13 @@ void GraphModel::setProgramProperty(ProgramItem *, QString const &, std::shared_
 void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
   if (p == "is_master") {
-    std::shared_ptr<conf::Bool const> b =
-      std::dynamic_pointer_cast<conf::Bool const>(v);
-    if (b) siteItem->isMaster = b->b;
+    std::shared_ptr<conf::RamenValueValue const> rv =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
+    if (rv) {
+      std::shared_ptr<conf::VBool const> v =
+        std::dynamic_pointer_cast<conf::VBool const>(rv->value);
+      if (v) siteItem->isMaster = v->v;
+    }
   }
 }
 

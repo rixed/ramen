@@ -21,10 +21,6 @@ namespace conf {
 static QString const stringOfValueType(ValueType valueType)
 {
   static QString const stringOfValueTypes[] = {
-    [BoolType] = "BoolType",
-    [IntType] = "IntType",
-    [FloatType] = "FloatType",
-    [StringType] = "StringType",
     [ErrorType] = "ErrorType",
     [WorkerType] = "WorkerType",
     [RetentionType] = "RetentionType",
@@ -166,18 +162,6 @@ Value *valueOfOCaml(value v_)
   ValueType valueType = (ValueType)Tag_val(v_);
   Value *ret = nullptr;
   switch (valueType) {
-    case BoolType:
-      ret = new Bool(Bool_val(Field(v_, 0)));
-      break;
-    case IntType:
-      ret = new Int(Int64_val(Field(v_, 0)));
-      break;
-    case FloatType:
-      ret = new Float(Double_val(Field(v_, 0)));
-      break;
-    case StringType:
-      ret = new String(String_val(Field(v_, 0)));
-      break;
     case ErrorType:
       ret = new Error(
         Double_val(Field(v_, 0)),
@@ -359,18 +343,6 @@ Value *valueOfQString(ValueType vt, QString const &s)
   bool ok = true;
   Value *ret = nullptr;
   switch (vt) {
-    case BoolType:
-      ret = new Bool(looks_like_true(s));
-      break;
-    case IntType:
-      ret = new Int(s.toLong(&ok));
-      break;
-    case FloatType:
-      ret = new Float(s.toDouble(&ok));
-      break;
-    case StringType:
-      ret = new String(s);
-      break;
     case ErrorType:
     case WorkerType:
     case RetentionType:
@@ -395,117 +367,6 @@ Value *valueOfQString(ValueType vt, QString const &s)
   if (! ok)
     std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
   return ret;
-}
-
-Bool::Bool(bool b_) : Value(BoolType), b(b_) {}
-
-Bool::Bool() : Bool(false) {}
-
-Bool::~Bool() {}
-
-QString Bool::toQString() const
-{
-  if (b)
-    return QCoreApplication::translate("QMainWindow", "true");
-  else
-    return QCoreApplication::translate("QMainWindow", "false");
-}
-
-value Bool::toOCamlValue() const
-{
-  CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc(1, BoolType);
-  Store_field(ret, 0, Val_bool(b));
-  CAMLreturn(ret);
-}
-
-bool Bool::operator==(Value const &other) const
-{
-  if (! Value::operator==(other)) return false;
-  Bool const &o = static_cast<Bool const &>(other);
-  return b == o.b;
-}
-
-Int::Int(int64_t i_) : Value(IntType), i(i_) {}
-
-Int::Int() : Int(0) {}
-
-Int::~Int() {}
-
-QString Int::toQString() const
-{
-  return QString::number(i);
-}
-
-value Int::toOCamlValue() const
-{
-  CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc(1, IntType);
-  Store_field(ret, 0, caml_copy_int64(i));
-  CAMLreturn(ret);
-}
-
-bool Int::operator==(Value const &other) const
-{
-  if (! Value::operator==(other)) return false;
-  Int const &o = static_cast<Int const &>(other);
-  return i == o.i;
-}
-
-Float::Float(double d_) : Value(FloatType), d(d_) {}
-
-Float::Float() : Float(0.) {}
-
-Float::~Float() {}
-
-QString Float::toQString() const
-{
-  return QString::number(d);
-}
-
-value Float::toOCamlValue() const
-{
-  CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc(1, FloatType);
-  Store_field(ret, 0, caml_copy_double(d));
-  CAMLreturn(ret);
-}
-
-bool Float::operator==(Value const &other) const
-{
-  if (! Value::operator==(other)) return false;
-  Float const &o = static_cast<Float const &>(other);
-  return d == o.d;
-}
-
-String::String(QString s_) : Value(StringType), s(s_) {}
-
-String::String() : String("") {}
-
-String::~String() {}
-
-QString String::toQString() const
-{
-  return s;
-}
-
-value String::toOCamlValue() const
-{
-  CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc(1, StringType);
-  Store_field(ret, 0, caml_copy_string(s.toStdString().c_str()));
-  CAMLreturn(ret);
-}
-
-bool String::operator==(Value const &other) const
-{
-  if (! Value::operator==(other)) return false;
-  String const &o = static_cast<String const &>(other);
-  return s == o.s;
 }
 
 Error::Error(double time_, unsigned cmdId_, std::string const &msg_) :

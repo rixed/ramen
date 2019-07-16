@@ -848,10 +848,6 @@ struct
   end
 
   type t =
-    | Bool of bool
-    | Int of int64
-    | Float of float
-    | String of string
     | Error of float * int * string
     (* Used for instance to reference parents of a worker: *)
     | Worker of Worker.t
@@ -878,14 +874,9 @@ struct
     | Error (_, i1, _), Error (_, i2, _) -> i1 = i2
     | v1, v2 -> v1 = v2
 
-  (* TODO: A void type? *)
-  let dummy = String "undefined"
+  let dummy = RamenValue T.(VBool false)
 
   let rec print oc = function
-    | Bool b -> Bool.print oc b
-    | Int i -> Int64.print oc i
-    | Float f -> Float.print oc f
-    | String s -> String.print oc s
     | Error (t, i, s) ->
         Printf.fprintf oc "%a:%d:%s"
           print_as_date t i s
@@ -917,8 +908,11 @@ struct
 
   let err_msg i s = Error (Unix.gettimeofday (), i, s)
 
-  let of_int v = Int (Int64.of_int v)
-  let of_float v = Float v
+  let of_int v = RamenValue T.(VI64 (Int64.of_int v))
+  let of_int64 v = RamenValue T.(VI64 v)
+  let of_float v = RamenValue T.(VFloat v)
+  let of_string v = RamenValue T.(VString v)
+  let of_bool v = RamenValue T.(VBool v)
 end
 
 (*

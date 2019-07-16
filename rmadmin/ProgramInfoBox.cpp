@@ -28,7 +28,7 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   addWidget(debug);
 
   KLineEdit *reportPeriod =
-    new KLineEdit(pref + "report_period", conf::ValueType::FloatType, cw);
+    new KLineEdit(pref + "report_period", conf::ValueType::RamenValueType, cw);
   layout->addRow(tr("&Reporting Interval"), reportPeriod);
   addWidget(reportPeriod);
 
@@ -51,7 +51,7 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   layout->addRow(tr("Parameters"), paramTable);
 
   KLineEdit *onSites =
-    new KLineEdit(pref + "on_site", conf::ValueType::StringType, cw);
+    new KLineEdit(pref + "on_site", conf::ValueType::RamenValueType, cw);
   layout->addRow(tr("Run &On Sites"), onSites);
   addWidget(onSites);
 
@@ -103,7 +103,7 @@ void ProgramInfoBox::setParam(conf::Key const &k, std::shared_ptr<conf::Value co
     // have a ValueType for each possible RamenType, and a function
     // selecting the appropriate one and use it here instead of
     // hardcoding StringType:
-    new KLineEdit(k.s, conf::ValueType::StringType);
+    new KLineEdit(k.s, conf::ValueType::RamenValueType);
   paramTable->setCellWidget(row, 1, kle);
 }
 

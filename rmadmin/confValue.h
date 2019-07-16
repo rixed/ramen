@@ -19,8 +19,6 @@ extern "C" {
 namespace conf {
 
 enum ValueType {
-  // TODO: get rid of duplicates with RamenValueType
-  BoolType = 0, IntType, FloatType, StringType,
   ErrorType, WorkerType, RetentionType, TimeRangeType,
   // Beware: conf::TupleType is the type of a tuple received for tailling
   // (ie number of skipped tuples + serialized value), while
@@ -59,49 +57,6 @@ Value *valueOfOCaml(value);
 // Construct from a QString
 Value *valueOfQString(conf::ValueType, QString const &);
 
-struct Bool : public Value
-{
-  bool b;
-  Bool();
-  ~Bool();
-  Bool(bool);
-  QString toQString() const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
-};
-
-struct Int : public Value
-{
-  int64_t i;
-  Int();
-  ~Int();
-  Int(int64_t);
-  QString toQString() const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
-};
-
-struct Float : public Value
-{
-  double d;
-  Float();
-  ~Float();
-  Float(double);
-  QString toQString() const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
-};
-
-struct String : public Value
-{
-  QString s;
-  String();
-  ~String();
-  String(QString);
-  QString toQString() const;
-  value toOCamlValue() const;
-  bool operator==(Value const &) const;
-};
 
 struct Error : public Value
 {
@@ -325,12 +280,13 @@ struct RamenTypeRecord : public RamenType
   bool isNumeric() const { return false; }
 };
 
+// FIXME: make this a template over conf::RamenValue
 struct RamenValueValue : public Value
 {
-  conf::RamenValue *value;
+  std::shared_ptr<conf::RamenValue> value;
+
   RamenValueValue(RamenValue *value_) :
     Value(RamenValueType), value(value_) {}
-  ~RamenValueValue() { delete value; }
 
   QString toQString() const { return value->toQString(); }
   bool operator==(Value const &) const;
@@ -424,10 +380,6 @@ struct Alert : public Value
 };
 
 Q_DECLARE_METATYPE(std::shared_ptr<conf::Value const>);
-Q_DECLARE_METATYPE(conf::Bool);
-Q_DECLARE_METATYPE(conf::Int);
-Q_DECLARE_METATYPE(conf::Float);
-Q_DECLARE_METATYPE(conf::String);
 Q_DECLARE_METATYPE(conf::Error);
 Q_DECLARE_METATYPE(conf::SourceInfo);
 Q_DECLARE_METATYPE(conf::RuntimeStats);

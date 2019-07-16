@@ -111,10 +111,10 @@ void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value
   // Will create all the intermediary TreeItems, calling begin/endInsertRows::
   FileItem *file = createAll(sourceName, root);
   if (file) {
-    std::shared_ptr<conf::String const> s =
-      std::dynamic_pointer_cast<conf::String const>(v);
+    std::shared_ptr<conf::RamenValueValue const> s =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
     if (s) {
-      file->setText(s);
+      file->setText(s->value);
     } else {
       std::cout << "Source text not of string type?!" << std::endl;
     }

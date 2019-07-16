@@ -22,8 +22,8 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
     auto const &it = conf::kvs.find(k);
     if (it == conf::kvs.end()) break;
     std::shared_ptr<conf::Value const> v_(it.value().val);
-    std::shared_ptr<conf::String const> v =
-      std::dynamic_pointer_cast<conf::String const>(v_);
+    std::shared_ptr<conf::RamenValueValue const> v =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(v_);
     if (! v) {
       std::cout << "Factor #" << i << " is not a string!?" << std::endl;
       continue;

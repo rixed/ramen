@@ -348,7 +348,7 @@ let compile_sync conf replace src_file source_name_opt =
   let open RamenSync in
   let source = Files.read_whole_file src_file in
   let md5 = N.md5 source in
-  let value = Value.(String source) in
+  let value = Value.of_string source in
   let source_name =
     Option.default_delayed (fun () ->
       Files.remove_ext (N.simplified_path src_file)
@@ -419,7 +419,7 @@ let compserver conf daemonize to_stdout to_syslog
     let get_parent = RamenCompiler.parent_from_confserver clt in
     match k, v with
     | Key.(Sources (_, "info")), _ -> ()
-    | Key.(Sources (src_file, ext)), Value.(String text) ->
+    | Key.(Sources (src_file, ext)), Value.RamenValue T.(VString text) ->
         assert (ext <> "info") ;
         let k_info = Key.(Sources (src_file, "info")) in
         let open ZMQClient in
@@ -876,7 +876,7 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
               | Value.RuntimeStats x -> Some x
               | _ -> None) in
             let arc_size = get_k NumArcBytes "NumArcBytes" (function
-              | Value.Int x -> Some x
+              | Value.RamenValue T.(VI64 x) -> Some x
               | _ -> None) |? 0L in
             let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
               | Value.TimeRange x -> Some x

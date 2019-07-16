@@ -852,7 +852,7 @@ let reconf_workers_sync
   Client.iter clt (fun k hv ->
     match k, hv.Client.value with
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
-      Value.Int size
+      Value.RamenValue T.(VI64 size)
       when site = conf.C.site && size > 0L ->
         (* Start the export: *)
         let prog_name, _func_name = N.fq_parse fq in
@@ -963,16 +963,16 @@ let realloc_sync conf ~while_ clt =
                          func.F.Serialized.retention
             ) prog.P.Serialized.funcs)
     | Key.Storage TotalSize,
-      Value.Int v ->
+      Value.RamenValue T.(VI64 v) ->
         size_limit := v
     | Key.Storage RecallCost,
-      Value.Float v ->
+      Value.RamenValue T.(VFloat v) ->
         recall_cost := v
     | Key.Storage (RetentionsOverride pat),
       Value.Retention v ->
         Hashtbl.replace retentions pat v
     | Key.PerSite (site, PerWorker (fq, AllocedArcBytes)),
-      Value.Int bytes ->
+      Value.RamenValue T.(VI64 bytes) ->
         Hashtbl.add prev_allocs (site, fq) bytes
     | _ ->
         ()) ;
@@ -985,7 +985,7 @@ let realloc_sync conf ~while_ clt =
   (* Write new allocs and warn of any large change: *)
   Hashtbl.iter (fun (site, fq as hk) bytes ->
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes))
-    and v = Value.Int (Int64.of_int bytes) in
+    and v = Value.of_int bytes in
     (match Hashtbl.find prev_allocs hk with
     | exception Not_found ->
         !logger.info "Newly allocated storage: %d bytes for %a"

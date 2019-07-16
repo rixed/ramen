@@ -1171,10 +1171,10 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let now = Unix.gettimeofday () in
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key LastExit,
-                 RamenSync.Value.Float now)) ;
+                 RamenSync.Value.of_float now)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key LastExitStatus,
-                 RamenSync.Value.String status_str)) ;
+                 RamenSync.Value.of_string status_str)) ;
       let input_ringbufs =
         let k = per_instance_key InputRingFiles in
         find_or_fail "a list of strings" clt k get_string_list in
@@ -1182,13 +1182,16 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
         per_instance_key SuccessiveFailures in
       let succ_failures =
         find_or_fail "an integer" clt succ_fail_k (function
-          | None -> Some 0
-          | Some (RamenSync.Value.Int i) -> Some (Int64.to_int i)
-          | _ -> None) in
+          | None ->
+              Some 0
+          | Some (RamenSync.Value.RamenValue T.(VI64 i)) ->
+              Some (Int64.to_int i)
+          | _ ->
+              None) in
       if is_err then (
         ZMQClient.send_cmd clt ~while_ ~eager:true
           (SetKey (succ_fail_k,
-                   RamenSync.Value.Int (Int64.of_int (succ_failures + 1)))) ;
+                   RamenSync.Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
         if succ_failures = 5 then (
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
@@ -1214,7 +1217,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let quarantine_until = now +. Random.float (min 90. max_delay) in
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
-                 RamenSync.Value.Float quarantine_until)) ;
+                 RamenSync.Value.of_float quarantine_until)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (DelKey (per_instance_key Pid)))
 
@@ -1234,7 +1237,7 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   let last_killed = ref (
     find_or_fail "a float" clt last_killed_k (function
       | None -> Some 0.
-      | Some (RamenSync.Value.Float t) -> Some t
+      | Some (RamenSync.Value.RamenValue T.(VFloat t)) -> Some t
       | _ -> None)) in
   let input_ringbufs =
     let k = per_instance_key InputRingFiles in
@@ -1248,7 +1251,7 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   kill_politely conf last_killed what pid stats_worker_sigkills ;
   ZMQClient.send_cmd clt ~while_ ~eager:true
-    (SetKey (last_killed_k, RamenSync.Value.Float !last_killed))
+    (SetKey (last_killed_k, RamenSync.Value.of_float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
@@ -1361,13 +1364,13 @@ let try_start_instance conf ~while_ clt site fq worker =
   ZMQClient.send_cmd clt ~eager:true ~while_ (DelKey k) ;
   let k = per_instance_key Pid in
   ZMQClient.send_cmd clt ~eager:true ~while_
-                     (SetKey (k, RamenSync.Value.(Int (Int64.of_int pid)))) ;
+                     (SetKey (k, RamenSync.Value.(of_int pid))) ;
   let k = per_instance_key StateFile
-  and v = RamenSync.Value.(String (state_file :> string)) in
+  and v = RamenSync.Value.(of_string (state_file :> string)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   Option.may (fun out_ringbuf_ref ->
     let k = per_instance_key OutRefFile
-    and v = RamenSync.Value.(String out_ringbuf_ref) in
+    and v = RamenSync.Value.(of_string out_ringbuf_ref) in
     ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
   let k = per_instance_key InputRingFiles
@@ -1506,7 +1509,7 @@ let synchronize_once conf ~while_ clt =
       log_and_ignore_exceptions ~what (fun () ->
         match k, hv.Client.value with
         | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid))),
-          Value.Int pid
+          Value.RamenValue T.(VI64 pid)
           when site = conf.C.site ->
             let pid = Int64.to_int pid in
             update_child_status conf ~while_ clt site fq worker_sign pid ;
