@@ -26,7 +26,7 @@ class RmAdminWin : public QMainWindow
   GraphViewSettings *settings;
 
 public:
-  explicit RmAdminWin(QWidget *parent = nullptr);
+  explicit RmAdminWin(bool with_beta_features, QWidget *parent = nullptr);
   ~RmAdminWin();
 
 signals:

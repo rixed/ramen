@@ -320,6 +320,7 @@ struct
     "Port number for the configuration synchronisation service"
   let confserver_url = "host:port of Ramen confserver"
   let confserver_login = "Login for the confserver"
+  let beta = "Enable beta features"
 end
 
 module WorkerCommands =

@@ -19,6 +19,7 @@ extern "C" {
 #include "conf.h"
 
 RmAdminWin *w = nullptr;
+static bool with_beta_features = false;
 
 using namespace std;
 
@@ -64,6 +65,13 @@ extern "C" {
     CAMLreturn(Val_unit);
   }
 
+  value set_beta(value b_)
+  {
+    CAMLparam1(b_);
+    with_beta_features = Bool_val(b_);
+    CAMLreturn(Val_unit);
+  }
+
   value set_my_errors(value key_)
   {
     CAMLparam1(key_);
@@ -98,7 +106,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<conf::Retention>();
   qRegisterMetaType<QVector<int>>();
 
-  w = new RmAdminWin();
+  w = new RmAdminWin(with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
 
   thread sync_thread(do_sync_thread, argv);

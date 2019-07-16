@@ -10,27 +10,35 @@
 #include "StorageView.h"
 #include "RmAdminWin.h"
 
-RmAdminWin::RmAdminWin(QWidget *parent) :
+RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
     QMainWindow(parent)
 {
-  sourcesModel = new SourcesModel(this);
-  // A GraphModel satisfies both the TreeView and the GraphView
-  // requirements:
-  settings = new GraphViewSettings;
-  graphModel = new GraphModel(settings);
+  if (with_beta_features) {
+    sourcesModel = new SourcesModel(this);
+    // A GraphModel satisfies both the TreeView and the GraphView
+    // requirements:
+    settings = new GraphViewSettings;
+    graphModel = new GraphModel(settings);
 
-  // For now have a tabbar with the available views:
-  QTabWidget *tw = new QTabWidget(this);
+    // For now have a tabbar with the available views:
+    QTabWidget *tw = new QTabWidget(this);
 
-  tw->addTab(new ConfTreeWidget, tr("&Raw configuration"));
-  tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
-  tw->addTab(new ProgramsView, tr("&Programs"));
-  tw->addTab(new OperationsView(graphModel), tr("&Operations"));
-  tw->addTab(new StorageView(graphModel), tr("&Storage"));
+    tw->addTab(new ConfTreeWidget, tr("&Raw configuration"));
+    tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
+    tw->addTab(new ProgramsView, tr("&Programs"));
+    tw->addTab(new OperationsView(graphModel), tr("&Operations"));
+    tw->addTab(new StorageView(graphModel), tr("&Storage"));
 
-  tw->setCurrentIndex(0); // DEBUG
+    tw->setCurrentIndex(0); // DEBUG
 
-  setCentralWidget(tw);
+    setCentralWidget(tw);
+  } else {
+    sourcesModel = nullptr;
+    settings = nullptr;
+    graphModel = nullptr;
+    setCentralWidget(new ConfTreeWidget);
+  }
+
   setWindowTitle(tr("RmAdmin"));
 
   errorMessage = new KErrorMsg();
