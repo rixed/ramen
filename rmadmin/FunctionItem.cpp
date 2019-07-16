@@ -2,6 +2,7 @@
 #include "GraphView.h"
 #include "conf.h"
 #include "TailModel.h"
+#include "RamenType.h"
 #include "FunctionItem.h"
 
 static std::string lastTuplesKey(FunctionItem const *f)
@@ -102,15 +103,15 @@ conf::Key FunctionItem::functionKey(std::string perFuncKey) const
                    name.toStdString() + perFuncKey);
 }
 
-std::shared_ptr<conf::RamenType const> FunctionItem::outType() const
+std::shared_ptr<RamenType const> FunctionItem::outType() const
 {
   conf::Key k = functionKey("/type/out");
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[k];
   conf::kvs_lock.unlock_shared();
 
-  std::shared_ptr<conf::RamenType const> outType =
-    std::dynamic_pointer_cast<conf::RamenType const>(kv.val);
+  std::shared_ptr<RamenType const> outType =
+    std::dynamic_pointer_cast<RamenType const>(kv.val);
   return outType;
 }
 
@@ -122,7 +123,7 @@ int FunctionItem::numColumns() const
   // allowed to change.
   // TODO: a function to get it and cache it. Or even better: connect
   // to this KV set/change signals and update the cached type.
-  std::shared_ptr<conf::RamenType const> t = outType();
+  std::shared_ptr<RamenType const> t = outType();
   if (! t) return 0;
   return t->numColumns();
 }
@@ -137,7 +138,7 @@ ser::Value const *FunctionItem::tupleData(int row, int column) const
 
 QString FunctionItem::header(unsigned column) const
 {
-  std::shared_ptr<conf::RamenType const> t = outType();
+  std::shared_ptr<RamenType const> t = outType();
   if (! t) return QString("#") + QString::number(column);
 
   return t->columnName(column);
@@ -151,7 +152,7 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
     std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
     return;
   }
-  std::shared_ptr<conf::RamenType const> type = outType();
+  std::shared_ptr<RamenType const> type = outType();
   if (! type) { // ignore the tuple
     std::cout << "Received a tuple for " << fqName().toStdString()
               << " before we know the type" << std::endl;

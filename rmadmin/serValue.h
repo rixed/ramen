@@ -14,12 +14,11 @@
  * the ringbuffer.
  */
 
-namespace conf {
-  struct RamenType;
-};
+struct RamenType;
 
 namespace ser {
 
+// FIXME: Make this a class instead (templated for compound types)
 enum ValueType {
   // Those constructors have no parameters, so they are integers:
   EmptyType = 0,    // That we use for errors
@@ -271,7 +270,7 @@ public:
 std::ostream &operator<<(std::ostream &, Value const &);
 
 // Construct from a type and serialized bytes
-extern Value *unserialize(std::shared_ptr<conf::RamenType const>, uint32_t const *&, uint32_t const *max, bool topLevel=false);
+extern Value *unserialize(std::shared_ptr<RamenType const>, uint32_t const *&, uint32_t const *max, bool topLevel=false);
 
 };
 

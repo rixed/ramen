@@ -235,7 +235,7 @@ void OperationsView::addQuickPlot(FunctionItem const *f, QList<int> const &selec
 
   Chart *chart = new Chart;
 
-  std::shared_ptr<conf::RamenType const> outType = f->outType();
+  std::shared_ptr<RamenType const> outType = f->outType();
   /* Make a chartDataSet out of each column: */
   for (auto col : selectedColumns) {
     ChartDataSet *ds = new ChartDataSet(f, col);

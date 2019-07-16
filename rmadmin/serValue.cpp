@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cassert>
 #include "confValue.h"
+#include "RamenType.h"
 #include "serValue.h"
 
 namespace ser {
@@ -244,7 +245,7 @@ static bool bitSet(unsigned char const *nullmask, unsigned null_i)
   else return (*nullmask) & (1 << null_i);
 }
 
-Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *&start, uint32_t const *max, bool topLevel)
+Value *unserialize(std::shared_ptr<RamenType const> type, uint32_t const *&start, uint32_t const *max, bool topLevel)
 {
   if (verbose) {
     std::cout << "unserialize type " << *type << std::endl;
@@ -321,8 +322,8 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
       return new Error("TODO: unserialize");
     case TupleType:
       {
-        std::shared_ptr<conf::RamenTypeTuple const> tuple =
-          std::dynamic_pointer_cast<conf::RamenTypeTuple const>(type);
+        std::shared_ptr<RamenTypeTuple const> tuple =
+          std::dynamic_pointer_cast<RamenTypeTuple const>(type);
         if (!tuple) {
           std::cout << "Tuple is not a tuple." << std::endl;
           return new Error("Cannot unserialize: Invalid tag for tuple");
@@ -355,8 +356,8 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
       break;
     case VecType:
       {
-        std::shared_ptr<conf::RamenTypeVec const> vec =
-          std::dynamic_pointer_cast<conf::RamenTypeVec const>(type);
+        std::shared_ptr<RamenTypeVec const> vec =
+          std::dynamic_pointer_cast<RamenTypeVec const>(type);
         if (!vec) {
           std::cout << "Vector is not a vector." << std::endl;
           return new Error("Cannot unserialize: Invalid tag for vector");
@@ -388,8 +389,8 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
     case ListType:
       {
         // Like vectors, but preceeded with the number of items:
-        std::shared_ptr<conf::RamenTypeList const> lst =
-          std::dynamic_pointer_cast<conf::RamenTypeList const>(type);
+        std::shared_ptr<RamenTypeList const> lst =
+          std::dynamic_pointer_cast<RamenTypeList const>(type);
         if (!lst) {
           std::cout << "List is not a list." << std::endl;
           return new Error("Cannot unserialize: Invalid tag for list");
@@ -422,8 +423,8 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
       break;
     case RecordType:
       {
-        std::shared_ptr<conf::RamenTypeRecord const> record =
-          std::dynamic_pointer_cast<conf::RamenTypeRecord const>(type);
+        std::shared_ptr<RamenTypeRecord const> record =
+          std::dynamic_pointer_cast<RamenTypeRecord const>(type);
         if (!record) {
           std::cout << "Record is not a record." << std::endl;
           return new Error("Cannot unserialize: Invalid tag for record");
@@ -440,10 +441,10 @@ Value *unserialize(std::shared_ptr<conf::RamenType const> type, uint32_t const *
         );
         for (unsigned i = 0; i < record->serOrder.size(); i++) {
           size_t fieldIdx = record->serOrder[i];
-          std::pair<QString, std::shared_ptr<conf::RamenType const>> const *field =
+          std::pair<QString, std::shared_ptr<RamenType const>> const *field =
             &record->fields[ fieldIdx ];
           QString const &fieldName = field->first;
-          std::shared_ptr<conf::RamenType const> subType = field->second;
+          std::shared_ptr<RamenType const> subType = field->second;
           if (verbose) {
             std::cout << "Next field is " << fieldName.toStdString() << ", "
                       << (subType->nullable ?

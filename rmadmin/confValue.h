@@ -16,6 +16,8 @@ extern "C" {
 #include "confRCEntry.h"
 #include "confWorkerRef.h"
 
+struct RamenType;
+
 namespace conf {
 
 enum ValueType {
@@ -24,7 +26,6 @@ enum ValueType {
   // (ie number of skipped tuples + serialized value), while
   // ser::TupleType is the type of a RamenValue (equivalent to T.TTuple).
   TupleType,
-  RamenTypeType,  // For RamenTypes.t
   RamenValueType,  // For RamenTypes.value
   TargetConfigType,
   SourceInfoType,
@@ -115,8 +116,6 @@ struct TimeRange : public Value
   bool operator==(Value const &) const;
 };
 
-struct RamenType;
-
 /* Tuple of ramen _values_, not to be confused with RamenTypeTuple which is a tuple
  * of ramen _types_.
  * Actually, nothing mandates [val] to be a tuple; in the future, when I/O are not
@@ -134,150 +133,6 @@ struct Tuple : public Value
   bool operator==(Value const &) const;
   // returned value belongs to caller:
   ser::Value *unserialize(std::shared_ptr<RamenType const>) const;
-};
-
-struct RamenType : public Value
-{
-  ser::ValueType type;
-  bool nullable;
-  RamenType();
-  ~RamenType();
-  RamenType(ser::ValueType, bool);
-  virtual QString structureToQString() const = 0;
-  QString toQString() const
-  {
-    QString s(structureToQString());
-    if (nullable) s.append("?");
-    return s;
-  }
-  value toOCamlValue() const;
-  virtual bool operator==(Value const &) const;
-  virtual unsigned numColumns() const { return 0; };
-  virtual QString columnName(unsigned) const = 0;
-  virtual std::shared_ptr<RamenType const> columnType(unsigned) const = 0;
-  // Return the size of the required nullmask in _bits_
-  // ie. number of nullable subfields.
-  virtual size_t nullmaskWidth(bool) const { return 0; }
-  virtual bool isNumeric() const = 0;
-};
-
-struct RamenTypeScalar : public RamenType
-{
-  RamenTypeScalar(ser::ValueType t, bool n) : RamenType(t, n) {}
-  QString structureToQString() const;
-  unsigned numColumns() const { return 1; }
-  QString columnName(unsigned) const;
-  std::shared_ptr<RamenType const> columnType(unsigned) const { return nullptr; }
-  bool isNumeric() const;
-};
-
-struct RamenTypeTuple : public RamenType
-{
-  // For Tuples and other composed types, subTypes are owned by their parent
-  std::vector<std::shared_ptr<RamenType const>> fields;
-  RamenTypeTuple(std::vector<std::shared_ptr<RamenType const>> fields_, bool n) :
-    RamenType(ser::TupleType, n), fields(fields_) {}
-  QString structureToQString() const;
-  // Maybe displaying a tuple in a single column would be preferable?
-  unsigned numColumns() const { return fields.size(); }
-  QString columnName(unsigned i) const
-  {
-    if (i >= fields.size()) return QString();
-    return QString("#") + QString::number(i);
-  }
-  std::shared_ptr<RamenType const> columnType(unsigned i) const
-  {
-    if (i >= fields.size()) return nullptr;
-    return fields[i];
-  }
-  size_t nullmaskWidth(bool) const { return fields.size(); }
-  bool isNumeric() const { return false; }
-};
-
-struct RamenTypeVec : public RamenType
-{
-  unsigned dim;
-  std::shared_ptr<RamenType const> subType;
-  RamenTypeVec(unsigned dim_, std::shared_ptr<RamenType const> subType_, bool n) :
-    RamenType(ser::VecType, n), dim(dim_), subType(subType_) {}
-  QString structureToQString() const;
-  // Maybe displaying a vector in a single column would be preferable?
-  unsigned numColumns() const { return dim; }
-  QString columnName(unsigned i) const
-  {
-    if (i >= dim) return QString();
-    return QString("#") + QString::number(i);
-  }
-  std::shared_ptr<RamenType const> columnType(unsigned i) const
-  {
-    if (i >= dim) return nullptr;
-    return subType;
-  }
-  size_t nullmaskWidth(bool) const { return dim; }
-  bool isNumeric() const { return false; }
-};
-
-struct RamenTypeList : public RamenType
-{
-  std::shared_ptr<RamenType const> subType;
-  RamenTypeList(std::shared_ptr<RamenType const> subType_, bool n) :
-    RamenType(ser::ListType, n), subType(subType_) {}
-  QString structureToQString() const;
-  // Lists are displayed in a single column as they have a variable length
-  unsigned numColumns() const { return 1; }
-  QString columnName(unsigned i) const
-  {
-    if (i != 0) return QString();
-    return QString(QCoreApplication::translate("QMainWindow", "list"));
-  }
-  std::shared_ptr<RamenType const> columnType(unsigned i) const
-  {
-    if (i != 0) return nullptr;
-    return std::shared_ptr<RamenType const>(new RamenTypeList(subType, nullable));;
-  }
-  size_t nullmaskWidth(bool) const
-  {
-    assert(!"List nullmaskWidth is special!");
-  }
-  bool isNumeric() const { return false; }
-};
-
-// This is the interesting one:
-struct RamenTypeRecord : public RamenType
-{
-  // Fields are ordered in serialization order:
-  std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields;
-  // Here is the serialization order:
-  std::vector<uint16_t> serOrder;
-
-  RamenTypeRecord(std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields_, bool n);
-  QString structureToQString() const;
-  unsigned numColumns() const { return fields.size(); }
-  QString columnName(unsigned i) const
-  {
-    if (i >= fields.size()) return QString();
-    return fields[i].first;
-  }
-  std::shared_ptr<RamenType const> columnType(unsigned i) const
-  {
-    if (i >= fields.size()) return nullptr;
-    return fields[i].second;
-  }
-  size_t nullmaskWidth(bool topLevel) const
-  {
-    // TODO: fix nullmask for compound types (ie: reserve a bit only to
-    //       nullable subfields)
-    if (topLevel) {
-      size_t w = 0;
-      for (auto &f : fields) {
-        if (f.second->nullable) w++;
-      }
-      return w;
-    } else {
-      return fields.size();
-    }
-  }
-  bool isNumeric() const { return false; }
 };
 
 // FIXME: make this a template over conf::RamenValue

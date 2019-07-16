@@ -43,7 +43,7 @@ public:
 
   conf::Key functionKey(std::string perFuncKey) const;
 
-  std::shared_ptr<conf::RamenType const> outType() const;
+  std::shared_ptr<RamenType const> outType() const;
   int numRows() const;
   int numColumns() const;
   ser::Value const *tupleData(int row, int column) const;

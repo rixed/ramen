@@ -5,12 +5,13 @@
 #include "conf.h"
 #include "confValue.h"
 #include "serValue.h"
+#include "RamenType.h"
 #include "ChartDataSet.h"
 
 ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, QObject *parent) :
   QObject(parent), functionItem(functionItem_), column(column_), isFactor(false)
 {
-  std::shared_ptr<conf::RamenType const> outType = functionItem->outType();
+  std::shared_ptr<RamenType const> outType = functionItem->outType();
   type = outType->columnType(column);
   name_ = outType->columnName(column);
   QString const name = outType->columnName(column);

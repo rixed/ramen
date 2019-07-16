@@ -3,9 +3,7 @@
 #include <QObject>
 
 class FunctionItem;
-namespace conf {
-  struct RamenType;
-};
+struct RamenType;
 namespace ser {
   class Value;
 };
@@ -15,7 +13,7 @@ class ChartDataSet : public QObject
   Q_OBJECT
 
   FunctionItem const *functionItem;
-  std::shared_ptr<conf::RamenType const> type;
+  std::shared_ptr<RamenType const> type;
   QString name_;
 
   unsigned column;

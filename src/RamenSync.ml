@@ -856,7 +856,6 @@ struct
     | Tuple of
         { skipped : int (* How many tuples were skipped before this one *) ;
           values : bytes (* serialized, without header *) }
-    | RamenType of T.t
     | RamenValue of T.value
     | TargetConfig of TargetConfig.t
     (* Holds all info from the compilation of a source ; what we used to have in the
@@ -889,8 +888,6 @@ struct
     | Tuple { skipped ; values } ->
         Printf.fprintf oc "Tuple of %d bytes (after %d skipped)"
           (Bytes.length values) skipped
-    | RamenType t ->
-        T.print_typ oc t
     | RamenValue v ->
         T.print oc v
     | TargetConfig rc ->
