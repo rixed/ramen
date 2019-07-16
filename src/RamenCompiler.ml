@@ -627,16 +627,7 @@ let compile conf info ~exec_file base_file (program_name : N.program) =
          * info are also computed from the operation when we load a program. *)
         let runconf =
           PS.{
-            funcs =
-              List.map (fun func ->
-                F.Serialized.{
-                  name = func.FS.name ;
-                  retention = func.FS.retention ;
-                  is_lazy = func.FS.is_lazy ;
-                  doc = func.FS.doc ;
-                  operation = func.FS.operation ;
-                  signature = func.FS.signature }
-              ) info.PS.funcs ;
+            funcs = info.PS.funcs ;
             default_params = params ;
             condition = info.PS.condition
           } in
