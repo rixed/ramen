@@ -127,6 +127,7 @@ let string_of_structure t = IO.to_string print_structure t
  * if we are given only a NULL tuple there is no way to know its type.
  * Tough life. *)
 type value =
+  | VNull
   | VFloat of float
   | VString of string
   | VBool of bool
@@ -147,7 +148,6 @@ type value =
   | VCidrv4 of RamenIpv4.Cidr.t
   | VCidrv6 of RamenIpv6.Cidr.t
   | VCidr of RamenIp.Cidr.t
-  | VNull
   | VTuple of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)

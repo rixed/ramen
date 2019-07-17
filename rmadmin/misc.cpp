@@ -1,6 +1,18 @@
 #include <string>
 #include "misc.h"
 
+std::ostream &operator<<(std::ostream &os, int128_t const &)
+{
+  os << "TODO: << for int128";
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, uint128_t const &)
+{
+  os << "TODO: << for uint128";
+  return os;
+}
+
 bool startsWith(std::string const &a, std::string const &b)
 {
   if (a.length() < b.length()) return false;

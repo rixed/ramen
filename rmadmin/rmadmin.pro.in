@@ -34,7 +34,6 @@ HEADERS += \
   RamenTypeStructure.h \
   RamenType.h \
   confKey.h \
-  serValue.h \
   RamenValue.h \
   confRCEntryParam.h \
   confRCEntry.h \
@@ -107,7 +106,6 @@ SOURCES += \
   RamenTypeStructure.cpp \
   RamenType.cpp \
   confKey.cpp \
-  serValue.cpp \
   RamenValue.cpp \
   confRCEntryParam.cpp \
   confRCEntry.cpp \

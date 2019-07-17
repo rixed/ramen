@@ -10,34 +10,53 @@ extern "C" {
 # include <caml/callback.h>
 }
 #include "misc.h"
+#include "RamenType.h"
 #include "RamenValue.h"
 
-QString RamenValue::toQString() const
-{
-  return QString("Some ") + QStringOfRamenTypeStructure(structure);
-}
+enum OCamlValueTags {
+  TAG_VNull = 0,
+  TAG_VFloat = 0,
+  TAG_VString,
+  TAG_VBool,
+  TAG_VU8,
+  TAG_VU16,
+  TAG_VU32,
+  TAG_VU64,
+  TAG_VU128,
+  TAG_VI8,
+  TAG_VI16,
+  TAG_VI32,
+  TAG_VI64,
+  TAG_VI128,
+  TAG_VEth,
+  TAG_VIpv4,
+  TAG_VIpv6,
+  TAG_VIp,
+  TAG_VCidrv4,
+  TAG_VCidrv6,
+  TAG_VCidr,
+  TAG_VTuple,
+  TAG_VVec,
+  TAG_VList,
+  TAG_VRecord
+};
 
-value RamenValue::toOCamlValue() const
+QString const RamenValue::toQString() const
 {
-  assert(!"TODO: toOCamlValue");
-}
-
-bool RamenValue::operator==(RamenValue const &other) const
-{
-  return structure == other.structure;
+  return QString("Some value which printer is unimplemented");
 }
 
 value VNull::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLreturn(Val_int(0)); // Do not use (int)NullType here!
+  CAMLreturn(Val_int(TAG_VNull)); // Do not use (int)NullType here!
 }
 
 value VFloat::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, FloatType);
+  ret = caml_alloc(1, TAG_VFloat);
   Store_field(ret, 0, caml_copy_double(v));
   CAMLreturn(ret);
 }
@@ -53,7 +72,7 @@ value VString::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, StringType);
+  ret = caml_alloc(1, TAG_VString);
   Store_field(ret, 0, caml_copy_string(v.toStdString().c_str()));
   CAMLreturn(ret);
 }
@@ -65,7 +84,7 @@ bool VString::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString VBool::toQString() const
+QString const VBool::toQString() const
 {
   if (v)
     return QCoreApplication::translate("QMainWindow", "true");
@@ -77,7 +96,7 @@ value VBool::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, BoolType);
+  ret = caml_alloc(1, TAG_VBool);
   Store_field(ret, 0, Val_bool(v));
   CAMLreturn(ret);
 }
@@ -102,7 +121,7 @@ value VU8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, U8Type);
+  ret = caml_alloc(1, TAG_VU8);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -118,7 +137,7 @@ value VU16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, U16Type);
+  ret = caml_alloc(1, TAG_VU16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -163,7 +182,7 @@ bool VU64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString VU128::toQString() const
+QString const VU128::toQString() const
 {
   char s[] = "000000000000000000000000000000000000000";
   std::snprintf(s, sizeof(s), "%016" PRIx64 "%016" PRIx64, (uint64_t)(v >> 64), (uint64_t)v);
@@ -190,7 +209,7 @@ value VI8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, I8Type);
+  ret = caml_alloc(1, TAG_VI8);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -206,7 +225,7 @@ value VI16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
-  ret = caml_alloc(1, I16Type);
+  ret = caml_alloc(1, TAG_VI16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
 }
@@ -251,7 +270,7 @@ bool VI64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString VI128::toQString() const
+QString const VI128::toQString() const
 {
   char s[] = "-000000000000000000000000000000000000000";
   uint128_t v_ = v >= 0 ? v : -v;
@@ -274,7 +293,6 @@ bool VI128::operator==(RamenValue const &other) const
   VI128 const &o = static_cast<VI128 const &>(other);
   return v == o.v;
 }
-
 
 RamenValue *RamenValue::ofOCaml(value v_)
 {
@@ -418,78 +436,22 @@ RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
 }
 #endif
 
-RamenValue *RamenValue::ofQString(enum RamenTypeStructure structure, QString const &s)
+void VTuple::append(RamenValue const *i)
 {
-  bool ok = true;
-  RamenValue *ret = nullptr;
-  switch (structure) {
-    case EmptyType:
-      assert("Cannot build a value of EmptyType");
-    case FloatType:
-      ret = new VFloat(s.toDouble(&ok));
-      break;
-    case StringType:
-      ret = new VString(s);
-      break;
-    case BoolType:
-      ret = new VBool(looks_like_true(s));
-      break;
-    case NumType:
-    case AnyType:
-      ret = new VNull();
-      break;
-    case U8Type:
-      ret = new VU8(s.toLong(&ok));
-      break;
-    case U16Type:
-      ret = new VU16(s.toLong(&ok));
-      break;
-    case U32Type:
-      ret = new VU32(s.toLong(&ok));
-      break;
-    case U64Type:
-      ret = new VU64(s.toLong(&ok));
-      break;
-    case U128Type:
-      ret = new VU128(s.toLong(&ok));
-      break;
-    case I8Type:
-      ret = new VI8(s.toLong(&ok));
-      break;
-    case I16Type:
-      ret = new VI16(s.toLong(&ok));
-      break;
-    case I32Type:
-      ret = new VI32(s.toLong(&ok));
-      break;
-    case I64Type:
-      ret = new VI64(s.toLong(&ok));
-      break;
-    case I128Type:
-      ret = new VI128(s.toLong(&ok));
-      break;
-    case EthType:
-      ret = new VEth(s.toLong(&ok));
-      break;
-    case Ipv4Type:
-    case Ipv6Type:
-    case IpType:
-    case Cidrv4Type:
-    case Cidrv6Type:
-    case CidrType:
-    case TupleType:
-    case VecType:
-    case ListType:
-    case RecordType:
-      std::cout << "Unimplemented RamenValueOfOCaml for structure "
-                << QStringOfRamenTypeStructure(structure).toStdString()
-                << std::endl;
-      ret = new VNull();
-      break;
-  }
-  if (! ret)
-    assert(!"Invalid RamenValueType");
-  if (! ok)
-    std::cerr << "Cannot convert " << s.toStdString() << " into a RamenValue" << std::endl;
-  return ret;
+  /* FIXME: Make sure we do not add a Null immediate and pretend the field is
+   * not nullable: */
+  assert(v.size() < v.capacity());
+  v.push_back(i);
+}
+
+VRecord::VRecord(size_t numFields)
+{
+  while (numFields --) v.emplace_back(QString(), nullptr);
+}
+
+void VRecord::set(size_t idx, QString const field, RamenValue const *i)
+{
+  assert(idx < v.size());
+  v[idx].first = field;
+  v[idx].second = i;
 }

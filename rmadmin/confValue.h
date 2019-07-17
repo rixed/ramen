@@ -9,7 +9,6 @@
 extern "C" {
 # include <caml/mlvalues.h>
 }
-#include "serValue.h"
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
 #include "RamenValue.h"
@@ -22,10 +21,7 @@ namespace conf {
 
 enum ValueType {
   ErrorType, WorkerType, RetentionType, TimeRangeType,
-  // Beware: conf::TupleType is the type of a tuple received for tailling
-  // (ie number of skipped tuples + serialized value), while
-  // ser::TupleType is the type of a RamenValue (equivalent to T.TTuple).
-  TupleType,
+  TupleType, // A serialized tuple, not a VTuple
   RamenValueType,  // For RamenTypes.value
   TargetConfigType,
   SourceInfoType,
@@ -132,7 +128,7 @@ struct Tuple : public Value
   value toOCamlValue() const;
   bool operator==(Value const &) const;
   // returned value belongs to caller:
-  ser::Value *unserialize(std::shared_ptr<RamenType const>) const;
+  RamenValue *unserialize(std::shared_ptr<RamenType const>) const;
 };
 
 struct RamenValueValue : public Value

@@ -11,6 +11,7 @@ extern "C" {
 }
 #include "misc.h"
 #include "RamenValue.h"
+#include "RamenType.h"
 #include "confValue.h"
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
@@ -186,9 +187,12 @@ Value *valueOfOCaml(value v_)
               for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
                 tmp2_ = Field(tmp1_, 0);  // the RamenTuple.param
                 tmp3_ = Field(tmp2_, 0);  // the ptyp field
+                std::shared_ptr<RamenType const> type(
+                  RamenType::ofOCaml(Field(tmp3_, 1)));
                 CompiledProgramParam *p =
                   new CompiledProgramParam(
                     String_val(Field(tmp3_, 0)),  // name
+                    type,
                     String_val(Field(tmp3_, 3)),  // doc
                     std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp2_, 1)))); // value
                 sourceInfo->addParam(p);
@@ -390,11 +394,11 @@ QString Tuple::toQString() const
   return QString::number(size) + QString(" bytes");
 }
 
-ser::Value *Tuple::unserialize(std::shared_ptr<RamenType const> type) const
+RamenValue *Tuple::unserialize(std::shared_ptr<RamenType const> type) const
 {
   uint32_t const *start = (uint32_t const *)bytes;  // TODO: check alignment
   uint32_t const *max = (uint32_t const *)(bytes + size); // TODO: idem
-  ser::Value *v = ser::unserialize(type, start, max, true);
+  RamenValue *v = type->structure->unserialize(start, max, true);
   assert(start == max);
   return v;
 }

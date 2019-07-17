@@ -5,15 +5,17 @@
 #include <string>
 
 struct RamenValue;
+struct RamenType;
 
 struct CompiledProgramParam
 {
   // For now a parameter is just a name, a value and a docstring.
   std::string name;
+  std::shared_ptr<RamenType const> type;
   std::string doc;
   std::shared_ptr<RamenValue const> val;
 
-  CompiledProgramParam(std::string const &name_, std::string const &doc_, std::shared_ptr<RamenValue const>);
+  CompiledProgramParam(std::string const &name, std::shared_ptr<RamenType const> type, std::string const &doc, std::shared_ptr<RamenValue const>);
 };
 
 #endif

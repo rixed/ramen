@@ -237,7 +237,7 @@ void RCEntryEditor::resetParams()
      * be able to create its own editor. */
     // TODO: a tooltip with the parameter doc (CompiledProgramParam doc)
     std::shared_ptr<RamenValue const> val = paramValue(p);
-    RamenValueEditor *paramEdit = RamenValueEditor::ofType(p->val->structure, val.get());
+    RamenValueEditor *paramEdit = RamenValueEditor::ofType(p->type, val.get());
     paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
   }
 }

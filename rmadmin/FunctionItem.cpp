@@ -28,7 +28,7 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
 FunctionItem::~FunctionItem()
 {
   if (tailModel) delete tailModel;
-  for (ser::Value const *t : tuples) delete t;
+  for (RamenValue const *t : tuples) delete t;
 }
 
 QVariant FunctionItem::data(int column) const
@@ -143,11 +143,11 @@ int FunctionItem::numColumns() const
   // to this KV set/change signals and update the cached type.
   std::shared_ptr<RamenType const> t = outType();
   if (! t) return 0;
-  return t->numColumns();
+  return t->structure->numColumns();
 }
 
 // Returned value owned by FunctionItem:
-ser::Value const *FunctionItem::tupleData(int row, int column) const
+RamenValue const *FunctionItem::tupleData(int row, int column) const
 {
   if (row >= numRows()) return nullptr;
 
@@ -159,7 +159,7 @@ QString FunctionItem::header(unsigned column) const
   std::shared_ptr<RamenType const> t = outType();
   if (! t) return QString("#") + QString::number(column);
 
-  return t->columnName(column);
+  return t->structure->columnName(column);
 }
 
 void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
@@ -177,7 +177,7 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
     return;
   }
 
-  ser::Value const *val = tuple->unserialize(type);
+  RamenValue const *val = tuple->unserialize(type);
   if (! val) return;
 
   emit beginAddTuple(QModelIndex(), tuples.size(), tuples.size());

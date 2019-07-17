@@ -13,11 +13,10 @@ class RamenValueEditor : public QLineEdit
 {
   Q_OBJECT
 
-  // FIXME: rename into structure
-  enum RamenTypeStructure type;
+  std::shared_ptr<RamenType const> type;
 
 public:
-  RamenValueEditor(enum RamenTypeStructure type_, QWidget *parent = nullptr) :
+  RamenValueEditor(std::shared_ptr<RamenType const> type_, QWidget *parent = nullptr) :
     QLineEdit(parent),
     type(type_) {}
 
@@ -26,7 +25,7 @@ public:
   // Caller takes ownership
   RamenValue *getValue() const;
 
-  static RamenValueEditor *ofType(enum RamenTypeStructure, RamenValue const *, QWidget *parent = nullptr);
+  static RamenValueEditor *ofType(std::shared_ptr<RamenType const>, RamenValue const *, QWidget *parent = nullptr);
 };
 
 #endif

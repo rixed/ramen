@@ -1,6 +1,7 @@
+#include "RamenType.h"
 #include "RamenValueEditor.h"
 
-RamenValueEditor *RamenValueEditor::ofType(enum RamenTypeStructure type, RamenValue const *val, QWidget *parent)
+RamenValueEditor *RamenValueEditor::ofType(std::shared_ptr<RamenType const> type, RamenValue const *val, QWidget *parent)
 {
   RamenValueEditor *editor = new RamenValueEditor(type, parent);
   editor->setText(val->toQString());
@@ -9,5 +10,5 @@ RamenValueEditor *RamenValueEditor::ofType(enum RamenTypeStructure type, RamenVa
 
 RamenValue *RamenValueEditor::getValue() const
 {
-  return RamenValue::ofQString(type, text());
+  return type->structure->valueOfQString(text());
 }

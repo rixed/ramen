@@ -10,6 +10,7 @@ extern "C" {
 namespace conf {
   struct Retention;
 };
+struct RamenType;
 
 struct CompiledFunctionInfo
 {

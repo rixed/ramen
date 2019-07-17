@@ -112,7 +112,8 @@ struct
          * Retention, Doc, IsLazy, Factors, InType, OutType, Signature, MergeInputs.
          * Or replace the compiled info at reception by another object in RmAdmin?
          * For now just add the two that are important for RmAdmin: out_type and
-         * factors. FIXME. *)
+         * factors. FIXME.
+         * Note that fields are there ordered in user order, as expected. *)
         out_record : T.t ;
         factors : N.field list ;
         (* FIXME: why storing the signature? *)

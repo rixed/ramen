@@ -33,7 +33,7 @@ CompiledFunctionInfo::CompiledFunctionInfo(value v_)
   is_lazy = Bool_val(Field(v_, 2));
   doc = String_val(Field(v_, 3));
   // field 4 is the operation, which is too hard to parse. Hopefully we have those:
-  out_type = std::shared_ptr<RamenType const>(ramenTypeOfOCaml(Field(v_, 5)));
+  out_type = std::shared_ptr<RamenType const>(RamenType::ofOCaml(Field(v_, 5)));
   for (tmp_ = Field(v_, 6); Is_block(tmp_); tmp_ = Field(tmp_, 1)) {
     factors.append(QString(String_val(Field(tmp_, 0))));
   }

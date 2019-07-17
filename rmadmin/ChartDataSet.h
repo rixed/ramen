@@ -4,9 +4,7 @@
 
 class FunctionItem;
 struct RamenType;
-namespace ser {
-  class Value;
-};
+struct RamenValue;
 
 class ChartDataSet : public QObject
 {
@@ -23,7 +21,7 @@ public:
   ChartDataSet(FunctionItem const *, unsigned column, QObject *parent = nullptr);
   bool isNumeric() const;
   unsigned numRows() const;
-  ser::Value const *value(unsigned row) const;
+  RamenValue const *value(unsigned row) const;
   QString name() const;
 
 signals:

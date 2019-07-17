@@ -19,7 +19,7 @@ protected:
 
 public:
   // tuples owned by this object:
-  std::vector<ser::Value const *> tuples;
+  std::vector<RamenValue const *> tuples;
   std::shared_ptr<conf::Worker const> worker;
   std::optional<double> firstStartupTime;
   std::optional<double> lastStartupTime;
@@ -47,7 +47,7 @@ public:
   std::shared_ptr<RamenType const> outType() const;
   int numRows() const;
   int numColumns() const;
-  ser::Value const *tupleData(int row, int column) const;
+  RamenValue const *tupleData(int row, int column) const;
   QString header(unsigned) const;
 
   TailModel *tailModel; // created only on demand

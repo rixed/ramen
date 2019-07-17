@@ -1,6 +1,7 @@
 #ifndef MISC_H_190603
 #define MISC_H_190603
 #include <string>
+#include <iostream>
 
 #define SIZEOF_ARRAY(x) (sizeof(x) / sizeof(*(x)))
 
@@ -11,6 +12,9 @@ bool startsWith(std::string const &, std::string const &);
 bool endsWith(std::string const &, std::string const &);
 
 std::string const removeExt(std::string const &);
+
+std::ostream &operator<<(std::ostream &, int128_t const &);
+std::ostream &operator<<(std::ostream &, uint128_t const &);
 
 #include <QString>
 
