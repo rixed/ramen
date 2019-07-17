@@ -406,7 +406,7 @@ struct
                               | "worker", "" -> Worker)
                           with Match_failure _ ->
                             (match rcut fq, s1, s2 with
-                            | [ fq ; "instance" ], sign, s ->
+                            | [ fq ; "instances" ], sign, s ->
                                 PerWorker (N.fq fq, PerInstance (sign,
                                   match s with
                                   | "state_file" -> StateFile
@@ -451,6 +451,8 @@ struct
   (*$= of_string & ~printer:Batteries.dump
     (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", TotBytes))) \
       (of_string "sites/siteA/workers/prog/func/total/bytes")
+    (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", PerInstance ("123", StateFile)))) \
+      (of_string "sites/siteA/workers/prog/func/instances/123/state_file")
   *)
 
   (*$>*)
