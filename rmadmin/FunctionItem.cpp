@@ -45,20 +45,16 @@ std::vector<std::pair<QString const, QString const>> FunctionItem::labels() cons
   if (worker && !worker->used)
     labels.emplace_back("", "UNUSED");
   if (firstStartupTime) {
-    QDateTime dt = QDateTime::fromSecsSinceEpoch(*firstStartupTime);
-    labels.emplace_back("first startup", dt.toString());
+    labels.emplace_back("first startup", stringOfDate(*firstStartupTime));
   }
   if (lastStartupTime) {
-    QDateTime dt = QDateTime::fromSecsSinceEpoch(*lastStartupTime);
-    labels.emplace_back("last startup", dt.toString());
+    labels.emplace_back("last startup", stringOfDate(*lastStartupTime));
   }
   if (eventTimeMin) {
-    QDateTime dt = QDateTime::fromSecsSinceEpoch(*eventTimeMin);
-    labels.emplace_back("min e-time", dt.toString());
+    labels.emplace_back("min e-time", stringOfDate(*eventTimeMin));
   }
   if (eventTimeMax) {
-    QDateTime dt = QDateTime::fromSecsSinceEpoch(*eventTimeMax);
-    labels.emplace_back("max e-time", dt.toString());
+    labels.emplace_back("max e-time", stringOfDate(*eventTimeMax));
   }
   if (totalTuples)
     labels.emplace_back("#tuples", QString::number(*totalTuples));

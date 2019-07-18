@@ -354,8 +354,8 @@ RamenValue *RamenValue::ofOCaml(value v_)
       case 21:
       case 22:
       case 23:
-        std::cout << "Unimplemented RamenValueOfOCaml for tag " << Tag_val(v_)
-                  << std::endl;
+        std::cout << "Unimplemented RamenValueOfOCaml for tag "
+                  << (unsigned)Tag_val(v_) << std::endl;
         ret = new VNull();
         break;
       default:

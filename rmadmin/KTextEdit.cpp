@@ -27,7 +27,11 @@ void KTextEdit::setEnabled(bool enabled)
   QTextEdit::setReadOnly(! enabled);
 }
 
-void KTextEdit::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QTextEdit::setText(v->toQString());
+  QString new_v(v->toQString());
+  if (new_v != toPlainText()) {
+    setPlainText(v->toQString());
+    emit valueChanged(k, v);
+  }
 }

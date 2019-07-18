@@ -22,4 +22,7 @@ QString const removeExtQ(QString const &);
 
 bool looks_like_true(QString);
 
+QString stringOfDate(double);
+QString stringOfDuration(double);
+
 #endif

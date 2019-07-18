@@ -37,11 +37,14 @@ std::shared_ptr<conf::Value const> KChoice::getValue() const
   return choices[0].second;
 }
 
-void KChoice::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   for (unsigned i = 0; i < choices.size(); i ++) {
     if (*choices[i].second == *v) {
-      choices[i].first->setChecked(true);
+      if (! choices[i].first->isChecked()) {
+        choices[i].first->setChecked(true);
+        emit valueChanged(k, v);
+      }
       return;
     }
   }

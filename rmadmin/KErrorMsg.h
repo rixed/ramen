@@ -30,12 +30,14 @@ public slots:
 
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
   {
-    QString s(v->toQString());
+    std::shared_ptr<conf::Error const> err =
+      std::dynamic_pointer_cast<conf::Error const>(v);
+    assert(err);
     QLabel::setStyleSheet(
-      s.length() == 0 ?
+      err->msg.length() == 0 ?
         "" :
         "background-color: pink");
-    QLabel::setText(s);
+    QLabel::setText(QString::fromStdString(err->msg));
   }
 };
 

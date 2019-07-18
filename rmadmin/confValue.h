@@ -19,8 +19,12 @@ struct RamenType;
 
 namespace conf {
 
+// Must match RamenSync.Value.t!
 enum ValueType {
-  ErrorType, WorkerType, RetentionType, TimeRangeType,
+  ErrorType,
+  WorkerType,
+  RetentionType,
+  TimeRangeType,
   TupleType, // A serialized tuple, not a VTuple
   RamenValueType,  // For RamenTypes.value
   TargetConfigType,
@@ -28,18 +32,18 @@ enum ValueType {
   RuntimeStatsType,
   ReplayType,
   ReplayerType,
-  AlertType,
-  LastValueType
+  AlertType
 };
 
 class Value
 {
+  // FIXME: necessary to have that type?
   ValueType valueType;
 public:
   // Construct uninitialized
-  Value();
   Value(ValueType);
-  virtual ~Value();
+  Value() : Value(ErrorType) {} // wtv
+  virtual ~Value() {};
 
   virtual QString toQString() const;
   virtual value toOCamlValue() const;
@@ -60,9 +64,10 @@ struct Error : public Value
   double time;
   unsigned cmdId;
   std::string msg;
-  Error();
-  ~Error();
-  Error(double, unsigned, std::string const &);
+
+  Error(double time_, unsigned cmdId_, std::string const &msg_) :
+    Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
+  Error() : Error(0., 0, "") {}
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
@@ -86,6 +91,7 @@ struct Worker : public Value
   Worker();
   ~Worker();
   Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &worker_sign, QString const &bin_sign, bool used, WorkerRole *role);
+  QString toQString() const;
   bool operator==(Value const &) const;
 };
 
@@ -93,6 +99,7 @@ struct Retention : public Value
 {
   double duration;
   double period;
+
   Retention();
   ~Retention();
   Retention(double, double);
@@ -104,9 +111,11 @@ struct Retention : public Value
 struct TimeRange : public Value
 {
   std::vector<std::pair<double, double>> range;
-  TimeRange();
-  ~TimeRange();
-  TimeRange(std::vector<std::pair<double, double>> const &);
+
+  TimeRange() : Value(TimeRangeType) {}
+  TimeRange(std::vector<std::pair<double, double>> const &range_) :
+    Value(TimeRangeType), range(range_) {}
+  TimeRange(value);
   QString toQString() const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
@@ -153,14 +162,15 @@ struct SourceInfo : public Value
   bool hasRunCondition;
   QList<CompiledFunctionInfo *> infos;
 
-  SourceInfo();
   SourceInfo(QString md5_, QString errMsg_) :
     Value(SourceInfoType), md5(md5_), errMsg(errMsg_) {}
   SourceInfo(QString md5_, bool hasRunCondition_) :
     Value(SourceInfoType), md5(md5_), hasRunCondition(hasRunCondition_) {}
+  SourceInfo() : SourceInfo(QString(), QString()) {}
   ~SourceInfo();
 
   bool operator==(Value const &) const;
+  QString toQString() const;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }
@@ -174,12 +184,14 @@ struct TargetConfig : public Value
 {
   std::map<std::string const, RCEntry *> entries;
 
-  TargetConfig() {}
+  TargetConfig() : Value(TargetConfigType) {}
+  TargetConfig(value);
   ~TargetConfig();
 
   value toOCamlValue() const;
 
   bool operator==(Value const &) const;
+  QString toQString() const;
 
   // Takes ownership
   void addEntry(RCEntry *entry)
@@ -203,28 +215,29 @@ struct RuntimeStats : public Value
   double totCpu;
   size_t curRam, maxRam;
 
-  RuntimeStats() {};
+  RuntimeStats() : Value(RuntimeStatsType) {};
   RuntimeStats(value);
+  QString toQString() const;
 };
 
 struct Replay : public Value
 {
   // wtv
-  Replay() {}
+  Replay() : Value(ReplayType) {}
   Replay(value);
 };
 
 struct Replayer : public Value
 {
   // wtv
-  Replayer() {}
+  Replayer() : Value(ReplayerType) {}
   Replayer(value);
 };
 
 struct Alert : public Value
 {
   // wtv
-  Alert() {}
+  Alert() : Value(AlertType) {}
   Alert(value);
 };
 

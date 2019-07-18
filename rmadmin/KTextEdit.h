@@ -24,6 +24,9 @@ public slots:
   {
     AtomicWidget::unlockValue(k);
   }
+
+signals:
+  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
 };
 
 #endif

@@ -22,4 +22,10 @@ WorkerRole *WorkerRole::ofOCamlValue(value v_)
   CAMLreturnT(WorkerRole *, ret);
 }
 
+QString const WorkerRole::toQString() const
+{
+  if (isTopHalf) return QString("top-half");
+  else return QString("normal");
+}
+
 };

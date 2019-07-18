@@ -1,4 +1,6 @@
 #include <string>
+#include <math.h>
+#include <QDateTime>
 #include "misc.h"
 
 std::ostream &operator<<(std::ostream &os, int128_t const &)
@@ -45,4 +47,30 @@ bool looks_like_true(QString s_)
   if (s.isEmpty() ||
       s[0] == '0' || s[0] == 'f' || s[0] == 'F') return false;
   return true;
+}
+
+QString stringOfDate(double d)
+{
+  // TODO: strip optional prefix
+  return QDateTime::fromSecsSinceEpoch(d).toString();
+}
+
+QString stringOfDuration(double d)
+{
+  QString s("");
+
+# define REDUCE(secs, unit) \
+  if (d > secs) { \
+    unsigned unit = floor(d / secs); \
+    if (s.length() > 0) s += QString(", "); \
+    s += QString::number(unit) + QString(" " #unit); \
+    d -= secs * unit; \
+  }
+
+  REDUCE(86400, days);
+  REDUCE(3600, hours);
+  REDUCE(60, mins);
+  REDUCE(1, secs);
+
+  return s;
 }

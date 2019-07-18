@@ -44,7 +44,7 @@ void TargetConfigEditor::setEnabled(bool enabled)
   }
 }
 
-void TargetConfigEditor::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::TargetConfig const> rc =
     std::dynamic_pointer_cast<conf::TargetConfig const>(v);
@@ -67,4 +67,6 @@ void TargetConfigEditor::setValue(conf::Key const &, std::shared_ptr<conf::Value
     RCEntryEditor *entryEditor = new RCEntryEditor(entry);
     addItem(entryEditor, QString::fromStdString(it.first));
   }
+
+  emit valueChanged(k, v);
 }

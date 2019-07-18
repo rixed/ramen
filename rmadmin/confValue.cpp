@@ -21,33 +21,23 @@ namespace conf {
 
 static QString const stringOfValueType(ValueType valueType)
 {
-  static QString const stringOfValueTypes[] = {
-    [ErrorType] = "ErrorType",
-    [WorkerType] = "WorkerType",
-    [RetentionType] = "RetentionType",
-    [TimeRangeType] = "TimeRangeType",
-    [TupleType] = "TupleType",
-    [RamenValueType] = "RamenValueType",
-    [TargetConfigType] = "TargetConfigType",
-    [SourceInfoType] = "SourceInfoType",
-    [RuntimeStatsType] = "RuntimeStatsType",
-    [ReplayType] = "ReplayType",
-    [ReplayerType] = "ReplayerType",
-    [AlertType] = "AlertType",
-    [LastValueType] = "LastValueType",
+  switch (valueType) {
+    case ErrorType: return QString("ErrorType");
+    case WorkerType: return QString("WorkerType");
+    case RetentionType: return QString("RetentionType");
+    case TimeRangeType: return QString("TimeRangeType");
+    case TupleType: return QString("TupleType");
+    case RamenValueType: return QString("RamenValueType");
+    case TargetConfigType: return QString("TargetConfigType");
+    case SourceInfoType: return QString("SourceInfoType");
+    case RuntimeStatsType: return QString("RuntimeStatsType");
+    case ReplayType: return QString("ReplayType");
+    case ReplayerType: return QString("ReplayerType");
+    case AlertType: return QString("AlertType");
   };
-  assert((size_t)valueType < SIZEOF_ARRAY(stringOfValueTypes));
-  return stringOfValueTypes[(size_t)valueType];
-}
-
-Value::Value()
-{
-  valueType = LastValueType;
 }
 
 Value::Value(ValueType valueType_) : valueType(valueType_) {}
-
-Value::~Value() {}
 
 QString Value::toQString() const
 {
@@ -120,13 +110,7 @@ Value *valueOfOCaml(value v_)
         Double_field(v_, 1));
       break;
     case TimeRangeType:
-      {
-        std::vector<std::pair<double, double>> range;
-        range.reserve(5);
-        // TODO: read that value
-        range.push_back(std::pair<double, double>(1., 2.));
-        ret = new TimeRange(range);
-      }
+      ret = new TimeRange(Field(v_, 0));
       break;
     case TupleType:
       ret = new Tuple(
@@ -140,35 +124,7 @@ Value *valueOfOCaml(value v_)
         RamenValue::ofOCaml(Field(v_, 0)));
       break;
     case TargetConfigType:
-      {
-        TargetConfig *targetConfig = new TargetConfig();
-        ret = targetConfig;
-        // Iter over the cons cells:
-        for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
-          tmp2_ = Field(tmp1_, 0);  // the pname * rc_entry pair
-          assert(Is_block(tmp2_));
-          tmp3_ = Field(tmp2_, 1);  // the rc_entry
-          assert(Is_block(tmp3_)); // XXX
-          assert(Is_block(Field(tmp2_, 0)));
-          RCEntry *rcEntry = new RCEntry(
-            String_val(Field(tmp2_, 0)),  // pname
-            Bool_val(Field(tmp3_, 0)),  // enabled
-            Bool_val(Field(tmp3_, 1)),  // debug
-            Double_val(Field(tmp3_, 2)),  // report_period
-            String_val(Field(tmp3_, 4)),  // src_file
-            String_val(Field(tmp3_, 5)),  // on_site (as a string)
-            Bool_val(Field(tmp3_, 6)));  // automatic
-          // Add the params:
-          for (tmp2_ = Field(tmp3_, 3); Is_block(tmp2_); tmp2_ = Field(tmp2_, 1)) {
-            tmp4_ = Field(tmp2_, 0);  // the name * value
-            RCEntryParam *param = new RCEntryParam(
-              String_val(Field(tmp4_, 0)),  // name
-              std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp4_, 1)))); // value
-            rcEntry->addParam(param);
-          }
-          targetConfig->addEntry(rcEntry);
-        }
-      }
+      ret = new TargetConfig(Field(v_, 0));
       break;
     case SourceInfoType:
       {
@@ -229,9 +185,9 @@ Value *valueOfOCaml(value v_)
       break;
     case AlertType:
       ret = new Alert(Field(v_, 0));
-    case LastValueType:
-    default:
-      assert(!"Tag_val(v_) <= LastValueType");
+  }
+  if (! ret) {
+    assert(!"Tag_val(v_) <= AlertType");
   }
   CAMLreturnT(Value *, ret);
 }
@@ -256,27 +212,19 @@ Value *valueOfQString(ValueType vt, QString const &s)
       break;
     case RamenValueType:
       assert(!"Cannot convert to RamenValue without a RamenType");
-    case LastValueType:
-      assert(!"Invalid conf::ValueType");
   }
   if (! ret)
-    assert(!"Tag_val(v_) <= LastValueType");
+    assert(!"Tag_val(v_) <= AlertType");
   if (! ok)
     std::cerr << "Cannot convert " << s.toStdString() << " into a value" << std::endl;
   return ret;
 }
 
-Error::Error(double time_, unsigned cmdId_, std::string const &msg_) :
-  Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
-
-Error::Error() : Error(0., 0, "") {}
-
-Error::~Error() {}
-
 QString Error::toQString() const
 {
-  (void)time;
-  return QString::fromStdString(msg); // TODO: prepend with time etc.
+  return
+    stringOfDate(time) + QString(": #") + QString::number(cmdId) + QString(": ") +
+    (msg.length() > 0 ? QString::fromStdString(msg) : QString("Ok"));
 }
 
 value Error::toOCamlValue() const
@@ -319,6 +267,15 @@ bool Worker::operator==(Value const &other) const
   return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
 }
 
+QString Worker::toQString() const
+{
+  QString s;
+  s += QString("Status: ") + (enabled ? QString("enabled") : QString("disabled"));
+  s += QString(", Role: ") + role->toQString();
+  s += QString(", Source: ") + srcPath;
+  return s;
+}
+
 Retention::Retention(double duration_, double period_) :
   Value(RetentionType), duration(duration_), period(period_) {}
 
@@ -346,16 +303,29 @@ value Retention::toOCamlValue() const
   assert(!"Don't know how to convert form a Retention");
 }
 
-TimeRange::TimeRange(std::vector<std::pair<double, double>> const &range_) :
-  Value(TimeRangeType), range(range_) {}
-
-TimeRange::TimeRange() : TimeRange(std::vector<std::pair<double,double>>()) {}
-
-TimeRange::~TimeRange() {}
+TimeRange::TimeRange(value v_) : Value(TimeRangeType)
+{
+  while (Is_block(v_)) {
+    range.emplace_back(Double_val(Field(Field(v_, 0), 0)),
+                       Double_val(Field(Field(v_, 0), 1)));
+    v_ = Field(v_, 1);
+  }
+}
 
 QString TimeRange::toQString() const
 {
-  return QString("TODO: TimeRange to string");
+  if (0 == range.size()) return QString("empty");
+
+  double duration = 0;
+  for (auto p : range) duration += p.second - p.first;
+
+  double const since = range[0].first;
+  double const until = range[range.size()-1].second;
+
+  QString s = stringOfDuration(duration);
+  s += QString(" since ") + stringOfDate(since);
+  s += QString(" until ") + stringOfDate(until);
+  return s;
 }
 
 value TimeRange::toOCamlValue() const
@@ -431,8 +401,6 @@ bool RamenValueValue::operator==(Value const &other) const
   return v == o.v;
 }
 
-SourceInfo::SourceInfo() : SourceInfo(QString(), QString()) {}
-
 SourceInfo::~SourceInfo()
 {
   while (! params.isEmpty()) {
@@ -452,6 +420,50 @@ bool SourceInfo::operator==(Value const &other) const
     return o.isInfo() && params == o.params && infos == o.infos;
   } else {
     return !o.isInfo() && errMsg == o.errMsg;
+  }
+}
+
+QString SourceInfo::toQString() const
+{
+  if (errMsg.length() > 0) return errMsg;
+
+  QString s("");
+  for (auto info : infos) {
+    if (s.length() > 0) s += QString(", ");
+    s += info->name;
+  }
+
+  return QString("Compiled functions: ") + s;
+}
+
+TargetConfig::TargetConfig(value v_)
+{
+  // Iter over the cons cells:
+  while (Is_block(v_)) {
+    value pair = Field(v_, 0);  // the pname * rc_entry pair
+
+    assert(Is_block(pair));
+    value rce_ = Field(pair, 1);  // the rc_entry
+    assert(Is_block(rce_));
+    assert(Is_block(Field(pair, 0)));
+    RCEntry *rcEntry = new RCEntry(
+      String_val(Field(pair, 0)),  // pname
+      Bool_val(Field(rce_, 0)),  // enabled
+      Bool_val(Field(rce_, 1)),  // debug
+      Double_val(Field(rce_, 2)),  // report_period
+      String_val(Field(rce_, 4)),  // src_file
+      String_val(Field(rce_, 5)),  // on_site (as a string)
+      Bool_val(Field(rce_, 6)));  // automatic
+    for (value params_ = Field(rce_, 3); Is_block(params_); params_ = Field(params_, 1)) {
+      value param_ = Field(params_, 0);  // the name * value
+      RCEntryParam *param = new RCEntryParam(
+        String_val(Field(param_, 0)),  // name
+        std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(param_, 1)))); // value
+      rcEntry->addParam(param);
+    }
+    addEntry(rcEntry);
+
+    v_ = Field(v_, 1);
   }
 }
 
@@ -483,7 +495,6 @@ value TargetConfig::toOCamlValue() const
   CAMLreturn(ret);
 }
 
-
 bool TargetConfig::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
@@ -491,7 +502,20 @@ bool TargetConfig::operator==(Value const &other) const
   return entries == o.entries;
 }
 
-RuntimeStats::RuntimeStats(value v_)
+QString TargetConfig::toQString() const
+{
+  if (0 == entries.size()) return QString("empty");
+  QString s("");
+  for (auto rce : entries) {
+    if (s.length() > 0) s += QString("\n");
+    s += QString::fromStdString(rce.first);
+    s += QString(" from ") + QString::fromStdString(rce.second->source);
+    s += QString(" on ") + QString::fromStdString(rce.second->onSite);
+  }
+  return s;
+}
+
+RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
 {
   assert(24 == Wosize_val(v_));
   statsTime = Double_val(Field(v_, 0));
@@ -532,19 +556,28 @@ RuntimeStats::RuntimeStats(value v_)
   maxRam = *(uint64_t *)Data_custom_val(Field(v_, 23));
 }
 
-Replay::Replay(value v_)
+QString RuntimeStats::toQString() const
+{
+  QString s("Stats-time: ");
+  s += stringOfDate(statsTime);
+  if (maxEventTime)
+    s += QString(", front-time: ") + stringOfDate(*maxEventTime);
+  return s;
+}
+
+Replay::Replay(value v_) : Value(ReplayType)
 {
   assert(9 == Wosize_val(v_));
   // wtv, not used anywhere in the GUI for now
 }
 
-Replayer::Replayer(value v_)
+Replayer::Replayer(value v_) : Value(ReplayerType)
 {
   assert(6 == Wosize_val(v_));
   // wtv, not used anywhere in the GUI for now
 }
 
-Alert::Alert(value v_)
+Alert::Alert(value v_) : Value(AlertType)
 {
   assert(1 == Wosize_val(v_)); // v1
   // wtv, not used anywhere in the GUI for now

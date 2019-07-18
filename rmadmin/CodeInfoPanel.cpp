@@ -68,7 +68,7 @@ void CodeInfoPanel::setInfoVisible(bool visible)
   if (functionBox) functionBox->setVisible(visible);
 }
 
-void CodeInfoPanel::setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+void CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(v);
@@ -137,4 +137,5 @@ void CodeInfoPanel::setValue(conf::Key const &, std::shared_ptr<conf::Value cons
       infoLayout->addWidget(new QLabel("no functions!?"), 5, 0, 1, 2, Qt::AlignHCenter);
     }
   }
+  emit valueChanged(k, v);
 }

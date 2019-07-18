@@ -1,10 +1,14 @@
 #include <iostream>
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include "conf.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
+#include "KLabel.h"
 #include "ConfTreeWidget.h"
+
+static bool verbose = true;
 
 ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent) const
 {
@@ -22,6 +26,44 @@ ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent
   }
 
   return nullptr;
+}
+
+QWidget *ConfTreeWidget::editorWidget(conf::Key const &k)
+{
+  // For now just a read-only "editor":
+  KLabel *widget = new KLabel(k);
+  // Redraw/resize whenever the value is changed:
+  connect(widget, &KLabel::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>) {
+    ConfTreeItem *item = itemOfKey(k);
+    if (item) item->emitDataChanged();
+  });
+  return widget;
+}
+
+QWidget *ConfTreeWidget::actionWidget(conf::Key const &k)
+{
+  // The widget for the "Actions" column:
+  QWidget *widget = new QWidget;
+  QHBoxLayout *layout = new QHBoxLayout;
+  QPushButton *lockButton = new QPushButton("lock");
+  layout->addWidget(lockButton);
+  QPushButton *unlockButton = new QPushButton("unlock");
+  layout->addWidget(unlockButton);
+  QPushButton *delButton = new QPushButton("delete");
+  layout->addWidget(delButton);
+  widget->setLayout(layout);
+
+  connect(lockButton, &QPushButton::clicked, this, [k](bool) {
+      conf::askLock(k);
+  });
+  connect(unlockButton, &QPushButton::clicked, this, [k](bool) {
+      conf::askUnlock(k);
+  });
+  connect(delButton, &QPushButton::clicked, this, [k](bool) {
+      conf::askDel(k);
+  });
+
+  return widget;
 }
 
 /* Add a key by adding the ConfTreeItems recursively (or reuse preexisting one),
@@ -49,29 +91,11 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
   else
     addTopLevelItem(item);
 
-  if (len > 1)
+  if (len > 1) {
     return findOrCreateItem(names, k, kv, item);
-  else {
-    QWidget *widget = new QWidget;
-    QHBoxLayout *layout = new QHBoxLayout;
-    QPushButton *lockButton = new QPushButton("lock");
-    layout->addWidget(lockButton);
-    QPushButton *unlockButton = new QPushButton("unlock");
-    layout->addWidget(unlockButton);
-    QPushButton *delButton = new QPushButton("delete");
-    layout->addWidget(delButton);
-    widget->setLayout(layout);
-    setItemWidget(item, 2, widget);
-
-    connect(lockButton, &QPushButton::clicked, this, [k](bool) {
-        conf::askLock(k);
-    });
-    connect(unlockButton, &QPushButton::clicked, this, [k](bool) {
-        conf::askUnlock(k);
-    });
-    connect(delButton, &QPushButton::clicked, this, [k](bool) {
-        conf::askDel(k);
-    });
+  } else {
+    setItemWidget(item, 1, editorWidget(k));
+    setItemWidget(item, 3, actionWidget(k));
     return item;
   }
 }
@@ -98,29 +122,32 @@ ConfTreeItem *ConfTreeWidget::itemOfKey(conf::Key const &k)
 ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   QTreeWidget(parent)
 {
-  setColumnCount(3); // TODO: the other columns
-  setHeaderLabels({ "Name", "Lock", "Actions" });
+  setColumnCount(CONFTREE_WIDGET_NUM_COLUMNS);
+  static QStringList labels { "Name", "Value", "Lock", "Actions" };
+  setHeaderLabels(labels);
+  header()->setStretchLastSection(false);
+  header()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
+  header()->setSectionResizeMode(1,QHeaderView::Stretch);
+  header()->setSectionResizeMode(2,QHeaderView::ResizeToContents);
+  header()->setSectionResizeMode(3,QHeaderView::ResizeToContents);
 
-  std::cout << "ConfTreeWidget: Created in thread " << std::this_thread::get_id () << std::endl;
+  if (verbose) std::cout << "ConfTreeWidget: Created in thread " << std::this_thread::get_id () << std::endl;
 
   /* Register to every change in the kvs: */
   conf::autoconnect("", [this](conf::Key const &k, KValue const *kv) {
     /* We'd like to create the item right now, but we are in the wrong thread.
      * In this (Ocaml) thread we must only connect future signals from that
      * kv into the proper slots that will create/update/delete the item. */
-    std::cout << "ConfTreeWidget: Connecting to all changes of key " << k.s << " in thread " << std::this_thread::get_id() << std::endl;
+    if (verbose) std::cout << "ConfTreeWidget: Connecting to all changes of key " << k.s << " in thread " << std::this_thread::get_id() << std::endl;
     connect(kv, &KValue::valueCreated, this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      std::cout << "ConfTreeWidget: Received valueCreated signal in thread " << std::this_thread::get_id() << "!" << std::endl;
+      if (verbose) std::cout << "ConfTreeWidget: Received valueCreated signal in thread " << std::this_thread::get_id() << "!" << std::endl;
       (void)createItem(k, kv);
     });
+    /* Better wait for the value viewer/editor to signal it:
     connect(kv, &KValue::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
       ConfTreeItem *item = itemOfKey(k);
       if (item) item->emitDataChanged();
-    });
-    connect(kv, &KValue::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      ConfTreeItem *item = itemOfKey(k);
-      if (item) item->emitDataChanged();
-    });
+    });*/
     connect(kv, &KValue::valueLocked, this, [this](conf::Key const &k, QString const &, double) {
       ConfTreeItem *item = itemOfKey(k);
       if (item) item->emitDataChanged();
@@ -135,6 +162,5 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
       // Note: no need to emitDataChanged on the parent
       delete itemOfKey(k);
     });
-    std::cout << "ConfTreeWidget: finished connecting ConfTreeWidget" << std::endl;
   });
 }

@@ -25,6 +25,9 @@ public:
 
 public slots:
   void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
+
+signals:
+  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
 };
 
 #endif

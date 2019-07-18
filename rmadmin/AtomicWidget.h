@@ -4,8 +4,11 @@
 #include <QWidget>
 #include <memory>
 #include "confKey.h"
-#include "confValue.h"
 #include "conf.h"
+
+namespace conf {
+  class Value;
+};
 
 class AtomicWidget
 {
@@ -46,6 +49,11 @@ public:
   {
     setEnabled(false);
   }
+
+signals:
+  /* AtomicWidget is not (and cannot be) a Q_Object but we want all of its
+   * descendants to have this signal: */
+  virtual void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const = 0;
 };
 
 #endif

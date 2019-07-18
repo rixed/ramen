@@ -23,11 +23,17 @@ public:
   }
 
 public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v)
+  void setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
   {
-    int const max_len = 30;
-    QLabel::setText(v->toQString().left(max_len));
+    QString new_v(v->toQString());
+    if (new_v != text()) {
+      QLabel::setText(new_v);
+      emit valueChanged(k, v);
+    }
   }
+
+signals:
+  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
 };
 
 #endif
