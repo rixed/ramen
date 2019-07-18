@@ -350,13 +350,21 @@ RamenValue *RamenValue::ofOCaml(value v_)
       case 17:
       case 18:
       case 19:
-      case 20:
-      case 21:
-      case 22:
-      case 23:
         std::cout << "Unimplemented RamenValueOfOCaml for tag "
                   << (unsigned)Tag_val(v_) << std::endl;
         ret = new VNull();
+        break;
+      case 20:
+        ret = new VTuple(Field(v_, 0));
+        break;
+      case 21:
+        ret = new VVec(Field(v_, 0));
+        break;
+      case 22:
+        ret = new VList(Field(v_, 0));
+        break;
+      case 23:
+        ret = new VRecord(Field(v_, 0));
         break;
       default:
         assert(!"Invalid tag, not a RamenValueType");
@@ -436,12 +444,43 @@ RamenValue *RamenValue::ofQString(enum RamenValueType type, QString const &s)
 }
 #endif
 
+/*
+ * VTuple
+ */
+
+VTuple::VTuple(value v_)
+{
+  CAMLparam1(v_);
+  size_t numFields = Wosize_val(v_);
+  v.reserve(numFields);
+  for (unsigned i = 0; i < numFields; i ++)
+    append(ofOCaml(Field(v_, i)));
+  CAMLreturn0;
+}
+
 void VTuple::append(RamenValue const *i)
 {
   /* FIXME: Make sure we do not add a Null immediate and pretend the field is
    * not nullable: */
   assert(v.size() < v.capacity());
   v.push_back(i);
+}
+
+/*
+ * VRecord
+ */
+
+VRecord::VRecord(value v_)
+{
+  CAMLparam1(v_);
+  size_t numFields = Wosize_val(v_);
+  v.reserve(numFields);
+  // In an OCaml value, fields are ordered in user order:
+  for (unsigned i = 0; i < numFields; i ++) {
+    value pair_ = Field(v_, i);
+    v.emplace_back(String_val(Field(pair_, 0)), ofOCaml(Field(pair_, 1)));
+  }
+  CAMLreturn0;
 }
 
 VRecord::VRecord(size_t numFields)
@@ -454,4 +493,42 @@ void VRecord::set(size_t idx, QString const field, RamenValue const *i)
   assert(idx < v.size());
   v[idx].first = field;
   v[idx].second = i;
+}
+
+/*
+ * VVec
+ */
+
+VVec::VVec(value v_)
+{
+  CAMLparam1(v_);
+  size_t numFields = Wosize_val(v_);
+  v.reserve(numFields);
+  for (unsigned i = 0; i < numFields; i ++)
+    append(ofOCaml(Field(v_, i)));
+  CAMLreturn0;
+}
+
+/*
+ * VList
+ */
+
+VList::VList(value v_)
+{
+  CAMLparam1(v_);
+  size_t numFields = Wosize_val(v_);
+  v.reserve(numFields);
+  for (unsigned i = 0; i < numFields; i ++)
+    append(ofOCaml(Field(v_, i)));
+  CAMLreturn0;
+}
+
+QString const VList::toQString () const
+{
+  QString s("");
+  for (auto val : v) {
+    if (s.length() > 0) s += ", ";
+    s += val->toQString();
+  }
+  return QString("[") + s + QString("]");
 }

@@ -256,6 +256,8 @@ struct VTuple : public RamenValue {
   std::vector<RamenValue const *> v;
 
   VTuple(size_t numFields) { v.reserve(numFields); }
+  VTuple(value);
+
   void append(RamenValue const *);
   virtual RamenValue const *columnValue(size_t c) const {
     if (c >= v.size()) return nullptr;
@@ -267,6 +269,8 @@ struct VVec : public RamenValue {
   std::vector<RamenValue const *> v;
 
   VVec(size_t dim) { v.reserve(dim); }
+  VVec(value);
+
   void append(RamenValue const *i) {
     assert(v.size() < v.capacity());
     v.push_back(i);
@@ -280,7 +284,12 @@ struct VVec : public RamenValue {
 struct VList : public RamenValue {
   std::vector<RamenValue const *> v;
 
+  VList(size_t dim) { v.reserve(dim); }
+  VList(value);
+
   void append(RamenValue const *i) { v.push_back(i); }
+
+  QString const toQString() const;
 };
 
 struct VRecord : public RamenValue {
@@ -289,7 +298,10 @@ struct VRecord : public RamenValue {
   /* VRecord fields are unserialized in another order so we built it
    * with a setter instead of an appender: */
   VRecord(size_t numFields);
+  VRecord(value);
+
   void set(size_t idx, QString const field, RamenValue const *);
+
   virtual RamenValue const *columnValue(size_t c) const {
     if (c >= v.size()) return nullptr;
     return v[c].second;
