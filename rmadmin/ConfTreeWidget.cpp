@@ -32,6 +32,7 @@ QWidget *ConfTreeWidget::editorWidget(conf::Key const &k)
 {
   // For now just a read-only "editor":
   KLabel *widget = new KLabel(k);
+  widget->setWordWrap(true);
   // Redraw/resize whenever the value is changed:
   connect(widget, &KLabel::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>) {
     ConfTreeItem *item = itemOfKey(k);
