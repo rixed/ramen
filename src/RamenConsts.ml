@@ -317,8 +317,17 @@ struct
   let stop_word = "First word to not dump"
   let tunneld_port = "Port number for the tuple forward service"
   let confserver_port =
-    "Port number for the configuration synchronisation service"
+    "Where to bind the configuration synchronisation service. It can be a \
+     single port number, in which case all local addresses will be bound on \
+     that port (equivalent of \"*:port\"), or an \"IP:port\" pair in which \
+     case only that IP will be bound, or even \"itf:port\" where \"itf\" is \
+     the network interface name."
+  let confserver_port_sec =
+    "Same as --port, but for the encrypted/authenticated variant of the \
+     configuration synchronisation service. Notice that both can be run at \
+     the same time, but not on the same address/port, obviously."
   let confserver_url = "host:port of Ramen confserver"
+  let confserver_key = "file name where the confserver public key can be read."
   let confserver_login = "Login for the confserver"
   let beta = "Enable beta features"
 end
@@ -440,7 +449,10 @@ struct
   (* Default port for the tuple forward service: *)
   let tunneld_port = 29329
 
-  (* Default port for the config sync service: *)
+  (* Default binding option for the secure config sync service: *)
+  let confserver_port_sec = 29341
+
+  (* Default binding option for the insecure (but faster) config sync service: *)
   let confserver_port = 29340
 
   (* Number of seconds after which a replay channel will cease to conduct

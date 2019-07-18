@@ -4,6 +4,7 @@ open RamenConsts
 open RamenLog
 open RamenHelpers
 open RamenSync
+module Files = RamenFiles
 
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
@@ -351,8 +352,6 @@ let default_on_progress _clt stage status =
 
 let init_connect clt ?while_ url on_progress =
   let zock, _clt = get_connection () in
-  let url = if String.contains url ':' then url
-            else url ^":"^ string_of_int Default.confserver_port in
   let connect_to = "tcp://"^ url in
   on_progress clt Stage.Conn Status.InitStart ;
   try
@@ -436,7 +435,7 @@ let init_sync ?while_ clt topics on_progress =
       done
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start ?while_ url creds ?(topics=[])
+let start ?while_ srv_pub_key url creds ?(topics=[])
           ?(on_progress=default_on_progress)
           ?(on_sock=ignore1) ?(on_synced=ignore1)
           ?(on_new=ignore7) ?(on_set=ignore5) ?(on_del=ignore3)
@@ -448,7 +447,6 @@ let start ?while_ url creds ?(topics=[])
   finally
     (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
-      let zock = Zmq.Socket.(create ctx dealer) in
       let on_new = check_new_cbs on_new
       and on_set = check_set_cbs on_set
       and on_del = check_del_cbs on_del
@@ -456,11 +454,20 @@ let start ?while_ url creds ?(topics=[])
       and on_unlock = check_unlock_cbs on_unlock in
       let clt =
         Client.make ~my_uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+      let zock = Zmq.Socket.(create ctx dealer) in
       zock_clt := Some (zock, clt) ;
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          on_sock clt ;
+          if srv_pub_key <> "" then (
+            Zmq.Socket.set_curve_serverkey zock srv_pub_key ;
+            (* TODO: got those from somewhere: *)
+            let secret_key_test =
+              "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
+            and public_key_test =
+              "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID" in
+            Zmq.Socket.set_curve_secretkey zock secret_key_test ;
+            Zmq.Socket.set_curve_publickey zock public_key_test) ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:
@@ -469,6 +476,12 @@ let start ?while_ url creds ?(topics=[])
           Zmq.Socket.set_receive_timeout zock (to_ms recvtimeo) ;
           Zmq.Socket.set_send_timeout zock (to_ms sndtimeo) ;
           Zmq.Socket.set_send_high_water_mark zock 0 ;
+          on_sock clt ;
+          let url =
+            if String.contains url ':' then url
+            else url ^":"^ string_of_int (
+              if srv_pub_key = "" then Default.confserver_port
+              else Default.confserver_port_sec) in
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect clt ?while_ url on_progress) ;
           log_exceptions ~what:"init_auth"

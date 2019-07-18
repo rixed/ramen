@@ -662,3 +662,7 @@ let unquote (s : N.path) =
 
 (* Used as a placeholder for file names that are sockets: *)
 let socket_path = N.path "socket"
+
+let read_key fname =
+  read_whole_file fname |>
+  String.trim

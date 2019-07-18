@@ -110,7 +110,12 @@ let copts default_login =
     let env = Term.env_info "RAMEN_CONFSERVER" in
     let i = Arg.info ~doc:CliInfo.confserver_url
                      ~docs ~env [ "confserver" ] in
-    Arg.(value (opt string "" i))
+    Arg.(value (opt ~vopt:"localhost" string "" i))
+  and confserver_key =
+    let env = Term.env_info "RAMEN_CONFSERVER_KEYFILE" in
+    let i = Arg.info ~doc:CliInfo.confserver_key
+                     ~docs ~env [ "confserver-key" ] in
+    Arg.(value (opt path (N.path "") i))
   and confserver_login =
     let env =
       (* Take $USER only for non-service commands: *)
@@ -133,6 +138,7 @@ let copts default_login =
     $ bundle_dir
     $ masters
     $ confserver_url
+    $ confserver_key
     $ confserver_login)
 
 (*
@@ -330,8 +336,14 @@ let tunneld =
  *)
 
 let confserver_port =
-  let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "port" ] in
-  Arg.(value (opt (some port) None i))
+  let i = Arg.info ~doc:CliInfo.confserver_port [ "i"; "insecure" ]
+  and vopt = Some ("127.0.0.1:"^ string_of_int Default.confserver_port) in
+  Arg.(value (opt ~vopt (some string) None i))
+
+let confserver_port_sec =
+  let i = Arg.info ~doc:CliInfo.confserver_port_sec [ "s"; "secure" ]
+  and vopt = Some (string_of_int Default.confserver_port_sec) in
+  Arg.(value (opt ~vopt (some string) None i))
 
 let confserver =
   Term.(
@@ -340,7 +352,8 @@ let confserver =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ confserver_port),
+      $ confserver_port
+      $ confserver_port_sec),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =

@@ -42,6 +42,7 @@ type conf =
     masters : N.site Set.t ;
     bundle_dir : N.path ;
     sync_url : string ;
+    sync_srv_key : string ;  (* The key itself! *)
     login : string }
 
 let make_conf
@@ -53,17 +54,22 @@ let make_conf
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
       ?(masters=Set.empty)
       ?(sync_url="")
+      ?(sync_srv_key=N.path "")
       ?(login="")
       persist_dir =
   if debug && quiet then
     failwith "Options --debug and --quiet are incompatible." ;
   let log_level =
     if debug then Debug else if quiet then Quiet else Normal in
+  (* User pass a filename we we store the content in the configuration: *)
+  let sync_srv_key =
+    if N.is_empty sync_srv_key then ""
+    else Files.read_key sync_srv_key in
   let persist_dir = N.simplified_path persist_dir in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters ;
-    sync_url ; login }
+    sync_url ; sync_srv_key ; login }
 
 (*
  * Common comprehensive representation of functions and programs

@@ -127,7 +127,7 @@ let publish_stats clt ?while_ stats_key init_stats stats =
   let cmd = RamenSync.Client.CltMsg.SetKey (stats_key, v) in
   ZMQClient.send_cmd clt ?while_ cmd
 
-let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
+let start_zmq_client ?while_ srv_key url creds (site : N.site) (fq : N.fq) k =
   let open RamenSync in
   if url = "" then k ignore4 ignore else
   (* TODO: also subscribe to errors! *)
@@ -136,7 +136,7 @@ let start_zmq_client ?while_ url creds (site : N.site) (fq : N.fq) k =
   and topic_pub seq =
     Key.(Tails (site, fq, LastTuple seq)) in
   fun conf ->
-    ZMQClient.start ?while_ url creds ~topics:[ topic_sub ]
+    ZMQClient.start ?while_ srv_key url creds ~topics:[ topic_sub ]
                     ~on_new ~on_del
                     ~recvtimeo:0. ~sndtimeo:0. (fun clt ->
       let publish_tail = may_publish_tail clt ?while_ topic_pub in

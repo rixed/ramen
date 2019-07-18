@@ -464,6 +464,7 @@ let start_worker
   let more_env =
     List.enum
       [ "sync_url="^ conf.C.sync_url ;
+        "sync_srv_key="^ conf.C.sync_srv_key ;
         "sync_creds=_worker "^ (conf.C.site :> string) ^"/"^ fq_str ] |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
@@ -1616,7 +1617,7 @@ let synchronize_running_sync conf _autoreload_delay =
   in
   (* Timeout has to be much shorter than delay_before_replay *)
   let timeo = delay_before_replay *. 0.5 in
-  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
+  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics
                   ~recvtimeo:timeo ~sndtimeo:timeo ~on_new ~on_del loop
 
 let synchronize_running conf autoreload_delay =

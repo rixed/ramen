@@ -28,7 +28,7 @@ let () =
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants initial_export_duration site bundle_dir masters
-      sync_url login =
+      sync_url sync_srv_key login =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -47,8 +47,8 @@ let make_copts
   let conf =
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
-      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url ~login
-      persist_dir in
+      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url ~sync_srv_key
+      ~login persist_dir in
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
   else
@@ -231,13 +231,13 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf daemonize to_stdout to_syslog port_opt () =
+let confserver conf daemonize to_stdout to_syslog port_opt port_sec_opt () =
   let service_name = ServiceNames.confserver in
-  let port =
-    resolve_port conf port_opt Default.confserver_port service_name in
+  if port_opt = None && port_sec_opt = None then
+    failwith "You must specify either (or both) of --secure and --insecure" ;
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
-  RamenSyncService.start conf port ;
+  RamenSyncService.start conf port_opt port_sec_opt ;
   Option.may exit !RamenProcesses.quit
 
 let confclient conf () =
@@ -249,8 +249,8 @@ let confclient conf () =
       u mtime
       owner expiry
   in
-  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~on_new
-    (fun clt ->
+  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics ~on_new (fun clt ->
       !logger.info "Receiving:" ;
       forever (fun () ->
         let num_msg = ZMQClient.process_in ~while_ clt in
@@ -384,8 +384,8 @@ let compile_sync conf replace src_file source_name_opt =
     (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
   let open ZMQClient in
-  start ~while_ ~on_new ~on_set conf.C.sync_url conf.C.login
-                  ~topics (fun clt ->
+  start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+        ~while_ ~on_new ~on_set ~topics (fun clt ->
       if replace then
         send_cmd clt ~while_
           (LockOrCreateKey (k_source, Default.sync_lock_timeout))
@@ -475,8 +475,8 @@ let compserver conf daemonize to_stdout to_syslog
           Key.print k Value.print v in
   let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
   let num_msg =
-    ZMQClient.start ~while_ ~on_new ~on_set conf.C.sync_url conf.C.login
-                    ~topics (ZMQClient.process_in ~while_) in
+    ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+      ~while_ ~on_new ~on_set ~topics (ZMQClient.process_in ~while_) in
   !logger.debug "Received %d messages" num_msg
 
 let compile conf lib_path use_external_compiler
@@ -627,8 +627,8 @@ let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
   let program_name = program_name_opt |? (N.program (src_path :> string)) in
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
-  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun clt ->
+  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics ~while_ (fun clt ->
       let prog = RamenSync.program_of_src_path clt src_path |>
                  P.unserialized program_name in
       prog_info prog opt_func_name)
@@ -857,8 +857,8 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
     [ "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
-  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun clt ->
+  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics ~while_ (fun clt ->
       let open RamenSync in
       Client.iter clt (fun k v ->
         match k, v.value with
@@ -1184,8 +1184,8 @@ let tail_sync
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
-  ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
-    (fun clt ->
+  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics ~while_ (fun clt ->
       let open RamenSync in
       (* Get the workers and their types: *)
       !logger.debug "Looking for running workers %a on sites %S"
@@ -1386,7 +1386,8 @@ let replay_ conf fq field_names with_header with_units sep null raw
                              ~with_event_time callback
   else
     let topics = RamenExport.replay_topics in
-    ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+    ZMQClient.start
+      conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics ~while_
       (RamenExport.replay_sync conf ~while_ fq field_names where since until
                                ~with_event_time callback)
 
@@ -1431,7 +1432,8 @@ let timeseries_ conf fq data_fields
           ~consolidation ~bucket_time fq data_fields
     else
       let topics = RamenExport.replay_topics in
-      ZMQClient.start conf.C.sync_url conf.C.login ~topics ~while_
+      ZMQClient.start
+        conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics ~while_
         (RamenTimeseries.get_sync conf num_points since until where factors
           ~consolidation ~bucket_time fq data_fields ~while_)
   in

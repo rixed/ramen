@@ -140,10 +140,14 @@ struct
     Files.mkdir_all ~is_file:true fname
 end
 
+(*
+ * Synchronization Service
+ *)
+
 let last_tuples = Hashtbl.create 50
 
 (* Process a single input message *)
-let zock_step srv zock =
+let zock_step srv zock zock_idx =
   let peel_multipart msg =
     let too_short l =
       Printf.sprintf "Invalid zmq message with only %d parts" l |>
@@ -157,7 +161,7 @@ let zock_step srv zock =
       | peer :: rest ->
           peer, look_for_delim 1 rest
   in
-  match Zmq.Socket.recv_all ~block:true zock with
+  match Zmq.Socket.recv_all ~block:false zock with
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
       Server.timeout_all_locks srv
   | parts ->
@@ -165,10 +169,11 @@ let zock_step srv zock =
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
       | peer, [ msg ] ->
+          let socket = zock_idx, peer in
           log_and_ignore_exceptions (fun () ->
-            let u = User.of_socket peer in
+            let u = User.of_socket socket in
             let m = CltMsg.of_string msg in
-            Server.process_msg srv peer u m ;
+            Server.process_msg srv socket u m ;
             (* Special case: we automatically, and silently, prune old
              * entries under "lasts/" directories (only after a new entry has
              * successfully been added there). Clients are supposed to do the
@@ -197,47 +202,79 @@ let zock_step srv zock =
             (List.length parts) |>
           failwith)
 
-let service_loop conf zock srv =
+let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
+  let poll_mask =
+    Array.map (fun zock -> zock, Zmq.Poll.In) zocks |>
+    Zmq.Poll.mask_of in
+  let timeout = 1000 (* ms *) in
   Processes.until_quit (fun () ->
-    zock_step srv zock ;
+    let ready = Zmq.Poll.poll ~timeout poll_mask in
+    !logger.debug "out of poll..." ;
+    Array.iteri (fun i m ->
+      if m <> None then (
+        !logger.debug "Zocket #%d is readable" i ;
+        zock_step srv zocks.(i) i)
+    ) ready ;
     if save_rate () then Snapshot.save conf srv ;
     true
   ) ;
   Snapshot.save conf srv
 
-let send_msg zock ?block m sockets =
+let send_msg zocks ?block m sockets =
   let msg = SrvMsg.to_string m in
-  Enum.iter (fun peer ->
-    !logger.debug "0MQ: Sending message %S to %S" msg peer ;
+  Enum.iter (fun (zock_idx, peer) ->
+    !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
+      msg peer zock_idx ;
+    let zock = zocks.(zock_idx) in
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) sockets
 
-let start conf port =
+(* [bind] can be a single number, in which case all local addresses
+ * will be bound to that port (equivalent of "*:port"), or an "IP:port"
+ * in which case only that IP will be bound. *)
+let start conf port port_sec =
+  let bind_to port =
+    let bind =
+      if string_is_numeric port then "*:"^ port else port in
+    "tcp://"^ bind in
   let ctx = Zmq.Context.create () in
+  let zocket use_curve bind =
+    let zock = Zmq.Socket.(create ctx router) in
+    Zmq.Socket.set_send_high_water_mark zock 0 ;
+    if use_curve then (
+      let secret_key_test =
+        "JTKVSB%%)wK0E.X)V>+}o?pNmC{O&4W4b!Ni{Lh6" in
+      Zmq.Socket.set_curve_server zock true ;
+      log_exceptions (fun () ->
+        Zmq.Socket.set_curve_secretkey zock secret_key_test)
+    ) ;
+    (* (* For locally running tools: *)
+       Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
+    (* For the rest of the world: *)
+    let bind_to = bind_to bind in
+    !logger.info "Listening %sto %s..."
+      (if use_curve then "securely " else "") bind_to ;
+    log_exceptions (fun () ->
+      Zmq.Socket.bind zock bind_to) ;
+    zock in
   finally
     (fun () ->
       !logger.info "Terminating 0MQ" ;
       Zmq.Context.terminate ctx)
     (fun () ->
-      let zock = Zmq.Socket.(create ctx router) in
-      Zmq.Socket.set_send_high_water_mark zock 0 ;
-      Zmq.Socket.set_receive_timeout zock 1000 ; (* in msec *)
-      let send_msg = send_msg zock in
-      let srv = Server.make ~send_msg in
-      if not (Snapshot.load conf srv) then
-        populate_init srv ;
+      let zocks =
+        [| Option.map (zocket false) port ;
+           Option.map (zocket true) port_sec |] |>
+        Array.filter_map identity in
+      let send_msg = send_msg zocks in
       finally
         (fun () ->
-          Zmq.Socket.close zock)
+          Array.iter Zmq.Socket.close zocks)
         (fun () ->
-          (* (* For locally running tools: *)
-             Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
-          (* For the rest of the world: *)
-          let bind_to = "tcp://*:"^ string_of_int port in
-          !logger.info "Listening to %s..." bind_to ;
-          Zmq.Socket.bind zock bind_to ;
-          service_loop conf zock srv
+          let srv = Server.make ~send_msg in
+          if not (Snapshot.load conf srv) then populate_init srv ;
+          service_loop conf zocks srv
         ) ()
     ) ()

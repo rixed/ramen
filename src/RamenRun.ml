@@ -105,8 +105,8 @@ let kill_sync conf ?(purge=false) program_names =
   let done_ = ref false in
   let while_ () = !Processes.quit = None && not !done_ in
   let topics = [ "target_config" ] in
-  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
-    (fun clt ->
+  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics (fun clt ->
       let open RamenSync in
       get_key clt ~while_ Key.TargetConfig (fun v fin ->
         match v with
@@ -281,8 +281,8 @@ let run_sync src_path conf (program_name : N.program) replace report_period
   let topics =
     [ "target_config" ;
       "sources/"^ (src_path :> string) ^ "/info" ] in
-  ZMQClient.start ~while_ conf.C.sync_url conf.C.login ~topics
-    (fun clt ->
+  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                  ~topics (fun clt ->
       let open RamenSync in
       get_key clt ~while_ Key.TargetConfig (fun v fin ->
         match v with

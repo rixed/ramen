@@ -260,7 +260,7 @@ let start conf ~while_ =
     | _ -> () in
   let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime
   in
-  ZMQClient.start ~while_ ~on_new ~on_set conf.C.sync_url conf.C.login
-                  ~topics (fun clt ->
+  ZMQClient.start ~while_ ~on_new ~on_set ~topics
+                  conf.C.sync_srv_key conf.C.sync_url conf.C.login (fun clt ->
     let num_msg = ZMQClient.process_in clt in
     !logger.debug "Received %d messages" num_msg)

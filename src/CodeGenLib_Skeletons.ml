@@ -776,9 +776,11 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
     if conf.report_period > 0. then
       ignore_exceptions (send_stats report_rb) (get_binocle_tuple ()) in
   (* Init config sync client if a url was given: *)
-  let conf_url = getenv ~def:"" "sync_url" in
-  let creds = getenv ~def:"worker" "sync_creds" in
-  let k = Publish.start_zmq_client ~while_ conf_url creds site worker_name k in
+  let sync_url = getenv ~def:"" "sync_url"
+  and sync_srv_key = getenv ~def:"" "sync_srv_key"
+  and creds = getenv ~def:"worker" "sync_creds" in
+  let k = Publish.start_zmq_client ~while_ sync_srv_key sync_url creds site
+                                   worker_name k in
   match k conf with
   | exception e ->
       print_exception e ;

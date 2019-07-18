@@ -386,7 +386,8 @@ let complete str () =
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
-            "--port", CliInfo.confserver_port ] @
+            "--secure", CliInfo.confserver_port_sec ;
+            "--insecure", CliInfo.confserver_port ] @
           copts
       | "confclient" ->
           copts

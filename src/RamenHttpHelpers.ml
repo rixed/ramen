@@ -260,8 +260,8 @@ let http_service conf port url_prefix router fault_injection_rate topics =
       do_loop stream
     else
       let while_ () = !RamenProcesses.quit = None in
-      ZMQClient.start conf.C.sync_url conf.C.login ~while_ ~topics
-        (fun _clt -> do_loop stream)
+      ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
+                      ~while_ ~topics (fun _clt -> do_loop stream)
   in
   !logger.info "Starting HTTP server on port %d" port ;
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)

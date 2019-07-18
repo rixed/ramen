@@ -47,7 +47,7 @@ services_version=v2
 archivist_version=v7
 
 if test "$be_master" = yes; then
-  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug &
+  "$ramen" confserver --master=aggregator --site="$ramen_site" --debug --insecure &
   confserver_pid=$!
   at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
 

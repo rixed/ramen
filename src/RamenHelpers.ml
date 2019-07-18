@@ -328,6 +328,13 @@ let string_skip_blanks_until c s o =
     failwith in
   loop o
 
+let string_is_numeric s =
+  try
+    ignore (int_of_string s) ;
+    true
+  with Failure _ ->
+    false
+
 let rec string_skip_blanks s o =
   if o < String.length s && Char.is_whitespace s.[o] then
     string_skip_blanks s (o + 1)

@@ -322,7 +322,7 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
     [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ;
       "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
       "sources/*/info" ] in
-  ZMQClient.start ~while_ conf.C.sync_url conf.C.login
+  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
                   ~topics ~recvtimeo:5. (fun clt ->
     if loop <= 0. then
       let msg_count = ZMQClient.process_in ~while_ clt in

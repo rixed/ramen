@@ -62,13 +62,16 @@ module User =
 struct
   module Capa = Capacity
 
-  type socket = string (* ZMQ peer *)
+  type socket = int (* ZMQ socket index *) * string (* ZMQ peer *)
 
-  let print_socket oc s =
-    String.print oc (Base64.str_encode s)
+  let print_socket oc (i, s) =
+    Printf.fprintf oc "%03d|%s" i (Base64.str_encode s)
 
   let socket_of_string s =
-    Base64.str_decode s
+    if String.length s < 4 || s.[3] <> '|' then
+      invalid_arg "socket_of_string" ;
+    int_of_string (String.sub s 0 3),
+    Base64.str_decode (String.chop ~l:4 s)
 
   type t =
     (* Internal implies no authn at all, only for when the messages do not go
