@@ -384,6 +384,8 @@ struct
                         | "port", "" -> Port))
               | "workers", s ->
                   (match rcut s with
+                  | [ fq ; "worker" ] ->
+                      PerWorker (N.fq fq, Worker)
                   | [ fq ; s ] ->
                       (match rcut fq, s with
                       | [ fq ; s1 ], s2 ->
@@ -402,8 +404,7 @@ struct
                               | "archives", "times" -> ArchivedTimes
                               | "archives", "num_files" -> NumArcFiles
                               | "archives", "current_size" -> NumArcBytes
-                              | "archives", "alloc_size" -> AllocedArcBytes
-                              | "worker", "" -> Worker)
+                              | "archives", "alloc_size" -> AllocedArcBytes)
                           with Match_failure _ ->
                             (match rcut fq, s1, s2 with
                             | [ fq ; "instances" ], sign, s ->
@@ -453,6 +454,8 @@ struct
       (of_string "sites/siteA/workers/prog/func/total/bytes")
     (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", PerInstance ("123", StateFile)))) \
       (of_string "sites/siteA/workers/prog/func/instances/123/state_file")
+    (PerSite (N.site "siteB", PerWorker (N.fq "prog/func", Worker))) \
+      (of_string "sites/siteB/workers/prog/func/worker")
   *)
 
   (*$>*)
