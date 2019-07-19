@@ -8,6 +8,7 @@ open RamenHelpers
 open RamenLog
 open RamenSmt
 open RamenConsts
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module FS = C.FuncStats
@@ -1037,9 +1038,8 @@ let run_sync conf ~while_ loop allocs reconf =
         () in
   let on_set clt k v _uid _mtime = on_del clt k v
   and on_new clt k v _uid _mtime _owner _expiry = on_del clt k v in
-  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~on_set ~on_new ~on_del
-                  ~topics ~recvtimeo:5. (fun clt ->
+  start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
+             (fun clt ->
     Processes.until_quit (fun () ->
       let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count ;

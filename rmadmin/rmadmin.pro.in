@@ -23,6 +23,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # Input
 HEADERS += \
   misc.h \
+  UserIdentity.h \
   rec_shared_mutex.h \
   qcustomplot.h \
   LazyRef.h \
@@ -96,6 +97,7 @@ HEADERS += \
 
 SOURCES += \
   misc.cpp \
+  UserIdentity.cpp \
   rec_shared_mutex.cpp \
   qcustomplot.cpp \
   colorOfString.cpp \

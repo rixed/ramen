@@ -11,7 +11,6 @@ module Make (Value : VALUE) (Selector : SELECTOR) =
 struct
   module Key = Selector.Key
   module User = Key.User
-  module Capa = User.Capa
   module Selector = Selector
   module H = Hashtbl.Make (Key)
 

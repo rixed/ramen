@@ -5,6 +5,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -106,8 +107,7 @@ let serve_sync conf ~while_ fd =
     [ (pref :> string) ^"/worker" ;
       (pref :> string) ^"/instances/*/input_ringbufs" ] in
   let msg_count =
-    ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                    ~topics (fun clt ->
+    start_sync conf ~while_ ~topics (fun clt ->
       (* We need the input ringbuf for this parent index. We need to get the
        * current signature for the worker and then read it, waiting to receive
        * those keys if not there yet. *)

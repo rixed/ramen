@@ -48,7 +48,10 @@ let complete_commands s =
       "confserver", CliInfo.confserver ;
       "confclient", CliInfo.confclient ;
       "compserver", CliInfo.compserver ;
-      "choreographer", CliInfo.choreographer ] in
+      "choreographer", CliInfo.choreographer ;
+      "useradd", CliInfo.useradd ;
+      "userdel", CliInfo.userdel ;
+      "usermod", CliInfo.usermod ] in
   complete commands s
 
 let complete_global_options s =
@@ -177,7 +180,7 @@ let complete str () =
     complete_commands last_tok
   | _ -> (* "ramen ... command ...? <TAB>" *)
     let toks = List.drop (command_idx+1) toks in
-    let copts =
+    let copts with_sync =
       [ "--help", CliInfo.help ;
         "--debug", CliInfo.debug ;
         "--quiet", CliInfo.quiet ;
@@ -186,7 +189,15 @@ let complete str () =
         "--variant", CliInfo.variant ;
         "--site", CliInfo.site ;
         "--master=", CliInfo.site ;
-        "--bundle-dir=", CliInfo.bundle_dir ] in
+        "--bundle-dir=", CliInfo.bundle_dir ] @
+      (if with_sync then 
+        [ "--confserver", CliInfo.confserver_url ;
+          "--confserver-key", CliInfo.confserver_key ;
+          "--username", CliInfo.username ;
+          "--pub-key", CliInfo.client_pub_key ;
+          "--priv-key", CliInfo.client_priv_key ]
+      else [])
+      in
     let completions =
       (match command with
       | "supervisor" ->
@@ -199,16 +210,16 @@ let complete str () =
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
-          copts
+          copts true
        | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--config", CliInfo.conffile ] @
-          copts
+          copts true
        | "notify" ->
           ("--parameter=", CliInfo.param) ::
-          copts
+          copts false
       | "compile" ->
           [ "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
@@ -219,7 +230,7 @@ let complete str () =
             "--lib-path=", CliInfo.lib_path ;
             "--external-compiler", CliInfo.external_compiler ;
             "--as-program=", CliInfo.program_name ] @
-          copts @
+          copts true @
           (complete_program_files last_tok)
       | "run" ->
           ("--parameter=", CliInfo.param) ::
@@ -228,16 +239,16 @@ let complete str () =
           ("--kill-if-disabled", CliInfo.kill_if_disabled) ::
           ("--source-file=", CliInfo.src_file) ::
           ("--on-site=", CliInfo.on_site) ::
-          copts @
+          copts true @
           (complete_binary_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
           ("--purge", CliInfo.purge) ::
-          copts @
+          copts true @
           (complete_running_program persist_dir)
       | "info" ->
           ("--parameter=", CliInfo.param) ::
-          copts @
+          copts true @
           (complete_binary_files last_tok)
       | "tail" ->
           let persist_dir = persist_dir toks in
@@ -260,7 +271,7 @@ let complete str () =
           ("--external-compiler=", CliInfo.external_compiler) ::
           ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
           ("--solver=", CliInfo.smt_solver) ::
-          copts @
+          copts true @
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::
            (complete_running_function persist_dir))
@@ -280,7 +291,7 @@ let complete str () =
           ("--external-compiler=", CliInfo.external_compiler) ::
           ("--max-simult-compilations", CliInfo.max_simult_compilations) ::
           ("--solver=", CliInfo.smt_solver) ::
-          copts @
+          copts true @
           ((SpecialFunctions.stats, "Activity statistics") ::
            (SpecialFunctions.notifs, "Internal instrumentation") ::
            (complete_running_function persist_dir))
@@ -298,7 +309,7 @@ let complete str () =
           ("--separator=", CliInfo.csv_separator) ::
           ("--null=", CliInfo.csv_null) ::
           ("--pretty", CliInfo.pretty) ::
-          copts @
+          copts true @
           (("stats", "Internal instrumentation") ::
            (complete_running_function persist_dir))
       | "ps" ->
@@ -309,7 +320,7 @@ let complete str () =
           ("--sort", CliInfo.sort_col) ::
           ("--top", CliInfo.top) ::
           ("--all", CliInfo.all) ::
-          copts @
+          copts true @
           (complete_running_function persist_dir)
       | "links" ->
           let persist_dir = persist_dir toks in
@@ -320,7 +331,7 @@ let complete str () =
           ("--with-header", CliInfo.with_header) ::
           ("--sort", CliInfo.sort_col) ::
           ("--top", CliInfo.top) ::
-          copts @
+          copts false @
           (complete_running_function persist_dir)
       | "test" ->
           [ "--help", CliInfo.help ;
@@ -331,7 +342,7 @@ let complete str () =
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
-          copts @
+          copts false @
           (complete_test_file last_tok)
       | "httpd" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -344,43 +355,43 @@ let complete str () =
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
-          copts
+          copts true
        | "tunneld" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
             "--port=", CliInfo.tunneld_port ] @
-          copts
+          copts true
       | "variants" ->
-          copts
+          copts false
       | "gc" ->
           [ "--del-ratio", CliInfo.del_ratio ;
             "--loop", CliInfo.loop ;
             "--dry-run", CliInfo.dry_run ] @
-          copts
+          copts true
       | "stats" ->
-          copts
+          copts false
       | "archivist" ->
           [ "--loop", CliInfo.loop ;
             "--stats", CliInfo.update_stats ;
             "--allocs", CliInfo.update_allocs ;
             "--reconf-workers", CliInfo.reconf_workers ] @
-          copts
+          copts true
       | "ringbuf-summary" ->
           ("--max-bytes", CliInfo.max_bytes) ::
-          copts @
+          copts false @
           (complete_rb_file last_tok)
       | "dequeue" ->
           ("--num-entries", CliInfo.num_tuples) ::
-          copts @
+          copts false @
           (complete_rb_file last_tok)
       | "repair-ringbuf" ->
-          copts @
+          copts false @
           (complete_rb_file last_tok)
       | "dump-ringbuf" ->
           [ "--start", CliInfo.start_word ;
             "--stop", CliInfo.stop_word ] @
-          copts @
+          copts false @
           (complete_rb_file last_tok)
       | "confserver" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -388,9 +399,9 @@ let complete str () =
             "--syslog", CliInfo.to_syslog ;
             "--secure", CliInfo.confserver_port_sec ;
             "--insecure", CliInfo.confserver_port ] @
-          copts
+          copts false
       | "confclient" ->
-          copts
+          copts true
       | "compserver" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
@@ -399,11 +410,23 @@ let complete str () =
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
             "--solver=", CliInfo.smt_solver ] @
-          copts
+          copts true
       | "choreographer" ->
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ] @
-          copts
+          copts true
+      | "useradd" ->
+          [ "--username", CliInfo.username ;
+            "--role", CliInfo.role ;
+            "-o", CliInfo.output_file] @
+          copts false
+      | "userdel" ->
+          [ "--username", CliInfo.username ] @
+          copts false
+      | "usermod" ->
+          [ "--username", CliInfo.username ;
+            "--role", CliInfo.role ] @
+          copts false
       | _ -> []) in
     complete completions (if last_tok_is_complete then "" else last_tok))

@@ -168,92 +168,17 @@ let on_progress url clt stage status =
   | ZMQClient.Stage.Sync -> signal_sync) status
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start_sync srv_pub_key url creds () =
+let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
   Gc.compact () ;
   !logger.info "Will connect to %S using key %S" url srv_pub_key ;
   ZMQClient.start
-    srv_pub_key url creds ~topics:["*"] ~on_progress:(on_progress url)
+    ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
+    ~topics:["*"] ~on_progress:(on_progress url)
     ~on_new ~on_set ~on_del ~on_lock ~on_unlock
     ~recvtimeo:0.1 sync_loop
 
-external set_my_uid : string -> unit = "set_my_uid"
-
-let init debug quiet srv_pub_key url creds =
-  if debug && quiet then
-    failwith "Options --debug and --quiet are incompatible." ;
-  let log_level =
-    if debug then Debug else if quiet then Quiet else Normal in
-  init_logger log_level ;
-  set_my_uid creds ;
-  (* Read that file if given. Othewise keep the key empty, meaning no
-   * curve security. *)
-  let srv_pub_key =
-    if N.is_empty srv_pub_key then ""
-    else Files.read_key srv_pub_key in
+let init =
+  init_logger Debug ;
   (* Register the functions that will be called from C++ *)
-  ignore (Callback.register "start_sync" (start_sync srv_pub_key url creds)) ;
-  ignore (Callback.register "value_of_string" value_of_string) ;
-  !logger.info "Done with the command line"
-
-(*
- * Command line options
- *)
-
-open Cmdliner
-
-let path =
-  let parse s = Pervasives.Ok (N.path s)
-  and print fmt (p : N.path) =
-    Format.fprintf fmt "%s" (p :> string)
-  in
-  Arg.conv ~docv:"FILE" (parse, print)
-
-let debug =
-  let env = Term.env_info "RAMEN_DEBUG" in
-  let i = Arg.info ~doc:CliInfo.debug
-                   ~env [ "d"; "debug" ] in
-  Arg.(value (flag i))
-
-let quiet =
-  let env = Term.env_info "RAMEN_QUIET" in
-  let i = Arg.info ~doc:CliInfo.quiet
-                   ~env [ "q"; "quiet" ] in
-  Arg.(value (flag i))
-
-let confserver_url =
-  let env = Term.env_info "RAMEN_CONFSERVER" in
-  let i = Arg.info ~doc:CliInfo.confserver_url
-                   ~env [ "url" ] in
-  let def = "localhost" in
-  Arg.(value (opt string def i))
-
-let confserver_key =
-  let env = Term.env_info "RAMEN_CONFSERVER_KEYFILE" in
-  let i = Arg.info ~doc:CliInfo.confserver_key
-                   ~env [ "confserver-key" ] in
-  Arg.(value (opt path (N.path "") i))
-
-(* Run the program printing exceptions, and exit *)
-let print_exn f =
-  try f ()
-  with Exit -> exit 0
-     | Failure msg | Invalid_argument msg ->
-         Printf.eprintf "%s\n" msg ;
-         exit 1
-
-let cli_parse_result =
-  ignore (Thread.self ()) ;
-  let version = RamenVersions.release_tag in
-  let i = Term.info ~doc:"RamenAdmin" ~version "rmadmin" in
-  match
-    print_exn (fun () ->
-      Term.eval ~catch:false
-        Term.(const init
-          $ debug
-          $ quiet
-          $ confserver_key
-          $ confserver_url
-          $ const "admin", i))
-  with `Error _ -> exit 1
-     | `Version | `Help -> exit 0
-     | `Ok () -> ()
+  ignore (Callback.register "start_sync" start_sync) ;
+  ignore (Callback.register "value_of_string" value_of_string)

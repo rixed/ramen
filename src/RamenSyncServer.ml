@@ -9,7 +9,7 @@ module Make (Value : VALUE) (Selector : SELECTOR) =
 struct
   module Key = Selector.Key
   module User = Key.User
-  module Capa = User.Capa
+  module Role = User.Role
   module Selector = Selector
   module H = Hashtbl.Make (Key)
 
@@ -17,6 +17,7 @@ struct
 
   type t =
     { h : hash_value H.t ;
+      user_db : User.db ;
       send_msg : SrvMsg.t -> User.socket Enum.t -> unit ;
       (* Inverted match: who is using what: *)
       cb_selectors : Selector.set ;
@@ -28,9 +29,13 @@ struct
 
   and hash_value =
     { mutable v : Value.t ;
-      r : Capa.t ; (* Read perm *)
-      w : Capa.t ; (* Write perm *)
-      s : bool (* Sticky, ie cannot be deleted *) ;
+      (* The only permissions we need are:
+       * - read: to see a key and its value,
+       * - write: to be able to write that value,
+       * - del: to be able to delete the key. *)
+      can_read : Role.t Set.t ;
+      can_write : Role.t Set.t ;
+      can_del : Role.t Set.t ;
       (* Locked by the user who's on top of the list. Others are waiting: *)
       (* TODO: Distinct reader locks (a set) from /writer locks (that list). *)
       mutable locks : lock list ;
@@ -50,8 +55,8 @@ struct
   (* Note: To save on coding the on_del callback is passed a dummy value. *)
   and callback = Key.t -> Value.t -> Value.t option
 
-  let make ~send_msg =
-    { h = H.create 99 ; send_msg ;
+  let make user_db ~send_msg =
+    { h = H.create 99 ; user_db ; send_msg ;
       cb_selectors = Selector.make_set () ;
       on_sets = Hashtbl.create 10 ;
       on_news = Hashtbl.create 10 ;
@@ -86,7 +91,7 @@ struct
     | v ->
         v
 
-  let notify t k has_capa m =
+  let notify t k is_permitted m =
     let subscriber_sockets =
       Selector.matches k t.user_selectors |>
       Enum.fold (fun sockets sel_id ->
@@ -95,7 +100,7 @@ struct
       ) Map.empty in
     Map.enum subscriber_sockets //@
     (fun (socket, user) ->
-      if has_capa user then Some socket else (
+      if is_permitted user then Some socket else (
         !logger.debug "User %a has no capa" User.print user ;
         None
       )) |>
@@ -117,12 +122,12 @@ struct
     match List.tl hv.locks with
     | [] ->
         hv.locks <- [] ;
-        notify t k (User.has_capa hv.r) (UnlockKey k)
+        notify t k (User.has_any_role hv.can_read) (UnlockKey k)
     | (u, duration) :: rest ->
         let expiry = Unix.gettimeofday () +. duration in
         hv.locks <- (u, expiry) :: rest ;
         let owner = IO.to_string User.print_id (User.id u) in
-        notify t k (User.has_capa hv.r) (LockKey { k ; owner ; expiry})
+        notify t k (User.has_any_role hv.can_read) (LockKey { k ; owner ; expiry})
 
   let timeout_locks t k hv =
     match hv.locks with
@@ -155,27 +160,29 @@ struct
     (* TODO: Think about making locking mandatory *)
     | _ -> ()
 
-  let check_can_write t k hv u =
-    if not (User.has_capa hv.w u) then (
-      Printf.sprintf2 "Key %a: read only" Key.print k |>
+
+  let check_can_do what k u can =
+    if not (User.has_any_role can u) then (
+      Printf.sprintf2 "Key %a: not allowed to %s" Key.print k what |>
       failwith
-    ) ;
+    )
+
+  let check_can_write t k hv u =
+    check_can_do "write" k u hv.can_write ;
     check_unlocked t hv k u
 
   let check_can_delete t k hv u =
-    if hv.s then (
-      Printf.sprintf2 "Key %a: is sticky" Key.print k |>
-      failwith
-    ) ;
+    check_can_do "delete" k u hv.can_del ;
     check_can_write t k hv u
 
-  let create t u k v ?(lock_timeo=Default.sync_lock_timeout) ~r ~w ~s =
-    !logger.debug "Creating config key %a with value %a, r:%a w:%a%s"
+  let create t u k v ?(lock_timeo=Default.sync_lock_timeout)
+             ~can_read ~can_write ~can_del =
+    !logger.debug "Creating config key %a with value %a, read:%a write:%a del:%a"
       Key.print k
       Value.print v
-      Capa.print r
-      Capa.print w
-      (if s then " sticky" else "") ;
+      (Set.print Role.print) can_read
+      (Set.print Role.print) can_write
+      (Set.print Role.print) can_del ;
     match H.find t.h k with
     | exception Not_found ->
         (* As long as there is a callback for this, that's ok: *)
@@ -190,9 +197,10 @@ struct
             [ u, expiry ], uid, expiry
           else
             [], "", 0. in
-        H.add t.h k { v ; r ; w ; s ; locks ; set_by = u ; mtime } ;
+        H.add t.h k { v ; can_read ; can_write ; can_del ; locks ;
+                      set_by = u ; mtime } ;
         let msg = SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } in
-        notify t k (User.has_capa r) msg
+        notify t k (User.has_any_role can_read) msg
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
           Key.print k |>
@@ -214,17 +222,17 @@ struct
           prev.mtime <- Unix.gettimeofday () ;
           let uid = IO.to_string User.print_id (User.id u) in
           let msg = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
-          notify t k (User.has_capa prev.r) msg
+          notify t k (User.has_any_role prev.can_read) msg
         )
 
   let set t u k v = (* TODO: H.find and pass prev item to update *)
     if H.mem t.h k then
       update t u k v
     else
-      let r = Capa.anybody
-      and w = User.only_me u
-      and s = false in
-      create t u k v ~lock_timeo:0. ~r ~w ~s
+      let can_read = Set.of_list Role.[ Admin ; User ] in
+      let can_write = Set.of_list Role.[ Specific (User.id u) ] in
+      let can_del = can_write in
+      create t u k v ~lock_timeo:0. ~can_read ~can_write ~can_del
 
   let del t u k =
     !logger.debug "Deleting config key %a"
@@ -237,7 +245,7 @@ struct
         check_can_delete t k prev u ;
         let _ = do_cbs t.on_dels t k prev.v in
         H.remove t.h k ;
-        notify t k (User.has_capa prev.r) (DelKey k)
+        notify t k (User.has_any_role prev.can_read) (DelKey k)
 
   let lock t u k ~must_exist ~lock_timeo =
     !logger.debug "Locking config key %a"
@@ -247,8 +255,10 @@ struct
         (* We must allow to lock a non-existent key to reserve the key to its
          * creator. In that case a lock will create a new (Void) value. *)
         if must_exist then no_such_key k else
-        let me = User.only_me u in
-        create t u k Value.dummy ~r:Capa.anybody ~w:me ~s:false ~lock_timeo
+        let can_read = Set.of_list Role.[ Admin ; User ] in
+        let can_write = Set.of_list Role.[ Specific (User.id u) ] in
+        let can_del = can_write in
+        create t u k Value.dummy ~can_read ~can_write ~can_del ~lock_timeo
     | prev ->
         timeout_locks t k prev ;
         !logger.debug "Current lockers: %a" print_lockers prev.locks ;
@@ -259,7 +269,8 @@ struct
             let owner = IO.to_string User.print_id (User.id u) in
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry ] ;
-            notify t k (User.has_capa prev.r) (LockKey { k ; owner ; expiry })
+            let is_permitted = User.has_any_role prev.can_read in
+            notify t k is_permitted (LockKey { k ; owner ; expiry })
         | lst ->
             (* Reject it if it's already in the lockers: *)
             if List.exists (fun (u', _) -> User.equal u u') lst then
@@ -285,14 +296,10 @@ struct
             Printf.sprintf2 "Key %a: not locked" Key.print k |>
             failwith)
 
-  (* Helper for internal user: *)
-  let create_unlocked srv k v ~r ~w ~s =
-    create srv User.internal k v ~lock_timeo:0. ~r ~w ~s
-
-  let create_or_update srv k v ~r ~w ~s =
+  let create_or_update srv k v ~can_read ~can_write ~can_del =
     match H.find srv.h k with
     | exception Not_found ->
-        create_unlocked srv k v ~r ~w ~s
+        create srv User.internal k v ~lock_timeo:0. ~can_read ~can_write ~can_del
     | hv ->
         if not (Value.equal hv.v v) then (
           set srv User.internal k v
@@ -321,7 +328,7 @@ struct
     let s = Selector.make_set () in
     let _ = Selector.add s sel in
     H.iter (fun k hv ->
-      if User.has_capa hv.r u &&
+      if User.has_any_role hv.can_read u &&
          not (Enum.is_empty (Selector.matches k s))
       then (
         timeout_locks t k hv ;
@@ -339,25 +346,29 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
-  let process_msg t socket u (i, cmd as msg) =
+  let process_msg t socket u pub_key (i, cmd as msg) =
     try
-      !logger.debug "Received msg %a from %a"
+      !logger.debug "Received msg %a from %a with public key %a"
         CltMsg.print msg
-        User.print u ;
+        User.print u
+        User.print_pub_key pub_key ;
       (match cmd with
-      | CltMsg.Auth creds ->
+      | CltMsg.Auth uid ->
           (* Auth is special: as we have no user yet, errors must be
            * returned directly. *)
           (try
-            let u' = User.authenticate u creds socket in
+            let u' = User.authenticate t.user_db u uid pub_key socket in
             !logger.info "User %a authenticated out of user %a"
               User.print u'
               User.print u ;
             (* Must create this user's error object if not already there.
              * Value will be set below: *)
             let k = Key.user_errs u' socket in
+            let can_read = Set.of_list Role.[ Specific (User.id u') ] in
+            let can_write = Set.empty in
+            let can_del = can_read in
             create_or_update t k (Value.err_msg i "")
-                             ~r:(User.only_me u') ~w:Capa.nobody ~s:false ;
+                             ~can_read ~can_write ~can_del ;
             t.send_msg (SrvMsg.AuthOk k) (Enum.singleton socket)
           with e ->
             let err = Printexc.to_string e in
@@ -374,10 +385,10 @@ struct
           set t u k v
 
       | CltMsg.NewKey (k, v, lock_timeo) ->
-          let r = Capa.anybody
-          and w = User.only_me u
-          and s = false in
-          create t u k v ~r ~w ~s ~lock_timeo
+          let can_read = Set.of_list Role.[ Admin ; User ] in
+          let can_write = Set.of_list Role.[ Specific (User.id u) ] in
+          let can_del = can_write in
+          create t u k v ~can_read ~can_write ~can_del ~lock_timeo
 
       | CltMsg.UpdKey (k, v) ->
           update t u k v
@@ -394,7 +405,7 @@ struct
       | CltMsg.UnlockKey k ->
           unlock t u k
       ) ;
-      if User.authenticated u then set_user_err t u socket i ""
+      if User.is_authenticated u then set_user_err t u socket i ""
     with e ->
       set_user_err t u socket i (Printexc.to_string e)
 end

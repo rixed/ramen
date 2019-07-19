@@ -105,8 +105,8 @@ let safe_open (fname : N.path) flags perms =
 let safe_close fd =
   log_and_ignore_exceptions Unix.(restart_on_EINTR close) fd
 
-let move_aside (fname : N.path) =
-  let bad_file = N.cat fname (N.path ".bad?") in
+let move_aside ?(ext="bad?") (fname : N.path) =
+  let bad_file = N.cat fname (N.path ("."^ ext)) in
   ignore_exceptions safe_unlink bad_file ;
   (try restart_on_eintr (rename fname) bad_file
   with
@@ -486,7 +486,7 @@ let ppp_of_fd ?default ppp =
   cached2 cache_name reread (fun _ fd -> mtime_of_fd_def 0. fd)
 
 (* [default] replaces a missing _or_empty_ file. *)
-let ppp_of_file ?default ppp =
+let ppp_of_file ?(errors_ok=false) ?default ppp =
   let reread fname =
     let from_string s =
       let c = Printf.sprintf2 "parsing default value for file %a: %s"
@@ -501,7 +501,8 @@ let ppp_of_file ?default ppp =
     | exception e ->
         (match default with
         | None ->
-            !logger.warning "Cannot open %a for reading: %s"
+            (if errors_ok then !logger.debug else !logger.warning)
+              "Cannot open %a for reading: %s"
               N.path_print_quoted fname (Printexc.to_string e) ;
             raise e
         | Some d -> from_string d)
@@ -663,6 +664,14 @@ let unquote (s : N.path) =
 (* Used as a placeholder for file names that are sockets: *)
 let socket_path = N.path "socket"
 
-let read_key fname =
+let check_file_is_secure fname =
+  let s = safe_stat fname in
+  if s.Unix.st_perm land 0o77 <> 0 then
+    Printf.sprintf2 "File %a is readable or writable by others"
+      N.path_print fname |>
+    failwith
+
+let read_key secure fname =
+  if secure then check_file_is_secure fname ;
   read_whole_file fname |>
   String.trim

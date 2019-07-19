@@ -180,6 +180,7 @@ RAMEN_SOURCES = \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
+	src/RamenSyncUsers.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \
@@ -850,6 +851,7 @@ LINKED_FOR_TESTS = \
 	src/RamenSyncClient.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenSyncHelpers.ml \
 	src/RamenCompiler.ml \
 	src/RamenMake.ml \
 	src/RamenServices.ml \

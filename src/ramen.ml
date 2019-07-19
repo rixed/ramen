@@ -10,6 +10,7 @@ module T = RamenTypes
 module N = RamenName
 module C = RamenConf
 module Processes = RamenProcesses
+module Files = RamenFiles
 
 (*
  * Common options
@@ -50,7 +51,26 @@ let port =
   in
   Arg.conv ~docv:"PORT" (parse, print)
 
-let copts default_login =
+(* Never take keys from the command line directly, but read them from
+ * files. If secure, also check the file is not world readable. *)
+let key secure =
+  let parse s =
+    if s = "" then Pervasives.Ok "" else
+    try Pervasives.Ok (Files.read_key secure (N.path s))
+    with Failure msg ->
+      Pervasives.Error (`Msg msg) in
+  let print fmt k =
+    if secure then Format.fprintf fmt "<KEY>"
+    else Format.fprintf fmt "%S" k in
+  Arg.conv ~docv:"KEYFILE" (parse, print)
+
+let confserver_key =
+  let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
+  let i = Arg.info ~doc:CliInfo.confserver_key ~docs:Manpage.s_common_options
+                   ~env [ "confserver-key" ] in
+  Arg.(value (opt (key false) "" i))
+
+let copts ?default_username () =
   let docs = Manpage.s_common_options in
   let debug =
     let env = Term.env_info "RAMEN_DEBUG" in
@@ -107,23 +127,35 @@ let copts default_login =
                      ~docs ~env ["master"] in
     Arg.(value (opt_all string [] i))
   and confserver_url =
+    if default_username = None then Term.const "" else
     let env = Term.env_info "RAMEN_CONFSERVER" in
     let i = Arg.info ~doc:CliInfo.confserver_url
                      ~docs ~env [ "confserver" ] in
     Arg.(value (opt ~vopt:"localhost" string "" i))
   and confserver_key =
-    let env = Term.env_info "RAMEN_CONFSERVER_KEYFILE" in
-    let i = Arg.info ~doc:CliInfo.confserver_key
-                     ~docs ~env [ "confserver-key" ] in
-    Arg.(value (opt path (N.path "") i))
-  and confserver_login =
+    if default_username = None then Term.const "" else confserver_key
+  and username =
+    if default_username = None then Term.const "" else
+    let def = Option.get default_username in
     let env =
       (* Take $USER only for non-service commands: *)
-      if default_login = "" then Some (Term.env_info "USER")
-                            else None in
-    let i = Arg.info ~doc:CliInfo.confserver_login
-                     ~docs ?env [ "login" ] in
-    Arg.(value (opt string default_login i))
+      if default_username = Some "" then Some (Term.env_info "USER")
+                                    else None in
+    let i = Arg.info ~doc:CliInfo.username
+                     ~docs ?env [ "username" ] in
+    Arg.(value (opt string def i))
+  and client_pub_key =
+    if default_username = None then Term.const "" else
+    let env = Term.env_info "RAMEN_CLIENT_PUB_KEY" in
+    let i = Arg.info ~doc:CliInfo.client_pub_key
+                     ~docs ~env [ "pub-key" ] in
+    Arg.(value (opt (key false) "" i))
+  and client_priv_key =
+    if default_username = None then Term.const "" else
+    let env = Term.env_info "RAMEN_CLIENT_PRIV_KEY" in
+    let i = Arg.info ~doc:CliInfo.client_priv_key
+                     ~docs ~env [ "priv-key" ] in
+    Arg.(value (opt (key true) "" i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -139,7 +171,9 @@ let copts default_login =
     $ masters
     $ confserver_url
     $ confserver_key
-    $ confserver_login)
+    $ username
+    $ client_pub_key
+    $ client_priv_key)
 
 (*
  * Start the process supervisor
@@ -199,7 +233,7 @@ let fail_for_good =
 let supervisor =
   Term.(
     (const RamenCliCmd.supervisor
-      $ copts "_supervisor"
+      $ copts ~default_username:"_supervisor" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -247,7 +281,7 @@ let compress_older =
 let gc =
   Term.(
     (const RamenCliCmd.gc
-      $ copts "_gc"
+      $ copts ~default_username:"_gc" ()
       $ dry_run
       $ del_ratio
       $ compress_older
@@ -275,7 +309,7 @@ let max_fpr =
 let alerter =
   Term.(
     (const RamenCliCmd.alerter
-      $ copts "_alerter"
+      $ copts ~default_username:"_alerter" ()
       $ conf_file ~env:"ALERTER_CONFIG"
                   ~doc:CliInfo.conffile ()
       $ max_fpr
@@ -308,7 +342,7 @@ let text_params =
 let notify =
   Term.(
     (const RamenCliCmd.notify
-      $ copts ""
+      $ copts ()
       $ text_params
       $ text_pos ~doc:"notification name" ~docv:"NAME" 0),
     info ~doc:CliInfo.notify "notify")
@@ -324,7 +358,7 @@ let tunneld_port =
 let tunneld =
   Term.(
     (const RamenCliCmd.tunneld
-      $ copts "_tunneld"
+      $ copts ~default_username:"_tunneld" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -348,7 +382,7 @@ let confserver_port_sec =
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
-      $ copts "_confserver"
+      $ copts ~default_username:"_confserver" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -359,8 +393,52 @@ let confserver =
 let confclient =
   Term.(
     (const RamenCliCmd.confclient
-      $ copts ""),
+      $ copts ~default_username:"" ()),
     info ~doc:CliInfo.confclient "confclient")
+
+(*
+ * User management
+ *)
+
+let username =
+  let i = Arg.info ~docv:"USER" ~doc:CliInfo.username [] in
+  Arg.(required (pos 0 (some string) None i))
+
+let roles =
+  let i = Arg.info ~docv:"ROLE" ~doc:CliInfo.role [ "r"; "role" ] in
+  let roles =
+    RamenSync.User.Role.[ "admin", Admin ; "user", User ] in
+  Arg.(value (opt_all (enum roles) [] i))
+
+let output_file =
+  let i = Arg.info ~doc:CliInfo.output_file
+                   ~docv:"FILE" [ "o" ] in
+  Arg.(value (opt (some path) None i))
+
+let useradd =
+  Term.(
+    (const RamenSyncUsers.add
+      $ copts ()
+      $ output_file
+      $ username
+      $ roles
+      $ confserver_key),
+    info ~doc:CliInfo.useradd "useradd")
+
+let userdel =
+  Term.(
+    (const RamenSyncUsers.del
+      $ copts ()
+      $ username),
+    info ~doc:CliInfo.userdel "userdel")
+
+let usermod =
+  Term.(
+    (const RamenSyncUsers.mod_
+      $ copts ()
+      $ username
+      $ roles),
+    info ~doc:CliInfo.usermod "usermod")
 
 (*
  * Examine the ringbuffers
@@ -380,7 +458,7 @@ let num_tuples =
 let dequeue =
   Term.(
     (const RingBufCmd.dequeue
-      $ copts ""
+      $ copts ()
       $ rb_file
       $ num_tuples),
     info ~doc:CliInfo.dequeue "dequeue")
@@ -398,7 +476,7 @@ let rb_files =
 let summary =
   Term.(
     (const RingBufCmd.summary
-      $ copts ""
+      $ copts ()
       $ max_bytes
       $ rb_files),
     info ~doc:CliInfo.summary "ringbuf-summary")
@@ -406,7 +484,7 @@ let summary =
 let repair =
   Term.(
     (const RingBufCmd.repair
-      $ copts ""
+      $ copts ()
       $ rb_files),
     info ~doc:CliInfo.repair "repair-ringbuf")
 
@@ -423,7 +501,7 @@ let stop_word =
 let dump =
   Term.(
     (const RingBufCmd.dump
-      $ copts ""
+      $ copts ()
       $ start_word
       $ stop_word
       $ rb_file),
@@ -474,7 +552,7 @@ let top =
 let links =
   Term.(
     (const RingBufCmd.links
-      $ copts ""
+      $ copts ()  (* TODO: confserver version *)
       $ no_abbrev
       $ show_all
       $ as_tree
@@ -539,11 +617,6 @@ let program =
   in
   Arg.conv ~docv:"PROGRAM" (parse, print)
 
-let output_file =
-  let i = Arg.info ~doc:CliInfo.output_file
-                   ~docv:"FILE" [ "o" ] in
-  Arg.(value (opt (some path) None i))
-
 let as_ =
   let i = Arg.info ~doc:CliInfo.program_name
                    ~docv:"NAME" [ "as" ] in
@@ -557,7 +630,7 @@ let replace =
 let compile =
   Term.(
     (const RamenCliCmd.compile
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ lib_path
       $ external_compiler
       $ max_simult_compilations
@@ -571,7 +644,7 @@ let compile =
 let compserver =
   Term.(
     (const RamenCliCmd.compserver
-      $ copts "_compserver"
+      $ copts ~default_username:"_compserver" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -608,7 +681,7 @@ let bin_file =
 let run =
   Term.(
     (const RamenCliCmd.run
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ params
       $ replace
       $ kill_if_disabled
@@ -627,7 +700,7 @@ let purge =
 let kill =
   Term.(
     (const RamenCliCmd.kill
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ program_globs
       $ purge),
     info ~doc:CliInfo.kill "kill")
@@ -648,7 +721,7 @@ let opt_function_name p =
 let info =
   Term.(
     (const RamenCliCmd.info
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ params
       $ as_
       $ bin_file
@@ -662,7 +735,7 @@ let info =
 let choreographer =
   Term.(
     (const RamenCliCmd.choreographer
-      $ copts "_choreographer"
+      $ copts ~default_username:"_choreographer" ()
       $ daemonize
       $ to_stdout
       $ to_syslog),
@@ -797,7 +870,7 @@ let func_name_or_code =
 let tail =
   Term.(
     (const RamenCliCmd.tail
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -857,7 +930,7 @@ let since_mandatory =
 let replay =
   Term.(
     (const RamenCliCmd.replay
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ func_name_or_code
       $ with_header
       $ with_units
@@ -893,18 +966,18 @@ let time_step =
 let consolidation =
   let i = Arg.info ~doc:CliInfo.consolidation
                    ~docv:"min|max|avg|sum" ["consolidation"] in
-  let cons_func =
+  let cons_funcs =
     let p x = x, x in
     [ p "min" ; p "max" ; p "avg" ; p "sum" ; p "count" ] in
-  Arg.(value (opt (enum cons_func) "avg" i))
+  Arg.(value (opt (enum cons_funcs) "avg" i))
 
 let bucket_time =
   let i = Arg.info ~doc:CliInfo.bucket_time
                    ~docv:"begin|middle|end" ["bucket-time"] in
   let open RamenTimeseries in
-  let cons_func =
+  let bucket_times =
     [ "begin", Begin ; "middle", Middle ; "end", End ] in
-  Arg.(value (opt (enum cons_func) Begin i))
+  Arg.(value (opt (enum bucket_times) Begin i))
 
 let factors =
   let i = Arg.info ~doc:CliInfo.factors
@@ -914,7 +987,7 @@ let factors =
 let timeseries =
   Term.(
     (const RamenCliCmd.timeseries
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ func_name_or_code
       $ since
       $ until
@@ -950,7 +1023,7 @@ let all =
 let ps =
   Term.(
     (const RamenCliCmd.ps
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ short
       $ pretty
       $ with_header
@@ -963,7 +1036,7 @@ let ps =
 let profile =
   Term.(
     (const RamenCliCmd.profile
-      $ copts ""
+      $ copts ~default_username:"" ()
       $ short
       $ pretty
       $ with_header
@@ -1000,7 +1073,7 @@ let fault_injection_rate =
 let httpd =
   Term.(
     (const RamenCliCmd.httpd
-      $ copts "_httpd"
+      $ copts ~default_username:"_httpd" ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -1026,7 +1099,7 @@ let query =
 let expand =
   Term.(
     (const RamenCliCmd.graphite_expand
-      $ copts ""
+      $ copts ()
       $ for_render
       $ since
       $ until
@@ -1045,7 +1118,7 @@ let test_file =
 let test =
   Term.(
     (const RamenTests.run
-      $ copts ""
+      $ copts ()
       $ server_url ""
       $ api
       $ graphite
@@ -1077,7 +1150,7 @@ let reconf_workers =
 let archivist =
   Term.(
     (const RamenCliCmd.archivist
-      $ copts "_archivist"
+      $ copts ~default_username:"_archivist" ()
       $ loop
       $ daemonize
       $ update_stats
@@ -1095,7 +1168,7 @@ let archivist =
 let variants =
   Term.(
     (const RamenCliCmd.variants
-      $ copts ""),
+      $ copts ()),
     info ~doc:CliInfo.variants "variants")
 
 (*
@@ -1105,7 +1178,7 @@ let variants =
 let stats =
   Term.(
     (const RamenCliCmd.stats
-      $ copts ""),
+      $ copts ()),
     info ~doc:CliInfo.stats "stats")
 
 (*
@@ -1154,6 +1227,8 @@ let () =
         confserver ; confclient ; compserver ; choreographer ;
         (* process management: *)
         compile ; run ; kill ; ps ; profile ; info ;
+        (* user management: *)
+        useradd ; userdel ; usermod ;
         (* reading tuples: *)
         tail ; replay ; timeseries ;
         (* writing tuples: *)

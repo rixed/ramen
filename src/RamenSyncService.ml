@@ -12,7 +12,6 @@ module Server = RamenSyncServer.Make (Value) (Selector)
 module CltMsg = Server.CltMsg
 module SrvMsg = Server.SrvMsg
 module User = RamenSync.User
-module Capa = RamenSync.Capacity
 module C = RamenConf
 module RC = C.Running
 module FS = C.FuncStats
@@ -23,6 +22,13 @@ module O = RamenOperation
 module Services = RamenServices
 
 let u = User.internal
+let admin = Set.singleton User.Role.Admin
+let anybody = Set.of_list User.Role.[ Admin ; User ]
+let nobody = Set.empty
+
+let create_unlocked srv k v ~can_read ~can_write ~can_del =
+  Server.create srv User.internal k v ~lock_timeo:0.
+                ~can_read ~can_write ~can_del
 
 module DevNull =
 struct
@@ -34,8 +40,10 @@ struct
     in
     Server.register_callback
       srv srv.on_sets on_set (Globs.escape "devnull") ;
-    Server.create_unlocked
-      srv DevNull Value.dummy ~r:Capa.nobody ~w:Capa.anybody ~s:true
+    let can_read = nobody
+    and can_write = anybody
+    and can_del = nobody in
+    create_unlocked srv DevNull Value.dummy ~can_read ~can_write ~can_del
 end
 
 module TargetConfig =
@@ -43,10 +51,10 @@ struct
   let init srv =
     let k = Key.TargetConfig
     and v = Value.TargetConfig []
-    and r = Capa.anybody
-    and w = Capa.anybody (*User.only_me u*)
-    and s = true in
-    Server.create_unlocked srv k v ~r ~w ~s
+    and can_read = anybody
+    and can_write = anybody
+    and can_del = nobody in
+    create_unlocked srv k v ~can_read ~can_write ~can_del
 end
 
 module Storage =
@@ -55,13 +63,15 @@ struct
 
   let init srv =
     (* Create the minimal set of (sticky) keys: *)
-    let r = Capa.anybody
-    and w = Capa.anybody (* admin *)
-    and s = true
+    let can_read = anybody
+    and can_write = admin
+    and can_del = nobody
     and total_size = Value.of_int 1073741824
     and recall_cost = Value.of_float 1e-6 in
-    Server.create_unlocked srv (Storage TotalSize) total_size  ~r ~w ~s ;
-    Server.create_unlocked srv (Storage RecallCost) recall_cost ~r ~w ~s
+    create_unlocked
+      srv (Storage TotalSize) total_size ~can_read ~can_write ~can_del ;
+    create_unlocked
+      srv (Storage RecallCost) recall_cost ~can_read ~can_write ~can_del
 end
 
 (*
@@ -173,7 +183,8 @@ let zock_step srv zock zock_idx =
           log_and_ignore_exceptions (fun () ->
             let u = User.of_socket socket in
             let m = CltMsg.of_string msg in
-            Server.process_msg srv socket u m ;
+            let clt_pub_key = Zmq.Socket.get_curve_publickey zock in
+            Server.process_msg srv socket u clt_pub_key m ;
             (* Special case: we automatically, and silently, prune old
              * entries under "lasts/" directories (only after a new entry has
              * successfully been added there). Clients are supposed to do the
@@ -273,7 +284,7 @@ let start conf port port_sec =
         (fun () ->
           Array.iter Zmq.Socket.close zocks)
         (fun () ->
-          let srv = Server.make ~send_msg in
+          let srv = Server.make conf ~send_msg in
           if not (Snapshot.load conf srv) then populate_init srv ;
           service_loop conf zocks srv
         ) ()

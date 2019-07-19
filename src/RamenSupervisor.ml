@@ -6,6 +6,7 @@ open Batteries
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -464,8 +465,10 @@ let start_worker
   let more_env =
     List.enum
       [ "sync_url="^ conf.C.sync_url ;
-        "sync_srv_key="^ conf.C.sync_srv_key ;
-        "sync_creds=_worker "^ (conf.C.site :> string) ^"/"^ fq_str ] |>
+        "sync_srv_pub_key="^ conf.C.srv_pub_key ;
+        "sync_username=_worker "^ (conf.C.site :> string) ^"/"^ fq_str ;
+        "sync_clt_pub_key="^ conf.C.clt_pub_key ;
+        "sync_clt_priv_key="^ conf.C.clt_priv_key ] |>
     Enum.append more_env in
   let env = Array.append env (Array.of_enum more_env) in
   let args =
@@ -1617,8 +1620,8 @@ let synchronize_running_sync conf _autoreload_delay =
   in
   (* Timeout has to be much shorter than delay_before_replay *)
   let timeo = delay_before_replay *. 0.5 in
-  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics
-                  ~recvtimeo:timeo ~sndtimeo:timeo ~on_new ~on_del loop
+  start_sync conf ~while_ ~topics ~recvtimeo:timeo ~sndtimeo:timeo
+             ~on_new ~on_del loop
 
 let synchronize_running conf autoreload_delay =
   (if conf.C.sync_url = "" then synchronize_running_local

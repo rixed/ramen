@@ -14,53 +14,92 @@ module Retention = RamenRetention
 module TimeRange = RamenTimeRange
 module Channel = RamenChannel
 module Versions = RamenVersions
+module Files = RamenFiles
 
-(* The only capacity we need is:
- * - One per user for personal communications (err messages...)
- * - One for administrators, giving RW access to Ramen configuration and
- *   unprivileged data (whatever that means);
- * - One for normal users, giving read access to most of Ramen configuration
- *   and access to unprivileged data;
- * - Same as above, with no restriction on data.
- *)
-module Capacity =
-struct
-  type t =
-    | Nobody (* For DevNull *)
-    | SingleUser of string (* Only this user *)
-    (* Used by Ramen services (Note: different from internal user, which is
-     * not authenticated) *)
-    | Ramen
-    | Admin (* Some human which job is to break things *)
-    | UnrestrictedUser (* Users who can see whatever lambda users can not *)
-    | Users (* Lambda users *)
-    | Anybody (* No restriction whatsoever *)
-
-  let print fmt = function
-    | Nobody ->
-        String.print fmt "nobody"
-    | SingleUser name ->
-        Printf.fprintf fmt "user:%s" name
-    | Ramen -> (* Used by ramen itself *)
-        String.print fmt "ramen"
-    | Admin ->
-        String.print fmt "admin"
-    | UnrestrictedUser ->
-        String.print fmt "unrestricted-users"
-    | Users ->
-        String.print fmt "users"
-    | Anybody ->
-        String.print fmt "anybody"
-
-  let anybody = Anybody
-  let nobody = Nobody
-
-  let equal = (=)
-end
+(* FIXME: Most of these modules are required only on the servers.
+ * Isolate the truly universal parts (ie. Keys, Values, and Msgs). *)
 
 module User =
 struct
-  module Capa = Capacity
+  type id = string [@@ppp PPP_OCaml]
+
+  let print_id = String.print
+
+  module Role =
+  struct
+    type t = Ramen | Admin | User | Specific of id
+      [@@ppp PPP_OCaml]
+
+    let print oc = function
+      | Ramen -> String.print oc "ramen"
+      | Admin -> String.print oc "admin"
+      | User -> String.print oc "user"
+      | Specific uid -> Printf.fprintf oc "%a" print_id uid
+
+    let equal = (=)
+  end
+
+  type t =
+    (* Internal implies no authn at all, only for when the messages do not go
+     * through ZMQ: *)
+    | Internal
+    | Auth of { name : string ; roles : Role.t Set.t }
+    | Anonymous
+
+  let internal = Internal
+
+  let equal = (=)
+
+  module PubCredentials =
+  struct
+    type t = { username : string ; clt_pub_key : string }
+    let print oc t =
+      Printf.fprintf oc "{ username=%s; public-key=%s }"
+        t.username t.clt_pub_key
+  end
+
+  module Db =
+  struct
+    (* Each user is represented on the server by a single file named after the
+     * user name and containing its roles and its long term public key (with
+     * PPP.OCaml format).
+     * The private key is only printed on the console when the user is created, and
+     * supposed to be send securely to the user (along with his public key).  *)
+    type user =
+      { (* SingleUser + Anybody are granted automatically so there is no need to
+         * specify them: *)
+        roles : Role.t list ;
+        clt_pub_key : string }
+      [@@ppp PPP_OCaml]
+
+    (* Files where the catalog of users are stored: *)
+    let file_name conf username  =
+      N.path_cat [ conf.RamenConf.persist_dir ; N.path "users" ; N.path username ]
+
+    (* Lookup a user by name and return its conf if found: *)
+    let lookup conf username  =
+      let fname = file_name conf username in
+      try Files.ppp_of_file ~errors_ok:true user_ppp_ocaml fname
+      with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+        raise Not_found
+
+    let save_user conf username user =
+      let fname = file_name conf username in
+      Files.ppp_to_file ~pretty:true fname user_ppp_ocaml user
+
+    let make_user conf username roles clt_pub_key =
+      let user = { roles ; clt_pub_key } in
+      save_user conf username user
+
+    let user_exists conf username =
+      match lookup conf username with
+      | exception Not_found -> false
+      | _ -> true
+  end
+
+  let is_authenticated = function
+    | Auth _ | Internal -> true
+    | Anonymous -> false
 
   type socket = int (* ZMQ socket index *) * string (* ZMQ peer *)
 
@@ -73,48 +112,49 @@ struct
     int_of_string (String.sub s 0 3),
     Base64.str_decode (String.chop ~l:4 s)
 
-  type t =
-    (* Internal implies no authn at all, only for when the messages do not go
-     * through ZMQ: *)
-    | Internal
-    | Auth of { name : string ; capas : Capa.t Set.t }
-    | Anonymous
-
-  let equal = (=)
-
-  let authenticated = function
-    | Auth _ | Internal -> true
-    | Anonymous -> false
-
-  let internal = Internal
-
-  module PubCredentials =
-  struct
-    (* TODO *)
-    type t = string
-    let print = String.print
-  end
-
   (* FIXME: when to delete from these? *)
   let socket_to_user : (socket, t) Hashtbl.t =
     Hashtbl.create 90
 
-  let authenticate u creds socket =
+  type db = RamenConf.conf
+  type pub_key = string
+  let print_pub_key = String.print
+
+  let authenticate conf u username clt_pub_key socket =
     match u with
-    | Auth _ | Internal as u -> u (* ? *)
+    | Auth _ | Internal as u -> u (* do reauth? *)
     | Anonymous ->
-        let name, capas =
-          match creds with
-          | "internal" | "anonymous" ->
+        let name, roles =
+          match username with
+          | "_internal" | "_anonymous" ->
               failwith "Reserved usernames"
-          | "admin" -> creds, Capa.[ Admin ]
-          | c when String.starts_with c "_" -> creds, Capa.[ Ramen ]
-          | "" -> failwith "Bad credentials"
-          | _ -> creds, [] in
-        let capas =
-          Capa.Anybody :: Capa.SingleUser name :: capas |>
-          Set.of_list in
-        let u = Auth { name ; capas } in
+          | "" ->
+              failwith "Bad credentials"
+          | username when username.[0] = '_' ->
+              username, Role.[ Ramen ]
+          | username ->
+              (match Db.lookup conf username with
+              | exception Not_found ->
+                  failwith "No such user"
+              | registered_user ->
+                  (* Check user is who he pretends to be: *)
+                  if clt_pub_key = "" then (
+                    !logger.warning "No public key set for user %s \
+                                     (not an encrypted channel)" username
+                    (* We assume the insecure sockets, if any,  are
+                     * listening only on the loopback interface. *)
+                  ) else if clt_pub_key <> registered_user.Db.clt_pub_key then (
+                    !logger.warning "Public keys mismatch for user %s: \
+                                     received %S but DB has %S"
+                      username
+                      clt_pub_key
+                      registered_user.Db.clt_pub_key ;
+                    failwith "public keys do not match"
+                  ) ;
+                  username, registered_user.Db.roles) in
+        let roles = Role.Specific name :: roles in
+        let roles = Set.of_list roles in
+        let u = Auth { name ; roles } in
         Hashtbl.replace socket_to_user socket u ;
         u
 
@@ -123,26 +163,25 @@ struct
     with Not_found -> Anonymous
 
   let print fmt = function
-    | Internal -> String.print fmt "internal"
+    | Internal -> String.print fmt "_internal"
     | Auth { name ; _ } -> Printf.fprintf fmt "%s" name
     | Anonymous -> Printf.fprintf fmt "anonymous"
 
-  type id = string
-
-  let print_id = String.print
-
   (* Anonymous users could subscribe to some stuff... *)
-  let id t = IO.to_string print t
+  let id = function
+    | Internal -> "_internal"
+    | Anonymous -> "_anonymous"
+    | Auth { name ; _ } -> name
 
-  let has_capa c = function
+  let has_role r = function
     | Internal -> true
-    | Auth { capas ; _ } -> Set.mem c capas
-    | Anonymous -> c = Capa.anybody
+    | Auth { roles ; _ } -> Set.mem r roles
+    | Anonymous -> false
 
-  let only_me = function
-    | Internal -> Capa.nobody
-    | Auth { name ; _ } -> Capa.SingleUser name
-    | Anonymous -> invalid_arg "only_me"
+  let has_any_role rs = function
+    | Internal -> true
+    | Auth { roles ; _ } -> not (Set.disjoint roles rs )
+    | Anonymous -> false
 end
 
 (* The configuration keys are either:

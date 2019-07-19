@@ -7,6 +7,7 @@ open Unix
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -322,8 +323,7 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
     [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ;
       "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
       "sources/*/info" ] in
-  ZMQClient.start ~while_ conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~topics ~recvtimeo:5. (fun clt ->
+  start_sync conf ~while_ ~topics ~recvtimeo:5. (fun clt ->
     if loop <= 0. then
       let msg_count = ZMQClient.process_in ~while_ clt in
       !logger.debug "Received %d messages" msg_count ;

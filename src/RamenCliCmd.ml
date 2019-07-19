@@ -5,6 +5,7 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSyncHelpers
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -28,7 +29,7 @@ let () =
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants initial_export_duration site bundle_dir masters
-      sync_url sync_srv_key login =
+      sync_url srv_pub_key username clt_pub_key clt_priv_key =
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -47,8 +48,8 @@ let make_copts
   let conf =
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
-      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url ~sync_srv_key
-      ~login persist_dir in
+      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
+      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key persist_dir in
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
   else
@@ -249,13 +250,12 @@ let confclient conf () =
       u mtime
       owner expiry
   in
-  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~topics ~on_new (fun clt ->
-      !logger.info "Receiving:" ;
-      forever (fun () ->
-        let num_msg = ZMQClient.process_in ~while_ clt in
-        !logger.debug "Received %d messages" num_msg
-      ) ())
+  start_sync conf ~topics ~on_new ~while_ (fun clt ->
+    !logger.info "Receiving:" ;
+    forever (fun () ->
+      let num_msg = ZMQClient.process_in ~while_ clt in
+      !logger.debug "Received %d messages" num_msg
+    ) ())
 
 (*
  * `ramen compile`
@@ -383,20 +383,18 @@ let compile_sync conf replace src_file source_name_opt =
   let topics = [
     (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
-  let open ZMQClient in
-  start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-        ~while_ ~on_new ~on_set ~topics (fun clt ->
-      if replace then
-        send_cmd clt ~while_
-          (LockOrCreateKey (k_source, Default.sync_lock_timeout))
-          ~on_ko ~on_ok:(fun () ->
-            send_cmd clt ~while_ (SetKey (k_source, value))
-              ~on_ko ~on_ok:(fun () ->
-                send_cmd clt ~while_ (UnlockKey k_source)))
-      else
-        send_cmd clt ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
-      let num_msg = ZMQClient.process_in ~while_ clt in
-      !logger.debug "Received %d messages" num_msg)
+  start_sync conf ~while_ ~on_new ~on_set ~topics (fun clt ->
+    if replace then
+      ZMQClient.send_cmd clt ~while_
+        (LockOrCreateKey (k_source, Default.sync_lock_timeout))
+        ~on_ko ~on_ok:(fun () ->
+          ZMQClient.send_cmd clt ~while_ (SetKey (k_source, value))
+            ~on_ko ~on_ok:(fun () ->
+              ZMQClient.send_cmd clt ~while_ (UnlockKey k_source)))
+    else
+      ZMQClient.send_cmd clt ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
+    let num_msg = ZMQClient.process_in ~while_ clt in
+    !logger.debug "Received %d messages" num_msg)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -474,10 +472,8 @@ let compserver conf daemonize to_stdout to_syslog
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v in
   let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
-  let num_msg =
-    ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-      ~while_ ~on_new ~on_set ~topics (ZMQClient.process_in ~while_) in
-  !logger.debug "Received %d messages" num_msg
+  start_sync conf ~while_ ~on_new ~on_set ~topics
+                  (ZMQClient.process_in ~while_) |> ignore
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
@@ -627,11 +623,10 @@ let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
   let program_name = program_name_opt |? (N.program (src_path :> string)) in
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
-  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~topics ~while_ (fun clt ->
-      let prog = RamenSync.program_of_src_path clt src_path |>
-                 P.unserialized program_name in
-      prog_info prog opt_func_name)
+  start_sync conf ~topics ~while_ (fun clt ->
+    let prog = RamenSync.program_of_src_path clt src_path |>
+               P.unserialized program_name in
+    prog_info prog opt_func_name)
 
 let info conf params program_name_opt bin_file opt_func_name () =
   if conf.C.sync_url = "" then
@@ -857,67 +852,66 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
     [ "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
-  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~topics ~while_ (fun clt ->
-      let open RamenSync in
-      Client.iter clt (fun k v ->
-        match k, v.value with
-        | Key.PerSite (site, PerWorker (fq, Worker)),
-          Value.Worker worker ->
-            let get_k k what f =
-              let k = Key.PerSite (site, PerWorker (fq, k)) in
-              match (Client.find clt k).value with
-              | exception Not_found -> None
-              | v ->
-                  (match f v with
-                  | None -> invalid_sync_type k v what
-                  | x -> x) in
-            let s = get_k RuntimeStats "RuntimeStats" (function
-              | Value.RuntimeStats x -> Some x
-              | _ -> None) in
-            let arc_size = get_k NumArcBytes "NumArcBytes" (function
-              | Value.RamenValue T.(VI64 x) -> Some x
-              | _ -> None) |? 0L in
-            let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
-              | Value.TimeRange x -> Some x
-              | _ -> None) |? [] in
-            let arc_oldest = if List.is_empty arc_times then None
-                             else Some (List.hd arc_times |> fst) in
-            let arc_duration = TimeRange.span arc_times in
-            let open Value.RuntimeStats in
-            [| Some (ValStr (site :> string)) ;
-               Some (ValStr (fq :> string)) ;
-               Some (ValBool (worker.Value.Worker.role <> Whole)) ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;
-               Option.bind s (fun s -> date_or_na s.last_output) ;
-               Option.bind s (fun s -> date_or_na s.min_etime) ;
-               Option.bind s (fun s -> date_or_na s.max_etime) ;
-               Option.map (fun s -> ValFlt s.tot_cpu) s ;
-               Option.map (fun s -> ValFlt s.tot_wait_in) s ;
-               Option.map (fun s -> ValFlt s.tot_wait_out) s ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.cur_ram)) s ;
-               Option.map (fun s -> ValInt (Uint64.to_int s.max_ram)) s ;
-               Option.map (fun s -> ValFlt (Uint64.to_float s.tot_in_bytes)) s ;
-               Option.map (fun s -> ValFlt (Uint64.to_float s.tot_out_bytes)) s ;
-               Option.bind s (fun s ->
-                 if Uint64.(compare s.tot_full_bytes_samples zero) > 0 then
-                   Some (ValFlt (Uint64.to_float s.tot_full_bytes /.
-                                 Uint64.to_float s.tot_full_bytes_samples))
-                 else
-                   None) ;
-               Option.map (fun s -> ValDate s.last_startup) s ;
-               Some (ValInt (List.length worker.parents)) ;
-               Some (ValInt (List.length worker.children)) ;
-               Some (ValInt (Int64.to_int arc_size)) ;
-               Option.map (fun s -> ValDate s) arc_oldest ;
-               Some (ValDuration arc_duration) ;
-               Some (ValStr worker.worker_signature) ;
-               Some (ValStr worker.bin_signature) |] |>
-            print_tbl
-        | _ -> ())) ;
+  start_sync conf ~topics ~while_ (fun clt ->
+    let open RamenSync in
+    Client.iter clt (fun k v ->
+      match k, v.value with
+      | Key.PerSite (site, PerWorker (fq, Worker)),
+        Value.Worker worker ->
+          let get_k k what f =
+            let k = Key.PerSite (site, PerWorker (fq, k)) in
+            match (Client.find clt k).value with
+            | exception Not_found -> None
+            | v ->
+                (match f v with
+                | None -> invalid_sync_type k v what
+                | x -> x) in
+          let s = get_k RuntimeStats "RuntimeStats" (function
+            | Value.RuntimeStats x -> Some x
+            | _ -> None) in
+          let arc_size = get_k NumArcBytes "NumArcBytes" (function
+            | Value.RamenValue T.(VI64 x) -> Some x
+            | _ -> None) |? 0L in
+          let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
+            | Value.TimeRange x -> Some x
+            | _ -> None) |? [] in
+          let arc_oldest = if List.is_empty arc_times then None
+                           else Some (List.hd arc_times |> fst) in
+          let arc_duration = TimeRange.span arc_times in
+          let open Value.RuntimeStats in
+          [| Some (ValStr (site :> string)) ;
+             Some (ValStr (fq :> string)) ;
+             Some (ValBool (worker.Value.Worker.role <> Whole)) ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.tot_in_tuples)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.tot_sel_tuples)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.tot_out_tuples)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.cur_groups)) s ;
+             Option.bind s (fun s -> date_or_na s.last_output) ;
+             Option.bind s (fun s -> date_or_na s.min_etime) ;
+             Option.bind s (fun s -> date_or_na s.max_etime) ;
+             Option.map (fun s -> ValFlt s.tot_cpu) s ;
+             Option.map (fun s -> ValFlt s.tot_wait_in) s ;
+             Option.map (fun s -> ValFlt s.tot_wait_out) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.cur_ram)) s ;
+             Option.map (fun s -> ValInt (Uint64.to_int s.max_ram)) s ;
+             Option.map (fun s -> ValFlt (Uint64.to_float s.tot_in_bytes)) s ;
+             Option.map (fun s -> ValFlt (Uint64.to_float s.tot_out_bytes)) s ;
+             Option.bind s (fun s ->
+               if Uint64.(compare s.tot_full_bytes_samples zero) > 0 then
+                 Some (ValFlt (Uint64.to_float s.tot_full_bytes /.
+                               Uint64.to_float s.tot_full_bytes_samples))
+               else
+                 None) ;
+             Option.map (fun s -> ValDate s.last_startup) s ;
+             Some (ValInt (List.length worker.parents)) ;
+             Some (ValInt (List.length worker.children)) ;
+             Some (ValInt (Int64.to_int arc_size)) ;
+             Option.map (fun s -> ValDate s) arc_oldest ;
+             Some (ValDuration arc_duration) ;
+             Some (ValStr worker.worker_signature) ;
+             Some (ValStr worker.bin_signature) |] |>
+          print_tbl
+      | _ -> ())) ;
   print_tbl [||]
 
 let ps_ profile conf short pretty with_header sort_col top pattern all () =
@@ -1184,144 +1178,143 @@ let tail_sync
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
-  ZMQClient.start conf.C.sync_srv_key conf.C.sync_url conf.C.login
-                  ~topics ~while_ (fun clt ->
-      let open RamenSync in
-      (* Get the workers and their types: *)
-      !logger.debug "Looking for running workers %a on sites %S"
+  start_sync conf ~topics ~while_ (fun clt ->
+    let open RamenSync in
+    (* Get the workers and their types: *)
+    !logger.debug "Looking for running workers %a on sites %S"
+      N.fq_print fq
+      sites ;
+    let workers =
+      Client.fold clt (fun k v lst ->
+        match k, v.value with
+        | PerSite (site, PerWorker (fq', Worker)),
+          Worker worker
+          when worker.role = Whole ->
+            assert (fq = fq') ;
+            (site, worker) :: lst
+        | _ -> lst
+      ) [] in
+    !logger.debug "Found sites: %a"
+      (Enum.print N.site_print) (List.enum workers /@ fst) ;
+    if workers = [] then
+      Printf.sprintf2 "Function %a is not running anywhere"
+        N.fq_print fq |>
+      failwith ;
+    let out_types =
+      (List.enum workers /@ snd |>
+      (* enumerates workers with distinct src_path *)
+      Enum.uniq_by
+        (fun w1 w2 -> N.eq w1.Value.Worker.src_path w2.src_path)) /@
+      function_of_worker clt fq /@
+      (fun (_prog, func) ->
+        O.out_type_of_operation ~with_private:false func.FS.operation,
+        O.event_time_of_operation func.operation) |>
+      Enum.uniq_by
+        (fun (t1, et1) (t2, et2) ->
+          RamenTuple.eq_types t1 t2 &&
+          (not with_event_time && since = None && until = None ||
+           et1 = et2)) |>
+      List.of_enum in
+    if List.length out_types <> 1 then
+      Printf.sprintf2 "Running workers for %a output different types: %a"
         N.fq_print fq
-        sites ;
-      let workers =
-        Client.fold clt (fun k v lst ->
-          match k, v.value with
-          | PerSite (site, PerWorker (fq', Worker)),
-            Worker worker
-            when worker.role = Whole ->
-              assert (fq = fq') ;
-              (site, worker) :: lst
-          | _ -> lst
-        ) [] in
-      !logger.debug "Found sites: %a"
-        (Enum.print N.site_print) (List.enum workers /@ fst) ;
-      if workers = [] then
-        Printf.sprintf2 "Function %a is not running anywhere"
-          N.fq_print fq |>
-        failwith ;
-      let out_types =
-        (List.enum workers /@ snd |>
-        (* enumerates workers with distinct src_path *)
-        Enum.uniq_by
-          (fun w1 w2 -> N.eq w1.Value.Worker.src_path w2.src_path)) /@
-        function_of_worker clt fq /@
-        (fun (_prog, func) ->
-          O.out_type_of_operation ~with_private:false func.FS.operation,
-          O.event_time_of_operation func.operation) |>
-        Enum.uniq_by
-          (fun (t1, et1) (t2, et2) ->
-            RamenTuple.eq_types t1 t2 &&
-            (not with_event_time && since = None && until = None ||
-             et1 = et2)) |>
-        List.of_enum in
-      if List.length out_types <> 1 then
-        Printf.sprintf2 "Running workers for %a output different types: %a"
-          N.fq_print fq
-          (List.print (Tuple2.print RamenTuple.print_typ
-                                    (Option.print EventTime.print)))
-            out_types |>
-        failwith ;
-      let out_type, event_time = List.hd out_types in
-      let out_type =
-        RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-        List.map fst in
-      !logger.debug "Tuple serialized type: %a"
-        RamenTuple.print_typ out_type ;
-      !logger.debug "Nullmask size: %d"
-        (RingBufLib.nullmask_bytes_of_tuple_type out_type) ;
-      (* Prepare to print the tails *)
-      let field_names = RamenExport.check_field_names out_type field_names in
-      let head_idx, head_typ =
-        RamenExport.header_of_type ~with_event_time field_names out_type in
-      let open TermTable in
-      let head_typ = Array.of_list head_typ in
-      let head = head_of_types ~with_units head_typ in
-      let print = print_table ~sep ~pretty ~with_header ~flush head in
-      (* Pick a "printer" for each column according to the field type: *)
-      let formatter = table_formatter pretty raw null
-      in
-      let open RamenSerialization in
-      let event_time_of_tuple = match event_time with
-        | None ->
-            if with_event_time then
-              failwith "Function has no event time information"
-            else (fun _ -> 0., 0.)
-        | Some et ->
-            (* As we might be tailling from several instance of the same
-             * worker, we have already lost track of the params at this point.
-             * Problem solved by removing the event-time notation and type
-             * altogether and use only the conventional start/stop fields. *)
-            let params = [] in
-            event_time_of_tuple out_type params et
-      in
-      let unserialize = RamenSerialization.read_array_of_values out_type in
-      let filter = RamenSerialization.filter_tuple_by out_type where in
-      (* Callback for each tuple: *)
-      let count_last = ref last and count_next = ref next in
-      let on_key counter k v =
-        match k, v with
-        | Key.Tails (_site, _fq, LastTuple _seq),
-          Value.Tuple { skipped ; values } ->
-            if skipped > 0 then
-              !logger.warning "Skipped %d tuples" skipped ;
-            let tx = RingBuf.tx_of_bytes values in
-            (match unserialize tx 0 with
-            | exception RingBuf.Damaged ->
-                !logger.error "Cannot unserialize tail tuple: %a"
-                  (hex_print ~from_rb:false ?num_cols:None) values
-            | tuple when filter tuple ->
-                let t1, t2 = event_time_of_tuple tuple in
-                if Option.map_default (fun since -> t2 > since) true since &&
-                   Option.map_default (fun until -> t1 <= until) true until
-                then (
-                  let cols =
-                    Array.mapi (fun i idx ->
-                      match idx with
-                      | -2 -> Some (ValDate t2)
-                      | -1 -> Some (ValDate t1)
-                      | idx -> formatter head_typ.(i).units tuple.(idx)
-                    ) head_idx in
-                  print cols ;
-                  decr counter
-                ) else
-                  !logger.debug "evtime %f..%f filtered out" t1 t2
-            | _ -> ())
-        | _ -> () in
-      (* Iter over tuples received at sync: *)
-      Client.iter clt (fun k hv -> on_key count_last k hv.value) ;
-      (* Subscribe to all those tails: *)
-      !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
-      let subscriber =
-        conf.C.login ^"-tail-"^ string_of_int (Unix.getpid ()) in
-      List.iter (fun (site, _w) ->
-        let k = Key.Tails (site, fq, Subscriber subscriber) in
-        let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
-        ZMQClient.send_cmd clt ~while_ cmd
-      ) workers ;
-      (* Loop *)
-      !logger.debug "Waiting for tuples..." ;
-      let while_' () =
-        while_ () && (!count_last > 0 || !count_next > 0) in
-      clt.Client.on_new <-
-        fun _ k v _ _ _ _ -> on_key count_next k v ;
-      let msg_count = ZMQClient.process_in ~while_:while_' clt in
-      !logger.debug "Processed %d messages" msg_count ;
-      print [||] ;
-      (* Unsubscribe *)
-      !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
-      List.iter (fun (site, _w) ->
-        let k = Key.Tails (site, fq, Subscriber subscriber) in
-        let cmd = Client.CltMsg.DelKey k in
-        ZMQClient.send_cmd clt ~while_ cmd
-      ) workers)
+        (List.print (Tuple2.print RamenTuple.print_typ
+                                  (Option.print EventTime.print)))
+          out_types |>
+      failwith ;
+    let out_type, event_time = List.hd out_types in
+    let out_type =
+      RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
+      List.map fst in
+    !logger.debug "Tuple serialized type: %a"
+      RamenTuple.print_typ out_type ;
+    !logger.debug "Nullmask size: %d"
+      (RingBufLib.nullmask_bytes_of_tuple_type out_type) ;
+    (* Prepare to print the tails *)
+    let field_names = RamenExport.check_field_names out_type field_names in
+    let head_idx, head_typ =
+      RamenExport.header_of_type ~with_event_time field_names out_type in
+    let open TermTable in
+    let head_typ = Array.of_list head_typ in
+    let head = head_of_types ~with_units head_typ in
+    let print = print_table ~sep ~pretty ~with_header ~flush head in
+    (* Pick a "printer" for each column according to the field type: *)
+    let formatter = table_formatter pretty raw null
+    in
+    let open RamenSerialization in
+    let event_time_of_tuple = match event_time with
+      | None ->
+          if with_event_time then
+            failwith "Function has no event time information"
+          else (fun _ -> 0., 0.)
+      | Some et ->
+          (* As we might be tailling from several instance of the same
+           * worker, we have already lost track of the params at this point.
+           * Problem solved by removing the event-time notation and type
+           * altogether and use only the conventional start/stop fields. *)
+          let params = [] in
+          event_time_of_tuple out_type params et
+    in
+    let unserialize = RamenSerialization.read_array_of_values out_type in
+    let filter = RamenSerialization.filter_tuple_by out_type where in
+    (* Callback for each tuple: *)
+    let count_last = ref last and count_next = ref next in
+    let on_key counter k v =
+      match k, v with
+      | Key.Tails (_site, _fq, LastTuple _seq),
+        Value.Tuple { skipped ; values } ->
+          if skipped > 0 then
+            !logger.warning "Skipped %d tuples" skipped ;
+          let tx = RingBuf.tx_of_bytes values in
+          (match unserialize tx 0 with
+          | exception RingBuf.Damaged ->
+              !logger.error "Cannot unserialize tail tuple: %a"
+                (hex_print ~from_rb:false ?num_cols:None) values
+          | tuple when filter tuple ->
+              let t1, t2 = event_time_of_tuple tuple in
+              if Option.map_default (fun since -> t2 > since) true since &&
+                 Option.map_default (fun until -> t1 <= until) true until
+              then (
+                let cols =
+                  Array.mapi (fun i idx ->
+                    match idx with
+                    | -2 -> Some (ValDate t2)
+                    | -1 -> Some (ValDate t1)
+                    | idx -> formatter head_typ.(i).units tuple.(idx)
+                  ) head_idx in
+                print cols ;
+                decr counter
+              ) else
+                !logger.debug "evtime %f..%f filtered out" t1 t2
+          | _ -> ())
+      | _ -> () in
+    (* Iter over tuples received at sync: *)
+    Client.iter clt (fun k hv -> on_key count_last k hv.value) ;
+    (* Subscribe to all those tails: *)
+    !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
+    let subscriber =
+      conf.C.username ^"-tail-"^ string_of_int (Unix.getpid ()) in
+    List.iter (fun (site, _w) ->
+      let k = Key.Tails (site, fq, Subscriber subscriber) in
+      let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
+      ZMQClient.send_cmd clt ~while_ cmd
+    ) workers ;
+    (* Loop *)
+    !logger.debug "Waiting for tuples..." ;
+    let while_' () =
+      while_ () && (!count_last > 0 || !count_next > 0) in
+    clt.Client.on_new <-
+      fun _ k v _ _ _ _ -> on_key count_next k v ;
+    let msg_count = ZMQClient.process_in ~while_:while_' clt in
+    !logger.debug "Processed %d messages" msg_count ;
+    print [||] ;
+    (* Unsubscribe *)
+    !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
+    List.iter (fun (site, _w) ->
+      let k = Key.Tails (site, fq, Subscriber subscriber) in
+      let cmd = Client.CltMsg.DelKey k in
+      ZMQClient.send_cmd clt ~while_ cmd
+    ) workers)
 
 let purge_transient conf to_purge () =
   if to_purge <> [] then
@@ -1386,8 +1379,7 @@ let replay_ conf fq field_names with_header with_units sep null raw
                              ~with_event_time callback
   else
     let topics = RamenExport.replay_topics in
-    ZMQClient.start
-      conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics ~while_
+    start_sync conf ~topics ~while_
       (RamenExport.replay_sync conf ~while_ fq field_names where since until
                                ~with_event_time callback)
 
@@ -1432,8 +1424,7 @@ let timeseries_ conf fq data_fields
           ~consolidation ~bucket_time fq data_fields
     else
       let topics = RamenExport.replay_topics in
-      ZMQClient.start
-        conf.C.sync_srv_key conf.C.sync_url conf.C.login ~topics ~while_
+      start_sync conf ~topics ~while_
         (RamenTimeseries.get_sync conf num_points since until where factors
           ~consolidation ~bucket_time fq data_fields ~while_)
   in

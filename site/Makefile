@@ -42,7 +42,13 @@ MANPAGES = \
 	man/tail.html \
 	man/test.html \
 	man/timeseries.html \
-	man/variants.html
+	man/variants.html \
+	man/confserver.html \
+	man/compserver.html \
+	man/choreographer.html \
+	man/useradd.html \
+	man/userdel.html \
+	man/usermod.html
 
 IMAGES = \
 	tutorials/grafana.jpeg \
@@ -82,6 +88,31 @@ man/supervisor.groff: ../src/ramen
 man/variants.groff: ../src/ramen
 	@echo 'Extracting $@'
 	@../src/ramen variants --help=groff > $@
+
+man/confserver.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen confserver --help=groff > $@
+
+man/compserver.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen compserver --help=groff > $@
+
+man/choreographer.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen choreographer --help=groff > $@
+
+man/useradd.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen useradd --help=groff > $@
+
+man/userdel.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen userdel --help=groff > $@
+
+man/usermod.groff: ../src/ramen
+	@echo 'Extracting $@'
+	@../src/ramen usermod --help=groff > $@
+
 
 man/test.groff: ../src/ramen
 	@echo 'Extracting $@'

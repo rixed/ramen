@@ -362,10 +362,10 @@ let init_connect clt ?while_ url on_progress =
   with e ->
     on_progress clt Stage.Conn Status.(InitFail (Printexc.to_string e))
 
-let init_auth ?while_ clt login on_progress =
+let init_auth ?while_ clt uid on_progress =
   on_progress clt Stage.Auth Status.InitStart ;
   try
-    send_cmd ?while_ clt (CltMsg.Auth login) ;
+    send_cmd ?while_ clt (CltMsg.Auth uid) ;
     match retry_zmq ?while_ recv_cmd clt with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg clt msg ;
@@ -435,8 +435,8 @@ let init_sync ?while_ clt topics on_progress =
       done
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
-let start ?while_ srv_pub_key url creds ?(topics=[])
-          ?(on_progress=default_on_progress)
+let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
+          ?(topics=[]) ?(on_progress=default_on_progress)
           ?(on_sock=ignore1) ?(on_synced=ignore1)
           ?(on_new=ignore7) ?(on_set=ignore5) ?(on_del=ignore3)
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
@@ -453,7 +453,7 @@ let start ?while_ srv_pub_key url creds ?(topics=[])
       and on_lock = check_lock_cbs on_lock
       and on_unlock = check_unlock_cbs on_unlock in
       let clt =
-        Client.make ~my_uid:creds ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+        Client.make ~my_uid:username ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
       let zock = Zmq.Socket.(create ctx dealer) in
       zock_clt := Some (zock, clt) ;
       finally
@@ -461,13 +461,8 @@ let start ?while_ srv_pub_key url creds ?(topics=[])
         (fun () ->
           if srv_pub_key <> "" then (
             Zmq.Socket.set_curve_serverkey zock srv_pub_key ;
-            (* TODO: got those from somewhere: *)
-            let secret_key_test =
-              "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
-            and public_key_test =
-              "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID" in
-            Zmq.Socket.set_curve_secretkey zock secret_key_test ;
-            Zmq.Socket.set_curve_publickey zock public_key_test) ;
+            Zmq.Socket.set_curve_secretkey zock clt_priv_key ;
+            Zmq.Socket.set_curve_publickey zock clt_pub_key) ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:
@@ -485,7 +480,7 @@ let start ?while_ srv_pub_key url creds ?(topics=[])
           log_exceptions ~what:"init_connect"
             (fun () -> init_connect clt ?while_ url on_progress) ;
           log_exceptions ~what:"init_auth"
-            (fun () -> init_auth ?while_ clt creds on_progress) ;
+            (fun () -> init_auth ?while_ clt username on_progress) ;
           log_exceptions ~what:"init_sync"
             (fun () -> init_sync ?while_ clt topics on_progress) ;
           on_synced () ;

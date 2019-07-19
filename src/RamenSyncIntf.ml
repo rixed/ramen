@@ -76,26 +76,26 @@ open RamenHelpers
  * Do not mix print, which is for human friendly display (mostly in logs
  * and error messages) and to_string/of_string, which is for serialization! *)
 
-module type CAPACITY =
-sig
-  type t
-  val print : 'a BatIO.output -> t -> unit
-
-  val anybody : t
-  val nobody : t
-
-  val equal : t -> t -> bool
-end
-
 module type USER =
 sig
-  module Capa : CAPACITY
+  type id (* Something we can hash, compare, etc... *)
+
+  (* The only roles we need are:
+   * - internal (for the confserver and other ramen daemons),
+   * - admin (who configure ramen),
+   * - user (who manipulate data),
+   * - specific (being a specific user), which is automatically granted at login,
+   * - TODO: horizontal and vertical data access permission. *)
+  module Role : sig
+    type t = Ramen | Admin | User | Specific of id
+    val print : 'a BatIO.output -> t -> unit
+    val equal : t -> t -> bool
+  end
 
   type t
   val print : 'a BatIO.output -> t -> unit
   val equal : t -> t -> bool
 
-  (* The conf server itself: *)
   val internal : t
 
   (* Users can be connected via various "sockets", with a selection different
@@ -105,25 +105,18 @@ sig
   val print_socket : 'a BatIO.output -> socket -> unit
   val socket_of_string : string -> socket
 
-  (* Whatever the user has to transmit to authenticate, such as a TLS
-   * certificate for instance: *)
-  module PubCredentials :
-  sig
-    type t
-    val print : 'a BatIO.output -> t -> unit
-  end
-
   (* Promote the user based on some creds: *)
-  val authenticate : t -> PubCredentials.t -> socket -> t
-  val authenticated : t -> bool
+  type pub_key
+  val print_pub_key : 'a BatIO.output -> pub_key -> unit
+  type db (* Whatever that is *)
+  val authenticate : db -> t -> id -> pub_key -> socket -> t
+  val is_authenticated : t -> bool
 
-  type id (* Something we can hash, compare, etc... *)
   val print_id : 'a BatIO.output -> id -> unit
-
   val id : t -> id
-  val has_capa : Capa.t -> t -> bool
 
-  val only_me : t -> Capa.t
+  val has_role : Role.t -> t -> bool
+  val has_any_role : Role.t Set.t -> t -> bool
 end
 
 module type KEY =
@@ -180,12 +173,13 @@ struct
   module CltMsg =
   struct
     type cmd =
-      | Auth of Key.User.PubCredentials.t
+      | Auth of Key.User.id
       | StartSync of Selector.t
       (* Set or create unlocked: *)
       | SetKey of Key.t * Value.t
       (* Create and lock, or fail if already exist.
-       * Capa will be set by the callback on server side.
+       * Permissions will be set by the callback on server side based on
+       * the key.
        * Notice that Set works also when the key is new. So NewKey is really
        * just an O_CREAT|O_EXCL SetKey while SetKey is O_CREAT.*)
       | NewKey of Key.t * Value.t * float (* TODO: and the r/w permissions *)
@@ -220,9 +214,9 @@ struct
         Printf.fprintf oc "%s (%a, %a, %a)"
           n Key.print k Value.print v print_as_duration d in
       match cmd with
-      | Auth creds ->
+      | Auth uid ->
           Printf.fprintf oc "Auth %a"
-            Key.User.PubCredentials.print creds
+            Key.User.print_id uid
       | StartSync sel ->
           Printf.fprintf oc "StartSync %a"
             Selector.print sel

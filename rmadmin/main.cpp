@@ -15,9 +15,15 @@ extern "C" {
 #include <QtWidgets>
 #include <QMetaType>
 #include <QDesktopWidget>
+#include <QFile>
+#include <QCommandLineParser>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
 #include "conf.h"
+#include "UserIdentity.h"
+extern "C" {
+# include "../src/config.h"
+}
 
 RmAdminWin *w = nullptr;
 
@@ -58,13 +64,6 @@ extern "C" {
     CAMLreturn(Val_int(quit ? 1:0));
   }
 
-  value set_my_uid(value uid_)
-  {
-    CAMLparam1(uid_);
-    conf::my_uid = QString(String_val(uid_));
-    CAMLreturn(Val_unit);
-  }
-
   value set_my_errors(value key_)
   {
     CAMLparam1(key_);
@@ -75,18 +74,77 @@ extern "C" {
   }
 }
 
+static void call_for_new_frame(QString const srvUrl, UserIdentity const *id)
+{
+  CAMLparam0();
+  CAMLlocal5(srv_url_, username_,
+             srv_pub_key_, clt_pub_key_, clt_priv_key_);
+  srv_url_ = caml_copy_string(srvUrl.toStdString().c_str());
+#   define GET(val, var) \
+    val = caml_copy_string(id->var.toStdString().c_str());
+  GET(username_, username);
+  GET(srv_pub_key_, srv_pub_key);
+  GET(clt_pub_key_, clt_pub_key);
+  GET(clt_priv_key_, clt_priv_key);
+  value args[5] { srv_url_, username_, srv_pub_key_, clt_pub_key_, clt_priv_key_ };
+  value *start_sync = caml_named_value("start_sync");
+  caml_callbackN(*start_sync, 5, args);
+  CAMLreturn0;
+}
+
 // The only thread that will ever call OCaml runtime:
-static void do_sync_thread(char *argv[])
+static void do_sync_thread(QString const srvUrl, UserIdentity const *id, char *argv[])
 {
   caml_startup(argv);
-  value *start_sync = caml_named_value("start_sync");
-  caml_callback(*start_sync, Val_unit);
+  call_for_new_frame(srvUrl, id);
 }
 
 int main(int argc, char *argv[])
 {
-  QApplication a(argc, argv);
+  QApplication app(argc, argv);
   QCoreApplication::setApplicationName("RamenAdmin");
+  QCoreApplication::setApplicationVersion(PACKAGE_VERSION);
+
+  QCommandLineParser parser;
+  parser.setApplicationDescription("Test helper");
+  parser.addHelpOption();
+  parser.addVersionOption();
+  /* The URL to connect to the server: */
+  parser.addPositionalArgument("address", QCoreApplication::translate("main",
+    "Address of the configuration server, as a host name or an IP, "
+    "optionally followed by a colon and a port number."));
+  /* Where is the config file storing out identity? */
+  QCommandLineOption identityFileOption(
+    QStringList() <<"i" << "identity",
+    QCoreApplication::translate("main", "Location of the file storing user's identity"),
+    QCoreApplication::translate("main", "file"));
+  parser.addOption(identityFileOption);
+
+  parser.process(app);
+
+  QString srvUrl(parser.positionalArguments()[0]);
+  if (srvUrl.length() == 0) srvUrl = QString("localhost");
+
+  QString defaultIdentityFileName =
+    getenv("HOME") ?
+      QString(getenv("HOME")) + QString("/.config/rmadmin/identity") :
+      QString("/etc/rmadmin/identity");
+  QFile identityFile =
+    parser.isSet(identityFileOption) ?
+      parser.value(identityFileOption) :
+      QFile(defaultIdentityFileName) ;
+  if (! identityFile.exists()) {
+    std::cout
+      << "File " << identityFile.fileName().toStdString()
+      << " does not exist.\n"
+         "Ask Ramen administrator to create a user and then to (securely) send you the "
+         "identity file.\n"
+         "This should be a short JSON file." << std::endl;
+    exit(1);
+  }
+  UserIdentity *userIdentity = new UserIdentity(identityFile);
+  if (! userIdentity->isValid) exit(1);
+
   qRegisterMetaType<conf::Key>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();
   qRegisterMetaType<conf::Error>();
@@ -99,11 +157,11 @@ int main(int argc, char *argv[])
   w = new RmAdminWin(with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
 
-  thread sync_thread(do_sync_thread, argv);
+  thread sync_thread(do_sync_thread, srvUrl, userIdentity, argv);
 
   w->show();
 
-  int ret = a.exec();
+  int ret = app.exec();
   quit = true;
 
   cout << "Joining with start_sync thread..." << endl;
