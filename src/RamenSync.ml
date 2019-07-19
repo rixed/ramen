@@ -136,29 +136,34 @@ struct
           | username when username.[0] = '_' ->
               Ramen username
           | username ->
-              (match Db.lookup conf username with
-              | exception Not_found ->
-                  failwith "No such user"
-              | registered_user ->
-                  (* Check user is who he pretends to be: *)
-                  if clt_pub_key = "" then (
-                    !logger.warning "No public key set for user %s \
-                                     (not an encrypted channel)" username
-                    (* We assume the insecure sockets, if any,  are
-                     * listening only on the loopback interface. *)
-                  ) else if clt_pub_key <> registered_user.Db.clt_pub_key then (
-                    !logger.warning "Public keys mismatch for user %s: \
-                                     received %S but DB has %S"
-                      username
-                      clt_pub_key
-                      registered_user.Db.clt_pub_key ;
-                    failwith "public keys do not match"
-                  ) ;
-                  Auth {
-                    name = username ;
-                    roles =
-                      Role.Specific username :: registered_user.Db.roles |>
-                      Set.of_list }) in
+              let roles =
+                match Db.lookup conf username with
+                | exception Not_found ->
+                    (* User registration on insecure sockets is not mandatory,
+                     * and give access to the normal user role: *)
+                    if clt_pub_key = "" then (
+                      [ Role.User ]
+                    ) else
+                      failwith "No such user"
+                | registered_user ->
+                    (* Check user is who he pretends to be: *)
+                    if clt_pub_key = "" then (
+                      !logger.warning "No public key set for user %s \
+                                       (not an encrypted channel)" username
+                      (* We assume the insecure sockets, if any,  are
+                       * listening only on the loopback interface. *)
+                    ) else if clt_pub_key <> registered_user.Db.clt_pub_key then (
+                      !logger.warning "Public keys mismatch for user %s: \
+                                       received %S but DB has %S"
+                        username
+                        clt_pub_key
+                        registered_user.Db.clt_pub_key ;
+                      failwith "public keys do not match"
+                    ) ;
+                    registered_user.Db.roles in
+              let roles = Role.Specific username :: roles |>
+                          Set.of_list in
+              Auth { name = username ; roles } in
         Hashtbl.replace socket_to_user socket u ;
         u
 

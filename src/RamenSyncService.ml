@@ -188,26 +188,20 @@ let zock_step srv zock zock_idx =
             let u = User.of_socket socket in
             let m = CltMsg.of_string msg in
             let clt_pub_key =
-              try Zmq.Socket.get_curve_publickey zock
-              with e1 ->
-                (match Zmq.Socket.get_mechanism zock with
-                | exception e2 ->
-                    if is_ramen u then (
-                      !logger.error
-                        "Cannot get client public key for user %a: %s, then %s"
-                        User.print u
-                        (Printexc.to_string e1)
-                        (Printexc.to_string e2) ;
-                      ""
-                    ) else (
-                      print_exception ~what:"getting public key" e1 ;
-                      print_exception ~what:"getting auth mechanism" e2 ;
-                      failwith "cannot get public key")
-                | `Null | `Plain ->
-                    (if is_ramen u then !logger.debug else !logger.info)
-                      "Cannot check client public key on an insecure channel" ;
-                    ""
-                | `Curve ->
+              match Zmq.Socket.get_mechanism zock with
+              | `Null | `Plain ->
+                  (if is_ramen u then !logger.debug else !logger.info)
+                    "Cannot check client public key on an insecure channel" ;
+                  ""
+              | `Curve ->
+                  (try
+                    (* Check that it's not empty as it means unsecure for
+                     * authenticate! *)
+                    let s = Zmq.Socket.get_curve_publickey zock in
+                    if s = "" then failwith "invalid public key" ;
+                    s
+                  with e ->
+                    print_exception ~what:"Getting public key" e ;
                     failwith "Cannot get client public key") in
             Server.process_msg srv socket u clt_pub_key m ;
             (* Special case: we automatically, and silently, prune old

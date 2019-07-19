@@ -13,12 +13,6 @@ Feature: It is possible to compile a program via the confserver
     And ramen confserver --insecure 29341 is started
     And ramen compserver --confserver localhost:29341 is started
     And the environment variable USER is set to TESTER
-    And a file ramen_dir/users/TESTER with content
-      """
-      {
-        roles = [ User ]; clt_pub_key = ""
-      }
-      """
 
   Scenario: Local file can be compiled via confserver
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen
