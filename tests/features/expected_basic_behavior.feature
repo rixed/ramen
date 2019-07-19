@@ -25,17 +25,23 @@ Feature: The Ramen cli behaves according to common expectations.
     And ramen must exit with status 0
 
     Examples:
-      | subcommand |
-      | supervisor |
-      | alerter    |
-      | notify     |
-      | compile    |
-      | run        |
-      | kill       |
-      | ps         |
-      | tail       |
-      | timeseries |
-      | httpd      |
-      | gc         |
-      | links      |
-      | archivist  |
+      | subcommand    |
+      | supervisor    |
+      | alerter       |
+      | notify        |
+      | compile       |
+      | run           |
+      | kill          |
+      | ps            |
+      | tail          |
+      | timeseries    |
+      | httpd         |
+      | gc            |
+      | links         |
+      | archivist     |
+      | confserver    |
+      | compserver    |
+      | choreographer |
+      | useradd       |
+      | userdel       |
+      | usermod       |
