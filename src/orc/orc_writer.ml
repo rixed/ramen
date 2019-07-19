@@ -54,7 +54,7 @@ let main =
         offs_var str_var
         (List.print char_print_quoted) fins str_var offs_var
         offs_var offs_var in
-      CodeGen_OCaml.emit_value_of_string 2 rtyp "str" "0" emit_is_null [] oc ;
+      CodeGen_OCaml.emit_value_of_string 2 rtyp "str" "0" emit_is_null [] true oc ;
       p "  )" ;
       p "" ;
       p "let string_of_value v =" ;

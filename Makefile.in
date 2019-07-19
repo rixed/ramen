@@ -353,6 +353,7 @@ ORCWRITER_SOURCES = \
 	src/RamenName.ml \
 	src/RamenConsts.ml \
 	src/RamenHelpers.ml \
+	src/RamenTimeRange.ml \
 	src/Globs.ml \
 	src/RamenChannel.mli \
 	src/RamenChannel.ml \
