@@ -101,7 +101,9 @@ struct
     Map.enum subscriber_sockets //@
     (fun (socket, user) ->
       if is_permitted user then Some socket else (
-        !logger.debug "User %a has no capa" User.print user ;
+        !logger.debug "User %a has no permission to %a"
+          User.print user
+          Key.print k ;
         None
       )) |>
     t.send_msg m
@@ -348,7 +350,7 @@ struct
 
   let process_msg t socket u clt_pub_key (i, cmd as msg) =
     try
-      !logger.debug "Received msg %a from %a with public key %a"
+      !logger.debug "Received msg %a from %a with public key '%a'"
         CltMsg.print msg
         User.print u
         User.print_pub_key clt_pub_key ;
