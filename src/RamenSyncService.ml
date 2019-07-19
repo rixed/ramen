@@ -156,6 +156,10 @@ end
 
 let last_tuples = Hashtbl.create 50
 
+let is_ramen = function
+  | User.Internal | User.Ramen _ -> true
+  | User.Anonymous | User.Auth _ -> false
+
 (* Process a single input message *)
 let zock_step srv zock zock_idx =
   let peel_multipart msg =
@@ -183,7 +187,28 @@ let zock_step srv zock zock_idx =
           log_and_ignore_exceptions (fun () ->
             let u = User.of_socket socket in
             let m = CltMsg.of_string msg in
-            let clt_pub_key = Zmq.Socket.get_curve_publickey zock in
+            let clt_pub_key =
+              try Zmq.Socket.get_curve_publickey zock
+              with e1 ->
+                (match Zmq.Socket.get_mechanism zock with
+                | exception e2 ->
+                    if is_ramen u then (
+                      !logger.error
+                        "Cannot get client public key for user %a: %s, then %s"
+                        User.print u
+                        (Printexc.to_string e1)
+                        (Printexc.to_string e2) ;
+                      ""
+                    ) else (
+                      print_exception ~what:"getting public key" e1 ;
+                      print_exception ~what:"getting auth mechanism" e2 ;
+                      failwith "cannot get public key")
+                | `Null | `Plain ->
+                    (if is_ramen u then !logger.debug else !logger.info)
+                      "Cannot check client public key on an insecure channel" ;
+                    ""
+                | `Curve ->
+                    failwith "Cannot get client public key") in
             Server.process_msg srv socket u clt_pub_key m ;
             (* Special case: we automatically, and silently, prune old
              * entries under "lasts/" directories (only after a new entry has

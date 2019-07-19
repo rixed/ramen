@@ -144,6 +144,7 @@ int main(int argc, char *argv[])
   }
   UserIdentity *userIdentity = new UserIdentity(identityFile);
   if (! userIdentity->isValid) exit(1);
+  conf::my_uid = userIdentity->username; // TODO: clean this
 
   qRegisterMetaType<conf::Key>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();

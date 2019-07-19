@@ -25,7 +25,8 @@ let add conf output_file username roles srv_pub_key () =
    * to connect to confserver, but it must be written in the user identity
    * file: *)
   if srv_pub_key = "" then
-    failwith "The server public key is required to create a user." ;
+    !logger.warning "Without the server public key this user will only be \
+                    allowed in insecure connections." ;
   let clt_pub_key, clt_priv_key = Zmq.Curve.keypair () in
   User.Db.make_user conf username roles clt_pub_key ;
   (fun f ->

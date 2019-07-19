@@ -81,13 +81,12 @@ sig
   type id (* Something we can hash, compare, etc... *)
 
   (* The only roles we need are:
-   * - internal (for the confserver and other ramen daemons),
    * - admin (who configure ramen),
    * - user (who manipulate data),
    * - specific (being a specific user), which is automatically granted at login,
    * - TODO: horizontal and vertical data access permission. *)
   module Role : sig
-    type t = Ramen | Admin | User | Specific of id
+    type t = Admin | User | Specific of id
     val print : 'a BatIO.output -> t -> unit
     val equal : t -> t -> bool
   end

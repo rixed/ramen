@@ -27,11 +27,13 @@ struct
 
   module Role =
   struct
-    type t = Ramen | Admin | User | Specific of id
+    type t =
+      | Admin (* The role of administrating ramen *)
+      | User  (* The role of manipulating the data *)
+      | Specific of id  (* The "role" of being someone in particular *)
       [@@ppp PPP_OCaml]
 
     let print oc = function
-      | Ramen -> String.print oc "ramen"
       | Admin -> String.print oc "admin"
       | User -> String.print oc "user"
       | Specific uid -> Printf.fprintf oc "%a" print_id uid
@@ -43,6 +45,7 @@ struct
     (* Internal implies no authn at all, only for when the messages do not go
      * through ZMQ: *)
     | Internal
+    | Ramen of string  (* A ramen daemon, assumes all roles *)
     | Auth of { name : string ; roles : Role.t Set.t }
     | Anonymous
 
@@ -98,7 +101,7 @@ struct
   end
 
   let is_authenticated = function
-    | Auth _ | Internal -> true
+    | Auth _ | Internal | Ramen _ -> true
     | Anonymous -> false
 
   type socket = int (* ZMQ socket index *) * string (* ZMQ peer *)
@@ -122,16 +125,16 @@ struct
 
   let authenticate conf u username clt_pub_key socket =
     match u with
-    | Auth _ | Internal as u -> u (* do reauth? *)
+    | Auth _ | Internal | Ramen _ as u -> u (* do reauth? *)
     | Anonymous ->
-        let name, roles =
+        let u =
           match username with
           | "_internal" | "_anonymous" ->
               failwith "Reserved usernames"
           | "" ->
               failwith "Bad credentials"
           | username when username.[0] = '_' ->
-              username, Role.[ Ramen ]
+              Ramen username
           | username ->
               (match Db.lookup conf username with
               | exception Not_found ->
@@ -151,10 +154,11 @@ struct
                       registered_user.Db.clt_pub_key ;
                     failwith "public keys do not match"
                   ) ;
-                  username, registered_user.Db.roles) in
-        let roles = Role.Specific name :: roles in
-        let roles = Set.of_list roles in
-        let u = Auth { name ; roles } in
+                  Auth {
+                    name = username ;
+                    roles =
+                      Role.Specific username :: registered_user.Db.roles |>
+                      Set.of_list }) in
         Hashtbl.replace socket_to_user socket u ;
         u
 
@@ -162,24 +166,31 @@ struct
     try Hashtbl.find socket_to_user socket
     with Not_found -> Anonymous
 
-  let print fmt = function
-    | Internal -> String.print fmt "_internal"
-    | Auth { name ; _ } -> Printf.fprintf fmt "%s" name
-    | Anonymous -> Printf.fprintf fmt "anonymous"
+  let print oc = function
+    | Internal -> String.print oc "_internal"
+    | Ramen name -> String.print oc name
+    | Auth { name ; _ } -> Printf.fprintf oc "%s" name
+    | Anonymous -> Printf.fprintf oc "anonymous"
 
   (* Anonymous users could subscribe to some stuff... *)
   let id = function
     | Internal -> "_internal"
+    | Ramen name ->
+        if name = "" || name.[0] <> '_' then
+          !logger.error
+            "User authenticated as a ramen process has a civilian name %S"
+              name ;
+        name
     | Anonymous -> "_anonymous"
     | Auth { name ; _ } -> name
 
   let has_role r = function
-    | Internal -> true
+    | Internal | Ramen _ -> true
     | Auth { roles ; _ } -> Set.mem r roles
     | Anonymous -> false
 
   let has_any_role rs = function
-    | Internal -> true
+    | Internal | Ramen _ -> true
     | Auth { roles ; _ } -> not (Set.disjoint roles rs )
     | Anonymous -> false
 end
@@ -383,7 +394,7 @@ struct
   let user_errs user socket =
     match user with
     | User.Internal -> DevNull
-    | User.Auth _ -> Error (Some socket)
+    | User.Ramen _ | User.Auth _ -> Error (Some socket)
     | User.Anonymous -> DevNull
 
   let hash = Hashtbl.hash
