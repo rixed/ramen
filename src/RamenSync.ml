@@ -290,13 +290,13 @@ struct
     | RecallCost
     | RetentionsOverride of Globs.t
 
-  let print_per_service_key fmt k =
-    String.print fmt (match k with
+  let print_per_service_key oc k =
+    String.print oc (match k with
       | Host -> "host"
       | Port -> "port")
 
-  let print_per_instance fmt k =
-    String.print fmt (match k with
+  let print_per_instance oc k =
+    String.print oc (match k with
     | StateFile -> "state_file"
     | OutRefFile -> "outref"
     | InputRingFiles -> "input_ringbufs"
@@ -309,8 +309,8 @@ struct
     | SuccessiveFailures -> "successive_failures"
     | QuarantineUntil -> "quarantine_until")
 
-  let print_per_worker_key fmt k =
-    String.print fmt (match k with
+  let print_per_worker_key oc k =
+    String.print oc (match k with
       | FirstStartupTime -> "startup_time/first"
       | LastStartupTime -> "startup_time/last"
       | MinETime -> "event_time/min"
@@ -332,62 +332,62 @@ struct
       | PerReplayer id ->
           Printf.sprintf2 "replayers/%d" id)
 
-  let print_per_site_key fmt = function
+  let print_per_site_key oc = function
     | IsMaster ->
-        String.print fmt "is_master"
+        String.print oc "is_master"
     | PerService (service, per_service_key) ->
-        Printf.fprintf fmt "services/%a/%a"
+        Printf.fprintf oc "services/%a/%a"
           N.service_print service
           print_per_service_key per_service_key
     | PerWorker (fq, per_worker_key) ->
-        Printf.fprintf fmt "workers/%a/%a"
+        Printf.fprintf oc "workers/%a/%a"
           N.fq_print fq
           print_per_worker_key per_worker_key
 
-  let print_storage_key fmt = function
+  let print_storage_key oc = function
     | TotalSize ->
-        String.print fmt "total_size"
+        String.print oc "total_size"
     | RecallCost ->
-        String.print fmt "recall_cost"
+        String.print oc "recall_cost"
     | RetentionsOverride glob ->
         (* No need to quote the glob as it's in leaf position: *)
-        Printf.fprintf fmt "retention_override/%a"
+        Printf.fprintf oc "retention_override/%a"
           Globs.print glob
 
-  let print_tail_key fmt = function
+  let print_tail_key oc = function
     | Subscriber uid ->
-        Printf.fprintf fmt "users/%s" uid
+        Printf.fprintf oc "users/%s" uid
     | LastTuple i ->
-        Printf.fprintf fmt "lasts/%d" i
+        Printf.fprintf oc "lasts/%d" i
 
-  let print fmt = function
+  let print oc = function
     | DevNull ->
-        String.print fmt "devnull"
+        String.print oc "devnull"
     | Sources (p, ext) ->
-        Printf.fprintf fmt "sources/%a/%s"
+        Printf.fprintf oc "sources/%a/%s"
           N.path_print p
           ext
     | TargetConfig ->
-        String.print fmt "target_config"
+        String.print oc "target_config"
     | PerSite (site, per_site_key) ->
-        Printf.fprintf fmt "sites/%a/%a"
+        Printf.fprintf oc "sites/%a/%a"
           N.site_print site
           print_per_site_key per_site_key
     | Storage storage_key ->
-        Printf.fprintf fmt "storage/%a"
+        Printf.fprintf oc "storage/%a"
           print_storage_key storage_key
     | Tails (site, fq, tail_key) ->
-        Printf.fprintf fmt "tails/%a/%a/%a"
+        Printf.fprintf oc "tails/%a/%a/%a"
           N.site_print site
           N.fq_print fq
           print_tail_key tail_key
     | Replays chan ->
-        Printf.fprintf fmt "replays/%a"
+        Printf.fprintf oc "replays/%a"
           Channel.print chan
     | Error None ->
-        Printf.fprintf fmt "errors/global"
+        Printf.fprintf oc "errors/global"
     | Error (Some s) ->
-        Printf.fprintf fmt "errors/sockets/%a" User.print_socket s
+        Printf.fprintf oc "errors/sockets/%a" User.print_socket s
 
   (* Special key for error reporting: *)
   let global_errs = Error None

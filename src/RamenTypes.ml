@@ -151,6 +151,7 @@ type value =
   | VTuple of value array
   | VVec of value array (* All values must have the same type *)
   | VList of value array (* All values must have the same type *)
+  (* FIXME: in theory the labels are not needed here: *)
   | VRecord of (string * value) array
   [@@ppp PPP_OCaml]
 

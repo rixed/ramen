@@ -346,18 +346,18 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
-  let process_msg t socket u pub_key (i, cmd as msg) =
+  let process_msg t socket u clt_pub_key (i, cmd as msg) =
     try
       !logger.debug "Received msg %a from %a with public key %a"
         CltMsg.print msg
         User.print u
-        User.print_pub_key pub_key ;
+        User.print_pub_key clt_pub_key ;
       (match cmd with
       | CltMsg.Auth uid ->
           (* Auth is special: as we have no user yet, errors must be
            * returned directly. *)
           (try
-            let u' = User.authenticate t.user_db u uid pub_key socket in
+            let u' = User.authenticate t.user_db u uid clt_pub_key socket in
             !logger.info "User %a authenticated out of user %a"
               User.print u'
               User.print u ;
