@@ -107,7 +107,7 @@ type pub_key = string
 let print_pub_key = String.print
 
 let name_is_reserved name =
-  name = "" || name.[0] <> '_'
+  name = "" || name.[0] = '_'
 
 let authenticate conf u username clt_pub_key socket =
   match u with
