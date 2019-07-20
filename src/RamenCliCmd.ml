@@ -489,7 +489,9 @@ let compile conf lib_path use_external_compiler
                     output_file_opt program_name_opt
     else
       let target_file_opt =
-        Option.map (fun (s : N.program) -> N.path (s :> string)) program_name_opt in
+        Option.map (fun s ->
+          Files.remove_ext (N.path (s : N.program :> string))
+        ) program_name_opt in
       compile_sync conf replace source_file target_file_opt
   ) source_files
 
