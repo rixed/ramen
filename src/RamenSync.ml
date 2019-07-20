@@ -123,6 +123,9 @@ struct
   type pub_key = string
   let print_pub_key = String.print
 
+  let name_is_reserved name =
+    name = "" || name.[0] <> '_'
+
   let authenticate conf u username clt_pub_key socket =
     match u with
     | Auth _ | Internal | Ramen _ as u -> u (* do reauth? *)
@@ -181,7 +184,7 @@ struct
   let id = function
     | Internal -> "_internal"
     | Ramen name ->
-        if name = "" || name.[0] <> '_' then
+        if not (name_is_reserved name) then
           !logger.error
             "User authenticated as a ramen process has a civilian name %S"
               name ;

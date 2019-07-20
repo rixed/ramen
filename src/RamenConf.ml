@@ -781,6 +781,13 @@ let cache_compiled_file ext conf sign =
 let cache_info_file = cache_compiled_file "info"
 let cache_bin_file = cache_compiled_file "x"
 
+(* Location of server key files: *)
+let default_srv_pub_key_file conf =
+  N.path_cat [ conf.persist_dir ; N.path "confserver/public_key" ]
+
+let default_srv_priv_key_file conf =
+  N.path_cat [ conf.persist_dir ; N.path "confserver/private_key" ]
+
 (* Create a temporary program name: *)
 let make_transient_program () =
   let now = Unix.gettimeofday ()

@@ -261,10 +261,16 @@ let send_msg zocks ?block m sockets =
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) sockets
 
+let create_new_server_keys srv_pub_key_file srv_priv_key_file =
+  let srv_pub_key, srv_priv_key = Zmq.Curve.keypair () in
+  Files.write_key false srv_pub_key_file srv_pub_key ;
+  Files.write_key true srv_priv_key_file srv_priv_key ;
+  srv_priv_key
+
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf port port_sec =
+let start conf port port_sec srv_pub_key_file srv_priv_key_file =
   let bind_to port =
     let bind =
       if string_is_numeric port then "*:"^ port else port in
@@ -274,11 +280,22 @@ let start conf port port_sec =
     let zock = Zmq.Socket.(create ctx router) in
     Zmq.Socket.set_send_high_water_mark zock 0 ;
     if use_curve then (
-      let secret_key_test =
-        "JTKVSB%%)wK0E.X)V>+}o?pNmC{O&4W4b!Ni{Lh6" in
-      Zmq.Socket.set_curve_server zock true ;
+      (* When using secure socket, the user *must* provide the path to
+       * the server key files, even if it does not exist yet. they will
+       * be created in that case. *)
+      let srv_pub_key_file =
+        if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
+          C.default_srv_pub_key_file conf in
+      let srv_priv_key_file =
+        if not (N.is_empty srv_priv_key_file) then srv_priv_key_file else
+          C.default_srv_priv_key_file conf in
+      let srv_priv_key =
+        try Files.read_key true srv_priv_key_file
+        with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+          create_new_server_keys srv_pub_key_file srv_priv_key_file in
       log_exceptions (fun () ->
-        Zmq.Socket.set_curve_secretkey zock secret_key_test)
+        Zmq.Socket.set_curve_server zock true ;
+        Zmq.Socket.set_curve_secretkey zock srv_priv_key)
     ) ;
     (* (* For locally running tools: *)
        Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)

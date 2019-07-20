@@ -11,7 +11,7 @@ module Files = RamenFiles
  * Command line actions:
  *)
 
-let add conf output_file username roles srv_pub_key () =
+let add conf output_file username roles srv_pub_key_file () =
   if String.ends_with username ".del" then
     failwith "Usernames must not end with \".del\" as that's how deleted \
               users are renamed." ;
@@ -24,6 +24,12 @@ let add conf output_file username roles srv_pub_key () =
   (* Check we know the server url and public key. Not that it is necessary
    * to connect to confserver, but it must be written in the user identity
    * file: *)
+  let srv_pub_key_file =
+    if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
+      C.default_srv_pub_key_file conf in
+  let srv_pub_key =
+    try Files.read_key false srv_pub_key_file
+    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ -> "" in
   if srv_pub_key = "" then
     !logger.warning "Without the server public key this user will only be \
                     allowed in insecure connections." ;

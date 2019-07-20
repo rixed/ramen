@@ -675,3 +675,14 @@ let read_key secure fname =
   if secure then check_file_is_secure fname ;
   read_whole_file fname |>
   String.trim
+
+let write_key secure fname key =
+  let open Unix in
+  (try move_aside ~ext:"old" fname
+  with Unix_error (ENOENT, _, _) -> ()) ;
+  let perm = if secure then 0o400 else 0o444 in
+  let flags = [ O_WRONLY ; O_CREAT ; O_EXCL ; O_CLOEXEC ] in
+  let fd = openfile (fname :> string) flags perm in
+  finally
+    (fun () -> safe_close fd)
+    (write_whole_string fd) key

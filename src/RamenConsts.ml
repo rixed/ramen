@@ -337,6 +337,10 @@ struct
   let client_priv_key =
     "File name where the client private key is stored. This file must not \
      be readable or writable by others."
+  let server_pub_key = "File name where the server public key is stored."
+  let server_priv_key =
+    "File name where the server private key is stored. This file must not \
+     be readable or writable by others."
   let username = "Login name to connect to the confserver."
   let role =
     "Role assumed by this user (repeat for giving several roles to the \

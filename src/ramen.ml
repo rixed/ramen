@@ -64,12 +64,6 @@ let key secure =
     else Format.fprintf fmt "%S" k in
   Arg.conv ~docv:"KEYFILE" (parse, print)
 
-let confserver_key =
-  let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
-  let i = Arg.info ~doc:CliInfo.confserver_key ~docs:Manpage.s_common_options
-                   ~env [ "confserver-key" ] in
-  Arg.(value (opt (key false) "" i))
-
 let copts ?default_username () =
   let docs = Manpage.s_common_options in
   let debug =
@@ -133,7 +127,11 @@ let copts ?default_username () =
                      ~docs ~env [ "confserver" ] in
     Arg.(value (opt ~vopt:"localhost" string "" i))
   and confserver_key =
-    if default_username = None then Term.const "" else confserver_key
+    if default_username = None then Term.const "" else
+    let env = Term.env_info "RAMEN_CONFSERVER_KEY" in
+    let i = Arg.info ~doc:CliInfo.confserver_key
+                     ~docs ~env [ "confserver-key" ] in
+    Arg.(value (opt (key false) "" i))
   and username =
     if default_username = None then Term.const "" else
     let def = Option.get default_username in
@@ -379,6 +377,14 @@ let confserver_port_sec =
   and vopt = Some (string_of_int Default.confserver_port_sec) in
   Arg.(value (opt ~vopt (some string) None i))
 
+let server_priv_key_file =
+  let i = Arg.info ~doc:CliInfo.server_priv_key [ "k"; "private-key" ] in
+  Arg.(value (opt path (N.path "") i))
+
+let server_pub_key_file =
+  let i = Arg.info ~doc:CliInfo.server_priv_key [ "k"; "public-key" ] in
+  Arg.(value (opt path (N.path "") i))
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -387,7 +393,9 @@ let confserver =
       $ to_stdout
       $ to_syslog
       $ confserver_port
-      $ confserver_port_sec),
+      $ confserver_port_sec
+      $ server_pub_key_file
+      $ server_priv_key_file),
     info ~doc:CliInfo.confserver "confserver")
 
 let confclient =
@@ -422,7 +430,7 @@ let useradd =
       $ output_file
       $ username
       $ roles
-      $ confserver_key),
+      $ server_pub_key_file),
     info ~doc:CliInfo.useradd "useradd")
 
 let userdel =
