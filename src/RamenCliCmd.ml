@@ -259,8 +259,7 @@ let confclient conf () =
   start_sync conf ~topics ~on_new ~while_ (fun clt ->
     !logger.info "Receiving:" ;
     forever (fun () ->
-      let num_msg = ZMQClient.process_in ~while_ clt in
-      !logger.debug "Received %d messages" num_msg
+      ZMQClient.process_in ~while_ clt
     ) ())
 
 (*
@@ -399,8 +398,7 @@ let compile_sync conf replace src_file source_name_opt =
               ZMQClient.send_cmd clt ~while_ (UnlockKey k_source)))
     else
       ZMQClient.send_cmd clt ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
-    let num_msg = ZMQClient.process_in ~while_ clt in
-    !logger.debug "Received %d messages" num_msg)
+    ZMQClient.process_in ~while_ clt)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -479,7 +477,7 @@ let compserver conf daemonize to_stdout to_syslog
           Key.print k Value.print v in
   let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
   start_sync conf ~while_ ~on_new ~on_set ~topics
-                  (ZMQClient.process_in ~while_) |> ignore
+                  (ZMQClient.process_in ~while_)
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
@@ -1313,8 +1311,7 @@ let tail_sync
       while_ () && (!count_last > 0 || !count_next > 0) in
     clt.Client.on_new <-
       fun _ k v _ _ _ _ -> on_key count_next k v ;
-    let msg_count = ZMQClient.process_in ~while_:while_' clt in
-    !logger.debug "Processed %d messages" msg_count ;
+    ZMQClient.process_in ~while_:while_' clt ;
     print [||] ;
     (* Unsubscribe *)
     !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;

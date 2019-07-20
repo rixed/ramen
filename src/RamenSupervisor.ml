@@ -1537,8 +1537,7 @@ let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
   let rec loop clt =
     while while_ () do
-      let msg_count = ZMQClient.process_in ~while_ clt in
-      !logger.debug "Processed %d messages" msg_count ;
+      ZMQClient.process_in ~while_ clt ;
       synchronize_once conf ~while_ clt
     done in
   let topics =

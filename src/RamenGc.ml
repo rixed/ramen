@@ -324,16 +324,14 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
       "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
       "sources/*/info" ] in
   start_sync conf ~while_ ~topics ~recvtimeo:5. (fun clt ->
-    if loop <= 0. then
-      let msg_count = ZMQClient.process_in ~while_ clt in
-      !logger.debug "Received %d messages" msg_count ;
+    if loop <= 0. then (
+      ZMQClient.process_in ~while_ clt ;
       cleanup_once_sync conf clt dry_run del_ratio compress_older
-    else
+    ) else
       let last_run =
         ref (if loop <= 0. then 0. else Unix.time () -. Random.float loop) in
       while while_ () do
-        let msg_count = ZMQClient.process_in ~while_ clt in
-        !logger.debug "Received %d messages" msg_count ;
+        ZMQClient.process_in ~while_ clt ;
         let now = Unix.gettimeofday () in
         if now > !last_run +. loop then (
           last_run := now ;

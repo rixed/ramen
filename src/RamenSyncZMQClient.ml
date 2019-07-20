@@ -371,9 +371,11 @@ let init_connect clt ?while_ url on_progress =
     !logger.info "Connecting to %s..." connect_to ;
     retry_zmq ?while_
       (Zmq.Socket.connect zock) connect_to ;
-    on_progress clt Stage.Conn Status.InitOk
+    on_progress clt Stage.Conn Status.InitOk ;
+    true
   with e ->
-    on_progress clt Stage.Conn Status.(InitFail (Printexc.to_string e))
+    on_progress clt Stage.Conn Status.(InitFail (Printexc.to_string e)) ;
+    false
 
 let init_auth ?while_ clt uid on_progress =
   on_progress clt Stage.Auth Status.InitStart ;
@@ -382,14 +384,17 @@ let init_auth ?while_ clt uid on_progress =
     match retry_zmq ?while_ recv_cmd clt with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg clt msg ;
-        on_progress clt Stage.Auth Status.InitOk
+        on_progress clt Stage.Auth Status.InitOk ;
+        true
     | SrvMsg.AuthErr s as msg ->
         Client.process_msg clt msg ;
-        on_progress clt Stage.Auth (Status.InitFail s)
+        on_progress clt Stage.Auth (Status.InitFail s) ;
+        false
     | rep ->
         unexpected_reply rep
   with e ->
-    on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e))
+    on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e)) ;
+    false
 
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
@@ -405,7 +410,8 @@ let process_in ?(while_=always) ?(single=false) clt =
           if single then msg_count else loop msg_count
     else
       msg_count in
-  loop 0
+  let msg_count = loop 0 in
+  !logger.debug "Processed %d messages" msg_count
 
 let init_sync ?while_ clt topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;
@@ -434,7 +440,8 @@ let init_sync ?while_ clt topics on_progress =
         loop rest in
   match loop globs with
   | exception e ->
-      on_progress clt Stage.Sync Status.(InitFail (Printexc.to_string e))
+      on_progress clt Stage.Sync Status.(InitFail (Printexc.to_string e)) ;
+      false
   | () ->
       on_progress clt Stage.Sync Status.InitOk ;
       (* Wait until it's acked *)
@@ -443,9 +450,9 @@ let init_sync ?while_ clt topics on_progress =
         (match while_ with Some f -> f () | None -> true) in
       while while_ () do
         !logger.debug "Wait for end of sync..." ;
-        let msg_count = process_in ~while_ clt in
-        !logger.debug "Received %d messages" msg_count
-      done
+        process_in ~while_ clt
+      done ;
+      true
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
@@ -490,13 +497,16 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
             else url ^":"^ string_of_int (
               if srv_pub_key = "" then Default.confserver_port
               else Default.confserver_port_sec) in
-          log_exceptions ~what:"init_connect"
-            (fun () -> init_connect clt ?while_ url on_progress) ;
-          log_exceptions ~what:"init_auth"
-            (fun () -> init_auth ?while_ clt username on_progress) ;
-          log_exceptions ~what:"init_sync"
-            (fun () -> init_sync ?while_ clt topics on_progress) ;
-          on_synced () ;
-          log_exceptions ~what:"sync_loop" (fun () -> sync_loop clt)
+          if
+            log_exceptions ~what:"init_connect"
+              (fun () -> init_connect clt ?while_ url on_progress) &&
+            log_exceptions ~what:"init_auth"
+              (fun () -> init_auth ?while_ clt username on_progress) &&
+            log_exceptions ~what:"init_sync"
+              (fun () -> init_sync ?while_ clt topics on_progress)
+          then (
+            on_synced () ;
+            log_exceptions ~what:"sync_loop" (fun () -> sync_loop clt)
+          ) else failwith "Cannot initialize ZMQClient"
         ) ()
     ) ()

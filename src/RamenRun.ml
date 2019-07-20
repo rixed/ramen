@@ -139,8 +139,7 @@ let kill_sync conf ?(purge=false) program_names =
       | v ->
           fin () ;
           bad_type "TargetConfig" v Key.TargetConfig) ;
-    let msg_count = ZMQClient.process_in ~while_ clt in
-    !logger.debug "Received %d messages" msg_count) ;
+    ZMQClient.process_in ~while_ clt) ;
   !nb_kills
 
 let kill conf ?purge program_names =
@@ -334,8 +333,7 @@ let run_sync src_path conf (program_name : N.program) replace report_period
       | v ->
           fin () ;
           bad_type "TargetConfig" v Key.TargetConfig) ;
-    let msg_count = ZMQClient.process_in ~while_ clt in
-    !logger.debug "Received %d messages" msg_count)
+    ZMQClient.process_in ~while_ clt)
 
 (* The binary must have been produced already as it's going to be read for
  * linkage checks: *)

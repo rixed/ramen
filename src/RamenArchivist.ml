@@ -1041,8 +1041,7 @@ let run_sync conf ~while_ loop allocs reconf =
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
              (fun clt ->
     Processes.until_quit (fun () ->
-      let msg_count = ZMQClient.process_in ~while_ clt in
-      !logger.debug "Received %d messages" msg_count ;
+      ZMQClient.process_in ~while_ clt ;
       let now = Unix.gettimeofday () in
       if allocs &&
          now > !last_change +. archivist_settle_delay &&

@@ -106,39 +106,37 @@ let serve_sync conf ~while_ fd =
         N.path "workers" ; N.path (id.child :> string) ] in
     [ (pref :> string) ^"/worker" ;
       (pref :> string) ^"/instances/*/input_ringbufs" ] in
-  let msg_count =
-    start_sync conf ~while_ ~topics (fun clt ->
-      (* We need the input ringbuf for this parent index. We need to get the
-       * current signature for the worker and then read it, waiting to receive
-       * those keys if not there yet. *)
-      let worker_key =
-        Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
-      Client.with_value clt worker_key (function
-        | { value = Value.Worker worker ; _ } ->
-            let ringbufs_key =
-              Supervisor.per_instance_key
-                conf.C.site id.child worker.worker_signature InputRingFiles in
-            Client.with_value clt ringbufs_key (fun hv ->
-              match Supervisor.get_string_list (Some hv.value) with
-              | Some lst ->
-                  (* No idea what to do whan parent_num is beyond the end of
-                   * list, let's just crash the forked server: *)
-                  let bname = List.at lst id.parent_num in
-                  let rb =
-                    (* If supervisor, for any reason, haven't created this
-                     * ringbuf yet, then [load] is going to fail. Just wait. *)
-                    retry ~on:always ~while_ RingBuf.load bname in
-                  copy_all ~while_ conf id.client_site bname fd rb
-              | None ->
-                  Printf.sprintf2 "Cannot find input ringbufs at %a"
-                    Key.print ringbufs_key |>
-                  failwith)
-        | hv ->
-            invalid_sync_type worker_key hv.value "a worker") ;
-      (* with_value just register a callback but we still have to turn the
-       * crank: *)
-      ZMQClient.process_in ~while_ clt) in
-  !logger.debug "Processed %d messages" msg_count
+  start_sync conf ~while_ ~topics (fun clt ->
+    (* We need the input ringbuf for this parent index. We need to get the
+     * current signature for the worker and then read it, waiting to receive
+     * those keys if not there yet. *)
+    let worker_key =
+      Key.(PerSite (conf.C.site, PerWorker (id.child, Worker))) in
+    Client.with_value clt worker_key (function
+      | { value = Value.Worker worker ; _ } ->
+          let ringbufs_key =
+            Supervisor.per_instance_key
+              conf.C.site id.child worker.worker_signature InputRingFiles in
+          Client.with_value clt ringbufs_key (fun hv ->
+            match Supervisor.get_string_list (Some hv.value) with
+            | Some lst ->
+                (* No idea what to do whan parent_num is beyond the end of
+                 * list, let's just crash the forked server: *)
+                let bname = List.at lst id.parent_num in
+                let rb =
+                  (* If supervisor, for any reason, haven't created this
+                   * ringbuf yet, then [load] is going to fail. Just wait. *)
+                  retry ~on:always ~while_ RingBuf.load bname in
+                copy_all ~while_ conf id.client_site bname fd rb
+            | None ->
+                Printf.sprintf2 "Cannot find input ringbufs at %a"
+                  Key.print ringbufs_key |>
+                failwith)
+      | hv ->
+          invalid_sync_type worker_key hv.value "a worker") ;
+    (* with_value just register a callback but we still have to turn the
+     * crank: *)
+    ZMQClient.process_in ~while_ clt)
 
 (* Start the service: *)
 
