@@ -7,6 +7,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
+open RamenSync
 module C = RamenConf
 module RC = C.Running
 module F = C.Func
@@ -38,7 +39,7 @@ type key =
     func_name : N.func ;
     func_signature : string ;
     params : RamenTuple.params ;
-    role : RamenSync.Value.Worker.role }
+    role : Value.Worker.role }
 
 (* What we store in the [must_run] hash: *)
 type must_run_entry =
@@ -78,7 +79,7 @@ let print_running_process oc proc =
   Printf.fprintf oc "%s/%s (%a) (parents=%a)"
     (proc.func.F.program_name :> string)
     (proc.func.F.name :> string)
-    RamenSync.Value.Worker.print_role proc.key.role
+    Value.Worker.print_role proc.key.role
     (List.print F.print_parent) proc.func.parents
 
 let make_running_process conf must_run mre =
@@ -379,7 +380,7 @@ let start_worker
   ) out_ringbuf_ref ;
   (* Export for a little while at the beginning (help with both automatic
    * and manual tests): *)
-  if not (RamenSync.Value.Worker.is_top_half role) then (
+  if not (Value.Worker.is_top_half role) then (
     Processes.start_export
       ~duration:conf.initial_export_duration conf func |>
     ignore
@@ -429,16 +430,16 @@ let start_worker
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_host_"^ string_of_int i ^"="^
-              (th.RamenSync.Value.Worker.tunneld_host :> string)))
+              (th.Value.Worker.tunneld_host :> string)))
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "tunneld_port_"^ string_of_int i ^"="^
-              string_of_int th.RamenSync.Value.Worker.tunneld_port)) |>
+              string_of_int th.Value.Worker.tunneld_port)) |>
         Enum.append
           (List.enum ths |>
           Enum.mapi (fun i th ->
             "parent_num_"^ string_of_int i ^"="^
-              string_of_int th.RamenSync.Value.Worker.parent_num)) in
+              string_of_int th.Value.Worker.parent_num)) in
   (* Pass each input ringbuffer in a sequence of envvars: *)
   let more_env =
     List.enum input_ringbufs |>
@@ -477,7 +478,7 @@ let start_worker
        fq_str |] in
   let pid = Processes.run_worker ~and_stop:conf.C.test bin args env in
   !logger.debug "%a for %a now runs under pid %d"
-    RamenSync.Value.Worker.print_role role N.fq_print fq pid ;
+    Value.Worker.print_role role N.fq_print fq pid ;
   (* Update the parents out_ringbuf_ref: *)
   List.iter (fun (out_ref, in_ringbuf, fieldmask) ->
     OutRef.add out_ref in_ringbuf fieldmask
@@ -485,7 +486,7 @@ let start_worker
   pid
 
 let input_ringbufs conf func role =
-  if RamenSync.Value.Worker.is_top_half role then
+  if Value.Worker.is_top_half role then
     [ C.in_ringbuf_name_single conf func ]
   else
     C.in_ringbuf_names conf func
@@ -501,7 +502,7 @@ let really_start conf proc =
   and state_file =
     C.worker_state conf proc.func (RamenParams.signature proc.params)
   and out_ringbuf_ref =
-    if RamenSync.Value.Worker.is_top_half proc.key.role then None
+    if Value.Worker.is_top_half proc.key.role then None
     else Some (C.out_ringbuf_names_ref conf proc.func)
   and parent_links =
     List.map (fun (_, _, pfunc) ->
@@ -758,9 +759,9 @@ let build_must_run conf programs =
   Hashtbl.iter (fun (pp, pf, cprog, cfunc, sign, params)
                     (rce, func, tunnelds) ->
     let role =
-      RamenSync.Value.Worker.TopHalf (
+      Value.Worker.TopHalf (
         List.mapi (fun i tunneld ->
-          RamenSync.Value.Worker.{
+          Value.Worker.{
             tunneld_host = tunneld.Services.host ;
             tunneld_port = tunneld.Services.port ;
             parent_num = i }
@@ -1117,11 +1118,11 @@ let synchronize_running_local conf autoreload_delay =
  * to the `ramen kill --purge`?
  *)
 let per_instance_key site fq worker_sign k =
-  RamenSync.Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, k)))
+  Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, k)))
 
 let find_or_fail what clt k f =
   let v =
-    match RamenSync.Client.find clt k with
+    match Client.find clt k with
     | exception Not_found ->
         None
     | hv ->
@@ -1132,15 +1133,15 @@ let find_or_fail what clt k f =
       | None ->
           Printf.sprintf2 "Cannot find %s: no such key %a"
             what
-            RamenSync.Key.print k |>
+            Key.print k |>
           failwith
       | Some v ->
-          RamenSync.invalid_sync_type k v what)
+          invalid_sync_type k v what)
   | Some v' ->
       v'
 
 let get_string = function
-  | Some (RamenSync.Value.RamenValue (T.VString s)) -> Some s
+  | Some (Value.RamenValue (T.VString s)) -> Some s
   | _ -> None
 
 let get_string_list =
@@ -1148,7 +1149,7 @@ let get_string_list =
     | T.VString _ -> true
     | _ -> false in
   function
-  | Some (RamenSync.Value.RamenValue (T.VList vs))
+  | Some (Value.RamenValue (T.VList vs))
     when Array.for_all is_string vs ->
       Array.enum vs /@
       (function VString s -> N.path s | _ -> assert false) |>
@@ -1175,10 +1176,10 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let now = Unix.gettimeofday () in
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key LastExit,
-                 RamenSync.Value.of_float now)) ;
+                 Value.of_float now)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key LastExitStatus,
-                 RamenSync.Value.of_string status_str)) ;
+                 Value.of_string status_str)) ;
       let input_ringbufs =
         let k = per_instance_key InputRingFiles in
         find_or_fail "a list of strings" clt k get_string_list in
@@ -1188,14 +1189,14 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
         find_or_fail "an integer" clt succ_fail_k (function
           | None ->
               Some 0
-          | Some (RamenSync.Value.RamenValue T.(VI64 i)) ->
+          | Some (Value.RamenValue T.(VI64 i)) ->
               Some (Int64.to_int i)
           | _ ->
               None) in
       if is_err then (
         ZMQClient.send_cmd clt ~while_ ~eager:true
           (SetKey (succ_fail_k,
-                   RamenSync.Value.of_int (succ_failures + 1))) ;
+                   Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
         if succ_failures = 5 then (
           IntCounter.inc (stats_worker_deadloopings conf.C.persist_dir) ;
@@ -1221,19 +1222,19 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let quarantine_until = now +. Random.float (min 90. max_delay) in
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
-                 RamenSync.Value.of_float quarantine_until)) ;
+                 Value.of_float quarantine_until)) ;
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (DelKey (per_instance_key Pid)))
 
 (* This worker is running. Should it? *)
 let should_run clt site fq worker_sign =
-  let k = RamenSync.Key.PerSite (site, PerWorker (fq, Worker)) in
-  match RamenSync.Client.find clt k with
+  let k = Key.PerSite (site, PerWorker (fq, Worker)) in
+  match (Client.find clt k).value with
   | exception Not_found -> false
-  | { value = RamenSync.Value.Worker worker ; _ } ->
+  | Value.Worker worker ->
       worker.enabled && worker.worker_signature = worker_sign
-  | hv ->
-      RamenSync.invalid_sync_type k hv.value "a worker"
+  | v ->
+      invalid_sync_type k v "a worker"
 
 let may_kill conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
@@ -1241,7 +1242,7 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   let last_killed = ref (
     find_or_fail "a float" clt last_killed_k (function
       | None -> Some 0.
-      | Some (RamenSync.Value.RamenValue T.(VFloat t)) -> Some t
+      | Some (Value.RamenValue T.(VFloat t)) -> Some t
       | _ -> None)) in
   let input_ringbufs =
     let k = per_instance_key InputRingFiles in
@@ -1255,29 +1256,29 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   kill_politely conf last_killed what pid stats_worker_sigkills ;
   ZMQClient.send_cmd clt ~while_ ~eager:true
-    (SetKey (last_killed_k, RamenSync.Value.of_float !last_killed))
+    (SetKey (last_killed_k, Value.of_float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
-  RamenSync.Client.(H.mem clt.h (per_instance_key site fq worker_sign Pid))
+  Client.(H.mem clt.h (per_instance_key site fq worker_sign Pid))
 
 let get_precompiled clt src_path =
-  let source_k = RamenSync.Key.Sources (src_path, "info") in
-  match RamenSync.Client.find clt source_k with
+  let source_k = Key.Sources (src_path, "info") in
+  match Client.find clt source_k with
   | exception Not_found ->
       Printf.sprintf2 "No such source %a"
-        RamenSync.Key.print source_k |>
+        Key.print source_k |>
       failwith
-  | { value = RamenSync.Value.SourceInfo
+  | { value = Value.SourceInfo
                 ({ detail = Compiled compiled ; _ } as info) ; _ } ->
       info, compiled
-  | { value = RamenSync.Value.SourceInfo
+  | { value = Value.SourceInfo
                 { detail = Failed { err_msg } } ; _ } ->
       Printf.sprintf2 "Compilation failed: %s"
         err_msg |>
       failwith
   | hv ->
-      RamenSync.invalid_sync_type source_k hv.value "a source info"
+      invalid_sync_type source_k hv.value "a source info"
 
 let get_bin_file conf clt fq bin_sign info =
   let program_name, _func_name = N.fq_parse fq in
@@ -1303,10 +1304,10 @@ let get_bin_file conf clt fq bin_sign info =
  * the choreographer. *)
 let try_start_instance conf ~while_ clt site fq worker =
   !logger.info "Must start %a for %a"
-    RamenSync.Value.Worker.print worker
+    Value.Worker.print worker
     N.fq_print fq ;
   let info, precompiled =
-    get_precompiled clt worker.RamenSync.Value.Worker.src_path in
+    get_precompiled clt worker.Value.Worker.src_path in
   let bin_file = get_bin_file conf clt fq worker.bin_signature info in
   let func_of_precompiled precompiled pname fname =
     List.find (fun f -> f.FS.name = fname)
@@ -1314,15 +1315,15 @@ let try_start_instance conf ~while_ clt site fq worker =
     (* Temporarily: *)
     F.unserialized pname in
   let worker_of_ref what ref =
-    let fq = N.fq_of_program ref.RamenSync.Value.Worker.program ref.func in
-    let k = RamenSync.Key.PerSite (ref.site, PerWorker (fq, Worker)) in
+    let fq = N.fq_of_program ref.Value.Worker.program ref.func in
+    let k = Key.PerSite (ref.site, PerWorker (fq, Worker)) in
     find_or_fail ("a worker for "^ what) clt k (function
-      | Some (RamenSync.Value.Worker w) -> Some w
+      | Some (Value.Worker w) -> Some w
       | _ -> None) in
   let func_of_ref what ref =
     let worker = worker_of_ref what ref in
     let _info, precompiled =
-      get_precompiled clt worker.RamenSync.Value.Worker.src_path in
+      get_precompiled clt worker.Value.Worker.src_path in
     func_of_precompiled precompiled ref.program ref.func in
   let program_name, func_name = N.fq_parse fq in
   let func = func_of_precompiled precompiled program_name func_name in
@@ -1350,7 +1351,7 @@ let try_start_instance conf ~while_ clt site fq worker =
         N.path Config.version ; worker.src_path ;
         N.path worker.worker_signature ; N.path "snapshot" ]
   and out_ringbuf_ref =
-    if RamenSync.Value.Worker.is_top_half worker.role then None
+    if Value.Worker.is_top_half worker.role then None
     else Some (C.out_ringbuf_names_ref conf func)
   and parent_links =
     List.map (fun p_ref ->
@@ -1368,13 +1369,13 @@ let try_start_instance conf ~while_ clt site fq worker =
   ZMQClient.send_cmd clt ~eager:true ~while_ (DelKey k) ;
   let k = per_instance_key Pid in
   ZMQClient.send_cmd clt ~eager:true ~while_
-                     (SetKey (k, RamenSync.Value.(of_int pid))) ;
+                     (SetKey (k, Value.(of_int pid))) ;
   let k = per_instance_key StateFile
-  and v = RamenSync.Value.(of_string (state_file :> string)) in
+  and v = Value.(of_string (state_file :> string)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   Option.may (fun out_ringbuf_ref ->
     let k = per_instance_key OutRefFile
-    and v = RamenSync.Value.(of_string out_ringbuf_ref) in
+    and v = Value.(of_string out_ringbuf_ref) in
     ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
   let k = per_instance_key InputRingFiles
@@ -1382,18 +1383,17 @@ let try_start_instance conf ~while_ clt site fq worker =
     let l = List.enum (input_ringbufs :> string list) /@
             (fun f -> T.VString f) |>
             Array.of_enum in
-    RamenSync.Value.(RamenValue (VList l)) in
+    Value.(RamenValue (VList l)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
   let k = per_instance_key ParentOutRefs
   and v =
     let l = List.enum parent_links /@
             (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
             Array.of_enum in
-    RamenSync.Value.(RamenValue (VList l)) in
+    Value.(RamenValue (VList l)) in
   ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
 
 let remove_dead_chans conf clt ~while_ replayer_k replayer =
-  let open RamenSync in
   let channels, changed =
     Set.fold (fun chan (channels, changed) ->
       let replay_k = Key.Replays chan in
@@ -1422,7 +1422,6 @@ let remove_dead_chans conf clt ~while_ replayer_k replayer =
 
 let update_replayer_status
       conf clt ~while_ now site fq replayer_id replayer_k replayer =
-  let open RamenSync in
   let rem_replayer () =
     ZMQClient.send_cmd clt ~while_ (DelKey replayer_k) in
   match replayer.Value.Replayer.pid with
@@ -1505,7 +1504,6 @@ let update_replayer_status
  * This is simpler and more robust than reacting to individual key changes. *)
 let synchronize_once conf ~while_ clt =
   let now = Unix.gettimeofday () in
-  let open RamenSync in
   Client.iter_safe clt (fun k hv ->
     (* try_start_instance can take some time so better skip it at exit: *)
     if while_ () then
@@ -1555,7 +1553,6 @@ let synchronize_running_sync conf _autoreload_delay =
       "replays/*" ;
       "sites/"^ (conf.C.site :> string) ^"/workers/*/replayers/*" ] in
   (* Setting up/Tearing down replays is easier when they are added/removed: *)
-  let open RamenSync in
   let on_del clt k v =
     match k, v with
     | Key.Replays chan,

@@ -243,7 +243,7 @@ let confserver conf daemonize to_stdout to_syslog port_opt port_sec_opt
     failwith "--private-key makes no sense without --secure" ;
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
-  RamenSyncService.start
+  RamenSyncZMQServer.start
     conf port_opt port_sec_opt srv_pub_key_file srv_priv_key_file ;
   Option.may exit !RamenProcesses.quit
 

@@ -8,6 +8,7 @@ module Files = RamenFiles
 
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
+module User = RamenSyncUser
 
 (* FIXME: We want to make all extra parameters (clt and zock) disappear in order
  * to simplify passing them to httpd router functions. But we also need clt

@@ -4,6 +4,7 @@ open Stdint
 open RamenLog
 open RamenHelpers
 open RamenConsts
+open RamenSync
 module ZMQClient = RamenSyncZMQClient
 
 open Binocle
@@ -27,7 +28,7 @@ let stats_num_rate_limited_unpublished =
 
 let on_new _clt k _v _uid _mtime _owner _expiry =
   match k with
-  | RamenSync.Key.Tails (_, _, Subscriber uid) ->
+  | Key.Tails (_, _, Subscriber uid) ->
       !logger.info "New subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.inc stats_num_subscribers *)
@@ -37,7 +38,7 @@ let on_new _clt k _v _uid _mtime _owner _expiry =
 
 let on_del _clt k _v =
   match k with
-  | RamenSync.Key.Tails (_, _, Subscriber uid) ->
+  | Key.Tails (_, _, Subscriber uid) ->
       !logger.info "Leaving subscriber: %s" uid ;
       (* TODO: upgrade binocle
       IntGauge.dec stats_num_subscribers *)
@@ -71,10 +72,10 @@ let may_publish_tail clt ?while_ key_of_seq
       let tx = RingBuf.bytes_tx ser_len in
       serialize_tuple mask tx 0 tuple ;
       let values = RingBuf.read_raw_tx tx in
-      let v = RamenSync.Value.Tuple { skipped ; values } in
+      let v = Value.Tuple { skipped ; values } in
       let seq = IntCounter.get stats_num_sync_msgs_out in
       let k = key_of_seq seq in
-      let cmd = RamenSync.Client.CltMsg.NewKey (k, v, 0.) in
+      let cmd = Client.CltMsg.NewKey (k, v, 0.) in
       ZMQClient.send_cmd clt ?while_ cmd
   | _ -> ()
 
@@ -86,7 +87,7 @@ let publish_stats clt ?while_ stats_key init_stats stats =
     | None ->
         stats
     | Some init ->
-        RamenSync.Value.RuntimeStats.{
+        Value.RuntimeStats.{
           stats_time = stats.stats_time ;
           first_startup = init.first_startup ;
           last_startup = stats.last_startup ;
@@ -123,14 +124,13 @@ let publish_stats clt ?while_ stats_key init_stats stats =
           tot_cpu = init.tot_cpu +. stats.tot_cpu ;
           cur_ram = stats.cur_ram ;
           max_ram = max init.max_ram stats.max_ram } in
-  let v = RamenSync.Value.RuntimeStats tot_stats in
-  let cmd = RamenSync.Client.CltMsg.SetKey (stats_key, v) in
+  let v = Value.RuntimeStats tot_stats in
+  let cmd = Client.CltMsg.SetKey (stats_key, v) in
   ZMQClient.send_cmd clt ?while_ cmd
 
 let start_zmq_client
       ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       (site : N.site) (fq : N.fq) k =
-  let open RamenSync in
   if url = "" then k ignore4 ignore else
   (* TODO: also subscribe to errors! *)
   let topic_sub =

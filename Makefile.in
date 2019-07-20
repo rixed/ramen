@@ -177,6 +177,7 @@ RAMEN_SOURCES = \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
@@ -207,7 +208,7 @@ RAMEN_SOURCES = \
 	src/RamenCopy.ml \
 	src/RamenCopySrv.ml \
 	src/RamenSyncServer.ml \
-	src/RamenSyncService.ml \
+	src/RamenSyncZMQServer.ml \
 	src/RamenChoreographer.ml \
 	src/RamenCliCmd.ml \
 	src/RingBufCmd.ml \
@@ -268,6 +269,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenTimeRange.ml \
 	src/RamenRetention.ml \
 	src/RamenConf.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/CodeGenLib_IO.ml \
@@ -322,6 +324,7 @@ RMADMIN_SOURCES = \
 	src/RamenOperation.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	rmadmin/GuiHelper.ml
@@ -405,6 +408,7 @@ ORCWRITER_SOURCES = \
 	src/RamenTyping.ml \
 	src/RamenProgram.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
@@ -773,6 +777,7 @@ TESTABLE_SOURCES = \
 	src/RamenReplay.ml \
 	src/RamenSyncIntf.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
@@ -850,6 +855,7 @@ LINKED_FOR_TESTS = \
 	src/RamenTypingErrors.ml \
 	src/RamenTyping.ml \
 	src/RamenSyncClient.ml \
+	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \

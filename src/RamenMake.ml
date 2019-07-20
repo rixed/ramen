@@ -25,6 +25,7 @@
 open Batteries
 open RamenHelpers
 open RamenLog
+open RamenSync
 module C = RamenConf
 module F = C.Func
 module P = C.Program
@@ -82,11 +83,11 @@ let builders : (string, string * check * builder) Hashtbl.t = Hashtbl.create 11
 let register from to_ check build =
   Hashtbl.add builders from (to_, check, build)
 
-let write_source_info fname (i : RamenSync.Value.SourceInfo.t) =
+let write_source_info fname (i : Value.SourceInfo.t) =
   Marshal.(to_string i [ No_sharing ]) |>
   Files.write_whole_file fname
 
-let read_source_info fname : RamenSync.Value.SourceInfo.t =
+let read_source_info fname : Value.SourceInfo.t =
   let s = Files.read_whole_file fname in
   Marshal.from_string s 0
 
@@ -103,9 +104,9 @@ let () =
         match RamenCompiler.precompile conf get_parent src_file program_name with
         | exception e ->
             let s = Printexc.to_string e in
-            RamenSync.Value.SourceInfo.{ md5 ; detail = Failed { err_msg = s } }
+            Value.SourceInfo.{ md5 ; detail = Failed { err_msg = s } }
         | i ->
-            RamenSync.Value.SourceInfo.{ md5 ; detail = Compiled i } in
+            Value.SourceInfo.{ md5 ; detail = Compiled i } in
       write_source_info target_file info)
 
 (* Register a builder that will carry on from ".info" and generate actual

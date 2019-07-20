@@ -6,6 +6,7 @@ open RamenLog
 open RamenSync
 module C = RamenConf
 module Files = RamenFiles
+module User = RamenSyncUser
 
 (*
  * Command line actions:

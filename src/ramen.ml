@@ -415,7 +415,7 @@ let username =
 let roles =
   let i = Arg.info ~docv:"ROLE" ~doc:CliInfo.role [ "r"; "role" ] in
   let roles =
-    RamenSync.User.Role.[ "admin", Admin ; "user", User ] in
+    RamenSyncUser.Role.[ "admin", Admin ; "user", User ] in
   Arg.(value (opt_all (enum roles) [] i))
 
 let output_file =
