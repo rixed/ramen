@@ -10,6 +10,16 @@ module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
 module User = RamenSyncUser
 
+open Binocle
+
+let stats_num_sync_msgs_in =
+  IntCounter.make Metric.Names.num_sync_msgs_in
+    Metric.Docs.num_sync_msgs_in
+
+let stats_num_sync_msgs_out =
+  IntCounter.make Metric.Names.num_sync_msgs_out
+    Metric.Docs.num_sync_msgs_out
+
 (* FIXME: We want to make all extra parameters (clt and zock) disappear in order
  * to simplify passing them to httpd router functions. But we also need clt
  * for inspecting the hash. Both zock and clt should go into the conf parameter
@@ -239,6 +249,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   | Some while_ ->
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+  IntCounter.inc stats_num_sync_msgs_out ;
   let set_eagerly k v lock_timeo =
     let new_hv () =
       Client.{ value = v ;
@@ -281,6 +292,7 @@ let recv_cmd _clt =
       (* !logger.debug "srv message (raw): %S" s ; *)
       let msg = SrvMsg.of_string s in
       !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
+      IntCounter.inc stats_num_sync_msgs_in ;
       msg
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
