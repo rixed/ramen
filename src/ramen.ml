@@ -378,11 +378,11 @@ let confserver_port_sec =
   Arg.(value (opt ~vopt (some string) None i))
 
 let server_priv_key_file =
-  let i = Arg.info ~doc:CliInfo.server_priv_key [ "k"; "private-key" ] in
+  let i = Arg.info ~doc:CliInfo.server_priv_key [ "K"; "private-key" ] in
   Arg.(value (opt path (N.path "") i))
 
 let server_pub_key_file =
-  let i = Arg.info ~doc:CliInfo.server_priv_key [ "k"; "public-key" ] in
+  let i = Arg.info ~doc:CliInfo.server_pub_key [ "k"; "public-key" ] in
   Arg.(value (opt path (N.path "") i))
 
 let confserver =
