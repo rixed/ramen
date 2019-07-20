@@ -5,6 +5,7 @@ open RamenLog
 open RamenHelpers
 open RamenConsts
 open RamenSyncHelpers
+open RamenSync
 module C = RamenConf
 module F = C.Func
 module FS = F.Serialized
@@ -35,7 +36,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       | rce ->
           (* Where are the parents running? *)
           let where_running =
-            let glob = Globs.compile rce.RamenSync.Value.TargetConfig.on_site in
+            let glob = Globs.compile rce.Value.TargetConfig.on_site in
             sites_matching glob sites in
           (* Restricted to where [func] selects from: *)
           let psites =
@@ -50,7 +51,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
             | O.TheseSites p ->
                 sites_matching p where_running in
           Set.fold (fun psite parents ->
-            let worker_ref = RamenSync.Value.Worker.{
+            let worker_ref = Value.Worker.{
               site = psite ; program = pprog ; func = pfunc} in
             worker_ref :: parents
           ) psites parents
@@ -65,7 +66,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let all_top_halves = ref Map.empty in
   List.iter (fun (pname, rce) ->
     let where_running =
-      let glob = Globs.compile rce.RamenSync.Value.TargetConfig.on_site in
+      let glob = Globs.compile rce.Value.TargetConfig.on_site in
       sites_matching glob sites in
     !logger.debug "%a must run on sites matching %S: %a"
       N.program_print pname
@@ -73,20 +74,20 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       (Set.print N.site_print_quoted) where_running ;
     (* Look for rce.src_path in the configuration: *)
     let src_path = Files.remove_ext rce.src_path in
-    let k_info = RamenSync.Key.Sources (src_path, "info") in
-    match RamenSync.Client.find clt k_info with
+    let k_info = Key.Sources (src_path, "info") in
+    match (Client.find clt k_info).value with
     | exception Not_found ->
         !logger.error
           "Cannot find pre-compiled info for source %a for program %a, \
            ignoring this entry"
           N.path_print rce.src_path
           N.program_print pname
-    | { value = RamenSync.Value.SourceInfo {
-                  detail = Compiled info ; _ } ; _ } ->
+    | Value.SourceInfo { detail = Compiled info ; _ } ->
+        !logger.debug "Found precompiled info in %a" Key.print k_info ;
         List.iter (fun func ->
           Set.iter (fun local_site ->
             let worker_ref =
-              RamenSync.Value.Worker.{
+              Value.Worker.{
                 site = local_site ;
                 program = pname ;
                 func = func.FS.name } in
@@ -101,13 +102,14 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
               all_used := Set.add worker_ref !all_used ;
           ) where_running
         ) info.funcs
-    | { value = RamenSync.Value.SourceInfo _ ; _ } ->
+    | Value.SourceInfo _ ->
         !logger.error
           "Pre-compilation of source %a for program %a had failed, \
            ignoring this entry"
           N.path_print rce.src_path
           N.program_print pname
-    | _ -> ()
+    | v ->
+        invalid_sync_type k_info v "a SourceInfo"
   ) rc_entries ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
@@ -142,9 +144,9 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
    * tunnelds they connect to are to be found in the role record) and
    * the actual parent as parents. *)
   Map.iter (fun worker_ref (rce, info, func, parents) ->
-    let role = RamenSync.Value.Worker.Whole in
+    let role = Value.Worker.Whole in
     let rc_params =
-      List.enum rce.RamenSync.Value.TargetConfig.params |>
+      List.enum rce.Value.TargetConfig.params |>
       Hashtbl.of_enum in
     let params =
       RamenTuple.overwrite_params
@@ -158,8 +160,8 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       func.FS.signature ^"_"^ RamenParams.signature_of_list params |>
       N.md5 in
     let bin_signature =
-      RamenSync.Value.SourceInfo.signature_of_compiled info in
-    let worker : RamenSync.Value.Worker.t =
+      Value.SourceInfo.signature_of_compiled info in
+    let worker : Value.Worker.t =
       { enabled = rce.enabled ; debug = rce.debug ;
         report_period = rce.report_period ;
         src_path = Files.remove_ext rce.src_path ;
@@ -167,7 +169,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         is_used ; params ; role ; parents ; children } in
     let fq = N.fq_of_program worker_ref.program worker_ref.func in
     upd (PerSite (worker_ref.site, PerWorker (fq, Worker)))
-        (RamenSync.Value.Worker worker) ;
+        (Value.Worker worker) ;
     (* We need a top half for every function with a remote child.
      * If we shared the same top-half for several local parents, then we would
      * have to deal with merging/sorting in the top-half.
@@ -178,7 +180,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
       (* for each parent... *)
       List.iter (fun parent_ref ->
         (* ...running on a different site... *)
-        if parent_ref.RamenSync.Value.Worker.site <> worker_ref.site then (
+        if parent_ref.Value.Worker.site <> worker_ref.site then (
           let top_half_k =
             (* local part *)
             parent_ref,
@@ -210,16 +212,16 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
               N.service_print service ;
             tunnelds, i + 1
         | srv ->
-            RamenSync.Value.Worker.{
+            Value.Worker.{
               tunneld_host = srv.Services.host ;
               tunneld_port = srv.Services.port ;
               parent_num = i
             } :: tunnelds, i + 1
       ) ([], 0) sites in
-    let role = RamenSync.Value.Worker.TopHalf tunnelds in
+    let role = Value.Worker.TopHalf tunnelds in
     let envvars = O.envvars_of_operation func.FS.operation in
-    let worker : RamenSync.Value.Worker.t =
-      { enabled = rce.RamenSync.Value.TargetConfig.enabled ;
+    let worker : Value.Worker.t =
+      { enabled = rce.Value.TargetConfig.enabled ;
         debug = rce.debug ; report_period = rce.report_period ;
         src_path = Files.remove_ext rce.src_path ;
         envvars ; worker_signature ; bin_signature ;
@@ -227,11 +229,11 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
         parents = [ parent_ref ] ; children = [] } in
     let fq = N.fq_of_program child_prog child_func in
     upd (PerSite (parent_ref.site, PerWorker (fq, Worker)))
-        (RamenSync.Value.Worker worker)
+        (Value.Worker worker)
   ) !all_top_halves ;
   (* And delete unused: *)
-  !logger.debug "set_keys: %a" (Set.print RamenSync.Key.print) !set_keys ;
-  RamenSync.Client.iter clt (fun k _ ->
+  !logger.debug "set_keys: %a" (Set.print Key.print) !set_keys ;
+  Client.iter clt (fun k _ ->
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
@@ -248,9 +250,8 @@ let start conf ~while_ =
       "sources/*/info" ] in
   (* The keys set by the choreographer (and only her): *)
   let is_my_key = function
-    | RamenSync.Key.PerSite (_, (PerWorker (_, Worker))) -> true
+    | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
-  let open RamenSync in
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig rc  ->
