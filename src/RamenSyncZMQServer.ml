@@ -161,7 +161,7 @@ let is_ramen = function
   | User.Anonymous | User.Auth _ -> false
 
 (* Process a single input message *)
-let zock_step srv zock zock_idx =
+let zock_step conf srv zock zock_idx =
   let peel_multipart msg =
     let too_short l =
       Printf.sprintf "Invalid zmq message with only %d parts" l |>
@@ -175,10 +175,16 @@ let zock_step srv zock zock_idx =
       | peer :: rest ->
           peer, look_for_delim 1 rest
   in
-  match Zmq.Socket.recv_all ~block:false zock with
+  match Zmq.Socket.recv_msg_all ~block:false zock with
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
       Server.timeout_all_locks srv
-  | parts ->
+  | msg_parts ->
+      let parts =
+        List.map (fun p ->
+          Zmq.Msg.unsafe_data p |>
+          Bigarray.Array1.enum |>
+          String.of_enum
+        ) msg_parts in
       !logger.info "0MQ: Received message %a"
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
@@ -194,15 +200,22 @@ let zock_step srv zock zock_idx =
                     "Cannot check client public key on an insecure channel" ;
                   ""
               | `Curve ->
-                  (try
-                    (* Check that it's not empty as it means unsecure for
-                     * authenticate! *)
-                    let s = Zmq.Socket.get_curve_publickey zock in
-                    if s = "" then failwith "invalid public key" ;
-                    s
-                  with e ->
-                    print_exception ~what:"Getting public key" e ;
-                    failwith "Cannot get client public key") in
+                  let uid =
+                    log_exceptions ~what:"Get ZAP userid" (fun () ->
+                      List.find_map (fun p ->
+                        try Some (Zmq.Msg.gets p "User-Id")
+                        with _ -> None
+                      ) msg_parts) in
+                  (match User.Db.lookup conf uid with
+                  | exception Not_found ->
+                      (* Part of the awful workaround that check the key to get
+                       * get the user to get the key to check the user: when we
+                       * have no user here, which should not happen but for
+                       * race conditions, we have to return an invalid client
+                       * key for the User.authenticate to fail: *)
+                      Printf.sprintf "Unknown user %S" uid
+                  | user ->
+                      user.User.Db.clt_pub_key) in
             Server.process_msg srv socket u clt_pub_key m ;
             (* Special case: we automatically, and silently, prune old
              * entries under "lasts/" directories (only after a new entry has
@@ -243,9 +256,7 @@ let service_loop conf zocks srv =
     let ready = Zmq.Poll.poll ~timeout poll_mask in
     !logger.debug "out of poll..." ;
     Array.iteri (fun i m ->
-      if m <> None then (
-        !logger.debug "Zocket #%d is readable" i ;
-        zock_step srv zocks.(i) i)
+      if m <> None then zock_step conf srv zocks.(i) i
     ) ready ;
     if save_rate () then Snapshot.save conf srv ;
     true
@@ -269,6 +280,74 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   Files.write_key true srv_priv_key_file srv_priv_key ;
   srv_priv_key
 
+(* Internal ZAP handler *)
+module Zap =
+struct
+  let quit = ref false
+
+  let uid_of_pub_key conf key =
+    (* FIXME: synchronize accesses to User.Db *)
+    User.Db.reverse_lookup conf key
+
+  let start_thread conf ctx =
+    let zap_thread ctx =
+      let zap_zock = Zmq.Socket.(create ctx rep) in
+      log_exceptions ~what:"Configuring ZAP handler" (fun () ->
+        Zmq.Socket.set_send_high_water_mark zap_zock 0 ;
+        Zmq.Socket.set_receive_timeout zap_zock 1000 ;
+        Zmq.Socket.set_send_timeout zap_zock 1000 ;
+        Zmq.Socket.bind zap_zock "inproc://zeromq.zap.01") ;
+      Processes.until_quit (fun () ->
+        if not !quit then (
+          match Zmq.Socket.recv_all ~block:true zap_zock with
+          | exception Unix.Unix_error (Unix.EAGAIN, _, _) -> ()
+          | exception e ->
+              print_exception ~what:"Reading ZAP message" e
+          | [ version ; request_id ; domain ; client_ip ;
+              _cnx_id ; mechanism ; client_pub_key ] ->
+              let client_pub_key = Zmq.Z85.encode client_pub_key in
+              !logger.info "ZAP: Received an auth request for %s ('%s')"
+                client_ip
+                client_pub_key ;
+              (* Out of curiosity, check those fields: *)
+              let check_field name exp got =
+                if got <> exp then
+                  !logger.warning
+                    "ZAP: %s is %S instead of the expected %S"
+                    name got exp in
+              check_field "version" "1.0" version ;
+              check_field "domain" "wtv" domain ;
+              check_field "mechanism" "CURVE" mechanism ;
+              let resp =
+                match uid_of_pub_key conf client_pub_key with
+                | exception Not_found ->
+                    !logger.warning "ZAP: Unknown public key '%s'"
+                      client_pub_key ;
+                    [ version ; request_id ; "400" ; "Unknown key" ; "" ; "" ]
+                | exception e ->
+                    let what =
+                      Printf.sprintf "Cannot get uid of public key '%s'"
+                        client_pub_key in
+                    print_exception ~what e ;
+                    [ version ; request_id ; "500" ; "Error" ; "" ; "" ]
+                | uid ->
+                    !logger.debug "ZAP: Key '%s' belongs to %s"
+                      client_pub_key uid ;
+                    (* This is all well but we cannot make use of that.
+                     * Instead, we want to attach the uid + key to that
+                     * unknown socket. *)
+                    [ version ; request_id ; "200" ; "" ; uid ; "" ] in
+              Zmq.Socket.send_all zap_zock resp
+          | parts ->
+              !logger.error
+                "ZIP: Received invalid request: %a, ignoring"
+                (List.print String.print) parts
+        ) ;
+        not !quit) ;
+      Zmq.Socket.close zap_zock in
+    Thread.create zap_thread ctx
+end
+
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
@@ -278,6 +357,7 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
       if string_is_numeric port then "*:"^ port else port in
     "tcp://"^ bind in
   let ctx = Zmq.Context.create () in
+  let zap_thread = Zap.start_thread conf ctx in
   let zocket use_curve bind =
     let zock = Zmq.Socket.(create ctx router) in
     Zmq.Socket.set_send_high_water_mark zock 0 ;
@@ -295,9 +375,10 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
         try Files.read_key true srv_priv_key_file
         with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
           create_new_server_keys srv_pub_key_file srv_priv_key_file in
-      log_exceptions (fun () ->
+      log_exceptions ~what:"configuring ZMQ for curve" (fun () ->
         Zmq.Socket.set_curve_server zock true ;
-        Zmq.Socket.set_curve_secretkey zock srv_priv_key)
+        Zmq.Socket.set_curve_secretkey zock srv_priv_key ;
+        Zmq.Socket.set_zap_domain zock "wtv")
     ) ;
     (* (* For locally running tools: *)
        Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
@@ -311,12 +392,17 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
   finally
     (fun () ->
       !logger.info "Terminating 0MQ" ;
+      Zap.quit := true ;
+      Thread.join zap_thread ;
       Zmq.Context.terminate ctx)
     (fun () ->
+      !logger.info "Create zockets..." ;
       let zocks =
-        [| Option.map (zocket false) port ;
-           Option.map (zocket true) port_sec |] |>
-        Array.filter_map identity in
+        log_exceptions ~what:"Creating zockets" (fun () ->
+          [| Option.map (zocket false) port ;
+             Option.map (zocket true) port_sec |] |>
+          Array.filter_map identity) in
+      !logger.info "...done" ;
       let send_msg = send_msg zocks in
       finally
         (fun () ->

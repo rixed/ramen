@@ -12,13 +12,18 @@ module User = RamenSyncUser
  * Command line actions:
  *)
 
-let add conf output_file username roles srv_pub_key_file () =
+let check_username username =
   if String.ends_with username ".del" then
     failwith "User names must not end with \".del\" as that's how deleted \
               users are renamed." ;
   if username = "" || username.[0] = '_' then
     failwith "User names must not be empty and not start with an underscore, \
               as those names are reserved for internal users." ;
+  if String.contains username '/' then
+    failwith "User names must not use the slash ('/') character."
+
+let add conf output_file username roles srv_pub_key_file () =
+  check_username username ;
   if User.Db.user_exists conf username then
     Printf.sprintf "A user named %s is already registered." username |>
     failwith ;
