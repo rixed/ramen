@@ -14,10 +14,10 @@ module User = RamenSyncUser
 
 let add conf output_file username roles srv_pub_key_file () =
   if String.ends_with username ".del" then
-    failwith "Usernames must not end with \".del\" as that's how deleted \
+    failwith "User names must not end with \".del\" as that's how deleted \
               users are renamed." ;
   if username = "" || username.[0] = '_' then
-    failwith "Usernames must not be empty and not start with an underscore, \
+    failwith "User names must not be empty and not start with an underscore, \
               as those names are reserved for internal users." ;
   if User.Db.user_exists conf username then
     Printf.sprintf "A user named %s is already registered." username |>

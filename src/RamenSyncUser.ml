@@ -59,8 +59,11 @@ struct
     [@@ppp PPP_OCaml]
 
   (* Files where the catalog of users are stored: *)
+  let db_dir conf =
+    N.path_cat [ conf.RamenConf.persist_dir ; N.path "confserver/users" ]
+
   let file_name conf username  =
-    N.path_cat [ conf.RamenConf.persist_dir ; N.path "users" ; N.path username ]
+    N.path_cat [ db_dir conf ; N.path username ]
 
   (* Lookup a user by name and return its conf if found: *)
   let lookup conf username  =

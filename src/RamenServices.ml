@@ -6,7 +6,15 @@
  * the configuration they need via envvars.
  *
  * This implementation just reads a static file.
- * TODO: Alternative implementations. *)
+ * TODO: Alternative implementations.
+ *
+ * Better design making use of the confserver:
+ * The tunneld register themselves. For this they just need to be given the
+ * confserver url (already the case) and the site name (also already the case)
+ * and then they just register themselves.
+ * The client side might be more work if they are not already sharing the
+ * conftree.
+ *)
 open Batteries
 open RamenHelpers
 module C = RamenConf
