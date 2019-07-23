@@ -4,13 +4,15 @@ let incdirs = [
   N.path "batteries" ;
   N.path "binocle" ;
   N.path "bytes" ;
-  N.path "inotify" ;
+  N.path "ctypes" ;
+  N.path "integers" ;
   N.path "lacaml" ;
   N.path "num" ;
   N.path "ocaml" ;
   N.path "parsercombinator" ;
   N.path "ppp" ;
   N.path "ramen" ;
+  N.path "sodium" ;
   N.path "stdint" ;
   N.path "syslog" ;
   N.path "zmq" ;
@@ -32,5 +34,9 @@ let objfiles = [
   N.path "ppp/PPP-unix.cmxa" ;
   N.path "syslog/syslog.cmxa" ;
   N.path "zmq/zmq.cmxa" ;
+  N.path "integers/integers.cmxa" ;
+  N.path "ctypes/ctypes.cmxa" ;
+  N.path "ctypes/cstubs.cmxa" ;
+  N.path "sodium/sodium.cmxa" ;
   N.path "ramen/codegen.cmxa" ;
 ]

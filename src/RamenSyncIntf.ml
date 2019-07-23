@@ -99,8 +99,8 @@ sig
 
   (* Users can be connected via various "sockets", with a selection different
    * for each. *)
+  (* FIXME: Move this away and in a Socket module *)
   type socket
-  val of_socket : socket -> t
   val print_socket : 'a BatIO.output -> socket -> unit
   val socket_of_string : string -> socket
 
@@ -108,7 +108,7 @@ sig
   type pub_key
   val print_pub_key : 'a BatIO.output -> pub_key -> unit
   type db (* Whatever that is *)
-  val authenticate : db -> t -> id -> pub_key -> socket -> t
+  val authenticate : db -> t -> id -> pub_key -> t
   val is_authenticated : t -> bool
 
   val print_id : 'a BatIO.output -> id -> unit

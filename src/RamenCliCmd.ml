@@ -45,6 +45,9 @@ let make_copts
   let forced_variants = list_of_string_opt forced_variants
   and masters =
     list_of_string_opt masters |> List.map N.site |> Set.of_list in
+  if srv_pub_key <> "" && (clt_pub_key = "" || clt_priv_key = "") then
+    failwith "To connect securely to that server, the client \
+              private and secret keys must also be provided" ;
   let conf =
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants

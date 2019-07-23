@@ -27,7 +27,7 @@ endif
 # parsercombinator is used by string to IP conversion :(
 META_REQUIRES = \
 	findlib batteries stdint parsercombinator threads \
-	binocle lacaml ppp ppp.unix syslog zmq
+	binocle lacaml ppp ppp.unix syslog zmq sodium
 # The above are the dependencies required when ramen is running.
 # To build ramen you will also need:
 #   unix num js_of_ocaml js_of_ocaml-ppx cmdliner sqlite3
@@ -38,7 +38,7 @@ PACKAGES = \
 	ppp ppp.ppx ppp.unix batteries cmdliner stdint parsercombinator \
 	syslog num binocle unix lacaml threads \
 	compiler-libs compiler-libs.common compiler-libs.bytecomp \
-	compiler-libs.optcomp net_codecs sqlite3 zmq
+	compiler-libs.optcomp net_codecs sqlite3 zmq sodium
 
 ifeq ($(shell uname),Darwin)
 FILE_NOTIFIER = src/RamenFileNotify_Poller.ml
@@ -179,6 +179,7 @@ RAMEN_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
 	src/RamenSyncUsers.ml \
@@ -271,6 +272,7 @@ CODEGENLIB_SOURCES = \
 	src/RamenConf.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	src/CodeGenLib_IO.ml \
 	src/CodeGenLib_State.ml \
@@ -326,6 +328,7 @@ RMADMIN_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	rmadmin/GuiHelper.ml
 
@@ -410,6 +413,7 @@ ORCWRITER_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenCompiler.ml \
 	src/orc/orc_writer.ml
@@ -576,7 +580,7 @@ src/codegen.cmxa: \
 src/codegen.a: src/codegen.cmxa
 
 RMADMIN_FLAGS = \
-	-package batteries,stdint,syslog,cmdliner,zmq \
+	-package batteries,stdint,syslog,cmdliner,zmq,sodium \
 	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
 
 rmadmin/GuiHelper.o: \
@@ -779,6 +783,7 @@ TESTABLE_SOURCES = \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSupervisor.ml \
 	src/RamenSampling.ml \
@@ -857,6 +862,7 @@ LINKED_FOR_TESTS = \
 	src/RamenSyncClient.ml \
 	src/RamenSyncUser.ml \
 	src/RamenSync.ml \
+	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
 	src/RamenSyncHelpers.ml \
 	src/RamenCompiler.ml \
@@ -1228,3 +1234,6 @@ endif
 	@$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
 	@$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	@$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
+
+authn: src/RamenAuthn.cmx
+	@$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,zmq,sodium -linkpkg $(filter %.cmx, $^) -o $@

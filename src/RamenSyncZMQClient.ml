@@ -5,6 +5,7 @@ open RamenLog
 open RamenHelpers
 open RamenSync
 module Files = RamenFiles
+module Authn = RamenAuthn
 
 module CltMsg = Client.CltMsg
 module SrvMsg = Client.SrvMsg
@@ -28,7 +29,8 @@ let stats_num_sync_msgs_out =
  * list of modules. This requires to rethink module dependencies though. *)
 
 (* Set once synchronized *)
-let zock_clt : ([`Dealer] Zmq.Socket.t * Client.t) option ref = ref None
+let zock_clt : ([`Dealer] Zmq.Socket.t * Authn.session * Client.t) option ref =
+  ref None
 
 let get_connection () =
   option_get "zock_clt" !zock_clt
@@ -177,7 +179,7 @@ let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
 let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
-  let zock, _clt = get_connection () in
+  let zock, session, _clt = get_connection () in
   let my_uid =
     IO.to_string User.print_id clt.Client.my_uid in
   let cmd_id =
@@ -242,13 +244,16 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
           | SrvMsg.UnlockKey _ -> true
           | _ -> false)
   ) on_done ;
-  let s = CltMsg.to_string msg in
+  let msg = CltMsg.to_string msg |>
+            Authn.wrap session in
+  !logger.debug "Sending %S" msg ;
   (match while_ with
   | None ->
-      Zmq.Socket.send_all zock [ "" ; s ]
+      Zmq.Socket.send_all zock [ "" ; msg ]
   | Some while_ ->
       retry_zmq ~while_
-        (Zmq.Socket.send_all ~block:false zock) [ "" ; s ]) ;
+        (Zmq.Socket.send_all ~block:false zock) [ "" ; msg ]) ;
+  !logger.debug "...sent!" ;
   IntCounter.inc stats_num_sync_msgs_out ;
   let set_eagerly k v lock_timeo =
     let new_hv () =
@@ -286,14 +291,19 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   )
 
 let recv_cmd _clt =
-  let zock, _clt = get_connection () in
+  let zock, session, _clt = get_connection () in
   match Zmq.Socket.recv_all zock with
-  | [ "" ; s ] ->
-      (* !logger.debug "srv message (raw): %S" s ; *)
-      let msg = SrvMsg.of_string s in
-      !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
-      IntCounter.inc stats_num_sync_msgs_in ;
-      msg
+  | [ "" ; msg ] ->
+      (* !logger.debug "srv message (raw): %S" msg ; *)
+      (match Marshal.from_string msg 0 |>
+            Authn.decrypt session with
+      | Bad _ ->
+          failwith "Decryption error" (* Clients keep errors for themselves *)
+      | Ok msg ->
+          let msg = SrvMsg.of_string msg in
+          !logger.debug "< Srv msg: %a" SrvMsg.print msg ;
+          IntCounter.inc stats_num_sync_msgs_in ;
+          msg)
   | m ->
       Printf.sprintf2 "Received unexpected message %a"
         (List.print String.print) m |>
@@ -364,7 +374,7 @@ let default_on_progress _clt stage status =
     "%a: %a" Stage.print stage Status.print status
 
 let init_connect clt ?while_ url on_progress =
-  let zock, _clt = get_connection () in
+  let zock, _session, _clt = get_connection () in
   let connect_to = "tcp://"^ url in
   on_progress clt Stage.Conn Status.InitStart ;
   try
@@ -461,12 +471,16 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           ?(on_new=ignore7) ?(on_set=ignore5) ?(on_del=ignore3)
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
+  !logger.debug "Starting ZMQ Client" ;
   let to_ms f =
     if f < 0. then -1 else int_of_float (f *. 1000.) in
   let ctx = Zmq.Context.create () in
   finally
-    (fun () -> Zmq.Context.terminate ctx)
     (fun () ->
+      !logger.info "Terminating ZMQ context..." ;
+      Zmq.Context.terminate ctx)
+    (fun () ->
+      !logger.debug "Initializing ZMQ Client" ;
       let on_new = check_new_cbs on_new
       and on_set = check_set_cbs on_set
       and on_del = check_del_cbs on_del
@@ -474,15 +488,21 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       and on_unlock = check_unlock_cbs on_unlock in
       let clt =
         Client.make ~my_uid:username ~on_new ~on_set ~on_del ~on_lock ~on_unlock in
+      !logger.debug "Create Zocket" ;
       let zock = Zmq.Socket.(create ctx dealer) in
-      zock_clt := Some (zock, clt) ;
+      !logger.debug "Create session" ;
+      let session =
+        if srv_pub_key = "" then
+          Authn.make_clear_session ()
+        else
+          Authn.(make_session (Some (pub_key_of_z85 srv_pub_key))
+            (pub_key_of_z85 clt_pub_key)
+            (priv_key_of_z85 clt_priv_key)) in
+      !logger.debug "...done" ;
+      zock_clt := Some (zock, session, clt) ;
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->
-          if srv_pub_key <> "" then (
-            Zmq.Socket.set_curve_serverkey zock srv_pub_key ;
-            Zmq.Socket.set_curve_secretkey zock clt_priv_key ;
-            Zmq.Socket.set_curve_publickey zock clt_pub_key) ;
           (* Timeouts must be in place before connect: *)
           (* Not implemented for some reasons, although there is a
            * ZMQ_CONNECT_TIMEOUT:

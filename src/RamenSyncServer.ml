@@ -354,60 +354,73 @@ struct
         CltMsg.print msg
         User.print u
         User.print_pub_key clt_pub_key ;
-      (match cmd with
-      | CltMsg.Auth uid ->
-          (* Auth is special: as we have no user yet, errors must be
-           * returned directly. *)
-          (try
-            let u' = User.authenticate t.user_db u uid clt_pub_key socket in
-            !logger.info "User %a authenticated out of user %a"
-              User.print u'
-              User.print u ;
-            (* Must create this user's error object if not already there.
-             * Value will be set below: *)
-            let k = Key.user_errs u' socket in
-            let can_read = Set.of_list Role.[ Specific (User.id u') ] in
-            let can_write = Set.empty in
-            let can_del = can_read in
-            create_or_update t k (Value.err_msg i "")
-                             ~can_read ~can_write ~can_del ;
-            t.send_msg (SrvMsg.AuthOk k) (Enum.singleton socket)
-          with e ->
-            let err = Printexc.to_string e in
-            !logger.info "While authenticating %a: %s" User.print u err ;
-            t.send_msg (SrvMsg.AuthErr err) (Enum.singleton socket))
+      let u =
+        match cmd with
+        | CltMsg.Auth uid ->
+            (* Auth is special: as we have no user yet, errors must be
+             * returned directly. *)
+            (try
+              let u' = User.authenticate t.user_db u uid clt_pub_key in
+              !logger.info "User %a authenticated out of user %a"
+                User.print u'
+                User.print u ;
+              (* Must create this user's error object if not already there.
+               * Value will be set below: *)
+              let k = Key.user_errs u' socket in
+              let can_read = Set.of_list Role.[ Specific (User.id u') ] in
+              let can_write = Set.empty in
+              let can_del = can_read in
+              create_or_update t k (Value.err_msg i "")
+                               ~can_read ~can_write ~can_del ;
+              t.send_msg (SrvMsg.AuthOk k) (Enum.singleton socket) ;
+              u'
+            with e ->
+              let err = Printexc.to_string e in
+              !logger.info "While authenticating %a: %s" User.print u err ;
+              t.send_msg (SrvMsg.AuthErr err) (Enum.singleton socket) ;
+              u)
 
-      | CltMsg.StartSync sel ->
-          subscribe_user t socket u sel ;
-          (* Then send everything that matches this selection and that the
-           * user can read: *)
-          initial_sync t socket u sel
+        | CltMsg.StartSync sel ->
+            subscribe_user t socket u sel ;
+            (* Then send everything that matches this selection and that the
+             * user can read: *)
+            initial_sync t socket u sel ;
+            u
 
-      | CltMsg.SetKey (k, v) ->
-          set t u k v
+        | CltMsg.SetKey (k, v) ->
+            set t u k v ;
+            u
 
-      | CltMsg.NewKey (k, v, lock_timeo) ->
-          let can_read = Set.of_list Role.[ Admin ; User ] in
-          let can_write = Set.of_list Role.[ Specific (User.id u) ] in
-          let can_del = can_write in
-          create t u k v ~can_read ~can_write ~can_del ~lock_timeo
+        | CltMsg.NewKey (k, v, lock_timeo) ->
+            let can_read = Set.of_list Role.[ Admin ; User ] in
+            let can_write = Set.of_list Role.[ Specific (User.id u) ] in
+            let can_del = can_write in
+            create t u k v ~can_read ~can_write ~can_del ~lock_timeo ;
+            u
 
-      | CltMsg.UpdKey (k, v) ->
-          update t u k v
+        | CltMsg.UpdKey (k, v) ->
+            update t u k v ;
+            u
 
-      | CltMsg.DelKey k ->
-          del t u k
+        | CltMsg.DelKey k ->
+            del t u k ;
+            u
 
-      | CltMsg.LockKey (k, lock_timeo) ->
-          lock t u k ~must_exist:true ~lock_timeo
+        | CltMsg.LockKey (k, lock_timeo) ->
+            lock t u k ~must_exist:true ~lock_timeo ;
+            u
 
-      | CltMsg.LockOrCreateKey (k, lock_timeo) ->
-          lock t u k ~must_exist:false ~lock_timeo
+        | CltMsg.LockOrCreateKey (k, lock_timeo) ->
+            lock t u k ~must_exist:false ~lock_timeo ;
+            u
 
-      | CltMsg.UnlockKey k ->
-          unlock t u k
-      ) ;
-      if User.is_authenticated u then set_user_err t u socket i ""
+        | CltMsg.UnlockKey k ->
+            unlock t u k ;
+            u
+      in
+      if User.is_authenticated u then set_user_err t u socket i "" ;
+      u
     with e ->
-      set_user_err t u socket i (Printexc.to_string e)
+      set_user_err t u socket i (Printexc.to_string e) ;
+      u
 end

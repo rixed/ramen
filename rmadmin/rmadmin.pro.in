@@ -177,5 +177,9 @@ LIBS += -L@OCAMLLIB@ -lunix -lbigarray -lnums -lcamlstr -lthreads -lasmrun_share
 # TODO: detect those libs specifically:
 LIBS += -L@OCAMLLIB@/../stdint -lstdint_stubs
 LIBS += -L@OCAMLLIB@/../zmq -lzmq_stubs
+LIBS += -L@OCAMLLIB@/../sodium -lsodium_stubs
+LIBS += -L@OCAMLLIB@/../ctypes -lctypes_stubs
+LIBS += -L@OCAMLLIB@/../integers -l integers
 LIBS += -lzmq
+LIBS += -lsodium
 LIBS += -lz3

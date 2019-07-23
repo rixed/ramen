@@ -118,10 +118,6 @@ let socket_of_string s =
   int_of_string (String.sub s 0 3),
   Base64.str_decode (String.chop ~l:4 s)
 
-(* FIXME: when to delete from these? *)
-let socket_to_user : (socket, t) Hashtbl.t =
-  Hashtbl.create 90
-
 type db = RamenConf.conf
 type pub_key = string
 let print_pub_key = String.print
@@ -129,7 +125,7 @@ let print_pub_key = String.print
 let name_is_reserved name =
   name = "" || name.[0] = '_'
 
-let authenticate conf u username clt_pub_key socket =
+let authenticate conf u username clt_pub_key =
   match u with
   | Auth _ | Internal | Ramen _ as u -> u (* do reauth? *)
   | Anonymous ->
@@ -170,12 +166,7 @@ let authenticate conf u username clt_pub_key socket =
             let roles = Role.Specific username :: roles |>
                         Set.of_list in
             Auth { name = username ; roles } in
-      Hashtbl.replace socket_to_user socket u ;
       u
-
-let of_socket socket =
-  try Hashtbl.find socket_to_user socket
-  with Not_found -> Anonymous
 
 let print oc = function
   | Internal -> String.print oc "_internal"

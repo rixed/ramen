@@ -420,7 +420,7 @@ let get_timeseries conf msg =
         get_local conf num_points since until filters data_spec.factors
                   ?consolidation ~bucket_time fq data_spec.select
       else
-        let _zock, clt = ZMQClient.get_connection () in
+        let _zock, _session, clt = ZMQClient.get_connection () in
         get_sync conf num_points since until filters data_spec.factors
                  ?consolidation ~bucket_time fq data_spec.select ~while_ clt in
     (* [column_labels] is an array of labels (empty if no result).
@@ -715,7 +715,7 @@ let save_alert_sync conf program_name (V1 { table ; column ; alert}) =
     desc_title = alert.desc_title ;
     desc_firing = alert.desc_firing ;
     desc_recovery = alert.desc_recovery }) in
-  let _zock, clt = ZMQClient.get_connection () in
+  let _zock, _session, clt = ZMQClient.get_connection () in
   (* Avoid touching the source and recompiling for no reason: *)
   let is_new =
     match (Client.find clt src_k).value with
@@ -766,7 +766,7 @@ let get_alerts_local conf (table : N.fq) (column : N.field) =
   !alerts
 
 let get_alerts_sync (table : N.fq) (column : N.field) =
-  let _zock, clt = ZMQClient.get_connection () in
+  let _zock, _session, clt = ZMQClient.get_connection () in
   let open RamenSync in
   let alerts = ref Set.String.empty in
   let parent =

@@ -10,7 +10,7 @@ module ZMQClient = RamenSyncZMQClient
  * TODO: to be cleaned once support for config files is removed. *)
 let get_programs_sync () =
   let open RamenSync in
-  let _zock, clt = ZMQClient.get_connection () in
+  let _zock, _session, clt = ZMQClient.get_connection () in
   let programs = Hashtbl.create 30 in
   Client.iter clt (fun k hv ->
     match k, hv.value with

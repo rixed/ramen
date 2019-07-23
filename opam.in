@@ -23,6 +23,7 @@ depends: [
   "num"
   "ppp" {>= "2.7.5"}
   "cmdliner" {build & = "1.0.2"}
+  "sodium" {= "0.6.0"}
   "syslog" {= "1.5"}
   "sqlite3" {build}
   "net_codecs" {>= "1.0"}

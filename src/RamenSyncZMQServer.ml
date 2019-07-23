@@ -20,6 +20,7 @@ module P = C.Program
 module T = RamenTypes
 module O = RamenOperation
 module Services = RamenServices
+module Authn = RamenAuthn
 
 let u = User.internal
 let admin = Set.singleton User.Role.Admin
@@ -160,8 +161,30 @@ let is_ramen = function
   | User.Internal | User.Ramen _ -> true
   | User.Anonymous | User.Auth _ -> false
 
+(* FIXME: when to delete from these? *)
+let sessions : (User.socket, Authn.session * User.t ref) Hashtbl.t =
+  Hashtbl.create 90
+
+let srv_pub_key = ref ""
+let srv_priv_key = ref ""
+
+let session_of_socket socket do_authn =
+  try Hashtbl.find sessions socket
+  with Not_found ->
+    let entry =
+      (if do_authn then
+        Authn.(make_session None
+          (pub_key_of_z85 !srv_pub_key)
+          (priv_key_of_z85 !srv_priv_key))
+      else
+        Authn.make_clear_session ()),
+      ref User.Anonymous in
+    Hashtbl.add sessions socket entry ;
+    entry
+
 (* Process a single input message *)
-let zock_step conf srv zock zock_idx =
+let zock_step srv zock zock_idx do_authn =
+  !logger.debug "zock_step..." ;
   let peel_multipart msg =
     let too_short l =
       Printf.sprintf "Invalid zmq message with only %d parts" l |>
@@ -189,57 +212,50 @@ let zock_step conf srv zock zock_idx =
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
       | peer, [ msg ] ->
-          let socket = zock_idx, peer in
           log_and_ignore_exceptions (fun () ->
-            let u = User.of_socket socket in
-            let m = CltMsg.of_string msg in
-            let clt_pub_key =
-              match Zmq.Socket.get_mechanism zock with
-              | `Null | `Plain ->
-                  (if is_ramen u then !logger.debug else !logger.info)
-                    "Cannot check client public key on an insecure channel" ;
-                  ""
-              | `Curve ->
-                  let uid =
-                    log_exceptions ~what:"Get ZAP userid" (fun () ->
-                      List.find_map (fun p ->
-                        try Some (Zmq.Msg.gets p "User-Id")
-                        with _ -> None
-                      ) msg_parts) in
-                  (match User.Db.lookup conf uid with
-                  | exception Not_found ->
-                      (* Part of the awful workaround that check the key to get
-                       * get the user to get the key to check the user: when we
-                       * have no user here, which should not happen but for
-                       * race conditions, we have to return an invalid client
-                       * key for the User.authenticate to fail: *)
-                      Printf.sprintf "Unknown user %S" uid
-                  | user ->
-                      user.User.Db.clt_pub_key) in
-            Server.process_msg srv socket u clt_pub_key m ;
-            (* Special case: we automatically, and silently, prune old
-             * entries under "lasts/" directories (only after a new entry has
-             * successfully been added there). Clients are supposed to do the
-             * same, at their own pace.
-             * TODO: in theory, also monitor DelKey to update last_tuples
-             * secondary hash. *)
-            (match m with
-            | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
-                Hashtbl.modify_opt (site, fq) (function
-                  | None ->
-                      let seqs =
-                        Array.init max_last_tuples (fun i ->
-                          if i = 0 then seq else seq-1) in
-                      Some (1, seqs)
-                  | Some (n, seqs) ->
-                      let to_del = Key.(Tails (site, fq, LastTuple seqs.(n))) in
-                      !logger.info "Removing old tuple seq %d" seqs.(n) ;
-                      Server.H.remove srv.Server.h to_del ;
-                      seqs.(n) <- seq ;
-                      Some ((n + 1) mod max_last_tuples, seqs)
-                ) last_tuples
-            | _ -> ())
-          ) ()
+            let socket = zock_idx, peer in
+            let session, u_ref = session_of_socket socket do_authn in
+            (* Decrypt using the session auth: *)
+            let msg = Marshal.from_string msg 0 in
+            (match Authn.decrypt session msg with
+            | exception e ->
+                !logger.error "Cannot decrypt message: %s, ignoring"
+                  Printexc.(to_string e) ;
+            | Bad errmsg ->
+                Zmq.Socket.send_all zock [ peer ; "" ; errmsg ]
+            | Ok str ->
+                let m = CltMsg.of_string str in
+                let clt_pub_key =
+                  match session with
+                  | Authn.Secure { peer_pub_key ; _ } ->
+                      Option.map_default Authn.z85_of_pub_key
+                                         "" peer_pub_key
+                  | Authn.Insecure ->
+                      "" in
+                u_ref := Server.process_msg srv socket !u_ref clt_pub_key m ;
+                (* Special case: we automatically, and silently, prune old
+                 * entries under "lasts/" directories (only after a new entry has
+                 * successfully been added there). Clients are supposed to do the
+                 * same, at their own pace.
+                 * TODO: in theory, also monitor DelKey to update last_tuples
+                 * secondary hash. *)
+                (match m with
+                | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
+                    Hashtbl.modify_opt (site, fq) (function
+                      | None ->
+                          let seqs =
+                            Array.init max_last_tuples (fun i ->
+                              if i = 0 then seq else seq-1) in
+                          Some (1, seqs)
+                      | Some (n, seqs) ->
+                          let to_del = Key.(Tails (site, fq, LastTuple seqs.(n))) in
+                          !logger.info "Removing old tuple seq %d" seqs.(n) ;
+                          Server.H.remove srv.Server.h to_del ;
+                          seqs.(n) <- seq ;
+                          Some ((n + 1) mod max_last_tuples, seqs)
+                    ) last_tuples
+                | _ -> ())
+          )) ()
       | _, parts ->
           Printf.sprintf "Invalid message with %d parts"
             (List.length parts) |>
@@ -249,14 +265,14 @@ let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
   let poll_mask =
-    Array.map (fun zock -> zock, Zmq.Poll.In) zocks |>
+    Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
     Zmq.Poll.mask_of in
   let timeout = 1000 (* ms *) in
   Processes.until_quit (fun () ->
     let ready = Zmq.Poll.poll ~timeout poll_mask in
-    !logger.debug "out of poll..." ;
     Array.iteri (fun i m ->
-      if m <> None then zock_step conf srv zocks.(i) i
+      let zock, do_authn = zocks.(i) in
+      if m <> None then zock_step srv zock i do_authn
     ) ready ;
     if save_rate () then Snapshot.save conf srv ;
     true
@@ -265,10 +281,12 @@ let service_loop conf zocks srv =
 
 let send_msg zocks ?block m sockets =
   let msg = SrvMsg.to_string m in
-  Enum.iter (fun (zock_idx, peer) ->
+  Enum.iter (fun (zock_idx, peer as socket) ->
     !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
       msg peer zock_idx ;
-    let zock = zocks.(zock_idx) in
+    let zock, _do_authn = zocks.(zock_idx) in
+    let session, _u_ref = Hashtbl.find sessions socket in
+    let msg = Authn.wrap session msg in
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) sockets
 
@@ -280,120 +298,47 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   Files.write_key true srv_priv_key_file srv_priv_key ;
   srv_priv_key
 
-(* Internal ZAP handler *)
-module Zap =
-struct
-  let quit = ref false
-
-  let uid_of_pub_key conf key =
-    (* FIXME: synchronize accesses to User.Db *)
-    User.Db.reverse_lookup conf key
-
-  let start_thread conf ctx =
-    let zap_thread ctx =
-      let zap_zock = Zmq.Socket.(create ctx rep) in
-      log_exceptions ~what:"Configuring ZAP handler" (fun () ->
-        Zmq.Socket.set_send_high_water_mark zap_zock 0 ;
-        Zmq.Socket.set_receive_timeout zap_zock 1000 ;
-        Zmq.Socket.set_send_timeout zap_zock 1000 ;
-        Zmq.Socket.bind zap_zock "inproc://zeromq.zap.01") ;
-      Processes.until_quit (fun () ->
-        if not !quit then (
-          match Zmq.Socket.recv_all ~block:true zap_zock with
-          | exception Unix.Unix_error (Unix.EAGAIN, _, _) -> ()
-          | exception e ->
-              print_exception ~what:"Reading ZAP message" e
-          | [ version ; request_id ; domain ; client_ip ;
-              _cnx_id ; mechanism ; client_pub_key ] ->
-              let client_pub_key = Zmq.Z85.encode client_pub_key in
-              !logger.info "ZAP: Received an auth request for %s ('%s')"
-                client_ip
-                client_pub_key ;
-              (* Out of curiosity, check those fields: *)
-              let check_field name exp got =
-                if got <> exp then
-                  !logger.warning
-                    "ZAP: %s is %S instead of the expected %S"
-                    name got exp in
-              check_field "version" "1.0" version ;
-              check_field "domain" "wtv" domain ;
-              check_field "mechanism" "CURVE" mechanism ;
-              let resp =
-                match uid_of_pub_key conf client_pub_key with
-                | exception Not_found ->
-                    !logger.warning "ZAP: Unknown public key '%s'"
-                      client_pub_key ;
-                    [ version ; request_id ; "400" ; "Unknown key" ; "" ; "" ]
-                | exception e ->
-                    let what =
-                      Printf.sprintf "Cannot get uid of public key '%s'"
-                        client_pub_key in
-                    print_exception ~what e ;
-                    [ version ; request_id ; "500" ; "Error" ; "" ; "" ]
-                | uid ->
-                    !logger.debug "ZAP: Key '%s' belongs to %s"
-                      client_pub_key uid ;
-                    (* This is all well but we cannot make use of that.
-                     * Instead, we want to attach the uid + key to that
-                     * unknown socket. *)
-                    [ version ; request_id ; "200" ; "" ; uid ; "" ] in
-              Zmq.Socket.send_all zap_zock resp
-          | parts ->
-              !logger.error
-                "ZIP: Received invalid request: %a, ignoring"
-                (List.print String.print) parts
-        ) ;
-        not !quit) ;
-      Zmq.Socket.close zap_zock in
-    Thread.create zap_thread ctx
-end
-
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
 let start conf port port_sec srv_pub_key_file srv_priv_key_file =
+  (* When using secure socket, the user *must* provide the path to
+   * the server key files, even if it does not exist yet. They will
+   * be created in that case. *)
+  let srv_pub_key_file =
+    if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
+      C.default_srv_pub_key_file conf in
+  let srv_priv_key_file =
+    if not (N.is_empty srv_priv_key_file) then srv_priv_key_file else
+      C.default_srv_priv_key_file conf in
+  srv_priv_key :=
+    if port_sec = None then "" else
+    (try Files.read_key true srv_priv_key_file
+    with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
+      create_new_server_keys srv_pub_key_file srv_priv_key_file) ;
+  srv_pub_key :=
+    if port_sec = None then "" else
+    Files.read_key false srv_pub_key_file ;
   let bind_to port =
     let bind =
       if string_is_numeric port then "*:"^ port else port in
     "tcp://"^ bind in
   let ctx = Zmq.Context.create () in
-  let zap_thread = Zap.start_thread conf ctx in
-  let zocket use_curve bind =
+  let zocket do_authn bind =
     let zock = Zmq.Socket.(create ctx router) in
     Zmq.Socket.set_send_high_water_mark zock 0 ;
-    if use_curve then (
-      (* When using secure socket, the user *must* provide the path to
-       * the server key files, even if it does not exist yet. they will
-       * be created in that case. *)
-      let srv_pub_key_file =
-        if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
-          C.default_srv_pub_key_file conf in
-      let srv_priv_key_file =
-        if not (N.is_empty srv_priv_key_file) then srv_priv_key_file else
-          C.default_srv_priv_key_file conf in
-      let srv_priv_key =
-        try Files.read_key true srv_priv_key_file
-        with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
-          create_new_server_keys srv_pub_key_file srv_priv_key_file in
-      log_exceptions ~what:"configuring ZMQ for curve" (fun () ->
-        Zmq.Socket.set_curve_server zock true ;
-        Zmq.Socket.set_curve_secretkey zock srv_priv_key ;
-        Zmq.Socket.set_zap_domain zock "wtv")
-    ) ;
     (* (* For locally running tools: *)
        Zmq.Socket.bind zock "ipc://ramen_conf_server.ipc" ; *)
     (* For the rest of the world: *)
     let bind_to = bind_to bind in
     !logger.info "Listening %sto %s..."
-      (if use_curve then "securely " else "") bind_to ;
+      (if do_authn then "securely " else "") bind_to ;
     log_exceptions (fun () ->
       Zmq.Socket.bind zock bind_to) ;
-    zock in
+    zock, do_authn in
   finally
     (fun () ->
       !logger.info "Terminating 0MQ" ;
-      Zap.quit := true ;
-      Thread.join zap_thread ;
       Zmq.Context.terminate ctx)
     (fun () ->
       !logger.info "Create zockets..." ;
@@ -406,7 +351,7 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
       let send_msg = send_msg zocks in
       finally
         (fun () ->
-          Array.iter Zmq.Socket.close zocks)
+          Array.iter (Zmq.Socket.close % fst) zocks)
         (fun () ->
           let srv = Server.make conf ~send_msg in
           if not (Snapshot.load conf srv) then populate_init srv ;

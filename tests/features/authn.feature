@@ -46,18 +46,14 @@ Feature: users are authenticated
     When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub --priv-key client_priv
     Then ramen must exit gracefully
 
-#  As much as ZMQ API for basic connect/read/write is simple, the API to get beyond that
-#  point gets hairy quickly (authentication API is a pain, error detection is complex,
-#  instrumentation is close to impossible...)
-#  FIXME: get rid of ZMQ.
-#  Scenario: user can not connect without the proper keys
-#    When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub_other --priv-key client_pub_other
-#    Then ramen must fail gracefully
-#
-#  Scenario: user can not connect with invalid keys
-#    When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub --priv-key client_priv_bad
-#    Then ramen must fail gracefully
-#
-#  Scenario: user can not connect without any key at all
-#    When I run ramen with arguments ps --confserver localhost:29341
-#    Then ramen must fail gracefully
+  Scenario: user can not connect without the proper keys
+    When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub_other --priv-key client_pub_other
+    Then ramen must fail gracefully
+
+  Scenario: user can not connect with invalid keys
+    When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub --priv-key client_priv_bad
+    Then ramen must fail gracefully
+
+  Scenario: user can not connect without any key at all
+    When I run ramen with arguments ps --confserver localhost:29341
+    Then ramen must fail gracefully
