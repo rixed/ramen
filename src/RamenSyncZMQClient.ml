@@ -525,7 +525,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
             log_exceptions ~what:"init_sync"
               (fun () -> init_sync ?while_ clt topics on_progress)
           then (
-            on_synced () ;
+            on_synced clt ;
             log_exceptions ~what:"sync_loop" (fun () -> sync_loop clt)
           ) else failwith "Cannot initialize ZMQClient"
         ) ()

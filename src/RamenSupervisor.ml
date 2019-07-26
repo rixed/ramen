@@ -1180,7 +1180,9 @@ let report_worker_death ~while_ clt site fq worker_sign status_str =
   let out_refs =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
-  cut_from_parents_outrefs input_ringbufs out_refs
+  cut_from_parents_outrefs input_ringbufs out_refs ;
+  ZMQClient.send_cmd clt ~while_ ~eager:true
+    (DelKey (per_instance_key Pid))
 
 let update_child_status conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
@@ -1196,7 +1198,6 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let is_err = status <> WEXITED ExitCodes.terminated in
       (if is_err then !logger.error else info_or_test conf)
         "%s %s." what status_str ;
-      report_worker_death ~while_ clt site fq worker_sign status_str ;
       let succ_fail_k =
         per_instance_key SuccessiveFailures in
       let succ_failures =
@@ -1233,8 +1234,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
                  Value.of_float quarantine_until)) ;
-      ZMQClient.send_cmd clt ~while_ ~eager:true
-        (DelKey (per_instance_key Pid)))
+      report_worker_death ~while_ clt site fq worker_sign status_str)
 
 (* This worker is running. Should it? *)
 let should_run clt site fq worker_sign =
@@ -1639,11 +1639,22 @@ let synchronize_running_sync conf _autoreload_delay =
                   (UpdKey (k, replayer)))
         ) replay.sources
     | _ -> ()
-  in
+  (* When supervisor restarts it must clean the configuration from all
+   * remains of previous workers, that must have been killed since last
+   * run and that could not only confuse supervisor, but also cause it to
+   * not start workers and/or kill random processes: *)
+  and on_synced clt =
+    Client.iter_safe clt (fun k _hv ->
+      match k with
+      | Key.PerSite (site, PerWorker (fq, PerInstance (worker_sign, Pid)))
+        when site = conf.C.site ->
+          report_worker_death ~while_ clt site fq worker_sign "vanished"
+      | _ -> ())
+ in
   (* Timeout has to be much shorter than delay_before_replay *)
   let timeo = delay_before_replay *. 0.5 in
   start_sync conf ~while_ ~topics ~recvtimeo:timeo ~sndtimeo:timeo
-             ~on_new ~on_del loop
+             ~on_new ~on_del ~on_synced loop
 
 let synchronize_running conf autoreload_delay =
   (if conf.C.sync_url = "" then synchronize_running_local
