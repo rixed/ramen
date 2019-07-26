@@ -114,9 +114,13 @@ struct
               !logger.info "Loading %d configuration keys from %a"
                 (List.length lst)
                 N.path_print fname ;
-              List.iter (fun (k, hv) ->
-                Server.H.replace srv.Server.h k hv ;
-                !logger.debug "Loading configuration key %a" Key.print k ;
+              List.iter (function
+                | Key.Error _ as k, _ ->
+                    !logger.debug "Skipping error file %a"
+                      Key.print k
+                | k, hv ->
+                    !logger.debug "Loading configuration key %a" Key.print k ;
+                    Server.H.replace srv.Server.h k hv
               ) lst ;
               true) ()
     with Unix.(Unix_error (ENOENT, _, _)) ->
