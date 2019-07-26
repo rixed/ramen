@@ -19,6 +19,7 @@ RUN apt-get --yes update && \
       g++ \
       git \
       libsasl2-dev \
+      libsodium-dev \
       libssl-dev \
       libzmq5-dev \
       m4 \
@@ -55,7 +56,7 @@ RUN opam update && \
       git://github.com/rixed/ocalme-opam-repository.git
 
 # Temp before next release of ramen with new deps:
-RUN opam install zmq
+RUN opam install zmq sodium
 
 # Install all ramen dependencies using opam
 RUN opam install inotify qtest && \

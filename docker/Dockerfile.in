@@ -14,6 +14,7 @@ RUN apt-get --yes update && \
         libblas-dev \
         liblapack-dev \
         libsasl2-dev \
+        libsodium-dev \
         libsqlite3-0 \
         libssl-dev \
         libzmq5-dev \
