@@ -571,13 +571,13 @@ let kill_politely conf last_killed what pid stats_sigkills =
   if !last_killed = 0. then (
     (* Ask politely: *)
     info_or_test conf "Terminating %s" what ;
-    log_and_ignore_exceptions ~what:("Terminating "^ what)
-      (Unix.kill pid) Sys.sigterm ;
+    log_exceptions ~what:("Terminating "^ what) (fun () ->
+      Unix.kill pid Sys.sigterm) ;
     last_killed := now
   ) else if now -. !last_killed > 10. then (
     !logger.warning "Killing %s with bigger guns" what ;
-    log_and_ignore_exceptions ~what:("Killing "^ what)
-      (Unix.kill pid) Sys.sigkill ;
+    log_exceptions ~what:("Killing "^ what) (fun () ->
+      Unix.kill pid Sys.sigkill) ;
     last_killed := now ;
     IntCounter.inc (stats_sigkills conf.C.persist_dir)
   )
@@ -869,7 +869,11 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
     | Some pid ->
         if not r.stopped then
           let what = Printf.sprintf2 "replayer %d (pid %d)" r.id pid in
-          kill_politely conf r.last_killed what pid stats_replayer_sigkills in
+          (try
+            kill_politely conf r.last_killed what pid stats_replayer_sigkills
+          with Unix.(Unix_error (ESRCH, _, _)) ->
+            () (* Have been logged already *))
+  in
   let to_rem chan replay =
     (* Remove this chan from all replayers. If a replayer has no more
      * channels left and has a pid, then kill it (and warn). But first,
@@ -1157,10 +1161,30 @@ let get_string_list =
       Option.some
   | _ -> None
 
+let report_worker_death ~while_ clt site fq worker_sign status_str =
+  let per_instance_key = per_instance_key site fq worker_sign in
+  let now = Unix.gettimeofday () in
+  ZMQClient.send_cmd clt ~while_ ~eager:true
+    (SetKey (per_instance_key LastExit,
+             Value.of_float now)) ;
+  ZMQClient.send_cmd clt ~while_ ~eager:true
+    (SetKey (per_instance_key LastExitStatus,
+             Value.of_string status_str)) ;
+  let input_ringbufs =
+    let k = per_instance_key InputRingFiles in
+    find_or_fail "a list of strings" clt k get_string_list in
+  (* In case the worker stopped on its own, remove it from its
+   * parents out_ref. Temporary. The out_refs were stored in the conftree,
+   * but ideally the workers listen to children directly, no more need for
+   * out_ref files: *)
+  let out_refs =
+    let k = per_instance_key ParentOutRefs in
+    find_or_fail "a list of strings" clt k get_string_list in
+  cut_from_parents_outrefs input_ringbufs out_refs
+
 let update_child_status conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
-  let what =
-    Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
+  let what = Printf.sprintf2 "Worker %a (pid %d)" N.fq_print fq pid in
   (match Unix.(restart_on_EINTR (waitpid [ WNOHANG ; WUNTRACED ])) pid with
   | exception exn ->
       !logger.error "%s: waitpid: %s" what (Printexc.to_string exn)
@@ -1169,20 +1193,10 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       !logger.debug "%s got stopped" what
   | _, status ->
       let status_str = string_of_process_status status in
-      let is_err =
-        status <> WEXITED ExitCodes.terminated in
+      let is_err = status <> WEXITED ExitCodes.terminated in
       (if is_err then !logger.error else info_or_test conf)
         "%s %s." what status_str ;
-      let now = Unix.gettimeofday () in
-      ZMQClient.send_cmd clt ~while_ ~eager:true
-        (SetKey (per_instance_key LastExit,
-                 Value.of_float now)) ;
-      ZMQClient.send_cmd clt ~while_ ~eager:true
-        (SetKey (per_instance_key LastExitStatus,
-                 Value.of_string status_str)) ;
-      let input_ringbufs =
-        let k = per_instance_key InputRingFiles in
-        find_or_fail "a list of strings" clt k get_string_list in
+      report_worker_death ~while_ clt site fq worker_sign status_str ;
       let succ_fail_k =
         per_instance_key SuccessiveFailures in
       let succ_failures =
@@ -1205,20 +1219,16 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
             find_or_fail "a string" clt k get_string
           and out_ref =
             let k = per_instance_key OutRefFile in
-            find_or_fail "a string" clt k get_string in
+            find_or_fail "a string" clt k get_string
+          and input_ringbufs =
+            let k = per_instance_key InputRingFiles in
+            find_or_fail "a list of strings" clt k get_string_list in
           rescue_worker fq (N.path state_file) input_ringbufs
                         (N.path out_ref))
       ) ;
-      (* In case the worker stopped on its own, remove it from its
-       * parents out_ref. Temporary. The out_refs were stored in the conftree,
-       * but ideally the workers listen to children directly, no more need for
-       * out_ref files: *)
-      let out_refs =
-        let k = per_instance_key ParentOutRefs in
-        find_or_fail "a list of strings" clt k get_string_list in
-      cut_from_parents_outrefs input_ringbufs out_refs ;
       (* Wait before attempting to restart a failing worker: *)
       let max_delay = float_of_int succ_failures in
+      let now = Unix.gettimeofday () in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
       ZMQClient.send_cmd clt ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
@@ -1255,7 +1265,15 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
   log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
     (Unix.kill pid) Sys.sigcont ;
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
-  kill_politely conf last_killed what pid stats_worker_sigkills ;
+  (try
+    kill_politely conf last_killed what pid stats_worker_sigkills
+  with Unix.(Unix_error (ESRCH, _, _)) ->
+    (* The worker vanished. Can happen in case of bugs (such as
+     * https://github.com/rixed/ramen/issues/789). Must keep
+     * calm when that happen: *)
+    !logger.error "Worker pid %d has vanished" pid ;
+    report_worker_death ~while_ clt site fq worker_sign "vanished" ;
+    last_killed := Unix.gettimeofday ()) ;
   if !last_killed <> prev_last_killed then
     ZMQClient.send_cmd clt ~while_ ~eager:true
       (SetKey (last_killed_k, Value.of_float !last_killed))
@@ -1415,7 +1433,10 @@ let remove_dead_chans conf clt ~while_ replayer_k replayer =
             let what =
               Printf.sprintf2 "%a (pid %d)"
                 Key.print replayer_k pid in
-            kill_politely conf last_killed what pid stats_replayer_sigkills
+            try
+              kill_politely conf last_killed what pid stats_replayer_sigkills
+            with Unix.(Unix_error (ESRCH, _, _)) ->
+              () (* Have been logged already *)
     ) ;
     let replayer =
       Value.Replayer { replayer with channels ; last_killed = !last_killed } in
