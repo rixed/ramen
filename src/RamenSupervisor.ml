@@ -1504,8 +1504,7 @@ let update_replayer_status
 (* Loop over all keys, which is mandatory to monitor pid terminations,
  * and synchronize running pids with the choreographer output.
  * This is simpler and more robust than reacting to individual key changes. *)
-let synchronize_once conf ~while_ clt =
-  let now = Unix.gettimeofday () in
+let synchronize_once conf ~while_ clt now =
   Client.iter_safe clt (fun k hv ->
     (* try_start_instance can take some time so better skip it at exit: *)
     if while_ () then
@@ -1537,10 +1536,14 @@ let synchronize_once conf ~while_ clt =
 
 let synchronize_running_sync conf _autoreload_delay =
   let while_ () = !Processes.quit = None in
-  let rec loop clt =
+  let loop clt =
+    let last_sync = ref 0. in
     while while_ () do
       ZMQClient.process_in ~while_ clt ;
-      synchronize_once conf ~while_ clt
+      let now = Unix.gettimeofday () in
+      if now > !last_sync +. Default.delay_between_worker_syncs then (
+        last_sync := now ;
+        synchronize_once conf ~while_ clt now)
     done in
   let topics =
     [ (* All sites are needed because we need parent worker :(
