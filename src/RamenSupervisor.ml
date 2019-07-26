@@ -1239,11 +1239,12 @@ let should_run clt site fq worker_sign =
 let may_kill conf ~while_ clt site fq worker_sign pid =
   let per_instance_key = per_instance_key site fq worker_sign in
   let last_killed_k = per_instance_key LastKilled in
-  let last_killed = ref (
+  let prev_last_killed =
     find_or_fail "a float" clt last_killed_k (function
       | None -> Some 0.
       | Some (Value.RamenValue T.(VFloat t)) -> Some t
-      | _ -> None)) in
+      | _ -> None) in
+  let last_killed = ref prev_last_killed in
   let input_ringbufs =
     let k = per_instance_key InputRingFiles in
     find_or_fail "a list of strings" clt k get_string_list in
@@ -1255,8 +1256,9 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
     (Unix.kill pid) Sys.sigcont ;
   let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
   kill_politely conf last_killed what pid stats_worker_sigkills ;
-  ZMQClient.send_cmd clt ~while_ ~eager:true
-    (SetKey (last_killed_k, Value.of_float !last_killed))
+  if !last_killed <> prev_last_killed then
+    ZMQClient.send_cmd clt ~while_ ~eager:true
+      (SetKey (last_killed_k, Value.of_float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
 let is_running clt site fq worker_sign =
