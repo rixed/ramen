@@ -6,6 +6,7 @@ let incdirs = [
   N.path "bytes" ;
   N.path "ctypes" ;
   N.path "integers" ;
+  N.path "inotify" ;
   N.path "lacaml" ;
   N.path "num" ;
   N.path "ocaml" ;
