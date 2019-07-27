@@ -884,8 +884,8 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
           let arc_times = get_k ArchivedTimes "ArchivedTimes" (function
             | Value.TimeRange x -> Some x
             | _ -> None) |? [] in
-          let arc_oldest = if List.is_empty arc_times then None
-                           else Some (List.hd arc_times |> fst) in
+          let arc_oldest = match arc_times with [] -> None
+                                              | (a, _, _) :: _ -> Some a in
           let arc_duration = TimeRange.span arc_times in
           let open Value.RuntimeStats in
           [| Some (ValStr (site :> string)) ;

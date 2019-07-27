@@ -885,6 +885,8 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
         if Map.is_empty r.replays then kill_replayer r)
     ) replayers in
   let to_add chan replay =
+    let replay_range =
+      TimeRange.make replay.C.Replays.since replay.until false in
     Replay.settup_links conf func_of_fq replay ;
     (* Find or create all replayers: *)
     Set.iter (fun (site, _ as site_fq) ->
@@ -894,8 +896,7 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
           try
             List.find (fun r ->
               r.pid = None &&
-              TimeRange.approx_eq
-                [ replay.since, replay.until ] r.time_range
+              TimeRange.approx_eq replay_range r.time_range
             ) rs
           with Not_found ->
             let r = make_replayer now in
@@ -905,7 +906,7 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
           "Adding replay for channel %a into replayer created at %a"
           Channel.print chan print_as_date r.creation ;
         r.time_range <-
-          TimeRange.merge r.time_range [ replay.since, replay.until ] ;
+          TimeRange.merge r.time_range replay_range ;
         r.replays <- Map.add chan replay r.replays)
     ) replay.C.Replays.sources
   in
@@ -1595,6 +1596,8 @@ let synchronize_running_sync conf _autoreload_delay =
     match k, v with
     | Key.Replays chan,
       Value.Replay replay ->
+        let replay_range =
+          TimeRange.make replay.C.Replays.since replay.until false in
         let func_of_fq fq =
           let _prog, func = function_of_site_fq clt conf.C.site fq in
           let prog_name, _ = N.fq_parse fq in
@@ -1614,15 +1617,13 @@ let synchronize_running_sync conf _autoreload_delay =
               ) [] in
             match List.find (fun (_, r) ->
                     r.Value.Replayer.pid = None &&
-                    TimeRange.approx_eq
-                    [ replay.since, replay.until ] r.time_range
+                    TimeRange.approx_eq replay_range r.time_range
                   ) rs with
             | exception Not_found ->
                 let id = Random.int RingBufLib.max_replayer_id in
                 let now = Unix.gettimeofday () in
-                let time_range = [ replay.since, replay.until ] in
                 let channels = Set.singleton chan in
-                let r = Value.Replayer.make now time_range channels in
+                let r = Value.Replayer.make now replay_range channels in
                 let replayer_k =
                   Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
                 ZMQClient.send_cmd clt ~while_ ~eager:true
@@ -1631,8 +1632,7 @@ let synchronize_running_sync conf _autoreload_delay =
                 !logger.debug
                   "Adding replay for channel %a into replayer created at %a"
                   Channel.print chan print_as_date r.creation ;
-                let time_range =
-                  TimeRange.merge r.time_range [ replay.since, replay.until ]
+                let time_range = TimeRange.merge r.time_range replay_range
                 and channels = Set.add chan r.channels in
                 let replayer = Value.Replayer { r with time_range ; channels } in
                 ZMQClient.send_cmd clt ~while_ ~eager:true

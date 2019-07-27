@@ -307,7 +307,8 @@ TimeRange::TimeRange(value v_) : Value(TimeRangeType)
 {
   while (Is_block(v_)) {
     range.emplace_back(Double_val(Field(Field(v_, 0), 0)),
-                       Double_val(Field(Field(v_, 0), 1)));
+                       Double_val(Field(Field(v_, 0), 1)),
+                       Bool_val(Field(Field(v_, 0), 2)));
     v_ = Field(v_, 1);
   }
 }
@@ -317,14 +318,18 @@ QString TimeRange::toQString() const
   if (0 == range.size()) return QString("empty");
 
   double duration = 0;
-  for (auto p : range) duration += p.second - p.first;
+  for (auto p : range) duration += p.t2 - p.t1;
 
-  double const since = range[0].first;
-  double const until = range[range.size()-1].second;
+  double const since = range[0].t1;
+  double const until = range[range.size()-1].t2;
+  bool const openEnded = range[range.size()-1].openEnded;
 
   QString s = stringOfDuration(duration);
-  s += QString(" since ") + stringOfDate(since);
-  s += QString(" until ") + stringOfDate(until);
+  s += QString(" since ")
+     + stringOfDate(since)
+     + QString(" until ")
+     + (openEnded ? QString("at least ") : QString(""))
+     + stringOfDate(until);
   return s;
 }
 

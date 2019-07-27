@@ -110,10 +110,19 @@ struct Retention : public Value
 
 struct TimeRange : public Value
 {
-  std::vector<std::pair<double, double>> range;
+  struct Range {
+    double t1, t2;
+    bool openEnded;
+    Range(double t1_, double t2_, bool openEnded_) :
+      t1(t1_), t2(t2_), openEnded(openEnded_) {}
+    bool operator==(Range const &other) const {
+      return t1 == other.t1 && t2 == other.t2 && openEnded == other.openEnded;
+    }
+  };
+  std::vector<Range> range;
 
   TimeRange() : Value(TimeRangeType) {}
-  TimeRange(std::vector<std::pair<double, double>> const &range_) :
+  TimeRange(std::vector<Range> const &range_) :
     Value(TimeRangeType), range(range_) {}
   TimeRange(value);
   QString toQString() const;

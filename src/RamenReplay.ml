@@ -155,9 +155,10 @@ let find_sources
      * the archives of this node, plus all possible ways from its parents: *)
     let s = find_fq_stats site_fq in
     let local_range =
-      List.fold_left (fun range (t1, t2) ->
-        if t1 > until || t2 < since then range else
-        TimeRange.merge range (TimeRange.make (max t1 since) (min t2 until))
+      List.fold_left (fun range (t1, t2, oe) ->
+        if t1 > until || (t2 < since && not oe) then range else
+        TimeRange.make (max t1 since) ((if oe then max else min) t2 until) oe |>
+        TimeRange.merge range
       ) TimeRange.empty s.archives in
     !logger.debug "From %a:%a, range from archives = %a"
       N.site_print local_site
@@ -184,12 +185,7 @@ let find_sources
     assert (tot_range >= 0.) ;
     let coverage_of_range range = (* ratio over tot_range *)
       if tot_range = 0. then 1. else
-      let tot =
-        List.fold_left (fun s (t1, t2) ->
-          assert (t2 >= t1) ;
-          s +. (t2 -. t1)
-        ) 0. range in
-      tot /. tot_range in
+      TimeRange.span range /. tot_range in
     (* It is frequent that a much shorter way is missing a few seconds at
      * the end of the range when querying until `now`, which forces us to
      * consider not only the covered time range but also the number of
