@@ -112,11 +112,18 @@ type socket = int (* ZMQ socket index *) * string (* ZMQ peer *)
 let print_socket oc (i, s) =
   Printf.fprintf oc "%03d|%s" i (Base64.str_encode s)
 
+let string_of_socket s =
+  IO.to_string print_socket s
+
 let socket_of_string s =
   if String.length s < 4 || s.[3] <> '|' then
     invalid_arg "socket_of_string" ;
   int_of_string (String.sub s 0 3),
-  Base64.str_decode (String.chop ~l:4 s)
+  Base64.str_decode (String.lchop ~n:4 s)
+
+(*$= socket_of_string & ~printer:BatPervasives.dump
+  (0, "\000\228<\152x") (socket_of_string "000|AOQ8mHg")
+*)
 
 type db = RamenConf.conf
 type pub_key = string
