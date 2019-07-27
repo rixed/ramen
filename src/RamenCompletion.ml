@@ -195,7 +195,8 @@ let complete str () =
           "--confserver-key", CliInfo.confserver_key ;
           "--username", CliInfo.username ;
           "--pub-key", CliInfo.client_pub_key ;
-          "--priv-key", CliInfo.client_priv_key ]
+          "--priv-key", CliInfo.client_priv_key ;
+          "--identity", CliInfo.identity_file ]
       else [])
       in
     let completions =

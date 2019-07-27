@@ -154,6 +154,12 @@ let copts ?default_username () =
     let i = Arg.info ~doc:CliInfo.client_priv_key
                      ~docs ~env [ "priv-key" ] in
     Arg.(value (opt (key true) "" i))
+  and identity_file =
+    if default_username = None then Term.const (N.path "") else
+    let env = Term.env_info "RAMEN_CLIENT_IDENTITY" in
+    let i = Arg.info ~doc:CliInfo.identity_file
+                     ~docs ~env [ "i" ; "identity" ] in
+    Arg.(value (opt path (N.path "") i))
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
@@ -171,7 +177,8 @@ let copts ?default_username () =
     $ confserver_key
     $ username
     $ client_pub_key
-    $ client_priv_key)
+    $ client_priv_key
+    $ identity_file)
 
 (*
  * Start the process supervisor

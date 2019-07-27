@@ -345,6 +345,7 @@ struct
   let role =
     "Role assumed by this user (repeat for giving several roles to the \
      same user."
+  let identity_file = "Location of the file storing user's identity"
   let rmadmin_config = "Path of RmAdmin configuration file."
 end
 

@@ -29,7 +29,9 @@ let () =
 let make_copts
       debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
       forced_variants initial_export_duration site bundle_dir masters
-      sync_url srv_pub_key username clt_pub_key clt_priv_key =
+      sync_url srv_pub_key username clt_pub_key clt_priv_key identity =
+  if not (N.is_empty identity) then
+    Files.check_file_is_secure identity ;
   (match rand_seed with
   | None -> Random.self_init ()
   | Some seed ->
@@ -52,7 +54,7 @@ let make_copts
     C.make_conf
       ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
       ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
-      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key persist_dir in
+      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity persist_dir in
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
   else
