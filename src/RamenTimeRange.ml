@@ -71,7 +71,7 @@ let rec inter l1 l2 =
   [] (inter [ 1.,2.,false ] [])
   [] (inter [] [ 1.,2.,false ])
   [ 2.,3.,false ; 4.,5.,false ] \
-    (inter [ 1.,3.,false ; 4.,6.,false ] [ 2., 5..false ])
+    (inter [ 1.,3.,false ; 4.,6.,false ] [ 2.,5.,false ])
 *)
 
 (* Ignoring open-endedness: *)
