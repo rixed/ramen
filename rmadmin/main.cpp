@@ -122,7 +122,10 @@ int main(int argc, char *argv[])
 
   parser.process(app);
 
-  QString srvUrl(parser.positionalArguments()[0]);
+  QString srvUrl(
+    parser.positionalArguments().isEmpty() ?
+      "localhost:29340" :
+      parser.positionalArguments()[0]);
   if (srvUrl.length() == 0) srvUrl = QString("localhost");
 
   QString defaultIdentityFileName =
