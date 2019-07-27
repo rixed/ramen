@@ -22,6 +22,13 @@ let check_username username =
   if String.contains username '/' then
     failwith "User names must not use the slash ('/') character."
 
+type identity_file =
+  { username : string ;
+    srv_pub_key : string ;
+    clt_pub_key : string ;
+    clt_priv_key : string }
+  [@@ppp PPP_JSON]
+
 let add conf output_file username roles srv_pub_key_file () =
   check_username username ;
   if User.Db.user_exists conf username then
@@ -51,14 +58,9 @@ let add conf output_file username roles srv_pub_key_file () =
         !logger.info "You should now transmit this file to this user and \
                       then delete it.")
     (fun oc ->
-      Printf.fprintf oc {|{
-  "username":%S,
-  "srv_pub_key":%S,
-  "clt_pub_key":%S,
-  "clt_priv_key":%S
-}
-|}
-        username srv_pub_key clt_pub_key clt_priv_key)
+      PPP.to_string ~pretty:true identity_file_ppp_json
+        { username ; srv_pub_key ; clt_pub_key ; clt_priv_key } |>
+      String.print oc)
 
 let del conf username () =
   if not (User.Db.user_exists conf username) then
