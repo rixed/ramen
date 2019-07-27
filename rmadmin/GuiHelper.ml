@@ -176,7 +176,8 @@ let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
       ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       ~topics:["*"] ~on_progress:(on_progress url)
       ~on_new ~on_set ~on_del ~on_lock ~on_unlock
-      ~recvtimeo:0.1 sync_loop)
+      ~recvtimeo:0.1 sync_loop
+  ) ()
 
 let init =
   init_logger Debug ;
