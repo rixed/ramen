@@ -63,6 +63,8 @@ let may_publish_tail clt ?while_ key_of_seq
   | _ -> ()
 
 let publish_stats clt ?while_ stats_key init_stats stats =
+  (* Process incoming messages without waiting for them: *)
+  ZMQClient.process_in ?while_ clt ;
   (* Those stats are the stats since startup. Combine them with whatever was
    * present previously: *)
   let tot_stats =

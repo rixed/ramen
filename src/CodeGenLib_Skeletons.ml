@@ -485,11 +485,6 @@ let writer_of_spec serialize_tuple sersize_of_tuple
         | _ -> ()),
       (fun () -> orc_close hdr)
 
-(* FIXME: For now, publish_stats is called only when a tuple is emitted.
- *        We should have a separate thread for this, as we do for binocle
- *        stats. But then we should have a dedicated thread with ZMQ only,
- *        and communicate with it via another internal ZMQ socket. Also,
- *        beware of race conditions then (see avg_full_bytes) *)
 let first_output = ref None
 let last_output = ref None
 let update_output_times () =
@@ -500,7 +495,6 @@ let may_publish_stats =
   (* When did we publish the last tuple in our conf topic and the runtime
    * stats? *)
   let last_publish_stats = ref 0. in
-  (* TODO: publish stats event when not outputting anything *)
   fun conf publish_stats ->
     let now = !IO.now in
     if now -. !last_publish_stats > conf.report_period
@@ -552,9 +546,8 @@ let may_publish_stats =
 (* Each func can write in several ringbuffers (one per children). This list
  * will change dynamically as children are added/removed. *)
 let outputer_of
-      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close publish_tail
-      publish_stats =
+      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple orc_make_handler orc_write orc_close publish_tail =
   let out_h = ref (Hashtbl.create 15)
   and outputers = ref [] in
   let max_num_fields = 100 (* FIXME *) in
@@ -706,7 +699,6 @@ let outputer_of
       | None -> None in
     update_output_times () ;
     update_outputers () ;
-    may_publish_stats conf publish_stats ;
     List.iter (fun (file_spec, last_check_outref, writer, _) ->
       (* Also pass file_spec to keep the writer posted about channel
        * changes: *)
@@ -826,9 +818,12 @@ let read_csv_file
     in
     let outputer =
       outputer_of
-        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close publish_tail
-        publish_stats (RingBufLib.DataTuple Channel.live) in
+        (RingBufLib.DataTuple Channel.live) in
+    let while_ () =
+      may_publish_stats conf publish_stats ;
+      while_ () in
     IO.read_glob_lines
       ~while_ ~do_unlink filename preprocessor quit (fun line ->
       match of_string line with
@@ -859,9 +854,12 @@ let listen_on
     info_or_test conf "Will listen for incoming %s messages" proto_name ;
     let outputer =
       outputer_of
-        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
         serialize_tuple orc_make_handler orc_write orc_close publish_tail
-        publish_stats (RingBufLib.DataTuple Channel.live) in
+        (RingBufLib.DataTuple Channel.live) in
+    let while_ () =
+      may_publish_stats conf publish_stats ;
+      while_ () in
     collector ~while_ (fun tup ->
       IO.on_each_input_pre () ;
       IntCounter.inc stats_in_tuple_count ;
@@ -914,14 +912,16 @@ let read_well_known
       N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     let outputer =
       outputer_of
-        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish_tail
-        publish_stats in
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail in
     let globs = List.map Globs.compile from in
     let match_from worker =
       from = [] ||
       List.exists (fun g -> Globs.matches g worker) globs
     in
+    let while_ () =
+      may_publish_stats conf publish_stats ;
+      while_ () in
     let start = Unix.gettimeofday () in
     let rec loop last_seq =
       if while_ () then (
@@ -1060,8 +1060,12 @@ type ('tuple_in, 'merge_on) merge_on_fun =
 
 (* [on_tup] is the continuation for tuples while [on_else] is the
  * continuation for non tuples: *)
-let read_single_rb ?while_ ?delay_rec read_tuple rb_in on_tup on_else =
-  RingBufLib.read_ringbuf ?while_ ?delay_rec rb_in (fun tx ->
+let read_single_rb conf ?while_ ?delay_rec read_tuple rb_in publish_stats
+                   on_tup on_else =
+  let while_ () =
+    may_publish_stats conf publish_stats ;
+    match while_ with Some f -> f () | None -> true in
+  RingBufLib.read_ringbuf ~while_ ?delay_rec rb_in (fun tx ->
     match read_tuple tx with
     | exception e ->
         log_rb_error tx e ;
@@ -1080,8 +1084,8 @@ type ('tuple_in, 'merge_on) to_merge =
     mutable tuples : ('tuple_in * int * 'merge_on) RamenSzHeap.t ;
     mutable timed_out : float option (* When it was timed out *) }
 
-let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
-              on_tup on_else =
+let merge_rbs conf ~while_ ?delay_rec on last timeout read_tuple rbs
+              publish_stats on_tup on_else =
   ignore delay_rec ; (* TODO: measure how long we spend waiting! *)
   let to_merge =
     Array.of_list rbs |>
@@ -1120,6 +1124,7 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
    * non timed out input sources: *)
   let rec wait_for_tuples started =
     read_more () ;
+    may_publish_stats conf publish_stats ;
     (* Do we have something to read on any non-timeouted input?
      * If so, return. *)
     let must_wait, all_timed_out =
@@ -1179,11 +1184,12 @@ let merge_rbs ~while_ ?delay_rec on last timeout read_tuple rbs
           loop ()) in
   loop ()
 
-let yield_every ~while_ read_tuple every on_tup on_else =
+let yield_every conf ~while_ read_tuple every publish_stats on_tup on_else =
   !logger.debug "YIELD operation" ;
   let tx = RingBuf.bytes_tx 0 in
   let rec loop prev_start =
     if while_ () then (
+      may_publish_stats conf publish_stats ;
       let start =
         match read_tuple tx with
         | exception e ->
@@ -1324,9 +1330,8 @@ let aggregate
     let notify_rb = RingBuf.load notify_rb_name in
     let msg_outputer =
       outputer_of
-        conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-        serialize_tuple orc_make_handler orc_write orc_close publish_tail
-        publish_stats in
+        rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+        serialize_tuple orc_make_handler orc_write orc_close publish_tail in
     let outputer =
       (* tuple_in is useful for generators and text expansion: *)
       let do_out chan tuple_in tuple_out =
@@ -1621,12 +1626,13 @@ let aggregate
     let tuple_reader =
       match rb_ins with
       | [] -> (* yield expression *)
-          yield_every ~while_ read_tuple every
+          yield_every conf ~while_ read_tuple every publish_stats
       | [rb_in] ->
-          read_single_rb ~while_ ~delay_rec:sleep_in read_tuple rb_in
+          read_single_rb conf ~while_ ~delay_rec:sleep_in read_tuple rb_in
+                         publish_stats
       | rb_ins ->
-          merge_rbs ~while_ ~delay_rec:sleep_in merge_on merge_last
-                    merge_timeout read_tuple rb_ins
+          merge_rbs conf ~while_ ~delay_rec:sleep_in merge_on merge_last
+                    merge_timeout read_tuple rb_ins publish_stats
     and on_tup tx_size channel_id in_tuple merge_greatest =
       let perf_per_tuple = Perf.start () in
       if channel_id <> Channel.live && rate_limit_log_reads () then
@@ -1705,7 +1711,6 @@ let top_half
           conf.site t.host t.port worker_name t.parent_num
       ) tunnelds in
     let forward_bytes b =
-      may_publish_stats conf publish_stats ;
       !logger.debug "Forwarding %d bytes to tunneld" (Bytes.length b) ;
       List.iter (fun forwarder -> forwarder b) forwarders in
     let rb_in =
@@ -1733,6 +1738,9 @@ let top_half
       if pass then Some (RingBuf.read_raw_tx tx) else None
     in
     !logger.debug "Starting forwarding loop..." ;
+    let while_ () =
+      may_publish_stats conf publish_stats ;
+      while_ () in
     RingBufLib.read_ringbuf ~while_ ~delay_rec:sleep_in rb_in (fun tx ->
       match read_tuple tx with
       | exception e ->
@@ -1828,15 +1836,11 @@ let replay
   set_signals Sys.[sigusr1] Signal_ignore ;
   !logger.debug "Will replay archive from %a"
     N.path_print_quoted rb_archive ;
-  let site = N.site (getenv ~def:"" "site") in
-  let conf = make_conf log_level (N.path "") false site in
-  let publish_tail = ignore4
-  and publish_stats = ignore1 in
+  let publish_tail = ignore4 in
   let outputer =
     outputer_of
-      conf rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
-      serialize_tuple orc_make_handler orc_write orc_close publish_tail
-      publish_stats in
+      rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
+      serialize_tuple orc_make_handler orc_write orc_close publish_tail in
   let num_replayed_tuples = ref 0 in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
