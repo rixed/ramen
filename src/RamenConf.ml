@@ -50,9 +50,9 @@ type conf =
 
 type identity_file =
   { username : string ;
-    srv_pub_key : string ;
-    clt_pub_key : string ;
-    clt_priv_key : string }
+    server_public_key : string ;
+    client_public_key : string ;
+    client_private_key : string }
   [@@ppp PPP_JSON]
 
 let make_conf
@@ -86,9 +86,9 @@ let make_conf
       log_exceptions ~what (fun () ->
         let id = Files.ppp_of_file identity_file_ppp_json identity in
         (if username <> "" then username else id.username),
-        (if srv_pub_key <> "" then srv_pub_key else id.srv_pub_key),
-        (if clt_pub_key <> "" then clt_pub_key else id.clt_pub_key),
-        (if clt_priv_key <> "" then clt_priv_key else id.clt_priv_key))
+        (if srv_pub_key <> "" then srv_pub_key else id.server_public_key),
+        (if clt_pub_key <> "" then clt_pub_key else id.client_public_key),
+        (if clt_priv_key <> "" then clt_priv_key else id.client_private_key))
   in
   RamenExperiments.set_variants persist_dir forced_variants ;
   { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;

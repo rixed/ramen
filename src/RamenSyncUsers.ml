@@ -33,14 +33,14 @@ let add conf output_file username roles srv_pub_key_file () =
   let srv_pub_key_file =
     if not (N.is_empty srv_pub_key_file) then srv_pub_key_file else
       C.default_srv_pub_key_file conf in
-  let srv_pub_key =
+  let server_public_key =
     try Files.read_key false srv_pub_key_file
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ -> "" in
-  if srv_pub_key = "" then
+  if server_public_key = "" then
     !logger.warning "Without the server public key this user will only be \
                     allowed in insecure connections." ;
-  let clt_pub_key, clt_priv_key = Zmq.Curve.keypair () in
-  User.Db.make_user conf username roles clt_pub_key ;
+  let client_public_key, client_private_key = Zmq.Curve.keypair () in
+  User.Db.make_user conf username roles client_public_key ;
   (fun f ->
     match output_file with
     | None -> f stdout
@@ -52,7 +52,7 @@ let add conf output_file username roles srv_pub_key_file () =
                       then delete it.")
     (fun oc ->
       PPP.to_string ~pretty:true C.identity_file_ppp_json
-        { username ; srv_pub_key ; clt_pub_key ; clt_priv_key } |>
+        { username ; server_public_key ; client_public_key ; client_private_key } |>
       String.print oc)
 
 let del conf username () =

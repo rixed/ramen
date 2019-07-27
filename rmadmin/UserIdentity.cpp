@@ -43,9 +43,9 @@ UserIdentity::UserIdentity(QFile &file)
     field = obj[name].toString();
 
     GET(username, "username");
-    GET(srv_pub_key, "srv_pub_key");
-    GET(clt_pub_key, "clt_pub_key");
-    GET(clt_priv_key, "clt_priv_key");
+    GET(srv_pub_key, "server_public_key");
+    GET(clt_pub_key, "client_public_key");
+    GET(clt_priv_key, "client_private_key");
 
     isValid = true;
   } while (false);
