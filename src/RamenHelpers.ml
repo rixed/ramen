@@ -730,7 +730,7 @@ let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
   !logger.info "Listening for datagrams on %s:%d"
     (Unix.string_of_inet_addr inet_addr) port ;
   let buffer = Bytes.create buffer_size in
-  let rec forever () =
+  let rec until_exit () =
     if while_ () then
       let recv_len, sockaddr =
         restart_on_eintr ~while_ (fun () ->
@@ -741,9 +741,11 @@ let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
         | ADDR_INET (addr, _port) -> Some addr
         | _ -> None in
       k ?sender buffer recv_len ;
-      (forever [@tailcall]) ()
+      (until_exit [@tailcall]) ()
   in
-  forever ()
+  try until_exit ()
+  with Exit -> (* from the above restart_on_eintr *)
+    ()
 
 let hex_of =
   let zero = Char.code '0'

@@ -126,6 +126,7 @@ let start_zmq_client
     ZMQClient.start ?while_ ~url ~srv_pub_key
                     ~username ~clt_pub_key ~clt_priv_key
                     ~topics:[ topic_sub ] ~on_new ~on_del
+                    (* 0 as timeout means not blocking: *)
                     ~recvtimeo:0. ~sndtimeo:0. (fun clt ->
       let publish_tail = may_publish_tail clt ?while_ topic_pub in
       let stats_key =

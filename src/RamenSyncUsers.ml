@@ -47,7 +47,8 @@ let add conf output_file username roles srv_pub_key_file () =
     | Some fname ->
         File.with_file_out ~mode:[`create; `text ; `excl]
                            (fname : N.path :> string) f ;
-        !logger.info "User identity created in %a." N.path_print fname ;
+        !logger.info "User identity created in %a for user %s."
+          N.path_print fname username ;
         !logger.info "You should now transmit this file to this user and \
                       then delete it.")
     (fun oc ->

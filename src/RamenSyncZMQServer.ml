@@ -188,7 +188,6 @@ let session_of_socket socket do_authn =
 
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
-  !logger.debug "zock_step..." ;
   let peel_multipart msg =
     let too_short l =
       Printf.sprintf "Invalid zmq message with only %d parts" l |>

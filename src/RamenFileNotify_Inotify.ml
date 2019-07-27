@@ -32,11 +32,13 @@ let for_each f n =
   let rec loop () =
     if n.while_ () then (
       match restart_on_eintr ~while_:n.while_ Inotify.read n.handler with
-      | exception exn ->
-        !logger.error "Cannot Inotify.read: %s"
-          (Printexc.to_string exn) ;
-        Unix.sleep 1 ;
-        loop ()
+      | exception Exit ->
+          !logger.debug "Exiting..." ;
+          loop ()
+      | exception exn when exn <> Exit ->
+          print_exception ~what:"Inotify.read" exn ;
+          Unix.sleep 1 ;
+          loop ()
       | lst ->
           List.iter (function
           | _watch, kinds, _cookie, Some filename
@@ -80,8 +82,7 @@ let wait_file_changes ?(while_=always) ~max_wait n =
         match BatUnix.restart_on_EINTR Inotify.read n.handler with
         | exception exn ->
             if exn <> Exit then
-              !logger.error "Cannot Inotify.read: %s"
-                (Printexc.to_string exn) ;
+              print_exception ~what:"Inotify.read" exn ;
             raise exn
         | lst ->
             (try Some (
