@@ -375,12 +375,12 @@ let tunneld =
  *)
 
 let confserver_port =
-  let i = Arg.info ~doc:CliInfo.confserver_port [ "i"; "insecure" ]
+  let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "insecure" ]
   and vopt = Some ("127.0.0.1:"^ string_of_int Default.confserver_port) in
   Arg.(value (opt ~vopt (some string) None i))
 
 let confserver_port_sec =
-  let i = Arg.info ~doc:CliInfo.confserver_port_sec [ "s"; "secure" ]
+  let i = Arg.info ~doc:CliInfo.confserver_port_sec [ "P"; "secure" ]
   and vopt = Some (string_of_int Default.confserver_port_sec) in
   Arg.(value (opt ~vopt (some string) None i))
 
