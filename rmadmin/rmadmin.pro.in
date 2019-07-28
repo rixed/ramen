@@ -122,6 +122,7 @@ SOURCES += \
   RamenValueEditor.cpp \
   KLineEdit.cpp \
   KFloatEditor.cpp \
+  KLabel.cpp \
   KChoice.cpp \
   KBool.cpp \
   KTextEdit.cpp \

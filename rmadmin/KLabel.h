@@ -7,25 +7,14 @@
 #include "conf.h"
 #include "AtomicWidget.h"
 
-class KLabel : public QLabel, public AtomicWidget
+class KLabel : public AtomicWidget
 {
   Q_OBJECT
 
-public:
-  KLabel(conf::Key const key, QWidget *parent = nullptr) :
-    QLabel(parent), AtomicWidget(key)
-  {
-    conf::kvs_lock.lock_shared();
-    KValue &kv = conf::kvs[key];
-    if (kv.isSet()) {
-      bool ok = setValue(key, kv.val);
-      assert(ok); // ?
-    }
-    setEnabled(kv.isMine());
-    conf::kvs_lock.unlock_shared();
+  QLabel *label;
 
-    connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
-  }
+public:
+  KLabel(conf::Key const key, bool wordWrap = false, QWidget *parent = nullptr);
 
   void setEnabled(bool) {} // not editable
 
@@ -33,8 +22,8 @@ public slots:
   bool setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
   {
     QString new_v(v->toQString());
-    if (new_v != text()) {
-      QLabel::setText(new_v);
+    if (new_v != label->text()) {
+      label->setText(new_v);
       emit valueChanged(k, v);
     }
 

@@ -20,9 +20,6 @@ class ConfTreeWidget : public QTreeWidget
   ConfTreeItem *itemOfKey(conf::Key const &);
   ConfTreeItem *findItem(QString const &name, ConfTreeItem *parent) const;
 
-  AtomicWidget *editorWidget(conf::Key const &);
-  AtomicWidget *readOnlyEditor(conf::Key const &) const;
-  AtomicWidget *floatEditor(conf::Key const &, double, double) const;
   QWidget *actionWidget(conf::Key const &, AtomicWidget *);
 
 public:

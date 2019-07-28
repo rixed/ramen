@@ -9,7 +9,7 @@
 #include "KFloatEditor.h"
 #include "ConfTreeWidget.h"
 
-static bool verbose = true;
+static bool verbose = false;
 
 ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent) const
 {
@@ -29,38 +29,11 @@ ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent
   return nullptr;
 }
 
-AtomicWidget *ConfTreeWidget::editorWidget(conf::Key const &k)
-{
-  std::cout << "New editorWidget for " << k << std::endl;
-  // For now just a read-only "editor":
-  if (k.s == "storage/recall_cost") {
-    return floatEditor(k, 0., 1.);
-  } else {
-    return readOnlyEditor(k);
-  }
-}
-
 // Slot to propagates editor valueChanged into the item emitDatachanged
 void ConfTreeWidget::editedValueChanged(conf::Key const &k, std::shared_ptr<conf::Value const>)
 {
   ConfTreeItem *item = itemOfKey(k);
   if (item) item->emitDataChanged();
-}
-
-AtomicWidget *ConfTreeWidget::readOnlyEditor(conf::Key const &k) const
-{
-  KLabel *widget = new KLabel(k);
-  widget->setWordWrap(true);
-  // Redraw/resize whenever the value is changed:
-  connect(widget, &KLabel::valueChanged, this, &ConfTreeWidget::editedValueChanged);
-  return widget;
-}
-
-AtomicWidget *ConfTreeWidget::floatEditor(conf::Key const &k, double min, double max) const
-{
-  KFloatEditor *widget = new KFloatEditor(k.s, min, max);
-  connect(widget, &KFloatEditor::valueChanged, this, &ConfTreeWidget::editedValueChanged);
-  return widget;
 }
 
 QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, AtomicWidget *editor)
@@ -105,13 +78,19 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
   QString const name = names.takeFirst();
 
   ConfTreeItem *item = findItem(name, parent);
-
-  if (! item && kv) {
-    item =
-      1 == len ?
-        new ConfTreeItem(kv, name, parent, nullptr) : // TODO: sort
-        new ConfTreeItem(nullptr, name, parent, nullptr); // TODO: sort
+  if (item) {
+    if (1 == len) return item;
+    return findOrCreateItem(names, k, kv, item);
   }
+
+  // Create it:
+
+  if (! kv) return nullptr;
+
+  item =
+    1 == len ?
+      new ConfTreeItem(kv, name, parent, nullptr) : // TODO: sort
+      new ConfTreeItem(nullptr, name, parent, nullptr); // TODO: sort
 
   if (! item) return nullptr;
 
@@ -123,10 +102,13 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
   if (len > 1) {
     return findOrCreateItem(names, k, kv, item);
   } else {
-    AtomicWidget *editor = editorWidget(k);
-    QWidget *editorWidget = dynamic_cast<QWidget *>(editor);
-    assert(editorWidget);
-    setItemWidget(item, 1, editorWidget);
+    AtomicWidget *editor = kv->val->editorWidget(k);
+    // Redraw/resize whenever the value is changed:
+    connect(editor, &AtomicWidget::valueChanged, this, &ConfTreeWidget::editedValueChanged);
+
+    QWidget *widget = dynamic_cast<QWidget *>(editor);
+    assert(widget);
+    setItemWidget(item, 1, widget);
     setItemWidget(item, 3, actionWidget(k, editor));
     return item;
   }

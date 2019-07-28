@@ -6,14 +6,19 @@
 #include "confValue.h"
 #include "conf.h"
 
-class KLineEdit : public QLineEdit, public AtomicWidget
+class KLineEdit : public AtomicWidget
 {
   Q_OBJECT
 
+  QLineEdit *lineEdit;
   conf::ValueType valueType;
 
 public:
-  KLineEdit(std::string const &key, conf::ValueType, QWidget *parent = nullptr);
+  KLineEdit(conf::Key const &key, conf::ValueType, QWidget *parent = nullptr);
+
+  void setPlaceholderText(QString const s) {
+    lineEdit->setPlaceholderText(s);
+  }
 
   virtual std::shared_ptr<conf::Value const> getValue() const;
   virtual void setEnabled(bool);

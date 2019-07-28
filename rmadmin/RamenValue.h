@@ -6,8 +6,11 @@
 #include <cassert>
 #include <optional>
 #include <QString>
+#include <QWidget>
 extern "C" {
 # include <caml/mlvalues.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
 }
 #include "misc.h"
 #include "RamenTypeStructure.h"
@@ -25,6 +28,12 @@ extern "C" {
  * But it is possible to build a possible type for any value (as
  * RamenTypes.structure_of does). This is all we really need.
  */
+
+class AtomicWidget;
+
+namespace conf {
+  class Key;
+};
 
 struct RamenValue {
   virtual ~RamenValue() {};
@@ -48,6 +57,13 @@ struct RamenValue {
     assert(0 == c);
     return this;
   }
+
+  /* Some keys have additional constraints or specific representations
+   * more suitable than the generic editor for that value type.
+   * But this is true for other methods of the Value. Let's rather
+   * consider that Value can have "styles" depending on their key, which
+   * allow them to customize their editor and/or other members. */
+  virtual AtomicWidget *editorWidget(conf::Key const &key, QWidget *parent = nullptr) const;
 };
 
 struct VNull : public RamenValue {
@@ -64,6 +80,7 @@ struct VFloat : public RamenValue {
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
   virtual std::optional<double> toDouble() const { return v; }
+  AtomicWidget *editorWidget(conf::Key const &key, QWidget *parent = nullptr) const;
 };
 
 struct VString : public RamenValue {

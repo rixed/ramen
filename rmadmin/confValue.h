@@ -8,6 +8,8 @@
 #include <QObject>
 extern "C" {
 # include <caml/mlvalues.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
 }
 #include "CompiledProgramParam.h"
 #include "CompiledFunctionInfo.h"
@@ -16,8 +18,11 @@ extern "C" {
 #include "confWorkerRef.h"
 
 struct RamenType;
+class AtomicWidget;
 
 namespace conf {
+
+class Key;
 
 // Must match RamenSync.Value.t!
 enum ValueType {
@@ -47,6 +52,9 @@ public:
 
   virtual QString toQString() const;
   virtual value toOCamlValue() const;
+  /* Generic editor that can be overwritten/specialized/tuned
+   * according to the key. By default a read-only label. */
+  virtual AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   virtual bool operator==(Value const &) const;
   bool operator!=(Value const &) const;
 };
@@ -159,6 +167,9 @@ struct RamenValueValue : public Value
 
   QString toQString() const { return v->toQString(); }
   value toOCamlValue() const;
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const {
+    return v->editorWidget(key, parent);
+  }
   bool operator==(Value const &) const;
 };
 
@@ -264,8 +275,5 @@ Q_DECLARE_METATYPE(conf::Worker);
 Q_DECLARE_METATYPE(conf::TimeRange);
 Q_DECLARE_METATYPE(conf::Retention);
 Q_DECLARE_METATYPE(conf::Tuple);
-
-// Defined by OCaml columnName but conflicting with further Qt includes:
-#undef alloc
 
 #endif

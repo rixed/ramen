@@ -16,6 +16,7 @@ extern "C" {
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
 #include "confRCEntryParam.h"
+#include "KLabel.h"
 
 namespace conf {
 
@@ -47,6 +48,11 @@ QString Value::toQString() const
 value Value::toOCamlValue() const
 {
   assert(!"Don't know how to convert from a base Value");
+}
+
+AtomicWidget *Value::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new KLabel(key, false, parent);
 }
 
 bool Value::operator==(Value const &other) const

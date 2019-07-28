@@ -10,6 +10,9 @@ extern "C" {
 # include <caml/callback.h>
 }
 #include "misc.h"
+#include "confKey.h"
+#include "KLabel.h"
+#include "KFloatEditor.h"
 #include "RamenType.h"
 #include "RamenValue.h"
 
@@ -46,6 +49,11 @@ QString const RamenValue::toQString() const
   return QString("Some value which printer is unimplemented");
 }
 
+AtomicWidget *RamenValue::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KLabel(key, false, parent);
+}
+
 value VNull::toOCamlValue() const
 {
   CAMLparam0();
@@ -59,6 +67,15 @@ value VFloat::toOCamlValue() const
   ret = caml_alloc(1, TAG_VFloat);
   Store_field(ret, 0, caml_copy_double(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VFloat::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  if (key.s == "storage/recall_cost") {
+    return new KFloatEditor(key.s, parent, 0., 1.);
+  } else {
+    return new KFloatEditor(key.s, parent);
+  }
 }
 
 bool VFloat::operator==(RamenValue const &other) const

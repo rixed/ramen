@@ -2,12 +2,12 @@
 #include "RangeDoubleValidator.h"
 #include "KFloatEditor.h"
 
-KFloatEditor::KFloatEditor(std::string const &key, double min, double max, QWidget *parent) :
-  QLineEdit(parent),
-  AtomicWidget(key)
+KFloatEditor::KFloatEditor(conf::Key const &key, QWidget *parent, double min, double max) :
+  AtomicWidget(key, parent)
 {
-  setValidator(RangeDoubleValidator::forRange(min, max));
-  (void)min; (void)max; // TODO
+  lineEdit = new QLineEdit(this);
+  lineEdit->setValidator(RangeDoubleValidator::forRange(min, max));
+
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   if (kv.isSet()) {
@@ -25,14 +25,14 @@ KFloatEditor::KFloatEditor(std::string const &key, double min, double max, QWidg
 
 std::shared_ptr<conf::Value const> KFloatEditor::getValue() const
 {
-  VFloat *v = new VFloat(text().toDouble());
+  VFloat *v = new VFloat(lineEdit->text().toDouble());
   return std::shared_ptr<conf::Value const>(new conf::RamenValueValue(v));
 }
 
 void KFloatEditor::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
-  QLineEdit::setEnabled(enabled);
+  lineEdit->setEnabled(enabled);
 }
 
 /* TODO: returning an actual error message that could be used in the error
@@ -50,8 +50,8 @@ bool KFloatEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value cons
   if (! rv) return false;
 
   QString new_v(rv->toQString());
-  if (new_v != text()) {
-    QLineEdit::setText(new_v);
+  if (new_v != lineEdit->text()) {
+    lineEdit->setText(new_v);
     emit valueChanged(k, v);
   }
 

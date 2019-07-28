@@ -4,9 +4,11 @@
 #include "KValue.h"
 #include "AtomicWidget.h"
 
-class KTextEdit : public QTextEdit, public AtomicWidget
+class KTextEdit : public AtomicWidget
 {
   Q_OBJECT
+
+  QTextEdit *textEdit;
 
 public:
   KTextEdit(QString const &sourceName, QWidget *parent = nullptr);

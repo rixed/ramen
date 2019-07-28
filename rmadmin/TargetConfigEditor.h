@@ -8,12 +8,14 @@
  * It is also an AtomicWidget.
  * This is mostly a QToolBox of RCEditors. */
 
-class TargetConfigEditor : public QToolBox, public AtomicWidget
+class TargetConfigEditor : public AtomicWidget
 {
   Q_OBJECT
 
+  QToolBox *toolBox;
+
 public:
-  TargetConfigEditor(std::string const &key, QWidget *parent = nullptr);
+  TargetConfigEditor(conf::Key const &key, QWidget *parent = nullptr);
 
   void setEnabled(bool);
   std::shared_ptr<conf::Value const> getValue() const;

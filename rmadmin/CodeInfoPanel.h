@@ -10,9 +10,11 @@ class QGridLayout;
 class QGroupBox;
 class RCEntryEditor;
 
-class CodeInfoPanel : public QWidget, public AtomicWidget
+class CodeInfoPanel : public AtomicWidget
 {
   Q_OBJECT
+
+  QWidget *widget;
 
   QGridLayout *infoLayout;
   QLabel *md5Label, *condRunLabel, *errLabel;

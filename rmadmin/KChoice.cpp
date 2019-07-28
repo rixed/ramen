@@ -4,11 +4,11 @@
 #include "KChoice.h"
 
 KChoice::KChoice(std::string const key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
-  QWidget(parent),
-  AtomicWidget(key)
+  AtomicWidget(key, parent)
 {
+  widget = new QWidget(this);
   QVBoxLayout *layout = new QVBoxLayout;
-  setLayout(layout);
+  widget->setLayout(layout);
 
   for (auto label : labels) {
     QRadioButton *b = new QRadioButton(label.first, this);

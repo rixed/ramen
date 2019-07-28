@@ -3,7 +3,9 @@
 #include <string>
 #include <QtWidgets>
 extern "C" {
-#  include <caml/mlvalues.h>
+# include <caml/mlvalues.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
 }
 
 struct SyncStatus {

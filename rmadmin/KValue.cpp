@@ -2,27 +2,6 @@
 #include <cassert>
 #include "KValue.h"
 
-KValue::KValue()
-{
-}
-
-KValue::KValue(const KValue& other) : QObject()
-{
-  owner = other.owner;
-  val = other.val;
-}
-
-KValue::~KValue()
-{
-}
-
-KValue& KValue::operator=(const KValue& other)
-{
-  owner = other.owner;
-  val = other.val;
-  return *this;
-}
-
 void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value const> v, QString const &u, double mt)
 {
   mtime = mt;

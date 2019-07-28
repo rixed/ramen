@@ -3,9 +3,10 @@
 #include "KTextEdit.h"
 
 KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
-  QTextEdit(parent),
-  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/ramen"))
+  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/ramen"), parent)
 {
+  textEdit = new QTextEdit(this);
+
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   if (kv.isSet()) {
@@ -24,20 +25,21 @@ KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
 
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const
 {
-  return std::shared_ptr<conf::Value const>(new conf::RamenValueValue(new VString(toPlainText())));
+  return std::shared_ptr<conf::Value const>(
+    new conf::RamenValueValue(new VString(textEdit->toPlainText())));
 }
 
 void KTextEdit::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
-  QTextEdit::setReadOnly(! enabled);
+  textEdit->setReadOnly(! enabled);
 }
 
 bool KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString());
-  if (new_v != toPlainText()) {
-    setPlainText(v->toQString());
+  if (new_v != textEdit->toPlainText()) {
+    textEdit->setPlainText(v->toQString());
     emit valueChanged(k, v);
   }
 

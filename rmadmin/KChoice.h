@@ -8,10 +8,11 @@
 
 class QRadioButton;
 
-class KChoice : public QWidget, public AtomicWidget
+class KChoice : public AtomicWidget
 {
   Q_OBJECT
 
+  QWidget *widget;
   std::vector<std::pair<QRadioButton *, std::shared_ptr<conf::Value const>>> choices;
 
 public:

@@ -1,8 +1,8 @@
 #ifndef ATOMICWIDGET_H_190506
 #define ATOMICWIDGET_H_190506
 /* What an AtomicForm remembers about its widgets */
-#include <QWidget>
 #include <memory>
+#include <QWidget>
 #include "confKey.h"
 #include "conf.h"
 
@@ -10,15 +10,24 @@ namespace conf {
   class Value;
 };
 
-class AtomicWidget
+/* We choose to have AtomicWidget a QObject, meaning the derived implementations
+ * of an AtomicWidgets cannot inherit a QObject (ie any QWidget). Instead they
+ * will have to have it as a member and redirect calls to the few interresting
+ * QWidget functions to that member.
+ * This allows us to use an AtomicWidget to indiscriminately manipulate any
+ * value editor. */
+class AtomicWidget : public QWidget
 {
+  Q_OBJECT
+
   bool last_enabled;
 
 public:
   conf::Key const key;
   std::shared_ptr<conf::Value const> initValue; // shared ptr
 
-  AtomicWidget(conf::Key const &key_) :
+  AtomicWidget(conf::Key const &key_, QWidget *parent = nullptr) :
+    QWidget(parent),
     last_enabled(true),
     key(key_) {}
 
@@ -36,13 +45,12 @@ public:
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
+public slots:
   /* Return false if the editor can not display this value because of
    * incompatible types. */
   // TODO: replace the widget with an error message then.
   virtual bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
 
-  /* AtomicWidget not being a QObject, we won't be able to connect to virtual
-   * slots so no need to declare those virtual: */
   void lockValue(conf::Key const &, QString const &uid)
   {
     setEnabled(uid == my_uid);
@@ -53,9 +61,7 @@ public:
   }
 
 signals:
-  /* AtomicWidget is not (and cannot be) a Q_Object but we want all of its
-   * descendants to have this signal: */
-  virtual void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const = 0;
+  void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
 #endif

@@ -4,11 +4,11 @@
 #include "PosDoubleValidator.h"
 #include "PosIntValidator.h"
 
-KLineEdit::KLineEdit(std::string const &key, conf::ValueType valueType_, QWidget *parent) :
-  QLineEdit(parent),
-  AtomicWidget(key),
+KLineEdit::KLineEdit(conf::Key const &key, conf::ValueType valueType_, QWidget *parent) :
+  AtomicWidget(key, parent),
   valueType(valueType_)
 {
+  lineEdit = new QLineEdit(this);
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   if (kv.isSet()) {
@@ -26,20 +26,21 @@ KLineEdit::KLineEdit(std::string const &key, conf::ValueType valueType_, QWidget
 
 std::shared_ptr<conf::Value const> KLineEdit::getValue() const
 {
-  return std::shared_ptr<conf::Value const>(conf::valueOfQString(valueType, text()));
+  return std::shared_ptr<conf::Value const>(
+    conf::valueOfQString(valueType, lineEdit->text()));
 }
 
 void KLineEdit::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
-  QLineEdit::setEnabled(enabled);
+  lineEdit->setEnabled(enabled);
 }
 
 bool KLineEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString());
-  if (new_v != text()) {
-    QLineEdit::setText(new_v);
+  if (new_v != lineEdit->text()) {
+    lineEdit->setText(new_v);
     emit valueChanged(k, v);
   }
   return true;

@@ -9,11 +9,12 @@
 #include "CodeInfoPanel.h"
 
 CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
-  QWidget(parent),
-  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/info"))
+  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/info"), parent)
 {
+  widget = new QWidget(this);
+
   QVBoxLayout *layout = new QVBoxLayout;
-  setLayout(layout);
+  widget->setLayout(layout);
 
   /* First: the SourceInfo (read only) */
   {

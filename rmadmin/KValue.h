@@ -20,9 +20,13 @@ public:
   std::optional<QString> owner;
   double expiry;  // if owner above is set
 
-  KValue();
-  KValue(const KValue&);
-  ~KValue();
+  KValue() {}
+
+  KValue(const KValue &other) : QObject() {
+    owner = other.owner;
+    val = other.val;
+  }
+
   void set(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double);
   bool isSet() const {
     return val != nullptr;
@@ -35,7 +39,12 @@ public:
   }
   void lock(conf::Key const &, QString const &, double);
   void unlock(conf::Key const &);
-  KValue& operator=(const KValue&);
+
+  KValue& operator=(const KValue &other) {
+    owner = other.owner;
+    val = other.val;
+    return *this;
+  }
 
 signals:
   void valueCreated(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double) const;

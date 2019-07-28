@@ -4,12 +4,17 @@
 #include "confValue.h"
 #include "AtomicWidget.h"
 
-struct KFloatEditor : public QLineEdit, public AtomicWidget
+struct KFloatEditor : public AtomicWidget
 {
   Q_OBJECT
 
+  QLineEdit *lineEdit;
+
 public:
-  KFloatEditor(std::string const &key, double min = 0., double max = 1., QWidget *parent = nullptr);
+  KFloatEditor(conf::Key const &key,
+               QWidget *parent = nullptr,
+               double min = -std::numeric_limits<double>::infinity(),
+               double max = std::numeric_limits<double>::infinity());
 
    std::shared_ptr<conf::Value const> getValue() const;
    void setEnabled(bool);
