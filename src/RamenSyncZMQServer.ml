@@ -264,9 +264,23 @@ let zock_step srv zock zock_idx do_authn =
             (List.length parts) |>
           failwith)
 
+let timeout_old_errors srv =
+  let oldest = Unix.time () -. sync_errors_timeout in
+  Server.H.filteri_inplace (fun k hv ->
+    match k, hv.Server.v with
+    | Key.Error (Some _),
+      Value.Error (t, _, _)
+      when t < oldest ->
+        Server.notify srv k (User.has_any_role hv.can_read) (DelKey k) ;
+        false
+    | _ ->
+        true
+  ) srv.Server.h
+
 let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
+  let clean_rate = rate_limiter 1 (sync_errors_timeout *. 0.5) in
   let poll_mask =
     Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
     Zmq.Poll.mask_of in
@@ -277,6 +291,7 @@ let service_loop conf zocks srv =
       let zock, do_authn = zocks.(i) in
       if m <> None then zock_step srv zock i do_authn
     ) ready ;
+    if clean_rate () then timeout_old_errors srv ;
     if save_rate () then Snapshot.save conf srv ;
     true
   ) ;

@@ -562,6 +562,9 @@ let delay_before_replay = 0.5
 (* Max number of last tuples kept for each worker in the config tree: *)
 let max_last_tuples = 10
 
+(* After that amount of seconds, untouched error files will be deleted: *)
+let sync_errors_timeout = 600.
+
 (* OCaml stdlib Random won't go further: *)
 let max_int_for_random = 0x3FFFFFFF
 
