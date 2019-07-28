@@ -120,18 +120,20 @@ struct
     failwith
 
   (* Remove the head locker and notify of lock change: *)
-  let do_unlock t k hv =
+  let do_unlock ?(and_notify=true) t k hv =
     match List.tl hv.locks with
     | [] ->
         hv.locks <- [] ;
-        notify t k (User.has_any_role hv.can_read) (UnlockKey k)
+        if and_notify then
+          notify t k (User.has_any_role hv.can_read) (UnlockKey k)
     | (u, duration) :: rest ->
         let expiry = Unix.gettimeofday () +. duration in
         hv.locks <- (u, expiry) :: rest ;
         let owner = IO.to_string User.print_id (User.id u) in
-        notify t k (User.has_any_role hv.can_read) (LockKey { k ; owner ; expiry})
+        if and_notify then
+          notify t k (User.has_any_role hv.can_read) (LockKey { k ; owner ; expiry})
 
-  let timeout_locks t k hv =
+  let timeout_locks ?and_notify t k hv =
     match hv.locks with
     | [] -> ()
     | (u, expiry) :: _ ->
@@ -140,7 +142,7 @@ struct
           !logger.warning "Timing out %a's lock of config key %a"
             User.print u
             Key.print k ;
-          do_unlock t k hv)
+          do_unlock ?and_notify t k hv)
 
   (* Early cleaning of timed out locks is just for nicer visualisation in
    * clients but is not required for proper working of locks. *)
@@ -333,7 +335,7 @@ struct
       if User.has_any_role hv.can_read u &&
          not (Enum.is_empty (Selector.matches k s))
       then (
-        timeout_locks t k hv ;
+        timeout_locks ~and_notify:false t k hv ;
         let uid = IO.to_string User.print_id (User.id hv.set_by) in
         let owner, expiry = owner_of_hash_value hv in
         let msg = SrvMsg.NewKey { k ; v = hv.v ; uid ; mtime = hv.mtime ;
