@@ -486,7 +486,7 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	@echo 'Building liborc'
 	@mkdir -p submodules/orc/build
 	@cd submodules/orc/build &&\
-	 cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
+	 CPPFLAGS='$(CPPFLAGS)' cmake .. -DBUILD_JAVA=OFF -DCMAKE_BUILD_TYPE=DEBUG -DCMAKE_INSTALL_PREFIX:PATH=$(PWD)/$(BUNDLE_DIR) &&\
 	 make install
 	@touch $@
 
