@@ -1,10 +1,12 @@
 #include <cassert>
+#include "RangeDoubleValidator.h"
 #include "KFloatEditor.h"
 
 KFloatEditor::KFloatEditor(std::string const &key, double min, double max, QWidget *parent) :
   QLineEdit(parent),
   AtomicWidget(key)
 {
+  setValidator(RangeDoubleValidator::forRange(min, max));
   (void)min; (void)max; // TODO
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
