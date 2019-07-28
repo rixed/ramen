@@ -37,7 +37,7 @@ struct
       can_write : Role.t Set.t ;
       can_del : Role.t Set.t ;
       (* Locked by the user who's on top of the list. Others are waiting: *)
-      (* TODO: Distinct reader locks (a set) from /writer locks (that list). *)
+      (* TODO: Distinct reader locks (a set) from writer locks (that list). *)
       mutable locks : lock list ;
       (* Also some metadata: *)
       mutable set_by : User.t ;

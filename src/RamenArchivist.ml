@@ -921,7 +921,7 @@ let realloc_sync conf ~while_ clt =
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Batteries.Hashtbl.t =
     Hashtbl.create 10 in
-  let size_limit = ref 1073741824L
+  let size_limit = ref (Uint64.of_int64 1073741824L)
   and recall_cost = ref 1e-6
   and retentions = Hashtbl.create 11
   and src_retention = Hashtbl.create 11
@@ -965,7 +965,7 @@ let realloc_sync conf ~while_ clt =
                          func.F.Serialized.retention
             ) prog.P.Serialized.funcs)
     | Key.Storage TotalSize,
-      Value.RamenValue T.(VI64 v) ->
+      Value.RamenValue T.(VU64 v) ->
         size_limit := v
     | Key.Storage RecallCost,
       Value.RamenValue T.(VFloat v) ->
@@ -979,7 +979,7 @@ let realloc_sync conf ~while_ clt =
     | _ ->
         ()) ;
   let user_conf =
-    { size_limit = !size_limit ;
+    { size_limit = Uint64.to_int64 !size_limit ;
       recall_cost = !recall_cost ;
       retentions } in
   let allocs : ((N.site * N.fq), int) Hashtbl.t =
