@@ -956,11 +956,11 @@ RAMEN_TESTS_SOURCES = \
 	@echo 'Compiling ramen program $@'
 	@RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
 
+# Functional tests are not 100% reproductible:
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	# Functional tests are not 100% reproductible:
-	@(src/ramen test %< || src/ramen test $<) && touch $@
+	@(src/ramen test '%<' || src/ramen test '$<') && touch $@
 
 # One day we will have `ramen makedep`:
 tests/func/lag.x: tests/func/fixtures/n123.x
