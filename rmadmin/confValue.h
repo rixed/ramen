@@ -153,6 +153,7 @@ struct RamenValueValue : public Value
 {
   std::shared_ptr<RamenValue> v;
 
+  // Takes ownership of v_
   RamenValueValue(RamenValue *v_) :
     Value(RamenValueType), v(v_) {}
 

@@ -20,8 +20,7 @@ public:
 
   AtomicWidget(conf::Key const &key_) :
     last_enabled(true),
-    key(key_)
-  {}
+    key(key_) {}
 
   virtual ~AtomicWidget() {}
 
@@ -29,7 +28,7 @@ public:
   {
     if (enabled && !last_enabled) {
       // Capture the value at the beginning of edition:
-     initValue = getValue();
+      initValue = getValue();
     }
     last_enabled = enabled;
   }
