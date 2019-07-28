@@ -30,8 +30,7 @@ jobs:
           name: Archiving tests
           command: make arc-check
       - run:
-# Functional tests are not 100% reproductible:
           name: Functional tests
-          command: make func-check || make func-check
+          command: make func-check
       - store_test_results:
           path: tests/results

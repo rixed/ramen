@@ -959,7 +959,8 @@ RAMEN_TESTS_SOURCES = \
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@src/ramen test $< && touch $@
+	# Functional tests are not 100% reproductible:
+	@(src/ramen test %< || src/ramen test $<) && touch $@
 
 # One day we will have `ramen makedep`:
 tests/func/lag.x: tests/func/fixtures/n123.x
