@@ -1,3 +1,5 @@
+#include <iostream>
+#include <cassert>
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
@@ -51,11 +53,16 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
   // Connect the kvs value to setValue (read-only)
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
+  if (kv.isSet()) {
+    bool ok = setValue(key, kv.val);
+    assert(ok); // ?
+  }
+  setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
+
   connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
   connect(&kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
   // TODO: valueDeleted.
-  if (kv.isSet()) setValue(key, kv.val);
 }
 
 // If not visible then the error message will be visible
@@ -68,13 +75,13 @@ void CodeInfoPanel::setInfoVisible(bool visible)
   if (functionBox) functionBox->setVisible(visible);
 }
 
-void CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(v);
   if (! info) {
     std::cout << "source info not a SourceInfo?!" << std::endl;
-    return;
+    return false;
   }
 
   md5Label->setText(info->md5);
@@ -138,4 +145,6 @@ void CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value con
     }
   }
   emit valueChanged(k, v);
+
+  return true;
 }

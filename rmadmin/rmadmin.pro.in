@@ -46,6 +46,7 @@ HEADERS += \
   RamenValueEditor.h \
   AtomicWidget.h \
   KLineEdit.h \
+  KFloatEditor.h \
   KLabel.h \
   KErrorMsg.h \
   KChoice.h \
@@ -118,6 +119,7 @@ SOURCES += \
   conf.cpp \
   RamenValueEditor.cpp \
   KLineEdit.cpp \
+  KFloatEditor.cpp \
   KChoice.cpp \
   KBool.cpp \
   KTextEdit.cpp \

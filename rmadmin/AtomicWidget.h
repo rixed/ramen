@@ -36,13 +36,16 @@ public:
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
-  virtual void setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
+  /* Return false if the editor can not display this value because of
+   * incompatible types. */
+  // TODO: replace the widget with an error message then.
+  virtual bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
 
   /* AtomicWidget not being a QObject, we won't be able to connect to virtual
    * slots so no need to declare those virtual: */
   void lockValue(conf::Key const &, QString const &uid)
   {
-    setEnabled(uid == conf::my_uid);
+    setEnabled(uid == my_uid);
   }
   void unlockValue(conf::Key const &)
   {

@@ -1,6 +1,7 @@
 #ifndef KLABEL_H_190505
 #define KLABEL_H_190505
 #include <iostream>
+#include <cassert>
 #include <QLabel>
 #include "confValue.h"
 #include "conf.h"
@@ -16,20 +17,28 @@ public:
   {
     conf::kvs_lock.lock_shared();
     KValue &kv = conf::kvs[key];
+    if (kv.isSet()) {
+      bool ok = setValue(key, kv.val);
+      assert(ok); // ?
+    }
+    setEnabled(kv.isMine());
     conf::kvs_lock.unlock_shared();
-    connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
 
-    if (kv.isSet()) setValue(key, kv.val);
+    connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
   }
 
+  void setEnabled(bool) {} // not editable
+
 public slots:
-  void setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+  bool setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
   {
     QString new_v(v->toQString());
     if (new_v != text()) {
       QLabel::setText(new_v);
       emit valueChanged(k, v);
     }
+
+    return true;
   }
 
 signals:

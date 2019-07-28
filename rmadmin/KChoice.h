@@ -21,7 +21,7 @@ public:
   void setEnabled(bool);
 
 public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const> v);
+  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const> v);
   void lockValue(conf::Key const &k, QString const &uid)
   {
     AtomicWidget::lockValue(k, uid);

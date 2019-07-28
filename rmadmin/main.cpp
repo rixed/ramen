@@ -68,7 +68,7 @@ extern "C" {
   {
     CAMLparam1(key_);
     conf::Key k(String_val(key_));
-    conf::my_errors = k;
+    my_errors = k;
     QMetaObject::invokeMethod(w, "setErrorKey", Qt::QueuedConnection, Q_ARG(conf::Key, k));
     CAMLreturn(Val_unit);
   }
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
   }
   UserIdentity *userIdentity = new UserIdentity(identityFile);
   if (! userIdentity->isValid) exit(1);
-  conf::my_uid = userIdentity->username; // TODO: clean this
+  my_uid = userIdentity->username; // TODO: clean this
 
   qRegisterMetaType<conf::Key>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();

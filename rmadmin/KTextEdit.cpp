@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 #include "KTextEdit.h"
 
 KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
@@ -7,13 +8,18 @@ KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
 {
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
+  if (kv.isSet()) {
+    bool ok = setValue(key, kv.val);
+    assert(ok); // ?
+  }
+  setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
+
   connect(&kv, &KValue::valueCreated, this, &KTextEdit::setValue);
   connect(&kv, &KValue::valueChanged, this, &KTextEdit::setValue);
   connect(&kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
   // TODO: valueDeleted.
-  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> KTextEdit::getValue() const
@@ -27,11 +33,13 @@ void KTextEdit::setEnabled(bool enabled)
   QTextEdit::setReadOnly(! enabled);
 }
 
-void KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   QString new_v(v->toQString());
   if (new_v != toPlainText()) {
     setPlainText(v->toQString());
     emit valueChanged(k, v);
   }
+
+  return true;
 }

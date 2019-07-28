@@ -13,9 +13,6 @@ static bool const verbose = false;
 
 namespace conf {
 
-std::optional<QString> my_uid;
-std::optional<conf::Key> my_errors;
-
 QMap<conf::Key, KValue> kvs;
 rec_shared_mutex kvs_lock;
 

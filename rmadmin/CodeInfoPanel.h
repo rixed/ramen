@@ -22,9 +22,10 @@ class CodeInfoPanel : public QWidget, public AtomicWidget
   void setInfoVisible(bool visible);
 public:
   CodeInfoPanel(QString const &sourceName, QWidget *parent = nullptr);
+  void setEnabled(bool) {} // not editable
 
 public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
+  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
 
 signals:
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;

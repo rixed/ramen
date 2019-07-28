@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
 #include "TargetConfigEditor.h"
@@ -9,12 +10,17 @@ TargetConfigEditor::TargetConfigEditor(std::string const &key, QWidget *parent) 
 {
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
+  if (kv.isSet()) {
+    bool ok = setValue(key, kv.val);
+    assert(ok); // ?
+  }
+  setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
+
   connect(&kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
   connect(&kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
   connect(&kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);
-  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
@@ -44,13 +50,13 @@ void TargetConfigEditor::setEnabled(bool enabled)
   }
 }
 
-void TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   std::shared_ptr<conf::TargetConfig const> rc =
     std::dynamic_pointer_cast<conf::TargetConfig const>(v);
   if (! rc) {
     std::cout << "Target config not of TargetConfig type!?" << std::endl;
-    return;
+    return false;
   }
 
   /* Since we have a single value and it is locked whenever we want to edit
@@ -69,4 +75,6 @@ void TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
   }
 
   emit valueChanged(k, v);
+
+  return true;
 }

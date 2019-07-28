@@ -14,9 +14,6 @@
 
 namespace conf {
 
-extern std::optional<QString> my_uid;
-extern std::optional<conf::Key> my_errors;
-
 /* We keep all KValues in this map so that it's possible to connect
  * updates to widget slots.
  * This is accessed read/write from the OCaml thread and read only from the

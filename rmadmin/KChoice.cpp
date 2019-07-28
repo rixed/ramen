@@ -18,12 +18,17 @@ KChoice::KChoice(std::string const key, std::vector<std::pair<QString const, std
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
+  if (kv.isSet()) {
+    bool ok = setValue(key, kv.val);
+    assert(ok); // ?
+  }
+  setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
+
   connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
   connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
   connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
-  if (kv.isSet()) setValue(key, kv.val);
 }
 
 std::shared_ptr<conf::Value const> KChoice::getValue() const
@@ -37,7 +42,7 @@ std::shared_ptr<conf::Value const> KChoice::getValue() const
   return choices[0].second;
 }
 
-void KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+bool KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   for (unsigned i = 0; i < choices.size(); i ++) {
     if (*choices[i].second == *v) {
@@ -45,11 +50,12 @@ void KChoice::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
         choices[i].first->setChecked(true);
         emit valueChanged(k, v);
       }
-      return;
+      return true;
     }
   }
 
   std::cout << "No choice correspond to value " << *v << std::endl;
+  return false;
 }
 
 void KChoice::setEnabled(bool enabled)

@@ -7,6 +7,7 @@
 #include <QString>
 #include "confValue.h"
 #include "confKey.h"
+#include "UserIdentity.h"
 
 class KValue : public QObject
 {
@@ -28,6 +29,9 @@ public:
   }
   bool isLocked() const {
     return isSet() && owner.has_value();
+  }
+  bool isMine() const {
+    return isLocked() && *owner == my_uid;
   }
   void lock(conf::Key const &, QString const &, double);
   void unlock(conf::Key const &);

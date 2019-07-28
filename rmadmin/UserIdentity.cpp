@@ -4,6 +4,9 @@
 #include <QJsonObject>
 #include "UserIdentity.h"
 
+std::optional<QString> my_uid;
+std::optional<conf::Key> my_errors;
+
 static void complain(QFile &file, std::string msg)
 {
   std::cerr << "File " << file.fileName().toStdString() << ": "

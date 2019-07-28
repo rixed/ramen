@@ -1,22 +1,18 @@
-#ifndef KLINEEDIT_H_190505
-#define KLINEEDIT_H_190505
+#ifndef KFLOATEDITOR_H_190727
+#define KFLOATEDITOR_H_190727
 #include <QLineEdit>
-#include "KValue.h"
-#include "AtomicWidget.h"
 #include "confValue.h"
-#include "conf.h"
+#include "AtomicWidget.h"
 
-class KLineEdit : public QLineEdit, public AtomicWidget
+struct KFloatEditor : public QLineEdit, public AtomicWidget
 {
   Q_OBJECT
 
-  conf::ValueType valueType;
-
 public:
-  KLineEdit(std::string const &key, conf::ValueType, QWidget *parent = nullptr);
+  KFloatEditor(std::string const &key, double min = 0., double max = 1., QWidget *parent = nullptr);
 
-  virtual std::shared_ptr<conf::Value const> getValue() const;
-  virtual void setEnabled(bool);
+   std::shared_ptr<conf::Value const> getValue() const;
+   void setEnabled(bool);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

@@ -1,7 +1,12 @@
 #ifndef USERIDENTITY_H_190719
 #define USERIDENTITY_H_190719
+#include <optional>
 #include <QString>
 #include <QFile>
+#include "confKey.h"
+
+extern std::optional<QString> my_uid;
+extern std::optional<conf::Key> my_errors;
 
 struct UserIdentity
 {

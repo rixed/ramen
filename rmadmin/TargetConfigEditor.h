@@ -19,7 +19,7 @@ public:
   std::shared_ptr<conf::Value const> getValue() const;
 
 public slots:
-  void setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
+  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
 
   void lockValue(conf::Key const &k, QString const &uid)
   {
