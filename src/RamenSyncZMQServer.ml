@@ -319,7 +319,7 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 (* [bind] can be a single number, in which case all local addresses
  * will be bound to that port (equivalent of "*:port"), or an "IP:port"
  * in which case only that IP will be bound. *)
-let start conf port port_sec srv_pub_key_file srv_priv_key_file =
+let start conf ports ports_sec srv_pub_key_file srv_priv_key_file =
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)
@@ -330,12 +330,12 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
     if not (N.is_empty srv_priv_key_file) then srv_priv_key_file else
       C.default_srv_priv_key_file conf in
   srv_priv_key :=
-    if port_sec = None then "" else
+    if ports_sec = [] then "" else
     (try Files.read_key true srv_priv_key_file
     with Unix.(Unix_error (ENOENT, _, _)) | Sys_error _ ->
       create_new_server_keys srv_pub_key_file srv_priv_key_file) ;
   srv_pub_key :=
-    if port_sec = None then "" else
+    if ports_sec = [] then "" else
     Files.read_key false srv_pub_key_file ;
   let bind_to port =
     let bind =
@@ -362,9 +362,10 @@ let start conf port port_sec srv_pub_key_file srv_priv_key_file =
       !logger.info "Create zockets..." ;
       let zocks =
         log_exceptions ~what:"Creating zockets" (fun () ->
-          [| Option.map (zocket false) port ;
-             Option.map (zocket true) port_sec |] |>
-          Array.filter_map identity) in
+          Enum.append
+            (List.enum ports /@ zocket false)
+            (List.enum ports_sec /@ zocket true) |>
+          Array.of_enum) in
       !logger.info "...done" ;
       let send_msg = send_msg zocks in
       finally

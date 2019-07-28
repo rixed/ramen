@@ -237,19 +237,20 @@ let tunneld conf daemonize to_stdout to_syslog port_opt () =
  * other processes via a real-time synchronisation protocol.
  *)
 
-let confserver conf daemonize to_stdout to_syslog port_opt port_sec_opt
+let confserver conf daemonize to_stdout to_syslog ports ports_sec
                srv_pub_key_file srv_priv_key_file () =
   let service_name = ServiceNames.confserver in
-  if port_opt = None && port_sec_opt = None then
-    failwith "You must specify either (or both) of --secure and --insecure" ;
-  if port_sec_opt = None && not (N.is_empty srv_pub_key_file) then
+  if ports = [] && ports_sec = [] then
+    failwith "You must specify some ports to listen to with --secure and/or \
+             --insecure" ;
+  if ports_sec = [] && not (N.is_empty srv_pub_key_file) then
     failwith "--public-key makes no sense without --secure" ;
-  if port_sec_opt = None && not (N.is_empty srv_priv_key_file) then
+  if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
     failwith "--private-key makes no sense without --secure" ;
   start_daemon conf daemonize to_stdout to_syslog
                (N.path (service_name :> string)) ;
   RamenSyncZMQServer.start
-    conf port_opt port_sec_opt srv_pub_key_file srv_priv_key_file ;
+    conf ports ports_sec srv_pub_key_file srv_priv_key_file ;
   Option.may exit !RamenProcesses.quit
 
 let confclient conf () =

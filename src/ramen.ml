@@ -374,15 +374,15 @@ let tunneld =
  * Config Server
  *)
 
-let confserver_port =
+let confserver_ports =
   let i = Arg.info ~doc:CliInfo.confserver_port [ "p"; "insecure" ]
-  and vopt = Some ("127.0.0.1:"^ string_of_int Default.confserver_port) in
-  Arg.(value (opt ~vopt (some string) None i))
+  and vopt = "127.0.0.1:"^ string_of_int Default.confserver_port in
+  Arg.(value (opt_all ~vopt string [] i))
 
-let confserver_port_sec =
+let confserver_ports_sec =
   let i = Arg.info ~doc:CliInfo.confserver_port_sec [ "P"; "secure" ]
-  and vopt = Some (string_of_int Default.confserver_port_sec) in
-  Arg.(value (opt ~vopt (some string) None i))
+  and vopt = string_of_int Default.confserver_port_sec in
+  Arg.(value (opt_all ~vopt string [] i))
 
 let server_priv_key_file =
   let i = Arg.info ~doc:CliInfo.server_priv_key [ "K"; "private-key" ] in
@@ -399,8 +399,8 @@ let confserver =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ confserver_port
-      $ confserver_port_sec
+      $ confserver_ports
+      $ confserver_ports_sec
       $ server_pub_key_file
       $ server_priv_key_file),
     info ~doc:CliInfo.confserver "confserver")
