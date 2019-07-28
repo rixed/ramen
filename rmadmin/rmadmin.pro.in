@@ -33,6 +33,7 @@ HEADERS += \
   PosIntValidator.h \
   PosDoubleValidator.h \
   RangeDoubleValidator.h \
+  RangeIntValidator.h \
   RamenTypeStructure.h \
   RamenType.h \
   confKey.h \
@@ -48,6 +49,7 @@ HEADERS += \
   AtomicWidget.h \
   KLineEdit.h \
   KFloatEditor.h \
+  KIntEditor.h \
   KLabel.h \
   KErrorMsg.h \
   KChoice.h \
@@ -108,6 +110,7 @@ SOURCES += \
   PosIntValidator.cpp \
   PosDoubleValidator.cpp \
   RangeDoubleValidator.cpp \
+  RangeIntValidator.cpp \
   RamenTypeStructure.cpp \
   RamenType.cpp \
   confKey.cpp \
@@ -122,6 +125,7 @@ SOURCES += \
   RamenValueEditor.cpp \
   KLineEdit.cpp \
   KFloatEditor.cpp \
+  KIntEditor.cpp \
   KLabel.cpp \
   KChoice.cpp \
   KBool.cpp \

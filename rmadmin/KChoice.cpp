@@ -3,7 +3,7 @@
 #include <QVBoxLayout>
 #include "KChoice.h"
 
-KChoice::KChoice(std::string const key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
+KChoice::KChoice(conf::Key const &key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
   AtomicWidget(key, parent)
 {
   widget = new QWidget(this);

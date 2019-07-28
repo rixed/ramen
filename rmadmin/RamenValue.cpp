@@ -13,6 +13,9 @@ extern "C" {
 #include "confKey.h"
 #include "KLabel.h"
 #include "KFloatEditor.h"
+#include "KIntEditor.h"
+#include "KLineEdit.h"
+#include "KBool.h"
 #include "RamenType.h"
 #include "RamenValue.h"
 
@@ -72,9 +75,9 @@ value VFloat::toOCamlValue() const
 AtomicWidget *VFloat::editorWidget(conf::Key const &key, QWidget *parent) const
 {
   if (key.s == "storage/recall_cost") {
-    return new KFloatEditor(key.s, parent, 0., 1.);
+    return new KFloatEditor(key, parent, 0., 1.);
   } else {
-    return new KFloatEditor(key.s, parent);
+    return new KFloatEditor(key, parent);
   }
 }
 
@@ -92,6 +95,11 @@ value VString::toOCamlValue() const
   ret = caml_alloc(1, TAG_VString);
   Store_field(ret, 0, caml_copy_string(v.toStdString().c_str()));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VString::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KLineEdit(key, parent);
 }
 
 bool VString::operator==(RamenValue const &other) const
@@ -116,6 +124,11 @@ value VBool::toOCamlValue() const
   ret = caml_alloc(1, TAG_VBool);
   Store_field(ret, 0, Val_bool(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VBool::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KBool(key, parent);
 }
 
 bool VBool::operator==(RamenValue const &other) const
@@ -143,6 +156,11 @@ value VU8::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *VU8::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VU8::ofQString, key, parent, 0, std::numeric_limits<uint8_t>::max());
+}
+
 bool VU8::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
@@ -157,6 +175,11 @@ value VU16::toOCamlValue() const
   ret = caml_alloc(1, TAG_VU16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VU16::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VU16::ofQString, key, parent, 0, std::numeric_limits<uint16_t>::max());
 }
 
 bool VU16::operator==(RamenValue const &other) const
@@ -176,6 +199,11 @@ value VU32::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *VU32::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VU32::ofQString, key, parent, 0, std::numeric_limits<uint32_t>::max());
+}
+
 bool VU32::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
@@ -190,6 +218,11 @@ value VU64::toOCamlValue() const
   ret = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VU64::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VU64::ofQString, key, parent, 0, std::numeric_limits<uint64_t>::max());
 }
 
 bool VU64::operator==(RamenValue const &other) const
@@ -215,6 +248,11 @@ value VU128::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *VU128::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VU128::ofQString, key, parent, 0, std::numeric_limits<uint128_t>::max());
+}
+
 bool VU128::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
@@ -231,6 +269,11 @@ value VI8::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *VI8::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VI8::ofQString, key, parent, std::numeric_limits<int8_t>::min(), std::numeric_limits<uint8_t>::max());
+}
+
 bool VI8::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
@@ -245,6 +288,11 @@ value VI16::toOCamlValue() const
   ret = caml_alloc(1, TAG_VI16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VI16::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VI16::ofQString, key, parent, std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max());
 }
 
 bool VI16::operator==(RamenValue const &other) const
@@ -264,6 +312,11 @@ value VI32::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+AtomicWidget *VI32::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VI32::ofQString, key, parent, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+}
+
 bool VI32::operator==(RamenValue const &other) const
 {
   if (! RamenValue::operator==(other)) return false;
@@ -278,6 +331,11 @@ value VI64::toOCamlValue() const
   ret = caml_alloc_custom(&caml_int64_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VI64::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VI64::ofQString, key, parent, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max());
 }
 
 bool VI64::operator==(RamenValue const &other) const
@@ -302,6 +360,11 @@ value VI128::toOCamlValue() const
   ret = caml_alloc_custom(&int128_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
   CAMLreturn(ret);
+}
+
+AtomicWidget *VI128::editorWidget(conf::Key const &key, QWidget *parent) const
+{
+  return new KIntEditor(&VI128::ofQString, key, parent, std::numeric_limits<int128_t>::min(), std::numeric_limits<int128_t>::max());
 }
 
 bool VI128::operator==(RamenValue const &other) const

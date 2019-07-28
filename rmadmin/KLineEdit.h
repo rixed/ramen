@@ -11,10 +11,9 @@ class KLineEdit : public AtomicWidget
   Q_OBJECT
 
   QLineEdit *lineEdit;
-  conf::ValueType valueType;
 
 public:
-  KLineEdit(conf::Key const &key, conf::ValueType, QWidget *parent = nullptr);
+  KLineEdit(conf::Key const &key, QWidget *parent = nullptr);
 
   void setPlaceholderText(QString const s) {
     lineEdit->setPlaceholderText(s);

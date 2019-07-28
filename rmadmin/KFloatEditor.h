@@ -16,8 +16,12 @@ public:
                double min = -std::numeric_limits<double>::infinity(),
                double max = std::numeric_limits<double>::infinity());
 
-   std::shared_ptr<conf::Value const> getValue() const;
-   void setEnabled(bool);
+  void setPlaceholderText(QString const s) {
+    lineEdit->setPlaceholderText(s);
+  }
+
+  std::shared_ptr<conf::Value const> getValue() const;
+  void setEnabled(bool);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

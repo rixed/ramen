@@ -1,5 +1,5 @@
-#ifndef RANGEFLOATVALIDATOR_H_190504
-#define RANGEFLOATVALIDATOR_H_190504
+#ifndef RANGEDOUBLEVALIDATOR_H_190504
+#define RANGEDOUBLEVALIDATOR_H_190504
 #include <QDoubleValidator>
 
 namespace RangeDoubleValidator {

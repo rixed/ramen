@@ -3,7 +3,8 @@
 #include "PosIntValidator.h"
 #include "PosDoubleValidator.h"
 #include "StorageForm.h"
-#include "KLineEdit.h"
+#include "KFloatEditor.h"
+#include "KIntEditor.h"
 
 StorageForm::StorageForm(QWidget *parent) :
   AtomicForm(tr("Storage"), parent)
@@ -13,11 +14,12 @@ StorageForm::StorageForm(QWidget *parent) :
   /* Define 2 input lines, for total size and recall cost: */
 
   static std::string const totalSizeKey("storage/total_size");
-  KLineEdit *totalSizeEdit = new KLineEdit(totalSizeKey, conf::ValueType::RamenValueType, cw);
+  KIntEditor *totalSizeEdit =
+    new KIntEditor(&VU64::ofQString, totalSizeKey, cw);
   totalSizeEdit->setPlaceholderText(tr("Size in bytes"));
 
   static std::string const recallCostKey("storage/recall_cost");
-  KLineEdit *recallCostEdit = new KLineEdit(recallCostKey, conf::ValueType::RamenValueType, cw);
+  KFloatEditor *recallCostEdit = new KFloatEditor(recallCostKey, cw, 0., 1.);
   recallCostEdit->setPlaceholderText(tr("Cost of reading vs. computing"));
 
   QFormLayout *formLayout = new QFormLayout;

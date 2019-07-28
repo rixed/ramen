@@ -16,7 +16,7 @@ class KChoice : public AtomicWidget
   std::vector<std::pair<QRadioButton *, std::shared_ptr<conf::Value const>>> choices;
 
 public:
-  KChoice(std::string const key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent = nullptr);
+  KChoice(conf::Key const &key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent = nullptr);
 
   std::shared_ptr<conf::Value const> getValue() const;
   void setEnabled(bool);

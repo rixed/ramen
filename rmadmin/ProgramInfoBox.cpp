@@ -3,6 +3,7 @@
 #include <QTableWidget>
 #include "ProgramItem.h"
 #include "KLineEdit.h"
+#include "KFloatEditor.h"
 #include "KLabel.h"
 #include "KBool.h"
 #include "ProgramInfoBox.h"
@@ -21,24 +22,24 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   setCentralWidget(cw);
 
   KBool *enabled =
-    new KBool(pref + "enabled", tr("run that program"), tr("do not run"));
+    new KBool(conf::Key(pref + "enabled"), tr("run that program"), tr("do not run"));
   layout->addRow(tr("&Enabled"), enabled);
   addWidget(enabled);
 
   KBool *debug =
-    new KBool(pref + "debug", tr("normal"), tr("verbose logs"));
+    new KBool(conf::Key(pref + "debug"), tr("normal"), tr("verbose logs"));
   layout->addRow(tr("&Debug"), debug);
   addWidget(debug);
 
-  KLineEdit *reportPeriod =
-    new KLineEdit(pref + "report_period", conf::ValueType::RamenValueType, cw);
+  KFloatEditor *reportPeriod =
+    new KFloatEditor(conf::Key(pref + "report_period"), cw);
   layout->addRow(tr("&Reporting Interval"), reportPeriod);
   addWidget(reportPeriod);
 
-  KLabel *binPath = new KLabel(pref + "bin_path", false, cw);
+  KLabel *binPath = new KLabel(conf::Key(pref + "bin_path"), false, cw);
   layout->addRow(tr("Executable"), binPath);
 
-  KLabel *srcPath = new KLabel(pref + "src_path", false, cw);
+  KLabel *srcPath = new KLabel(conf::Key(pref + "src_path"), false, cw);
   layout->addRow(tr("Source File"), srcPath);
 
   paramTable = new QTableWidget(this);
@@ -53,15 +54,14 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   });
   layout->addRow(tr("Parameters"), paramTable);
 
-  KLineEdit *onSites =
-    new KLineEdit(pref + "on_site", conf::ValueType::RamenValueType, cw);
+  KLineEdit *onSites = new KLineEdit(conf::Key(pref + "on_site"), cw);
   layout->addRow(tr("Run &On Sites"), onSites);
   addWidget(onSites);
 
-  KLabel *automatic = new KLabel(pref + "automatic", false, cw);
+  KLabel *automatic = new KLabel(conf::Key(pref + "automatic"), false, cw);
   layout->addRow(tr("Automatic"), automatic);
 
-  KLabel *runCondition = new KLabel(pref + "run_condition", false, cw);
+  KLabel *runCondition = new KLabel(conf::Key(pref + "run_condition"), false, cw);
   layout->addRow(tr("Condition to Run"), runCondition);
 }
 
@@ -88,7 +88,7 @@ static int findRow(QTableWidget const *table, QString const &name)
   return row;
 }
 
-void ProgramInfoBox::setParam(conf::Key const &k, std::shared_ptr<conf::Value const>)
+void ProgramInfoBox::setParam(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   QString name = paramOfKey(k, pref);
   if (name.isNull()) return;
@@ -100,14 +100,8 @@ void ProgramInfoBox::setParam(conf::Key const &k, std::shared_ptr<conf::Value co
     paramTable->setItem(row, 0, new QTableWidgetItem(name));
   }
 
-  KLineEdit *kle =
-    // TODO: the param type should be passed as well (in the same value,
-    // ie the conf value must be of type "RamenValue"), and we should
-    // have a ValueType for each possible RamenType, and a function
-    // selecting the appropriate one and use it here instead of
-    // hardcoding StringType:
-    new KLineEdit(k.s, conf::ValueType::RamenValueType);
-  paramTable->setCellWidget(row, 1, kle);
+  AtomicWidget *widget = v->editorWidget(k);
+  paramTable->setCellWidget(row, 1, widget);
 }
 
 void ProgramInfoBox::delParam(conf::Key const &k)

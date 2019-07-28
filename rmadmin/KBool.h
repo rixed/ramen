@@ -7,7 +7,8 @@ class KBool : public KChoice
   Q_OBJECT
 
 public:
-  KBool(std::string const key, QString const &yesLabel, QString const &noLabel, QWidget *parent = nullptr);
+  KBool(conf::Key const &key, QString const &yesLabel, QString const &noLabel, QWidget *parent = nullptr);
+  KBool(conf::Key const &key, QWidget *parent = nullptr);
 };
 
 #endif

@@ -39,17 +39,7 @@ void KFloatEditor::setEnabled(bool enabled)
  * label would be better */
 bool KFloatEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  // Retrieve the VFloat (or fail)
-  std::shared_ptr<conf::RamenValueValue const> rvv =
-    std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-  // TODO: a failing editor should be hidden and replaced with an error label
-  if (! rvv) return false;
-
-  std::shared_ptr<VFloat const> rv =
-    std::dynamic_pointer_cast<VFloat const>(rvv->v);
-  if (! rv) return false;
-
-  QString new_v(rv->toQString());
+  QString new_v(v->toQString());
   if (new_v != lineEdit->text()) {
     lineEdit->setText(new_v);
     emit valueChanged(k, v);
