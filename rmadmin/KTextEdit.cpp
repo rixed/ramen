@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include "RamenSyntaxHighlighter.h"
 #include "KTextEdit.h"
 
 KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
@@ -7,6 +8,8 @@ KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
 {
   textEdit = new QTextEdit;
   setCentralWidget(textEdit);
+  new RamenSyntaxHighlighter(textEdit->document()); // the document becomes owner
+  textEdit->setFontFamily("monospace");
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];

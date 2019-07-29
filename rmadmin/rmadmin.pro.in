@@ -45,6 +45,7 @@ HEADERS += \
   confValue.h \
   KValue.h \
   conf.h \
+  RamenSyntaxHighlighter.h \
   RamenValueEditor.h \
   AtomicWidget.h \
   KLineEdit.h \
@@ -124,6 +125,7 @@ SOURCES += \
   confValue.cpp \
   KValue.cpp \
   conf.cpp \
+  RamenSyntaxHighlighter.cpp \
   RamenValueEditor.cpp \
   AtomicWidget.cpp \
   KLineEdit.cpp \
