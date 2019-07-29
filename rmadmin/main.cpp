@@ -74,15 +74,15 @@ extern "C" {
   }
 }
 
-static void call_for_new_frame(QString const srvUrl, UserIdentity const *id)
+static void call_for_new_frame(QString const srvUrl, UserIdentity const *id, bool insecure)
 {
   CAMLparam0();
   CAMLlocal5(srv_url_, username_,
              srv_pub_key_, clt_pub_key_, clt_priv_key_);
   srv_url_ = caml_copy_string(srvUrl.toStdString().c_str());
-#   define GET(val, var) \
-    val = caml_copy_string(id->var.toStdString().c_str());
-  GET(username_, username);
+  username_ = caml_copy_string(my_uid->toStdString().c_str());
+# define GET(val, var) \
+    val = caml_copy_string(insecure ? "" : id->var.toStdString().c_str());
   GET(srv_pub_key_, srv_pub_key);
   GET(clt_pub_key_, clt_pub_key);
   GET(clt_priv_key_, clt_priv_key);
@@ -93,10 +93,10 @@ static void call_for_new_frame(QString const srvUrl, UserIdentity const *id)
 }
 
 // The only thread that will ever call OCaml runtime:
-static void do_sync_thread(QString const srvUrl, UserIdentity const *id, char *argv[])
+static void do_sync_thread(QString const srvUrl, UserIdentity const *id, bool insecure, char *argv[])
 {
   caml_startup(argv);
-  call_for_new_frame(srvUrl, id);
+  call_for_new_frame(srvUrl, id, insecure);
 }
 
 int main(int argc, char *argv[])
@@ -109,16 +109,25 @@ int main(int argc, char *argv[])
   parser.setApplicationDescription("Test helper");
   parser.addHelpOption();
   parser.addVersionOption();
+
   /* The URL to connect to the server: */
   parser.addPositionalArgument("address", QCoreApplication::translate("main",
     "Address of the configuration server, as a host name or an IP, "
     "optionally followed by a colon and a port number."));
+
   /* Where is the config file storing out identity? */
   QCommandLineOption identityFileOption(
-    QStringList() <<"i" << "identity",
+    QStringList() << "i" << "identity",
     QCoreApplication::translate("main", "Location of the file storing user's identity"),
     QCoreApplication::translate("main", "file"));
   parser.addOption(identityFileOption);
+
+  /* Or should RmAdmin connect there insecurely? We still can make use of the
+   * identity file to get the username from, though. */
+  QCommandLineOption insecureOption(
+    QString("insecure"),
+    QCoreApplication::translate("main", "Connect without encryption"));
+  parser.addOption(insecureOption);
 
   parser.process(app);
 
@@ -128,6 +137,8 @@ int main(int argc, char *argv[])
       parser.positionalArguments()[0]);
   if (srvUrl.length() == 0) srvUrl = QString("localhost");
 
+  bool insecure = parser.isSet(insecureOption);
+
   QString defaultIdentityFileName =
     getenv("HOME") ?
       QString(getenv("HOME")) + QString("/.config/rmadmin/identity") :
@@ -135,8 +146,8 @@ int main(int argc, char *argv[])
   QFile identityFile =
     parser.isSet(identityFileOption) ?
       parser.value(identityFileOption) :
-      QFile(defaultIdentityFileName) ;
-  if (! identityFile.exists()) {
+      QFile(defaultIdentityFileName);
+  if (! identityFile.exists() && ! insecure) {
     std::cout
       << "File " << identityFile.fileName().toStdString()
       << " does not exist.\n"
@@ -146,8 +157,10 @@ int main(int argc, char *argv[])
     exit(1);
   }
   UserIdentity *userIdentity = new UserIdentity(identityFile);
-  if (! userIdentity->isValid) exit(1);
-  my_uid = userIdentity->username; // TODO: clean this
+  if (! userIdentity->isValid && ! insecure) exit(1);
+
+  my_uid = QString(getenv("USER") ? getenv("USER") : "Waldo");
+  if (userIdentity->isValid) my_uid = userIdentity->username;
 
   qRegisterMetaType<conf::Key>();
   qRegisterMetaType<std::shared_ptr<conf::Value const>>();
@@ -161,7 +174,7 @@ int main(int argc, char *argv[])
   w = new RmAdminWin(with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
 
-  thread sync_thread(do_sync_thread, srvUrl, userIdentity, argv);
+  thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
 
   w->show();
 
