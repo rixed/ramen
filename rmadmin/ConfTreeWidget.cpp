@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QMessageBox>
+#include <QKeyEvent>
 #include "conf.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
@@ -51,6 +52,12 @@ void ConfTreeWidget::deleteClicked(conf::Key const &k)
   if (QMessageBox::Ok == msg.exec()) conf::askDel(k);
 }
 
+void ConfTreeWidget::openEditorWindow(conf::Key const &k, KValue const *kv)
+{
+  QDialog *editor = new ConfTreeEditorDialog(k, kv);
+  editor->show();
+}
+
 QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
 {
   // The widget for the "Actions" column:
@@ -63,11 +70,10 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   layout->addWidget(delButton);
   widget->setLayout(layout);
 
-  connect(editButton, &QPushButton::clicked, this, [k, kv](bool) {
-    QDialog *editor = new ConfTreeEditorDialog(k, kv);
-    editor->show();
+  connect(editButton, &QPushButton::clicked, this, [this, k, kv](bool) {
+    openEditorWindow(k, kv);
   });
-  connect(delButton, &QPushButton::clicked, this, [this,k](bool) {
+  connect(delButton, &QPushButton::clicked, this, [this, k](bool) {
     deleteClicked(k);
   });
 
@@ -109,8 +115,8 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
 
   item =
     1 == len ?
-      new ConfTreeItem(kv, name, parent, nullptr) : // TODO: sort
-      new ConfTreeItem(nullptr, name, parent, nullptr); // TODO: sort
+      new ConfTreeItem(k, kv, name, parent, nullptr) : // TODO: sort
+      new ConfTreeItem(k, nullptr, name, parent, nullptr); // TODO: sort
 
   if (! item) return nullptr;
 
@@ -149,6 +155,21 @@ ConfTreeItem *ConfTreeWidget::createItem(conf::Key const &k, KValue const *kv)
   return findOrCreateItem(names, k, kv, nullptr, true);
 }
 
+void ConfTreeWidget::activateItem(QTreeWidgetItem *item_, int)
+{
+  ConfTreeItem *item = dynamic_cast<ConfTreeItem *>(item_);
+  if (! item) {
+    std::cout << "Activated an item that's not a ConfTreeItem!?" << std::endl;
+    return;
+  }
+
+  if (item->kValue) {
+    openEditorWindow(item->key, item->kValue);
+  } else {
+    item->setExpanded(! item->isExpanded());
+  }
+}
+
 ConfTreeItem *ConfTreeWidget::itemOfKey(conf::Key const &k)
 {
   QString keyName = QString::fromStdString(k.s);
@@ -170,6 +191,9 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   header()->setSectionResizeMode(3,QHeaderView::ResizeToContents);
 
   if (verbose) std::cout << "ConfTreeWidget: Created in thread " << std::this_thread::get_id () << std::endl;
+
+  /* Get the activation signal to either collapse/expand or edit: */
+  connect(this, &QTreeWidget::itemActivated, this, &ConfTreeWidget::activateItem);
 
   /* Register to every change in the kvs: */
   conf::autoconnect("", [this](conf::Key const &k, KValue const *kv) {
@@ -201,4 +225,19 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
       delete itemOfKey(k);
     });
   });
+}
+
+void ConfTreeWidget::keyPressEvent(QKeyEvent *event)
+{
+  QTreeWidget::keyPressEvent(event);
+
+  switch (event->key()) {
+    case Qt::Key_Space:
+    case Qt::Key_Select:
+    case Qt::Key_Enter:
+    case Qt::Key_Return:
+      if (currentItem()) {
+        emit QTreeWidget::itemActivated(currentItem(), 0);
+      }
+  }
 }

@@ -5,10 +5,11 @@
 #include "ConfTreeWidget.h" // for CONFTREE_WIDGET_NUM_COLUMNS
 #include "ConfTreeItem.h"
 
-ConfTreeItem::ConfTreeItem(KValue const *kValue_, QString const name_, ConfTreeItem *parent, ConfTreeItem *preceding) :
+ConfTreeItem::ConfTreeItem(conf::Key const &key_, KValue const *kValue_, QString const name_, ConfTreeItem *parent, ConfTreeItem *preceding) :
   QTreeWidgetItem(parent, preceding, UserType),
   name(name_),
-  kValue(kValue_) {}
+  kValue(kValue_),
+  key(key_) {}
 
 QVariant ConfTreeItem::data(int column, int role) const
 {

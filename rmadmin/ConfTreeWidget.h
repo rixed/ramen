@@ -26,9 +26,14 @@ class ConfTreeWidget : public QTreeWidget
 public:
   ConfTreeWidget(QWidget *parent = nullptr);
 
+protected:
+  void keyPressEvent(QKeyEvent *);
+
 protected slots:
   void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const> v = nullptr);
   void deleteClicked(conf::Key const &);
+  void activateItem(QTreeWidgetItem *item, int column);
+  void openEditorWindow(conf::Key const &, KValue const *);
 
 };
 
