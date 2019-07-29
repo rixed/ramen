@@ -24,7 +24,7 @@ KLabel::KLabel(conf::Key const &key, QWidget *parent, bool wordWrap) :
 
 bool KLabel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString new_v(v->toQString());
+  QString new_v(v->toQString(k));
 
   if (new_v != label->text()) {
     label->setText(new_v);

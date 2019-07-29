@@ -48,7 +48,7 @@ enum OCamlValueTags {
   TAG_VRecord
 };
 
-QString const RamenValue::toQString() const
+QString const RamenValue::toQString(conf::Key const &) const
 {
   return QString("Some value which printer is unimplemented");
 }
@@ -71,6 +71,14 @@ value VFloat::toOCamlValue() const
   ret = caml_alloc(1, TAG_VFloat);
   Store_field(ret, 0, caml_copy_double(v));
   CAMLreturn(ret);
+}
+
+QString const VFloat::toQString(conf::Key const &key) const
+{
+  if (endsWith(key.s, "/last_exit"))
+    return stringOfDate(v);
+  else
+    return QString::number(v);
 }
 
 AtomicWidget *VFloat::editorWidget(conf::Key const &key, QWidget *parent) const
@@ -113,7 +121,7 @@ bool VString::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VBool::toQString() const
+QString const VBool::toQString(conf::Key const &) const
 {
   if (v)
     return QCoreApplication::translate("QMainWindow", "true");
@@ -236,7 +244,7 @@ bool VU64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VU128::toQString() const
+QString const VU128::toQString(conf::Key const &) const
 {
   char s[] = "000000000000000000000000000000000000000";
   std::snprintf(s, sizeof(s), "%016" PRIx64 "%016" PRIx64, (uint64_t)(v >> 64), (uint64_t)v);
@@ -349,7 +357,7 @@ bool VI64::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-QString const VI128::toQString() const
+QString const VI128::toQString(conf::Key const &) const
 {
   char s[] = "-000000000000000000000000000000000000000";
   uint128_t v_ = v >= 0 ? v : -v;
@@ -607,12 +615,12 @@ VList::VList(value v_)
   CAMLreturn0;
 }
 
-QString const VList::toQString () const
+QString const VList::toQString (conf::Key const &k) const
 {
   QString s("");
   for (auto val : v) {
     if (s.length() > 0) s += ", ";
-    s += val->toQString();
+    s += val->toQString(k);
   }
   return QString("[") + s + QString("]");
 }

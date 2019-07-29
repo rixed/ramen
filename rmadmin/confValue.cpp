@@ -41,7 +41,7 @@ static QString const stringOfValueType(ValueType valueType)
 
 Value::Value(ValueType valueType_) : valueType(valueType_) {}
 
-QString Value::toQString() const
+QString const Value::toQString(Key const &) const
 {
   return QString("TODO: toQString for ") + stringOfValueType(valueType);
 }
@@ -227,7 +227,7 @@ Value *valueOfQString(ValueType vt, QString const &s)
   return ret;
 }
 
-QString Error::toQString() const
+QString const Error::toQString(Key const &) const
 {
   return
     stringOfDate(time) + QString(": #") + QString::number(cmdId) + QString(": ") +
@@ -274,7 +274,7 @@ bool Worker::operator==(Value const &other) const
   return enabled == o.enabled && debug == o.debug && reportPeriod == o.reportPeriod && srcPath == o.srcPath && workerSign == o.workerSign && binSign == o.binSign && used == o.used && role == o.role;
 }
 
-QString Worker::toQString() const
+QString const Worker::toQString(Key const &) const
 {
   QString s;
   s += QString("Status: ") + (enabled ? QString("enabled") : QString("disabled"));
@@ -297,7 +297,7 @@ bool Retention::operator==(Value const &other) const
   return duration == o.duration && period == o.period;
 }
 
-QString Retention::toQString() const
+QString const Retention::toQString(Key const &) const
 {
   return QString("duration: ").
          append(QString::number(duration)).
@@ -320,7 +320,7 @@ TimeRange::TimeRange(value v_) : Value(TimeRangeType)
   }
 }
 
-QString TimeRange::toQString() const
+QString const TimeRange::toQString(Key const &) const
 {
   if (0 == range.size()) return QString("empty");
 
@@ -371,7 +371,7 @@ Tuple::~Tuple()
   if (bytes) delete[](bytes);
 }
 
-QString Tuple::toQString() const
+QString const Tuple::toQString(Key const &) const
 {
   return QString::number(size) + QString(" bytes");
 }
@@ -440,7 +440,7 @@ bool SourceInfo::operator==(Value const &other) const
   }
 }
 
-QString SourceInfo::toQString() const
+QString const SourceInfo::toQString(Key const &) const
 {
   if (errMsg.length() > 0) return errMsg;
 
@@ -524,14 +524,14 @@ bool TargetConfig::operator==(Value const &other) const
   return entries == o.entries;
 }
 
-QString TargetConfig::toQString() const
+QString const TargetConfig::toQString(Key const &) const
 {
   if (0 == entries.size()) return QString("empty");
-  QString s("");
+  QString s;
   for (auto rce : entries) {
     if (s.length() > 0) s += QString("\n");
-    s += QString::fromStdString(rce.first);
-    s += QString(" from ") + QString::fromStdString(rce.second->source);
+    s += QString::fromStdString(rce.second->source);
+    s += QString(" as ") + QString::fromStdString(rce.first);
     s += QString(" on ") + QString::fromStdString(rce.second->onSite);
   }
   return s;
@@ -578,7 +578,7 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
   maxRam = *(uint64_t *)Data_custom_val(Field(v_, 23));
 }
 
-QString RuntimeStats::toQString() const
+QString const RuntimeStats::toQString(Key const &) const
 {
   QString s("Stats-time: ");
   s += stringOfDate(statsTime);
@@ -607,7 +607,7 @@ Alert::Alert(value v_) : Value(AlertType)
 
 std::ostream &operator<<(std::ostream &os, Value const &v)
 {
-  os << v.toQString().toStdString();
+  os << v.toQString(Key::null).toStdString();
   return os;
 }
 

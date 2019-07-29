@@ -39,7 +39,7 @@ void KLineEdit::setEnabled(bool enabled)
 
 bool KLineEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString new_v(v->toQString());
+  QString new_v(v->toQString(k));
   if (new_v != lineEdit->text()) {
     lineEdit->setText(new_v);
     emit valueChanged(k, v);

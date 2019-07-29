@@ -62,7 +62,7 @@ QVariant TailModel::data(QModelIndex const &index, int role) const
       {
         RamenValue const *v = f->tupleData(row, column);
         if (! v) return QVariant(QString("No such column"));
-        return QVariant(v->toQString());
+        return QVariant(v->toQString(conf::Key::null));
       }
     case Qt::ToolTipRole:
       // TODO

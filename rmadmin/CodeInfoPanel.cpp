@@ -105,7 +105,7 @@ bool CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value con
       for (auto const param : info->params) {
         QLabel *pname = new QLabel(QString::fromStdString(param->name) + ":");
         layout->addWidget(pname, row, column, Qt::AlignRight);
-        QLabel *pvalue = new QLabel(param->val->toQString());
+        QLabel *pvalue = new QLabel(param->val->toQString(conf::Key::null));
         layout->addWidget(pvalue, row, column+1, Qt::AlignLeft);
         if (column >= 2) {
           column = 0;

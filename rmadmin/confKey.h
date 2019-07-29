@@ -16,6 +16,8 @@ public:
   Key(Key const &other);
   Key(std::string const &);
   ~Key();
+
+  static Key null;
 };
 
 bool operator<(Key const &, Key const &);

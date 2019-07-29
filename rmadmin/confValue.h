@@ -50,7 +50,7 @@ public:
   Value() : Value(ErrorType) {} // wtv
   virtual ~Value() {};
 
-  virtual QString toQString() const;
+  virtual QString const toQString(Key const &) const;
   virtual value toOCamlValue() const;
   /* Generic editor that can be overwritten/specialized/tuned
    * according to the key. By default a read-only label. */
@@ -64,7 +64,7 @@ std::ostream &operator<<(std::ostream &, Value const &);
 // Construct from an OCaml value
 Value *valueOfOCaml(value);
 // Construct from a QString
-Value *valueOfQString(conf::ValueType, QString const &);
+Value *valueOfQString(ValueType, QString const &);
 
 
 struct Error : public Value
@@ -76,7 +76,7 @@ struct Error : public Value
   Error(double time_, unsigned cmdId_, std::string const &msg_) :
     Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
   Error() : Error(0., 0, "") {}
-  QString toQString() const;
+  QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
@@ -99,7 +99,7 @@ struct Worker : public Value
   Worker();
   ~Worker();
   Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &worker_sign, QString const &bin_sign, bool used, WorkerRole *role);
-  QString toQString() const;
+  QString const toQString(Key const &) const;
   bool operator==(Value const &) const;
 };
 
@@ -111,7 +111,7 @@ struct Retention : public Value
   Retention();
   ~Retention();
   Retention(double, double);
-  QString toQString() const;
+  QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
@@ -133,7 +133,7 @@ struct TimeRange : public Value
   TimeRange(std::vector<Range> const &range_) :
     Value(TimeRangeType), range(range_) {}
   TimeRange(value);
-  QString toQString() const;
+  QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
@@ -150,7 +150,7 @@ struct Tuple : public Value
   Tuple();
   ~Tuple();
   Tuple(unsigned, unsigned char const *, size_t);
-  QString toQString() const;
+  QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
   // returned value belongs to caller:
@@ -165,7 +165,8 @@ struct RamenValueValue : public Value
   RamenValueValue(RamenValue *v_) :
     Value(RamenValueType), v(v_) {}
 
-  QString toQString() const { return v->toQString(); }
+  QString const toQString(Key const &k) const { return v->toQString(k); }
+
   value toOCamlValue() const;
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   bool operator==(Value const &) const;
@@ -189,7 +190,7 @@ struct SourceInfo : public Value
   ~SourceInfo();
 
   bool operator==(Value const &) const;
-  QString toQString() const;
+  QString const toQString(Key const &) const;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }
@@ -210,7 +211,7 @@ struct TargetConfig : public Value
   value toOCamlValue() const;
 
   bool operator==(Value const &) const;
-  QString toQString() const;
+  QString const toQString(Key const &) const;
 
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 
@@ -237,7 +238,7 @@ struct RuntimeStats : public Value
 
   RuntimeStats() : Value(RuntimeStatsType) {};
   RuntimeStats(value);
-  QString toQString() const;
+  QString const toQString(Key const &) const;
 };
 
 struct Replay : public Value

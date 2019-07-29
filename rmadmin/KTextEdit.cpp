@@ -41,9 +41,9 @@ void KTextEdit::setEnabled(bool enabled)
 
 bool KTextEdit::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString new_v(v->toQString());
+  QString new_v(v->toQString(k));
   if (new_v != textEdit->toPlainText()) {
-    textEdit->setPlainText(v->toQString());
+    textEdit->setPlainText(new_v);
     emit valueChanged(k, v);
   }
 

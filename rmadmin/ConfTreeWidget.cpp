@@ -4,6 +4,7 @@
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QKeyEvent>
+#include <QStackedLayout>
 #include "conf.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
@@ -132,12 +133,12 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
     if (topLevel) setItemWidget(item, 3, fillerWidget());
     return findOrCreateItem(names, k, kv, item);
   } else {
-    AtomicWidget *editor = new KShortLabel(k, this);
+    KShortLabel *shortLabel = new KShortLabel(k, this);
+    shortLabel->setContentsMargins(8, 8, 8, 8);
     // Redraw/resize whenever the value is changed:
-    connect(editor, &AtomicWidget::valueChanged, this, &ConfTreeWidget::editedValueChanged);
-    QWidget *widget = dynamic_cast<QWidget *>(editor);
-    assert(widget);
-    setItemWidget(item, 1, widget);
+    connect(shortLabel, &AtomicWidget::valueChanged,
+            this, &ConfTreeWidget::editedValueChanged);
+    setItemWidget(item, 1, shortLabel);
     setItemWidget(item, 3, actionWidget(k, kv));
     return item;
   }

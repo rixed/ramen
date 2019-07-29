@@ -40,7 +40,7 @@ void KFloatEditor::setEnabled(bool enabled)
  * label would be better */
 bool KFloatEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
-  QString new_v(v->toQString());
+  QString new_v(v->toQString(k));
   if (new_v != lineEdit->text()) {
     lineEdit->setText(new_v);
     emit valueChanged(k, v);

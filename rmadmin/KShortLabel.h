@@ -13,8 +13,12 @@ class KShortLabel : public AtomicWidget
   QFrame *frame;
   QString text;
 
+  int leftMargin, topMargin, rightMargin, bottomMargin;
+
 public:
   KShortLabel(conf::Key const &, QWidget *parent = nullptr);
+
+  void setContentsMargins(int, int, int, int);
 
   void setEnabled(bool) {} // not editable
 
