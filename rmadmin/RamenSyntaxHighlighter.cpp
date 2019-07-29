@@ -50,12 +50,12 @@ struct Rules {
     rules.emplace_back(func,
       "\\b(age|abs|length|lower|upper|now|random|exp|log|log10|sqrt|"
           "ceil|floor|round|truncate|hash|min|max|sum|avg|and|or|first|"
-          "last|group|all|percentile|th|lag|season_moveavg|moveavg|"
+          "last|all|percentile|th|lag|season_moveavg|moveavg|"
           "season_fit|fit|season_fit_multi|fit_multi|smooth|remember|"
           "distinct|hysteresis|histogram|split|format_time|parse_time|"
           "variant|max|greatest|min|least|print|reldiff|sample|substring|"
-          "get|changed|rank|of|is|in|top|over|by|at|for|past|"
-          "st|nd|rd|case|if|coalesce)\\b");
+          "get|changed|rank|of|is|in|top|over|at|past|"
+          "st|nd|rd|case|if|then|else|coalesce)\\b");
 
     QTextCharFormat number;
     number.setFontWeight(QFont::Bold);
