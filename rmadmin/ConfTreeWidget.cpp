@@ -2,11 +2,13 @@
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QMessageBox>
 #include "conf.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
 #include "KLabel.h"
 #include "KFloatEditor.h"
+#include "ConfTreeEditorDialog.h"
 #include "ConfTreeWidget.h"
 
 static bool verbose = false;
@@ -36,33 +38,36 @@ void ConfTreeWidget::editedValueChanged(conf::Key const &k, std::shared_ptr<conf
   if (item) item->emitDataChanged();
 }
 
-QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, AtomicWidget *editor)
+void ConfTreeWidget::deleteClicked(conf::Key const &k)
+{
+  QMessageBox msg;
+  msg.setText(tr("Are you sure?"));
+  msg.setInformativeText(
+    tr("Key %1 will be lost forever, there is no undo")
+      .arg(QString::fromStdString(k.s)));
+  msg.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+  msg.setDefaultButton(QMessageBox::Cancel);
+  msg.setIcon(QMessageBox::Critical);
+  if (QMessageBox::Ok == msg.exec()) conf::askDel(k);
+}
+
+QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
 {
   // The widget for the "Actions" column:
   QWidget *widget = new QWidget;
   QHBoxLayout *layout = new QHBoxLayout;
-  QPushButton *lockButton = new QPushButton("lock");
-  layout->addWidget(lockButton);
-  QPushButton *writeButton = new QPushButton("write");
-  layout->addWidget(writeButton);
-  QPushButton *unlockButton = new QPushButton("unlock");
-  layout->addWidget(unlockButton);
+  QPushButton *editButton = new QPushButton("edit");
+  layout->addWidget(editButton);
   QPushButton *delButton = new QPushButton("delete");
   layout->addWidget(delButton);
   widget->setLayout(layout);
 
-  connect(lockButton, &QPushButton::clicked, this, [k](bool) {
-      conf::askLock(k);
+  connect(editButton, &QPushButton::clicked, this, [k, kv](bool) {
+    QDialog *editor = new ConfTreeEditorDialog(k, kv);
+    editor->show();
   });
-  connect(writeButton, &QPushButton::clicked, this, [k, editor](bool) {
-      std::shared_ptr<conf::Value const>  v(editor->getValue());
-      conf::askSet(k, v);
-  });
-  connect(unlockButton, &QPushButton::clicked, this, [k](bool) {
-      conf::askUnlock(k);
-  });
-  connect(delButton, &QPushButton::clicked, this, [k](bool) {
-      conf::askDel(k);
+  connect(delButton, &QPushButton::clicked, this, [this,k](bool) {
+    deleteClicked(k);
   });
 
   return widget;
@@ -102,14 +107,13 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
   if (len > 1) {
     return findOrCreateItem(names, k, kv, item);
   } else {
-    AtomicWidget *editor = kv->val->editorWidget(k);
+    AtomicWidget *editor = new KLabel(k, true, this);
     // Redraw/resize whenever the value is changed:
     connect(editor, &AtomicWidget::valueChanged, this, &ConfTreeWidget::editedValueChanged);
-
     QWidget *widget = dynamic_cast<QWidget *>(editor);
     assert(widget);
     setItemWidget(item, 1, widget);
-    setItemWidget(item, 3, actionWidget(k, editor));
+    setItemWidget(item, 3, actionWidget(k, kv));
     return item;
   }
 }
@@ -163,12 +167,12 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
       if (item) item->emitDataChanged();
     });*/
     connect(kv, &KValue::valueLocked, this, [this](conf::Key const &k, QString const &, double) {
-      ConfTreeItem *item = itemOfKey(k);
-      if (item) item->emitDataChanged();
+      editedValueChanged(k);
+      resizeColumnToContents(2);
     });
     connect(kv, &KValue::valueUnlocked, this, [this](conf::Key const &k) {
-      ConfTreeItem *item = itemOfKey(k);
-      if (item) item->emitDataChanged();
+      editedValueChanged(k);
+      resizeColumnToContents(2);
     });
     connect(kv, &KValue::valueDeleted, this, [this](conf::Key const &k) {
       /* Let's assume the KValue that have sent this signal will be deleted

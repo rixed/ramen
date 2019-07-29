@@ -16,7 +16,7 @@ QVariant ConfTreeItem::data(int column, int role) const
 
   if (role == Qt::DecorationRole && column == 2 && kValue) {
     Resources *r = Resources::get();
-    return QIcon(kValue->isLocked() ? r->lockedPixmap : r->unlockedPixmap);
+    return kValue->isLocked() ? QIcon(r->lockedPixmap) : QVariant();
   }
 
   if (role != Qt::DisplayRole) return QVariant();
@@ -32,7 +32,7 @@ QVariant ConfTreeItem::data(int column, int role) const
         return QString("locked by ") + *kValue->owner +
                QString(" until ") + stringOfDate(kValue->expiry);
       } else {
-        return QString("unlocked");
+        return QString("");
       }
     // Column 1 is the view/edit widget that's set once and for all at creation time
     default:

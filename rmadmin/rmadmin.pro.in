@@ -81,6 +81,7 @@ HEADERS += \
   ChartDataSet.h \
   Graphic.h \
   Chart.h \
+  ConfTreeEditorDialog.h \
   ConfTreeItem.h \
   SourcesModel.h \
   CompiledProgramParam.h \
@@ -153,6 +154,7 @@ SOURCES += \
   ChartDataSet.cpp \
   Graphic.cpp \
   Chart.cpp \
+  ConfTreeEditorDialog.cpp \
   ConfTreeItem.cpp \
   SourcesModel.cpp \
   CompiledProgramParam.cpp \

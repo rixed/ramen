@@ -20,13 +20,14 @@ class ConfTreeWidget : public QTreeWidget
   ConfTreeItem *itemOfKey(conf::Key const &);
   ConfTreeItem *findItem(QString const &name, ConfTreeItem *parent) const;
 
-  QWidget *actionWidget(conf::Key const &, AtomicWidget *);
+  QWidget *actionWidget(conf::Key const &, KValue const *);
 
 public:
   ConfTreeWidget(QWidget *parent = nullptr);
 
 public slots:
-  void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const> v = nullptr);
+  void deleteClicked(conf::Key const &);
 
 };
 
