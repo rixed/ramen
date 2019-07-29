@@ -11,7 +11,7 @@ class KTextEdit : public AtomicWidget
   QTextEdit *textEdit;
 
 public:
-  KTextEdit(QString const &sourceName, QWidget *parent = nullptr);
+  KTextEdit(conf::Key const &key, QWidget *parent = nullptr);
 
   virtual std::shared_ptr<conf::Value const> getValue() const;
   void setEnabled(bool);

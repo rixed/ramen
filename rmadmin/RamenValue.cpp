@@ -15,6 +15,7 @@ extern "C" {
 #include "KFloatEditor.h"
 #include "KIntEditor.h"
 #include "KLineEdit.h"
+#include "KTextEdit.h"
 #include "KBool.h"
 #include "RamenType.h"
 #include "RamenValue.h"
@@ -99,7 +100,10 @@ value VString::toOCamlValue() const
 
 AtomicWidget *VString::editorWidget(conf::Key const &key, QWidget *parent) const
 {
-  return new KLineEdit(key, parent);
+  if (startsWith(key.s, "sources/"))
+    return new KTextEdit(key, parent);
+  else
+    return new KLineEdit(key, parent);
 }
 
 bool VString::operator==(RamenValue const &other) const

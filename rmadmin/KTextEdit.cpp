@@ -2,8 +2,8 @@
 #include <cassert>
 #include "KTextEdit.h"
 
-KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
-  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/ramen"), parent)
+KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
+  AtomicWidget(key, parent)
 {
   textEdit = new QTextEdit;
   setCentralWidget(textEdit);

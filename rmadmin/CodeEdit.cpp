@@ -28,7 +28,7 @@ CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
   QPushButton *cloneButton = new QPushButton("&Clone");
   editorForm->buttonsLayout->insertWidget(0, cloneButton);
 
-  textEdit = new KTextEdit(sourceName);
+  textEdit = new KTextEdit(keyText);
   editorForm->setCentralWidget(textEdit);
   editorForm->addWidget(textEdit);
 }
