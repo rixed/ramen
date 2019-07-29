@@ -123,6 +123,7 @@ SOURCES += \
   KValue.cpp \
   conf.cpp \
   RamenValueEditor.cpp \
+  AtomicWidget.cpp \
   KLineEdit.cpp \
   KFloatEditor.cpp \
   KIntEditor.cpp \

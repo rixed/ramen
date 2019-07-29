@@ -7,7 +7,9 @@
 KLineEdit::KLineEdit(conf::Key const &key, QWidget *parent) :
   AtomicWidget(key, parent)
 {
-  lineEdit = new QLineEdit(this);
+  lineEdit = new QLineEdit;
+  setCentralWidget(lineEdit);
+
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
   if (kv.isSet()) {

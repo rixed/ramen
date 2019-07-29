@@ -11,7 +11,8 @@
 CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
   AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/info"), parent)
 {
-  widget = new QWidget(this);
+  widget = new QWidget;
+  setCentralWidget(widget);
 
   QVBoxLayout *layout = new QVBoxLayout;
   widget->setLayout(layout);

@@ -14,7 +14,8 @@ KIntEditor::KIntEditor(
   AtomicWidget(key, parent),
   ofQString(ofQString_)
 {
-  lineEdit = new QLineEdit(this);
+  lineEdit = new QLineEdit;
+  setCentralWidget(lineEdit);
 
   int imin =
     min.has_value() && *min >= std::numeric_limits<int>::min() ?

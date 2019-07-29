@@ -12,8 +12,9 @@ namespace conf {
 
 /* We choose to have AtomicWidget a QObject, meaning the derived implementations
  * of an AtomicWidgets cannot inherit a QObject (ie any QWidget). Instead they
- * will have to have it as a member and redirect calls to the few interresting
+ * will have to have it as a member and redirect calls to the few interesting
  * QWidget functions to that member.
+ * To help with this (esp. sizing) pass your widget to setCentralWidget.
  * This allows us to use an AtomicWidget to indiscriminately manipulate any
  * value editor. */
 class AtomicWidget : public QWidget
@@ -31,19 +32,13 @@ public:
     last_enabled(true),
     key(key_) {}
 
-  virtual ~AtomicWidget() {}
-
-  virtual void setEnabled(bool enabled)
-  {
-    if (enabled && !last_enabled) {
-      // Capture the value at the beginning of edition:
-      initValue = getValue();
-    }
-    last_enabled = enabled;
-  }
+  virtual void setEnabled(bool enabled);
 
   // By default do not set any value (read-only):
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
+
+protected:
+  void setCentralWidget(QWidget *w);
 
 public slots:
   /* Return false if the editor can not display this value because of

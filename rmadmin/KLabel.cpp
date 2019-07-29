@@ -3,8 +3,9 @@
 KLabel::KLabel(conf::Key const key, bool wordWrap, QWidget *parent) :
   AtomicWidget(key, parent)
 {
-  label = new QLabel(this);
+  label = new QLabel;
   label->setWordWrap(wordWrap);
+  setCentralWidget(label);
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];

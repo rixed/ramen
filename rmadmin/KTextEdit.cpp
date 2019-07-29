@@ -5,7 +5,8 @@
 KTextEdit::KTextEdit(QString const &sourceName, QWidget *parent) :
   AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/ramen"), parent)
 {
-  textEdit = new QTextEdit(this);
+  textEdit = new QTextEdit;
+  setCentralWidget(textEdit);
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];

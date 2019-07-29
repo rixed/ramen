@@ -7,7 +7,8 @@
 TargetConfigEditor::TargetConfigEditor(conf::Key const &key, QWidget *parent) :
   AtomicWidget(key, parent)
 {
-  toolBox = new QToolBox(this);
+  toolBox = new QToolBox;
+  setCentralWidget(toolBox);
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];

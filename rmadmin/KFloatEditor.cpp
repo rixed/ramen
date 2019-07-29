@@ -5,8 +5,9 @@
 KFloatEditor::KFloatEditor(conf::Key const &key, QWidget *parent, double min, double max) :
   AtomicWidget(key, parent)
 {
-  lineEdit = new QLineEdit(this);
+  lineEdit = new QLineEdit;
   lineEdit->setValidator(RangeDoubleValidator::forRange(min, max));
+  setCentralWidget(lineEdit);
 
   conf::kvs_lock.lock_shared();
   KValue &kv = conf::kvs[key];
