@@ -16,6 +16,7 @@ extern "C" {
 #include "confWorkerRole.h"
 #include "confWorkerRef.h"
 #include "confRCEntryParam.h"
+#include "TargetConfigEditor.h"
 #include "KLabel.h"
 
 namespace conf {
@@ -504,6 +505,11 @@ value TargetConfig::toOCamlValue() const
   }
   Store_field(ret, 0, lst);
   CAMLreturn(ret);
+}
+
+AtomicWidget *TargetConfig::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new TargetConfigEditor(key, parent);
 }
 
 bool TargetConfig::operator==(Value const &other) const

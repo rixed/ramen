@@ -214,6 +214,8 @@ struct TargetConfig : public Value
   bool operator==(Value const &) const;
   QString toQString() const;
 
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
+
   // Takes ownership
   void addEntry(RCEntry *entry)
   {
