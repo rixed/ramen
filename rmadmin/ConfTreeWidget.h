@@ -15,12 +15,13 @@ class ConfTreeWidget : public QTreeWidget
 {
   Q_OBJECT
 
-  ConfTreeItem *findOrCreateItem(QStringList &names, conf::Key const &, KValue const * = nullptr, ConfTreeItem *parent = nullptr);
+  ConfTreeItem *findOrCreateItem(QStringList &names, conf::Key const &, KValue const * = nullptr, ConfTreeItem *parent = nullptr, bool topLevel = false);
   ConfTreeItem *createItem(conf::Key const &, KValue const *);
   ConfTreeItem *itemOfKey(conf::Key const &);
   ConfTreeItem *findItem(QString const &name, ConfTreeItem *parent) const;
 
   QWidget *actionWidget(conf::Key const &, KValue const *);
+  QWidget *fillerWidget();
 
 public:
   ConfTreeWidget(QWidget *parent = nullptr);

@@ -6,8 +6,8 @@
 #include "conf.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
-#include "KLabel.h"
 #include "KFloatEditor.h"
+#include "KShortLabel.h"
 #include "ConfTreeEditorDialog.h"
 #include "ConfTreeWidget.h"
 
@@ -56,6 +56,7 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   // The widget for the "Actions" column:
   QWidget *widget = new QWidget;
   QHBoxLayout *layout = new QHBoxLayout;
+  layout->setContentsMargins(0, 0, 0, 0);
   QPushButton *editButton = new QPushButton("edit");
   layout->addWidget(editButton);
   QPushButton *delButton = new QPushButton("delete");
@@ -73,10 +74,24 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   return widget;
 }
 
+/* Same height as the actionWidget, but invisible: */
+QWidget *ConfTreeWidget::fillerWidget()
+{
+  QWidget *widget = new QWidget;
+  QHBoxLayout *layout = new QHBoxLayout;
+  layout->setContentsMargins(0, 0, 0, 0);
+  QPushButton *nopButton = new QPushButton;
+  nopButton->setFlat(true);
+  nopButton->setEnabled(false);
+  layout->addWidget(nopButton);
+  widget->setLayout(layout);
+  return widget;
+}
+
 /* Add a key by adding the ConfTreeItems recursively (or reuse preexisting one),
  * and return the leaf one.
  * Will not create it if kv is null. */
-ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key const &k, KValue const *kv, ConfTreeItem *parent)
+ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key const &k, KValue const *kv, ConfTreeItem *parent, bool topLevel)
 {
   int const len = names.count();
   assert(len >= 1);
@@ -105,9 +120,13 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
     addTopLevelItem(item);
 
   if (len > 1) {
+    /* If that's a top-level item, add a "filler" in the action column in
+     * order for the first line of the QTreeWidget (the one used to compute
+     * the uniform height) has the same size as the taller ones. */
+    if (topLevel) setItemWidget(item, 3, fillerWidget());
     return findOrCreateItem(names, k, kv, item);
   } else {
-    AtomicWidget *editor = new KLabel(k, true, this);
+    AtomicWidget *editor = new KShortLabel(k, this);
     // Redraw/resize whenever the value is changed:
     connect(editor, &AtomicWidget::valueChanged, this, &ConfTreeWidget::editedValueChanged);
     QWidget *widget = dynamic_cast<QWidget *>(editor);
@@ -127,7 +146,7 @@ ConfTreeItem *ConfTreeWidget::createItem(conf::Key const &k, KValue const *kv)
    */
   QString keyName = QString::fromStdString(k.s);
   QStringList names = keyName.split("/", QString::SkipEmptyParts);
-  return findOrCreateItem(names, k, kv);
+  return findOrCreateItem(names, k, kv, nullptr, true);
 }
 
 ConfTreeItem *ConfTreeWidget::itemOfKey(conf::Key const &k)
@@ -140,6 +159,7 @@ ConfTreeItem *ConfTreeWidget::itemOfKey(conf::Key const &k)
 ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   QTreeWidget(parent)
 {
+  setUniformRowHeights(true);
   setColumnCount(CONFTREE_WIDGET_NUM_COLUMNS);
   static QStringList labels { "Name", "Value", "Lock", "Actions" };
   setHeaderLabels(labels);

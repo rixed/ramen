@@ -51,6 +51,7 @@ HEADERS += \
   KFloatEditor.h \
   KIntEditor.h \
   KLabel.h \
+  KShortLabel.h \
   KErrorMsg.h \
   KChoice.h \
   KBool.h \
@@ -129,6 +130,7 @@ SOURCES += \
   KFloatEditor.cpp \
   KIntEditor.cpp \
   KLabel.cpp \
+  KShortLabel.cpp \
   KChoice.cpp \
   KBool.cpp \
   KTextEdit.cpp \
