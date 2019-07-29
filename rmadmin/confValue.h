@@ -167,9 +167,7 @@ struct RamenValueValue : public Value
 
   QString toQString() const { return v->toQString(); }
   value toOCamlValue() const;
-  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const {
-    return v->editorWidget(key, parent);
-  }
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   bool operator==(Value const &) const;
 };
 
@@ -217,8 +215,7 @@ struct TargetConfig : public Value
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 
   // Takes ownership
-  void addEntry(RCEntry *entry)
-  {
+  void addEntry(RCEntry *entry) {
     entries[entry->programName] = entry;
   }
 };

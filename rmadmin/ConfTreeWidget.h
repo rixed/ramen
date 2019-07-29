@@ -26,7 +26,7 @@ class ConfTreeWidget : public QTreeWidget
 public:
   ConfTreeWidget(QWidget *parent = nullptr);
 
-public slots:
+protected slots:
   void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const> v = nullptr);
   void deleteClicked(conf::Key const &);
 

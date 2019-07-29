@@ -16,27 +16,27 @@ FunctionInfoBox::FunctionInfoBox(FunctionItem const *f_, QWidget *parent) :
   QFormLayout *layout = new QFormLayout;
   setLayout(layout);
 
-  KLabel *retention = new KLabel(pref + "retention", false, this);
+  KLabel *retention = new KLabel(pref + "retention", this);
   layout->addRow(tr("Retention"), retention);
 
-  KLabel *doc = new KLabel(pref + "doc", false, this);
+  KLabel *doc = new KLabel(pref + "doc", this);
   layout->addRow(tr("Documentation"), doc);
 
-  KLabel *isLazy = new KLabel(pref + "is_lazy", false, this);
+  KLabel *isLazy = new KLabel(pref + "is_lazy", this);
   layout->addRow(tr("Lazy?"), isLazy);
 
-  KLabel *operation = new KLabel(pref + "operation", false, this);
+  KLabel *operation = new KLabel(pref + "operation", this);
   layout->addRow(tr("Operation"), operation);
 
-  KLabel *inType = new KLabel(pref + "type/in", false, this);
+  KLabel *inType = new KLabel(pref + "type/in", this);
   layout->addRow(tr("Input Type"), inType);
 
-  KLabel *outType = new KLabel(pref + "type/out", false, this);
+  KLabel *outType = new KLabel(pref + "type/out", this);
   layout->addRow(tr("Output Type"), outType);
 
-  KLabel *signature = new KLabel(pref + "signature", false, this);
+  KLabel *signature = new KLabel(pref + "signature", this);
   layout->addRow(tr("Signature"), signature);
 
-  KLabel *mergeInputs = new KLabel(pref + "merge_inputs", false, this);
+  KLabel *mergeInputs = new KLabel(pref + "merge_inputs", this);
   layout->addRow(tr("Distinct Inputs"), mergeInputs);
 }

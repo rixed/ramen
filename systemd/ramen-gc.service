@@ -1,5 +1,5 @@
 [Unit]
-Description=Delete old or unused Ramen files
+Description=Deletes old or unused Ramen files
 PartOf=ramen.target
 Documentation=https://rixed.github.io/ramen/man/gc.html
 

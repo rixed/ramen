@@ -25,7 +25,7 @@ extern "C" {
 # include "../src/config.h"
 }
 
-RmAdminWin *w = nullptr;
+static RmAdminWin *w = nullptr;
 
 using namespace std;
 

@@ -3,8 +3,6 @@
 #include <iostream>
 #include <cassert>
 #include <QLabel>
-#include "confValue.h"
-#include "conf.h"
 #include "AtomicWidget.h"
 
 class KLabel : public AtomicWidget
@@ -14,21 +12,12 @@ class KLabel : public AtomicWidget
   QLabel *label;
 
 public:
-  KLabel(conf::Key const key, bool wordWrap = false, QWidget *parent = nullptr);
+  KLabel(conf::Key const &key, QWidget *parent = nullptr, bool wordWrap = false);
 
   void setEnabled(bool) {} // not editable
 
 public slots:
-  bool setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
-  {
-    QString new_v(v->toQString());
-    if (new_v != label->text()) {
-      label->setText(new_v);
-      emit valueChanged(k, v);
-    }
-
-    return true;
-  }
+  bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
 
 signals:
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;

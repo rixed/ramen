@@ -55,7 +55,7 @@ QString const RamenValue::toQString() const
 
 AtomicWidget *RamenValue::editorWidget(conf::Key const &key, QWidget *parent) const
 {
-  return new KLabel(key, false, parent);
+  return new KLabel(key, parent);
 }
 
 value VNull::toOCamlValue() const

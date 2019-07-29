@@ -53,7 +53,7 @@ value Value::toOCamlValue() const
 
 AtomicWidget *Value::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new KLabel(key, false, parent);
+  return new KLabel(key, parent);
 }
 
 bool Value::operator==(Value const &other) const
@@ -404,6 +404,11 @@ value RamenValueValue::toOCamlValue() const
   ret = caml_alloc(1, RamenValueType);
   Store_field(ret, 0, v->toOCamlValue());
   CAMLreturn(ret);
+}
+
+AtomicWidget *RamenValueValue::editorWidget(Key const &key, QWidget *parent) const
+{
+  return v->editorWidget(key, parent);
 }
 
 bool RamenValueValue::operator==(Value const &other) const

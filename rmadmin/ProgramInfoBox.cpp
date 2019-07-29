@@ -36,10 +36,10 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   layout->addRow(tr("&Reporting Interval"), reportPeriod);
   addWidget(reportPeriod);
 
-  KLabel *binPath = new KLabel(conf::Key(pref + "bin_path"), false, cw);
+  KLabel *binPath = new KLabel(conf::Key(pref + "bin_path"), cw);
   layout->addRow(tr("Executable"), binPath);
 
-  KLabel *srcPath = new KLabel(conf::Key(pref + "src_path"), false, cw);
+  KLabel *srcPath = new KLabel(conf::Key(pref + "src_path"), cw);
   layout->addRow(tr("Source File"), srcPath);
 
   paramTable = new QTableWidget(this);
@@ -58,10 +58,10 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   layout->addRow(tr("Run &On Sites"), onSites);
   addWidget(onSites);
 
-  KLabel *automatic = new KLabel(conf::Key(pref + "automatic"), false, cw);
+  KLabel *automatic = new KLabel(conf::Key(pref + "automatic"), cw);
   layout->addRow(tr("Automatic"), automatic);
 
-  KLabel *runCondition = new KLabel(conf::Key(pref + "run_condition"), false, cw);
+  KLabel *runCondition = new KLabel(conf::Key(pref + "run_condition"), cw);
   layout->addRow(tr("Condition to Run"), runCondition);
 }
 

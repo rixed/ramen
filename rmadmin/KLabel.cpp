@@ -1,6 +1,8 @@
+#include "confValue.h"
+#include "conf.h"
 #include "KLabel.h"
 
-KLabel::KLabel(conf::Key const key, bool wordWrap, QWidget *parent) :
+KLabel::KLabel(conf::Key const &key, QWidget *parent, bool wordWrap) :
   AtomicWidget(key, parent)
 {
   label = new QLabel;
@@ -16,5 +18,18 @@ KLabel::KLabel(conf::Key const key, bool wordWrap, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
+  connect(&kv, &KValue::valueCreated, this, &KLabel::setValue);
   connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
+}
+
+bool KLabel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+{
+  QString new_v(v->toQString());
+
+  if (new_v != label->text()) {
+    label->setText(new_v);
+    emit valueChanged(k, v);
+  }
+
+  return true;
 }
