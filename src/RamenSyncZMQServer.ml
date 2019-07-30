@@ -34,13 +34,6 @@ let create_unlocked srv k v ~can_read ~can_write ~can_del =
 module DevNull =
 struct
   let init srv =
-    let on_set _ v =
-      !logger.debug "Some clown wrote into DevNull: %a"
-        Value.print v ;
-      Some Value.dummy
-    in
-    Server.register_callback
-      srv srv.on_sets on_set (Globs.escape "devnull") ;
     let can_read = nobody
     and can_write = anybody
     and can_del = nobody in
@@ -244,6 +237,12 @@ let zock_step srv zock zock_idx do_authn =
                                          "" peer_pub_key
                   | Authn.Insecure ->
                       "" in
+                (* Prevent clowns to alter DevNull: *)
+                (match m with
+                | _, CltMsg.SetKey (DevNull, _)
+                | _, CltMsg.UpdKey (DevNull, _) ->
+                    failwith "Some clown wrote into DevNull"
+                | _ -> ()) ;
                 session.user <-
                   Server.process_msg srv socket session.user clt_pub_key m ;
                 (* Special case: we automatically, and silently, prune old
@@ -285,18 +284,10 @@ let timeout_sessions srv =
         ) hv_opt ;
         None
       ) srv.Server.h in
-  let timeout_selector_id id =
-    Hashtbl.remove_all srv.Server.on_sets id ;
-    Hashtbl.remove_all srv.Server.on_news id ;
-    Hashtbl.remove_all srv.Server.on_dels id in
   let timeout_session_subscriptions session =
-    Hashtbl.filter_map_inplace (fun sel_id map ->
+    Hashtbl.filter_map_inplace (fun _sel_id map ->
       let map' = Map.remove session.socket map in
-      if Map.is_empty map' then (
-        !logger.info "Cleaning associated selector id" ;
-        timeout_selector_id sel_id ;
-        None
-      ) else Some map'
+      if Map.is_empty map' then None else Some map'
     ) srv.Server.subscriptions
   in
   let oldest = Unix.time () -. sync_sessions_timeout in

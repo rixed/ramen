@@ -21,9 +21,6 @@ struct
       send_msg : SrvMsg.t -> User.socket Enum.t -> unit ;
       (* Inverted match: who is using what: *)
       cb_selectors : Selector.set ;
-      on_sets : (Selector.id, callback) Hashtbl.t ;
-      on_news : (Selector.id, callback) Hashtbl.t ;
-      on_dels : (Selector.id, callback) Hashtbl.t ;
       user_selectors : Selector.set ;
       subscriptions : (Selector.id, (User.socket, User.t) Map.t) Hashtbl.t }
 
@@ -58,9 +55,6 @@ struct
   let make user_db ~send_msg =
     { h = H.create 99 ; user_db ; send_msg ;
       cb_selectors = Selector.make_set () ;
-      on_sets = Hashtbl.create 10 ;
-      on_news = Hashtbl.create 10 ;
-      on_dels = Hashtbl.create 10 ;
       user_selectors = Selector.make_set () ;
       subscriptions = Hashtbl.create 99 }
 
@@ -72,24 +66,6 @@ struct
           User.print current_locker
           print_as_date expiry
           (List.print (Tuple2.print User.print print_as_duration)) rest
-
-  let do_cbs cbs t k v =
-    match
-      Selector.matches k t.cb_selectors |>
-      Enum.fold (fun v sel_id ->
-        let cbs = Hashtbl.find_all cbs sel_id in
-        List.fold_left (fun v cb ->
-          match cb k v with
-          | Some v -> v
-          | None -> raise Exit
-        ) v cbs
-      ) v with
-    | exception Exit ->
-        Printf.sprintf2 "Key %a: change denied"
-          Key.print k |>
-        failwith
-    | v ->
-        v
 
   let notify t k is_permitted m =
     let subscriber_sockets =
@@ -190,7 +166,6 @@ struct
     match H.find t.h k with
     | exception Not_found ->
         (* As long as there is a callback for this, that's ok: *)
-        let v = do_cbs t.on_news t k v in
         let mtime = Unix.gettimeofday () in
         let uid = IO.to_string User.print_id (User.id u) in
         (* Objects are created locked unless timeout is <= 0 (to avoid
@@ -220,7 +195,6 @@ struct
             Key.print k
             Value.print v ;
           check_can_write t k prev u ;
-          let v = do_cbs t.on_sets t k v in
           prev.v <- v ;
           prev.set_by <- u ;
           prev.mtime <- Unix.gettimeofday () ;
@@ -247,7 +221,6 @@ struct
     | prev ->
         (* TODO: think about making locking mandatory *)
         check_can_delete t k prev u ;
-        let _ = do_cbs t.on_dels t k prev.v in
         H.remove t.h k ;
         notify t k (User.has_any_role prev.can_read) (DelKey k)
 
@@ -315,10 +288,6 @@ struct
     let id = Selector.add t.user_selectors sel in
     let def = Map.singleton socket u in
     Hashtbl.modify_def def id (Map.add socket u) t.subscriptions
-
-  let register_callback t cbs f sel =
-    let id = Selector.add t.cb_selectors sel in
-    Hashtbl.add cbs id f
 
   let owner_of_hash_value hv =
     match hv.locks with

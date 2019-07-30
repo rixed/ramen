@@ -147,7 +147,7 @@ sig
   (* Special set for optimized matches: *)
   type set
   val make_set : unit -> set
-  type id
+  type id (* Identifies a selector in a set *)
   val add : set -> t -> id
   val matches : Key.t -> set -> id Enum.t
 end
