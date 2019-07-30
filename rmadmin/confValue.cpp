@@ -604,7 +604,7 @@ Replay::Replay(value v_) :
   until = Double_val(Field(v_, 4));
   final_ringbuf_file = String_val(Field(v_, 5));
   for (value src_ = Field(v_, 6); Is_block(src_); src_ = Field(src_, 1)) {
-    sources.emplace_back(Field(src_, 0));
+    sources.emplace_back(SiteFq(Field(src_, 0)));
   }
   for (value src_ = Field(v_, 7); Is_block(src_); src_ = Field(src_, 1)) {
     links.emplace_back(
