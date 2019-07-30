@@ -413,7 +413,8 @@ let init_auth ?while_ clt uid on_progress =
     on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e)) ;
     false
 
-let may_send_ping ?while_ session =
+let may_send_ping ?while_ () =
+  let session = get_session () in
   let now = Unix.time () in
   if session.last_sent < now -. sync_sessions_timeout *. 0.5 then (
     session.last_sent <- now ;
@@ -427,7 +428,7 @@ let process_in ?(while_=always) ?(single=false) _clt =
   let session = get_session () in
   let rec loop msg_count =
     if while_ () then (
-      may_send_ping ~while_ session ;
+      may_send_ping ~while_ () ;
       match recv_cmd session.clt with
       | exception Unix.(Unix_error (EAGAIN, _, _)) ->
           msg_count
@@ -439,6 +440,11 @@ let process_in ?(while_=always) ?(single=false) _clt =
       msg_count in
   let msg_count = loop 0 in
   !logger.debug "Processed %d messages" msg_count
+
+let process_until ~while_ clt =
+  while while_ () do
+    process_in ~while_ clt
+  done
 
 let init_sync ?while_ clt topics on_progress =
   on_progress clt Stage.Sync Status.InitStart ;

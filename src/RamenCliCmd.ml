@@ -262,11 +262,9 @@ let confclient conf () =
       u mtime
       owner expiry
   in
-  start_sync conf ~topics ~on_new ~while_ (fun clt ->
+  start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun clt ->
     !logger.info "Receiving:" ;
-    forever (fun () ->
-      ZMQClient.process_in ~while_ clt
-    ) ())
+    ZMQClient.process_until ~while_ clt)
 
 (*
  * `ramen compile`
@@ -394,7 +392,8 @@ let compile_sync conf replace src_file source_name_opt =
   let topics = [
     (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
-  start_sync conf ~while_ ~on_new ~on_set ~topics (fun clt ->
+  let recvtimeo = 10. in (* Should not last that long though *)
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo (fun clt ->
     if replace then
       ZMQClient.send_cmd ~while_
         (LockOrCreateKey (k_source, Default.sync_lock_timeout))
@@ -404,7 +403,7 @@ let compile_sync conf replace src_file source_name_opt =
               ZMQClient.send_cmd ~while_ (UnlockKey k_source)))
     else
       ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
-    ZMQClient.process_in ~while_ clt)
+    ZMQClient.process_until ~while_ clt)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
  * source programs, using the build infrastructure to accept any source format
@@ -482,8 +481,8 @@ let compserver conf daemonize to_stdout to_syslog
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v in
   let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
-  start_sync conf ~while_ ~on_new ~on_set ~topics
-                  (ZMQClient.process_in ~while_)
+  start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
+                  (ZMQClient.process_until ~while_)
 
 let compile conf lib_path use_external_compiler
             max_simult_compils smt_solver source_files
@@ -635,7 +634,8 @@ let info_sync conf program_name_opt (src_path : N.path) opt_func_name =
   let program_name = program_name_opt |? (N.program (src_path :> string)) in
   let topics =
     [ "sources/"^ (src_path :> string) ^"/info" ] in
-  start_sync conf ~topics ~while_ (fun clt ->
+  let recvtimeo = 0. in (* No need to keep alive after initial sync *)
+  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
     let prog = RamenSync.program_of_src_path clt src_path |>
                P.unserialized program_name in
     prog_info prog opt_func_name)
@@ -864,7 +864,8 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
     [ "sites/*/workers/*/stats/runtime" ;
       "sites/*/workers/*/worker" ;
       "sites/*/workers/*/archives/*" ] in
-  start_sync conf ~topics ~while_ (fun clt ->
+  let recvtimeo = 0. in (* No need to keep alive after initial sync *)
+  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
     let open RamenSync in
     Client.iter clt (fun k v ->
       match k, v.value with
@@ -1190,7 +1191,8 @@ let tail_sync
        * their name, rather than all defined sources. *)
       "sources/*/info" ;
       "tails/"^ sites ^"/"^ (fq :> string) ^"/lasts/*" ] in
-  start_sync conf ~topics ~while_ (fun clt ->
+  let recvtimeo = 10. in
+  start_sync conf ~topics ~while_ ~recvtimeo (fun clt ->
     let open RamenSync in
     (* Get the workers and their types: *)
     !logger.debug "Looking for running workers %a on sites %S"
@@ -1317,7 +1319,7 @@ let tail_sync
       while_ () && (!count_last > 0 || !count_next > 0) in
     clt.Client.on_new <-
       fun _ k v _ _ _ _ -> on_key count_next k v ;
-    ZMQClient.process_in ~while_:while_' clt ;
+    ZMQClient.process_until ~while_:while_' clt ;
     print [||] ;
     (* Unsubscribe *)
     !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
@@ -1390,7 +1392,7 @@ let replay_ conf fq field_names with_header with_units sep null raw
                              ~with_event_time callback
   else
     let topics = RamenExport.replay_topics in
-    start_sync conf ~topics ~while_
+    start_sync conf ~topics ~while_ ~recvtimeo:10.
       (RamenExport.replay_sync conf ~while_ fq field_names where since until
                                ~with_event_time callback)
 
@@ -1435,7 +1437,7 @@ let timeseries_ conf fq data_fields
           ~consolidation ~bucket_time fq data_fields
     else
       let topics = RamenExport.replay_topics in
-      start_sync conf ~topics ~while_
+      start_sync conf ~topics ~while_ ~recvtimeo:10.
         (RamenTimeseries.get_sync conf num_points since until where factors
           ~consolidation ~bucket_time fq data_fields ~while_)
   in

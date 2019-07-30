@@ -314,6 +314,9 @@ let replay_sync conf ~while_ fq field_names where since until
             let eofs_num = ref 0 in
             let while_ () =
               !eofs_num < Set.cardinal replay.sources && while_ () in
+            let while_ () =
+              ZMQClient.may_send_ping ~while_ () ;
+              while_ () in
             let event_time =
               O.event_time_of_operation func.F.operation in
             let event_time_of_tuple = match event_time with

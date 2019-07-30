@@ -106,7 +106,8 @@ let serve_sync conf ~while_ fd =
         N.path "workers" ; N.path (id.child :> string) ] in
     [ (pref :> string) ^"/worker" ;
       (pref :> string) ^"/instances/*/input_ringbufs" ] in
-  start_sync conf ~while_ ~topics (fun clt ->
+  let recvtimeo = 0. (* No need to keep alive after initial sync *) in
+  start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
     (* We need the input ringbuf for this parent index. We need to get the
      * current signature for the worker and then read it, waiting to receive
      * those keys if not there yet. *)
@@ -136,7 +137,7 @@ let serve_sync conf ~while_ fd =
           invalid_sync_type worker_key hv.value "a worker") ;
     (* with_value just register a callback but we still have to turn the
      * crank: *)
-    ZMQClient.process_in ~while_ clt)
+    ZMQClient.process_until ~while_ clt)
 
 (* Start the service: *)
 

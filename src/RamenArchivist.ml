@@ -1041,7 +1041,7 @@ let run_sync conf ~while_ loop allocs reconf =
   and on_new clt k v _uid _mtime _owner _expiry = on_del clt k v in
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
              (fun clt ->
-    Processes.until_quit (fun () ->
+    let do_once () =
       ZMQClient.process_in ~while_ clt ;
       let now = Unix.gettimeofday () in
       if allocs &&
@@ -1061,9 +1061,14 @@ let run_sync conf ~while_ loop allocs reconf =
       then (
         last_reconf := now ;
         !logger.info "Updating workers export configuration" ;
-        reconf_workers_sync conf clt) ;
-      loop > 0.
-    )
+        reconf_workers_sync conf clt)
+    in
+    if loop <= 0. then
+      do_once ()
+    else
+      while while_ () do
+        do_once ()
+      done
   )
 
 (* Helpers: get the stats (maybe refreshed) *)

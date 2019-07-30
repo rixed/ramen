@@ -40,7 +40,7 @@ let get_programs conf =
 (* Helps to call ZMQClient.start with the parameters from RamenConf.conf: *)
 let start_sync conf ?while_ ?topics ?on_progress ?on_sock ?on_synced
                ?on_new ?on_set ?on_del ?on_lock ?on_unlock
-               ?conntimeo ?recvtimeo ?sndtimeo sync_loop =
+               ?conntimeo ~recvtimeo ?sndtimeo sync_loop =
   let url = conf.C.sync_url
   and srv_pub_key = conf.C.srv_pub_key
   and username = conf.C.username
@@ -49,4 +49,4 @@ let start_sync conf ?while_ ?topics ?on_progress ?on_sock ?on_synced
   ZMQClient.start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
                   ?topics ?on_progress ?on_sock ?on_synced
                   ?on_new ?on_set ?on_del ?on_lock ?on_unlock
-                  ?conntimeo ?recvtimeo ?sndtimeo sync_loop
+                  ?conntimeo ~recvtimeo ?sndtimeo sync_loop

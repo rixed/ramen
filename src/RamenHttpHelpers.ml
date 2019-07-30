@@ -260,7 +260,9 @@ let http_service conf port url_prefix router fault_injection_rate topics =
       do_loop stream
     else
       let while_ () = !RamenProcesses.quit = None in
-      start_sync conf ~while_ ~topics (fun _clt -> do_loop stream)
+      (* HTTP forked servers need no further interaction past initial sync *)
+      let recvtimeo = 0. in
+      start_sync conf ~while_ ~topics ~recvtimeo (fun _clt -> do_loop stream)
   in
   !logger.info "Starting HTTP server on port %d" port ;
   let inet = Unix.inet_addr_any in (* or: inet_addr_of_string "127.0.0.1" *)
