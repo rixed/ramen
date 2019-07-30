@@ -165,26 +165,34 @@ let is_ramen = function
   | User.Internal | User.Ramen _ -> true
   | User.Anonymous | User.Auth _ -> false
 
-(* FIXME: when to delete from these? *)
-let sessions : (User.socket, Authn.session * User.t ref) Hashtbl.t =
-  Hashtbl.create 90
+type session =
+  { socket : User.socket ;
+    authn : Authn.session ;
+    mutable user : User.t ;
+    mutable last_used : float }
+
+let sessions : (User.socket, session) Hashtbl.t = Hashtbl.create 90
 
 let srv_pub_key = ref ""
 let srv_priv_key = ref ""
 
 let session_of_socket socket do_authn =
-  try Hashtbl.find sessions socket
+  try
+    Hashtbl.find sessions socket
   with Not_found ->
-    let entry =
-      (if do_authn then
-        Authn.(make_session None
-          (pub_key_of_z85 !srv_pub_key)
-          (priv_key_of_z85 !srv_priv_key))
-      else
-        Authn.make_clear_session ()),
-      ref User.Anonymous in
-    Hashtbl.add sessions socket entry ;
-    entry
+    let session =
+      { socket ;
+        authn =
+          if do_authn then
+            Authn.(make_session None
+              (pub_key_of_z85 !srv_pub_key)
+              (priv_key_of_z85 !srv_priv_key))
+          else
+            Authn.make_clear_session () ;
+        user = User.Anonymous ;
+        last_used = 0. } in
+    Hashtbl.add sessions socket session ;
+    session
 
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
@@ -217,10 +225,11 @@ let zock_step srv zock zock_idx do_authn =
       | peer, [ msg ] ->
           log_and_ignore_exceptions (fun () ->
             let socket = zock_idx, peer in
-            let session, u_ref = session_of_socket socket do_authn in
+            let session = session_of_socket socket do_authn in
+            session.last_used <- Unix.time () ;
             (* Decrypt using the session auth: *)
             let msg = Marshal.from_string msg 0 in
-            (match Authn.decrypt session msg with
+            (match Authn.decrypt session.authn msg with
             | exception e ->
                 !logger.error "Cannot decrypt message: %s, ignoring"
                   Printexc.(to_string e) ;
@@ -229,13 +238,14 @@ let zock_step srv zock zock_idx do_authn =
             | Ok str ->
                 let m = CltMsg.of_string str in
                 let clt_pub_key =
-                  match session with
+                  match session.authn with
                   | Authn.Secure { peer_pub_key ; _ } ->
                       Option.map_default Authn.z85_of_pub_key
                                          "" peer_pub_key
                   | Authn.Insecure ->
                       "" in
-                u_ref := Server.process_msg srv socket !u_ref clt_pub_key m ;
+                session.user <-
+                  Server.process_msg srv socket session.user clt_pub_key m ;
                 (* Special case: we automatically, and silently, prune old
                  * entries under "lasts/" directories (only after a new entry has
                  * successfully been added there). Clients are supposed to do the
@@ -264,23 +274,45 @@ let zock_step srv zock zock_idx do_authn =
             (List.length parts) |>
           failwith)
 
-let timeout_old_errors srv =
-  let oldest = Unix.time () -. sync_errors_timeout in
-  Server.H.filteri_inplace (fun k hv ->
-    match k, hv.Server.v with
-    | Key.Error (Some _),
-      Value.Error (t, _, _)
-      when t < oldest ->
-        Server.notify srv k (User.has_any_role hv.can_read) (DelKey k) ;
-        false
-    | _ ->
-        true
-  ) srv.Server.h
+let timeout_sessions srv =
+  let timeout_session_errors session =
+    if User.is_authenticated session.user then
+      let k = Key.user_errs session.user session.socket in
+      !logger.info "Timing out error file %a" Key.print k ;
+      Server.H.modify_opt k (fun hv_opt ->
+        Option.may (fun hv ->
+          Server.notify srv k (User.has_any_role hv.Server.can_read) (DelKey k)
+        ) hv_opt ;
+        None
+      ) srv.Server.h in
+  let timeout_selector_id id =
+    Hashtbl.remove_all srv.Server.on_sets id ;
+    Hashtbl.remove_all srv.Server.on_news id ;
+    Hashtbl.remove_all srv.Server.on_dels id in
+  let timeout_session_subscriptions session =
+    Hashtbl.filter_map_inplace (fun sel_id map ->
+      let map' = Map.remove session.socket map in
+      if Map.is_empty map' then (
+        !logger.info "Cleaning associated selector id" ;
+        timeout_selector_id sel_id ;
+        None
+      ) else Some map'
+    ) srv.Server.subscriptions
+  in
+  let oldest = Unix.time () -. sync_sessions_timeout in
+  Hashtbl.filteri_inplace (fun _ session ->
+    if session.last_used > oldest then true else (
+      !logger.info "Timing out user %a" User.print session.user ;
+      timeout_session_errors session ;
+      timeout_session_subscriptions session ;
+      false
+    )
+  ) sessions
 
 let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
-  let clean_rate = rate_limiter 1 (sync_errors_timeout *. 0.5) in
+  let clean_rate = rate_limiter 1 (sync_sessions_timeout *. 0.5) in
   let poll_mask =
     Array.map (fun (zock, _) -> zock, Zmq.Poll.In) zocks |>
     Zmq.Poll.mask_of in
@@ -291,7 +323,7 @@ let service_loop conf zocks srv =
       let zock, do_authn = zocks.(i) in
       if m <> None then zock_step srv zock i do_authn
     ) ready ;
-    if clean_rate () then timeout_old_errors srv ;
+    if clean_rate () then timeout_sessions srv ;
     if save_rate () then Snapshot.save conf srv ;
     true
   ) ;
@@ -303,8 +335,8 @@ let send_msg zocks ?block m sockets =
     !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
       msg peer zock_idx ;
     let zock, _do_authn = zocks.(zock_idx) in
-    let session, _u_ref = Hashtbl.find sessions socket in
-    let msg = Authn.wrap session msg in
+    let session = Hashtbl.find sessions socket in
+    let msg = Authn.wrap session.authn msg in
     Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
   ) sockets
 
