@@ -152,6 +152,40 @@ end
  * Synchronization Service
  *)
 
+open Binocle
+
+let stats_num_sessions =
+  IntGauge.make Metric.Names.sync_session_count
+    "Number of currently connected sessions."
+
+let stats_num_users =
+  IntGauge.make Metric.Names.sync_user_count
+    "Number of currently connected users."
+
+let stats_num_subscriptions =
+  IntGauge.make Metric.Names.sync_subscription_count
+    "Number of currently active subscriptions."
+
+let stats_sent_msgs =
+  IntCounter.make Metric.Names.sync_sent_msgs
+    "Total number of messages sent so far by the confserver."
+
+let stats_sent_bytes =
+  IntCounter.make Metric.Names.sync_sent_bytes
+    "Total number of bytes sent so far by the confserver."
+
+let stats_recvd_msgs =
+  IntCounter.make Metric.Names.sync_recvd_msgs
+    "Total number of messages received so far by the confserver."
+
+let stats_recvd_bytes =
+  IntCounter.make Metric.Names.sync_recvd_bytes
+    "Total number of bytes received so far by the confserver."
+
+let stats_bad_recvd_msgs =
+  IntCounter.make Metric.Names.sync_bad_recvd_msgs
+    "Total number of invalid messages received so far by the confserver."
+
 let last_tuples = Hashtbl.create 50
 
 let is_ramen = function
@@ -187,6 +221,22 @@ let session_of_socket socket do_authn =
     Hashtbl.add sessions socket session ;
     session
 
+let send ?block zock peer msg =
+  IntCounter.inc stats_sent_msgs ;
+  IntCounter.add stats_sent_bytes (String.length msg) ;
+  Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
+
+let send_msg zocks ?block m sockets =
+  let msg = SrvMsg.to_string m in
+  Enum.iter (fun (zock_idx, peer as socket) ->
+    !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
+      msg peer zock_idx ;
+    let zock, _do_authn = zocks.(zock_idx) in
+    let session = Hashtbl.find sessions socket in
+    let msg = Authn.wrap session.authn msg in
+    send ?block zock peer msg
+  ) sockets
+
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
   let peel_multipart msg =
@@ -202,10 +252,12 @@ let zock_step srv zock zock_idx do_authn =
       | peer :: rest ->
           peer, look_for_delim 1 rest
   in
+  (* FIXME: no more need for recv_msg_all and parts! *)
   match Zmq.Socket.recv_msg_all ~block:false zock with
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
       Server.timeout_all_locks srv
   | msg_parts ->
+      IntCounter.inc stats_recvd_msgs ;
       let parts =
         List.map (fun p ->
           Zmq.Msg.unsafe_data p |>
@@ -216,6 +268,7 @@ let zock_step srv zock zock_idx do_authn =
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
       | peer, [ msg ] ->
+          IntCounter.add stats_recvd_bytes (String.length msg) ;
           log_and_ignore_exceptions (fun () ->
             let socket = zock_idx, peer in
             let session = session_of_socket socket do_authn in
@@ -224,10 +277,12 @@ let zock_step srv zock zock_idx do_authn =
             let msg = Marshal.from_string msg 0 in
             (match Authn.decrypt session.authn msg with
             | exception e ->
+                IntCounter.inc stats_bad_recvd_msgs ;
                 !logger.error "Cannot decrypt message: %s, ignoring"
                   Printexc.(to_string e) ;
             | Bad errmsg ->
-                Zmq.Socket.send_all zock [ peer ; "" ; errmsg ]
+                IntCounter.inc stats_bad_recvd_msgs ;
+                send zock peer errmsg
             | Ok str ->
                 let m = CltMsg.of_string str in
                 let clt_pub_key =
@@ -270,6 +325,7 @@ let zock_step srv zock zock_idx do_authn =
                 | _ -> ())
           )) ()
       | _, parts ->
+          IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf "Invalid message with %d parts"
             (List.length parts) |>
           failwith)
@@ -301,6 +357,17 @@ let timeout_sessions srv =
     )
   ) sessions
 
+let update_stats srv =
+  IntGauge.set stats_num_sessions (Hashtbl.length sessions) ;
+  let uids =
+    Hashtbl.fold (fun _ session uids ->
+      let uid = User.id session.user in
+      Set.add uid uids
+    ) sessions Set.empty in
+  IntGauge.set stats_num_users (Set.cardinal uids) ;
+  let num_subscribtions = Hashtbl.length srv.Server.subscriptions in
+  IntGauge.set stats_num_subscriptions num_subscribtions
+
 let service_loop conf zocks srv =
   Snapshot.init conf ;
   let save_rate = rate_limiter 1 5. in (* No more than 1 save every 5s *)
@@ -315,22 +382,14 @@ let service_loop conf zocks srv =
       let zock, do_authn = zocks.(i) in
       if m <> None then zock_step srv zock i do_authn
     ) ready ;
-    if clean_rate () then timeout_sessions srv ;
+    if clean_rate () then (
+      timeout_sessions srv ;
+      update_stats srv
+    ) ;
     if save_rate () then Snapshot.save conf srv ;
     true
   ) ;
   Snapshot.save conf srv
-
-let send_msg zocks ?block m sockets =
-  let msg = SrvMsg.to_string m in
-  Enum.iter (fun (zock_idx, peer as socket) ->
-    !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
-      msg peer zock_idx ;
-    let zock, _do_authn = zocks.(zock_idx) in
-    let session = Hashtbl.find sessions socket in
-    let msg = Authn.wrap session.authn msg in
-    Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
-  ) sockets
 
 let create_new_server_keys srv_pub_key_file srv_priv_key_file =
   !logger.warning "Creating a new server pub/priv key pair into %a/%a"

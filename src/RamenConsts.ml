@@ -84,6 +84,16 @@ struct
     let copy_server_tuples = "copy_server_tuples"
     let copy_client_connects = "copy_client_connects"
     let copy_client_tuples = "copy_client_tuples"
+
+    (* Metrics reported by the confserver: *)
+    let sync_session_count = "sync_sessions_count"
+    let sync_user_count = "sync_users_count"
+    let sync_subscription_count = "sync_subscriptions_count"
+    let sync_sent_msgs = "sync_sent_msgs"
+    let sync_sent_bytes = "sync_sent_bytes"
+    let sync_recvd_msgs = "sync_recvd_msgs"
+    let sync_recvd_bytes = "sync_recvd_bytes"
+    let sync_bad_recvd_msgs = "sync_bad_recvd_msgs"
   end
 
   (* Only required when the doc is used in more than one place: *)
