@@ -586,7 +586,7 @@ struct
        * channel events, in order to avoid spamming unrelated nodes
        * (Cf. issue #640): *)
       links : (site_fq * site_fq) set ;
-      timeout : float (* wall clock time, not duration! *) }
+      timeout_date : float }
     [@@ppp PPP_OCaml]
 
   type replays = (RamenChannel.t, entry) Hashtbl.t
@@ -602,7 +602,7 @@ struct
       let context = "Reading replays" in
       let now = Unix.gettimeofday () in
       fail_with_context context (fun () -> ppp_of_fd fname fd) |>
-      Hashtbl.filter (fun replay -> replay.timeout > now)
+      Hashtbl.filter (fun replay -> replay.timeout_date > now)
 
   let load conf =
     let fname = file_name conf in

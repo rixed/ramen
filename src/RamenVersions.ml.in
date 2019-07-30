@@ -24,7 +24,7 @@ let pending_notify = "v7" (* last: changed {T,V}Record format *)
 let ringbuf = "v8" (* last: EndOfReplay on 2 words *)
 
 (* Ref-ringbuf format *)
-let out_ref = "v7" (* last: ORC as a possible output type *)
+let out_ref = "v8" (* last: timeout -> timeout_date *)
 
 (* Workers state format *)
 let worker_state = "v13" (* last: change Heap structure *)

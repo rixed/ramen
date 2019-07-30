@@ -100,9 +100,9 @@ let read_live fname =
   ) h ;
   h
 
-let add_ fname fd out_fname file_type timeout chan fieldmask =
+let add_ fname fd out_fname file_type timeout_date chan fieldmask =
   let channels = Hashtbl.create 1 in
-  Hashtbl.add channels chan timeout ;
+  Hashtbl.add channels chan timeout_date ;
   let file_spec =
     file_type, RamenFieldMask.to_string fieldmask, channels in
   let h =
@@ -124,11 +124,11 @@ let add_ fname fd out_fname file_type timeout chan fieldmask =
     let file_spec = combine_specs prev_spec file_spec in
     if prev_spec <> file_spec then rewrite file_spec
 
-let add fname ?(timeout=0.) ?(channel=RamenChannel.live) ?(file_type=RingBuf)
+let add fname ?(timeout_date=0.) ?(channel=RamenChannel.live) ?(file_type=RingBuf)
         out_fname fieldmask =
   RamenAdvLock.with_w_lock fname (fun fd ->
     (*!logger.debug "Got write lock for add on %s" fname ;*)
-    add_ fname fd out_fname file_type timeout channel fieldmask)
+    add_ fname fd out_fname file_type timeout_date channel fieldmask)
 
 let remove_ fname fd out_fname chan =
   let h = read_ fname fd in

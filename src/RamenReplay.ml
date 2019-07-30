@@ -232,7 +232,7 @@ let find_sources
 let create
       conf (stats : (site_fq, replay_stats) Hashtbl.t)
       ?(timeout=Default.replay_timeout) func since until =
-  let timeout = Unix.gettimeofday () +. timeout in
+  let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = F.fq_name func in
   let out_type =
     O.out_type_of_operation ~with_private:true func.F.operation in
@@ -266,7 +266,7 @@ let create
     TimeRange.print range
     N.path_print final_rb ;
   { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
-    since ; until ; final_rb ; sources ; links ; timeout }
+    since ; until ; final_rb ; sources ; links ; timeout_date }
 
 let teardown_links conf func_of_fq t =
   let rem_out_from (site, fq) =
@@ -289,8 +289,8 @@ let settup_links conf func_of_fq t =
   (* Connect the target first, then the graph: *)
   let connect_to_rb func fname fieldmask =
     let out_ref = C.out_ringbuf_names_ref conf func in
-    OutRef.add out_ref ~timeout:t.timeout ~channel:t.channel
-               fname fieldmask
+    OutRef.add out_ref ~timeout_date:t.timeout_date
+               ~channel:t.channel fname fieldmask
   in
   let target_site, target_fq = t.target in
   let what = Printf.sprintf2 "Setting up links for channel %a"
