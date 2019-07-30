@@ -677,6 +677,7 @@ let read_key secure fname =
   String.trim
 
 let write_key secure fname key =
+  mkdir_all ~is_file:true fname ;
   let open Unix in
   (try move_aside ~ext:"old" fname
   with Unix_error (ENOENT, _, _) -> ()) ;
