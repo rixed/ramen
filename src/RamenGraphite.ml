@@ -491,9 +491,9 @@ let render conf headers body =
         RamenTimeseries.get_local conf max_data_points since until where
                                   factors fq data_fields
       else
-        let _zock, _session, clt = ZMQClient.get_connection () in
+        let session = ZMQClient.get_session () in
         RamenTimeseries.get_sync conf max_data_points since until where
-                                 factors fq data_fields ~while_ clt in
+                                 factors fq data_fields ~while_ session.clt in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->

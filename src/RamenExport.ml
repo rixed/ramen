@@ -302,12 +302,12 @@ let replay_sync conf ~while_ fq field_names where since until
       RingBuf.create replay.final_rb ;
       let replay_k = Key.Replays replay.channel
       and v = Value.Replay replay in
-      ZMQClient.(send_cmd clt ~while_ (CltMsg.NewKey (replay_k, v, 0.))) ;
+      ZMQClient.(send_cmd ~while_ (CltMsg.NewKey (replay_k, v, 0.))) ;
       let rb = RingBuf.load replay.final_rb in
       let ret =
         finally
           (fun () ->
-            ZMQClient.(send_cmd clt ~while_ (CltMsg.DelKey replay_k)) ;
+            ZMQClient.(send_cmd ~while_ (CltMsg.DelKey replay_k)) ;
             RingBuf.unload rb)
           (fun () ->
             (* Read the rb while monitoring children: *)

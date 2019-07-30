@@ -10,15 +10,15 @@ module ZMQClient = RamenSyncZMQClient
  * TODO: to be cleaned once support for config files is removed. *)
 let get_programs_sync () =
   let open RamenSync in
-  let _zock, _session, clt = ZMQClient.get_connection () in
+  let session = ZMQClient.get_session () in
   let programs = Hashtbl.create 30 in
-  Client.iter clt (fun k hv ->
+  Client.iter session.clt (fun k hv ->
     match k, hv.value with
     | Key.PerSite (_site, PerWorker (fq, Worker)),
       Value.Worker w ->
         let prog_name, _func_name = N.fq_parse fq in
         if not (Hashtbl.mem programs prog_name) then
-          let prog = program_of_src_path clt w.Value.Worker.src_path |>
+          let prog = program_of_src_path session.clt w.Value.Worker.src_path |>
                      C.Program.unserialized prog_name in
           Hashtbl.add programs prog_name prog
     | _ -> ()) ;

@@ -59,7 +59,7 @@ let may_publish_tail clt ?while_ key_of_seq
       let seq = IntCounter.get ZMQClient.stats_num_sync_msgs_out in
       let k = key_of_seq seq in
       let cmd = Client.CltMsg.NewKey (k, v, 0.) in
-      ZMQClient.send_cmd clt ?while_ cmd
+      ZMQClient.send_cmd ?while_ cmd
   | _ -> ()
 
 let publish_stats clt ?while_ stats_key init_stats stats =
@@ -111,7 +111,7 @@ let publish_stats clt ?while_ stats_key init_stats stats =
           max_ram = max init.max_ram stats.max_ram } in
   let v = Value.RuntimeStats tot_stats in
   let cmd = Client.CltMsg.SetKey (stats_key, v) in
-  ZMQClient.send_cmd clt ?while_ cmd
+  ZMQClient.send_cmd ?while_ cmd
 
 let start_zmq_client
       ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key

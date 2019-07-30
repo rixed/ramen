@@ -304,13 +304,13 @@ let update_archives ~while_ conf dry_run clt =
         if not dry_run then (
           let arctimes_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes))
           and arctimes = Value.TimeRange archives in
-          ZMQClient.send_cmd clt ~while_ (SetKey (arctimes_k, arctimes)) ;
+          ZMQClient.send_cmd ~while_ (SetKey (arctimes_k, arctimes)) ;
           let numfiles_k = Key.PerSite (site, PerWorker (fq, NumArcFiles))
           and numfiles = Value.of_int num_files in
-          ZMQClient.send_cmd clt ~while_ (SetKey (numfiles_k, numfiles)) ;
+          ZMQClient.send_cmd ~while_ (SetKey (numfiles_k, numfiles)) ;
           let numbytes_k = Key.PerSite (site, PerWorker (fq, NumArcBytes))
           and numbytes = Value.of_int64 num_bytes in
-          ZMQClient.send_cmd clt ~while_ (SetKey (numbytes_k, numbytes)))
+          ZMQClient.send_cmd ~while_ (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 
 let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =

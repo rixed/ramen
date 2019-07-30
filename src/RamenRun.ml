@@ -92,14 +92,14 @@ let bad_type expected actual k =
 let get_key clt ~while_ k cont =
   let open RamenSync in
   !logger.debug "get_key %a" Key.print k ;
-  ZMQClient.(send_cmd clt ~while_ (LockKey (k, Default.sync_lock_timeout))
+  ZMQClient.(send_cmd ~while_ (LockKey (k, Default.sync_lock_timeout))
     ~on_ko:(fun () -> cannot "lock" k) ~on_done:(fun () ->
       match Client.find clt k with
       | exception Not_found ->
           cannot "find" k
       | hv ->
           cont hv.value (fun () ->
-            ZMQClient.(send_cmd clt ~while_ (UnlockKey k)))))
+            ZMQClient.(send_cmd ~while_ (UnlockKey k)))))
 
 let kill_sync conf ?(purge=false) program_names =
   let nb_kills = ref 0 in
@@ -119,7 +119,7 @@ let kill_sync conf ?(purge=false) program_names =
                  ) program_names)
             ) rcs in
           let rcs = Value.TargetConfig to_keep in
-          ZMQClient.send_cmd clt ~while_ (SetKey (Key.TargetConfig, rcs))
+          ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
             ~on_done:(fun () ->
               (* Also delete the info and sources. Used for instance when
                * deleting alerts. *)
@@ -128,9 +128,9 @@ let kill_sync conf ?(purge=false) program_names =
                   let k typ =
                     Key.Sources (rcs.Value.TargetConfig.src_path, typ) in
                   (* TODO: A way to delete all keys matching a pattern *)
-                  ZMQClient.send_cmd clt ~while_ (DelKey (k "info")) ;
-                  ZMQClient.send_cmd clt ~while_ (DelKey (k "ramen")) ;
-                  ZMQClient.send_cmd clt ~while_ (DelKey (k "alert"))
+                  ZMQClient.send_cmd ~while_ (DelKey (k "info")) ;
+                  ZMQClient.send_cmd ~while_ (DelKey (k "ramen")) ;
+                  ZMQClient.send_cmd ~while_ (DelKey (k "alert"))
                 ) to_kill ;
               nb_kills := List.length to_kill ;
               fin () ;
@@ -315,7 +315,7 @@ let run_sync src_path conf (program_name : N.program) replace report_period
                     debug ; report_period ; params ; src_path ; on_site } in
                 let rcs =
                   Value.TargetConfig ((program_name, rce) :: rcs) in
-                ZMQClient.send_cmd clt ~while_ (SetKey (Key.TargetConfig, rcs))
+                ZMQClient.send_cmd ~while_ (SetKey (Key.TargetConfig, rcs))
                   ~on_done:(fun () ->
                     !logger.info "Done!" ;
                     fin () ;

@@ -122,24 +122,24 @@ let sync_loop clt =
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
-        ZMQClient.send_cmd clt (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
+        ZMQClient.send_cmd (Client.CltMsg.NewKey (Key.of_string k, v, 0.)) ;
         handle_msgs_out ()
     | Set (k, v) ->
-        ZMQClient.send_cmd clt (Client.CltMsg.SetKey (Key.of_string k, v)) ;
+        ZMQClient.send_cmd (Client.CltMsg.SetKey (Key.of_string k, v)) ;
         handle_msgs_out ()
     | Lock k ->
-        ZMQClient.send_cmd clt
+        ZMQClient.send_cmd
           (Client.CltMsg.LockKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | LockOrCreate k ->
-        ZMQClient.send_cmd clt
+        ZMQClient.send_cmd
           (Client.CltMsg.LockOrCreateKey (Key.of_string k, Default.sync_gui_lock_timeout)) ;
         handle_msgs_out ()
     | Unlock k ->
-        ZMQClient.send_cmd clt (Client.CltMsg.UnlockKey (Key.of_string k)) ;
+        ZMQClient.send_cmd (Client.CltMsg.UnlockKey (Key.of_string k)) ;
         handle_msgs_out ()
     | Del k ->
-        ZMQClient.send_cmd clt (Client.CltMsg.DelKey (Key.of_string k)) ;
+        ZMQClient.send_cmd (Client.CltMsg.DelKey (Key.of_string k)) ;
         handle_msgs_out ()
   in
   while not (should_quit ()) do

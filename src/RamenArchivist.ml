@@ -993,13 +993,13 @@ let realloc_sync conf ~while_ clt =
         !logger.info "Newly allocated storage: %d bytes for %a"
           bytes
           site_fq_print (site, fq) ;
-        ZMQClient.send_cmd clt ~while_ (NewKey (k, v, 0.)) ;
+        ZMQClient.send_cmd ~while_ (NewKey (k, v, 0.)) ;
     | prev_bytes ->
         if reldiff (float_of_int bytes) (Int64.to_float prev_bytes) > 0.5
         then
           !logger.warning "Allocation for %a is jumping from %Ld to %d bytes"
             site_fq_print (site, fq) prev_bytes bytes ;
-        ZMQClient.send_cmd clt ~while_ (UpdKey (k, v)) ;
+        ZMQClient.send_cmd ~while_ (UpdKey (k, v)) ;
         Hashtbl.remove prev_allocs hk)
   ) allocs ;
   (* Delete what's left in prev_allocs: *)
@@ -1007,7 +1007,7 @@ let realloc_sync conf ~while_ clt =
     let k = Key.PerSite (site, PerWorker (fq, AllocedArcBytes)) in
     !logger.info "No more allocated storage for %a"
       site_fq_print site_fq ;
-    ZMQClient.send_cmd clt ~while_ (DelKey k)
+    ZMQClient.send_cmd ~while_ (DelKey k)
   ) prev_allocs
 
 let run_sync conf ~while_ loop allocs reconf =

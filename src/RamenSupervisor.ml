@@ -1165,10 +1165,10 @@ let get_string_list =
 let report_worker_death ~while_ clt site fq worker_sign status_str =
   let per_instance_key = per_instance_key site fq worker_sign in
   let now = Unix.gettimeofday () in
-  ZMQClient.send_cmd clt ~while_ ~eager:true
+  ZMQClient.send_cmd ~while_ ~eager:true
     (SetKey (per_instance_key LastExit,
              Value.of_float now)) ;
-  ZMQClient.send_cmd clt ~while_ ~eager:true
+  ZMQClient.send_cmd ~while_ ~eager:true
     (SetKey (per_instance_key LastExitStatus,
              Value.of_string status_str)) ;
   let input_ringbufs =
@@ -1182,7 +1182,7 @@ let report_worker_death ~while_ clt site fq worker_sign status_str =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
   cut_from_parents_outrefs input_ringbufs out_refs ;
-  ZMQClient.send_cmd clt ~while_ ~eager:true
+  ZMQClient.send_cmd ~while_ ~eager:true
     (DelKey (per_instance_key Pid))
 
 let update_child_status conf ~while_ clt site fq worker_sign pid =
@@ -1210,7 +1210,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
           | _ ->
               None) in
       if is_err then (
-        ZMQClient.send_cmd clt ~while_ ~eager:true
+        ZMQClient.send_cmd ~while_ ~eager:true
           (SetKey (succ_fail_k,
                    Value.of_int (succ_failures + 1))) ;
         IntCounter.inc (stats_worker_crashes conf.C.persist_dir) ;
@@ -1232,7 +1232,7 @@ let update_child_status conf ~while_ clt site fq worker_sign pid =
       let max_delay = float_of_int succ_failures in
       let now = Unix.gettimeofday () in
       let quarantine_until = now +. Random.float (min 90. max_delay) in
-      ZMQClient.send_cmd clt ~while_ ~eager:true
+      ZMQClient.send_cmd ~while_ ~eager:true
         (SetKey (per_instance_key QuarantineUntil,
                  Value.of_float quarantine_until)) ;
       report_worker_death ~while_ clt site fq worker_sign status_str)
@@ -1276,7 +1276,7 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
     report_worker_death ~while_ clt site fq worker_sign "vanished" ;
     last_killed := Unix.gettimeofday ()) ;
   if !last_killed <> prev_last_killed then
-    ZMQClient.send_cmd clt ~while_ ~eager:true
+    ZMQClient.send_cmd ~while_ ~eager:true
       (SetKey (last_killed_k, Value.of_float !last_killed))
 
 (* This worker is considered running as soon as it has a pid: *)
@@ -1387,17 +1387,17 @@ let try_start_instance conf ~while_ clt site fq worker =
                  input_ringbufs state_file out_ringbuf_ref in
   let per_instance_key = per_instance_key site fq worker.worker_signature in
   let k = per_instance_key LastKilled in
-  ZMQClient.send_cmd clt ~eager:true ~while_ (DelKey k) ;
+  ZMQClient.send_cmd ~eager:true ~while_ (DelKey k) ;
   let k = per_instance_key Pid in
-  ZMQClient.send_cmd clt ~eager:true ~while_
+  ZMQClient.send_cmd ~eager:true ~while_
                      (SetKey (k, Value.(of_int pid))) ;
   let k = per_instance_key StateFile
   and v = Value.(of_string (state_file :> string)) in
-  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
+  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
   Option.may (fun out_ringbuf_ref ->
     let k = per_instance_key OutRefFile
     and v = Value.(of_string out_ringbuf_ref) in
-    ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
+    ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
   ) (out_ringbuf_ref :> string option) ;
   let k = per_instance_key InputRingFiles
   and v =
@@ -1405,14 +1405,14 @@ let try_start_instance conf ~while_ clt site fq worker =
             (fun f -> T.VString f) |>
             Array.of_enum in
     Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v)) ;
+  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v)) ;
   let k = per_instance_key ParentOutRefs
   and v =
     let l = List.enum parent_links /@
             (fun ((f : N.path), _, _) -> T.VString (f :> string)) |>
             Array.of_enum in
     Value.(RamenValue (VList l)) in
-  ZMQClient.send_cmd clt ~eager:true ~while_ (SetKey (k, v))
+  ZMQClient.send_cmd ~eager:true ~while_ (SetKey (k, v))
 
 let remove_dead_chans conf clt ~while_ replayer_k replayer =
   let channels, changed =
@@ -1441,13 +1441,13 @@ let remove_dead_chans conf clt ~while_ replayer_k replayer =
     ) ;
     let replayer =
       Value.Replayer { replayer with channels ; last_killed = !last_killed } in
-    ZMQClient.send_cmd clt ~while_ ~eager:true
+    ZMQClient.send_cmd ~while_ ~eager:true
       (UpdKey (replayer_k, replayer))
 
 let update_replayer_status
       conf clt ~while_ now site fq replayer_id replayer_k replayer =
   let rem_replayer () =
-    ZMQClient.send_cmd clt ~while_ (DelKey replayer_k) in
+    ZMQClient.send_cmd ~while_ (DelKey replayer_k) in
   match replayer.Value.Replayer.pid with
   | None ->
       (* Maybe start it? *)
@@ -1489,7 +1489,7 @@ let update_replayer_status
               Replay.spawn_source_replay
                 conf func bin since until replayer.channels replayer_id in
             let v = Value.Replayer { replayer with pid = Some pid } in
-            ZMQClient.send_cmd clt ~while_ ~eager:true
+            ZMQClient.send_cmd ~while_ ~eager:true
               (UpdKey (replayer_k, v)) ;
             Histogram.add (stats_chans_per_replayer conf.C.persist_dir)
                           (float_of_int (Set.cardinal replayer.channels))
@@ -1520,7 +1520,7 @@ let update_replayer_status
               IntCounter.inc (stats_replayer_crashes conf.C.persist_dir) ;
             let replayer =
               Value.Replayer { replayer with exit_status = Some status_str } in
-            ZMQClient.send_cmd clt ~while_ ~eager:true
+            ZMQClient.send_cmd ~while_ ~eager:true
               (UpdKey (replayer_k, replayer)))
 
 (* Loop over all keys, which is mandatory to monitor pid terminations,
@@ -1626,7 +1626,7 @@ let synchronize_running_sync conf _autoreload_delay =
                 let r = Value.Replayer.make now replay_range channels in
                 let replayer_k =
                   Key.PerSite (site, PerWorker (fq, PerReplayer id)) in
-                ZMQClient.send_cmd clt ~while_ ~eager:true
+                ZMQClient.send_cmd ~while_ ~eager:true
                   (NewKey (replayer_k, Value.Replayer r, 0.))
             | k, r ->
                 !logger.debug
@@ -1635,7 +1635,7 @@ let synchronize_running_sync conf _autoreload_delay =
                 let time_range = TimeRange.merge r.time_range replay_range
                 and channels = Set.add chan r.channels in
                 let replayer = Value.Replayer { r with time_range ; channels } in
-                ZMQClient.send_cmd clt ~while_ ~eager:true
+                ZMQClient.send_cmd ~while_ ~eager:true
                   (UpdKey (k, replayer)))
         ) replay.sources
     | _ -> ()

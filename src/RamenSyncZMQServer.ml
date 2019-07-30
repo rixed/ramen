@@ -237,7 +237,8 @@ let zock_step srv zock zock_idx do_authn =
                                          "" peer_pub_key
                   | Authn.Insecure ->
                       "" in
-                (* Prevent clowns to alter DevNull: *)
+                (* Prevent altering DevNull. Still, writing into DevNull
+                 * is a good way to keep the session alive. *)
                 (match m with
                 | _, CltMsg.SetKey (DevNull, _)
                 | _, CltMsg.UpdKey (DevNull, _) ->

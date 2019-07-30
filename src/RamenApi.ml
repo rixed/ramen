@@ -420,9 +420,10 @@ let get_timeseries conf msg =
         get_local conf num_points since until filters data_spec.factors
                   ?consolidation ~bucket_time fq data_spec.select
       else
-        let _zock, _session, clt = ZMQClient.get_connection () in
+        let session = ZMQClient.get_session () in
         get_sync conf num_points since until filters data_spec.factors
-                 ?consolidation ~bucket_time fq data_spec.select ~while_ clt in
+                 ?consolidation ~bucket_time fq data_spec.select ~while_
+                 session.clt in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =
@@ -715,17 +716,17 @@ let save_alert_sync conf program_name (V1 { table ; column ; alert}) =
     desc_title = alert.desc_title ;
     desc_firing = alert.desc_firing ;
     desc_recovery = alert.desc_recovery }) in
-  let _zock, _session, clt = ZMQClient.get_connection () in
+  let session = ZMQClient.get_session () in
   (* Avoid touching the source and recompiling for no reason: *)
   let is_new =
-    match (Client.find clt src_k).value with
+    match (Client.find session.clt src_k).value with
     | exception Not_found -> true
     | Value.Alert a' -> a' <> a
     | v ->
         err_sync_type src_k v "an Alert" ;
         true in
   if is_new then (
-    ZMQClient.send_cmd ~eager:true ~while_ clt
+    ZMQClient.send_cmd ~eager:true ~while_
       (SetKey (src_k, Value.Alert a)) ;
     !logger.info "Saved new alert into %a" Key.print src_k ;
     (* Also run it *)
@@ -766,7 +767,7 @@ let get_alerts_local conf (table : N.fq) (column : N.field) =
   !alerts
 
 let get_alerts_sync (table : N.fq) (column : N.field) =
-  let _zock, _session, clt = ZMQClient.get_connection () in
+  let session = ZMQClient.get_session () in
   let open RamenSync in
   let alerts = ref Set.String.empty in
   let parent =
@@ -778,7 +779,7 @@ let get_alerts_sync (table : N.fq) (column : N.field) =
      * hash of the alert definition (aka. id). *)
     N.program ("alerts/" ^ (table :> string) ^"/"^ (column :> string)) in
   let pref = N.path ((parent :> string) ^ "/") in
-  Client.iter clt (fun k hv ->
+  Client.iter session.clt (fun k hv ->
     match k, hv.value with
     | Key.Sources (src_path, "alert"),
       Value.Alert _

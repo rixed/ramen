@@ -396,14 +396,14 @@ let compile_sync conf replace src_file source_name_opt =
   ] in
   start_sync conf ~while_ ~on_new ~on_set ~topics (fun clt ->
     if replace then
-      ZMQClient.send_cmd clt ~while_
+      ZMQClient.send_cmd ~while_
         (LockOrCreateKey (k_source, Default.sync_lock_timeout))
         ~on_ko ~on_ok:(fun () ->
-          ZMQClient.send_cmd clt ~while_ (SetKey (k_source, value))
+          ZMQClient.send_cmd ~while_ (SetKey (k_source, value))
             ~on_ko ~on_ok:(fun () ->
-              ZMQClient.send_cmd clt ~while_ (UnlockKey k_source)))
+              ZMQClient.send_cmd ~while_ (UnlockKey k_source)))
     else
-      ZMQClient.send_cmd clt ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
+      ZMQClient.send_cmd ~while_ (NewKey (k_source, value, 0.)) ~on_ko ;
     ZMQClient.process_in ~while_ clt)
 
 (* Do not generate any executable file, but parse/typecheck new or updated
@@ -433,8 +433,8 @@ let compserver conf daemonize to_stdout to_syslog
         let open ZMQClient in
         let unlock () =
           !logger.debug "Unlocking %a" Key.print k_info ;
-          send_cmd clt ~while_ (UnlockKey k_info) in
-        send_cmd clt ~while_
+          send_cmd ~while_ (UnlockKey k_info) in
+        send_cmd ~while_
           (LockOrCreateKey (k_info, Default.sync_compile_timeo))
           ~on_ko:unlock ~on_ok:(fun () ->
             let tmp_src_file =
@@ -472,7 +472,7 @@ let compserver conf daemonize to_stdout to_syslog
                 RamenMake.read_source_info target_file in
             !logger.info "(pre)Compiled %a into %a"
               N.path_print src_file Value.SourceInfo.print info ;
-            send_cmd clt ~while_
+            send_cmd ~while_
               (SetKey (k_info, Value.(SourceInfo info)))
               ~on_ko:unlock ~on_ok:unlock)
     | Key.Error _, _  ->
@@ -1309,7 +1309,7 @@ let tail_sync
     List.iter (fun (site, _w) ->
       let k = Key.Tails (site, fq, Subscriber subscriber) in
       let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
-      ZMQClient.send_cmd clt ~while_ cmd
+      ZMQClient.send_cmd ~while_ cmd
     ) workers ;
     (* Loop *)
     !logger.debug "Waiting for tuples..." ;
@@ -1324,7 +1324,7 @@ let tail_sync
     List.iter (fun (site, _w) ->
       let k = Key.Tails (site, fq, Subscriber subscriber) in
       let cmd = Client.CltMsg.DelKey k in
-      ZMQClient.send_cmd clt ~while_ cmd
+      ZMQClient.send_cmd ~while_ cmd
     ) workers)
 
 let purge_transient conf to_purge () =

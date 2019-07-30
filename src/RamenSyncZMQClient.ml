@@ -28,12 +28,17 @@ let stats_num_sync_msgs_out =
  * have a SyncClient and a Zocket, or move Sync modules much higher up the
  * list of modules. This requires to rethink module dependencies though. *)
 
-(* Set once synchronized *)
-let zock_clt : ([`Dealer] Zmq.Socket.t * Authn.session * Client.t) option ref =
-  ref None
+type session =
+  { zock : [`Dealer] Zmq.Socket.t ;
+    authn : Authn.session ;
+    clt : Client.t ;
+    mutable last_sent : float }
 
-let get_connection () =
-  option_get "zock_clt" !zock_clt
+(* Set once synchronized *)
+let zmq_session : session option ref = ref None
+
+let get_session () =
+  option_get "zmq_session" !zmq_session
 
 let retry_zmq ?while_ f =
   let on = function
@@ -178,10 +183,10 @@ let next_id = ref None
 let init_next_id () =
   next_id := Some (Random.int max_int_for_random)
 
-let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
-  let zock, session, _clt = get_connection () in
+let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
+  let session = get_session () in
   let my_uid =
-    IO.to_string User.print_id clt.Client.my_uid in
+    IO.to_string User.print_id session.clt.Client.my_uid in
   let cmd_id =
     match !next_id with
     | None ->
@@ -193,7 +198,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   !logger.debug "> Clt msg: %a" CltMsg.print msg ;
   let save_cb h h_name cb =
     Option.may (fun cb ->
-      assert (clt.Client.my_errors <> None) ;
+      assert (session.clt.Client.my_errors <> None) ;
       Hashtbl.add h cmd_id cb ;
       let h_len = Hashtbl.length h in
       (if h_len > 10 then !logger.warning else !logger.debug)
@@ -245,31 +250,33 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
           | _ -> false)
   ) on_done ;
   let msg = CltMsg.to_string msg |>
-            Authn.wrap session in
+            Authn.wrap session.authn in
   !logger.debug "Sending %S" msg ;
+  session.last_sent <- Unix.time () ;
   (match while_ with
   | None ->
-      Zmq.Socket.send_all zock [ "" ; msg ]
+      Zmq.Socket.send_all session.zock [ "" ; msg ]
   | Some while_ ->
       retry_zmq ~while_
-        (Zmq.Socket.send_all ~block:false zock) [ "" ; msg ]) ;
+        (Zmq.Socket.send_all ~block:false session.zock) [ "" ; msg ]) ;
   !logger.debug "...sent!" ;
   IntCounter.inc stats_num_sync_msgs_out ;
   let set_eagerly k v lock_timeo =
     let new_hv () =
       Client.{ value = v ;
-               uid = clt.Client.my_uid ;
+               uid = session.clt.Client.my_uid ;
                mtime = Unix.gettimeofday () ;
-               owner = if lock_timeo > 0. then clt.Client.my_uid else "" ;
+               owner = if lock_timeo > 0. then session.clt.Client.my_uid
+                       else "" ;
                expiry = 0. ; (* whatever *)
                eagerly = Created } in
-    match Client.H.find clt.Client.h k with
+    match Client.H.find session.clt.Client.h k with
     | exception Not_found ->
         let hv = new_hv () in
-        Client.H.add clt.Client.h k (Value hv)
+        Client.H.add session.clt.Client.h k (Value hv)
     | Waiters conts ->
         let hv = new_hv () in
-        Client.H.replace clt.Client.h k (Value hv) ;
+        Client.H.replace session.clt.Client.h k (Value hv) ;
         List.iter (fun cont -> cont hv) conts
     | Value hv ->
         hv.value <- v ;
@@ -281,7 +288,7 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
     | NewKey (k, v, lock_timeo) ->
         set_eagerly k v lock_timeo
     | DelKey k ->
-        (match Client.find clt k with
+        (match Client.find session.clt k with
         | exception Not_found -> ()
         | hv ->
             hv.eagerly <- Deleted)
@@ -291,12 +298,12 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done clt cmd =
   )
 
 let recv_cmd _clt =
-  let zock, session, _clt = get_connection () in
-  match Zmq.Socket.recv_all zock with
+  let session = get_session () in
+  match Zmq.Socket.recv_all session.zock with
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
       (match Marshal.from_string msg 0 |>
-            Authn.decrypt session with
+            Authn.decrypt session.authn with
       | Bad _ ->
           failwith "Decryption error" (* Clients keep errors for themselves *)
       | Ok msg ->
@@ -332,11 +339,11 @@ let with_locked_matching
         unlock_all ()
     | key :: rest ->
         let unlock_all' () =
-          send_cmd ?while_ ~on_ok:unlock_all ~on_ko:unlock_all clt
+          send_cmd ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
             (CltMsg.UnlockKey key) in
         let on_ok () =
           loop unlock_all' rest in
-        send_cmd ?while_ ~on_ok ~on_ko:unlock_all clt
+        send_cmd ?while_ ~on_ok ~on_ko:unlock_all
           (CltMsg.LockKey (key, lock_timeo)) in
   loop ignore keys
 
@@ -374,13 +381,13 @@ let default_on_progress _clt stage status =
     "%a: %a" Stage.print stage Status.print status
 
 let init_connect clt ?while_ url on_progress =
-  let zock, _session, _clt = get_connection () in
+  let session = get_session () in
   let connect_to = "tcp://"^ url in
   on_progress clt Stage.Conn Status.InitStart ;
   try
     !logger.info "Connecting to %s..." connect_to ;
     retry_zmq ?while_
-      (Zmq.Socket.connect zock) connect_to ;
+      (Zmq.Socket.connect session.zock) connect_to ;
     on_progress clt Stage.Conn Status.InitOk ;
     true
   with e ->
@@ -390,7 +397,7 @@ let init_connect clt ?while_ url on_progress =
 let init_auth ?while_ clt uid on_progress =
   on_progress clt Stage.Auth Status.InitStart ;
   try
-    send_cmd ?while_ clt (CltMsg.Auth uid) ;
+    send_cmd ?while_ (CltMsg.Auth uid) ;
     match retry_zmq ?while_ recv_cmd clt with
     | SrvMsg.AuthOk _ as msg ->
         Client.process_msg clt msg ;
@@ -406,19 +413,29 @@ let init_auth ?while_ clt uid on_progress =
     on_progress clt Stage.Auth Status.(InitFail (Printexc.to_string e)) ;
     false
 
+let may_send_ping ?while_ session =
+  let now = Unix.time () in
+  if session.last_sent < now -. sync_sessions_timeout *. 0.5 then (
+    session.last_sent <- now ;
+    !logger.info "Pinging the server to keep the session alive" ;
+    let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue T.VNull) in
+    send_cmd ?while_ cmd)
+
 (* Receive and process incoming commands until timeout.
  * Returns the number of messages that have been read. *)
-let process_in ?(while_=always) ?(single=false) clt =
+let process_in ?(while_=always) ?(single=false) _clt =
+  let session = get_session () in
   let rec loop msg_count =
-    if while_ () then
-      match recv_cmd clt with
+    if while_ () then (
+      may_send_ping ~while_ session ;
+      match recv_cmd session.clt with
       | exception Unix.(Unix_error (EAGAIN, _, _)) ->
           msg_count
       | msg ->
-          Client.process_msg clt msg ;
+          Client.process_msg session.clt msg ;
           let msg_count = msg_count + 1 in
           if single then msg_count else loop msg_count
-    else
+    ) else
       msg_count in
   let msg_count = loop 0 in
   !logger.debug "Processed %d messages" msg_count
@@ -444,9 +461,9 @@ let init_sync ?while_ clt topics on_progress =
     | [glob] ->
         (* Last command: wait until it's acked *)
         let on_ok () = synced := true in
-        send_cmd ?while_ ~on_ok clt (CltMsg.StartSync glob)
+        send_cmd ?while_ ~on_ok (CltMsg.StartSync glob)
     | glob :: rest ->
-        send_cmd ?while_ clt (CltMsg.StartSync glob) ;
+        send_cmd ?while_ (CltMsg.StartSync glob) ;
         loop rest in
   match loop globs with
   | exception e ->
@@ -491,7 +508,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
       !logger.debug "Create Zocket" ;
       let zock = Zmq.Socket.(create ctx dealer) in
       !logger.debug "Create session" ;
-      let session =
+      let authn =
         if srv_pub_key = "" then
           Authn.make_clear_session ()
         else
@@ -499,7 +516,9 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
             (pub_key_of_z85 clt_pub_key)
             (priv_key_of_z85 clt_priv_key)) in
       !logger.debug "...done" ;
-      zock_clt := Some (zock, session, clt) ;
+      let session =
+        { zock ; authn ; clt ; last_sent = Unix.time () } in
+      zmq_session := Some session ;
       finally
         (fun () -> Zmq.Socket.close zock)
         (fun () ->

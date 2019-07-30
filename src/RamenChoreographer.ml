@@ -133,7 +133,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let set_keys = ref Set.empty in
   let upd k v =
     set_keys := Set.add k !set_keys ;
-    ZMQClient.send_cmd clt ~while_ (SetKey (k, v)) in
+    ZMQClient.send_cmd ~while_ (SetKey (k, v)) in
   (* Notes regarding non-local children/parents:
    * We never ref top-halves (a ref is only site/program/function, no
    * role). But every time a children is not local, it can be assumed
@@ -237,7 +237,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     if not (Set.mem k !set_keys) then
       match k with
       | PerSite (_, PerWorker (_, Worker)) ->
-          ZMQClient.send_cmd clt ~while_ (DelKey k)
+          ZMQClient.send_cmd ~while_ (DelKey k)
       | _ -> ())
 
 let start conf ~while_ =
