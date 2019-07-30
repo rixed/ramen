@@ -145,6 +145,7 @@ let sync_loop clt =
   while not (should_quit ()) do
     Gc.compact () ;
     try
+      ZMQClient.may_send_ping () ;
       handle_msgs_in () ;
       handle_msgs_out () ;
       Gc.compact ()
