@@ -1,3 +1,4 @@
+#include <iostream>
 #include <vector>
 #include <QTextCharFormat>
 #include <QRegularExpression>
@@ -15,6 +16,10 @@ struct Rules {
       re(str, QRegularExpression::CaseInsensitiveOption |
               QRegularExpression::DontCaptureOption)
     {
+      if (! re.isValid()) {
+        std::cout << "Invalid regexp " << str.toStdString() << ": " << re.errorString().toStdString() << std::endl;
+        assert(!"Invalid RE");
+      }
       re.optimize();
     }
   };
@@ -41,7 +46,7 @@ struct Rules {
     ops.setFontWeight(QFont::Bold);
     rules.emplace_back(ops,
       "\\b(>|>=|<|<=|=|<>|!=|in|not|like|starts|ends|"
-          "+|-|\\|\\||\\|\\?|\\*|//|/|%|&|\\||#|<<|>>|^|is|null|"
+          "\\+|-|\\|\\||\\|\\?|\\*|//|/|%|&|\\||#|<<|>>|^|is|null|"
           "begin|end)\\b");
 
     QTextCharFormat func;
@@ -66,11 +71,15 @@ struct Rules {
     string.setFontWeight(QFont::Bold);
     string.setFontItalic(true);
     string.setForeground(Qt::darkMagenta);
-    rules.emplace_back(string, "\".*\"");
+    rules.emplace_back(string,
+      "\"\"|" // empty string
+      "\"[^\"\\\\]\"|" // string with a single char
+      "\"(\\\\.|[^\"\\\\]{2})+[^\"\\\\]?\"|" // or with escaped chars at even positions
+      "\"[^\"\\\\](\\\\.|[^\"\\\\]{2})+[^\"\\\\]?\""); // or at odd positions
 
     QTextCharFormat comment;
     comment.setForeground(Qt::gray);
-    rules.emplace_back(comment, "(--.*$|{.*})");
+    rules.emplace_back(comment, "--.*$|{.*}");
   }
 };
 
