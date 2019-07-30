@@ -252,18 +252,11 @@ let zock_step srv zock zock_idx do_authn =
       | peer :: rest ->
           peer, look_for_delim 1 rest
   in
-  (* FIXME: no more need for recv_msg_all and parts! *)
-  match Zmq.Socket.recv_msg_all ~block:false zock with
+  match Zmq.Socket.recv_all ~block:false zock with
   | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
       Server.timeout_all_locks srv
-  | msg_parts ->
+  | parts ->
       IntCounter.inc stats_recvd_msgs ;
-      let parts =
-        List.map (fun p ->
-          Zmq.Msg.unsafe_data p |>
-          Bigarray.Array1.enum |>
-          String.of_enum
-        ) msg_parts in
       !logger.info "0MQ: Received message %a"
         (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
