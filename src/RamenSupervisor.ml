@@ -889,7 +889,7 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
       TimeRange.make replay.C.Replays.since replay.until false in
     Replay.settup_links conf func_of_fq replay ;
     (* Find or create all replayers: *)
-    Set.iter (fun (site, _ as site_fq) ->
+    List.iter (fun (site, _ as site_fq) ->
       if site = conf.C.site then (
         let rs = Hashtbl.find_all replayers site_fq in
         let r =
@@ -1604,7 +1604,7 @@ let synchronize_running_sync conf _autoreload_delay =
           F.unserialized prog_name func in
         Replay.settup_links conf func_of_fq replay ;
         (* Find or create all replayers: *)
-        Set.iter (fun (site, fq) ->
+        List.iter (fun (site, fq) ->
           if site = conf.C.site then (
             let rs =
               Client.fold clt (fun k hv rs ->

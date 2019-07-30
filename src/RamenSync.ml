@@ -605,7 +605,7 @@ struct
       Printf.fprintf oc "Replay { channel=%a; target=%a; sources=%a; ... }"
         Channel.print t.RamenConf.Replays.channel
         site_fq_print t.target
-        (Set.print site_fq_print) t.sources
+        (List.print site_fq_print) t.sources
   end
 
   module Replayer =

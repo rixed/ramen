@@ -580,12 +580,13 @@ struct
       since : float ;
       until : float ;
       final_rb : N.path ;
-      sources : site_fq set ;
+      (* Sets turned into lists for easier deser in C++: *)
+      sources : site_fq list ;
       (* We pave the whole way from all sources to the target for this
        * channel id, rather than letting the normal stream carry this
        * channel events, in order to avoid spamming unrelated nodes
        * (Cf. issue #640): *)
-      links : (site_fq * site_fq) set ;
+      links : (site_fq * site_fq) list ;
       timeout_date : float }
     [@@ppp PPP_OCaml]
 

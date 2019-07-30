@@ -241,11 +241,30 @@ struct RuntimeStats : public Value
   QString const toQString(Key const &) const;
 };
 
+struct SiteFq
+{
+  QString site;
+  QString fq;
+  SiteFq() {}
+  SiteFq(value);
+  QString const toQString() const { return site + QString(":") + fq; }
+};
+
 struct Replay : public Value
 {
-  // wtv
+  int channel;
+  SiteFq target;
+  double since;
+  double until;
+  QString final_ringbuf_file;
+  std::vector<SiteFq> sources;
+  std::vector<std::pair<SiteFq, SiteFq>> links;
+  double timeout_date;
+
   Replay() : Value(ReplayType) {}
   Replay(value);
+
+  QString const toQString(Key const &) const;
 };
 
 struct Replayer : public Value

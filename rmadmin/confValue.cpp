@@ -587,10 +587,42 @@ QString const RuntimeStats::toQString(Key const &) const
   return s;
 }
 
-Replay::Replay(value v_) : Value(ReplayType)
+SiteFq::SiteFq(value v_)
+{
+  assert(2 == Wosize_val(v_));
+  site = String_val(Field(v_, 0));
+  fq = String_val(Field(v_, 1));
+}
+
+Replay::Replay(value v_) :
+  Value(ReplayType)
 {
   assert(9 == Wosize_val(v_));
-  // wtv, not used anywhere in the GUI for now
+  channel = Long_val(Field(v_, 0));
+  target = SiteFq(Field(v_, 1));
+  since = Double_val(Field(v_, 3));
+  until = Double_val(Field(v_, 4));
+  final_ringbuf_file = String_val(Field(v_, 5));
+  for (value src_ = Field(v_, 6); Is_block(src_); src_ = Field(src_, 1)) {
+    sources.emplace_back(Field(src_, 0));
+  }
+  for (value src_ = Field(v_, 7); Is_block(src_); src_ = Field(src_, 1)) {
+    links.emplace_back(
+      SiteFq(Field(Field(src_, 0), 0)),
+      SiteFq(Field(Field(src_, 0), 1)));
+  }
+  timeout_date = Double_val(Field(v_, 8));
+}
+
+QString const Replay::toQString(Key const &) const
+{
+  QString s("Channel: ");
+  s += QString::number(channel);
+  s += QString(", to ") + target.toQString();
+  s += QString(", since ") + stringOfDate(since);
+  s += QString(", until +") + stringOfDuration(until - since);
+  s += QString(", involving ") + QString::number(links.size()) + QString(" links.");
+  return s;
 }
 
 Replayer::Replayer(value v_) : Value(ReplayerType)

@@ -265,6 +265,9 @@ let create
     (Set.print link_print) links
     TimeRange.print range
     N.path_print final_rb ;
+  (* For easier sharing with C++: *)
+  let sources = Set.to_list sources
+  and links = Set.to_list links in
   { channel ; target = (conf.C.site, fq) ; target_fieldmask ;
     since ; until ; final_rb ; sources ; links ; timeout_date }
 
@@ -282,7 +285,7 @@ let teardown_links conf func_of_fq t =
   in
   (* Start by removing the links from the graph, then the last one
    * from the target: *)
-  Set.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
+  List.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
 let settup_links conf func_of_fq t =
@@ -299,7 +302,7 @@ let settup_links conf func_of_fq t =
     if conf.C.site = target_site then (
       let func = func_of_fq target_fq in
       connect_to_rb func t.final_rb t.target_fieldmask)) () ;
-  Set.iter (fun ((psite, pfq), (_, cfq)) ->
+  List.iter (fun ((psite, pfq), (_, cfq)) ->
     if conf.C.site = psite then
       log_and_ignore_exceptions ~what (fun () ->
         let cfunc = func_of_fq cfq in
