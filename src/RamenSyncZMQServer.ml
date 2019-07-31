@@ -253,7 +253,8 @@ let validate_cmd =
    * is a good way to keep the session alive. *)
   | CltMsg.SetKey (DevNull, _)
   | CltMsg.UpdKey (DevNull, _) ->
-      failwith "Some clown wrote into DevNull"
+      (* Although not an error, we want to prevent this to be written: *)
+      raise Exit
   (* Forbids to create sources with empty name or unknown extension: *)
   | CltMsg.NewKey (Sources (path, _), _, _)
     when not (path_is_valid path) ->
@@ -312,6 +313,8 @@ let zock_step srv zock zock_idx do_authn =
                 | Authn.Insecure ->
                     "" in
               (match validate_cmd cmd with
+              | exception Exit ->
+                  !logger.info "Ignoring"
               | exception Failure msg ->
                   Server.set_user_err srv session.user socket msg_id msg
               | () ->
