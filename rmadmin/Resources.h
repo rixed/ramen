@@ -9,9 +9,12 @@
 extern struct Resources *resources;
 
 struct Resources {
-  QPixmap lockedPixmap, unlockedPixmap;
+  QPixmap applicationIcon;
+  QPixmap lockedPixmap;
+  QPixmap unlockedPixmap;
 
   Resources() :
+    applicationIcon(":/rmadmin.ico"),
     lockedPixmap(":/pix/locked.svg"),
     unlockedPixmap(":/pix/unlocked.svg") {}
 

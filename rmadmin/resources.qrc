@@ -1,5 +1,7 @@
 <RCC>
   <qresource>
+    <!-- embedding the icon as a resource to display it in the about dialog: -->
+    <file>rmadmin.ico</file>
     <file>pix/locked.svg</file>
     <file>pix/unlocked.svg</file>
   </qresource>

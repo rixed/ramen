@@ -19,8 +19,9 @@ extern "C" {
 #include <QCommandLineParser>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
-#include "conf.h"
+#include "menu.h"
 #include "UserIdentity.h"
+#include "conf.h"
 extern "C" {
 # include "../src/config.h"
 }
@@ -171,6 +172,7 @@ int main(int argc, char *argv[])
   qRegisterMetaType<QVector<int>>();
 
   bool with_beta_features = getenv("RMADMIN_BETA");
+  setupGlobalMenu(with_beta_features);
   w = new RmAdminWin(with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
 

@@ -10,7 +10,9 @@ VERSION = @PACKAGE_VERSION@
 QT += core widgets charts printsupport
 QMAKE_CXXFLAGS += -fstandalone-debug
 
+# For Windows:
 RC_ICONS = rmadmin.ico
+# For MacOS:
 ICON = rmadmin.icns
 
 INCLUDEPATH += .
@@ -23,6 +25,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # Input
 HEADERS += \
   misc.h \
+  menu.h \
+  AboutDialog.h \
   UserIdentity.h \
   rec_shared_mutex.h \
   qcustomplot.h \
@@ -104,6 +108,8 @@ HEADERS += \
 
 SOURCES += \
   misc.cpp \
+  menu.cpp \
+  AboutDialog.cpp \
   UserIdentity.cpp \
   rec_shared_mutex.cpp \
   qcustomplot.cpp \
