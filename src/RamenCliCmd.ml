@@ -555,9 +555,8 @@ let choreographer conf daemonize to_stdout to_syslog () =
  *)
 
 let prog_info prog opt_func_name =
-  if prog.P.default_params <> [] then (
-    TermTable.print_head 0 "Parameters" ;
-    TermTable.print 1 "%a" RamenTuple.print_params prog.default_params) ;
+  TermTable.print_head 0 "Parameters" ;
+  TermTable.print 1 "%a" RamenTuple.print_params prog.P.default_params ;
   TermTable.print_head 0 "Running condition" ;
   TermTable.print 1 "%a" (RamenExpr.print true) prog.condition ;
   let info_func i func =
