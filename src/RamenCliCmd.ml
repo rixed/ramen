@@ -424,56 +424,59 @@ let compserver conf daemonize to_stdout to_syslog
   let open RamenSync in
   let on_set clt k v _uid mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
+    let do_compile src_file ext text =
+      let k_info = Key.(Sources (src_file, "info")) in
+      let open ZMQClient in
+      let unlock () =
+        !logger.debug "Unlocking %a" Key.print k_info ;
+        send_cmd ~while_ (UnlockKey k_info) in
+      send_cmd ~while_
+        (LockOrCreateKey (k_info, Default.sync_compile_timeo))
+        ~on_ko:unlock ~on_ok:(fun () ->
+          let tmp_src_file =
+            N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
+                         N.path ((src_file :> string) ^"."^ ext) ] in
+          let target_file = Files.change_ext "info" tmp_src_file in
+          !logger.debug "Creating temporary source files %a and %a"
+            N.path_print tmp_src_file
+            N.path_print target_file ;
+          Files.write_whole_file tmp_src_file text ;
+          (* Replicate the mtimes in the local FS temporary files, for the
+           * builder to use the usual mtime comparison to determine
+           * obsolescence: *)
+          Files.touch tmp_src_file mtime ;
+          (match Client.find clt Key.(Sources (src_file, "info")) with
+          | exception Not_found -> ()
+          | { mtime ; _ } ->
+              if Files.exists target_file then Files.touch target_file mtime) ;
+          (* Program name used to resolve relative names is the location in the
+           * source tree: *)
+          let program_name = N.program (Files.remove_ext src_file :> string) in
+          let info =
+            match RamenMake.build conf get_parent program_name
+                                  tmp_src_file target_file with
+            | exception e ->
+              !logger.error "Cannot build %a into %a: %s"
+                N.path_print src_file
+                N.path_print target_file
+                (Printexc.to_string e) ;
+              { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
+                detail = Failed { err_msg = Printexc.to_string e } }
+            | () ->
+              !logger.debug "Read result from info file %a"
+                N.path_print target_file ;
+              RamenMake.read_source_info target_file in
+          !logger.info "(pre)Compiled %a into %a"
+            N.path_print src_file Value.SourceInfo.print info ;
+          send_cmd ~while_
+            (SetKey (k_info, Value.(SourceInfo info)))
+            ~on_ko:unlock ~on_ok:unlock) in
     match k, v with
     | Key.(Sources (_, "info")), _ -> ()
     | Key.(Sources (src_file, ext)), Value.RamenValue T.(VString text) ->
         assert (ext <> "info") ;
-        let k_info = Key.(Sources (src_file, "info")) in
-        let open ZMQClient in
-        let unlock () =
-          !logger.debug "Unlocking %a" Key.print k_info ;
-          send_cmd ~while_ (UnlockKey k_info) in
-        send_cmd ~while_
-          (LockOrCreateKey (k_info, Default.sync_compile_timeo))
-          ~on_ko:unlock ~on_ok:(fun () ->
-            let tmp_src_file =
-              N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
-                           N.path ((src_file :> string) ^"."^ ext) ] in
-            let target_file = Files.change_ext "info" tmp_src_file in
-            !logger.debug "Creating temporary source files %a and %a"
-              N.path_print tmp_src_file
-              N.path_print target_file ;
-            Files.write_whole_file tmp_src_file text ;
-            (* Replicate the mtimes in the local FS temporary files, for the
-             * builder to use the usual mtime comparison to determine
-             * obsolescence: *)
-            Files.touch tmp_src_file mtime ;
-            (match Client.find clt Key.(Sources (src_file, "info")) with
-            | exception Not_found -> ()
-            | { mtime ; _ } ->
-                if Files.exists target_file then Files.touch target_file mtime) ;
-            (* Program name used to resolve relative names is the location in the
-             * source tree: *)
-            let program_name = N.program (Files.remove_ext src_file :> string) in
-            let info =
-              match RamenMake.build conf get_parent program_name
-                                    tmp_src_file target_file with
-              | exception e ->
-                !logger.error "Cannot build %a into %a: %s"
-                  N.path_print src_file
-                  N.path_print target_file
-                  (Printexc.to_string e) ;
-                { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
-                  detail = Failed { err_msg = Printexc.to_string e } }
-              | () ->
-                !logger.debug "Read result from info file %a"
-                  N.path_print target_file ;
-                RamenMake.read_source_info target_file in
-            !logger.info "(pre)Compiled %a into %a"
-              N.path_print src_file Value.SourceInfo.print info ;
-            send_cmd ~while_
-              (SetKey (k_info, Value.(SourceInfo info)))
-              ~on_ko:unlock ~on_ok:unlock)
+        let what = "Compiling "^ (src_file : N.path :> string) in
+        log_and_ignore_exceptions ~what (do_compile src_file ext) text ;
     | Key.Error _, _  ->
         (* Errors have been logged already *)
         ()
