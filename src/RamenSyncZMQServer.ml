@@ -237,6 +237,33 @@ let send_msg zocks ?block m sockets =
     send ?block zock peer msg
   ) sockets
 
+let validate_cmd =
+  let extension_is_known = function
+    | "ramen" | "info" -> true
+    | _ -> false
+  and path_is_valid p =
+    not (
+      N.is_empty p ||
+      String.exists "./" (p : N.path :> string) ||
+      String.starts_with "/" (p :> string) ||
+      String.ends_with "/" (p :> string))
+  in
+  function
+  (* Prevent altering DevNull. Still, writing into DevNull
+   * is a good way to keep the session alive. *)
+  | CltMsg.SetKey (DevNull, _)
+  | CltMsg.UpdKey (DevNull, _) ->
+      failwith "Some clown wrote into DevNull"
+  (* Forbids to create sources with empty name or unknown extension: *)
+  | CltMsg.NewKey (Sources (path, _), _, _)
+    when not (path_is_valid path) ->
+      failwith "Source names must not be empty, contain any dot-path, \
+                or start or end with a slash"
+  | CltMsg.NewKey (Sources (_, ext), _, _)
+    when not (extension_is_known ext) ->
+      failwith ("Invalid extension '"^ ext ^"'")
+  | _ -> ()
+
 (* Process a single input message *)
 let zock_step srv zock zock_idx do_authn =
   let peel_multipart msg =
@@ -262,46 +289,42 @@ let zock_step srv zock zock_idx do_authn =
       (match peel_multipart parts with
       | peer, [ msg ] ->
           IntCounter.add stats_recvd_bytes (String.length msg) ;
-          log_and_ignore_exceptions (fun () ->
-            let socket = zock_idx, peer in
-            let session = session_of_socket socket do_authn in
-            session.last_used <- Unix.time () ;
-            (* Decrypt using the session auth: *)
-            let msg = Marshal.from_string msg 0 in
-            (match Authn.decrypt session.authn msg with
-            | exception e ->
-                IntCounter.inc stats_bad_recvd_msgs ;
-                !logger.error "Cannot decrypt message: %s, ignoring"
-                  Printexc.(to_string e) ;
-            | Bad errmsg ->
-                IntCounter.inc stats_bad_recvd_msgs ;
-                send zock peer errmsg
-            | Ok str ->
-                let m = CltMsg.of_string str in
-                let clt_pub_key =
-                  match session.authn with
-                  | Authn.Secure { peer_pub_key ; _ } ->
-                      Option.map_default Authn.z85_of_pub_key
-                                         "" peer_pub_key
-                  | Authn.Insecure ->
-                      "" in
-                (* Prevent altering DevNull. Still, writing into DevNull
-                 * is a good way to keep the session alive. *)
-                (match m with
-                | _, CltMsg.SetKey (DevNull, _)
-                | _, CltMsg.UpdKey (DevNull, _) ->
-                    failwith "Some clown wrote into DevNull"
-                | _ -> ()) ;
+          let socket = zock_idx, peer in
+          let session = session_of_socket socket do_authn in
+          session.last_used <- Unix.time () ;
+          (* Decrypt using the session auth: *)
+          let msg = Marshal.from_string msg 0 in
+          (match Authn.decrypt session.authn msg with
+          | exception e ->
+              IntCounter.inc stats_bad_recvd_msgs ;
+              !logger.error "Cannot decrypt message: %s, ignoring"
+                Printexc.(to_string e) ;
+          | Bad errmsg ->
+              IntCounter.inc stats_bad_recvd_msgs ;
+              send zock peer errmsg
+          | Ok str ->
+              let msg_id, cmd as msg = CltMsg.of_string str in
+              let clt_pub_key =
+                match session.authn with
+                | Authn.Secure { peer_pub_key ; _ } ->
+                    Option.map_default Authn.z85_of_pub_key
+                                       "" peer_pub_key
+                | Authn.Insecure ->
+                    "" in
+              (match validate_cmd cmd with
+              | exception Failure msg ->
+                  Server.set_user_err srv session.user socket msg_id msg
+              | () ->
                 session.user <-
-                  Server.process_msg srv socket session.user clt_pub_key m ;
+                  Server.process_msg srv socket session.user clt_pub_key msg ;
                 (* Special case: we automatically, and silently, prune old
                  * entries under "lasts/" directories (only after a new entry has
                  * successfully been added there). Clients are supposed to do the
                  * same, at their own pace.
                  * TODO: in theory, also monitor DelKey to update last_tuples
                  * secondary hash. *)
-                (match m with
-                | _, CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
+                (match cmd with
+                | CltMsg.NewKey (Key.(Tails (site, fq, LastTuple seq)), _, _) ->
                     Hashtbl.modify_opt (site, fq) (function
                       | None ->
                           let seqs =
@@ -315,8 +338,7 @@ let zock_step srv zock zock_idx do_authn =
                           seqs.(n) <- seq ;
                           Some ((n + 1) mod max_last_tuples, seqs)
                     ) last_tuples
-                | _ -> ())
-          )) ()
+                | _ -> ())))
       | _, parts ->
           IntCounter.inc stats_bad_recvd_msgs ;
           Printf.sprintf "Invalid message with %d parts"
