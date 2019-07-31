@@ -6,14 +6,13 @@
 
 QMenuBar *globalMenuBar;
 
+static AboutDialog *aboutDialog;
+static ConfTreeDialog *confTreeDialog;
+static NewSourceDialog *newSourceDialog;
 void setupGlobalMenu(bool with_beta_features)
 {
   // A single menubar for all windows:
   globalMenuBar = new QMenuBar(nullptr);
-
-  AboutDialog *aboutWin = new AboutDialog();
-  ConfTreeDialog *confTreeDialog = new ConfTreeDialog();
-  NewSourceDialog *newSourceDialog = new NewSourceDialog();
 
   /* Where we can create sources, programs, edit the running config,
    * setup storage... Everything that's editing the configuration
@@ -22,9 +21,12 @@ void setupGlobalMenu(bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "&File"));
 
   QAction *newSource = fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "New Source…"),
-    newSourceDialog, &NewSourceDialog::show);
-  newSource->setShortcut(Qt::CTRL|Qt::Key_N);
+    QCoreApplication::translate("QMenuBar", "New Source…"), []() {
+      if (! newSourceDialog) newSourceDialog = new NewSourceDialog();
+      newSourceDialog->show();
+    }
+  );
+  newSource->setShortcut(Qt::CTRL|Qt::Key_N);  // _N_ew
 
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Program…"));
@@ -38,14 +40,20 @@ void setupGlobalMenu(bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "&Window"));
 
   windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Raw Configuration"),
-    confTreeDialog, &ConfTreeDialog::show);
+    QCoreApplication::translate("QMenuBar", "Raw Configuration"), []() {
+      if (! confTreeDialog) confTreeDialog = new ConfTreeDialog();
+      confTreeDialog->show();
+    }
+  );
 
   /* An "About" entry added in any menu (but not directly in the top menubar)
    * will be moved into the automatic application menu in MacOs: */
   windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "About"),
-    aboutWin, &AboutDialog::show);
+    QCoreApplication::translate("QMenuBar", "About"), []() {
+      if (! aboutDialog) aboutDialog = new AboutDialog();
+      aboutDialog->show();
+    }
+  );
 
   if (with_beta_features) {
     QMenu *dashboardMenu = globalMenuBar->addMenu(
