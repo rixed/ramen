@@ -93,6 +93,8 @@ HEADERS += \
   CompiledProgramParam.h \
   CompiledFunctionInfo.h \
   ConfTreeWidget.h \
+  ConfTreeDialog.h \
+  NewSourceDialog.h \
   SourcesView.h \
   ProgramsView.h \
   OperationsView.h \
@@ -170,6 +172,8 @@ SOURCES += \
   CompiledProgramParam.cpp \
   CompiledFunctionInfo.cpp \
   ConfTreeWidget.cpp \
+  ConfTreeDialog.cpp \
+  NewSourceDialog.cpp \
   SourcesView.cpp \
   ProgramsView.cpp \
   OperationsView.cpp \

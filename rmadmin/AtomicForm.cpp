@@ -12,7 +12,8 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   widgets.reserve(5);
 
   groupLayout = new QVBoxLayout(this);
-  this->setLayout(groupLayout);
+  groupLayout->setContentsMargins(QMargins());
+  setLayout(groupLayout);
 
   /* So we want 3 vertical areas:
    * - the "central widget" (to be set later)
@@ -28,9 +29,7 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   groupLayout->addWidget(errorArea);
 
   // The button bar
-  QWidget *buttonBar = new QWidget;
-  buttonsLayout = new QHBoxLayout(buttonBar);
-  buttonBar->setLayout(buttonsLayout);
+  buttonsLayout = new QHBoxLayout;
   editButton = new QPushButton(tr("&edit"));
   buttonsLayout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
@@ -42,7 +41,7 @@ AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
   buttonsLayout->addWidget(submitButton);
   connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
-  groupLayout->addWidget(buttonBar);
+  groupLayout->addLayout(buttonsLayout);
 
   /* Also prepare the confirmation dialog: */
   confirmationDialog = new QMessageBox(this);
@@ -63,6 +62,8 @@ void AtomicForm::setCentralWidget(QWidget *w)
     groupLayout->replaceWidget(centralWidget, w, Qt::FindDirectChildrenOnly);
   assert(previous);
   delete previous;
+  /* Do not automatically add to the widget as the form central widget
+   * need not be an AtomicWidget. */
 }
 
 void AtomicForm::addWidget(AtomicWidget *aw)

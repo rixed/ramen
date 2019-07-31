@@ -331,6 +331,10 @@ struct
     (PerSite (N.site "siteB", PerWorker (N.fq "prog/func", Worker))) \
       (of_string "sites/siteB/workers/prog/func/worker")
   *)
+  (*$= to_string & ~printer:Batteries.identity
+    "sources/glop/ramen" \
+      (to_string (Sources (N.path "glop", "ramen")))
+   *)
 
   (*$>*)
 end

@@ -1,7 +1,6 @@
 #include <iostream>
 #include <QTabWidget>
 #include "KErrorMsg.h"
-#include "ConfTreeWidget.h"
 #include "SourcesModel.h"
 #include "SourcesView.h"
 #include "ProgramsView.h"
@@ -13,8 +12,8 @@
 RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
     QMainWindow(parent)
 {
+  sourcesModel = new SourcesModel(this);
   if (with_beta_features) {
-    sourcesModel = new SourcesModel(this);
     // A GraphModel satisfies both the TreeView and the GraphView
     // requirements:
     settings = new GraphViewSettings;
@@ -23,7 +22,6 @@ RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
     // For now have a tabbar with the available views:
     QTabWidget *tw = new QTabWidget(this);
 
-    tw->addTab(new ConfTreeWidget, tr("&Raw configuration"));
     tw->addTab(new SourcesView(sourcesModel), tr("&Sources"));
     tw->addTab(new ProgramsView, tr("&Programs"));
     tw->addTab(new OperationsView(graphModel), tr("&Operations"));
@@ -33,10 +31,9 @@ RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
 
     setCentralWidget(tw);
   } else {
-    sourcesModel = nullptr;
     settings = nullptr;
     graphModel = nullptr;
-    setCentralWidget(new ConfTreeWidget);
+    setCentralWidget(new SourcesView(sourcesModel));
   }
 
   setWindowTitle(tr("RmAdmin"));

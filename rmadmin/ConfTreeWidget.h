@@ -25,9 +25,10 @@ class ConfTreeWidget : public QTreeWidget
 
 public:
   ConfTreeWidget(QWidget *parent = nullptr);
+  QSize minimumSizeHint() const override;
 
 protected:
-  void keyPressEvent(QKeyEvent *);
+  void keyPressEvent(QKeyEvent *) override;
 
 protected slots:
   void editedValueChanged(conf::Key const &, std::shared_ptr<conf::Value const> v = nullptr);

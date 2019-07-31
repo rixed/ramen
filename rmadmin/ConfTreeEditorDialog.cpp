@@ -52,7 +52,7 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
   setSizeGripEnabled(true); // editors of various types vary largely in size
 }
 
-void ConfTreeEditorDialog::save(void)
+void ConfTreeEditorDialog::save()
 {
   std::shared_ptr<conf::Value const> v(editor->getValue());
   conf::askSet(key, v);
@@ -60,7 +60,7 @@ void ConfTreeEditorDialog::save(void)
   emit QDialog::accept();
 }
 
-void ConfTreeEditorDialog::cancel(void)
+void ConfTreeEditorDialog::cancel()
 {
   conf::askUnlock(key);
 }

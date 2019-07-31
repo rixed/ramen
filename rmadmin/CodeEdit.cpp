@@ -1,25 +1,21 @@
 #include <QVBoxLayout>
-#include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QPushButton>
 #include <QLabel>
 #include "KTextEdit.h"
 #include "AtomicForm.h"
 #include "ProgramItem.h"
-#include "CodeInfoPanel.h"
 #include "conf.h"
 #include "CodeEdit.h"
 
 CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
   QWidget(parent),
   sourceName(sourceName_),
-  keyText(conf::Key("sources/" + sourceName.toStdString() + "/ramen")),
-  keyInfo(conf::Key("sources/" + sourceName.toStdString() + "/info"))
+  keyText(conf::Key("sources/" + sourceName.toStdString() + "/ramen"))
 {
-  QHBoxLayout *layout = new QHBoxLayout(this);
+  QVBoxLayout *layout = new QVBoxLayout(this);
+  layout->setContentsMargins(QMargins());
   setLayout(layout);
-
-  QWidget *codeInfoPanel = new CodeInfoPanel(sourceName);
-  layout->addWidget(codeInfoPanel);
 
   QString formLabel("Source code for " + QString::fromStdString(keyText.s));
   editorForm = new AtomicForm(formLabel);

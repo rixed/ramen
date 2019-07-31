@@ -13,7 +13,7 @@ class CodeEdit : public QWidget
   Q_OBJECT
 
   QString const sourceName;
-  conf::Key const keyText, keyInfo;
+  conf::Key const keyText;
 
   KTextEdit *textEdit;
   AtomicForm *editorForm;
