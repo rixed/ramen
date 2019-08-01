@@ -88,17 +88,18 @@ struct Worker : public Value
   bool enabled;
   bool debug;
   double reportPeriod;
-  QString const srcPath;
-  QString const workerSign;
-  QString const binSign;
+  QString srcPath;
+  QString workerSign;
+  QString binSign;
   bool used;
   WorkerRole *role;
   std::list<RCEntryParam *> params; // Params are owned
   std::list<WorkerRef *> parent_refs; // WorkerRef are owned
 
-  Worker();
+  Worker(value);
+  Worker() : Value(WorkerType), role(nullptr) {}
   ~Worker();
-  Worker(bool enabled, bool debug, double reportPeriod, QString const &srcPath, QString const &worker_sign, QString const &bin_sign, bool used, WorkerRole *role);
+
   QString const toQString(Key const &) const;
   bool operator==(Value const &) const;
 };
