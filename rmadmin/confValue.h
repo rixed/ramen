@@ -109,7 +109,6 @@ struct Retention : public Value
   double period;
 
   Retention();
-  ~Retention();
   Retention(double, double);
   QString const toQString(Key const &) const;
   value toOCamlValue() const;

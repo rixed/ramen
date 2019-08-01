@@ -19,7 +19,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 
   /* First: the SourceInfo (read only) */
   {
-    infoLayout = new QGridLayout;
+    infoLayout = new QGridLayout; // Why not a FormLayout?
     QWidget *infoBox = new QWidget;
     infoBox->setLayout(infoLayout);
 

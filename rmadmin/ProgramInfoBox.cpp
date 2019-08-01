@@ -47,8 +47,8 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   paramTable->setHorizontalHeaderLabels({ "Name", "Value" });
   std::string k("^" + pref + "param/");
   conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
-    // We only need creation/destruction as the AtomicWidget will take
-    // care of the rest:
+    /* We only need creation/destruction as the AtomicWidget will take
+     * care of the rest: */
     connect(kv, &KValue::valueCreated, this, &ProgramInfoBox::setParam);
     connect(kv, &KValue::valueDeleted, this, &ProgramInfoBox::delParam);
   });

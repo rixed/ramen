@@ -19,7 +19,7 @@ CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
 
   QString formLabel("Source code for " + QString::fromStdString(keyText.s));
   editorForm = new AtomicForm(formLabel);
-  layout->addWidget(editorForm, 1);
+  layout->addWidget(editorForm);
 
   QPushButton *cloneButton = new QPushButton("&Clone");
   editorForm->buttonsLayout->insertWidget(0, cloneButton);

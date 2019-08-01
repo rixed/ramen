@@ -288,8 +288,6 @@ Retention::Retention(double duration_, double period_) :
 
 Retention::Retention() : Retention(0., 0.) {}
 
-Retention::~Retention() {}
-
 bool Retention::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
@@ -495,7 +493,6 @@ value TargetConfig::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal4(ret, lst, cons, pair);
-  ret = caml_alloc(1, TargetConfigType);
   // Then a list of program_name * rc_enrtry:
   lst = Val_emptylist;  // Ala Val_int(0)
   for (auto const it : entries) {
@@ -508,6 +505,7 @@ value TargetConfig::toOCamlValue() const
     Store_field(cons, 0, pair);
     lst = cons;
   }
+  ret = caml_alloc(1, TargetConfigType);
   Store_field(ret, 0, lst);
   CAMLreturn(ret);
 }

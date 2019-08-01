@@ -148,10 +148,14 @@ void autoconnect(
     KValue const *kv = &(*it).second;
 
     if (std::regex_search(key.s, re)) {
-      if (verbose) std::cout << "Autoconnect: Calling callback immediately on past object..." << std::endl;
+      if (verbose)
+        std::cout << "Autoconnect: Key " << key.s << " matches regex, calling "
+                     "callback immediately on past object..." << std::endl;
       cb(key, kv);
-      if (verbose) std::cout << "Autoconnect: Also emit the valueCreated signal" << std::endl;
-      emit kv->valueCreated(key, kv->val, kv->uid, kv->mtime); // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
+      // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
+      if (verbose)
+        std::cout << "Autoconnect: Also emit the valueCreated signal" << std::endl;
+      emit kv->valueCreated(key, kv->val, kv->uid, kv->mtime);
     }
   }
   kvs_lock.unlock_shared();
@@ -199,6 +203,7 @@ extern "C" {
     // Connect first, and then set the value.
     conf::kvs_lock.lock();
 
+    /* First establish the signal->slot connections, then set the value: */
     conf::do_autoconnect(k, &conf::kvs[k]);
     conf::kvs[k].set(k, v, u, mt);
 

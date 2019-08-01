@@ -17,7 +17,7 @@ struct RamenType;
 struct CompiledFunctionInfo
 {
   QString name;
-  conf::Retention const *retention; // maybe null, owned
+  conf::Retention const *retention;  // owning, unique_ptr really
   bool is_lazy;
   QString doc;
   /* We do not even attempt at unserializing the operation, but

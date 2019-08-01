@@ -42,7 +42,9 @@ protected:
 
 public slots:
   /* Return false if the editor can not display this value because of
-   * incompatible types. */
+   * incompatible types.
+   * Note: need to share that value because AtomicWidget might keep a
+   * copy. */
   // TODO: replace the widget with an error message then.
   virtual bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
 

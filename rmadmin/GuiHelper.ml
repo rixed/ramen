@@ -6,6 +6,8 @@ module T = RamenTypes
 module ZMQClient = RamenSyncZMQClient
 module Files = RamenFiles
 
+let gc_debug = true
+
 (*
  * Helpers to convert from/to T.value and string:
  *)
@@ -61,44 +63,44 @@ external conf_new_key :
 
 let on_new clt k v uid mtime owner expiry =
   ignore clt ;
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   conf_new_key (Key.to_string k) v uid mtime owner expiry ;
-  Gc.compact ()
+  if gc_debug then Gc.compact ()
 
 external conf_set_key : string -> Value.t -> string -> float -> unit = "conf_set_key"
 
 let on_set clt k v u mtime =
   ignore clt ;
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   conf_set_key (Key.to_string k) v u mtime ;
-  Gc.compact ()
+  if gc_debug then Gc.compact ()
 
 external conf_del_key : string -> unit = "conf_del_key"
 
 let on_del clt k _v =
   ignore clt ;
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   conf_del_key (Key.to_string k) ;
-  Gc.compact ()
+  if gc_debug then Gc.compact ()
 
 external conf_lock_key : string -> string -> float -> unit = "conf_lock_key"
 
 let on_lock clt k owner expiry =
   ignore clt ;
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   conf_lock_key (Key.to_string k) owner expiry ;
-  Gc.compact ()
+  if gc_debug then Gc.compact ()
 
 external conf_unlock_key : string -> unit = "conf_unlock_key"
 
 let on_unlock clt k =
   ignore clt ;
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   conf_unlock_key (Key.to_string k) ;
-  Gc.compact ()
+  if gc_debug then Gc.compact ()
 
 let sync_loop clt =
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   let msg_count = ref 0 in
   let handle_msgs_in () =
     match ZMQClient.recv_cmd () with
@@ -113,12 +115,12 @@ let sync_loop clt =
             Printf.sprintf "%d messages, %d keys"
               !msg_count
               (Client.H.length clt.h) in
-          Gc.compact () ;
+          if gc_debug then Gc.compact () ;
           signal_sync (Ok status_msg) ;
-          Gc.compact ()
+          if gc_debug then Gc.compact ()
         ) in
   let rec handle_msgs_out () =
-    Gc.compact () ;
+    if gc_debug then Gc.compact () ;
     match next_pending_request () with
     | NoReq -> ()
     | New (k, v) ->
@@ -143,12 +145,12 @@ let sync_loop clt =
         handle_msgs_out ()
   in
   while not (should_quit ()) do
-    Gc.compact () ;
+    if gc_debug then Gc.compact () ;
     try
       ZMQClient.may_send_ping () ;
       handle_msgs_in () ;
       handle_msgs_out () ;
-      Gc.compact ()
+      if gc_debug then Gc.compact ()
     with e ->
       print_exception ~what:"sync loop" e ;
       signal_sync (Fail (Printexc.to_string e))
@@ -170,7 +172,7 @@ let on_progress url clt stage status =
 
 (* Will be called by the C++ on a dedicated thread, never returns: *)
 let start_sync url username srv_pub_key clt_pub_key clt_priv_key =
-  Gc.compact () ;
+  if gc_debug then Gc.compact () ;
   !logger.info "Will connect to %S using key %S" url srv_pub_key ;
   log_and_ignore_exceptions ~what:"Initializing config client" (fun () ->
     ZMQClient.start
