@@ -601,9 +601,9 @@ RamenValue *TList::unserialize(uint32_t const *&start, uint32_t const *max, bool
  * Misc
  */
 
+// Does not alloc on OCaml heap
 static RamenTypeStructure *scalarStructureOfOCaml(value v_)
 {
-  CAMLparam1(v_);
   RamenTypeStructure *ret;
   switch (Long_val(v_)) {
     case 0: ret = new TEmpty; break;
@@ -632,18 +632,16 @@ static RamenTypeStructure *scalarStructureOfOCaml(value v_)
     default:
       assert(!"Unknown tag for scalar RamenTypeStructure!");
   }
-  CAMLreturnT(RamenTypeStructure *, ret);
+  return ret;
 }
 
 static RamenTypeStructure *blockyStructureOfOCaml(value v_)
 {
-  CAMLparam1(v_);
-  CAMLlocal1(tmp_);
   RamenTypeStructure *ret;
   switch (Tag_val(v_)) {
     case 0:
       {
-        tmp_ = Field(v_, 0);
+        value tmp_ = Field(v_, 0);
         assert(Is_block(tmp_));  // an array of types
         unsigned const numFields = Wosize_val(tmp_);
         TTuple *tuple = new TTuple(numFields);
@@ -668,7 +666,7 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
       break;
     case 3:
       {
-        tmp_ = Field(v_, 0);
+        value tmp_ = Field(v_, 0);
         assert(Is_block(tmp_));  // an array of name * type pairs
 
         std::vector<std::pair<QString, std::shared_ptr<RamenType const>>> fields;
@@ -687,15 +685,14 @@ static RamenTypeStructure *blockyStructureOfOCaml(value v_)
     default:
       assert(!"Unknown tag for compound RamenTypeStructure!");
   }
-  CAMLreturnT(RamenTypeStructure *, ret);
+  return ret;
 }
 
+// Does not alloc on OCaml heap
 RamenTypeStructure *RamenTypeStructure::ofOCaml(value v_)
 {
-  CAMLparam1(v_);
-  RamenTypeStructure *ret =
+  return
     Is_block(v_) ? blockyStructureOfOCaml(v_) : scalarStructureOfOCaml(v_);
-  CAMLreturnT(RamenTypeStructure *, ret);
 }
 
 std::ostream &operator<<(std::ostream &os, RamenTypeStructure const &s)

@@ -7,6 +7,7 @@ extern "C" {
 #include "RamenType.h"
 #include "CompiledFunctionInfo.h"
 
+// Does not alloc on OCaml heap
 CompiledFunctionInfo::CompiledFunctionInfo(QString const &name_, conf::Retention const *retention_, bool const is_lazy_, QString const &doc_, std::shared_ptr<RamenType const> out_type_, QStringList const &factors_, QString const &signature_) :
   name(name_),
   retention(retention_),
@@ -18,10 +19,7 @@ CompiledFunctionInfo::CompiledFunctionInfo(QString const &name_, conf::Retention
 
 CompiledFunctionInfo::CompiledFunctionInfo(value v_)
 {
-  CAMLparam1(v_);
-  CAMLlocal1(tmp_);
-
-  tmp_ = Field(v_, 1);  // the (optional) retention
+  value tmp_ = Field(v_, 1);  // the (optional) retention
   retention = nullptr;
   if (Is_block(tmp_)) {
     tmp_ = Field(tmp_, 0);

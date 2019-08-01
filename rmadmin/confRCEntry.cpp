@@ -9,6 +9,7 @@ extern "C" {
 
 namespace conf {
 
+// This _does_ allocate on the OCaml heap
 value RCEntry::toOCamlValue() const
 {
   CAMLparam0();
