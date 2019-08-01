@@ -202,7 +202,7 @@ RESOURCES = resources.qrc
 LIBS += -L/usr/local/lib
 
 LIBS += GuiHelper.o
-LIBS += -L@OCAMLLIB@ -lunix -lbigarray -lnums -lcamlstr -lthreads -lasmrun_shared
+LIBS += -L@OCAMLLIB@ -lunix -lbigarray -lnums -lcamlstr -lthreadsnat -lasmrun_shared
 # TODO: detect those libs specifically:
 LIBS += -L@OCAMLLIB@/../stdint -lstdint_stubs
 LIBS += -L@OCAMLLIB@/../zmq -lzmq_stubs
