@@ -50,7 +50,7 @@ public:
   Value() : Value(ErrorType) {} // wtv
   virtual ~Value() {};
 
-  virtual QString const toQString(Key const &) const;
+  virtual QString const toQString(Key const & = Key::null) const;
   virtual value toOCamlValue() const;
   /* Generic editor that can be overwritten/specialized/tuned
    * according to the key. By default a read-only label. */
@@ -76,7 +76,7 @@ struct Error : public Value
   Error(double time_, unsigned cmdId_, std::string const &msg_) :
     Value(ErrorType), time(time_), cmdId(cmdId_), msg(msg_) {}
   Error() : Error(0., 0, "") {}
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
@@ -100,7 +100,7 @@ struct Worker : public Value
   Worker() : Value(WorkerType), role(nullptr) {}
   ~Worker();
 
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   bool operator==(Value const &) const;
 };
 
@@ -116,7 +116,7 @@ struct Retention : public Value
     period = other.period;
   }
 
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
@@ -140,7 +140,7 @@ struct TimeRange : public Value
     Value(TimeRangeType), range(range_) {}
   TimeRange(value);
 
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
@@ -158,7 +158,7 @@ struct Tuple : public Value
   Tuple();
   ~Tuple();
   Tuple(unsigned, unsigned char const *, size_t);
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
   // returned value belongs to caller:
@@ -175,7 +175,9 @@ struct RamenValueValue : public Value
   RamenValueValue(std::shared_ptr<RamenValue const> v_) :
     Value(RamenValueType), v(v_) {}
 
-  QString const toQString(Key const &k) const { return v->toQString(k); }
+  QString const toQString(Key const &k = Key::null) const {
+    return v->toQString(k);
+  }
 
   value toOCamlValue() const;
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
@@ -195,7 +197,7 @@ struct SourceInfo : public Value
   SourceInfo(value);
 
   bool operator==(Value const &) const;
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }
@@ -212,7 +214,7 @@ struct TargetConfig : public Value
   value toOCamlValue() const;
 
   bool operator==(Value const &) const;
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
 
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 
@@ -240,7 +242,7 @@ struct RuntimeStats : public Value
   RuntimeStats() : Value(RuntimeStatsType) {};
   RuntimeStats(value);
 
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
   AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 };
 
@@ -267,7 +269,7 @@ struct Replay : public Value
   Replay() : Value(ReplayType) {}
   Replay(value);
 
-  QString const toQString(Key const &) const;
+  QString const toQString(Key const & = Key::null) const;
 };
 
 struct Replayer : public Value
