@@ -248,10 +248,8 @@ bool Retention::operator==(Value const &other) const
 
 QString const Retention::toQString(Key const &) const
 {
-  return QString("duration: ").
-         append(QString::number(duration)).
-         append(", period: ").
-         append(QString::number(period));
+  return QString("for ").append(stringOfDuration(duration)).
+         append(", every ").append(stringOfDuration(period));
 }
 
 value Retention::toOCamlValue() const

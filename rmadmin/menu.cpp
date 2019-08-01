@@ -48,7 +48,7 @@ void setupGlobalMenu(bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "&Window"));
 
   windowMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Raw Configuration"), []() {
+    QCoreApplication::translate("QMenuBar", "Raw Configuration…"), []() {
       if (! confTreeDialog) confTreeDialog = new ConfTreeDialog();
       confTreeDialog->show();
     }
