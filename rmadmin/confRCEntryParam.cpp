@@ -10,7 +10,7 @@ namespace conf {
 value RCEntryParam::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal2(ret, lst);
+  CAMLlocal1(ret);
   ret = caml_alloc_tuple(2);
   Store_field(ret, 0, caml_copy_string(name.c_str()));
   Store_field(ret, 1, val->toOCamlValue());

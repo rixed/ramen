@@ -26,9 +26,10 @@ struct CompiledFunctionInfo
   QStringList factors; // supposed to be a list of strings
   QString signature;
 
-  CompiledFunctionInfo(QString const &name, conf::Retention const *, bool const is_lazy, QString const &doc, std::shared_ptr<RamenType const> out_type, QStringList const &factors, QString const &signature);
   CompiledFunctionInfo(value);
-
+  // Required to make this object movable (ie. to store it in vectors):
+  CompiledFunctionInfo(CompiledFunctionInfo &&);
+  CompiledFunctionInfo(CompiledFunctionInfo const &);
   ~CompiledFunctionInfo();
 };
 

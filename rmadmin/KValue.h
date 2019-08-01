@@ -14,7 +14,7 @@ class KValue : public QObject
   Q_OBJECT
 
 public:
-  std::shared_ptr<conf::Value const> val; // may not be set
+  std::shared_ptr<conf::Value> val; // may not be set
   QString uid;  // Of the user who has set this value
   double mtime;
   std::optional<QString> owner;
@@ -27,7 +27,7 @@ public:
     val = other.val;
   }
 
-  void set(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double);
+  void set(conf::Key const &, std::shared_ptr<conf::Value>, QString const &, double);
   bool isSet() const {
     return val != nullptr;
   }

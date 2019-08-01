@@ -23,16 +23,9 @@ struct RCEntry
   bool automatic;
   std::vector <RCEntryParam const *> params;
 
-  RCEntry(std::string const &programName_, bool enabled_, bool debug_,
-          double reportPeriod_, std::string const &source_,
-          std::string const &onSite_, bool automatic_) :
-    programName(programName_),
-    source(source_),
-    onSite(onSite_),
-    reportPeriod(reportPeriod_),
-    enabled(enabled_),
-    debug(debug_),
-    automatic(automatic_) {}
+  RCEntry(std::string const &programName, bool enabled, bool debug,
+          double reportPeriod, std::string const &source,
+          std::string const &onSite, bool automatic);
 
   void addParam(RCEntryParam const *param)
   {

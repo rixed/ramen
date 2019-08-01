@@ -8,15 +8,6 @@ extern "C" {
 #include "CompiledFunctionInfo.h"
 
 // Does not alloc on OCaml heap
-CompiledFunctionInfo::CompiledFunctionInfo(QString const &name_, conf::Retention const *retention_, bool const is_lazy_, QString const &doc_, std::shared_ptr<RamenType const> out_type_, QStringList const &factors_, QString const &signature_) :
-  name(name_),
-  retention(retention_),
-  is_lazy(is_lazy_),
-  doc(doc_),
-  out_type(out_type_),
-  factors(factors_),
-  signature(signature_) {}
-
 CompiledFunctionInfo::CompiledFunctionInfo(value v_)
 {
   value tmp_ = Field(v_, 1);  // the (optional) retention
@@ -38,7 +29,34 @@ CompiledFunctionInfo::CompiledFunctionInfo(value v_)
   signature = String_val(Field(v_, 7));
 }
 
+CompiledFunctionInfo::CompiledFunctionInfo(CompiledFunctionInfo &&other) :
+  name(std::move(other.name)),
+  is_lazy(other.is_lazy),
+  doc(std::move(other.doc)),
+  out_type(other.out_type),
+  factors(std::move(other.factors)),
+  signature(std::move(other.signature))
+{
+  retention = other.retention;
+  other.retention = nullptr;
+}
+
+CompiledFunctionInfo::CompiledFunctionInfo(CompiledFunctionInfo const &other) :
+  name(other.name),
+  is_lazy(other.is_lazy),
+  doc(other.doc),
+  out_type(other.out_type),
+  factors(other.factors),
+  signature(other.signature)
+{
+  if (other.retention) {
+    retention = new conf::Retention(*other.retention);
+  } else {
+    retention = nullptr;
+  }
+}
+
 CompiledFunctionInfo::~CompiledFunctionInfo()
 {
-  delete retention;
+  if (retention) delete retention;
 }

@@ -134,52 +134,7 @@ Value *valueOfOCaml(value v_)
       ret = new TargetConfig(Field(v_, 0));
       break;
     case SourceInfoType:
-      {
-        v_ = Field(v_, 0);
-        QString md5(String_val(Field(v_, 0)));
-        v_ = Field(v_, 1);
-        switch (Tag_val(v_)) {
-          case 0: // CompiledSourceInfo
-            {
-              v_ = Field(v_, 0);
-              // `Some expression` for the running condition
-              bool hasRunCond = Is_block(Field(v_, 1));
-              SourceInfo *sourceInfo = new SourceInfo(md5, hasRunCond);
-              ret = sourceInfo;
-              // Iter over the cons cells of the RamenTuple.params:
-              for (tmp1_ = Field(v_, 0); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
-                tmp2_ = Field(tmp1_, 0);  // the RamenTuple.param
-                tmp3_ = Field(tmp2_, 0);  // the ptyp field
-                std::shared_ptr<RamenType const> type(
-                  RamenType::ofOCaml(Field(tmp3_, 1)));
-                CompiledProgramParam *p =
-                  new CompiledProgramParam(
-                    String_val(Field(tmp3_, 0)),  // name
-                    type,
-                    String_val(Field(tmp3_, 3)),  // doc
-                    std::shared_ptr<RamenValue const>(RamenValue::ofOCaml(Field(tmp2_, 1)))); // value
-                sourceInfo->addParam(p);
-              }
-              // Iter over the cons cells of the function_info:
-              for (tmp1_ = Field(v_, 2); Is_block(tmp1_); tmp1_ = Field(tmp1_, 1)) {
-                tmp2_ = Field(tmp1_, 0);  // the function_info
-                sourceInfo->addInfo(new CompiledFunctionInfo(tmp2_));
-              }
-            }
-            break;
-          case 1: // FailedSourceInfo
-            {
-            v_ = Field(v_, 0);
-            assert(Tag_val(Field(v_, 0)) == String_tag);
-            SourceInfo *sourceInfo = new SourceInfo(md5, QString(String_val(Field(v_, 0))));
-            std::cout << "info is error!! '" << sourceInfo->errMsg.toStdString() << "'" << std::endl;
-            ret = sourceInfo;
-            }
-            break;
-          default:
-            assert(!"Not a detail_source_info?!");
-        }
-      }
+      ret = new SourceInfo(Field(v_, 0));
       break;
     case RuntimeStatsType:
       ret = new RuntimeStats(Field(v_, 0));
@@ -416,13 +371,42 @@ bool RamenValueValue::operator==(Value const &other) const
   return v == o.v;
 }
 
-SourceInfo::~SourceInfo()
+SourceInfo::SourceInfo(value v_)
 {
-  while (! params.isEmpty()) {
-    delete (params.takeLast());
-  }
-  while (! infos.isEmpty()) {
-    delete (infos.takeLast());
+  md5 = String_val(Field(v_, 0));
+  v_ = Field(v_, 1);
+  switch (Tag_val(v_)) {
+    case 0: // CompiledSourceInfo
+      {
+        v_ = Field(v_, 0);
+
+        // Iter over the cons cells of the RamenTuple.params:
+        params.reserve(10);
+        for (value cons_ = Field(v_, 0); Is_block(cons_); cons_ = Field(cons_, 1)) {
+          value param_ = Field(cons_, 0);  // the RamenTuple.param
+          params.emplace_back(param_);
+        }
+        // Iter over the cons cells of the function_info:
+        infos.reserve(10);
+        for (value cons_ = Field(v_, 2); Is_block(cons_); cons_ = Field(cons_, 1)) {
+          value func_ = Field(cons_, 0);  // the function_info
+          infos.emplace_back(func_);
+        }
+        std::cout << "info is a program with " << params.size() << " params"
+                  << " and " << infos.size() << " functions" << std::endl;
+      }
+      break;
+    case 1: // FailedSourceInfo
+      {
+        v_ = Field(v_, 0);
+        assert(1 == Wosize_val(v_)); // only err_msg
+        assert(Tag_val(Field(v_, 0)) == String_tag);
+        errMsg = QString(String_val(Field(v_, 0)));
+        std::cout << "info is compil failure: '" << errMsg.toStdString() << "'" << std::endl;
+      }
+      break;
+    default:
+      assert(!"Not a detail_source_info?!");
   }
 }
 
@@ -432,7 +416,7 @@ bool SourceInfo::operator==(Value const &other) const
   SourceInfo const &o = static_cast<SourceInfo const &>(other);
   if (md5 != o.md5) return false;
   if (isInfo()) {
-    return o.isInfo() && params == o.params && infos == o.infos;
+    return o.isInfo(); // in theory, compare params
   } else {
     return !o.isInfo() && errMsg == o.errMsg;
   }
@@ -443,9 +427,9 @@ QString const SourceInfo::toQString(Key const &) const
   if (errMsg.length() > 0) return errMsg;
 
   QString s("");
-  for (auto info : infos) {
+  for (auto &info : infos) {
     if (s.length() > 0) s += QString(", ");
-    s += info->name;
+    s += info.name;
   }
 
   return QString("Compiled functions: ") + s;

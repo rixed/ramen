@@ -16,6 +16,7 @@ class QLineEdit;
 class QCheckBox;
 struct RamenValue;
 namespace conf {
+  class Key;
   struct RCEntry;
 };
 struct CompiledProgramParam;
@@ -27,7 +28,9 @@ class RCEntryEditor : public QWidget
   QLineEdit *nameEdit;
   QComboBox *sourceBox;
   QLabel *deletedSourceWarning;
+  QLabel *notCompiledSourceWarning;
   bool sourceDoesExist;
+  bool sourceIsCompiled;
   QCheckBox *enabledBox, *debugBox, *automaticBox;
   QLineEdit *sitesEdit;
   QLineEdit *reportEdit;
@@ -47,7 +50,7 @@ class RCEntryEditor : public QWidget
   std::shared_ptr<RamenValue const> paramValue(CompiledProgramParam const *) const;
 
   // Bag of previously set parameter values:
-  QMap<std::string, std::shared_ptr<RamenValue const>> setParamValues;
+  static QMap<std::string, std::shared_ptr<RamenValue const>> setParamValues;
 
   /* Keep the layout so it can be reset and also the widget and param
    * names can be retrieved: */
@@ -57,28 +60,23 @@ public:
   QString sourceName;
   bool sourceEditable;
 
-  // Provision and preselect sourceName
-  RCEntryEditor(QString const &sourceName, bool sourceEditable, QWidget *parent = nullptr);
+  // Optionally preselect sourceName (if not "")
+  RCEntryEditor(bool sourceEditable = true, QString const &sourceName = "", QWidget *parent = nullptr);
   RCEntryEditor(conf::RCEntry const *, QWidget *parent = nullptr);
 
-  void setSourceExists(bool);
+  void addSource(conf::Key const &k);
+  void updateSourceWarnings();
 
   void clearParams();
 
-  bool isValid() const { return sourceDoesExist; }
+  bool isValid() const { return sourceDoesExist && sourceIsCompiled; }
 
   /* Build a new RCEntry according to current content.
    * Caller takes ownership */
   conf::RCEntry *getValue() const;
 
 public slots:
-  /* Refresh the sourceBox with the list of currently existing sources.
-   * May be called every time a source (dis)appear but tries to maintain the
-   * selection. */
-  void resetSources();
-
-  /* Refresh the params each time another source is selected (automatically
-   * called by resetSources when needed).
+  /* Refresh the params each time another source is selected.
    * Used to reset the parameter table */
   void resetParams();
 

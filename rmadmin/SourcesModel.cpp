@@ -93,7 +93,7 @@ QString const sourceNameOfKey(conf::Key const &k)
                                 "." + k.s.substr(lst+1));
 }
 
-conf::Key const keyOfSourceName(QString const &sourceName)
+conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtension)
 {
   std::string f(sourceName.toStdString());
   size_t i = f.rfind('.');
@@ -101,8 +101,11 @@ conf::Key const keyOfSourceName(QString const &sourceName)
    * language it's written in. */
   assert(i != std::string::npos);
 
-  return conf::Key("sources/" + f.substr(0, i) + "/" +
-                   f.substr(i+1, f.length() - i - 1));
+  std::string const ext =
+    newExtension ?
+      newExtension : f.substr(i+1, f.length() - i - 1);
+
+  return conf::Key("sources/" + f.substr(0, i) + "/" + ext);
 }
 
 void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value const> v)

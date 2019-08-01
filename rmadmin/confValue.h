@@ -110,6 +110,11 @@ struct Retention : public Value
 
   Retention();
   Retention(double, double);
+  Retention(Retention const &other) {
+    duration = other.duration;
+    period = other.period;
+  }
+
   QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
@@ -158,10 +163,12 @@ struct Tuple : public Value
 
 struct RamenValueValue : public Value
 {
-  std::shared_ptr<RamenValue> v;
+  std::shared_ptr<RamenValue const> v;
 
   // Takes ownership of v_
   RamenValueValue(RamenValue *v_) :
+    Value(RamenValueType), v(v_) {}
+  RamenValueValue(std::shared_ptr<RamenValue const> v_) :
     Value(RamenValueType), v(v_) {}
 
   QString const toQString(Key const &k) const { return v->toQString(k); }
@@ -177,26 +184,17 @@ struct SourceInfo : public Value
   QString md5;
   // If this is not empty then everything else is irrelevant.
   QString errMsg;
-  QList<CompiledProgramParam *> params;
-  bool hasRunCondition;
-  QList<CompiledFunctionInfo *> infos;
+  std::vector<CompiledProgramParam> params;
+  std::vector<CompiledFunctionInfo> infos;
 
-  SourceInfo(QString md5_, QString errMsg_) :
-    Value(SourceInfoType), md5(md5_), errMsg(errMsg_) {}
-  SourceInfo(QString md5_, bool hasRunCondition_) :
-    Value(SourceInfoType), md5(md5_), hasRunCondition(hasRunCondition_) {}
-  SourceInfo() : SourceInfo(QString(), QString()) {}
-  ~SourceInfo();
+  SourceInfo() {}
+  SourceInfo(value);
 
   bool operator==(Value const &) const;
   QString const toQString(Key const &) const;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }
-
-  // Takes ownership
-  void addParam(CompiledProgramParam *p) { params.append(p); }
-  void addInfo(CompiledFunctionInfo *i) { infos.append(i); }
 };
 
 struct TargetConfig : public Value

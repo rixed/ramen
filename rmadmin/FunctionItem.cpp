@@ -115,7 +115,8 @@ CompiledFunctionInfo const *FunctionItem::compiledInfo() const
     std::cerr << k << " is not compiled" << std::endl;
     return nullptr;
   }
-  for (CompiledFunctionInfo const *func : info->infos) {
+  for (unsigned i = 0; i < info->infos.size(); i ++) {
+    CompiledFunctionInfo const *func = &info->infos[i];
     if (func->name == name) return func;
   }
 

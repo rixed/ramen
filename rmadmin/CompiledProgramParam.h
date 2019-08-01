@@ -3,6 +3,11 @@
 #include <memory>
 #include <QString>
 #include <string>
+extern "C" {
+# include <caml/mlvalues.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
+}
 
 struct RamenValue;
 struct RamenType;
@@ -15,7 +20,7 @@ struct CompiledProgramParam
   std::shared_ptr<RamenValue const> val;
   std::string doc;
 
-  CompiledProgramParam(std::string const &name, std::shared_ptr<RamenType const> type, std::string const &doc, std::shared_ptr<RamenValue const>);
+  CompiledProgramParam(value);
 };
 
 #endif

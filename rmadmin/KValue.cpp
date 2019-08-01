@@ -2,7 +2,7 @@
 #include <cassert>
 #include "KValue.h"
 
-void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value const> v, QString const &u, double mt)
+void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v, QString const &u, double mt)
 {
   mtime = mt;
   uid = u;

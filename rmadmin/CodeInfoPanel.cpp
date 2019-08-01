@@ -46,7 +46,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 
   /* Then the "run" area, to start a new program (ask for name, sites, etc).
    * Use a RC widget with a configurable name. */
-  runBox = new RCEntryEditor(sourceName, false);
+  runBox = new RCEntryEditor(false, sourceName);
   layout->addWidget(runBox);
 
   // Connect the kvs value to setValue (read-only)
@@ -92,12 +92,13 @@ bool CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value con
     // TODO: a simple table would be nicer
     delete paramBox;
     paramBox = nullptr;
-    if (! info->params.isEmpty()) {
+    if (! info->params.empty()) {
       paramBox = new QGroupBox(tr("Parameters"));
       QGridLayout *layout = new QGridLayout;
       paramBox->setLayout(layout);
       int row = 0, column = 0;
-      for (auto const param : info->params) {
+      for (unsigned i = 0; i < info->params.size(); i ++) {
+        CompiledProgramParam const *param = &info->params[i];
         QLabel *pname = new QLabel(QString::fromStdString(param->name) + ":");
         layout->addWidget(pname, row, column, Qt::AlignRight);
         QLabel *pvalue = new QLabel(param->val->toQString(conf::Key::null));
@@ -116,12 +117,13 @@ bool CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value con
 
     delete functionBox;
     functionBox = nullptr;
-    if (! info->infos.isEmpty()) {
+    if (! info->infos.empty()) {
       functionBox = new QGroupBox(tr("Functions"));
       QGridLayout *layout = new QGridLayout;
       functionBox->setLayout(layout);
       int row = 0;
-      for (auto const func : info->infos) {
+      for (unsigned i = 0; i < info->infos.size(); i ++) {
+        CompiledFunctionInfo const *func = &info->infos[i];
         layout->addWidget(new QLabel(func->name), row, 0, 1, 2, Qt::AlignHCenter);
         layout->addWidget(new QLabel(func->doc), row++, 0, 1, 2, Qt::AlignHCenter);
         layout->addWidget(new QLabel("Lazy?:"), row, 0, Qt::AlignRight);

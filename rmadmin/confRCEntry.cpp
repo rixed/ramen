@@ -9,6 +9,21 @@ extern "C" {
 
 namespace conf {
 
+RCEntry::RCEntry(std::string const &programName_, bool enabled_, bool debug_,
+                 double reportPeriod_, std::string const &source_,
+                 std::string const &onSite_, bool automatic_) :
+  programName(programName_),
+  source(source_),
+  onSite(onSite_),
+  reportPeriod(reportPeriod_),
+  enabled(enabled_),
+  debug(debug_),
+  automatic(automatic_)
+{
+  if (source.find('.') == std::string::npos)
+    std::cerr << "Invalid source name: " << source << std::endl;
+}
+
 // This _does_ allocate on the OCaml heap
 value RCEntry::toOCamlValue() const
 {
