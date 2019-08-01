@@ -45,6 +45,7 @@ HEADERS += \
   RamenValue.h \
   TimeRangeViewer.h \
   RuntimeStatsViewer.h \
+  WorkerViewer.h \
   confRCEntryParam.h \
   confRCEntry.h \
   confWorkerRef.h \
@@ -132,6 +133,7 @@ SOURCES += \
   RamenValue.cpp \
   TimeRangeViewer.cpp \
   RuntimeStatsViewer.cpp \
+  WorkerViewer.cpp \
   confRCEntryParam.cpp \
   confRCEntry.cpp \
   confWorkerRef.cpp \

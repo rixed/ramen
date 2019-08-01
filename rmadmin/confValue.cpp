@@ -19,6 +19,7 @@ extern "C" {
 #include "TargetConfigEditor.h"
 #include "TimeRangeViewer.h"
 #include "RuntimeStatsViewer.h"
+#include "WorkerViewer.h"
 #include "KLabel.h"
 
 namespace conf {
@@ -226,6 +227,11 @@ QString const Worker::toQString(Key const &) const
   s += QString(", Role: ") + role->toQString();
   s += QString(", Source: ") + srcPath;
   return s;
+}
+
+AtomicWidget *Worker::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new WorkerViewer(key, parent);
 }
 
 Retention::Retention(double duration_, double period_) :

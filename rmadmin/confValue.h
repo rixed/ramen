@@ -87,11 +87,11 @@ struct Worker : public Value
 {
   bool enabled;
   bool debug;
+  bool used;
   double reportPeriod;
   QString srcPath;
   QString workerSign;
   QString binSign;
-  bool used;
   WorkerRole *role;
   std::list<RCEntryParam *> params; // Params are owned
   std::list<WorkerRef *> parent_refs; // WorkerRef are owned
@@ -101,6 +101,7 @@ struct Worker : public Value
   ~Worker();
 
   QString const toQString(Key const & = Key::null) const;
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   bool operator==(Value const &) const;
 };
 

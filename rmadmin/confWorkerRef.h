@@ -17,6 +17,8 @@ struct WorkerRef
     site(site_), program(program_), function(function_) {}
 
   static WorkerRef *ofOCamlValue(value);
+
+  QString const toQString() const;
 };
 
 };

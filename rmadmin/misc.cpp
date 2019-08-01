@@ -1,6 +1,7 @@
 #include <string>
 #include <math.h>
 #include <QDateTime>
+#include <QLayout>
 #include "misc.h"
 
 std::ostream &operator<<(std::ostream &os, int128_t const &)
@@ -73,4 +74,11 @@ QString stringOfDuration(double d)
   REDUCE(1, secs);
 
   return s;
+}
+
+void emptyLayout(QLayout *layout)
+{
+  while (layout->count()) {
+    delete layout->itemAt(0);
+  }
 }

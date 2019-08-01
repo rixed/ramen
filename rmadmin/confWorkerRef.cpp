@@ -19,4 +19,11 @@ WorkerRef *WorkerRef::ofOCamlValue(value v_)
   CAMLreturnT(WorkerRef *, ret);
 }
 
+QString const WorkerRef::toQString() const
+{
+  QString fq(program + "/" + function);
+  if (site.length() == 0) return fq;
+  return site + ":" + fq;
+}
+
 };

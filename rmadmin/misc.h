@@ -25,4 +25,8 @@ bool looks_like_true(QString);
 QString stringOfDate(double);
 QString stringOfDuration(double);
 
+class QLayout;
+
+void emptyLayout(QLayout *);
+
 #endif
