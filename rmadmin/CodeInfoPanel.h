@@ -17,7 +17,7 @@ class CodeInfoPanel : public AtomicWidget
   QWidget *widget;
 
   QGridLayout *infoLayout;
-  QLabel *md5Label, *condRunLabel, *errLabel;
+  QLabel *md5Label, *errLabel;
   QGroupBox *paramBox, *functionBox;
   RCEntryEditor *runBox;
 

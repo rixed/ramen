@@ -28,17 +28,13 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
     QLabel *nameLabel = new QLabel(sourceName);
     infoLayout->addWidget(nameLabel, 0, 1, Qt::AlignLeft);
 
-    infoLayout->addWidget(new QLabel("Cond.Run:"), 1, 0, Qt::AlignRight);
-    condRunLabel = new QLabel;
-    infoLayout->addWidget(condRunLabel, 1, 1, Qt::AlignLeft);
-
-    infoLayout->addWidget(new QLabel("MD5:"), 2, 0, Qt::AlignRight);
+    infoLayout->addWidget(new QLabel("MD5:"), 1, 0, Qt::AlignRight);
     md5Label = new QLabel;
-    infoLayout->addWidget(md5Label, 2, 1, Qt::AlignLeft);
+    infoLayout->addWidget(md5Label, 1, 1, Qt::AlignLeft);
 
     // Either an error or normal info (notErr):
     errLabel = new QLabel;
-    infoLayout->addWidget(errLabel, 3, 0, 1, 2, Qt::AlignHCenter);
+    infoLayout->addWidget(errLabel, 2, 0, 1, 2, Qt::AlignHCenter);
 
     // Params (RO): Another grid inside the grid:
     paramBox = nullptr;
@@ -72,7 +68,6 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 void CodeInfoPanel::setInfoVisible(bool visible)
 {
   errLabel->setVisible(! visible);
-  condRunLabel->setVisible(visible);
   if (paramBox) paramBox->setVisible(visible);
   runBox->setVisible(visible);
   if (functionBox) functionBox->setVisible(visible);
@@ -93,7 +88,6 @@ bool CodeInfoPanel::setValue(conf::Key const &k, std::shared_ptr<conf::Value con
     errLabel->setText(info->errMsg);
   } else {
     setInfoVisible(true);
-    condRunLabel->setText(info->hasRunCondition ? tr("true") : tr("false"));
 
     // TODO: a simple table would be nicer
     delete paramBox;
