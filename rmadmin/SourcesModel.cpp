@@ -1,5 +1,6 @@
 #include <cassert>
 #include "conf.h"
+#include "once.h"
 #include "SourcesModel.h"
 
 static bool const debug = false;
@@ -10,11 +11,11 @@ SourcesModel::SourcesModel(QObject *parent) :
   root = new DirItem("");
 
   conf::autoconnect("^sources/.*/ramen$", [this](conf::Key const &, KValue const *kv) {
-    connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceText);
+    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceText);
     connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceText);
   });
   conf::autoconnect("^sources/.*/info$", [this](conf::Key const &, KValue const *kv) {
-    connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceInfo);
+    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceInfo);
     connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceInfo);
   });
 }

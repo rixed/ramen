@@ -4,6 +4,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QGroupBox>
+#include "once.h"
 #include "SourcesModel.h"
 #include "RCEntryEditor.h"
 #include "CodeInfoPanel.h"
@@ -62,7 +63,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
   connect(&kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
   // TODO: valueDeleted.
 }

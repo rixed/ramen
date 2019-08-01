@@ -1,4 +1,5 @@
 #include <cassert>
+#include "once.h"
 #include "RangeIntValidator.h"
 #include "KIntEditor.h"
 
@@ -34,7 +35,7 @@ KIntEditor::KIntEditor(
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KIntEditor::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KIntEditor::setValue);
   connect(&kv, &KValue::valueChanged, this, &KIntEditor::setValue);
   connect(&kv, &KValue::valueLocked, this, &KIntEditor::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KIntEditor::unlockValue);

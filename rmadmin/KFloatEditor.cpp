@@ -1,4 +1,5 @@
 #include <cassert>
+#include "once.h"
 #include "RangeDoubleValidator.h"
 #include "KFloatEditor.h"
 
@@ -18,7 +19,7 @@ KFloatEditor::KFloatEditor(conf::Key const &key, QWidget *parent, double min, do
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KFloatEditor::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KFloatEditor::setValue);
   connect(&kv, &KValue::valueChanged, this, &KFloatEditor::setValue);
   connect(&kv, &KValue::valueLocked, this, &KFloatEditor::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KFloatEditor::unlockValue);

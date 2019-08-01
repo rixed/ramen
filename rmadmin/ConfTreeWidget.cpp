@@ -6,6 +6,7 @@
 #include <QKeyEvent>
 #include <QStackedLayout>
 #include "conf.h"
+#include "once.h"
 #include "ConfTreeItem.h"
 #include "Resources.h"
 #include "KFloatEditor.h"
@@ -202,7 +203,7 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
      * In this (Ocaml) thread we must only connect future signals from that
      * kv into the proper slots that will create/update/delete the item. */
     if (verbose) std::cout << "ConfTreeWidget: Connecting to all changes of key " << k.s << " in thread " << std::this_thread::get_id() << std::endl;
-    connect(kv, &KValue::valueCreated, this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
+    Once::connect(kv, &KValue::valueCreated, this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
       if (verbose) std::cout << "ConfTreeWidget: Received valueCreated signal in thread " << std::this_thread::get_id() << "!" << std::endl;
       (void)createItem(k, kv);
     });

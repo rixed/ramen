@@ -47,6 +47,8 @@ public:
   }
 
 signals:
+  /* Always Once::connect to valueCreated or it will be called several times
+   * on the same KValue (due to autoconnect) */
   void valueCreated(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double) const;
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double) const;
   void valueLocked(conf::Key const &, QString const &uid, double expiry) const;

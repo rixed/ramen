@@ -1,4 +1,5 @@
 #include <QDateTime>
+#include "once.h"
 #include "GraphView.h"
 #include "conf.h"
 #include "TailModel.h"
@@ -21,7 +22,7 @@ FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphView
   std::string k = lastTuplesKey(this);
   conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
     // Although this value will never change we need the create signal:
-      connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
+      Once::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
   });
 }
 

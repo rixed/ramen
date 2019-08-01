@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include "once.h"
 #include "KLineEdit.h"
 #include "PosDoubleValidator.h"
 #include "PosIntValidator.h"
@@ -19,7 +20,7 @@ KLineEdit::KLineEdit(conf::Key const &key, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KLineEdit::setValue);
   connect(&kv, &KValue::valueChanged, this, &KLineEdit::setValue);
   connect(&kv, &KValue::valueLocked, this, &KLineEdit::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KLineEdit::unlockValue);

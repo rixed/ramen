@@ -1,3 +1,4 @@
+#include "once.h"
 #include "confValue.h"
 #include "conf.h"
 #include "KLabel.h"
@@ -18,7 +19,7 @@ KLabel::KLabel(conf::Key const &key, QWidget *parent, bool wordWrap) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KLabel::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KLabel::setValue);
   connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
 }
 

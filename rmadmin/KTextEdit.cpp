@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <QFontMetrics>
+#include "once.h"
 #include "RamenSyntaxHighlighter.h"
 #include "KTextEdit.h"
 
@@ -21,7 +22,7 @@ KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KTextEdit::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KTextEdit::setValue);
   connect(&kv, &KValue::valueChanged, this, &KTextEdit::setValue);
   connect(&kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);

@@ -152,6 +152,23 @@ void autoconnect(
         std::cout << "Autoconnect: Key " << key.s << " matches regex, calling "
                      "callback immediately on past object..." << std::endl;
       cb(key, kv);
+
+      /* We must signal only those connected objects that have not been
+       * signaled already.
+       * What we should do:
+       *   1. emit valueCreated
+       *   2. kv->disconnect(SIGNAL(valueCreated()));
+       * What Qt should do:
+       *   1. Enqueue the message into the recipient thread queue
+       *   2. disconnect the signal so that no more messages are enqueued
+       *   3. execute the recipient connected slot in its thread
+       * What Qt seems to be doing instead:
+       *   1. Enqueue the message
+       *   2. disconnect the signal _and_clear_the_queue_
+       *   3. Bummer!!
+       *
+       * So it's up to each recipients to disconnect themselves.
+       * We use the https://github.com/misje/once to help with this. */
       // beware of deadlocks! TODO: queue this kv and emit after the unlock_shared?
       if (verbose)
         std::cout << "Autoconnect: Also emit the valueCreated signal" << std::endl;

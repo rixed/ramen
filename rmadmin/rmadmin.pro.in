@@ -25,6 +25,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 # Input
 HEADERS += \
   misc.h \
+  once.h \
   menu.h \
   AboutDialog.h \
   UserIdentity.h \

@@ -1,6 +1,7 @@
 #include <QPainter>
 #include <QFontMetrics>
 #include <QTextLayout>
+#include "once.h"
 #include "KShortLabel.h"
 
 KShortLabel::KShortLabel(conf::Key const &key, QWidget *parent) :
@@ -19,7 +20,7 @@ KShortLabel::KShortLabel(conf::Key const &key, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KShortLabel::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KShortLabel::setValue);
   connect(&kv, &KValue::valueChanged, this, &KShortLabel::setValue);
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);

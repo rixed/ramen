@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include "once.h"
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
 #include "TargetConfigEditor.h"
@@ -19,7 +20,7 @@ TargetConfigEditor::TargetConfigEditor(conf::Key const &key, QWidget *parent) :
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
   connect(&kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
   connect(&kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);

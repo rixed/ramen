@@ -1,6 +1,7 @@
 #include <cassert>
 #include <QRadioButton>
 #include <QVBoxLayout>
+#include "once.h"
 #include "KChoice.h"
 
 KChoice::KChoice(conf::Key const &key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
@@ -26,7 +27,7 @@ KChoice::KChoice(conf::Key const &key, std::vector<std::pair<QString const, std:
   setEnabled(kv.isMine());
   conf::kvs_lock.unlock_shared();
 
-  connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
+  Once::connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
   connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
   connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
   connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
