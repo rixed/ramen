@@ -17,6 +17,7 @@ extern "C" {
 #include "confWorkerRef.h"
 #include "confRCEntryParam.h"
 #include "TargetConfigEditor.h"
+#include "TimeRangeViewer.h"
 #include "KLabel.h"
 
 namespace conf {
@@ -296,6 +297,11 @@ QString const TimeRange::toQString(Key const &) const
 value TimeRange::toOCamlValue() const
 {
   assert(!"Don't know how to convert from a TimeRange");
+}
+
+AtomicWidget *TimeRange::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new TimeRangeViewer(key, parent);
 }
 
 bool TimeRange::operator==(Value const &other) const

@@ -140,6 +140,7 @@ struct TimeRange : public Value
   TimeRange(value);
 
   QString const toQString(Key const &) const;
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
 };
