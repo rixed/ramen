@@ -5,6 +5,7 @@
 #include <vector>
 #include <cassert>
 #include <optional>
+#include <thread>
 #include <QString>
 #include <QWidget>
 extern "C" {
@@ -350,5 +351,14 @@ struct VRecord : public RamenValue {
     return v[c].second;
   }
 };
+
+/* Help check toOcamlValue is always called from the OCaml thread: */
+
+extern std::thread::id ocamlThreadId;
+
+extern inline void checkInOCamlThread()
+{
+  assert(std::this_thread::get_id() == ocamlThreadId);
+}
 
 #endif

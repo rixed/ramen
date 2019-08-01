@@ -24,11 +24,12 @@ RCEntry::RCEntry(std::string const &programName_, bool enabled_, bool debug_,
     std::cerr << "Invalid source name: " << source << std::endl;
 }
 
-// This _does_ allocate on the OCaml heap
+// This _does_ alloc on the OCaml heap
 value RCEntry::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal3(ret, paramLst, cons);
+  checkInOCamlThread();
   ret = caml_alloc_tuple(7);
   Store_field(ret, 0, Val_bool(enabled));
   std::cout << "RCEntry::toOCamlValue: debug = " << debug << std::endl;

@@ -26,6 +26,7 @@ struct ConfRequest {
 QLinkedList<ConfRequest> pending_requests;
 
 extern "C" {
+  // This _does_ alloc on the OCaml heap but is called from OCaml thread
   value next_pending_request()
   {
     CAMLparam0();

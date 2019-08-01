@@ -58,16 +58,20 @@ AtomicWidget *RamenValue::editorWidget(conf::Key const &key, QWidget *parent) co
   return new KLabel(key, parent);
 }
 
+// Does not alloc on the OCaml heap
 value VNull::toOCamlValue() const
 {
   CAMLparam0();
+  checkInOCamlThread();
   CAMLreturn(Val_int(TAG_VNull)); // Do not use (int)NullType here!
 }
 
+// This _does_ alloc on the OCaml heap
 value VFloat::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VFloat);
   Store_field(ret, 0, caml_copy_double(v));
   CAMLreturn(ret);
@@ -97,10 +101,12 @@ bool VFloat::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 value VString::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VString);
   Store_field(ret, 0, caml_copy_string(v.toStdString().c_str()));
   CAMLreturn(ret);
@@ -129,10 +135,12 @@ QString const VBool::toQString(conf::Key const &) const
     return QCoreApplication::translate("QMainWindow", "false");
 }
 
+// This _does_ alloc on the OCaml heap
 value VBool::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VBool);
   Store_field(ret, 0, Val_bool(v));
   CAMLreturn(ret);
@@ -159,10 +167,12 @@ extern "C" {
   extern struct custom_operations caml_int32_ops;
 }
 
+// This _does_ alloc on the OCaml heap
 value VU8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VU8);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
@@ -180,10 +190,12 @@ bool VU8::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 value VU16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VU16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
@@ -201,6 +213,7 @@ bool VU16::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 // U32 are custom blocks:
 value VU32::toOCamlValue() const
 {
@@ -208,6 +221,7 @@ value VU32::toOCamlValue() const
   CAMLlocal1(ret);
   ret = caml_alloc_custom(&uint32_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
+  checkInOCamlThread();
   CAMLreturn(ret);
 }
 
@@ -223,12 +237,14 @@ bool VU32::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 value VU64::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
   ret = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
+  checkInOCamlThread();
   CAMLreturn(ret);
 }
 
@@ -251,12 +267,14 @@ QString const VU128::toQString(conf::Key const &) const
   return QString(s);
 }
 
+// This _does_ alloc on the OCaml heap
 value VU128::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
   ret = caml_alloc_custom(&uint128_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
+  checkInOCamlThread();
   CAMLreturn(ret);
 }
 
@@ -272,10 +290,12 @@ bool VU128::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// Does not alloc on the OCaml heap
 value VI8::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VI8);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
@@ -293,10 +313,12 @@ bool VI8::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 value VI16::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, TAG_VI16);
   Store_field(ret, 0, Val_int(v));
   CAMLreturn(ret);
@@ -314,11 +336,13 @@ bool VI16::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
-// U32 are custom blocks:
+// This _does_ alloc on the OCaml heap
+// I32 are custom blocks:
 value VI32::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc_custom(&caml_int32_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
   CAMLreturn(ret);
@@ -336,10 +360,12 @@ bool VI32::operator==(RamenValue const &other) const
   return v == o.v;
 }
 
+// This _does_ alloc on the OCaml heap
 value VI64::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc_custom(&caml_int64_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
   CAMLreturn(ret);
@@ -365,12 +391,14 @@ QString const VI128::toQString(conf::Key const &) const
   return QString(v >= 0 ? s+1 : s);
 }
 
+// This _does_ alloc on the OCaml heap
 value VI128::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
   ret = caml_alloc_custom(&int128_ops, sizeof(v), 0, 1);
   memcpy(Data_custom_val(ret), &v, sizeof(v));
+  checkInOCamlThread();
   CAMLreturn(ret);
 }
 
@@ -624,3 +652,6 @@ QString const VList::toQString (conf::Key const &k) const
   }
   return QString("[") + s + QString("]");
 }
+
+std::thread::id ocamlThreadId;
+extern inline void checkInOCamlThread();

@@ -22,6 +22,7 @@ extern "C" {
 #include "menu.h"
 #include "UserIdentity.h"
 #include "conf.h"
+#include "RamenValue.h" // for ocamlThreadId
 extern "C" {
 # include "../src/config.h"
 }
@@ -96,6 +97,7 @@ static void call_for_new_frame(QString const srvUrl, UserIdentity const *id, boo
 // The only thread that will ever call OCaml runtime:
 static void do_sync_thread(QString const srvUrl, UserIdentity const *id, bool insecure, char *argv[])
 {
+  ocamlThreadId = std::this_thread::get_id();
   caml_startup(argv);
   call_for_new_frame(srvUrl, id, insecure);
 }

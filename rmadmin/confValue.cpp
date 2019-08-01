@@ -350,10 +350,12 @@ bool Tuple::operator==(Value const &other) const
   return size == o.size && 0 == memcmp(bytes, o.bytes, size);
 }
 
+// This _does_ alloc on the OCaml heap
 value RamenValueValue::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal1(ret);
+  checkInOCamlThread();
   ret = caml_alloc(1, RamenValueType);
   Store_field(ret, 0, v->toOCamlValue());
   CAMLreturn(ret);
@@ -473,10 +475,12 @@ TargetConfig::~TargetConfig()
   }
 }
 
+// This _does_ alloc on the OCaml heap
 value TargetConfig::toOCamlValue() const
 {
   CAMLparam0();
   CAMLlocal4(ret, lst, cons, pair);
+  checkInOCamlThread();
   // Then a list of program_name * rc_enrtry:
   lst = Val_emptylist;  // Ala Val_int(0)
   for (auto const it : entries) {
