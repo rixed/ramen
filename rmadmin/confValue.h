@@ -125,6 +125,7 @@ struct TimeRange : public Value
   struct Range {
     double t1, t2;
     bool openEnded;
+
     Range(double t1_, double t2_, bool openEnded_) :
       t1(t1_), t2(t2_), openEnded(openEnded_) {}
     bool operator==(Range const &other) const {

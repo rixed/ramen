@@ -14,8 +14,6 @@ class KLabel : public AtomicWidget
 public:
   KLabel(conf::Key const &key, QWidget *parent = nullptr, bool wordWrap = false);
 
-  void setEnabled(bool) {} // not editable
-
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
 
