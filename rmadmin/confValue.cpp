@@ -531,6 +531,7 @@ QString const TargetConfig::toQString(Key const &) const
 
 RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
 {
+# define Uint64_val(x) *(uint64_t *)Data_custom_val(x)
   assert(24 == Wosize_val(v_));
   statsTime = Double_val(Field(v_, 0));
   firstStartup = Double_val(Field(v_, 1));
@@ -553,21 +554,21 @@ RuntimeStats::RuntimeStats(value v_) : Value(RuntimeStatsType)
   lastOutput = Is_block(Field(v_, 8)) ?
     std::optional<double>(Double_val(Field(Field(v_, 8), 0))) :
     std::optional<double>(),
-  totInputTuples = Long_val(Field(v_, 9));
-  totSelectedTuples = Long_val(Field(v_, 10));
-  totOutputTuples = Long_val(Field(v_, 11));
-  totFullBytes = *(uint64_t *)Data_custom_val(Field(v_, 12));
-  totFullBytesSamples = *(uint64_t *)Data_custom_val(Field(v_, 13));
-  curGroups = Long_val(Field(v_, 14));
-  totInputBytes = *(uint64_t *)Data_custom_val(Field(v_, 15));
-  totOutputBytes = *(uint64_t *)Data_custom_val(Field(v_, 16));
+  totInputTuples = Uint64_val(Field(v_, 9));
+  totSelectedTuples = Uint64_val(Field(v_, 10));
+  totOutputTuples = Uint64_val(Field(v_, 11));
+  totFullBytes = Uint64_val(Field(v_, 12));
+  totFullBytesSamples = Uint64_val(Field(v_, 13));
+  curGroups = Uint64_val(Field(v_, 14));
+  totInputBytes = Uint64_val(Field(v_, 15));
+  totOutputBytes = Uint64_val(Field(v_, 16));
   totWaitIn = Double_val(Field(v_, 17));
   totWaitOut = Double_val(Field(v_, 18));
-  totFiringNotifs = Long_val(Field(v_, 19));
-  totExtinguishedNotifs = Long_val(Field(v_, 20));
+  totFiringNotifs = Uint64_val(Field(v_, 19));
+  totExtinguishedNotifs = Uint64_val(Field(v_, 20));
   totCpu = Double_val(Field(v_, 21));
-  curRam = *(uint64_t *)Data_custom_val(Field(v_, 22));
-  maxRam = *(uint64_t *)Data_custom_val(Field(v_, 23));
+  curRam = Uint64_val(Field(v_, 22));
+  maxRam = Uint64_val(Field(v_, 23));
 }
 
 QString const RuntimeStats::toQString(Key const &) const
