@@ -218,10 +218,12 @@ bool VU16::operator==(RamenValue const &other) const
 value VU32::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc_custom(&uint32_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  CAMLlocal2(ret, tmp);
   checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint32_ops, sizeof(v), 0, 1);
+  memcpy(Data_custom_val(tmp), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VU32);
+  Store_field(ret, 0, tmp);
   CAMLreturn(ret);
 }
 
@@ -241,10 +243,12 @@ bool VU32::operator==(RamenValue const &other) const
 value VU64::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  CAMLlocal2(ret, tmp);
   checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint64_ops, sizeof(v), 0, 1);
+  memcpy(Data_custom_val(tmp), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VU64);
+  Store_field(ret, 0, tmp);
   CAMLreturn(ret);
 }
 
@@ -271,10 +275,12 @@ QString const VU128::toQString(conf::Key const &) const
 value VU128::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc_custom(&uint128_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  CAMLlocal2(ret, tmp);
   checkInOCamlThread();
+  tmp = caml_alloc_custom(&uint128_ops, sizeof(v), 0, 1);
+  memcpy(Data_custom_val(tmp), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VU128);
+  Store_field(ret, 0, tmp);
   CAMLreturn(ret);
 }
 
@@ -343,8 +349,8 @@ value VI32::toOCamlValue() const
   CAMLparam0();
   CAMLlocal1(ret);
   checkInOCamlThread();
-  ret = caml_alloc_custom(&caml_int32_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VI32);
+  Store_field(ret, 0, caml_copy_int32(v));
   CAMLreturn(ret);
 }
 
@@ -366,8 +372,8 @@ value VI64::toOCamlValue() const
   CAMLparam0();
   CAMLlocal1(ret);
   checkInOCamlThread();
-  ret = caml_alloc_custom(&caml_int64_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VI64);
+  Store_field(ret, 0, caml_copy_int64(v));
   CAMLreturn(ret);
 }
 
@@ -395,10 +401,12 @@ QString const VI128::toQString(conf::Key const &) const
 value VI128::toOCamlValue() const
 {
   CAMLparam0();
-  CAMLlocal1(ret);
-  ret = caml_alloc_custom(&int128_ops, sizeof(v), 0, 1);
-  memcpy(Data_custom_val(ret), &v, sizeof(v));
+  CAMLlocal2(ret, tmp);
   checkInOCamlThread();
+  tmp = caml_alloc_custom(&int128_ops, sizeof(v), 0, 1);
+  memcpy(Data_custom_val(tmp), &v, sizeof(v));
+  ret = caml_alloc(1, TAG_VI128);
+  Store_field(ret, 0, tmp);
   CAMLreturn(ret);
 }
 
