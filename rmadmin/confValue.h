@@ -42,9 +42,9 @@ enum ValueType {
 
 class Value
 {
+public:
   // FIXME: necessary to have that type?
   ValueType valueType;
-public:
   // Construct uninitialized
   Value(ValueType);
   Value() : Value(ErrorType) {} // wtv
@@ -137,6 +137,7 @@ struct TimeRange : public Value
   TimeRange(std::vector<Range> const &range_) :
     Value(TimeRangeType), range(range_) {}
   TimeRange(value);
+
   QString const toQString(Key const &) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;

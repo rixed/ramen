@@ -34,31 +34,47 @@ extern "C" {
     if (pending_requests.isEmpty()) {
       req = Val_int(0); // NoReq
     } else {
+      if (verbose)
+        std::cout << "Popping a pending request..." << std::endl;
       ConfRequest cr = pending_requests.takeFirst();
       switch (cr.action) {
         case ConfRequest::New:
+          if (verbose)
+            std::cout << "...a New for " << cr.key << " = "
+                      << (*cr.value)->toQString(conf::Key(cr.key)).toStdString() << std::endl;
           req = caml_alloc(2, 0);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
         case ConfRequest::Set:
+          if (verbose)
+            std::cout << "...a Set for " << cr.key << " = "
+                      << (*cr.value)->toQString(conf::Key(cr.key)).toStdString() << std::endl;
           req = caml_alloc(2, 1);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           Store_field(req, 1, (*cr.value)->toOCamlValue());
           break;
         case ConfRequest::Lock:
+          if (verbose)
+            std::cout << "...a Lock for " << cr.key << std::endl;
           req = caml_alloc(1, 2);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::LockOrCreate:
+          if (verbose)
+            std::cout << "...a LockOrCreate for " << cr.key << std::endl;
           req = caml_alloc(1, 3);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::Unlock:
+          if (verbose)
+            std::cout << "...an Unlock for " << cr.key << std::endl;
           req = caml_alloc(1, 4);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
         case ConfRequest::Del:
+          if (verbose)
+            std::cout << "...a Del for " << cr.key << std::endl;
           req = caml_alloc(1, 5);
           Store_field(req, 0, caml_copy_string(cr.key.c_str()));
           break;
