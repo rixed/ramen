@@ -20,6 +20,7 @@ extern "C" {
 #include "TimeRangeViewer.h"
 #include "RuntimeStatsViewer.h"
 #include "WorkerViewer.h"
+#include "SourceInfoViewer.h"
 #include "KLabel.h"
 
 namespace conf {
@@ -434,6 +435,11 @@ QString const SourceInfo::toQString(Key const &) const
   }
 
   return QString("Compiled functions: ") + s;
+}
+
+AtomicWidget *SourceInfo::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new SourceInfoViewer(key, parent);
 }
 
 TargetConfig::TargetConfig(value v_)

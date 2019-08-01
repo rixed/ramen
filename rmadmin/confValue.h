@@ -199,6 +199,7 @@ struct SourceInfo : public Value
 
   bool operator==(Value const &) const;
   QString const toQString(Key const & = Key::null) const;
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 
   bool isInfo() const { return errMsg.isEmpty(); }
   bool isError() const { return !isInfo(); }

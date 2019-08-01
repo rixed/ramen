@@ -46,6 +46,7 @@ HEADERS += \
   TimeRangeViewer.h \
   RuntimeStatsViewer.h \
   WorkerViewer.h \
+  SourceInfoViewer.h \
   confRCEntryParam.h \
   confRCEntry.h \
   confWorkerRef.h \
@@ -134,6 +135,7 @@ SOURCES += \
   TimeRangeViewer.cpp \
   RuntimeStatsViewer.cpp \
   WorkerViewer.cpp \
+  SourceInfoViewer.cpp \
   confRCEntryParam.cpp \
   confRCEntry.cpp \
   confWorkerRef.cpp \
