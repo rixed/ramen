@@ -55,7 +55,7 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
 void ConfTreeEditorDialog::save()
 {
   std::shared_ptr<conf::Value const> v(editor->getValue());
-  conf::askSet(key, v);
+  if (v) conf::askSet(key, v); // read-only editors return no value
   conf::askUnlock(key);
   emit QDialog::accept();
 }
