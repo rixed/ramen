@@ -32,6 +32,19 @@ public:
     last_enabled(true),
     key(key_) {}
 
+  /* We'd like the above constructor to be able to set its initial value
+   * but that needs to call the viortual setValue, so macros to the
+   * rescue: */
+# define SET_INITIAL_VALUE \
+    conf::kvs_lock.lock_shared(); \
+    KValue &kv = conf::kvs[key]; \
+    if (kv.isSet()) { \
+      bool ok = setValue(key, kv.val); \
+      assert(ok); /* ? */ \
+    } \
+    setEnabled(kv.isMine()); \
+    conf::kvs_lock.unlock_shared();
+
   virtual void setEnabled(bool enabled);
 
   // By default do not set any value (read-only):

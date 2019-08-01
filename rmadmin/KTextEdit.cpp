@@ -13,14 +13,7 @@ KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
   new RamenSyntaxHighlighter(textEdit->document()); // the document becomes owner
   textEdit->setFontFamily("monospace");
 
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[key];
-  if (kv.isSet()) {
-    bool ok = setValue(key, kv.val);
-    assert(ok); // ?
-  }
-  setEnabled(kv.isMine());
-  conf::kvs_lock.unlock_shared();
+  SET_INITIAL_VALUE;
 
   Once::connect(&kv, &KValue::valueCreated, this, &KTextEdit::setValue);
   connect(&kv, &KValue::valueChanged, this, &KTextEdit::setValue);

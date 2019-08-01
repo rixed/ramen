@@ -49,15 +49,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
   runBox = new RCEntryEditor(false, sourceName);
   layout->addWidget(runBox);
 
-  // Connect the kvs value to setValue (read-only)
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[key];
-  if (kv.isSet()) {
-    bool ok = setValue(key, kv.val);
-    assert(ok); // ?
-  }
-  setEnabled(kv.isMine());
-  conf::kvs_lock.unlock_shared();
+  SET_INITIAL_VALUE;
 
   Once::connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
   connect(&kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);

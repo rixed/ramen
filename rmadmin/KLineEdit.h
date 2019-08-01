@@ -19,21 +19,11 @@ public:
     lineEdit->setPlaceholderText(s);
   }
 
-  virtual std::shared_ptr<conf::Value const> getValue() const;
-  virtual void setEnabled(bool);
+  std::shared_ptr<conf::Value const> getValue() const;
+  void setEnabled(bool);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);
-
-  void lockValue(conf::Key const &k, QString const &uid)
-  {
-    AtomicWidget::lockValue(k, uid);
-  }
-
-  void unlockValue(conf::Key const &k)
-  {
-    AtomicWidget::unlockValue(k);
-  }
 
 signals:
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
