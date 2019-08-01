@@ -96,6 +96,7 @@ HEADERS += \
   ConfTreeWidget.h \
   ConfTreeDialog.h \
   NewSourceDialog.h \
+  NewProgramDialog.h \
   SourcesView.h \
   ProgramsView.h \
   OperationsView.h \
@@ -175,6 +176,7 @@ SOURCES += \
   ConfTreeWidget.cpp \
   ConfTreeDialog.cpp \
   NewSourceDialog.cpp \
+  NewProgramDialog.cpp \
   SourcesView.cpp \
   ProgramsView.cpp \
   OperationsView.cpp \

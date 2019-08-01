@@ -2,6 +2,7 @@
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
 #include "NewSourceDialog.h"
+#include "NewProgramDialog.h"
 #include "menu.h"
 
 QMenuBar *globalMenuBar;
@@ -9,6 +10,8 @@ QMenuBar *globalMenuBar;
 static AboutDialog *aboutDialog;
 static ConfTreeDialog *confTreeDialog;
 static NewSourceDialog *newSourceDialog;
+static NewProgramDialog *newProgramDialog;
+
 void setupGlobalMenu(bool with_beta_features)
 {
   // A single menubar for all windows:
@@ -28,8 +31,13 @@ void setupGlobalMenu(bool with_beta_features)
   );
   newSource->setShortcut(Qt::CTRL|Qt::Key_N);  // _N_ew
 
-  fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "New Program…"));
+  QAction *newProgram = fileMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "New Program…"), []() {
+      if (! newProgramDialog) newProgramDialog = new NewProgramDialog();
+      newProgramDialog->show();
+    }
+  );
+  newProgram->setShortcut(Qt::CTRL|Qt::Key_R);  // _R_un
 
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Processes"));
