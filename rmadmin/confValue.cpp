@@ -18,6 +18,7 @@ extern "C" {
 #include "confRCEntryParam.h"
 #include "TargetConfigEditor.h"
 #include "TimeRangeViewer.h"
+#include "RuntimeStatsViewer.h"
 #include "KLabel.h"
 
 namespace conf {
@@ -578,6 +579,11 @@ QString const RuntimeStats::toQString(Key const &) const
   if (maxEventTime)
     s += QString(", front-time: ") + stringOfDate(*maxEventTime);
   return s;
+}
+
+AtomicWidget *RuntimeStats::editorWidget(Key const &key, QWidget *parent) const
+{
+  return new RuntimeStatsViewer(key, parent);
 }
 
 SiteFq::SiteFq(value v_)

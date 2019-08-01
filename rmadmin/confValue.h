@@ -238,7 +238,9 @@ struct RuntimeStats : public Value
 
   RuntimeStats() : Value(RuntimeStatsType) {};
   RuntimeStats(value);
+
   QString const toQString(Key const &) const;
+  AtomicWidget *editorWidget(Key const &key, QWidget *parent = nullptr) const;
 };
 
 struct SiteFq
