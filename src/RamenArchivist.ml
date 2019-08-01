@@ -1038,7 +1038,8 @@ let run_sync conf ~while_ loop allocs reconf =
     | _ ->
         () in
   let on_set clt k v _uid _mtime = on_del clt k v
-  and on_new clt k v _uid _mtime _owner _expiry = on_del clt k v in
+  and on_new clt k v _uid _mtime _can_write _can_del _owner _expiry =
+    on_del clt k v in
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
              (fun clt ->
     let do_once () =

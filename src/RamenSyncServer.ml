@@ -18,7 +18,7 @@ struct
   type t =
     { h : hash_value H.t ;
       user_db : User.db ;
-      send_msg : SrvMsg.t -> User.socket Enum.t -> unit ;
+      send_msg : (User.socket * SrvMsg.t) Enum.t -> unit ;
       (* Inverted match: who is using what: *)
       cb_selectors : Selector.set ;
       user_selectors : Selector.set ;
@@ -76,13 +76,15 @@ struct
       ) Map.empty in
     Map.enum subscriber_sockets //@
     (fun (socket, user) ->
-      if is_permitted user then Some socket else (
-        !logger.debug "User %a has no permission to %a"
+      if is_permitted user then
+        Some (socket, m user)
+      else (
+        !logger.debug "User %a cannot read %a"
           User.print user
           Key.print k ;
         None
       )) |>
-    t.send_msg m
+    t.send_msg
 
   let no_such_key k =
     Printf.sprintf2 "Key %a: does not exist"
@@ -101,13 +103,15 @@ struct
     | [] ->
         hv.locks <- [] ;
         if and_notify then
-          notify t k (User.has_any_role hv.can_read) (UnlockKey k)
+          notify t k (User.has_any_role hv.can_read)
+                 (fun _ -> UnlockKey k)
     | (u, duration) :: rest ->
         let expiry = Unix.gettimeofday () +. duration in
         hv.locks <- (u, expiry) :: rest ;
         let owner = IO.to_string User.print_id (User.id u) in
         if and_notify then
-          notify t k (User.has_any_role hv.can_read) (LockKey { k ; owner ; expiry})
+          notify t k (User.has_any_role hv.can_read)
+                 (fun _ -> LockKey { k ; owner ; expiry})
 
   let timeout_locks ?and_notify t k hv =
     match hv.locks with
@@ -178,7 +182,11 @@ struct
             [], "", 0. in
         H.add t.h k { v ; can_read ; can_write ; can_del ; locks ;
                       set_by = u ; mtime } ;
-        let msg = SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } in
+        let msg u =
+          let can_write = User.has_any_role can_write u
+          and can_del = User.has_any_role can_del u in
+          SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
+                          owner ; expiry } in
         notify t k (User.has_any_role can_read) msg
     | _ ->
         Printf.sprintf2 "Key %a: already exist"
@@ -199,7 +207,7 @@ struct
           prev.set_by <- u ;
           prev.mtime <- Unix.gettimeofday () ;
           let uid = IO.to_string User.print_id (User.id u) in
-          let msg = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
+          let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
           notify t k (User.has_any_role prev.can_read) msg
         )
 
@@ -222,7 +230,8 @@ struct
         (* TODO: think about making locking mandatory *)
         check_can_delete t k prev u ;
         H.remove t.h k ;
-        notify t k (User.has_any_role prev.can_read) (DelKey k)
+        notify t k (User.has_any_role prev.can_read)
+               (fun _ -> DelKey k)
 
   let lock t u k ~must_exist ~lock_timeo =
     !logger.debug "Locking config key %a"
@@ -247,7 +256,8 @@ struct
             let expiry = Unix.gettimeofday () +. lock_timeo in
             prev.locks <- [ u, expiry ] ;
             let is_permitted = User.has_any_role prev.can_read in
-            notify t k is_permitted (LockKey { k ; owner ; expiry })
+            notify t k is_permitted
+                   (fun _ -> LockKey { k ; owner ; expiry })
         | lst ->
             (* Reject it if it's already in the lockers: *)
             if List.exists (fun (u', _) -> User.equal u u') lst then
@@ -305,11 +315,13 @@ struct
          not (Enum.is_empty (Selector.matches k s))
       then (
         timeout_locks ~and_notify:false t k hv ;
-        let uid = IO.to_string User.print_id (User.id hv.set_by) in
-        let owner, expiry = owner_of_hash_value hv in
+        let uid = IO.to_string User.print_id (User.id hv.set_by)
+        and owner, expiry = owner_of_hash_value hv
+        and can_write = User.has_any_role hv.can_write u
+        and can_del = User.has_any_role hv.can_del u in
         let msg = SrvMsg.NewKey { k ; v = hv.v ; uid ; mtime = hv.mtime ;
-                                  owner ; expiry } in
-        t.send_msg msg (Enum.singleton socket)
+                                  can_write ; can_del ; owner ; expiry } in
+        t.send_msg (Enum.singleton (socket, msg))
       )
     ) t.h ;
     !logger.info "...done"
@@ -343,12 +355,12 @@ struct
               let can_del = can_read in
               create_or_update t k (Value.err_msg i "")
                                ~can_read ~can_write ~can_del ;
-              t.send_msg (SrvMsg.AuthOk k) (Enum.singleton socket) ;
+              t.send_msg (Enum.singleton (socket, SrvMsg.AuthOk k)) ;
               u'
             with e ->
               let err = Printexc.to_string e in
               !logger.info "While authenticating %a: %s" User.print u err ;
-              t.send_msg (SrvMsg.AuthErr err) (Enum.singleton socket) ;
+              t.send_msg (Enum.singleton (socket, SrvMsg.AuthErr err)) ;
               u)
 
         | CltMsg.StartSync sel ->

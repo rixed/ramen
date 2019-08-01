@@ -260,7 +260,8 @@ let start conf ~while_ =
           let sites = Services.all_sites conf in
           update_conf_server conf ~while_ clt sites rc)
     | _ -> () in
-  let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime
+  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
+    on_set clt k v uid mtime
   in
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
                   (ZMQClient.process_until ~while_)

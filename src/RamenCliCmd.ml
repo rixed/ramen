@@ -255,11 +255,12 @@ let confserver conf daemonize to_stdout to_syslog ports ports_sec
 
 let confclient conf () =
   let topics = [ "*" ] in
-  let on_new _clt k v u mtime owner expiry =
-    !logger.info "%a = %a (set by %s, mtime=%f, owner=%S, expiry=%f)"
+  let on_new _clt k v u mtime can_write can_del owner expiry =
+    !logger.info "%a = %a (set by %s, mtime=%f, can_write=%b, can_del=%b, \
+                           owner=%S, expiry=%f)"
       RamenSync.Key.print k
       RamenSync.Value.print v
-      u mtime
+      u mtime can_write can_del
       owner expiry
   in
   start_sync conf ~topics ~on_new ~while_ ~recvtimeo:10. (fun clt ->
@@ -388,7 +389,8 @@ let compile_sync conf replace src_file source_name_opt =
             N.path_print source_name s.Value.SourceInfo.md5 md5
         )
     | _ -> () in
-  let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
+  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
+    on_set clt k v uid mtime in
   let topics = [
     (N.path_cat [ N.path "sources" ; source_name ; N.path "info" ] :> string)
   ] in
@@ -483,7 +485,8 @@ let compserver conf daemonize to_stdout to_syslog
     | k, v ->
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v in
-  let on_new clt k v uid mtime _owner _expiry = on_set clt k v uid mtime in
+  let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
+    on_set clt k v uid mtime in
   start_sync conf ~while_ ~on_new ~on_set ~topics ~recvtimeo:10.
                   (ZMQClient.process_until ~while_)
 
@@ -1320,7 +1323,7 @@ let tail_sync
     let while_' () =
       while_ () && (!count_last > 0 || !count_next > 0) in
     clt.Client.on_new <-
-      fun _ k v _ _ _ _ -> on_key count_next k v ;
+      fun _ k v _ _ _ _ _ _ -> on_key count_next k v ;
     ZMQClient.process_until ~while_:while_' clt ;
     print [||] ;
     (* Unsubscribe *)

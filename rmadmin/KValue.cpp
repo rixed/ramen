@@ -2,7 +2,8 @@
 #include <cassert>
 #include "KValue.h"
 
-void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v, QString const &u, double mt)
+void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v,
+                 QString const &u, double mt)
 {
   mtime = mt;
   uid = u;
@@ -13,6 +14,14 @@ void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v, QString con
     val = v;
     emit valueCreated(k, v, u, mt);
   }
+}
+
+void KValue::set(conf::Key const &k, std::shared_ptr<conf::Value> v,
+                 QString const &u, double mt, bool cw, bool cd)
+{
+  set(k, v, u, mt);
+  can_write = cw;
+  can_del = cd;
 }
 
 void KValue::lock(conf::Key const &k, QString const &o, double ex)

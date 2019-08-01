@@ -222,14 +222,17 @@ extern "C" {
    * Called at reception of commands from the server:
    */
 
-  value conf_new_key(value k_, value v_, value u_, value mt_, value o_, value ex_)
+  value conf_new_key(value k_, value v_, value u_, value mt_, value cw_, value cd_,
+                     value o_, value ex_)
   {
-    CAMLparam5(k_, v_, u_, mt_, o_);
-    CAMLxparam1(ex_);
+    CAMLparam5(k_, v_, u_, mt_, cw_);
+    CAMLxparam3(cd_, o_, ex_);
     std::string k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     QString u(String_val(u_));
     double mt(Double_val(mt_));
+    bool cw = Bool_val(cw_);
+    bool cd = Bool_val(cd_);
 
     if (verbose) std::cout << "new key " << k << " with value " << *v << std::endl;
     // key might already be bound (to uninitialized value) due to widget
@@ -239,7 +242,7 @@ extern "C" {
 
     /* First establish the signal->slot connections, then set the value: */
     conf::do_autoconnect(k, &conf::kvs[k]);
-    conf::kvs[k].set(k, v, u, mt);
+    conf::kvs[k].set(k, v, u, mt, cw, cd);
 
     if (caml_string_length(o_) > 0) {
       QString o(String_val(o_));

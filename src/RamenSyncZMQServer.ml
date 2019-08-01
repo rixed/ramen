@@ -226,16 +226,16 @@ let send ?block zock peer msg =
   IntCounter.add stats_sent_bytes (String.length msg) ;
   Zmq.Socket.send_all ?block zock [ peer ; "" ; msg ]
 
-let send_msg zocks ?block m sockets =
-  let msg = SrvMsg.to_string m in
-  Enum.iter (fun (zock_idx, peer as socket) ->
-    !logger.debug "0MQ: Sending message %S to %S on zocket#%d"
-      msg peer zock_idx ;
+let send_msg zocks ?block msg_sockets =
+  Enum.iter (fun ((zock_idx, peer as socket), msg) ->
+    !logger.debug "> Srv msg to %S on zocket#%d: %a"
+      peer zock_idx SrvMsg.print msg ;
+    let msg = SrvMsg.to_string msg in
     let zock, _do_authn = zocks.(zock_idx) in
     let session = Hashtbl.find sessions socket in
     let msg = Authn.wrap session.authn msg in
     send ?block zock peer msg
-  ) sockets
+  ) msg_sockets
 
 let validate_cmd =
   let extension_is_known = function
@@ -285,8 +285,6 @@ let zock_step srv zock zock_idx do_authn =
       Server.timeout_all_locks srv
   | parts ->
       IntCounter.inc stats_recvd_msgs ;
-      !logger.info "0MQ: Received message %a"
-        (List.print String.print_quoted) parts ;
       (match peel_multipart parts with
       | peer, [ msg ] ->
           IntCounter.add stats_recvd_bytes (String.length msg) ;
@@ -294,8 +292,8 @@ let zock_step srv zock zock_idx do_authn =
           let session = session_of_socket socket do_authn in
           session.last_used <- Unix.time () ;
           (* Decrypt using the session auth: *)
-          let msg = Marshal.from_string msg 0 in
-          (match Authn.decrypt session.authn msg with
+          (match Marshal.from_string msg 0 |>
+                 Authn.decrypt session.authn with
           | exception e ->
               IntCounter.inc stats_bad_recvd_msgs ;
               !logger.error "Cannot decrypt message: %s, ignoring"
@@ -305,6 +303,8 @@ let zock_step srv zock zock_idx do_authn =
               send zock peer errmsg
           | Ok str ->
               let msg_id, cmd as msg = CltMsg.of_string str in
+              !logger.info "< Clt msg from %S; %a"
+                peer CltMsg.print msg ;
               let clt_pub_key =
                 match session.authn with
                 | Authn.Secure { peer_pub_key ; _ } ->
@@ -355,7 +355,8 @@ let timeout_sessions srv =
       !logger.info "Timing out error file %a" Key.print k ;
       Server.H.modify_opt k (fun hv_opt ->
         Option.may (fun hv ->
-          Server.notify srv k (User.has_any_role hv.Server.can_read) (DelKey k)
+          Server.notify srv k (User.has_any_role hv.Server.can_read)
+                        (fun _ -> DelKey k)
         ) hv_opt ;
         None
       ) srv.Server.h in

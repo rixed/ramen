@@ -249,7 +249,9 @@ struct
        * We cannot create keys unlocked then lock them to avoid races
        * in clients.
        * For clients, expiry is indicative only! *)
-      | NewKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float ; owner : string ; expiry : float }
+      | NewKey of { k : Key.t ; v : Value.t ; uid : string ; mtime : float ;
+                    can_write : bool ; can_del : bool ;
+                    owner : string ; expiry : float }
       | DelKey of Key.t
       (* New lock or change of lock owner. owner must be <> "". *)
       | LockKey of { k : Key.t ; owner : string ; expiry : float }
@@ -274,12 +276,15 @@ struct
             Value.print v
             uid
             print_as_date mtime
-      | NewKey { k ; v ; uid ; mtime ; owner ; expiry } ->
-          Printf.fprintf oc "NewKey { k=%a; v=%a; uid=%s; mtime=%a; %t }"
+      | NewKey { k ; v ; uid ; mtime ; can_write ; can_del ; owner ; expiry } ->
+          Printf.fprintf oc "NewKey { k=%a; v=%a; uid=%s; mtime=%a; can=%s; %t }"
             Key.print k
             Value.print v
             uid
             print_as_date mtime
+            ((if can_write then "write" else "") ^
+             (if can_write && can_del then "+" else "") ^
+             (if can_del then "del" else ""))
             (print_lock_owner owner expiry)
       | DelKey k ->
           Printf.fprintf oc "DelKey %a"

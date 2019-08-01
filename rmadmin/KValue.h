@@ -19,15 +19,26 @@ public:
   double mtime;
   std::optional<QString> owner;
   double expiry;  // if owner above is set
+  bool can_write, can_del;
 
   KValue() {}
 
   KValue(const KValue &other) : QObject() {
     owner = other.owner;
     val = other.val;
+    uid = other.uid;
+    mtime = other.mtime;
+    expiry = other.expiry;
+    can_write = other.can_write;
+    can_del = other.can_del;
   }
 
-  void set(conf::Key const &, std::shared_ptr<conf::Value>, QString const &, double);
+  void set(conf::Key const &, std::shared_ptr<conf::Value>, QString const &,
+           double, bool, bool);
+
+  void set(conf::Key const &, std::shared_ptr<conf::Value>, QString const &,
+           double);
+
   bool isSet() const {
     return val != nullptr;
   }

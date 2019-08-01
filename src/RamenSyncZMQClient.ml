@@ -101,13 +101,14 @@ let check_ok clt k v =
   )
 
 let check_new_cbs on_msg =
-  fun clt k v uid mtime owner expiry ->
+  fun clt k v uid mtime can_write can_del owner expiry ->
     check_ok clt k v ;
     (match Hashtbl.find on_dones k with
     | exception Not_found ->
         !logger.debug "no on_dones cb for %a" Key.print k
     | cmd_id, filter, cb ->
-        let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } in
+        let srv_cmd = SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ;
+                                      owner ; expiry } in
         if filter srv_cmd then (
           Hashtbl.remove on_dones k ;
           !logger.debug "on_dones cb filter pass, calling back." ;
@@ -116,7 +117,7 @@ let check_new_cbs on_msg =
         ) else (
           !logger.debug "on_dones cb filter does not pass."
         )) ;
-    on_msg clt k v uid mtime owner expiry
+    on_msg clt k v uid mtime can_write can_del owner expiry
 
 let check_set_cbs on_msg =
   fun clt k v uid mtime ->
@@ -303,7 +304,7 @@ let recv_cmd _clt =
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
       (match Marshal.from_string msg 0 |>
-            Authn.decrypt session.authn with
+             Authn.decrypt session.authn with
       | Bad _ ->
           failwith "Decryption error" (* Clients keep errors for themselves *)
       | Ok msg ->
@@ -491,7 +492,7 @@ let init_sync ?while_ clt topics on_progress =
 let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           ?(topics=[]) ?(on_progress=default_on_progress)
           ?(on_sock=ignore1) ?(on_synced=ignore1)
-          ?(on_new=ignore7) ?(on_set=ignore5) ?(on_del=ignore3)
+          ?(on_new=ignore9) ?(on_set=ignore5) ?(on_del=ignore3)
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.) ?(sndtimeo= ~-.1.) sync_loop =
   !logger.debug "Starting ZMQ Client" ;

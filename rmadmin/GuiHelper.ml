@@ -58,13 +58,12 @@ type pending_req =
 external next_pending_request : unit -> pending_req = "next_pending_request"
 
 external conf_new_key :
-  string -> Value.t -> string -> float -> string -> float -> unit =
+  string -> Value.t -> string -> float -> bool -> bool -> string -> float -> unit =
     "no_use_for_bytecode" "conf_new_key"
 
-let on_new clt k v uid mtime owner expiry =
-  ignore clt ;
+let on_new _clt k v uid mtime can_write can_del owner expiry =
   if gc_debug then Gc.compact () ;
-  conf_new_key (Key.to_string k) v uid mtime owner expiry ;
+  conf_new_key (Key.to_string k) v uid mtime can_write can_del owner expiry ;
   if gc_debug then Gc.compact ()
 
 external conf_set_key : string -> Value.t -> string -> float -> unit = "conf_set_key"

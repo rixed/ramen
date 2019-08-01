@@ -20,7 +20,7 @@ struct
     { h : hash_maybe_value H.t ;
       my_uid : User.id ;
       mutable my_errors : Key.t option ; (* As returned by AuthOK *)
-      mutable on_new : t -> Key.t -> Value.t -> string -> float -> string -> float -> unit ;
+      mutable on_new : t -> Key.t -> Value.t -> string -> float -> bool -> bool -> string -> float -> unit ;
       mutable on_set : t -> Key.t -> Value.t -> string -> float -> unit ;
       mutable on_del : t -> Key.t -> Value.t -> unit ; (* previous value *)
       mutable on_lock : t -> Key.t -> string -> float -> unit ;
@@ -34,6 +34,7 @@ struct
     { mutable value : Value.t ;
       (* These metadata are set exclusively by the confserver.
        * Unreliable if eager. *)
+      (* We could also store can_write/del in here but that's not used *)
       mutable uid : string ;
       mutable mtime : float ;
       mutable owner : string ; (* empty is none *)
@@ -116,7 +117,7 @@ struct
             "Server set key %a that has not been created"
             Key.print k ;
           H.replace t.h k (Value hv) ;
-          t.on_new t k v uid mtime "" 0. in
+          t.on_new t k v uid mtime false false "" 0. in
         (match H.find t.h k with
         | exception Not_found ->
             set_hv (new_hv ())
@@ -132,12 +133,13 @@ struct
             prev.eagerly <- Nope
         )
 
-    | SrvMsg.NewKey { k ; v ; uid ; mtime ; owner ; expiry } ->
+    | SrvMsg.NewKey { k ; v ; uid ; mtime ; can_write ; can_del ; owner ;
+                      expiry } ->
         let new_hv ()  =
           { value = v ; uid ; mtime ; owner ; expiry ; eagerly = Nope } in
         let set_hv hv =
             H.replace t.h k (Value hv) ;
-            t.on_new t k v uid mtime owner expiry in
+            t.on_new t k v uid mtime can_write can_del owner expiry in
         (match H.find t.h k with
         | exception Not_found ->
             set_hv (new_hv ())
