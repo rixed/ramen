@@ -314,26 +314,37 @@ let update_archives ~while_ conf dry_run clt =
     | _ -> ())
 
 let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
+  let open RamenSync in
   (* The GC needs all allocation size per worker for this site.
    * On the other hand storage stats will be written back (ArchivedTimes,
    * NumArcFiles, NumArcBytes) for any discovered archives (which was done
-   * by `archivist --stats` whithout confserver).
+   * by `archivist --stats` without confserver).
    * Also need workers and infos to iter over functions: *)
   let topics =
     [ "sites/"^ (conf.C.site :> string) ^"/workers/*/archives/alloc_size" ;
       "sites/"^ (conf.C.site :> string) ^"/workers/*/worker" ;
       "sources/*/info" ] in
-  start_sync conf ~while_ ~topics ~recvtimeo:5. (fun clt ->
+  (* Start right after alloc_sizes are changed (esp. right
+   * after the first run from archivist) *)
+  let last_alloc_size = ref 0. in
+  let on_new _ k _ _ mtime _ _ _ _ =
+    match k with Key.PerSite (site, PerWorker (_, AllocedArcBytes))
+                 when site = conf.C.site ->
+      last_alloc_size := max !last_alloc_size mtime
+    | _ -> () in
+  start_sync conf ~while_ ~topics ~recvtimeo:5. ~on_new (fun clt ->
     if loop <= 0. then (
       ZMQClient.process_in ~while_ clt ;
       cleanup_once_sync conf clt dry_run del_ratio compress_older
     ) else
       let last_run =
-        ref (if loop <= 0. then 0. else Unix.time () -. Random.float loop) in
+        ref (Unix.time () -. Random.float loop) in
       while while_ () do
         ZMQClient.process_in ~while_ clt ;
         let now = Unix.gettimeofday () in
-        if now > !last_run +. loop then (
+        if now > !last_run +. loop ||
+           !last_run < !last_alloc_size
+        then (
           last_run := now ;
           cleanup_once_sync conf clt dry_run del_ratio compress_older ;
           update_archives ~while_ conf dry_run clt) ;
