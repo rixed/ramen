@@ -14,15 +14,15 @@ build-test: [make "check"]
 install: [make "bin_dir=%{bin}%" "install"]
 remove: [make "bin_dir=%{bin}%" "uninstall"]
 depends: [
-  "ocamlfind" {= "1.8.0"}
-  "batteries" {>= "2.8.0"}
+  "ocamlfind" {= "1.8.1"}
+  "batteries" {= "2.9.0"}
   "stdint" {= "0.5.0fix1"}
   "parsercombinator" {>= "0.6"}
   "binocle" {>= "0.9.0"}
   "lacaml" {= "11.0.1"}
   "num"
   "ppp" {>= "2.7.5"}
-  "cmdliner" {build & = "1.0.2"}
+  "cmdliner" {build & = "1.0.4"}
   "sodium" {= "0.6.0"}
   "syslog" {= "1.5"}
   "sqlite3" {build}
@@ -34,5 +34,5 @@ depopts: [
   "inotify"
 ]
 depexts: [
-  [["debian"] ["libc-dev m4"]]
+  [["debian"] ["libc-dev" "m4"]]
 ]
