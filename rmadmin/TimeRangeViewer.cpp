@@ -9,6 +9,8 @@ TimeRangeViewer::TimeRangeViewer(conf::Key const &k, QWidget *parent) :
   table = new QTableWidget(1, 2);
   table->setHorizontalHeaderLabels({ tr("Since"), tr("Until") });
   table->setMinimumWidth(400);
+  table->setCornerButtonEnabled(false);
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->verticalHeader()->setVisible(false);
   setCentralWidget(table);
 
