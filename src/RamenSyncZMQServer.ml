@@ -292,8 +292,7 @@ let zock_step srv zock zock_idx do_authn =
           let session = session_of_socket socket do_authn in
           session.last_used <- Unix.time () ;
           (* Decrypt using the session auth: *)
-          (match Marshal.from_string msg 0 |>
-                 Authn.decrypt session.authn with
+          (match Authn.decrypt session.authn msg with
           | exception e ->
               IntCounter.inc stats_bad_recvd_msgs ;
               !logger.error "Cannot decrypt message: %s, ignoring"

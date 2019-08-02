@@ -89,12 +89,15 @@ let unbox session my_priv_key bytes nonce =
 let to_string msg =
   Marshal.(to_string msg [ No_sharing ])
 
+let of_string str : msg =
+  Marshal.from_string str 0
+
 let encrypt session str =
   match session with
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      !logger.debug "Wrapping into a Crypted\n%!" ;
+      !logger.debug "Wrapping into a Crypted" ;
       let crypted_str = box session str nonce in
       Crypted (nonce, crypted_str)
   | Insecure ->
@@ -105,7 +108,7 @@ let send_session_key session str =
   | Secure sess ->
       let nonce = sess.my_nonce in
       sess.my_nonce <- Box.increment_nonce sess.my_nonce ;
-      !logger.debug "Wrapping into a SendSessionKey\n%!" ;
+      !logger.debug "Wrapping into a SendSessionKey" ;
       let crypted_str = box session str nonce in
       sess.key_sent <- true ;
       SendSessionKey (nonce, sess.my_pub_key, crypted_str)
@@ -157,7 +160,8 @@ let error str =
   !logger.error "%s" str ;
   Bad (Error str |> to_string)
 
-let decrypt session msg =
+let decrypt session str =
+  let msg = of_string str in
   match session with
   | Secure sess ->
       let resp my_priv_key bytes nonce =
@@ -180,7 +184,7 @@ let decrypt session msg =
       in
       (match msg with
       | SendSessionKey (nonce, peer_pub_key, bytes) ->
-          !logger.debug "Decrypting a SendSessionKey\n%!" ;
+          !logger.debug "Decrypting a SendSessionKey" ;
           let my_priv_key =
             match sess.peer_pub_key with
             | None -> (* We must be a server then: *)
@@ -191,12 +195,12 @@ let decrypt session msg =
                 sess.my_priv_key
             | Some _-> (* We must be the client then: *)
                 !logger.debug
-                  "Replacing peer public key with short term one\n%!" ;
+                  "Replacing peer public key with short term one" ;
                 sess.my_priv_key in
           set_peer_pub_key session peer_pub_key ;
           resp my_priv_key bytes nonce
       | Crypted (nonce, bytes) ->
-          !logger.debug "Decrypting a Crypted\n%!" ;
+          !logger.debug "Decrypting a Crypted" ;
           (match sess.peer_pub_key with
           | None ->
               error "Missing session"

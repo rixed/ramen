@@ -303,8 +303,7 @@ let recv_cmd _clt =
   match Zmq.Socket.recv_all session.zock with
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
-      (match Marshal.from_string msg 0 |>
-             Authn.decrypt session.authn with
+      (match Authn.decrypt session.authn msg with
       | Bad _ ->
           failwith "Decryption error" (* Clients keep errors for themselves *)
       | Ok msg ->
