@@ -1,5 +1,6 @@
 #ifndef SOURCESMODEL_H_190530
 #define SOURCESMODEL_H_190530
+#include <memory>
 #include <QAbstractItemModel>
 #include "confValue.h"
 #include "confKey.h"
@@ -20,6 +21,7 @@ protected:
     TreeItem() : parent(nullptr) {}
     TreeItem(QString name_, TreeItem *parent_ = nullptr) :
       name(name_), parent(parent_) {}
+
     // The number of subrows:
     virtual int numRows() const = 0;
     virtual bool isDir() const = 0;
@@ -31,6 +33,7 @@ protected:
 
     DirItem(QString name_, TreeItem *parent_ = nullptr) :
       TreeItem(name_, parent_) {}
+
     int numRows() const { return children.length(); }
     bool isDir() const { return true; }
     void addItem(TreeItem *i, int row)
@@ -41,19 +44,13 @@ protected:
 
   struct FileItem : public TreeItem
   {
-    // With original '/' conserved, so can be used to reconstruct the kvs keys:
-    QString const sourceName;
+    conf::Key const sourceKey;
 
-    std::shared_ptr<RamenValue const> origText;
-    std::shared_ptr<conf::SourceInfo const> sourceInfo;
+    FileItem(QString name_, conf::Key const &sourceKey_, TreeItem *parent_ = nullptr) :
+      TreeItem(name_, parent_), sourceKey(sourceKey_) {}
 
-    FileItem(QString const sourceName_) : sourceName(sourceName_) {}
-    FileItem(QString name_, QString const &sourceName_, TreeItem *parent_ = nullptr) :
-      TreeItem(name_, parent_), sourceName(sourceName_) {}
     int numRows() const { return 0; }
     bool isDir() const { return false; }
-    void setText(std::shared_ptr<RamenValue const> s) { origText = s; }
-    void setInfo(std::shared_ptr<conf::SourceInfo const> s) { sourceInfo = s; }
   };
 
   DirItem *root;
@@ -63,7 +60,7 @@ private:
 
   // Construct from the root and the "absolute" name; returns the created
   // file (or nullptr if the sourceName was empty):
-  FileItem *createAll(QString const &sourceName, DirItem *);
+  FileItem *createAll(conf::Key const &, DirItem *);
 
 public:
   SourcesModel(QObject *parent = nullptr);
@@ -74,11 +71,11 @@ public:
   int columnCount(QModelIndex const &parent) const;
   QVariant data(QModelIndex const &index, int role) const;
 
+  conf::Key const keyOfIndex(QModelIndex const &index) const;
+  std::shared_ptr<conf::SourceInfo const> sourceInfoOfItem(TreeItem const *) const;
+
 private slots:
-  void addSourceText(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void updateSourceText(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void addSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>);
-  void updateSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void addSource(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 
 /*
@@ -93,5 +90,7 @@ QString const baseNameOfKey(conf::Key const &);
 
 // The other way around:
 conf::Key const keyOfSourceName(QString const &, char const *newExtension = nullptr);
+
+conf::Key const changeSourceKeyExt(conf::Key const &, char const *newExtension);
 
 #endif

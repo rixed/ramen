@@ -140,7 +140,10 @@ void RCEntryEditor::addSource(conf::Key const &k)
   if (name.contains('.')) {
     // Insert in alphabetic order:
     for (int i = 0; i <= sourceBox->count(); i ++) {
-      if (i == sourceBox->count() || name < sourceBox->itemText(i)) {
+      QString const current = sourceBox->itemText(i);
+      // Do not add it once more (can happen when it was preselected)
+      if (current == name) break;
+      if (i == sourceBox->count() || name < current) {
         sourceBox->insertItem(i, name);
         break;
       }

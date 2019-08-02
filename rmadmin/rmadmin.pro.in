@@ -101,6 +101,7 @@ HEADERS += \
   ConfTreeDialog.h \
   NewSourceDialog.h \
   NewProgramDialog.h \
+  ButtonDelegate.h \
   SourcesView.h \
   ProgramsView.h \
   OperationsView.h \
@@ -185,6 +186,7 @@ SOURCES += \
   ConfTreeDialog.cpp \
   NewSourceDialog.cpp \
   NewProgramDialog.cpp \
+  ButtonDelegate.cpp \
   SourcesView.cpp \
   ProgramsView.cpp \
   OperationsView.cpp \

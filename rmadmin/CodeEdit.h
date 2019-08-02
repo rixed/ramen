@@ -19,7 +19,7 @@ class CodeEdit : public QWidget
   AtomicForm *editorForm;
 
 public:
-  CodeEdit(QString const &sourceName, QWidget *parent = nullptr);
+  CodeEdit(conf::Key const &, QWidget *parent = nullptr);
 };
 
 #endif

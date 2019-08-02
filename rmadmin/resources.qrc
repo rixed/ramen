@@ -4,5 +4,9 @@
     <file>rmadmin.ico</file>
     <file>pix/locked.svg</file>
     <file>pix/unlocked.svg</file>
+    <file>pix/error.svg</file>
+    <file>pix/play.svg</file>
+    <file>pix/wait.svg</file>
+    <file>pix/info.svg</file>
   </qresource>
 </RCC>

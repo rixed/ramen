@@ -1,6 +1,9 @@
 #include <cassert>
+#include <QApplication>
+#include <QStyle>
 #include "conf.h"
 #include "once.h"
+#include "Resources.h"
 #include "SourcesModel.h"
 
 static bool const debug = false;
@@ -11,18 +14,16 @@ SourcesModel::SourcesModel(QObject *parent) :
   root = new DirItem("");
 
   conf::autoconnect("^sources/.*/ramen$", [this](conf::Key const &, KValue const *kv) {
-    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceText);
-    connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceText);
-  });
-  conf::autoconnect("^sources/.*/info$", [this](conf::Key const &, KValue const *kv) {
-    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSourceInfo);
-    connect(kv, &KValue::valueChanged, this, &SourcesModel::updateSourceInfo);
+    Once::connect(kv, &KValue::valueCreated, this, &SourcesModel::addSource);
+    // TODO: del
   });
 }
 
+#define NUM_COLUMNS 3
+
 QModelIndex SourcesModel::index(int row, int column, QModelIndex const &parent) const
 {
-  if (row < 0 || column < 0 || column > 1) return QModelIndex();
+  if (row < 0 || column < 0 || column >= NUM_COLUMNS ) return QModelIndex();
 
   DirItem const *parentDir =
     parent.isValid() ? static_cast<DirItem const *>(parent.internalPointer())
@@ -51,18 +52,46 @@ int SourcesModel::rowCount(QModelIndex const &parent) const
 
 int SourcesModel::columnCount(QModelIndex const &) const
 {
-  return 1;
+  return NUM_COLUMNS;
 }
 
 QVariant SourcesModel::data(QModelIndex const &index, int role) const
 {
-  if (!index.isValid() || index.column() != 0) return QVariant();
+  if (! index.isValid()) return QVariant();
 
   TreeItem const *item = static_cast<TreeItem const *>(index.internalPointer());
 
   switch (role) {
     case Qt::DisplayRole:
-      return QVariant(item->name);
+      switch (index.column()) {
+        case 0:
+          return QVariant(item->name);
+        case 1:
+          {
+            // Button to show the compilation result:
+            std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
+            if (! info)
+              return QVariant();
+            else if (info->errMsg.isEmpty())
+              return Resources::get()->infoPixmap;
+            else
+              return Resources::get()->errorPixmap;
+          }
+        case 2:
+          {
+            // Button to run the program
+            std::shared_ptr<conf::SourceInfo const> info(sourceInfoOfItem(item));
+            if (! info)
+              return Resources::get()->waitPixmap;
+            else if (info->errMsg.isEmpty())
+              return Resources::get()->playPixmap;
+            else
+              return QVariant();
+          }
+        default:
+          return QVariant();
+      }
+      break;
     default:
       return QVariant();
   }
@@ -108,49 +137,19 @@ conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtens
   return conf::Key("sources/" + f.substr(0, i) + "/" + ext);
 }
 
-void SourcesModel::addSourceText(conf::Key const &k, std::shared_ptr<conf::Value const> v)
+conf::Key const changeSourceKeyExt(conf::Key const &k, char const *newExtension)
 {
-  QString sourceName(baseNameOfKey(k));
-
-  // Will create all the intermediary TreeItems, calling begin/endInsertRows::
-  FileItem *file = createAll(sourceName, root);
-  if (file) {
-    std::shared_ptr<conf::RamenValueValue const> s =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (s) {
-      file->setText(s->v);
-    } else {
-      std::cout << "Source text not of string type?!" << std::endl;
-    }
+  size_t lst = k.s.rfind('/');
+  if (lst == std::string::npos) {
+    std::cout << "Key " << k << " is invalid for a source" << std::endl;
+    assert(!"Invalid source key");
   }
+  return conf::Key(k.s.substr(0, lst + 1) + newExtension);
 }
 
-void SourcesModel::updateSourceText(conf::Key const &, std::shared_ptr<conf::Value const>)
+void SourcesModel::addSource(conf::Key const &k, std::shared_ptr<conf::Value const>)
 {
-  // TODO
-}
-
-void SourcesModel::addSourceInfo(conf::Key const &k, std::shared_ptr<conf::Value const> v)
-{
-  QString sourceName(baseNameOfKey(k));
-  if (debug) std::cout << "addSourceInfo for " << sourceName.toStdString() << std::endl;
-
-  // Will create all the intermediary TreeItems, calling begin/endInsertRows::
-  FileItem *file = createAll(sourceName, root);
-  if (file) {
-    std::shared_ptr<conf::SourceInfo const> s =
-      std::dynamic_pointer_cast<conf::SourceInfo const>(v);
-    if (s) {
-      file->setInfo(s);
-    } else {
-      std::cout << "Source info not of SourceInfo type?!" << std::endl;
-    }
-  }
-}
-
-void SourcesModel::updateSourceInfo(conf::Key const &, std::shared_ptr<conf::Value const>)
-{
-  // TODO
+  createAll(k, root);
 }
 
 QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
@@ -171,10 +170,13 @@ QModelIndex SourcesModel::indexOfItem(TreeItem const *item) const
   return createIndex(row, 0, (void *)item);
 }
 
-SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirItem *root)
+SourcesModel::FileItem *SourcesModel::createAll(conf::Key const &sourceKey, DirItem *root)
 {
-  QStringList names = sourceName.split("/", QString::SkipEmptyParts);
-  if (names.isEmpty()) return nullptr;
+  QStringList names =
+    QString::fromStdString(sourceKey.s).split("/", QString::SkipEmptyParts);
+  if (names.length() <= 2) return nullptr;
+  names.removeFirst();  // "sources"
+  QString const ext = names.takeLast();
 
   FileItem *ret = nullptr;
   do {
@@ -214,10 +216,10 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirIt
     }
     if (needNewItem) {
       if (debug) std::cout << "createAll: create new " << lastName << std::endl;
-      emit beginInsertRows(indexOfItem(root), row, row);
+      emit beginInsertRows(indexOfItem(root), row /* first row */, row /* last */);
       if (lastName) {
         // Create the final file
-        ret = new FileItem(nextName, sourceName, root);
+        ret = new FileItem(nextName, sourceKey, root);
         root->addItem(ret, row);
       } else {
         // Add a subdirectory and "recurse"
@@ -230,4 +232,34 @@ SourcesModel::FileItem *SourcesModel::createAll(QString const &sourceName, DirIt
   } while (!ret);
 
   return ret;
+}
+
+conf::Key const SourcesModel::keyOfIndex(QModelIndex const &index) const
+{
+  // Retrieve the key for the info:
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
+  if (item->isDir()) return conf::Key::null;
+
+  SourcesModel::FileItem const *file =
+    dynamic_cast<SourcesModel::FileItem const *>(item);
+  return file->sourceKey;
+}
+
+std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem const *item) const
+{
+  if (item->isDir()) return nullptr;
+
+  SourcesModel::FileItem const *file =
+    dynamic_cast<SourcesModel::FileItem const *>(item);
+
+  conf::Key const infoKey = changeSourceKeyExt(file->sourceKey, "info");
+
+  KValue const *kv = nullptr;
+  conf::kvs_lock.lock_shared();
+  if (conf::kvs.contains(infoKey)) kv = &conf::kvs[infoKey];
+  conf::kvs_lock.unlock_shared();
+
+  if (! kv) return nullptr;
+  return std::dynamic_pointer_cast<conf::SourceInfo const>(kv->val);
 }

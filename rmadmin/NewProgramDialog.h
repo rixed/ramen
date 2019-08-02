@@ -17,7 +17,7 @@ class NewProgramDialog : public QDialog
   bool mustSave;
 
 public:
-  NewProgramDialog(QWidget *parent = nullptr);
+  NewProgramDialog(QString const &sourceName = "", QWidget *parent = nullptr);
 
 private:
   void appendEntry();

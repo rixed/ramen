@@ -8,10 +8,9 @@
 #include "conf.h"
 #include "CodeEdit.h"
 
-CodeEdit::CodeEdit(QString const &sourceName_, QWidget *parent) :
+CodeEdit::CodeEdit(conf::Key const &keyText_, QWidget *parent) :
   QWidget(parent),
-  sourceName(sourceName_),
-  keyText(conf::Key("sources/" + sourceName.toStdString() + "/ramen"))
+  keyText(keyText_)
 {
   QVBoxLayout *layout = new QVBoxLayout(this);
   layout->setContentsMargins(QMargins());

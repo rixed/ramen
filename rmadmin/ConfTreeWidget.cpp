@@ -190,10 +190,10 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   static QStringList labels { "Name", "Value", "Lock", "Actions" };
   setHeaderLabels(labels);
   header()->setStretchLastSection(false);
-  header()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
-  header()->setSectionResizeMode(1,QHeaderView::Stretch);
-  header()->setSectionResizeMode(2,QHeaderView::ResizeToContents);
-  header()->setSectionResizeMode(3,QHeaderView::ResizeToContents);
+  header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  header()->setSectionResizeMode(1, QHeaderView::Stretch);
+  header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
 
   if (verbose) std::cout << "ConfTreeWidget: Created in thread " << std::this_thread::get_id () << std::endl;
 

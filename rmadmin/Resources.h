@@ -12,11 +12,20 @@ struct Resources {
   QPixmap applicationIcon;
   QPixmap lockedPixmap;
   QPixmap unlockedPixmap;
+  QPixmap playPixmap;
+  QPixmap waitPixmap;
+  QPixmap errorPixmap;
+  QPixmap infoPixmap;
 
   Resources() :
     applicationIcon(":/rmadmin.ico"),
     lockedPixmap(":/pix/locked.svg"),
-    unlockedPixmap(":/pix/unlocked.svg") {}
+    unlockedPixmap(":/pix/unlocked.svg"),
+    playPixmap(":/pix/play.svg"),
+    waitPixmap(":/pix/wait.svg"),
+    errorPixmap(":/pix/error.svg"),
+    infoPixmap(":/pix/info.svg")
+  {}
 
   static Resources *get() {
     if (resources) return resources;

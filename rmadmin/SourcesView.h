@@ -20,9 +20,14 @@ public:
   SourcesView(SourcesModel *, QWidget *parent = nullptr);
 
 public slots:
-  // Request that this program be Shown/focused
-  void showFile(QString const sourceName);
+  // Request that this program be Shown/focused in the code editor:
+  void showFile(conf::Key const &);
+  // Close this program from the code editor:
   void closeSource(int idx);
+  // Popup that displays the full content of the info of that source:
+  void openInfo(QModelIndex const &);
+  // Create a new program with that source
+  void runSource(QModelIndex const &);
 };
 
 #endif

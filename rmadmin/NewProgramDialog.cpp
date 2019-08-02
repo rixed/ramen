@@ -11,11 +11,12 @@
 
 static conf::Key rc_key("target_config");
 
-NewProgramDialog::NewProgramDialog(QWidget *parent) :
+NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   QDialog(parent),
   mustSave(false)
 {
-  editor = new RCEntryEditor;
+  bool const sourceEditable = sourceName.isEmpty();
+  editor = new RCEntryEditor(sourceEditable, sourceName);
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
