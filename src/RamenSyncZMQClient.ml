@@ -427,20 +427,17 @@ let may_send_ping ?while_ () =
  * Returns the number of messages that have been read. *)
 let process_in ?(while_=always) ?(single=false) _clt =
   let session = get_session () in
-  let rec loop msg_count =
+  let rec loop () =
     if while_ () then (
       may_send_ping ~while_ () ;
       match recv_cmd session.clt with
       | exception Unix.(Unix_error (EAGAIN, _, _)) ->
-          msg_count
+          ()
       | msg ->
           Client.process_msg session.clt msg ;
-          let msg_count = msg_count + 1 in
-          if single then msg_count else loop msg_count
-    ) else
-      msg_count in
-  let msg_count = loop 0 in
-  !logger.debug "Processed %d messages" msg_count
+          if not single then loop ()
+    ) in
+  loop ()
 
 let process_until ~while_ clt =
   while while_ () do
