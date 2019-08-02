@@ -277,17 +277,17 @@ let run_sync src_path conf (program_name : N.program) replace report_period
              on_site debug params =
   let done_ = ref false in
   let while_ () = !Processes.quit = None && not !done_ in
-  let src_path = Files.remove_ext src_path in
+  let src_path_noext = Files.remove_ext src_path in
   let topics =
     [ "target_config" ;
-      "sources/"^ (src_path :> string) ^ "/info" ] in
+      "sources/"^ (src_path_noext :> string) ^ "/info" ] in
   let recvtimeo = 10. in (* Should not last that long though *)
   start_sync conf ~while_ ~topics ~recvtimeo (fun clt ->
     let open RamenSync in
     get_key clt ~while_ Key.TargetConfig (fun v fin ->
       match v with
       | Value.TargetConfig rcs ->
-          let src_key = Key.(Sources (src_path, "info")) in
+          let src_key = Key.(Sources (src_path_noext, "info")) in
           get_key clt ~while_ src_key (fun v fin' ->
             let fin () = fin' () ; fin () in
             match v with
