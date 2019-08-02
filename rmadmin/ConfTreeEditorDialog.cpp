@@ -10,7 +10,8 @@
 
 ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *kv, QWidget *parent) :
   QDialog(parent),
-  key(key_)
+  key(key_),
+  can_write(kv->can_write)
 {
   QLabel *keyLabel = new QLabel(tr("Key:"));
   /* Before long we will want to edit key names: */
@@ -20,10 +21,13 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
 
   editor = kv->val->editorWidget(key);
   QDialogButtonBox *buttonBox =
-    new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    new QDialogButtonBox(
+      can_write ? QDialogButtonBox::Ok | QDialogButtonBox::Cancel :
+                  QDialogButtonBox::Close);  // Note: Close will reject
 
-  connect(buttonBox, &QDialogButtonBox::accepted,
-          this, &ConfTreeEditorDialog::save);
+  if (can_write)
+    connect(buttonBox, &QDialogButtonBox::accepted,
+            this, &ConfTreeEditorDialog::save);
   /* Connect first the cancel button to the normal reject signal, and
    * then this signal to our cancel slot, so that cancel is also called
    * when user presses the escape key: */
@@ -35,7 +39,7 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
   /* The editor will start in read-only mode (unless we already own the
    * value). Reception of the lock ack from the confserver will turn it
    * into read-write mode: */
-  conf::askLock(key);
+  if (can_write) conf::askLock(key);
 
   /* Now the layout: */
   QHBoxLayout *keyLayout = new QHBoxLayout;
@@ -56,11 +60,11 @@ void ConfTreeEditorDialog::save()
 {
   std::shared_ptr<conf::Value const> v(editor->getValue());
   if (v) conf::askSet(key, v); // read-only editors return no value
-  conf::askUnlock(key);
+  if (can_write) conf::askUnlock(key);
   emit QDialog::accept();
 }
 
 void ConfTreeEditorDialog::cancel()
 {
-  conf::askUnlock(key);
+  if (can_write) conf::askUnlock(key);
 }

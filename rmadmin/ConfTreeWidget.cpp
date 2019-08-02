@@ -66,18 +66,21 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   QWidget *widget = new QWidget;
   QHBoxLayout *layout = new QHBoxLayout;
   layout->setContentsMargins(0, 0, 0, 0);
-  QPushButton *editButton = new QPushButton("edit");
-  layout->addWidget(editButton);
-  QPushButton *delButton = new QPushButton("delete");
-  layout->addWidget(delButton);
   widget->setLayout(layout);
 
+  QPushButton *editButton = new QPushButton(kv->can_write ? "edit":"view");
+  layout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked, this, [this, k, kv](bool) {
     openEditorWindow(k, kv);
   });
-  connect(delButton, &QPushButton::clicked, this, [this, k](bool) {
-    deleteClicked(k);
-  });
+
+  if (kv->can_del) {
+    QPushButton *delButton = new QPushButton("delete");
+    layout->addWidget(delButton);
+    connect(delButton, &QPushButton::clicked, this, [this, k](bool) {
+      deleteClicked(k);
+    });
+  }
 
   return widget;
 }

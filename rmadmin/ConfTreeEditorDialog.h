@@ -12,6 +12,7 @@ class ConfTreeEditorDialog : public QDialog
 
   AtomicWidget *editor;
   conf::Key const key;
+  bool can_write;
 
 public:
   ConfTreeEditorDialog(conf::Key const &k, KValue const *kv, QWidget *parent = nullptr);
