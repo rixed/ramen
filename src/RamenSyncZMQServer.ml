@@ -228,11 +228,11 @@ let send ?block zock peer msg =
 
 let send_msg zocks ?block msg_sockets =
   Enum.iter (fun ((zock_idx, peer as socket), msg) ->
-    !logger.debug "> Srv msg to %S on zocket#%d: %a"
-      peer zock_idx SrvMsg.print msg ;
-    let msg = SrvMsg.to_string msg in
     let zock, _do_authn = zocks.(zock_idx) in
     let session = Hashtbl.find sessions socket in
+    !logger.debug "> Srv msg to %a on zocket#%d: %a"
+      User.print session.user zock_idx SrvMsg.print msg ;
+    let msg = SrvMsg.to_string msg in
     let msg = Authn.wrap session.authn msg in
     send ?block zock peer msg
   ) msg_sockets
@@ -302,8 +302,6 @@ let zock_step srv zock zock_idx do_authn =
               send zock peer errmsg
           | Ok str ->
               let msg_id, cmd as msg = CltMsg.of_string str in
-              !logger.info "< Clt msg from %S; %a"
-                peer CltMsg.print msg ;
               let clt_pub_key =
                 match session.authn with
                 | Authn.Secure { peer_pub_key ; _ } ->
@@ -311,6 +309,10 @@ let zock_step srv zock zock_idx do_authn =
                                        "" peer_pub_key
                 | Authn.Insecure ->
                     "" in
+              !logger.info "< Clt msg from %a with pubkey '%a': %a"
+                User.print session.user
+                User.print_pub_key clt_pub_key
+                CltMsg.print msg ;
               (match validate_cmd cmd with
               | exception Exit ->
                   !logger.info "Ignoring"

@@ -71,6 +71,8 @@ struct
     let subscriber_sockets =
       Selector.matches k t.user_selectors |>
       Enum.fold (fun sockets sel_id ->
+        !logger.debug "Selector %a matched key %a"
+          Selector.print_id sel_id Key.print k ;
         Hashtbl.find_default t.subscriptions sel_id Map.empty |>
         Map.union sockets
       ) Map.empty in
@@ -296,6 +298,10 @@ struct
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
     let id = Selector.add t.user_selectors sel in
+    !logger.info "User %a has selection %a for %a"
+      User.print u
+      Selector.print_id id
+      Selector.print sel ;
     let def = Map.singleton socket u in
     Hashtbl.modify_def def id (Map.add socket u) t.subscriptions
 
@@ -331,12 +337,8 @@ struct
     and v = Value.err_msg i str in
     set t User.internal k v
 
-  let process_msg t socket u clt_pub_key (i, cmd as msg) =
+  let process_msg t socket u clt_pub_key (i, cmd) =
     try
-      !logger.debug "Received msg %a from %a with public key '%a'"
-        CltMsg.print msg
-        User.print u
-        User.print_pub_key clt_pub_key ;
       let u =
         match cmd with
         | CltMsg.Auth uid ->

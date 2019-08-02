@@ -148,6 +148,7 @@ sig
   type set
   val make_set : unit -> set
   type id (* Identifies a selector in a set *)
+  val print_id : 'a BatIO.output -> id -> unit
   val add : set -> t -> id
   val matches : Key.t -> set -> id Enum.t
 end

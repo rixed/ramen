@@ -355,6 +355,8 @@ struct
 
   type id = int
 
+  let print_id = Int.print
+
   let add s t =
     try List.assoc t s.lst
     with Not_found ->
