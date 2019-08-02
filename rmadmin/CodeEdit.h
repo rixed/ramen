@@ -7,6 +7,7 @@
 class ProgramItem;
 class KTextEdit;
 class AtomicForm;
+class QLabel;
 
 class CodeEdit : public QWidget
 {
@@ -17,9 +18,13 @@ class CodeEdit : public QWidget
 
   KTextEdit *textEdit;
   AtomicForm *editorForm;
+  QLabel *compilationError;
 
 public:
   CodeEdit(conf::Key const &, QWidget *parent = nullptr);
+
+protected slots:
+  void setError(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double);
 };
 
 #endif

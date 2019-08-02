@@ -137,16 +137,6 @@ conf::Key const keyOfSourceName(QString const &sourceName, char const *newExtens
   return conf::Key("sources/" + f.substr(0, i) + "/" + ext);
 }
 
-conf::Key const changeSourceKeyExt(conf::Key const &k, char const *newExtension)
-{
-  size_t lst = k.s.rfind('/');
-  if (lst == std::string::npos) {
-    std::cout << "Key " << k << " is invalid for a source" << std::endl;
-    assert(!"Invalid source key");
-  }
-  return conf::Key(k.s.substr(0, lst + 1) + newExtension);
-}
-
 void SourcesModel::addSource(conf::Key const &k, std::shared_ptr<conf::Value const>)
 {
   createAll(k, root);
@@ -253,7 +243,7 @@ std::shared_ptr<conf::SourceInfo const> SourcesModel::sourceInfoOfItem(TreeItem 
   SourcesModel::FileItem const *file =
     dynamic_cast<SourcesModel::FileItem const *>(item);
 
-  conf::Key const infoKey = changeSourceKeyExt(file->sourceKey, "info");
+  conf::Key const infoKey = conf::changeSourceKeyExt(file->sourceKey, "info");
 
   KValue const *kv = nullptr;
   conf::kvs_lock.lock_shared();

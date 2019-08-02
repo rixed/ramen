@@ -91,6 +91,4 @@ QString const baseNameOfKey(conf::Key const &);
 // The other way around:
 conf::Key const keyOfSourceName(QString const &, char const *newExtension = nullptr);
 
-conf::Key const changeSourceKeyExt(conf::Key const &, char const *newExtension);
-
 #endif

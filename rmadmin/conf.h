@@ -40,6 +40,9 @@ void askDel(conf::Key const &);
  * for preexisting values. */
 void autoconnect(
   std::string const &pattern, std::function<void (conf::Key const &, KValue const *)>);
+
+Key const changeSourceKeyExt(Key const &, char const *newExtension);
+
 };
 
 #endif

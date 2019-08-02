@@ -207,6 +207,16 @@ static void do_autoconnect(conf::Key const &key, KValue const *kv)
   }
 }
 
+Key const changeSourceKeyExt(Key const &k, char const *newExtension)
+{
+  size_t lst = k.s.rfind('/');
+  if (lst == std::string::npos) {
+    std::cerr << "Key " << k << " is invalid for a source" << std::endl;
+    assert(!"Invalid source key");
+  }
+  return Key(k.s.substr(0, lst + 1) + newExtension);
+}
+
 };
 
 #include <cassert>
