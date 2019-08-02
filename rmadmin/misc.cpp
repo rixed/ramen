@@ -78,7 +78,7 @@ QString stringOfDuration(double d)
 
 void emptyLayout(QLayout *layout)
 {
-  while (layout->count()) {
-    delete layout->itemAt(0);
-  }
+  QLayoutItem *item;
+  while ((item = layout->takeAt(0)) != nullptr)
+    delete item;
 }
