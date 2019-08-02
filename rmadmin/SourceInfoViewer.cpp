@@ -80,11 +80,13 @@ bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value c
         QFormLayout *columns = new QFormLayout;
         l->addLayout(columns);
         for (unsigned c = 0; c < func.out_type->structure->numColumns(); c ++) {
-          // TODO: factors!
+          QString const name(func.out_type->structure->columnName(c));
+          bool const isFactor = func.factors.contains(name);
+
           std::shared_ptr<RamenType const> subtype =
             func.out_type->structure->columnType(c);
           columns->addRow(
-            func.out_type->structure->columnName(c) + ":",
+            name + (isFactor ? " [FACTOR]:" : ":"),
             new QLabel(
               subtype ?
                 subtype->toQString() :
