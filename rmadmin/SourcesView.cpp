@@ -1,7 +1,7 @@
 #include <QSplitter>
 #include <QTreeView>
 #include <QHeaderView>
-#include <QTabWidget>
+#include <QLabel>
 #include "conf.h"
 #include "CodeEdit.h"
 #include "widgetTools.h"
@@ -35,16 +35,15 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   connect(runButton, &ButtonDelegate::clicked,
           this, &SourcesView::runSource);
 
-  setStretchFactor(0, 0);
+  editor = new CodeEdit(this);
+  editor->hide(); // until a file is selected
+  noSelection =
+    new QLabel(tr("Select a source file on the left to view/edit it"), this);
 
-  sourceTabs = new QTabWidget(this);
-  sourceTabs->setTabsClosable(true);
-  connect(sourceTabs, &QTabWidget::tabCloseRequested,
-          this, &SourcesView::closeSource);
   setStretchFactor(1, 1);
 
   // Connect selection of a program to the display of its code:
-  connect(sourcesList, &QAbstractItemView::activated,
+  connect(sourcesList, &QAbstractItemView::clicked,
           this, [this](QModelIndex const &index) {
     if (! index.isValid()) return;
 
@@ -58,16 +57,9 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 
 void SourcesView::showFile(conf::Key const &key)
 {
-  QString const sourceName(sourceNameOfKey(key));
-  if (tryFocusTab(sourceTabs, sourceName)) return;
-  CodeEdit *editor = new CodeEdit(key);
-  sourceTabs->addTab(editor, sourceName);
-  focusLastTab(sourceTabs);
-}
-
-void SourcesView::closeSource(int idx)
-{
-  sourceTabs->removeTab(idx);
+  editor->setKey(key);
+  noSelection->hide();
+  editor->show();
 }
 
 void SourcesView::openInfo(QModelIndex const &index)

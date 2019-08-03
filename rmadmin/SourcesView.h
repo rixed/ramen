@@ -4,15 +4,17 @@
 #include "conf.h"
 
 class QTreeView;
-class QTabWidget;
 class SourcesModel;
+class CodeEdit;
+class QLabel;
 
 class SourcesView : public QSplitter
 {
   Q_OBJECT
 
   QTreeView *sourcesList;
-  QTabWidget *sourceTabs;
+  CodeEdit *editor;
+  QLabel *noSelection;
 
   SourcesModel *sourcesModel;
 
@@ -22,8 +24,6 @@ public:
 public slots:
   // Request that this program be Shown/focused in the code editor:
   void showFile(conf::Key const &);
-  // Close this program from the code editor:
-  void closeSource(int idx);
   // Popup that displays the full content of the info of that source:
   void openInfo(QModelIndex const &);
   // Create a new program with that source
