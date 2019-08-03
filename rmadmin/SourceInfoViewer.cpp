@@ -2,6 +2,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QLabel>
 #include <QToolBox>
 #include "misc.h"
@@ -18,7 +20,7 @@ SourceInfoViewer::SourceInfoViewer(conf::Key const &k, QWidget *parent) :
   layout = new QVBoxLayout;
   QWidget *w = new QWidget;
   w->setLayout(layout);
-  w->setMinimumHeight(650);
+  w->setMinimumHeight(400);
   setCentralWidget(w);
 
   SET_INITIAL_VALUE;
@@ -77,21 +79,29 @@ bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value c
 
         l->addWidget(new QLabel(tr("Output Type:")));
         // One line per "column" of the out_type:
-        QFormLayout *columns = new QFormLayout;
-        l->addLayout(columns);
-        for (unsigned c = 0; c < func.out_type->structure->numColumns(); c ++) {
+        QTableWidget *columns = new QTableWidget;
+        l->addWidget(columns);
+        columns->setColumnCount(3);
+        columns->setHorizontalHeaderLabels({ "Name", "Type", "Low Card." });
+        columns->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        columns->verticalHeader()->setVisible(false);
+        unsigned numColumns(func.out_type->structure->numColumns());
+        columns->setRowCount(numColumns);
+
+        for (unsigned c = 0; c < numColumns; c ++) {
           QString const name(func.out_type->structure->columnName(c));
           bool const isFactor = func.factors.contains(name);
 
           std::shared_ptr<RamenType const> subtype =
             func.out_type->structure->columnType(c);
-          columns->addRow(
-            name + (isFactor ? " [FACTOR]:" : ":"),
-            new QLabel(
-              subtype ?
-                subtype->toQString() :
-                func.out_type->toQString()));
+          columns->setItem(c, 0, new QTableWidgetItem(name));
+          columns->setItem(c, 1, new QTableWidgetItem(
+            subtype ?
+              subtype->toQString() :
+              func.out_type->toQString()));
+          columns->setItem(c, 2, new QTableWidgetItem(isFactor ? "✓":""));
         }
+        columns->resizeColumnsToContents();
 
         QLabel *sign = new QLabel(tr("Signature: %1").arg(func.signature));
         l->addWidget(sign);
