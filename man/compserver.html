@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align=center>RAMEN-LINKS</h1>
+<h1 align=center>RAMEN-COMPSERVER</h1>
 
 
 
@@ -65,43 +65,26 @@
 <h2>NAME</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">Ramen-links -
-List all in use ring buffers with some statistics.</p>
+
+<p style="margin-left:11%; margin-top: 1em">Ramen-compserver
+- Service that (pre)compiles programs.</p>
 
 <a name="SYNOPSIS"></a>
 <h2>SYNOPSIS</h2>
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>Ramen
-links</b> [<i>OPTION</i>]... [<i>PATTERN</i>]</p>
-
-<a name="ARGUMENTS"></a>
-<h2>ARGUMENTS</h2>
-
-
-<p style="margin-left:11%; margin-top: 1em"><i>PATTERN</i>
-(absent=*)</p>
-
-<p style="margin-left:17%;">Display only those workers.</p>
+compserver</b> [<i>OPTION</i>]...</p>
 
 <a name="OPTIONS"></a>
 <h2>OPTIONS</h2>
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>-a</b>,
-<b>--show-all</b>, <b>--all</b> (absent
-<b>RAMEN_SHOW_ALL</b> env)</p>
 
-<p style="margin-left:17%;">Display information on all
-links.</p>
+<p style="margin-left:11%; margin-top: 1em"><b>--daemonize</b>
+(absent <b>RAMEN_DAEMONIZE</b> env)</p>
 
-<p style="margin-left:11%;"><b>-h</b> [<i>VAL</i>],
-<b>--with-header</b>[=<i>VAL</i>],
-<b>--header</b>[=<i>VAL</i>] <br>
-(default=4611686018427387903) (absent=0)</p>
-
-<p style="margin-left:17%;">Output the header line in
-CSV.</p>
+<p style="margin-left:17%;">Daemonize.</p>
 
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
@@ -113,34 +96,42 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 &lsquo;plain' whenever the <b>TERM</b> env var is
 &lsquo;dumb' or undefined.</p>
 
-<p style="margin-left:11%;"><b>--no-abbreviation</b>
-(absent <b>RAMEN_NO_ABBREVIATION</b> env)</p>
 
-<p style="margin-left:17%;">Do not abbreviate path
-names.</p>
+<p style="margin-left:11%;"><b>--max-simultaneous-compilations</b>=<i>VAL</i>,
+<b>--max-simult-compilations</b>=<i>VAL</i> <br>
+(absent=4 or <b>RAMEN_MAX_SIMULT_COMPILATIONS</b> env)</p>
 
-<p style="margin-left:11%;"><b>--pretty</b></p>
+<p style="margin-left:17%;">Max number of compilations to
+perform simultaneously.</p>
 
-<p style="margin-left:17%;">Prettier output.</p>
+<p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
+<b>--smt-solver</b>=<i>VAL</i> (absent=/usr/local/bin/z3
+-t:60000 -smt2 <br>
+%s or <b>RAMEN_SMT_SOLVER</b> env)</p>
 
-<p style="margin-left:11%;"><b>-s</b> <i>COL</i>,
-<b>--sort</b>=<i>COL</i> (absent=1)</p>
+<p style="margin-left:17%;">Command to run the SMT solver
+(with %s in place of the SMT2 file name).</p>
 
-<p style="margin-left:17%;">Sort the operation list
-according to this column (first column -name- is 1, then #in
-is 2...).</p>
+<p style="margin-left:11%;"><b>--to-stdout</b>,
+<b>--to-stderr</b>, <b>--stdout</b>, <b>--stderr</b> (absent
+<b><br>
+RAMEN_LOG_TO_STDERR</b> env)</p>
 
-<p style="margin-left:11%;"><b>-t</b> <i>N</i>,
-<b>--top</b>=<i>N</i></p>
+<p style="margin-left:17%;">Log onto stdout/stderr instead
+of a file.</p>
 
-<p style="margin-left:17%;">Truncate the list of operations
-after the first N entries.</p>
+<p style="margin-left:11%;"><b>--to-syslog</b>,
+<b>--syslog</b> (absent <b>RAMEN-LOG-SYSLOG</b> env)</p>
 
-<p style="margin-left:11%;"><b>--tree</b>,
-<b>--as-tree</b></p>
+<p style="margin-left:17%;">log using syslog.</p>
 
-<p style="margin-left:17%;">Display links as a tree (imply
---show-all).</p>
+
+<p style="margin-left:11%;"><b>--use-external-compiler</b>,
+<b>--external-compiler</b> (absent <b><br>
+RAMEN_USE_EMBEDDED_COMPILER</b> env)</p>
+
+<p style="margin-left:17%;">Call external compiler rather
+than using embedded one.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -161,10 +152,31 @@ RAMEN_LIBS</b> env)</p>
 <p style="margin-left:17%;">Directory where to find
 libraries for the embedded compiler.</p>
 
+
+<p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
+(default=localhost) (absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:17%;">host:port of Ramen
+confserver.</p>
+
+
+<p style="margin-left:11%;"><b>--confserver-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CONFSERVER_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the confserver
+public key is stored.</p>
+
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
 <p style="margin-left:17%;">Increase verbosity.</p>
+
+<p style="margin-left:11%;"><b>-i</b> <i>VAL</i>,
+<b>--identity</b>=<i>VAL</i> (absent
+<b>RAMEN_CLIENT_IDENTITY</b> env)</p>
+
+<p style="margin-left:17%;">Location of the file storing
+user's identity</p>
 
 
 <p style="margin-left:11%;"><b>--initial-export-duration</b>=<i>VAL</i>
@@ -185,6 +197,19 @@ in distributed mode and what sites play the master role.</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc.</p>
+
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
+(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+private key is stored. This file must not be readable or
+writable by others.</p>
+
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-q</b>, <b>--quiet</b>
 (absent <b>RAMEN_QUIET</b> env)</p>
@@ -215,6 +240,12 @@ generator with (will use a random one if unset).</p>
 
 <p style="margin-left:17%;">The name of this site.</p>
 
+<p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
+(absent=_compserver)</p>
+
+<p style="margin-left:17%;">Login name to connect to the
+confserver.</p>
+
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
@@ -225,11 +256,50 @@ generator with (will use a random one if unset).</p>
 
 
 <p style="margin-left:11%; margin-top: 1em">These
-environment variables affect the execution of <b>links</b>:
-<b><br>
+environment variables affect the execution of
+<b>compserver</b>: <b><br>
 HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN-LOG-SYSLOG</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-syslog</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_IDENTITY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--identity</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PRIV_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--priv-key</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PUB_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--pub-key</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver-key</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_DAEMONIZE</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--daemonize</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
@@ -257,15 +327,20 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--bundle-dir</b>.</p>
 
+<p style="margin-left:11%;"><b>RAMEN_LOG_TO_STDERR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--to-stderr</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
 
 <p style="margin-left:17%;">See option <b>--master</b>.</p>
 
 
-<p style="margin-left:11%;"><b>RAMEN_NO_ABBREVIATION</b></p>
+<p style="margin-left:11%;"><b>RAMEN_MAX_SIMULT_COMPILATIONS</b></p>
 
 <p style="margin-left:17%;">See option
-<b>--no-abbreviation</b>.</p>
+<b>--max-simult-compilations</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 
@@ -281,10 +356,16 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--reuse-prev-files</b>.</p>
 
-<p style="margin-left:11%;"><b>RAMEN_SHOW_ALL</b></p>
+<p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
 
 <p style="margin-left:17%;">See option
-<b>--show-all</b>.</p>
+<b>--smt-solver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_USE_EMBEDDED_COMPILER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--use-external-compiler</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 

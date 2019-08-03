@@ -67,7 +67,7 @@
 
 
 <p style="margin-left:11%; margin-top: 1em">Ramen-timeseries
-- Extract a time series from an operation</p>
+- Extract a time series from an operation.</p>
 
 <a name="SYNOPSIS"></a>
 <h2>SYNOPSIS</h2>
@@ -85,7 +85,7 @@ timeseries</b> [<i>OPTION</i>]... <i>OPERATION</i>...</p>
 (required)</p>
 
 <p style="margin-left:17%;">function fully qualified name
-and field names, or code statement</p>
+and field names, or code statement.</p>
 
 <a name="OPTIONS"></a>
 <h2>OPTIONS</h2>
@@ -95,19 +95,19 @@ and field names, or code statement</p>
 <p style="margin-left:11%; margin-top: 1em"><b>--bucket-time</b>=<i>begin|middle|end</i>
 (absent=begin)</p>
 
-<p style="margin-left:17%;">Selected bucket time</p>
+<p style="margin-left:17%;">Selected bucket time.</p>
 
 
 <p style="margin-left:11%;"><b>--consolidation</b>=<i>min|max|avg|sum</i>
 (absent=avg)</p>
 
-<p style="margin-left:17%;">Consolidation function</p>
+<p style="margin-left:17%;">Consolidation function.</p>
 
 <p style="margin-left:11%;"><b>-f</b> <i>FIELD</i>,
 <b>--factor</b>=<i>FIELD</i></p>
 
-<p style="margin-left:17%;">specify which fields to use as
-factors/categorical variables</p>
+<p style="margin-left:17%;">Specify which fields to use as
+factors/categorical variables.</p>
 
 <p style="margin-left:11%;"><b>-h</b> [<i>VAL</i>],
 <b>--with-header</b>[=<i>VAL</i>],
@@ -115,7 +115,7 @@ factors/categorical variables</p>
 (default=4611686018427387903) (absent=0)</p>
 
 <p style="margin-left:17%;">Output the header line in
-CSV</p>
+CSV.</p>
 
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
@@ -133,33 +133,33 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 (absent=4 or <b>RAMEN_MAX_SIMULT_COMPILATIONS</b> env)</p>
 
 <p style="margin-left:17%;">Max number of compilations to
-perform simultaneously</p>
+perform simultaneously.</p>
 
 <p style="margin-left:11%;"><b>-n</b> <i>POINTS</i>,
 <b>--num-points</b>=<i>POINTS</i> (absent=0)</p>
 
-<p style="margin-left:17%;">Number of points returned</p>
+<p style="margin-left:17%;">Number of points returned.</p>
 
 <p style="margin-left:11%;"><b>--null</b>=<i>VAL</i>
 (absent=&lt;NULL&gt; or <b>RAMEN_CSV_NULL</b> env)</p>
 
 <p style="margin-left:17%;">Representation of NULL
-values</p>
+values.</p>
 
 <p style="margin-left:11%;"><b>--pretty</b></p>
 
-<p style="margin-left:17%;">Prettier output</p>
+<p style="margin-left:17%;">Prettier output.</p>
 
 <p style="margin-left:11%;"><b>--separator</b>=<i>VAL</i>
 (absent=, or <b>RAMEN_CSV_SEPARATOR</b> env)</p>
 
-<p style="margin-left:17%;">Field separator</p>
+<p style="margin-left:17%;">Field separator.</p>
 
 
 <p style="margin-left:11%;"><b>--since</b>=<i>SINCE</i></p>
 
 <p style="margin-left:17%;">Timestamp of the first
-point</p>
+point.</p>
 
 <p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
 <b>--smt-solver</b>=<i>VAL</i> (absent=/usr/local/bin/z3
@@ -167,18 +167,20 @@ point</p>
 %s or <b>RAMEN_SMT_SOLVER</b> env)</p>
 
 <p style="margin-left:17%;">Command to run the SMT solver
-(with %s in place of the SMT2 file name)</p>
+(with %s in place of the SMT2 file name).</p>
 
 
 <p style="margin-left:11%;"><b>--time-step</b>=<i>DURATION</i>
 (absent=0.)</p>
 
-<p style="margin-left:17%;">Duration between two points</p>
+<p style="margin-left:17%;">Duration between two
+points.</p>
 
 
 <p style="margin-left:11%;"><b>--until</b>=<i>UNTIL</i></p>
 
-<p style="margin-left:17%;">Timestamp of the last point</p>
+<p style="margin-left:17%;">Timestamp of the last
+point.</p>
 
 
 <p style="margin-left:11%;"><b>--use-external-compiler</b>,
@@ -186,7 +188,7 @@ point</p>
 RAMEN_USE_EMBEDDED_COMPILER</b> env)</p>
 
 <p style="margin-left:17%;">Call external compiler rather
-than using embedded one</p>
+than using embedded one.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -196,7 +198,7 @@ than using embedded one</p>
 VALUE</i>, <b>--where</b>=<i>FIELD op VALUE</i></p>
 
 <p style="margin-left:17%;">Output only tuples which given
-field match the given value</p>
+field match the given value.</p>
 
 <a name="COMMON OPTIONS"></a>
 <h2>COMMON OPTIONS</h2>
@@ -211,76 +213,106 @@ or <b><br>
 RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler</p>
+libraries for the embedded compiler.</p>
 
-<p style="margin-left:11%;"><b>--confserver</b>=<i>VAL</i>
-(absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
+(default=localhost) (absent <b>RAMEN_CONFSERVER</b> env)</p>
 
 <p style="margin-left:17%;">host:port of Ramen
-confserver</p>
+confserver.</p>
+
+
+<p style="margin-left:11%;"><b>--confserver-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CONFSERVER_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the confserver
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
-<p style="margin-left:17%;">Increase verbosity</p>
+<p style="margin-left:17%;">Increase verbosity.</p>
+
+<p style="margin-left:11%;"><b>-i</b> <i>VAL</i>,
+<b>--identity</b>=<i>VAL</i> (absent
+<b>RAMEN_CLIENT_IDENTITY</b> env)</p>
+
+<p style="margin-left:17%;">Location of the file storing
+user's identity</p>
 
 
 <p style="margin-left:11%;"><b>--initial-export-duration</b>=<i>VAL</i>
 (absent=0. or <b>RAMEN_INITIAL_EXPORT</b> env)</p>
 
 <p style="margin-left:17%;">How long to export a node
-output after startup before a client asks for it</p>
-
-<p style="margin-left:11%;"><b>--login</b>=<i>VAL</i>
-(absent <b>USER</b> env)</p>
-
-<p style="margin-left:17%;">login for the confserver</p>
+output after startup before a client asks for it.</p>
 
 <p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
 
 <p style="margin-left:17%;">Indicates that Ramen must run
-in distributed mode and what sites play the master role</p>
+in distributed mode and what sites play the master role.</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
 (absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
-persisted on disc</p>
+persisted on disc.</p>
+
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
+(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+private key is stored. This file must not be readable or
+writable by others.</p>
+
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-q</b>, <b>--quiet</b>
 (absent <b>RAMEN_QUIET</b> env)</p>
 
-<p style="margin-left:17%;">Decrease verbosity</p>
+<p style="margin-left:17%;">Decrease verbosity.</p>
 
 <p style="margin-left:11%;"><b>--reuse-prev-files</b>
 (absent <b>RAMEN_REUSE_PREV_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Reuse existing source files</p>
+<p style="margin-left:17%;">Reuse existing source
+files.</p>
 
 <p style="margin-left:11%;"><b>-S</b>,
 <b>--keep-temp-files</b> (absent
 <b>RAMEN_KEEP_TEMP_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Keep temporary files</p>
+<p style="margin-left:17%;">Keep temporary files.</p>
 
 <p style="margin-left:11%;"><b>--seed</b>=<i>VAL</i>,
 <b>--rand-seed</b>=<i>VAL</i> (absent
 <b>RAMEN_RANDOM_SEED</b> env)</p>
 
 <p style="margin-left:17%;">Seed to initialize the random
-generator with (will use a random one if unset)</p>
+generator with (will use a random one if unset).</p>
 
 <p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
 (absent <b>HOSTNAME</b> env)</p>
 
-<p style="margin-left:17%;">The name of this site</p>
+<p style="margin-left:17%;">The name of this site.</p>
+
+<p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
+(absent <b>USER</b> env)</p>
+
+<p style="margin-left:17%;">Login name to connect to the
+confserver.</p>
 
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
-<p style="margin-left:17%;">Force variants</p>
+<p style="margin-left:17%;">Force variants.</p>
 
 <a name="ENVIRONMENT"></a>
 <h2>ENVIRONMENT</h2>
@@ -293,10 +325,34 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_IDENTITY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--identity</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PRIV_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--priv-key</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PUB_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--pub-key</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--confserver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver-key</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_CSV_NULL</b></p>
 
@@ -375,7 +431,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>USER</b></p>
 
-<p style="margin-left:17%;">See option <b>--login</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--username</b>.</p>
 </div>
 </body>
 </html>

@@ -66,7 +66,7 @@
 
 
 <p style="margin-left:11%; margin-top: 1em">Ramen-run - Run
-one (or several) compiled program(s)</p>
+one (or several) compiled program(s).</p>
 
 <a name="SYNOPSIS"></a>
 <h2>SYNOPSIS</h2>
@@ -82,7 +82,7 @@ run</b> [<i>OPTION</i>]... <i>FILE</i></p>
 <p style="margin-left:11%; margin-top: 1em"><i>FILE</i>
 (required)</p>
 
-<p style="margin-left:17%;">Binary file to run</p>
+<p style="margin-left:17%;">Binary file to run.</p>
 
 <a name="OPTIONS"></a>
 <h2>OPTIONS</h2>
@@ -91,7 +91,7 @@ run</b> [<i>OPTION</i>]... <i>FILE</i></p>
 
 <p style="margin-left:11%; margin-top: 1em"><b>--as</b>=<i>NAME</i></p>
 
-<p style="margin-left:17%;">resulting program name</p>
+<p style="margin-left:17%;">Resulting program name.</p>
 
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
@@ -106,37 +106,37 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 <p style="margin-left:11%;"><b>--kill-if-disabled</b></p>
 
 <p style="margin-left:17%;">If the program is disabled by a
-run-if clause then kills it instead</p>
+run-if clause then kills it instead.</p>
 
 <p style="margin-left:11%;"><b>--on-site</b>=<i>VAL</i>
 (absent=*)</p>
 
-<p style="margin-left:17%;">sites where this worker has to
-run</p>
+<p style="margin-left:17%;">Sites where this worker has to
+run.</p>
 
 <p style="margin-left:11%;"><b>-p</b> <i>PARAM=VALUE</i>,
 <b>--parameter</b>=<i>PARAM=VALUE</i></p>
 
 <p style="margin-left:17%;">Override parameter's P default
-value with V</p>
+value with V.</p>
 
 <p style="margin-left:11%;"><b>-r</b>, <b>--replace</b></p>
 
 <p style="margin-left:17%;">If a program with the same name
-is already running, replace it</p>
+is already running, replace it.</p>
 
 
 <p style="margin-left:11%;"><b>--report-period</b>=<i>VAL</i>
 (absent=30. or <b>RAMEN_REPORT_PERIOD</b> env)</p>
 
 <p style="margin-left:17%;">Number of seconds between two
-stats report from each worker</p>
+stats report from each worker.</p>
 
 <p style="margin-left:11%;"><b>--src-file</b>=<i>VAL</i>,
 <b>--source-file</b>=<i>VAL</i></p>
 
-<p style="margin-left:17%;">file from which the worker can
-be rebuilt</p>
+<p style="margin-left:17%;">File from which the worker can
+be rebuilt.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -155,76 +155,106 @@ or <b><br>
 RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler</p>
+libraries for the embedded compiler.</p>
 
-<p style="margin-left:11%;"><b>--confserver</b>=<i>VAL</i>
-(absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
+(default=localhost) (absent <b>RAMEN_CONFSERVER</b> env)</p>
 
 <p style="margin-left:17%;">host:port of Ramen
-confserver</p>
+confserver.</p>
+
+
+<p style="margin-left:11%;"><b>--confserver-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CONFSERVER_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the confserver
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
-<p style="margin-left:17%;">Increase verbosity</p>
+<p style="margin-left:17%;">Increase verbosity.</p>
+
+<p style="margin-left:11%;"><b>-i</b> <i>VAL</i>,
+<b>--identity</b>=<i>VAL</i> (absent
+<b>RAMEN_CLIENT_IDENTITY</b> env)</p>
+
+<p style="margin-left:17%;">Location of the file storing
+user's identity</p>
 
 
 <p style="margin-left:11%;"><b>--initial-export-duration</b>=<i>VAL</i>
 (absent=0. or <b>RAMEN_INITIAL_EXPORT</b> env)</p>
 
 <p style="margin-left:17%;">How long to export a node
-output after startup before a client asks for it</p>
-
-<p style="margin-left:11%;"><b>--login</b>=<i>VAL</i>
-(absent <b>USER</b> env)</p>
-
-<p style="margin-left:17%;">login for the confserver</p>
+output after startup before a client asks for it.</p>
 
 <p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
 
 <p style="margin-left:17%;">Indicates that Ramen must run
-in distributed mode and what sites play the master role</p>
+in distributed mode and what sites play the master role.</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
 (absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
-persisted on disc</p>
+persisted on disc.</p>
+
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
+(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+private key is stored. This file must not be readable or
+writable by others.</p>
+
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-q</b>, <b>--quiet</b>
 (absent <b>RAMEN_QUIET</b> env)</p>
 
-<p style="margin-left:17%;">Decrease verbosity</p>
+<p style="margin-left:17%;">Decrease verbosity.</p>
 
 <p style="margin-left:11%;"><b>--reuse-prev-files</b>
 (absent <b>RAMEN_REUSE_PREV_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Reuse existing source files</p>
+<p style="margin-left:17%;">Reuse existing source
+files.</p>
 
 <p style="margin-left:11%;"><b>-S</b>,
 <b>--keep-temp-files</b> (absent
 <b>RAMEN_KEEP_TEMP_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Keep temporary files</p>
+<p style="margin-left:17%;">Keep temporary files.</p>
 
 <p style="margin-left:11%;"><b>--seed</b>=<i>VAL</i>,
 <b>--rand-seed</b>=<i>VAL</i> (absent
 <b>RAMEN_RANDOM_SEED</b> env)</p>
 
 <p style="margin-left:17%;">Seed to initialize the random
-generator with (will use a random one if unset)</p>
+generator with (will use a random one if unset).</p>
 
 <p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
 (absent <b>HOSTNAME</b> env)</p>
 
-<p style="margin-left:17%;">The name of this site</p>
+<p style="margin-left:17%;">The name of this site.</p>
+
+<p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
+(absent <b>USER</b> env)</p>
+
+<p style="margin-left:17%;">Login name to connect to the
+confserver.</p>
 
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
-<p style="margin-left:17%;">Force variants</p>
+<p style="margin-left:17%;">Force variants.</p>
 
 <a name="ENVIRONMENT"></a>
 <h2>ENVIRONMENT</h2>
@@ -237,10 +267,34 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_IDENTITY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--identity</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PRIV_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--priv-key</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PUB_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--pub-key</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--confserver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver-key</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
@@ -298,7 +352,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>USER</b></p>
 
-<p style="margin-left:17%;">See option <b>--login</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--username</b>.</p>
 </div>
 </body>
 </html>

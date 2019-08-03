@@ -66,7 +66,7 @@
 
 
 <p style="margin-left:11%; margin-top: 1em">Ramen-compile -
-Compile each given source file into an executable</p>
+Compile each given source file into an executable.</p>
 
 <a name="SYNOPSIS"></a>
 <h2>SYNOPSIS</h2>
@@ -82,7 +82,7 @@ compile</b> [<i>OPTION</i>]... <i>FILE</i>...</p>
 <p style="margin-left:11%; margin-top: 1em"><i>FILE</i>
 (required)</p>
 
-<p style="margin-left:17%;">Source files to compile</p>
+<p style="margin-left:17%;">Source files to compile.</p>
 
 <a name="OPTIONS"></a>
 <h2>OPTIONS</h2>
@@ -91,7 +91,7 @@ compile</b> [<i>OPTION</i>]... <i>FILE</i>...</p>
 
 <p style="margin-left:11%; margin-top: 1em"><b>--as</b>=<i>NAME</i></p>
 
-<p style="margin-left:17%;">resulting program name</p>
+<p style="margin-left:17%;">Resulting program name.</p>
 
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
@@ -108,7 +108,7 @@ With &lsquo;auto', the format is &lsquo;pager&lsquo; or
 env)</p>
 
 <p style="margin-left:17%;">Path where to find other
-programs</p>
+programs.</p>
 
 
 <p style="margin-left:11%;"><b>--max-simultaneous-compilations</b>=<i>VAL</i>,
@@ -116,17 +116,16 @@ programs</p>
 (absent=4 or <b>RAMEN_MAX_SIMULT_COMPILATIONS</b> env)</p>
 
 <p style="margin-left:17%;">Max number of compilations to
-perform simultaneously</p>
+perform simultaneously.</p>
 
 <p style="margin-left:11%;"><b>-o</b> <i>FILE</i></p>
 
-<p style="margin-left:17%;">compiled file (with .x
-extension)</p>
+<p style="margin-left:17%;">Where to store the output.</p>
 
 <p style="margin-left:11%;"><b>-r</b>, <b>--replace</b></p>
 
 <p style="margin-left:17%;">If a program with the same name
-is already running, replace it</p>
+is already running, replace it.</p>
 
 <p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
 <b>--smt-solver</b>=<i>VAL</i> (absent=/usr/local/bin/z3
@@ -134,7 +133,7 @@ is already running, replace it</p>
 %s or <b>RAMEN_SMT_SOLVER</b> env)</p>
 
 <p style="margin-left:17%;">Command to run the SMT solver
-(with %s in place of the SMT2 file name)</p>
+(with %s in place of the SMT2 file name).</p>
 
 
 <p style="margin-left:11%;"><b>--use-external-compiler</b>,
@@ -142,7 +141,7 @@ is already running, replace it</p>
 RAMEN_USE_EMBEDDED_COMPILER</b> env)</p>
 
 <p style="margin-left:17%;">Call external compiler rather
-than using embedded one</p>
+than using embedded one.</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -161,76 +160,106 @@ or <b><br>
 RAMEN_LIBS</b> env)</p>
 
 <p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler</p>
+libraries for the embedded compiler.</p>
 
-<p style="margin-left:11%;"><b>--confserver</b>=<i>VAL</i>
-(absent <b>RAMEN_CONFSERVER</b> env)</p>
+
+<p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
+(default=localhost) (absent <b>RAMEN_CONFSERVER</b> env)</p>
 
 <p style="margin-left:17%;">host:port of Ramen
-confserver</p>
+confserver.</p>
+
+
+<p style="margin-left:11%;"><b>--confserver-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CONFSERVER_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the confserver
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
 
-<p style="margin-left:17%;">Increase verbosity</p>
+<p style="margin-left:17%;">Increase verbosity.</p>
+
+<p style="margin-left:11%;"><b>-i</b> <i>VAL</i>,
+<b>--identity</b>=<i>VAL</i> (absent
+<b>RAMEN_CLIENT_IDENTITY</b> env)</p>
+
+<p style="margin-left:17%;">Location of the file storing
+user's identity</p>
 
 
 <p style="margin-left:11%;"><b>--initial-export-duration</b>=<i>VAL</i>
 (absent=0. or <b>RAMEN_INITIAL_EXPORT</b> env)</p>
 
 <p style="margin-left:17%;">How long to export a node
-output after startup before a client asks for it</p>
-
-<p style="margin-left:11%;"><b>--login</b>=<i>VAL</i>
-(absent <b>USER</b> env)</p>
-
-<p style="margin-left:17%;">login for the confserver</p>
+output after startup before a client asks for it.</p>
 
 <p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
 
 <p style="margin-left:17%;">Indicates that Ramen must run
-in distributed mode and what sites play the master role</p>
+in distributed mode and what sites play the master role.</p>
 
 
 <p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
 (absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
-persisted on disc</p>
+persisted on disc.</p>
+
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
+(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+private key is stored. This file must not be readable or
+writable by others.</p>
+
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
+(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+
+<p style="margin-left:17%;">File name where the client
+public key is stored.</p>
 
 <p style="margin-left:11%;"><b>-q</b>, <b>--quiet</b>
 (absent <b>RAMEN_QUIET</b> env)</p>
 
-<p style="margin-left:17%;">Decrease verbosity</p>
+<p style="margin-left:17%;">Decrease verbosity.</p>
 
 <p style="margin-left:11%;"><b>--reuse-prev-files</b>
 (absent <b>RAMEN_REUSE_PREV_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Reuse existing source files</p>
+<p style="margin-left:17%;">Reuse existing source
+files.</p>
 
 <p style="margin-left:11%;"><b>-S</b>,
 <b>--keep-temp-files</b> (absent
 <b>RAMEN_KEEP_TEMP_FILES</b> env)</p>
 
-<p style="margin-left:17%;">Keep temporary files</p>
+<p style="margin-left:17%;">Keep temporary files.</p>
 
 <p style="margin-left:11%;"><b>--seed</b>=<i>VAL</i>,
 <b>--rand-seed</b>=<i>VAL</i> (absent
 <b>RAMEN_RANDOM_SEED</b> env)</p>
 
 <p style="margin-left:17%;">Seed to initialize the random
-generator with (will use a random one if unset)</p>
+generator with (will use a random one if unset).</p>
 
 <p style="margin-left:11%;"><b>--site</b>=<i>VAL</i>
 (absent <b>HOSTNAME</b> env)</p>
 
-<p style="margin-left:17%;">The name of this site</p>
+<p style="margin-left:17%;">The name of this site.</p>
+
+<p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
+(absent <b>USER</b> env)</p>
+
+<p style="margin-left:17%;">Login name to connect to the
+confserver.</p>
 
 <p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
-<p style="margin-left:17%;">Force variants</p>
+<p style="margin-left:17%;">Force variants.</p>
 
 <a name="ENVIRONMENT"></a>
 <h2>ENVIRONMENT</h2>
@@ -243,10 +272,34 @@ HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_IDENTITY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--identity</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PRIV_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--priv-key</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CLIENT_PUB_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--pub-key</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--confserver</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_CONFSERVER_KEY</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--confserver-key</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
@@ -321,7 +374,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>USER</b></p>
 
-<p style="margin-left:17%;">See option <b>--login</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--username</b>.</p>
 </div>
 </body>
 </html>
