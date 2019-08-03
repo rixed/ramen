@@ -7,6 +7,7 @@ class QTreeView;
 class SourcesModel;
 class CodeEdit;
 class QLabel;
+class QStackedLayout;
 
 class SourcesView : public QSplitter
 {
@@ -15,6 +16,8 @@ class SourcesView : public QSplitter
   QTreeView *sourcesList;
   CodeEdit *editor;
   QLabel *noSelection;
+  QStackedLayout *mainLayout;
+  int editorIndex;
 
   SourcesModel *sourcesModel;
 

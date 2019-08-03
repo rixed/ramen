@@ -2,6 +2,8 @@
 #include <QTreeView>
 #include <QHeaderView>
 #include <QLabel>
+#include <QStackedLayout>
+#include <QVBoxLayout>
 #include "conf.h"
 #include "CodeEdit.h"
 #include "widgetTools.h"
@@ -35,12 +37,18 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   connect(runButton, &ButtonDelegate::clicked,
           this, &SourcesView::runSource);
 
-  editor = new CodeEdit(this);
-  editor->hide(); // until a file is selected
-  noSelection =
-    new QLabel(tr("Select a source file on the left to view/edit it"), this);
+  mainLayout = new QStackedLayout;
+  setLayout(mainLayout);
 
-  setStretchFactor(1, 1);
+  editor = new CodeEdit;
+  editorIndex = mainLayout->addWidget(editor);
+
+  noSelection =
+    new QLabel(tr("Select a source file on the left to view/edit it."));
+  noSelection->setWordWrap(true);
+  noSelection->setAlignment(Qt::AlignCenter);
+  mainLayout->setCurrentIndex(
+    mainLayout->addWidget(noSelection));
 
   // Connect selection of a program to the display of its code:
   connect(sourcesList, &QAbstractItemView::clicked,
@@ -58,8 +66,7 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
 void SourcesView::showFile(conf::Key const &key)
 {
   editor->setKey(key);
-  noSelection->hide();
-  editor->show();
+  mainLayout->setCurrentIndex(editorIndex);
 }
 
 void SourcesView::openInfo(QModelIndex const &index)
