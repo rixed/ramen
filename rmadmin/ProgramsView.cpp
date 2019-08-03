@@ -4,9 +4,10 @@
 ProgramsView::ProgramsView(QWidget *parent) :
   AtomicForm("Running Programs", parent)
 {
-  // Add a search box
+  // TODO: Add a search box
 
-  rcEditor = new TargetConfigEditor(conf::Key("target_config"));
+  rcEditor = new TargetConfigEditor;
+  rcEditor->setKey(conf::Key("target_config"));
   setCentralWidget(rcEditor);
   addWidget(rcEditor);
 }

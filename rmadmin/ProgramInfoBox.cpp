@@ -23,24 +23,28 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   setCentralWidget(cw);
 
   KBool *enabled =
-    new KBool(conf::Key(pref + "enabled"), tr("run that program"), tr("do not run"));
+    new KBool(tr("run that program"), tr("do not run"));
+  enabled->setKey(conf::Key(pref + "enabled"));
   layout->addRow(tr("&Enabled"), enabled);
   addWidget(enabled);
 
   KBool *debug =
-    new KBool(conf::Key(pref + "debug"), tr("normal"), tr("verbose logs"));
+    new KBool(tr("normal"), tr("verbose logs"));
+  debug->setKey(conf::Key(pref + "debug"));
   layout->addRow(tr("&Debug"), debug);
   addWidget(debug);
 
-  KFloatEditor *reportPeriod =
-    new KFloatEditor(conf::Key(pref + "report_period"), cw);
+  KFloatEditor *reportPeriod = new KFloatEditor(cw);
+  reportPeriod->setKey(conf::Key(pref + "report_period"));
   layout->addRow(tr("&Reporting Interval"), reportPeriod);
   addWidget(reportPeriod);
 
-  KLabel *binPath = new KLabel(conf::Key(pref + "bin_path"), cw);
+  KLabel *binPath = new KLabel(cw);
+  binPath->setKey(conf::Key(pref + "bin_path"));
   layout->addRow(tr("Executable"), binPath);
 
-  KLabel *srcPath = new KLabel(conf::Key(pref + "src_path"), cw);
+  KLabel *srcPath = new KLabel(cw);
+  srcPath->setKey(conf::Key(pref + "src_path"));
   layout->addRow(tr("Source File"), srcPath);
 
   paramTable = new QTableWidget(this);
@@ -55,14 +59,17 @@ ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   });
   layout->addRow(tr("Parameters"), paramTable);
 
-  KLineEdit *onSites = new KLineEdit(conf::Key(pref + "on_site"), cw);
+  KLineEdit *onSites = new KLineEdit(cw);
+  onSites->setKey(conf::Key(pref + "on_site"));
   layout->addRow(tr("Run &On Sites"), onSites);
   addWidget(onSites);
 
-  KLabel *automatic = new KLabel(conf::Key(pref + "automatic"), cw);
+  KLabel *automatic = new KLabel(cw);
+  automatic->setKey(conf::Key(pref + "automatic"));
   layout->addRow(tr("Automatic"), automatic);
 
-  KLabel *runCondition = new KLabel(conf::Key(pref + "run_condition"), cw);
+  KLabel *runCondition = new KLabel(cw);
+  runCondition->setKey(conf::Key(pref + "run_condition"));
   layout->addRow(tr("Condition to Run"), runCondition);
 }
 

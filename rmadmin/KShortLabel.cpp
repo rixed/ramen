@@ -4,19 +4,19 @@
 #include "once.h"
 #include "KShortLabel.h"
 
-KShortLabel::KShortLabel(conf::Key const &key, QWidget *parent) :
-  AtomicWidget(key, parent),
+KShortLabel::KShortLabel(QWidget *parent) :
+  AtomicWidget(parent),
   leftMargin(0), topMargin(0), rightMargin(0), bottomMargin(0)
 {
   frame = new QFrame;
   setCentralWidget(frame);
-
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KShortLabel::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KShortLabel::setValue);
-
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+}
+
+void KShortLabel::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KShortLabel::setValue);
+  connect(kv, &KValue::valueChanged, this, &KShortLabel::setValue);
 }
 
 bool KShortLabel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)

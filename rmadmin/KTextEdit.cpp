@@ -5,20 +5,21 @@
 #include "RamenSyntaxHighlighter.h"
 #include "KTextEdit.h"
 
-KTextEdit::KTextEdit(conf::Key const &key, QWidget *parent) :
-  AtomicWidget(key, parent)
+KTextEdit::KTextEdit(QWidget *parent) :
+  AtomicWidget(parent)
 {
   textEdit = new QTextEdit;
   setCentralWidget(textEdit);
   new RamenSyntaxHighlighter(textEdit->document()); // the document becomes owner
   textEdit->setFontFamily("monospace");
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KTextEdit::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KTextEdit::setValue);
-  connect(&kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
+void KTextEdit::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KTextEdit::setValue);
+  connect(kv, &KValue::valueChanged, this, &KTextEdit::setValue);
+  connect(kv, &KValue::valueLocked, this, &KTextEdit::lockValue);
+  connect(kv, &KValue::valueUnlocked, this, &KTextEdit::unlockValue);
   // TODO: valueDeleted.
 }
 

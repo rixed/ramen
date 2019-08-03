@@ -8,22 +8,22 @@
 #include "conf.h"
 #include "CodeEdit.h"
 
-CodeEdit::CodeEdit(conf::Key const &keyText_, QWidget *parent) :
+CodeEdit::CodeEdit(QWidget *parent) :
   QWidget(parent),
-  keyText(keyText_)
+  textKey(conf::Key::null),
+  infoKey(conf::Key::null)
 {
   QVBoxLayout *layout = new QVBoxLayout;
   layout->setContentsMargins(QMargins());
   setLayout(layout);
 
-  QString formLabel("Source code for " + QString::fromStdString(keyText.s));
-  editorForm = new AtomicForm(formLabel);
+  editorForm = new AtomicForm(this);
   layout->addWidget(editorForm);
 
   QPushButton *cloneButton = new QPushButton("&Clone");
   editorForm->buttonsLayout->insertWidget(0, cloneButton);
 
-  textEdit = new KTextEdit(keyText);
+  textEdit = new KTextEdit;
   compilationError = new QLabel;
   compilationError->setWordWrap(true);
   compilationError->hide();
@@ -36,16 +36,6 @@ CodeEdit::CodeEdit(conf::Key const &keyText_, QWidget *parent) :
 
   editorForm->setCentralWidget(w);
   editorForm->addWidget(textEdit);
-
-  // Connect the error label to this hide/show slot
-  conf::Key const infoKey = conf::changeSourceKeyExt(keyText, "info");
-  KValue const *kv = nullptr;
-  conf::kvs_lock.lock_shared();
-  kv = &conf::kvs[infoKey];
-  conf::kvs_lock.unlock_shared();
-  connect(kv, &KValue::valueCreated, this, &CodeEdit::setError);
-  connect(kv, &KValue::valueChanged, this, &CodeEdit::setError);
-  setError(infoKey, kv->val, kv->uid, kv->mtime);
 }
 
 void CodeEdit::setError(
@@ -61,4 +51,36 @@ void CodeEdit::setError(
   } else {
     std::cerr << k << " is not a SourceInfo?!" << std::endl;
   }
+}
+
+void CodeEdit::setKey(conf::Key const &key)
+{
+  if (key == textKey) return;
+
+  KValue const *kv = nullptr;
+
+  /* Disconnect previous connections to the former key */
+  if (infoKey != conf::Key::null) {
+    conf::kvs_lock.lock_shared();
+    kv = &conf::kvs[infoKey];
+    conf::kvs_lock.unlock_shared();
+    disconnect(kv, 0, this, 0);
+  }
+
+  textKey = key;
+  infoKey = conf::changeSourceKeyExt(key, "info");
+
+  QString formTitle("Source code for " + QString::fromStdString(textKey.s));
+  editorForm->setTitle(formTitle);
+
+  textEdit->setKey(textKey);
+
+  // Connect the error label to this hide/show slot
+  conf::kvs_lock.lock_shared();
+  kv = &conf::kvs[infoKey];
+  conf::kvs_lock.unlock_shared();
+
+  connect(kv, &KValue::valueCreated, this, &CodeEdit::setError);
+  connect(kv, &KValue::valueChanged, this, &CodeEdit::setError);
+  setError(infoKey, kv->val, kv->uid, kv->mtime);
 }

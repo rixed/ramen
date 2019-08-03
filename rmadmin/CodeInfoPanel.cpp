@@ -9,8 +9,8 @@
 #include "RCEntryEditor.h"
 #include "CodeInfoPanel.h"
 
-CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
-  AtomicWidget(conf::Key("sources/" + sourceName.toStdString() + "/info"), parent)
+CodeInfoPanel::CodeInfoPanel(QWidget *parent) :
+  AtomicWidget(parent)
 {
   widget = new QWidget;
   setCentralWidget(widget);
@@ -25,7 +25,7 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
     infoBox->setLayout(infoLayout);
 
     infoLayout->addWidget(new QLabel("Name:"), 0, 0, Qt::AlignRight);
-    QLabel *nameLabel = new QLabel(sourceName);
+    nameLabel = new QLabel;
     infoLayout->addWidget(nameLabel, 0, 1, Qt::AlignLeft);
 
     infoLayout->addWidget(new QLabel("MD5:"), 1, 0, Qt::AlignRight);
@@ -46,14 +46,18 @@ CodeInfoPanel::CodeInfoPanel(QString const &sourceName, QWidget *parent) :
 
   /* Then the "run" area, to start a new program (ask for name, sites, etc).
    * Use a RC widget with a configurable name. */
-  runBox = new RCEntryEditor(false, sourceName);
+  runBox = new RCEntryEditor(false);
   layout->addWidget(runBox);
+}
 
-  SET_INITIAL_VALUE;
+void CodeInfoPanel::extraConnections(KValue *kv)
+{
+  QString const sourceName = sourceNameOfKey(key);
+  nameLabel->setText(sourceName);
+  runBox->setSourceName(sourceName);
 
-  Once::connect(&kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
-  connect(&kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
-  // TODO: valueDeleted.
+  Once::connect(kv, &KValue::valueCreated, this, &CodeInfoPanel::setValue);
+  connect(kv, &KValue::valueChanged, this, &CodeInfoPanel::setValue);
 }
 
 // If not visible then the error message will be visible

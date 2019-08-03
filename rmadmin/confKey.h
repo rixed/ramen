@@ -17,10 +17,12 @@ public:
   Key(std::string const &);
   ~Key();
 
-  static Key null;
+  static Key const null;
 };
 
 bool operator<(Key const &, Key const &);
+bool operator==(Key const &, Key const &);
+bool operator!=(Key const &, Key const &);
 std::ostream &operator<<(std::ostream &, Key const &);
 
 };

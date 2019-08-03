@@ -3,19 +3,20 @@
 #include "RangeDoubleValidator.h"
 #include "KFloatEditor.h"
 
-KFloatEditor::KFloatEditor(conf::Key const &key, QWidget *parent, double min, double max) :
-  AtomicWidget(key, parent)
+KFloatEditor::KFloatEditor(QWidget *parent, double min, double max) :
+  AtomicWidget(parent)
 {
   lineEdit = new QLineEdit;
   lineEdit->setValidator(RangeDoubleValidator::forRange(min, max));
   setCentralWidget(lineEdit);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KFloatEditor::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KFloatEditor::setValue);
-  connect(&kv, &KValue::valueLocked, this, &KFloatEditor::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &KFloatEditor::unlockValue);
+void KFloatEditor::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KFloatEditor::setValue);
+  connect(kv, &KValue::valueChanged, this, &KFloatEditor::setValue);
+  connect(kv, &KValue::valueLocked, this, &KFloatEditor::lockValue);
+  connect(kv, &KValue::valueUnlocked, this, &KFloatEditor::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> KFloatEditor::getValue() const

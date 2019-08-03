@@ -12,8 +12,10 @@ class KLineEdit : public AtomicWidget
 
   QLineEdit *lineEdit;
 
+  void extraConnections(KValue *);
+
 public:
-  KLineEdit(conf::Key const &key, QWidget *parent = nullptr);
+  KLineEdit(QWidget *parent = nullptr);
 
   void setPlaceholderText(QString const s) {
     lineEdit->setPlaceholderText(s);

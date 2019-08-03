@@ -13,8 +13,10 @@ class TimeRangeViewer : public AtomicWidget
 
   QTableWidget *table;
 
+  void extraConnections(KValue *);
+
 public:
-  TimeRangeViewer(conf::Key const &, QWidget *parent = nullptr);
+  TimeRangeViewer(QWidget *parent = nullptr);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

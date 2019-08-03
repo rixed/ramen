@@ -3,17 +3,18 @@
 #include "conf.h"
 #include "KLabel.h"
 
-KLabel::KLabel(conf::Key const &key, QWidget *parent, bool wordWrap) :
-  AtomicWidget(key, parent)
+KLabel::KLabel(QWidget *parent, bool wordWrap) :
+  AtomicWidget(parent)
 {
   label = new QLabel;
   label->setWordWrap(wordWrap);
   setCentralWidget(label);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KLabel::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KLabel::setValue);
+void KLabel::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KLabel::setValue);
+  connect(kv, &KValue::valueChanged, this, &KLabel::setValue);
 }
 
 bool KLabel::setValue(conf::Key const &k, std::shared_ptr<conf::Value const> v)

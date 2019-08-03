@@ -57,7 +57,9 @@ value Value::toOCamlValue() const
 
 AtomicWidget *Value::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new KLabel(key, parent);
+  KLabel *editor = new KLabel(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 bool Value::operator==(Value const &other) const
@@ -232,7 +234,9 @@ QString const Worker::toQString(Key const &) const
 
 AtomicWidget *Worker::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new WorkerViewer(key, parent);
+  WorkerViewer *editor = new WorkerViewer(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 Retention::Retention(double duration_, double period_) :
@@ -295,7 +299,9 @@ value TimeRange::toOCamlValue() const
 
 AtomicWidget *TimeRange::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new TimeRangeViewer(key, parent);
+  TimeRangeViewer *editor = new TimeRangeViewer(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 bool TimeRange::operator==(Value const &other) const
@@ -439,7 +445,9 @@ QString const SourceInfo::toQString(Key const &) const
 
 AtomicWidget *SourceInfo::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new SourceInfoViewer(key, parent);
+  SourceInfoViewer *editor = new SourceInfoViewer(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 TargetConfig::TargetConfig(value v_)
@@ -505,7 +513,9 @@ value TargetConfig::toOCamlValue() const
 
 AtomicWidget *TargetConfig::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new TargetConfigEditor(key, parent);
+  TargetConfigEditor *editor = new TargetConfigEditor(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 bool TargetConfig::operator==(Value const &other) const
@@ -581,7 +591,9 @@ QString const RuntimeStats::toQString(Key const &) const
 
 AtomicWidget *RuntimeStats::editorWidget(Key const &key, QWidget *parent) const
 {
-  return new RuntimeStatsViewer(key, parent);
+  RuntimeStatsViewer *editor = new RuntimeStatsViewer(parent);
+  editor->setKey(key);
+  return editor;
 }
 
 SiteFq::SiteFq(value v_)

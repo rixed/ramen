@@ -8,8 +8,8 @@
 #include "confRCEntryParam.h"
 #include "WorkerViewer.h"
 
-WorkerViewer::WorkerViewer(conf::Key const &k, QWidget *parent) :
-  AtomicWidget(k, parent)
+WorkerViewer::WorkerViewer(QWidget *parent) :
+  AtomicWidget(parent)
 {
   enabled = new QCheckBox("Enabled");
   enabled->setEnabled(false);
@@ -46,11 +46,12 @@ WorkerViewer::WorkerViewer(conf::Key const &k, QWidget *parent) :
   QWidget *w = new QWidget;
   w->setLayout(layout);
   setCentralWidget(w);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &WorkerViewer::setValue);
-  connect(&kv, &KValue::valueChanged, this, &WorkerViewer::setValue);
+void WorkerViewer::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &WorkerViewer::setValue);
+  connect(kv, &KValue::valueChanged, this, &WorkerViewer::setValue);
   // del?
 }
 

@@ -57,14 +57,15 @@ class RCEntryEditor : public QWidget
   QFormLayout *paramsForm;
 
 public:
-  QString sourceName;
   bool sourceEditable;
 
-  // Optionally preselect sourceName (if not "")
-  RCEntryEditor(bool sourceEditable = true, QString const &sourceName = "", QWidget *parent = nullptr);
-  RCEntryEditor(conf::RCEntry const *, QWidget *parent = nullptr);
+  RCEntryEditor(bool sourceEditable = true, QWidget *parent = nullptr);
 
-  void addSource(conf::Key const &k);
+  // Select that one, even if it does not exist:
+  void setSourceName(QString const &);
+
+  void addSource(conf::Key const &);
+  void addSourceName(QString const &);
   void updateSourceWarnings();
 
   void clearParams();

@@ -16,7 +16,8 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   mustSave(false)
 {
   bool const sourceEditable = sourceName.isEmpty();
-  editor = new RCEntryEditor(sourceEditable, sourceName);
+  editor = new RCEntryEditor(sourceEditable);
+  editor->setSourceName(sourceName);
 
   QDialogButtonBox *buttonBox =
     new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);

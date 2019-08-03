@@ -14,14 +14,18 @@ class CodeEdit : public QWidget
   Q_OBJECT
 
   QString const sourceName;
-  conf::Key const keyText;
+  conf::Key textKey;
+  conf::Key infoKey;
 
   KTextEdit *textEdit;
   AtomicForm *editorForm;
   QLabel *compilationError;
 
 public:
-  CodeEdit(conf::Key const &, QWidget *parent = nullptr);
+  CodeEdit(QWidget *parent = nullptr);
+
+public slots:
+  void setKey(conf::Key const &);
 
 protected slots:
   void setError(conf::Key const &, std::shared_ptr<conf::Value const>, QString const &, double);

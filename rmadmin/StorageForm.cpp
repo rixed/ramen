@@ -15,11 +15,13 @@ StorageForm::StorageForm(QWidget *parent) :
 
   static std::string const totalSizeKey("storage/total_size");
   KIntEditor *totalSizeEdit =
-    new KIntEditor(&VU64::ofQString, totalSizeKey, cw);
+    new KIntEditor(&VU64::ofQString, cw);
+  totalSizeEdit->setKey(totalSizeKey);
   totalSizeEdit->setPlaceholderText(tr("Size in bytes"));
 
   static std::string const recallCostKey("storage/recall_cost");
-  KFloatEditor *recallCostEdit = new KFloatEditor(recallCostKey, cw, 0., 1.);
+  KFloatEditor *recallCostEdit = new KFloatEditor(cw, 0., 1.);
+  recallCostEdit->setKey(recallCostKey);
   recallCostEdit->setPlaceholderText(tr("Cost of reading vs. computing"));
 
   QFormLayout *formLayout = new QFormLayout;

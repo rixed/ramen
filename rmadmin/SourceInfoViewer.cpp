@@ -14,19 +14,20 @@
 #include "RamenTypeStructure.h"
 #include "SourceInfoViewer.h"
 
-SourceInfoViewer::SourceInfoViewer(conf::Key const &k, QWidget *parent) :
-  AtomicWidget(k, parent)
+SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
+  AtomicWidget(parent)
 {
   layout = new QVBoxLayout;
   QWidget *w = new QWidget;
   w->setLayout(layout);
   w->setMinimumHeight(400);
   setCentralWidget(w);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &SourceInfoViewer::setValue);
-  connect(&kv, &KValue::valueChanged, this, &SourceInfoViewer::setValue);
+void SourceInfoViewer::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &SourceInfoViewer::setValue);
+  connect(kv, &KValue::valueChanged, this, &SourceInfoViewer::setValue);
   // del?
 }
 

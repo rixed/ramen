@@ -8,11 +8,10 @@
 
 KIntEditor::KIntEditor(
     std::function<RamenValue *(QString const &)> ofQString_,
-    conf::Key const &key,
     QWidget *parent,
     std::optional<int128_t> min,
     std::optional<int128_t> max) :
-  AtomicWidget(key, parent),
+  AtomicWidget(parent),
   ofQString(ofQString_)
 {
   lineEdit = new QLineEdit;
@@ -25,13 +24,14 @@ KIntEditor::KIntEditor(
     max.has_value() && *max <= std::numeric_limits<int>::max() ?
       *max : std::numeric_limits<int>::max();
   lineEdit->setValidator(RangeIntValidator::forRange(imin, imax));
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KIntEditor::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KIntEditor::setValue);
-  connect(&kv, &KValue::valueLocked, this, &KIntEditor::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &KIntEditor::unlockValue);
+void KIntEditor::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KIntEditor::setValue);
+  connect(kv, &KValue::valueChanged, this, &KIntEditor::setValue);
+  connect(kv, &KValue::valueLocked, this, &KIntEditor::lockValue);
+  connect(kv, &KValue::valueUnlocked, this, &KIntEditor::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> KIntEditor::getValue() const

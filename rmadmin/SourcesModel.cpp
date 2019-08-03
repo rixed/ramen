@@ -6,7 +6,7 @@
 #include "Resources.h"
 #include "SourcesModel.h"
 
-static bool const debug = false;
+static bool const debug = true;
 
 SourcesModel::SourcesModel(QObject *parent) :
   QAbstractItemModel(parent)

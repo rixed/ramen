@@ -14,8 +14,10 @@ class TargetConfigEditor : public AtomicWidget
 
   QToolBox *toolBox;
 
+  void extraConnections(KValue *);
+
 public:
-  TargetConfigEditor(conf::Key const &key, QWidget *parent = nullptr);
+  TargetConfigEditor(QWidget *parent = nullptr);
 
   void setEnabled(bool);
   std::shared_ptr<conf::Value const> getValue() const;

@@ -20,10 +20,15 @@ class CodeInfoPanel : public AtomicWidget
   QLabel *md5Label, *errLabel;
   QGroupBox *paramBox, *functionBox;
   RCEntryEditor *runBox;
+  QLabel *nameLabel;
 
   void setInfoVisible(bool visible);
+
+  void extraConnections(KValue *);
+
 public:
-  CodeInfoPanel(QString const &sourceName, QWidget *parent = nullptr);
+  CodeInfoPanel(QWidget *parent = nullptr);
+
   void setEnabled(bool) {} // not editable
 
 public slots:

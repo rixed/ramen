@@ -4,8 +4,8 @@
 #include "once.h"
 #include "KChoice.h"
 
-KChoice::KChoice(conf::Key const &key, std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
-  AtomicWidget(key, parent)
+KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
+  AtomicWidget(parent)
 {
   widget = new QWidget;
   QVBoxLayout *layout = new QVBoxLayout;
@@ -17,13 +17,14 @@ KChoice::KChoice(conf::Key const &key, std::vector<std::pair<QString const, std:
     choices.push_back({b, label.second});
     layout->addWidget(b);
   }
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &KChoice::setValue);
-  connect(&kv, &KValue::valueChanged, this, &KChoice::setValue);
-  connect(&kv, &KValue::valueLocked, this, &KChoice::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
+void KChoice::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &KChoice::setValue);
+  connect(kv, &KValue::valueChanged, this, &KChoice::setValue);
+  connect(kv, &KValue::valueLocked, this, &KChoice::lockValue);
+  connect(kv, &KValue::valueUnlocked, this, &KChoice::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> KChoice::getValue() const

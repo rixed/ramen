@@ -37,7 +37,7 @@ static bool isInfoFile(std::string const &key)
   return startsWith(key, "sources/") && endsWith(key, "/info");
 }
 
-RCEntryEditor::RCEntryEditor(bool sourceEditable_, QString const &sourceName, QWidget *parent) :
+RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   QWidget(parent),
   sourceEditable(sourceEditable_)
 {
@@ -51,15 +51,6 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QString const &sourceName, QW
 
     QVBoxLayout *sourceLayout = new QVBoxLayout;
     sourceBox = new QComboBox;
-    /* Even if this sourceName does not exist we want to have it preselected
-     * (with a warning displayed) */
-    if (sourceName.length() > 0) {
-      if (sourceName.contains('.')) {
-        sourceBox->addItem(sourceName);
-      } else {
-        std::cerr << "Invalid source name in an RC entry: " << sourceName.toStdString() << std::endl;
-      }
-    }
     sourceBox->setEnabled(sourceEditable);
 
     sourceLayout->addWidget(sourceBox);
@@ -128,15 +119,26 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QString const &sourceName, QW
   if (sourceBox->count() > 0) updateSourceWarnings();
 }
 
-RCEntryEditor::RCEntryEditor(conf::RCEntry const *rcEntry, QWidget *parent) :
-  RCEntryEditor(true, QString::fromStdString(rcEntry->source), parent)
+void RCEntryEditor::setSourceName(QString const &name)
 {
-  setValue(rcEntry);
+  /* Even if this sourceName does not exist we want to have it preselected
+   * (with a warning displayed).
+   * If several non-existing sourceNames are set, they will accumulate in
+   * the box. Not a big deal as long as the warnings are properly displayed. */
+  if (name.contains('.')) {
+    addSourceName(name);
+  } else {
+    std::cerr << "Invalid source name in an RC entry: " << name.toStdString() << std::endl;
+  }
 }
 
 void RCEntryEditor::addSource(conf::Key const &k)
 {
-  QString const name = sourceNameOfKey(k);
+  addSourceName(sourceNameOfKey(k));
+}
+
+void RCEntryEditor::addSourceName(QString const &name)
+{
   if (name.contains('.')) {
     // Insert in alphabetic order:
     for (int i = 0; i <= sourceBox->count(); i ++) {

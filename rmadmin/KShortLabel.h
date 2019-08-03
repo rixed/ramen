@@ -15,8 +15,10 @@ class KShortLabel : public AtomicWidget
 
   int leftMargin, topMargin, rightMargin, bottomMargin;
 
+  void extraConnections(KValue *);
+
 public:
-  KShortLabel(conf::Key const &, QWidget *parent = nullptr);
+  KShortLabel(QWidget *parent = nullptr);
 
   void setContentsMargins(int, int, int, int);
 

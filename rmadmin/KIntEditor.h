@@ -18,9 +18,10 @@ class KIntEditor : public AtomicWidget
   std::function<RamenValue *(QString const &)> ofQString;
   QLineEdit *lineEdit;
 
+  void extraConnections(KValue *);
+
 public:
   KIntEditor(std::function<RamenValue *(QString const &)>,
-             conf::Key const &key,
              QWidget *parent = nullptr,
   /* For the edition of uint128_t we just do not set any range.
    * BTW, QIntValidator handle only plain boring ints... */

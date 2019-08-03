@@ -3,8 +3,8 @@
 #include "once.h"
 #include "RuntimeStatsViewer.h"
 
-RuntimeStatsViewer::RuntimeStatsViewer(conf::Key const &k, QWidget *parent) :
-  AtomicWidget(k, parent)
+RuntimeStatsViewer::RuntimeStatsViewer(QWidget *parent) :
+  AtomicWidget(parent)
 {
   QFormLayout *layout = new QFormLayout;
 # define ADD_LABEL(title, var) \
@@ -42,11 +42,12 @@ RuntimeStatsViewer::RuntimeStatsViewer(conf::Key const &k, QWidget *parent) :
   QWidget *w = new QWidget;
   w->setLayout(layout);
   setCentralWidget(w);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &RuntimeStatsViewer::setValue);
-  connect(&kv, &KValue::valueChanged, this, &RuntimeStatsViewer::setValue);
+void RuntimeStatsViewer::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &RuntimeStatsViewer::setValue);
+  connect(kv, &KValue::valueChanged, this, &RuntimeStatsViewer::setValue);
   // del?
 }
 

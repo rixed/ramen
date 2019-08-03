@@ -3,8 +3,8 @@
 #include "once.h"
 #include "TimeRangeViewer.h"
 
-TimeRangeViewer::TimeRangeViewer(conf::Key const &k, QWidget *parent) :
-  AtomicWidget(k, parent)
+TimeRangeViewer::TimeRangeViewer(QWidget *parent) :
+  AtomicWidget(parent)
 {
   table = new QTableWidget(1, 2);
   table->setHorizontalHeaderLabels({ tr("Since"), tr("Until") });
@@ -13,11 +13,12 @@ TimeRangeViewer::TimeRangeViewer(conf::Key const &k, QWidget *parent) :
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->verticalHeader()->setVisible(false);
   setCentralWidget(table);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &TimeRangeViewer::setValue);
-  connect(&kv, &KValue::valueChanged, this, &TimeRangeViewer::setValue);
+void TimeRangeViewer::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &TimeRangeViewer::setValue);
+  connect(kv, &KValue::valueChanged, this, &TimeRangeViewer::setValue);
   // del?
 }
 

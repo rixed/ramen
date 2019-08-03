@@ -35,7 +35,6 @@ protected slots:
   void deleteClicked(conf::Key const &);
   void activateItem(QTreeWidgetItem *item, int column);
   void openEditorWindow(conf::Key const &, KValue const *);
-
 };
 
 #endif

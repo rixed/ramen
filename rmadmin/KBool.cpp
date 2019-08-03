@@ -2,9 +2,8 @@
 #include <QVBoxLayout>
 #include "KBool.h"
 
-KBool::KBool(conf::Key const &key, QString const &yesLabel, QString const &noLabel, QWidget *parent) :
+KBool::KBool(QString const &yesLabel, QString const &noLabel, QWidget *parent) :
   KChoice(
-    key,
     {
       { yesLabel, std::shared_ptr<conf::Value const>(new conf::RamenValueValue(new VBool(true))) },
       { noLabel, std::shared_ptr<conf::Value const>(new conf::RamenValueValue(new VBool(false))) }
@@ -12,5 +11,5 @@ KBool::KBool(conf::Key const &key, QString const &yesLabel, QString const &noLab
     parent
   ) {}
 
-KBool::KBool(conf::Key const &key, QWidget *parent) :
-  KBool(key, tr("yes"), tr("no"), parent) {}
+KBool::KBool(QWidget *parent) :
+  KBool(tr("yes"), tr("no"), parent) {}

@@ -11,8 +11,10 @@ class KLabel : public AtomicWidget
 
   QLabel *label;
 
+  void extraConnections(KValue *);
+
 public:
-  KLabel(conf::Key const &key, QWidget *parent = nullptr, bool wordWrap = false);
+  KLabel(QWidget *parent = nullptr, bool wordWrap = false);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

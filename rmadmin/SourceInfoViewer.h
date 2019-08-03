@@ -11,8 +11,10 @@ class SourceInfoViewer : public AtomicWidget
 
   QVBoxLayout *layout;
 
+  void extraConnections(KValue *);
+
 public:
-  SourceInfoViewer(conf::Key const &, QWidget *parent = nullptr);
+  SourceInfoViewer(QWidget *parent = nullptr);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

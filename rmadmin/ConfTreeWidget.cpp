@@ -14,7 +14,7 @@
 #include "ConfTreeEditorDialog.h"
 #include "ConfTreeWidget.h"
 
-static bool verbose = false;
+static bool verbose = true;
 
 ConfTreeItem *ConfTreeWidget::findItem(QString const &name, ConfTreeItem *parent) const
 {
@@ -137,7 +137,8 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
     if (topLevel) setItemWidget(item, 3, fillerWidget());
     return findOrCreateItem(names, k, kv, item);
   } else {
-    KShortLabel *shortLabel = new KShortLabel(k, this);
+    KShortLabel *shortLabel = new KShortLabel(this);
+    shortLabel->setKey(k);
     shortLabel->setContentsMargins(8, 8, 8, 8);
     // Redraw/resize whenever the value is changed:
     connect(shortLabel, &AtomicWidget::valueChanged,

@@ -68,7 +68,15 @@ class AtomicForm : public QGroupBox
 
 public:
   QWidget *centralWidget;
-  AtomicForm(QString const &title, QWidget *parent = nullptr);
+
+  AtomicForm(QWidget *parent = nullptr);
+
+  AtomicForm(QString const &title, QWidget *parent = nullptr) :
+    AtomicForm(parent)
+  {
+    setTitle(title);
+  }
+
   ~AtomicForm();
 
   void setCentralWidget(QWidget *);

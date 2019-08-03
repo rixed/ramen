@@ -19,8 +19,10 @@ class WorkerViewer : public AtomicWidget
   QVBoxLayout *parents;
   std::vector<QLabel *> parentLabels;
 
+  void extraConnections(KValue *);
+
 public:
-  WorkerViewer(conf::Key const &, QWidget *parent = nullptr);
+  WorkerViewer(QWidget *parent = nullptr);
 
 public slots:
   bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>);

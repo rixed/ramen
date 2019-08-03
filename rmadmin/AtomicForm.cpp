@@ -4,8 +4,8 @@
 #include "AtomicForm.h"
 #include "conf.h"
 
-AtomicForm::AtomicForm(QString const &title, QWidget *parent) :
-  QGroupBox(title, parent),
+AtomicForm::AtomicForm(QWidget *parent) :
+  QGroupBox(parent),
   widgets(),
   state(AtomicForm::ReadOnly)
 {
@@ -69,12 +69,26 @@ void AtomicForm::setCentralWidget(QWidget *w)
 void AtomicForm::addWidget(AtomicWidget *aw)
 {
   aw->setEnabled(false);
-  conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[aw->key];
-  conf::kvs_lock.unlock_shared();
   widgets.push_back(aw);
-  connect(&kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
+  connect(aw, &AtomicWidget::keyChanged,
+          this, [this](conf::Key const &oldKey, conf::Key const &newKey) {
+    /* This is broken, as it will disconnect _all_ connection from that kv to us,
+     * even if we have several widgets using the same key.
+     * TODO: save the connect handlers and destroy them specifically.
+     * We do not care for now as when we do have several widgets with the same
+     * key then they will change their keys together. */
+    conf::kvs_lock.lock_shared();
+    if (oldKey != conf::Key::null) {
+      disconnect(&conf::kvs[oldKey], 0, this, 0);
+    }
+
+    if (newKey != conf::Key::null) {
+      KValue *kv = &conf::kvs[newKey];
+      connect(kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
+      connect(kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
+    }
+    conf::kvs_lock.unlock_shared();
+  });
 }
 
 void AtomicForm::lockAll()

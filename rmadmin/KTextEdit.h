@@ -10,8 +10,10 @@ class KTextEdit : public AtomicWidget
 
   QTextEdit *textEdit;
 
+  void extraConnections(KValue *);
+
 public:
-  KTextEdit(conf::Key const &key, QWidget *parent = nullptr);
+  KTextEdit(QWidget *parent = nullptr);
 
   std::shared_ptr<conf::Value const> getValue() const;
   void setEnabled(bool);

@@ -10,9 +10,10 @@ struct KFloatEditor : public AtomicWidget
 
   QLineEdit *lineEdit;
 
+  void extraConnections(KValue *);
+
 public:
-  KFloatEditor(conf::Key const &key,
-               QWidget *parent = nullptr,
+  KFloatEditor(QWidget *parent = nullptr,
                double min = -std::numeric_limits<double>::infinity(),
                double max = std::numeric_limits<double>::infinity());
 

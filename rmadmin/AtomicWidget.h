@@ -24,26 +24,23 @@ class AtomicWidget : public QWidget
   bool last_enabled;
 
 public:
-  conf::Key const key;
+  conf::Key key;
   std::shared_ptr<conf::Value const> initValue; // shared ptr
 
-  AtomicWidget(conf::Key const &key_, QWidget *parent = nullptr) :
+  AtomicWidget(QWidget *parent = nullptr) :
     QWidget(parent),
     last_enabled(true),
-    key(key_) {}
+    key(conf::Key::null) {}
 
-  /* We'd like the above constructor to be able to set its initial value
-   * but that needs to call the viortual setValue, so macros to the
-   * rescue: */
-# define SET_INITIAL_VALUE \
-    conf::kvs_lock.lock_shared(); \
-    KValue &kv = conf::kvs[key]; \
-    if (kv.isSet()) { \
-      bool ok = setValue(key, kv.val); \
-      assert(ok); /* ? */ \
-    } \
-    setEnabled(kv.isMine()); \
-    conf::kvs_lock.unlock_shared();
+  /* As much as we'd like to build the widget and set its key in one go, we
+   * cannot because virtual function extraConnections cannot be resolved at
+   * construction time:
+  AtomicWidget(conf::Key const &k, QWidget *parent) :
+    AtomicWidget(parent) {
+    setKey(k);
+  } */
+
+  bool isKeySet() const { return !(key == conf::Key::null); }
 
   virtual void setEnabled(bool enabled);
 
@@ -53,6 +50,11 @@ public:
 protected:
   void setCentralWidget(QWidget *w);
 
+  /* Called by setKey with the locked kvs and the kv of the new key, after
+   * all former connections have been disconnected, so that implementers can
+   * connect new signals if they are interested. */
+  virtual void extraConnections(KValue *) {}
+
 public slots:
   /* Return false if the editor can not display this value because of
    * incompatible types.
@@ -60,6 +62,8 @@ public slots:
    * copy. */
   // TODO: replace the widget with an error message then.
   virtual bool setValue(conf::Key const &, std::shared_ptr<conf::Value const>) = 0;
+
+  void setKey(conf::Key const &);
 
   void lockValue(conf::Key const &, QString const &uid)
   {
@@ -71,6 +75,7 @@ public slots:
   }
 
 signals:
+  void keyChanged(conf::Key const &old, conf::Key const &new_);
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
 };
 

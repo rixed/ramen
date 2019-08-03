@@ -5,18 +5,19 @@
 #include "RCEntryEditor.h"
 #include "TargetConfigEditor.h"
 
-TargetConfigEditor::TargetConfigEditor(conf::Key const &key, QWidget *parent) :
-  AtomicWidget(key, parent)
+TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
+  AtomicWidget(parent)
 {
   toolBox = new QToolBox;
   setCentralWidget(toolBox);
+}
 
-  SET_INITIAL_VALUE;
-
-  Once::connect(&kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
-  connect(&kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
-  connect(&kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
-  connect(&kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);
+void TargetConfigEditor::extraConnections(KValue *kv)
+{
+  Once::connect(kv, &KValue::valueCreated, this, &TargetConfigEditor::setValue);
+  connect(kv, &KValue::valueChanged, this, &TargetConfigEditor::setValue);
+  connect(kv, &KValue::valueLocked, this, &TargetConfigEditor::lockValue);
+  connect(kv, &KValue::valueUnlocked, this, &TargetConfigEditor::unlockValue);
 }
 
 std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
@@ -66,7 +67,9 @@ bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
 
   for (auto const &it : rc->entries) {
     conf::RCEntry const *entry = it.second;
-    RCEntryEditor *entryEditor = new RCEntryEditor(entry);
+    RCEntryEditor *entryEditor = new RCEntryEditor(true);
+    entryEditor->setSourceName(QString::fromStdString(entry->source));
+    entryEditor->setValue(entry);
     toolBox->addItem(entryEditor, QString::fromStdString(it.first));
   }
 
