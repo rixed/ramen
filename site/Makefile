@@ -20,7 +20,8 @@ PAGES = \
 	blog/2019-01.html \
 	blog/2019-02.html \
 	blog/2019-03.html \
-	blog/2019-05.html
+	blog/2019-05.html \
+	blog/2019-07.html
 
 MANPAGES = \
 	man/ramen.html \
@@ -56,7 +57,9 @@ IMAGES = \
 	favicon.ico \
 	blog/RamenVsKsql_cpu.svg \
 	blog/RamenVsKsql_ram.svg \
-	blog/RamenVsKsql_io.svg
+	blog/RamenVsKsql_io.svg \
+	blog/gnulinuxduo.png \
+	blog/amazon.png
 
 OTHERS = \
 	blog/ksql.atop \

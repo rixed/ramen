@@ -128,6 +128,9 @@ $info_pages = [
         'title' => 'One degree of scale' ],
       'blog/2019-05.html' => [
         'date' => 'May 2019',
-        'title' => 'Who need two different message queues?' ] ] ],
+        'title' => 'Who need two different message queues?' ],
+      'blog/2019-07.html' => [
+        'date' => 'July 2019',
+        'title' => 'Does C++ devs worth more than web devs?' ] ] ],
 ];
 ?>
