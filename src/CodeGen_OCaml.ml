@@ -2461,7 +2461,7 @@ let emit_factors_of_tuple name func oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
-(* Given a tuple type, generate the ReadCSVFile operation. *)
+(* Given a tuple type, generate the ReadExternal operation. *)
 let emit_read_csv_file opc param_env env_env name csv_fname unlink
                        csv_separator csv_null csv_quotes csv_escape_seq
                        preprocessor =
@@ -3640,9 +3640,9 @@ let emit_operation name top_half_name func
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
   match func.FS.operation with
-  | ReadCSVFile { where = { fname ; unlink } ; preprocessor ;
-                  what = { separator ; null ; may_quote ;
-                           escape_seq ; _ } ; _ } ->
+  | ReadExternal {
+      source = File { fname ; preprocessor ; unlink } ;
+      format = CSV { separator ; null ; may_quote ; escape_seq ; _ } ; _ } ->
     emit_read_csv_file opc param_env env_env name fname unlink
                        separator null may_quote escape_seq preprocessor
   | ListenFor { net_addr ; port ; proto } ->

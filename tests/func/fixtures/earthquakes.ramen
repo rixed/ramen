@@ -1,6 +1,7 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "earthquakes.csv" SEPARATOR "\t" (
+  READ FROM FILE "earthquakes.csv"
+  AS CSV SEPARATOR "\t" (
     -- number of earthquakes per year
     year u16 {years (rel)}, n u16);

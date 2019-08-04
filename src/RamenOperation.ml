@@ -66,10 +66,58 @@ let print_flush_method oc = function
     Printf.fprintf oc "KEEP"
   [@@ppp PPP_OCaml]
 
-(* Represents an input CSV format specifications: *)
-type file_spec = { fname : E.t ; unlink : E.t }
+(* External data sources:
+ * When not SELECTing from other ramen workers or LISTENing to known protocols
+ * a worker can READ data from an external source. In that case, not only the
+ * external source must be described (see external_source) but also the
+ * format describing how the data is encoded must be specified (see
+ * external_format).
+ * In theory, both are independent, but in practice of course the container
+ * specification leaks into the format specification. *)
+type external_source =
+  | File of file_specs
+  (* TODO: others such as Fifo, Kafka... *)
   [@@ppp PPP_OCaml]
-type csv_specs =
+
+and file_specs =
+  { fname : E.t ;
+    preprocessor : E.t option ;
+    unlink : E.t }
+  [@@ppp PPP_OCaml]
+
+let fold_external_source init f = function
+  | File specs ->
+      let x =
+        Option.map_default (f init "preprocessor") init specs.preprocessor in
+      let x = f x "filename" specs.fname in
+      f x "DELETE-IF clause" specs.unlink
+
+let map_external_source f = function
+  | File { fname ; preprocessor ; unlink } ->
+      File { fname = f fname ;
+             preprocessor = Option.map f preprocessor ;
+             unlink = f unlink }
+
+let print_file_specs with_types oc specs =
+  Printf.fprintf oc "FILES %a%s%a"
+    (E.print false) specs.fname
+    (Option.map_default (fun e ->
+       Printf.sprintf2 " PREPROCESSED WITH %a" (E.print with_types) e
+     ) "" specs.preprocessor)
+    (fun oc unlink ->
+      Printf.fprintf oc " THEN DELETE IF %a" (E.print false) unlink)
+      specs.unlink
+
+let print_external_source with_types oc = function
+  | File specs ->
+      print_file_specs with_types oc specs
+
+type external_format =
+  | CSV of csv_specs
+  (* TODO: others such as Ringbuffer, Orc, Avro... *)
+  [@@ppp PPP_OCaml]
+
+and csv_specs =
   { separator : string ;
     null : string ;
     (* If true, expect some quoted fields. Otherwise quotes are just part
@@ -79,20 +127,25 @@ type csv_specs =
     fields : RamenTuple.typ }
   [@@ppp PPP_OCaml]
 
-let print_csv_specs oc specs =
-  Printf.fprintf oc "SEPARATOR %S NULL %S %s %s%a"
+let fold_external_format init _f = function
+  | CSV _ -> init
+
+let map_external_format _f x = x
+
+let fields_of_external_format = function
+  | CSV { fields ; _ } -> fields
+
+let print_csv_specs _with_types oc specs =
+  Printf.fprintf oc "AS CSV SEPARATOR %S NULL %S %s %s%a"
     specs.separator specs.null
     (if specs.may_quote then "QUOTES" else "NO QUOTES")
     (if specs.escape_seq = "" then "" else
      "ESCAPE WITH "^ String.quote specs.escape_seq ^" ")
     RamenTuple.print_typ specs.fields
 
-let print_file_spec oc specs =
-  Printf.fprintf oc "READ%a FILES %a"
-    (fun oc unlink ->
-      Printf.fprintf oc " AND DELETE IF %a" (E.print false) unlink)
-      specs.unlink
-    (E.print false) specs.fname
+let print_external_format with_types oc = function
+  | CSV specs ->
+      print_csv_specs with_types oc specs
 
 (* Type of an operation: *)
 
@@ -125,10 +178,9 @@ type t =
       (* Fields with expected small dimensionality, suitable for breaking down
        * the time series: *)
       factors : N.field list }
-  | ReadCSVFile of {
-      where : file_spec ;
-      what : csv_specs ;
-      preprocessor : E.t option ;
+  | ReadExternal of {
+      source : external_source ;
+      format : external_format ;
       event_time : RamenEventTime.t option ;
       factors : N.field list }
   | ListenFor of {
@@ -254,14 +306,10 @@ and print with_types oc op =
         RamenEventTime.print oc et
       ) event_time
 
-  | ReadCSVFile { where = file_spec ; what = csv_specs ; preprocessor ;
-                  event_time ; _ } ->
-    Printf.fprintf oc "%t%a %s %a" sp
-      print_file_spec file_spec
-      (Option.map_default (fun e ->
-         Printf.sprintf2 "%tPREPROCESS WITH %a" sp (E.print with_types) e
-       ) "" preprocessor)
-      print_csv_specs csv_specs ;
+  | ReadExternal { source ; format ; event_time ; _ } ->
+    Printf.fprintf oc "%tREAD FROM %a %a" sp
+      (print_external_source with_types) source
+      (print_external_format with_types) format ;
     Option.may (fun et ->
       sp oc ;
       RamenEventTime.print oc et
@@ -288,11 +336,9 @@ and print with_types oc op =
 
 let fold_top_level_expr init f = function
   | ListenFor _ | Instrumentation _ | Notifications _ -> init
-  | ReadCSVFile { where = { fname ; unlink } ; preprocessor ; _ } ->
-      let x =
-        Option.map_default (f init "CSV preprocessor") init preprocessor in
-      let x = f x "CSV filename" fname in
-      f x "CSV DELETE-IF clause" unlink
+  | ReadExternal { source ; format ; _ } ->
+      let x = fold_external_source init f source in
+      fold_external_format x f format
   | Aggregate { fields ; merge ; sort ; where ; key ; commit_cond ;
                 notifications ; every ; _ } ->
       let x =
@@ -338,10 +384,10 @@ let iter_expr f op =
 let map_top_level_expr f op =
   match op with
   | ListenFor _ | Instrumentation _ | Notifications _ -> op
-  | ReadCSVFile ({ where = { fname ; unlink } ; preprocessor ; _ } as a) ->
-      ReadCSVFile { a with
-        where = { fname = f fname ; unlink = f unlink } ;
-        preprocessor = Option.map f preprocessor }
+  | ReadExternal ({ source ; format ; _ } as a) ->
+      ReadExternal { a with
+        source = map_external_source f source ;
+        format = map_external_format f format }
   | Aggregate ({ fields ; merge ; sort ; where ; key ; commit_cond ;
                   notifications ; _ } as a) ->
       Aggregate { a with
@@ -377,8 +423,10 @@ let event_time_of_operation op =
     match op with
     | Aggregate { event_time ; fields ; _ } ->
         event_time, List.map (fun sf -> sf.alias) fields
-    | ReadCSVFile { event_time ; what ; _ } ->
-        event_time, List.map (fun ft -> ft.RamenTuple.name) what.fields
+    | ReadExternal { event_time ; format ; _ } ->
+        event_time,
+        fields_of_external_format format |>
+        List.map (fun ft -> ft.RamenTuple.name)
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
     | Instrumentation _ ->
@@ -406,7 +454,7 @@ let event_time_of_operation op =
 
 let operation_with_event_time op event_time = match op with
   | Aggregate s -> Aggregate { s with event_time }
-  | ReadCSVFile s -> ReadCSVFile { s with event_time }
+  | ReadExternal s -> ReadExternal { s with event_time }
   | ListenFor _ -> op
   | Instrumentation _ -> op
   | Notifications _ -> op
@@ -421,14 +469,14 @@ let func_id_of_data_source = function
       assert false
 
 let parents_of_operation = function
-  | ListenFor _ | ReadCSVFile _
+  | ListenFor _ | ReadExternal _
   (* Note that those have a from clause but no actual parents: *)
   | Instrumentation _ | Notifications _ -> []
   | Aggregate { from ; _ } ->
       List.map func_id_of_data_source from
 
 let factors_of_operation = function
-  | ReadCSVFile { factors ; _ }
+  | ReadExternal { factors ; _ }
   | Aggregate { factors ; _ } -> factors
   | ListenFor { factors ; proto ; _ } ->
       if factors <> [] then factors
@@ -437,7 +485,7 @@ let factors_of_operation = function
   | Notifications _ -> RamenNotification.factors
 
 let operation_with_factors op factors = match op with
-  | ReadCSVFile s -> ReadCSVFile { s with factors }
+  | ReadExternal s -> ReadExternal { s with factors }
   | Aggregate s -> Aggregate { s with factors }
   | ListenFor s -> ListenFor { s with factors }
   | Instrumentation _ -> op
@@ -456,12 +504,12 @@ let out_type_of_operation ~with_private = function
           typ = sf.expr.typ ;
           units = sf.expr.units } :: lst
       ) [] fields |> List.rev
-  | ReadCSVFile { what = { fields ; _ } ; _ } ->
+  | ReadExternal { format ; _ } ->
       (* It is possible to suppress a field from the CSV files by prefixing
        * its name with an underscore: *)
+      fields_of_external_format format |>
       List.filter (fun ft ->
-        with_private || not (N.is_private ft.RamenTuple.name)
-      ) fields
+        with_private || not (N.is_private ft.RamenTuple.name))
   | ListenFor { proto ; _ } ->
       RamenProtocols.tuple_typ_of_proto proto
   | Instrumentation _ ->
@@ -506,7 +554,7 @@ let use_event_time op =
   ) op
 
 let has_notifications = function
-  | ListenFor _ | ReadCSVFile _
+  | ListenFor _ | ReadExternal _
   | Instrumentation _ | Notifications _ -> false
   | Aggregate { notifications ; _ } ->
       notifications <> []
@@ -596,42 +644,35 @@ let resolve_unknown_tuples params op =
             pref
           )
         )
-    in
-    let fields =
-      List.mapi (fun i sf ->
-        { sf with expr = prefix_smart ~i sf.expr }
-      ) fields in
-    let merge =
-      { merge with
-          on = List.map (prefix_def params TupleIn) merge.on } in
-    let sort =
-      Option.map (fun (n, u_opt, b) ->
-        n,
-        Option.map (prefix_def params TupleIn) u_opt,
-        List.map (prefix_def params TupleIn) b
-      ) sort in
-    let where = prefix_smart ~allow_out:false where in
-    let key = List.map (prefix_def params TupleIn) key in
-    let commit_cond = prefix_smart commit_cond in
-    let notifications = List.map prefix_smart notifications in
-    let every = Option.map (prefix_def params TupleIn) every in
-    Aggregate { aggr with
-      fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
-      every }
+      in
+      let fields =
+        List.mapi (fun i sf ->
+          { sf with expr = prefix_smart ~i sf.expr }
+        ) fields in
+      let merge =
+        { merge with
+            on = List.map (prefix_def params TupleIn) merge.on } in
+      let sort =
+        Option.map (fun (n, u_opt, b) ->
+          n,
+          Option.map (prefix_def params TupleIn) u_opt,
+          List.map (prefix_def params TupleIn) b
+        ) sort in
+      let where = prefix_smart ~allow_out:false where in
+      let key = List.map (prefix_def params TupleIn) key in
+      let commit_cond = prefix_smart commit_cond in
+      let notifications = List.map prefix_smart notifications in
+      let every = Option.map (prefix_def params TupleIn) every in
+      Aggregate { aggr with
+        fields ; merge ; sort ; where ; key ; commit_cond ; notifications ;
+        every }
 
-  | ReadCSVFile ({ where ; preprocessor ; _ } as csv) ->
-    (* Default to In if not a param, and then disallow In >:-> *)
-    let preprocessor =
-      Option.map (fun p ->
-        (* prefix_def will select Param if it is indeed in param, and only
-         * if not will it assume it's in env; which makes sense as that's the
-         * only two possible tuples here: *)
-        prefix_def params TupleEnv p
-      ) preprocessor in
-    let where =
-      { fname = prefix_def params TupleEnv where.fname ;
-        unlink = prefix_def params TupleEnv where.unlink } in
-    ReadCSVFile { csv with preprocessor ; where }
+  | ReadExternal _ ->
+      (* Default to In if not a param, and then disallow In *)
+      (* prefix_def will select Param if it is indeed in param, and only
+       * if not will it assume it's in env; which makes sense as that's the
+       * only two possible tuples here: *)
+      map_top_level_expr (prefix_def params TupleEnv) op
 
   | op -> op
 
@@ -835,18 +876,17 @@ let checked params op =
     let field_names = List.map (fun t -> t.RamenTuple.name) tup_typ in
     check_factors field_names factors
 
-  | ReadCSVFile { what ; where = { fname ; unlink } ; event_time ; factors ;
-                  preprocessor ; _ } ->
-    let field_names = List.map (fun t -> t.RamenTuple.name) what.fields in
+  | ReadExternal { source ; format ; event_time ; factors ; _ } ->
+    let field_names = fields_of_external_format format |>
+                      List.map (fun t -> t.RamenTuple.name) in
     Option.may (check_event_time field_names) event_time ;
     check_factors field_names factors ;
-    (* Default to In if not a param, and then disallow In >:-> *)
-    Option.may (fun p ->
-      check_fields_from [ TupleParam; TupleEnv ] "PREPROCESSOR" p
-    ) preprocessor ;
-    check_fields_from [ TupleParam; TupleEnv ] "FILE NAMES" fname ;
-    check_fields_from [ TupleParam; TupleEnv ] "DELETE-IF" unlink ;
-    check_pure "DELETE-IF" unlink
+    (* Unknown tuples has been defaulted to Param/Env already.
+     * Let's now forbid explicit references to input: *)
+    iter_top_level_expr (check_fields_from [ TupleParam; TupleEnv ]) op ;
+    (* additionally, unlink must be stateless: *)
+    (match source with
+    | File { unlink ; _ } -> check_pure "DELETE-IF" unlink)
     (* FIXME: check the field type declarations use only scalar types *)
 
   | Instrumentation _ | Notifications _ -> ()) ;
@@ -1103,27 +1143,12 @@ struct
      optional ~def:() (strinG "for" -- blanks) -+
      (that_string "instrumentation" ||| that_string "notifications")) m
 
-let fields_schema m =
-  let m = "tuple schema" :: m in
-  (
-    char '(' -- opt_blanks -+
-      several ~sep:list_sep RamenTuple.Parser.field +-
-    opt_blanks +- char ')'
-  ) m
-
-  (* FIXME: It should be allowed to enter separator, null, preprocessor etc in
-   * any order *)
-  let read_file_specs m =
-    let m = "read file operation" :: m in
+  let fields_schema m =
+    let m = "tuple schema" :: m in
     (
-      strinG "read" -- blanks -+
-      optional ~def:(E.of_bool false) (
-        strinG "and" -- blanks -- strinG "delete" -- blanks -+
-        optional ~def:(E.of_bool true) (
-          strinG "if" -- blanks -+ E.Parser.p +- blanks)) +-
-      strinGs "file" +- blanks ++
-      E.Parser.p >>: fun (unlink, fname) ->
-        { unlink ; fname }
+      char '(' -- opt_blanks -+
+        several ~sep:list_sep RamenTuple.Parser.field +-
+      opt_blanks +- char ')'
     ) m
 
   let csv_specs m =
@@ -1136,19 +1161,55 @@ let fields_schema m =
        optional ~def:true (strinG "no" -- blanks >>: fun () -> false) +-
        strinGs "quote" +- blanks) ++
      optional ~def:"" (
-      strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
-      opt_blanks -+ quoted_string +- opt_blanks) ++
+       strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
+       opt_blanks -+ quoted_string +- opt_blanks) ++
      fields_schema >>:
      fun ((((separator, null), may_quote), escape_seq), fields) ->
        if separator = null || separator = "" then
          raise (Reject "Invalid CSV separator") ;
        { separator ; null ; may_quote ; escape_seq ; fields }) m
 
-  let preprocessor_clause m =
-    let m = "file preprocessor" :: m in
+  let external_format m =
+    let m = "external data format" :: m in
     (
-      strinG "preprocess" -- blanks -- strinG "with" -- opt_blanks -+
-      E.Parser.p
+      strinG "as" -- blanks -+ (
+        strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s
+      )
+    ) m
+
+  let file_specs m =
+    let m = "read file operation" :: m in
+    (
+      E.Parser.p ++
+      optional ~def:None (
+        blanks -+
+        strinG "preprocessed" -- blanks -- strinG "with" -- opt_blanks -+
+        some E.Parser.p) ++
+      optional ~def:(E.of_bool false) (
+        blanks -- strinG "then" -- blanks -- strinG "delete" -+
+        optional ~def:(E.of_bool true) (
+          blanks -- strinG "if" -- blanks -+ E.Parser.p)) >>:
+        fun ((fname, preprocessor), unlink) -> { fname ; preprocessor ; unlink }
+    ) m
+
+  let external_source m =
+    let m = "external data source" :: m in
+    (
+      optional ~def:() (strinG "from" -- blanks) -+ (
+        strinGs "file" -- blanks -+ file_specs >>: fun s -> File s
+      )
+    ) m
+
+  let read_clause m =
+    let m = "read" :: m in
+    (
+      strinG "read" -- blanks -+ (
+        (
+          external_source +- blanks ++ external_format
+        ) ||| (
+          external_format +- blanks ++ external_source >>: fun (a, b) -> b, a
+        )
+      )
     ) m
 
   let factor_clause m =
@@ -1170,10 +1231,7 @@ let fields_schema m =
     | EveryClause of E.t option
     | ListenClause of (Unix.inet_addr * int * RamenProtocols.net_protocol)
     | InstrumentationClause of string
-    | ExternalDataClause of file_spec
-    | PreprocessorClause of E.t option
-    | CsvSpecsClause of csv_specs
-
+    | ReadClause of (external_source * external_format)
   (* A special from clause that accept globs, used to match workers in
    * instrumentation operations. *)
   let from_pattern m =
@@ -1241,9 +1299,7 @@ let fields_schema m =
       (every_clause >>: fun c -> EveryClause (Some c)) |||
       (listen_clause >>: fun c -> ListenClause c) |||
       (instrumentation_clause >>: fun c -> InstrumentationClause c) |||
-      (read_file_specs >>: fun c -> ExternalDataClause c) |||
-      (preprocessor_clause >>: fun c -> PreprocessorClause (Some c)) |||
-      (csv_specs >>: fun c -> CsvSpecsClause c) |||
+      (read_clause >>: fun c -> ReadClause c) |||
       (factor_clause >>: fun c -> FactorClause c) in
     (several ~sep:blanks part >>: fun clauses ->
       (* Used for its address: *)
@@ -1259,24 +1315,21 @@ let fields_schema m =
       and default_every = None
       and default_listen = None
       and default_instrumentation = ""
-      and default_ext_data = None
-      and default_preprocessor = None
-      and default_csv_specs = None
+      and default_read_clause = None
       and default_factors = [] in
       let default_clauses =
         default_select_fields, default_star, default_merge, default_sort,
         default_where, default_event_time, default_key,
         default_commit, default_from, default_every,
-        default_listen, default_instrumentation, default_ext_data,
-        default_preprocessor, default_csv_specs, default_factors in
+        default_listen, default_instrumentation, default_read_clause,
+        default_factors in
       let select_fields, and_all_others, merge, sort, where,
           event_time, key, commit, from, every, listen, instrumentation,
-          ext_data, preprocessor, csv_specs, factors =
+          read, factors =
         List.fold_left (
           fun (select_fields, and_all_others, merge, sort, where,
                event_time, key, commit, from, every, listen,
-               instrumentation, ext_data, preprocessor, csv_specs,
-               factors) ->
+               instrumentation, read, factors) ->
             (* FIXME: in what follows, detect and signal cases when a new value
              * replaces an old one (but the default), such as when two WHERE
              * clauses are given. *)
@@ -1293,79 +1346,57 @@ let fields_schema m =
               let select_fields = List.rev fields in
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | MergeClause merge ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | SortClause sort ->
               select_fields, and_all_others, merge, Some sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | WhereClause where ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | EventTimeClause event_time ->
               select_fields, and_all_others, merge, sort, where,
               Some event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | GroupByClause key ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | CommitClause commit' ->
               if commit != default_commit then
                 raise (Reject "Cannot have several commit clauses") ;
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit', from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | FromClause from' ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, (List.rev_append from' from),
-              every, listen, instrumentation, ext_data, preprocessor,
-              csv_specs, factors
+              every, listen, instrumentation, read, factors
             | EveryClause every ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | ListenClause l ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, Some l,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
             | InstrumentationClause c ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen, c,
-              ext_data, preprocessor, csv_specs, factors
-            | ExternalDataClause c ->
+              read, factors
+            | ReadClause c ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, Some c, preprocessor, csv_specs,
-              factors
-            | PreprocessorClause preprocessor ->
-              select_fields, and_all_others, merge, sort, where,
-              event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
-            | CsvSpecsClause c ->
-              select_fields, and_all_others, merge, sort, where,
-              event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, Some c,
-              factors
+              instrumentation, Some c, factors
             | FactorClause factors ->
               select_fields, and_all_others, merge, sort, where,
               event_time, key, commit, from, every, listen,
-              instrumentation, ext_data, preprocessor, csv_specs,
-              factors
+              instrumentation, read, factors
           ) default_clauses clauses in
       let commit_specs, (commit_before, commit_cond) = commit in
       (* Try to catch when we write "commit when" instead of "commit
@@ -1382,12 +1413,11 @@ let fields_schema m =
       and not_listen =
         listen = None || from != default_from || every != default_every
       and not_instrumentation = instrumentation = ""
-      and not_csv =
-        ext_data = None && preprocessor == default_preprocessor &&
-        csv_specs = None || from != default_from || every != default_every
+      and not_read =
+        read = None || from != default_from || every != default_every
       and not_event_time = event_time = default_event_time
       and not_factors = factors == default_factors in
-      if not_listen && not_csv && not_instrumentation then
+      if not_listen && not_read && not_instrumentation then
         let flush_how, notifications =
           List.fold_left (fun (f, n) -> function
             | CommitSpec -> f, n
@@ -1401,17 +1431,16 @@ let fields_schema m =
                     where ; event_time ; notifications ; key ;
                     commit_before ; commit_cond ; flush_how ; from ;
                     every ; factors }
-      else if not_aggregate && not_csv && not_event_time &&
+      else if not_aggregate && not_read && not_event_time &&
               not_instrumentation && listen <> None then
         let net_addr, port, proto = Option.get listen in
         ListenFor { net_addr ; port ; proto ; factors }
       else if not_aggregate && not_listen &&
               not_instrumentation &&
-              ext_data <> None && csv_specs <> None then
-        ReadCSVFile { where = Option.get ext_data ;
-                      what = Option.get csv_specs ;
-                      preprocessor ; event_time ; factors }
-      else if not_aggregate && not_listen && not_csv && not_listen &&
+              read <> None then
+        let source, format = Option.get read in
+        ReadExternal { source ; format ; event_time ; factors }
+      else if not_aggregate && not_listen && not_read && not_listen &&
               not_factors
       then
         if String.lowercase instrumentation = "instrumentation" then
@@ -1475,14 +1504,23 @@ let fields_schema m =
     "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
 
-    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
-      (test_op "read file \"/tmp/toto.csv\" (f1 bool?, f2 i32)")
+    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF false \\
+      AS CSV SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
+      (test_op "read file \"/tmp/toto.csv\" as csv (f1 bool?, f2 i32)")
 
-    "READ AND DELETE IF true FILES \"/tmp/toto.csv\"  SEPARATOR \",\" NULL \"\" NO QUOTES (f1 BOOL?, f2 I32)" \
-      (test_op "read and delete file \"/tmp/toto.csv\" no quote (f1 bool?, f2 i32)")
+    "READ FROM FILES \\
+      CASE WHEN env.glop THEN \"glop.csv\" ELSE \"pas glop.csv\" END \\
+        THEN DELETE IF false \\
+      AS CSV SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
+      (test_op "read from files (IF glop THEN \"glop.csv\" ELSE \"pas glop.csv\") as csv (f1 bool?, f2 i32)")
 
-    "READ AND DELETE IF false FILES \"/tmp/toto.csv\"  SEPARATOR \"\\t\" NULL \"<NULL>\" QUOTES (f1 BOOL?, f2 I32)" \
-      (test_op "read file \"/tmp/toto.csv\" \\
+    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF true \\
+      AS CSV SEPARATOR \",\" NULL \"\" NO QUOTES (f1 BOOL?, f2 I32)" \
+      (test_op "read from file \"/tmp/toto.csv\" then delete as csv no quote (f1 bool?, f2 i32)")
+
+    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF false \\
+      AS CSV SEPARATOR \"\\t\" NULL \"<NULL>\" QUOTES (f1 BOOL?, f2 I32)" \
+      (test_op "read from file \"/tmp/toto.csv\" as csv \\
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
 

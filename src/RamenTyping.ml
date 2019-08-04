@@ -1490,26 +1490,31 @@ let emit_operation declare tuple_sizes records field_names
         emit_assert_is_false ~name oc (n_of_expr notif)
       ) notifications
 
-  | ReadCSVFile { preprocessor ; where = { fname ; unlink } ; _ } ->
+  | ReadExternal { source ; _ } ->
       O.iter_expr (
         emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type ~func_name oc
       ) op ;
-      Option.may (fun p ->
-        (*  must be a non-nullable string: *)
-        let name = func_err fi Err.(Preprocessor (ActualType "string")) in
-        emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr p) oc TString ;
-        let name = func_err fi Err.(Preprocessor (Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr p)
-      ) preprocessor ;
-      let name = func_err fi Err.(Filename (ActualType "string")) in
-      emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr fname) oc TString ;
-      let name = func_err fi Err.(Filename (Nullability false)) in
-      emit_assert_is_false ~name oc (n_of_expr fname) ;
-      let name = func_err fi Err.(Unlink (ActualType "bool")) in
-      emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr unlink) oc TBool ;
-      let name = func_err fi Err.(Unlink (Nullability false)) in
-      emit_assert_is_false ~name oc (n_of_expr unlink)
+      (match source with
+      | File { fname ; preprocessor ; unlink } ->
+          Option.may (fun p ->
+            (*  must be a non-nullable string: *)
+            let name = func_err fi Err.(Preprocessor (ActualType "string")) in
+            emit_assert_id_eq_typ ~name tuple_sizes records field_names
+                                  (t_of_expr p) oc TString ;
+            let name = func_err fi Err.(Preprocessor (Nullability false)) in
+            emit_assert_is_false ~name oc (n_of_expr p)
+          ) preprocessor ;
+          let name = func_err fi Err.(Filename (ActualType "string")) in
+          emit_assert_id_eq_typ ~name tuple_sizes records field_names
+                                (t_of_expr fname) oc TString ;
+          let name = func_err fi Err.(Filename (Nullability false)) in
+          emit_assert_is_false ~name oc (n_of_expr fname) ;
+          let name = func_err fi Err.(Unlink (ActualType "bool")) in
+          emit_assert_id_eq_typ ~name tuple_sizes records field_names
+                                (t_of_expr unlink) oc TBool ;
+          let name = func_err fi Err.(Unlink (Nullability false)) in
+          emit_assert_is_false ~name oc (n_of_expr unlink))
 
   | _ -> ())
 
@@ -1599,7 +1604,8 @@ let id_or_type_of_field op path =
        * Record expression to locate the actual expression which id we
        * should equate to the callers' expression. *)
       Id (find_expr_of_path_in_selected_fields fields path).E.uniq_num
-  | O.ReadCSVFile { what = { fields ; _ } ; _ } ->
+  | O.ReadExternal { format ; _ } ->
+      let fields = O.fields_of_external_format format in
       FieldType (find_field_type "CSV" fields)
   | O.ListenFor { proto ; _ } ->
       FieldType (find_field_type (RamenProtocols.string_of_proto proto)

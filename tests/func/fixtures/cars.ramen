@@ -1,7 +1,7 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "cars.csv" (
+  READ FROM FILE "cars.csv" AS CSV (
     year u16 {years (rel)},
     manufacturer string,
     model string,

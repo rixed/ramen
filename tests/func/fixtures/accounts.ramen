@@ -1,5 +1,5 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "accounts.csv" (
+  READ FROM FILE "accounts.csv" AS CSV (
     name string, amount float {USD});

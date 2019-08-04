@@ -1,7 +1,7 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "port_scan.csv" (
+  READ FROM FILE "port_scan.csv" AS CSV (
     source string,
     first float,
     last float,

@@ -1,9 +1,9 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "mixture.csv" (
+  READ FROM FILE "mixture.csv" AS CSV (
     n u32, ip ip, cidr cidr);
 
 DEFINE csv_null AS
-  READ FILE "mixture.csv" (
+  READ FROM FILE "mixture.csv" AS CSV (
     n u32, ip ip?, cidr cidr?);

@@ -1,7 +1,7 @@
 -- vim: ft=sql expandtab
 
 DEFINE csv AS
-  READ FILE "123.csv" (
+  READ FROM FILE "123.csv" AS CSV (
     n u8,  -- will be 1, 2, 3
     b bool,  -- true, true, false
     name string?); -- \"one\", \"two\" and NULL!"

@@ -3,7 +3,7 @@
 DEFINE splitter AS
   FROM (
     -- Note: "," must not be the CSV separator!
-    READ FILE "fixtures/balade.txt" SEPARATOR "_" (line string)
+    READ FROM FILE "fixtures/balade.txt" AS CSV SEPARATOR "_" (line string)
   ) SELECT split(" ", line) AS word;
 
 -- Method 1: send the new count each time it changes
