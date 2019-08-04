@@ -411,11 +411,6 @@ let zero () = of_u8 0
 let one () = of_u8 1
 let one_hour () = of_float ~units:RamenUnits.seconds 3600.
 
-let is_true e =
-  match e.text with
-  | Const (VBool true) -> true
-  | _ -> false
-
 let string_of_const e =
   match e.text with
   | Const (VString s) -> Some s
@@ -694,6 +689,14 @@ let is_nullable e = e.typ.T.nullable
 let is_const e =
   match e.text with
   | Const _ -> true | _ -> false
+
+let is_bool_const b e =
+  match e.text with
+  | Const (VBool b') -> b' = b
+  | _ -> false
+
+let is_true = is_bool_const true
+let is_false = is_bool_const false
 
 let is_a_string e =
   e.typ.T.structure = TString

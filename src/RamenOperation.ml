@@ -105,7 +105,11 @@ let print_file_specs with_types oc specs =
        Printf.sprintf2 " PREPROCESSED WITH %a" (E.print with_types) e
      ) "" specs.preprocessor)
     (fun oc unlink ->
-      Printf.fprintf oc " THEN DELETE IF %a" (E.print false) unlink)
+      if not (E.is_false unlink) then
+        if E.is_true unlink then
+          Printf.fprintf oc " THEN DELETE"
+        else
+          Printf.fprintf oc " THEN DELETE IF %a" (E.print false) unlink)
       specs.unlink
 
 let print_external_source with_types oc = function
@@ -136,11 +140,16 @@ let fields_of_external_format = function
   | CSV { fields ; _ } -> fields
 
 let print_csv_specs _with_types oc specs =
-  Printf.fprintf oc "AS CSV SEPARATOR %S NULL %S %s %s%a"
-    specs.separator specs.null
-    (if specs.may_quote then "QUOTES" else "NO QUOTES")
-    (if specs.escape_seq = "" then "" else
-     "ESCAPE WITH "^ String.quote specs.escape_seq ^" ")
+  Printf.fprintf oc "AS CSV" ;
+  if specs.separator <> Default.csv_separator then
+    Printf.fprintf oc " SEPARATOR %S" specs.separator ;
+  if specs.null <> Default.csv_null then
+    Printf.fprintf oc " NULL %S" specs.null ;
+  if not specs.may_quote then
+    Printf.fprintf oc " NO QUOTES" ;
+  if specs.escape_seq <> "" then
+    Printf.fprintf oc " ESCAPE WITH %S" specs.escape_seq ;
+  Printf.fprintf oc " %a"
     RamenTuple.print_typ specs.fields
 
 let print_external_format with_types oc = function
@@ -1155,7 +1164,7 @@ struct
     let m = "CSV format" :: m in
     (optional ~def:Default.csv_separator (
        strinG "separator" -- opt_blanks -+ quoted_string +- opt_blanks) ++
-     optional ~def:"" (
+     optional ~def:Default.csv_null (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
      optional ~def:true (
        optional ~def:true (strinG "no" -- blanks >>: fun () -> false) +-
@@ -1504,22 +1513,25 @@ struct
     "FROM 'foo/bar' SELECT in.n, LAG GLOBALLY skip nulls(2, out.n) AS l" \
         (test_op "SELECT n, lag globally(2, n) AS l FROM foo/bar")
 
-    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF false \\
-      AS CSV SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
+    "READ FROM FILES \"/tmp/toto.csv\" \\
+      AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read file \"/tmp/toto.csv\" as csv (f1 bool?, f2 i32)")
 
     "READ FROM FILES \\
       CASE WHEN env.glop THEN \"glop.csv\" ELSE \"pas glop.csv\" END \\
-        THEN DELETE IF false \\
-      AS CSV SEPARATOR \",\" NULL \"\" QUOTES (f1 BOOL?, f2 I32)" \
+      AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read from files (IF glop THEN \"glop.csv\" ELSE \"pas glop.csv\") as csv (f1 bool?, f2 i32)")
 
-    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF true \\
-      AS CSV SEPARATOR \",\" NULL \"\" NO QUOTES (f1 BOOL?, f2 I32)" \
+    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE \\
+      AS CSV NO QUOTES (f1 BOOL?, f2 I32)" \
       (test_op "read from file \"/tmp/toto.csv\" then delete as csv no quote (f1 bool?, f2 i32)")
 
-    "READ FROM FILES \"/tmp/toto.csv\" THEN DELETE IF false \\
-      AS CSV SEPARATOR \"\\t\" NULL \"<NULL>\" QUOTES (f1 BOOL?, f2 I32)" \
+    "READ FROM FILES \"foo\" THEN DELETE IF env.delete_flag \\
+      AS CSV NO QUOTES (x BOOL)" \
+      (test_op "read from file \"foo\" then delete if delete_flag as csv no quote (x bool)")
+
+    "READ FROM FILES \"/tmp/toto.csv\" \\
+      AS CSV SEPARATOR \"\\t\" NULL \"<NULL>\" (f1 BOOL?, f2 I32)" \
       (test_op "read from file \"/tmp/toto.csv\" as csv \\
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
