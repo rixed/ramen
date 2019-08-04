@@ -100,7 +100,7 @@ let map_external_source f = function
 
 let print_file_specs with_types oc specs =
   Printf.fprintf oc "FILES %a%s%a"
-    (E.print false) specs.fname
+    (E.print with_types) specs.fname
     (Option.map_default (fun e ->
        Printf.sprintf2 " PREPROCESSED WITH %a" (E.print with_types) e
      ) "" specs.preprocessor)
@@ -109,7 +109,7 @@ let print_file_specs with_types oc specs =
         if E.is_true unlink then
           Printf.fprintf oc " THEN DELETE"
         else
-          Printf.fprintf oc " THEN DELETE IF %a" (E.print false) unlink)
+          Printf.fprintf oc " THEN DELETE IF %a" (E.print with_types) unlink)
       specs.unlink
 
 let print_external_source with_types oc = function
