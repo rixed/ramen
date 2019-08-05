@@ -5,6 +5,7 @@ let incdirs = [
   N.path "binocle" ;
   N.path "bytes" ;
   N.path "ctypes" ;
+  N.path "inotify" ;
   N.path "integers" ;
   N.path "kafka" ;
   N.path "lacaml" ;
@@ -39,5 +40,6 @@ let objfiles = [
   N.path "ctypes/cstubs.cmxa" ;
   N.path "sodium/sodium.cmxa" ;
   N.path "kafka/kafka.cmxa" ;
+  N.path "inotify/inotify.cmxa" ;
   N.path "ramen/codegen.cmxa" ;
 ]
