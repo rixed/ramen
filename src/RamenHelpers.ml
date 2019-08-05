@@ -1295,11 +1295,12 @@ let option_map2 f o1 o2 =
 (* To circumvent short-cuts *)
 let (|||) = (||)
 
-let pretty_enum_print p oc e =
+let pretty_enum_print ?(uppercase=false) p oc e =
+  let and_ = if uppercase then " AND " else " and " in
   let rec loop first x =
     match Enum.get e with
     | None ->
-        Printf.fprintf oc "%s%a" (if first then "" else " and ") p x
+        Printf.fprintf oc "%s%a" (if first then "" else and_) p x
     | Some next ->
         Printf.fprintf oc "%s%a" (if first then "" else ", ") p x ;
         loop false next in
@@ -1307,14 +1308,14 @@ let pretty_enum_print p oc e =
   | None -> String.print oc "<empty>"
   | Some x -> loop true x
 
-let pretty_list_print p oc =
-  pretty_enum_print p oc % List.enum
+let pretty_list_print ?uppercase p oc =
+  pretty_enum_print ?uppercase p oc % List.enum
 
-let pretty_array_print p oc =
-  pretty_enum_print p oc % Array.enum
+let pretty_array_print ?uppercase p oc =
+  pretty_enum_print ?uppercase p oc % Array.enum
 
-let pretty_set_print p oc =
-  pretty_enum_print p oc % Set.enum
+let pretty_set_print ?uppercase p oc =
+  pretty_enum_print ?uppercase p oc % Set.enum
 
 (* Return the distance (as a float) between two values of the same type: *)
 module Distance = struct

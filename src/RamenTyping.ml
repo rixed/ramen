@@ -1514,7 +1514,9 @@ let emit_operation declare tuple_sizes records field_names
           emit_assert_id_eq_typ ~name tuple_sizes records field_names
                                 (t_of_expr unlink) oc TBool ;
           let name = func_err fi Err.(Unlink (Nullability false)) in
-          emit_assert_is_false ~name oc (n_of_expr unlink))
+          emit_assert_is_false ~name oc (n_of_expr unlink)
+      | Kafka _ ->
+          todo "Typing Kafka specs")
 
   | _ -> ())
 

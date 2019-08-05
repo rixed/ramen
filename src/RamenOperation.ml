@@ -76,7 +76,8 @@ let print_flush_method oc = function
  * specification leaks into the format specification. *)
 type external_source =
   | File of file_specs
-  (* TODO: others such as Fifo, Kafka... *)
+  | Kafka of kafka_specs
+  (* TODO: others such as Fifo... *)
   [@@ppp PPP_OCaml]
 
 and file_specs =
@@ -85,18 +86,121 @@ and file_specs =
     unlink : E.t }
   [@@ppp PPP_OCaml]
 
+(* The consumer is configured with the standard configuration
+ * parameters, of which "metadata.broker.list" is mandatory.
+ * See https://kafka.apache.org/documentation.html#consumerconfigs
+ * In particular, pay attention to "bootstrap.servers" (can be used to get
+ * to the actual leader for the partition, as usual with Kafka),
+ * "group.id" (the consumer group name), "client.id" to help reading Kafka's
+ * logs.
+ *
+ * Regarding consumer groups:
+ * The easiest is to use only one consumer and one consumer group. In
+ * that case, that worker will receive all messages from all partitions.
+ * But we may want instead to partition Kafka's topic with the key we
+ * intend to group by (or just part of that key), and start several
+ * workers. Now if all those workers have the same consumer group, they
+ * will be send all messages from distinct partitions, thus parallelizing
+ * the work.
+ * If two different functions both wants to read from the same topic,
+ * each of these workers willing to receive all the messages
+ * notwithstanding the other workers also reading this very topic, the
+ * different consumer group names have to be used.
+ * A good value is the FQ name of the function.
+ *
+ * Regarding restarts:
+ * By default, each worker saves its own kafka partitions offset in its
+ * state file. The downside of course is that when that statefile is
+ * obsoleted by a worker code change then the worker will have to restart
+ * from fresh.
+ * The other alternative is to store this offset in another file, thus
+ * keeping it across code change. In that case the user specify the file
+ * name in which the offset will be written in user friendly way, so she
+ * can manage it herself (by deleting the file or manually altering that
+ * offset).
+ * Finally, it is also possible to use Kafka group coordinator to manage
+ * those offset for us. *)
+and kafka_specs =
+  { options : (string * E.t) list ;
+    topic : E.t ;
+    partition : E.t ;
+    restart_from : kafka_restart_specs }
+  [@@ppp PPP_OCaml]
+
+and kafka_restart_specs =
+  | Beginning
+  (* Expecting a positive int here for negative offset from the end, as in
+   * rdkafka lib: *)
+  | OffsetFromEnd of E.t
+  | SaveInState
+  | SaveInFile of E.t * snapshot_period_specs
+  | UseKafkaGroupCoordinator of snapshot_period_specs
+  [@@ppp PPP_OCaml]
+
+and snapshot_period_specs =
+  { after_max_secs : E.t ; after_max_events : E.t }
+  [@@ppp PPP_OCaml]
+
+let fold_snapshot_period_specs init f specs =
+  let x = f init "snapshot-every-secs" specs.after_max_secs in
+  f x "snapshot-every-events" specs.after_max_events
+
+let fold_kafka_restart_specs init f = function
+  | Beginning | SaveInState ->
+      init
+  | OffsetFromEnd e ->
+      f init "offset-from-end" e
+  | SaveInFile (e, s) ->
+      let x = f init "snapshot-file" e in
+      fold_snapshot_period_specs x f s
+  | UseKafkaGroupCoordinator s ->
+      fold_snapshot_period_specs init f s
+
 let fold_external_source init f = function
   | File specs ->
       let x =
         Option.map_default (f init "preprocessor") init specs.preprocessor in
       let x = f x "filename" specs.fname in
       f x "DELETE-IF clause" specs.unlink
+  | Kafka specs ->
+      let x =
+        List.fold_left (fun x (_, e) ->
+          f x "kafka-option" e
+        ) init specs.options in
+      let x = f x "kafka-topic" specs.topic in
+      let x = f x "kafka-partition" specs.partition in
+      fold_kafka_restart_specs x f specs.restart_from
+
+let iter_external_source f =
+  fold_external_source () (fun () -> f)
+
+let map_snapshot_period_specs f specs =
+  { after_max_secs = f specs.after_max_secs ;
+    after_max_events = f specs.after_max_events }
+
+let map_kafka_restart_specs f specs =
+  match specs with
+  | Beginning | SaveInState ->
+      specs
+  | OffsetFromEnd e ->
+      OffsetFromEnd (f e)
+  | SaveInFile (e, s) ->
+      SaveInFile (f e, map_snapshot_period_specs f s)
+  | UseKafkaGroupCoordinator s ->
+      UseKafkaGroupCoordinator (map_snapshot_period_specs f s)
 
 let map_external_source f = function
   | File { fname ; preprocessor ; unlink } ->
-      File { fname = f fname ;
-             preprocessor = Option.map f preprocessor ;
-             unlink = f unlink }
+      File {
+        fname = f fname ;
+        preprocessor = Option.map f preprocessor ;
+        unlink = f unlink }
+  | Kafka { options ; topic ; partition ; restart_from } ->
+      Kafka {
+        options = List.map (fun (n, e) -> n, f e) options ;
+        topic = f topic ;
+        partition = f partition ;
+        restart_from = map_kafka_restart_specs f restart_from }
 
 let print_file_specs with_types oc specs =
   Printf.fprintf oc "FILES %a%s%a"
@@ -112,9 +216,20 @@ let print_file_specs with_types oc specs =
           Printf.fprintf oc " THEN DELETE IF %a" (E.print with_types) unlink)
       specs.unlink
 
+let print_kafka_specs with_types oc specs =
+  (* TODO: restart offset *)
+  Printf.fprintf oc "KAFKA TOPIC %a PARTITION %a WITH OPTIONS %a"
+    (E.print with_types) specs.topic
+    (E.print with_types) specs.partition
+    (pretty_list_print ~uppercase:true (fun oc (n, e) ->
+      Printf.fprintf oc "%S = %a" n (E.print with_types) e))
+      specs.options
+
 let print_external_source with_types oc = function
   | File specs ->
       print_file_specs with_types oc specs
+  | Kafka specs ->
+      print_kafka_specs with_types oc specs
 
 type external_format =
   | CSV of csv_specs
@@ -387,8 +502,8 @@ let iter_top_level_expr f =
 let fold_expr init f =
   fold_top_level_expr init (fun i c -> E.fold (f c) [] i)
 
-let iter_expr f op =
-  fold_expr () (fun c s () e -> f c s e) op
+let iter_expr f =
+  fold_expr () (fun c s () e -> f c s e)
 
 let map_top_level_expr f op =
   match op with
@@ -893,10 +1008,11 @@ let checked params op =
     (* Unknown tuples has been defaulted to Param/Env already.
      * Let's now forbid explicit references to input: *)
     iter_top_level_expr (check_fields_from [ TupleParam; TupleEnv ]) op ;
-    (* additionally, unlink must be stateless: *)
-    (match source with
-    | File { unlink ; _ } -> check_pure "DELETE-IF" unlink)
-    (* FIXME: check the field type declarations use only scalar types *)
+    (* additionally, all expressions used for defining the source must be
+     * stateless: *)
+    iter_external_source (check_pure) source
+    (* FIXME: check the field type declarations of CSV format use only
+     * scalar types *)
 
   | Instrumentation _ | Notifications _ -> ()) ;
   (* Now that we have inferred the IO tuples, run some additional checks on
@@ -1201,11 +1317,30 @@ struct
         fun ((fname, preprocessor), unlink) -> { fname ; preprocessor ; unlink }
     ) m
 
+  let kafka_specs m =
+    let kafka_option m =
+      let m = "option" :: m in
+      (
+        quoted_string +- opt_blanks +- char '=' +- opt_blanks ++ E.Parser.p
+      ) m
+    in
+    let m = "kafka specifications" :: m in
+    (
+      strinG "topic" -- blanks -+ E.Parser.p +- blanks +-
+      strinG "partition" +- blanks ++ E.Parser.p +- blanks
+      +- strinG "with" +- blanks +- strinG "options" +- blanks ++
+        several ~sep:list_sep_and kafka_option >>:
+      fun ((topic, partition), options) ->
+        let restart_from = OffsetFromEnd (E.zero ()) in (* TODO *)
+        { options ; topic ; partition ; restart_from }
+    ) m
+
   let external_source m =
     let m = "external data source" :: m in
     (
       optional ~def:() (strinG "from" -- blanks) -+ (
-        strinGs "file" -- blanks -+ file_specs >>: fun s -> File s
+        (strinGs "file" -- blanks -+ file_specs >>: fun s -> File s) |||
+        (strinG "kafka" -- blanks -+ kafka_specs >>: fun s -> Kafka s)
       )
     ) m
 
@@ -1535,6 +1670,13 @@ struct
       (test_op "read from file \"/tmp/toto.csv\" as csv \\
                       separator \"\\t\" null \"<NULL>\" \\
                       (f1 bool?, f2 i32)")
+
+    "READ FROM KAFKA TOPIC \"foo\" PARTITION 0 WITH OPTIONS \\
+      \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
+      AS CSV (f1 BOOL?, f2 I32)" \
+      (test_op "read from kafka topic \"foo\" partition 0 with options \\
+        \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
+        as csv (f1 bool?, f2 i32)")
 
     "SELECT 1 AS one EVERY 1{seconds}" \
         (test_op "YIELD 1 AS one EVERY 1 SECONDS")

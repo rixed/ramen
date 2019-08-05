@@ -3645,6 +3645,8 @@ let emit_operation name top_half_name func
       format = CSV { separator ; null ; may_quote ; escape_seq ; _ } ; _ } ->
     emit_read_csv_file opc param_env env_env name fname unlink
                        separator null may_quote escape_seq preprocessor
+  | ReadExternal _ ->
+    todo "CodeGen for reading kafka"
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->
