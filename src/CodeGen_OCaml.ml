@@ -2461,25 +2461,57 @@ let emit_factors_of_tuple name func oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
-(* Given a tuple type, generate the ReadExternal operation. *)
-let emit_read_csv_file opc param_env env_env name csv_fname unlink
-                       csv_separator csv_null csv_quotes csv_escape_seq
-                       preprocessor =
+(* Generate a data provider that reads from a file a return blocks of bytes: *)
+let emit_read_file opc param_env env_env name fname unlink preprocessor =
   let env = param_env @ env_env in
   let const_string_of e =
     Printf.sprintf2 "(%a)"
       (emit_expr ~context:Finalize ~opc ~env) e
   in
   let preprocessor =
-    fail_with_context "csv preprocessor expression" (fun () ->
+    fail_with_context "file preprocessor expression" (fun () ->
       match preprocessor with
       | None -> "\"\""
       | Some p -> const_string_of p)
-  and csv_fname =
-    fail_with_context "csv file name expression" (fun () ->
-      const_string_of csv_fname)
+  and fname =
+    fail_with_context "file name expression" (fun () ->
+      const_string_of fname)
   and p fmt = emit opc.code 0 fmt
   in
+  p "let %s field_of_params_ =" name ;
+  p "  let unlink_ = %a in"
+    (emit_expr ~env ~context:Finalize ~opc) unlink ;
+  p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
+  p "                 [ \"env\" ], Sys.getenv ] in" ;
+  p "  let filename_ = subst_tuple_fields tuples %s" fname ;
+  p "  and preprocessor_ = subst_tuple_fields tuples %s" preprocessor ;
+  p "  in" ;
+  p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n"
+
+(* Given a tuple type (in op.typ), generate the CSV reader operation.
+ * A Reader generates a stream of tuples from a data provider.
+ * We use CodeGenLib_IO.read_lines to turn data chunks into lines. *)
+let emit_parse_csv opc name
+                   csv_separator csv_null csv_quotes csv_escape_seq =
+  let p fmt = emit opc.code 0 fmt
+  in
+  fail_with_context "csv line parser" (fun () ->
+    emit_tuple_of_strings 0 "tuple_of_strings_" csv_null opc.code opc.typ) ;
+  p "let %s field_of_params_ =" name ;
+  p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
+  p "                 [ \"env\" ], Sys.getenv ] in" ;
+  p "  let separator_ = subst_tuple_fields tuples %S" csv_separator ;
+  p "  and null_ = subst_tuple_fields tuples %S" csv_null ;
+  p "  and escape_seq_ = subst_tuple_fields tuples %S in" csv_escape_seq ;
+  p "  let for_each_line =" ;
+  p "    CodeGenLib_IO.tuple_of_csv_line separator_ %b escape_seq_ tuple_of_strings_"
+      csv_quotes ;
+  p "  in" ;
+  p "  fun k ->" ;
+  p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n"
+
+let emit_read opc name source_name format_name =
+  let p fmt = emit opc.code 0 fmt in
   (* The dynamic part comes from the unpredictable field list.
    * For each input line, we want to read all fields and build a tuple.
    * Then we want to write this tuple in some ring buffer.
@@ -2493,17 +2525,13 @@ let emit_read_csv_file opc param_env env_env name csv_fname unlink
     emit_time_of_tuple "time_of_tuple_" opc) ;
   fail_with_context "tuple serialization" (fun () ->
     emit_serialize_tuple 0 "serialize_tuple_" opc.code opc.typ) ;
-  fail_with_context "csv line parser" (fun () ->
-    emit_tuple_of_strings 0 "tuple_of_strings_" csv_null opc.code opc.typ) ;
   fail_with_context "csv reader function" (fun () ->
     p "let %s () =" name ;
-    p "  let unlink_ = %a in"
-      (emit_expr ~env ~context:Finalize ~opc) unlink ;
-    p "  CodeGenLib_Skeletons.read_csv_file %s" csv_fname ;
-    p "    unlink_ %S %b %S sersize_of_tuple_ time_of_tuple_"
-      csv_separator csv_quotes csv_escape_seq ;
+    p "  CodeGenLib_Skeletons.read" ;
+    p "    (%s field_of_params_)" source_name ;
+    p "    (%s field_of_params_)" format_name ;
+    p "    sersize_of_tuple_ time_of_tuple_" ;
     p "    factors_of_tuple_ serialize_tuple_" ;
-    p "    tuple_of_strings_ %s field_of_params_" preprocessor ;
     p "    orc_make_handler_ orc_write orc_close\n")
 
 let emit_listen_on opc name net_addr port proto =
@@ -3640,13 +3668,17 @@ let emit_operation name top_half_name func
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
   match func.FS.operation with
-  | ReadExternal {
-      source = File { fname ; preprocessor ; unlink } ;
-      format = CSV { separator ; null ; may_quote ; escape_seq ; _ } ; _ } ->
-    emit_read_csv_file opc param_env env_env name fname unlink
-                       separator null may_quote escape_seq preprocessor
-  | ReadExternal _ ->
-    todo "CodeGen for reading kafka"
+  | ReadExternal { source ; format ; _ } ->
+    let source_name = name ^"_source" and format_name = name ^"_format" in
+    (match source with
+    | File { fname ; preprocessor ; unlink } ->
+        emit_read_file opc param_env env_env source_name fname unlink preprocessor
+    | Kafka _ ->
+        todo "CodeGen for reading Kafka") ;
+    (match format with
+    | CSV { separator ; null ; may_quote ; escape_seq ; _ } ->
+        emit_parse_csv opc format_name separator null may_quote escape_seq) ;
+    emit_read opc name source_name format_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
   | Instrumentation { from } ->

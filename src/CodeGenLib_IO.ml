@@ -3,6 +3,7 @@ open Stdint
 open Batteries
 open Legacy.Unix
 open RamenHelpers
+open RamenConsts
 module N = RamenName
 module Files = RamenFiles
 
@@ -16,12 +17,16 @@ let on_each_input_pre () =
   if !first_input = None then first_input := Some t ;
   last_input := Some t
 
-let read_file_lines ?(while_=always) ?(do_unlink=false)
-                    (filename : N.path) preprocessor watchdog k =
+(* [k] is the reader that's passed the chunks of external data
+ * as a byte string, the offset and length to consume, and a flag
+ * telling if more data is to be expected; And it answers with the
+ * offset of the first byte not consumed, or raise Exit *)
+let read_file ~while_ ~do_unlink filename preprocessor watchdog k =
+  !logger.debug "read_file: Importing file %a" N.path_print filename ;
   let open_file =
     if preprocessor = "" then (
       fun () ->
-        let fd = openfile (filename :> string) [ O_RDONLY ] 0o644 in
+        let fd = openfile (filename : N.path :> string) [ O_RDONLY ] 0o644 in
         fd, (fun () -> close fd)
     ) else (
       fun () ->
@@ -51,29 +56,48 @@ let read_file_lines ?(while_=always) ?(do_unlink=false)
        else (Printf.sprintf " through %S" preprocessor))
       (Printexc.to_string e)
   | fd, close_file ->
-    !logger.debug "Start reading %a" N.path_print filename ;
-    finally close_file
+    !logger.debug "read_file: Start reading %a" N.path_print filename ;
+    (* Everything is stored into a circular buffer of fixed size that is
+     * rearranged from time to time to keep it simple for the callback. TODO *)
+    let buffer = Bytes.create max_external_msg_size in
+    let buffer_stop = ref 0 in
+    finally
       (fun () ->
-        (* If we used a preprocessor we must wait for EOF before
-         * unlinking the file. And in case we crash before the end
-         * of the file it is safer to skip the file rather than redo
-         * the lines that have been read already. *)
+        !logger.debug "read_file: Finished reading %a" N.path_print filename ;
+        close_file () ;
+        RamenWatchdog.disable watchdog ;
+        if do_unlink && preprocessor <> "" then Files.safe_unlink filename ;
+        ignore (Gc.major_slice 0))
+      (fun () ->
+        (* Try to unlink the file as early as possible, because if the
+         * worker crashes before the end its actually safer to skip some
+         * messages than to process some twice, although an option to
+         * control this would be nice (TODO).
+         * If we used a preprocessor we must wait for EOF before
+         * unlinking the file. *)
         if do_unlink && preprocessor = "" then
           Files.safe_unlink filename ;
         RamenWatchdog.enable watchdog ;
-        let lines = read_lines fd in
-        (try
-          Enum.iter (fun line ->
-            if not (while_ ()) then raise Exit ;
-            on_each_input_pre () ;
-            k line ;
-            RamenWatchdog.reset watchdog
-          ) lines
-        with Exit -> ()) ;
-        RamenWatchdog.disable watchdog ;
-        !logger.debug "Finished reading %a" N.path_print filename ;
-        if do_unlink && preprocessor <> "" then Files.safe_unlink filename ;
-        ignore (Gc.major_slice 0)) ()
+        let rec read_more has_more =
+          let has_more =
+            if has_more then
+              let len = Bytes.length buffer - !buffer_stop in
+              assert (len > 0) ;  (* Or buffer is too small *)
+              !logger.debug "read_file: Unix.read @%d..+%d" !buffer_stop len ;
+              let sz = Unix.read fd buffer !buffer_stop len in
+              !logger.debug "read_file: Read %d bytes" sz ;
+              buffer_stop := !buffer_stop + sz ;
+              sz > 0
+            else has_more
+          in
+          let consumed = k buffer 0 !buffer_stop has_more in
+          !logger.debug "read_file: consumed %d bytes" consumed ;
+          buffer_stop := !buffer_stop - consumed ;
+          Bytes.blit buffer consumed buffer 0 !buffer_stop ;
+          if while_ () && (has_more || !buffer_stop > 0) then
+            read_more has_more in
+        read_more true
+      ) ()
 
 let check_file_exists kind kind_name path =
   !logger.debug "Checking %a is a %s..." N.path_print path kind_name ;
@@ -88,47 +112,71 @@ let check_file_exists kind kind_name path =
 
 let check_dir_exists = check_file_exists S_DIR "directory"
 
+(* Helper to read lines out of data chunks, each line being then sent
+ * to [k]: *)
+let lines_of_chunks k buffer start stop has_more =
+  match Bytes.index_from buffer start '\n' with
+  | exception Not_found ->
+      if not has_more then (
+        (* Assume eol at eof: *)
+        k buffer start stop ;
+        stop
+      ) else 0
+  | i when i >= stop ->
+      if not has_more then (
+        k buffer start stop ;
+        stop
+      ) else 0
+  | i ->
+      k buffer start i ;
+      i + 1
+
+(* Helper to turn a CSV line into a tuple: *)
+let tuple_of_csv_line separator may_quote escape_seq tuple_of_strings =
+  let of_string line =
+    strings_of_csv separator may_quote escape_seq line |>
+    tuple_of_strings
+  in
+  fun k buffer start stop ->
+    (* FIXME: make strings_of_csv works on bytes from start to stop *)
+    let line = Bytes.(sub buffer start (stop - start) |> to_string) in
+    !logger.debug "tuple_of_csv_line: new line: %S" line ;
+    match of_string line with
+    | exception e ->
+        !logger.error "Cannot parse line %S: %s"
+          line (Printexc.to_string e)
+    | tuple ->
+        k tuple
+
 (* Try hard not to create several instances of the same watchdog: *)
 let watchdog = ref None
 
-let read_glob_lines ?while_ ?do_unlink path preprocessor quit_flag k =
+(* Calls [k] with buffered data repeatedly *)
+let read_glob_file path preprocessor do_unlink quit_flag while_ k =
   let dirname = Filename.dirname path |> N.path
-  and glob = Filename.basename path in
-  let glob = Globs.compile glob in
-  if !watchdog = None then
-    watchdog := Some (RamenWatchdog.make ~timeout:300. "read lines"
-                                         quit_flag) ;
+  and glob_str = Filename.basename path in
+  let glob = Globs.compile glob_str in
+  if !watchdog = None then watchdog :=
+    Some (RamenWatchdog.make ~timeout:300. "read file" quit_flag) ;
   let watchdog = Option.get !watchdog in
   let import_file_if_match (filename : N.path) =
     if Globs.matches glob (filename :> string) then
       try
-        read_file_lines ?while_ ?do_unlink (N.path_cat [dirname ; filename ])
-                        preprocessor watchdog k
+        read_file ~while_ ~do_unlink (N.path_cat [dirname ; filename ])
+                  preprocessor watchdog k
       with exn ->
         !logger.error "Exception while reading file %a: %s\n%s"
           N.path_print filename
           (Printexc.to_string exn)
           (Printexc.get_backtrace ())
     else (
-      !logger.debug "File %a is not interesting." N.path_print filename
+      !logger.debug "File %a is not interesting (glob is %S)."
+        N.path_print filename glob_str
     ) in
   check_dir_exists dirname ;
-  let handler = RamenFileNotify.make ?while_ dirname in
+  let handler = RamenFileNotify.make ~while_ dirname in
   !logger.debug "Import all files in dir %a..." N.path_print dirname ;
   RamenFileNotify.for_each (fun filename ->
     !logger.debug "New file %a in dir %a!"
       N.path_print filename N.path_print dirname ;
     import_file_if_match filename) handler
-
-let url_encode =
-  let char_encode c =
-    let c = Char.code c in
-    Printf.sprintf "%%%X%X" (c lsr 4) (c land 0xf) in
-  let reserved_chars = "!*'();:@&=+$,/?#[]" in
-  let is_in_set set c =
-    try ignore (String.index set c); true with Not_found -> false in
-  let is_reserved = is_in_set reserved_chars in
-  fun s ->
-    let rep c =
-      (if is_reserved c then char_encode else String.of_char) c in
-    String.replace_chars rep s

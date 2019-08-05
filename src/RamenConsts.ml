@@ -592,6 +592,9 @@ let min_duration_between_storage_alloc = 600.
  * unless that number of seconds have passed: *)
 let min_duration_between_archive_reconf = 300.
 
+(* Size of the allocated circular buffer to read external data sources. *)
+let max_external_msg_size = 20_000
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

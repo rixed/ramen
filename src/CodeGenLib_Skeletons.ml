@@ -789,11 +789,9 @@ let worker_start (site : N.site) (worker_name : N.fq) is_top_half
  * Operations that funcs may run: read a CSV file.
  *)
 
-let read_csv_file
-    filename do_unlink separator may_quote escape_seq sersize_of_tuple
-    time_of_tuple factors_of_tuple serialize_tuple
-    tuple_of_strings preprocessor field_of_params
-    orc_make_handler orc_write orc_close =
+let read read_source parse_data sersize_of_tuple time_of_tuple
+         factors_of_tuple serialize_tuple
+         orc_make_handler orc_write orc_close =
   let worker_name = N.fq (getenv ~def:"?fq_name?" "fq_name") in
   let site = N.site (getenv ~def:"" "site") in
   let get_binocle_tuple () =
@@ -801,21 +799,7 @@ let read_csv_file
   worker_start site worker_name false get_binocle_tuple
                (fun publish_tail publish_stats conf ->
     let rb_ref_out_fname =
-      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref")
-    (* For tests, allow to overwrite what's specified in the operation: *)
-    and filename = getenv ~def:filename "csv_filename"
-    and separator = getenv ~def:separator "csv_separator" in
-    let tuples = [ [ "param" ], field_of_params ;
-                   [ "env" ], Sys.getenv ] in
-    let filename = subst_tuple_fields tuples filename
-    and separator = subst_tuple_fields tuples separator
-    in
-    info_or_test conf "Will read CSV file %S using separator %S"
-      filename separator ;
-    let of_string line =
-      let strings = strings_of_csv separator may_quote escape_seq line in
-      tuple_of_strings strings
-    in
+      N.path (getenv ~def:"/tmp/ringbuf_out_ref" "output_ringbufs_ref") in
     let outputer =
       outputer_of
         rb_ref_out_fname sersize_of_tuple time_of_tuple factors_of_tuple
@@ -824,15 +808,9 @@ let read_csv_file
     let while_ () =
       may_publish_stats conf publish_stats ;
       while_ () in
-    IO.read_glob_lines
-      ~while_ ~do_unlink filename preprocessor quit (fun line ->
-      match of_string line with
-      | exception e ->
-        !logger.error "Cannot parse line %S: %s"
-          line (Printexc.to_string e)
-      | tuple ->
-        IntCounter.inc stats_in_tuple_count ;
-        outputer (Some tuple)))
+    read_source quit while_ (parse_data (fun tuple ->
+      IntCounter.inc stats_in_tuple_count ;
+      outputer (Some tuple))))
 
 (*
  * Operations that funcs may run: listen to some known protocol.
