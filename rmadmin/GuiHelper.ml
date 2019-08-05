@@ -153,7 +153,9 @@ let sync_loop clt =
     with e ->
       print_exception ~what:"sync loop" e ;
       signal_sync (Fail (Printexc.to_string e))
-  done
+  done ;
+  !logger.info "Flushing pending requests..." ;
+  handle_msgs_out ()
 
 external set_my_errors : string -> unit = "set_my_errors"
 

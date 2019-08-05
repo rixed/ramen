@@ -52,7 +52,11 @@ AtomicForm::AtomicForm(QWidget *parent) :
 
 AtomicForm::~AtomicForm()
 {
-  // TODO: unlock whatever widget is locked
+  // Unlock everything that's locked:
+  for (conf::Key const &k : locked) {
+    std::cout << "Unlocking " << k << std::endl;
+    askUnlock(k);
+  }
 }
 
 void AtomicForm::setCentralWidget(QWidget *w)

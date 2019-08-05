@@ -185,10 +185,11 @@ int main(int argc, char *argv[])
   int ret = app.exec();
   quit = true;
 
+  delete w;
+  w = nullptr;
+
   cout << "Joining with start_sync thread..." << endl;
   sync_thread.join();
-
-  delete w;
 
   return ret;
 }
