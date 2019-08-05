@@ -261,6 +261,12 @@ struct
             notify t k is_permitted
                    (fun _ -> LockKey { k ; owner ; expiry })
         | lst ->
+            (* Err out if the user is already the current locker: *)
+            if User.equal u (fst (List.hd lst)) then
+              Printf.sprintf2 "User %a already owns %a"
+                User.print u
+                Key.print k |>
+              failwith ;
             (* Reject it if it's already in the lockers: *)
             if List.exists (fun (u', _) -> User.equal u u') lst then
               Printf.sprintf2 "User %a is already waiting for %a lock"
