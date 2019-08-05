@@ -6,8 +6,7 @@
 
 AtomicForm::AtomicForm(QWidget *parent) :
   QGroupBox(parent),
-  widgets(),
-  state(AtomicForm::ReadOnly)
+  widgets()
 {
   widgets.reserve(5);
 
@@ -91,12 +90,6 @@ void AtomicForm::addWidget(AtomicWidget *aw)
   });
 }
 
-void AtomicForm::lockAll()
-{
-  std::cout << "lock all!" << std::endl;
-  state = Locking;
-}
-
 void AtomicForm::wantEdit()
 {
   // Lock all widgets that are not locked already:
@@ -128,7 +121,6 @@ bool AtomicForm::someEdited()
 
 void AtomicForm::doCancel()
 {
-  state = Unlocking;
   for (AtomicWidget *aw : widgets) {
     aw->setValue(aw->key, aw->initValue);
     conf::askUnlock(aw->key);
@@ -148,7 +140,6 @@ void AtomicForm::wantCancel()
 
 void AtomicForm::doSubmit()
 {
-  state = Unlocking;
   for (AtomicWidget *aw : widgets) {
     std::shared_ptr<conf::Value const> v(aw->getValue());
     if (v && (! aw->initValue || *v != *aw->initValue))

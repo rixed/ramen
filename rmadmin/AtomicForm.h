@@ -47,18 +47,9 @@ class AtomicForm : public QGroupBox
   QPushButton *editButton, *cancelButton, *submitButton;
   QMessageBox *confirmationDialog;
 
-  enum state {
-    ReadOnly,
-    Locking,
-    Locked,
-    Cancelling, // Where we ask for confirmation if there were changes
-    Unlocking   // With or without having written the values first
-  } state;
-
   // The set of all keys currently locked by this user:
   std::set<conf::Key> locked;
 
-  void lockAll();
   void wantEdit();
   void wantCancel();
   void wantSubmit();
