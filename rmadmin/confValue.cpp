@@ -376,7 +376,7 @@ bool RamenValueValue::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   RamenValueValue const &o = static_cast<RamenValueValue const &>(other);
-  return v == o.v;
+  return *v == *o.v;
 }
 
 SourceInfo::SourceInfo(value v_)

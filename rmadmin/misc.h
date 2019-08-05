@@ -29,4 +29,6 @@ class QLayout;
 
 void emptyLayout(QLayout *);
 
+std::string demangle(const char *);
+
 #endif

@@ -1,6 +1,7 @@
 #ifndef RAMENVALUE_H_190603
 #define RAMENVALUE_H_190603
 #include <iostream>
+#include <typeinfo>
 #include <memory>
 #include <vector>
 #include <cassert>
@@ -42,7 +43,7 @@ struct RamenValue {
 
   // Used by conf::RamenValueValue.operator==:
   virtual bool operator==(RamenValue const &that) const {
-    return typeid(this) == typeid(that);
+    return typeid(*this).hash_code() == typeid(that).hash_code();
     // Then derived types must also compare the value!
   }
 
