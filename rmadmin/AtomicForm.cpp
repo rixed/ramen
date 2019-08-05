@@ -169,6 +169,8 @@ void AtomicForm::setEnabled(bool enabled)
   editButton->setEnabled(! enabled);
   cancelButton->setEnabled(enabled);
   submitButton->setEnabled(enabled);
+
+  emit changeEnabled(enabled);
 }
 
 void AtomicForm::lockValue(conf::Key const &k, QString const &u)

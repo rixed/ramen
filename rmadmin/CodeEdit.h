@@ -13,6 +13,7 @@ class CodeEdit : public QWidget
 {
   Q_OBJECT
 
+public:
   QString const sourceName;
   conf::Key textKey;
   conf::Key infoKey;
@@ -21,7 +22,6 @@ class CodeEdit : public QWidget
   AtomicForm *editorForm;
   QLabel *compilationError;
 
-public:
   CodeEdit(QWidget *parent = nullptr);
 
 public slots:

@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 #include "conf.h"
 #include "CodeEdit.h"
+#include "AtomicForm.h"
 #include "widgetTools.h"
 #include "ButtonDelegate.h"
 #include "SourceInfoViewer.h"
@@ -61,6 +62,11 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
       dynamic_cast<SourcesModel::FileItem const *>(item);
     if (file) showFile(file->sourceKey);
   });
+
+  /* Connect the edition start/stop of the code to disabling/reenabling selection
+   * in the QTreeWidget: */
+  connect(editor->editorForm, &AtomicForm::changeEnabled,
+          sourcesList, &QTreeView::setDisabled);
 }
 
 void SourcesView::showFile(conf::Key const &key)

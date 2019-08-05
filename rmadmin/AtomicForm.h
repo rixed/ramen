@@ -82,6 +82,9 @@ public slots:
   void setValue(conf::Key const &, conf::Value const &) {}
   void lockValue(conf::Key const &, QString const &);
   void unlockValue(conf::Key const &);
+
+signals:
+  void changeEnabled(bool);
 };
 
 #endif
