@@ -1495,28 +1495,38 @@ let emit_operation declare tuple_sizes records field_names
         emit_constraints tuple_sizes records field_names
                          in_type out_type param_type env_type ~func_name oc
       ) op ;
+      let assert_non_nullable typ what e =
+        let typ_name = IO.to_string T.print_structure typ in
+        let name =
+          func_err fi Err.(ExternalSource (what, ActualType typ_name)) in
+        emit_assert_id_eq_typ ~name tuple_sizes records field_names
+                              (t_of_expr e) oc typ ;
+        let name =
+          func_err fi Err.(ExternalSource (what, Nullability false)) in
+        emit_assert_is_false ~name oc (n_of_expr e) in
       (match source with
       | File { fname ; preprocessor ; unlink } ->
-          Option.may (fun p ->
-            (*  must be a non-nullable string: *)
-            let name = func_err fi Err.(Preprocessor (ActualType "string")) in
-            emit_assert_id_eq_typ ~name tuple_sizes records field_names
-                                  (t_of_expr p) oc TString ;
-            let name = func_err fi Err.(Preprocessor (Nullability false)) in
-            emit_assert_is_false ~name oc (n_of_expr p)
-          ) preprocessor ;
-          let name = func_err fi Err.(Filename (ActualType "string")) in
-          emit_assert_id_eq_typ ~name tuple_sizes records field_names
-                                (t_of_expr fname) oc TString ;
-          let name = func_err fi Err.(Filename (Nullability false)) in
-          emit_assert_is_false ~name oc (n_of_expr fname) ;
-          let name = func_err fi Err.(Unlink (ActualType "bool")) in
-          emit_assert_id_eq_typ ~name tuple_sizes records field_names
-                                (t_of_expr unlink) oc TBool ;
-          let name = func_err fi Err.(Unlink (Nullability false)) in
-          emit_assert_is_false ~name oc (n_of_expr unlink)
-      | Kafka _ ->
-          todo "Typing Kafka specs")
+          Option.may (assert_non_nullable TString "file preprocessor")
+                     preprocessor ;
+          assert_non_nullable TString "file name" fname ;
+          assert_non_nullable TBool "file delete condition" unlink
+      | Kafka { options ; topic ; partition ; restart_from } ->
+          List.iter (fun (n, e) ->
+            let what = Printf.sprintf "Kafka option %S" n in
+            assert_non_nullable TString what e
+          ) options ;
+          assert_non_nullable TString "Kafka topic" topic ;
+          (* Partitions are int32_t and offsets int64_t in rdkafka: *)
+          assert_non_nullable TI32 "Kafka partition" partition ;
+          (match restart_from with
+          | Beginning | SaveInState -> ()
+          | OffsetFromEnd o ->
+              assert_non_nullable TI64 "Kafka offset" o
+          | SaveInFile (e, _) ->
+              assert_non_nullable TString "Kafka offset save file" e ;
+              todo "typing of snapshot_period_specs"
+          | UseKafkaGroupCoordinator _ ->
+              todo "typing of snapshot_period_specs"))
 
   | _ -> ())
 

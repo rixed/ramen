@@ -110,9 +110,7 @@ type func =
   | Clause of string * expr
   | Notif of int * expr
   | NotifParam of int * int * expr
-  | Preprocessor of expr
-  | Filename of expr
-  | Unlink of expr
+  | ExternalSource of string * expr
     [@@ppp PPP_OCaml]
 
 let print_func funcs oc =
@@ -123,9 +121,7 @@ let print_func funcs oc =
   | Notif (i, e) -> p "notification #%d%a" i print_expr e
   | NotifParam (i, j, e) -> p "notification #%d, parameter #%d%a"
                               i j print_expr e
-  | Preprocessor e -> p "CSV preprocessor%a" print_expr e
-  | Filename e -> p "CSV filename%a" print_expr e
-  | Unlink e -> p "CSV unlink clause%a" print_expr e
+  | ExternalSource (w, e) -> p "External source %s%a" w print_expr e
 
 type t = Expr of int * expr
        | Func of int * func
