@@ -28,6 +28,7 @@ depends: [
   "sqlite3" {build}
   "net_codecs" {>= "1.0"}
   "zmq" {= "5.0.0"}
+  "kafka" {= "0.4"}
   "qtest" {test}
 ]
 depopts: [

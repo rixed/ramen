@@ -6,7 +6,7 @@ let incdirs = [
   N.path "bytes" ;
   N.path "ctypes" ;
   N.path "integers" ;
-  N.path "inotify" ;
+  N.path "kafka" ;
   N.path "lacaml" ;
   N.path "num" ;
   N.path "ocaml" ;
@@ -28,7 +28,6 @@ let objfiles = [
   N.path "batteries/batteries.cmxa" ;
   N.path "stdint/stdint.cmxa" ;
   N.path "parsercombinator/parsercombinator.cmxa" ;
-  N.path "inotify/inotify.cmxa" ;
   N.path "ppp/PPP.cmxa" ;
   N.path "binocle/Binocle.cmxa" ;
   N.path "lacaml/lacaml.cmxa" ;
@@ -39,5 +38,6 @@ let objfiles = [
   N.path "ctypes/ctypes.cmxa" ;
   N.path "ctypes/cstubs.cmxa" ;
   N.path "sodium/sodium.cmxa" ;
+  N.path "kafka/kafka.cmxa" ;
   N.path "ramen/codegen.cmxa" ;
 ]
