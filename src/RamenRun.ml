@@ -277,6 +277,8 @@ let run_sync src_path conf (program_name : N.program) replace report_period
              on_site debug params =
   let done_ = ref false in
   let while_ () = !Processes.quit = None && not !done_ in
+  if not (String.contains (src_path : N.path :> string) '.') then
+    invalid_arg "run_sync src_path with no extension" ;
   let src_path_noext = Files.remove_ext src_path in
   let topics =
     [ "target_config" ;
@@ -383,8 +385,13 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       run_local src_file kill_if_disabled purge
     ) else (
       if not (N.is_empty src_file) then
-        failwith "with --confserver the source file is useless and must not be given." ;
-      (* Here the "bin" file is actually the path of the info file: *)
+        failwith "with --confserver, --source-file must not be used." ;
+      (* Here the "bin" file is actually the path of the source file: *)
+      if not (String.contains (bin_file :> string) '.') then
+        Printf.sprintf2
+          "program to run (%a) must be provided with its extension."
+          N.path_print src_file |>
+        failwith ;
       run_sync
     ) in
   f bin_file conf program_name replace report_period on_site debug params
