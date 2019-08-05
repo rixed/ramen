@@ -67,8 +67,8 @@ void AtomicForm::setCentralWidget(QWidget *w)
 
 void AtomicForm::addWidget(AtomicWidget *aw)
 {
-  aw->setEnabled(false);
   widgets.push_back(aw);
+
   connect(aw, &AtomicWidget::keyChanged,
           this, [this](conf::Key const &oldKey, conf::Key const &newKey) {
     /* This is broken, as it will disconnect _all_ connection from that kv to us,
@@ -85,6 +85,7 @@ void AtomicForm::addWidget(AtomicWidget *aw)
       KValue *kv = &conf::kvs[newKey];
       connect(kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
       connect(kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
+      if (kv->isLocked()) lockValue(newKey, *kv->owner);
     }
     conf::kvs_lock.unlock_shared();
   });

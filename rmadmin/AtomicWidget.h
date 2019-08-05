@@ -29,7 +29,7 @@ public:
 
   AtomicWidget(QWidget *parent = nullptr) :
     QWidget(parent),
-    last_enabled(true),
+    last_enabled(false),
     key(conf::Key::null) {}
 
   /* As much as we'd like to build the widget and set its key in one go, we
