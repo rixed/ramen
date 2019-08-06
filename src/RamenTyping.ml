@@ -1553,9 +1553,6 @@ let emit_operation declare tuple_sizes records field_names
           | Beginning | SaveInState -> ()
           | OffsetFromEnd o ->
               assert_non_nullable_small_numeric "Kafka offset" o
-          | SaveInFile (e, _) ->
-              assert_non_nullable TString "Kafka offset save file" e ;
-              todo "typing of snapshot_period_specs"
           | UseKafkaGroupCoordinator _ ->
               todo "typing of snapshot_period_specs"))
 

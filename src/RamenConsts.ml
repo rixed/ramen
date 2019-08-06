@@ -598,6 +598,11 @@ let max_external_msg_size = 20_000
 (* Timeout used when calling rd_kafka_consume_queue: *)
 let kafka_consume_timeout = 0.3
 
+(* We take a single list of options for both the consumer and the topic.
+ * Like in kafkacat, options starting with "topic." are assumed to be for
+ * the topic. *)
+let kafka_topic_option_prefix = "topic."
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct

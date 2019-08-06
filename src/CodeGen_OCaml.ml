@@ -2508,17 +2508,23 @@ let emit_read_kafka opc param_env env_env name specs =
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
   p "                 [ \"env\" ], Sys.getenv ] in" ;
   fail_with_context "options expression" (fun () ->
-    p "  let consumer_ = Kafka.new_consumer %a in"
+    p "  let topic_options_, consumer_options_ =" ;
+    p "    List.partition (fun (n, _) -> String.starts_with n %S) "
+      kafka_topic_option_prefix ;
+    p "      %a in"
       (List.print (fun oc (n, e) ->
         Printf.fprintf oc
           "(subst_tuple_fields tuples %S, subst_tuple_fields tuples (%a))"
           n (emit_expr ~context:Finalize ~opc ~env) e))
         specs.O.options) ;
+  p "  let topic_options_ =" ;
+  p "    List.map (fun (n, v) -> String.lchop ~n:%d n, v) topic_options_ in"
+    (String.length kafka_topic_option_prefix) ;
+  p "  let consumer_ = Kafka.new_consumer consumer_options_ in" ;
   fail_with_context "topic expression" (fun () ->
     p "  let topic_ = subst_tuple_fields tuples (%a) in"
       (emit_expr ~context:Finalize ~opc ~env) specs.topic) ;
-  (* TODO: topic options and get rid of SaveInFile *)
-  p "  let topic_ = Kafka.new_topic consumer_ topic_ [] in" ;
+  p "  let topic_ = Kafka.new_topic consumer_ topic_ topic_options_ in" ;
   fail_with_context "partition expression" (fun () ->
     p "  let partitions_ = %a in"
       (List.print
@@ -2538,8 +2544,8 @@ let emit_read_kafka opc param_env env_env name specs =
             String.print oc "Kafka.offset_end"
           else
             Printf.fprintf oc "Kafka.offset_tail %d" o
-      | O.SaveInState | O.SaveInFile _ ->
-          todo "SaveInState | SaveInFile"
+      | O.SaveInState ->
+          todo "SaveInState"
       | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
           String.print oc "Kafka.offset_stored")
         specs.restart_from) ;

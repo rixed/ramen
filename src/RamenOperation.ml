@@ -122,8 +122,6 @@ and file_specs =
  * those offset for us. *)
 and kafka_specs =
   { options : (string * E.t) list ;
-    (* TODO: as in kafkacat, assume options prefixed with "topic." are topic
-     * options. *)
     topic : E.t ;
     partitions : E.t list ;
     restart_from : kafka_restart_specs }
@@ -135,7 +133,6 @@ and kafka_restart_specs =
    * rdkafka lib: *)
   | OffsetFromEnd of E.t
   | SaveInState
-  | SaveInFile of E.t * snapshot_period_specs
   | UseKafkaGroupCoordinator of snapshot_period_specs
   [@@ppp PPP_OCaml]
 
@@ -152,9 +149,6 @@ let fold_kafka_restart_specs init f = function
       init
   | OffsetFromEnd e ->
       f init "offset-from-end" e
-  | SaveInFile (e, s) ->
-      let x = f init "snapshot-file" e in
-      fold_snapshot_period_specs x f s
   | UseKafkaGroupCoordinator s ->
       fold_snapshot_period_specs init f s
 
@@ -189,8 +183,6 @@ let map_kafka_restart_specs f specs =
       specs
   | OffsetFromEnd e ->
       OffsetFromEnd (f e)
-  | SaveInFile (e, s) ->
-      SaveInFile (f e, map_snapshot_period_specs f s)
   | UseKafkaGroupCoordinator s ->
       UseKafkaGroupCoordinator (map_snapshot_period_specs f s)
 
