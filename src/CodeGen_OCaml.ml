@@ -2461,51 +2461,44 @@ let emit_factors_of_tuple name func oc =
   (* TODO *)
   String.print oc "|]\n\n"
 
-(* Generate a data provider that reads from a file a return blocks of bytes: *)
-let emit_read_file opc param_env env_env name fname unlink preprocessor =
-  let env = param_env @ env_env in
-  let const_string_of e =
-    Printf.sprintf2 "(%a)"
-      (emit_expr ~context:Finalize ~opc ~env) e
-  in
-  let preprocessor =
-    fail_with_context "file preprocessor expression" (fun () ->
-      match preprocessor with
-      | None -> "\"\""
-      | Some p -> const_string_of p)
-  and fname =
-    fail_with_context "file name expression" (fun () ->
-      const_string_of fname)
+(* Generate a data provider that reads blocks of bytes from a file: *)
+let emit_read_file opc param_env env_env name specs =
+  let env = param_env @ env_env
   and p fmt = emit opc.code 0 fmt
   in
   p "let %s field_of_params_ =" name ;
   p "  let unlink_ = %a in"
-    (emit_expr ~env ~context:Finalize ~opc) unlink ;
+    (emit_expr ~env ~context:Finalize ~opc) specs.O.unlink ;
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
   p "                 [ \"env\" ], Sys.getenv ] in" ;
-  p "  let filename_ = subst_tuple_fields tuples %s" fname ;
-  p "  and preprocessor_ = subst_tuple_fields tuples %s" preprocessor ;
+  fail_with_context "file name expression" (fun () ->
+    p "  let filename_ = subst_tuple_fields tuples %a"
+      (emit_expr ~context:Finalize ~opc ~env) specs.fname) ;
+  fail_with_context "file preprocessor expression" (fun () ->
+    p "  and preprocessor_ = subst_tuple_fields tuples (%a)"
+      (fun oc -> function
+      | None -> String.print_quoted oc ""
+      | Some pre -> emit_expr ~context:Finalize ~opc ~env oc pre)
+        specs.preprocessor) ;
   p "  in" ;
   p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n"
 
 (* Given a tuple type (in op.typ), generate the CSV reader operation.
  * A Reader generates a stream of tuples from a data provider.
  * We use CodeGenLib_IO.read_lines to turn data chunks into lines. *)
-let emit_parse_csv opc name
-                   csv_separator csv_null csv_quotes csv_escape_seq =
-  let p fmt = emit opc.code 0 fmt
-  in
+let emit_parse_csv opc name specs =
+  let p fmt = emit opc.code 0 fmt in
   fail_with_context "csv line parser" (fun () ->
-    emit_tuple_of_strings 0 "tuple_of_strings_" csv_null opc.code opc.typ) ;
+    emit_tuple_of_strings 0 "tuple_of_strings_" specs.O.null opc.code opc.typ) ;
   p "let %s field_of_params_ =" name ;
   p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
   p "                 [ \"env\" ], Sys.getenv ] in" ;
-  p "  let separator_ = subst_tuple_fields tuples %S" csv_separator ;
-  p "  and null_ = subst_tuple_fields tuples %S" csv_null ;
-  p "  and escape_seq_ = subst_tuple_fields tuples %S in" csv_escape_seq ;
+  p "  let separator_ = subst_tuple_fields tuples %S" specs.separator ;
+  p "  and null_ = subst_tuple_fields tuples %S" specs.null ;
+  p "  and escape_seq_ = subst_tuple_fields tuples %S in" specs.escape_seq ;
   p "  let for_each_line =" ;
   p "    CodeGenLib_IO.tuple_of_csv_line separator_ %b escape_seq_ tuple_of_strings_"
-      csv_quotes ;
+      specs.may_quote ;
   p "  in" ;
   p "  fun k ->" ;
   p "    CodeGenLib_IO.lines_of_chunks (for_each_line k)\n"
@@ -3671,13 +3664,13 @@ let emit_operation name top_half_name func
   | ReadExternal { source ; format ; _ } ->
     let source_name = name ^"_source" and format_name = name ^"_format" in
     (match source with
-    | File { fname ; preprocessor ; unlink } ->
-        emit_read_file opc param_env env_env source_name fname unlink preprocessor
+    | File specs ->
+        emit_read_file opc param_env env_env source_name specs
     | Kafka _ ->
         todo "CodeGen for reading Kafka") ;
     (match format with
-    | CSV { separator ; null ; may_quote ; escape_seq ; _ } ->
-        emit_parse_csv opc format_name separator null may_quote escape_seq) ;
+    | CSV specs ->
+        emit_parse_csv opc format_name specs) ;
     emit_read opc name source_name format_name
   | ListenFor { net_addr ; port ; proto } ->
     emit_listen_on opc name net_addr port proto
