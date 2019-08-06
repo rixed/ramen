@@ -205,6 +205,11 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
   let timeout_ms = int_of_float (kafka_consume_timeout *. 1000.) in
   let rec read_more () =
     (match Kafka.consume_queue ~timeout_ms queue with
+    | exception Kafka.Error (TIMED_OUT, _) ->
+        ()
+    | exception Kafka.Error (_, msg) ->
+        !logger.error "Kafka consumer error: %s" msg ;
+        Unix.sleepf (Random.float 1.)
     | Kafka.PartitionEnd (_topic, partition, offset) ->
         !logger.debug "Reached the end of partition %d at offset %Ld"
           partition offset
