@@ -1519,6 +1519,19 @@ let emit_operation declare tuple_sizes records field_names
         let name =
           func_err fi Err.(ExternalSource (what, Nullability false)) in
         emit_assert_is_false ~name oc (n_of_expr e) in
+      let assert_non_nullable_small_numeric what e =
+        let name =
+          func_err fi Err.(ExternalSource (what, ActualType "I32")) in
+        let id = t_of_expr e in
+        emit_assert ~name oc (fun oc ->
+          Printf.fprintf oc
+            "(or (= u8 %s) (= u16 %s) (= u32 %s) \
+                 (= i8 %s) (= i16 %s) (= i32 %s))"
+            id id id id id id) ;
+        let name =
+          func_err fi Err.(ExternalSource (what, Nullability false)) in
+        emit_assert_is_false ~name oc (n_of_expr e)
+      in
       (match source with
       | File { fname ; preprocessor ; unlink } ->
           Option.may (assert_non_nullable TString "file preprocessor")
@@ -1531,12 +1544,15 @@ let emit_operation declare tuple_sizes records field_names
             assert_non_nullable TString what e
           ) options ;
           assert_non_nullable TString "Kafka topic" topic ;
-          (* Partitions are int32_t and offsets int64_t in rdkafka: *)
-          List.iter (assert_non_nullable TI32 "Kafka partition") partitions ;
+          (* Partitions are int32_t and offsets int64_t in rdkafka, but
+           * as we use only offset for a diff from tail we are happy enough
+           * using also an i32 there: *)
+          List.iter (assert_non_nullable_small_numeric "Kafka partition")
+                    partitions ;
           (match restart_from with
           | Beginning | SaveInState -> ()
           | OffsetFromEnd o ->
-              assert_non_nullable TI64 "Kafka offset" o
+              assert_non_nullable_small_numeric "Kafka offset" o
           | SaveInFile (e, _) ->
               assert_non_nullable TString "Kafka offset save file" e ;
               todo "typing of snapshot_period_specs"
