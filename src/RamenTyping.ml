@@ -1510,14 +1510,14 @@ let emit_operation declare tuple_sizes records field_names
                      preprocessor ;
           assert_non_nullable TString "file name" fname ;
           assert_non_nullable TBool "file delete condition" unlink
-      | Kafka { options ; topic ; partition ; restart_from } ->
+      | Kafka { options ; topic ; partitions ; restart_from } ->
           List.iter (fun (n, e) ->
             let what = Printf.sprintf "Kafka option %S" n in
             assert_non_nullable TString what e
           ) options ;
           assert_non_nullable TString "Kafka topic" topic ;
           (* Partitions are int32_t and offsets int64_t in rdkafka: *)
-          assert_non_nullable TI32 "Kafka partition" partition ;
+          List.iter (assert_non_nullable TI32 "Kafka partition") partitions ;
           (match restart_from with
           | Beginning | SaveInState -> ()
           | OffsetFromEnd o ->
