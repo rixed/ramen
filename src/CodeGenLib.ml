@@ -725,6 +725,13 @@ module Shift = struct
   module Int128 = Make (Int128)
 end
 
+module Count = struct
+  let count_true s p =
+    if p then Uint32.succ s else s
+
+  let count_anything = Uint32.succ
+end
+
 let begin_of_range_cidr4 (n, l) = RamenIpv4.Cidr.and_to_len l n
 let end_of_range_cidr4 (n, l) = RamenIpv4.Cidr.or_to_len l n
 let begin_of_range_cidr6 (n, l) = RamenIpv6.Cidr.and_to_len l n

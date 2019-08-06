@@ -1,0 +1,25 @@
+{
+  programs = {
+    "count" => { bin = "count.x" };
+    "fixtures/cars" => { bin = "fixtures/cars.x" }
+  };
+  outputs = {
+    "count/f" => {
+      timeout = 15;
+      present = [
+        { "manufacturer" => "\"aston martin\"";
+          "num_lines" => "8";
+          "num_models" => "3";
+          "num_power_cars" => "8";
+          "num_eco_cars" => "1";
+          "num_eco_cars_nullable" => "1" };
+        { "manufacturer" => "\"Mitsubishi Motors Co\"";
+          "num_lines" => "39";
+          "num_models" => "9";
+          "num_power_cars" => "0";
+          "num_eco_cars" => "32";
+          "num_eco_cars_nullable" => "NULL" };
+      ]
+    }
+  }
+}

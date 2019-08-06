@@ -59,7 +59,7 @@ struct Rules {
           "season_fit|fit|season_fit_multi|fit_multi|smooth|remember|"
           "distinct|hysteresis|histogram|split|format_time|parse_time|"
           "variant|max|greatest|min|least|print|reldiff|sample|substring|"
-          "get|changed|rank|of|is|in|top|over|at|past|"
+          "get|changed|rank|of|is|in|top|over|at|past|count|"
           "st|nd|rd|case|if|then|else|coalesce)\\b");
 
     QTextCharFormat number;

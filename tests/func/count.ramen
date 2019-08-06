@@ -1,0 +1,18 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  FROM fixtures/cars/csv
+  SELECT
+    manufacturer,
+    -- Simple case: count the lines
+    COUNT year as num_lines,
+    -- Count a predicate:
+    COUNT (horsepower > 500) as num_power_cars,
+    -- Another predicate example:
+    COUNT DISTINCT model as num_models,
+    -- Count a nullable predicate:
+    COUNT (CO2 < 300) as num_eco_cars,
+    -- Count a nullable predicate without skipping nulls:
+    COUNT keep nulls (CO2 < 300) as num_eco_cars_nullable
+  GROUP BY manufacturer
+  COMMIT AFTER in.manufacturer <> out.manufacturer;

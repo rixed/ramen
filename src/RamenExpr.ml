@@ -263,6 +263,9 @@ and stateful1 =
   | AggrHistogram of float * float * int
   (* Build a list with all values from the group *)
   | Group
+  (* If its argument is a boolean, count how many are true; Otherwise, merely
+   * count how many are present like `sum 1` would do. *)
+  | Count
   [@@ppp PPP_OCaml]
 
 and stateful1s =
@@ -682,6 +685,8 @@ and print_text ?(max_depth=max_int) with_types oc text =
         p max_age (st g n) p what p time
   | Stateful (g, n, SF1 (Group, e)) ->
       Printf.fprintf oc "GROUP%s %a" (st g n) p e
+  | Stateful (g, n, SF1 (Count, e)) ->
+      Printf.fprintf oc "COUNT%s %a" (st g n) p e
 
   | Generator (Split (e1, e2)) ->
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
@@ -1312,6 +1317,8 @@ struct
          make (Stateful (g, n, SF1 (Group, e)))) |||
       (afun1_sf "all" >>: fun ((g, n), e) ->
          make (Stateful (g, n, SF1 (Group, e)))) |||
+      (afun1_sf "count" >>: fun ((g, n), e) ->
+         make (Stateful (g, n, SF1 (Count, e)))) |||
       (
         let perc =
           (const ||| param) +-
@@ -1793,7 +1800,8 @@ let units_of_expr params units_of_input units_of_output =
         option_map2 RamenUnits.pow (uoe ~indent e1) (float_of_const e2)
     (* Although shifts could be seen as mul/div, we'd rather consider
      * only dimensionless values receive this treatment, esp. since
-     * it's not possible to distinguish between a mul and div. *)
+     * it's not possible here to tell the difference between a mul-shift
+     * and a div-shift. *)
     | Stateless (SL2 ((And|Or|Concat|StartsWith|EndsWith|
                          BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
         check_no_units ~indent e1 ;
@@ -1846,10 +1854,13 @@ let units_of_expr params units_of_input units_of_output =
     | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
     | Stateful (_, _, SF3 ((MovingAvg|LinReg), _, _, e)) ->
         uoe ~indent e
-    | Stateful ( _, _, SF1 (AggrSum, e)) ->
+    | Stateful (_, _, SF1 (AggrSum, e)) ->
         let u = uoe ~indent e in
         check_not_rel e u ;
         u
+    | Stateful (_, _, SF1 (Count, _)) ->
+        (* Or "tuples" if we had such a unit. *)
+        Some RamenUnits.dimensionless
     | Generator (Split (e1, e2)) ->
         check_no_units ~indent e1 ;
         check_no_units ~indent e2 ;

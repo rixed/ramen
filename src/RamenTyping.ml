@@ -1395,6 +1395,20 @@ let emit_constraints tuple_sizes records field_names
           (if n then "false" else n_of_expr g)) ;
       emit_assert_id_eq_id (n_of_expr g) oc nid
 
+  | Stateful (_, n, SF1 (Count, x)) ->
+      (* - The result is always an u32;
+       * - The result is only nullable if nulls are not skipped and x is a
+       *   nullable boolean, in which case we couldn't tell how many times
+       *   the predicate is true. *)
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TU32 ;
+      if n then
+        emit_assert_is_false oc nid
+      else
+        emit_assert_id_eq_smt2 nid oc
+          (Printf.sprintf "(and %s (= bool %s))"
+            (n_of_expr x)
+            (t_of_expr x))
+
   | Stateful (_, _, SF1 (AggrHistogram (_, _, n), x)) ->
       (* - x must be numeric;
        * - The result is a vector of size n+2, of non nullable U32;

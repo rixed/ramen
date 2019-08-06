@@ -778,8 +778,7 @@ let rec conv_to ~env ~context ~opc to_typ oc e =
     (emit_expr ~context ~opc ~env) oc e
 
 (* Apply the given function to the given args (and varargs), after
- * converting them, obeying skip_nulls. It is assumed that nullable
- * is set reliably. *)
+ * converting them, obeying skip_nulls. *)
 and update_state ~env ~opc ~nullable skip my_state
                  es ?(vars=[]) ?vars_to_typ
                  func_name ?args_as oc to_typ =
@@ -795,18 +794,20 @@ and update_state ~env ~opc ~nullable skip my_state
                       (my_state :: args)
                       vars_to_typ oc varargs
   in
-  if nullable && skip then (
+  if skip then (
     (* Skip just means that if an entry is null we want to skip the
      * update. But maybe no entries are actually nullable. And the
      * state could be nullable or not. If skip, we will have an
      * additional bool named empty, initialized to true, that will
      * possibly stay true only if we skip all entries because an
-     * arg was NULL every time. In that case in theory the typer
-     * have made this state nullable, and we will return Null (in
-     * finalize_state) *)
+     * arg was NULL every time.
+     * When this is so, most functions will return NULL (in finalize_state).
+     * An exception to this rule is the COUNT function that will return 0
+     * (unless its counting nullable predicates, in which case it will return
+     * NULL!). *)
+    Printf.fprintf oc "\t" ;
     (* Force the args to func_name to be non-nullable inside the
      * assignment, since we have already verified they are not null: *)
-    Printf.fprintf oc "\t" ;
     (* Returns both the new expression and the new environment: *)
     let denullify e args =
       if e.E.typ.nullable then (
@@ -1778,6 +1779,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize, Stateful (_, n, SF1 (Group, _)), _ ->
     finalize_state ~env ~opc ~nullable n my_state
       "CodeGenLib.Group.finalize" [] oc []
+
+  (* Count behavior depends on the type of what we count: if it's a boolean
+   * expression it count how many times it is true (handy for filtering or
+   * with Distinct); In all other cases it just count 1 for everything,
+   * skipping nulls as requested. *)
+  | InitState, Stateful (_, _, SF1 (Count, _)), _ ->
+    wrap_nullable ~nullable oc (fun oc -> String.print oc "Uint32.zero")
+  | UpdateState, Stateful (_, n, SF1 (Count, e)), _ ->
+    if e.typ.structure = TBool then
+      update_state ~env ~opc ~nullable n my_state [ e ]
+        "CodeGenLib.Count.count_true" oc [ Some TBool, PropagateNull ]
+    else
+      update_state ~env ~opc ~nullable n my_state []
+        "CodeGenLib.Count.count_anything" oc []
+  | Finalize, Stateful (_, n, SF1 (Count, _)), _ ->
+    finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
 
   (* Generator: the function appears only during tuple generation, where
    * it sends the output to its continuation as (freevar_name expr).
@@ -3030,6 +3047,8 @@ let otype_of_state e =
     Printf.sprintf2 "%a list%s"
       (print_expr_typ ~skip_null:n) e
       nullable
+  | Stateful (_, _, SF1 (Count, _)) ->
+    "Uint32.t"^ nullable
   | Stateful (_, _, SF1 (AggrHistogram _, _)) ->
     "CodeGenLib.Histogram.state"^ nullable
   | _ -> t ^ nullable
