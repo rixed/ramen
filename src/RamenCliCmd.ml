@@ -44,6 +44,24 @@ let make_copts
       List.rev_append (String.split_on_char ',' s) lst
     ) [] opt
   in
+  let site =
+    Option.default_delayed (fun () ->
+      let go_with_default () =
+        !logger.info "Cannot find out the hostname, assuming %a"
+          N.site_print default_site_name ;
+        default_site_name in
+      match Unix.run_and_read "hostname" with
+      | exception e ->
+          !logger.debug "Cannot execute hostname: %S"
+            (Printexc.to_string e) ;
+          go_with_default ()
+      | WEXITED 0, hostname ->
+          N.site hostname
+      | st, _ ->
+          !logger.debug "Cannot execute hostname: %s"
+            (string_of_process_status st) ;
+          go_with_default ()
+    ) site in
   let forced_variants = list_of_string_opt forced_variants
   and masters =
     list_of_string_opt masters |> List.map N.site |> Set.of_list in

@@ -109,7 +109,7 @@ let copts ?default_username () =
   and site =
     let env = Term.env_info "HOSTNAME" in
     let i = Arg.info ~docs ~doc:CliInfo.site ~env [ "site" ] in
-    Arg.(value (opt site (N.site "") i))
+    Arg.(value (opt (some site) None i))
   and bundle_dir =
     let env = Term.env_info "RAMEN_LIBS" in
     let i = Arg.info ~doc:CliInfo.bundle_dir

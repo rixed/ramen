@@ -213,7 +213,11 @@ let host_print_quoted = String.print_quoted
 
 type site = [`Site] t
 let site_ppp_ocaml = t_ppp_ocaml
-external site : string -> site = "%identity"
+
+let site s =
+  if s = "" then failwith "Site names must not be empty"
+  else s
+
 let site_print = String.print
 let site_print_quoted = String.print_quoted
 

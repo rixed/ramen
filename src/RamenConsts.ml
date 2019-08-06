@@ -603,6 +603,10 @@ let kafka_consume_timeout = 0.3
  * the topic. *)
 let kafka_topic_option_prefix = "topic."
 
+(* Where site is not given, there is no HOSTNAME envvar and the hostname
+ * command cannot be run, then we go by that modest name: *)
+let default_site_name = N.site "master"
+
 (* Well known entry points in generated code: *)
 module EntryPoints =
 struct
