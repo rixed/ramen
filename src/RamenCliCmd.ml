@@ -1323,7 +1323,7 @@ let tail_sync
     let while_' () =
       while_ () && (!count_last > 0 || !count_next > 0) in
     clt.Client.on_new <-
-      fun _ k v _ _ _ _ _ _ -> on_key count_next k v ;
+      (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
     ZMQClient.process_until ~while_:while_' clt ;
     print [||] ;
     (* Unsubscribe *)
