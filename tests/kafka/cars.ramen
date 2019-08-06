@@ -1,0 +1,20 @@
+-- vim: ft=sql expandtab
+
+DEFINE cars AS
+  READ FROM KAFKA TOPIC "test-topic"
+  WITH OPTIONS "metadata.broker.list" = "localhost:9092"
+  AS CSV (
+    year u16 {years (rel)},
+    manufacturer string,
+    model string,
+    horsepower u16,
+    CO float? {g*km^-1},
+    CO2 float? {g*km^-1});
+
+DEFINE manufacturers AS
+  FROM cars
+  SELECT
+    manufacturer,
+    count distinct model AS models
+  GROUP BY manufacturer
+  COMMIT AFTER in.manufacturer <> out.manufacturer;

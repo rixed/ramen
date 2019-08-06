@@ -2500,6 +2500,51 @@ let emit_read_file opc param_env env_env name specs =
   p "  in" ;
   p "  CodeGenLib_IO.read_glob_file filename_ preprocessor_ unlink_\n"
 
+(* Generate a data provider that reads blocks of bytes from a kafka topic: *)
+let emit_read_kafka opc param_env env_env name specs =
+  let env = param_env @ env_env
+  and p fmt = emit opc.code 0 fmt in
+  p "let %s field_of_params_ =" name ;
+  p "  let tuples = [ [ \"param\" ], field_of_params_ ;" ;
+  p "                 [ \"env\" ], Sys.getenv ] in" ;
+  fail_with_context "options expression" (fun () ->
+    p "  let consumer_ = Kafka.new_consumer %a in"
+      (List.print (fun oc (n, e) ->
+        Printf.fprintf oc
+          "(subst_tuple_fields tuples %S, subst_tuple_fields tuples (%a))"
+          n (emit_expr ~context:Finalize ~opc ~env) e))
+        specs.O.options) ;
+  fail_with_context "topic expression" (fun () ->
+    p "  let topic_ = subst_tuple_fields tuples (%a) in"
+      (emit_expr ~context:Finalize ~opc ~env) specs.topic) ;
+  (* TODO: topic options and get rid of SaveInFile *)
+  p "  let topic_ = Kafka.new_topic consumer_ topic_ [] in" ;
+  fail_with_context "partition expression" (fun () ->
+    p "  let partitions_ = %a in"
+      (List.print
+        (conv_to ~env ~context:Finalize ~opc (Some TI32)))
+        specs.partitions ;
+    p "  let partitions_ = List.map Int32.to_int partitions_ in") ;
+  p "  let partitions_ =" ;
+  p "    if partitions_ <> [] then partitions_ else" ;
+  p "      (Kafka.topic_metadata consumer_ topic_).topic_partitions in" ;
+  fail_with_context "restart-offset expression" (fun () ->
+    p "  let offset_ = %a in"
+      (fun oc -> function
+      | O.Beginning -> String.print oc "Kafka.offset_beginning"
+      | O.OffsetFromEnd e ->
+          let o = option_get "OffsetFromEnd" (E.int_of_const e) in
+          if o = 0 then
+            String.print oc "Kafka.offset_end"
+          else
+            Printf.fprintf oc "Kafka.offset_tail %d" o
+      | O.SaveInState | O.SaveInFile _ ->
+          todo "SaveInState | SaveInFile"
+      | O.UseKafkaGroupCoordinator _ -> (* TODO: snapshot period *)
+          String.print oc "Kafka.offset_stored")
+        specs.restart_from) ;
+  p "  CodeGenLib_IO.read_kafka_topic consumer_ topic_ partitions_ offset_\n"
+
 (* Given a tuple type (in op.typ), generate the CSV reader operation.
  * A Reader generates a stream of tuples from a data provider.
  * We use CodeGenLib_IO.read_lines to turn data chunks into lines. *)
@@ -3685,8 +3730,8 @@ let emit_operation name top_half_name func
     (match source with
     | File specs ->
         emit_read_file opc param_env env_env source_name specs
-    | Kafka _ ->
-        todo "CodeGen for reading Kafka") ;
+    | Kafka specs ->
+        emit_read_kafka opc param_env env_env source_name specs) ;
     (match format with
     | CSV specs ->
         emit_parse_csv opc format_name specs) ;

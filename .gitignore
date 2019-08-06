@@ -49,6 +49,7 @@ examples/**/*.ml
 tests/**/*.ml
 tests/func/*.success
 tests/func/*.cc
+tests/kafka/tmp
 examples/prometheus-alertmanager.yml
 wrap.sh
 *.tgz

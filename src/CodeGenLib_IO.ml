@@ -180,3 +180,47 @@ let read_glob_file path preprocessor do_unlink quit_flag while_ k =
     !logger.debug "New file %a in dir %a!"
       N.path_print filename N.path_print dirname ;
     import_file_if_match filename) handler
+
+let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
+  !logger.debug "Import all messages from Kafka..." ;
+  if !watchdog = None then watchdog :=
+    Some (RamenWatchdog.make ~timeout:300. "read file" quit_flag) ;
+  let watchdog = Option.get !watchdog in
+  let queue = Kafka.new_queue consumer in
+  List.iter (fun partition ->
+    Kafka.consume_start_queue queue topic partition offset
+  ) partitions ;
+  let consume_message str =
+    let buffer = Bytes.of_string str in
+    let rec loop i =
+      if i < Bytes.length buffer && while_ () then (
+        let consumed = k buffer i (Bytes.length buffer) false in
+        !logger.debug "consume_message: consumed %d bytes" consumed ;
+        loop (i + consumed)
+      ) in
+    RamenWatchdog.enable watchdog ;
+    loop 0 ;
+    RamenWatchdog.disable watchdog
+  in
+  let timeout_ms = int_of_float (kafka_consume_timeout *. 1000.) in
+  let rec read_more () =
+    (match Kafka.consume_queue ~timeout_ms queue with
+    | Kafka.PartitionEnd (_topic, partition, offset) ->
+        !logger.debug "Reached the end of partition %d at offset %Ld"
+          partition offset
+    | Kafka.Message (_topic, partition, offset, value, key_opt) ->
+        !logger.debug
+          "New Kafka value @%Ld of size %d for key %a on partition %d"
+          offset
+          (String.length value)
+          (Option.print String.print) key_opt
+          partition ;
+        consume_message value
+    ) ;
+    (* TODO: store the offset *)
+    if while_ () then read_more ()
+  in
+  read_more () ;
+  Kafka.destroy_queue queue ;
+  Kafka.destroy_handler consumer ;
+  Kafka.destroy_topic topic

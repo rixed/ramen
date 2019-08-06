@@ -122,6 +122,8 @@ and file_specs =
  * those offset for us. *)
 and kafka_specs =
   { options : (string * E.t) list ;
+    (* TODO: as in kafkacat, assume options prefixed with "topic." are topic
+     * options. *)
     topic : E.t ;
     partitions : E.t list ;
     restart_from : kafka_restart_specs }

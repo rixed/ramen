@@ -1,0 +1,95 @@
+#!/bin/sh
+# Test network transfer of tuples
+
+this_script="$0"
+top_src=$(dirname "$this_script")/../../
+
+. "$top_src/tests/lib.sh"
+
+rm -rf "$top_src/tests/kafka/tmp"
+mkdir "$top_src/tests/kafka/tmp"
+
+log "Starting Zookeeper"
+zk_config="$top_src/tests/kafka/tmp/zookeeper.properties"
+echo "dataDir=$top_src/tests/kafka/tmp/zookeeper" > "$zk_config"
+echo clientPort=2181 >> "$zk_config"
+echo maxClientCnxns=0 >> "$zk_config"
+zookeeper-server-start "$zk_config" > "$top_src/tests/kafka/tmp/zookeeper.log" &
+at_exit "echo 'Killing Zookeeper'; zookeeper-server-stop"
+
+log "Starting Kafka"
+BROKER_PORT=9092
+kafka_config="$top_src/tests/kafka/tmp/kafka-server.properties"
+echo broker.id=0 > "$kafka_config"
+echo "log.dirs=$top_src/tests/kafka/tmp/kafka-logs" >> "$kafka_config"
+echo "listeners=PLAINTEXT://:$BROKER_PORT" >> "$kafka_config"
+echo zookeeper.connect=localhost:2181 >> "$kafka_config"
+kafka-server-start "$kafka_config" > "$top_src/tests/kafka/tmp/kafka.log" &
+at_exit "echo 'Killing Kafka'; kafka-server-stop"
+
+BROKER="localhost:$BROKER_PORT"
+TOPIC="test-topic"
+
+# TODO: try with compression!
+KAFKACAT="kafkacat -P -t $TOPIC -p 0 -b $BROKER -l"
+
+log "Creating topic $TOPIC"
+sleep 4 # Give the server some time to startup
+kafka-topics --bootstrap-server "$BROKER" \
+             --create --topic "$TOPIC" \
+             --partitions 2 --replication-factor 1
+
+# Starting Ramen
+
+"$ramen" confserver --debug --insecure &
+confserver_pid=$!
+at_exit "echo 'Killing confserver'; kill '$confserver_pid'"
+
+"$ramen" httpd --confserver=localhost --url=http://localhost:29380 --graphite=graphite/ &
+httpd_pid=$!
+at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
+
+"$ramen" compserver --debug --confserver=localhost &
+compserver_pid=$!
+at_exit "echo 'Killing compserver'; kill '$compserver_pid'"
+
+"$ramen" choreographer --debug --confserver=localhost &
+choreographer_pid=$!
+at_exit "echo 'Killing choreographer'; kill '$choreographer_pid'"
+
+"$ramen" supervisor --debug --confserver=localhost --site="$ramen_site" &
+supervisor_pid=$!
+at_exit "echo 'Killing supervisor'; kill '$supervisor_pid'"
+
+"$ramen" gc --debug --loop=15 --confserver=localhost --site="$ramen_site" &
+gc_pid=$!
+at_exit "echo 'Killing gc'; kill '$gc_pid'"
+
+"$ramen" archivist --loop=5 --confserver=localhost --reconf --allocs --debug &
+archivist_pid=$!
+at_exit "echo 'Killing archivist'; kill '$archivist_pid'"
+
+log "Compiling programs..."
+
+# Note: _absolute_ bin paths are stored in the RC to help filesyncer:
+root="$PWD/tests/kafka"
+"$ramen" compile --confserver=localhost --as cars "$root/cars.ramen"
+
+log "Starting programs..."
+export RAMEN_REPORT_PERIOD=5
+"$ramen" run --debug --confserver=localhost cars.ramen --as cars
+
+log "Sending data to kafka..."
+CSV="$top_src/tests/func/fixtures/cars.csv"
+while true; do
+  $KAFKACAT "$CSV"
+  sleep 1
+done
+
+#log "Consumer groups positions for a given group:"
+#kafka-consumer-groups --bootstrap-server "$BROKER" --describe --group my-group
+#
+#log "List of all consumer groups:"
+#kafka-consumer-groups --bootstrap-server "$BROKER" --list
+
+echo "Stopping..."
