@@ -1126,6 +1126,7 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr s) (n_of_expr a) (n_of_expr b))
 
   | Stateless (SL3 (DontBeLonely, _, _, _))
+  | Stateful (_, _, SF1s (AccompanyMe, _))
   | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _)) ->
       assert false
 
@@ -1253,7 +1254,7 @@ let emit_constraints tuple_sizes records field_names
           (List.print ~first:" " ~last:"" ~sep:" " (fun oc e ->
             String.print oc (n_of_expr e))) es)
 
-  | Stateful (_, _, Distinct es) ->
+  | Stateful (_, _, SF1s (Distinct, es)) ->
       (* - The es can be anything;
        * - The result is a boolean;
        * - The result is nullable if any of the es is nullable. *)

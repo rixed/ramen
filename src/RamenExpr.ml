@@ -236,6 +236,7 @@ and stateless3 =
 
 and stateful =
   | SF1 of stateful1 * t
+  | SF1s of stateful1s * t list
   | SF2 of stateful2 * t * t
   | SF3 of stateful3 * t * t * t
   | SF3s of stateful3s * t * t * t list
@@ -245,14 +246,6 @@ and stateful =
              by : t ; time : t ; duration : t }
   (* Last based on time, with integrated sampling: *)
   | Past of { what : t ; time : t ; max_age : t ; sample_size : t option }
-  (* Last N e1 [BY e2, e3...] - or by arrival.
-   * Note: BY followed by more than one expression will require to parentheses
-   * the whole expression to avoid ambiguous parsing. *)
-  (* Accurate version of the above, remembering all instances of the given
-   * tuple and returning a boolean. Only for when number of expected values
-   * is small, obviously: *)
-  (* Note: Should be in stateful1s but... See above. (FIXME) *)
-  | Distinct of t list
   [@@ppp PPP_OCaml]
 
 and stateful1 =
@@ -270,6 +263,15 @@ and stateful1 =
   | AggrHistogram of float * float * int
   (* Build a list with all values from the group *)
   | Group
+  [@@ppp PPP_OCaml]
+
+and stateful1s =
+  (* Accurate version of Remember, that remembers all instances of the given
+   * tuple and returns a boolean. Only for when number of expected values
+   * is small, obviously: *)
+  | Distinct
+  (* FIXME: PPP does not support single constructors without parameters: *)
+  | AccompanyMe
   [@@ppp PPP_OCaml]
 
 and stateful2 =
@@ -299,8 +301,11 @@ and stateful3 =
   [@@ppp PPP_OCaml]
 
 and stateful3s =
+  (* Last N e1 [BY e2, e3...] - or by arrival.
+   * Note: BY followed by more than one expression will require to parentheses
+   * the whole expression to avoid ambiguous parsing. *)
   | Last
-  (* FIXME: PPP does not support single constructors: *)
+  (* FIXME: PPP does not support single constructors without parameters: *)
   | DontLeaveMeAlone
   [@@ppp PPP_OCaml]
 
@@ -643,7 +648,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)) ->
       Printf.fprintf oc "REMEMBER%s(%a, %a, %a, %a)"
         (st g n) p fpr p tim p dur print_args es
-  | Stateful (g, n, Distinct es) ->
+  | Stateful (g, n, SF1s (Distinct, es)) ->
       Printf.fprintf oc "DISTINCT%s(%a)" (st g n) print_args es
   | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
       Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
@@ -680,6 +685,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
 
   | Generator (Split (e1, e2)) ->
       Printf.fprintf oc "SPLIT(%a, %a)" p e1 p e2
+  | Stateful (_, _, SF1s (AccompanyMe, _))
   | Stateful (_, _, SF3s (DontLeaveMeAlone, _, _, _))
   | Stateless (SL3 (DontBeLonely, _, _, _)) ->
       assert false)
@@ -759,8 +765,8 @@ let rec map f s e =
       { e with text = Stateful (g, n, Past {
         what = m what ; time = m time ; max_age = m max_age ;
         sample_size = om sample_size }) }
-  | Stateful (g, n, Distinct es) ->
-      { e with text = Stateful (g, n, Distinct (mm es)) }
+  | Stateful (g, n, SF1s (o, es)) ->
+      { e with text = Stateful (g, n, SF1s (o, mm es)) }
 
   | Generator (Split (e1, e2)) ->
       { e with text = Generator (Split (m e1, m e2)) }) |>
@@ -810,7 +816,7 @@ let fold_subexpressions f s i e =
 
   | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
       om (f (f (f i what) time) max_age) sample_size
-  | Stateful (_, _, Distinct es) -> fl i es
+  | Stateful (_, _, SF1s (_, es)) -> fl i es
 
   | Generator (Split (e1, e2)) -> f (f i e1) e2
 
@@ -1345,7 +1351,7 @@ struct
       (afun3v_sf "remember" >>: fun ((g, n), fpr, tim, dur, es) ->
          make (Stateful (g, n, SF4s (Remember, fpr, tim, dur, es)))) |||
       (afun0v_sf "distinct" >>: fun ((g, n), es) ->
-         make (Stateful (g, n, Distinct es))) |||
+         make (Stateful (g, n, SF1s (Distinct, es)))) |||
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
          make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |||
       (afun4_sf "histogram" >>:
