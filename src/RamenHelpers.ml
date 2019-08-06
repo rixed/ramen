@@ -1482,8 +1482,8 @@ let strip_control_chars =
 let rate_limiter max_events duration =
   let last_period = ref 0
   and count = ref 0 in
-  fun () ->
-    let now = Unix.time () in
+  fun ?now () ->
+    let now = Option.default_delayed Unix.time now in
     let period = int_of_float (now /. duration) in
     if period = !last_period && !count >= max_events then false else (
       if period = !last_period then (

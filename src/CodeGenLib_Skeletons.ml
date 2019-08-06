@@ -556,6 +556,12 @@ let outputer_of
   (* When did we update [stats_avg_full_out_bytes] statistics about the full
    * size of output? *)
   let last_full_out_measurement = ref 0. in
+  (* Rate limit of the tail: In average not more than 1 message per second,
+   * but allow 60 msgs per minute to allow some burst: *)
+  let rate_limited_tail =
+    let avg = min_delay_between_publish in
+    rate_limiter (int_of_float (60. *. avg)) avg
+  and num_skipped_between_publish = ref 0 in
   let get_out_fnames =
     let last_mtime = ref 0. and last_stat = ref 0. and last_read = ref 0. in
     fun () ->
@@ -634,8 +640,6 @@ let outputer_of
           | None, None ->
               assert false)) ;
       outputers := Hashtbl.values !out_h |> List.of_enum in
-  let last_publish_tail = ref 0.
-  and num_skipped_between_publish = ref 0 in
   fun head tuple_opt ->
     let dest_channel = RingBufLib.channel_of_message_header head in
     let start_stop =
@@ -653,12 +657,9 @@ let outputer_of
               (sersize_of_tuple RamenFieldMask.all_fields tuple) ;
             last_full_out_measurement := !IO.now) ;
           (* If we have subscribers, send them something (rate limited): *)
-          if !IO.now -. !last_publish_tail >
-            min_delay_between_publish
-          then (
+          if rate_limited_tail ~now:!IO.now () then (
             publish_tail sersize_of_tuple serialize_tuple
                          !num_skipped_between_publish tuple ;
-            last_publish_tail := !IO.now ;
             num_skipped_between_publish := 0
           ) else
             incr num_skipped_between_publish ;
