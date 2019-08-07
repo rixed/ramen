@@ -24,6 +24,7 @@ module OutRef = RamenOutRef
 module Files = RamenFiles
 module Retention = RamenRetention
 module TimeRange = RamenTimeRange
+module Versions = RamenVersions
 
 (*
  * Ramen internal configuration record
@@ -800,7 +801,11 @@ let smt_file src_file =
 
 let cache_compiled_file ext conf sign =
   N.path_cat [ conf.persist_dir ; N.path "supervisor/tmp/compiled" ;
-               N.path (sign ^"."^ ext) ]
+               N.path Versions.codegen ; N.path (sign ^"."^ ext) ]
+
+let compserver_tmp_dir conf =
+  N.path_cat [ conf.persist_dir ; N.path "compserver/tmp" ;
+               N.path Versions.codegen ]
 
 let cache_info_file = cache_compiled_file "info"
 let cache_bin_file = cache_compiled_file "x"

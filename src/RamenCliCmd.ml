@@ -454,7 +454,7 @@ let compserver conf daemonize to_stdout to_syslog
         (LockOrCreateKey (k_info, Default.sync_compile_timeo))
         ~on_ko:unlock ~on_ok:(fun () ->
           let tmp_src_file =
-            N.path_cat [ conf.C.persist_dir ; N.path "compserver/tmp" ;
+            N.path_cat [ C.compserver_tmp_dir conf ;
                          N.path ((src_file :> string) ^"."^ ext) ] in
           let target_file = Files.change_ext "info" tmp_src_file in
           !logger.debug "Creating temporary source files %a and %a"
