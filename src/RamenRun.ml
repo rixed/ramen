@@ -390,7 +390,7 @@ let run conf ?(replace=false) ?(kill_if_disabled=false) ?purge
       if not (String.contains (bin_file :> string) '.') then
         Printf.sprintf2
           "program to run (%a) must be provided with its extension."
-          N.path_print src_file |>
+          N.path_print bin_file |>
         failwith ;
       run_sync
     ) in
