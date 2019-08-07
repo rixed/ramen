@@ -1,4 +1,5 @@
 #include <QCoreApplication>
+#include <QKeySequence>
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
 #include "NewSourceDialog.h"
@@ -23,21 +24,21 @@ void setupGlobalMenu(bool with_beta_features)
   QMenu *fileMenu = globalMenuBar->addMenu(
     QCoreApplication::translate("QMenuBar", "&File"));
 
-  QAction *newSource = fileMenu->addAction(
+  fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Source…"), []() {
-      if (! newSourceDialog) newSourceDialog = new NewSourceDialog();
+      if (! newSourceDialog) newSourceDialog = new NewSourceDialog;
       newSourceDialog->show();
-    }
+    },
+    QKeySequence::New
   );
-  newSource->setShortcut(Qt::CTRL|Qt::Key_N);  // _N_ew
 
-  QAction *newProgram = fileMenu->addAction(
+  fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "New Program…"), []() {
-      if (! newProgramDialog) newProgramDialog = new NewProgramDialog();
+      if (! newProgramDialog) newProgramDialog = new NewProgramDialog;
       newProgramDialog->show();
-    }
+    },
+    Qt::CTRL|Qt::Key_R // _R_un
   );
-  newProgram->setShortcut(Qt::CTRL|Qt::Key_R);  // _R_un
 
   fileMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Processes"));
@@ -49,7 +50,7 @@ void setupGlobalMenu(bool with_beta_features)
 
   windowMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Raw Configuration…"), []() {
-      if (! confTreeDialog) confTreeDialog = new ConfTreeDialog();
+      if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
       confTreeDialog->show();
     }
   );
@@ -58,7 +59,7 @@ void setupGlobalMenu(bool with_beta_features)
    * will be moved into the automatic application menu in MacOs: */
   windowMenu->addAction(
     QCoreApplication::translate("QMenuBar", "About"), []() {
-      if (! aboutDialog) aboutDialog = new AboutDialog();
+      if (! aboutDialog) aboutDialog = new AboutDialog;
       aboutDialog->show();
     }
   );
