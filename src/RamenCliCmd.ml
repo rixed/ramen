@@ -56,7 +56,7 @@ let make_copts
             (Printexc.to_string e) ;
           go_with_default ()
       | WEXITED 0, hostname ->
-          N.site hostname
+          N.site (String.trim hostname)
       | st, _ ->
           !logger.debug "Cannot execute hostname: %s"
             (string_of_process_status st) ;
