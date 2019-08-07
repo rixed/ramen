@@ -73,10 +73,6 @@ struct
     | Port
 
   and per_worker_key =
-    (* FIXME: create a single entry of type "stats" for the following: *)
-    (* FIXME: The stats sum all various instances. Probably not what's wanted. *)
-    | FirstStartupTime | LastStartupTime | MinETime | MaxETime
-    | TotTuples | TotBytes | TotCpu | MaxRam
     | RuntimeStats
     | ArchivedTimes
     | NumArcFiles
@@ -132,14 +128,6 @@ struct
 
   let print_per_worker_key oc k =
     String.print oc (match k with
-      | FirstStartupTime -> "startup_time/first"
-      | LastStartupTime -> "startup_time/last"
-      | MinETime -> "event_time/min"
-      | MaxETime -> "event_time/max"
-      | TotTuples -> "total/tuples"
-      | TotBytes -> "total/bytes"
-      | TotCpu -> "total/cpu"
-      | MaxRam -> "max/ram"
       | RuntimeStats -> "stats/runtime"
       | ArchivedTimes -> "archives/times"
       | NumArcFiles -> "archives/num_files"
@@ -266,14 +254,6 @@ struct
                           try
                             PerWorker (N.fq fq,
                               match s1, s2 with
-                              | "startup_time", "first" -> FirstStartupTime
-                              | "startup_time", "last" -> LastStartupTime
-                              | "event_time", "min" -> MinETime
-                              | "event_time", "max" -> MaxETime
-                              | "total", "tuples" -> TotTuples
-                              | "total", "bytes" -> TotBytes
-                              | "total", "cpu" -> TotCpu
-                              | "max", "ram" -> MaxRam
                               | "stats", "runtime" -> RuntimeStats
                               | "archives", "times" -> ArchivedTimes
                               | "archives", "num_files" -> NumArcFiles
