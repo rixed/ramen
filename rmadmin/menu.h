@@ -4,6 +4,8 @@
 
 extern QMenuBar *globalMenuBar;
 
-void setupGlobalMenu(bool with_beta_features);
+class GraphModel;
+
+void setupGlobalMenu(GraphModel *, bool with_beta_features);
 
 #endif

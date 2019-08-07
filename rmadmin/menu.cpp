@@ -2,6 +2,7 @@
 #include <QKeySequence>
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
+#include "ProcessesDialog.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
 #include "menu.h"
@@ -12,8 +13,9 @@ static AboutDialog *aboutDialog;
 static ConfTreeDialog *confTreeDialog;
 static NewSourceDialog *newSourceDialog;
 static NewProgramDialog *newProgramDialog;
+static ProcessesDialog *processesDialog;
 
-void setupGlobalMenu(bool with_beta_features)
+void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
 {
   // A single menubar for all windows:
   globalMenuBar = new QMenuBar(nullptr);
@@ -48,6 +50,16 @@ void setupGlobalMenu(bool with_beta_features)
   QMenu *windowMenu = globalMenuBar->addMenu(
     QCoreApplication::translate("QMenuBar", "&Window"));
 
+  /* The list of all running processes, as a qtree, equivalent to the
+   * `ramen ps` command, but nicer and with stats push all the way: */
+  windowMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Processes…"), [graphModel]() {
+      if (! processesDialog) processesDialog = new ProcessesDialog(graphModel);
+      processesDialog->show();
+    }
+  );
+
+  /* As a last resort, a raw edition window: */
   windowMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Raw Configuration…"), []() {
       if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;

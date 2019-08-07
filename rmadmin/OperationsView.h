@@ -24,7 +24,6 @@ class OperationsView : public QSplitter
 
 public:
   OperationsView(GraphModel *, QWidget *parent = nullptr);
-  ~OperationsView();
 
 signals:
   void functionSelected(FunctionItem *);

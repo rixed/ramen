@@ -9,6 +9,8 @@
 #include "ProgramItem.h"
 #include "SiteItem.h"
 
+static bool verbose = true;
+
 GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
   QAbstractItemModel(parent),
   settings(settings_)
@@ -18,7 +20,8 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
     // OK since connect itself is threadsafe. Once we return, the KV value
     // is going to be set and therefore a signal emitted. This signal will
     // be queued for the Qt thread in which lives GraphModel to dequeue.
-    std::cout << "connect a new KValue for " << k << " to the graphModel..." << std::endl;
+    if (verbose)
+      std::cout << "Connect a new KValue for " << k << " to the graphModel" << std::endl;
     Once::connect(kv, &KValue::valueCreated, this, &GraphModel::updateKey);
     connect(kv, &KValue::valueChanged, this, &GraphModel::updateKey);
   });
@@ -26,8 +29,7 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
 
 QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) const
 {
-  assert(column == 0);
-  if (!parent.isValid()) { // Asking for a site
+  if (! parent.isValid()) { // Asking for a site
     if ((size_t)row >= sites.size()) return QModelIndex();
     SiteItem *site = sites[row];
     assert(site->treeParent == nullptr);
@@ -43,6 +45,7 @@ QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) co
     assert(program->treeParent == parentPtr);
     return createIndex(row, column, static_cast<GraphItem *>(program));
   }
+
   // Maybe a program?
   ProgramItem *parentProgram = dynamic_cast<ProgramItem *>(parentPtr);
   if (parentProgram) {
@@ -51,6 +54,7 @@ QModelIndex GraphModel::index(int row, int column, QModelIndex const &parent) co
     assert(function->treeParent == parentPtr);
     return createIndex(row, column, static_cast<GraphItem *>(function));
   }
+
   // There is no alternative
   assert(!"Someone should RTFM on indexing");
 }
@@ -72,7 +76,7 @@ QModelIndex GraphModel::parent(QModelIndex const &index) const
 
 int GraphModel::rowCount(QModelIndex const &parent) const
 {
-  if (!parent.isValid()) {
+  if (! parent.isValid()) {
     // That must be "root" then:
     return sites.size();
   }
@@ -83,10 +87,12 @@ int GraphModel::rowCount(QModelIndex const &parent) const
   if (parentSite) {
     return parentSite->programs.size();
   }
+
   ProgramItem *parentProgram = dynamic_cast<ProgramItem *>(parentPtr);
   if (parentProgram) {
     return parentProgram->functions.size();
   }
+
   FunctionItem *parentFunction = dynamic_cast<FunctionItem *>(parentPtr);
   if (parentFunction) {
     return 0;
@@ -97,24 +103,112 @@ int GraphModel::rowCount(QModelIndex const &parent) const
 
 int GraphModel::columnCount(QModelIndex const &parent) const
 {
-  (void)parent;
-  return 1;
+  /* Number of columns for the global header. */
+  if (! parent.isValid()) return NumColumns;
+
+  GraphItem *item =
+    static_cast<GraphItem *>(parent.internalPointer());
+  return item->columnCount();
 }
 
 QVariant GraphModel::data(QModelIndex const &index, int role) const
 {
-  if (!index.isValid()) return QVariant();
-
-  if (role != Qt::DisplayRole) return QVariant();
+  if (! index.isValid()) return QVariant();
 
   GraphItem *item =
     static_cast<GraphItem *>(index.internalPointer());
-  return item->data(index.column());
+  return item->data(index.column(), role);
+}
+
+QString const GraphModel::columnName(GraphModel::Columns c)
+{
+  switch (c) {
+    case Name: return tr("Name");
+    case WorkerTopHalf: return tr("Top-half");
+    case WorkerEnabled: return tr("Enabled");
+    case WorkerDebug: return tr("Debug");
+    case WorkerUsed: return tr("Used");
+    case StatsTime: return tr("Stats Emission");
+    case StatsNumInputs: return tr("Inputs Events");
+    case StatsNumSelected: return tr("Selected Events");
+    case StatsTotWaitIn: return tr("Waiting for Input");
+    case StatsTotInputBytes: return tr("Input Bytes");
+    case StatsFirstInput: return tr("First Input Reception");
+    case StatsLastInput: return tr("Last Input Reception");
+    case StatsNumGroups: return tr("Groups");
+    case StatsNumOutputs: return tr("Output Events");
+    case StatsTotWaitOut: return tr("Waiting for Output");
+    case StatsFirstOutput: return tr("First Output Emitted");
+    case StatsLastOutput: return tr("Last Output Emitted");
+    case StatsTotOutputBytes: return tr("Output Bytes");
+    case StatsNumFiringNotifs: return tr("Firing Notifications");
+    case StatsNumExtinguishedNotifs: return tr("Extinguished Notification");
+    case NumArcFiles: return tr("Archived Files");
+    case NumArcBytes: return tr("Archived Bytes");
+    case AllocedArcBytes: return tr("Allocated Archive Bytes");
+    case StatsMinEventTime: return tr("Min. Event Time");
+    case StatsMaxEventTime: return tr("Max. Event Time");
+    case StatsTotCpu: return tr("Total CPU");
+    case StatsCurrentRam: return tr("Current RAM");
+    case StatsMaxRam: return tr("Max. RAM");
+    case StatsFirstStartup: return tr("First Startup");
+    case StatsLastStartup: return tr("Last Startup");
+    case StatsAverageTupleSize: return tr("Average Bytes per Archived Event");
+    case StatsNumAverageTupleSizeSamples: return tr("Full Event Size Samples");
+    case WorkerReportPeriod: return tr("Report Period");
+    case WorkerSrcPath: return tr("Source");
+    case WorkerParams: return tr("Parameters");
+    case NumParents: return tr("Parents");
+    case NumChildren: return tr("Children");
+    case WorkerSignature: return tr("Worker Signature");
+    case WorkerBinSignature: return tr("Binary Signature");
+    case NumTailTuples: return tr("Received Tail Events");
+    case NumColumns: break;
+  }
+
+  assert(!"Invalid column");
+}
+
+bool GraphModel::columnIsImportant(Columns c)
+{
+  switch (c) {
+    case Name:
+    case StatsTime:
+    case StatsNumInputs:
+    case StatsNumSelected:
+    case StatsLastInput:
+    case StatsNumGroups:
+    case StatsNumOutputs:
+    case StatsTotWaitOut:
+    case StatsLastOutput:
+    case StatsNumFiringNotifs:
+    case StatsNumExtinguishedNotifs:
+    case NumArcBytes:
+    case AllocedArcBytes:
+    case StatsMaxEventTime:
+    case StatsTotCpu:
+    case StatsCurrentRam:
+    case StatsMaxRam:
+    case StatsLastStartup:
+    case WorkerParams:
+      return true;
+    default:
+      return false;
+  }
+}
+
+QVariant GraphModel::headerData(
+  int section, Qt::Orientation orientation, int role) const
+{
+  if (role != Qt::DisplayRole || orientation != Qt::Horizontal)
+    return QVariant();
+
+  return columnName((GraphModel::Columns)section);
 }
 
 void GraphModel::reorder()
 {
-  for (int i = 0; (size_t)i < sites.size(); i++) {
+  for (int i = 0; (size_t)i < sites.size(); i ++) {
     if (sites[i]->row != i) {
       sites[i]->row = i;
       sites[i]->setPos(0, i * 130);
@@ -135,10 +229,8 @@ public:
         "workers/(?<program>.+)/"
         "(?<function>[^/]+)/"
         "(?<function_property>"
-          "worker|startup_time/(first|last)|"
-          "event_time/(min|max)|"
-          "total/(tuples|bytes|cpu)|"
-          "max/ram|"
+          "worker|"
+          "stats/runtime|"
           "archives/(times|num_files|current_size|alloc_size)|"
           "instances/(?<signature>[^/]+)/(?<instance_property>[^/]+)"
         ")"
@@ -170,30 +262,31 @@ public:
 
 FunctionItem const *GraphModel::find(QString const &site, QString const &program, QString const &function)
 {
-  /*std::cout << "Look for function " << site.toStdString() << "/"
+  if (verbose)
+    std::cout << "Look for function " << site.toStdString() << "/"
                                       << program.toStdString() << "/"
-                                      << function.toStdString() << std::endl;*/
+                                      << function.toStdString() << std::endl;
   for (SiteItem const *siteItem : sites) {
     if (siteItem->name == site) {
       for (ProgramItem const *programItem : siteItem->programs) {
         if (programItem->name == program) {
           for (FunctionItem const *functionItem : programItem->functions) {
             if (functionItem->name == function) {
-              //std::cout << "Found: " << functionItem->fqName().toStdString() << std::endl;
               return functionItem;
-            } else {
-              //std::cout << "...not " << functionItem->name.toStdString() << std::endl;
             }
           }
-          //std::cout << "No such function: " << function.toStdString() << std::endl;
+          if (verbose)
+            std::cout << "No such function: " << function.toStdString() << std::endl;
           return nullptr;
         }
       }
-      //std::cout << "No such program: " << program.toStdString() << std::endl;
+      if (verbose)
+        std::cout << "No such program: " << program.toStdString() << std::endl;
       return nullptr;
     }
   }
-  //std::cout << "No such site: " << site.toStdString() << std::endl;
+  if (verbose)
+    std::cout << "No such site: " << site.toStdString() << std::endl;
   return nullptr;
 }
 
@@ -243,7 +336,8 @@ void GraphModel::retryAddParents()
   for (auto it = pendingAddParents.begin(); it != pendingAddParents.end(); ) {
     FunctionItem const *parent = find(it->site, it->program, it->function);
     if (parent) {
-      //std::cout << "Resolved pending parent" << std::endl;
+      if (verbose)
+        std::cout << "Resolved pending parent" << std::endl;
       addFunctionParent(parent, it->child);
       it = pendingAddParents.erase(it);
     } else {
@@ -252,9 +346,18 @@ void GraphModel::retryAddParents()
   }
 }
 
-void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const *programItem, FunctionItem *functionItem, QString const &p, std::shared_ptr<conf::Value const> v)
+void GraphModel::setFunctionProperty(
+  SiteItem const *siteItem, ProgramItem const *programItem,
+  FunctionItem *functionItem, QString const &p,
+  std::shared_ptr<conf::Value const> v)
 {
-  std::cout << "setFunctionProperty for property " << p.toStdString() << std::endl;
+  if (verbose)
+    std::cout << "setFunctionProperty for " << p.toStdString() << std::endl;
+
+  int changed(0);
+# define ANYTHING_CHANGED 0x1
+# define STORAGE_CHANGED  0x2
+
   if (p == "worker") {
     std::shared_ptr<conf::Worker const> cf =
       std::dynamic_pointer_cast<conf::Worker const>(v);
@@ -279,107 +382,29 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
          * once a new function appears. */
         FunctionItem const *parent = find(psite, pprog, pfunc);
         if (parent) {
-          std::cout << "Set immediate parent" << std::endl;
+          if (verbose) std::cout << "Set immediate parent" << std::endl;
           addFunctionParent(parent, functionItem);
         } else {
-          std::cout << "Set delayed parent" << std::endl;
+          if (verbose) std::cout << "Set delayed parent" << std::endl;
           delayAddFunctionParent(functionItem, psite, pprog, pfunc);
         }
       }
-
-      emit storagePropertyChanged(functionItem);
+      changed |= STORAGE_CHANGED;
     }
-  } else if (p == "startup_time/first") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VFloat const> v =
-        std::dynamic_pointer_cast<VFloat const>(cf->v);
-      if (v) {
-        functionItem->firstStartupTime = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "startup_time/last") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VFloat const> v =
-        std::dynamic_pointer_cast<VFloat const>(cf->v);
-      if (v) {
-        functionItem->lastStartupTime = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "event_time/min") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VFloat const> v =
-        std::dynamic_pointer_cast<VFloat const>(cf->v);
-      if (v) {
-        functionItem->eventTimeMin = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "event_time/max") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VFloat const> v =
-        std::dynamic_pointer_cast<VFloat const>(cf->v);
-      if (v) {
-        functionItem->eventTimeMax = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "total/tuples") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        functionItem->totalTuples = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "total/bytes") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        functionItem->totalBytes = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "total/cpu") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VFloat const> v =
-        std::dynamic_pointer_cast<VFloat const>(cf->v);
-      if (v) {
-        functionItem->totalCpu = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
-    }
-  } else if (p == "max/ram") {
-    std::shared_ptr<conf::RamenValueValue const> cf =
-      std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
-    if (cf) {
-      std::shared_ptr<VI64 const> v =
-        std::dynamic_pointer_cast<VI64 const>(cf->v);
-      if (v) {
-        functionItem->maxRAM = v->v;
-        emit storagePropertyChanged(functionItem);
-      }
+  } else if (p == "stats/runtime") {
+    std::shared_ptr<conf::RuntimeStats const> stats =
+      std::dynamic_pointer_cast<conf::RuntimeStats const>(v);
+    if (stats) {
+      functionItem->runtimeStats = stats;
+      changed |= ANYTHING_CHANGED;
     }
   } else if (p == "archives/times") {
-    // TODO
-    emit storagePropertyChanged(functionItem);
+    std::shared_ptr<conf::TimeRange const> times =
+      std::dynamic_pointer_cast<conf::TimeRange const>(v);
+    if (times) {
+      functionItem->archivedTimes = times;
+      changed |= STORAGE_CHANGED;
+    }
   } else if (p == "archives/num_files") {
     std::shared_ptr<conf::RamenValueValue const> cf =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
@@ -388,7 +413,7 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->numArcFiles = v->v;
-        emit storagePropertyChanged(functionItem);
+        changed |= STORAGE_CHANGED;
       }
     }
   } else if (p == "archives/current_size") {
@@ -399,7 +424,7 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->numArcBytes = v->v;
-        emit storagePropertyChanged(functionItem);
+        changed |= STORAGE_CHANGED;
       }
     }
   } else if (p == "archives/alloc_size") {
@@ -410,9 +435,20 @@ void GraphModel::setFunctionProperty(SiteItem const *siteItem, ProgramItem const
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
         functionItem->allocArcBytes = v->v;
-        emit storagePropertyChanged(functionItem);
+        changed |= STORAGE_CHANGED;
       }
     }
+  }
+
+  if (changed & STORAGE_CHANGED) {
+    if (verbose) std::cout << "Emitting storagePropertyChanged" << std::endl;
+    emit storagePropertyChanged(functionItem);
+  }
+  if (changed) {
+    if (verbose) std::cout << "Emitting dataChanged" << std::endl;
+    QModelIndex topLeft(functionItem->index(this, 0));
+    QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
+    emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
   }
 }
 
@@ -428,7 +464,12 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
     if (rv) {
       std::shared_ptr<VBool const> v =
         std::dynamic_pointer_cast<VBool const>(rv->v);
-      if (v) siteItem->isMaster = v->v;
+      if (v) {
+        siteItem->isMaster = v->v;
+        /* Signal that the name has changed, although it's still TODO */
+        QModelIndex index(siteItem->index(this, 0));
+        emit dataChanged(index, index, { Qt::DisplayRole });
+      }
     }
   }
 }
@@ -436,8 +477,9 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
 void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const> v)
 {
   ParsedKey pk(k);
-  /*std::cout << "GraphModel key " << k << " set to value " << *v
-            << " is valid:" << pk.valid << std::endl;*/
+  if (verbose)
+    std::cout << "GraphModel key " << k << " set to value " << *v
+              << " is valid:" << pk.valid << std::endl;
   if (!pk.valid) return;
 
   assert(pk.site.length() > 0);
@@ -494,20 +536,17 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         programItem->functions.insert(programItem->functions.begin()+idx, functionItem);
         programItem->reorder(this);
         endInsertRows();
-        // Since we have a new function, maybe we can solve some of the
-        // pendingAddParents?
+        /* Since we have a new function, maybe we can solve some of the
+         * pendingAddParents? */
         retryAddParents();
         emit functionAdded(functionItem);
       }
       setFunctionProperty(siteItem, programItem, functionItem, pk.property, v);
-      functionItem->update();
     } else {
       setProgramProperty(programItem, pk.property, v);
-      programItem->update();
     }
   } else {
     setSiteProperty(siteItem, pk.property, v);
-    siteItem->update();
   }
 }
 

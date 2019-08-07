@@ -17,12 +17,6 @@ ProgramItem::~ProgramItem()
   }
 }
 
-QVariant ProgramItem::data(int column) const
-{
-  assert(column == 0);
-  return QVariant(name);
-}
-
 void ProgramItem::reorder(GraphModel const *model)
 {
   for (int i = 0; (size_t)i < functions.size(); i++) {

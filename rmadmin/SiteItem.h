@@ -15,7 +15,6 @@ public:
   std::vector<ProgramItem *> programs;
   SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~SiteItem();
-  QVariant data(int) const;
   void reorder(GraphModel const *);
   QRectF operationRect() const;
 };

@@ -73,17 +73,78 @@ public:
   GraphViewSettings const *settings;
   std::vector<SiteItem *> sites;
 
+  enum Columns {
+    Name = 0,
+    // Flags:
+    WorkerTopHalf,
+    WorkerEnabled,
+    WorkerDebug,
+    WorkerUsed,
+    // The statistics time:
+    StatsTime,
+    // Stats about inputs:
+    StatsNumInputs,
+    StatsNumSelected,
+    StatsTotWaitIn,
+    StatsTotInputBytes,
+    StatsFirstInput,
+    StatsLastInput,
+    // Stats about internal state:
+    StatsNumGroups,
+    // Stats about outputs:
+    StatsNumOutputs,
+    StatsTotWaitOut,
+    StatsFirstOutput,
+    StatsLastOutput,
+    StatsTotOutputBytes,
+    StatsNumFiringNotifs,
+    StatsNumExtinguishedNotifs,
+    // Stats about archives:
+    NumArcFiles,
+    NumArcBytes,
+    AllocedArcBytes,
+    StatsAverageTupleSize,
+    StatsNumAverageTupleSizeSamples,
+    // Stats about event times:
+    StatsMinEventTime,
+    StatsMaxEventTime,
+    // Stats about resource consumption:
+    StatsTotCpu,
+    StatsCurrentRam,
+    StatsMaxRam,
+    // Stats on the process:
+    StatsFirstStartup,
+    StatsLastStartup,
+    WorkerReportPeriod,
+    WorkerSrcPath,
+    WorkerParams,
+    NumParents,
+    NumChildren,
+    // Internal info:
+    WorkerSignature,
+    WorkerBinSignature,
+    NumTailTuples,
+    // Not a column but a mark that must come last:
+    NumColumns
+  };
+
+  static int const SortRole = Qt::UserRole + 0;
+
   GraphModel(GraphViewSettings const *, QObject *parent = nullptr);
 
-  /* When subclassing QAbstractItemModel, at the very least you must implement
+  static QString const columnName(Columns);
+  static bool columnIsImportant(Columns);
+
+  /* "When subclassing QAbstractItemModel, at the very least you must implement
    * index(), parent(), rowCount(), columnCount(), and data(). These functions
-   * are used in all read-only models, and form the basis of editable models.
+   * are used in all read-only models, and form the basis of editable models."
    */
-  QModelIndex index(int row, int column, QModelIndex const &parent) const;
-  QModelIndex parent(QModelIndex const &index) const;
-  int rowCount(QModelIndex const &parent) const;
-  int columnCount(QModelIndex const &parent) const;
-  QVariant data(QModelIndex const &index, int role) const;
+  QModelIndex index(int , int , QModelIndex const &) const;
+  QModelIndex parent(QModelIndex const &) const;
+  int rowCount(QModelIndex const &) const;
+  int columnCount(QModelIndex const &) const;
+  QVariant data(QModelIndex const &, int) const;
+  QVariant headerData(int, Qt::Orientation, int) const;
 
 private slots:
   void updateKey(conf::Key const &, std::shared_ptr<conf::Value const>);

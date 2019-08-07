@@ -101,6 +101,8 @@ HEADERS += \
   ConfTreeDialog.h \
   NewSourceDialog.h \
   NewProgramDialog.h \
+  ProcessesWidget.h \
+  ProcessesDialog.h \
   ButtonDelegate.h \
   SourcesView.h \
   ProgramsView.h \
@@ -183,6 +185,8 @@ SOURCES += \
   CompiledProgramParam.cpp \
   CompiledFunctionInfo.cpp \
   ConfTreeWidget.cpp \
+  ProcessesWidget.cpp \
+  ProcessesDialog.cpp \
   ConfTreeDialog.cpp \
   NewSourceDialog.cpp \
   NewProgramDialog.cpp \

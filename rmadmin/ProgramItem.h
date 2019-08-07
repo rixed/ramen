@@ -16,7 +16,6 @@ public:
   std::vector<FunctionItem *> functions;
   ProgramItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~ProgramItem();
-  QVariant data(int) const;
   void reorder(GraphModel const *);
   QRectF operationRect() const;
 };

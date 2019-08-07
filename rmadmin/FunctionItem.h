@@ -21,14 +21,8 @@ public:
   // tuples owned by this object:
   std::vector<RamenValue const *> tuples;
   std::shared_ptr<conf::Worker const> worker;
-  std::optional<double> firstStartupTime;
-  std::optional<double> lastStartupTime;
-  std::optional<double> eventTimeMin;
-  std::optional<double> eventTimeMax;
-  std::optional<int64_t> totalTuples;
-  std::optional<int64_t> totalBytes;
-  std::optional<double> totalCpu;
-  std::optional<int64_t> maxRAM;
+  std::shared_ptr<conf::RuntimeStats const> runtimeStats;
+  std::shared_ptr<conf::TimeRange const> archivedTimes;
   std::optional<int64_t> numArcFiles;
   std::optional<int64_t> numArcBytes;
   std::optional<int64_t> allocArcBytes;
@@ -36,9 +30,11 @@ public:
   unsigned channel; // could also be used to select a color?
   // FIXME: Function destructor must clean those:
   std::vector<FunctionItem const *> parents;
+
   FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~FunctionItem();
-  QVariant data(int) const;
+  int columnCount() const;
+  QVariant data(int, int) const;
   QRectF operationRect() const;
 
   // Returns nullptr if the info is not available yet

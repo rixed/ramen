@@ -19,6 +19,8 @@ struct RCEntryParam
   RCEntryParam(std::string const &name_, std::shared_ptr<RamenValue const> val_) :
     name(name_), val(val_) {}
 
+  QString const toQString() const;
+
   value toOCamlValue() const;
 };
 

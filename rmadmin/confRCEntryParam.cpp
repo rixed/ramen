@@ -19,4 +19,9 @@ value RCEntryParam::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+QString const RCEntryParam::toQString() const
+{
+  return QString::fromStdString(name) + QString('=') + val->toQString();
+}
+
 };

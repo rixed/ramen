@@ -52,8 +52,11 @@ GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSett
   subItems->hide();
 }
 
-GraphItem::~GraphItem()
+QVariant GraphItem::data(int column, int role) const
 {
+  if (role != Qt::DisplayRole) return QVariant();
+  if (column != 0) return QVariant();
+  return name;
 }
 
 bool GraphItem::isCollapsed() const
@@ -150,10 +153,15 @@ QRect GraphItem::labelsBoundingRect(std::vector<std::pair<QString const, QString
   return QRect(QPoint(0, 0), QSize(totWidth, totHeight));
 }
 
-QModelIndex GraphItem::index(GraphModel const *model) const
+QModelIndex GraphItem::index(GraphModel const *model, int column) const
 {
-  return model->index(row, 0,
-    treeParent ? treeParent->index(model) : QModelIndex());
+  return model->index(row, column,
+    treeParent ? treeParent->index(model, 0) : QModelIndex());
+}
+
+int GraphItem::columnCount() const
+{
+  return GraphModel::NumColumns;
 }
 
 QRectF GraphItem::boundingRect() const
@@ -201,7 +209,7 @@ QVariant GraphItem::itemChange(QGraphicsItem::GraphicsItemChange change, const Q
   if (treeParent && change == QGraphicsItem::ItemPositionHasChanged) {
     update();
   } else if (change == ItemSelectedChange) {
-    if (v.toBool() && !isCollapsed()) return QVariant(false);
+    if (v.toBool() && !isCollapsed()) return false;
     return v;
   } else if (change == ItemSelectedHasChanged) {
     if (v.toBool()) {

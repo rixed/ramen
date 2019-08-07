@@ -50,15 +50,15 @@ bool looks_like_true(QString s_)
   return true;
 }
 
-QString stringOfDate(double d)
+QString const stringOfDate(double d)
 {
   // TODO: strip optional prefix
   return QDateTime::fromSecsSinceEpoch(d).toString();
 }
 
-QString stringOfDuration(double d)
+QString const stringOfDuration(double d)
 {
-  QString s("");
+  QString s;
 
 # define REDUCE(secs, unit) \
   if (d > secs) { \
@@ -72,6 +72,33 @@ QString stringOfDuration(double d)
   REDUCE(3600, hours);
   REDUCE(60, mins);
   REDUCE(1, secs);
+
+# undef REDUCE
+
+  return s;
+}
+
+QString const stringOfBytes(size_t z)
+{
+  QString s;
+
+# define REDUCE(width, symb) \
+    if (z >= 1ULL << width) do { \
+      size_t const u = z >> width; \
+      z &= (1ULL << width) - 1; \
+      if (s.length() > 0) s += ' '; \
+      s += QString::number(u) + symb; \
+    } while (false)
+
+  REDUCE(60, "EiB");
+  REDUCE(50, "PiB");
+  REDUCE(40, "TiB");
+  REDUCE(30, "GiB");
+  REDUCE(20, "MiB");
+  REDUCE(10, "KiB");
+  REDUCE(0, "bytes");
+
+# undef REDUCE
 
   return s;
 }

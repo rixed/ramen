@@ -8,5 +8,7 @@
     <file>pix/play.svg</file>
     <file>pix/wait.svg</file>
     <file>pix/info.svg</file>
+    <file>pix/search.svg</file>
+    <file>pix/close.svg</file>
   </qresource>
 </RCC>

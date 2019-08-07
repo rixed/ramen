@@ -52,12 +52,14 @@ public:
   int row;
 
   GraphItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
-  virtual ~GraphItem() = 0;
-  virtual QVariant data(int) const = 0;
+  virtual ~GraphItem() {};
+
+  int columnCount() const;
+  virtual QVariant data(int col, int role) const;
   // Reorder the children after some has been added/removed
   virtual void reorder(GraphModel const *) {};
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
-  QModelIndex index(GraphModel const *) const;
+  QModelIndex index(GraphModel const *, int) const;
   bool isCollapsed() const;
 
   // For the GraphView:

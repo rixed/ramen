@@ -17,12 +17,6 @@ SiteItem::~SiteItem()
   }
 }
 
-QVariant SiteItem::data(int column) const
-{
-  assert(column == 0);
-  return QVariant(name);
-}
-
 void SiteItem::reorder(GraphModel const *model)
 {
   for (int i = 0; (size_t)i < programs.size(); i++) {

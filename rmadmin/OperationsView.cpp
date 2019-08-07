@@ -23,7 +23,7 @@
 class NarrowTreeView : public QTreeView
 {
 public:
-  NarrowTreeView(QWidget *parent = NULL) : QTreeView(parent) {}
+  NarrowTreeView(QWidget *parent = nullptr) : QTreeView(parent) {}
   QSize sizeHint() const { return QSize(100, 42); }
 };
 
@@ -87,7 +87,7 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   connect(treeView, &NarrowTreeView::collapsed, graphView, &GraphView::collapse);
   connect(treeView, &NarrowTreeView::expanded, graphView, &GraphView::expand);
   connect(treeView, &NarrowTreeView::clicked, graphView, &GraphView::select);
-  // And the other way arround:
+  // And the other way around:
   connect(graphView, &GraphView::selected, treeView, &NarrowTreeView::setCurrentIndex);
 
   allowReset = true;
@@ -107,10 +107,6 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
   connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
   connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::remTail);
-}
-
-OperationsView::~OperationsView()
-{
 }
 
 // slot to reset the LOD radio buttons

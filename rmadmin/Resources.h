@@ -16,6 +16,8 @@ struct Resources {
   QPixmap waitPixmap;
   QPixmap errorPixmap;
   QPixmap infoPixmap;
+  QPixmap searchPixmap;
+  QPixmap closePixmap;
 
   Resources() :
     applicationIcon(":/rmadmin.ico"),
@@ -24,7 +26,9 @@ struct Resources {
     playPixmap(":/pix/play.svg"),
     waitPixmap(":/pix/wait.svg"),
     errorPixmap(":/pix/error.svg"),
-    infoPixmap(":/pix/info.svg")
+    infoPixmap(":/pix/info.svg"),
+    searchPixmap(":/pix/search.svg"),
+    closePixmap(":/pix/close.svg")
   {}
 
   static Resources *get() {

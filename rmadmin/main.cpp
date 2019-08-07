@@ -23,6 +23,8 @@ extern "C" {
 #include "UserIdentity.h"
 #include "conf.h"
 #include "RamenValue.h" // for ocamlThreadId
+#include "GraphModel.h"
+#include "GraphViewSettings.h"
 extern "C" {
 # include "../src/config.h"
 }
@@ -174,8 +176,13 @@ int main(int argc, char *argv[])
   qRegisterMetaType<QVector<int>>();
 
   bool with_beta_features = getenv("RMADMIN_BETA");
-  setupGlobalMenu(with_beta_features);
-  w = new RmAdminWin(with_beta_features);
+  /* A GraphModel satisfies both the TreeView and the GraphView
+   * requirements: */
+  GraphViewSettings *settings = new GraphViewSettings;
+  GraphModel *graphModel = new GraphModel(settings);
+
+  setupGlobalMenu(graphModel, with_beta_features);
+  w = new RmAdminWin(graphModel, with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
 
   thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
@@ -187,6 +194,10 @@ int main(int argc, char *argv[])
 
   delete w;
   w = nullptr;
+  delete graphModel;
+  graphModel = nullptr;
+  delete settings;
+  settings = nullptr;
 
   cout << "Joining with start_sync thread..." << endl;
   sync_thread.join();

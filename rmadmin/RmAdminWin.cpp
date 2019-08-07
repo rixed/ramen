@@ -9,16 +9,13 @@
 #include "StorageView.h"
 #include "RmAdminWin.h"
 
-RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
-    QMainWindow(parent)
+RmAdminWin::RmAdminWin(
+  GraphModel *graphModel, bool with_beta_features, QWidget *parent) :
+  QMainWindow(parent)
 {
+  setUnifiedTitleAndToolBarOnMac(true);
   sourcesModel = new SourcesModel(this);
   if (with_beta_features) {
-    // A GraphModel satisfies both the TreeView and the GraphView
-    // requirements:
-    settings = new GraphViewSettings;
-    graphModel = new GraphModel(settings);
-
     // For now have a tabbar with the available views:
     QTabWidget *tw = new QTabWidget(this);
 
@@ -31,7 +28,6 @@ RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
 
     setCentralWidget(tw);
   } else {
-    settings = nullptr;
     graphModel = nullptr;
     setCentralWidget(new SourcesView(sourcesModel));
   }
@@ -49,10 +45,6 @@ RmAdminWin::RmAdminWin(bool with_beta_features, QWidget *parent) :
 RmAdminWin::~RmAdminWin()
 {
   delete errorMessage;
-  // FIXME: Qt will delete the infoTabs and dataTabs that references objects
-  // from the model only *after* we delete the model:
-  delete graphModel;
-  delete settings;
 }
 
 void RmAdminWin::setStatusMsg()

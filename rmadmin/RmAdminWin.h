@@ -22,11 +22,9 @@ class RmAdminWin : public QMainWindow
   KErrorMsg *errorMessage;
   ConfTreeModel *confTreeModel;
   SourcesModel *sourcesModel;
-  GraphModel *graphModel;
-  GraphViewSettings *settings;
 
 public:
-  explicit RmAdminWin(bool with_beta_features, QWidget *parent = nullptr);
+  explicit RmAdminWin(GraphModel *, bool with_beta_features, QWidget *parent = nullptr);
   ~RmAdminWin();
 
 signals:

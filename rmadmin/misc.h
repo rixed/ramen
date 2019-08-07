@@ -22,8 +22,9 @@ QString const removeExtQ(QString const &);
 
 bool looks_like_true(QString);
 
-QString stringOfDate(double);
-QString stringOfDuration(double);
+QString const stringOfDate(double);
+QString const stringOfDuration(double);
+QString const stringOfBytes(size_t);
 
 class QLayout;
 
