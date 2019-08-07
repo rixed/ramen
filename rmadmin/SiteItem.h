@@ -17,6 +17,7 @@ public:
   ~SiteItem();
   void reorder(GraphModel const *);
   QRectF operationRect() const;
+  bool isTopHalf() const { return false; }
 };
 
 std::ostream &operator<<(std::ostream &, SiteItem const &);

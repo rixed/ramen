@@ -61,6 +61,7 @@ public:
   virtual void setProperty(QString const &, std::shared_ptr<conf::Value const>) {};
   QModelIndex index(GraphModel const *, int) const;
   bool isCollapsed() const;
+  virtual bool isTopHalf() const = 0;
 
   // For the GraphView:
   QRectF boundingRect() const;

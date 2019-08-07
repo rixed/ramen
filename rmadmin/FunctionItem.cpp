@@ -426,3 +426,8 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
   tuples.push_back(val);
   emit endAddTuple();
 }
+
+bool FunctionItem::isTopHalf() const
+{
+  return worker && worker->role && worker->role->isTopHalf;
+}

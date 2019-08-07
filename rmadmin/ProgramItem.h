@@ -18,6 +18,7 @@ public:
   ~ProgramItem();
   void reorder(GraphModel const *);
   QRectF operationRect() const;
+  bool isTopHalf() const;
 };
 
 std::ostream &operator<<(std::ostream &, ProgramItem const &);

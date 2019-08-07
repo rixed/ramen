@@ -48,3 +48,14 @@ QRectF ProgramItem::operationRect() const
                     settings->functionMarginBottom);
   return bbox;
 }
+
+// All their running functions are top-halves
+bool ProgramItem::isTopHalf() const
+{
+  if (0 == functions.size()) return false;
+
+  for (auto &function : functions) {
+    if (! function->isTopHalf()) return false;
+  }
+  return true;
+}

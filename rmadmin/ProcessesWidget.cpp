@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 #include <QTreeView>
 #include <QKeySequence>
 #include <QFrame>
@@ -29,11 +30,16 @@
 
 class MyProxy : public QSortFilterProxyModel
 {
+  bool viewTH;
+
 public:
   MyProxy(QObject * = nullptr);
 
 protected:
   bool filterAcceptsRow(int, QModelIndex const &) const override;
+
+public slots:
+  void viewTopHalves(bool checked);
 };
 
 MyProxy::MyProxy(QObject *parent) : QSortFilterProxyModel(parent)
@@ -51,7 +57,13 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
   SiteItem const *parentSite =
     dynamic_cast<SiteItem const *>(parentPtr);
-  if (parentSite) return true;
+  if (parentSite) {
+    /* If that program is running top-halves then also filter it: */
+    assert((size_t)sourceRow < parentSite->programs.size());
+    ProgramItem const *program = parentSite->programs[sourceRow];
+    if (!viewTH && program->isTopHalf()) return false;
+    return true;
+  }
 
   ProgramItem const *parentProgram =
     dynamic_cast<ProgramItem const *>(parentPtr);
@@ -62,11 +74,12 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
   /* When the parent is a program, build the FQ name of the function
    * and match that: */
-  if ((size_t)sourceRow >= parentProgram->functions.size()) {
-    std::cout << "Filtering row " << sourceRow << "?!" << std::endl;
-    return false;
-  }
+  assert((size_t)sourceRow < parentProgram->functions.size());
   FunctionItem const *function = parentProgram->functions[sourceRow];
+
+  // Filter out the top-halves, optionally:
+  if (!viewTH && function->isTopHalf()) return false;
+
   SiteItem const *site =
     static_cast<SiteItem const *>(parentProgram->treeParent);
 
@@ -74,6 +87,12 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
                    function->name);
   std::cout << "FILTER " << fq.toStdString() << std::endl;
   return fq.contains(filterRegExp());
+}
+
+void MyProxy::viewTopHalves(bool checked)
+{
+  viewTH = checked;
+  invalidateFilter();
 }
 
 /*
@@ -150,6 +169,14 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
     QCoreApplication::translate("QMenuBar", "Search…"),
     this, &ProcessesWidget::openSearch,
     QKeySequence::Find);
+  QAction *viewTopHalves =
+    viewMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Top-Halves"),
+      proxyModel, &MyProxy::viewTopHalves);
+  viewTopHalves->setCheckable(true);
+  viewTopHalves->setChecked(false);
+  proxyModel->viewTopHalves(false);
+
   viewMenu->addSeparator();
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
     if (0 == c) continue; // Name is mandatory
