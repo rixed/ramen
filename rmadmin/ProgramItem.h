@@ -14,8 +14,10 @@ public:
   // As we are going to point to item from their children we do not want them
   // to move in memory, so let's use a vector of pointers:
   std::vector<FunctionItem *> functions;
+
   ProgramItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~ProgramItem();
+
   void reorder(GraphModel const *);
   QRectF operationRect() const;
   bool isTopHalf() const;

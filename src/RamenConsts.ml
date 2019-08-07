@@ -305,7 +305,7 @@ struct
   let short = "Display only a short summary."
   let sort_col =
     "Sort the operation list according to this column \
-     (first column -name- is 1, then #in is 2...)."
+     (first column -name- is 1, then #in is 2 etc)."
   let top =
     "Truncate the list of operations after the first N entries."
   let all = "List all workers, including killed ones."
@@ -353,7 +353,7 @@ struct
      be readable or writable by others."
   let username = "Login name to connect to the confserver."
   let role =
-    "Role assumed by this user (repeat for giving several roles to the \
+    "Role assumed by this user. Repeat for giving several roles to the \
      same user."
   let identity_file = "Location of the file storing user's identity"
   let rmadmin_config = "Path of RmAdmin configuration file."

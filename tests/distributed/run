@@ -15,7 +15,7 @@ logs_for=6000
 # hit_rate = logs per seconds output by each logger
 hit_rate=1
 
-. $top_src/tests/lib.sh
+. "$top_src/tests/lib.sh"
 
 # Merely runs the logs generator in one instance and aggregate the entries
 # in another. The aggregator is the "master" that will be forwarded logs to.
@@ -92,7 +92,7 @@ EOF
 
   log "Run the http, compilation and choreographer services"
 
-  "$ramen" httpd --master=aggregator --site="$ramen_site" --url=http://localhost:29380 --graphite=graphite/ &
+  "$ramen" httpd --master=aggregator --site="$ramen_site" --confserver=localhost --url=http://localhost:29380 --graphite=graphite/ &
   httpd_pid=$!
   at_exit "echo 'Killing httpd'; kill '$httpd_pid'"
 
@@ -174,4 +174,3 @@ fi
 wait
 
 echo "Stopping..."
-kill "$supervisor_pid"

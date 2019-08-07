@@ -51,4 +51,3 @@ QRectF SiteItem::operationRect() const
                     settings->programMarginBottom);
   return bbox;
 }
-

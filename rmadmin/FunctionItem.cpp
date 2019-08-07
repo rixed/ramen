@@ -54,6 +54,7 @@ QVariant FunctionItem::data(int column, int role) const
       case GraphModel::WorkerEnabled:
       case GraphModel::WorkerDebug:
       case GraphModel::WorkerUsed:
+      case GraphModel::WorkerParams:
         return Qt::AlignHCenter;
     }
     return Qt::AlignRight;

@@ -220,8 +220,7 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
           (String.length value)
           (Option.print String.print) key_opt
           partition ;
-        consume_message value
-    ) ;
+        consume_message value) ;
     (* TODO: store the offset *)
     if while_ () then read_more ()
   in

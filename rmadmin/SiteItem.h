@@ -13,8 +13,10 @@ protected:
 public:
   std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
+
   SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~SiteItem();
+
   void reorder(GraphModel const *);
   QRectF operationRect() const;
   bool isTopHalf() const { return false; }
