@@ -123,7 +123,7 @@ let complete_rb_file str =
 let empty_help s = s, ""
 
 let complete_running_function persist_dir =
-  let conf = C.make_conf persist_dir in
+  let conf = C.make_conf persist_dir ~site:(N.site "completion") in
   (
     Hashtbl.values (RC.with_rlock conf identity) //@
     (fun (_mre, get_rc) ->
@@ -139,7 +139,7 @@ let complete_running_function persist_dir =
   empty_help |> List.of_enum
 
 let complete_running_program persist_dir =
-  let conf = C.make_conf persist_dir in
+  let conf = C.make_conf persist_dir ~site:(N.site "completion") in
   Hashtbl.enum (RC.with_rlock conf identity) //@
   (fun (p, (rce, _)) ->
     if rce.RC.status = RC.MustRun then

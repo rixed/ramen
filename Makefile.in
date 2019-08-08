@@ -960,7 +960,7 @@ RAMEN_TESTS_SOURCES = \
 %.success: %.test src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@(src/ramen test '$<' || src/ramen test '$<') && touch $@
+	@(RAMEN_CONFSERVER= src/ramen test '$<' || RAMEN_CONFSERVER= src/ramen test '$<') && touch $@
 
 # One day we will have `ramen makedep`:
 tests/func/lag.x: tests/func/fixtures/n123.x
@@ -1056,7 +1056,7 @@ arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	 for f in $(RAMEN_ARCHIVIST_TESTS); do \
 	  echo "  Testing $$(basename $$f .allocs)" ;\
 	  d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
-	  src/ramen archivist --site="" --persist-dir $$d --alloc --stdout ;\
+	  RAMEN_CONFSERVER= src/ramen archivist --site=local --persist-dir $$d --alloc --stdout ;\
 	  if ! diff -q $$f $$d/archivist/v*/allocs ; then \
 	    echo $$d/archivist/v*/allocs : ;\
 	    cat $$d/archivist/v*/allocs ;\

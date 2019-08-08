@@ -51,19 +51,19 @@ type user_conf =
 let user_conf_file conf =
   N.path_cat [ conf_dir conf ; N.path "config" ]
 
-let retention_of_user_conf user_conf (fq : N.fq) =
+let retention_of_user_conf user_conf (site, fq) =
+  let sfq = Printf.sprintf2 "%a:%a" N.site_print site N.fq_print fq in
   Hashtbl.enum user_conf.retentions |>
   Enum.find_map (fun (pat, ret) ->
-    if Globs.matches pat (fq :> string) then Some ret
+    if Globs.matches pat sfq then Some ret
     else None)
 
 let retention_of_source src_retention (fq : N.fq) =
   Hashtbl.find src_retention fq
 
 (* Returns both the retention setting and a numeric identifier *)
-(* FIXME: retention conf should take into account the site. *)
-let retention_of_fq src_retention user_conf (fq : N.fq) =
-  try retention_of_user_conf user_conf fq
+let retention_of_site_fq src_retention user_conf (_, fq as site_fq) =
+  try retention_of_user_conf user_conf site_fq
   with Not_found ->
     (try retention_of_source src_retention fq
     with Not_found ->
@@ -607,8 +607,8 @@ let emit_query_costs user_conf durations oc per_func_stats =
 
 let emit_no_invalid_cost
       src_retention user_conf durations oc per_func_stats =
-  Hashtbl.iter (fun (_, (fq : N.fq) as site_fq) _ ->
-    let retention = retention_of_fq src_retention user_conf fq in
+  Hashtbl.iter (fun site_fq _ ->
+    let retention = retention_of_site_fq src_retention user_conf site_fq in
     if retention.duration > 0. then (
       (* Which index is that? *)
       let i = List.index_of retention.duration durations |>
@@ -621,7 +621,7 @@ let emit_total_query_costs
       src_retention user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
     (hashkeys_print (fun oc ((site : N.site), (fq : N.fq) as site_fq) ->
-      let retention = retention_of_fq src_retention user_conf fq in
+      let retention = retention_of_site_fq src_retention user_conf site_fq in
       if retention.duration > 0. then
         (* Which index is that? *)
         let i = List.index_of retention.duration durations |> Option.get in

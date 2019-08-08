@@ -61,7 +61,7 @@ let make_conf
       ?(keep_temp_files=false) ?(reuse_prev_files=false)
       ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
-      ?(site=N.site "") ?(test=false)
+      ~site ?(test=false)
       ?(bundle_dir=RamenCompilConfig.default_bundle_dir)
       ?(masters=Set.empty)
       ?(sync_url="")

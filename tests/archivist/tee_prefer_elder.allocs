@@ -1,9 +1,9 @@
 {
 	(
-		"", "children/a"
-	) => 4000000; (
-		"", "children/b"
+		"local", "children/b"
 	) => 0; (
-		"", "root"
+		"local", "children/a"
+	) => 4000000; (
+		"local", "root"
 	) => 0
 }

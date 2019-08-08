@@ -23,7 +23,8 @@ let main =
   RamenOCamlCompiler.use_external_compiler := false ;
   let bundle_dir =
     N.path (Sys.getenv_opt "RAMEN_LIBS" |? "./bundle") in
-  let conf = C.make_conf ~debug:true ~bundle_dir (N.path "") in
+  let site = N.site "test" in
+  let conf = C.make_conf ~debug:true ~bundle_dir ~site (N.path "") in
   let cc_dst, schema =
     RamenCompiler.orc_codec conf orc_write_func orc_read_func
                             (N.path "orc_writer_") rtyp in
