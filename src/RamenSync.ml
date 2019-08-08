@@ -304,8 +304,6 @@ struct
       [@@ocaml.warning "-8"]
 
   (*$= of_string & ~printer:Batteries.dump
-    (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", TotBytes))) \
-      (of_string "sites/siteA/workers/prog/func/total/bytes")
     (PerSite (N.site "siteA", PerWorker (N.fq "prog/func", PerInstance ("123", StateFile)))) \
       (of_string "sites/siteA/workers/prog/func/instances/123/state_file")
     (PerSite (N.site "siteB", PerWorker (N.fq "prog/func", Worker))) \
