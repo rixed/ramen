@@ -844,15 +844,6 @@ let checked params op =
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful functions not allowed in "^ clause))
-  and check_no_state state clause =
-    E.unpure_iter (fun _ e ->
-      match e.E.text with
-      | Stateful (g, _, _) when g = state ->
-          Printf.sprintf "%s stateful functions not allowed in %s"
-            (match g with LocalState -> "Locally" | GlobalState -> "Globally")
-            clause |>
-          failwith
-      | _ -> ())
   and warn_no_group clause =
     E.unpure_iter (fun _ e ->
       match e.E.text with
@@ -899,7 +890,6 @@ let checked params op =
     List.iter (fun fn ->
       check_field_exists field_names fn ;
       check_field_is_public fn)
-  and check_no_group = check_no_state LocalState
   in
   (match op with
   | Aggregate { fields ; and_all_others ; merge ; sort ; where ; key ;
@@ -934,8 +924,6 @@ let checked params op =
       Option.may (check_event_time field_names) event_time ;
       check_factors field_names factors
     ) ;
-    (* Disallow group state in WHERE because it makes no sense: *)
-    check_no_group "WHERE clause" where ;
     check_fields_from
       [ TupleParam; TupleEnv; TupleIn;
         TupleGroup; TupleOutPrevious; TupleMergeGreatest ; Record ]

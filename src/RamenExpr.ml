@@ -852,6 +852,13 @@ let unpure_fold i f e =
     | _ -> i
   ) [] i e
 
+let is_pure e =
+  try
+    unpure_iter (fun _ _ -> raise Exit) e ;
+    true
+  with Exit ->
+    false
+
 (* Any expression that uses a generator is a generator: *)
 let is_generator e =
   try
@@ -903,6 +910,33 @@ let of_nary ~structure ~nullable ~units op lst =
         make ~structure ~nullable ?units
              (Stateless (SL2 (op, x, loop rest))) in
   loop lst
+
+(* Given a predicate on expressions [p] and an expression [e], tells whether
+ * all expressions composing [e] satisfy [p]: *)
+let forall p e =
+  try
+    iter (fun _s e -> if not (p e) then raise Exit) e ;
+    true
+  with Exit ->
+    false
+
+(* Given a boolean expression [e] and a predicate on expressions [p], return
+ * 2 expressions [e1] and [e2] so that all expressions composing [e1]
+ * satisfy [p] and [e1 AND e2] is equivalent to [e]. *)
+let and_partition p e =
+  let es = as_nary And e in
+  let e1s, e2s =
+    List.fold_left (fun (e1, e2) e ->
+      if forall p e then
+        e::e1, e2
+      else
+        e1, e::e2
+    ) ([], []) es in
+  let of_nary es =
+    of_nary ~structure:e.typ.structure
+            ~nullable:e.typ.nullable
+            ~units:e.units And es in
+  of_nary e1s, of_nary e2s
 
 module Parser =
 struct

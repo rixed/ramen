@@ -83,10 +83,6 @@ let tuple_has_type_output = function
   | TupleOutPrevious | TupleOut -> true
   | _ -> false
 
-let tuple_need_state = function
-  | TupleGroup -> true
-  | _ -> false
-
 open RamenParsing
 
 (* Defined here as both RamenProgram and RamenOperation need to parse/print

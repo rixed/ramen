@@ -2866,9 +2866,7 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
     | _ -> ()
   ) expr
 
-let emit_where
-      ?(with_group=false) ?(always_true=false)
-      ~env name in_typ ~opc expr =
+let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
   Printf.fprintf opc.code "let %s global_ %a %a out_previous_ "
     name
     (emit_tuple ~with_alias:true TupleIn) in_typ
@@ -2878,15 +2876,11 @@ let emit_where
     add_tuple_environment TupleMergeGreatest in_typ |>
     add_tuple_environment TupleOutPrevious opc.typ in
   if with_group then Printf.fprintf opc.code "group_ " ;
-  if always_true then
-    Printf.fprintf opc.code "= true\n"
-  else (
-    Printf.fprintf opc.code "=\n" ;
-    (* Update the states used by this expression: *)
-    emit_state_update_for_expr ~env ~opc ~what:"where clause" expr ;
-    Printf.fprintf opc.code "\t%a\n"
-      (emit_expr ~env~context:Finalize ~opc) expr
-  )
+  Printf.fprintf opc.code "=\n" ;
+  (* Update the states used by this expression: *)
+  emit_state_update_for_expr ~env ~opc ~what:"where clause" expr ;
+  Printf.fprintf opc.code "\t%a\n"
+    (emit_expr ~env ~context:Finalize ~opc) expr
 
 let emit_field_selection
       (* If true, we update the env and finalize as few fields as
@@ -3292,27 +3286,26 @@ let emit_get_notifications name in_typ out_typ ~opc notifications =
     (List.print ~sep:";\n\t\t" (emit_notification_tuple ~env ~opc))
       notifications
 
+let expr_needs_tuple_from lst e =
+  match e.E.text with
+  | Variable tuple
+  | Binding (RecordField (tuple, _)) ->
+      List.mem tuple lst
+  | _ ->
+      false
+
 (* Tells whether this expression requires the out tuple (or anything else
  * from the group). *)
 let expr_needs_group e =
-  try
-    E.iter (fun _ e ->
-      if (
-        match e.E.text with
-        | Variable tuple
-        | Binding (RecordField (tuple, _)) ->
-            tuple_need_state tuple
-        | Stateful (LocalState, _, _) -> true
-        | Stateless (SL0 (EventStart|EventStop)) ->
-            (* This depends on the definition of the event time really.
-             * TODO: pass the event time down here and actually check. *)
-            true
-        | _ -> false
-      ) then raise Exit
-    ) e ;
-    false
-  with Exit ->
-    true
+  expr_needs_tuple_from [ TupleGroup ] e ||
+  (match e.E.text with
+  | Stateful (LocalState, _, _) -> true
+  | Stateless (SL0 (EventStart|EventStop)) ->
+      (* This depends on the definition of the event time really.
+       * TODO: pass the event time down here and actually check. *)
+      true
+  | _ ->
+      false)
 
 let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
   let no_optim = "None", commit_cond in
@@ -3400,7 +3393,7 @@ let optimize_commit_cond ~env ~opc in_typ minimal_typ commit_cond =
                         ~units:commit_cond.units
                         E.And (List.rev_append rest es) in
             cond0, cond) in
-    loop [] es
+  loop [] es
 
 let emit_aggregate opc global_env group_env env_env param_env
                    name top_half_name in_typ =
@@ -3497,10 +3490,16 @@ let emit_aggregate opc global_env group_env env_env param_env
           name = N.field ("_not_minimal_"^ (ft.name :> string)) ;
           typ = T.{ ft.typ with structure = TEmpty } }
     ) out_typ in
-  (* Tells whether we need the group to check the where clause (because it
-   * uses the group tuple or build a group-wise aggregation on its own,
-   * despite this is forbidden in RamenOperation.check): *)
-  let where_need_group = expr_needs_group where
+  (* When filtering, the worker has two options:
+   * It can check an incoming tuple as soon as it receives it, or it can
+   * first compute the group key and retrieve the group state, and then
+   * check the tuple. The later, slower option is required when the WHERE
+   * expression uses anything from the group state (such as local function
+   * states or group tuple).
+   * It is best to partition the WHERE expression in two so that as much of
+   * it can be checked as early as possible. *)
+  let where_fast, where_slow =
+    E.and_partition (not % expr_needs_group) where
   and check_commit_for_all = check_commit_for_all commit_cond
   and is_yield = from = []
   (* Every functions have at least access to env + params: *)
@@ -3520,22 +3519,12 @@ let emit_aggregate opc global_env group_env env_env param_env
                     ["global_"] ~where ~commit_cond ~opc fields) ;
   fail_with_context "tuple reader" (fun () ->
     emit_read_tuple 0 "read_in_tuple_" ~is_yield ~opc in_typ) ;
-  if where_need_group then
-    fail_with_context "where-fast function" (fun () ->
-      emit_where ~env:(global_env @ base_env) "where_fast_"
-                 ~always_true:true in_typ ~opc where)
-  else
-    fail_with_context "where-fast function" (fun () ->
-      emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc
-                 where) ;
-  if not where_need_group then
-    fail_with_context "where-slow function" (fun () ->
-      emit_where ~env:(global_env @ base_env) "where_slow_"
-                 ~with_group:true ~always_true:true in_typ ~opc where)
-  else
-    fail_with_context "where-slow function" (fun () ->
-      emit_where ~env:(global_env @ base_env) "where_slow_"
-                 ~with_group:true in_typ ~opc where) ;
+  fail_with_context "where-fast function" (fun () ->
+    emit_where ~env:(global_env @ base_env) "where_fast_" in_typ ~opc
+      where_fast) ;
+  fail_with_context "where-slow function" (fun () ->
+    emit_where ~env:(global_env @ base_env) "where_slow_" in_typ ~opc
+      ~with_group:true where_slow) ;
   fail_with_context "key extraction function" (fun () ->
     emit_key_of_input "key_of_input_" in_typ ~env:(global_env @ base_env)
                       ~opc key) ;
@@ -3599,20 +3588,39 @@ let emit_aggregate opc global_env group_env env_env param_env
             (conv_to ~env:base_env ~context:Finalize ~opc (Some TFloat)) e))
         every ;
     p "    orc_make_handler_ orc_write orc_close\n") ;
-  (* The top-half is similar, but need less parameters: *)
+  (* The top-half is similar, but need less parameters.
+   *
+   * The filter used by the top-half must be a partition of the normal
+   * where_fast filter selecting only the part that use only pure functions,
+   * no previous out tuple and no max-merged tuple.
+   * A partition of a filter is the separation of the ANDed clauses of a
+   * filter according a any criteria on expressions (first part being the
+   * part of the condition which all expressions fulfill the condition).
+   * We could then reuse filter partitioning to optimise the filtering in
+   * the normal case by moving part of the where into the where_fast,
+   * before here we use partitioning again to extract the top-half
+   * version of the where_fast.
+   * Note that the tuples surviving the top-half filter will again be
+   * filtered against the full fast_filter. *)
+  let expr_needs_global_tuples =
+    expr_needs_tuple_from
+      [ TupleOutPrevious; TupleMergeGreatest;
+        TupleSortFirst; TupleSortSmallest; TupleSortGreatest ] in
+  let where_top, _ =
+    E.and_partition (fun e ->
+      E.is_pure e && not (expr_needs_global_tuples e)
+    ) where_fast in
+  fail_with_context "top-where function" (fun () ->
+    p "let top_where_ %a ="
+      (emit_tuple ~with_alias:true TupleIn) in_typ ;
+    let env =
+      add_tuple_environment TupleIn in_typ base_env in
+    p "  %a\n"
+      (emit_expr ~env ~context:Finalize ~opc) where_top) ;
   fail_with_context "top-half function" (fun () ->
     p "let %s () =" top_half_name ;
-    p "  CodeGenLib_Skeletons.top_half" ;
-    p "    read_in_tuple_" ;
-    (* Now the where_fast filter that we can apply is the same as the real
-     * where_fast_ filter, unless the where_fast filter make use of some
-     * stateful function, or of the previous out tuple, or the max_merged
-     * tuple, in which case we must pass all tuples: *)
-    (* No actually we need to be able to extract from the WHERE condition
-     * the most we can, ie all the ANDed expressions using no state and no
-     * previous and no max_merged. For now just use true. *)
-    let filter = "(fun _ -> true)" in
-    p "    %s\n" filter)
+    p "  CodeGenLib_Skeletons.top_half read_in_tuple_ top_where_\n")
+
     | _ -> assert false
 
 let sanitize_ocaml_fname s =
@@ -3727,7 +3735,7 @@ let emit_header params_mod oc =
 
 let emit_operation name top_half_name func
                    global_env group_env env_env param_env opc =
-  (* Default top-half: a NOP *)
+  (* Default top-half (for non-aggregate operations): a NOP *)
   Printf.fprintf opc.code "let %s = ignore\n\n" top_half_name ;
   (* Emit code for all the operations: *)
   match func.FS.operation with
