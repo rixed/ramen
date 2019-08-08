@@ -70,5 +70,5 @@ Feature: test ramen replay in a simple setting
 
   Scenario: Check we can also replay r0.
     When I run ramen with arguments replay test/r0 --since 10 --until 15
-    Then ramen must print between 6 and 10 lines on stdout
+    Then ramen must print between 5 and 10 lines on stdout
     And ramen must exit gracefully.
