@@ -27,27 +27,48 @@ AtomicForm::AtomicForm(QWidget *parent) :
   errorArea = new QWidget;
   groupLayout->addWidget(errorArea);
 
-  // The button bar
+  /* The button bar
+   * According to MacOS UI guidelines, actions are supposed to be at right
+   * and cancellation/going back on the left.
+   * We keep the rightmost position for the "submit" action and keep
+   * "delete" before it, in fear that users might go for the right-most
+   * button out of habit. */
   buttonsLayout = new QHBoxLayout;
   editButton = new QPushButton(tr("&edit"));
   buttonsLayout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked, this, &AtomicForm::wantEdit);
+
   cancelButton = new QPushButton(tr("&cancel"));
   buttonsLayout->addWidget(cancelButton);
   connect(cancelButton, &QPushButton::clicked, this, &AtomicForm::wantCancel);
   cancelButton->setEnabled(false);
+
+  deleteButton = new QPushButton(tr("&delete"));
+  buttonsLayout->addWidget(deleteButton);
+  connect(deleteButton, &QPushButton::clicked, this, &AtomicForm::wantDelete);
+  deleteButton->setEnabled(false);
+  deleteButton->hide(); // until a deletable widget is added
+
   submitButton = new QPushButton(tr("&submit"));
   buttonsLayout->addWidget(submitButton);
   connect(submitButton, &QPushButton::clicked, this, &AtomicForm::wantSubmit);
   submitButton->setEnabled(false);
+
   groupLayout->addLayout(buttonsLayout);
 
-  /* Also prepare the confirmation dialog: */
-  confirmationDialog = new QMessageBox(this);
-  confirmationDialog->setText("Some values have been modified.");
-  confirmationDialog->setInformativeText("Are you sure you want to cancel?");
-  confirmationDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-  confirmationDialog->setDefaultButton(QMessageBox::No);
+  /* Also prepare the confirmation dialogs: */
+  confirmCancelDialog = new QMessageBox(this);
+  confirmCancelDialog->setText("Some values have been modified.");
+  confirmCancelDialog->setInformativeText("Are you sure you want to cancel?");
+  confirmCancelDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+  confirmCancelDialog->setDefaultButton(QMessageBox::No);
+  confirmCancelDialog->setIcon(QMessageBox::Question);
+
+  confirmDeleteDialog = new QMessageBox(this);
+  confirmDeleteDialog->setText("Are you sure you want to delete this?");
+  confirmDeleteDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+  confirmDeleteDialog->setDefaultButton(QMessageBox::Cancel);
+  confirmDeleteDialog->setIcon(QMessageBox::Warning);
 }
 
 AtomicForm::~AtomicForm()
@@ -69,9 +90,13 @@ void AtomicForm::setCentralWidget(QWidget *w)
    * need not be an AtomicWidget. */
 }
 
-void AtomicForm::addWidget(AtomicWidget *aw)
+void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
 {
   widgets.push_back(aw);
+  if (deletable) {
+    deletables.insert(aw);
+    deleteButton->show();
+  }
 
   connect(aw, &AtomicWidget::keyChanged,
           this, [this](conf::Key const &oldKey, conf::Key const &newKey) {
@@ -135,11 +160,29 @@ void AtomicForm::doCancel()
 void AtomicForm::wantCancel()
 {
   if (someEdited()) {
-    if (QMessageBox::Yes == confirmationDialog->exec()) {
+    if (QMessageBox::Yes == confirmCancelDialog->exec()) {
       doCancel();
     }
   } else {
     doCancel();
+  }
+}
+
+void AtomicForm::wantDelete()
+{
+  if (deletables.empty()) return;
+
+  QString info(tr("Those keys will be lost forever:\n"));
+  for (AtomicWidget *aw : deletables) {
+    info.append(QString::fromStdString(aw->key.s));
+    info.append("\n");
+  }
+  confirmDeleteDialog->setInformativeText(info);
+
+  if (QMessageBox::Yes == confirmDeleteDialog->exec()) {
+    for (AtomicWidget *aw : deletables) {
+      conf::askDel(aw->key);
+    }
   }
 }
 
@@ -168,6 +211,7 @@ void AtomicForm::setEnabled(bool enabled)
   // An enabled form is a form that's editable:
   editButton->setEnabled(! enabled);
   cancelButton->setEnabled(enabled);
+  deleteButton->setEnabled(enabled);
   submitButton->setEnabled(enabled);
 
   emit changeEnabled(enabled);

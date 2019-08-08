@@ -50,7 +50,7 @@ void ConfTreeWidget::deleteClicked(conf::Key const &k)
       .arg(QString::fromStdString(k.s)));
   msg.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
   msg.setDefaultButton(QMessageBox::Cancel);
-  msg.setIcon(QMessageBox::Critical);
+  msg.setIcon(QMessageBox::Warning);
   if (QMessageBox::Ok == msg.exec()) conf::askDel(k);
 }
 

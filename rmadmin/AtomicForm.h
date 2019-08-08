@@ -41,17 +41,19 @@ class AtomicForm : public QGroupBox
   Q_OBJECT
 
   std::vector<AtomicWidget *> widgets;
+  std::set<AtomicWidget *> deletables;
 
   QVBoxLayout *groupLayout;
   QWidget *errorArea;
-  QPushButton *editButton, *cancelButton, *submitButton;
-  QMessageBox *confirmationDialog;
+  QPushButton *editButton, *cancelButton, *deleteButton, *submitButton;
+  QMessageBox *confirmCancelDialog, *confirmDeleteDialog;
 
   // The set of all keys currently locked by this user:
   std::set<conf::Key> locked;
 
   void wantEdit();
   void wantCancel();
+  void wantDelete();
   void wantSubmit();
   void doCancel();
   void doSubmit();
@@ -72,7 +74,7 @@ public:
 
   void setCentralWidget(QWidget *);
   // and take ownership of those QWidgets:
-  void addWidget(AtomicWidget *);
+  void addWidget(AtomicWidget *, bool deletable = false);
 
   // In case one want to add buttons in there:
   QHBoxLayout *buttonsLayout;

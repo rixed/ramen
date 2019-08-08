@@ -35,7 +35,7 @@ CodeEdit::CodeEdit(QWidget *parent) :
   w->setLayout(l);
 
   editorForm->setCentralWidget(w);
-  editorForm->addWidget(textEdit);
+  editorForm->addWidget(textEdit, true);
 }
 
 void CodeEdit::setError(
