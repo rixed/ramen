@@ -3,7 +3,7 @@
 #include <QSplitter>
 #include "conf.h"
 
-class QTreeView;
+class MyTreeView;
 class SourcesModel;
 class CodeEdit;
 class QLabel;
@@ -13,7 +13,7 @@ class SourcesView : public QSplitter
 {
   Q_OBJECT
 
-  QTreeView *sourcesList;
+  MyTreeView *sourcesList;
   CodeEdit *editor;
   QLabel *noSelection;
   QStackedLayout *mainLayout;
@@ -25,6 +25,8 @@ public:
   SourcesView(SourcesModel *, QWidget *parent = nullptr);
 
 public slots:
+  // Request that that index is shown in the file editor, it it is a file:
+  void showIndex(QModelIndex const &);
   // Request that this program be Shown/focused in the code editor:
   void showFile(conf::Key const &);
   // Popup that displays the full content of the info of that source:

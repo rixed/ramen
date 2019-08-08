@@ -1,5 +1,6 @@
 #include <QSplitter>
 #include <QTreeView>
+#include <QKeyEvent>
 #include <QHeaderView>
 #include <QLabel>
 #include <QStackedLayout>
@@ -15,10 +16,37 @@
 #include "SourcesModel.h"
 #include "SourcesView.h"
 
+/* Subclassing the QTreeView is necessary in order to customize the
+ * keyboard handling to make it possible to select an entry with a key. */
+class MyTreeView : public QTreeView
+{
+public:
+  MyTreeView(QWidget *parent = nullptr) : QTreeView(parent)
+  {
+  }
+
+protected:
+  void keyPressEvent(QKeyEvent *event)
+  {
+    QTreeView::keyPressEvent(event);
+
+    switch (event->key()) {
+      case Qt::Key_Space:
+      case Qt::Key_Select:
+      case Qt::Key_Enter:
+      case Qt::Key_Return:
+        QModelIndex const index = currentIndex();
+        if (index.isValid()) {
+          emit QTreeView::activated(index);
+        }
+    }
+  }
+};
+
 SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   QSplitter(parent), sourcesModel(sourceModel_)
 {
-  sourcesList = new QTreeView(this);
+  sourcesList = new MyTreeView(this);
   sourcesList->setModel(sourcesModel);
   sourcesList->setHeaderHidden(true);
   sourcesList->setUniformRowHeights(true);
@@ -52,21 +80,26 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
     mainLayout->addWidget(noSelection));
 
   // Connect selection of a program to the display of its code:
-  connect(sourcesList, &QAbstractItemView::clicked,
-          this, [this](QModelIndex const &index) {
-    if (! index.isValid()) return;
-
-    SourcesModel::TreeItem const *item =
-      static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
-    SourcesModel::FileItem const *file =
-      dynamic_cast<SourcesModel::FileItem const *>(item);
-    if (file) showFile(file->sourceKey);
-  });
+  connect(sourcesList, &MyTreeView::activated,
+          this, &SourcesView::showIndex);
+  connect(sourcesList, &MyTreeView::clicked,
+          this, &SourcesView::showIndex);
 
   /* Connect the edition start/stop of the code to disabling/reenabling selection
    * in the QTreeWidget: */
   connect(editor->editorForm, &AtomicForm::changeEnabled,
-          sourcesList, &QTreeView::setDisabled);
+          sourcesList, &MyTreeView::setDisabled);
+}
+
+void SourcesView::showIndex(QModelIndex const &index)
+{
+  if (! index.isValid()) return;
+
+  SourcesModel::TreeItem const *item =
+    static_cast<SourcesModel::TreeItem const *>(index.internalPointer());
+  SourcesModel::FileItem const *file =
+    dynamic_cast<SourcesModel::FileItem const *>(item);
+  if (file) showFile(file->sourceKey);
 }
 
 void SourcesView::showFile(conf::Key const &key)
