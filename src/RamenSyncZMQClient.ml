@@ -375,7 +375,7 @@ end
 
 let default_on_progress _clt stage status =
   (match status with
-  | Status.InitStart | InitOk -> !logger.info
+  | Status.InitStart | InitOk -> !logger.debug
   | InitFail _ | Fail _ -> !logger.error
   | _ -> !logger.debug)
     "%a: %a" Stage.print stage Status.print status
@@ -385,7 +385,7 @@ let init_connect clt ?while_ url on_progress =
   let connect_to = "tcp://"^ url in
   on_progress clt Stage.Conn Status.InitStart ;
   try
-    !logger.info "Connecting to %s..." connect_to ;
+    !logger.debug "Connecting to %s..." connect_to ;
     retry_zmq ?while_
       (Zmq.Socket.connect session.zock) connect_to ;
     on_progress clt Stage.Conn Status.InitOk ;
@@ -418,7 +418,7 @@ let may_send_ping ?while_ () =
   let now = Unix.time () in
   if session.last_sent < now -. sync_sessions_timeout *. 0.5 then (
     session.last_sent <- now ;
-    !logger.info "Pinging the server to keep the session alive" ;
+    !logger.debug "Pinging the server to keep the session alive" ;
     let cmd = CltMsg.SetKey (Key.DevNull, Value.RamenValue T.VNull) in
     send_cmd ?while_ cmd)
 
@@ -497,7 +497,7 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
   let ctx = Zmq.Context.create () in
   finally
     (fun () ->
-      !logger.info "Terminating ZMQ context..." ;
+      !logger.debug "Terminating ZMQ context..." ;
       Zmq.Context.terminate ctx)
     (fun () ->
       !logger.debug "Initializing ZMQ Client" ;
