@@ -1298,7 +1298,8 @@ struct
       E.Parser.p ++
       optional ~def:None (
         blanks -+
-        strinG "preprocessed" -- blanks -- strinG "with" -- opt_blanks -+
+        (strinG "preprocess" ||| strinG "preprocessed") -- blanks --
+        strinG "with" -- opt_blanks -+
         some E.Parser.p) ++
       optional ~def:(E.of_bool false) (
         blanks -- strinG "then" -- blanks -- strinG "delete" -+
