@@ -2,6 +2,7 @@ Feature: check that the CLI behave in a sensible way
 
   Background:
     Given ramen must be in the path
+    And the environment variable RAMEN_CONFSERVER is not defined
     And the environment variable RAMEN_LIBS is set
     And the environment variable RAMEN_PATH is not defined
     And a file tests/p.ramen with content
