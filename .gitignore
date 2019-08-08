@@ -92,3 +92,4 @@ icon.iconset
 *.icns
 *.ico
 *.info
+tests/archivist/*/configuration
