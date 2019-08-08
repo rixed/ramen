@@ -26,8 +26,8 @@ Feature: test ramen replay in a simple setting
       {
         size_limit = 20000000000;
         retentions = {
-          "test/s?" => { duration = 600 };
-          "test/r0" => { duration = 0 };
+          "*:test/s?" => { duration = 600 };
+          "*:test/r0" => { duration = 0 };
         }
       }
       """
