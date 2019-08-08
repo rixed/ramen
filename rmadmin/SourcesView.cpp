@@ -66,18 +66,25 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   connect(runButton, &ButtonDelegate::clicked,
           this, &SourcesView::runSource);
 
-  mainLayout = new QStackedLayout;
-  setLayout(mainLayout);
+  addWidget(sourcesList);
+  setStretchFactor(0, 0);
+
+  rightLayout = new QStackedLayout;
 
   editor = new CodeEdit;
-  editorIndex = mainLayout->addWidget(editor);
+  editorIndex = rightLayout->addWidget(editor);
 
   noSelection =
     new QLabel(tr("Select a source file on the left to view/edit it."));
   noSelection->setWordWrap(true);
   noSelection->setAlignment(Qt::AlignCenter);
-  mainLayout->setCurrentIndex(
-    mainLayout->addWidget(noSelection));
+  rightLayout->setCurrentIndex(
+    rightLayout->addWidget(noSelection));
+
+  QWidget *rightPanel = new QWidget;
+  rightPanel->setLayout(rightLayout);
+  addWidget(rightPanel);
+  setStretchFactor(1, 1);
 
   // Connect selection of a program to the display of its code:
   connect(sourcesList, &MyTreeView::activated,
@@ -105,7 +112,7 @@ void SourcesView::showIndex(QModelIndex const &index)
 void SourcesView::showFile(conf::Key const &key)
 {
   editor->setKey(key);
-  mainLayout->setCurrentIndex(editorIndex);
+  rightLayout->setCurrentIndex(editorIndex);
 }
 
 void SourcesView::openInfo(QModelIndex const &index)

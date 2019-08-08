@@ -16,7 +16,7 @@ class SourcesView : public QSplitter
   MyTreeView *sourcesList;
   CodeEdit *editor;
   QLabel *noSelection;
-  QStackedLayout *mainLayout;
+  QStackedLayout *rightLayout;
   int editorIndex;
 
   SourcesModel *sourcesModel;
