@@ -56,6 +56,7 @@ void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "Processes…"), [graphModel]() {
       if (! processesDialog) processesDialog = new ProcessesDialog(graphModel);
       processesDialog->show();
+      processesDialog->raise();
     }
   );
 
@@ -64,6 +65,7 @@ void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "Raw Configuration…"), []() {
       if (! confTreeDialog) confTreeDialog = new ConfTreeDialog;
       confTreeDialog->show();
+      confTreeDialog->raise();
     }
   );
 
@@ -73,6 +75,7 @@ void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
     QCoreApplication::translate("QMenuBar", "About"), []() {
       if (! aboutDialog) aboutDialog = new AboutDialog;
       aboutDialog->show();
+      aboutDialog->raise();
     }
   );
 
