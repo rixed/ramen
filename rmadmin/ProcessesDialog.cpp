@@ -5,18 +5,14 @@
 #include "ProcessesDialog.h"
 
 ProcessesDialog::ProcessesDialog(GraphModel *graphModel, QWidget *parent) :
-  QDialog(parent)
+  QMainWindow(parent)
 {
+  setUnifiedTitleAndToolBarOnMac(true);
   processesWidget = new ProcessesWidget(graphModel, this);
 
-  QStackedLayout *layout = new QStackedLayout;
-  // TODO: A search box?
-  layout->addWidget(processesWidget);
-  layout->setContentsMargins(QMargins());
-  setLayout(layout);
+  setCentralWidget(processesWidget);
 
   setWindowTitle(tr("Processes List"));
-  setSizeGripEnabled(true);
 }
 
 void ProcessesDialog::keyPressEvent(QKeyEvent *event)
@@ -28,6 +24,6 @@ void ProcessesDialog::keyPressEvent(QKeyEvent *event)
     processesWidget->searchBox->clear();
     event->accept();
   } else {
-    QDialog::keyPressEvent(event);
+    QMainWindow::keyPressEvent(event);
   }
 }

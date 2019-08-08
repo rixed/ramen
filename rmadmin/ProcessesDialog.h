@@ -1,11 +1,11 @@
 #ifndef PROCESSESDIALOG_H_190806
 #define PROCESSESDIALOG_H_190806
-#include <QDialog>
+#include <QMainWindow>
 
 class ProcessesWidget;
 class GraphModel;
 
-class ProcessesDialog : public QDialog
+class ProcessesDialog : public QMainWindow
 {
   Q_OBJECT
 
