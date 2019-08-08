@@ -129,9 +129,11 @@ let default_populate_user_conf user_conf per_func_stats =
       (* No worker, then do not save anything: *)
       Hashtbl.add user_conf.retentions (Globs.compile "*") no_save
     else
-      Hashtbl.iter (fun (_, (fq : N.fq)) s ->
+      Hashtbl.iter (fun (site, fq) s ->
         if s.parents = [] then
-          let pat = Globs.(escape (fq :> string)) in
+          let pat =
+            Printf.sprintf2 "%a:%a" N.site_print site N.fq_print fq |>
+            Globs.escape in
           Hashtbl.add user_conf.retentions pat save_short
       ) per_func_stats) ;
   assert (Hashtbl.length user_conf.retentions > 0) ;
@@ -617,6 +619,9 @@ let emit_no_invalid_cost
         (cost i site_fq) invalid_cost)
   ) per_func_stats
 
+let site_fq_print oc (site, fq) =
+  Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq
+
 let emit_total_query_costs
       src_retention user_conf durations oc per_func_stats =
   Printf.fprintf oc "(+ 0 %a)"
@@ -635,7 +640,9 @@ let emit_total_query_costs
           (string_of_duration retention.duration)
           queries_per_days ;
         Printf.fprintf oc "(* %s %d)"
-          (cost i site_fq) queries_per_days))
+          (cost i site_fq) queries_per_days
+      else
+        !logger.debug "No retention for %a" site_fq_print site_fq))
       per_func_stats
 
 let emit_smt2 src_retention user_conf per_func_stats oc ~optimize =
@@ -719,9 +726,6 @@ let load_allocs =
   fun conf ->
     allocs_file conf |>
     ppp_of_file
-
-let site_fq_print oc (site, fq) =
-  Printf.fprintf oc "%a:%a" N.site_print site N.fq_print fq
 
 let update_storage_allocation conf user_conf per_func_stats src_retention =
   let open RamenSmtParser in
