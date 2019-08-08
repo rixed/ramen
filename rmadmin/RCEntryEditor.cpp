@@ -58,7 +58,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 //    connect(sourceBox, &QComboBox::currentIndexChanged,
 //            this, &RCEntryEditor::resetParams);
     connect(sourceBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            [this](int) {
+            this, [this](int) {
       updateSourceWarnings();
       resetParams();
     });
