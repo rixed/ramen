@@ -1,10 +1,10 @@
 #ifndef CONFTREEDIALOG_H_190731
 #define CONFTREEDIALOG_H_190731
-#include <QDialog>
+#include <QMainWindow>
 
 class ConfTreeWidget;
 
-class ConfTreeDialog : public QDialog
+class ConfTreeDialog : public QMainWindow
 {
   Q_OBJECT
 

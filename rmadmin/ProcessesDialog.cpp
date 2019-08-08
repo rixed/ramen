@@ -1,4 +1,3 @@
-#include <QStackedLayout>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include "ProcessesWidget.h"
