@@ -14,7 +14,8 @@ module C = RamenConf
  * So that's the client which will create the zocket and start the sync. *)
 let http_topics api graphite =
   let api_topics =
-    [ "sources/*/info" ;
+    [ "sites/*/workers/*/worker" ; (* For get_programs *)
+      "sources/*/info" ;
       "sources/*/alert" ] |>
     Set.of_list
   and graphite_topics =
