@@ -287,7 +287,7 @@ let metrics_find conf ?since ?until query =
   let filter = filter_of_query split_q in
   !logger.debug "metrics_find: filter = %a"
     (Array.print Globs.print) filter ;
-  let programs = get_programs conf in
+  let programs = get_programs () in
   (* We are going to compute all possible values for the query, expanding
    * also intermediary globs. But in here we want to return only one result
    * per terminal expansion. So we are going to uniquify the results.
@@ -370,7 +370,7 @@ let targets_for_render conf ?since ?until queries =
    * for field/function names with matches. *)
   let filters =
     List.map (filter_of_query % split_query) queries
-  and programs = get_programs conf in
+  and programs = get_programs () in
   inverted_tree_of_programs conf ?since ?until ~only_with_event_time:true
                             ~only_num_fields:true ~factor_expansion:All
                             filters programs //@
@@ -487,13 +487,9 @@ let render conf headers body =
     let data_fields = Set.to_list data_fields
     and factors = Set.to_list factors in
     let columns, datapoints =
-      if conf.C.sync_url = "" then
-        RamenTimeseries.get_local conf max_data_points since until where
-                                  factors fq data_fields
-      else
-        let session = ZMQClient.get_session () in
-        RamenTimeseries.get_sync conf max_data_points since until where
-                                 factors fq data_fields ~while_ session.clt in
+      let session = ZMQClient.get_session () in
+      RamenTimeseries.get conf max_data_points since until where
+                          factors fq data_fields ~while_ session.clt in
     let datapoints = Array.of_enum datapoints in
     (* datapoints.(time).(factor).(data_field) *)
     Array.fold_lefti (fun res col_idx column ->

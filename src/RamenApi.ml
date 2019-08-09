@@ -134,10 +134,13 @@ type get_tables_req = { prefix : string } [@@ppp PPP_JSON]
 
 type get_tables_resp = (string, string) Hashtbl.t [@@ppp PPP_JSON]
 
-let get_tables conf msg =
-  let req = JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
+let get_tables msg =
+  let req =
+    JSONRPC.json_any_parse ~what:"get-tables" get_tables_req_ppp_json msg in
   let tables = Hashtbl.create 31 in
-  let programs = get_programs conf in
+  let programs = get_programs () in
+  !logger.debug "Programs: %a"
+    (Enum.print N.program_print) (Hashtbl.keys programs) ;
   Hashtbl.iter (fun _prog_name prog ->
     List.iter (fun f ->
       let fqn = (F.fq_name f :> string)
@@ -171,9 +174,6 @@ and column_info =
     alerts : alert_info_v1 list }
   [@@ppp PPP_JSON]
 
-(* A disabled alert should not be a non-running alert, but an alert that
- * does a NOP (or that does not notify, at least). This would tremendously
- * simplify the handling of serialized alert files. *)
 and alert_info_v1 =
   { enabled : bool [@ppp_default true] ;
     where : simple_filter list [@ppp_default []] ;
@@ -313,7 +313,7 @@ let columns_of_table conf table =
   (* A function is what is called here in baby-talk a "table": *)
   let prog_name, func_name =
     N.(fq table |> fq_parse) in
-  let programs = get_programs conf in
+  let programs = get_programs () in
   match Hashtbl.find programs prog_name with
   | exception _ -> None
   | prog ->
@@ -387,7 +387,7 @@ let get_timeseries conf msg =
   let times = Array.make_float num_points in
   let times_inited = ref false in
   let values = Hashtbl.create 5 in
-  let programs = get_programs conf in
+  let programs = get_programs () in
   Hashtbl.iter (fun table data_spec ->
     let fq = N.fq table in
     let prog_name, func_name = N.fq_parse fq in
@@ -416,14 +416,10 @@ let get_timeseries conf msg =
         | "begin" -> Begin | "middle" -> Middle | "end" -> End
         | _ -> bad_request "The only possible values for bucket_time are begin, \
                             middle and end" in
-      if conf.C.sync_url = "" then
-        get_local conf num_points since until filters data_spec.factors
-                  ?consolidation ~bucket_time fq data_spec.select
-      else
-        let session = ZMQClient.get_session () in
-        get_sync conf num_points since until filters data_spec.factors
-                 ?consolidation ~bucket_time fq data_spec.select ~while_
-                 session.clt in
+      let session = ZMQClient.get_session () in
+      get conf num_points since until filters data_spec.factors
+          ?consolidation ~bucket_time fq data_spec.select ~while_
+          session.clt in
     (* [column_labels] is an array of labels (empty if no result).
      * Each label is an array of factors values. *)
     let column_labels =
@@ -483,18 +479,13 @@ let func_of_table programs table =
     bad_request in
   match Hashtbl.find programs pn with
   | exception Not_found -> no_such_program ()
-  | rce, get_rc ->
-      (match get_rc () with
-      (* Best effort if the program is no longer running: *)
-      | exception _ when rce.RC.status <> MustRun ->
-          no_such_program ()
-      | prog ->
-        (try List.find (fun f -> f.F.name = fn) prog.P.funcs
-        with Not_found ->
-          Printf.sprintf "No function %s in program %s"
-            (fn :> string)
-            (pn :> string) |>
-          bad_request))
+  | prog ->
+      (try List.find (fun f -> f.F.name = fn) prog.P.funcs
+      with Not_found ->
+        Printf.sprintf "No function %s in program %s"
+          (fn :> string)
+          (pn :> string) |>
+        bad_request)
 
 let field_typ_of_column programs table column =
   let open RamenTuple in
@@ -644,10 +635,10 @@ let generate_alert programs (src_file : N.path)
 let () =
   RamenMake.register "alert" "ramen"
     RamenMake.target_is_older
-    (fun conf _get_parent _prog_name src_file target_file ->
+    (fun _conf _get_parent _prog_name src_file target_file ->
       let a = Files.ppp_of_file alert_source_ppp_ocaml src_file in
-      RC.with_rlock conf (fun programs ->
-        generate_alert programs target_file a))
+      let programs = get_programs () in
+      generate_alert programs target_file a)
 
 let stop_alert conf (program_name : N.program) =
   let glob = Globs.escape (program_name :> string) in
@@ -658,48 +649,34 @@ let stop_alert conf (program_name : N.program) =
     !logger.error "When attempting to kill alert %s, got num_kill = %d"
       (program_name :> string) num_kills
 
-let save_alert_local conf program_name alert_info =
-  let basename = N.path_cat [ C.api_alerts_root conf ;
-                              N.path_of_program program_name ] in
-  let src_file = Files.add_ext basename "alert" in
-  (* Avoid triggering a recompilation if it's unchanged.
-   * To avoid comparing floats we compare the actual serialized result. *)
-  let tmp_src_file = Files.add_ext src_file "tmp" in
-  Files.ppp_to_file ~pretty:true tmp_src_file alert_source_ppp_ocaml
-                    alert_info ;
-  if Files.replace_if_different ~src:tmp_src_file ~dst:src_file then (
-    !logger.info "Saved new alert into %a" N.path_print src_file ;
-    try
-      let bin_file = Files.add_ext basename "x" in
-      let is_new_alert =
-        RC.with_rlock conf (fun programs ->
-          (* If this is a new alert we must compile it before we can add it to
-           * the running-config. If it's already running though, we must leave
-           * the recompilation to the supervisor (or we would race). *)
-          if RC.is_program_running programs program_name then false else (
-            let get_parent = RamenCompiler.parent_from_programs programs in
-            RamenMake.build conf get_parent program_name src_file bin_file ;
-            true)) in
-      if is_new_alert then (
-        let debug = conf.C.log_level = Debug in
-        let params = Hashtbl.create 0 in
-        RamenRun.run conf ~replace:true ~params ~src_file ~debug
-                     bin_file (Some program_name))
-    with e ->
-      (* In case of error, do not leave the alert definition file so that the
-       * client can retry, but keep it for later inspection: *)
-      log_and_ignore_exceptions Files.move_aside src_file ;
-      raise e
-  ) else
-    (* TODO: demote back into debug once the dust has settled down: *)
-    !logger.info "Alert %a preexist with same definition"
-      N.path_print src_file
+let alert_of_configured =
+  let conv_filter (f : RamenSync.Value.Alert.simple_filter) =
+    { lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
+  function
+  | RamenSync.Value.Alert.V1 v1 ->
+      V1 {
+        table = v1.table ;
+        column = v1.column ;
+        alert = {
+          enabled = v1.enabled ;
+          where = List.map conv_filter v1.where ;
+          having = List.map conv_filter v1.having ;
+          threshold = v1.threshold ;
+          recovery = v1.recovery ;
+          duration = v1.duration ;
+          ratio = v1.ratio ;
+          time_step = v1.time_step ;
+          id = v1.id ;
+          desc_title = v1.desc_title ;
+          desc_firing = v1.desc_firing ;
+          desc_recovery = v1.desc_recovery } }
 
 (* Program name is "alerts/table/column/id" *)
-let save_alert_sync conf program_name (V1 { table ; column ; alert}) =
+let save_alert conf program_name (V1 { table ; column ; alert }) =
   let open RamenSync in
   let src_path = N.path_of_program program_name in
   let src_k = Key.Sources (src_path, "alert") in
+  let src_path = N.cat src_path (N.path ".alert") in
   let conv_filter (f : simple_filter) =
     Value.Alert.{ lhs = f.lhs ; rhs = f.rhs ; op = f.op } in
   let a = Value.Alert.(V1 {
@@ -729,22 +706,18 @@ let save_alert_sync conf program_name (V1 { table ; column ; alert}) =
     ZMQClient.send_cmd ~eager:true ~while_
       (SetKey (src_k, Value.Alert a)) ;
     !logger.info "Saved new alert into %a" Key.print src_k ;
-    (* Also run it *)
-    if is_new then
-      let debug = conf.C.log_level = Debug in
-      let params = Hashtbl.create 0 in
-      let on_sites = Globs.all in (* TODO *)
-      RamenRun.run_sync src_path conf program_name true Default.report_period
-                        on_sites debug params
-  ) else
+  ) else (
     (* TODO: demote back into debug once the dust has settled down: *)
     !logger.info "Alert %a preexist with same definition"
       Key.print src_k
-
-let save_alert conf program_name alert_info =
-  let program_name = N.program program_name in
-  (if conf.C.sync_url = "" then save_alert_local else save_alert_sync)
-    conf program_name alert_info
+  ) ;
+  (* Also make sure it is running *)
+  !logger.info "Making sure the alert is running..." ;
+  let debug = conf.C.log_level = Debug in
+  let params = Hashtbl.create 0 in
+  let on_sites = Globs.all in (* TODO *)
+  RamenRun.do_run session.clt ~while_ src_path program_name true
+                  Default.report_period on_sites debug params
 
 let get_alerts_local conf (table : N.fq) (column : N.field) =
   let alerts = ref Set.String.empty in
@@ -819,27 +792,27 @@ let set_alerts conf msg =
           bad_request "Ratio must be between 0 and 1" ;
         if alert.time_step <= 0. then
           bad_request "Time step must be strictly greater than 0" ;
-        RC.with_rlock conf (fun programs ->
-          let ft = field_typ_of_column programs table column in
-          if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
-            Printf.sprintf2 "Column %a of table %a is not numeric"
-              N.field_print column
-              N.fq_print table |>
-            bad_request ;
-          (* Also check that table has event time info: *)
-          let func = func_of_table programs table in
-          if O.event_time_of_operation func.F.operation = None
-          then
-            Printf.sprintf2 "Table %a has no event time information"
-              N.fq_print table |>
-            bad_request) ;
+        let programs = RamenSyncHelpers.get_programs () in
+        let ft = field_typ_of_column programs table column in
+        if ext_type_of_typ ft.RamenTuple.typ.structure <> Numeric then
+          Printf.sprintf2 "Column %a of table %a is not numeric"
+            N.field_print column
+            N.fq_print table |>
+          bad_request ;
+        (* Also check that table has event time info: *)
+        let func = func_of_table programs table in
+        if O.event_time_of_operation func.F.operation = None
+        then
+          Printf.sprintf2 "Table %a has no event time information"
+            N.fq_print table |>
+          bad_request ;
         (* We receive only the latest version: *)
         let alert_source = V1 { table ; column ; alert } in
         let id = alert_id column alert_source in
         let program_name =
           "alerts/"^ (table :> string) ^"/"^ (column :> string) ^"/"^ id in
         new_alerts := Set.String.add program_name !new_alerts ;
-        save_alert conf program_name alert_source
+        save_alert conf (N.program program_name) alert_source
       ) alerts
     ) columns
   ) req ;
@@ -878,7 +851,7 @@ let router conf prefix =
       wrap body req.id (fun () ->
         match String.lowercase_ascii req.method_ with
         | "version" -> version ()
-        | "get-tables" -> get_tables conf req.params
+        | "get-tables" -> get_tables req.params
         | "get-columns" -> get_columns conf req.params
         | "get-timeseries" -> get_timeseries conf req.params
         | "set-alerts" -> set_alerts conf req.params ; "null"

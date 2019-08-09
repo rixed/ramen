@@ -120,10 +120,12 @@ let complete_test_file str =
 let complete_rb_file str =
   complete_file (fun f -> Files.(has_ext "r" f || has_ext "b" f)) str
 
-let empty_help s = s, ""
+(*let empty_help s = s, ""*)
 
-let complete_running_function persist_dir =
-  let conf = C.make_conf persist_dir ~site:(N.site "completion") in
+let complete_running_function _persist_dir =
+  (* TODO: run `ramen ps` in the background *)
+  []
+  (*let conf = C.make_conf persist_dir ~site:(N.site "completion") in
   (
     Hashtbl.values (RC.with_rlock conf identity) //@
     (fun (_mre, get_rc) ->
@@ -136,16 +138,18 @@ let complete_running_function persist_dir =
         (func.F.name :> string))) |>
     Enum.flatten
   ) /@
-  empty_help |> List.of_enum
+  empty_help |> List.of_enum *)
 
-let complete_running_program persist_dir =
-  let conf = C.make_conf persist_dir ~site:(N.site "completion") in
+let complete_running_program _persist_dir =
+  (* TODO: run `ramen ps` in the background *)
+  []
+  (*let conf = C.make_conf persist_dir ~site:(N.site "completion") in
   Hashtbl.enum (RC.with_rlock conf identity) //@
   (fun (p, (rce, _)) ->
     if rce.RC.status = RC.MustRun then
       Some (p :> string)
     else None) /@
-  empty_help |> List.of_enum
+  empty_help |> List.of_enum*)
 
 let complete str () =
   (* Tokenize str, find where we are: *)
@@ -205,12 +209,12 @@ let complete str () =
           [ "--daemonize", CliInfo.daemonize ;
             "--to-stdout", CliInfo.to_stdout ;
             "--syslog", CliInfo.to_syslog ;
-            "--autoreload=", CliInfo.autoreload ;
-            "--report-period=", CliInfo.report_period ;
             "--external-compiler=", CliInfo.external_compiler ;
             "--max-simult-compilations",
               CliInfo.max_simult_compilations ;
-            "--solver=", CliInfo.smt_solver ] @
+            "--solver=", CliInfo.smt_solver ;
+            "--kill-at-exit", CliInfo.kill_at_exit ;
+            "--fail-for-good", CliInfo.fail_for_good ] @
           copts true
        | "alerter" ->
           [ "--daemonize", CliInfo.daemonize ;
@@ -237,11 +241,10 @@ let complete str () =
           ("--parameter=", CliInfo.param) ::
           ("--as=", CliInfo.as_) ::
           ("--replace", CliInfo.replace) ::
-          ("--kill-if-disabled", CliInfo.kill_if_disabled) ::
-          ("--source-file=", CliInfo.src_file) ::
+          ("--report-period=", CliInfo.report_period) ::
           ("--on-site=", CliInfo.on_site) ::
           copts true @
-          (complete_binary_files last_tok)
+          (complete_program_files last_tok)
       | "kill" ->
           let persist_dir = persist_dir toks in
           ("--purge", CliInfo.purge) ::
@@ -255,8 +258,6 @@ let complete str () =
           let persist_dir = persist_dir toks in
           ("--last=", CliInfo.last) ::
           ("--next=", CliInfo.next) ::
-          ("--max-seqnum=", CliInfo.max_seq) ::
-          ("--min-seqnum=", CliInfo.min_seq) ::
           ("--follow", CliInfo.follow) ::
           ("--where=", CliInfo.where) ::
           ("--since=", CliInfo.since) ::
@@ -315,12 +316,10 @@ let complete str () =
            (complete_running_function persist_dir))
       | "ps" ->
           let persist_dir = persist_dir toks in
-          ("--short", CliInfo.short) ::
           ("--pretty", CliInfo.pretty) ::
           ("--with-header", CliInfo.with_header) ::
           ("--sort", CliInfo.sort_col) ::
           ("--top", CliInfo.top) ::
-          ("--all", CliInfo.all) ::
           copts true @
           (complete_running_function persist_dir)
       | "links" ->

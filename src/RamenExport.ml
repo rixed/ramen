@@ -126,119 +126,6 @@ let check_field_names typ field_names =
     ) field_names ;
     field_names)
 
-let replay_local conf ?(while_=always) fq field_names where since until
-                 ~with_event_time f =
-  (* Start with the most hazardous and interesting part: find a way to
-   * get the data that's being asked: *)
-  (* First, make sure the operation actually exist: *)
-  let programs = RC.with_rlock conf identity in
-  let _rce, prog, func = RC.find_func_or_fail programs fq in
-  let out_type =
-    O.out_type_of_operation ~with_private:false func.F.operation in
-  let field_names = check_field_names out_type field_names in
-  let ser = RingBufLib.ser_tuple_typ_of_tuple_typ out_type |>
-            List.map fst in
-  let head_idx, head_typ =
-    header_of_type ~with_event_time field_names ser in
-  !logger.debug "replay for field names %a, head_typ=%a, head_idx=%a"
-    (List.print N.field_print) field_names
-    RamenTuple.print_typ head_typ
-    (Array.print Int.print) head_idx ;
-  let on_tuple, on_exit = f head_typ in
-  (* FIXME: here we assume fq (the target) is local. Instead, what we
-   * want is to tail from all instances of running fq.
-   * The only thing that we should do here is to create a new temporary
-   * local worker that `SELECT * from *:fq`, with the special additional
-   * attribute for since/until and a random channel id, and leave it to
-   * the supervisors to run the required nodes and start the required
-   * replayers, and to funnel the channel down here. It is important that
-   * the new channel is not broadcasted to all children to avoid spamming
-   * the whole function tree! So we may want a special kind of entry in
-   * the RC, or a special file altogether. *)
-  let stats =
-    RamenArchivist.get_global_stats ~while_ conf |>
-    Hashtbl.map (fun _k s ->
-      Replay.{ parents = s.C.FuncStats.parents ;
-               archives = s.archives }) in
-  (* Using the archivist stats, find out all required sources: *)
-  match Replay.create conf stats func since until with
-  | exception Replay.NoData ->
-      (* When a required function is not in the stats. *)
-      on_exit ()
-  | replay ->
-      !logger.debug "Creating replay target ringbuf %a"
-        N.path_print replay.final_rb ;
-      (* As replays are always created on the target site, we can create the RB
-       * and read data from there directly: *)
-      RingBuf.create replay.final_rb ;
-      C.Replays.add conf replay ;
-      let rb = RingBuf.load replay.final_rb in
-      let ret =
-        finally
-          (fun () ->
-            C.Replays.remove conf replay.channel ;
-            RingBuf.unload rb)
-          (fun () ->
-            (* Read the rb while monitoring children: *)
-            let eofs_num = ref 0 in
-            let while_ () =
-              !eofs_num < List.length replay.sources && while_ () in
-            let event_time =
-              O.event_time_of_operation func.F.operation in
-            let event_time_of_tuple = match event_time with
-              | None ->
-                  if with_event_time then
-                    failwith "Function has no event time information"
-                  else (fun _ -> 0., 0.)
-              | Some et ->
-                  RamenSerialization.event_time_of_tuple
-                    ser prog.P.default_params et
-            in
-            let unserialize =
-              RamenSerialization.read_array_of_values ser in
-            let filter = RamenSerialization.filter_tuple_by ser where in
-            RingBufLib.read_ringbuf ~while_ rb (fun tx ->
-              let msg = RamenSerialization.read_tuple unserialize tx in
-              RingBuf.dequeue_commit tx ;
-              match msg with
-              | RingBufLib.EndOfReplay (chan, _replay_id), None ->
-                  if chan = replay.channel then
-                    incr eofs_num
-                  else
-                    !logger.error "Received EndOfReplay for channel %a not %a"
-                      RamenChannel.print chan RamenChannel.print replay.channel
-              | RingBufLib.DataTuple chan, Some tuple (* in ser order *) ->
-                  if chan = replay.channel then (
-                    if filter tuple then (
-                      let t1, t2 = event_time_of_tuple tuple in
-                      if t2 > since && t1 <= until then (
-                        let cols =
-                          Array.map (fun idx ->
-                            match idx with
-                            | -2 -> T.VFloat t2
-                            | -1 -> T.VFloat t1
-                            | idx -> tuple.(idx)
-                          ) head_idx in
-                        on_tuple t1 t2 cols
-                      ) else !logger.debug "tuple not in time range (%f..%f)" t1 t2
-                    ) else !logger.debug "tuple filtered out"
-                  ) else
-                    !logger.error "Received EndOfReplay for channel %a not %a"
-                      RamenChannel.print chan RamenChannel.print replay.channel
-              | _ ->
-                  !logger.error "Received an unknown message in tx") ;
-            (* Signal the end of the replay: *)
-            on_exit ()
-          ) () in
-      (* If all went well, delete the ringbuf: *)
-      !logger.debug "Deleting replay target ringbuf %a"
-        N.path_print replay.final_rb ;
-      Files.safe_unlink replay.final_rb ;
-      (* ringbuf lib also create a lock with the rb: *)
-      let lock_fname = N.cat replay.final_rb (N.path ".lock") in
-      ignore_exceptions Files.safe_unlink lock_fname ;
-      ret
-
 (* We need the worker and precompiled infos of the target,
  * as well as the parents and archives of all workers (parents we
  * find in workers): *)
@@ -247,8 +134,8 @@ let replay_topics =
     "sites/*/workers/*/archives/times" ;
     "sources/*/info" ]
 
-let replay_sync conf ~while_ fq field_names where since until
-                ~with_event_time f clt =
+let replay conf ~while_ fq field_names where since until
+           ~with_event_time f clt =
   (* Start with the most hazardous and interesting part: find a way to
    * get the data that's being asked: *)
   let open RamenSync in

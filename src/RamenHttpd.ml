@@ -15,6 +15,7 @@ module C = RamenConf
 let http_topics api graphite =
   let api_topics =
     [ "sites/*/workers/*/worker" ; (* For get_programs *)
+      "target_config" ; (* for running alerts *)
       "sources/*/info" ;
       "sources/*/alert" ] |>
     Set.of_list

@@ -2,13 +2,14 @@
  * so that it can be used in rmadmin without drawing too many dependencies. *)
 open Batteries
 
+open RamenLog
 module C = RamenConf
 module RC = C.Running
 module ZMQClient = RamenSyncZMQClient
 
 (* Returns a hash of program_name to Program.t
  * TODO: to be cleaned once support for config files is removed. *)
-let get_programs_sync () =
+let get_programs () =
   let open RamenSync in
   let session = ZMQClient.get_session () in
   let programs = Hashtbl.create 30 in
@@ -22,20 +23,11 @@ let get_programs_sync () =
                      C.Program.unserialized prog_name in
           Hashtbl.add programs prog_name prog
     | _ -> ()) ;
+  (* TODO: get_session could return the topics and we could actually make
+   * sure of this: *)
+  if Hashtbl.is_empty programs then
+    !logger.warning "No defined programs. Are we syncing workers?" ;
   programs
-
-let get_programs_local conf =
-  RC.with_rlock conf identity |>
-  Hashtbl.filter_map (fun _func_name (_mre, get_rc) ->
-    match get_rc () with
-    | exception _ -> None
-    | prog -> Some prog)
-
-let get_programs conf =
-  if conf.C.sync_url = "" then
-    get_programs_local conf
-  else
-    get_programs_sync ()
 
 (* Helps to call ZMQClient.start with the parameters from RamenConf.conf: *)
 let start_sync conf ?while_ ?topics ?on_progress ?on_sock ?on_synced

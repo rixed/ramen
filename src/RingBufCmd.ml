@@ -196,46 +196,38 @@ let links conf no_abbrev show_all as_tree pretty with_header sort_col top
   in
   (* We first collect all links supposed to exist according to
    * parent/children relationships: *)
+  let programs = RamenSyncHelpers.get_programs () in
   let links =
-    RC.with_rlock conf (fun programs ->
-      Hashtbl.fold (fun _prog_name (rce, get_rc) links ->
-        if rce.RC.status <> MustRun then links else
-        match get_rc () with
-        | exception _ ->
-            links (* Errors have been logged already *)
-        | prog ->
-            List.fold_left (fun links func ->
-              let links =
-                List.fold_lefti (fun links i
-                                     (par_host, par_rel_prog, par_func) ->
-                  (* FIXME: only inspect locally running node and maybe also
-                   * the links to the top-halves *)
-                  ignore par_host ;
-                  (* i is the index in the list of parents for a given
-                   * child *)
-                  let par_prog =
-                    F.program_of_parent_prog func.F.program_name
-                                             par_rel_prog in
-                  let parent =
-                    match Hashtbl.find programs par_prog with
-                    | exception Not_found ->
-                        NotRunning (par_prog, par_func)
-                    | _mre, get_rc ->
-                      (match get_rc () with
-                      | exception e ->
-                          ProgramError (par_prog, Printexc.to_string e)
-                      | pprog ->
-                          (match List.find (fun f ->
-                                   f.F.name = par_func
-                                 ) pprog.P.funcs with
-                          | exception Not_found ->
-                              NotRunning (par_prog, par_func)
-                          | pfunc -> Running pfunc)) in
-                  line_of_link i parent (Running func) :: links
-                ) links func.parents in
-              links
-            ) links prog.P.funcs
-      ) programs []) in
+    Hashtbl.fold (fun _prog_name prog links ->
+      (* FIXME: skip non running nodes *)
+      List.fold_left (fun links func ->
+        let links =
+          List.fold_lefti (fun links i
+                               (par_host, par_rel_prog, par_func) ->
+            (* FIXME: only inspect locally running node and maybe also
+             * the links to the top-halves *)
+            ignore par_host ;
+            (* i is the index in the list of parents for a given
+             * child *)
+            let par_prog =
+              F.program_of_parent_prog func.F.program_name
+                                       par_rel_prog in
+            let parent =
+              match Hashtbl.find programs par_prog with
+              | exception Not_found ->
+                  NotRunning (par_prog, par_func)
+              | pprog ->
+                  (match List.find (fun f ->
+                           f.F.name = par_func
+                         ) pprog.P.funcs with
+                  | exception Not_found ->
+                      NotRunning (par_prog, par_func)
+                  | pfunc -> Running pfunc) in
+            line_of_link i parent (Running func) :: links
+          ) links func.parents in
+        links
+      ) links prog.P.funcs
+    ) programs [] in
   let head =
     [| "parent" ; "child" ; "out_ref" ; "spec" ; "ringbuf" ;
        "fill ratio" ; "next seqs" ; "max event time" |] in

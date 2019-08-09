@@ -422,14 +422,14 @@ let bin_of_program conf get_parent program_name program_code =
 
 (* A version of RamenSupervisor.synchronize_running that runs on a distinct
  * thread and synchronize against a fixed hash of programs that has to run: *)
-let synchronize_running_static conf must_run =
+let synchronize_running_static conf must_run end_flag =
   let open RamenSupervisor in
   let prev_num_running = ref 0 in
   (* The workers that are currently running: *)
   let running = Hashtbl.create 10 in
   let rec loop () =
     let the_end =
-      if !Processes.quit <> None then (
+      if !Processes.quit <> None || Atomic.Flag.is_set end_flag then (
         let num_running = Hashtbl.length running in
         if num_running = 0 then (
           !logger.info "Every worker has stopped, quitting." ;
@@ -497,13 +497,17 @@ let run_test conf notify_rb dirname test =
     ) prog.P.funcs
   ) test.programs ;
   check_test_spec test programs ;
+  (* This flag will signal the end to either both tester and early_termination
+   * threads: *)
+  let end_flag = Atomic.Flag.make false in
+  let stop_workers () = Atomic.Flag.set end_flag in
   (* Now that the running config is complete we can start the worker
    * supervisor: *)
   let must_run = RamenSupervisor.build_must_run conf programs in
   let supervisor =
     Thread.create (
       restart_on_failure "synchronize_running"
-        (synchronize_running_static conf)) must_run in
+        (synchronize_running_static conf must_run)) end_flag in
   (* Start the test proper: *)
   let worker_feeder () =
     let feed_input input =
@@ -538,14 +542,6 @@ let run_test conf notify_rb dirname test =
       Option.may RingBuf.unload !rbr ;
       rbr := None
     ) workers in
-  (* This flag will signal the end to either both tester and early_termination
-   * threads: *)
-  let end_flag = Atomic.Flag.make false in
-  let stop_workers =
-    let all = [ Globs.compile "*" ] in
-    fun () ->
-      ignore (RamenRun.kill conf all) ;
-      Atomic.Flag.set end_flag in
   (* One tester thread per operation *)
   let tester_threads =
     Hashtbl.fold (fun user_fq_name output_spec thds ->

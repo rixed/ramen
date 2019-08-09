@@ -103,7 +103,7 @@ let sync_loop clt =
   let msg_count = ref 0 in
   let handle_msgs_in () =
     match ZMQClient.recv_cmd () with
-    | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+    | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
         ()
     | msg ->
         Client.process_msg clt msg ;

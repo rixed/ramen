@@ -6,20 +6,27 @@ require 'tmpdir'
 $daemon_pids = {}
 
 def kill_ramens ()
-  $daemon_pids.each do |cmd, pid|
-    begin
-      for again in 1..10 do
-        sig = again < 6 ? 'INT' : 'KILL'
-        Process.kill(sig, pid)
-        sleep 1
+  for again in 1..10 do
+    $daemon_pids.each do |cmd, pid|
+      begin
         if Process.waitpid(pid, Process::WNOHANG).nil? then
-          puts "Process didn't react to signal #{sig}, will retry"
+          sig = again < 4 ? 'INT' : 'KILL'
+          Process.kill(sig, pid)
+          if again > 1 then
+            puts "Process #{cmd} didn't react to signal #{sig}, will retry"
+          end
         else
-          break
+          $daemon_pids.delete(pid)
         end
+      rescue Errno::ECHILD
+        #puts "Process #{cmd} is dead already; Good boy!"
+        $daemon_pids.delete(pid)
+      rescue Exception => e
+        puts "got exception #{e.class}:#{e.message}, proceeding."
       end
-    rescue Exception => e
-      puts "got exception #{e}, proceeding."
+    end
+    if not $daemon_pids.empty?
+      sleep 0.3
     end
   end
   $daemon_pids = {}
@@ -48,6 +55,8 @@ Before do |scenario|
   ENV['RAMEN_FAULT_INJECTION_RATE'] = '0'
   # Archive all worker output right from the beginning:
   ENV['RAMEN_INITIAL_EXPORT'] = '300'
+  # No worker should be allowed to tell what he has seen:
+  ENV['RAMEN_KILL_AT_EXIT'] = '1'
 
   # If we do this globally then cucumber fails to find the features, so we
   # cheat by doing this in this hook:

@@ -112,7 +112,9 @@ struct
                     !logger.debug "Skipping error file %a"
                       Key.print k
                 | k, hv ->
-                    !logger.debug "Loading configuration key %a" Key.print k ;
+                    !logger.debug "Loading configuration key %a = %a"
+                      Key.print k
+                      Value.print hv.Server.v ;
                     Server.H.replace srv.Server.h k hv
               ) lst ;
               true) ()
@@ -309,13 +311,13 @@ let zock_step srv zock zock_idx do_authn =
                                        "" peer_pub_key
                 | Authn.Insecure ->
                     "" in
-              !logger.info "< Clt msg from %a with pubkey '%a': %a"
+              !logger.debug "< Clt msg from %a with pubkey '%a': %a"
                 User.print session.user
                 User.print_pub_key clt_pub_key
                 CltMsg.print msg ;
               (match validate_cmd cmd with
               | exception Exit ->
-                  !logger.info "Ignoring"
+                  !logger.debug "Ignoring"
               | exception Failure msg ->
                   Server.set_user_err srv session.user socket msg_id msg
               | () ->
@@ -337,7 +339,7 @@ let zock_step srv zock zock_idx do_authn =
                           Some (1, seqs)
                       | Some (n, seqs) ->
                           let to_del = Key.(Tails (site, fq, LastTuple seqs.(n))) in
-                          !logger.info "Removing old tuple seq %d" seqs.(n) ;
+                          !logger.debug "Removing old tuple seq %d" seqs.(n) ;
                           Server.H.remove srv.Server.h to_del ;
                           seqs.(n) <- seq ;
                           Some ((n + 1) mod max_last_tuples, seqs)
@@ -459,7 +461,7 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file =
     zock, do_authn in
   finally
     (fun () ->
-      !logger.info "Terminating 0MQ" ;
+      !logger.info "Terminating ZMQ" ;
       Zmq.Context.terminate ctx)
     (fun () ->
       !logger.info "Create zockets..." ;
@@ -469,7 +471,6 @@ let start conf ports ports_sec srv_pub_key_file srv_priv_key_file =
             (List.enum ports /@ zocket false)
             (List.enum ports_sec /@ zocket true) |>
           Array.of_enum) in
-      !logger.info "...done" ;
       let send_msg = send_msg zocks in
       finally
         (fun () ->

@@ -1,7 +1,7 @@
 Feature: I can compile programs and get proper error status.
 
-  One can compile program files given proper setting of the ramen root to
-  find dependencies. Also, the outcome of the compilation is reflected on
+  One can compile program files locally, given proper setting of the ramen root
+  to find dependencies. Also, the outcome of the compilation is reflected on
   ramen exit code.
 
   Background:

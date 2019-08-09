@@ -10,9 +10,7 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
   where m1 is not a leaf but m2 is (notice the final dot after m1).
 
   Background:
-    Given ramen must be in the path
-    And the environment variable RAMEN_CONFSERVER is not defined
-    And the environment variable RAMEN_LIBS is set
+    Given the whole gang is started
     And a file p1/p2/t1.ramen with content
       """
       define f1 as
@@ -35,8 +33,6 @@ Feature: Test Ramen Graphite Impersonator for the metrics API.
         yield now as start, 42 as the_answer every 99999h;
       """
     And p1/p2/t1.ramen and t2.ramen are compiled
-    # The above program needs to run for the factor possible values to be known
-    And ramen supervisor is started
     And programs p1/p2/t1 and t2 are running
     And ramen httpd --url http://localhost:8042/ --graphite is started
     And I wait 5 seconds

@@ -206,62 +206,7 @@ let cleanup_once
     Files.dirname (C.notify_ringbuf conf) in
   Files.dir_subtree_iter ~on_dir:(on_dir get_alloced_special) notifdir
 
-let cleanup_once_local conf dry_run del_ratio compress_older =
-  let programs = RC.with_rlock conf identity
-  and allocs = RamenArchivist.load_allocs conf in
-  let get_alloced_worker fname rel_fname =
-    (* We need to retrieve the FQ of that worker and then check if this
-     * directory is still the current one, and then look for allocated
-     * space (assuming 0 for unknown worker or version).
-     * See src/ringbuf/ringbuf.c, function rotate_file_locked for details
-     * on how those files are named. *)
-    let fq = Files.dirname rel_fname |> Files.dirname in
-    let fq = N.fq (fq :> string) in
-    match RC.find_func programs fq with
-    | exception Not_found ->
-        !logger.info
-          "Archive directory %a belongs to unknown function %a"
-          N.path_print fname N.fq_print fq ;
-        0
-    | _rce, _prog, func ->
-        (* TODO: RingBufLib.arc_dir_of_func ... to avoid selecting an
-         * arbitrary file_type: *)
-        let arc_dir = C.archive_buf_name ~file_type:RingBuf conf func |>
-                      RingBufLib.arc_dir_of_bname in
-        if Files.same arc_dir fname then (
-          !logger.info
-            "Archive directory %a is still the current archive for %a"
-            N.path_print fname N.fq_print fq ;
-          Hashtbl.find allocs (conf.C.site, fq)
-        ) else (
-          !logger.warning
-            "Archive directory %a seems to be an old archive for %a \
-             (which now uses %a). Will delete its content slowly."
-            N.path_print fname N.fq_print fq N.path_print arc_dir ;
-          0)
-  and worker_bins =
-    Hashtbl.fold (fun _ (rce, get_rc) lst ->
-      let prog = get_rc () in
-      List.fold_left (fun lst func ->
-        (* only those running in this site in theory: *)
-        (rce.RC.bin, func) :: lst
-      ) lst prog.P.funcs
-    ) programs [] in
-  cleanup_once conf dry_run del_ratio compress_older get_alloced_worker worker_bins
-
-let cleanup_loop ?while_ conf dry_run del_ratio compress_older sleep_duration =
-  let watchdog =
-    let timeout = sleep_duration *. 2. in
-    Watchdog.make ~timeout "GC files" Processes.quit in
-  Watchdog.enable watchdog ;
-  Processes.until_quit (fun () ->
-    log_and_ignore_exceptions ~what:"gc cleanup loop"
-      (cleanup_once_local conf dry_run del_ratio) compress_older ;
-    Watchdog.reset watchdog ;
-    Processes.sleep_or_exit ?while_ (jitter sleep_duration) ;
-    true)
-
-let cleanup_once_sync conf clt dry_run del_ratio compress_older =
+let cleanup_once conf clt dry_run del_ratio compress_older =
   let open RamenSync in
   let get_alloced_worker _fname rel_fname =
     let fq = Files.dirname rel_fname |> Files.dirname in
@@ -313,7 +258,7 @@ let update_archives ~while_ conf dry_run clt =
           ZMQClient.send_cmd ~while_ (SetKey (numbytes_k, numbytes)))
     | _ -> ())
 
-let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
+let cleanup ~while_ conf dry_run del_ratio compress_older loop =
   let open RamenSync in
   (* The GC needs all allocation size per worker for this site.
    * On the other hand storage stats will be written back (ArchivedTimes,
@@ -335,7 +280,8 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
   start_sync conf ~while_ ~topics ~recvtimeo:5. ~on_new (fun clt ->
     if loop <= 0. then (
       ZMQClient.process_in ~while_ clt ;
-      cleanup_once_sync conf clt dry_run del_ratio compress_older
+      cleanup_once conf clt dry_run del_ratio compress_older ;
+      update_archives ~while_ conf dry_run clt
     ) else
       let last_run =
         ref (Unix.time () -. Random.float loop) in
@@ -346,6 +292,6 @@ let cleanup_sync ~while_ conf dry_run del_ratio compress_older loop =
            !last_run < !last_alloc_size
         then (
           last_run := now ;
-          cleanup_once_sync conf clt dry_run del_ratio compress_older ;
+          cleanup_once conf clt dry_run del_ratio compress_older ;
           update_archives ~while_ conf dry_run clt) ;
       done)

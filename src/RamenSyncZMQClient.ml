@@ -44,7 +44,7 @@ let retry_zmq ?while_ f =
   let on = function
     (* EWOULDBLOCK: According to 0mq documentation blocking is supposed
      * to be signaled with EAGAIN but... *)
-    | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK), _, _)) -> true
+    | Unix.(Unix_error ((EAGAIN|EWOULDBLOCK|EINTR), _, _)) -> true
     | _ -> false in
   retry ~on ~first_delay:0.3 ?while_ f
 
@@ -252,7 +252,6 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   ) on_done ;
   let msg = CltMsg.to_string msg |>
             Authn.wrap session.authn in
-  !logger.debug "Sending %S" msg ;
   session.last_sent <- Unix.time () ;
   (match while_ with
   | None ->
@@ -260,7 +259,6 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
   | Some while_ ->
       retry_zmq ~while_
         (Zmq.Socket.send_all ~block:false session.zock) [ "" ; msg ]) ;
-  !logger.debug "...sent!" ;
   IntCounter.inc stats_num_sync_msgs_out ;
   let set_eagerly k v lock_timeo =
     let new_hv () =
@@ -300,6 +298,8 @@ let send_cmd ?(eager=false) ?while_ ?on_ok ?on_ko ?on_done cmd =
 
 let recv_cmd _clt =
   let session = get_session () in
+  (* Let's fail on EINTR and our caller retry_zmq which will do the right
+   * thing: restart if no INT signal has been received. *)
   match Zmq.Socket.recv_all session.zock with
   | [ "" ; msg ] ->
       (* !logger.debug "srv message (raw): %S" msg ; *)
@@ -425,14 +425,16 @@ let may_send_ping ?while_ () =
     send_cmd ?while_ cmd)
 
 (* Receive and process incoming commands until timeout.
- * Returns the number of messages that have been read. *)
+ * Returns the number of messages that have been read.
+ * In case messages are incoming quicker than the timeout, use
+ * [single] to force process_in out of the loop. *)
 let process_in ?(while_=always) ?(single=false) _clt =
   let session = get_session () in
   let rec loop () =
     if while_ () then (
       may_send_ping ~while_ () ;
       match recv_cmd session.clt with
-      | exception Unix.(Unix_error (EAGAIN, _, _)) ->
+      | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
           ()
       | msg ->
           Client.process_msg session.clt msg ;
@@ -481,7 +483,6 @@ let init_sync ?while_ clt topics on_progress =
         not !synced &&
         (match while_ with Some f -> f () | None -> true) in
       while while_ () do
-        !logger.debug "Wait for end of sync..." ;
         process_in ~while_ clt
       done ;
       true

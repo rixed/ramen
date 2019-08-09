@@ -60,33 +60,7 @@ let copy_all ~while_ _conf (client_site : N.site) (bname : N.path) fd rb =
       (RingBuf.enqueue rb bytes (Bytes.length bytes) 0.) 0.
   done
 
-let serve_local conf ~while_ fd =
-  !logger.debug "New connection to copy service on fd %d!"
-    (Files.int_of_fd fd) ;
-  IntCounter.inc (stats_accepts conf.C.persist_dir) ;
-  (* First message is supposed to identify the client and what the
-   * target is: *)
-  let id : RamenCopy.set_target_msg =
-    Files.(marshal_from_fd socket_path) fd in
-  !logger.info "Received target identification: %a, %a, #%d"
-    N.site_print id.client_site
-    N.fq_print id.child
-    id.parent_num ;
-  let _mre, _prog, func =
-    RC.with_rlock conf (fun programs ->
-      RC.find_func_or_fail programs id.child) in
-  let bname =
-    if func.F.merge_inputs then
-      C.in_ringbuf_name_merging conf func id.parent_num
-    else
-      C.in_ringbuf_name_single conf func in
-  let rb =
-    (* If supervisor haven't started this worker for any reason, then
-     * [load] is going to fail. Just wait. *)
-    retry ~on:always ~while_ RingBuf.load bname in
-  copy_all ~while_ conf id.client_site bname fd rb
-
-let serve_sync conf ~while_ fd =
+let serve conf ~while_ fd =
   !logger.debug "New connection to copy service on fd %d!"
     (Files.int_of_fd fd) ;
   let open RamenSync in
@@ -151,7 +125,4 @@ let copy_server conf port =
   let while_ () = !RamenProcesses.quit = None in
   (* TODO: a wrapper that compresses and hashes the content. *)
   let service_name = ServiceNames.tunneld in
-  let serve =
-    if conf.C.sync_url = "" then serve_local
-    else serve_sync in
   forking_server ~while_ ~service_name addr (serve conf ~while_)

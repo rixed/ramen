@@ -824,8 +824,6 @@ let synchronize_workers conf must_run running =
          * dead and then restart it. *)
         if !(proc.last_killed) <> 0. then to_kill += proc
   ) must_run ;
-  (* See preamble discussion about autoreload for why workers must be
-   * started only after all the kills: *)
   if !to_kill <> [] then !logger.debug "Starting the kills" ;
   List.iter (fun (proc : running_process) ->
     try_kill conf (Option.get proc.pid) proc.func proc.parents proc.last_killed
@@ -912,175 +910,6 @@ let synchronize_replays conf func_of_fq now must_replay replayers =
   in
   Map.diff run_chans def_chans |> Map.iter to_rem ;
   Map.diff def_chans run_chans |> Map.iter to_add
-
-let must_reread fname last_read autoreload_delay now set_max_wait =
-  let granularity = 0.1 in
-  let last_mod =
-    try Some (Files.mtime fname)
-    with Unix.(Unix_error (ENOENT, _, _)) -> None in
-  let reread =
-    match last_mod with
-    | None -> false
-    | Some lm ->
-        if lm >= last_read ||
-           autoreload_delay > 0. &&
-           now -. last_read >= autoreload_delay
-        then (
-          (* To prevent missing the last writes when the file is
-           * updated faster than mtime granularity, refuse to refresh
-           * the file unless last mod time is old enough.
-           * As [now] will be the next [last_read] we are guaranteed to
-           * have [lm < last_read] in the next calls in the absence of
-           * writes.  But we also want to make sure that all writes
-           * occurring after we do read that file will push the mtime
-           * after (>) [lm], which is true only if now is greater than
-           * lm + mtime granularity: *)
-          let age_modif = now -. lm in
-          if age_modif > granularity then
-            true
-          else (
-            set_max_wait (granularity -. age_modif) ;
-            false
-          )
-        ) else false in
-  let ret = last_mod <> None && reread in
-  if ret then !logger.debug "%a has changed %gs ago"
-    N.path_print fname (now -. Option.get last_mod) ;
-  ret
-
-(*
- * Synchronisation of the rc file of programs we want to run with the
- * actually running workers. Also synchronise the configured replays
- * with the actually running replayers and established replay channels.
- *
- * [autoreload_delay]: even if the rc file hasn't changed, we want to re-read
- * it from time to time and refresh the [must_run] hash with new signatures
- * from the binaries that might have changed.  If some operations from a
- * program indeed has a new signature, then the former one will disappear from
- * [must_run] and the new one will enter it, and the new one will replace it.
- * We do not have to wait until the previous worker dies before starting the
- * new version: If they have the same input type they will share the same
- * input ringbuf and steal some work from each others, which is still better
- * than having only the former worker doing all the work.  And if they have
- * different input types then the tuples will switch toward the new instance
- * as the parent out-ref gets updated. Similarly, they use different state
- * files.  They might both be present in a parent out_ref though, so some
- * duplication of tuple is possible (or conversely: some input tuples might
- * be missing if we kill the previous before starting the new one).
- * If they do share the same input ringbuf though, it is important that we
- * remove the former one before we add the new one (or the parent out-ref
- * will end-up empty). This is why we first do all the kills, then all the
- * starts (Note that even if a worker does not terminate immediately on
- * kill, its parent out-ref is cleaned immediately).
- *
- * Regarding [conf.test]:
- * In that mode, add a parameter to the workers so that they stop before doing
- * anything. Then, when nothing is left to be started, the synchronizer will
- * unblock all workers. This mechanism enforces that CSV readers do not start
- * to read tuples before all their children are attached to their out_ref file.
- *)
-let synchronize_running_local conf autoreload_delay =
-  (* Avoid memoizing this at every call to build_must_run: *)
-  if !watchdog = None then
-    watchdog :=
-      (* In the first run we might have *plenty* of workers to start, thus
-       * the extended grace_period (it's not unheard of >1min to start all
-       * workers on a small VM) *)
-      Some (RamenWatchdog.make ~grace_period:180. ~timeout:30.
-                               "supervisor" Processes.quit) ;
-  let watchdog = Option.get !watchdog in
-  let prev_num_running = ref 0 in
-  (* The workers that are currently running: *)
-  let running = Hashtbl.create 307 in
-  (* The replayers: description of the replayer worker that are running (or
-   * about to run). Each worker can handle several replays. *)
-  let replayers = Hashtbl.create 307 in
-  let rc_file = RC.file_name conf in
-  Files.ensure_exists ~contents:"{}" rc_file ;
-  let replays_file = C.Replays.file_name conf in
-  Files.ensure_exists ~contents:"{}" replays_file ;
-  let fnotifier =
-    RamenFileNotify.make_file_notifier [ rc_file ; replays_file ] in
-  let rec loop last_must_run last_read_rc last_replays last_read_replays =
-    let the_end =
-      if !Processes.quit <> None then (
-        let num_running =
-          Hashtbl.length running + Hashtbl.length replayers in
-        if num_running = 0 then (
-          !logger.info "All processes stopped, quitting." ;
-          true
-        ) else (
-          if num_running <> !prev_num_running then (
-            prev_num_running := num_running ;
-            info_or_test conf "Still %d workers and %d replayers running"
-              (Hashtbl.length running) (Hashtbl.length replayers)) ;
-          false
-        )
-      ) else false in
-    if not the_end then (
-      let max_wait =
-        ref (
-          if autoreload_delay > 0. then autoreload_delay else 5.
-        ) in
-      let set_max_wait d =
-        if d < !max_wait then max_wait := d in
-      if !Processes.quit <> None then set_max_wait 0.3 ;
-      let now = Unix.gettimeofday () in
-      let must_run, last_read_rc =
-        if !Processes.quit <> None then (
-          !logger.debug "No more workers should run" ;
-          Hashtbl.create 0, last_read_rc
-        ) else (
-          if must_reread rc_file last_read_rc autoreload_delay now set_max_wait then
-            let programs = RC.with_rlock conf identity in
-            build_must_run conf programs, now
-          else
-            last_must_run, last_read_rc
-        ) in
-      process_workers_terminations conf running ;
-      let changed = synchronize_workers conf must_run running in
-      (* Touch the rc file if anything changed (esp. autoreload) since that
-       * mtime is used to signal cache expirations etc. *)
-      if changed then Files.touch rc_file last_read_rc ;
-      let must_replay, last_read_replays =
-        if !Processes.quit <> None then (
-          !logger.debug "No more replays should run" ;
-          Hashtbl.create 0, last_read_replays
-        ) else (
-          if must_reread replays_file last_read_replays 0. now set_max_wait then
-            (* FIXME: We need to start lazy nodes right *after* having
-             * written into their out-ref but *before* replayers are started
-             *)
-            C.Replays.load conf, now
-          else
-            last_replays, last_read_replays
-        ) in
-      let get_programs =
-        memoize (fun () -> RC.with_rlock conf identity) in
-      let get_bin_func fq =
-        let programs = get_programs () in
-        let rce, _prog, func = RC.find_func_or_fail programs fq in
-        rce.RC.bin, func in
-      let func_of_fq fq =
-        get_bin_func fq |> snd in
-      process_replayers_start_stop get_bin_func conf now replayers ;
-      synchronize_replays conf func_of_fq now must_replay replayers ;
-      if not (Hashtbl.is_empty replayers) then set_max_wait 0.2 ;
-      !logger.debug "Waiting for file changes (max %a)"
-        print_as_duration !max_wait ;
-      Gc.minor () ;
-      let fname = RamenFileNotify.wait_file_changes
-                    ~max_wait:!max_wait fnotifier in
-      !logger.debug "Done. %a changed." (Option.print N.path_print) fname ;
-      RamenWatchdog.reset watchdog ;
-      (loop [@tailcall]) must_run last_read_rc must_replay last_read_replays)
-  in
-  RamenWatchdog.enable watchdog ;
-  (* Once we have forked some workers we must not allow an exception to
-   * terminate this function or we'd leave unsupervised workers behind: *)
-  restart_on_failure "process supervisor"
-    (loop (Hashtbl.create 0) 0. (Hashtbl.create 0)) 0. ;
-  RamenWatchdog.disable watchdog
 
 (* Using the conf server to supervise the workers goes in several stages:
  *
@@ -1556,7 +1385,24 @@ let synchronize_once conf ~while_ clt now =
         | _ -> ()) ()
   )
 
-let synchronize_running_sync conf _autoreload_delay =
+(* In theory, supervisor or choreographer joining or leaving the fray should
+ * leave the workers running without supervision. For tests though it is
+ * required to stop all workers at exit.
+ * Thus, this function kills all workers without even letting them save their
+ * state; There is no point saving as there will be no restart. *)
+let mass_kill_all conf clt =
+  Client.iter clt (fun k hv ->
+    match k, hv.Client.value with
+    | Key.PerSite (site, PerWorker (fq, PerInstance (_, Pid))),
+      Value.RamenValue T.(VI64 pid)
+      when site = conf.C.site ->
+        let pid = Int64.to_int pid in
+        let what = Printf.sprintf2 "Killing %a" N.fq_print fq in
+        !logger.info "%s" what ;
+        log_and_ignore_exceptions ~what (Unix.kill pid) Sys.sigkill
+    | _ -> ())
+
+let synchronize_running conf kill_at_exit =
   let while_ () = !Processes.quit = None in
   let loop clt =
     let last_sync = ref 0. in
@@ -1566,7 +1412,8 @@ let synchronize_running_sync conf _autoreload_delay =
       if now > !last_sync +. Default.delay_between_worker_syncs then (
         last_sync := now ;
         synchronize_once conf ~while_ clt now)
-    done in
+    done ;
+    if kill_at_exit then mass_kill_all conf clt in
   let topics =
     [ (* All sites are needed because we need parent worker :(
          TODO: add whatever is needed from the parents (ie. output type)
@@ -1650,12 +1497,8 @@ let synchronize_running_sync conf _autoreload_delay =
         when site = conf.C.site ->
           report_worker_death ~while_ clt site fq worker_sign "vanished"
       | _ -> ())
- in
+  in
   (* Timeout has to be much shorter than delay_before_replay *)
   let timeo = delay_before_replay *. 0.5 in
   start_sync conf ~while_ ~topics ~recvtimeo:timeo ~sndtimeo:timeo
              ~on_new ~on_del ~on_synced loop
-
-let synchronize_running conf autoreload_delay =
-  (if conf.C.sync_url = "" then synchronize_running_local
-  else synchronize_running_sync) conf autoreload_delay

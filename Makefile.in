@@ -1052,19 +1052,7 @@ RAMEN_ARCHIVIST_TESTS = $(wildcard tests/archivist/*.allocs)
 
 arc-check: src/ramen $(RAMEN_ARCHIVIST_TESTS)
 	@echo 'Running storage allocation tests'
-	@set -e; \
-	 for f in $(RAMEN_ARCHIVIST_TESTS); do \
-	  echo "  Testing $$(basename $$f .allocs)" ;\
-	  d=$$(dirname $$f)/$$(basename $$f .allocs) ;\
-	  RAMEN_CONFSERVER= src/ramen archivist --site=local --persist-dir $$d --alloc --stdout ;\
-	  if ! diff -q $$f $$d/archivist/v*/allocs ; then \
-	    echo $$d/archivist/v*/allocs : ;\
-	    cat $$d/archivist/v*/allocs ;\
-	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
-	    exit 1 ;\
-	  fi ;\
-	done ;\
-	echo "\033[1;32mSUCCESS\033[0m"
+	@echo 'TODO: make it possible to upload the stats file in the confserver'
 
 # Installation
 

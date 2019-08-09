@@ -203,12 +203,6 @@ let to_syslog =
                       ~env [ "to-syslog" ; "syslog" ] in
   Arg.(value (flag i))
 
-let autoreload =
-  let env = Term.env_info "RAMEN_AUTORELOAD" in
-  let i = Arg.info ~doc:CliInfo.autoreload
-                   ~env ["autoreload"] in
-  Arg.(value (opt ~vopt:Default.autoreload float 0. i))
-
 let external_compiler =
   let env = Term.env_info "RAMEN_USE_EMBEDDED_COMPILER" in
   let i = Arg.info ~doc:CliInfo.external_compiler
@@ -234,6 +228,11 @@ let fail_for_good =
                    [ "fail-for-good" ] in
   Arg.(value (flag i))
 
+let kill_at_exit =
+  let env = Term.env_info "RAMEN_KILL_AT_EXIT" in
+  let i = Arg.info ~doc:CliInfo.kill_at_exit
+                   ~env [ "kill-at-exit" ] in
+  Arg.(value (flag i))
 
 let supervisor =
   Term.(
@@ -242,11 +241,11 @@ let supervisor =
       $ daemonize
       $ to_stdout
       $ to_syslog
-      $ autoreload
       $ external_compiler
       $ max_simult_compilations
       $ smt_solver
-      $ fail_for_good),
+      $ fail_for_good
+      $ kill_at_exit),
     info ~doc:CliInfo.supervisor "supervisor")
 
 (*
@@ -668,11 +667,6 @@ let compserver =
       $ smt_solver),
     info ~doc:CliInfo.compserver "compserver")
 
-let kill_if_disabled =
-  let i = Arg.info ~doc:CliInfo.kill_if_disabled
-                   [ "kill-if-disabled" ] in
-  Arg.(value (flag i))
-
 let report_period =
   let env = Term.env_info "RAMEN_REPORT_PERIOD" in
   let i = Arg.info ~doc:CliInfo.report_period
@@ -681,17 +675,12 @@ let report_period =
 
 let src_file =
   let i = Arg.info ~doc:CliInfo.src_file
-                   [ "src-file" ; "source-file" ] in
-  Arg.(value (opt (some path) None i))
+                   ~docv:"FILE" [] in
+  Arg.(required (pos 0 (some path) None i))
 
 let on_site =
   let i = Arg.info ~doc:CliInfo.on_site [ "on-site" ] in
   Arg.(value (opt glob Globs.all i))
-
-let bin_file =
-  let i = Arg.info ~doc:CliInfo.bin_file
-                   ~docv:"FILE" [] in
-  Arg.(required (pos 0 (some path) None i))
 
 let run =
   Term.(
@@ -699,12 +688,10 @@ let run =
       $ copts ~default_username:"" ()
       $ params
       $ replace
-      $ kill_if_disabled
       $ report_period
       $ as_
-      $ src_file
       $ on_site
-      $ bin_file),
+      $ src_file),
     info ~doc:CliInfo.run "run")
 
 let purge =
@@ -731,6 +718,11 @@ let opt_function_name p =
   let i = Arg.info ~doc:CliInfo.function_name
                    ~docv:"OPERATION" [] in
   Arg.(value (pos p (some func_name) None i))
+
+let bin_file =
+  let i = Arg.info ~doc:CliInfo.bin_file
+                   ~docv:"FILE" [] in
+  Arg.(required (pos 0 (some path) None i))
 
 
 let info =
@@ -791,16 +783,6 @@ let follow =
   let i = Arg.info ~doc:CliInfo.follow
                    [ "f"; "follow" ] in
   Arg.(value (flag i))
-
-let min_seq =
-  let i = Arg.info ~doc:CliInfo.min_seq
-                   ["min-seqnum"] in
-  Arg.(value (opt (some int) None i))
-
-let max_seq =
-  let i = Arg.info ~doc:CliInfo.max_seq
-                   ["max-seqnum"] in
-  Arg.(value (opt (some int) None i))
 
 let filter =
   (* Longer first: *)
@@ -894,8 +876,6 @@ let tail =
       $ csv_raw
       $ last
       $ next
-      $ min_seq
-      $ max_seq
       $ follow
       $ where
       $ since
@@ -1025,40 +1005,26 @@ let timeseries =
  * Info
  *)
 
-let short =
-  let i = Arg.info ~doc:CliInfo.short
-                   [ "short" ; "p" ] in
-  Arg.(value (flag i))
-
-let all =
-  let i = Arg.info ~doc:CliInfo.all
-                   [ "show-all" ; "all" ; "a" ] in
-  Arg.(value (flag i))
-
 let ps =
   Term.(
     (const RamenCliCmd.ps
       $ copts ~default_username:"" ()
-      $ short
       $ pretty
       $ with_header
       $ sort_col
       $ top
-      $ pattern
-      $ all),
+      $ pattern),
     info ~doc:CliInfo.ps "ps")
 
 let profile =
   Term.(
     (const RamenCliCmd.profile
       $ copts ~default_username:"" ()
-      $ short
       $ pretty
       $ with_header
       $ sort_col
       $ top
-      $ pattern
-      $ all),
+      $ pattern),
     info ~doc:CliInfo.profile "_profile")
 
 (*

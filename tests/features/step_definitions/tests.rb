@@ -14,6 +14,8 @@ do |envvar, opt_val|
       case envvar
         when /RAMEN_LIBS/
           ENV['HOME'] + '/share/src/ramen/bundle'
+        when /RAMEN_DEBUG/
+          '1'
         else
           fail(StandardError.new("No idea what to set #{envvar} to"))
       end
@@ -50,8 +52,8 @@ end
 When /I run (.*) with arguments? (.*)/ do |executable, args|
   @output ||= {}
   @output[executable] = exec(executable, args)
-  #puts @output[executable]['stdout']
-  #puts @output[executable]['stderr']
+  puts @output[executable]['stderr']
+  puts @output[executable]['stdout']
 end
 
 Then /^([^ ]*) must print (.*) lines?(?: on (std(?:out|err)))?\.?/ \
@@ -140,10 +142,9 @@ end
 
 Given /(.*\.ramen) is compiled( as (.*))?$/ do |source, prog_name|
   if prog_name then
-    # We want both the program and the binary to have that name, for autoreload
-    `ramen compile -L . #{source} --as #{prog_name} -o #{prog_name}.x`
+    `ramen compile #{source} --as #{prog_name}`
   else
-    `ramen compile -L . #{source}`
+    `ramen compile #{source}`
   end
 end
 
@@ -162,6 +163,31 @@ Given /^(ramen .*) is started$/ do |cmd|
   end
 end
 
+Given /^(.*) is run every (\d+)? ?seconds?\.?$/ do |cmd, delay|
+  if delay < 1 then
+    delay = 1
+  end
+  cmd = "sh -c 'while sleep #{delay}; do #{cmd}; done'"
+  if $daemon_pids[cmd].nil?
+    $daemon_pids[cmd] = Process.spawn(cmd)
+  end
+end
+
+Given /the whole gang is started$/ do
+  step "ramen must be in the path"
+  step "the environment variable HOSTNAME is set to TEST"
+  step "the environment variable RAMEN_CONFSERVER is set to localhost:29340"
+  step "the environment variable RAMEN_REPORT_PERIOD is set to 1"
+  step "the environment variable RAMEN_LIBS is set"
+  step "the environment variable RAMEN_PATH is not defined"
+  step "the environment variable RAMEN_DEBUG is set"
+  step "ramen confserver --insecure 29340 is started"
+  step "ramen compserver is started"
+  step "ramen supervisor is started"
+  step "ramen choreographer is started"
+  step "the environment variable RAMEN_DEBUG is not defined"
+end
+
 Then /^(ramen .*) must still be running/ do |cmd|
   expect($daemon_pids[cmd]).to be_truthy
   ps_out = `ps -p #{$daemon_pids[cmd]} -o comm`
@@ -174,7 +200,7 @@ end
 
 Given /^(?:the )?workers? (.*) must( not)? be running/ do |workers, not_run|
   workers = workers.list_split
-  re = Regexp.union(workers.map{|w| /^#{Regexp.escape(w)}\t/})
+  re = Regexp.union(workers.map{|w| /^TEST\t#{Regexp.escape(w)}\t/})
   l = `ramen ps`.lines.select{|e| e =~ re}.length
   if not_run
     expect(l).to be == 0
@@ -185,42 +211,47 @@ end
 
 Given /^(?:the )?programs? (.*) must( not)? be running/ do |programs, not_run|
   programs = programs.list_split
-  re = Regexp.union(programs.map{|w| /^#{Regexp.escape(w)}\t/})
-  l = `ramen ps --short`.lines.select{|e| e =~ re}.length
+  re = Regexp.union(programs.map{|w| /^TEST\t#{Regexp.escape(w)}\//})
+  l = `ramen ps`.lines.select{|e| e =~ re}.uniq.length
   if not_run
     expect(l).to be == 0
   else
-    expect(l).to be == programs.length
+    expect(l).to be == programs.uniq.length
   end
 end
 
 Given /^no (?:program|worker)s? (?:is|are) running/ do
-  `ramen ps --short`.lines.select{|e| e =~ /^([^\t]+)\t/}.each do |e|
+  `ramen ps`.lines.select{|e| e =~ /^TEST\t([^\t]+)\/[^\t\/]+\t/}.uniq.each do |e|
     prog = $1
     `ramen kill "#{prog}"`
   end
 end
 
 Given /^(?:the )?programs? (.*) (?:is|are) not running/ do |programs|
-  re = Regexp.union(programs.list_split.map{|w| /^(#{Regexp.escape(w)})\t/})
-  l = `ramen ps --short`.lines.select{|e| e =~ re}.each do |e|
+  re = Regexp.union(programs.list_split.map{|w| /^TEST\t(#{Regexp.escape(w)})\//})
+  l = `ramen ps`.lines.select{|e| e =~ re}.uniq.each do |e|
     prog = $1
     `ramen kill "#{prog}"`
   end
 end
 
 Given /^(?:the )?programs? (.*) (?:is|are) running/ do |programs|
-  running = `ramen ps --short`.lines.map do |l|
-    l =~ /^([^\t]+)\t/
-    $1
+  def running?(prog)
+    ps = `ramen ps`.lines.map do |l|
+      l =~ /^TEST\t([^\t]+)\/[^\t\/]+\t/
+      $1
+    end
+    ps.include? prog
   end
   programs.list_split.each do |prog|
-    if not running.include? prog
-      expect(system("ramen run --src-file '#{prog}.ramen' --as '#{prog}' '#{prog}.x'")).to eq true
+    if not running? prog
+      expect(system("ramen run '#{prog}.ramen' --as '#{prog}'")).to eq true
+      # wait until it is actually running
+      while not running? prog
+        sleep 0.3
+      end
     end
   end
-  # Wait until supervisor really start them, and they appear in stats
-  sleep 2
 end
 
 Then /^after max (\d+) seconds? (.+)$/ do |max_delay, what|

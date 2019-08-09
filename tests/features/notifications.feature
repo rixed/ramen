@@ -44,9 +44,3 @@ Feature: Notifications work according to the configuration.
       """
       SELECT "alert_id", "text" FROM "alerts" WHERE name="test"
       """
-
-  Scenario: It's possible to tail from notifications
-    When I run ramen with argument notify test -p param1=foobar
-    And I run ramen with argument tail '#notifs'
-    Then after max 1 second ramen must exit gracefully
-    And ramen must mention "foobar" on stdout.

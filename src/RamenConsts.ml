@@ -239,9 +239,6 @@ struct
   let dry_run = "Just display what would be deleted."
   let del_ratio = "Only delete that ratio of in-excess archive files."
   let compress_older = "Convert to ORC archive files older than this."
-  let autoreload =
-    "Should workers be automatically reloaded when the \
-     binary changes? And if so, how frequently to check."
   let report_period =
     "Number of seconds between two stats report from each worker."
   let rb_file = "File with the ring buffer."
@@ -256,6 +253,7 @@ struct
   let smt_solver =
     "Command to run the SMT solver (with %s in place of the SMT2 file name)."
   let fail_for_good = "For tests: do not restart after a crash."
+  let kill_at_exit = "For tests: SIGKILL all workers at exit."
   let master  =
     "Indicates that Ramen must run in distributed mode and what sites play \
      the master role."
@@ -282,8 +280,6 @@ struct
     "Read only the last N tuples. Applied *before* filtering."
   let next =
     "Read only up to the next N tuples. Applied *before* filtering."
-  let min_seq = "Output only tuples with greater sequence number."
-  let max_seq = "Output only tuples with smaller sequence number."
   let follow = "Wait for more when end of file is reached."
   let where = "Output only tuples which given field match the given value."
   let factors =
@@ -308,7 +304,7 @@ struct
      (first column -name- is 1, then #in is 2 etc)."
   let top =
     "Truncate the list of operations after the first N entries."
-  let all = "List all workers, including killed ones."
+  let all = "List all workers, including other sites."
   let pattern = "Display only those workers."
   let server_url = "URL to reach the HTTP service."
   let test_file = "Definition of a test to run."
@@ -447,9 +443,6 @@ struct
    * reconfigure workers archival behavior: *)
   let archivist_loop = 3600.
 
-  (* Autoreload every that many seconds: *)
-  let autoreload = 5.
-
   (* Display headers every that many lines (only once on top by default;
    * 0 to disable headers) : *)
   let header_every = max_int
@@ -587,6 +580,10 @@ let archivist_settle_delay = 1.
 (* Do not attempt to realloc if last reallocation was less than that number
  * of seconds ago: *)
 let min_duration_between_storage_alloc = 600.
+
+(* Do realloc regardless of archivist_settle_delay if the last relloc is older
+ * than that: *)
+let max_duration_between_storage_alloc = 3600.
 
 (* Similarly, do not attempt to reconfigure workers out-ref for archiving
  * unless that number of seconds have passed: *)

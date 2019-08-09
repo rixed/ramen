@@ -852,7 +852,7 @@ let update_local_workers_export
             Processes.start_export
               ~file_type ~duration:export_duration conf func |> ignore)
 
-let reconf_workers_sync
+let reconf_workers
     ?(export_duration=Default.archivist_export_duration) conf clt =
   let open RamenSync in
   Client.iter clt (fun k hv ->
@@ -887,40 +887,7 @@ let reconf_workers_sync
  * CLI
  *)
 
-let run_once conf ?while_ ?export_duration
-             stats allocs reconf =
-  let programs = RC.with_rlock conf identity in (* Best effort *)
-  (* Start by gathering (more) workers stats: *)
-  if stats then (
-    !logger.info "Updating workers stats" ;
-    update_local_worker_stats ?while_ conf programs) ;
-  (* Then use those to answer the big questions about queries, the storage
-   * and everything: *)
-  if allocs then (
-    !logger.info "Updating storage allocations" ;
-    update_storage_allocation_file conf programs) ;
-  (* Now update the archiving configuration of running workers: *)
-  if reconf then (
-    !logger.info "Updating workers export configuration" ;
-    update_local_workers_export ?export_duration conf programs)
-
-let run_loop conf ?while_ sleep_time stats allocs reconf =
-  (* Export instructions are only valid for twice as long as the archivist
-   * loop. Consequence to keep in mind: if the archivist is not running then
-   * exports will soon stop! *)
-  let export_duration = sleep_time *. 2. in
-  let watchdog =
-    let timeout = sleep_time *. 2. in
-    RamenWatchdog.make ~timeout "Archiver" Processes.quit in
-  RamenWatchdog.enable watchdog ;
-  while (while_ |? always) () do
-    log_and_ignore_exceptions ~what:"archivist run_once"
-      (run_once conf ?while_ ~export_duration stats allocs) reconf ;
-    RamenWatchdog.reset watchdog ;
-    Processes.sleep_or_exit ?while_ (jitter sleep_time)
-  done
-
-let realloc_sync conf ~while_ clt =
+let realloc conf ~while_ clt =
   (* Collect all stats and retention info: *)
   !logger.debug "Recomputing storage allocations" ;
   let per_func_stats : (C.N.site * N.fq, arc_stats) Batteries.Hashtbl.t =
@@ -1014,7 +981,7 @@ let realloc_sync conf ~while_ clt =
     ZMQClient.send_cmd ~while_ (DelKey k)
   ) prev_allocs
 
-let run_sync conf ~while_ loop allocs reconf =
+let run conf ~while_ loop allocs reconf =
   (* We need retentions (that we get from the info files), user config,
    * runtime stats and workers (to get src_path and running flag).
    * Results are written in PerWorker AllocedArcBytes, that we must also read
@@ -1047,26 +1014,35 @@ let run_sync conf ~while_ loop allocs reconf =
   start_sync conf ~while_ ~on_set ~on_new ~on_del ~topics ~recvtimeo:5.
              (fun clt ->
     let do_once () =
-      ZMQClient.process_in ~while_ clt ;
+      ZMQClient.process_in ~while_ ~single:true clt ;
       let now = Unix.gettimeofday () in
+      !logger.info "now = %f, last_realloc = %f" now !last_realloc ;
       if allocs &&
-         now > !last_change +. archivist_settle_delay &&
-         !last_change > !last_realloc &&
-         now > !last_realloc +. min_duration_between_storage_alloc
+         (
+          now > !last_change +. archivist_settle_delay &&
+          !last_change > !last_realloc &&
+          now > !last_realloc +. min_duration_between_storage_alloc
+        ) || (
+          now > !last_realloc +. max_duration_between_storage_alloc
+        ) || (
+          (* If we run archivist in one-shot mode, just do it: *)
+          now > !last_realloc && loop <= 0.
+        )
       then (
         last_realloc := now ;
         !logger.info "Updating storage allocations" ;
-        realloc_sync conf ~while_ clt) ;
+        realloc conf ~while_ clt) ;
       (* Note: for now we update the outref files (thus the restriction
        * to local workers and the need to run this on all sites). In the
        * future we'd rather have the outref content on the config tree,
        * and then a single archivist will be enough. *)
       if reconf &&
-         now > !last_reconf +. min_duration_between_archive_reconf
+         now > !last_reconf +. min_duration_between_archive_reconf ||
+         now > !last_reconf && loop <= 0.
       then (
         last_reconf := now ;
         !logger.info "Updating workers export configuration" ;
-        reconf_workers_sync conf clt)
+        reconf_workers conf clt)
     in
     if loop <= 0. then
       do_once ()
@@ -1075,26 +1051,3 @@ let run_sync conf ~while_ loop allocs reconf =
         do_once ()
       done
   )
-
-(* Helpers: get the stats (maybe refreshed) *)
-
-let maybe_refresh_local_stats ?while_ conf =
-  let programs = RC.with_rlock conf identity in
-  match Files.age (stat_file conf) with
-  | exception Unix.(Unix_error (ENOENT, _, _)) ->
-      update_local_worker_stats ?while_ conf programs
-  | stat_file_age ->
-      if stat_file_age > max_archivist_stat_file_age ||
-         stat_file_age > RC.age conf
-      then
-        update_local_worker_stats ?while_ conf programs
-
-(* Returns a hash keyed by FQ: *)
-let get_local_stats ?while_ conf =
-  maybe_refresh_local_stats ?while_ conf ;
-  load_stats conf
-
-(* Returns a hash keyed by (site * FQ): *)
-let get_global_stats ?while_ conf =
-  maybe_refresh_local_stats ?while_ conf ;
-  get_global_stats_no_refresh conf

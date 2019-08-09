@@ -138,9 +138,9 @@ let start_daemon conf daemonize to_stdout to_syslog name =
   let open RamenProcesses in
   prepare_signal_handlers conf
 
-let supervisor conf daemonize to_stdout to_syslog autoreload
+let supervisor conf daemonize to_stdout to_syslog
                use_external_compiler max_simult_compils
-               smt_solver fail_for_good_ () =
+               smt_solver fail_for_good_ kill_at_exit () =
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "supervisor") ;
   (* Controls all calls to restart_on_failure: *)
@@ -161,7 +161,7 @@ let supervisor conf daemonize to_stdout to_syslog autoreload
   restart_on_failure ~while_ "synchronize_running"
     RamenExperiments.(specialize the_big_one) [|
       RamenProcesses.dummy_nop ;
-      (fun () -> RamenSupervisor.synchronize_running conf autoreload) |] ;
+      (fun () -> RamenSupervisor.synchronize_running conf kill_at_exit) |] ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -301,12 +301,8 @@ let compile_local
    * here: *)
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   let get_parent =
-    if lib_path = [] then
-      let programs = RC.with_rlock conf identity in
-      RamenCompiler.parent_from_programs programs
-    else
-      List.map Files.absolute_path_of lib_path |>
-      RamenCompiler.parent_from_lib_path in
+    List.map Files.absolute_path_of lib_path |>
+    RamenCompiler.parent_from_lib_path in
   let program_name_opt =
     if program_name_opt <> None then
       program_name_opt
@@ -440,12 +436,14 @@ let compserver conf daemonize to_stdout to_syslog
     failwith "Cannot start the compilation service without --confserver." ;
   RamenCompiler.init use_external_compiler max_simult_compils smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog (N.path "compserver") ;
-  let topics = [ "sources/*" ] in
+  let topics =
+    [ "sites/*/workers/*/worker" ; (* for get_programs *)
+      "sources/*" ] in
   let open RamenSync in
   let on_set clt k v _uid mtime =
     let get_parent = RamenCompiler.parent_from_confserver clt in
-    let do_compile src_file ext text =
-      let k_info = Key.(Sources (src_file, "info")) in
+    let do_compile src_path tmp_src_file =
+      let k_info = Key.(Sources (src_path, "info")) in
       let open ZMQClient in
       let unlock () =
         !logger.debug "Unlocking %a" Key.print k_info ;
@@ -453,31 +451,26 @@ let compserver conf daemonize to_stdout to_syslog
       send_cmd ~while_
         (LockOrCreateKey (k_info, Default.sync_compile_timeo))
         ~on_ko:unlock ~on_ok:(fun () ->
-          let tmp_src_file =
-            N.path_cat [ C.compserver_tmp_dir conf ;
-                         N.path ((src_file :> string) ^"."^ ext) ] in
           let target_file = Files.change_ext "info" tmp_src_file in
-          !logger.debug "Creating temporary source files %a and %a"
-            N.path_print tmp_src_file
+          !logger.debug "Creating temporary target file %a"
             N.path_print target_file ;
-          Files.write_whole_file tmp_src_file text ;
           (* Replicate the mtimes in the local FS temporary files, for the
            * builder to use the usual mtime comparison to determine
            * obsolescence: *)
           Files.touch tmp_src_file mtime ;
-          (match Client.find clt Key.(Sources (src_file, "info")) with
+          (match Client.find clt Key.(Sources (src_path, "info")) with
           | exception Not_found -> ()
           | { mtime ; _ } ->
               if Files.exists target_file then Files.touch target_file mtime) ;
           (* Program name used to resolve relative names is the location in the
            * source tree: *)
-          let program_name = N.program (Files.remove_ext src_file :> string) in
+          let program_name = N.program (Files.remove_ext src_path :> string) in
           let info =
             match RamenMake.build conf get_parent program_name
                                   tmp_src_file target_file with
             | exception e ->
               !logger.error "Cannot build %a into %a: %s"
-                N.path_print src_file
+                N.path_print src_path
                 N.path_print target_file
                 (Printexc.to_string e) ;
               { md5 = Files.read_whole_file tmp_src_file |> N.md5 ;
@@ -487,20 +480,34 @@ let compserver conf daemonize to_stdout to_syslog
                 N.path_print target_file ;
               RamenMake.read_source_info target_file in
           !logger.info "(pre)Compiled %a into %a"
-            N.path_print src_file Value.SourceInfo.print info ;
+            N.path_print src_path Value.SourceInfo.print info ;
           send_cmd ~while_
             (SetKey (k_info, Value.(SourceInfo info)))
             ~on_ko:unlock ~on_ok:unlock) in
-    match k, v with
-    | Key.(Sources (_, "info")), _ -> ()
-    | Key.(Sources (src_file, ext)), Value.RamenValue T.(VString text) ->
+    match k with
+    | Key.(Sources (_, "info")) -> ()
+    | Key.(Sources (src_path, ext)) ->
         assert (ext <> "info") ;
-        let what = "Compiling "^ (src_file : N.path :> string) in
-        log_and_ignore_exceptions ~what (do_compile src_file ext) text ;
-    | Key.Error _, _  ->
+        let what = "Compiling "^ (src_path : N.path :> string) in
+        let tmp_src_file =
+          N.path_cat [ C.compserver_tmp_dir conf ;
+                       N.path ((src_path :> string) ^"."^ ext) ] in
+        (match v with
+        | Value.RamenValue T.(VString text) ->
+            Files.write_whole_file tmp_src_file text ;
+            log_and_ignore_exceptions ~what (do_compile src_path) tmp_src_file
+        | Value.Alert alert ->
+            let alert = RamenApi.alert_of_configured alert in
+            Files.ppp_to_file tmp_src_file RamenApi.alert_source_ppp_ocaml alert ;
+            log_and_ignore_exceptions ~what (do_compile src_path) tmp_src_file
+        | _ ->
+            !logger.error "Unexpected type for key %a: %a, ignoring"
+              Key.print k
+              Value.print v)
+    | Key.Error _  ->
         (* Errors have been logged already *)
         ()
-    | k, v ->
+    | k ->
         !logger.warning "Irrelevant: %a, %a"
           Key.print k Value.print v in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
@@ -534,14 +541,14 @@ let compile conf lib_path use_external_compiler
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params replace kill_if_disabled report_period program_name_opt
-        src_file on_site bin_file () =
+let run conf params replace report_period program_name_opt
+        on_site src_file () =
   let params = List.enum params |> Hashtbl.of_enum in
   init_logger conf.C.log_level ;
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = conf.C.log_level = Debug in
-  RamenRun.run conf ~params ~debug ~replace ~kill_if_disabled ~report_period
-               ?src_file ~on_site bin_file program_name_opt
+  RamenRun.run conf ~params ~debug ~replace ~report_period
+               ~on_site src_file program_name_opt
 
 (*
  * `ramen kill`
@@ -682,13 +689,7 @@ let gc conf dry_run del_ratio compress_older loop daemonize
     failwith "It makes no sense to --daemonize without --loop." ;
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog (N.path "gc") ;
-  if conf.C.sync_url = "" then
-    if loop <= 0. then
-      RamenGc.cleanup_once_local conf dry_run del_ratio compress_older
-    else
-      RamenGc.cleanup_loop ~while_ conf dry_run del_ratio compress_older loop
-  else
-    RamenGc.cleanup_sync ~while_ conf dry_run del_ratio compress_older loop ;
+  RamenGc.cleanup ~while_ conf dry_run del_ratio compress_older loop ;
   Option.may exit !RamenProcesses.quit
 
 (*
@@ -719,160 +720,8 @@ let sort_col_of_string spec str =
             String.print_quoted oc s)) l |>
         failwith)
 
-let ps_local profile conf short pretty with_header sort_col top pattern all =
-  let must_run_here rce =
-    rce.RC.status = RC.MustRun && RC.match_localsite conf rce.RC.on_site in
-  (* Start by reading the last minute of instrumentation data: *)
-  let stats = RamenPs.read_stats conf in
-  (* Now iter over all workers and display those stats: *)
-  let open TermTable in
-  if short then
-    let head =
-      if profile then
-        [| "program" ; "top-half" ; "CPU" ; "wait in" ; "wait out" ;
-           "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
-           "update_group" ; "commit_incoming" ; "select_others" ;
-           "finalize_others" ; "commit_others" ; "flush_others" |]
-      else
-        [| "program" ; "top-half" ; "parameters" ; "#in" ; "#selected" ;
-           "#out" ; "#groups" ; "CPU" ; "wait in" ; "wait out" ; "heap" ;
-           "max heap" ; "volume in" ; "volume out" |]  in
-    let sort_col = sort_col_of_string head sort_col in
-    let print = print_table ~pretty ~sort_col ~with_header ?top head in
-    (* For --short, we sum everything by program: *)
-    let h = RamenPs.per_program stats in
-    RC.with_rlock conf (fun programs ->
-      Hashtbl.iter (fun (program_name : N.program) (rce, _get_rc) ->
-        let display top_half s =
-          (if profile then
-            [| Some (ValStr (program_name :> string)) ;
-               Some (ValBool top_half) ;
-               Some (ValFlt s.RamenPs.cpu) ;
-               flt_or_na s.wait_in ;
-               flt_or_na s.wait_out ;
-               perf s.profile.tot_per_tuple ;
-               perf s.profile.where_fast ;
-               perf s.profile.find_group ;
-               perf s.profile.where_slow ;
-               perf s.profile.update_group ;
-               perf s.profile.commit_incoming ;
-               perf s.profile.select_others ;
-               perf s.profile.finalize_others ;
-               perf s.profile.commit_others ;
-               perf s.profile.flush_others |]
-          else
-            [| Some (ValStr (program_name :> string)) ;
-               Some (ValBool top_half) ;
-               Some (ValStr (RamenParams.to_string rce.RC.params)) ;
-               int_or_na s.in_count ;
-               int_or_na s.selected_count ;
-               int_or_na s.out_count ;
-               int_or_na s.group_count ;
-               Some (ValFlt s.cpu) ;
-               flt_or_na s.wait_in ;
-               flt_or_na s.wait_out ;
-               Some (ValInt (Uint64.to_int s.ram)) ;
-               Some (ValInt (Uint64.to_int s.max_ram)) ;
-               flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
-               flt_or_na (Option.map Uint64.to_float s.bytes_out) |]) |>
-          print in
-        if (all || must_run_here rce) &&
-           Globs.matches pattern (program_name :> string)
-        then (
-          [ false ; true ] |> List.iter (fun top_half ->
-            match Hashtbl.find h (program_name, top_half) with
-            | exception Not_found ->
-                if not top_half then display top_half RamenPs.no_stats
-            | s -> display top_half s)
-        )
-      ) programs) ;
-    print [||]
-  else
-    (* Otherwise we want to display all we can about individual workers *)
-    let head =
-      if profile then
-        [| "operation" ; "top-half" ; "CPU" ; "wait in" ; "wait out" ;
-           "tot_per_tuple" ; "where_fast" ; "find_group" ; "where_slow" ;
-           "update_group" ; "commit_incoming" ; "select_others" ;
-           "finalize_others" ; "commit_others" ; "flush_others" |]
-      else
-        [| "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
-           "#groups" ; "last out" ; "min event time" ; "max event time" ;
-           "CPU" ; "wait in" ; "wait out" ; "heap" ; "max heap" ;
-           "volume in" ; "volume out" ; "avg out sz" ; "startup time" ;
-           "#parents" ; "#children" ; "signature" |] in
-    let sort_col = sort_col_of_string head sort_col in
-    let print = print_table ~pretty ~sort_col ~with_header ?top head in
-    RC.with_rlock conf (fun programs ->
-      (* First pass to get the children: *)
-      let children_of_func = Hashtbl.create 23 in
-      Hashtbl.iter (fun _prog_name (rce, get_rc) ->
-        if all || must_run_here rce then match get_rc () with
-        | exception _ -> ()
-        | prog ->
-            List.iter (fun func ->
-              List.iter (fun (_, pp, pf) ->
-                (* We could use the pattern to filter out uninteresting
-                 * parents but there is not much to save at this point. *)
-                let k =
-                  F.program_of_parent_prog func.F.program_name pp, pf in
-                Hashtbl.add children_of_func k func
-              ) func.F.parents
-            ) prog.P.funcs
-      ) programs ;
-      Hashtbl.iter (fun ((fq : N.fq), top_half) s ->
-        if Globs.matches pattern (fq :> string) then
-          match RC.find_func_or_fail programs fq with
-          | exception _ -> ()
-          | rce, _prog, func ->
-              if all || must_run_here rce then (
-                (if profile then
-                  [| Some (ValStr (fq :> string)) ;
-                     Some (ValBool top_half) ;
-                     Some (ValFlt s.RamenPs.cpu) ;
-                     flt_or_na s.wait_in ;
-                     flt_or_na s.wait_out ;
-                     perf s.profile.tot_per_tuple ;
-                     perf s.profile.where_fast ;
-                     perf s.profile.find_group ;
-                     perf s.profile.where_slow ;
-                     perf s.profile.update_group ;
-                     perf s.profile.commit_incoming ;
-                     perf s.profile.select_others ;
-                     perf s.profile.finalize_others ;
-                     perf s.profile.commit_others ;
-                     perf s.profile.flush_others |]
-                 else
-                  let num_children = Hashtbl.find_all children_of_func
-                                       (func.F.program_name, func.F.name) |>
-                                       List.length in
-                  [| Some (ValStr (fq :> string)) ;
-                     Some (ValBool top_half) ;
-                     int_or_na s.in_count ;
-                     int_or_na s.selected_count ;
-                     int_or_na s.out_count ;
-                     int_or_na s.group_count ;
-                     date_or_na s.last_out ;
-                     date_or_na s.min_etime ;
-                     date_or_na s.max_etime ;
-                     Some (ValFlt s.cpu) ;
-                     flt_or_na s.wait_in ;
-                     flt_or_na s.wait_out ;
-                     Some (ValInt (Uint64.to_int s.ram)) ;
-                     Some (ValInt (Uint64.to_int s.max_ram)) ;
-                     flt_or_na (Option.map Uint64.to_float s.bytes_in) ;
-                     flt_or_na (Option.map Uint64.to_float s.bytes_out) ;
-                     flt_or_na (Option.map Uint64.to_float s.avg_full_bytes) ;
-                     Some (ValDate s.startup_time) ;
-                     Some (ValInt (List.length func.F.parents)) ;
-                     Some (ValInt num_children) ;
-                     Some (ValStr func.signature) |]) |>
-                print)
-      ) stats) ;
-      print [||]
-
 (* TODO: add an option to select the site *)
-let ps_sync conf _short pretty with_header sort_col top _pattern =
+let ps_sync conf pretty with_header sort_col top pattern =
   let head =
     [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#out" ;
        "#groups" ; "last out" ; "min event time" ; "max event time" ;
@@ -893,7 +742,8 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
     Client.iter clt (fun k v ->
       match k, v.value with
       | Key.PerSite (site, PerWorker (fq, Worker)),
-        Value.Worker worker ->
+        Value.Worker worker
+        when Globs.matches pattern ((site :> string) ^":"^ (fq :> string)) ->
           let get_k k what f =
             let k = Key.PerSite (site, PerWorker (fq, k)) in
             match (Client.find clt k).value with
@@ -950,14 +800,11 @@ let ps_sync conf _short pretty with_header sort_col top _pattern =
       | _ -> ())) ;
   print_tbl [||]
 
-let ps_ profile conf short pretty with_header sort_col top pattern all () =
+let ps_ profile conf pretty with_header sort_col top pattern () =
   if profile && conf.C.sync_url <> "" then
     failwith "The profile command is incompatible with --confserver." ;
   init_logger conf.C.log_level ;
-  if conf.C.sync_url <> "" then
-    ps_sync conf short pretty with_header sort_col top pattern
-  else
-    ps_local profile conf short pretty with_header sort_col top pattern all
+  ps_sync conf pretty with_header sort_col top pattern
 
 let ps = ps_ false
 let profile = ps_ true
@@ -994,7 +841,7 @@ let table_formatter pretty raw null units =
  * it could be the code of a function which output we want to display.
  * We find out by picking the first that works. In case both approach
  * fails we have to display the two error messages though. *)
-let parse_func_name_of_code conf what func_name_or_code =
+let parse_func_name_of_code _conf _what func_name_or_code =
   let parse_as_names () =
     match func_name_or_code with
     | func_name :: field_names ->
@@ -1006,20 +853,14 @@ let parse_func_name_of_code conf what func_name_or_code =
            String.ends_with func_name ("#"^ SpecialFunctions.notifs) then
           ret
         else
-          (* Check this function exists: *)
-          if conf.C.sync_url = "" then (
-            RC.with_rlock conf (fun programs ->
-              RC.find_func programs fq |> ignore) ;
-            ret
-          ) else
-            (* FIXME: Assume the function exists.* In the future, have
-             * the connection to confserver already setup. *)
-            ret
+          (* TODO: Check this function exists *)
+          (* FIXME: Assume the function exists. In the future, have
+           * the connection to confserver already setup. *)
+          ret
     | _ -> assert false (* As the command line parser prevent this *)
   and parse_as_code () =
-    if conf.C.sync_url <> "" then
-      failwith "TODO: confserver support for immediate code" ;
-    let program_name = C.make_transient_program () in
+    failwith "TODO: confserver support for immediate code"
+    (* let program_name = C.make_transient_program () in
     let func_name = N.func "f" in
     let programs = RC.with_rlock conf identity in (* best effort *)
     let get_parent = RamenCompiler.parent_from_programs programs in
@@ -1052,7 +893,7 @@ let parse_func_name_of_code conf what func_name_or_code =
         RamenRun.run conf ~report_period:0. ~src_file ~debug
                      bin_file (Some program_name)) ;
     let fq = N.fq_of_program program_name func_name in
-    fq, [], [ program_name ]
+    fq, [], [ program_name ]*)
   in
   try
     parse_as_names ()
@@ -1075,120 +916,15 @@ let head_of_types ~with_units head_typ =
        else "")
   ) head_typ
 
-let tail_local
-      conf fq field_names with_header with_units sep null raw
-      last next min_seq max_seq continuous where since until
-      with_event_time duration pretty flush =
-  if (last <> None || next <> None || continuous) &&
-     (min_seq <> None || max_seq <> None) then
-    failwith "Options --{last,next,continuous} and \
-              --{min,max}-seq are incompatible." ;
-  if continuous && next <> None then
-    failwith "Option --next and --continuous are incompatible." ;
-  if with_units && with_header = 0 then
-    failwith "Option --with-units makes no sense without --with-header." ;
-  (* Do something useful by default: display the 10 last lines *)
-  let last =
-    if last = None && next = None && min_seq = None && max_seq = None &&
-       since = None && until = None
-    then Some 10 else last in
-  let flush = flush || continuous in
-  let next = if continuous then Some max_int else next in
-  let programs = RC.with_rlock conf identity in
-  let bname, is_temp_export, filter, ser, params, event_time =
-    RamenExport.read_output conf ~duration fq where programs
-  in
-  (* Find out which seqnums we want to scan: *)
-  let mi, ma = match last, next with
-    | None, None ->
-        min_seq,
-        Option.map succ max_seq (* max_seqnum is in *)
-    | Some l, None ->
-        let _mi, ma = RingBufLib.seq_range bname in
-        Some (cap_add ma ~-l),
-        Some ma
-    | None, Some n ->
-        let _mi, ma = RingBufLib.seq_range bname in
-        Some ma, Some (cap_add ma n)
-    | Some l, Some n ->
-        let _mi, ma = RingBufLib.seq_range bname in
-        Some (cap_add ma ~-l), Some (cap_add ma n)
-  in
-  !logger.debug "Will display tuples from %a (incl) to %a (excl)"
-    (Option.print Int.print) mi
-    (Option.print Int.print) ma ;
-  let field_names = RamenExport.check_field_names ser field_names in
-  let head_idx, head_typ =
-    RamenExport.header_of_type ~with_event_time field_names ser in
-  let open TermTable in
-  let head_typ = Array.of_list head_typ in
-  let head = head_of_types ~with_units head_typ in
-  let print = print_table ~sep ~pretty ~with_header ~flush head in
-  (* Pick a "printer" for each column according to the field type: *)
-  let formatter = table_formatter pretty raw null
-  in
-  if is_temp_export then (
-    let rec reset_export_timeout () =
-      let _mre, _prog, func =
-        RC.with_rlock conf (fun programs ->
-          RC.find_func_or_fail programs fq) in
-      let _ = RamenProcesses.start_export conf ~duration func in
-      (* Start by sleeping as we've just set the temp export above: *)
-      Unix.sleepf (max 1. (duration -. 1.)) ;
-      reset_export_timeout () in
-    Thread.create (
-      restart_on_failure "reset_export_timeout"
-        reset_export_timeout) () |> ignore) ;
-  let open RamenSerialization in
-  let event_time_of_tuple = match event_time with
-    | None ->
-        if with_event_time then
-          failwith "Function has no event time information"
-        else (fun _ -> 0., 0.)
-    | Some et ->
-        event_time_of_tuple ser params et
-  in
-  let unserialize = RamenSerialization.read_array_of_values ser in
-  (* Then, scan all present ringbufs in the requested range (either
-   * the last N tuples or, TBD, since ts1 [until ts2]) and display
-   * them *)
-  fold_seq_range ~wait_for_more:true bname ?mi ?ma () (fun () _m tx ->
-    match RamenSerialization.read_tuple unserialize tx with
-    | RingBufLib.DataTuple chan, Some tuple
-      when chan = RamenChannel.live && filter tuple ->
-        let t1, t2 = event_time_of_tuple tuple in
-        if Option.map_default (fun since -> t2 > since) true since &&
-           Option.map_default (fun until -> t1 <= until) true until
-        then (
-          let cols =
-            Array.mapi (fun i idx ->
-              match idx with
-              | -2 -> Some (ValDate t2)
-              | -1 -> Some (ValDate t1)
-              | idx -> formatter head_typ.(i).units tuple.(idx)
-            ) head_idx in
-          print cols
-        ) else (
-          !logger.debug "evtime %f..%f filtered out" t1 t2
-        )
-    | _ -> ()) ;
-  print [||]
-
-(* Sync version of tail cannot use seqnums nor since/until; use replay for
- * that, which is more generic and does not depends on local files. *)
 (* TODO: add with_site *)
 (* FIXME: last/next semantic is unclear. For now we just print last+next
  * tuples. Use the max seqnum found just after sync as the current seqnum?
- * Also, if workers used tuple seqnum as the sequence id to identify tuples,
- * we would need no skipped counter and could use min/max_seq.
  * FIXME: regarding tail rate limit: To make tail more useful make the rate
  * limit progressive? *)
 let tail_sync
       conf (fq : N.fq) field_names with_header with_units sep null raw
-      last next min_seq max_seq continuous where since until
+      last next continuous where since until
       with_event_time _duration pretty flush =
-  if min_seq <> None || max_seq <> None then
-    failwith "Options --{min,max}-seq are incompatible with --confserver." ;
   if since <> None || until <> None then
     !logger.warning
       "With --confserver, options --since/--until filter but do not select." ;
@@ -1198,8 +934,7 @@ let tail_sync
     failwith "Option --with-units makes no sense without --with-header." ;
   (* Do something useful by default: display the 10 last lines *)
   let last =
-    if last = None && next = None && min_seq = None && max_seq = None &&
-       since = None && until = None
+    if last = None && next = None && since = None && until = None
     then 10 else last |? 0 in
   let flush = flush || continuous in
   let next = if continuous then max_int else next |? 0 in
@@ -1320,37 +1055,47 @@ let tail_sync
                     | idx -> formatter head_typ.(i).units tuple.(idx)
                   ) head_idx in
                 print cols ;
-                decr counter
+                decr counter ;
+                if !counter <= 0 then raise Exit
               ) else
                 !logger.debug "evtime %f..%f filtered out" t1 t2
           | _ -> ())
       | _ -> () in
-    (* Iter over tuples received at sync: *)
-    Client.iter clt (fun k hv -> on_key count_last k hv.value) ;
-    (* Subscribe to all those tails: *)
-    !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
-    let subscriber =
-      conf.C.username ^"-tail-"^ string_of_int (Unix.getpid ()) in
-    List.iter (fun (site, _w) ->
-      let k = Key.Tails (site, fq, Subscriber subscriber) in
-      let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
-      ZMQClient.send_cmd ~while_ cmd
-    ) workers ;
-    (* Loop *)
-    !logger.debug "Waiting for tuples..." ;
-    let while_' () =
-      while_ () && (!count_last > 0 || !count_next > 0) in
-    clt.Client.on_new <-
-      (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
-    ZMQClient.process_until ~while_:while_' clt ;
-    print [||] ;
-    (* Unsubscribe *)
-    !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
-    List.iter (fun (site, _w) ->
-      let k = Key.Tails (site, fq, Subscriber subscriber) in
-      let cmd = Client.CltMsg.DelKey k in
-      ZMQClient.send_cmd ~while_ cmd
-    ) workers)
+    try
+      (* Iter over tuples received at sync: *)
+      (* FIXME: display only the last of those, ordered by seqnum! *)
+      (try
+        !logger.debug "Tailing past tuples..." ;
+        Client.iter clt (fun k hv -> on_key count_last k hv.value)
+      with Exit -> ()) ;
+      if !count_next > 0 then (
+        (* Subscribe to all those tails: *)
+        !logger.debug "Subscribing to %d workers tail" (List.length workers) ;
+        let subscriber =
+          conf.C.username ^"-tail-"^ string_of_int (Unix.getpid ()) in
+        List.iter (fun (site, _w) ->
+          let k = Key.Tails (site, fq, Subscriber subscriber) in
+          let cmd = Client.CltMsg.NewKey (k, Value.dummy, 0.) in
+          ZMQClient.send_cmd ~while_ cmd
+        ) workers ;
+        finally
+          (fun () -> (* Unsubscribe *)
+            !logger.debug "Unsubscribing from %d tails..." (List.length workers) ;
+            List.iter (fun (site, _w) ->
+              let k = Key.Tails (site, fq, Subscriber subscriber) in
+              let cmd = Client.CltMsg.DelKey k in
+              ZMQClient.send_cmd ~while_ cmd
+            ) workers)
+          (fun () ->
+            (* Loop *)
+            !logger.debug "Waiting for tuples..." ;
+            clt.Client.on_new <-
+              (fun _ k v _ _ _ _ _ _ -> on_key count_next k v) ;
+            ZMQClient.process_until ~while_ clt
+          ) ()
+      )
+    with Exit ->
+      print [||])
 
 let purge_transient conf to_purge () =
   if to_purge <> [] then
@@ -1362,7 +1107,7 @@ let purge_transient conf to_purge () =
     !logger.debug "Killed %d programs" nb_kills
 
 let tail conf func_name_or_code with_header with_units sep null raw
-         last next min_seq max_seq continuous where since until
+         last next continuous where since until
          with_event_time duration pretty flush
          (* We might compile the command line: *)
          use_external_compiler max_simult_compils smt_solver
@@ -1372,9 +1117,9 @@ let tail conf func_name_or_code with_header with_units sep null raw
   let fq, field_names, to_purge =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   finally (purge_transient conf to_purge)
-    ((if conf.C.sync_url = "" then  tail_local else tail_sync)
+    (tail_sync
         conf fq field_names with_header with_units sep null raw
-        last next min_seq max_seq continuous where since until
+        last next continuous where since until
         with_event_time duration pretty) flush
 
 (*
@@ -1410,14 +1155,10 @@ let replay_ conf fq field_names with_header with_units sep null raw
         Array.mapi (fun i -> formatter head.(i).units) tuple in
       print vals),
     (fun () -> print [||]) in
-  if conf.C.sync_url = "" then
-    RamenExport.replay_local conf ~while_ fq field_names where since until
-                             ~with_event_time callback
-  else
-    let topics = RamenExport.replay_topics in
-    start_sync conf ~topics ~while_ ~recvtimeo:10.
-      (RamenExport.replay_sync conf ~while_ fq field_names where since until
-                               ~with_event_time callback)
+  let topics = RamenExport.replay_topics in
+  start_sync conf ~topics ~while_ ~recvtimeo:10.
+    (RamenExport.replay conf ~while_ fq field_names where since until
+                        ~with_event_time callback)
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush
@@ -1455,14 +1196,10 @@ let timeseries_ conf fq data_fields
   let num_points, since, until =
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
-    if conf.C.sync_url = "" then
-      RamenTimeseries.get_local conf num_points since until where factors
-          ~consolidation ~bucket_time fq data_fields
-    else
-      let topics = RamenExport.replay_topics in
-      start_sync conf ~topics ~while_ ~recvtimeo:10.
-        (RamenTimeseries.get_sync conf num_points since until where factors
-          ~consolidation ~bucket_time fq data_fields ~while_)
+    let topics = RamenExport.replay_topics in
+    start_sync conf ~topics ~while_ ~recvtimeo:10.
+      (RamenTimeseries.get conf num_points since until where factors
+        ~consolidation ~bucket_time fq data_fields ~while_)
   in
   (* Display results: *)
   let single_data_field = List.length data_fields = 1 in
@@ -1570,14 +1307,7 @@ let archivist conf loop daemonize stats allocs reconf
     failwith "The --stats command makes no sens with confserver." ;
   let loop = loop |? Default.archivist_loop in
   start_daemon conf daemonize to_stdout to_syslog (N.path "archivist") ;
-  if conf.C.sync_url = "" then (
-    if loop <= 0. then
-      RamenArchivist.run_once conf ~while_ stats allocs reconf
-    else
-      RamenArchivist.run_loop conf ~while_ loop stats allocs reconf
-  ) else (
-    RamenArchivist.run_sync conf ~while_ loop allocs reconf
-  ) ;
+  RamenArchivist.run conf ~while_ loop allocs reconf ;
   Option.may exit !RamenProcesses.quit
 
 (*

@@ -3,12 +3,7 @@ Feature: test ramen timeseries
   Test `ramen timeseries` behavior according to its many options.
 
   Background:
-    Given ramen must be in the path
-    And the environment variable RAMEN_CONFSERVER is not defined
-    And the environment variable RAMEN_LIBS is set
-    And the environment variable RAMEN_PATH is not defined
-    # Speed up reports so archivist do not have to wait for too long:
-    And the environment variable RAMEN_REPORT_PERIOD is set to 1
+    Given the whole gang is started
     # Create a simple sequence generator
     And a file test.ramen with content
       """
@@ -21,10 +16,9 @@ Feature: test ramen timeseries
         every 10 milliseconds;
       """
     And test.ramen is compiled
-    And ramen supervisor is started
     And program test is running
     And I wait 5 second
-    And I run ramen with arguments archivist --stats
+    And I run ramen with arguments gc
 
   Scenario: I can obtain some values using timeseries.
     When I run ramen with arguments timeseries -n 5 --since=1000 --until=1005 test/ts v
@@ -62,7 +56,7 @@ Feature: test ramen timeseries
     And test2.ramen is compiled
     And program test2 is running
     And I wait 5 second
-    And I run ramen with arguments archivist --stats
+    And I run ramen with arguments gc
     And I run ramen with arguments timeseries -n 5 --since 1000 --until=1005 test2/f v
     Then ramen must print 5 lines on stdout
     And ramen must mention "42"

@@ -195,23 +195,28 @@ struct
           Key.print k |>
         failwith
 
+  let check_same_value prev_v v u k =
+    if Value.equal prev_v v then
+      !logger.warning "Client %a is writting the same value to %a"
+        User.print u
+        Key.print k
+
   let update t u k v =
     match H.find t.h k with
     | exception Not_found ->
         no_such_key k
     | prev ->
-        if not (Value.equal prev.v v) then (
-          !logger.debug "Setting config key %a to value %a"
-            Key.print k
-            Value.print v ;
-          check_can_write t k prev u ;
-          prev.v <- v ;
-          prev.set_by <- u ;
-          prev.mtime <- Unix.gettimeofday () ;
-          let uid = IO.to_string User.print_id (User.id u) in
-          let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
-          notify t k (User.has_any_role prev.can_read) msg
-        )
+        check_same_value prev.v v u k ;
+        !logger.debug "Setting config key %a to value %a"
+          Key.print k
+          Value.print v ;
+        check_can_write t k prev u ;
+        prev.v <- v ;
+        prev.set_by <- u ;
+        prev.mtime <- Unix.gettimeofday () ;
+        let uid = IO.to_string User.print_id (User.id u) in
+        let msg _ = SrvMsg.SetKey { k ; v ; uid ; mtime = prev.mtime } in
+        notify t k (User.has_any_role prev.can_read) msg
 
   let set t u k v = (* TODO: H.find and pass prev item to update *)
     if H.mem t.h k then
@@ -296,15 +301,16 @@ struct
     | exception Not_found ->
         create srv User.internal k v ~lock_timeo:0. ~can_read ~can_write ~can_del
     | hv ->
-        if not (Value.equal hv.v v) then (
+        (* create_or_update is only for internal use, no client will wait
+         * an answer; So it's OK to skip NOPs: *)
+        if not (Value.equal hv.v v) then
           set srv User.internal k v
-        )
 
   let subscribe_user t socket u sel =
     (* Add this selection to the known selectors, and add this selector
      * ID for this user to the subscriptions: *)
     let id = Selector.add t.user_selectors sel in
-    !logger.info "User %a has selection %a for %a"
+    !logger.debug "User %a has selection %a for %a"
       User.print u
       Selector.print_id id
       Selector.print sel ;
@@ -319,7 +325,7 @@ struct
         expiry
 
   let initial_sync t socket u sel =
-    !logger.info "Initial synchronisation for user %a" User.print u ;
+    !logger.info "Initial synchronisation for user %a: Starting!" User.print u ;
     let s = Selector.make_set () in
     let _ = Selector.add s sel in
     H.iter (fun k hv ->
@@ -336,7 +342,7 @@ struct
         t.send_msg (Enum.singleton (socket, msg))
       )
     ) t.h ;
-    !logger.info "...done"
+    !logger.info "Initial synchronisation for user %a: Complete!" User.print u
 
   let set_user_err t u socket i str =
     let k = Key.user_errs u socket
