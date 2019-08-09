@@ -339,6 +339,8 @@ let with_locked_matching
         unlock_all ()
     | key :: rest ->
         let unlock_all' () =
+          (* Keep going if unlock fails. Most of the time it's just because
+           * that key has been deleted. TODO: UnlockIfExit command. *)
           send_cmd ?while_ ~on_ok:unlock_all ~on_ko:unlock_all
             (CltMsg.UnlockKey key) in
         let on_ok () =
