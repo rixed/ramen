@@ -29,6 +29,7 @@ protected slots:
   void openSearch();
   void changeSearch(QString const &);
   void closeSearch();
+  void wantEdit(QModelIndex const &);
 };
 
 #endif

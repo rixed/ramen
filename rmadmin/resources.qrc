@@ -10,5 +10,7 @@
     <file>pix/info.svg</file>
     <file>pix/search.svg</file>
     <file>pix/close.svg</file>
+    <file>pix/delete.svg</file>
+    <file>pix/table.svg</file>
   </qresource>
 </RCC>

@@ -63,9 +63,16 @@ QVariant FunctionItem::data(int column, int role) const
   if (role != Qt::DisplayRole &&
       role != GraphModel::SortRole) return QVariant();
 
-  switch (column) {
+  switch ((GraphModel::Columns)column) {
     case GraphModel::Name:
       return name;
+
+    case GraphModel::EditButton:
+    case GraphModel::TableButton:
+      if (role == GraphModel::SortRole)
+        return name;
+      else
+        return QVariant();
 
     case GraphModel::WorkerTopHalf:
       return QString(

@@ -1,6 +1,7 @@
 #include <QMarginsF>
 #include "FunctionItem.h"
 #include "ProgramItem.h"
+#include "Resources.h"
 #include "GraphModel.h"
 #include "GraphView.h"
 
@@ -58,4 +59,16 @@ bool ProgramItem::isTopHalf() const
     if (! function->isTopHalf()) return false;
   }
   return true;
+}
+
+QVariant ProgramItem::data(int column, int role) const
+{
+  if (role == Qt::DisplayRole && !isTopHalf()) {
+    if (column == GraphModel::EditButton)
+      return Resources::get()->infoPixmap;
+    else if (column == GraphModel::TableButton)
+      return Resources::get()->tablePixmap;
+  }
+
+  return GraphItem::data(column, role);
 }

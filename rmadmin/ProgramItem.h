@@ -18,6 +18,7 @@ public:
   ProgramItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
   ~ProgramItem();
 
+  QVariant data(int column, int role) const;
   void reorder(GraphModel const *);
   QRectF operationRect() const;
   bool isTopHalf() const;

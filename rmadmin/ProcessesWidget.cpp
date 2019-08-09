@@ -20,6 +20,7 @@
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "SiteItem.h"
+#include "ButtonDelegate.h"
 #include "ProcessesWidget.h"
 
 /*
@@ -53,7 +54,6 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
    * function names. */
   GraphItem const *parentPtr =
     static_cast<GraphItem const *>(sourceParent.internalPointer());
-  std::cout << "FILTER parent=" << parentPtr->name.toStdString() << std::endl;
 
   SiteItem const *parentSite =
     dynamic_cast<SiteItem const *>(parentPtr);
@@ -116,10 +116,33 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   treeView->expandAll();
   treeView->header()->setStretchLastSection(false);
 
+  /* The buttons just after the names: */
+  treeView->setMouseTracking(true);  // for the buttons to follow the mouse
+  ButtonDelegate *editButton = new ButtonDelegate(3, this);
+  treeView->setItemDelegateForColumn(GraphModel::EditButton, editButton);
+  connect(editButton, &ButtonDelegate::clicked,
+          this, &ProcessesWidget::wantEdit);
+  ButtonDelegate *tableButton = new ButtonDelegate(3, this);
+  treeView->setItemDelegateForColumn(GraphModel::TableButton, tableButton);
+
   /* Resize the columns to the _header_ content: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
-    treeView->header()->setSectionResizeMode(c,
-      c == 0 ? QHeaderView::Stretch : QHeaderView::ResizeToContents);
+    if (c == 0) {
+      treeView->header()->setSectionResizeMode(c, QHeaderView::Stretch);
+    } else if (c < GraphModel::EndButtons) {
+      treeView->header()->setSectionResizeMode(c, QHeaderView::Fixed);
+      treeView->header()->setDefaultSectionSize(15);
+      // Redirect sorting attempt to first column:
+      connect(treeView->header(), &QHeaderView::sortIndicatorChanged,
+              this, [this](int c, Qt::SortOrder order) {
+        if (c >= GraphModel::FirstButton &&
+            c < GraphModel::EndButtons) {
+          treeView->header()->setSortIndicator(0, order);
+        }
+      });
+    } else {
+      treeView->header()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+    }
   }
 
   /* Now also resize the column to the data content: */
@@ -162,6 +185,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
           this, &ProcessesWidget::closeSearch);
 
   /* The menu bar */
+  //QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar, true);
   QMenuBar *menuBar = new QMenuBar(this);
   QMenu *viewMenu = menuBar->addMenu(
     QCoreApplication::translate("QMenuBar", "&View"));
@@ -179,7 +203,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   viewMenu->addSeparator();
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
-    if (0 == c) continue; // Name is mandatory
+    if (c < GraphModel::EndButtons) continue; // Name and buttons are mandatory
 
     QString const name = GraphModel::columnName((GraphModel::Columns)c);
     // Column names have already been translated
@@ -194,6 +218,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
       treeView->setColumnHidden(c, true);
     }
   }
+  //QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar, false);
 
   QVBoxLayout *mainLayout = new QVBoxLayout;
   mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -233,4 +258,39 @@ void ProcessesWidget::closeSearch()
 {
   searchFrame->hide();
   searchBox->clear();
+}
+
+void ProcessesWidget::wantEdit(QModelIndex const &proxyIndex)
+{
+  // Retrieve the program:
+  QModelIndex const index = proxyModel->mapToSource(proxyIndex);
+  GraphItem const *parentPtr =
+    static_cast<GraphItem const *>(index.internalPointer());
+
+/*  SiteItem const *parentSite =
+    dynamic_cast<SiteItem const *>(parentPtr);
+  if (! parentSite) {
+    std::cout << "Editing signalled for a non-ProgramItem!?" << std::endl;
+    return;
+  }
+
+  if (index.row() >= (int)parentSite->programs.size()) {
+    std::cout << "wantEdit an non-existent program!?" << std::endl;
+    return;
+  }
+  ProgramItem const *program = parentSite->programs[index.row()];
+*/
+
+  std::cout << "WANTEDIT row=" << index.row() << std::endl;
+
+  ProgramItem const *program =
+    dynamic_cast<ProgramItem const *>(parentPtr);
+
+  if (! program) {
+    std::cout << "Editing signalled for a non-ProgramItem!?" << std::endl;
+    return;
+  }
+
+  std::cout << "TODO: open the RC editor preselcting the entry for "
+            << program->name.toStdString() << std::endl;
 }
