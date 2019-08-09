@@ -53,8 +53,10 @@ SourcesView::SourcesView(SourcesModel *sourceModel_, QWidget *parent) :
   sourcesList->setMouseTracking(true);  // for the buttons to follow the mouse
   sourcesList->header()->setStretchLastSection(false);
   sourcesList->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-  sourcesList->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-  sourcesList->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  for (int c = 1; c <= 2; c ++) {
+    sourcesList->header()->setSectionResizeMode(c, QHeaderView::Fixed);
+    sourcesList->header()->setDefaultSectionSize(30);
+  }
   /* Note: delegates are not owned by the QTreeView, so let's make this the
    * owner: */
   ButtonDelegate *detailButton = new ButtonDelegate(3, this);
