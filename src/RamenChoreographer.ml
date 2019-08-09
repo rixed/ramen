@@ -242,12 +242,12 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
 
 let start conf ~while_ =
   let topics =
-    [ (* Read target config from this key: *)
-      "target_config" ;
-      (* Write the function graph into these keys: *)
+    [ (* Write the function graph into these keys: *)
       "sites/*/workers/*/worker" ;
       (* Get source info from these: *)
-      "sources/*/info" ] in
+      "sources/*/info" ;
+      (* Lastly, read target config from this key: *)
+      "target_config" ] in
   (* The keys set by the choreographer (and only her): *)
   let is_my_key = function
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
