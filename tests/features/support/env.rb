@@ -57,6 +57,8 @@ Before do |scenario|
   ENV['RAMEN_INITIAL_EXPORT'] = '300'
   # No worker should be allowed to tell what he has seen:
   ENV['RAMEN_KILL_AT_EXIT'] = '1'
+  # Most tools authenticate to confserver as $USER:
+  ENV['USER'] = 'TESTER'
 
   # If we do this globally then cucumber fails to find the features, so we
   # cheat by doing this in this hook:
