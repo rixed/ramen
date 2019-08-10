@@ -23,6 +23,8 @@ extern "C" {
 #include "SourceInfoViewer.h"
 #include "KLabel.h"
 
+static bool verbose = true;
+
 namespace conf {
 
 static QString const stringOfValueType(ValueType valueType)
@@ -315,6 +317,8 @@ Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size) :
   Value(TupleType), skipped(skipped_), num_words(size / 4)
 {
   assert(0 == (size & 3));
+  if (verbose)
+    std::cout << "New tuple of " << num_words << " words" << std::endl;
   if (bytes_) {
     bytes = new uint32_t[num_words];
     memcpy((void *)bytes, (void *)bytes_, size);
@@ -402,8 +406,9 @@ SourceInfo::SourceInfo(value v_)
           value func_ = Field(cons_, 0);  // the function_info
           infos.emplace_back(func_);
         }
-        std::cout << "info is a program with " << params.size() << " params"
-                  << " and " << infos.size() << " functions" << std::endl;
+        if (verbose)
+          std::cout << "info is a program with " << params.size() << " params"
+                    << " and " << infos.size() << " functions" << std::endl;
       }
       break;
     case 1: // FailedSourceInfo
@@ -412,7 +417,9 @@ SourceInfo::SourceInfo(value v_)
         assert(1 == Wosize_val(v_)); // only err_msg
         assert(Tag_val(Field(v_, 0)) == String_tag);
         errMsg = QString(String_val(Field(v_, 0)));
-        std::cout << "info is compil failure: '" << errMsg.toStdString() << "'" << std::endl;
+        if (verbose)
+          std::cout << "info is compil failure: '" << errMsg.toStdString()
+                    << "'" << std::endl;
       }
       break;
     default:

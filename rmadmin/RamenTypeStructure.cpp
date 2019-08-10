@@ -460,6 +460,8 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
     for (auto &f : fields) {
       if (f.second->nullable) w++;
     }
+    if (verbose)
+      std::cout << "top-level nullmask has " << w << " bits" << std::endl;
     return roundUpBytes(w);
   } else {
     return roundUpBytes(fields.size());
@@ -468,6 +470,9 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
 
 RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bool topLevel) const
 {
+  if (verbose)
+    std::cout << "Start to unserialize a record"
+              << (topLevel ? " (top-level)":"") << std::endl;
   unsigned char *nullmask = (unsigned char *)start;
   start += roundUpWords(nullmaskWidth(topLevel));
   if (start > max) {
@@ -483,13 +488,12 @@ RamenValue *TRecord::unserialize(uint32_t const *&start, uint32_t const *max, bo
     size_t const fieldIdx = serOrder[i];
     QString const &fieldName = fields[ fieldIdx ].first;
     std::shared_ptr<RamenType const> subType = fields[ fieldIdx ].second;
-    if (verbose) {
+    if (verbose)
       std::cout << "Next field is " << fieldName.toStdString() << ", "
                 << (subType->nullable ?
                      (bitSet(nullmask, null_i) ?
                        "not null" : "null") :
                      "not nullable") << std::endl;
-    }
     if (subType->nullable) {
       rec->set(
         fieldIdx, fieldName,
