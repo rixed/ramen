@@ -27,16 +27,18 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     O.parents_of_operation func.FS.operation |>
     List.fold_left (fun parents (psite, rel_pprog, pfunc) ->
       let pprog = F.program_of_parent_prog pname rel_pprog in
+      let parent_not_found pprog =
+        !logger.warning "Cannot find parent %a of %a"
+          N.program_print pprog
+          N.func_print pfunc ;
+        parents in
       match List.assoc pprog rc_entries with
       | exception Not_found ->
-          !logger.warning "Cannot find parent %a of %a"
-            N.program_print pprog
-            N.func_print pfunc ;
-          parents
-      | rce ->
+          parent_not_found pprog
+      | rce when rce.Value.TargetConfig.enabled ->
           (* Where are the parents running? *)
           let where_running =
-            let glob = Globs.compile rce.Value.TargetConfig.on_site in
+            let glob = Globs.compile rce.on_site in
             sites_matching glob sites in
           (* Restricted to where [func] selects from: *)
           let psites =
@@ -55,6 +57,8 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
               site = psite ; program = pprog ; func = pfunc} in
             worker_ref :: parents
           ) psites parents
+      | _ ->
+          parent_not_found pprog
     ) [] in
   let force_used _p _f =
     (* TODO: a set of keys to indicate that a given function is (temporarily)
@@ -64,7 +68,9 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let all_used = ref Set.empty in
   let all_parents = ref Map.empty in
   let all_top_halves = ref Map.empty in
-  List.iter (fun (pname, rce) ->
+  List.enum rc_entries //
+  (fun (_, rce) -> rce.enabled) |>
+  Enum.iter (fun (pname, rce) ->
     if rce.Value.TargetConfig.on_site = "" then
       !logger.warning "An RC entry is configured to run on no site!" ;
     let where_running =
@@ -112,7 +118,7 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
           N.program_print pname
     | v ->
         invalid_sync_type k_info v "a SourceInfo"
-  ) rc_entries ;
+  ) ;
   (* Propagate usage to parents: *)
   let rec make_used used f =
     if Set.mem f used then used else
