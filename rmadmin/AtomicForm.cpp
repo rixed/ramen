@@ -110,6 +110,8 @@ void AtomicForm::addWidget(AtomicWidget *aw, bool deletable)
   // If key is already set, start from it:
   if (aw->key != conf::Key::null)
     changeKey(conf::Key::null, aw->key);
+
+  setEnabled(locked.size() >= widgets.size());
 }
 
 void AtomicForm::changeKey(conf::Key const &oldKey, conf::Key const &newKey)
