@@ -18,6 +18,12 @@ static size_t roundUpWords(size_t sz)
   return (sz + 3) >> 2;
 }
 
+// Returns the number of bytes required to store that many bits:
+static size_t roundUpBytes(size_t bits)
+{
+  return (bits + 7) >> 3;
+}
+
 // TODO: an actual object with an end to check against
 static bool bitSet(unsigned char const *nullmask, unsigned null_i)
 {
@@ -454,9 +460,9 @@ size_t TRecord::nullmaskWidth(bool topLevel) const
     for (auto &f : fields) {
       if (f.second->nullable) w++;
     }
-    return w;
+    return roundUpBytes(w);
   } else {
-    return fields.size();
+    return roundUpBytes(fields.size());
   }
 }
 
