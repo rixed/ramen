@@ -31,7 +31,7 @@
 
 class MyProxy : public QSortFilterProxyModel
 {
-  bool viewTH;
+  bool includeTopHalves, includeStopped;
 
 public:
   MyProxy(QObject * = nullptr);
@@ -41,6 +41,7 @@ protected:
 
 public slots:
   void viewTopHalves(bool checked);
+  void viewStopped(bool checked);
 };
 
 MyProxy::MyProxy(QObject *parent) : QSortFilterProxyModel(parent)
@@ -61,7 +62,8 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
     /* If that program is running top-halves then also filter it: */
     assert((size_t)sourceRow < parentSite->programs.size());
     ProgramItem const *program = parentSite->programs[sourceRow];
-    if (!viewTH && program->isTopHalf()) return false;
+    if (! includeTopHalves && program->isTopHalf()) return false;
+    if (! includeStopped && ! program->isWorking()) return false;
     return true;
   }
 
@@ -78,7 +80,8 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
   FunctionItem const *function = parentProgram->functions[sourceRow];
 
   // Filter out the top-halves, optionally:
-  if (!viewTH && function->isTopHalf()) return false;
+  if (! includeTopHalves && function->isTopHalf()) return false;
+  if (! includeStopped && ! function->isWorking()) return false;
 
   SiteItem const *site =
     static_cast<SiteItem const *>(parentProgram->treeParent);
@@ -91,7 +94,13 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
 void MyProxy::viewTopHalves(bool checked)
 {
-  viewTH = checked;
+  includeTopHalves = checked;
+  invalidateFilter();
+}
+
+void MyProxy::viewStopped(bool checked)
+{
+  includeStopped = checked;
   invalidateFilter();
 }
 
@@ -200,6 +209,14 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   viewTopHalves->setCheckable(true);
   viewTopHalves->setChecked(false);
   proxyModel->viewTopHalves(false);
+
+  QAction *viewStopped =
+    viewMenu->addAction(
+      QCoreApplication::translate("QMenuBar", "Stopped"),
+      proxyModel, &MyProxy::viewStopped);
+  viewStopped->setCheckable(true);
+  viewStopped->setChecked(false);
+  proxyModel->viewStopped(false);
 
   viewMenu->addSeparator();
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {

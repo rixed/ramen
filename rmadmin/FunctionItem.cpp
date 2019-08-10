@@ -439,3 +439,8 @@ bool FunctionItem::isTopHalf() const
 {
   return worker && worker->role && worker->role->isTopHalf;
 }
+
+bool FunctionItem::isWorking() const
+{
+  return worker != nullptr;
+}

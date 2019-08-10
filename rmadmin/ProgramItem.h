@@ -22,6 +22,7 @@ public:
   void reorder(GraphModel const *);
   QRectF operationRect() const;
   bool isTopHalf() const;
+  bool isWorking() const;
 };
 
 std::ostream &operator<<(std::ostream &, ProgramItem const &);

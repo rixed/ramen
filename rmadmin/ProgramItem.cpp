@@ -61,6 +61,16 @@ bool ProgramItem::isTopHalf() const
   return true;
 }
 
+bool ProgramItem::isWorking() const
+{
+  if (0 == functions.size()) return false;
+
+  for (auto &function : functions) {
+    if (function->isWorking()) return true;
+  }
+  return false;
+}
+
 QVariant ProgramItem::data(int column, int role) const
 {
   if (role == Qt::DisplayRole && !isTopHalf()) {

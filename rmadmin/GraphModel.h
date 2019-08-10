@@ -68,6 +68,9 @@ class GraphModel : public QAbstractItemModel
   void setFunctionProperty(SiteItem const *, ProgramItem const *, FunctionItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setProgramProperty(ProgramItem *, QString const &p, std::shared_ptr<conf::Value const>);
   void setSiteProperty(SiteItem *, QString const &p, std::shared_ptr<conf::Value const>);
+  void delFunctionProperty(FunctionItem *, QString const &p);
+  void delProgramProperty(ProgramItem *, QString const &p);
+  void delSiteProperty(SiteItem *, QString const &p);
 
 public:
   GraphViewSettings const *settings;
@@ -153,6 +156,7 @@ public:
 
 private slots:
   void updateKey(conf::Key const &, std::shared_ptr<conf::Value const>);
+  void deleteKey(conf::Key const &);
 
 signals:
   void positionChanged(QModelIndex const &index) const;

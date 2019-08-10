@@ -46,6 +46,7 @@ public:
   RamenValue const *tupleData(int row, int column) const;
   QString header(unsigned) const;
   bool isTopHalf() const;
+  bool isWorking() const;
 
   TailModel *tailModel; // created only on demand
 

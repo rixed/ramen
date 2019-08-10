@@ -24,6 +24,7 @@ GraphModel::GraphModel(GraphViewSettings const *settings_, QObject *parent) :
       std::cout << "Connect a new KValue for " << k << " to the graphModel" << std::endl;
     Once::connect(kv, &KValue::valueCreated, this, &GraphModel::updateKey);
     connect(kv, &KValue::valueChanged, this, &GraphModel::updateKey);
+    connect(kv, &KValue::valueDeleted, this, &GraphModel::deleteKey);
   });
 }
 
@@ -454,7 +455,67 @@ void GraphModel::setFunctionProperty(
   }
 }
 
+void GraphModel::delFunctionProperty(FunctionItem *functionItem, QString const &p)
+{
+  if (verbose)
+    std::cout << "delFunctionProperty for " << p.toStdString() << std::endl;
+
+  int changed(0);
+# define ANYTHING_CHANGED 0x1
+# define STORAGE_CHANGED  0x2
+
+  if (p == "worker") {
+    if (functionItem->worker) {
+      /* As we have connected this function to its parents (not treeParents!)
+       * when the worker was received, disconnect it now: */
+      removeParents(functionItem);
+      changed |= STORAGE_CHANGED;
+      functionItem->worker = nullptr;
+    }
+  } else if (p == "stats/runtime") {
+    if (functionItem->runtimeStats) {
+      functionItem->runtimeStats = nullptr;
+      changed |= ANYTHING_CHANGED;
+    }
+  } else if (p == "archives/times") {
+    if (functionItem->archivedTimes) {
+      functionItem->archivedTimes = nullptr;
+      changed |= STORAGE_CHANGED;
+    }
+  } else if (p == "archives/num_files") {
+    if (functionItem->numArcFiles.has_value()) {
+      functionItem->numArcFiles.reset();
+      changed |= STORAGE_CHANGED;
+    }
+  } else if (p == "archives/current_size") {
+    if (functionItem->numArcBytes.has_value()) {
+      functionItem->numArcBytes.reset();
+      changed |= STORAGE_CHANGED;
+    }
+  } else if (p == "archives/alloc_size") {
+    if (functionItem->allocArcBytes.has_value()) {
+      functionItem->allocArcBytes.reset();
+      changed |= STORAGE_CHANGED;
+    }
+  }
+
+  if (changed & STORAGE_CHANGED) {
+    if (verbose) std::cout << "Emitting storagePropertyChanged" << std::endl;
+    emit storagePropertyChanged(functionItem);
+  }
+  if (changed) {
+    if (verbose) std::cout << "Emitting dataChanged" << std::endl;
+    QModelIndex topLeft(functionItem->index(this, 0));
+    QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
+    emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
+  }
+}
+
 void GraphModel::setProgramProperty(ProgramItem *, QString const &, std::shared_ptr<conf::Value const>)
+{
+}
+
+void GraphModel::delProgramProperty(ProgramItem *, QString const &)
 {
 }
 
@@ -474,6 +535,15 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
       }
     }
   }
+}
+
+void GraphModel::delSiteProperty(SiteItem *siteItem, QString const &p)
+{
+  if (p == "is_master") {
+    siteItem->isMaster = false;
+  }
+  QModelIndex index(siteItem->index(this, 0));
+  emit dataChanged(index, index, { Qt::DisplayRole });
 }
 
 void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const> v)
@@ -549,6 +619,54 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
     }
   } else {
     setSiteProperty(siteItem, pk.property, v);
+  }
+}
+
+void GraphModel::deleteKey(conf::Key const &k)
+{
+  ParsedKey pk(k);
+  if (verbose)
+    std::cout << "GraphModel key " << k << " deleted, is valid:" << pk.valid
+              << std::endl;
+  if (! pk.valid) return;
+
+  assert(pk.site.length() > 0);
+
+  SiteItem *siteItem = nullptr;
+  for (SiteItem *si : sites) {
+    if (si->name == pk.site) {
+      siteItem = si;
+      break;
+    }
+  }
+  if (! siteItem) return;
+
+  if (pk.program.length() > 0) {
+    ProgramItem *programItem = nullptr;
+    for (ProgramItem *pi : siteItem->programs) {
+      if (pi->name == pk.program) {
+        programItem = pi;
+        break;
+      }
+    }
+    if (! programItem) return;
+
+    if (pk.function.length() > 0) {
+      FunctionItem *functionItem = nullptr;
+      for (FunctionItem *fi : programItem->functions) {
+        if (fi->name == pk.function) {
+          functionItem = fi;
+          break;
+        }
+      }
+      if (! functionItem) return;
+
+      delFunctionProperty(functionItem, pk.property);
+    } else {
+      delProgramProperty(programItem, pk.property);
+    }
+  } else {
+    delSiteProperty(siteItem, pk.property);
   }
 }
 
