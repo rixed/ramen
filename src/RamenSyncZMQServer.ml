@@ -399,15 +399,18 @@ let service_loop conf zocks srv =
     Zmq.Poll.mask_of in
   let timeout = 1000 (* ms *) in
   Processes.until_quit (fun () ->
-    let ready = Zmq.Poll.poll ~timeout poll_mask in
-    Array.iteri (fun i m ->
-      let zock, do_authn = zocks.(i) in
-      if m <> None then zock_step srv zock i do_authn
-    ) ready ;
-    if clean_rate () then (
-      timeout_sessions srv ;
-      update_stats srv
-    ) ;
+    (match Zmq.Poll.poll ~timeout poll_mask with
+    | exception Unix.(Unix_error (EINTR, _, _)) ->
+        ()
+    | ready ->
+        Array.iteri (fun i m ->
+          let zock, do_authn = zocks.(i) in
+          if m <> None then zock_step srv zock i do_authn
+        ) ready ;
+        if clean_rate () then (
+          timeout_sessions srv ;
+          update_stats srv
+        )) ;
     if save_rate () then Snapshot.save conf srv ;
     true
   ) ;
