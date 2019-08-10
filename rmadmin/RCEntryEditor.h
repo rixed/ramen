@@ -64,8 +64,12 @@ public:
   // Select that one, even if it does not exist:
   void setSourceName(QString const &);
 
-  void addSource(conf::Key const &);
-  void addSourceName(QString const &);
+  /* Both addSource and addSourceName returns the position in the select
+   * box where the name has been inserted/found (so it can be programmatically
+   * selected), or -1 if it has not been inserted. */
+  int addSource(conf::Key const &);
+  int addSourceName(QString const &);
+
   void updateSourceWarnings();
 
   void clearParams();

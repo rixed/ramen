@@ -126,31 +126,35 @@ void RCEntryEditor::setSourceName(QString const &name)
    * If several non-existing sourceNames are set, they will accumulate in
    * the box. Not a big deal as long as the warnings are properly displayed. */
   if (name.contains('.')) {
-    addSourceName(name);
+    int index = addSourceName(name);
+    if (index >= 0) sourceBox->setCurrentIndex(index);
   } else {
     std::cerr << "Invalid source name in an RC entry: " << name.toStdString() << std::endl;
   }
 }
 
-void RCEntryEditor::addSource(conf::Key const &k)
+int RCEntryEditor::addSource(conf::Key const &k)
 {
-  addSourceName(sourceNameOfKey(k));
+  return addSourceName(sourceNameOfKey(k));
 }
 
-void RCEntryEditor::addSourceName(QString const &name)
+int RCEntryEditor::addSourceName(QString const &name)
 {
-  if (name.contains('.')) {
-    // Insert in alphabetic order:
-    for (int i = 0; i <= sourceBox->count(); i ++) {
-      QString const current = sourceBox->itemText(i);
-      // Do not add it once more (can happen when it was preselected)
-      if (current == name) break;
-      if (i == sourceBox->count() || name < current) {
-        sourceBox->insertItem(i, name);
-        break;
-      }
+  if (! name.contains('.')) return -1;
+
+  // Insert in alphabetic order:
+  for (int i = 0; i <= sourceBox->count(); i ++) {
+    QString const current = sourceBox->itemText(i);
+    // Do not add it once more (can happen when it was preselected)
+    if (current == name) return i;
+    if (i == sourceBox->count() || name < current) {
+      sourceBox->insertItem(i, name);
+      return i;
     }
   }
+
+  assert(!"Hit by a gamma rays!");
+  return -1;
 }
 
 void RCEntryEditor::updateSourceWarnings()
