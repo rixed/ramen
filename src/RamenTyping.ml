@@ -253,14 +253,14 @@ let emit_assert ?name oc p =
       let s = Err.to_assert_name err in
       Printf.fprintf oc "(assert (! %t :named %s))\n" p s
 
-let emit_assert_is_true ?name oc id =
+let emit_assert_true ?name oc id =
   emit_assert ?name oc (emit_is_true id)
 
-let emit_assert_is_false ?name oc id =
+let emit_assert_false ?name oc id =
   emit_assert ?name oc (emit_is_false id)
 
 let emit_assert_id_is_bool ?name id oc b =
-  (if b then emit_assert_is_true else emit_assert_is_false) ?name oc id
+  (if b then emit_assert_true else emit_assert_false) ?name oc id
 
 let emit_assert_id_eq_typ ?name tuple_sizes records field_names id oc t =
   emit_assert ?name oc (fun oc ->
@@ -311,15 +311,15 @@ let emit_assert_id_le_smt2 ?name id oc smt2 =
 let emit_assert_id_le_id = emit_assert_id_le_smt2
 
 (* Named constraint used when an argument type is constrained: *)
-let arg_is_nullable oc e =
+let emit_assert_nullable oc e =
   let name = expr_err e (Err.Nullability true) in
-  emit_assert_is_true ~name oc (n_of_expr e)
+  emit_assert_true ~name oc (n_of_expr e)
 
-let arg_is_not_nullable oc e =
+let emit_assert_not_nullable oc e =
   let name = expr_err e (Err.Nullability false) in
-  emit_assert_is_false ~name oc (n_of_expr e)
+  emit_assert_false ~name oc (n_of_expr e)
 
-let arg_is_unsigned oc e =
+let emit_assert_unsigned oc e =
   let name = expr_err e Err.Unsigned in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
@@ -327,7 +327,7 @@ let arg_is_unsigned oc e =
       "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s))"
       id id id id id)
 
-let arg_is_signed oc e =
+let emit_assert_signed oc e =
   let name = expr_err e Err.Signed in
   let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
@@ -337,15 +337,22 @@ let arg_is_signed oc e =
       id
       id id id id id)
 
-let arg_is_integer oc e =
+let emit_small_unsigned oc id =
+  Printf.fprintf oc
+    "(or (= u8 %s) (= u16 %s) (= u32 %s))"
+    id id id
+
+let emit_integer oc id =
+  Printf.fprintf oc
+    "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
+         (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
+    id id id id id
+    id id id id id
+
+let emit_assert_integer oc e =
   let name = expr_err e Err.Integer in
-  let id = t_of_expr e in
   emit_assert ~name oc (fun oc ->
-    Printf.fprintf oc
-      "(or (= u8 %s) (= u16 %s) (= u32 %s) (= u64 %s) (= u128 %s) \
-           (= i8 %s) (= i16 %s) (= i32 %s) (= i64 %s) (= i128 %s))"
-      id id id id id
-      id id id id id)
+    emit_integer oc (t_of_expr e))
 
 let emit_numeric oc id =
   Printf.fprintf oc
@@ -356,26 +363,29 @@ let emit_numeric oc id =
     id id id id id
     id id id id id
 
-let arg_is_numeric oc e =
+let emit_assert_numeric oc e =
   let name = expr_err e Err.Numeric in
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (t_of_expr e))
+
+let emit_string oc =
+  Printf.fprintf oc "(= string %s)"
 
 let empty_tuple_sizes = Set.Int.empty
 let empty_record_fields : (N.field, int * int * int) Hashtbl.t =
   Hashtbl.create 0
 let empty_field_names : (N.field, int) Hashtbl.t = Hashtbl.create 0
 
-let arg_has_type typ oc e =
+let emit_has_type typ oc e =
   let name = IO.to_string T.print_structure typ in
   let name = expr_err e (Err.ActualType name) in
   emit_assert ~name oc (fun oc ->
     emit_id_eq_typ empty_tuple_sizes empty_record_fields empty_field_names
                    (t_of_expr e) oc typ)
 
-let arg_is_float = arg_has_type TFloat
-let arg_is_bool = arg_has_type TBool
-let arg_is_string = arg_has_type TString
+let emit_assert_float = emit_has_type TFloat
+let emit_assert_bool = emit_has_type TBool
+let emit_assert_string = emit_has_type TString
 
 (* "same" types are either actually the same or at least of the same sort
  * (both numbers/floats, both ip, or both cidr) *)
@@ -511,13 +521,13 @@ let emit_constraints tuple_sizes records field_names
 
   | Const VNull ->
       (* - "NULL" is nullable. *)
-      arg_is_nullable oc e
+      emit_assert_nullable oc e
 
   | Const x ->
       (* - A const cannot be null, unless it's VNull;
        * - The type is the type of the constant. *)
-      arg_has_type (T.structure_of x) oc e ;
-      arg_is_not_nullable oc e
+      emit_has_type (T.structure_of x) oc e ;
+      emit_assert_not_nullable oc e
 
   | Binding _ -> assert false (* Not supposed to appear that soon *)
 
@@ -534,7 +544,7 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_id_eq_smt2 (n_of_expr e) oc
           (Printf.sprintf "(tuple%d-n%d %s)" d i eid)
       ) es ;
-      emit_assert_is_false oc nid
+      emit_assert_false oc nid
 
   | Record kvs ->
       (* - The resulting type is a record which length, items type and
@@ -553,7 +563,7 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_id_eq_smt2 (f_of_name field_names k) oc
           (Printf.sprintf "(record%d-f%d %s)" d i eid)
       ) kvs ;
-      emit_assert_is_false oc nid
+      emit_assert_false oc nid
 
   | Vector es ->
       (* Typing rules:
@@ -588,7 +598,7 @@ let emit_constraints tuple_sizes records field_names
                   eid
                   d eid
                   (n_of_expr fst) eid)) ;
-      emit_assert_is_false oc nid
+      emit_assert_false oc nid
 
   | Case (cases, else_) ->
       (* Typing rules:
@@ -634,7 +644,7 @@ let emit_constraints tuple_sizes records field_names
        * - All elements of the list but the last must be nullable ;
        * - The last element of the list must not be nullable. *)
       let len = List.length es in
-      arg_is_not_nullable oc e ;
+      emit_assert_not_nullable oc e ;
       List.iteri (fun i x ->
         let name = expr_err x (Err.CoalesceAlt i) in
         emit_assert_id_le_id ~name (t_of_expr x) oc eid ;
@@ -646,14 +656,14 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL0 (Now|Random|EventStart|EventStop)) ->
       (* - The result is a non nullable float *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      arg_is_not_nullable oc e
+      emit_assert_not_nullable oc e
 
   | Stateless (SL1 (Defined, x)) ->
       (* - x must be nullable;
        * - The result is a non nullable bool. *)
-      arg_is_nullable oc x ;
+      emit_assert_nullable oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
-      arg_is_not_nullable oc e
+      emit_assert_not_nullable oc e
 
   | Stateful (_, _, SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
                          |AggrLast|AggrAnd|AggrOr as aggr), x)) ->
@@ -681,7 +691,7 @@ let emit_constraints tuple_sizes records field_names
 
       (match aggr with AggrSum ->
         (* - The result is numeric *)
-        arg_is_numeric oc e
+        emit_assert_numeric oc e
       | AggrAnd | AggrOr ->
         (* - The result is a boolean *)
         emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
@@ -722,16 +732,16 @@ let emit_constraints tuple_sizes records field_names
        * - The result must not be smaller than x;
        * - The result has same nullability than x;
        * - The result is signed or float. *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_le_id (t_of_expr x) oc eid ;
-      arg_is_signed oc e ;
+      emit_assert_signed oc e ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
   | Stateless (SL1 (Age, x)) ->
       (* - The only argument must be numeric;
        * - The result is a float;
        * - The result has same nullability than x. *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -739,7 +749,7 @@ let emit_constraints tuple_sizes records field_names
       (* - The only argument must be numeric;
        * - The result has same type than x;
        * - The result has same nullability than x. *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_le_id (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -747,7 +757,7 @@ let emit_constraints tuple_sizes records field_names
       (* - The only argument must be boolean;
        * - The result type is a boolean;
        * - The resulting nullability depends solely on that of x. *)
-      arg_is_bool oc x ;
+      emit_assert_bool oc x ;
       emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
 
@@ -759,7 +769,7 @@ let emit_constraints tuple_sizes records field_names
        * Note that some cast are actually not implemented so would fail
        * when generating code. *)
       if t.T.nullable then
-        emit_assert_is_true oc nid
+        emit_assert_true oc nid
       else
         emit_assert_id_eq_id nid oc (n_of_expr x) ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc t.structure
@@ -813,15 +823,15 @@ let emit_constraints tuple_sizes records field_names
                   eid
                   eid (t_of_expr e2)
                   eid)
-      ) else arg_is_numeric oc e2 ;
-      arg_is_not_nullable oc e2
+      ) else emit_assert_numeric oc e2 ;
+      emit_assert_not_nullable oc e2
 
   | Stateless (SL2 ((Add|Mul|IDiv|Pow|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result is not smaller than e1 or e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
-      arg_is_numeric oc e1 ;
-      arg_is_numeric oc e2 ;
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
@@ -831,19 +841,20 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL2 (Sub, e1, e2)) ->
       (* Same as above, with the addition that the result is signed even
        * if both operands are unsigned: *)
-      arg_is_numeric oc e1 ;
-      arg_is_numeric oc e2 ;
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2)) ;
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
-      arg_is_signed oc e
+      emit_assert_signed oc e
+
 
   | Stateless (SL2 ((Reldiff|Div), e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result is a float. *)
-      arg_is_numeric oc e1 ;
-      arg_is_numeric oc e2 ;
+      emit_assert_numeric oc e1 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -852,8 +863,8 @@ let emit_constraints tuple_sizes records field_names
       (* - e1 and e2 must be strings;
        * - The result is a bool;
        * - Result nullability propagates from arguments. *)
-      arg_is_string oc e1 ;
-      arg_is_string oc e2 ;
+      emit_assert_string oc e1 ;
+      emit_assert_string oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -863,8 +874,8 @@ let emit_constraints tuple_sizes records field_names
       (* - e1 and e2 must be strings;
        * - The result is also a string;
        * - Result nullability propagates from arguments. *)
-      arg_is_string oc e1 ;
-      arg_is_string oc e2 ;
+      emit_assert_string oc e1 ;
+      emit_assert_string oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -873,8 +884,8 @@ let emit_constraints tuple_sizes records field_names
       (* - e1 must be a string and e2 a float (ideally, a time);
        * - Then result will be a string;
        * - Its nullability propagates from arguments. *)
-      arg_is_string oc e1 ;
-      arg_is_float oc e2 ;
+      emit_assert_string oc e1 ;
+      emit_assert_float oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -894,7 +905,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be a string;
        * - The result type is also a string;
        * - The result nullability is the same as that of x. *)
-      arg_is_string oc x ;
+      emit_assert_string oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
@@ -902,7 +913,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be a string;
        * - The result is a bool;
        * - Nullability propagates from x to e. *)
-      arg_is_string oc x ;
+      emit_assert_string oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_id_eq_id nid oc (n_of_expr x)
 
@@ -910,25 +921,25 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be a string;
        * - The Result is a float (a time);
        * - The result is always nullable (known from the parse). *)
-      arg_is_string oc x ;
+      emit_assert_string oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      emit_assert_is_true oc nid
+      emit_assert_true oc nid
 
   | Stateless (SL1 (Variant, x)) ->
       (* - x must be a string (the experiment name);
        * - The Result is a string (the name of the variant);
        * - The result is always nullable (if the experiment is not defined). *)
-      arg_is_string oc x ;
+      emit_assert_string oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
-      emit_assert_is_true oc nid
+      emit_assert_true oc nid
 
   | Stateless (SL2 (Mod, e1, e2))
   | Stateless (SL2 ((BitAnd|BitOr|BitXor|BitShift), e1, e2)) ->
       (* - e1 and e2 must be any integer;
        * - The result must not be smaller that e1 nor e2;
        * - Nullability propagates. *)
-      arg_is_integer oc e1 ;
-      arg_is_integer oc e2 ;
+      emit_assert_integer oc e1 ;
+      emit_assert_integer oc e2 ;
       emit_assert_id_le_id (t_of_expr e1) oc eid ;
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_smt2 nid oc
@@ -956,8 +967,8 @@ let emit_constraints tuple_sizes records field_names
       (* - e1 and e2 must be booleans;
        * - The result is also a boolean;
        * - Nullability propagates. *)
-      arg_is_bool oc e1 ;
-      arg_is_bool oc e2 ;
+      emit_assert_bool oc e1 ;
+      emit_assert_bool oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
@@ -993,7 +1004,7 @@ let emit_constraints tuple_sizes records field_names
       (match E.int_of_const n with
       | Some i ->
           let name = expr_err x Err.GettableByInt in
-          arg_is_numeric oc n ;
+          emit_assert_numeric oc n ;
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc
               "(let ((tmp %s)) \
@@ -1027,7 +1038,7 @@ let emit_constraints tuple_sizes records field_names
           | None ->
               (* Assuming numeric non const index: *)
               let name = expr_err x Err.GettableByInt in
-              arg_is_numeric oc n ;
+              emit_assert_numeric oc n ;
               emit_assert ~name oc (fun oc ->
                 Printf.fprintf oc "(let ((tmp %s)) \
                                      (or (and ((_ is vector) tmp) \
@@ -1035,9 +1046,9 @@ let emit_constraints tuple_sizes records field_names
                                          (and ((_ is list) tmp) \
                                               (= (list-type tmp) %s))))"
                   (t_of_expr x) eid eid) ;
-              arg_is_nullable oc e
+              emit_assert_nullable oc e
           | Some i ->
-              arg_is_string oc n ;
+              emit_assert_string oc n ;
               let k = N.field i in
               let rec_lst =
                 try Hashtbl.find_all records k
@@ -1117,9 +1128,9 @@ let emit_constraints tuple_sizes records field_names
        * - nullability comes solely from the arguments - in particular, if
        *   a and b does not delimit a valid substring the result will be a
        *   non null empty string. *)
-      arg_is_string oc s ;
-      arg_is_integer oc a ;
-      arg_is_integer oc b ;
+      emit_assert_string oc s ;
+      emit_assert_integer oc a ;
+      emit_assert_integer oc b ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s %s)"
@@ -1137,7 +1148,7 @@ let emit_constraints tuple_sizes records field_names
        * - The result is only nullable by skip or propagation, for if the
        *   lag goes beyond the start of the window then lag merely returns
        *   the oldest value. (FIXME: should return NULL in that case) *)
-      arg_is_integer oc e1 ;
+      emit_assert_integer oc e1 ;
       emit_assert_id_eq_id (t_of_expr e2) oc eid ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
@@ -1149,10 +1160,10 @@ let emit_constraints tuple_sizes records field_names
        * - e3 must be numeric or a list/vector of numerics;
        * - The result type is float;
        * - The result nullability propagates from e3 (and its elements). *)
-      arg_is_unsigned oc e1 ;
-      arg_is_unsigned oc e2 ;
-      arg_is_not_nullable oc e1 ;
-      arg_is_not_nullable oc e2 ;
+      emit_assert_unsigned oc e1 ;
+      emit_assert_unsigned oc e2 ;
+      emit_assert_not_nullable oc e1 ;
+      emit_assert_not_nullable oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
 
       emit_assert oc (fun oc ->
@@ -1176,16 +1187,16 @@ let emit_constraints tuple_sizes records field_names
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic
        * and probably get rid of this limitation. *)
-      arg_is_unsigned oc e1 ;
-      arg_is_unsigned oc e2 ;
-      arg_is_numeric oc e3 ;
-      arg_is_not_nullable oc e1 ;
-      arg_is_not_nullable oc e2 ;
+      emit_assert_unsigned oc e1 ;
+      emit_assert_unsigned oc e2 ;
+      emit_assert_numeric oc e3 ;
+      emit_assert_not_nullable oc e1 ;
+      emit_assert_not_nullable oc e2 ;
       emit_assert_id_eq_id (n_of_expr e3) oc nid ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       List.iter (fun e ->
-        arg_is_numeric oc e ;
-        arg_is_not_nullable oc e ;
+        emit_assert_numeric oc e ;
+        emit_assert_not_nullable oc e ;
       ) e4s
 
   | Stateful (_, _, SF2 (ExpSmooth, e1, e2)) ->
@@ -1194,17 +1205,17 @@ let emit_constraints tuple_sizes records field_names
        *   we just ask for a numeric in order to also accept immediate
        *   values parsed as integers, and integer fields;
        * - e2 must be numeric *)
-      arg_is_float oc e1 ;
-      arg_is_numeric oc e2 ;
+      emit_assert_float oc e1 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      arg_is_not_nullable oc e1 ;
+      emit_assert_not_nullable oc e1 ;
       emit_assert_id_eq_id (n_of_expr e2) oc nid
 
   | Stateless (SL1 ((Exp|Log|Log10|Sqrt), x)) ->
       (* - x must be numeric;
        * - The result is a float;
        * - The result nullability is inherited from arguments *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -1212,7 +1223,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be numeric;
        * - The result is not smaller than x;
        * - Nullability propagates from argument. *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_le_smt2 (t_of_expr x) oc eid ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
 
@@ -1243,10 +1254,10 @@ let emit_constraints tuple_sizes records field_names
        * - Expressions in es can be anything at all;
        * - The result is a boolean;
        * - The result is as nullable as any of tim, dur and the es. *)
-      arg_is_numeric oc fpr ;
-      arg_is_numeric oc tim ;
-      arg_is_numeric oc dur ;
-      arg_is_not_nullable oc fpr ;
+      emit_assert_numeric oc fpr ;
+      emit_assert_numeric oc tim ;
+      emit_assert_numeric oc dur ;
+      emit_assert_not_nullable oc fpr ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf2 "(or %s %s%a)"
@@ -1270,9 +1281,9 @@ let emit_constraints tuple_sizes records field_names
        * - The result is a boolean;
        * - The result is nullable if and only if any of meas, accept and
        *   max is. *)
-      arg_is_numeric oc meas ;
-      arg_is_numeric oc accept ;
-      arg_is_numeric oc max ;
+      emit_assert_numeric oc meas ;
+      emit_assert_numeric oc accept ;
+      emit_assert_numeric oc max ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_id_eq_smt2 nid oc
         (Printf.sprintf "(or %s %s %s)"
@@ -1292,19 +1303,19 @@ let emit_constraints tuple_sizes records field_names
        * - If we want the rank then the result is nullable (known at
        *   parsing time), otherwise nullability is inherited from what
        *   and by. *)
-      arg_is_numeric oc c ;
-      emit_assert_is_false oc (n_of_expr c) ;
+      emit_assert_numeric oc c ;
+      emit_assert_false oc (n_of_expr c) ;
       Option.may (fun s ->
-        arg_is_numeric oc s ;
-        emit_assert_is_false oc (n_of_expr s)
+        emit_assert_numeric oc s ;
+        emit_assert_false oc (n_of_expr s)
       ) max_size ;
-      arg_is_numeric oc by ;
-      arg_is_numeric oc duration ;
-      emit_assert_is_false oc (n_of_expr duration) ;
-      arg_is_numeric oc time ;
+      emit_assert_numeric oc by ;
+      emit_assert_numeric oc duration ;
+      emit_assert_false oc (n_of_expr duration) ;
+      emit_assert_numeric oc time ;
       if want_rank then (
         emit_assert_id_eq_id (t_of_expr c) oc eid ;
-        arg_is_nullable oc e
+        emit_assert_nullable oc e
       ) else (
         emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
         emit_assert_id_eq_smt2 nid oc
@@ -1325,14 +1336,14 @@ let emit_constraints tuple_sizes records field_names
        *   nullable value;
        * - The Last itself is null whenever the number of received item is
        *   less than c, and so is always nullable. *)
-      arg_is_unsigned oc c ;
-      arg_is_not_nullable oc c ;
+      emit_assert_unsigned oc c ;
+      emit_assert_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
           (t_of_expr x)
           (if n then "false" else n_of_expr x)) ;
-      List.iter (arg_is_not_nullable oc) es ;
-      arg_is_nullable oc e
+      List.iter (emit_assert_not_nullable oc) es ;
+      emit_assert_nullable oc e
 
   | Stateful (_, n, SF2 (Sample, c, x)) ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
@@ -1343,8 +1354,8 @@ let emit_constraints tuple_sizes records field_names
        * - 'sample c x` is itself nullable whenever x is nullable (if not
        *   skip null and we encounter a null x, or if skip null and we
        *   encounter only nulls). *)
-      arg_is_unsigned oc c ;
-      arg_is_not_nullable oc c ;
+      emit_assert_unsigned oc c ;
+      emit_assert_not_nullable oc c ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
           (t_of_expr x)
@@ -1365,18 +1376,18 @@ let emit_constraints tuple_sizes records field_names
        *   nullable, and if there are less than max_age of data (similar
        *   behavior than the last function and similarly arguable). Therefore
        *   it is always nullable. *)
-      arg_is_numeric oc max_age ;
-      arg_is_not_nullable oc max_age ;
-      arg_is_numeric oc time ;
+      emit_assert_numeric oc max_age ;
+      emit_assert_not_nullable oc max_age ;
+      emit_assert_numeric oc time ;
       Option.may (fun sample_size ->
-        arg_is_unsigned oc sample_size ;
-        arg_is_not_nullable oc sample_size
+        emit_assert_unsigned oc sample_size ;
+        emit_assert_not_nullable oc sample_size
       ) sample_size ;
       emit_assert_id_eq_smt2 eid oc
         (Printf.sprintf "(list %s %s)"
           (t_of_expr what)
           (if n then "false" else n_of_expr what)) ;
-      arg_is_nullable oc e
+      emit_assert_nullable oc e
 
   | Stateful (_, n, SF1 (Group, g)) ->
       (* - The result is a list which elements have the exact same type as g;
@@ -1402,7 +1413,7 @@ let emit_constraints tuple_sizes records field_names
        *   the predicate is true. *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TU32 ;
       if n then
-        emit_assert_is_false oc nid
+        emit_assert_false oc nid
       else
         emit_assert_id_eq_smt2 nid oc
           (Printf.sprintf "(and %s (= bool %s))"
@@ -1413,7 +1424,7 @@ let emit_constraints tuple_sizes records field_names
       (* - x must be numeric;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
-      arg_is_numeric oc x ;
+      emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc
         (TVec (n+2, T.make ~nullable:false TU32)) ;
       emit_assert_id_eq_id (n_of_expr x) oc nid
@@ -1459,7 +1470,7 @@ let emit_running_condition declare tuple_sizes records field_names
   E.iter (fun _ e -> declare e) e ;
   let name = Err.RunCondition in
   emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr e) oc TBool ;
-  emit_assert_is_false ~name oc (n_of_expr e) ;
+  emit_assert_false ~name oc (n_of_expr e) ;
   E.iter (
     emit_constraints tuple_sizes records field_names
                      None None param_type env_type oc "running condition"
@@ -1485,24 +1496,24 @@ let emit_operation declare tuple_sizes records field_names
       let name = func_err fi Err.(Clause ("where", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr where) oc TBool ;
       let name = func_err fi Err.(Clause ("where", Nullability false)) in
-      emit_assert_is_false ~name oc (n_of_expr where) ;
+      emit_assert_false ~name oc (n_of_expr where) ;
       let name = func_err fi Err.(Clause ("commit", ActualType "bool")) in
       emit_assert_id_eq_typ ~name tuple_sizes records field_names (t_of_expr commit_cond) oc TBool ;
       let name = func_err fi Err.(Clause ("commit", Nullability false)) in
-      emit_assert_is_false ~name oc (n_of_expr commit_cond) ;
+      emit_assert_false ~name oc (n_of_expr commit_cond) ;
       Option.may (fun e ->
         let name = func_err fi Err.(Clause ("every", ActualType "float")) in
         emit_assert_id_eq_typ ~name tuple_sizes records field_names
                               (t_of_expr e) oc TFloat ;
         let name = func_err fi Err.(Clause ("every", Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr e)
+        emit_assert_false ~name oc (n_of_expr e)
       ) every ;
       List.iteri (fun i notif ->
         let name = func_err fi Err.(Notif (i, ActualType "string")) in
         emit_assert_id_eq_typ ~name tuple_sizes records field_names
           (t_of_expr notif) oc TString ;
         let name = func_err fi Err.(Notif (i, Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr notif)
+        emit_assert_false ~name oc (n_of_expr notif)
       ) notifications
 
   | ReadExternal { source ; _ } ->
@@ -1518,7 +1529,7 @@ let emit_operation declare tuple_sizes records field_names
                               (t_of_expr e) oc typ ;
         let name =
           func_err fi Err.(ExternalSource (what, Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr e) in
+        emit_assert_false ~name oc (n_of_expr e) in
       let assert_non_nullable_small_numeric what e =
         let name =
           func_err fi Err.(ExternalSource (what, ActualType "I32")) in
@@ -1530,7 +1541,7 @@ let emit_operation declare tuple_sizes records field_names
             id id id id id id) ;
         let name =
           func_err fi Err.(ExternalSource (what, Nullability false)) in
-        emit_assert_is_false ~name oc (n_of_expr e)
+        emit_assert_false ~name oc (n_of_expr e)
       in
       (match source with
       | File { fname ; preprocessor ; unlink } ->
@@ -1753,7 +1764,7 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
     | TupleEnv ->
         emit_assert_id_eq_typ tuple_sizes records field_names
           (t_of_expr e) oc TString ;
-        arg_is_nullable oc e ;
+        emit_assert_nullable oc e ;
         (* Also make this expression stands for this env field: *)
         register_input env_fields None path e
     | TupleParam ->
