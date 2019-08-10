@@ -10,6 +10,8 @@
 #include "Resources.h"
 #include "FunctionItem.h"
 
+static bool verbose = false;
+
 static std::string lastTuplesKey(FunctionItem const *f)
 {
   return "^tails/" + f->fqName().toStdString() + "/lasts/";
@@ -362,10 +364,15 @@ CompiledFunctionInfo const *FunctionItem::compiledInfo() const
   KValue &kv = conf::kvs[k];
   conf::kvs_lock.unlock_shared();
 
+  if (! kv.val) {
+    if (verbose) std::cout << k.s << " not yet set" << std::endl;
+    return nullptr;
+  }
+
   std::shared_ptr<conf::SourceInfo const> info =
     std::dynamic_pointer_cast<conf::SourceInfo const>(kv.val);
   if (! info) {
-    std::cerr << k << " is not a SourceInfo" << std::endl;
+    std::cerr << k << " is not a SourceInfo but: " << kv.val << std::endl;
     return nullptr;
   }
   if (info->errMsg.length() > 0) {
@@ -422,13 +429,15 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
   std::shared_ptr<conf::Tuple const> tuple =
     std::dynamic_pointer_cast<conf::Tuple const>(v);
   if (! tuple) {
-    std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
+    if (verbose)
+      std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
     return;
   }
   std::shared_ptr<RamenType const> type = outType();
   if (! type) { // ignore the tuple
-    std::cout << "Received a tuple for " << fqName().toStdString()
-              << " before we know the type" << std::endl;
+    if (verbose)
+      std::cout << "Received a tuple for " << fqName().toStdString()
+                << " before we know the type" << std::endl;
     return;
   }
 
