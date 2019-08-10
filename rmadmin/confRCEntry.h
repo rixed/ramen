@@ -33,6 +33,9 @@ struct RCEntry
   }
 
   value toOCamlValue() const;
+
+  bool operator==(RCEntry const &other) const;
+  bool operator!=(RCEntry const &other) const { return (! operator==(other)); }
 };
 
 };

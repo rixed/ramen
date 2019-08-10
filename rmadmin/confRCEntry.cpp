@@ -50,4 +50,32 @@ value RCEntry::toOCamlValue() const
   CAMLreturn(ret);
 }
 
+bool RCEntry::operator==(RCEntry const &other) const
+{
+  if (
+    programName != other.programName ||
+    source != other.source ||
+    onSite != other.onSite ||
+    reportPeriod != other.reportPeriod ||
+    enabled != other.enabled ||
+    debug != other.debug ||
+    automatic != other.automatic
+  ) {
+    return false;
+  }
+
+  for (RCEntryParam const *p : params) {
+    bool found = false;
+    for (RCEntryParam const *op : other.params) {
+      if (*p == *op) {
+        found = true;
+        break;
+      }
+    }
+    if (! found) return false;
+  }
+
+  return true;
+}
+
 };

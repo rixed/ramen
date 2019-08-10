@@ -22,6 +22,9 @@ struct RCEntryParam
   QString const toQString() const;
 
   value toOCamlValue() const;
+
+  bool operator==(RCEntryParam const &other) const;
+  bool operator!=(RCEntryParam const &other) const { return (! operator==(other)); }
 };
 
 };

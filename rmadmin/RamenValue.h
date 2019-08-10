@@ -47,6 +47,10 @@ struct RamenValue {
     // Then derived types must also compare the value!
   }
 
+  bool operator!=(RamenValue const &that) const {
+    return (! operator==(that));
+  }
+
   // Construct from an OCaml value of type RamenTypes.value
   static RamenValue *ofOCaml(value);
 

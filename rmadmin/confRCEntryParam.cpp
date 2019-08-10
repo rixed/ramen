@@ -24,4 +24,17 @@ QString const RCEntryParam::toQString() const
   return QString::fromStdString(name) + QString('=') + val->toQString();
 }
 
+bool RCEntryParam::operator==(RCEntryParam const &other) const
+{
+  if (name != other.name) return false;
+
+  if (val) {
+    if (! other.val || *val != *other.val) return false;
+  } else {
+    if (other.val) return false;
+  }
+
+  return true;
+}
+
 };

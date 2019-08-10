@@ -522,7 +522,22 @@ bool TargetConfig::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   TargetConfig const &o = static_cast<TargetConfig const &>(other);
-  return entries == o.entries;
+
+  /* To compare the map by RCEntry values (rather than pointer equality)
+   * we have to reimplement map comparison here.
+   * First, check there is no more keys in other.entries: */
+  if (o.entries.size() != entries.size()) return false;
+
+  /* Then, check that all our keys are present with the same value
+   * in other: */
+  for (auto mapEntry : entries) {
+    auto other_entry_it = o.entries.find(mapEntry.first);
+    if (other_entry_it == o.entries.end()) return false;
+    RCEntry const *other_entry = other_entry_it->second;
+    if (*other_entry != *mapEntry.second) return false;
+  }
+
+  return true;
 }
 
 QString const TargetConfig::toQString(Key const &) const
