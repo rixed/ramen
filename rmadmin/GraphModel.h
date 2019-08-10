@@ -79,12 +79,9 @@ public:
   enum Columns {
     Name = 0,
     // Buttons
-    FirstButton,
-    TableButton = FirstButton,
-    EditButton,
-    EndButtons,
+    ActionButton,
     // Flags:
-    WorkerTopHalf = EndButtons,
+    WorkerTopHalf,
     WorkerEnabled,
     WorkerDebug,
     WorkerUsed,

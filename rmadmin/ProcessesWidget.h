@@ -8,6 +8,8 @@ class GraphModel;
 class QTreeView;
 class QLineEdit;
 class MyProxy;
+class ProgramItem;
+class FunctionItem;
 
 class ProcessesWidget : public QWidget
 {
@@ -29,7 +31,9 @@ protected slots:
   void openSearch();
   void changeSearch(QString const &);
   void closeSearch();
-  void wantEdit(QModelIndex const &);
+  void wantEdit(ProgramItem const *);
+  void wantTable(FunctionItem *);
+  void activate(QModelIndex const &);
 };
 
 #endif

@@ -125,8 +125,7 @@ QString const GraphModel::columnName(GraphModel::Columns c)
 {
   switch (c) {
     case Name: return tr("Name");
-    case EditButton: return QString();
-    case TableButton: return QString();
+    case ActionButton: return QString();
     case WorkerTopHalf: return tr("Top-half");
     case WorkerEnabled: return tr("Enabled");
     case WorkerDebug: return tr("Debug");

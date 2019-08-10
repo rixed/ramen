@@ -23,6 +23,7 @@
 #include "SiteItem.h"
 #include "ButtonDelegate.h"
 #include "RCEditorDialog.h"
+#include "TailTableDialog.h"
 #include "ProcessesWidget.h"
 
 /*
@@ -128,29 +129,27 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   treeView->expandAll();
   treeView->header()->setStretchLastSection(false);
 
-  /* The buttons just after the names: */
+  /* The buttons just after the names.
+   * If that's a program name then a button to edit the corresponding RC
+   * entry. If that's a worker name then a button to open the tail view. */
   treeView->setMouseTracking(true);  // for the buttons to follow the mouse
-  ButtonDelegate *editButton = new ButtonDelegate(3, this);
-  treeView->setItemDelegateForColumn(GraphModel::EditButton, editButton);
-  connect(editButton, &ButtonDelegate::clicked,
-          this, &ProcessesWidget::wantEdit);
-  ButtonDelegate *tableButton = new ButtonDelegate(3, this);
-  treeView->setItemDelegateForColumn(GraphModel::TableButton, tableButton);
+  ButtonDelegate *actionButton = new ButtonDelegate(3, this);
+  treeView->setItemDelegateForColumn(GraphModel::ActionButton, actionButton);
+  connect(actionButton, &ButtonDelegate::clicked,
+          this, &ProcessesWidget::activate);
 
   /* Resize the columns to the _header_ content: */
   for (int c = 0; c < GraphModel::NumColumns; c ++) {
     if (c == 0) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::Stretch);
-    } else if (c < GraphModel::EndButtons) {
+    } else if (c == GraphModel::ActionButton) {
       treeView->header()->setSectionResizeMode(c, QHeaderView::Fixed);
       treeView->header()->setDefaultSectionSize(15);
       // Redirect sorting attempt to first column:
       connect(treeView->header(), &QHeaderView::sortIndicatorChanged,
               this, [this](int c, Qt::SortOrder order) {
-        if (c >= GraphModel::FirstButton &&
-            c < GraphModel::EndButtons) {
+        if (c == GraphModel::ActionButton)
           treeView->header()->setSortIndicator(0, order);
-        }
       });
     } else {
       treeView->header()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
@@ -224,7 +223,7 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
 
   viewMenu->addSeparator();
   for (unsigned c = 0; c < GraphModel::NumColumns; c ++) {
-    if (c < GraphModel::EndButtons) continue; // Name and buttons are mandatory
+    if (c == GraphModel::ActionButton) continue; // Name and buttons are mandatory
 
     QString const name = GraphModel::columnName((GraphModel::Columns)c);
     // Column names have already been translated
@@ -283,35 +282,41 @@ void ProcessesWidget::closeSearch()
   searchBox->clear();
 }
 
-void ProcessesWidget::wantEdit(QModelIndex const &proxyIndex)
+void ProcessesWidget::wantEdit(ProgramItem const *program)
 {
-  // Retrieve the program:
+  globalMenu->openRCEditor();
+  globalMenu->rcEditorDialog->preselect(program->name);
+}
+
+void ProcessesWidget::wantTable(FunctionItem *function)
+{
+  TailTableDialog *dialog = new TailTableDialog(function);
+  dialog->show();
+  dialog->raise();
+}
+
+void ProcessesWidget::activate(QModelIndex const &proxyIndex)
+{
+  // Retrieve the function or program:
   QModelIndex const index = proxyModel->mapToSource(proxyIndex);
-  GraphItem const *parentPtr =
-    static_cast<GraphItem const *>(index.internalPointer());
-
-/*  SiteItem const *parentSite =
-    dynamic_cast<SiteItem const *>(parentPtr);
-  if (! parentSite) {
-    std::cout << "Editing signalled for a non-ProgramItem!?" << std::endl;
-    return;
-  }
-
-  if (index.row() >= (int)parentSite->programs.size()) {
-    std::cout << "wantEdit an non-existent program!?" << std::endl;
-    return;
-  }
-  ProgramItem const *program = parentSite->programs[index.row()];
-*/
+  GraphItem *parentPtr =
+    static_cast<GraphItem *>(index.internalPointer());
 
   ProgramItem const *program =
     dynamic_cast<ProgramItem const *>(parentPtr);
 
-  if (! program) {
-    std::cerr << "Editing signalled for a non-ProgramItem!?" << std::endl;
+  if (program) {
+    wantEdit(program);
     return;
   }
 
-  globalMenu->openRCEditor();
-  globalMenu->rcEditorDialog->preselect(program->name);
+  FunctionItem *function =
+    dynamic_cast<FunctionItem *>(parentPtr);
+
+  if (function) {
+    wantTable(function);
+    return;
+  }
+
+  std::cerr << "Activate an unknown object!?" << std::endl;
 }

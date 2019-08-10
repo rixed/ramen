@@ -78,6 +78,7 @@ HEADERS += \
   TailModel.h \
   TailTableBar.h \
   TailTable.h \
+  TailTableDialog.h \
   GraphView.h \
   GraphArrow.h \
   layoutNode.h \
@@ -170,6 +171,7 @@ SOURCES += \
   TailModel.cpp \
   TailTableBar.cpp \
   TailTable.cpp \
+  TailTableDialog.cpp \
   ProgramInfoBox.cpp \
   FunctionInfoBox.cpp \
   RCEntryEditor.cpp \

@@ -7,6 +7,7 @@
 #include "RamenType.h"
 #include "confWorkerRole.h"
 #include "confRCEntryParam.h"
+#include "Resources.h"
 #include "FunctionItem.h"
 
 static std::string lastTuplesKey(FunctionItem const *f)
@@ -44,6 +45,11 @@ int FunctionItem::columnCount() const
 
 QVariant FunctionItem::data(int column, int role) const
 {
+  if (role == Qt::DisplayRole &&
+      !isTopHalf() &&
+      column == GraphModel::ActionButton)
+    return Resources::get()->tablePixmap;
+
   static QString na(tr("n.a"));
 
   if (role == Qt::TextAlignmentRole) {
@@ -67,8 +73,7 @@ QVariant FunctionItem::data(int column, int role) const
     case GraphModel::Name:
       return name;
 
-    case GraphModel::EditButton:
-    case GraphModel::TableButton:
+    case GraphModel::ActionButton:
       if (role == GraphModel::SortRole)
         return name;
       else

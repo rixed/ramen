@@ -26,7 +26,7 @@ TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
   conf::Key k = tailKey(f);
   // TODO: have a VoidType
   std::shared_ptr<conf::Value> v(new conf::RamenValueValue(new VBool(true)));
-  conf::askNew(k, v);
+  conf::askSet(k, v);
 }
 
 TailModel::~TailModel()
