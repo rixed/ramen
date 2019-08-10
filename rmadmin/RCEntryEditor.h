@@ -25,6 +25,9 @@ class RCEntryEditor : public QWidget
 {
   Q_OBJECT
 
+  friend class TargetConfigEditor;
+
+protected:
   QLineEdit *nameEdit;
   QComboBox *sourceBox;
   QLabel *deletedSourceWarning;

@@ -2,6 +2,7 @@
 #include <cassert>
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <QLineEdit>
 #include "once.h"
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
@@ -106,4 +107,19 @@ void TargetConfigEditor::removeEntry(RCEntryEditor const *toRemove)
   }
 
   std::cerr << "Asked to remove entry @" << toRemove << " but coundn't find it" << std::endl;
+}
+
+void TargetConfigEditor::preselect(QString const &programName)
+{
+  for (int c = 0; c < rcEntries->count(); c ++) {
+    RCEntryEditor const *entry =
+      dynamic_cast<RCEntryEditor const *>(rcEntries->widget(c));
+    if (! entry) continue;
+    if (entry->nameEdit->text() == programName) {
+      rcEntries->setCurrentIndex(c);
+      return;
+    }
+  }
+
+  std::cerr << "Could not preselect program " << programName.toStdString() << std::endl;
 }

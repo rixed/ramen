@@ -40,6 +40,8 @@ public slots:
     AtomicWidget::unlockValue(k);
   }
 
+  void preselect(QString const &programName);
+
 signals:
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>) const;
 };

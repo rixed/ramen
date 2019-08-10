@@ -59,3 +59,8 @@ void RCEditorDialog::wantDeleteEntry()
     targetConfigEditor->removeEntry(currentEntry);
   }
 }
+
+void RCEditorDialog::preselect(QString const &programName)
+{
+  targetConfigEditor->preselect(programName);
+}

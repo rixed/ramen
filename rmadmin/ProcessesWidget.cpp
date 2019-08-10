@@ -16,11 +16,13 @@
 #include <QMenu>
 #include <QVector>
 #include "Resources.h"
+#include "Menu.h"
 #include "GraphModel.h"
 #include "FunctionItem.h"
 #include "ProgramItem.h"
 #include "SiteItem.h"
 #include "ButtonDelegate.h"
+#include "RCEditorDialog.h"
 #include "ProcessesWidget.h"
 
 /*
@@ -308,6 +310,6 @@ void ProcessesWidget::wantEdit(QModelIndex const &proxyIndex)
     return;
   }
 
-  std::cout << "TODO: open the RC editor preselecting the entry for "
-            << program->name.toStdString() << std::endl;
+  globalMenu->openRCEditor();
+  globalMenu->rcEditorDialog->preselect(program->name);
 }

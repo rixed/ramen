@@ -4,6 +4,7 @@
 
 class TargetConfigEditor;
 class QMessageBox;
+class QString;
 
 class RCEditorDialog : public QMainWindow
 {
@@ -13,8 +14,9 @@ class RCEditorDialog : public QMainWindow
 
   QMessageBox *confirmDeleteDialog;
 public:
-
   RCEditorDialog(QWidget *parent = nullptr);
+
+  void preselect(QString const &programName);
 
 protected slots:
   void wantDeleteEntry();
