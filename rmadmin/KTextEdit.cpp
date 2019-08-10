@@ -1,17 +1,23 @@
 #include <iostream>
 #include <cassert>
 #include <QFontMetrics>
+#include <QPlainTextEdit>
 #include "once.h"
 #include "RamenSyntaxHighlighter.h"
+#include "KValue.h"
 #include "KTextEdit.h"
 
 KTextEdit::KTextEdit(QWidget *parent) :
   AtomicWidget(parent)
 {
-  textEdit = new QTextEdit;
+  textEdit = new QPlainTextEdit;
   setCentralWidget(textEdit);
   new RamenSyntaxHighlighter(textEdit->document()); // the document becomes owner
-  textEdit->setFontFamily("monospace");
+
+  /* Set a monospaced font: */
+  QFont font = textEdit->document()->defaultFont();
+  font.setFamily("Courier New");
+  textEdit->document()->setDefaultFont(font);
 }
 
 void KTextEdit::extraConnections(KValue *kv)

@@ -1,14 +1,15 @@
 #ifndef KTEXTEDIT_H_190603
 #define KTEXTEDIT_H_190603
-#include <QTextEdit>
-#include "KValue.h"
 #include "AtomicWidget.h"
+
+class QPlainTextEdit;
+class KValue;
 
 class KTextEdit : public AtomicWidget
 {
   Q_OBJECT
 
-  QTextEdit *textEdit;
+  QPlainTextEdit *textEdit;
 
   void extraConnections(KValue *);
 

@@ -31,7 +31,7 @@ struct Rules {
   Rules() {
     QTextCharFormat keyword;
     keyword.setFontWeight(QFont::Bold);
-    keyword.setForeground(Qt::darkYellow);
+    keyword.setForeground(Qt::darkGreen);
     rules.emplace_back(keyword,
       "\\b(parameter|parameters|default|defaults|to|run|if|define|lazy|"
           "persist|for|querying|query|every|while|as|doc|event|starts|starting|"
@@ -51,7 +51,7 @@ struct Rules {
 
     QTextCharFormat func;
     func.setFontWeight(QFont::Bold);
-    func.setForeground(Qt::darkGreen);
+    func.setForeground(Qt::darkYellow);
     rules.emplace_back(func,
       "\\b(age|abs|length|lower|upper|now|random|exp|log|log10|sqrt|"
           "ceil|floor|round|truncate|hash|min|max|sum|avg|and|or|first|"
