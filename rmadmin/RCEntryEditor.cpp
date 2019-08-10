@@ -230,13 +230,16 @@ void RCEntryEditor::resetParams()
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
     assert(editor);
-    std::shared_ptr<RamenValue const> val =
-      std::dynamic_pointer_cast<RamenValue const>(editor->getValue());
-    if (val) {
+    std::cerr << "Getting value for " << pname << std::endl;
+    std::shared_ptr<conf::RamenValueValue const> rval =
+      std::dynamic_pointer_cast<conf::RamenValueValue const>(editor->getValue());
+    if (rval) {
       std::cout << "set paramValues[" << pname << "]" << std::endl;
-      setParamValues[pname] = val;
+      setParamValues[pname] = rval->v;
     } else {
-      std::cerr << "AtomicWidget editor returned no value!?" << std::endl;
+      std::cerr << "AtomicWidget editor returned a confValue for row " << row
+                << " (name " << pname << ") that's not a RamenValueValue!?"
+                << std::endl;
     }
   }
 
