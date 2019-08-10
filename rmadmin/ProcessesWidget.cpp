@@ -47,7 +47,9 @@ public slots:
 };
 
 MyProxy::MyProxy(QObject *parent) : QSortFilterProxyModel(parent)
-{}
+{
+  setDynamicSortFilter(true);
+}
 
 bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) const
 {
