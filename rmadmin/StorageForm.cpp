@@ -7,7 +7,7 @@
 #include "KIntEditor.h"
 
 StorageForm::StorageForm(QWidget *parent) :
-  AtomicForm(tr("Storage"), parent)
+  AtomicForm(parent)
 {
   QWidget *cw = new QWidget(this);
 

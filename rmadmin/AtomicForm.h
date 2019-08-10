@@ -4,13 +4,8 @@
 #include <set>
 #include <QWidget>
 #include <QString>
-#include <QVBoxLayout>
-#include <QPushButton>
-#include <QGroupBox>
-#include <QMessageBox>
 #include "confValue.h"
 #include "confKey.h"
-#include "AtomicWidget.h"
 
 /* We want to be able to edit a group of values atomically.
  * For this, we need this group of widget to be associated with 3 buttons:
@@ -36,7 +31,13 @@
  * it the user adds an atomic widget to register it in the atomic group.
  */
 
-class AtomicForm : public QGroupBox
+class QVBoxLayout;
+class QHBoxLayout;
+class QPushButton;
+class QMessageBox;
+class AtomicWidget;
+
+class AtomicForm : public QWidget
 {
   Q_OBJECT
 
@@ -63,12 +64,6 @@ public:
   QWidget *centralWidget;
 
   AtomicForm(QWidget *parent = nullptr);
-
-  AtomicForm(QString const &title, QWidget *parent = nullptr) :
-    AtomicForm(parent)
-  {
-    setTitle(title);
-  }
 
   ~AtomicForm();
 

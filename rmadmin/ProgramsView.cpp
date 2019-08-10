@@ -2,7 +2,7 @@
 #include "ProgramsView.h"
 
 ProgramsView::ProgramsView(QWidget *parent) :
-  AtomicForm("Running Programs", parent)
+  AtomicForm(parent)
 {
   // TODO: Add a search box
 

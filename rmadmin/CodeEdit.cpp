@@ -70,9 +70,6 @@ void CodeEdit::setKey(conf::Key const &key)
   textKey = key;
   infoKey = conf::changeSourceKeyExt(key, "info");
 
-  QString formTitle("Source code for " + QString::fromStdString(textKey.s));
-  editorForm->setTitle(formTitle);
-
   textEdit->setKey(textKey);
 
   // Connect the error label to this hide/show slot

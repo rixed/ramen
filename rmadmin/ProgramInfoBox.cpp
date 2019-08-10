@@ -9,11 +9,11 @@
 #include "KBool.h"
 #include "ProgramInfoBox.h"
 
-/* FIXME: This is uterly broken since we have no more programs/.* keys.
+/* FIXME: This is utterly broken since we have no more programs/.* keys.
  * Use source info for the program instead. */
 
 ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
-  AtomicForm(p_->name, parent),
+  AtomicForm(parent),
   p(p_),
   pref("programs/" + p->name.toStdString() + "/")
 {

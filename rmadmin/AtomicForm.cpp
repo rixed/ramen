@@ -1,11 +1,14 @@
 #include <iostream>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include "AtomicForm.h"
+#include <QPushButton>
+#include <QMessageBox>
 #include "conf.h"
+#include "AtomicWidget.h"
+#include "AtomicForm.h"
 
 AtomicForm::AtomicForm(QWidget *parent) :
-  QGroupBox(parent),
+  QWidget(parent),
   widgets()
 {
   widgets.reserve(5);
@@ -62,13 +65,16 @@ AtomicForm::AtomicForm(QWidget *parent) :
   confirmCancelDialog->setInformativeText("Are you sure you want to cancel?");
   confirmCancelDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::No);
   confirmCancelDialog->setDefaultButton(QMessageBox::No);
-  confirmCancelDialog->setIcon(QMessageBox::Question);
+  confirmCancelDialog->setIcon(QMessageBox::Warning);
+  // Would crash:
+  //confirmDeleteDialog->setWindowModality(Qt::WindowModal);
 
   confirmDeleteDialog = new QMessageBox(this);
   confirmDeleteDialog->setText("Are you sure you want to delete this?");
   confirmDeleteDialog->setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
   confirmDeleteDialog->setDefaultButton(QMessageBox::Cancel);
   confirmDeleteDialog->setIcon(QMessageBox::Warning);
+  //confirmDeleteDialog->setWindowModality(Qt::WindowModal);
 }
 
 AtomicForm::~AtomicForm()
