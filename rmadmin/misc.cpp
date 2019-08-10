@@ -62,16 +62,17 @@ QString const stringOfDuration(double d)
 
 # define REDUCE(secs, unit) \
   if (d > secs) { \
-    unsigned unit = floor(d / secs); \
+    unsigned unit_ = floor(d / secs); \
     if (s.length() > 0) s += QString(", "); \
-    s += QString::number(unit) + QString(" " #unit); \
-    d -= secs * unit; \
+    s += QString::number(unit_) + QString(" " #unit); \
+    d -= secs * unit_; \
   }
 
   REDUCE(86400, days);
   REDUCE(3600, hours);
   REDUCE(60, mins);
   REDUCE(1, secs);
+  REDUCE(0.001, ms);
 
 # undef REDUCE
 
