@@ -75,8 +75,12 @@ public slots:
   }
 
 signals:
+  // Triggered when the key is changed:
   void keyChanged(conf::Key const &old, conf::Key const &new_);
+  // Triggered when the underlying value is changed
   void valueChanged(conf::Key const &, std::shared_ptr<conf::Value const>);
+  // Triggered when the edited value is changed
+  void inputChanged();
 };
 
 #endif

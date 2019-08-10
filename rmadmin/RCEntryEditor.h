@@ -74,11 +74,14 @@ public:
 
   void clearParams();
 
-  bool isValid() const { return sourceDoesExist && sourceIsCompiled; }
+  bool isValid() const;
 
   /* Build a new RCEntry according to current content.
    * Caller takes ownership */
   conf::RCEntry *getValue() const;
+
+signals:
+  void inputChanged();
 
 public slots:
   /* Refresh the params each time another source is selected.

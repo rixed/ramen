@@ -71,6 +71,9 @@ bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
     entryEditor->setSourceName(QString::fromStdString(entry->source));
     entryEditor->setValue(entry);
     toolBox->addItem(entryEditor, QString::fromStdString(it.first));
+
+    connect(entryEditor, &RCEntryEditor::inputChanged,
+            this, &TargetConfigEditor::inputChanged);
   }
 
   emit valueChanged(k, v);

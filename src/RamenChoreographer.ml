@@ -65,8 +65,10 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
   let all_parents = ref Map.empty in
   let all_top_halves = ref Map.empty in
   List.iter (fun (pname, rce) ->
+    if rce.Value.TargetConfig.on_site = "" then
+      !logger.warning "An RC entry is configured to run on no site!" ;
     let where_running =
-      let glob = Globs.compile rce.Value.TargetConfig.on_site in
+      let glob = Globs.compile rce.on_site in
       sites_matching glob sites in
     !logger.debug "%a must run on sites matching %S: %a"
       N.program_print pname

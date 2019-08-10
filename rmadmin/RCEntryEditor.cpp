@@ -12,6 +12,8 @@
 #include "misc.h"
 #include "once.h"
 #include "SourcesModel.h"  // for sourceNameOfKey and friends
+#include "RangeDoubleValidator.h"
+#include "ProgramNameValidator.h"
 #include "confRCEntryParam.h"
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
@@ -45,7 +47,11 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   setLayout(layout);
 
   nameEdit = new QLineEdit;
+  nameEdit->setPlaceholderText("Unique name");
+  nameEdit->setValidator(new ProgramNameValidator(this));
   layout->addRow(tr("Program &Name:"), nameEdit);
+  connect(nameEdit, &QLineEdit::textChanged,
+          this, &RCEntryEditor::inputChanged);
 
   { // source
 
@@ -61,6 +67,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
             this, [this](int) {
       updateSourceWarnings();
       resetParams();
+      emit inputChanged();
     });
 
     notCompiledSourceWarning =
@@ -80,9 +87,14 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   { // flags
     QVBoxLayout *flagsLayout = new QVBoxLayout;
     enabledBox = new QCheckBox("enabled");
+    enabledBox->setChecked(true);
+    connect(enabledBox, &QCheckBox::stateChanged,
+            this, &RCEntryEditor::inputChanged);
     flagsLayout->addWidget(enabledBox);
     debugBox = new QCheckBox("debug mode");
     flagsLayout->addWidget(debugBox);
+    connect(debugBox, &QCheckBox::stateChanged,
+            this, &RCEntryEditor::inputChanged);
     automaticBox = new QCheckBox("automatic");
     automaticBox->setEnabled(false);
     flagsLayout->addWidget(automaticBox);
@@ -90,9 +102,18 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   }
 
   sitesEdit = new QLineEdit;
+  sitesEdit->setText("*");
+  static QRegularExpression nonEmpty("\\s*[^\\s]+\\s*");
+  sitesEdit->setValidator(new QRegularExpressionValidator(nonEmpty, this));
+  connect(sitesEdit, &QLineEdit::textChanged,
+          this, &RCEntryEditor::inputChanged);
   layout->addRow(tr("&Only on Sites:"), sitesEdit);
 
   reportEdit = new QLineEdit;
+  reportEdit->setText("30");
+  reportEdit->setValidator(RangeDoubleValidator::forRange(1, 99999));
+  connect(reportEdit, &QLineEdit::textChanged,
+          this, &RCEntryEditor::inputChanged);
   layout->addRow(tr("&Reporting Period:"), reportEdit);
 
   paramsForm = new QFormLayout;
@@ -245,6 +266,8 @@ void RCEntryEditor::resetParams()
       std::make_shared<conf::RamenValueValue const>(val);
     paramEdit->setValue(conf::Key::null, std::static_pointer_cast<conf::Value const>(confval));
     paramEdit->setEnabled(true);
+    connect(paramEdit, &AtomicWidget::inputChanged,
+            this, &RCEntryEditor::inputChanged);
     paramsForm->addRow(QString::fromStdString(p->name), paramEdit);
   }
 }
@@ -326,4 +349,14 @@ conf::RCEntry *RCEntryEditor::getValue() const
   }
 
   return rce;
+}
+
+bool RCEntryEditor::isValid() const
+{
+  if (! sourceDoesExist || ! sourceIsCompiled) return false;
+  if (! nameEdit->hasAcceptableInput()) return false;
+  if (! sitesEdit->hasAcceptableInput()) return false;
+  if (! reportEdit->hasAcceptableInput()) return false;
+
+  return true;
 }

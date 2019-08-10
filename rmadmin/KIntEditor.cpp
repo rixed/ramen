@@ -24,6 +24,9 @@ KIntEditor::KIntEditor(
     max.has_value() && *max <= std::numeric_limits<int>::max() ?
       *max : std::numeric_limits<int>::max();
   lineEdit->setValidator(RangeIntValidator::forRange(imin, imax));
+
+  connect(lineEdit, &QLineEdit::editingFinished,
+          this, &KIntEditor::inputChanged);
 }
 
 void KIntEditor::extraConnections(KValue *kv)

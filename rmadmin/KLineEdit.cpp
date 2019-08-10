@@ -10,6 +10,8 @@ KLineEdit::KLineEdit(QWidget *parent) :
 {
   lineEdit = new QLineEdit;
   setCentralWidget(lineEdit);
+  connect(lineEdit, &QLineEdit::editingFinished,
+          this, &KLineEdit::inputChanged);
 }
 
 void KLineEdit::extraConnections(KValue *kv)

@@ -16,7 +16,11 @@ KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Valu
     QRadioButton *b = new QRadioButton(label.first, this);
     choices.push_back({b, label.second});
     layout->addWidget(b);
+
+    connect(b, &QRadioButton::released,
+            this, &KChoice::inputChanged);
   }
+
 }
 
 void KChoice::extraConnections(KValue *kv)

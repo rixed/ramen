@@ -1,7 +1,9 @@
 #include <iostream>
 #include <ctime>
 #include <cassert>
-#include <QDialogButtonBox>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QFormLayout>
 #include "RCEntryEditor.h"
 #include "conf.h"
@@ -19,17 +21,35 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   editor = new RCEntryEditor(sourceEditable);
   editor->setSourceName(sourceName);
 
-  QDialogButtonBox *buttonBox =
-    new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+  /* Cannot use a QDialogButtonBox because the form therein is leaking
+   * all its keypress events and a mere enter would accept without validation
+   * and a single press on escape would close the dialog and forget all user
+   * edits with no second though.
+   * Notice that even a button called "Cancel" may be set as the default,
+   * but at least when not using QDialogButtonBox it is possible to remove
+   * that default. */
+  okButton = new QPushButton(tr("Submit"));
+  okButton->setAutoDefault(false);
+  okButton->setDefault(false);
+  okButton->setEnabled(false);
+  QPushButton *cancelButton = new QPushButton(tr("Cancel"));
+  cancelButton->setAutoDefault(false);
+  cancelButton->setDefault(false);
+  QHBoxLayout *buttonBox = new QHBoxLayout;
+  buttonBox->addStretch();
+  buttonBox->addWidget(cancelButton);
+  buttonBox->addWidget(okButton);
 
-  connect(buttonBox, &QDialogButtonBox::accepted,
+  connect(editor, &RCEntryEditor::inputChanged,
+          this, &NewProgramDialog::validate);
+  connect(okButton, &QPushButton::clicked,
           this, &NewProgramDialog::createProgram);
-  connect(buttonBox, &QDialogButtonBox::rejected,
+  connect(cancelButton, &QPushButton::clicked,
           this, &QDialog::reject);
 
   QVBoxLayout *layout = new QVBoxLayout;
   layout->addWidget(editor);
-  layout->addWidget(buttonBox);
+  layout->addLayout(buttonBox);
   setLayout(layout);
 
   // Listen for all locks on the RC:
@@ -45,6 +65,8 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
 
 void NewProgramDialog::createProgram()
 {
+  if (! editor->isValid()) return;
+
   mustSave = true;
 
   /* This is where having a single config entry for the whole RC is
@@ -95,4 +117,9 @@ void NewProgramDialog::appendEntry()
   askUnlock(rc_key);
   /* Maybe reset the editor? */
   emit QDialog::accept();
+}
+
+void NewProgramDialog::validate()
+{
+  okButton->setEnabled(editor->isValid());
 }

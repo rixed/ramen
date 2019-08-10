@@ -24,6 +24,9 @@ KTextEdit::KTextEdit(QWidget *parent) :
   QFontMetricsF fontMetrics(font);
   float tabWidth = fontMetrics.width("    ");
   textEdit->setTabStopDistance(roundf(tabWidth));
+
+  connect(textEdit, &QPlainTextEdit::textChanged, // ouch!
+          this, &KTextEdit::inputChanged);
 }
 
 void KTextEdit::extraConnections(KValue *kv)

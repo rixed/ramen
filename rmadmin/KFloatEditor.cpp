@@ -9,6 +9,8 @@ KFloatEditor::KFloatEditor(QWidget *parent, double min, double max) :
   lineEdit = new QLineEdit;
   lineEdit->setValidator(RangeDoubleValidator::forRange(min, max));
   setCentralWidget(lineEdit);
+  connect(lineEdit, &QLineEdit::editingFinished,
+          this, &KFloatEditor::inputChanged);
 }
 
 void KFloatEditor::extraConnections(KValue *kv)
