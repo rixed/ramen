@@ -130,6 +130,8 @@ QPointF GraphArrow::Line::start(GraphViewSettings const *settings) const
     case Up:
       return settings->pointOfTile(x, y + 1);
   }
+  assert(!"Invalid dir");
+  return QPointF();
 }
 
 QPointF GraphArrow::Line::stop(GraphViewSettings const *settings) const
@@ -143,4 +145,6 @@ QPointF GraphArrow::Line::stop(GraphViewSettings const *settings) const
     case Down:
       return settings->pointOfTile(x, y + 1);
   }
+  assert(!"Invalid dir");
+  return QPointF();
 }

@@ -43,6 +43,8 @@ static QString const stringOfValueType(ValueType valueType)
     case ReplayerType: return QString("ReplayerType");
     case AlertType: return QString("AlertType");
   };
+  assert(!"invalid valueType");
+  return QString();
 }
 
 Value::Value(ValueType valueType_) : valueType(valueType_) {}

@@ -1,5 +1,6 @@
 #ifndef STORAGESLICE_H_190523
 #define STORAGESLICE_H_190523
+#include <cassert>
 #include <vector>
 #include <QPieSlice>
 #include <QColor>
@@ -56,6 +57,8 @@ struct Values {
       case AllocedBytes:
         return allocated;
     }
+    assert(!"Invalid mode");
+    return 0;
   }
   void operator+=(Values const &other) {
     current += other.current;

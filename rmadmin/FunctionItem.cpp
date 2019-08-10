@@ -99,13 +99,13 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsNumInputs:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totInputTuples : 0;
+        return runtimeStats ? runtimeStats->totInputTuples : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->totInputTuples) : na;
 
     case GraphModel::StatsNumSelected:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totSelectedTuples : 0;
+        return runtimeStats ? runtimeStats->totSelectedTuples : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->totSelectedTuples) : na;
 
@@ -117,7 +117,7 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsTotInputBytes:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totInputBytes : 0;
+        return runtimeStats ? runtimeStats->totInputBytes : (qulonglong)0;
       else return runtimeStats ?
         stringOfBytes(runtimeStats->totInputBytes) : na;
 
@@ -137,13 +137,13 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsNumGroups:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->curGroups : 0;
+        return runtimeStats ? runtimeStats->curGroups : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->curGroups) : na;
 
     case GraphModel::StatsNumOutputs:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totOutputTuples : 0;
+        return runtimeStats ? runtimeStats->totOutputTuples : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->totOutputTuples) : na;
 
@@ -169,13 +169,13 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsTotOutputBytes:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totOutputBytes : 0;
+        return runtimeStats ? runtimeStats->totOutputBytes : (qulonglong)0;
       else return runtimeStats ?
         stringOfBytes(runtimeStats->totOutputBytes) : na;
 
     case GraphModel::StatsNumFiringNotifs:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totFiringNotifs : 0;
+        return runtimeStats ? runtimeStats->totFiringNotifs : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->totFiringNotifs) : na;
 
@@ -187,19 +187,19 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::NumArcFiles:
       if (role == GraphModel::SortRole)
-        return numArcFiles.has_value() ? *numArcFiles : 0;
+        return numArcFiles.has_value() ? *numArcFiles : (qulonglong)0;
       else return numArcFiles.has_value() ?
         QString::number(*numArcFiles) : na;
 
     case GraphModel::NumArcBytes:
       if (role == GraphModel::SortRole)
-        return numArcBytes.has_value() ? *numArcBytes : 0;
+        return numArcBytes.has_value() ? *numArcBytes : (qulonglong)0;
       else return numArcBytes.has_value() ?
         stringOfBytes(*numArcBytes) : na;
 
     case GraphModel::AllocedArcBytes:
       if (role == GraphModel::SortRole)
-        return allocArcBytes.has_value() ? *allocArcBytes : 0;
+        return allocArcBytes.has_value() ? *allocArcBytes : (qulonglong)0;
       else return allocArcBytes.has_value() ?
         stringOfBytes(*allocArcBytes) : na;
 
@@ -225,13 +225,13 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsCurrentRam:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->curRam : 0;
+        return runtimeStats ? runtimeStats->curRam : (qulonglong)0;
       else return runtimeStats ?
         stringOfBytes(runtimeStats->curRam) : na;
 
     case GraphModel::StatsMaxRam:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->maxRam : 0;
+        return runtimeStats ? runtimeStats->maxRam : (qulonglong)0;
       else return runtimeStats ?
         stringOfBytes(runtimeStats->maxRam) : na;
 
@@ -260,7 +260,7 @@ QVariant FunctionItem::data(int column, int role) const
 
     case GraphModel::StatsNumAverageTupleSizeSamples:
       if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totFullBytesSamples : 0;
+        return runtimeStats ? runtimeStats->totFullBytesSamples : (qulonglong)0;
       else return runtimeStats ?
         QString::number(runtimeStats->totFullBytesSamples) : na;
 

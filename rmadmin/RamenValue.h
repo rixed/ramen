@@ -8,7 +8,6 @@
 #include <optional>
 #include <thread>
 #include <QString>
-#include <QWidget>
 extern "C" {
 # include <caml/mlvalues.h>
 // Defined by OCaml mlvalues but conflicting with further Qt includes:

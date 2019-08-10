@@ -8,6 +8,8 @@ extern "C" {
 # include <caml/custom.h>
 # include <caml/threads.h>
 # include <caml/callback.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
 }
 #include "misc.h"
 #include "confKey.h"

@@ -10,6 +10,8 @@ extern "C" {
 # include <caml/startup.h>
 # include <caml/callback.h>
 # include <caml/threads.h>
+// Defined by OCaml mlvalues but conflicting with further Qt includes:
+# undef alloc
 }
 #include <QApplication>
 #include <QtWidgets>

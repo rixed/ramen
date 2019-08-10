@@ -1,5 +1,6 @@
 #ifndef CHARTDATASET_H_190526
 #define CHARTDATASET_H_190526
+#include <memory>
 #include <QObject>
 
 class FunctionItem;

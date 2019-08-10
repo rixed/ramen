@@ -112,7 +112,7 @@ struct Retention : public Value
 
   Retention();
   Retention(double, double);
-  Retention(Retention const &other) {
+  Retention(Retention const &other) : Value(other.valueType) {
     duration = other.duration;
     period = other.period;
   }
