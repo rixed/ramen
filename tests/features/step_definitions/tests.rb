@@ -164,7 +164,7 @@ Given /^(ramen .*) is started$/ do |cmd|
 end
 
 Given /^(.*) is run every (\d+)? ?seconds?\.?$/ do |cmd, delay|
-  if delay < 1 then
+  if delay.nil? or delay < 1 then
     delay = 1
   end
   cmd = "sh -c 'while sleep #{delay}; do #{cmd}; done'"
