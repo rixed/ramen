@@ -1,4 +1,5 @@
 #include <iostream>
+#include <math.h>
 #include <cassert>
 #include <QFontMetrics>
 #include <QPlainTextEdit>
@@ -18,6 +19,11 @@ KTextEdit::KTextEdit(QWidget *parent) :
   QFont font = textEdit->document()->defaultFont();
   font.setFamily("Courier New");
   textEdit->document()->setDefaultFont(font);
+
+  /* Set tab stops to 4 spaces: */
+  QFontMetricsF fontMetrics(font);
+  float tabWidth = fontMetrics.width("    ");
+  textEdit->setTabStopDistance(roundf(tabWidth));
 }
 
 void KTextEdit::extraConnections(KValue *kv)
