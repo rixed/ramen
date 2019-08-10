@@ -37,7 +37,7 @@ struct Rules {
           "persist|for|querying|query|every|while|as|doc|event|starts|starting|"
           "at|with|duration|stops|stopping|ending|select|"
           "yield|merge|on|timeout|after|sort|until|by|where|"
-          "when|group|notify|commit|flush|keep|all|before|collectd|netflow|"
+          "group|notify|commit|flush|keep|all|before|collectd|netflow|"
           "graphite|listen|read|delete|file|separator|no|escape|"
           "preprocess|factor|factors|from|this|site|sites|globally|"
           "locally|skip|nulls)\\b");
@@ -60,12 +60,23 @@ struct Rules {
           "distinct|hysteresis|histogram|split|format_time|parse_time|"
           "variant|max|greatest|min|least|print|reldiff|sample|substring|"
           "get|changed|rank|of|is|in|top|over|at|past|count|"
-          "st|nd|rd|case|if|then|else|coalesce)\\b");
+          "st|nd|rd|case|when|end|if|then|else|coalesce)\\b");
 
     QTextCharFormat number;
     number.setFontWeight(QFont::Bold);
     number.setForeground(Qt::darkCyan);
     rules.emplace_back(number, "[0-9]+");
+
+    QTextCharFormat type;
+    type.setFontWeight(QFont::Bold);
+    type.setForeground(Qt::blue);
+    rules.emplace_back(type,
+      "\\b(float|string|bool|boolean|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|"
+          "eth|ip4|ip6|ip|cidr4|cidr6|cidr)\\b");
+
+    QTextCharFormat units;
+    units.setForeground(Qt::gray);
+    rules.emplace_back(units, "{[^{]*}");
 
     QTextCharFormat string;
     string.setFontWeight(QFont::Bold);
@@ -79,7 +90,7 @@ struct Rules {
 
     QTextCharFormat comment;
     comment.setForeground(Qt::gray);
-    rules.emplace_back(comment, "--.*$|{.*}");
+    rules.emplace_back(comment, "--.*$");
   }
 };
 
