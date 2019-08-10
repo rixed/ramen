@@ -42,6 +42,7 @@ type expr =
   | InheritType
   | InheritNull
   | OpenedRecordIs of int (* expression uniq_num *)
+  | MulType
     [@@ppp PPP_OCaml]
 
 let string_of_index c t =
@@ -105,6 +106,8 @@ let print_expr funcs oc =
   | OpenedRecordIs i ->
       let _func_name, _clause, _stack, e = expr_of_id funcs i in
       p " refers to record %a" (E.print ~max_depth:2 false) e
+  | MulType ->
+      p ": arguments must be either numeric or and integer and a string"
 
 type func =
   | Clause of string * expr

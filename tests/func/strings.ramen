@@ -12,5 +12,9 @@ line" as t4,
     substring("glop", 0, 10) as t7,
     substring("glop", -4, 4) as t8,
     substring("pas glop", 4, 8) as t9,
-    substring("pas glop pas glop", -13, -9) as t10
+    substring("pas glop pas glop", -13, -9) as t10,
+    -- Multiplications
+    "one" * 1 = "one" as t11,
+    "one" * 2 = "oneone" as t12,
+    3 * "x" = "x" * 3 as t13
   EVERY 1 SECOND;

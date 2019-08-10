@@ -826,7 +826,7 @@ let emit_constraints tuple_sizes records field_names
       ) else emit_assert_numeric oc e2 ;
       emit_assert_not_nullable oc e2
 
-  | Stateless (SL2 ((Add|Mul|IDiv|Pow|Trunc), e1, e2)) ->
+  | Stateless (SL2 ((Add|IDiv|Pow|Trunc), e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - The result is not smaller than e1 or e2;
        * - TODO: For Trunc, e2 must be greater than 0 even if float. *)
@@ -849,6 +849,36 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_le_id (t_of_expr e2) oc eid ;
       emit_assert_signed oc e
 
+  | Stateless (SL2 (Mul, e1, e2)) ->
+      (* - either both e1 and e2 are numeric, and then the result is no
+       *   smaller than e1 or e2;
+       * - or e1 is an integer and e2 is a string, or the other way around,
+       *   and the result is a string.
+       * - in either case nullability propagates from e1 or e2 to the result.
+       *)
+      let name = expr_err e Err.MulType in
+      let t1 = t_of_expr e1 and t2 = t_of_expr e2 in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+          "(or (and %a %a %a %a) \
+               (and %a %a %a) \
+               (and %a %a %a))"
+            (* e1 and e2 are numeric and the result is no smaller: *)
+            emit_numeric t1
+            emit_numeric t2
+            (emit_id_le_smt2 t1) eid
+            (emit_id_le_smt2 t2) eid
+            (* ... or e1 is an int and e2 and the result are strings: *)
+            emit_small_unsigned t1
+            emit_string t2
+            emit_string eid
+            (* ... or the other way around: *)
+            emit_string t1
+            emit_small_unsigned t2
+            emit_string eid) ;
+
+      emit_assert_id_eq_smt2 nid oc
+        (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
 
   | Stateless (SL2 ((Reldiff|Div), e1, e2)) ->
       (* - e1 and e2 must be numeric;

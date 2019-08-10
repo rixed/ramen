@@ -95,6 +95,10 @@ let avg_init = 0, 0.
 let avg_add (count, sum) x = count + 1, sum +. x
 let avg_finalize (count, sum) = sum /. float_of_int count
 
+(* Multiply a string by an integer *)
+let string_repeat s n =
+  String.repeat s (Uint32.to_int n)
+
 (* Compute the p percentile of an array of anything: *)
 module Percentile = struct
   (*$< Percentile *)

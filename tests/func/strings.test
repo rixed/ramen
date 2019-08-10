@@ -6,7 +6,8 @@
         { "t1" => "true"; "t2" => "true"; "t3" => "true" ;
           "t4" => "\"multi\\nline\""; "t5" => "10" ;
           "t6" => "\"glop\"" ; "t7" => "\"glop\"" ; "t8" => "\"glop\"" ;
-          "t9" => "\"glop\"" ; "t10" => "\"glop\"" } ];
+          "t9" => "\"glop\"" ; "t10" => "\"glop\"" ;
+          "t11" => "true" ; "t12" => "true" ; "t13" => "true" } ];
       absent = [
         { "t1" => "false" }; { "t2" => "false" }; { "t3" => "false" };
       ]

@@ -1023,6 +1023,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
     (TFloat|TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".mul")
       [Some t, PropagateNull; Some t, PropagateNull] oc [e1; e2]
+  | Finalize, Stateless (SL2 (Mul, e1, e2)), TString ->
+    emit_functionN ~env ~opc ~nullable "CodeGenLib.string_repeat"
+      [Some TString, PropagateNull; Some TU32, PropagateNull] oc
+      (if e1.E.typ.T.structure = TString then [e1; e2] else [e2; e1])
   | Finalize, Stateless (SL2 (IDiv, e1, e2)),
     (TU8|TU16|TU32|TU64|TU128|TI8|TI16|TI32|TI64|TI128 as t) ->
     emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
