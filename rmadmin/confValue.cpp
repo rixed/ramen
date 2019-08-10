@@ -311,11 +311,12 @@ bool TimeRange::operator==(Value const &other) const
   return range == o.range;
 }
 
-Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size_) :
-  Value(TupleType), skipped(skipped_), size(size_)
+Tuple::Tuple(unsigned skipped_, unsigned char const *bytes_, size_t size) :
+  Value(TupleType), skipped(skipped_), num_words(size / 4)
 {
+  assert(0 == (size & 3));
   if (bytes_) {
-    bytes = new char[size];
+    bytes = new uint32_t[num_words];
     memcpy((void *)bytes, (void *)bytes_, size);
   } else {
     assert(size == 0);
@@ -332,13 +333,13 @@ Tuple::~Tuple()
 
 QString const Tuple::toQString(Key const &) const
 {
-  return QString::number(size) + QString(" bytes");
+  return QString::number(num_words) + QString(" words");
 }
 
 RamenValue *Tuple::unserialize(std::shared_ptr<RamenType const> type) const
 {
-  uint32_t const *start = (uint32_t const *)bytes;  // TODO: check alignment
-  uint32_t const *max = (uint32_t const *)(bytes + size); // TODO: idem
+  uint32_t const *start = bytes;
+  uint32_t const *max = bytes + num_words;
   RamenValue *v = type->structure->unserialize(start, max, true);
   assert(start == max);
   return v;
@@ -353,7 +354,8 @@ bool Tuple::operator==(Value const &other) const
 {
   if (! Value::operator==(other)) return false;
   Tuple const &o = static_cast<Tuple const &>(other);
-  return size == o.size && 0 == memcmp(bytes, o.bytes, size);
+  return num_words == o.num_words &&
+         0 == memcmp(bytes, o.bytes, num_words * sizeof(uint32_t));
 }
 
 // This _does_ alloc on the OCaml heap

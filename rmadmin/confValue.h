@@ -154,11 +154,13 @@ struct TimeRange : public Value
 struct Tuple : public Value
 {
   unsigned skipped;
-  char const *bytes;
-  size_t size;
+  uint32_t const *bytes;
+  size_t num_words; // words of 4 bytes
+
   Tuple();
   ~Tuple();
   Tuple(unsigned, unsigned char const *, size_t);
+
   QString const toQString(Key const & = Key::null) const;
   value toOCamlValue() const;
   bool operator==(Value const &) const;
