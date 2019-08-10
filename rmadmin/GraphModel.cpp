@@ -552,7 +552,7 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
   if (verbose)
     std::cout << "GraphModel key " << k << " set to value " << *v
               << " is valid:" << pk.valid << std::endl;
-  if (!pk.valid) return;
+  if (! pk.valid) return;
 
   assert(pk.site.length() > 0);
 

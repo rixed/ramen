@@ -18,6 +18,8 @@
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
 
+static bool verbose = false;
+
 QMap<std::string, std::shared_ptr<RamenValue const>> RCEntryEditor::setParamValues;
 
 static bool isCompiledSource(KValue const &kv)
@@ -61,8 +63,6 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 
     sourceLayout->addWidget(sourceBox);
 
-//    connect(sourceBox, &QComboBox::currentIndexChanged,
-//            this, &RCEntryEditor::resetParams);
     connect(sourceBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) {
       updateSourceWarnings();
@@ -120,10 +120,12 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
   layout->addRow(new QLabel(tr("Parameters:")));
   layout->addRow(paramsForm);
 
+  /* Each creation/deletion of source files while this editor is alive should
+   * refresh the source select box and its associated warnings: */
   conf::autoconnect("^sources/.*", [this](conf::Key const &, KValue const *kv) {
     Once::connect(kv, &KValue::valueCreated, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
       if (isSourceFile(k.s)) {
-        std::cout << "New source key: " << k.s << std::endl;
+        if (verbose) std::cout << "New source key: " << k.s << std::endl;
         addSource(k); // Won't change the selection but might change warnings
         updateSourceWarnings();
       } else if (isInfoFile(k.s)) {
@@ -212,8 +214,10 @@ std::shared_ptr<RamenValue const> RCEntryEditor::paramValue(CompiledProgramParam
 {
   /* Try to find a set parameter by that name, falling back on the
    * compiled default: */
-  std::cout << "paramValue(" << p->name << ") is "
-            << (setParamValues.contains(p->name) ? "present" : "absent") << std::endl;
+  if (verbose)
+    std::cout << "paramValue(" << p->name << ") is "
+              << (setParamValues.contains(p->name) ? "present" : "absent")
+              << std::endl;
   return setParamValues.value(p->name, p->val);
 }
 
@@ -230,11 +234,11 @@ void RCEntryEditor::resetParams()
     item = paramsForm->itemAt(row, QFormLayout::FieldRole);
     AtomicWidget *editor = dynamic_cast<AtomicWidget *>(item->widget());
     assert(editor);
-    std::cerr << "Getting value for " << pname << std::endl;
     std::shared_ptr<conf::RamenValueValue const> rval =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(editor->getValue());
     if (rval) {
-      std::cout << "set paramValues[" << pname << "]" << std::endl;
+      if (verbose)
+        std::cout << "set paramValues[" << pname << "]" << std::endl;
       setParamValues[pname] = rval->v;
     } else {
       std::cerr << "AtomicWidget editor returned a confValue for row " << row
@@ -252,7 +256,7 @@ void RCEntryEditor::resetParams()
   conf::kvs_lock.unlock_shared();
 
   if (! info) {
-    std::cout << "Cannot get info for " << baseName.toStdString() << std::endl;
+    std::cerr << "Cannot get info for " << baseName.toStdString() << std::endl;
     return;
   }
 
@@ -292,7 +296,7 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
       }
     }
     if (i == sourceBox->count()) {
-      std::cout << "Cannot find source " << source.toStdString() << std::endl;
+      std::cerr << "Cannot find source " << source.toStdString() << std::endl;
     }
   }
   updateSourceWarnings();
@@ -306,7 +310,8 @@ void RCEntryEditor::setValue(conf::RCEntry const *rcEntry)
   // Also save the parameter values:
   for (auto param : rcEntry->params) {
     if (! param->val) continue;
-    std::cout << "Save value for param " << param->name << std::endl;
+    if (verbose)
+      std::cout << "Save value for param " << param->name << std::endl;
     setParamValues[param->name] = param->val;
   }
   resetParams();
@@ -317,7 +322,7 @@ conf::RCEntry *RCEntryEditor::getValue() const
   bool ok;
   double reportPeriod = reportEdit->text().toDouble(&ok);
   if (! ok) {
-    std::cout << "Cannot convert report period '"
+    std::cerr << "Cannot convert report period '"
               << reportEdit->text().toStdString()
               << "' into a double, using default" << std::endl;
     /* Use some default then. Would be nice if it were the same as

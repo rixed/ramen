@@ -26,7 +26,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 HEADERS += \
   misc.h \
   once.h \
-  menu.h \
+  Menu.h \
   AboutDialog.h \
   UserIdentity.h \
   rec_shared_mutex.h \
@@ -121,7 +121,7 @@ HEADERS += \
 
 SOURCES += \
   misc.cpp \
-  menu.cpp \
+  Menu.cpp \
   AboutDialog.cpp \
   UserIdentity.cpp \
   rec_shared_mutex.cpp \

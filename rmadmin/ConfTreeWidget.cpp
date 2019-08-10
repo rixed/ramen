@@ -188,6 +188,7 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
 {
   setUniformRowHeights(true);
   setColumnCount(CONFTREE_WIDGET_NUM_COLUMNS);
+  setAlternatingRowColors(true);;
   static QStringList labels { "Name", "Value", "Lock", "Actions" };
   setHeaderLabels(labels);
   header()->setStretchLastSection(false);

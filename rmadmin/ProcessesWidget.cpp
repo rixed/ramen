@@ -70,7 +70,7 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
   ProgramItem const *parentProgram =
     dynamic_cast<ProgramItem const *>(parentPtr);
   if (! parentProgram) {
-    std::cout << "Filtering the rows of a function?!" << std::endl;
+    std::cerr << "Filtering the rows of a function?!" << std::endl;
     return false;
   }
 
@@ -88,7 +88,6 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
   QString const fq(site->name + ":" + parentProgram->name + "/" +
                    function->name);
-  std::cout << "FILTER " << fq.toStdString() << std::endl;
   return fq.contains(filterRegExp());
 }
 
@@ -194,14 +193,15 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
           this, &ProcessesWidget::closeSearch);
 
   /* The menu bar */
-  //QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar, true);
   QMenuBar *menuBar = new QMenuBar(this);
   QMenu *viewMenu = menuBar->addMenu(
     QCoreApplication::translate("QMenuBar", "&View"));
+
   viewMenu->addAction(
     QCoreApplication::translate("QMenuBar", "Search…"),
     this, &ProcessesWidget::openSearch,
     QKeySequence::Find);
+
   QAction *viewTopHalves =
     viewMenu->addAction(
       QCoreApplication::translate("QMenuBar", "Top-Halves"),
@@ -235,7 +235,9 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
       treeView->setColumnHidden(c, true);
     }
   }
-  //QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar, false);
+  /* Although it seems to be the last entry, Qt will actually add some more
+   * on MacOS ("enter full screen"): */
+  viewMenu->addSeparator();
 
   QVBoxLayout *mainLayout = new QVBoxLayout;
   mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -298,16 +300,14 @@ void ProcessesWidget::wantEdit(QModelIndex const &proxyIndex)
   ProgramItem const *program = parentSite->programs[index.row()];
 */
 
-  std::cout << "WANTEDIT row=" << index.row() << std::endl;
-
   ProgramItem const *program =
     dynamic_cast<ProgramItem const *>(parentPtr);
 
   if (! program) {
-    std::cout << "Editing signalled for a non-ProgramItem!?" << std::endl;
+    std::cerr << "Editing signalled for a non-ProgramItem!?" << std::endl;
     return;
   }
 
-  std::cout << "TODO: open the RC editor preselcting the entry for "
+  std::cout << "TODO: open the RC editor preselecting the entry for "
             << program->name.toStdString() << std::endl;
 }

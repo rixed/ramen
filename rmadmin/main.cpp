@@ -19,7 +19,7 @@ extern "C" {
 #include <QCommandLineParser>
 #include "RmAdminWin.h"
 #include "SyncStatus.h"
-#include "menu.h"
+#include "Menu.h"
 #include "UserIdentity.h"
 #include "conf.h"
 #include "RamenValue.h" // for ocamlThreadId
@@ -31,15 +31,13 @@ extern "C" {
 
 static RmAdminWin *w = nullptr;
 
-using namespace std;
-
 /* Relay signals from OCaml to C++ */
 
 extern "C" {
   value signal_conn(value url_, value status_)
   {
     CAMLparam2(url_, status_);
-    string url(String_val(url_));
+    std::string url(String_val(url_));
     SyncStatus status(status_);
     if (w) w->connProgress(status);
     CAMLreturn(Val_unit);
@@ -181,11 +179,11 @@ int main(int argc, char *argv[])
   GraphViewSettings *settings = new GraphViewSettings;
   GraphModel *graphModel = new GraphModel(settings);
 
-  setupGlobalMenu(graphModel, with_beta_features);
+  globalMenu = new Menu(graphModel, with_beta_features);
   w = new RmAdminWin(graphModel, with_beta_features);
-  w->resize(QDesktopWidget().availableGeometry(w).size() * 0.75);
+  w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
 
-  thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
+  std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
 
   w->show();
 
@@ -199,7 +197,7 @@ int main(int argc, char *argv[])
   delete settings;
   settings = nullptr;
 
-  cout << "Joining with start_sync thread..." << endl;
+  std::cout << "Joining with start_sync thread..." << std::endl;
   sync_thread.join();
 
   return ret;

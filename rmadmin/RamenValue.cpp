@@ -81,7 +81,11 @@ value VFloat::toOCamlValue() const
 
 QString const VFloat::toQString(conf::Key const &key) const
 {
-  if (endsWith(key.s, "/last_exit"))
+  if (
+    endsWith(key.s, "/last_exit") ||
+    endsWith(key.s, "/quarantine_until") ||
+    endsWith(key.s, "/last_killed")
+  )
     return stringOfDate(v);
   else
     return QString::number(v);
