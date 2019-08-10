@@ -3,6 +3,7 @@
 #include "AboutDialog.h"
 #include "ConfTreeDialog.h"
 #include "ProcessesDialog.h"
+#include "RCEditorDialog.h"
 #include "NewSourceDialog.h"
 #include "NewProgramDialog.h"
 #include "menu.h"
@@ -14,6 +15,7 @@ static ConfTreeDialog *confTreeDialog;
 static NewSourceDialog *newSourceDialog;
 static NewProgramDialog *newProgramDialog;
 static ProcessesDialog *processesDialog;
+static RCEditorDialog *rcEditorDialog;
 
 void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
 {
@@ -57,6 +59,15 @@ void setupGlobalMenu(GraphModel *graphModel, bool with_beta_features)
       if (! processesDialog) processesDialog = new ProcessesDialog(graphModel);
       processesDialog->show();
       processesDialog->raise();
+    }
+  );
+
+  /* The TargetConfig editor: */
+  windowMenu->addAction(
+    QCoreApplication::translate("QMenuBar", "Running Configuration…"), []() {
+      if (! rcEditorDialog) rcEditorDialog = new RCEditorDialog;
+      rcEditorDialog->show();
+      rcEditorDialog->raise();
     }
   );
 

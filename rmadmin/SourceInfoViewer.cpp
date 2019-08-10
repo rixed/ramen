@@ -5,7 +5,7 @@
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QLabel>
-#include <QToolBox>
+#include <QTabWidget>
 #include "misc.h"
 #include "once.h"
 #include "CompiledProgramParam.h"
@@ -58,16 +58,17 @@ bool SourceInfoViewer::setValue(conf::Key const &, std::shared_ptr<conf::Value c
           if (p.doc.size() > 0)
             paramsLayout->addRow(new QLabel(QString::fromStdString(p.doc)));
         }
+        layout->addLayout(paramsLayout);
       }
 
-      QToolBox *functions = new QToolBox;
+      QTabWidget *functions = new QTabWidget;
       for (auto &func : i->infos) {
         QVBoxLayout *l = new QVBoxLayout;
         QWidget *w = new QWidget;
         w->setLayout(l);
         QString title =
           QString(func.name + (func.is_lazy ? " (lazy)" : ""));
-        functions->addItem(w, title);
+        functions->addTab(w, title);
         if (func.doc.length() > 0)
           l->addWidget(
             new QLabel(func.doc));

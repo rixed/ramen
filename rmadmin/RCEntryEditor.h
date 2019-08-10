@@ -4,6 +4,7 @@
 #include <string>
 #include <QWidget>
 #include <QMap>
+#include <QCheckBox>
 
 /* An editor for a single entry of the target configuration.
  * The actual TargetConfigEditor, bound to the TargetConfig entry in the
@@ -13,7 +14,6 @@ class QFormLayout;
 class QLabel;
 class QComboBox;
 class QLineEdit;
-class QCheckBox;
 struct RamenValue;
 namespace conf {
   class Key;
@@ -79,6 +79,8 @@ public:
   /* Build a new RCEntry according to current content.
    * Caller takes ownership */
   conf::RCEntry *getValue() const;
+
+  bool programIsEnabled() const { return enabledBox && enabledBox->isChecked(); }
 
 signals:
   void inputChanged();

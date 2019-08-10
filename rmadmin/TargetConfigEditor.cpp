@@ -1,5 +1,7 @@
 #include <iostream>
 #include <cassert>
+#include <QTabWidget>
+#include <QVBoxLayout>
 #include "once.h"
 #include "confRCEntry.h"
 #include "RCEntryEditor.h"
@@ -8,8 +10,8 @@
 TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
   AtomicWidget(parent)
 {
-  toolBox = new QToolBox;
-  setCentralWidget(toolBox);
+  rcEntries = new QTabWidget;
+  setCentralWidget(rcEntries);
 }
 
 void TargetConfigEditor::extraConnections(KValue *kv)
@@ -25,9 +27,9 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
   std::shared_ptr<conf::TargetConfig> rc(new conf::TargetConfig());
 
   // Rebuilt the whole RC from the form:
-  for (int i = 0; i < toolBox->count(); i++) {
+  for (int i = 0; i < rcEntries->count(); i++) {
     RCEntryEditor const *entry =
-      dynamic_cast<RCEntryEditor const *>(toolBox->widget(i));
+      dynamic_cast<RCEntryEditor const *>(rcEntries->widget(i));
     if (! entry) {
       std::cout << "TargetConfigEditor entry " << i << " not a RCEntryEditor?!" << std::endl;
       continue;
@@ -40,8 +42,8 @@ std::shared_ptr<conf::Value const> TargetConfigEditor::getValue() const
 void TargetConfigEditor::setEnabled(bool enabled)
 {
   AtomicWidget::setEnabled(enabled);
-  for (int i = 0; i < toolBox->count(); i++) {
-    RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(toolBox->widget(i));
+  for (int i = 0; i < rcEntries->count(); i++) {
+    RCEntryEditor *entry = dynamic_cast<RCEntryEditor *>(rcEntries->widget(i));
     if (! entry) continue;
     entry->setEnabled(enabled);
   }
@@ -59,9 +61,9 @@ bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
   /* Since we have a single value and it is locked whenever we want to edit
    * it, the current form cannot have any modification when a new value is
    * received. Therefore there is no use for preserving current values: */
-  while (toolBox->count() > 0) {
-    QWidget *w = toolBox->widget(0);
-    toolBox->removeItem(0);
+  while (rcEntries->count() > 0) {
+    QWidget *w = rcEntries->widget(0);
+    rcEntries->removeTab(0);
     w->deleteLater();
   }
 
@@ -70,7 +72,7 @@ bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
     RCEntryEditor *entryEditor = new RCEntryEditor(true);
     entryEditor->setSourceName(QString::fromStdString(entry->source));
     entryEditor->setValue(entry);
-    toolBox->addItem(entryEditor, QString::fromStdString(it.first));
+    rcEntries->addTab(entryEditor, QString::fromStdString(it.first));
 
     connect(entryEditor, &RCEntryEditor::inputChanged,
             this, &TargetConfigEditor::inputChanged);
@@ -79,4 +81,29 @@ bool TargetConfigEditor::setValue(conf::Key const &k, std::shared_ptr<conf::Valu
   emit valueChanged(k, v);
 
   return true;
+}
+
+RCEntryEditor const *TargetConfigEditor::currentEntry() const
+{
+  RCEntryEditor const *entry =
+    dynamic_cast<RCEntryEditor const *>(rcEntries->currentWidget());
+  if (! entry) {
+    std::cout << "TargetConfigEditor entry that's not a RCEntryEditor?!" << std::endl;
+  }
+  return entry;
+}
+
+void TargetConfigEditor::removeEntry(RCEntryEditor const *toRemove)
+{
+  for (int c = 0; c < rcEntries->count(); c ++) {
+    RCEntryEditor const *entry =
+      dynamic_cast<RCEntryEditor const *>(rcEntries->widget(c));
+    if (! entry) continue;
+    if (entry == toRemove) {
+      rcEntries->removeTab(c);
+      return;
+    }
+  }
+
+  std::cerr << "Asked to remove entry @" << toRemove << " but coundn't find it" << std::endl;
 }

@@ -88,6 +88,7 @@ HEADERS += \
   FunctionInfoBox.h \
   RCEntryEditor.h \
   TargetConfigEditor.h \
+  RCEditorDialog.h \
   CodeInfoPanel.h \
   CodeEdit.h \
   ChartDataSet.h \
@@ -176,6 +177,7 @@ SOURCES += \
   FunctionInfoBox.cpp \
   RCEntryEditor.cpp \
   TargetConfigEditor.cpp \
+  RCEditorDialog.cpp \
   CodeInfoPanel.cpp \
   CodeEdit.cpp \
   ChartDataSet.cpp \
