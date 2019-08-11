@@ -138,7 +138,8 @@ ConfTreeItem *ConfTreeWidget::findOrCreateItem(QStringList &names, conf::Key con
     if (topLevel) setItemWidget(item, 3, fillerWidget());
     return findOrCreateItem(names, k, kv, item);
   } else {
-    KShortLabel *shortLabel = new KShortLabel(this);
+    // "The tree takes ownership of the widget"
+    KShortLabel *shortLabel = new KShortLabel;
     shortLabel->setKey(k);
     shortLabel->setContentsMargins(8, 8, 8, 8);
     // Redraw/resize whenever the value is changed:

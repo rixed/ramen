@@ -13,7 +13,7 @@ KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Valu
   setCentralWidget(widget);
 
   for (auto label : labels) {
-    QRadioButton *b = new QRadioButton(label.first, this);
+    QRadioButton *b = new QRadioButton(label.first);
     choices.push_back({b, label.second});
     layout->addWidget(b);
 
