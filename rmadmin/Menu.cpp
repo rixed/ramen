@@ -43,9 +43,6 @@ Menu::Menu(GraphModel *graphModel_, bool with_beta_features,
     Qt::CTRL|Qt::Key_R // _R_un
   );
 
-  fileMenu->addAction(
-    QCoreApplication::translate("QMenuBar", "Processes"));
-
   /* Where we can manage the windows and ask for specialized views
    * such as the raw editor, the graph view or other such tools: */
   QMenu *windowMenu = menuBar->addMenu(
