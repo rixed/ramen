@@ -68,14 +68,15 @@ QWidget *ConfTreeWidget::actionWidget(conf::Key const &k, KValue const *kv)
   layout->setContentsMargins(0, 0, 0, 0);
   widget->setLayout(layout);
 
-  QPushButton *editButton = new QPushButton(kv->can_write ? "edit":"view");
+  QPushButton *editButton =
+    new QPushButton(kv->can_write ? tr("Edit"):tr("View"));
   layout->addWidget(editButton);
   connect(editButton, &QPushButton::clicked, this, [this, k, kv](bool) {
     openEditorWindow(k, kv);
   });
 
   if (kv->can_del) {
-    QPushButton *delButton = new QPushButton("delete");
+    QPushButton *delButton = new QPushButton(tr("Delete"));
     layout->addWidget(delButton);
     connect(delButton, &QPushButton::clicked, this, [this, k](bool) {
       deleteClicked(k);
@@ -197,7 +198,9 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
   header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
   header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
 
-  if (verbose) std::cout << "ConfTreeWidget: Created in thread " << std::this_thread::get_id () << std::endl;
+  if (verbose)
+    std::cout << "ConfTreeWidget: Created in thread "
+              << std::this_thread::get_id () << std::endl;
 
   /* Get the activation signal to either collapse/expand or edit: */
   connect(this, &QTreeWidget::itemActivated, this, &ConfTreeWidget::activateItem);
@@ -207,28 +210,40 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
     // Temporarily, skip tail keys:
     if (startsWith(k.s, "tails/")) return;
 
+    if (verbose)
+      std::cout << "ConfTreeWidget: Connecting to all changes of key "
+                << k.s << " in thread " << std::this_thread::get_id() << std::endl;
+
     /* We'd like to create the item right now, but we are in the wrong thread.
      * In this (Ocaml) thread we must only connect future signals from that
      * kv into the proper slots that will create/update/delete the item. */
-    if (verbose) std::cout << "ConfTreeWidget: Connecting to all changes of key " << k.s << " in thread " << std::this_thread::get_id() << std::endl;
-    Once::connect(kv, &KValue::valueCreated, this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
-      if (verbose) std::cout << "ConfTreeWidget: Received valueCreated signal in thread " << std::this_thread::get_id() << "!" << std::endl;
+    Once::connect(kv, &KValue::valueCreated,
+                  this, [this, kv](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
+      if (verbose)
+        std::cout << "ConfTreeWidget: Received valueCreated signal in thread "
+                  << std::this_thread::get_id() << "!" << std::endl;
       (void)createItem(k, kv);
     });
+
     /* Better wait for the value viewer/editor to signal it:
     connect(kv, &KValue::valueChanged, this, [this](conf::Key const &k, std::shared_ptr<conf::Value const>, QString const &, double) {
       ConfTreeItem *item = itemOfKey(k);
       if (item) item->emitDataChanged();
     });*/
-    connect(kv, &KValue::valueLocked, this, [this](conf::Key const &k, QString const &, double) {
+    connect(kv, &KValue::valueLocked,
+            this, [this](conf::Key const &k, QString const &, double) {
       editedValueChanged(k);
       resizeColumnToContents(2);
     });
-    connect(kv, &KValue::valueUnlocked, this, [this](conf::Key const &k) {
+
+    connect(kv, &KValue::valueUnlocked,
+            this, [this](conf::Key const &k) {
       editedValueChanged(k);
       resizeColumnToContents(2);
     });
-    connect(kv, &KValue::valueDeleted, this, [this](conf::Key const &k) {
+
+    connect(kv, &KValue::valueDeleted,
+            this, [this](conf::Key const &k) {
       /* Let's assume the KValue that have sent this signal will be deleted
        * and will never fire again... */
       // Note: no need to emitDataChanged on the parent

@@ -9,7 +9,8 @@
 #include "AtomicWidget.h"
 #include "ConfTreeEditorDialog.h"
 
-ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *kv, QWidget *parent) :
+ConfTreeEditorDialog::ConfTreeEditorDialog(
+  conf::Key const &key_, KValue const *kv, QWidget *parent) :
   QDialog(parent),
   key(key_),
   can_write(kv->can_write)
