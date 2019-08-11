@@ -2,8 +2,9 @@
 #define MENU_H_190731
 #include <QObject>
 
-class GraphModel;
+class QMainWindow;
 class QMenuBar;
+class GraphModel;
 class AboutDialog;
 class ConfTreeDialog;
 class NewSourceDialog;
@@ -32,7 +33,7 @@ public:
   RCEditorDialog *rcEditorDialog;
   // WARNING: The above dialogues must be initialized to null!
 
-  Menu(GraphModel *, bool with_beta_features);
+  Menu(GraphModel *, bool with_beta_features, QMainWindow * = nullptr);
 
 public slots:
   void openSourceDialog();

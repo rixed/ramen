@@ -181,9 +181,14 @@ int main(int argc, char *argv[])
   GraphViewSettings *settings = new GraphViewSettings;
   GraphModel *graphModel = new GraphModel(settings);
 
-  globalMenu = new Menu(graphModel, with_beta_features);
   w = new RmAdminWin(graphModel, with_beta_features);
   w->resize(QDesktopWidget().availableGeometry(w).size() * 0.7);
+
+# ifdef Q_OS_MACOS
+  globalMenu = new Menu(graphModel, with_beta_features, nullptr);
+# else
+  globalMenu = new Menu(graphModel, with_beta_features, w);
+# endif
 
   std::thread sync_thread(do_sync_thread, srvUrl, userIdentity, insecure, argv);
 

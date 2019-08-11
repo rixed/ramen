@@ -11,7 +11,8 @@
 
 Menu *globalMenu;
 
-Menu::Menu(GraphModel *graphModel_, bool with_beta_features) :
+Menu::Menu(GraphModel *graphModel_, bool with_beta_features,
+           QMainWindow *mainWindow) :
   QObject(nullptr),
   graphModel(graphModel_),
   aboutDialog(nullptr),
@@ -22,7 +23,7 @@ Menu::Menu(GraphModel *graphModel_, bool with_beta_features) :
   rcEditorDialog(nullptr)
 {
   // A single menubar for all windows:
-  menuBar = new QMenuBar(nullptr);
+  menuBar = mainWindow ? mainWindow->menuBar() : new QMenuBar(nullptr);
 
   /* Where we can create sources, programs, edit the running config,
    * setup storage... Everything that's editing the configuration
