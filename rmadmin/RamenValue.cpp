@@ -629,6 +629,16 @@ VTuple::VTuple(value v_)
   CAMLreturn0;
 }
 
+QString const VTuple::toQString (conf::Key const &k) const
+{
+  QString s;
+  for (auto val : v) {
+    if (s.length() > 0) s += ", ";
+    s += val->toQString(k);
+  }
+  return QString("(") + s + QString(")");
+}
+
 void VTuple::append(RamenValue const *i)
 {
   /* FIXME: Make sure we do not add a Null immediate and pretend the field is
@@ -659,6 +669,16 @@ VRecord::VRecord(size_t numFields)
   while (numFields --) v.emplace_back(QString(), nullptr);
 }
 
+QString const VRecord::toQString (conf::Key const &k) const
+{
+  QString s;
+  for (auto val : v) {
+    if (s.length() > 0) s += ", ";
+    s += val.first + ":" + val.second->toQString(k);
+  }
+  return QString("{") + s + QString("}");
+}
+
 void VRecord::set(size_t idx, QString const field, RamenValue const *i)
 {
   assert(idx < v.size());
@@ -680,6 +700,16 @@ VVec::VVec(value v_)
   CAMLreturn0;
 }
 
+QString const VVec::toQString (conf::Key const &k) const
+{
+  QString s;
+  for (auto val : v) {
+    if (s.length() > 0) s += ", ";
+    s += val->toQString(k);
+  }
+  return QString("[") + s + QString("]");
+}
+
 /*
  * VList
  */
@@ -696,7 +726,7 @@ VList::VList(value v_)
 
 QString const VList::toQString (conf::Key const &k) const
 {
-  QString s("");
+  QString s;
   for (auto val : v) {
     if (s.length() > 0) s += ", ";
     s += val->toQString(k);

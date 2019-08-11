@@ -35,6 +35,7 @@ class AtomicWidget;
 
 struct RamenValue {
   virtual ~RamenValue() {};
+
   virtual QString const toQString(conf::Key const & = conf::Key::null) const;
   virtual value toOCamlValue() const {
     assert(!"Unimplemented RamenValue::toOCamlValue");
@@ -80,6 +81,7 @@ struct VFloat : public RamenValue {
 
   VFloat(double v_) : v(v_) {}
   VFloat() : VFloat(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
@@ -92,6 +94,7 @@ struct VString : public RamenValue {
 
   VString(QString const v_) : v(v_) {}
   VString() : VString(QString()) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const { return v; }
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
@@ -103,6 +106,7 @@ struct VBool : public RamenValue {
 
   VBool(bool v_) : v(v_) {}
   VBool() : VBool(false) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
@@ -115,6 +119,7 @@ struct VU8 : public RamenValue {
 
   VU8(uint8_t v_) : v(v_) {}
   VU8() : VU8(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -130,6 +135,7 @@ struct VU16 : public RamenValue {
 
   VU16(uint16_t v_) : v(v_) {}
   VU16() : VU16(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -145,6 +151,7 @@ struct VU32 : public RamenValue {
 
   VU32(uint32_t v_) : v(v_) {}
   VU32() : VU32(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -160,6 +167,7 @@ struct VU64 : public RamenValue {
 
   VU64(uint64_t v_) : v(v_) {}
   VU64() : VU64(0) {}
+
   // TODO: if the key name ends with "_size" then use stringOfSize
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
@@ -176,6 +184,7 @@ struct VU128 : public RamenValue {
 
   VU128(uint128_t v_) : v(v_) {}
   VU128() : VU128(0) {}
+
   // TODO: if the key name ends with "_size" then use stringOfSize
   QString const toQString(conf::Key const & = conf::Key::null) const;
   value toOCamlValue() const;
@@ -191,6 +200,7 @@ struct VI8 : public RamenValue {
 
   VI8(int8_t v_) : v(v_) {}
   VI8() : VI8(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -206,6 +216,7 @@ struct VI16 : public RamenValue {
 
   VI16(int16_t v_) : v(v_) {}
   VI16() : VI16(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -221,6 +232,7 @@ struct VI32 : public RamenValue {
 
   VI32(int32_t v_) : v(v_) {}
   VI32() : VI32(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -236,6 +248,7 @@ struct VI64 : public RamenValue {
 
   VI64(int64_t v_) : v(v_) {}
   VI64() : VI64(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const {
     return QString::number(v);
   }
@@ -251,6 +264,7 @@ struct VI128 : public RamenValue {
 
   VI128(int128_t v_) : v(v_) {}
   VI128() : VI128(0) {}
+
   QString const toQString(conf::Key const & = conf::Key::null) const;
   value toOCamlValue() const;
   bool operator==(RamenValue const &) const;
@@ -321,6 +335,7 @@ struct VTuple : public RamenValue {
   VTuple(size_t numFields) { v.reserve(numFields); }
   VTuple(value);
 
+  QString const toQString(conf::Key const & = conf::Key::null) const;
   void append(RamenValue const *);
   virtual RamenValue const *columnValue(size_t c) const {
     if (c >= v.size()) return nullptr;
@@ -334,6 +349,7 @@ struct VVec : public RamenValue {
   VVec(size_t dim) { v.reserve(dim); }
   VVec(value);
 
+  QString const toQString(conf::Key const & = conf::Key::null) const;
   void append(RamenValue const *i) {
     assert(v.size() < v.capacity());
     v.push_back(i);
@@ -350,9 +366,8 @@ struct VList : public RamenValue {
   VList(size_t dim) { v.reserve(dim); }
   VList(value);
 
-  void append(RamenValue const *i) { v.push_back(i); }
-
   QString const toQString(conf::Key const & = conf::Key::null) const;
+  void append(RamenValue const *i) { v.push_back(i); }
 };
 
 struct VRecord : public RamenValue {
@@ -362,6 +377,8 @@ struct VRecord : public RamenValue {
    * with a setter instead of an appender: */
   VRecord(size_t numFields);
   VRecord(value);
+
+  QString const toQString(conf::Key const & = conf::Key::null) const;
 
   void set(size_t idx, QString const field, RamenValue const *);
 
