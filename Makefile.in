@@ -11,7 +11,7 @@ Z3       = @Z3@
 QMAKE    = @QMAKE@
 WARNS    = -w -40-58+27
 
-override OCAMLOPTFLAGS += -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
+override OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -g -annot -S
 override CFLAGS        += -std=gnu11   -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CXXFLAGS      += -std=gnu++17 -g -O2 -Wall -W -Wno-parentheses -fPIC
 override CPPFLAGS      += -D_GNU_SOURCE \
