@@ -2,6 +2,7 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QFormLayout>
 #include <QLineEdit>
 #include "conf.h"
 #include "KValue.h"
@@ -13,11 +14,21 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
   key(key_),
   can_write(kv->can_write)
 {
-  QLabel *keyLabel = new QLabel(tr("Key:"));
-  /* Before long we will want to edit key names: */
-  QLineEdit *keyEditor = new QLineEdit;
-  keyEditor->setText(QString::fromStdString(key.s));
-  keyEditor->setEnabled(false);
+  /* The header: */
+  QFormLayout *headerLayout = new QFormLayout;
+  QLabel *keyName = new QLabel(QString::fromStdString(key.s));
+  keyName->setWordWrap(true);
+  headerLayout->addRow(tr("Key:"), keyName);
+  QLabel *setter = new QLabel(kv->uid);
+  headerLayout->addRow(tr("Last Modified By:"), setter);
+  QLabel *mtime = new QLabel(stringOfDate(kv->mtime));
+  headerLayout->addRow(tr("Last Modified At:"), mtime);
+  if (kv->isLocked()) {
+    QLabel *locker = new QLabel(*kv->owner);
+    headerLayout->addRow(tr("Locked By:"), locker);
+    QLabel *expiry = new QLabel(stringOfDate(kv->expiry));
+    headerLayout->addRow(tr("Expiry:"), expiry);
+  }
 
   editor = kv->val->editorWidget(key);
   QDialogButtonBox *buttonBox =
@@ -42,11 +53,12 @@ ConfTreeEditorDialog::ConfTreeEditorDialog(conf::Key const &key_, KValue const *
   if (can_write) conf::askLock(key);
 
   /* Now the layout: */
-  QHBoxLayout *keyLayout = new QHBoxLayout;
-  keyLayout->addWidget(keyLabel);
-  keyLayout->addWidget(keyEditor);
   QVBoxLayout *mainLayout = new QVBoxLayout;
-  mainLayout->addLayout(keyLayout);
+  QFrame* header = new QFrame;
+  header->setFrameShape(QFrame::Panel);
+  header->setFrameShadow(QFrame::Raised);
+  header->setLayout(headerLayout);
+  mainLayout->addWidget(header);
   mainLayout->addWidget(editor);
   mainLayout->addWidget(buttonBox);
   setLayout(mainLayout);
