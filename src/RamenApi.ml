@@ -713,10 +713,11 @@ let save_alert conf program_name (V1 { table ; column ; alert }) =
   ) ;
   (* Also make sure it is running *)
   !logger.info "Making sure the alert is running..." ;
-  let debug = conf.C.log_level = Debug in
-  let params = Hashtbl.create 0 in
-  let on_sites = Globs.all in (* TODO *)
-  RamenRun.do_run session.clt ~while_ src_path program_name true
+  let debug = conf.C.log_level = Debug
+  and params = Hashtbl.create 0
+  and on_sites = Globs.all (* TODO *)
+  and replace = true in
+  RamenRun.do_run session.clt ~while_ src_path program_name replace
                   Default.report_period on_sites debug params
 
 let get_alerts_local conf (table : N.fq) (column : N.field) =

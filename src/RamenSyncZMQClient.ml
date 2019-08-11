@@ -328,6 +328,13 @@ let matching_keys clt f =
   (fun (k, _) -> if f k then Some k else None) |>
   List.of_enum
 
+(* FIXME: since we use the callback mechanism many input messages will be
+ * processed before we manage to lock everything. Amongst those, some may
+ * trigger some code that will call this again for a non-disjoin set of keys.
+ * Therefore, as the locks are not recursive, the first to unlock will unlock
+ * for everyone.
+ * Maybe we want 2 kinds of locks: recursive and non-recursive, when all the
+ * non-recursive locks are merged together? *)
 let with_locked_matching
       ?while_ ?(lock_timeo=Default.sync_lock_timeout) clt f cb =
   let keys = matching_keys clt f in

@@ -345,7 +345,7 @@ let run conf ?(replace=false)
     ) program_name_opt in
   let while_ () = !Processes.quit = None in
   if not (String.contains (src_path : N.path :> string) '.') then
-    invalid_arg "do_run src_path with no extension" ;
+    invalid_arg "run src_path with no extension" ;
   let src_path_noext = Files.remove_ext src_path in
   let topics =
     [ "target_config" ;

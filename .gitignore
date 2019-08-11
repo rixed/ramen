@@ -94,3 +94,4 @@ icon.iconset
 *.info
 tests/archivist/*/configuration
 rmadmin/RmAdmin
+*.trace

@@ -86,16 +86,16 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 
   { // flags
     QVBoxLayout *flagsLayout = new QVBoxLayout;
-    enabledBox = new QCheckBox("enabled");
+    enabledBox = new QCheckBox(tr("enabled"));
     enabledBox->setChecked(true);
     connect(enabledBox, &QCheckBox::stateChanged,
             this, &RCEntryEditor::inputChanged);
     flagsLayout->addWidget(enabledBox);
-    debugBox = new QCheckBox("debug mode");
+    debugBox = new QCheckBox(tr("debug mode"));
     flagsLayout->addWidget(debugBox);
     connect(debugBox, &QCheckBox::stateChanged,
             this, &RCEntryEditor::inputChanged);
-    automaticBox = new QCheckBox("automatic");
+    automaticBox = new QCheckBox(tr("automatic"));
     automaticBox->setEnabled(false);
     flagsLayout->addWidget(automaticBox);
     layout->addRow(tr("Flags:"), flagsLayout);
