@@ -204,6 +204,9 @@ ConfTreeWidget::ConfTreeWidget(QWidget *parent) :
 
   /* Register to every change in the kvs: */
   conf::autoconnect("", [this](conf::Key const &k, KValue const *kv) {
+    // Temporarily, skip tail keys:
+    if (startsWith(k.s, "tails/")) return;
+
     /* We'd like to create the item right now, but we are in the wrong thread.
      * In this (Ocaml) thread we must only connect future signals from that
      * kv into the proper slots that will create/update/delete the item. */
