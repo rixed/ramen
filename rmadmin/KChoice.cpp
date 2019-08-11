@@ -7,10 +7,8 @@
 KChoice::KChoice(std::vector<std::pair<QString const, std::shared_ptr<conf::Value const>>> labels, QWidget *parent) :
   AtomicWidget(parent)
 {
-  widget = new QWidget;
   QVBoxLayout *layout = new QVBoxLayout;
-  widget->setLayout(layout);
-  setCentralWidget(widget);
+  setLayout(layout);
 
   for (auto label : labels) {
     QRadioButton *b = new QRadioButton(label.first);

@@ -12,7 +12,7 @@ TimeRangeViewer::TimeRangeViewer(QWidget *parent) :
   table->setCornerButtonEnabled(false);
   table->setEditTriggers(QAbstractItemView::NoEditTriggers);
   table->verticalHeader()->setVisible(false);
-  setCentralWidget(table);
+  relayoutWidget(table);
 }
 
 void TimeRangeViewer::extraConnections(KValue *kv)

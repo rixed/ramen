@@ -8,8 +8,6 @@ KShortLabel::KShortLabel(QWidget *parent) :
   AtomicWidget(parent),
   leftMargin(0), topMargin(0), rightMargin(0), bottomMargin(0)
 {
-  frame = new QFrame;
-  setCentralWidget(frame);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 }
 

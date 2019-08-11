@@ -12,7 +12,7 @@ TargetConfigEditor::TargetConfigEditor(QWidget *parent) :
   AtomicWidget(parent)
 {
   rcEntries = new QTabWidget;
-  setCentralWidget(rcEntries);
+  relayoutWidget(rcEntries);
 }
 
 void TargetConfigEditor::extraConnections(KValue *kv)

@@ -8,7 +8,7 @@ KLabel::KLabel(QWidget *parent, bool wordWrap) :
 {
   label = new QLabel;
   label->setWordWrap(wordWrap);
-  setCentralWidget(label);
+  relayoutWidget(label);
 }
 
 void KLabel::extraConnections(KValue *kv)

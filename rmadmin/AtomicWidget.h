@@ -48,7 +48,7 @@ public:
   virtual std::shared_ptr<conf::Value const> getValue() const { return nullptr; }
 
 protected:
-  void setCentralWidget(QWidget *w);
+  void relayoutWidget(QWidget *w);
 
   /* Called by setKey with the locked kvs and the kv of the new key, after
    * all former connections have been disconnected, so that implementers can

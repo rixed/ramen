@@ -11,7 +11,7 @@ void AtomicWidget::setEnabled(bool enabled)
   last_enabled = enabled;
 }
 
-void AtomicWidget::setCentralWidget(QWidget *w)
+void AtomicWidget::relayoutWidget(QWidget *w)
 {
   QStackedLayout *layout = new QStackedLayout;
   layout->addWidget(w);

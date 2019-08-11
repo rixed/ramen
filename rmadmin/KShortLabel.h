@@ -10,7 +10,6 @@ class KShortLabel : public AtomicWidget
 {
   Q_OBJECT
 
-  QFrame *frame;
   QString text;
 
   int leftMargin, topMargin, rightMargin, bottomMargin;

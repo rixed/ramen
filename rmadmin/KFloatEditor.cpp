@@ -8,7 +8,7 @@ KFloatEditor::KFloatEditor(QWidget *parent, double min, double max) :
 {
   lineEdit = new QLineEdit;
   lineEdit->setValidator(RangeDoubleValidator::forRange(min, max));
-  setCentralWidget(lineEdit);
+  relayoutWidget(lineEdit);
   connect(lineEdit, &QLineEdit::editingFinished,
           this, &KFloatEditor::inputChanged);
 }

@@ -12,11 +12,8 @@
 CodeInfoPanel::CodeInfoPanel(QWidget *parent) :
   AtomicWidget(parent)
 {
-  widget = new QWidget;
-  setCentralWidget(widget);
-
   QVBoxLayout *layout = new QVBoxLayout;
-  widget->setLayout(layout);
+  setLayout(layout);
 
   /* First: the SourceInfo (read only) */
   {

@@ -12,7 +12,7 @@ KTextEdit::KTextEdit(QWidget *parent) :
   AtomicWidget(parent)
 {
   textEdit = new QPlainTextEdit;
-  setCentralWidget(textEdit);
+  relayoutWidget(textEdit);
   new RamenSyntaxHighlighter(textEdit->document()); // the document becomes owner
 
   /* Set a monospaced font: */

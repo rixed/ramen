@@ -9,7 +9,7 @@ KLineEdit::KLineEdit(QWidget *parent) :
   AtomicWidget(parent)
 {
   lineEdit = new QLineEdit;
-  setCentralWidget(lineEdit);
+  relayoutWidget(lineEdit);
   connect(lineEdit, &QLineEdit::editingFinished,
           this, &KLineEdit::inputChanged);
 }

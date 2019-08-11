@@ -18,10 +18,8 @@ SourceInfoViewer::SourceInfoViewer(QWidget *parent) :
   AtomicWidget(parent)
 {
   layout = new QVBoxLayout;
-  QWidget *w = new QWidget;
-  w->setLayout(layout);
-  w->setMinimumHeight(400);
-  setCentralWidget(w);
+  setLayout(layout);
+  setMinimumHeight(400);
 }
 
 void SourceInfoViewer::extraConnections(KValue *kv)
