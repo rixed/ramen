@@ -370,6 +370,7 @@ void GraphModel::setFunctionProperty(
   int changed(0);
 # define PROPERTY_CHANGED 0x1
 # define STORAGE_CHANGED  0x2
+# define WORKER_CHANGED   0x4
 
   std::shared_ptr<Function> function =
     std::static_pointer_cast<Function>(functionItem->shared);
@@ -430,6 +431,7 @@ void GraphModel::setFunctionProperty(
         std::static_pointer_cast<Program>(programItem->shared);
 
       function->worker = cf;
+      changed |= WORKER_CHANGED;
 
       if (verbose)
         std::cout << "Setting worker to "
@@ -522,6 +524,9 @@ void GraphModel::setFunctionProperty(
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
     emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
   }
+  if (changed & WORKER_CHANGED) {
+    emit workerChanged();
+  }
 }
 
 void GraphModel::delFunctionProperty(
@@ -531,8 +536,6 @@ void GraphModel::delFunctionProperty(
     std::cout << "delFunctionProperty for " << pk.property.toStdString() << std::endl;
 
   int changed(0);
-# define PROPERTY_CHANGED 0x1
-# define STORAGE_CHANGED  0x2
 
   std::shared_ptr<Function> function =
     std::static_pointer_cast<Function>(functionItem->shared);
@@ -547,6 +550,7 @@ void GraphModel::delFunctionProperty(
         std::cout << "Resetting worker "
                   << function->worker->workerSign.toStdString() << std::endl;
       function->worker.reset();
+      changed |= WORKER_CHANGED;
     }
   } else if (pk.property == "stats/runtime") {
     if (function->runtimeStats) {
@@ -594,6 +598,9 @@ void GraphModel::delFunctionProperty(
     QModelIndex topLeft(functionItem->index(this, 0));
     QModelIndex bottomRight(functionItem->index(this, GraphModel::NumColumns - 1));
     emit dataChanged(topLeft, bottomRight, { Qt::DisplayRole });
+  }
+  if (changed & WORKER_CHANGED) {
+    emit workerChanged();
   }
 }
 

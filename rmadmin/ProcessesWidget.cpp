@@ -132,12 +132,14 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
 void MyProxy::viewTopHalves(bool checked)
 {
+  if (includeTopHalves == checked) return;
   includeTopHalves = checked;
   invalidateFilter();
 }
 
 void MyProxy::viewStopped(bool checked)
 {
+  if (includeStopped == checked) return;
   includeStopped = checked;
   invalidateFilter();
 }
@@ -203,6 +205,10 @@ ProcessesWidget::ProcessesWidget(GraphModel *graphModel, QWidget *parent) :
   connect(graphModel, &GraphModel::rowsInserted,
           proxyModel, &QSortFilterProxyModel::invalidate);
   connect(graphModel, &GraphModel::rowsRemoved,
+          proxyModel, &QSortFilterProxyModel::invalidate);
+  /* Special signal when a worker changed, since that affects top-halfness
+   * and working-ness: */
+  connect(graphModel, &GraphModel::workerChanged,
           proxyModel, &QSortFilterProxyModel::invalidate);
 
   /*
