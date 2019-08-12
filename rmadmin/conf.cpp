@@ -1,5 +1,6 @@
 #include <iostream>
 #include <regex>
+#include <boost/intrusive/list.hpp>
 #include <QLinkedList>
 extern "C" {
 # include <caml/mlvalues.h>
@@ -11,11 +12,30 @@ extern "C" {
 }
 #include "conf.h"
 
+using namespace boost;
+
 static bool const verbose = false;
 
 namespace conf {
 
-QMap<conf::Key, KValue> kvs;
+// The KV-store:
+QMap<conf::Key, KeyKValue> kvs;
+
+/* The list chaining all KValues present in kvs in order of appearance,
+ * repeating the key so we can iterate over that list only: */
+static intrusive::list<
+  KeyKValue,
+  intrusive::member_hook<
+    KeyKValue,
+    intrusive::list_member_hook<
+      intrusive::link_mode<intrusive::auto_unlink>
+    >,
+    &KeyKValue::kvs_entry
+  >,
+  intrusive::constant_time_size<false>
+> keySeq;
+
+// Lock protecting the above KV-store and list:
 rec_shared_mutex kvs_lock;
 
 struct ConfRequest {
@@ -160,11 +180,13 @@ void autoconnect(
   autoconnects.emplace_back(pattern, cb);
   std::regex const &re = autoconnects.back().re;
 
-  // As a convenience, call onCreated for every pre-existing keys:
+  /* As a convenience, call onCreated for every pre-existing keys,
+   * in appearance order: */
   kvs_lock.lock_shared();
-  for (auto it = kvs.constKeyValueBegin(); it != kvs.constKeyValueEnd(); it++) {
-    conf::Key const &key((*it).first);
-    KValue const *kv = &(*it).second;
+
+  for (auto it = keySeq.cbegin(); it != keySeq.cend(); it ++) {
+    conf::Key const &key = it->key;
+    KValue const *kv = &it->kv;
 
     if (std::regex_search(key.s, re)) {
       if (verbose)
@@ -239,7 +261,7 @@ extern "C" {
   {
     CAMLparam5(k_, v_, u_, mt_, cw_);
     CAMLxparam3(cd_, o_, ex_);
-    std::string k(String_val(k_));
+    conf::Key const k(String_val(k_));
     std::shared_ptr<conf::Value> v(conf::valueOfOCaml(v_));
     QString u(String_val(u_));
     double mt(Double_val(mt_));
@@ -252,14 +274,22 @@ extern "C" {
     // Connect first, and then set the value.
     conf::kvs_lock.lock();
 
+    /* Not supposed to happen but better safe than sorry: */
+    bool isNew = ! conf::kvs.contains(k);
+    if (! isNew)
+      std::cerr << "Supposedly new key " << k << " is not new!" << std::endl;
+
+    conf::KeyKValue *kkv = &conf::kvs[k];
+    if (isNew) conf::keySeq.push_back(*kkv);
+
     /* First establish the signal->slot connections, then set the value: */
-    conf::do_autoconnect(k, &conf::kvs[k]);
-    conf::kvs[k].set(k, v, u, mt, cw, cd);
+    conf::do_autoconnect(k, &kkv->kv);
+    kkv->kv.set(k, v, u, mt, cw, cd);
 
     if (caml_string_length(o_) > 0) {
       QString o(String_val(o_));
       double ex(Double_val(ex_));
-      conf::kvs[k].lock(k, o, ex);
+      kkv->kv.lock(k, o, ex);
     }
 
     conf::kvs_lock.unlock();
@@ -283,7 +313,7 @@ extern "C" {
     conf::kvs_lock.lock();
 
     assert(conf::kvs.contains(k));
-    conf::kvs[k].set(k, v, u, mt);
+    conf::kvs[k].kv.set(k, v, u, mt);
 
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
@@ -295,7 +325,7 @@ extern "C" {
     std::string k(String_val(k_));
     conf::kvs_lock.lock();
     assert(conf::kvs.contains(k));
-    emit conf::kvs[k].valueDeleted(k);  // better here than in the KValue destructor
+    emit conf::kvs[k].kv.valueDeleted(k);  // better here than in the KValue destructor
     conf::kvs.remove(k);
     conf::kvs_lock.unlock();
     // TODO: Or set to uninitialized? Or what?
@@ -311,7 +341,7 @@ extern "C" {
     double ex(Double_val(ex_));
 
     conf::kvs_lock.lock();
-    conf::kvs[k].lock(k, o, ex);
+    conf::kvs[k].kv.lock(k, o, ex);
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }
@@ -321,7 +351,7 @@ extern "C" {
     CAMLparam1(k_);
     std::string k(String_val(k_));
     conf::kvs_lock.lock();
-    conf::kvs[k].unlock(k);
+    conf::kvs[k].kv.unlock(k);
     conf::kvs_lock.unlock();
     CAMLreturn(Val_unit);
   }

@@ -22,7 +22,7 @@ public slots:
     keyIsSet = true;
     std::cout << "KErrorMsg: setting key to " << key << std::endl;
     conf::kvs_lock.lock_shared();
-    KValue &kv = conf::kvs[key];
+    KValue &kv = conf::kvs[key].kv;
     conf::kvs_lock.unlock_shared();
     connect(&kv, &KValue::valueChanged, this, &KErrorMsg::setValue);
     if (kv.isSet()) setValue(key, kv.val);

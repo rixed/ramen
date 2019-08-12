@@ -24,16 +24,16 @@ void AtomicWidget::setKey(conf::Key const &newKey)
 
   if (newKey == key) return;
 
-  KValue *kv = nullptr;
+  conf::KeyKValue *kkv = nullptr;
 
   /* First disconnect: */
   if (key != conf::Key::null) {
     conf::kvs_lock.lock_shared();
-    kv = &conf::kvs[key];
+    kkv = &conf::kvs[key];
     conf::kvs_lock.unlock_shared();
     /* This also disconnect whatever other signals the inerited implementer
      * might have set: */
-    disconnect(kv, 0, this, 0);
+    disconnect(&kkv->kv, 0, this, 0);
   }
 
   conf::Key const oldKey = key;
@@ -41,13 +41,13 @@ void AtomicWidget::setKey(conf::Key const &newKey)
 
   if (key != conf::Key::null) {
     conf::kvs_lock.lock_shared();
-    kv = &conf::kvs[key];
-    if (kv->isSet()) {
-      bool ok = setValue(key, kv->val);
+    kkv = &conf::kvs[key];
+    if (kkv->kv.isSet()) {
+      bool ok = setValue(key, kkv->kv.val);
       assert(ok);
     }
-    extraConnections(kv);
-    setEnabled(kv->isMine());
+    extraConnections(&kkv->kv);
+    setEnabled(kkv->kv.isMine());
     conf::kvs_lock.unlock_shared();
   } else {
     setEnabled(false);

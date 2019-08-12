@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <shared_mutex>
+#include <boost/intrusive/list.hpp>
 #include <QMap>
 #include <QString>
 #include <QObject>
@@ -18,8 +19,19 @@ namespace conf {
  * updates to widget slots.
  * This is accessed read/write from the OCaml thread and read only from the
  * Qt thread(s)., thus the shared_mutex: */
+
+struct KeyKValue {
+  boost::intrusive::list_member_hook<
+    boost::intrusive::link_mode<boost::intrusive::auto_unlink>
+  > kvs_entry;
+
+  conf::Key key;
+  KValue kv;
+};
+
 // TODO: a prefix tree
-extern QMap<conf::Key, KValue> kvs;
+extern QMap<conf::Key, KeyKValue> kvs;
+
 extern rec_shared_mutex kvs_lock;
 
 /* The above map is always updated by the server.

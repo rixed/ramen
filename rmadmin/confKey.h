@@ -7,15 +7,16 @@
 namespace conf {
 
 // So that Qt can serialize keys:
+// FIXME: is this still necessary?
 
 class Key
 {
 public:
   std::string s;
-  Key();
-  Key(Key const &other);
-  Key(std::string const &);
-  ~Key();
+  Key() : s() {}
+  Key(Key const &other) : s(other.s) {}
+  Key(std::string const &s_) : s(s_) {}
+  ~Key() {}
 
   static Key const null;
 };

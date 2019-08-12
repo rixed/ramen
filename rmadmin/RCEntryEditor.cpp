@@ -189,7 +189,7 @@ void RCEntryEditor::updateSourceWarnings()
       conf::kvs.contains(keyOfSourceName(name, "alert"));
     sourceIsCompiled =
       conf::kvs.contains(info_k) &&
-      isCompiledSource(conf::kvs[info_k]);
+      isCompiledSource(conf::kvs[info_k].kv);
     conf::kvs_lock.unlock_shared();
   }
 
@@ -245,7 +245,7 @@ void RCEntryEditor::resetParams()
 
   conf::kvs_lock.lock_shared();
   std::shared_ptr<conf::SourceInfo const> info =
-    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].val);
+    std::dynamic_pointer_cast<conf::SourceInfo const>(conf::kvs[infoKey].kv.val);
   conf::kvs_lock.unlock_shared();
 
   if (! info) {

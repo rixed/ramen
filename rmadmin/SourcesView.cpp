@@ -124,7 +124,7 @@ void SourcesView::openInfo(QModelIndex const &index)
 
   KValue const *kv = nullptr;
   conf::kvs_lock.lock_shared();
-  if (conf::kvs.contains(infoKey)) kv = &conf::kvs[infoKey];
+  if (conf::kvs.contains(infoKey)) kv = &conf::kvs[infoKey].kv;
   conf::kvs_lock.unlock_shared();
 
   if (kv) {

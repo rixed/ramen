@@ -123,11 +123,11 @@ void AtomicForm::changeKey(conf::Key const &oldKey, conf::Key const &newKey)
    * key then they will change their keys together. */
   conf::kvs_lock.lock_shared();
   if (oldKey != conf::Key::null) {
-    disconnect(&conf::kvs[oldKey], 0, this, 0);
+    disconnect(&conf::kvs[oldKey].kv, 0, this, 0);
   }
 
   if (newKey != conf::Key::null) {
-    KValue *kv = &conf::kvs[newKey];
+    KValue *kv = &conf::kvs[newKey].kv;
     connect(kv, &KValue::valueLocked, this, &AtomicForm::lockValue);
     connect(kv, &KValue::valueUnlocked, this, &AtomicForm::unlockValue);
     if (kv->isLocked()) lockValue(newKey, *kv->owner);

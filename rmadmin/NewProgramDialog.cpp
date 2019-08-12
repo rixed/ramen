@@ -55,7 +55,7 @@ NewProgramDialog::NewProgramDialog(QString const &sourceName, QWidget *parent) :
   // Listen for all locks on the RC:
   std::cout << "Listening to RC locks..." << std::endl;
   conf::kvs_lock.lock_shared();
-  KValue &rc_value = conf::kvs[rc_key];
+  KValue &rc_value = conf::kvs[rc_key].kv;
   connect(&rc_value, &KValue::valueLocked,
           this, &NewProgramDialog::mayWriteRC);
   conf::kvs_lock.unlock_shared();
@@ -74,7 +74,7 @@ void NewProgramDialog::createProgram()
    * Had we one entry per program we could simply use NewKey.
    * Here instead we write only if/when we obtain the lock. */
   conf::kvs_lock.lock_shared();
-  KValue rc_value = conf::kvs[rc_key];
+  KValue &rc_value = conf::kvs[rc_key].kv;
   conf::kvs_lock.unlock_shared();
   if (rc_value.isMine()) {
     appendEntry();
@@ -96,7 +96,7 @@ void NewProgramDialog::appendEntry()
   conf::RCEntry *rce = editor->getValue();
 
   conf::kvs_lock.lock_shared();
-  KValue rc_value = conf::kvs[rc_key];
+  KValue &rc_value = conf::kvs[rc_key].kv;
   conf::kvs_lock.unlock_shared();
 
   std::shared_ptr<conf::TargetConfig> rc =

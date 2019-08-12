@@ -33,7 +33,7 @@ CompiledFunctionInfo const *Function::compiledInfo() const
 
   conf::Key k = "sources/" + worker->srcPath.toStdString() + "/info";
   conf::kvs_lock.lock_shared();
-  KValue &kv = conf::kvs[k];
+  KValue &kv = conf::kvs[k].kv;
   conf::kvs_lock.unlock_shared();
 
   if (! kv.val) {
