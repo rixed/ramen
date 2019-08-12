@@ -24,7 +24,8 @@ let worker_signature func params =
   func.FS.signature ^"_"^ RamenParams.signature_of_list params |>
   N.md5
 
-(* Do not build a hashtbl but update the confserver directly. *)
+(* Do not build a hashtbl but update the confserver directly,
+ * while avoiding to reset the same values. *)
 let update_conf_server conf ?(while_=always) clt sites rc_entries =
   assert (conf.C.sync_url <> "") ;
   let locate_parents site pname func =
@@ -144,10 +145,18 @@ let update_conf_server conf ?(while_=always) clt sites rc_entries =
     ) parents
   ) !all_parents ;
   (* Now set the keys: *)
-  let set_keys = ref Set.empty in
+  let set_keys = ref Set.empty in (* Set of keys that will not be deleted *)
   let upd k v =
     set_keys := Set.add k !set_keys ;
-    ZMQClient.send_cmd ~while_ (SetKey (k, v)) in
+    let must_be_set  =
+      match (Client.find clt k).value with
+      | exception Not_found -> true
+      | v' -> v <> v' in
+    if must_be_set then
+      ZMQClient.send_cmd ~while_ (SetKey (k, v))
+    else
+      !logger.debug "Key %a keeps its value"
+        Key.print k in
   (* Notes regarding non-local children/parents:
    * We never ref top-halves (a ref is only site/program/function, no
    * role). But every time a children is not local, it can be assumed
@@ -263,13 +272,36 @@ let start conf ~while_ =
   let is_my_key = function
     | Key.PerSite (_, (PerWorker (_, Worker))) -> true
     | _ -> false in
+  let do_update clt rc =
+    ZMQClient.with_locked_matching clt ~while_ is_my_key (fun () ->
+      let sites = Services.all_sites conf in
+      update_conf_server conf ~while_ clt sites rc) in
   let on_set clt k v _uid _mtime =
     match k, v with
     | Key.TargetConfig, Value.TargetConfig rc  ->
-        let open ZMQClient in
-        with_locked_matching clt ~while_ is_my_key (fun () ->
-          let sites = Services.all_sites conf in
-          update_conf_server conf ~while_ clt sites rc)
+        do_update clt rc
+    | Key.Sources (src_path, "info"),
+      Value.SourceInfo { detail = Compiled _ ; _ } ->
+        (* If any rc entry uses this source, then any entry could have
+         * to be updated (directly the workers of this entry, but also
+         * the workers whose parents/children are using this source).
+         * So in case this source is used anywhere at all then the whole
+         * graph of workers is recomputed. *)
+        (match (Client.find clt Key.TargetConfig).value with
+        | exception Not_found ->
+            !logger.warning "Key %a does not exist yet!?"
+              Key.print Key.TargetConfig
+        | Value.TargetConfig rc ->
+            if List.exists (fun (_, rce) ->
+                 rce.Value.TargetConfig.src_path = src_path) rc then
+              do_update clt rc
+            else
+              !logger.debug "No RC entries are using updated source %a (only %a)"
+                N.path_print src_path
+                (pretty_enum_print N.path_print)
+                  (List.enum rc /@ (fun (_, rce) -> rce.Value.TargetConfig.src_path))
+        | v ->
+            err_sync_type Key.TargetConfig v "a TargetConfig")
     | _ -> () in
   let on_new clt k v uid mtime _can_write _can_del _owner _expiry =
     on_set clt k v uid mtime
