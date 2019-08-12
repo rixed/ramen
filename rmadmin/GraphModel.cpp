@@ -575,18 +575,25 @@ void GraphModel::delFunctionProperty(
     DEL_RAMENVALUE(numArcBytes, STORAGE_CHANGED);
   } else if (pk.property == "archives/alloc_size") {
     DEL_RAMENVALUE(allocArcBytes, STORAGE_CHANGED);
-  } else if (pk.property == "pid") {
-    DEL_RAMENVALUE(pid, PROPERTY_CHANGED);
-  } else if (pk.property == "last_killed") {
-    DEL_RAMENVALUE(lastKilled, PROPERTY_CHANGED);
-  } else if (pk.property == "last_exit") {
-    DEL_RAMENVALUE(lastExit, PROPERTY_CHANGED);
-  } else if (pk.property == "last_exit_status") {
-    DEL_RAMENVALUE(lastExitStatus, PROPERTY_CHANGED);
-  } else if (pk.property == "successive_failures") {
-    DEL_RAMENVALUE(successiveFailures, PROPERTY_CHANGED);
-  } else if (pk.property == "quarantine_until") {
-    DEL_RAMENVALUE(quarantineUntil, PROPERTY_CHANGED);
+  } else {
+    if (! pk.instanceSignature.isEmpty() &&
+        function->instanceSignature.has_value() &&
+        pk.instanceSignature == function->instanceSignature)
+    {
+      if (pk.property == "pid") {
+        DEL_RAMENVALUE(pid, PROPERTY_CHANGED);
+      } else if (pk.property == "last_killed") {
+        DEL_RAMENVALUE(lastKilled, PROPERTY_CHANGED);
+      } else if (pk.property == "last_exit") {
+        DEL_RAMENVALUE(lastExit, PROPERTY_CHANGED);
+      } else if (pk.property == "last_exit_status") {
+        DEL_RAMENVALUE(lastExitStatus, PROPERTY_CHANGED);
+      } else if (pk.property == "successive_failures") {
+        DEL_RAMENVALUE(successiveFailures, PROPERTY_CHANGED);
+      } else if (pk.property == "quarantine_until") {
+        DEL_RAMENVALUE(quarantineUntil, PROPERTY_CHANGED);
+      }
+    }
   }
 
   if (changed & STORAGE_CHANGED) {
