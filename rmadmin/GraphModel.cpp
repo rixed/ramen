@@ -269,11 +269,11 @@ FunctionItem const *GraphModel::find(QString const &site, QString const &program
                                       << program.toStdString() << "/"
                                       << function.toStdString() << std::endl;
   for (SiteItem const *siteItem : sites) {
-    if (siteItem->name == site) {
+    if (siteItem->shared->name == site) {
       for (ProgramItem const *programItem : siteItem->programs) {
-        if (programItem->name == program) {
+        if (programItem->shared->name == program) {
           for (FunctionItem const *functionItem : programItem->functions) {
-            if (functionItem->name == function) {
+            if (functionItem->shared->name == function) {
               return functionItem;
             }
           }
@@ -362,24 +362,32 @@ void GraphModel::setFunctionProperty(
 # define ANYTHING_CHANGED 0x1
 # define STORAGE_CHANGED  0x2
 
+  std::shared_ptr<Function> function =
+    std::static_pointer_cast<Function>(functionItem->shared);
+
   if (p == "worker") {
     std::shared_ptr<conf::Worker const> cf =
       std::dynamic_pointer_cast<conf::Worker const>(v);
     if (cf) {
-      functionItem->worker = cf;
+      std::shared_ptr<Site> site =
+        std::static_pointer_cast<Site>(siteItem->shared);
+      std::shared_ptr<Program> program =
+        std::static_pointer_cast<Program>(programItem->shared);
+
+      function->worker = cf;
 
       for (auto ref : cf->parent_refs) {
         /* If the parent is not local then assume the existence of a top-half
          * for this function running on the remote site: */
         QString psite, pprog, pfunc;
-        if (ref->site == siteItem->name) {
+        if (ref->site == site->name) {
           psite = ref->site;
           pprog = ref->program;
           pfunc = ref->function;
         } else {
           psite = ref->site;
-          pprog = programItem->name;
-          pfunc = functionItem->name;
+          pprog = program->name;
+          pfunc = function->name;
         }
         /* Try to locate the GraphItem of this parent. If it's not
          * there yet, enqueue this worker somewhere and revisit this
@@ -399,14 +407,14 @@ void GraphModel::setFunctionProperty(
     std::shared_ptr<conf::RuntimeStats const> stats =
       std::dynamic_pointer_cast<conf::RuntimeStats const>(v);
     if (stats) {
-      functionItem->runtimeStats = stats;
+      function->runtimeStats = stats;
       changed |= ANYTHING_CHANGED;
     }
   } else if (p == "archives/times") {
     std::shared_ptr<conf::TimeRange const> times =
       std::dynamic_pointer_cast<conf::TimeRange const>(v);
     if (times) {
-      functionItem->archivedTimes = times;
+      function->archivedTimes = times;
       changed |= STORAGE_CHANGED;
     }
   } else if (p == "archives/num_files") {
@@ -416,7 +424,7 @@ void GraphModel::setFunctionProperty(
       std::shared_ptr<VI64 const> v =
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
-        functionItem->numArcFiles = v->v;
+        function->numArcFiles = v->v;
         changed |= STORAGE_CHANGED;
       }
     }
@@ -427,7 +435,7 @@ void GraphModel::setFunctionProperty(
       std::shared_ptr<VI64 const> v =
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
-        functionItem->numArcBytes = v->v;
+        function->numArcBytes = v->v;
         changed |= STORAGE_CHANGED;
       }
     }
@@ -438,7 +446,7 @@ void GraphModel::setFunctionProperty(
       std::shared_ptr<VI64 const> v =
         std::dynamic_pointer_cast<VI64 const>(cf->v);
       if (v) {
-        functionItem->allocArcBytes = v->v;
+        function->allocArcBytes = v->v;
         changed |= STORAGE_CHANGED;
       }
     }
@@ -465,37 +473,40 @@ void GraphModel::delFunctionProperty(FunctionItem *functionItem, QString const &
 # define ANYTHING_CHANGED 0x1
 # define STORAGE_CHANGED  0x2
 
+  std::shared_ptr<Function> function =
+    std::static_pointer_cast<Function>(functionItem->shared);
+
   if (p == "worker") {
-    if (functionItem->worker) {
+    if (function->worker) {
       /* As we have connected this function to its parents (not treeParents!)
        * when the worker was received, disconnect it now: */
       removeParents(functionItem);
       changed |= STORAGE_CHANGED;
-      functionItem->worker = nullptr;
+      function->worker = nullptr;
     }
   } else if (p == "stats/runtime") {
-    if (functionItem->runtimeStats) {
-      functionItem->runtimeStats = nullptr;
+    if (function->runtimeStats) {
+      function->runtimeStats = nullptr;
       changed |= ANYTHING_CHANGED;
     }
   } else if (p == "archives/times") {
-    if (functionItem->archivedTimes) {
-      functionItem->archivedTimes = nullptr;
+    if (function->archivedTimes) {
+      function->archivedTimes = nullptr;
       changed |= STORAGE_CHANGED;
     }
   } else if (p == "archives/num_files") {
-    if (functionItem->numArcFiles.has_value()) {
-      functionItem->numArcFiles.reset();
+    if (function->numArcFiles.has_value()) {
+      function->numArcFiles.reset();
       changed |= STORAGE_CHANGED;
     }
   } else if (p == "archives/current_size") {
-    if (functionItem->numArcBytes.has_value()) {
-      functionItem->numArcBytes.reset();
+    if (function->numArcBytes.has_value()) {
+      function->numArcBytes.reset();
       changed |= STORAGE_CHANGED;
     }
   } else if (p == "archives/alloc_size") {
-    if (functionItem->allocArcBytes.has_value()) {
-      functionItem->allocArcBytes.reset();
+    if (function->allocArcBytes.has_value()) {
+      function->allocArcBytes.reset();
       changed |= STORAGE_CHANGED;
     }
   }
@@ -523,13 +534,17 @@ void GraphModel::delProgramProperty(ProgramItem *, QString const &)
 void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shared_ptr<conf::Value const> v)
 {
   if (p == "is_master") {
+    std::shared_ptr<Site> site =
+      std::static_pointer_cast<Site>(siteItem->shared);
+
     std::shared_ptr<conf::RamenValueValue const> rv =
       std::dynamic_pointer_cast<conf::RamenValueValue const>(v);
+
     if (rv) {
       std::shared_ptr<VBool const> v =
         std::dynamic_pointer_cast<VBool const>(rv->v);
       if (v) {
-        siteItem->isMaster = v->v;
+        site->isMaster = v->v;
         /* Signal that the name has changed, although it's still TODO */
         QModelIndex index(siteItem->index(this, 0));
         emit dataChanged(index, index, { Qt::DisplayRole });
@@ -541,8 +556,12 @@ void GraphModel::setSiteProperty(SiteItem *siteItem, QString const &p, std::shar
 void GraphModel::delSiteProperty(SiteItem *siteItem, QString const &p)
 {
   if (p == "is_master") {
-    siteItem->isMaster = false;
+    std::shared_ptr<Site> site =
+      std::static_pointer_cast<Site>(siteItem->shared);
+
+    site->isMaster = false;
   }
+
   QModelIndex index(siteItem->index(this, 0));
   emit dataChanged(index, index, { Qt::DisplayRole });
 }
@@ -559,15 +578,17 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
 
   SiteItem *siteItem = nullptr;
   for (SiteItem *si : sites) {
-    if (si->name == pk.site) {
+    if (si->shared->name == pk.site) {
       siteItem = si;
       break;
     }
   }
+
   if (! siteItem) {
     if (verbose)
       std::cout << "Creating a new Site " << pk.site.toStdString() << std::endl;
-    siteItem = new SiteItem(nullptr, pk.site, settings);
+
+    siteItem = new SiteItem(nullptr, std::make_unique<Site>(pk.site), settings);
     int idx = sites.size(); // as we insert at the end for now
     beginInsertRows(QModelIndex(), idx, idx);
     sites.insert(sites.begin()+idx, siteItem);
@@ -578,15 +599,18 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
   if (pk.program.length() > 0) {
     ProgramItem *programItem = nullptr;
     for (ProgramItem *pi : siteItem->programs) {
-      if (pi->name == pk.program) {
+      if (pi->shared->name == pk.program) {
         programItem = pi;
         break;
       }
     }
     if (! programItem) {
       if (verbose)
-        std::cout << "Creating a new Program " << pk.program.toStdString() << std::endl;
-      programItem = new ProgramItem(siteItem, pk.program, settings);
+        std::cout << "Creating a new Program " << pk.program.toStdString()
+                  << std::endl;
+
+      programItem =
+        new ProgramItem(siteItem, std::make_unique<Program>(pk.program), settings);
       int idx = siteItem->programs.size();
       QModelIndex parent =
         createIndex(siteItem->row, 0, static_cast<GraphItem *>(siteItem));
@@ -599,15 +623,20 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
     if (pk.function.length() > 0) {
       FunctionItem *functionItem = nullptr;
       for (FunctionItem *fi : programItem->functions) {
-        if (fi->name == pk.function) {
+        if (fi->shared->name == pk.function) {
           functionItem = fi;
           break;
         }
       }
       if (! functionItem) {
         if (verbose)
-          std::cout << "Creating a new Function " << pk.function.toStdString() << std::endl;
-        functionItem = new FunctionItem(programItem, pk.function, settings);
+          std::cout << "Creating a new Function " << pk.function.toStdString()
+                    << std::endl;
+
+        QString fqName(programItem->fqName() + "/" + pk.function);
+        functionItem =
+          new FunctionItem(
+            programItem, std::make_unique<Function>(pk.function, fqName), settings);
         int idx = programItem->functions.size();
         QModelIndex parent =
           createIndex(programItem->row, 0, static_cast<GraphItem *>(programItem));
@@ -641,7 +670,7 @@ void GraphModel::deleteKey(conf::Key const &k)
 
   SiteItem *siteItem = nullptr;
   for (SiteItem *si : sites) {
-    if (si->name == pk.site) {
+    if (si->shared->name == pk.site) {
       siteItem = si;
       break;
     }
@@ -651,7 +680,7 @@ void GraphModel::deleteKey(conf::Key const &k)
   if (pk.program.length() > 0) {
     ProgramItem *programItem = nullptr;
     for (ProgramItem *pi : siteItem->programs) {
-      if (pi->name == pk.program) {
+      if (pi->shared->name == pk.program) {
         programItem = pi;
         break;
       }
@@ -661,7 +690,7 @@ void GraphModel::deleteKey(conf::Key const &k)
     if (pk.function.length() > 0) {
       FunctionItem *functionItem = nullptr;
       for (FunctionItem *fi : programItem->functions) {
-        if (fi->name == pk.function) {
+        if (fi->shared->name == pk.function) {
           functionItem = fi;
           break;
         }
@@ -679,7 +708,7 @@ void GraphModel::deleteKey(conf::Key const &k)
 
 std::ostream &operator<<(std::ostream &os, SiteItem const &s)
 {
-  os << "Site[" << s.row << "]:" << s.name.toStdString() << std::endl;
+  os << "Site[" << s.row << "]:" << s.shared->name.toStdString() << std::endl;
   for (ProgramItem const *program : s.programs) {
     os << *program << std::endl;
   }
@@ -688,7 +717,7 @@ std::ostream &operator<<(std::ostream &os, SiteItem const &s)
 
 std::ostream &operator<<(std::ostream &os, ProgramItem const &p)
 {
-  os << "  Program[" << p.row << "]:" << p.name.toStdString() << std::endl;
+  os << "  Program[" << p.row << "]:" << p.shared->name.toStdString() << std::endl;
   for (FunctionItem const *function : p.functions) {
     os << *function << std::endl;
   }
@@ -697,6 +726,6 @@ std::ostream &operator<<(std::ostream &os, ProgramItem const &p)
 
 std::ostream &operator<<(std::ostream &os, FunctionItem const &f)
 {
-  os << "    Function[" << f.row << "]:" << f.name.toStdString();
+  os << "    Function[" << f.row << "]:" << f.shared->name.toStdString();
   return os;
 }

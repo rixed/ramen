@@ -1,5 +1,6 @@
 #ifndef TAILMODEL_H_190515
 #define TAILMODEL_H_190515
+#include <memory>
 #include <QAbstractItemModel>
 
 /* The model representing lines of tuples, with possibly some tuples skipped
@@ -16,18 +17,19 @@
  * assign them their index at creation time.
  */
 
-class FunctionItem;
+class Function;
 
 class TailModel : public QAbstractTableModel
 {
   Q_OBJECT
 
-  FunctionItem const *f;
+  std::shared_ptr<Function const> f;
   bool used;  // TODO: after a while, functions with unused model destroy them
 
 public:
-  TailModel(FunctionItem const *, QObject *parent = nullptr);
+  TailModel(std::shared_ptr<Function const>, QObject *parent = nullptr);
   ~TailModel();
+
   int rowCount(QModelIndex const &parent) const override;
   int columnCount(QModelIndex const &parent) const override;
   QVariant data(QModelIndex const &index, int role) const override;

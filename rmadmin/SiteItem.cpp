@@ -1,20 +1,15 @@
 #include <QMarginsF>
-#include "ProgramItem.h"
-#include "SiteItem.h"
 #include "GraphView.h"
 #include "GraphModel.h"
+#include "ProgramItem.h"
+#include "SiteItem.h"
 
-SiteItem::SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings) :
-  GraphItem(treeParent, name, settings)
+SiteItem::SiteItem(
+  GraphItem *treeParent, std::unique_ptr<Site> site,
+  GraphViewSettings const *settings) :
+  GraphItem(treeParent, std::move(site), settings)
 {
   setZValue(1);
-}
-
-SiteItem::~SiteItem()
-{
-  for (ProgramItem *program : programs) {
-    delete program;
-  }
 }
 
 void SiteItem::reorder(GraphModel const *model)
@@ -23,7 +18,8 @@ void SiteItem::reorder(GraphModel const *model)
     if (programs[i]->row != i) {
       programs[i]->row = i;
       programs[i]->setPos(30, i * 90);
-      emit model->positionChanged(model->createIndex(i, 0, static_cast<GraphItem *>(programs[i])));
+      emit model->positionChanged(
+        model->createIndex(i, 0, (programs[i])));
     }
   }
   prepareGeometryChange();
@@ -31,9 +27,13 @@ void SiteItem::reorder(GraphModel const *model)
 
 std::vector<std::pair<QString const, QString const>> SiteItem::labels() const
 {
+  std::shared_ptr<Site> shr =
+    std::static_pointer_cast<Site>(shared);
+
   return {
     { "#programs", QString::number(programs.size()) },
-    { "master", isMaster ? (*isMaster ? tr("yes") : tr("no")) : tr("unknown") }
+    { "master", shr->isMaster ?
+        (*shr->isMaster ? tr("yes") : tr("no")) : tr("unknown") }
   };
 }
 

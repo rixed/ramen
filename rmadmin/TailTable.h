@@ -1,13 +1,18 @@
 #ifndef TAILTABLE_H_190515
 #define TAILTABLE_H_190515
-/* Exactly like a QTableView but with a status line offering to create a chart with
- * selected columns */
+/* Widget that displays the tail of some function in a table, with selectable
+ * columns, then a control bar offering to show and tailor the corresponding
+ * chart, and also do add it to some dashboard. */
+#include <memory>
 #include <QWidget>
 #include <QTableView>
 #include <QList>
 
+class QVBoxLayout;
+class Function;
 class TailModel;
 class TailTableBar;
+class Chart;
 
 class TailTable : public QWidget
 {
@@ -16,18 +21,20 @@ class TailTable : public QWidget
   QTableView *tableView;
   TailTableBar *tableBar;
   QList<int> selectedColumns;
+  std::shared_ptr<Function> function;
+  Chart *chart; // or null
+  QVBoxLayout *layout;
 
-public:
-  TailTable(TailModel *, QWidget *parent = nullptr);
   QAbstractItemModel *model() const { return tableView->model(); }
+public:
+  TailTable(std::shared_ptr<Function>, QWidget *parent = nullptr);
 
 private slots:
   void enableBar(QItemSelection const &, QItemSelection const &);
   void extendSelection(QModelIndex const &parent, int first, int last);
-  void enrichQuickPlotClicked();
+  void showQuickPlot();
 
-signals:
-  void quickPlotClicked(QList<int> const &selectedColumns);
+  // TODO: signal willingness to add a chart to some dashboard
 };
 
 #endif

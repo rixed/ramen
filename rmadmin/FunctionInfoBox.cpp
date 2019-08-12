@@ -10,8 +10,8 @@
 FunctionInfoBox::FunctionInfoBox(FunctionItem const *f_, QWidget *parent) :
   QWidget(parent),
   f(f_),
-  pref("programs/" + f->treeParent->name.toStdString() + "/functions/" +
-       f->name.toStdString() + "/")
+  pref("programs/" + f->treeParent->shared->name.toStdString() + "/functions/" +
+       f->shared->name.toStdString() + "/")
 {
   QFormLayout *layout = new QFormLayout;
   setLayout(layout);

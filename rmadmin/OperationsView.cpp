@@ -105,8 +105,6 @@ OperationsView::OperationsView(GraphModel *graphModel, QWidget *parent) :
   connect(this, &OperationsView::programSelected, this, &OperationsView::addProgInfo);
   connect(this, &OperationsView::programSelected, this, &OperationsView::addSource);
   connect(this, &OperationsView::functionSelected, this, &OperationsView::addFuncInfo);
-  connect(this, &OperationsView::functionSelected, this, &OperationsView::addTail);
-  connect(dataTabs, &QTabWidget::tabCloseRequested, this, &OperationsView::remTail);
 }
 
 // slot to reset the LOD radio buttons
@@ -160,10 +158,10 @@ void OperationsView::selectItem(QModelIndex const &index)
 
 void OperationsView::addProgInfo(ProgramItem const *p)
 {
-  if (tryFocusTab(infoTabs, p->name)) return;
+  if (tryFocusTab(infoTabs, p->shared->name)) return;
 
   ProgramInfoBox *box = new ProgramInfoBox(p);
-  infoTabs->addTab(box, p->name);
+  infoTabs->addTab(box, p->shared->name);
   focusLastTab(infoTabs);
 }
 
@@ -181,78 +179,6 @@ void OperationsView::addFuncInfo(FunctionItem const *f)
   FunctionInfoBox *box = new FunctionInfoBox(f);
   infoTabs->addTab(box, label);
   focusLastTab(infoTabs);
-}
-
-void OperationsView::addTail(FunctionItem *f)
-{
-  QString label(f->fqName());
-  if (tryFocusTab(dataTabs, label)) return;
-
-  /* TODO: When we select one or more column headers, enable two buttons:
-   * one to open a quick chart window with that/those field(s).
-   * The other is to add those fields into a named chart.
-   * Named charts are saved on the server side, can be added to dashboards,
-   * etc.
-   * Once in a chart, timeseries can serve various purpose depending on the
-   * type of the chart. The possible types depend on the number of time series
-   * and their type. The type of a chart, how timeseries are used, the colors,
-   * title, etc, are attributes that can be changed at any time; no need to
-   * build a new chart. But if we wanted to have several different views of
-   * the same data we cold clone a chart.
-   * But for now, all we want is the quick-view window, that's added to the
-   * data tabs and given a temporary name (usable to add new fields into it
-   * as with any other chart. Unless a chart is "saved" it will be definitively
-   * forgotten once its tab is closed. */
-  if (! f->tailModel) {
-    f->tailModel = new TailModel(f);
-  }
-  f->tailModel->setUsed(true);
-
-  TailTable *table = new TailTable(f->tailModel);
-  dataTabs->addTab(table, label);
-  focusLastTab(dataTabs);
-
-  // Add a Plot when the user ask for it:
-  connect(table, &TailTable::quickPlotClicked, this, [this, f](QList<int> const &selectedColumns) {
-    this->addQuickPlot(f, selectedColumns);
-  });
-}
-
-void OperationsView::addQuickPlot(FunctionItem const *f, QList<int> const &selectedColumns)
-{
-  TailTable *table = dynamic_cast<TailTable *>(sender());
-  if (! table) {
-    std::cout << "Received addQuickPlot from non TailTable!?" << std::endl;
-    return;
-  }
-
-  // TODO: uniquify the name:
-  QString name("Plot: " + f->fqName());
-
-  Chart *chart = new Chart;
-
-  std::shared_ptr<RamenType const> outType = f->outType();
-  /* Make a chartDataSet out of each column: */
-  for (auto col : selectedColumns) {
-    ChartDataSet *ds = new ChartDataSet(f, col);
-    chart->addData(ds);
-  }
-  dataTabs->addTab(chart, name);
-  focusLastTab(dataTabs);
-  chart->update();
-}
-
-void OperationsView::remTail(int index)
-{
-  QWidget *w = dataTabs->widget(index);
-  if (!w) return;
-  TailTable *t = dynamic_cast<TailTable *>(w);
-  if (!t) return;
-  QAbstractItemModel *m = t->model();
-  if (!m) return;
-  TailModel *tailModel = dynamic_cast<TailModel *>(m);
-  if (!tailModel) return;
-  tailModel->setUsed(false);  // schedule for destruction after a while
 }
 
 void OperationsView::closeInfo(int idx)

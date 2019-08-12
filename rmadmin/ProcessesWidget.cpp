@@ -82,14 +82,14 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
     ProgramItem const *program = parentSite->programs[sourceRow];
     if (! includeTopHalves && program->isTopHalf()) {
       if (verbose)
-        std::cout << "Filter out top-half program " << program->name.toStdString()
-                  << std::endl;
+        std::cout << "Filter out top-half program "
+                  << program->shared->name.toStdString() << std::endl;
       return false;
     }
     if (! includeStopped && ! program->isWorking()) {
       if (verbose)
-        std::cout << "Filter out non-working program " << program->name.toStdString()
-                  << std::endl;
+        std::cout << "Filter out non-working program "
+                  << program->shared->name.toStdString() << std::endl;
       return false;
     }
     return true;
@@ -109,12 +109,14 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
 
   // Filter out the top-halves, optionally:
   if (! includeTopHalves && function->isTopHalf()) {
-    std::cout << "Filter out top-half function " << function->name.toStdString()
+    std::cout << "Filter out top-half function "
+              << function->shared->name.toStdString()
               << std::endl;
     return false;
   }
   if (! includeStopped && ! function->isWorking()) {
-    std::cout << "Filter out non-working function " << function->name.toStdString()
+    std::cout << "Filter out non-working function "
+              << function->shared->name.toStdString()
               << std::endl;
     return false;
   }
@@ -122,8 +124,9 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
   SiteItem const *site =
     static_cast<SiteItem const *>(parentProgram->treeParent);
 
-  QString const fq(site->name + ":" + parentProgram->name + "/" +
-                   function->name);
+  QString const fq(site->shared->name + ":" +
+                   parentProgram->shared->name + "/" +
+                   function->shared->name);
   return fq.contains(filterRegExp());
 }
 
@@ -319,13 +322,13 @@ void ProcessesWidget::closeSearch()
   searchBox->clear();
 }
 
-void ProcessesWidget::wantEdit(ProgramItem const *program)
+void ProcessesWidget::wantEdit(std::shared_ptr<Program const> program)
 {
   globalMenu->openRCEditor();
   globalMenu->rcEditorDialog->preselect(program->name);
 }
 
-void ProcessesWidget::wantTable(FunctionItem *function)
+void ProcessesWidget::wantTable(std::shared_ptr<Function> function)
 {
   TailTableDialog *dialog = new TailTableDialog(function);
   dialog->show();
@@ -339,19 +342,19 @@ void ProcessesWidget::activate(QModelIndex const &proxyIndex)
   GraphItem *parentPtr =
     static_cast<GraphItem *>(index.internalPointer());
 
-  ProgramItem const *program =
+  ProgramItem const *programItem =
     dynamic_cast<ProgramItem const *>(parentPtr);
 
-  if (program) {
-    wantEdit(program);
+  if (programItem) {
+    wantEdit(std::static_pointer_cast<Program>(programItem->shared));
     return;
   }
 
-  FunctionItem *function =
+  FunctionItem *functionItem =
     dynamic_cast<FunctionItem *>(parentPtr);
 
-  if (function) {
-    wantTable(function);
+  if (functionItem) {
+    wantTable(std::static_pointer_cast<Function>(functionItem->shared));
     return;
   }
 

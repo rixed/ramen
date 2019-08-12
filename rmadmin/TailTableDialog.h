@@ -1,17 +1,18 @@
 #ifndef TAILTABLEDIALOG_H_190810
 #define TAILTABLEDIALOG_H_190810
+#include <memory>
 #include <QMainWindow>
 
-class FunctionItem;
+class Function;
 
 class TailTableDialog : public QMainWindow
 {
   Q_OBJECT
 
-  FunctionItem *function;
+  std::shared_ptr<Function> function;
 
 public:
-  TailTableDialog(FunctionItem *, QWidget *parent = nullptr);
+  TailTableDialog(std::shared_ptr<Function>, QWidget *parent = nullptr);
 };
 
 #endif

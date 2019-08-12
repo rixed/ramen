@@ -5,11 +5,8 @@
 #include <QPropertyAnimation>
 #include "GraphItem.h"
 #include "GraphModel.h"
-#include "FunctionItem.h"
-#include "ProgramItem.h"
 #include "GraphView.h"
 #include "colorOfString.h"
-#include "SiteItem.h"
 
 /* The dummbest QGraphicsItem I can made. Does nothing, paint nothing,
  * but can be used to hide/move/transform its children in one go.
@@ -29,17 +26,18 @@ public:
 // moves.
 // Note also that we must initialize row with an invalid value so that
 // reorder detect that it's indeed a new value when we insert the first one!
-GraphItem::GraphItem(GraphItem *treeParent_, QString const &name_, GraphViewSettings const *settings_) :
+GraphItem::GraphItem(
+  GraphItem *treeParent_, std::unique_ptr<GraphData> data,
+  GraphViewSettings const *settings_) :
   QGraphicsItem(treeParent_ ? treeParent_->subItems : treeParent_),
   border_(2),
   collapsed(true),
   settings(settings_),
   x0(0), y0(0), x1(0), y1(0),
-  name(name_),
   treeParent(treeParent_),
-  row(-1)
+  shared(std::move(data))
 {
-  brush = QBrush(colorOfString(name)),
+  brush = QBrush(colorOfString(shared->name)),
 
   // Notifies itemChange whenever the position is changed:
   setFlag(ItemSendsGeometryChanges, true);
@@ -56,7 +54,7 @@ QVariant GraphItem::data(int column, int role) const
 {
   if (role != Qt::DisplayRole) return QVariant();
   if (column != 0) return QVariant();
-  return name;
+  return shared->name;
 }
 
 bool GraphItem::isCollapsed() const
@@ -72,8 +70,8 @@ void GraphItem::setCollapsed(bool c)
 
 QString GraphItem::fqName() const
 {
-  if (! treeParent) return name;
-  return treeParent->fqName() + "/" + name;
+  if (! treeParent) return shared->name;
+  return treeParent->fqName() + "/" + shared->name;
 }
 
 QColor GraphItem::color() const
@@ -195,7 +193,8 @@ void GraphItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidg
   titlePen.setWidth(0);
   painter->setPen(titlePen);
 
-  painter->drawText(settings->labelsHorizMargin, settings->titleLineHeight, name);
+  painter->drawText(
+    settings->labelsHorizMargin, settings->titleLineHeight, shared->name);
 
   // Labels:
   if (collapsed) {

@@ -269,9 +269,9 @@ void GraphView::startLayout()
     for (auto programItem : siteItem->programs) {
       for (auto functionItem : programItem->functions) {
         functionIdxs.emplace(functionItem, nodes.size());
-        nodes.emplace_back(siteItem->name.toStdString(),
-                           programItem->name.toStdString(),
-                           functionItem->name.toStdString());
+        nodes.emplace_back(siteItem->shared->name.toStdString(),
+                           programItem->shared->name.toStdString(),
+                           functionItem->shared->name.toStdString());
       }
     }
   }

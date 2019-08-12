@@ -3,8 +3,13 @@
 #include <vector>
 #include "GraphItem.h"
 
-class FunctionItem;
 class GraphViewSettings;
+class FunctionItem;
+
+struct Program : public GraphData
+{
+  Program(QString const &name_) : GraphData(name_) {}
+};
 
 class ProgramItem : public GraphItem
 {
@@ -15,12 +20,13 @@ public:
   // to move in memory, so let's use a vector of pointers:
   std::vector<FunctionItem *> functions;
 
-  ProgramItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
-  ~ProgramItem();
+  ProgramItem(
+    GraphItem *treeParent, std::unique_ptr<Program>, GraphViewSettings const *);
 
   QVariant data(int column, int role) const;
   void reorder(GraphModel const *);
   QRectF operationRect() const;
+
   bool isTopHalf() const;
   bool isWorking() const;
 };

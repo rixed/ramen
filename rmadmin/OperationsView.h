@@ -32,12 +32,9 @@ signals:
 public slots:
   void resetLOD(); // release all LOD radio buttons
   void setLOD(bool); // set a given LOD
-  void addTail(FunctionItem *);
-  void remTail(int index);
   void addSource(ProgramItem const *);
   void addProgInfo(ProgramItem const *);
   void addFuncInfo(FunctionItem const *);
-  void addQuickPlot(FunctionItem const *, QList<int> const &);
   // Will retrieve the function and emit functionSelected()
   void selectItem(QModelIndex const &); // the QModelIndex from the graphModel
   void closeInfo(int);

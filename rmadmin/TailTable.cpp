@@ -1,17 +1,26 @@
 #include <iostream>
 #include <QVBoxLayout>
 #include <QTableView>
+#include "FunctionItem.h"
 #include "TailTableBar.h"
+#include "Chart.h"
+#include "ChartDataSet.h"
 #include "TailModel.h"
 #include "TailTable.h"
 
-TailTable::TailTable(TailModel *model, QWidget *parent) :
-  QWidget(parent)
+TailTable::TailTable(std::shared_ptr<Function> function_, QWidget *parent) :
+  QWidget(parent),
+  function(function_),
+  chart(nullptr)
 {
-  QVBoxLayout *layout = new QVBoxLayout;
+  layout = new QVBoxLayout;
+
+  if (! function->tailModel)
+    function->tailModel = new TailModel(function);
+  function->tailModel->setUsed(true);
 
   tableView = new QTableView(this);
-  tableView->setModel(model);
+  tableView->setModel(function->tailModel);
   tableView->setAlternatingRowColors(true);
   layout->addWidget(tableView);
   tableView->setSelectionBehavior(QAbstractItemView::SelectColumns);
@@ -28,10 +37,12 @@ TailTable::TailTable(TailModel *model, QWidget *parent) :
   /* When the model grows we need to manually extend the selection or the
    * last values of a selected column won't be selected, with the effect that
    * the column will no longer be considered selected: */
-  connect(model, &TailModel::rowsInserted, this, &TailTable::extendSelection);
+  connect(function->tailModel, &TailModel::rowsInserted,
+          this, &TailTable::extendSelection);
 
   /* Enrich the quickPlotClicked signal with the selected columns: */
-  connect(tableBar, &TailTableBar::quickPlotClicked, this, &TailTable::enrichQuickPlotClicked);
+  connect(tableBar, &TailTableBar::quickPlotClicked,
+          this, &TailTable::showQuickPlot);
 }
 
 void TailTable::enableBar(QItemSelection const &, QItemSelection const &)
@@ -60,7 +71,18 @@ void TailTable::extendSelection(QModelIndex const &parent, int first, int)
   }
 }
 
-void TailTable::enrichQuickPlotClicked()
+void TailTable::showQuickPlot()
 {
-  emit quickPlotClicked(selectedColumns);
+  if (chart) delete chart;
+
+  chart = new Chart(this);
+  layout->addWidget(chart);
+
+  std::shared_ptr<RamenType const> outType = function->outType();
+  /* Make a chartDataSet out of each column: */
+  for (auto col : selectedColumns) {
+    ChartDataSet *ds = new ChartDataSet(function, col);
+    chart->addData(ds);
+  }
+  chart->update();
 }

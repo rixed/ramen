@@ -108,15 +108,17 @@ void StoragePies::refreshChart()
   QString collapsed;
   Values totValue = { 0, 0 };
 
-  for (auto &site : graphModel->sites) {
+  for (auto &siteItem : graphModel->sites) {
     QString const &siteName =
-      collapse[0] ? collapsed : site->name;
+      collapse[0] ? collapsed : siteItem->shared->name;
     Key k0 { siteName, collapsed, collapsed };
-    for (auto &program : site->programs) {
+    for (auto &programItem : siteItem->programs) {
       QString const &progName =
-        collapse[1] ? collapsed : program->name;
+        collapse[1] ? collapsed : programItem->shared->name;
       Key k1 { siteName, progName, collapsed };
-      for (auto &function : program->functions) {
+      for (auto &functionItem : programItem->functions) {
+        std::shared_ptr<Function const> function =
+          std::static_pointer_cast<Function const>(functionItem->shared);
         QString const &funcName =
           collapse[2] ? collapsed : function->name;
         Key k2 { siteName, progName, funcName };

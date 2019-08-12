@@ -3,7 +3,7 @@
 #include <memory>
 #include <QObject>
 
-class FunctionItem;
+class Function;
 struct RamenType;
 struct RamenValue;
 
@@ -11,7 +11,7 @@ class ChartDataSet : public QObject
 {
   Q_OBJECT
 
-  FunctionItem const *functionItem;
+  std::shared_ptr<Function const> function;
   std::shared_ptr<RamenType const> type;
   QString name_;
 
@@ -19,7 +19,8 @@ class ChartDataSet : public QObject
   bool isFactor;
 
 public:
-  ChartDataSet(FunctionItem const *, unsigned column, QObject *parent = nullptr);
+  ChartDataSet(
+    std::shared_ptr<Function const>, unsigned column, QObject *parent = nullptr);
   bool isNumeric() const;
   unsigned numRows() const;
   RamenValue const *value(unsigned row) const;

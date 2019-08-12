@@ -7,20 +7,21 @@
 #include "confValue.h"
 #include "TailModel.h"
 
-static std::string user_id("admin"); // TODO
-
-static conf::Key tailKey(FunctionItem const *f)
+static conf::Key tailKey(std::shared_ptr<Function const> f)
 {
-  return conf::Key("tails/" + f->fqName().toStdString() + "/users/" + user_id);
+  return conf::Key("tails/" + f->fqName.toStdString() +
+                   "/users/" + my_uid->toStdString());
 }
 
-TailModel::TailModel(FunctionItem const *f_, QObject *parent) :
+TailModel::TailModel(std::shared_ptr<Function const> f_, QObject *parent) :
   QAbstractTableModel(parent),
   f(f_)
 {
   // Propagates this function's signals into our beginInsertRows
-  connect(f, &FunctionItem::beginAddTuple, this, &TailModel::beginInsertRows);
-  connect(f, &FunctionItem::endAddTuple, this, &TailModel::endInsertRows);
+  connect(f.get(), &Function::beginAddTuple,
+          this, &TailModel::beginInsertRows);
+  connect(f.get(), &Function::endAddTuple,
+          this, &TailModel::endInsertRows);
 
   // Subscribe to that table tail:
   conf::Key k = tailKey(f);

@@ -1,7 +1,9 @@
 #ifndef GRAPHITEM_H_190508
 #define GRAPHITEM_H_190508
+#include <memory>
 #include <vector>
 #include <optional>
+#include <string>
 #include <QString>
 #include <QVariant>
 #include <QGraphicsItem>
@@ -13,9 +15,27 @@
 
 class GraphModel;
 
-/* GraphItem is an Item in the GraphModel *and* in the
- * scene of the GraphView. */
+/* GraphItem is an Item in the GraphModel *and* in the scene of the GraphView.
+ * This is the address of the GraphItem that is stored in QModelIndex
+ * internalPointers. It's inherited by actual SiteItem, ProgramItem and
+ * FunctionItem, each implementing its own rendering functions.
+ *
+ * But as we'd like the actual data regarding ramen sites, programs and
+ * functions to be shared around and outlive the GraphItem then we'd rathe have
+ * that data allocated separately and accessed via a shared_ptr.
+ *
+ * Therefore, SiteItems, ProgramItems and FunctionItems allocate their data
+ * structures (humbly named Site, Program and Function) on the side in
+ * shared. */
 
+struct GraphData
+{
+  QString const name;
+
+  GraphData(QString const &name_) : name(name_) {}
+};
+
+// Note: QGraphicsItem does not inherit QObject
 class GraphItem : public QObject, public QGraphicsItem
 {
   Q_OBJECT
@@ -45,13 +65,17 @@ protected:
 
 public:
   int x0, y0, x1, y1;  // in the function grid (absolute!)
-  QString const name;
   /* We store a pointer to the parents, because no item is ever reparented.
    * When a parent is deleted, it deletes recursively all its children. */
   GraphItem *treeParent;
   int row;
 
-  GraphItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
+  std::shared_ptr<GraphData> shared;
+
+  GraphItem(
+    GraphItem *treeParent, std::unique_ptr<GraphData> data,
+    GraphViewSettings const *);
+
   virtual ~GraphItem() {};
 
   int columnCount() const;
@@ -75,8 +99,5 @@ public:
   qreal border() const;
   void setBorder(qreal);
 };
-
-class SiteItem;
-class ProgramItem;
 
 #endif

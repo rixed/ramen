@@ -12,350 +12,22 @@
 
 static bool verbose = false;
 
-static std::string lastTuplesKey(FunctionItem const *f)
-{
-  return "^tails/" + f->fqName().toStdString() + "/lasts/";
-}
-
-FunctionItem::FunctionItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *settings) :
-  GraphItem(treeParent, name, settings),
-  tailModel(nullptr)
-{
-  // TODO: updateArrows should reallocate the channels:
-  channel = std::rand() % settings->numArrowChannels;
-  setZValue(3);
-  tuples.reserve(1000);
-  std::string k = lastTuplesKey(this);
-  conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
-    // Although this value will never change we need the create signal:
-      Once::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
-  });
-}
-
-FunctionItem::~FunctionItem()
+Function::~Function()
 {
   if (tailModel) delete tailModel;
-  for (RamenValue const *t : tuples) delete t;
 }
 
-/* columnCount is called to know the number of columns of the sub elements.
- * Functions have no sub-elements and Qt should know this. */
-int FunctionItem::columnCount() const
+QString Function::header(unsigned column) const
 {
-  assert(!"FunctionItem::columnCount called!");
-}
+  std::shared_ptr<RamenType const> t = outType();
+  if (! t) return QString("#") + QString::number(column);
 
-QVariant FunctionItem::data(int column, int role) const
-{
-  if (role == Qt::DisplayRole &&
-      !isTopHalf() &&
-      column == GraphModel::ActionButton)
-    return Resources::get()->tablePixmap;
-
-  static QString na(tr("n.a"));
-
-  if (role == Qt::TextAlignmentRole) {
-    switch (column) {
-      case GraphModel::Name:
-        return Qt::AlignLeft;
-      case GraphModel::WorkerTopHalf:
-      case GraphModel::WorkerEnabled:
-      case GraphModel::WorkerDebug:
-      case GraphModel::WorkerUsed:
-      case GraphModel::WorkerParams:
-        return Qt::AlignHCenter;
-    }
-    return Qt::AlignRight;
-  }
-
-  if (role != Qt::DisplayRole &&
-      role != GraphModel::SortRole) return QVariant();
-
-  switch ((GraphModel::Columns)column) {
-    case GraphModel::Name:
-      return name;
-
-    case GraphModel::ActionButton:
-      if (role == GraphModel::SortRole)
-        return name;
-      else
-        return QVariant();
-
-    case GraphModel::WorkerTopHalf:
-      return QString(
-        worker && worker->role ?
-          (worker->role->isTopHalf ? "✓" : "") : "?");
-
-    case GraphModel::WorkerEnabled:
-      return QString(
-        worker ? (worker->enabled ? "✓" : "") : "?");
-
-    case GraphModel::WorkerDebug:
-      return QString(
-        worker ? (worker->debug ? "✓" : "") : "?");
-
-    case GraphModel::WorkerUsed:
-      return QString(
-        worker ? (worker->used ? "✓" : "") : "?");
-
-    case GraphModel::StatsTime:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->statsTime : 0.;
-      else return runtimeStats ?
-          stringOfDate(runtimeStats->statsTime) : na;
-
-    case GraphModel::StatsNumInputs:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totInputTuples : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totInputTuples) : na;
-
-    case GraphModel::StatsNumSelected:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totSelectedTuples : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totSelectedTuples) : na;
-
-    case GraphModel::StatsTotWaitIn:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totWaitIn : 0.;
-      else return runtimeStats ?
-        stringOfDuration(runtimeStats->totWaitIn) : na;
-
-    case GraphModel::StatsTotInputBytes:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totInputBytes : (qulonglong)0;
-      else return runtimeStats ?
-        stringOfBytes(runtimeStats->totInputBytes) : na;
-
-    case GraphModel::StatsFirstInput:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->firstInput.has_value() ?
-          *runtimeStats->firstInput : 0.;
-      else return runtimeStats && runtimeStats->firstInput.has_value() ?
-        stringOfDate(*runtimeStats->firstInput) : na;
-
-    case GraphModel::StatsLastInput:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->lastInput.has_value() ?
-          *runtimeStats->lastInput : 0.;
-      else return runtimeStats && runtimeStats->lastInput.has_value() ?
-        stringOfDate(*runtimeStats->lastInput) : na;
-
-    case GraphModel::StatsNumGroups:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->curGroups : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->curGroups) : na;
-
-    case GraphModel::StatsNumOutputs:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totOutputTuples : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totOutputTuples) : na;
-
-    case GraphModel::StatsTotWaitOut:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totWaitOut : 0.;
-      else return runtimeStats ?
-        stringOfDuration(runtimeStats->totWaitOut) : na;
-
-    case GraphModel::StatsFirstOutput:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->firstOutput.has_value() ?
-          *runtimeStats->firstOutput : 0.;
-      else return runtimeStats && runtimeStats->firstOutput.has_value() ?
-        stringOfDate(*runtimeStats->firstOutput) : na;
-
-    case GraphModel::StatsLastOutput:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->lastOutput.has_value() ?
-          *runtimeStats->lastOutput : 0.;
-      else return runtimeStats && runtimeStats->lastOutput.has_value() ?
-        stringOfDate(*runtimeStats->lastOutput) : na;
-
-    case GraphModel::StatsTotOutputBytes:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totOutputBytes : (qulonglong)0;
-      else return runtimeStats ?
-        stringOfBytes(runtimeStats->totOutputBytes) : na;
-
-    case GraphModel::StatsNumFiringNotifs:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totFiringNotifs : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totFiringNotifs) : na;
-
-    case GraphModel::StatsNumExtinguishedNotifs:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totExtinguishedNotifs : 0.;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totExtinguishedNotifs) : na;
-
-    case GraphModel::NumArcFiles:
-      if (role == GraphModel::SortRole)
-        return numArcFiles.has_value() ? *numArcFiles : (qulonglong)0;
-      else return numArcFiles.has_value() ?
-        QString::number(*numArcFiles) : na;
-
-    case GraphModel::NumArcBytes:
-      if (role == GraphModel::SortRole)
-        return numArcBytes.has_value() ? *numArcBytes : (qulonglong)0;
-      else return numArcBytes.has_value() ?
-        stringOfBytes(*numArcBytes) : na;
-
-    case GraphModel::AllocedArcBytes:
-      if (role == GraphModel::SortRole)
-        return allocArcBytes.has_value() ? *allocArcBytes : (qulonglong)0;
-      else return allocArcBytes.has_value() ?
-        stringOfBytes(*allocArcBytes) : na;
-
-    case GraphModel::StatsMinEventTime:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->minEventTime.has_value() ?
-          *runtimeStats->minEventTime : 0.;
-      else return runtimeStats && runtimeStats->minEventTime.has_value() ?
-        stringOfDate(*runtimeStats->minEventTime) : na;
-
-    case GraphModel::StatsMaxEventTime:
-      if (role == GraphModel::SortRole)
-        return runtimeStats && runtimeStats->maxEventTime.has_value() ?
-          *runtimeStats->maxEventTime : 0.;
-      else return runtimeStats && runtimeStats->maxEventTime.has_value() ?
-        stringOfDate(*runtimeStats->maxEventTime) : na;
-
-    case GraphModel::StatsTotCpu:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totCpu : 0.;
-      else return runtimeStats ?
-        stringOfDuration(runtimeStats->totCpu) : na;
-
-    case GraphModel::StatsCurrentRam:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->curRam : (qulonglong)0;
-      else return runtimeStats ?
-        stringOfBytes(runtimeStats->curRam) : na;
-
-    case GraphModel::StatsMaxRam:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->maxRam : (qulonglong)0;
-      else return runtimeStats ?
-        stringOfBytes(runtimeStats->maxRam) : na;
-
-    case GraphModel::StatsFirstStartup:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->firstStartup : 0.;
-      else return runtimeStats ?
-        stringOfDate(runtimeStats->firstStartup) : na;
-
-    case GraphModel::StatsLastStartup:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->lastStartup : 0.;
-      else return runtimeStats ?
-        stringOfDate(runtimeStats->lastStartup) : na;
-
-    case GraphModel::StatsAverageTupleSize:
-      if (runtimeStats && runtimeStats->totFullBytesSamples > 0) {
-        double const avg =
-          runtimeStats->totFullBytes / runtimeStats->totFullBytesSamples;
-        if (role == GraphModel::SortRole) return avg;
-        else return stringOfBytes(avg);
-      } else {
-        if (role == GraphModel::SortRole) return 0.;
-        else return na;
-      }
-
-    case GraphModel::StatsNumAverageTupleSizeSamples:
-      if (role == GraphModel::SortRole)
-        return runtimeStats ? runtimeStats->totFullBytesSamples : (qulonglong)0;
-      else return runtimeStats ?
-        QString::number(runtimeStats->totFullBytesSamples) : na;
-
-    case GraphModel::WorkerReportPeriod:
-      if (role == GraphModel::SortRole)
-        return worker ? worker->reportPeriod : 0.;
-      else return worker ?
-        stringOfDuration(worker->reportPeriod) : na;
-
-    case GraphModel::WorkerSrcPath:
-      return worker ? worker->srcPath : na;
-
-    case GraphModel::WorkerParams:
-      if (worker) {
-        QString v;
-        for (auto &p : worker->params) {
-          if (v.length() > 0) v.append(", ");
-          v.append(p->toQString());
-        }
-        return v;
-      } else return na;
-
-    case GraphModel::NumParents:
-      if (role == GraphModel::SortRole)
-        return (qulonglong)(worker ? worker->parent_refs.size() : 0);
-      else return worker ?
-        QString::number(worker->parent_refs.size()) : na;
-
-    case GraphModel::NumChildren:
-      return na;  // TODO
-
-    case GraphModel::WorkerSignature:
-      return worker ? worker->workerSign : na;
-
-    case GraphModel::WorkerBinSignature:
-      return worker ? worker->binSign : na;
-
-    case GraphModel::NumTailTuples:
-      if (role == GraphModel::SortRole) return (qulonglong)tuples.size();
-      else return QString::number(tuples.size());
-
-    case GraphModel::NumColumns:
-      break;
-  }
-
-  assert(!"Bad columnCount for FunctionItem");
-}
-
-std::vector<std::pair<QString const, QString const>> FunctionItem::labels() const
-{
-  std::vector<std::pair<QString const, QString const>> labels;
-  labels.reserve(8);
-
-  if (worker && !worker->used)
-    labels.emplace_back("", "UNUSED");
-  // TODO: display some stats
-  if (numArcFiles)
-    labels.emplace_back("#arc.files", QString::number(*numArcFiles));
-  if (numArcBytes)
-    labels.emplace_back("arc.size", QString::number(*numArcBytes));
-  if (allocArcBytes)
-    labels.emplace_back("arc.allocated", QString::number(*allocArcBytes));
-
-  return labels;
-}
-
-QRectF FunctionItem::operationRect() const
-{
-  return
-    QRect(0, 0,
-          settings->gridWidth - 2 * (
-            settings->functionMarginHoriz +
-            settings->programMarginHoriz +
-            settings->siteMarginHoriz),
-          settings->gridHeight - (
-            settings->functionMarginBottom + settings->programMarginBottom +
-            settings->siteMarginBottom + settings->functionMarginTop +
-            settings->programMarginTop + settings->siteMarginTop));
-}
-
-int FunctionItem::numRows() const
-{
-  return tuples.size();
+  return t->structure->columnName(column);
 }
 
 /* Look for in in the kvs at every call rather than caching a value that
  * could change at any time. */
-CompiledFunctionInfo const *FunctionItem::compiledInfo() const
+CompiledFunctionInfo const *Function::compiledInfo() const
 {
   if (! worker) return nullptr;
 
@@ -387,7 +59,7 @@ CompiledFunctionInfo const *FunctionItem::compiledInfo() const
   return nullptr;
 }
 
-std::shared_ptr<RamenType const> FunctionItem::outType() const
+std::shared_ptr<RamenType const> Function::outType() const
 {
   CompiledFunctionInfo const *func = compiledInfo();
   if (! func) return nullptr;
@@ -395,7 +67,7 @@ std::shared_ptr<RamenType const> FunctionItem::outType() const
   return func->out_type;
 }
 
-int FunctionItem::numColumns() const
+int Function::numColumns() const
 {
   // We could get this info from already received tuples or from the
   // output type in the config tree.
@@ -408,20 +80,373 @@ int FunctionItem::numColumns() const
   return t->structure->numColumns();
 }
 
-// Returned value owned by FunctionItem:
-RamenValue const *FunctionItem::tupleData(int row, int column) const
+static std::string lastTuplesKey(FunctionItem const *f)
 {
-  if (row >= numRows()) return nullptr;
-
-  return tuples[row]->columnValue(column);
+  return "^tails/" + f->fqName().toStdString() + "/lasts/";
 }
 
-QString FunctionItem::header(unsigned column) const
+FunctionItem::FunctionItem(
+  GraphItem *treeParent, std::unique_ptr<Function> function,
+  GraphViewSettings const *settings) :
+  GraphItem(treeParent, std::move(function), settings)
 {
-  std::shared_ptr<RamenType const> t = outType();
-  if (! t) return QString("#") + QString::number(column);
+  // TODO: updateArrows should reallocate the channels:
+  channel = std::rand() % settings->numArrowChannels;
+  setZValue(3);
 
-  return t->structure->columnName(column);
+  std::string k = lastTuplesKey(this);
+  conf::autoconnect(k, [this](conf::Key const &, KValue const *kv) {
+    // Although this value will never change we need the create signal:
+      Once::connect(kv, &KValue::valueCreated, this, &FunctionItem::addTuple);
+  });
+}
+
+/* columnCount is called to know the number of columns of the sub elements.
+ * Functions have no sub-elements and Qt should know this. */
+int FunctionItem::columnCount() const
+{
+  assert(!"FunctionItem::columnCount called!");
+}
+
+QVariant FunctionItem::data(int column, int role) const
+{
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  if (role == Qt::DisplayRole &&
+      !isTopHalf() &&
+      column == GraphModel::ActionButton)
+    return Resources::get()->tablePixmap;
+
+  static QString na(tr("n.a"));
+
+  if (role == Qt::TextAlignmentRole) {
+    switch (column) {
+      case GraphModel::Name:
+        return Qt::AlignLeft;
+      case GraphModel::WorkerTopHalf:
+      case GraphModel::WorkerEnabled:
+      case GraphModel::WorkerDebug:
+      case GraphModel::WorkerUsed:
+      case GraphModel::WorkerParams:
+        return Qt::AlignHCenter;
+    }
+    return Qt::AlignRight;
+  }
+
+  if (role != Qt::DisplayRole &&
+      role != GraphModel::SortRole) return QVariant();
+
+  switch ((GraphModel::Columns)column) {
+    case GraphModel::Name:
+      return shr->name;
+
+    case GraphModel::ActionButton:
+      if (role == GraphModel::SortRole)
+        return shr->name;
+      else
+        return QVariant();
+
+    case GraphModel::WorkerTopHalf:
+      return QString(
+        shr->worker && shr->worker->role ?
+          (shr->worker->role->isTopHalf ? "✓" : "") : "?");
+
+    case GraphModel::WorkerEnabled:
+      return QString(
+        shr->worker ? (shr->worker->enabled ? "✓" : "") : "?");
+
+    case GraphModel::WorkerDebug:
+      return QString(
+        shr->worker ? (shr->worker->debug ? "✓" : "") : "?");
+
+    case GraphModel::WorkerUsed:
+      return QString(
+        shr->worker ? (shr->worker->used ? "✓" : "") : "?");
+
+    case GraphModel::StatsTime:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ? shr->runtimeStats->statsTime : 0.;
+      else return shr->runtimeStats ?
+          stringOfDate(shr->runtimeStats->statsTime) : na;
+
+    case GraphModel::StatsNumInputs:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totInputTuples : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totInputTuples) : na;
+
+    case GraphModel::StatsNumSelected:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totSelectedTuples : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totSelectedTuples) : na;
+
+    case GraphModel::StatsTotWaitIn:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ? shr->runtimeStats->totWaitIn : 0.;
+      else return shr->runtimeStats ?
+        stringOfDuration(shr->runtimeStats->totWaitIn) : na;
+
+    case GraphModel::StatsTotInputBytes:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totInputBytes : (qulonglong)0;
+      else return shr->runtimeStats ?
+        stringOfBytes(shr->runtimeStats->totInputBytes) : na;
+
+    case GraphModel::StatsFirstInput:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->firstInput.has_value() ?
+          *shr->runtimeStats->firstInput : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->firstInput.has_value() ?
+        stringOfDate(*shr->runtimeStats->firstInput) : na;
+
+    case GraphModel::StatsLastInput:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->lastInput.has_value() ?
+          *shr->runtimeStats->lastInput : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->lastInput.has_value() ?
+        stringOfDate(*shr->runtimeStats->lastInput) : na;
+
+    case GraphModel::StatsNumGroups:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->curGroups : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->curGroups) : na;
+
+    case GraphModel::StatsNumOutputs:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totOutputTuples : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totOutputTuples) : na;
+
+    case GraphModel::StatsTotWaitOut:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totWaitOut : 0.;
+      else return shr->runtimeStats ?
+        stringOfDuration(shr->runtimeStats->totWaitOut) : na;
+
+    case GraphModel::StatsFirstOutput:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->firstOutput.has_value() ?
+          *shr->runtimeStats->firstOutput : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->firstOutput.has_value() ?
+        stringOfDate(*shr->runtimeStats->firstOutput) : na;
+
+    case GraphModel::StatsLastOutput:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->lastOutput.has_value() ?
+          *shr->runtimeStats->lastOutput : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->lastOutput.has_value() ?
+        stringOfDate(*shr->runtimeStats->lastOutput) : na;
+
+    case GraphModel::StatsTotOutputBytes:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totOutputBytes : (qulonglong)0;
+      else return shr->runtimeStats ?
+        stringOfBytes(shr->runtimeStats->totOutputBytes) : na;
+
+    case GraphModel::StatsNumFiringNotifs:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totFiringNotifs : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totFiringNotifs) : na;
+
+    case GraphModel::StatsNumExtinguishedNotifs:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totExtinguishedNotifs : 0.;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totExtinguishedNotifs) : na;
+
+    case GraphModel::NumArcFiles:
+      if (role == GraphModel::SortRole)
+        return shr->numArcFiles.has_value() ?
+          *shr->numArcFiles : (qulonglong)0;
+      else return shr->numArcFiles.has_value() ?
+        QString::number(*shr->numArcFiles) : na;
+
+    case GraphModel::NumArcBytes:
+      if (role == GraphModel::SortRole)
+        return shr->numArcBytes.has_value() ?
+          *shr->numArcBytes : (qulonglong)0;
+      else return shr->numArcBytes.has_value() ?
+        stringOfBytes(*shr->numArcBytes) : na;
+
+    case GraphModel::AllocedArcBytes:
+      if (role == GraphModel::SortRole)
+        return shr->allocArcBytes.has_value() ?
+          *shr->allocArcBytes : (qulonglong)0;
+      else return shr->allocArcBytes.has_value() ?
+        stringOfBytes(*shr->allocArcBytes) : na;
+
+    case GraphModel::StatsMinEventTime:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->minEventTime.has_value() ?
+          *shr->runtimeStats->minEventTime : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->minEventTime.has_value() ?
+        stringOfDate(*shr->runtimeStats->minEventTime) : na;
+
+    case GraphModel::StatsMaxEventTime:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats &&
+               shr->runtimeStats->maxEventTime.has_value() ?
+          *shr->runtimeStats->maxEventTime : 0.;
+      else return shr->runtimeStats &&
+                  shr->runtimeStats->maxEventTime.has_value() ?
+        stringOfDate(*shr->runtimeStats->maxEventTime) : na;
+
+    case GraphModel::StatsTotCpu:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ? shr->runtimeStats->totCpu : 0.;
+      else return shr->runtimeStats ?
+        stringOfDuration(shr->runtimeStats->totCpu) : na;
+
+    case GraphModel::StatsCurrentRam:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->curRam : (qulonglong)0;
+      else return shr->runtimeStats ?
+        stringOfBytes(shr->runtimeStats->curRam) : na;
+
+    case GraphModel::StatsMaxRam:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->maxRam : (qulonglong)0;
+      else return shr->runtimeStats ?
+        stringOfBytes(shr->runtimeStats->maxRam) : na;
+
+    case GraphModel::StatsFirstStartup:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ? shr->runtimeStats->firstStartup : 0.;
+      else return shr->runtimeStats ?
+        stringOfDate(shr->runtimeStats->firstStartup) : na;
+
+    case GraphModel::StatsLastStartup:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ? shr->runtimeStats->lastStartup : 0.;
+      else return shr->runtimeStats ?
+        stringOfDate(shr->runtimeStats->lastStartup) : na;
+
+    case GraphModel::StatsAverageTupleSize:
+      if (shr->runtimeStats &&
+          shr->runtimeStats->totFullBytesSamples > 0)
+      {
+        double const avg =
+          shr->runtimeStats->totFullBytes /
+          shr->runtimeStats->totFullBytesSamples;
+        if (role == GraphModel::SortRole) return avg;
+        else return stringOfBytes(avg);
+      } else {
+        if (role == GraphModel::SortRole) return 0.;
+        else return na;
+      }
+
+    case GraphModel::StatsNumAverageTupleSizeSamples:
+      if (role == GraphModel::SortRole)
+        return shr->runtimeStats ?
+          shr->runtimeStats->totFullBytesSamples : (qulonglong)0;
+      else return shr->runtimeStats ?
+        QString::number(shr->runtimeStats->totFullBytesSamples) : na;
+
+    case GraphModel::WorkerReportPeriod:
+      if (role == GraphModel::SortRole)
+        return shr->worker ? shr->worker->reportPeriod : 0.;
+      else return shr->worker ?
+        stringOfDuration(shr->worker->reportPeriod) : na;
+
+    case GraphModel::WorkerSrcPath:
+      return shr->worker ? shr->worker->srcPath : na;
+
+    case GraphModel::WorkerParams:
+      if (shr->worker) {
+        QString v;
+        for (auto &p : shr->worker->params) {
+          if (v.length() > 0) v.append(", ");
+          v.append(p->toQString());
+        }
+        return v;
+      } else return na;
+
+    case GraphModel::NumParents:
+      if (role == GraphModel::SortRole)
+        return (qulonglong)(shr->worker ?
+          shr->worker->parent_refs.size() : 0);
+      else return shr->worker ?
+        QString::number(shr->worker->parent_refs.size()) : na;
+
+    case GraphModel::NumChildren:
+      return na;  // TODO
+
+    case GraphModel::WorkerSignature:
+      return shr->worker ? shr->worker->workerSign : na;
+
+    case GraphModel::WorkerBinSignature:
+      return shr->worker ? shr->worker->binSign : na;
+
+    case GraphModel::NumTailTuples:
+      if (role == GraphModel::SortRole)
+        return (qulonglong)shr->tuples.size();
+      else return QString::number(shr->tuples.size());
+
+    case GraphModel::NumColumns:
+      break;
+  }
+
+  assert(!"Bad columnCount for FunctionItem");
+}
+
+std::vector<std::pair<QString const, QString const>> FunctionItem::labels() const
+{
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  std::vector<std::pair<QString const, QString const>> labels;
+  labels.reserve(8);
+
+  if (shr->worker && !shr->worker->used)
+    labels.emplace_back("", "UNUSED");
+  // TODO: display some stats
+  if (shr->numArcFiles)
+    labels.emplace_back("#arc.files", QString::number(*shr->numArcFiles));
+  if (shr->numArcBytes)
+    labels.emplace_back("arc.size", QString::number(*shr->numArcBytes));
+  if (shr->allocArcBytes)
+    labels.emplace_back("arc.allocated", QString::number(*shr->allocArcBytes));
+
+  return labels;
+}
+
+QRectF FunctionItem::operationRect() const
+{
+  return
+    QRect(0, 0,
+          settings->gridWidth - 2 * (
+            settings->functionMarginHoriz +
+            settings->programMarginHoriz +
+            settings->siteMarginHoriz),
+          settings->gridHeight - (
+            settings->functionMarginBottom + settings->programMarginBottom +
+            settings->siteMarginBottom + settings->functionMarginTop +
+            settings->programMarginTop + settings->siteMarginTop));
 }
 
 void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const> v)
@@ -433,7 +458,11 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
       std::cout << "Received a tuple that was not a tuple: " << v << std::endl;
     return;
   }
-  std::shared_ptr<RamenType const> type = outType();
+
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  std::shared_ptr<RamenType const> type = shr->outType();
   if (! type) { // ignore the tuple
     if (verbose)
       std::cout << "Received a tuple for " << fqName().toStdString()
@@ -444,17 +473,26 @@ void FunctionItem::addTuple(conf::Key const &, std::shared_ptr<conf::Value const
   RamenValue const *val = tuple->unserialize(type);
   if (! val) return;
 
-  emit beginAddTuple(QModelIndex(), tuples.size(), tuples.size());
-  tuples.push_back(val);
-  emit endAddTuple();
+  emit shr->beginAddTuple(
+    QModelIndex(), shr->tuples.size(), shr->tuples.size());
+  shr->tuples.emplace_back(val);
+  emit shr->endAddTuple();
 }
 
 bool FunctionItem::isTopHalf() const
 {
-  return worker && worker->role && worker->role->isTopHalf;
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  return shr->worker &&
+         shr->worker->role &&
+         shr->worker->role->isTopHalf;
 }
 
 bool FunctionItem::isWorking() const
 {
-  return worker != nullptr;
+  std::shared_ptr<Function> shr =
+    std::static_pointer_cast<Function>(shared);
+
+  return shr->worker != nullptr;
 }

@@ -61,9 +61,11 @@ void StorageInfoBox::recomputeStats()
   bool all_bytes = true;
   // TODO: lastAllocatorRun (must export it first)
 
-  for (auto &site : graphModel->sites) {
-    for (auto &program : site->programs) {
-      for (auto &function : program->functions) {
+  for (auto &siteItem : graphModel->sites) {
+    for (auto &programItem : siteItem->programs) {
+      for (auto &functionItem : programItem->functions) {
+        std::shared_ptr<Function const> function =
+          std::static_pointer_cast<Function const>(functionItem->shared);
         if (function->allocArcBytes) {
           if (*function->allocArcBytes > 0) countWorkers ++;
         } else all_workers = false;

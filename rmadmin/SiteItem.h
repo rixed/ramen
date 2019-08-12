@@ -5,17 +5,24 @@
 #include "GraphItem.h"
 
 class GraphViewSettings;
+class ProgramItem;
+
+struct Site : public GraphData
+{
+  std::optional<bool> isMaster;
+
+  Site(QString const &name_) : GraphData(name_) {}
+};
 
 class SiteItem : public GraphItem
 {
 protected:
   std::vector<std::pair<QString const, QString const>> labels() const;
+
 public:
-  std::optional<bool> isMaster;
   std::vector<ProgramItem *> programs;
 
-  SiteItem(GraphItem *treeParent, QString const &name, GraphViewSettings const *);
-  ~SiteItem();
+  SiteItem(GraphItem *treeParent, std::unique_ptr<Site>, GraphViewSettings const *);
 
   void reorder(GraphModel const *);
   QRectF operationRect() const;

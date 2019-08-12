@@ -7,10 +7,14 @@
 #include "RamenType.h"
 #include "ChartDataSet.h"
 
-ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, QObject *parent) :
-  QObject(parent), functionItem(functionItem_), column(column_), isFactor(false)
+ChartDataSet::ChartDataSet(
+  std::shared_ptr<Function const> function_,
+  unsigned column_, QObject *parent) :
+  QObject(parent),
+  function(function_),
+  column(column_), isFactor(false)
 {
-  std::shared_ptr<RamenType const> outType = functionItem->outType();
+  std::shared_ptr<RamenType const> outType = function->outType();
   type = outType->structure->columnType(column);
   name_ = outType->structure->columnName(column);
   if (! type) {
@@ -19,7 +23,7 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
   }
 
   // Retrieve whether this column is a factor:
-  CompiledFunctionInfo const *func = functionItem->compiledInfo();
+  CompiledFunctionInfo const *func = function->compiledInfo();
   for (QString factor : func->factors) {
     if (factor == name_) {
       isFactor = true;
@@ -27,8 +31,9 @@ ChartDataSet::ChartDataSet(FunctionItem const *functionItem_, unsigned column_, 
     }
   }
 
-  // Relay FunctionItem signal about addition of a tuple
-  connect(functionItem, &FunctionItem::endAddTuple, this, &ChartDataSet::valueAdded);
+  // Relay Function signal about addition of a tuple
+  connect(function.get(), &Function::endAddTuple,
+          this, &ChartDataSet::valueAdded);
 }
 
 bool ChartDataSet::isNumeric() const
@@ -38,13 +43,13 @@ bool ChartDataSet::isNumeric() const
 
 unsigned ChartDataSet::numRows() const
 {
-  return functionItem->tuples.size();
+  return function->tuples.size();
 }
 
 RamenValue const *ChartDataSet::value(unsigned row) const
 {
   assert(row < numRows());
-  return functionItem->tuples[row]->columnValue(column);
+  return function->tuples[row]->columnValue(column);
 }
 
 QString ChartDataSet::name() const

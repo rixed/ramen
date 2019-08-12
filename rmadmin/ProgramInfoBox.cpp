@@ -15,7 +15,7 @@
 ProgramInfoBox::ProgramInfoBox(ProgramItem const *p_, QWidget *parent) :
   AtomicForm(parent),
   p(p_),
-  pref("programs/" + p->name.toStdString() + "/")
+  pref("programs/" + p->shared->name.toStdString() + "/")
 {
   QFormLayout *layout = new QFormLayout;
   QWidget *cw = new QWidget(this);
