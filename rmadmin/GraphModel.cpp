@@ -330,6 +330,8 @@ void GraphModel::removeParents(FunctionItem *child)
 
 void GraphModel::delayAddFunctionParent(FunctionItem *child, QString const &site, QString const &program, QString const &function)
 {
+  if (verbose)
+    std::cout << "Will wait for parent before connecting to it" << std::endl;
   pendingAddParents.emplace_back(child, site, program, function);
 }
 
@@ -563,6 +565,8 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
     }
   }
   if (! siteItem) {
+    if (verbose)
+      std::cout << "Creating a new Site " << pk.site.toStdString() << std::endl;
     siteItem = new SiteItem(nullptr, pk.site, settings);
     int idx = sites.size(); // as we insert at the end for now
     beginInsertRows(QModelIndex(), idx, idx);
@@ -580,6 +584,8 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
       }
     }
     if (! programItem) {
+      if (verbose)
+        std::cout << "Creating a new Program " << pk.program.toStdString() << std::endl;
       programItem = new ProgramItem(siteItem, pk.program, settings);
       int idx = siteItem->programs.size();
       QModelIndex parent =
@@ -599,6 +605,8 @@ void GraphModel::updateKey(conf::Key const &k, std::shared_ptr<conf::Value const
         }
       }
       if (! functionItem) {
+        if (verbose)
+          std::cout << "Creating a new Function " << pk.function.toStdString() << std::endl;
         functionItem = new FunctionItem(programItem, pk.function, settings);
         int idx = programItem->functions.size();
         QModelIndex parent =

@@ -95,3 +95,5 @@ icon.iconset
 tests/archivist/*/configuration
 rmadmin/RmAdmin
 *.trace
+tmp
+*.xcodeproj

@@ -26,6 +26,8 @@
 #include "TailTableDialog.h"
 #include "ProcessesWidget.h"
 
+static bool verbose = true;
+
 /*
  * Start by creating a filter proxy that would filter parents or
  * children; as opposed to the default one that filter children only
@@ -78,8 +80,18 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
      * sites. */
     assert((size_t)sourceRow < parentSite->programs.size());
     ProgramItem const *program = parentSite->programs[sourceRow];
-    if (! includeTopHalves && program->isTopHalf()) return false;
-    if (! includeStopped && ! program->isWorking()) return false;
+    if (! includeTopHalves && program->isTopHalf()) {
+      if (verbose)
+        std::cout << "Filter out top-half program " << program->name.toStdString()
+                  << std::endl;
+      return false;
+    }
+    if (! includeStopped && ! program->isWorking()) {
+      if (verbose)
+        std::cout << "Filter out non-working program " << program->name.toStdString()
+                  << std::endl;
+      return false;
+    }
     return true;
   }
 
@@ -96,8 +108,16 @@ bool MyProxy::filterAcceptsRow(int sourceRow, QModelIndex const &sourceParent) c
   FunctionItem const *function = parentProgram->functions[sourceRow];
 
   // Filter out the top-halves, optionally:
-  if (! includeTopHalves && function->isTopHalf()) return false;
-  if (! includeStopped && ! function->isWorking()) return false;
+  if (! includeTopHalves && function->isTopHalf()) {
+    std::cout << "Filter out top-half function " << function->name.toStdString()
+              << std::endl;
+    return false;
+  }
+  if (! includeStopped && ! function->isWorking()) {
+    std::cout << "Filter out non-working function " << function->name.toStdString()
+              << std::endl;
+    return false;
+  }
 
   SiteItem const *site =
     static_cast<SiteItem const *>(parentProgram->treeParent);
