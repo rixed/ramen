@@ -17,6 +17,8 @@ struct
 
   type t =
     { h : hash_value H.t ;
+      (* Order of appearance of each key, for ordering initial syncs: *)
+      mutable next_key_seq : int ;
       user_db : User.db ;
       send_msg : (User.socket * SrvMsg.t) Enum.t -> unit ;
       (* Inverted match: who is using what: *)
@@ -26,6 +28,8 @@ struct
 
   and hash_value =
     { mutable v : Value.t ;
+      (* Order in the sequence of key creation. Also stored in snapshots. *)
+      key_seq : int ;
       (* The only permissions we need are:
        * - read: to see a key and its value,
        * - write: to be able to write that value,
@@ -53,7 +57,8 @@ struct
   and callback = Key.t -> Value.t -> Value.t option
 
   let make user_db ~send_msg =
-    { h = H.create 99 ; user_db ; send_msg ;
+    { h = H.create 99 ; next_key_seq = 0 ;
+      user_db ; send_msg ;
       cb_selectors = Selector.make_set () ;
       user_selectors = Selector.make_set () ;
       subscriptions = Hashtbl.create 99 }
@@ -182,8 +187,10 @@ struct
             [ u, expiry ], uid, expiry
           else
             [], "", 0. in
-        H.add t.h k { v ; can_read ; can_write ; can_del ; locks ;
-                      set_by = u ; mtime } ;
+        H.add t.h k { v ; key_seq = t.next_key_seq ;
+                      can_read ; can_write ; can_del ;
+                      locks ; set_by = u ; mtime } ;
+        t.next_key_seq <- t.next_key_seq + 1 ;
         let msg u =
           let can_write = User.has_any_role can_write u
           and can_del = User.has_any_role can_del u in
@@ -328,20 +335,24 @@ struct
     !logger.info "Initial synchronisation for user %a: Starting!" User.print u ;
     let s = Selector.make_set () in
     let _ = Selector.add s sel in
-    H.iter (fun k hv ->
-      if User.has_any_role hv.can_read u &&
-         not (Enum.is_empty (Selector.matches k s))
-      then (
-        timeout_locks ~and_notify:false t k hv ;
-        let uid = IO.to_string User.print_id (User.id hv.set_by)
-        and owner, expiry = owner_of_hash_value hv
-        and can_write = User.has_any_role hv.can_write u
-        and can_del = User.has_any_role hv.can_del u in
-        let msg = SrvMsg.NewKey { k ; v = hv.v ; uid ; mtime = hv.mtime ;
-                                  can_write ; can_del ; owner ; expiry } in
-        t.send_msg (Enum.singleton (socket, msg))
-      )
-    ) t.h ;
+    let sorted =
+      H.enum t.h //
+      (fun (k, hv) ->
+        User.has_any_role hv.can_read u &&
+        not (Enum.is_empty (Selector.matches k s))
+      ) |> Array.of_enum in
+    let key_seq_cmp (_, hv1) (_, hv2) = Int.compare hv1.key_seq hv2.key_seq in
+    Array.fast_sort key_seq_cmp sorted ;
+    Array.iter (fun (k, hv) ->
+      timeout_locks ~and_notify:false t k hv ;
+      let uid = IO.to_string User.print_id (User.id hv.set_by)
+      and owner, expiry = owner_of_hash_value hv
+      and can_write = User.has_any_role hv.can_write u
+      and can_del = User.has_any_role hv.can_del u in
+      let msg = SrvMsg.NewKey { k ; v = hv.v ; uid ; mtime = hv.mtime ;
+                                can_write ; can_del ; owner ; expiry } in
+      t.send_msg (Enum.singleton (socket, msg))
+    ) sorted ;
     !logger.info "Initial synchronisation for user %a: Complete!" User.print u
 
   let set_user_err t u socket i str =
