@@ -1092,18 +1092,21 @@ let may_kill conf ~while_ clt site fq worker_sign pid =
     let k = per_instance_key ParentOutRefs in
     find_or_fail "a list of strings" clt k get_string_list in
   cut_from_parents_outrefs input_ringbufs out_refs ;
-  log_and_ignore_exceptions ~what:"Continuing worker (before kill)"
-    (Unix.kill pid) Sys.sigcont ;
-  let what = Printf.sprintf2 "worker %a (pid %d)" N.fq_print fq pid in
-  (try
-    kill_politely conf last_killed what pid stats_worker_sigkills
-  with Unix.(Unix_error (ESRCH, _, _)) ->
+  let no_more_child () =
     (* The worker vanished. Can happen in case of bugs (such as
      * https://github.com/rixed/ramen/issues/789). Must keep
      * calm when that happen: *)
     !logger.error "Worker pid %d has vanished" pid ;
     report_worker_death ~while_ clt site fq worker_sign "vanished" ;
-    last_killed := Unix.gettimeofday ()) ;
+    last_killed := Unix.gettimeofday () in
+  let what = Printf.sprintf2 "Killing worker %a (pid %d)" N.fq_print fq pid in
+  log_and_ignore_exceptions ~what (fun () ->
+    try
+      (* Before killing him, let's wake him up: *)
+      Unix.kill pid Sys.sigcont ;
+      kill_politely conf last_killed what pid stats_worker_sigkills
+    with Unix.(Unix_error (ESRCH, _, _)) -> no_more_child ()
+  ) () ;
   if !last_killed <> prev_last_killed then
     ZMQClient.send_cmd ~while_ ~eager:true
       (SetKey (last_killed_k, Value.of_float !last_killed))
