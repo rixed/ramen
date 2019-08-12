@@ -8,13 +8,17 @@
 #include "conf.h"
 #include "confValue.h"
 #include "RamenValue.h"
+#include "PathNameValidator.h"
 #include "NewSourceDialog.h"
 
 NewSourceDialog::NewSourceDialog(QWidget *parent) :
   QDialog(parent)
 {
   nameEdit = new QLineEdit;
+  nameEdit->setPlaceholderText("Unique name");
+  nameEdit->setValidator(new PathNameValidator(this));
   // TODO: Validate that the name is unique
+
   typeEdit = new QComboBox;
   typeEdit->addItem(tr("Ramen Language"), QString("ramen"));
   typeEdit->addItem(tr("Simple Alert"), QString("alert"));

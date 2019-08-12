@@ -1,9 +1,9 @@
-#include "ProgramNameValidator.h"
+#include "PathNameValidator.h"
 
 /* Not empty, not "." or "..", no heading or trailing slash, not starting with
  * "./" or "../", not ending with "/." or "/..", and containing no "/./" or
  * "/../". See RamenName.program. */
-QValidator::State ProgramNameValidator::validate(QString &input, int &) const
+QValidator::State PathNameValidator::validate(QString &input, int &) const
 {
   if (input.contains("/./") || input.contains("/../") ||
       input.startsWith('/') ||

@@ -38,7 +38,7 @@ HEADERS += \
   PosDoubleValidator.h \
   RangeDoubleValidator.h \
   RangeIntValidator.h \
-  ProgramNameValidator.h \
+  PathNameValidator.h \
   RamenTypeStructure.h \
   RamenType.h \
   confKey.h \
@@ -132,7 +132,7 @@ SOURCES += \
   PosDoubleValidator.cpp \
   RangeDoubleValidator.cpp \
   RangeIntValidator.cpp \
-  ProgramNameValidator.cpp \
+  PathNameValidator.cpp \
   RamenTypeStructure.cpp \
   RamenType.cpp \
   confKey.cpp \

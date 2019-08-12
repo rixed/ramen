@@ -13,7 +13,7 @@
 #include "once.h"
 #include "SourcesModel.h"  // for sourceNameOfKey and friends
 #include "RangeDoubleValidator.h"
-#include "ProgramNameValidator.h"
+#include "PathNameValidator.h"
 #include "confRCEntryParam.h"
 #include "AtomicWidget.h"
 #include "RCEntryEditor.h"
@@ -50,7 +50,7 @@ RCEntryEditor::RCEntryEditor(bool sourceEditable_, QWidget *parent) :
 
   nameEdit = new QLineEdit;
   nameEdit->setPlaceholderText("Unique name");
-  nameEdit->setValidator(new ProgramNameValidator(this));
+  nameEdit->setValidator(new PathNameValidator(this));
   layout->addRow(tr("Program &Name:"), nameEdit);
   connect(nameEdit, &QLineEdit::textChanged,
           this, &RCEntryEditor::inputChanged);
