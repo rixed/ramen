@@ -334,9 +334,9 @@ let run conf ?(replace=false)
         ?(report_period=Default.report_period)
         ?(on_site=Globs.all) ?(debug=false) ?(params=no_params)
         src_path program_name_opt =
-  if not (String.contains (src_path : N.path :> string) '.') then
+  if Files.has_any_ext src_path then
     Printf.sprintf2
-      "program to run (%a) must be provided with its extension."
+      "program to run (%a) must be provided without any extension."
       N.path_print src_path |>
     failwith ;
   let program_name =
@@ -344,8 +344,6 @@ let run conf ?(replace=false)
       default_program_name src_path
     ) program_name_opt in
   let while_ () = !Processes.quit = None in
-  if Files.has_any_ext src_path then
-    invalid_arg "run src_path with an extension" ;
   let src_path_noext = Files.remove_ext src_path in
   let topics =
     [ "target_config" ;
